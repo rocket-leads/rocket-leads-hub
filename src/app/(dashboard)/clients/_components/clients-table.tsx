@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import type { MondayClient } from "@/lib/monday"
+import type { BillingSummary } from "@/lib/stripe-client"
 
 const ONBOARDING_STATUSES = ["All", "Kick off", "In development", "On hold"]
 const CURRENT_STATUSES = ["All", "Live", "On hold", "Churned"]
@@ -32,16 +33,27 @@ const STATUS_COLORS: Record<string, string> = {
   Churned: "bg-red-500/20 text-red-400 border-red-500/30",
 }
 
+const PAYMENT_STATUS_COLORS: Record<string, string> = {
+  complete: "bg-green-500/20 text-green-400 border-green-500/30",
+  open: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+  overdue: "bg-red-500/20 text-red-400 border-red-500/30",
+}
+
 type Props = {
   clients: MondayClient[]
   boardType: "onboarding" | "current"
+  billingSummaries?: Record<string, BillingSummary>
 }
 
 function uniqueSorted(values: string[]): string[] {
   return ["All", ...Array.from(new Set(values.filter(Boolean))).sort()]
 }
 
-export function ClientsTable({ clients, boardType }: Props) {
+function fmt(amount: number): string {
+  return `€${amount.toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+export function ClientsTable({ clients, boardType, billingSummaries }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
@@ -64,6 +76,8 @@ export function ClientsTable({ clients, boardType }: Props) {
       return matchesSearch && matchesStatus && matchesAM && matchesCM
     })
   }, [clients, search, statusFilter, accountManagerFilter, campaignManagerFilter])
+
+  const colSpan = boardType === "onboarding" ? 8 : 7
 
   return (
     <div className="space-y-4">
@@ -119,49 +133,78 @@ export function ClientsTable({ clients, boardType }: Props) {
               <TableHead>Status</TableHead>
               {boardType === "onboarding" && <TableHead>Kick-off Date</TableHead>}
               <TableHead>Ad Budget</TableHead>
+              <TableHead>Payment Status</TableHead>
+              <TableHead>Outstanding</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={boardType === "onboarding" ? 6 : 5} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={colSpan} className="text-center py-12 text-muted-foreground">
                   No clients found
                 </TableCell>
               </TableRow>
             ) : (
-              filtered.map((client) => (
-                <TableRow
-                  key={client.mondayItemId}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => router.push(`/clients/${client.mondayItemId}`)}
-                >
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{client.name}</p>
-                      {client.firstName && (
-                        <p className="text-sm text-muted-foreground">{client.firstName}</p>
+              filtered.map((client) => {
+                const summary = client.stripeCustomerId ? billingSummaries?.[client.stripeCustomerId] : undefined
+                return (
+                  <TableRow
+                    key={client.mondayItemId}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => router.push(`/clients/${client.mondayItemId}`)}
+                  >
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{client.name}</p>
+                        {client.firstName && (
+                          <p className="text-sm text-muted-foreground">{client.firstName}</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">{client.accountManager || "—"}</TableCell>
+                    <TableCell className="text-sm">{client.campaignManager || "—"}</TableCell>
+                    <TableCell>
+                      {client.campaignStatus ? (
+                        <Badge variant="outline" className={STATUS_COLORS[client.campaignStatus] ?? ""}>
+                          {client.campaignStatus}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm">{client.accountManager || "—"}</TableCell>
-                  <TableCell className="text-sm">{client.campaignManager || "—"}</TableCell>
-                  <TableCell>
-                    {client.campaignStatus ? (
-                      <Badge variant="outline" className={STATUS_COLORS[client.campaignStatus] ?? ""}>
-                        {client.campaignStatus}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
+                    </TableCell>
+                    {boardType === "onboarding" && (
+                      <TableCell className="text-sm">{client.kickOffDate || "—"}</TableCell>
                     )}
-                  </TableCell>
-                  {boardType === "onboarding" && (
-                    <TableCell className="text-sm">{client.kickOffDate || "—"}</TableCell>
-                  )}
-                  <TableCell className="text-sm">
-                    {client.adBudget ? `€${Number(client.adBudget).toLocaleString()}` : "—"}
-                  </TableCell>
-                </TableRow>
-              ))
+                    <TableCell className="text-sm">
+                      {client.adBudget ? `€${Number(client.adBudget).toLocaleString()}` : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {!client.stripeCustomerId ? (
+                        <span className="text-muted-foreground text-sm">—</span>
+                      ) : !billingSummaries ? (
+                        <span className="text-muted-foreground text-sm">...</span>
+                      ) : summary ? (
+                        <Badge variant="outline" className={PAYMENT_STATUS_COLORS[summary.status]}>
+                          {summary.status.charAt(0).toUpperCase() + summary.status.slice(1)}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm font-medium">
+                      {!client.stripeCustomerId ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : !billingSummaries ? (
+                        <span className="text-muted-foreground">...</span>
+                      ) : summary && summary.outstanding > 0 ? (
+                        <span className={summary.status === "overdue" ? "text-red-400" : ""}>{fmt(summary.outstanding)}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>

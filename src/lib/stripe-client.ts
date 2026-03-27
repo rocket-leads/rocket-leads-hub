@@ -50,6 +50,34 @@ function deriveStatus(inv: Stripe.Invoice): InvoiceRow["status"] {
   return "open"
 }
 
+export type BillingSummary = {
+  customerId: string
+  outstanding: number
+  status: "complete" | "open" | "overdue"
+}
+
+export async function fetchBillingSummary(customerId: string): Promise<BillingSummary> {
+  const stripe = await getStripe()
+  const now = Math.floor(Date.now() / 1000)
+
+  const openInvoices = await stripe.invoices.list({ customer: customerId, status: "open", limit: 100 })
+  const all = [...openInvoices.data]
+  let hasMore = openInvoices.has_more
+  let startingAfter = openInvoices.data[openInvoices.data.length - 1]?.id
+  while (hasMore && startingAfter) {
+    const page = await stripe.invoices.list({ customer: customerId, status: "open", limit: 100, starting_after: startingAfter })
+    all.push(...page.data)
+    hasMore = page.has_more
+    startingAfter = page.data[page.data.length - 1]?.id
+  }
+
+  const outstanding = all.reduce((sum, inv) => sum + inv.amount_due / 100, 0)
+  const hasOverdue = all.some((inv) => inv.due_date && inv.due_date < now)
+  const status = outstanding === 0 ? "complete" : hasOverdue ? "overdue" : "open"
+
+  return { customerId, outstanding, status }
+}
+
 export async function fetchBillingData(customerId: string): Promise<BillingData> {
   const stripe = await getStripe()
 
