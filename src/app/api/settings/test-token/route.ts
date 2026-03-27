@@ -46,27 +46,29 @@ async function testStripe(token: string): Promise<TestResult> {
 
 async function testTrengo(token: string): Promise<TestResult> {
   const trimmed = token.trim()
-  // Try several endpoints — Trengo's /profile returns HTML; /users and /labels are more reliable
-  const endpoints = ["/users", "/labels", "/channels"]
+  const endpoints = ["/users", "/labels", "/channels", "/teams"]
   for (const endpoint of endpoints) {
     try {
       const res = await fetch(`https://app.trengo.com/api/v2${endpoint}`, {
         headers: { Authorization: `Bearer ${trimmed}`, Accept: "application/json" },
       })
       const contentType = res.headers.get("content-type") ?? ""
-      if (!contentType.includes("application/json")) continue
-      const data = await res.json()
-      if (res.ok) return { ok: true, message: `Trengo connected (via ${endpoint})` }
-      // Got JSON error — token reached the API, return the actual error
-      return { ok: false, message: `Trengo: ${data.message ?? data.error ?? `HTTP ${res.status} on ${endpoint}`}` }
-    } catch {
-      continue
+      if (contentType.includes("application/json")) {
+        const data = await res.json()
+        if (res.ok) return { ok: true, message: `Trengo connected (via ${endpoint})` }
+        return { ok: false, message: `Trengo HTTP ${res.status}: ${data.message ?? data.error ?? JSON.stringify(data).slice(0, 100)}` }
+      }
+      // First HTML response: log status + snippet for diagnosis
+      const body = await res.text().catch(() => "")
+      return {
+        ok: false,
+        message: `Trengo HTTP ${res.status} on ${endpoint} — non-JSON (content-type: ${contentType || "none"}). First 80 chars: ${body.slice(0, 80)}`,
+      }
+    } catch (e) {
+      return { ok: false, message: `Fetch error: ${e instanceof Error ? e.message : String(e)}` }
     }
   }
-  return {
-    ok: false,
-    message: "Trengo returned HTML for all endpoints — token likely invalid. In Trengo go to Settings → Apps & Integrations → API and create a new Personal Access Token.",
-  }
+  return { ok: false, message: "All Trengo endpoints failed" }
 }
 
 export async function POST(req: NextRequest) {
