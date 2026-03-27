@@ -19,9 +19,15 @@ export default async function ClientDetailPage({
   try {
     client = await fetchClientById(id)
     if (!client) return notFound()
-    supabaseClientId = await syncClientToSupabase(client)
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load client"
+  }
+
+  // Sync to Supabase non-blocking — page renders even if this fails
+  if (client) {
+    syncClientToSupabase(client)
+      .then((id) => { supabaseClientId = id })
+      .catch((e) => console.error("Supabase sync failed:", e))
   }
 
   if (error) {
