@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ApiTokensTab } from "./_components/api-tokens-tab"
 import { BoardConfigTab } from "./_components/board-config-tab"
 import { UsersTab } from "./_components/users-tab"
+import { ApiHealthBar } from "./_components/api-health-bar"
 
 export default async function SettingsPage() {
   const session = await auth()
@@ -58,7 +59,9 @@ export default async function SettingsPage() {
         <p className="text-muted-foreground">Manage API tokens, board configuration, and users</p>
       </div>
 
-      <Tabs defaultValue="tokens">
+      <ApiHealthBar />
+
+      <Tabs defaultValue="tokens" className="mt-6">
         <TabsList className="mb-6">
           <TabsTrigger value="tokens">API Tokens</TabsTrigger>
           <TabsTrigger value="board">Board Config</TabsTrigger>

@@ -13,29 +13,26 @@ async function getTrengoToken(): Promise<string> {
 }
 
 async function trengoFetch<T>(path: string): Promise<T> {
-  const token = await getTrengoToken()
-  const res = await fetch(`https://app.trengo.com/api/v2${path}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    cache: "no-store",
-  })
+  const token = (await getTrengoToken()).trim()
+  const url = `https://app.trengo.com/api/v2${path}`
 
-  const contentType = res.headers.get("content-type") ?? ""
-  if (!contentType.includes("application/json")) {
-    const text = await res.text().catch(() => "")
-    throw new Error(
-      `Trengo API error ${res.status} (non-JSON response). ` +
-      `Endpoint: ${path}. Body: ${text.slice(0, 300)}`
-    )
+  // Try Bearer first, then Token prefix (Trengo PAT type determines which works)
+  for (const prefix of ["Bearer", "Token"]) {
+    const res = await fetch(url, {
+      headers: { Authorization: `${prefix} ${token}`, Accept: "application/json" },
+      cache: "no-store",
+    })
+    const contentType = res.headers.get("content-type") ?? ""
+    if (!contentType.includes("application/json")) continue // wrong prefix, try next
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as Record<string, unknown>
+      throw new Error(`Trengo API error ${res.status}: ${(data.message as string) ?? JSON.stringify(data)}`)
+    }
+    return res.json() as Promise<T>
   }
 
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({})) as Record<string, unknown>
-    throw new Error(
-      `Trengo API error ${res.status}: ${(data.message as string) ?? JSON.stringify(data)}`
-    )
-  }
-
-  return res.json() as Promise<T>
+  throw new Error(`Trengo API returned non-JSON for ${path}. Token may be invalid or expired.`)
 }
 
 export type TrengoChannel = {

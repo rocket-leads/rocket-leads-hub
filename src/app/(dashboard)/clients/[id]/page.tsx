@@ -1,8 +1,10 @@
+import { auth } from "@/lib/auth"
 import { fetchClientById } from "@/lib/monday"
 import { syncClientToSupabase } from "@/lib/sync-client"
+import { getClientAccess } from "@/lib/client-access"
 import { ClientHeader } from "./_components/client-header"
 import { ClientTabs } from "./_components/client-tabs"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 
 export default async function ClientDetailPage({
@@ -10,6 +12,9 @@ export default async function ClientDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  const session = await auth()
+  if (!session?.user?.id) redirect("/auth/signin")
+
   const { id } = await params
 
   let client = null
@@ -47,10 +52,16 @@ export default async function ClientDetailPage({
 
   if (!client) return notFound()
 
+  const access = await getClientAccess(
+    session.user.id,
+    session.user.role ?? "member",
+    client.mondayItemId
+  )
+
   return (
     <div className="container mx-auto max-w-5xl py-8 px-4">
       <ClientHeader client={client} />
-      <ClientTabs client={client} supabaseClientId={supabaseClientId} />
+      <ClientTabs client={client} supabaseClientId={supabaseClientId} access={access} />
     </div>
   )
 }

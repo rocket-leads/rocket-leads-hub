@@ -45,21 +45,22 @@ async function testStripe(token: string): Promise<TestResult> {
 }
 
 async function testTrengo(token: string): Promise<TestResult> {
-  try {
-    const res = await fetch("https://app.trengo.com/api/v2/profile", {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    })
-    const contentType = res.headers.get("content-type") ?? ""
-    if (!contentType.includes("application/json")) {
-      const body = await res.text().catch(() => "")
-      return { ok: false, message: `HTTP ${res.status} — non-JSON response. Check token format. Body: ${body.slice(0, 120)}` }
+  const trimmed = token.trim()
+  // Trengo supports both "Bearer" and "Token" prefix depending on token type
+  for (const prefix of ["Bearer", "Token"]) {
+    try {
+      const res = await fetch("https://app.trengo.com/api/v2/profile", {
+        headers: { Authorization: `${prefix} ${trimmed}`, Accept: "application/json" },
+      })
+      const contentType = res.headers.get("content-type") ?? ""
+      if (!contentType.includes("application/json")) continue // try next prefix
+      const data = await res.json()
+      if (res.ok) return { ok: true, message: `Connected as ${data.name ?? data.email ?? "user"} (${prefix})` }
+    } catch {
+      continue
     }
-    const data = await res.json()
-    if (res.ok) return { ok: true, message: `Connected as ${data.name ?? data.email ?? "user"}` }
-    return { ok: false, message: data.message ?? data.error ?? `HTTP ${res.status}` }
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Connection failed" }
   }
+  return { ok: false, message: "Invalid token — both Bearer and Token formats failed. Check your Trengo API token in Settings → Apps → API." }
 }
 
 export async function POST(req: NextRequest) {

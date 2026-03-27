@@ -18,7 +18,7 @@ export async function saveApiToken(service: string, token: string) {
   const { error } = await supabase.from("api_tokens").upsert(
     {
       service,
-      token_encrypted: encrypt(token),
+      token_encrypted: encrypt(token.trim()),
       is_valid: true,
       last_verified: null,
       updated_at: new Date().toISOString(),
