@@ -46,18 +46,21 @@ async function checkStripe(token: string): Promise<Omit<ServiceResult, "checkedA
 }
 
 async function checkTrengo(token: string): Promise<Omit<ServiceResult, "checkedAt">> {
-  try {
-    const res = await fetch("https://app.trengo.com/api/v2/profile", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (res.ok) {
+  for (const endpoint of ["/users", "/labels", "/channels"]) {
+    try {
+      const res = await fetch(`https://app.trengo.com/api/v2${endpoint}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      })
+      const contentType = res.headers.get("content-type") ?? ""
+      if (!contentType.includes("application/json")) continue
       const data = await res.json()
-      return { ok: true, message: `Connected as ${data.name ?? "user"}` }
+      if (res.ok) return { ok: true, message: "Trengo connected" }
+      return { ok: false, message: data.message ?? `HTTP ${res.status}` }
+    } catch {
+      continue
     }
-    return { ok: false, message: "Invalid token" }
-  } catch {
-    return { ok: false, message: "Connection failed" }
   }
+  return { ok: false, message: "Invalid token" }
 }
 
 const SERVICES = ["monday", "meta", "stripe", "trengo"] as const
