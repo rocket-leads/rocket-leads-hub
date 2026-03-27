@@ -82,7 +82,7 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
 
   while (true) {
     const data = await trengoFetch<ConversationPage>(
-      `/conversations?contact_id=${contactId}&per_page=25&page=${page}`
+      `/contacts/${contactId}/conversations?per_page=25&page=${page}`
     )
     all.push(...data.data)
     if (!data.meta || page >= data.meta.last_page) break
