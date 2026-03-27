@@ -147,3 +147,44 @@ export async function fetchBothBoards(): Promise<{
   ])
   return { onboarding, current }
 }
+
+export async function fetchClientById(itemId: string): Promise<MondayClient | null> {
+  const [token, config] = await Promise.all([getToken(), getBoardConfig()])
+  if (!config) throw new Error("Board config not found.")
+
+  const query = `
+    query GetItem($itemId: ID!) {
+      items(ids: [$itemId]) {
+        id
+        name
+        board { id }
+        column_values {
+          id
+          text
+        }
+      }
+    }
+  `
+
+  const data = await gql(query, { itemId }, token)
+  const item = data.items?.[0]
+  if (!item) return null
+
+  const boardId = String(item.board?.id)
+  let boardType: "onboarding" | "current"
+  let columns: Record<string, string>
+
+  if (boardId === String(config.onboarding_board_id)) {
+    boardType = "onboarding"
+    columns = config.onboarding_columns
+  } else if (boardId === String(config.current_board_id)) {
+    boardType = "current"
+    columns = config.current_columns
+  } else {
+    // Fallback: try to match by checking both
+    boardType = "current"
+    columns = config.current_columns
+  }
+
+  return mapItem(item, columns, boardType)
+}
