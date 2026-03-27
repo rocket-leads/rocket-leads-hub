@@ -148,6 +148,44 @@ export async function fetchBothBoards(): Promise<{
   return { onboarding, current }
 }
 
+export type MondayLeadItem = {
+  id: string
+  name: string
+  dateCreated: string
+  dateAppointment: string
+  leadStatus: string
+  leadStatus2: string
+  dealValue: number
+  utm: string
+  dateDeal: string
+}
+
+export async function fetchClientBoardItems(boardId: string): Promise<MondayLeadItem[]> {
+  const [token, config] = await Promise.all([getToken(), getBoardConfig()])
+  if (!config) throw new Error("Board config not found.")
+
+  const cols = config.client_board_columns
+  const items = await fetchAllItems(boardId, token)
+
+  return items.map((item) => {
+    const cv: Record<string, string> = {}
+    for (const col of item.column_values) {
+      cv[col.id] = col.text ?? ""
+    }
+    return {
+      id: item.id,
+      name: item.name,
+      dateCreated: cv[cols.date_created] ?? "",
+      dateAppointment: cv[cols.date_appointment] ?? "",
+      leadStatus: cv[cols.lead_status] ?? "",
+      leadStatus2: cv[cols.lead_status_2] ?? "",
+      dealValue: parseFloat(cv[cols.deal_value] ?? "0") || 0,
+      utm: cv[cols.utm] ?? "",
+      dateDeal: cv[cols.date_deal] ?? "",
+    }
+  })
+}
+
 export async function fetchClientById(itemId: string): Promise<MondayClient | null> {
   const [token, config] = await Promise.all([getToken(), getBoardConfig()])
   if (!config) throw new Error("Board config not found.")
