@@ -39,6 +39,7 @@ export type TrengoChannel = {
   type: string
 }
 
+// Trengo calls these "tickets" in their API
 export type TrengoConversation = {
   id: number
   status: "open" | "closed"
@@ -61,7 +62,7 @@ export type TrengoMessage = {
   attachments: Array<{ name: string; url: string }> | null
 }
 
-type ConversationPage = {
+type TicketPage = {
   data: TrengoConversation[]
   meta?: { current_page: number; last_page: number }
 }
@@ -76,8 +77,8 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
   let page = 1
 
   while (true) {
-    const data = await trengoFetch<ConversationPage>(
-      `/conversations?contact_id=${contactId}&per_page=25&page=${page}`
+    const data = await trengoFetch<TicketPage>(
+      `/tickets?contact_id=${contactId}&per_page=25&page=${page}`
     )
     all.push(...data.data)
     if (!data.meta || page >= data.meta.last_page) break
@@ -87,13 +88,13 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
   return all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }
 
-export async function fetchMessages(conversationId: number): Promise<TrengoMessage[]> {
+export async function fetchMessages(ticketId: number): Promise<TrengoMessage[]> {
   const all: TrengoMessage[] = []
   let page = 1
 
   while (true) {
     const data = await trengoFetch<MessagePage>(
-      `/conversations/${conversationId}/messages?per_page=50&page=${page}`
+      `/tickets/${ticketId}/messages?page=${page}`
     )
     all.push(...data.data)
     if (!data.meta || page >= data.meta.last_page) break
