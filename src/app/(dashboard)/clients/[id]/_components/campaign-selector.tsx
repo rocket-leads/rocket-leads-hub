@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import type { MetaCampaign } from "@/lib/meta"
 
 type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
@@ -22,6 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelectionChange }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [showInactive, setShowInactive] = useState(false)
 
   async function toggleCampaign(campaign: CampaignWithSelection) {
     setSaving((s) => ({ ...s, [campaign.id]: true }))
@@ -53,17 +55,34 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
     return <p className="text-sm text-muted-foreground">No campaigns found in this ad account.</p>
   }
 
+  const activeCampaigns = campaigns.filter((c) => c.status === "ACTIVE")
+  const inactiveCampaigns = campaigns.filter((c) => c.status !== "ACTIVE")
+  const visible = showInactive ? campaigns : activeCampaigns
   const selectedCount = campaigns.filter((c) => c.isSelected).length
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">
-        {selectedCount === 0
-          ? "No campaigns selected — all spend is included in KPIs."
-          : `${selectedCount} campaign${selectedCount > 1 ? "s" : ""} selected.`}
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          {selectedCount === 0
+            ? "No campaigns selected — all spend is included in KPIs."
+            : `${selectedCount} campaign${selectedCount > 1 ? "s" : ""} selected.`}
+        </p>
+        {inactiveCampaigns.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-xs h-7"
+            onClick={() => setShowInactive((v) => !v)}
+          >
+            {showInactive
+              ? `Hide inactive (${inactiveCampaigns.length})`
+              : `Show inactive (${inactiveCampaigns.length})`}
+          </Button>
+        )}
+      </div>
       <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-        {campaigns.map((campaign) => (
+        {visible.map((campaign) => (
           <label
             key={campaign.id}
             className="flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"

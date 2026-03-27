@@ -37,12 +37,20 @@ type Props = {
   boardType: "onboarding" | "current"
 }
 
+function uniqueSorted(values: string[]): string[] {
+  return ["All", ...Array.from(new Set(values.filter(Boolean))).sort()]
+}
+
 export function ClientsTable({ clients, boardType }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
+  const [accountManagerFilter, setAccountManagerFilter] = useState("All")
+  const [campaignManagerFilter, setCampaignManagerFilter] = useState("All")
 
   const statuses = boardType === "onboarding" ? ONBOARDING_STATUSES : CURRENT_STATUSES
+  const accountManagers = useMemo(() => uniqueSorted(clients.map((c) => c.accountManager)), [clients])
+  const campaignManagers = useMemo(() => uniqueSorted(clients.map((c) => c.campaignManager)), [clients])
 
   const filtered = useMemo(() => {
     return clients.filter((c) => {
@@ -50,30 +58,49 @@ export function ClientsTable({ clients, boardType }: Props) {
         !search ||
         c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.firstName.toLowerCase().includes(search.toLowerCase())
-      const matchesStatus =
-        statusFilter === "All" || c.campaignStatus === statusFilter
-      return matchesSearch && matchesStatus
+      const matchesStatus = statusFilter === "All" || c.campaignStatus === statusFilter
+      const matchesAM = accountManagerFilter === "All" || c.accountManager === accountManagerFilter
+      const matchesCM = campaignManagerFilter === "All" || c.campaignManager === campaignManagerFilter
+      return matchesSearch && matchesStatus && matchesAM && matchesCM
     })
-  }, [clients, search, statusFilter])
+  }, [clients, search, statusFilter, accountManagerFilter, campaignManagerFilter])
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <Input
           placeholder="Search clients..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="max-w-sm"
+          className="max-w-xs"
         />
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "All")}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
+          <SelectTrigger className="w-[150px]">
+            <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
             {statuses.map((s) => (
-              <SelectItem key={s} value={s}>
-                {s}
-              </SelectItem>
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={accountManagerFilter} onValueChange={(v) => setAccountManagerFilter(v ?? "All")}>
+          <SelectTrigger className="w-[170px]">
+            <SelectValue placeholder="Account Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            {accountManagers.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={campaignManagerFilter} onValueChange={(v) => setCampaignManagerFilter(v ?? "All")}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Campaign Manager" />
+          </SelectTrigger>
+          <SelectContent>
+            {campaignManagers.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -120,10 +147,7 @@ export function ClientsTable({ clients, boardType }: Props) {
                   <TableCell className="text-sm">{client.campaignManager || "—"}</TableCell>
                   <TableCell>
                     {client.campaignStatus ? (
-                      <Badge
-                        variant="outline"
-                        className={STATUS_COLORS[client.campaignStatus] ?? ""}
-                      >
+                      <Badge variant="outline" className={STATUS_COLORS[client.campaignStatus] ?? ""}>
                         {client.campaignStatus}
                       </Badge>
                     ) : (

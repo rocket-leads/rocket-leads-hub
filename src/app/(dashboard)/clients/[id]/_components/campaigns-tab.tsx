@@ -31,10 +31,15 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId }: P
 
   const kpisQuery = useQuery<KpiResult>({
     queryKey: ["kpis", mondayItemId, dateRange.startDate, dateRange.endDate],
-    queryFn: () =>
-      fetch(
-        `/api/clients/${mondayItemId}/kpis?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
-      ).then((r) => r.json()),
+    queryFn: () => {
+      const p = new URLSearchParams({
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        ...(metaAdAccountId ? { adAccountId: metaAdAccountId } : {}),
+        ...(clientBoardId ? { clientBoardId } : {}),
+      })
+      return fetch(`/api/clients/${mondayItemId}/kpis?${p}`).then((r) => r.json())
+    },
     enabled: !!mondayItemId,
   })
 

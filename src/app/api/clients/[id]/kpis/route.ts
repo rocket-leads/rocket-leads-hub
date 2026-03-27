@@ -16,6 +16,8 @@ export async function GET(
   const { searchParams } = req.nextUrl
   const startDate = searchParams.get("startDate") ?? ""
   const endDate = searchParams.get("endDate") ?? ""
+  const adAccountIdParam = searchParams.get("adAccountId") ?? ""
+  const clientBoardIdParam = searchParams.get("clientBoardId") ?? ""
 
   if (!startDate || !endDate) {
     return NextResponse.json({ error: "startDate and endDate are required" }, { status: 400 })
@@ -32,32 +34,33 @@ export async function GET(
     supabase.from("settings").select("value").eq("key", "board_config").single(),
   ])
 
-  if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 })
+  // Fall back to query params if Supabase record not yet synced
+  const adAccountId = client?.meta_ad_account_id ?? adAccountIdParam
+  const clientBoardId = client?.monday_client_board_id ?? clientBoardIdParam
 
   const takenCallStatusValue =
     (settingsRow?.value as { client_board_columns?: { taken_call_status_value?: string } })
       ?.client_board_columns?.taken_call_status_value ?? "Afspraak"
 
-  // Fetch selected campaigns
-  const { data: selectedRows } = await supabase
-    .from("client_campaigns")
-    .select("meta_campaign_id")
-    .eq("client_id", client.id)
-    .eq("is_selected", true)
+  const selectedCampaignIds = new Set<string>()
+  if (client?.id) {
+    const { data: selectedRows } = await supabase
+      .from("client_campaigns")
+      .select("meta_campaign_id")
+      .eq("client_id", client.id)
+      .eq("is_selected", true)
+    for (const r of selectedRows ?? []) selectedCampaignIds.add(r.meta_campaign_id)
+  }
 
-  const selectedCampaignIds = new Set((selectedRows ?? []).map((r) => r.meta_campaign_id))
-
-  // Fetch Meta insights + Monday items in parallel
   const [insights, leadItems] = await Promise.all([
-    client.meta_ad_account_id
-      ? fetchMetaInsights(client.meta_ad_account_id, startDate, endDate).catch(() => [])
+    adAccountId
+      ? fetchMetaInsights(adAccountId, startDate, endDate).catch((e) => { console.error("Meta insights error:", e); return [] })
       : Promise.resolve([]),
-    client.monday_client_board_id
-      ? fetchClientBoardItems(client.monday_client_board_id).catch(() => [])
+    clientBoardId
+      ? fetchClientBoardItems(clientBoardId).catch((e) => { console.error("Monday board error:", e); return [] })
       : Promise.resolve([]),
   ])
 
-  // Sum spend for selected campaigns only (if none selected, sum all)
   const relevantInsights = selectedCampaignIds.size > 0
     ? insights.filter((i) => selectedCampaignIds.has(i.campaignId))
     : insights
@@ -65,5 +68,13 @@ export async function GET(
 
   const kpis = calculateKpis(adSpend, leadItems, startDate, endDate, takenCallStatusValue)
 
-  return NextResponse.json(kpis)
+  return NextResponse.json({
+    ...kpis,
+    _debug: {
+      adAccountId: adAccountId || null,
+      clientBoardId: clientBoardId || null,
+      leadItemsCount: leadItems.length,
+      insightsCount: insights.length,
+    },
+  })
 }
