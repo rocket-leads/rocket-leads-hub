@@ -25,7 +25,7 @@ function channelIcon(type: string | undefined) {
 }
 
 function fmtDate(str: string) {
-  return new Date(str).toLocaleString("nl-NL", {
+  return new Date(str).toLocaleString("en-GB", {
     day: "2-digit", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   })
@@ -47,7 +47,8 @@ function MessageThread({ mondayItemId, conversationId }: { mondayItemId: string;
       if (!r.ok) throw new Error(data.error ?? "Failed to load messages")
       return data
     },
-    staleTime: 2 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   })
 
   if (query.isLoading) {
@@ -183,6 +184,8 @@ export function CommunicationTab({ mondayItemId, trengoContactId }: Props) {
       return data
     },
     enabled: !!trengoContactId,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
   })
 
   if (!trengoContactId) {
