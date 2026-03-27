@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge"
+import { isRocketLeadsAdAccount } from "@/lib/ad-account"
 import type { MondayClient } from "@/lib/monday"
 import Link from "next/link"
 
@@ -66,8 +67,18 @@ export function ClientHeader({ client }: Props) {
         )}
         {client.metaAdAccountId && (
           <div>
-            <span className="text-muted-foreground">Meta Ad Account</span>
-            <p className="font-medium font-mono text-xs">{client.metaAdAccountId}</p>
+            <span className="text-muted-foreground">Ad Account</span>
+            <p className="font-medium">
+              {isRocketLeadsAdAccount(client.metaAdAccountId) ? (
+                <Badge variant="outline" className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+                  Rocket Leads
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+                  Client
+                </Badge>
+              )}
+            </p>
           </div>
         )}
         {client.stripeCustomerId && (

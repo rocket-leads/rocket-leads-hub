@@ -78,6 +78,76 @@ export async function fetchBillingSummary(customerId: string): Promise<BillingSu
   return { customerId, outstanding, status }
 }
 
+// Keywords that identify ad budget line items on Stripe invoices
+const AD_BUDGET_KEYWORDS = [
+  "advertentiebudget",
+  "advertising budget",
+  "adspend",
+  "ad spend",
+  "ad budget",
+  "mediabudget",
+  "media budget",
+]
+
+function isAdBudgetLineItem(description: string | null): boolean {
+  if (!description) return false
+  const lower = description.toLowerCase()
+  return AD_BUDGET_KEYWORDS.some((kw) => lower.includes(kw))
+}
+
+export type AdBudgetInvoiced = {
+  totalInvoiced: number
+  lineItems: Array<{
+    invoiceNumber: string | null
+    date: number
+    description: string
+    amount: number
+  }>
+}
+
+export async function fetchInvoicedAdBudget(customerId: string): Promise<AdBudgetInvoiced> {
+  const stripe = await getStripe()
+
+  const lineItems: AdBudgetInvoiced["lineItems"] = []
+  let totalInvoiced = 0
+
+  // Fetch all non-draft invoices and inspect their line items
+  let hasMore = true
+  let startingAfter: string | undefined
+
+  while (hasMore) {
+    const page = await stripe.invoices.list({
+      customer: customerId,
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    })
+
+    for (const inv of page.data) {
+      if (inv.status === "draft" || inv.status === "void") continue
+
+      for (const line of inv.lines?.data ?? []) {
+        const desc = line.description ?? ""
+        if (isAdBudgetLineItem(desc)) {
+          const amount = line.amount / 100
+          totalInvoiced += amount
+          lineItems.push({
+            invoiceNumber: inv.number,
+            date: inv.created,
+            description: desc,
+            amount,
+          })
+        }
+      }
+    }
+
+    hasMore = page.has_more
+    startingAfter = page.data[page.data.length - 1]?.id
+  }
+
+  lineItems.sort((a, b) => b.date - a.date)
+  return { totalInvoiced, lineItems }
+}
+
 export async function fetchBillingData(customerId: string): Promise<BillingData> {
   const stripe = await getStripe()
 

@@ -55,7 +55,7 @@ export function ApiHealthBar() {
   })
 
   const lastChecked = dataUpdatedAt
-    ? new Date(dataUpdatedAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })
+    ? new Date(dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
   return (

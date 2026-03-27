@@ -131,8 +131,8 @@ Repo: `https://github.com/royvosters/rocket-leads-hub`
 ## Conventions
 
 - All UI text in **English**
-- Currency formatted as `€` with `nl-NL` locale
-- Dates formatted with `nl-NL` locale
+- Currency formatted as `€` with `en-GB` locale
+- Dates formatted with `en-GB` locale
 - No TypeScript `any` — use proper types
 - API routes always check `auth()` first and return 401 if no session
 - Server components fetch data directly; client components use React Query

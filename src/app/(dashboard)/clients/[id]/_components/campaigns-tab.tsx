@@ -8,6 +8,9 @@ import { DateFilter, defaultDateRange, type DateRange } from "./date-filter"
 import { KpiCards } from "./kpi-cards"
 import { UtmTable } from "./utm-table"
 import { CampaignSelector } from "./campaign-selector"
+import { AdPerformance } from "./ad-performance"
+import { AdBudgetBalance } from "./ad-budget-balance"
+import { isRocketLeadsAdAccount } from "@/lib/ad-account"
 import type { KpiResult } from "@/lib/kpis"
 import type { MetaCampaign } from "@/lib/meta"
 
@@ -17,9 +20,10 @@ type Props = {
   mondayItemId: string
   metaAdAccountId: string | null
   clientBoardId: string | null
+  stripeCustomerId: string | null
 }
 
-export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId }: Props) {
+export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, stripeCustomerId }: Props) {
   const [dateRange, setDateRange] = useState<DateRange>(defaultDateRange)
 
   const campaignsQuery = useQuery<{ campaigns: CampaignWithSelection[] }>({
@@ -55,6 +59,15 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId }: P
 
   return (
     <div className="space-y-6">
+      {/* Ad budget balance for Rocket Leads ad account clients */}
+      {isRocketLeadsAdAccount(metaAdAccountId) && stripeCustomerId && (
+        <AdBudgetBalance
+          mondayItemId={mondayItemId}
+          metaAdAccountId={metaAdAccountId!}
+          stripeCustomerId={stripeCustomerId}
+        />
+      )}
+
       {/* Campaign selector */}
       {metaAdAccountId && (
         <Card>
@@ -100,6 +113,14 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId }: P
           />
         </div>
       ) : null}
+
+      {/* Ad performance analysis */}
+      {!kpisQuery.isLoading && kpisQuery.data && (kpisQuery.data.utmBreakdown?.length ?? 0) >= 2 && (
+        <AdPerformance
+          rows={kpisQuery.data.utmBreakdown}
+          kpis={kpisQuery.data}
+        />
+      )}
     </div>
   )
 }

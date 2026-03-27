@@ -1,50 +1,84 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  DollarSign,
+  Users,
+  Target,
+  BarChart3,
+  PhoneCall,
+  PhoneIncoming,
+  Handshake,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react"
 import type { KpiResult } from "@/lib/kpis"
 
-function fmt(n: number, type: "currency" | "percent" | "integer" | "ratio" | "multiplier"): string {
-  if (!isFinite(n) || n === 0 && type !== "integer") {
+function fmt(n: number, type: "currency" | "percent" | "integer" | "multiplier"): string {
+  if (!isFinite(n) || (n === 0 && type !== "integer")) {
     if (type === "percent") return "—%"
-    if (type === "multiplier") return "—x"
+    if (type === "multiplier") return "—"
     if (type === "currency") return "—"
     return "—"
   }
   switch (type) {
     case "currency":
-      return `€${n.toLocaleString("nl-NL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+      return `€${n.toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     case "percent":
       return `${n.toFixed(1)}%`
     case "integer":
       return n.toLocaleString("nl-NL")
     case "multiplier":
-      return `${n.toFixed(2)}x`
-    case "ratio":
-      return `€${n.toLocaleString("nl-NL", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+      return n.toFixed(2)
   }
 }
 
 type KpiCardDef = {
   key: keyof KpiResult
   label: string
-  type: "currency" | "percent" | "integer" | "ratio" | "multiplier"
-  description?: string
+  type: "currency" | "percent" | "integer" | "multiplier"
+  icon: LucideIcon
 }
 
-const KPI_CARDS: KpiCardDef[] = [
-  { key: "adSpend", label: "Ad Spend", type: "currency" },
-  { key: "leads", label: "Leads", type: "integer" },
-  { key: "costPerLead", label: "Cost per Lead", type: "ratio" },
-  { key: "qrPercent", label: "QR% (Lead → Call)", type: "percent" },
-  { key: "bookedCalls", label: "Booked Calls", type: "integer" },
-  { key: "costPerBookedCall", label: "Cost per Booked Call", type: "ratio" },
-  { key: "suPercent", label: "SU% (Show Up)", type: "percent" },
-  { key: "takenCalls", label: "Taken Calls", type: "integer" },
-  { key: "costPerTakenCall", label: "Cost per Taken Call", type: "ratio" },
-  { key: "deals", label: "Deals", type: "integer" },
-  { key: "crPercent", label: "CR% (Close Rate)", type: "percent" },
-  { key: "costPerDeal", label: "Cost per Deal", type: "ratio" },
-  { key: "revenue", label: "Revenue", type: "currency" },
-  { key: "roi", label: "ROI", type: "multiplier" },
+type KpiGroup = {
+  title: string
+  cards: KpiCardDef[]
+}
+
+const KPI_GROUPS: KpiGroup[] = [
+  {
+    title: "Acquisitie",
+    cards: [
+      { key: "adSpend", label: "Adspend", type: "currency", icon: DollarSign },
+      { key: "leads", label: "Leads", type: "integer", icon: Users },
+      { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Target },
+      { key: "qrPercent", label: "QR% (Lead → Call)", type: "percent", icon: BarChart3 },
+    ],
+  },
+  {
+    title: "Calls",
+    cards: [
+      { key: "bookedCalls", label: "Booked Calls", type: "integer", icon: PhoneCall },
+      { key: "costPerBookedCall", label: "Cost per Booked Call", type: "currency", icon: DollarSign },
+      { key: "suPercent", label: "SU% (Show Up)", type: "percent", icon: BarChart3 },
+      { key: "takenCalls", label: "Taken Calls", type: "integer", icon: PhoneIncoming },
+    ],
+  },
+  {
+    title: "Deals & Revenue",
+    cards: [
+      { key: "costPerTakenCall", label: "Cost per Taken Call", type: "currency", icon: DollarSign },
+      { key: "deals", label: "Deals", type: "integer", icon: Handshake },
+      { key: "crPercent", label: "CR%", type: "percent", icon: BarChart3 },
+      { key: "costPerDeal", label: "Cost per Deal", type: "currency", icon: Target },
+    ],
+  },
+  {
+    title: "Revenue & ROI",
+    cards: [
+      { key: "revenue", label: "Closed Revenue", type: "currency", icon: TrendingUp },
+      { key: "roi", label: "ROI", type: "multiplier", icon: TrendingUp },
+    ],
+  },
 ]
 
 type Props = {
@@ -54,24 +88,39 @@ type Props = {
 
 export function KpiCards({ data, isLoading }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-      {KPI_CARDS.map((kpi) => (
-        <Card key={kpi.key} className="col-span-1">
-          <CardHeader className="pb-1 pt-3 px-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground leading-tight">
-              {kpi.label}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-3 pb-3">
-            {isLoading ? (
-              <Skeleton className="h-7 w-20" />
-            ) : (
-              <p className="text-xl font-bold">
-                {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+    <div className="space-y-6">
+      {KPI_GROUPS.map((group) => (
+        <div key={group.title}>
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            {group.title}
+          </h3>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {group.cards.map((kpi) => {
+              const Icon = kpi.icon
+              return (
+                <Card key={kpi.key} className="relative overflow-hidden">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {kpi.label}
+                      </p>
+                      <Icon className="h-4 w-4 text-muted-foreground/50" />
+                    </div>
+                    <div className="mt-2">
+                      {isLoading ? (
+                        <Skeleton className="h-8 w-24" />
+                      ) : (
+                        <p className="text-2xl font-bold tracking-tight">
+                          {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        </div>
       ))}
     </div>
   )

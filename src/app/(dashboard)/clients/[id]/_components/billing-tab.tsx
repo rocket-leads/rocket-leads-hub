@@ -24,7 +24,7 @@ const STATUS_CONFIG: Record<
 }
 
 function fmt(amount: number): string {
-  return `€${amount.toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `€${amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 function SummaryCard({ title, value, sub }: { title: string; value: string; sub?: string }) {
@@ -141,11 +141,11 @@ export function BillingTab({ mondayItemId, stripeCustomerId }: Props) {
                   <TableRow key={inv.id}>
                     <TableCell className="font-mono text-sm">{inv.number ?? inv.id}</TableCell>
                     <TableCell className="text-sm">
-                      {new Date(inv.created * 1000).toLocaleDateString("nl-NL")}
+                      {new Date(inv.created * 1000).toLocaleDateString("en-GB")}
                     </TableCell>
                     <TableCell className="text-sm">
                       {inv.dueDate
-                        ? new Date(inv.dueDate * 1000).toLocaleDateString("nl-NL")
+                        ? new Date(inv.dueDate * 1000).toLocaleDateString("en-GB")
                         : "—"}
                     </TableCell>
                     <TableCell className="text-sm font-medium">{fmt(inv.amountDue)}</TableCell>

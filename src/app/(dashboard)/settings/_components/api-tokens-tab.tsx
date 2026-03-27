@@ -87,7 +87,7 @@ export function ApiTokensTab({ statuses }: Props) {
             <CardDescription>{svc.description}</CardDescription>
             {statuses[svc.id]?.last_verified && (
               <p className="text-xs text-muted-foreground">
-                Last tested: {new Date(statuses[svc.id].last_verified!).toLocaleString()}
+                Last tested: {new Date(statuses[svc.id].last_verified!).toLocaleString("en-GB")}
               </p>
             )}
           </CardHeader>

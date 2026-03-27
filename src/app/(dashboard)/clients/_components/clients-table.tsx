@@ -50,8 +50,9 @@ function uniqueSorted(values: string[]): string[] {
 }
 
 function fmt(amount: number): string {
-  return `€${amount.toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `€${amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
+
 
 export function ClientsTable({ clients, boardType, billingSummaries }: Props) {
   const router = useRouter()
