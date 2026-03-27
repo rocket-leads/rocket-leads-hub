@@ -18,15 +18,15 @@ export default async function SignInPage({
           </div>
           <CardTitle className="text-2xl">Rocket Leads Hub</CardTitle>
           <CardDescription>
-            Meld je aan met je Rocket Leads Google account
+            Sign in with your Rocket Leads Google account
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {error && (
             <div className="rounded-md bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {error === "AccessDenied"
-                ? "Je hebt geen toegang tot dit platform. Neem contact op met een admin."
-                : "Er is een fout opgetreden. Probeer het opnieuw."}
+                ? "You don't have access to this platform. Contact an admin."
+                : "An error occurred. Please try again."}
             </div>
           )}
           <form
@@ -56,7 +56,7 @@ export default async function SignInPage({
                   fill="#EA4335"
                 />
               </svg>
-              Inloggen met Google
+              Sign in with Google
             </Button>
           </form>
         </CardContent>

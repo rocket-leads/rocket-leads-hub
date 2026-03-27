@@ -1,6 +1,6 @@
 import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 
 const ALLOWED_DOMAIN = "rocketleads.com"
 const ALLOWED_EMAILS = [
@@ -28,7 +28,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       // Upsert user in Supabase
       try {
-        const supabase = await createClient()
+        const supabase = await createAdminClient()
         const { error } = await supabase.from("users").upsert(
           {
             email,
@@ -48,7 +48,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (!session.user?.email) return session
 
       try {
-        const supabase = await createClient()
+        const supabase = await createAdminClient()
         const { data } = await supabase
           .from("users")
           .select("id, role")

@@ -7,10 +7,10 @@ export default async function ClientsPage() {
     <div className="p-8">
       <h1 className="text-2xl font-bold mb-4">Rocket Leads Hub</h1>
       <p className="text-muted-foreground mb-2">
-        Ingelogd als: <span className="text-foreground">{session?.user?.email}</span>
+        Signed in as: <span className="text-foreground">{session?.user?.email}</span>
       </p>
       <p className="text-muted-foreground">
-        Rol: <span className="text-foreground">{session?.user?.role ?? "laden..."}</span>
+        Role: <span className="text-foreground">{session?.user?.role ?? "loading..."}</span>
       </p>
     </div>
   )
