@@ -18,7 +18,7 @@ async function trengoFetch<T>(path: string): Promise<T> {
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    cache: "no-store",
+    next: { revalidate: 300 }, // cache for 5 minutes server-side
   })
   const contentType = res.headers.get("content-type") ?? ""
 
@@ -78,7 +78,7 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
 
   while (true) {
     const data = await trengoFetch<TicketPage>(
-      `/tickets?contact_id=${contactId}&per_page=25&page=${page}`
+      `/tickets?contact_id=${contactId}&page=${page}`
     )
     all.push(...data.data)
     if (!data.meta || page >= data.meta.last_page) break

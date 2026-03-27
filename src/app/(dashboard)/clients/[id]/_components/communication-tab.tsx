@@ -47,8 +47,9 @@ function MessageThread({ mondayItemId, conversationId }: { mondayItemId: string;
       if (!r.ok) throw new Error(data.error ?? "Failed to load messages")
       return data
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
     retry: false,
+    refetchOnWindowFocus: false,
   })
 
   if (query.isLoading) {
@@ -185,7 +186,9 @@ export function CommunicationTab({ mondayItemId, trengoContactId }: Props) {
     },
     enabled: !!trengoContactId,
     retry: false,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   })
 
   if (!trengoContactId) {
