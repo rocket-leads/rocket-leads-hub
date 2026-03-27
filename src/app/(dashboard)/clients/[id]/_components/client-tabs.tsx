@@ -2,7 +2,9 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+// Card/CardContent used for Communication placeholder below
 import { CampaignsTab } from "./campaigns-tab"
+import { BillingTab } from "./billing-tab"
 import type { MondayClient } from "@/lib/monday"
 
 type Props = {
@@ -28,19 +30,10 @@ export function ClientTabs({ client }: Props) {
       </TabsContent>
 
       <TabsContent value="billing" className="mt-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Billing</CardTitle>
-            <CardDescription>Stripe invoices — coming in next step</CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {client.stripeCustomerId ? (
-              <p>Stripe Customer: <span className="font-mono text-foreground">{client.stripeCustomerId}</span></p>
-            ) : (
-              <p className="text-yellow-500">No Stripe Customer ID linked in Monday.com</p>
-            )}
-          </CardContent>
-        </Card>
+        <BillingTab
+          mondayItemId={client.mondayItemId}
+          stripeCustomerId={client.stripeCustomerId || null}
+        />
       </TabsContent>
 
       <TabsContent value="communication" className="mt-6">
