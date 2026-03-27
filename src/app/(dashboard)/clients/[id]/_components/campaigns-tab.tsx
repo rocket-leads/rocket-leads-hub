@@ -24,7 +24,8 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId }: P
 
   const campaignsQuery = useQuery<{ campaigns: CampaignWithSelection[] }>({
     queryKey: ["campaigns", mondayItemId],
-    queryFn: () => fetch(`/api/clients/${mondayItemId}/campaigns`).then((r) => r.json()),
+    queryFn: () =>
+      fetch(`/api/clients/${mondayItemId}/campaigns?adAccountId=${metaAdAccountId}`).then((r) => r.json()),
     enabled: !!metaAdAccountId,
   })
 
