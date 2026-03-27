@@ -38,6 +38,7 @@ function StatusDot({ status }: { status: ServiceStatus | undefined }) {
 export function ApiTokensTab({ statuses }: Props) {
   const [tokens, setTokens] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [saved, setSaved] = useState<Record<string, boolean>>({})
   const [testing, setTesting] = useState<Record<string, boolean>>({})
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; message: string }>>({})
 
@@ -48,6 +49,8 @@ export function ApiTokensTab({ statuses }: Props) {
     try {
       await saveApiToken(service, token)
       setTokens((t) => ({ ...t, [service]: "" }))
+      setSaved((s) => ({ ...s, [service]: true }))
+      setTimeout(() => setSaved((s) => ({ ...s, [service]: false })), 3000)
     } catch (e) {
       console.error(e)
     } finally {
@@ -116,6 +119,9 @@ export function ApiTokensTab({ statuses }: Props) {
                 {testing[svc.id] ? "Testing..." : "Test connection"}
               </Button>
             </div>
+            {saved[svc.id] && (
+              <p className="text-sm text-green-500">Token saved successfully.</p>
+            )}
             {testResults[svc.id] && (
               <p className={`text-sm ${testResults[svc.id].ok ? "text-green-500" : "text-red-500"}`}>
                 {testResults[svc.id].message}
