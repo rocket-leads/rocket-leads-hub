@@ -47,15 +47,18 @@ async function testStripe(token: string): Promise<TestResult> {
 async function testTrengo(token: string): Promise<TestResult> {
   try {
     const res = await fetch("https://app.trengo.com/api/v2/profile", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     })
-    if (res.ok) {
-      const data = await res.json()
-      return { ok: true, message: `Connected as ${data.name ?? "user"}` }
+    const contentType = res.headers.get("content-type") ?? ""
+    if (!contentType.includes("application/json")) {
+      const body = await res.text().catch(() => "")
+      return { ok: false, message: `HTTP ${res.status} — non-JSON response. Check token format. Body: ${body.slice(0, 120)}` }
     }
-    return { ok: false, message: "Invalid token" }
-  } catch {
-    return { ok: false, message: "Connection failed" }
+    const data = await res.json()
+    if (res.ok) return { ok: true, message: `Connected as ${data.name ?? data.email ?? "user"}` }
+    return { ok: false, message: data.message ?? data.error ?? `HTTP ${res.status}` }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Connection failed" }
   }
 }
 
