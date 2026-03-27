@@ -1,10 +1,9 @@
 "use client"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-// Card/CardContent used for Communication placeholder below
 import { CampaignsTab } from "./campaigns-tab"
 import { BillingTab } from "./billing-tab"
+import { CommunicationTab } from "./communication-tab"
 import type { MondayClient } from "@/lib/monday"
 
 type Props = {
@@ -37,19 +36,10 @@ export function ClientTabs({ client }: Props) {
       </TabsContent>
 
       <TabsContent value="communication" className="mt-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Communication</CardTitle>
-            <CardDescription>Trengo messages — coming in next step</CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            {client.trengoContactId ? (
-              <p>Trengo Contact: <span className="font-mono text-foreground">{client.trengoContactId}</span></p>
-            ) : (
-              <p className="text-yellow-500">No Trengo Contact ID linked in Monday.com</p>
-            )}
-          </CardContent>
-        </Card>
+        <CommunicationTab
+          mondayItemId={client.mondayItemId}
+          trengoContactId={client.trengoContactId || null}
+        />
       </TabsContent>
     </Tabs>
   )
