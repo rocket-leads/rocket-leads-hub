@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table"
 import type { MondayClient } from "@/lib/monday"
 import type { BillingSummary } from "@/lib/stripe-client"
+import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
 const ONBOARDING_STATUSES = ["All", "Kick off", "In development", "On hold"]
 const CURRENT_STATUSES = ["All", "Live", "On hold", "Churned"]
@@ -43,6 +44,7 @@ type Props = {
   clients: MondayClient[]
   boardType: "onboarding" | "current"
   billingSummaries?: Record<string, BillingSummary>
+  kpiSummaries?: Record<string, KpiSummary>
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -54,7 +56,12 @@ function fmt(amount: number): string {
 }
 
 
-export function ClientsTable({ clients, boardType, billingSummaries }: Props) {
+function fmtKpi(value: number, type: "currency" | "integer"): string {
+  if (type === "currency") return `€${value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return value.toLocaleString("en-GB")
+}
+
+export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
@@ -78,7 +85,7 @@ export function ClientsTable({ clients, boardType, billingSummaries }: Props) {
     })
   }, [clients, search, statusFilter, accountManagerFilter, campaignManagerFilter])
 
-  const colSpan = boardType === "onboarding" ? 8 : 7
+  const colSpan = boardType === "onboarding" ? 12 : 11
 
   return (
     <div className="space-y-4">
@@ -133,7 +140,11 @@ export function ClientsTable({ clients, boardType, billingSummaries }: Props) {
               <TableHead>Campaign Manager</TableHead>
               <TableHead>Status</TableHead>
               {boardType === "onboarding" && <TableHead>Kick-off Date</TableHead>}
-              <TableHead>Ad Budget</TableHead>
+              <TableHead className="text-right">Adspend</TableHead>
+              <TableHead className="text-right">Leads</TableHead>
+              <TableHead className="text-right">CPL</TableHead>
+              <TableHead className="text-right">Appointments</TableHead>
+              <TableHead className="text-right">CPA</TableHead>
               <TableHead>Payment Status</TableHead>
               <TableHead>Outstanding</TableHead>
             </TableRow>
@@ -148,6 +159,8 @@ export function ClientsTable({ clients, boardType, billingSummaries }: Props) {
             ) : (
               filtered.map((client) => {
                 const summary = client.stripeCustomerId ? billingSummaries?.[client.stripeCustomerId] : undefined
+                const kpi = kpiSummaries?.[client.mondayItemId]
+                const kpiLoading = !kpiSummaries && (!!client.metaAdAccountId || !!client.clientBoardId)
                 return (
                   <TableRow
                     key={client.mondayItemId}
@@ -176,8 +189,20 @@ export function ClientsTable({ clients, boardType, billingSummaries }: Props) {
                     {boardType === "onboarding" && (
                       <TableCell className="text-sm">{client.kickOffDate || "—"}</TableCell>
                     )}
-                    <TableCell className="text-sm">
-                      {client.adBudget ? `€${Number(client.adBudget).toLocaleString()}` : "—"}
+                    <TableCell className="text-sm text-right tabular-nums">
+                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.adSpend, "currency") : "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">
+                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.leads, "integer") : "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">
+                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.cpl, "currency") : "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">
+                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.appointments, "integer") : "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-right tabular-nums">
+                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.costPerAppointment, "currency") : "—"}
                     </TableCell>
                     <TableCell>
                       {!client.stripeCustomerId ? (

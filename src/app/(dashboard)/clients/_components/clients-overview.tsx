@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ClientsTable } from "./clients-table"
 import type { MondayClient } from "@/lib/monday"
 import type { BillingSummary } from "@/lib/stripe-client"
+import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
 type Props = {
   onboarding: MondayClient[]
@@ -20,6 +21,18 @@ export function ClientsOverview({ onboarding, current }: Props) {
     [allClients]
   )
 
+  const kpiClients = useMemo(
+    () =>
+      allClients
+        .filter((c) => c.metaAdAccountId || c.clientBoardId)
+        .map((c) => ({
+          mondayItemId: c.mondayItemId,
+          metaAdAccountId: c.metaAdAccountId || null,
+          clientBoardId: c.clientBoardId || null,
+        })),
+    [allClients]
+  )
+
   const summariesQuery = useQuery<Record<string, BillingSummary>>({
     queryKey: ["billing-summaries", customerIds],
     queryFn: () => {
@@ -28,6 +41,19 @@ export function ClientsOverview({ onboarding, current }: Props) {
     },
     enabled: customerIds.length > 0,
     staleTime: 5 * 60 * 1000,
+  })
+
+  const kpiQuery = useQuery<Record<string, KpiSummary>>({
+    queryKey: ["kpi-summaries", kpiClients.map((c) => c.mondayItemId)],
+    queryFn: () =>
+      fetch("/api/kpi-summaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clients: kpiClients }),
+      }).then((r) => r.json()),
+    enabled: kpiClients.length > 0,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   return (
@@ -48,11 +74,21 @@ export function ClientsOverview({ onboarding, current }: Props) {
       </TabsList>
 
       <TabsContent value="current" className="mt-6">
-        <ClientsTable clients={current} boardType="current" billingSummaries={summariesQuery.data} />
+        <ClientsTable
+          clients={current}
+          boardType="current"
+          billingSummaries={summariesQuery.data}
+          kpiSummaries={kpiQuery.data}
+        />
       </TabsContent>
 
       <TabsContent value="onboarding" className="mt-6">
-        <ClientsTable clients={onboarding} boardType="onboarding" billingSummaries={summariesQuery.data} />
+        <ClientsTable
+          clients={onboarding}
+          boardType="onboarding"
+          billingSummaries={summariesQuery.data}
+          kpiSummaries={kpiQuery.data}
+        />
       </TabsContent>
     </Tabs>
   )
