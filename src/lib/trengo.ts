@@ -16,12 +16,25 @@ async function trengoFetch<T>(path: string): Promise<T> {
   const token = await getTrengoToken()
   const res = await fetch(`https://app.trengo.com/api/v2${path}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    next: { revalidate: 0 },
+    cache: "no-store",
   })
-  if (!res.ok) {
+
+  const contentType = res.headers.get("content-type") ?? ""
+  if (!contentType.includes("application/json")) {
     const text = await res.text().catch(() => "")
-    throw new Error(`Trengo API error ${res.status}: ${text}`)
+    throw new Error(
+      `Trengo API error ${res.status} (non-JSON response). ` +
+      `Endpoint: ${path}. Body: ${text.slice(0, 300)}`
+    )
   }
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>
+    throw new Error(
+      `Trengo API error ${res.status}: ${(data.message as string) ?? JSON.stringify(data)}`
+    )
+  }
+
   return res.json() as Promise<T>
 }
 

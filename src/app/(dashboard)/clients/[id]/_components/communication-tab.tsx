@@ -38,13 +38,15 @@ function stripHtml(html: string): string {
 function MessageThread({ mondayItemId, conversationId }: { mondayItemId: string; conversationId: number }) {
   const query = useQuery<TrengoMessage[]>({
     queryKey: ["messages", mondayItemId, conversationId],
-    queryFn: () =>
-      fetch(`/api/clients/${mondayItemId}/conversations/${conversationId}/messages`)
-        .then(async (r) => {
-          const data = await r.json()
-          if (!r.ok) throw new Error(data.error ?? "Failed to load messages")
-          return data
-        }),
+    queryFn: async () => {
+      const r = await fetch(`/api/clients/${mondayItemId}/conversations/${conversationId}/messages`)
+      if (!r.headers.get("content-type")?.includes("application/json")) {
+        throw new Error(`Server error ${r.status}`)
+      }
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error ?? "Failed to load messages")
+      return data
+    },
     staleTime: 2 * 60 * 1000,
   })
 
@@ -170,13 +172,15 @@ function ConversationRow({ conv, mondayItemId }: { conv: TrengoConversation; mon
 export function CommunicationTab({ mondayItemId, trengoContactId }: Props) {
   const query = useQuery<TrengoConversation[]>({
     queryKey: ["conversations", mondayItemId],
-    queryFn: () => {
+    queryFn: async () => {
       const p = new URLSearchParams({ trengoContactId: trengoContactId! })
-      return fetch(`/api/clients/${mondayItemId}/conversations?${p}`).then(async (r) => {
-        const data = await r.json()
-        if (!r.ok) throw new Error(data.error ?? "Failed to load conversations")
-        return data
-      })
+      const r = await fetch(`/api/clients/${mondayItemId}/conversations?${p}`)
+      if (!r.headers.get("content-type")?.includes("application/json")) {
+        throw new Error(`Server error ${r.status}`)
+      }
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error ?? "Failed to load conversations")
+      return data
     },
     enabled: !!trengoContactId,
   })
