@@ -12,13 +12,8 @@ async function getTrengoToken(): Promise<string> {
   return decrypt(data.token_encrypted)
 }
 
-let cachedTrengoToken: string | null = null
-
 async function trengoFetch<T>(path: string): Promise<T> {
-  if (!cachedTrengoToken) {
-    cachedTrengoToken = (await getTrengoToken()).trim()
-  }
-  const token = cachedTrengoToken
+  const token = (await getTrengoToken()).trim()
   const url = `https://app.trengo.com/api/v2${path}`
 
   const res = await fetch(url, {
@@ -76,39 +71,20 @@ type MessagePage = {
   meta?: { current_page: number; last_page: number }
 }
 
-async function fetchConversationsFromPath(
-  pathFn: (page: number) => string
-): Promise<TrengoConversation[]> {
+export async function fetchConversations(contactId: string): Promise<TrengoConversation[]> {
   const all: TrengoConversation[] = []
   let page = 1
+
   while (true) {
-    const data = await trengoFetch<ConversationPage>(pathFn(page))
+    const data = await trengoFetch<ConversationPage>(
+      `/conversations?contact_id=${contactId}&per_page=25&page=${page}`
+    )
     all.push(...data.data)
     if (!data.meta || page >= data.meta.last_page) break
     page++
   }
-  return all
-}
 
-export async function fetchConversations(contactId: string): Promise<TrengoConversation[]> {
-  // Try endpoint patterns in order — Trengo API varies by account/plan
-  const patterns: Array<(page: number) => string> = [
-    (p) => `/contacts/${contactId}/conversations?per_page=25&page=${p}`,
-    (p) => `/conversations?contact_id=${contactId}&per_page=25&page=${p}`,
-    (p) => `/tickets?contact_id=${contactId}&per_page=25&page=${p}`,
-  ]
-
-  for (const pattern of patterns) {
-    try {
-      const all = await fetchConversationsFromPath(pattern)
-      return all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    } catch (e) {
-      if (e instanceof Error && e.message.includes("not found")) continue
-      throw e // real API error — don't try next
-    }
-  }
-
-  throw new Error("Could not load conversations — no working Trengo endpoint found for this account.")
+  return all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }
 
 export async function fetchMessages(conversationId: number): Promise<TrengoMessage[]> {
