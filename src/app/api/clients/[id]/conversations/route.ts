@@ -18,7 +18,9 @@ export async function GET(
 
   try {
     const conversations = await fetchConversations(trengoContactId)
-    return NextResponse.json(conversations)
+    return NextResponse.json(conversations, {
+      headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+    })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to fetch conversations" },

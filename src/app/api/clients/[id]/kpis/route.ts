@@ -18,6 +18,7 @@ export async function GET(
   const endDate = searchParams.get("endDate") ?? ""
   const adAccountIdParam = searchParams.get("adAccountId") ?? ""
   const clientBoardIdParam = searchParams.get("clientBoardId") ?? ""
+  const selectedCampaignIdsParam = searchParams.get("selectedCampaignIds") ?? ""
 
   if (!startDate || !endDate) {
     return NextResponse.json({ error: "startDate and endDate are required" }, { status: 400 })
@@ -25,14 +26,22 @@ export async function GET(
 
   const supabase = await createAdminClient()
 
-  const [{ data: client }, { data: settingsRow }] = await Promise.all([
+  const [clientResult, { data: settingsRow }] = await Promise.all([
     supabase
       .from("clients")
       .select("id, meta_ad_account_id, monday_client_board_id")
       .eq("monday_item_id", mondayItemId)
-      .single(),
+      .single()
+      .then((res) => {
+        // If monday_client_board_id column doesn't exist, retry without it
+        if (res.error?.message?.includes("monday_client_board_id")) {
+          return supabase.from("clients").select("id, meta_ad_account_id").eq("monday_item_id", mondayItemId).single()
+        }
+        return res
+      }),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
   ])
+  const client = clientResult.data as { id: string; meta_ad_account_id: string | null; monday_client_board_id?: string | null } | null
 
   // Fall back to query params if Supabase record not yet synced
   const adAccountId = client?.meta_ad_account_id ?? adAccountIdParam
@@ -42,8 +51,14 @@ export async function GET(
     (settingsRow?.value as { client_board_columns?: { taken_call_status_value?: string } })
       ?.client_board_columns?.taken_call_status_value ?? "Afspraak"
 
-  const selectedCampaignIds = new Set<string>()
-  if (client?.id) {
+  // Prefer campaign IDs passed directly from the client (avoids race conditions with Supabase sync)
+  // Fall back to querying Supabase if not provided
+  let selectedCampaignIds = new Set<string>()
+  if (selectedCampaignIdsParam) {
+    for (const id of selectedCampaignIdsParam.split(",").filter(Boolean)) {
+      selectedCampaignIds.add(id)
+    }
+  } else if (client?.id) {
     const { data: selectedRows } = await supabase
       .from("client_campaigns")
       .select("meta_campaign_id")
@@ -76,5 +91,7 @@ export async function GET(
       leadItemsCount: leadItems.length,
       insightsCount: insights.length,
     },
+  }, {
+    headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
   })
 }

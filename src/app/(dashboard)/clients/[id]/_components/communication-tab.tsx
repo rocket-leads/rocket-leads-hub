@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,14 +14,14 @@ type Props = {
 }
 
 const CHANNEL_ICON: Record<string, React.ReactNode> = {
-  email: <Mail className="h-4 w-4" />,
-  chat: <MessageCircle className="h-4 w-4" />,
-  whatsapp: <MessageCircle className="h-4 w-4" />,
-  voice: <Phone className="h-4 w-4" />,
+  email: <Mail className="h-3.5 w-3.5" />,
+  chat: <MessageCircle className="h-3.5 w-3.5" />,
+  whatsapp: <MessageCircle className="h-3.5 w-3.5" />,
+  voice: <Phone className="h-3.5 w-3.5" />,
 }
 
 function channelIcon(type: string | undefined) {
-  return CHANNEL_ICON[type ?? ""] ?? <MessageCircle className="h-4 w-4" />
+  return CHANNEL_ICON[type ?? ""] ?? <MessageCircle className="h-3.5 w-3.5" />
 }
 
 function fmtDate(str: string) {
@@ -31,7 +31,17 @@ function fmtDate(str: string) {
   })
 }
 
-function stripHtml(html: string): string {
+function fmtDateShort(str: string) {
+  const d = new Date(str)
+  const now = new Date()
+  const isThisYear = d.getFullYear() === now.getFullYear()
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit", month: "short", ...(isThisYear ? {} : { year: "numeric" }),
+  })
+}
+
+function stripHtml(html: string | null | undefined): string {
+  if (!html) return ""
   return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
 }
 
@@ -54,15 +64,15 @@ function MessageThread({ mondayItemId, conversationId }: { mondayItemId: string;
 
   if (query.isLoading) {
     return (
-      <div className="space-y-2 pt-3 pl-4">
-        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+      <div className="space-y-2 py-2 pl-6">
+        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
       </div>
     )
   }
 
   if (query.isError || !query.data) {
     return (
-      <p className="pt-3 pl-4 text-sm text-destructive">
+      <p className="py-2 pl-6 text-sm text-destructive">
         {query.error instanceof Error ? query.error.message : "Failed to load messages."}
       </p>
     )
@@ -70,34 +80,29 @@ function MessageThread({ mondayItemId, conversationId }: { mondayItemId: string;
 
   const messages = query.data
   if (messages.length === 0) {
-    return <p className="pt-3 pl-4 text-sm text-muted-foreground">No messages in this conversation.</p>
+    return <p className="py-2 pl-6 text-sm text-muted-foreground">No messages in this thread.</p>
   }
 
   return (
-    <div className="pt-3 space-y-2 border-t mt-3">
+    <div className="py-3 px-3 space-y-2">
       {messages.map((msg) => {
         const isAgent = msg.author_type === "User"
         return (
-          <div
-            key={msg.id}
-            className={`flex gap-3 ${isAgent ? "flex-row-reverse" : "flex-row"}`}
-          >
-            <div
-              className={`max-w-[75%] rounded-lg px-3 py-2 text-sm ${
-                isAgent
-                  ? "bg-primary/10 text-foreground ml-auto"
-                  : "bg-muted text-foreground"
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className="font-medium text-xs">
+          <div key={msg.id} className={`flex ${isAgent ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[80%] rounded-xl px-3.5 py-2 ${
+              isAgent
+                ? "bg-primary/10 rounded-tr-sm"
+                : "bg-muted rounded-tl-sm"
+            }`}>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className={`text-[11px] font-semibold ${isAgent ? "text-primary" : "text-foreground"}`}>
                   {msg.author?.name ?? (isAgent ? "Agent" : "Contact")}
                 </span>
-                <span className="text-xs text-muted-foreground">{fmtDate(msg.created_at)}</span>
+                <span className="text-[11px] text-muted-foreground">{fmtDate(msg.created_at)}</span>
               </div>
-              <p className="whitespace-pre-wrap break-words">{stripHtml(msg.body)}</p>
+              <p className="text-sm whitespace-pre-wrap break-words">{stripHtml(msg.body)}</p>
               {msg.attachments && msg.attachments.length > 0 && (
-                <div className="mt-2 space-y-1">
+                <div className="mt-1.5 space-y-0.5">
                   {msg.attachments.map((att, i) => (
                     <a
                       key={i}
@@ -106,7 +111,7 @@ function MessageThread({ mondayItemId, conversationId }: { mondayItemId: string;
                       rel="noopener noreferrer"
                       className="block text-xs text-primary hover:underline"
                     >
-                      📎 {att.name}
+                      {att.name}
                     </a>
                   ))}
                 </div>
@@ -119,43 +124,46 @@ function MessageThread({ mondayItemId, conversationId }: { mondayItemId: string;
   )
 }
 
-function ConversationRow({ conv, mondayItemId }: { conv: TrengoConversation; mondayItemId: string }) {
+function ConversationMessage({ conv, mondayItemId }: { conv: TrengoConversation; mondayItemId: string }) {
   const [expanded, setExpanded] = useState(false)
+  const lastMsg = conv.latest_message
+
+  if (!lastMsg) return null
+
+  const isOpen = conv.status?.toLowerCase() === "open" || conv.status?.toLowerCase() === "assigned"
+  const isOutbound = lastMsg.type?.toUpperCase() === "OUTBOUND"
 
   return (
-    <div className="border rounded-lg overflow-hidden">
+    <div>
       <button
-        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+        className="w-full flex items-start gap-3 px-3 py-2.5 text-left rounded-lg hover:bg-muted/50 transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
-        <span className="mt-0.5 text-muted-foreground shrink-0">
-          {channelIcon(conv.channel?.type)}
-        </span>
+        <div className="mt-0.5 shrink-0 flex flex-col items-center gap-0.5">
+          <span className="text-muted-foreground">{channelIcon(conv.channel?.type)}</span>
+          <span className={`text-[9px] font-medium leading-none ${isOutbound ? "text-primary" : "text-emerald-500"}`}>
+            {isOutbound ? "OUT" : "IN"}
+          </span>
+        </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm truncate">
-              {conv.subject || conv.channel?.name || "Conversation"}
-            </span>
-            <Badge
-              variant="outline"
-              className={
-                conv.status === "open"
-                  ? "bg-green-500/20 text-green-400 border-green-500/30 text-xs"
-                  : "bg-muted text-muted-foreground text-xs"
-              }
-            >
-              {conv.status}
-            </Badge>
+          <p className="text-sm whitespace-pre-wrap break-words">{stripHtml(lastMsg.message)}</p>
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <span className="text-xs text-muted-foreground">{fmtDate(lastMsg.created_at)}</span>
+            {conv.channel?.name && (
+              <span className="text-xs text-muted-foreground/60">{conv.channel.name}</span>
+            )}
             {conv.assignee && (
-              <span className="text-xs text-muted-foreground">→ {conv.assignee.name}</span>
+              <span className="text-xs text-muted-foreground/60">→ {conv.assignee.name}</span>
+            )}
+            {isOpen && (
+              <Badge
+                variant="outline"
+                className="bg-green-500/20 text-green-400 border-green-500/30 text-[10px] px-1.5 py-0"
+              >
+                open
+              </Badge>
             )}
           </div>
-          {conv.last_message && (
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              {stripHtml(conv.last_message.body)}
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground mt-0.5">{fmtDate(conv.created_at)}</p>
         </div>
         <span className="shrink-0 text-muted-foreground mt-0.5">
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -163,15 +171,29 @@ function ConversationRow({ conv, mondayItemId }: { conv: TrengoConversation; mon
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4">
-          <MessageThread mondayItemId={mondayItemId} conversationId={conv.id} />
-        </div>
+        <MessageThread mondayItemId={mondayItemId} conversationId={conv.id} />
       )}
     </div>
   )
 }
 
+function groupByDate(conversations: TrengoConversation[]): Map<string, TrengoConversation[]> {
+  const groups = new Map<string, TrengoConversation[]>()
+  for (const conv of conversations) {
+    const dateStr = conv.latest_message?.created_at ?? conv.created_at
+    const key = fmtDateShort(dateStr)
+    const arr = groups.get(key) ?? []
+    arr.push(conv)
+    groups.set(key, arr)
+  }
+  return groups
+}
+
 export function CommunicationTab({ mondayItemId, trengoContactId }: Props) {
+  const PAGE_SIZE = 25
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const loaderRef = useRef<HTMLDivElement>(null)
+
   const query = useQuery<TrengoConversation[]>({
     queryKey: ["conversations", mondayItemId],
     queryFn: async () => {
@@ -191,6 +213,36 @@ export function CommunicationTab({ mondayItemId, trengoContactId }: Props) {
     refetchOnMount: false,
   })
 
+  const conversations = useMemo(() => {
+    if (!query.data) return []
+    return query.data
+      .filter((c) => c.latest_message)
+      .sort((a, b) =>
+        new Date(b.latest_message!.created_at).getTime() - new Date(a.latest_message!.created_at).getTime()
+      )
+  }, [query.data])
+
+  const visibleConversations = conversations.slice(0, visibleCount)
+  const hasMore = visibleCount < conversations.length
+  const grouped = groupByDate(visibleConversations)
+
+  useEffect(() => {
+    const el = loaderRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, conversations.length))
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [conversations.length, visibleCount])
+
   if (!trengoContactId) {
     return (
       <Card>
@@ -204,7 +256,8 @@ export function CommunicationTab({ mondayItemId, trengoContactId }: Props) {
   if (query.isLoading) {
     return (
       <div className="space-y-3">
-        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}
+        <p className="text-xs text-muted-foreground/60">Loading conversations for Contact ID: {trengoContactId}</p>
+        {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
       </div>
     )
   }
@@ -212,16 +265,13 @@ export function CommunicationTab({ mondayItemId, trengoContactId }: Props) {
   if (query.isError || !query.data) {
     return (
       <Card>
-        <CardContent className="py-8 text-center text-sm text-destructive">
-          {query.error instanceof Error ? query.error.message : "Failed to load conversations."}
+        <CardContent className="py-8 text-center text-sm">
+          <p className="text-destructive">{query.error instanceof Error ? query.error.message : "Failed to load conversations."}</p>
+          <p className="text-muted-foreground/60 mt-2">Contact ID: {trengoContactId}</p>
         </CardContent>
       </Card>
     )
   }
-
-  const conversations = query.data
-  const open = conversations.filter((c) => c.status === "open")
-  const closed = conversations.filter((c) => c.status === "closed")
 
   if (conversations.length === 0) {
     return (
@@ -234,31 +284,34 @@ export function CommunicationTab({ mondayItemId, trengoContactId }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="text-sm text-muted-foreground">
-        {conversations.length} conversation{conversations.length !== 1 ? "s" : ""}
-        {open.length > 0 && (
-          <span className="ml-2 text-green-400">· {open.length} open</span>
-        )}
+        {conversations.length} message{conversations.length !== 1 ? "s" : ""}
+        <span className="ml-2 text-muted-foreground/60">· Contact ID: {trengoContactId}</span>
       </div>
 
-      {open.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Open</h3>
-          {open.map((conv) => (
-            <ConversationRow key={conv.id} conv={conv} mondayItemId={mondayItemId} />
-          ))}
-        </div>
-      )}
+      <div className="space-y-4">
+        {Array.from(grouped.entries()).map(([date, convs]) => (
+          <div key={date}>
+            <div className="sticky top-0 z-10 flex justify-center py-1">
+              <span className="text-xs text-muted-foreground bg-background px-3 py-0.5 rounded-full border">
+                {date}
+              </span>
+            </div>
+            <div className="space-y-0.5">
+              {convs.map((conv) => (
+                <ConversationMessage key={conv.id} conv={conv} mondayItemId={mondayItemId} />
+              ))}
+            </div>
+          </div>
+        ))}
 
-      {closed.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Closed</h3>
-          {closed.map((conv) => (
-            <ConversationRow key={conv.id} conv={conv} mondayItemId={mondayItemId} />
-          ))}
-        </div>
-      )}
+        {hasMore && (
+          <div ref={loaderRef} className="flex justify-center py-4">
+            <span className="text-xs text-muted-foreground">Loading more...</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
