@@ -243,7 +243,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 13 : 12
+  const colSpan = boardType === "onboarding" ? 8 : 12
 
   return (
     <div className="space-y-4">
@@ -315,14 +315,20 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
               <TableHead className="text-center">Account Manager</TableHead>
               <TableHead className="text-center">Campaign Manager</TableHead>
               <TableHead className="text-center">Appointment Setter</TableHead>
-              {boardType === "onboarding" && <TableHead>Kick-off Date</TableHead>}
+              {boardType === "onboarding" && (
+                <SortableHead label="Kick-off Date" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+              )}
               <TableHead>Payment Status</TableHead>
               <TableHead>Outstanding</TableHead>
-              <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
-              <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
-              <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
-              <SortableHead label="Appointments" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
-              <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
+              {boardType === "current" && (
+                <>
+                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
+                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
+                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
+                  <SortableHead label="Appointments" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
+                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
+                </>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -364,7 +370,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     <TableCell><ManagerAvatar name={client.campaignManager} /></TableCell>
                     <TableCell>{client.appointmentSetter ? <ManagerAvatar name={client.appointmentSetter} /> : null}</TableCell>
                     {boardType === "onboarding" && (
-                      <TableCell className="text-sm">{client.kickOffDate || "—"}</TableCell>
+                      <TableCell className="text-sm tabular-nums">{client.kickOffDate || "—"}</TableCell>
                     )}
                     <TableCell>
                       {!client.stripeCustomerId ? (
@@ -390,21 +396,25 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">
-                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.adSpend, "currency") : "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">
-                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.leads, "integer") : "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">
-                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.cpl, "currency") : "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">
-                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.appointments, "integer") : "—"}
-                    </TableCell>
-                    <TableCell className="text-sm text-right tabular-nums">
-                      {kpiLoading ? "..." : kpi ? fmtKpi(kpi.costPerAppointment, "currency") : "—"}
-                    </TableCell>
+                    {boardType === "current" && (
+                      <>
+                        <TableCell className="text-sm text-right tabular-nums">
+                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.adSpend, "currency") : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-right tabular-nums">
+                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.leads, "integer") : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-right tabular-nums">
+                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.cpl, "currency") : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-right tabular-nums">
+                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.appointments, "integer") : "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-right tabular-nums">
+                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.costPerAppointment, "currency") : "—"}
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 )
               })
