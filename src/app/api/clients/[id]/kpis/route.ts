@@ -33,8 +33,8 @@ export async function GET(
       .eq("monday_item_id", mondayItemId)
       .single()
       .then((res) => {
-        // If monday_client_board_id column doesn't exist, retry without it
-        if (res.error?.message?.includes("monday_client_board_id")) {
+        if (res.error && (res.error.code === "PGRST204" || res.error.message?.includes("monday_client_board_id"))) {
+          console.warn("[kpis] monday_client_board_id column missing — querying without it")
           return supabase.from("clients").select("id, meta_ad_account_id").eq("monday_item_id", mondayItemId).single()
         }
         return res

@@ -4,7 +4,6 @@ import type { MondayClient } from "@/lib/monday"
 export async function syncClientToSupabase(client: MondayClient): Promise<string> {
   const supabase = await createAdminClient()
 
-  // Try with monday_client_board_id first; if column doesn't exist, retry without it
   const payload: Record<string, unknown> = {
     monday_item_id: client.mondayItemId,
     monday_board_type: client.boardType,
@@ -23,7 +22,8 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
     .single()
 
   // If the column doesn't exist in the DB, retry without it
-  if (error?.message?.includes("monday_client_board_id")) {
+  if (error && (error.code === "PGRST204" || error.message?.includes("monday_client_board_id"))) {
+    console.warn("[sync-client] monday_client_board_id column missing — retrying without it. Run migration to fix permanently.")
     delete payload.monday_client_board_id
     const retry = await supabase
       .from("clients")
@@ -34,6 +34,6 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
     error = retry.error
   }
 
-  if (error) throw new Error(error.message)
+  if (error) throw new Error(`Supabase sync failed: ${error.message}`)
   return data!.id
 }
