@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import {
   Select,
@@ -20,8 +19,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react"
-import type { MondayClient } from "@/lib/monday"
-import type { BillingSummary } from "@/lib/stripe-client"
+import type { MondayClient } from "@/lib/integrations/monday"
+import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
 const ONBOARDING_STATUSES = ["Kick off", "In development", "On hold"]
@@ -43,7 +42,103 @@ const PAYMENT_STATUS_COLORS: Record<string, string> = {
 
 const PAYMENT_STATUSES = ["Complete", "Open", "Overdue"]
 
-type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "kickOff" | "adspend" | "leads" | "cpl" | "appointments" | "cpa" | "paymentStatus" | "outstanding"
+// --- Campaign Health ---
+type HealthStatus = "critical" | "warning" | "good" | "no-data"
+
+type HealthResult = {
+  status: HealthStatus
+  reasons: string[]
+}
+
+function getCampaignHealth(kpi: KpiSummary | undefined, adBudget: string): HealthResult {
+  if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
+    return { status: "no-data", reasons: ["No campaign data available"] }
+  }
+
+  const reasons: string[] = []
+  let status: HealthStatus = "good"
+
+  const dailyBudget = parseFloat(adBudget.replace(/[^\d.,]/g, "").replace(",", ".")) / 30 || 0
+
+  // 🔴 Critical checks
+  if (kpi.adSpend > 50 && kpi.leads === 0) {
+    reasons.push(`€${kpi.adSpend.toFixed(0)} spent with 0 leads`)
+    status = "critical"
+  }
+  if (kpi.cpl > 50 && kpi.leads > 0) {
+    reasons.push(`CPL €${kpi.cpl.toFixed(2)} exceeds €50 threshold`)
+    status = "critical"
+  }
+  if (kpi.adSpend > 100 && kpi.appointments === 0) {
+    reasons.push(`€${kpi.adSpend.toFixed(0)} spent with 0 appointments`)
+    if (status !== "critical") status = "critical"
+  }
+
+  // 🟡 Warning checks (only if not already critical)
+  if (status !== "critical") {
+    if (kpi.cpl > 30 && kpi.leads > 0) {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} is elevated (>€30)`)
+      status = "warning"
+    }
+    if (kpi.leads > 0 && kpi.leads < 3 && kpi.adSpend > 50) {
+      reasons.push(`Only ${kpi.leads} lead${kpi.leads !== 1 ? "s" : ""} in 7 days`)
+      status = "warning"
+    }
+    if (dailyBudget > 0 && dailyBudget < 50) {
+      reasons.push(`Daily budget €${dailyBudget.toFixed(0)} may be too low to scale`)
+      if (status === "good") status = "warning"
+    }
+    if (kpi.costPerAppointment > 200 && kpi.appointments > 0) {
+      reasons.push(`CPA €${kpi.costPerAppointment.toFixed(0)} is high`)
+      status = "warning"
+    }
+  }
+
+  if (status === "good") {
+    if (kpi.leads > 0) reasons.push(`CPL €${kpi.cpl.toFixed(2)} — ${kpi.leads} leads, ${kpi.appointments} appointments`)
+    else reasons.push("Campaign running normally")
+  }
+
+  return { status, reasons }
+}
+
+const HEALTH_STYLES: Record<HealthStatus, { dot: string; bg: string; text: string; label: string }> = {
+  critical: { dot: "bg-red-500", bg: "bg-red-50", text: "text-red-600", label: "Critical" },
+  warning: { dot: "bg-amber-500", bg: "bg-amber-50", text: "text-amber-600", label: "Warning" },
+  good: { dot: "bg-green-500", bg: "bg-green-50", text: "text-green-600", label: "Good" },
+  "no-data": { dot: "bg-gray-300", bg: "bg-gray-50", text: "text-gray-400", label: "—" },
+}
+
+const HEALTH_FILTER_OPTIONS = ["Good", "Warning", "Critical"]
+
+function HealthBadge({ health }: { health: HealthResult }) {
+  const style = HEALTH_STYLES[health.status]
+  if (health.status === "no-data") {
+    return <span className="text-muted-foreground text-sm">—</span>
+  }
+  return (
+    <div className="relative group">
+      <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium border ${style.bg} ${style.text}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+        {style.label}
+      </div>
+      {health.reasons.length > 0 && (
+        <div className="absolute z-50 hidden group-hover:block bottom-full left-0 mb-1.5 w-64 rounded-lg border bg-popover p-2.5 text-xs text-popover-foreground shadow-lg">
+          <ul className="space-y-1">
+            {health.reasons.map((r, i) => (
+              <li key={i} className="flex items-start gap-1.5">
+                <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />
+                {r}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "kickOff" | "adspend" | "leads" | "cpl" | "appointments" | "cpa" | "paymentStatus" | "outstanding" | "health"
 type SortDir = "asc" | "desc"
 
 type Props = {
@@ -141,6 +236,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   const [accountManagerFilter, setAccountManagerFilter] = useState("All")
   const [campaignManagerFilter, setCampaignManagerFilter] = useState("All")
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("All")
+  const [healthFilter, setHealthFilter] = useState("All")
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>("asc")
 
@@ -176,9 +272,14 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         if (!summary) return false
         return summary.status.toLowerCase() === paymentStatusFilter.toLowerCase()
       })()
-      return matchesSearch && matchesStatus && matchesAM && matchesCM && matchesPayment
+      const matchesHealth = healthFilter === "All" || (() => {
+        if (boardType !== "current") return true
+        const health = getCampaignHealth(kpiSummaries?.[c.mondayItemId], c.adBudget)
+        return health.status.toLowerCase() === healthFilter.toLowerCase()
+      })()
+      return matchesSearch && matchesStatus && matchesAM && matchesCM && matchesPayment && matchesHealth
     })
-  }, [clients, search, statusFilter, accountManagerFilter, campaignManagerFilter, paymentStatusFilter, getPaymentStatus])
+  }, [clients, search, statusFilter, accountManagerFilter, campaignManagerFilter, paymentStatusFilter, healthFilter, boardType, kpiSummaries, getPaymentStatus])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -206,6 +307,12 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         case "cpa": valA = kpiA?.costPerAppointment ?? 0; valB = kpiB?.costPerAppointment ?? 0; break
         case "paymentStatus": valA = billingA?.status ?? ""; valB = billingB?.status ?? ""; break
         case "outstanding": valA = billingA?.outstanding ?? 0; valB = billingB?.outstanding ?? 0; break
+        case "health": {
+          const order: Record<string, number> = { critical: 0, warning: 1, good: 2, "no-data": 3 }
+          valA = order[getCampaignHealth(kpiA, a.adBudget).status] ?? 3
+          valB = order[getCampaignHealth(kpiB, b.adBudget).status] ?? 3
+          break
+        }
       }
 
       if (valA < valB) return -1 * dir
@@ -224,7 +331,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   // Reset visible count when filters/sort change
   useEffect(() => {
     setVisibleCount(PAGE_SIZE)
-  }, [search, statusFilter, accountManagerFilter, campaignManagerFilter, paymentStatusFilter, sortKey, sortDir])
+  }, [search, statusFilter, accountManagerFilter, campaignManagerFilter, paymentStatusFilter, healthFilter, sortKey, sortDir])
 
   useEffect(() => {
     const el = loaderRef.current
@@ -243,20 +350,24 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 8 : 12
+  const colSpan = boardType === "onboarding" ? 8 : 13
+
+  const filterTriggerClass = "!h-8 !border-0 !bg-muted/40 hover:!bg-muted !rounded-lg !text-xs !px-3 !shadow-none dark:!bg-white/5 dark:hover:!bg-white/10"
+  const activeFilterClass = "!bg-primary/10 !text-primary dark:!bg-primary/15 dark:!text-primary"
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-3">
-        <Input
+    <div className="space-y-5">
+      {/* Search + filters */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
           placeholder="Search clients..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs"
+          className="w-52 h-8 border-0 bg-muted/40 dark:bg-white/5 rounded-lg text-xs text-foreground placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 px-3"
         />
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "All")}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue>{statusFilter === "All" ? "Campaign Status" : statusFilter}</SelectValue>
+          <SelectTrigger className={`${filterTriggerClass} ${statusFilter !== "All" ? activeFilterClass : ""}`}>
+            <SelectValue>{statusFilter === "All" ? "Status" : statusFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="All">All Statuses</SelectItem>
@@ -266,8 +377,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           </SelectContent>
         </Select>
         <Select value={accountManagerFilter} onValueChange={(v) => setAccountManagerFilter(v ?? "All")}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue>{accountManagerFilter === "All" ? "Account Manager" : accountManagerFilter}</SelectValue>
+          <SelectTrigger className={`${filterTriggerClass} ${accountManagerFilter !== "All" ? activeFilterClass : ""}`}>
+            <SelectValue>{accountManagerFilter === "All" ? "AM" : accountManagerFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="All">All Account Managers</SelectItem>
@@ -277,8 +388,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           </SelectContent>
         </Select>
         <Select value={campaignManagerFilter} onValueChange={(v) => setCampaignManagerFilter(v ?? "All")}>
-          <SelectTrigger className="w-[190px]">
-            <SelectValue>{campaignManagerFilter === "All" ? "Campaign Manager" : campaignManagerFilter}</SelectValue>
+          <SelectTrigger className={`${filterTriggerClass} ${campaignManagerFilter !== "All" ? activeFilterClass : ""}`}>
+            <SelectValue>{campaignManagerFilter === "All" ? "CM" : campaignManagerFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="All">All Campaign Managers</SelectItem>
@@ -288,8 +399,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           </SelectContent>
         </Select>
         <Select value={paymentStatusFilter} onValueChange={(v) => setPaymentStatusFilter(v ?? "All")}>
-          <SelectTrigger className="w-[170px]">
-            <SelectValue>{paymentStatusFilter === "All" ? "Payment Status" : paymentStatusFilter}</SelectValue>
+          <SelectTrigger className={`${filterTriggerClass} ${paymentStatusFilter !== "All" ? activeFilterClass : ""}`}>
+            <SelectValue>{paymentStatusFilter === "All" ? "Payment" : paymentStatusFilter}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="All">All Payment Statuses</SelectItem>
@@ -298,35 +409,47 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
             ))}
           </SelectContent>
         </Select>
-        <span className="flex items-center text-sm text-muted-foreground">
+        {boardType === "current" && (
+          <Select value={healthFilter} onValueChange={(v) => setHealthFilter(v ?? "All")}>
+            <SelectTrigger className={`${filterTriggerClass} ${healthFilter !== "All" ? activeFilterClass : ""}`}>
+              <SelectValue>{healthFilter === "All" ? "Health" : healthFilter}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="All">All Health Statuses</SelectItem>
+              {HEALTH_FILTER_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <span className="text-[11px] text-muted-foreground/60 ml-1">
           {sorted.length} client{sorted.length !== 1 ? "s" : ""}
         </span>
       </div>
 
-      <div
-        className="rounded-xl border overflow-hidden"
-        style={{ borderColor: "#DADEE7", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
-      >
+      {/* Table */}
+      <div className="rounded-xl border border-border/30 overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Client</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-center">Account Manager</TableHead>
-              <TableHead className="text-center">Campaign Manager</TableHead>
-              <TableHead className="text-center">Appointment Setter</TableHead>
+            <TableRow className="border-b border-border/30 hover:bg-transparent">
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Client</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Status</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center">AM</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center">CM</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center">AS</TableHead>
               {boardType === "onboarding" && (
-                <SortableHead label="Kick-off Date" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} />
+                <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium" />
               )}
-              <TableHead>Payment Status</TableHead>
-              <TableHead>Outstanding</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Payment</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Outstanding</TableHead>
               {boardType === "current" && (
                 <>
-                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
-                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
-                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
-                  <SortableHead label="Appointments" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
-                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right" />
+                  <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center" />
+                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
+                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
+                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
+                  <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
+                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
                 </>
               )}
             </TableRow>
@@ -346,72 +469,69 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                 return (
                   <TableRow
                     key={client.mondayItemId}
-                    className="cursor-pointer hover:bg-muted/50"
+                    className="cursor-pointer row-hover border-b border-border/20"
                     onClick={() => router.push(`/clients/${client.mondayItemId}`)}
                   >
                     <TableCell>
-                      <div>
-                        <p className="font-medium">{client.name}</p>
-                        {client.firstName && (
-                          <p className="text-sm text-muted-foreground">{client.firstName}</p>
-                        )}
-                      </div>
+                      <p className="font-medium text-sm">{client.name}</p>
+                      {client.firstName && (
+                        <p className="text-[11px] text-muted-foreground/60">{client.firstName}</p>
+                      )}
                     </TableCell>
                     <TableCell>
-                      {client.campaignStatus ? (
+                      {client.campaignStatus && (
                         <Badge variant="outline" className={STATUS_COLORS[client.campaignStatus] ?? ""}>
                           {client.campaignStatus}
                         </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell><ManagerAvatar name={client.accountManager} /></TableCell>
-                    <TableCell><ManagerAvatar name={client.campaignManager} /></TableCell>
-                    <TableCell>{client.appointmentSetter ? <ManagerAvatar name={client.appointmentSetter} /> : null}</TableCell>
+                    <TableCell>{client.accountManager && <ManagerAvatar name={client.accountManager} />}</TableCell>
+                    <TableCell>{client.campaignManager && <ManagerAvatar name={client.campaignManager} />}</TableCell>
+                    <TableCell>{client.appointmentSetter && <ManagerAvatar name={client.appointmentSetter} />}</TableCell>
                     {boardType === "onboarding" && (
-                      <TableCell className="text-sm tabular-nums">{client.kickOffDate || "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
                     )}
                     <TableCell>
-                      {!client.stripeCustomerId ? (
-                        <span className="text-muted-foreground text-sm">—</span>
-                      ) : !billingSummaries ? (
-                        <span className="text-muted-foreground text-sm">...</span>
-                      ) : summary ? (
+                      {billingSummaries && summary && (
                         <Badge variant="outline" className={PAYMENT_STATUS_COLORS[summary.status]}>
                           {summary.status.charAt(0).toUpperCase() + summary.status.slice(1)}
                         </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">—</span>
+                      )}
+                      {!billingSummaries && client.stripeCustomerId && (
+                        <span className="text-muted-foreground/40 text-xs">...</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm font-medium">
-                      {!client.stripeCustomerId ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : !billingSummaries ? (
-                        <span className="text-muted-foreground">...</span>
-                      ) : summary && summary.outstanding > 0 ? (
-                        <span className={summary.status === "overdue" ? "text-red-400" : ""}>{fmt(summary.outstanding)}</span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
+                    <TableCell className="text-xs tabular-nums">
+                      {summary && summary.outstanding > 0 && (
+                        <span className={summary.status === "overdue" ? "text-red-400 font-medium" : "text-muted-foreground"}>{fmt(summary.outstanding)}</span>
+                      )}
+                      {!billingSummaries && client.stripeCustomerId && (
+                        <span className="text-muted-foreground/40">...</span>
                       )}
                     </TableCell>
                     {boardType === "current" && (
                       <>
-                        <TableCell className="text-sm text-right tabular-nums">
-                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.adSpend, "currency") : "—"}
+                        <TableCell>
+                          {kpiLoading ? (
+                            <span className="text-muted-foreground/40 text-xs">...</span>
+                          ) : (
+                            <HealthBadge health={getCampaignHealth(kpi, client.adBudget)} />
+                          )}
                         </TableCell>
-                        <TableCell className="text-sm text-right tabular-nums">
-                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.leads, "integer") : "—"}
+                        <TableCell className="text-xs text-right tabular-nums text-muted-foreground">
+                          {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.adSpend > 0 ? fmtKpi(kpi.adSpend, "currency") : ""}
                         </TableCell>
-                        <TableCell className="text-sm text-right tabular-nums">
-                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.cpl, "currency") : "—"}
+                        <TableCell className="text-xs text-right tabular-nums font-medium">
+                          {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.leads > 0 ? fmtKpi(kpi.leads, "integer") : ""}
                         </TableCell>
-                        <TableCell className="text-sm text-right tabular-nums">
-                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.appointments, "integer") : "—"}
+                        <TableCell className={`text-xs text-right tabular-nums font-medium ${kpi && kpi.cpl > 50 ? "text-red-400" : kpi && kpi.cpl > 30 ? "text-amber-400" : ""}`}>
+                          {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.cpl > 0 ? fmtKpi(kpi.cpl, "currency") : ""}
                         </TableCell>
-                        <TableCell className="text-sm text-right tabular-nums">
-                          {kpiLoading ? "..." : kpi ? fmtKpi(kpi.costPerAppointment, "currency") : "—"}
+                        <TableCell className="text-xs text-right tabular-nums font-medium">
+                          {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.appointments > 0 ? fmtKpi(kpi.appointments, "integer") : ""}
+                        </TableCell>
+                        <TableCell className={`text-xs text-right tabular-nums ${kpi && kpi.costPerAppointment > 200 ? "text-red-400" : ""}`}>
+                          {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.costPerAppointment > 0 ? fmtKpi(kpi.costPerAppointment, "currency") : ""}
                         </TableCell>
                       </>
                     )}
