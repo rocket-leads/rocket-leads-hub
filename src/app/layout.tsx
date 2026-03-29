@@ -1,10 +1,22 @@
 import type { Metadata } from "next"
-import { Geist } from "next/font/google"
+import { Inter } from "next/font/google"
+import localFont from "next/font/local"
 import "./globals.css"
 
-const geist = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
+})
+
+const clashGrotesk = localFont({
+  src: [
+    { path: "../fonts/ClashGrotesk-Medium.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/ClashGrotesk-Semibold.woff2", weight: "600", style: "normal" },
+    { path: "../fonts/ClashGrotesk-Bold.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-clash",
+  display: "swap",
+  fallback: ["Inter", "sans-serif"],
 })
 
 export const metadata: Metadata = {
@@ -18,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${geist.variable} h-full antialiased dark`} suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${clashGrotesk.variable} h-full antialiased dark`} suppressHydrationWarning>
       <body className="min-h-full bg-background text-foreground">{children}</body>
     </html>
   )

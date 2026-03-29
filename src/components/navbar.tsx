@@ -1,5 +1,6 @@
 import { auth, signOut } from "@/lib/auth"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 
@@ -7,23 +8,29 @@ export async function Navbar() {
   const session = await auth()
 
   return (
-    <header className="border-b bg-background">
+    <header className="border-b border-border bg-card">
       <div className="container mx-auto flex h-14 items-center justify-between px-4">
         <div className="flex items-center gap-6">
-          <Link href="/clients" className="font-semibold text-sm">
-            Rocket Leads Hub
+          <Link href="/clients">
+            <Image src="/logo.png" alt="Rocket Leads" width={240} height={131} className="h-8 w-auto" priority />
           </Link>
-          <nav className="flex items-center gap-4">
+          <nav className="flex items-center gap-1">
             <Link
               href="/clients"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="px-3 py-1.5 text-sm rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
               Clients
+            </Link>
+            <Link
+              href="/targets"
+              className="px-3 py-1.5 text-sm rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              Targets
             </Link>
             {session?.user.role === "admin" && (
               <Link
                 href="/settings"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="px-3 py-1.5 text-sm rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
               >
                 Settings
               </Link>

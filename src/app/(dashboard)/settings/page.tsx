@@ -5,7 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ApiTokensTab } from "./_components/api-tokens-tab"
 import { BoardConfigTab } from "./_components/board-config-tab"
 import { UsersTab } from "./_components/users-tab"
+import { ColumnMappingTab } from "./_components/column-mapping-tab"
 import { ApiHealthBar } from "./_components/api-health-bar"
+import { fetchBothBoards } from "@/lib/monday"
 
 export default async function SettingsPage() {
   const session = await auth()
@@ -13,11 +15,29 @@ export default async function SettingsPage() {
 
   const supabase = await createAdminClient()
 
-  const [{ data: tokens }, { data: settingsRow }, { data: users }] = await Promise.all([
+  const [{ data: tokens }, { data: settingsRow }, { data: users }, { data: columnMappings }] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
     supabase.from("users").select("id, email, name, role, created_at").order("created_at"),
+    supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
   ])
+
+  // Collect unique Monday people names from active clients only (not churned/on hold)
+  const ACTIVE_STATUSES = new Set(["Kick off", "In development", "Live"])
+  let mondayPeople: string[] = []
+  try {
+    const { onboarding, current } = await fetchBothBoards()
+    const allClients = [...onboarding, ...current]
+    const names = new Set<string>()
+    for (const c of allClients) {
+      if (!ACTIVE_STATUSES.has(c.campaignStatus)) continue
+      if (c.accountManager) names.add(c.accountManager)
+      if (c.campaignManager) names.add(c.campaignManager)
+    }
+    mondayPeople = Array.from(names).sort()
+  } catch {
+    // Monday token might not be configured yet — that's fine
+  }
 
   const tokenStatuses = Object.fromEntries(
     (tokens ?? []).map((t) => [t.service, { is_valid: t.is_valid, last_verified: t.last_verified }])
@@ -55,7 +75,7 @@ export default async function SettingsPage() {
   return (
     <div className="container mx-auto max-w-4xl py-8 px-4">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <h1 className="text-2xl font-heading font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">Manage API tokens, board configuration, and users</p>
       </div>
 
@@ -66,6 +86,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="tokens">API Tokens</TabsTrigger>
           <TabsTrigger value="board">Board Config</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="mapping">Column Mapping</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tokens">
@@ -78,6 +99,18 @@ export default async function SettingsPage() {
 
         <TabsContent value="users">
           <UsersTab users={users ?? []} currentUserId={session.user.id} />
+        </TabsContent>
+
+        <TabsContent value="mapping">
+          <ColumnMappingTab
+            users={(users ?? []).map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role }))}
+            mondayPeople={mondayPeople}
+            existingMappings={(columnMappings ?? []).map((m) => ({
+              user_id: m.user_id,
+              monday_column_role: m.monday_column_role,
+              monday_person_name: m.monday_person_name,
+            }))}
+          />
         </TabsContent>
       </Tabs>
     </div>

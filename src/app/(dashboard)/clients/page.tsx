@@ -62,8 +62,7 @@ export default function ClientsPage() {
     <div className="container mx-auto max-w-7xl py-8 px-6">
       <div className="mb-8">
         <h1
-          className="text-3xl font-bold text-foreground mb-1"
-          style={{ fontFamily: "'Clash Grotesk', sans-serif", letterSpacing: "-0.03em" }}
+          className="text-3xl font-heading font-bold text-foreground mb-1 tracking-tight"
         >
           Clients
         </h1>
