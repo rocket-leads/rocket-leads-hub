@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { fetchMetaInsights } from "@/lib/meta"
-import { fetchClientBoardItems } from "@/lib/monday"
-import { calculateKpis } from "@/lib/kpis"
+import { fetchMetaInsights } from "@/lib/integrations/meta"
+import { fetchClientBoardItems } from "@/lib/integrations/monday"
+import { calculateKpis } from "@/lib/clients/kpis"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(

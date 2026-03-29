@@ -4,7 +4,8 @@ import { useState } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import type { MetaCampaign } from "@/lib/meta"
+import { Input } from "@/components/ui/input"
+import type { MetaCampaign } from "@/lib/integrations/meta"
 
 type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
 
@@ -24,6 +25,7 @@ const STATUS_COLORS: Record<string, string> = {
 export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelectionChange }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [showInactive, setShowInactive] = useState(false)
+  const [search, setSearch] = useState("")
 
   async function toggleCampaign(campaign: CampaignWithSelection) {
     setSaving((s) => ({ ...s, [campaign.id]: true }))
@@ -57,11 +59,20 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
 
   const activeCampaigns = campaigns.filter((c) => c.status === "ACTIVE")
   const inactiveCampaigns = campaigns.filter((c) => c.status !== "ACTIVE")
-  const visible = showInactive ? campaigns : activeCampaigns
+  const byStatus = showInactive ? campaigns : activeCampaigns
+  const visible = search
+    ? byStatus.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
+    : byStatus
   const selectedCount = campaigns.filter((c) => c.isSelected).length
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      <Input
+        placeholder="Search campaigns..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="max-w-sm"
+      />
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
           {selectedCount === 0
@@ -82,6 +93,9 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         )}
       </div>
       <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+        {visible.length === 0 && (
+          <p className="text-sm text-muted-foreground py-2">No campaigns match your search.</p>
+        )}
         {visible.map((campaign) => (
           <label
             key={campaign.id}

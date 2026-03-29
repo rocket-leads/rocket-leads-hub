@@ -1,7 +1,7 @@
 import { Suspense } from "react"
-import { fetchBothBoards } from "@/lib/monday"
+import { fetchBothBoards } from "@/lib/integrations/monday"
 import { ClientsOverview } from "./_components/clients-overview"
-import { filterClientsByUser } from "@/lib/user-client-filter"
+import { filterClientsByUser } from "@/lib/clients/filter"
 import { auth } from "@/lib/auth"
 import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
@@ -9,12 +9,9 @@ import Link from "next/link"
 function ClientsLoading() {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-9 w-64" />
-        <Skeleton className="h-8 w-8" />
-      </div>
+      <Skeleton className="h-9 w-64" />
       <div className="space-y-2">
-        {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
+        {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
       </div>
     </div>
   )
@@ -43,7 +40,7 @@ async function ClientsData() {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+      <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-5 py-4 text-sm text-destructive">
         {error}{" "}
         {error.includes("token") && (
           <Link href="/settings" className="underline font-medium">
@@ -59,14 +56,10 @@ async function ClientsData() {
 
 export default function ClientsPage() {
   return (
-    <div className="container mx-auto max-w-7xl py-8 px-6">
+    <div>
       <div className="mb-8">
-        <h1
-          className="text-3xl font-heading font-bold text-foreground mb-1 tracking-tight"
-        >
-          Clients
-        </h1>
-        <p className="text-sm text-muted-foreground">Overview of all active client accounts</p>
+        <h1 className="text-2xl font-heading font-semibold tracking-tight">Clients</h1>
+        <p className="text-sm text-muted-foreground mt-1">Overview of all active client accounts</p>
       </div>
 
       <Suspense fallback={<ClientsLoading />}>

@@ -12,7 +12,8 @@ export async function Navbar() {
       <div className="container mx-auto flex h-14 items-center justify-between px-4">
         <div className="flex items-center gap-6">
           <Link href="/clients">
-            <Image src="/logo.png" alt="Rocket Leads" width={240} height={131} className="h-8 w-auto" priority />
+            <Image src="/logos/logo-white-purple.svg" alt="Rocket Leads" width={240} height={60} className="h-8 w-auto hidden dark:block" priority />
+            <Image src="/logos/logo-full-black.svg" alt="Rocket Leads" width={240} height={60} className="h-8 w-auto block dark:hidden" priority />
           </Link>
           <nav className="flex items-center gap-1">
             <Link

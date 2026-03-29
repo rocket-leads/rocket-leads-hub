@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import type { UtmRow, KpiResult } from "@/lib/kpis"
+import type { UtmRow, KpiResult } from "@/lib/clients/kpis"
 
 type ScoredRow = UtmRow & {
   takenCallRate: number
@@ -33,7 +33,7 @@ function reliability(row: UtmRow): "high" | "medium" | "low" {
   return "low"
 }
 
-function scoreRows(rows: UtmRow[]): ScoredRow[] | null {
+export function scoreRows(rows: UtmRow[]): ScoredRow[] | null {
   const withLeads = rows.filter((r) => r.leads > 0)
   if (withLeads.length < 2) return null
 
@@ -101,7 +101,7 @@ function AdRow({ row }: { row: ScoredRow }) {
   )
 }
 
-function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kpis: KpiResult }) {
+export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kpis: KpiResult }) {
   const scale = scored.filter(
     (r) => (r.category === "winner" || r.category === "sniper") && r.takenCalls >= 1
   ).sort((a, b) => b.takenCalls - a.takenCalls)

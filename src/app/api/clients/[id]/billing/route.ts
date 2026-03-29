@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { fetchBillingData } from "@/lib/stripe-client"
+import { fetchBillingData } from "@/lib/integrations/stripe"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
@@ -27,7 +27,9 @@ export async function GET(
 
   try {
     const data = await fetchBillingData(stripeCustomerId)
-    return NextResponse.json(data)
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+    })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to fetch billing data" },

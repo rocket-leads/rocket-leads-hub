@@ -7,7 +7,7 @@ import { BoardConfigTab } from "./_components/board-config-tab"
 import { UsersTab } from "./_components/users-tab"
 import { ColumnMappingTab } from "./_components/column-mapping-tab"
 import { ApiHealthBar } from "./_components/api-health-bar"
-import { fetchBothBoards } from "@/lib/monday"
+import { fetchBothBoards } from "@/lib/integrations/monday"
 
 export default async function SettingsPage() {
   const session = await auth()

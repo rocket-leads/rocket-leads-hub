@@ -1,4 +1,4 @@
-import type { MondayLeadItem } from "@/lib/monday"
+import type { MondayLeadItem } from "@/lib/integrations/monday"
 
 export type KpiResult = {
   adSpend: number

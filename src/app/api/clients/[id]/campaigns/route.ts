@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { fetchMetaCampaigns } from "@/lib/meta"
+import { fetchMetaCampaigns } from "@/lib/integrations/meta"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
@@ -51,6 +51,8 @@ export async function GET(
 
   return NextResponse.json({
     campaigns: campaigns.map((c) => ({ ...c, isSelected: selectedSet.has(c.id) })),
+  }, {
+    headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
   })
 }
 

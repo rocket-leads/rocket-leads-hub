@@ -11,7 +11,7 @@ import {
   TrendingUp,
   type LucideIcon,
 } from "lucide-react"
-import type { KpiResult } from "@/lib/kpis"
+import type { KpiResult } from "@/lib/clients/kpis"
 
 function fmt(n: number, type: "currency" | "percent" | "integer" | "multiplier"): string {
   if (!isFinite(n) || (n === 0 && type !== "integer")) {
@@ -22,11 +22,11 @@ function fmt(n: number, type: "currency" | "percent" | "integer" | "multiplier")
   }
   switch (type) {
     case "currency":
-      return `€${n.toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      return `€${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     case "percent":
       return `${n.toFixed(1)}%`
     case "integer":
-      return n.toLocaleString("nl-NL")
+      return n.toLocaleString("en-GB")
     case "multiplier":
       return n.toFixed(2)
   }

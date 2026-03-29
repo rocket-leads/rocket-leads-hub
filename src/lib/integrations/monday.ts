@@ -3,7 +3,11 @@ import { decrypt } from "@/lib/encryption"
 
 const MONDAY_API_URL = "https://api.monday.com/v2"
 
+let cachedToken: { value: string; expiresAt: number } | null = null
+
 async function getToken(): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.value
+
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("api_tokens")
@@ -11,17 +15,25 @@ async function getToken(): Promise<string> {
     .eq("service", "monday")
     .single()
   if (!data) throw new Error("Monday token not configured. Go to Settings → API Tokens.")
-  return decrypt(data.token_encrypted)
+  const token = decrypt(data.token_encrypted)
+  cachedToken = { value: token, expiresAt: Date.now() + 5 * 60 * 1000 }
+  return token
 }
 
+let cachedBoardConfig: { value: BoardConfig | null; expiresAt: number } | null = null
+
 async function getBoardConfig() {
+  if (cachedBoardConfig && Date.now() < cachedBoardConfig.expiresAt) return cachedBoardConfig.value
+
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("settings")
     .select("value")
     .eq("key", "board_config")
     .single()
-  return data?.value as BoardConfig | null
+  const config = (data?.value as BoardConfig | null)
+  cachedBoardConfig = { value: config, expiresAt: Date.now() + 5 * 60 * 1000 }
+  return config
 }
 
 export type BoardConfig = {
@@ -38,6 +50,7 @@ export type MondayClient = {
   firstName: string
   accountManager: string
   campaignManager: string
+  appointmentSetter: string
   campaignStatus: string
   kickOffDate: string
   adBudget: string
@@ -68,7 +81,7 @@ async function fetchAllItems(boardId: string, token: string) {
   const query = `
     query GetItems($boardId: ID!, $cursor: String) {
       boards(ids: [$boardId]) {
-        items_page(limit: 100, cursor: $cursor) {
+        items_page(limit: 500, cursor: $cursor) {
           cursor
           items {
             id
@@ -113,6 +126,7 @@ function mapItem(
     firstName: cv[columns.first_name] ?? "",
     accountManager: cv[columns.account_manager] ?? "",
     campaignManager: cv[columns.campaign_manager] ?? "",
+    appointmentSetter: cv[columns.appointment_setter] ?? cv["multiple_person_mm1w4j0b"] ?? "",
     campaignStatus: cv[columns.campaign_status] ?? "",
     kickOffDate: cv[columns.kick_off_date] ?? "",
     adBudget: cv[columns.ad_budget] ?? "",

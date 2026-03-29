@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { UtmRow } from "@/lib/kpis"
+import type { UtmRow } from "@/lib/clients/kpis"
 
 type SortKey = keyof Omit<UtmRow, "utm">
 type SortDir = "asc" | "desc"

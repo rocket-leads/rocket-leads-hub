@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ChevronDown, ChevronRight, Mail, MessageCircle, Phone } from "lucide-react"
-import type { TrengoConversation, TrengoMessage } from "@/lib/trengo"
+import type { TrengoConversation, TrengoMessage } from "@/lib/integrations/trengo"
 
 type Props = {
   mondayItemId: string

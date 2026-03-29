@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server"
-import type { MondayClient } from "@/lib/monday"
+import type { MondayClient } from "@/lib/integrations/monday"
 
 export async function syncClientToSupabase(client: MondayClient): Promise<string> {
   const supabase = await createAdminClient()

@@ -1,4 +1,7 @@
 @AGENTS.md
+@../knowledge/company.md
+@../knowledge/hub-vision.md
+@../knowledge/brand.md
 
 # Rocket Leads Hub — Project Context
 
@@ -59,18 +62,39 @@ Client pages load Monday data server-side, but `syncClientToSupabase()` is **non
 
 ```
 src/
+  proxy.ts               — Auth guard for all routes (Next.js 16 middleware replacement)
   lib/
     auth.ts              — NextAuth v5 config
-    monday.ts            — Monday GraphQL client, fetchBothBoards(), fetchClientById()
-    meta.ts              — Meta Graph API client
-    kpis.ts              — KPI calculation (14 metrics)
-    stripe-client.ts     — Stripe billing data + summary
-    trengo.ts            — Trengo conversations + messages
     encryption.ts        — AES-256-GCM encrypt/decrypt
-    sync-client.ts       — Upsert Monday client to Supabase (non-blocking)
-    supabase/server.ts   — createAdminClient() + createClient()
-  proxy.ts               — Auth guard for all routes (Next.js 16 middleware replacement)
+    utils.ts             — cn() and general utilities
+    supabase/
+      server.ts          — createAdminClient() + createClient()
+      client.ts          — Browser Supabase client
+    integrations/
+      meta.ts            — Meta Graph API client
+      monday.ts          — Monday GraphQL client, fetchBothBoards(), fetchClientById()
+      stripe.ts          — Stripe billing data + summary
+      trengo.ts          — Trengo conversations + messages
+    clients/
+      access.ts          — Client access control per user
+      ad-account.ts      — Ad account helpers (isRocketLeadsAdAccount)
+      filter.ts          — User-client filtering
+      kpis.ts            — KPI calculation (14 metrics)
+      sync.ts            — Upsert Monday client to Supabase (non-blocking)
+  components/
+    navbar.tsx           — Top navigation bar
+    sidebar.tsx          — Sidebar navigation
+    providers.tsx        — React Query + session providers
+    ui/                  — shadcn/ui primitives (button, card, table, etc.)
+  fonts/                 — Clash Grotesk woff2 files
+  types/
+    next-auth.d.ts       — Session type extensions (role field)
   app/
+    layout.tsx           — Root layout (fonts, globals.css)
+    page.tsx             — Root redirect to /clients
+    globals.css          — Tailwind base + CSS variables (brand colors)
+    auth/signin/
+      page.tsx           — Google OAuth sign-in page
     (dashboard)/
       layout.tsx         — Shared layout: Navbar + React Query Provider
       clients/
@@ -81,29 +105,45 @@ src/
       clients/[id]/
         page.tsx         — Server: fetchClientById + non-blocking sync
         _components/
-          client-tabs.tsx       — Campaigns / Billing / Communication tabs
+          client-header.tsx     — Client name, status badge, meta info
+          client-tabs.tsx       — Campaigns / Billing / Communication tab switcher
           campaigns-tab.tsx     — Meta campaigns + KPI data
           campaign-selector.tsx — Active/inactive campaign toggle
           kpi-cards.tsx         — 14 KPI metric cards
           date-filter.tsx       — Date presets + custom range
           utm-table.tsx         — Sortable UTM breakdown
+          ad-performance.tsx    — Ad-level performance breakdown
+          ad-budget-balance.tsx — Ad budget remaining / spend
           billing-tab.tsx       — Stripe invoices table
           communication-tab.tsx — Trengo conversations + messages
       settings/
-        page.tsx          — Admin only: API tokens, board config, user management
+        page.tsx          — Admin only
         actions.ts        — Server actions: saveApiToken, saveBoardConfig, updateUserRole
+        _components/
+          api-tokens-tab.tsx    — Manage encrypted API keys
+          api-health-bar.tsx    — Live API connectivity status
+          board-config-tab.tsx  — Monday.com board ID configuration
+          column-mapping-tab.tsx — Monday column → Supabase field mapping
+          users-tab.tsx         — User role management
+      targets/
+        page.tsx          — Targets page (placeholder)
     api/
       clients/[id]/
         campaigns/route.ts
         kpis/route.ts
         billing/route.ts
+        ad-budget-balance/route.ts
         conversations/route.ts
         conversations/[convId]/messages/route.ts
       billing-summaries/route.ts   — Bulk Stripe status for clients overview
-      settings/test-token/route.ts — Tests API token connectivity
+      kpi-summaries/route.ts       — KPI summary per client for overview
+      settings/
+        health/route.ts            — API health check endpoint
+        test-token/route.ts        — Tests API token connectivity
   supabase/migrations/
     20240001000000_initial_schema.sql
     20240002000000_settings_table.sql
+    20240003000000_user_column_mappings.sql
 ```
 
 ## Build Status

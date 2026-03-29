@@ -1,8 +1,8 @@
 import { Suspense } from "react"
 import { auth } from "@/lib/auth"
-import { fetchClientById } from "@/lib/monday"
-import { syncClientToSupabase } from "@/lib/sync-client"
-import { getClientAccess } from "@/lib/client-access"
+import { fetchClientById } from "@/lib/integrations/monday"
+import { syncClientToSupabase } from "@/lib/clients/sync"
+import { getClientAccess } from "@/lib/clients/access"
 import { ClientHeader } from "./_components/client-header"
 import { ClientTabs } from "./_components/client-tabs"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -88,7 +88,7 @@ export default async function ClientDetailPage({
   const { id } = await params
 
   return (
-    <div className="container mx-auto max-w-5xl py-8 px-4">
+    <div className="max-w-5xl">
       <Suspense fallback={<ClientDetailLoading />}>
         <ClientDetailData id={id} />
       </Suspense>

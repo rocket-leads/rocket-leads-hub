@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server"
-import type { MondayClient } from "@/lib/monday"
+import type { MondayClient } from "@/lib/integrations/monday"
 
 type UserMapping = {
   monday_column_role: string

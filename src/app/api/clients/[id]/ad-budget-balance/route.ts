@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { fetchInvoicedAdBudget } from "@/lib/stripe-client"
-import { fetchMetaInsights } from "@/lib/meta"
-import { isRocketLeadsAdAccount } from "@/lib/ad-account"
+import { fetchInvoicedAdBudget } from "@/lib/integrations/stripe"
+import { fetchMetaInsights } from "@/lib/integrations/meta"
+import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { NextRequest, NextResponse } from "next/server"
 
 export type AdBudgetBalance = {

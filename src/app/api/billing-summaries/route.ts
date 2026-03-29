@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth"
-import { fetchBillingSummary } from "@/lib/stripe-client"
+import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { NextRequest, NextResponse } from "next/server"
-import type { BillingSummary } from "@/lib/stripe-client"
+import type { BillingSummary } from "@/lib/integrations/stripe"
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -23,5 +23,7 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  return NextResponse.json(summaries)
+  return NextResponse.json(summaries, {
+    headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+  })
 }

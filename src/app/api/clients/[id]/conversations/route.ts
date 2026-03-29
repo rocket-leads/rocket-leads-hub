@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth"
-import { fetchConversations } from "@/lib/trengo"
+import { fetchConversations } from "@/lib/integrations/trengo"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(

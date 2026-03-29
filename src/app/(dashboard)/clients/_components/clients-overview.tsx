@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import { ClientsTable } from "./clients-table"
-import type { MondayClient } from "@/lib/monday"
-import type { BillingSummary } from "@/lib/stripe-client"
+import type { MondayClient } from "@/lib/integrations/monday"
+import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
 const ACTIVE_STATUSES = ["Live", "On hold"]
@@ -21,6 +21,7 @@ export function ClientsOverview({ onboarding, current }: Props) {
   const router = useRouter()
   const [showAll, setShowAll] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [activeTab, setActiveTab] = useState<"current" | "onboarding">("current")
 
   const visibleCurrent = useMemo(
     () => showAll ? current : current.filter((c) => ACTIVE_STATUSES.includes(c.campaignStatus ?? "")),
@@ -74,7 +75,7 @@ export function ClientsOverview({ onboarding, current }: Props) {
 
   async function handleRefresh() {
     setIsRefreshing(true)
-    router.refresh() // re-runs server component (Monday board data)
+    router.refresh()
     await Promise.all([summariesQuery.refetch(), kpiQuery.refetch()])
     setIsRefreshing(false)
   }
@@ -84,61 +85,75 @@ export function ClientsOverview({ onboarding, current }: Props) {
     ? new Date(lastUpdated).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
-  const [activeTab, setActiveTab] = useState<"current" | "onboarding">("current")
-
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <div className="inline-flex h-9 items-center rounded-lg bg-muted p-1 text-muted-foreground">
+    <div className="space-y-6">
+      {/* Tab bar + refresh */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1 border-b border-border">
           <button
-            className={`inline-flex items-center justify-center rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === "current" ? "bg-background text-foreground shadow-sm" : ""}`}
+            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+              activeTab === "current"
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
             onClick={() => setActiveTab("current")}
           >
             Current Clients
-            <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">
-              {visibleCurrent.length}
-            </span>
+            <span className="ml-2 text-xs text-muted-foreground">{visibleCurrent.length}</span>
+            {activeTab === "current" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+            )}
           </button>
           <button
-            className={`inline-flex items-center justify-center rounded-md px-3 py-1 text-sm font-medium transition-all ${activeTab === "onboarding" ? "bg-background text-foreground shadow-sm" : ""}`}
+            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+              activeTab === "onboarding"
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
             onClick={() => setActiveTab("onboarding")}
           >
             Onboarding
-            <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">
-              {onboarding.length}
-            </span>
+            <span className="ml-2 text-xs text-muted-foreground">{onboarding.length}</span>
+            {activeTab === "onboarding" && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+            )}
           </button>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-3">
           {lastUpdatedLabel && (
             <span className="text-xs text-muted-foreground">Updated {lastUpdatedLabel}</span>
           )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-8 px-2"
+          <button
+            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             onClick={handleRefresh}
             disabled={isFetching}
           >
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-          </Button>
+          </button>
         </div>
       </div>
 
+      {/* Content */}
       {activeTab === "current" && (
-        <div className="mt-6">
-          <div className="flex items-center justify-between mb-4">
-            {!showAll && hiddenCount > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Showing Live and On hold only — {hiddenCount} client{hiddenCount !== 1 ? "s" : ""} hidden (Churned / other)
-              </p>
-            )}
-            {hiddenCount > 0 && (
-              <Button variant="outline" size="sm" onClick={() => setShowAll((v) => !v)} className="ml-auto">
-                {showAll ? "Show active only" : `Show all ${current.length} clients`}
+        <div className="space-y-4">
+          {hiddenCount > 0 && (
+            <div className="flex items-center justify-between">
+              {!showAll && (
+                <p className="text-sm text-muted-foreground">
+                  Showing Live and On hold — {hiddenCount} hidden
+                </p>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAll((v) => !v)}
+                className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showAll ? "Show active only" : `Show all ${current.length}`}
               </Button>
-            )}
-          </div>
+            </div>
+          )}
           <ClientsTable
             clients={visibleCurrent}
             boardType="current"
@@ -149,14 +164,12 @@ export function ClientsOverview({ onboarding, current }: Props) {
       )}
 
       {activeTab === "onboarding" && (
-        <div className="mt-6">
-          <ClientsTable
-            clients={onboarding}
-            boardType="onboarding"
-            billingSummaries={summariesQuery.data}
-            kpiSummaries={kpiQuery.data}
-          />
-        </div>
+        <ClientsTable
+          clients={onboarding}
+          boardType="onboarding"
+          billingSummaries={summariesQuery.data}
+          kpiSummaries={kpiQuery.data}
+        />
       )}
     </div>
   )
