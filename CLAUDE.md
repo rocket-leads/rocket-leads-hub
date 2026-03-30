@@ -1,7 +1,7 @@
 @AGENTS.md
-@../knowledge/company.md
-@../knowledge/hub-vision.md
-@../knowledge/brand.md
+@knowledge/company.md
+@knowledge/hub-vision.md
+@knowledge/brand.md
 
 # Rocket Leads Hub — Project Context
 
