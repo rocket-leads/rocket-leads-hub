@@ -21,11 +21,13 @@ type Props = {
 export function ColumnOverrides({ mondayItemId }: Props) {
   const queryClient = useQueryClient()
 
-  const query = useQuery<{ overrides: Record<string, string> | null }>({
+  const query = useQuery<{ overrides: Record<string, string> | null; defaults?: Record<string, string> }>({
     queryKey: ["column-overrides", mondayItemId],
     queryFn: () => fetch(`/api/clients/${mondayItemId}/column-overrides`).then((r) => r.json()),
     staleTime: 5 * 60 * 1000,
   })
+
+  const globalDefaults = query.data?.defaults ?? {}
 
   const [localOverrides, setLocalOverrides] = useState<Record<string, string>>({})
   const hasOverrides = query.data?.overrides && Object.keys(query.data.overrides).length > 0
@@ -82,7 +84,7 @@ export function ColumnOverrides({ mondayItemId }: Props) {
               {label}
             </label>
             <input
-              placeholder="Default"
+              placeholder={globalDefaults[key] ?? "Default"}
               value={currentOverrides[key] ?? ""}
               onChange={(e) => handleChange(key, e.target.value)}
               className="w-full h-8 rounded-md bg-muted/40 dark:bg-white/5 border-0 px-2.5 text-xs text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/30"

@@ -12,13 +12,27 @@ export async function GET(
   const { id: mondayItemId } = await params
   const supabase = await createAdminClient()
 
-  const { data } = await supabase
-    .from("clients")
-    .select("column_mapping_override")
-    .eq("monday_item_id", mondayItemId)
-    .single()
+  const [{ data }, { data: settingsRow }] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("column_mapping_override")
+      .eq("monday_item_id", mondayItemId)
+      .single(),
+    supabase
+      .from("settings")
+      .select("value")
+      .eq("key", "board_config")
+      .single(),
+  ])
 
-  return NextResponse.json({ overrides: data?.column_mapping_override ?? null })
+  const defaults = (settingsRow?.value as Record<string, unknown>)?.client_board_columns ?? {
+    date_created: "date4", date_appointment: "dup__of_date_created__1",
+    lead_status: "dup__of_status__1", lead_status_2: "dup__of_status6__1",
+    deal_value: "omzet__1", utm: "text9__1",
+    date_deal: "date_mm1vgcfx",
+  }
+
+  return NextResponse.json({ overrides: data?.column_mapping_override ?? null, defaults })
 }
 
 export async function POST(
