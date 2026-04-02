@@ -37,11 +37,13 @@ type KpiCardDef = {
   label: string
   type: "currency" | "percent" | "integer" | "multiplier"
   icon: LucideIcon
+  requiresCrm?: boolean
 }
 
 type KpiGroup = {
   title: string
   cards: KpiCardDef[]
+  requiresCrm?: boolean
 }
 
 const KPI_GROUPS: KpiGroup[] = [
@@ -51,11 +53,12 @@ const KPI_GROUPS: KpiGroup[] = [
       { key: "adSpend", label: "Adspend", type: "currency", icon: DollarSign },
       { key: "leads", label: "Leads", type: "integer", icon: Users },
       { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Target },
-      { key: "qrPercent", label: "QR% (Lead → Call)", type: "percent", icon: BarChart3 },
+      { key: "qrPercent", label: "QR% (Lead → Call)", type: "percent", icon: BarChart3, requiresCrm: true },
     ],
   },
   {
     title: "Calls",
+    requiresCrm: true,
     cards: [
       { key: "bookedCalls", label: "Booked Calls", type: "integer", icon: PhoneCall },
       { key: "costPerBookedCall", label: "Cost per Booked Call", type: "currency", icon: DollarSign },
@@ -65,6 +68,7 @@ const KPI_GROUPS: KpiGroup[] = [
   },
   {
     title: "Deals & Revenue",
+    requiresCrm: true,
     cards: [
       { key: "costPerTakenCall", label: "Cost per Taken Call", type: "currency", icon: DollarSign },
       { key: "deals", label: "Deals", type: "integer", icon: Handshake },
@@ -74,6 +78,7 @@ const KPI_GROUPS: KpiGroup[] = [
   },
   {
     title: "Revenue & ROI",
+    requiresCrm: true,
     cards: [
       { key: "revenue", label: "Closed Revenue", type: "currency", icon: TrendingUp },
       { key: "roi", label: "ROI", type: "multiplier", icon: TrendingUp },
@@ -84,44 +89,53 @@ const KPI_GROUPS: KpiGroup[] = [
 type Props = {
   data: KpiResult | null
   isLoading: boolean
+  crmActive?: boolean
 }
 
-export function KpiCards({ data, isLoading }: Props) {
+export function KpiCards({ data, isLoading, crmActive = true }: Props) {
   return (
     <div className="space-y-6">
-      {KPI_GROUPS.map((group) => (
-        <div key={group.title}>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            {group.title}
-          </h3>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {group.cards.map((kpi) => {
-              const Icon = kpi.icon
-              return (
-                <Card key={kpi.key} className="relative overflow-hidden">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {kpi.label}
-                      </p>
-                      <Icon className="h-4 w-4 text-muted-foreground/50" />
-                    </div>
-                    <div className="mt-2">
-                      {isLoading ? (
-                        <Skeleton className="h-8 w-24" />
-                      ) : (
-                        <p className="text-2xl font-bold tracking-tight">
-                          {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
+      {KPI_GROUPS.map((group) => {
+        if (group.requiresCrm && !crmActive) return null
+        const visibleCards = crmActive
+          ? group.cards
+          : group.cards.filter((kpi) => !kpi.requiresCrm)
+        if (visibleCards.length === 0) return null
+
+        return (
+          <div key={group.title}>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              {group.title}
+            </h3>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {visibleCards.map((kpi) => {
+                const Icon = kpi.icon
+                return (
+                  <Card key={kpi.key} className="relative overflow-hidden">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {kpi.label}
                         </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+                        <Icon className="h-4 w-4 text-muted-foreground/50" />
+                      </div>
+                      <div className="mt-2">
+                        {isLoading ? (
+                          <Skeleton className="h-8 w-24" />
+                        ) : (
+                          <p className="text-2xl font-bold tracking-tight">
+                            {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

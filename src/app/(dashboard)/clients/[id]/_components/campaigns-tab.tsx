@@ -31,6 +31,14 @@ type Props = {
 export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, stripeCustomerId }: Props) {
   const [dateRange, setDateRange] = useState<DateRange>(defaultDateRange)
 
+  const mondayActiveQuery = useQuery<{ mondayActive: boolean }>({
+    queryKey: ["monday-active", mondayItemId],
+    queryFn: () => fetch(`/api/clients/${mondayItemId}/monday-active`).then((r) => r.json()),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const crmActive = mondayActiveQuery.data?.mondayActive ?? false
+
   const campaignsQuery = useQuery<{ campaigns: CampaignWithSelection[] }>({
     queryKey: ["campaigns", mondayItemId],
     queryFn: () =>
@@ -119,7 +127,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
           {kpisQuery.isError && (
             <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
           )}
-          <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
+          <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} crmActive={crmActive} />
           {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
             <div>
               <h3 className="text-base font-semibold mb-3">UTM / Ad Performance Breakdown</h3>
