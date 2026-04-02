@@ -2,7 +2,6 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { MondayToggle } from "./monday-toggle"
 
 const STATUS_COLORS: Record<string, string> = {
   "Kick off": "bg-blue-500/15 text-blue-400 border-blue-500/20",
@@ -67,8 +66,7 @@ export function ClientHeader({ client }: Props) {
             <p className="text-sm font-medium">{client.kickOffDate}</p>
           </div>
         )}
-        <div className="ml-auto flex items-center gap-4">
-          <MondayToggle mondayItemId={client.mondayItemId} />
+        <div className="ml-auto">
           <Badge variant="outline" className="text-[10px] uppercase tracking-wider text-muted-foreground/50 border-border/30">
             {client.boardType}
           </Badge>

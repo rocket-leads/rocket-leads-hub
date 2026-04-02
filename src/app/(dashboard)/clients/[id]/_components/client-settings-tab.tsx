@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { CampaignSelector } from "./campaign-selector"
 import { ColumnOverrides } from "./column-overrides"
+import { MondayToggle } from "./monday-toggle"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { MetaCampaign } from "@/lib/integrations/meta"
 
@@ -24,6 +25,15 @@ export function ClientSettingsTab({ mondayItemId, metaAdAccountId }: Props) {
 
   return (
     <div className="space-y-8">
+      {/* Monday CRM */}
+      <div>
+        <h3 className="text-sm font-medium mb-1">Monday CRM</h3>
+        <p className="text-xs text-muted-foreground/60 mb-4">
+          Toggle whether this client uses Monday.com for lead tracking. When off, health scoring uses only CPL data.
+        </p>
+        <MondayToggle mondayItemId={mondayItemId} />
+      </div>
+
       {/* Campaign Selection */}
       {metaAdAccountId && (
         <div>
