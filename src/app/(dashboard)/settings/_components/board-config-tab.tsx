@@ -16,7 +16,7 @@ type BoardConfig = {
   client_board_columns: Record<string, string>
 }
 
-type Props = { config: BoardConfig }
+type Props = { config: BoardConfig; defaults: BoardConfig }
 
 const ONBOARDING_FIELDS = [
   { key: "client_board_id", label: "Client Board ID column" },
@@ -63,11 +63,13 @@ function FieldGroup({
   title,
   fields,
   values,
+  defaults,
   onChange,
 }: {
   title: string
   fields: { key: string; label: string }[]
   values: Record<string, string>
+  defaults?: Record<string, string>
   onChange: (key: string, value: string) => void
 }) {
   return (
@@ -79,6 +81,7 @@ function FieldGroup({
             <Label className="text-xs text-muted-foreground">{f.label}</Label>
             <Input
               value={values[f.key] ?? ""}
+              placeholder={defaults?.[f.key] ?? ""}
               onChange={(e) => onChange(f.key, e.target.value)}
               className="h-8 text-sm font-mono"
             />
@@ -89,7 +92,7 @@ function FieldGroup({
   )
 }
 
-export function BoardConfigTab({ config: initial }: Props) {
+export function BoardConfigTab({ config: initial, defaults }: Props) {
   const [config, setConfig] = useState<BoardConfig>(initial)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -149,6 +152,7 @@ export function BoardConfigTab({ config: initial }: Props) {
             title="Onboarding Board Columns"
             fields={ONBOARDING_FIELDS}
             values={config.onboarding_columns}
+            defaults={defaults.onboarding_columns}
             onChange={(k, v) => updateNested("onboarding_columns", k, v)}
           />
           <Separator />
@@ -156,6 +160,7 @@ export function BoardConfigTab({ config: initial }: Props) {
             title="Current Clients Board Columns"
             fields={CURRENT_FIELDS}
             values={config.current_columns}
+            defaults={defaults.current_columns}
             onChange={(k, v) => updateNested("current_columns", k, v)}
           />
           <Separator />
@@ -163,6 +168,7 @@ export function BoardConfigTab({ config: initial }: Props) {
             title="Client Board Columns (default for all clients)"
             fields={CLIENT_BOARD_FIELDS}
             values={config.client_board_columns}
+            defaults={defaults.client_board_columns}
             onChange={(k, v) => updateNested("client_board_columns", k, v)}
           />
         </CardContent>

@@ -94,7 +94,7 @@ export default async function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="board">
-          <BoardConfigTab config={boardConfig} />
+          <BoardConfigTab config={boardConfig} defaults={defaultBoardConfig} />
         </TabsContent>
 
         <TabsContent value="users">
