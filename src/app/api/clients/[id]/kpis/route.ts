@@ -87,12 +87,10 @@ export async function GET(
   // Auto-detect Monday activity and update Supabase (fire-and-forget)
   if (leadItems.length > 0 && client?.id) {
     const isActive = detectMondayActivity(leadItems)
-    supabase
+    void supabase
       .from("clients")
       .update({ monday_active: isActive })
       .eq("monday_item_id", mondayItemId)
-      .then(() => {})
-      .catch(() => {})
   }
 
   return NextResponse.json({
