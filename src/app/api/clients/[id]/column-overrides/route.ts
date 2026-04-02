@@ -1,0 +1,45 @@
+import { auth } from "@/lib/auth"
+import { createAdminClient } from "@/lib/supabase/server"
+import { NextRequest, NextResponse } from "next/server"
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth()
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const { id: mondayItemId } = await params
+  const supabase = await createAdminClient()
+
+  const { data } = await supabase
+    .from("clients")
+    .select("column_mapping_override")
+    .eq("monday_item_id", mondayItemId)
+    .single()
+
+  return NextResponse.json({ overrides: data?.column_mapping_override ?? null })
+}
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth()
+  if (!session || session.user.role !== "admin") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const { id: mondayItemId } = await params
+  const { overrides } = await req.json() as { overrides: Record<string, string> | null }
+
+  const supabase = await createAdminClient()
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ column_mapping_override: overrides })
+    .eq("monday_item_id", mondayItemId)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ overrides })
+}
