@@ -232,8 +232,6 @@ export function AdPerformance({ rows, kpis }: Props) {
     <div className="space-y-4">
       <h3 className="text-base font-semibold">Ad Performance Analysis</h3>
 
-      <OptimizationProposal scored={scored} kpis={kpis} />
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {CATEGORIES.map(({ key, label, emoji, border, bg }) => {
           const ads = byCategory(key as ScoredRow["category"])

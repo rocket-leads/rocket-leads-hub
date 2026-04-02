@@ -3,11 +3,11 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
-import { RefreshCw, BarChart3, CreditCard, MessageCircle } from "lucide-react"
+import { RefreshCw, BarChart3, CreditCard, MessageCircle, Settings2 } from "lucide-react"
 import { CampaignsTab } from "./campaigns-tab"
 import { BillingTab } from "./billing-tab"
 import { CommunicationTab } from "./communication-tab"
-import { ColumnOverrides } from "./column-overrides"
+import { ClientSettingsTab } from "./client-settings-tab"
 import { Card, CardContent } from "@/components/ui/card"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
@@ -17,12 +17,6 @@ type Props = {
   supabaseClientId: string
   access: ClientAccess
 }
-
-const TABS = [
-  { id: "campaigns", label: "Campaigns", icon: BarChart3, accessKey: "canViewCampaigns" as const },
-  { id: "billing", label: "Billing", icon: CreditCard, accessKey: "canViewBilling" as const },
-  { id: "communication", label: "Communication", icon: MessageCircle, accessKey: "canViewCommunication" as const },
-]
 
 function NoAccess() {
   return (
@@ -39,8 +33,14 @@ export function ClientTabs({ client, access }: Props) {
   const queryClient = useQueryClient()
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const availableTabs = TABS.filter((t) => access[t.accessKey])
-  const [activeTab, setActiveTab] = useState(availableTabs[0]?.id ?? "campaigns")
+  const tabs = [
+    ...(access.canViewCampaigns ? [{ id: "campaigns", label: "Campaigns", icon: BarChart3 }] : []),
+    ...(access.canViewBilling ? [{ id: "billing", label: "Billing", icon: CreditCard }] : []),
+    ...(access.canViewCommunication ? [{ id: "communication", label: "Communication", icon: MessageCircle }] : []),
+    { id: "settings", label: "Settings", icon: Settings2 },
+  ]
+
+  const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? "campaigns")
 
   async function handleRefresh() {
     setIsRefreshing(true)
@@ -59,7 +59,7 @@ export function ClientTabs({ client, access }: Props) {
       {/* Tab bar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 border-b border-border">
-          {availableTabs.map(({ id, label, icon: Icon }) => (
+          {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors relative ${
@@ -86,9 +86,6 @@ export function ClientTabs({ client, access }: Props) {
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
         </button>
       </div>
-
-      {/* Column ID overrides (collapsible) */}
-      <ColumnOverrides mondayItemId={client.mondayItemId} />
 
       {/* Content */}
       {activeTab === "campaigns" && (
@@ -118,6 +115,13 @@ export function ClientTabs({ client, access }: Props) {
             trengoContactId={client.trengoContactId || null}
           />
         ) : <NoAccess />
+      )}
+
+      {activeTab === "settings" && (
+        <ClientSettingsTab
+          mondayItemId={client.mondayItemId}
+          metaAdAccountId={client.metaAdAccountId || null}
+        />
       )}
     </div>
   )
