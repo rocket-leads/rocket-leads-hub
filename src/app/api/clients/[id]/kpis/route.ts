@@ -100,6 +100,14 @@ export async function GET(
       clientBoardId: clientBoardId || null,
       leadItemsCount: leadItems.length,
       insightsCount: insights.length,
+      takenCallStatusValue,
+      columnOverrides: client?.column_mapping_override ?? null,
+      leadStatus2Sample: leadItems.slice(0, 10).map((i) => ({
+        name: i.name,
+        leadStatus: i.leadStatus,
+        leadStatus2: i.leadStatus2,
+        dateAppointment: i.dateAppointment,
+      })),
     },
   }, {
     headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
