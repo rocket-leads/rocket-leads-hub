@@ -34,12 +34,15 @@ export function ColumnOverrides({ mondayItemId }: Props) {
   const currentOverrides = { ...(query.data?.overrides ?? {}), ...localOverrides }
 
   const mutation = useMutation({
-    mutationFn: (overrides: Record<string, string> | null) =>
-      fetch(`/api/clients/${mondayItemId}/column-overrides`, {
+    mutationFn: async (overrides: Record<string, string> | null) => {
+      const r = await fetch(`/api/clients/${mondayItemId}/column-overrides`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ overrides }),
-      }).then((r) => r.json()),
+      })
+      if (!r.ok) throw new Error((await r.json()).error ?? "Failed to save")
+      return r.json()
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["column-overrides", mondayItemId] })
       queryClient.invalidateQueries({ queryKey: ["kpis", mondayItemId] })
