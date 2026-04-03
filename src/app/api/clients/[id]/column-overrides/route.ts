@@ -49,11 +49,25 @@ export async function POST(
 
   const supabase = await createAdminClient()
 
-  const { error } = await supabase
+  console.log(`[column-overrides] POST ${mondayItemId}:`, JSON.stringify(overrides))
+
+  const { error, count } = await supabase
     .from("clients")
     .update({ column_mapping_override: overrides })
     .eq("monday_item_id", mondayItemId)
 
+  console.log(`[column-overrides] result: error=${error?.message ?? "none"}, count=${count}`)
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ overrides })
+
+  // Verify the save by reading back
+  const { data: verify } = await supabase
+    .from("clients")
+    .select("column_mapping_override")
+    .eq("monday_item_id", mondayItemId)
+    .single()
+
+  console.log(`[column-overrides] verify readback:`, JSON.stringify(verify?.column_mapping_override))
+
+  return NextResponse.json({ overrides: verify?.column_mapping_override ?? overrides, saved: true })
 }
