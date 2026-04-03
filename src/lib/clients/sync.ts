@@ -4,8 +4,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
 export async function syncClientToSupabase(client: MondayClient): Promise<string> {
   const supabase = await createAdminClient()
 
-  const payload: Record<string, unknown> = {
-    monday_item_id: client.mondayItemId,
+  const syncFields = {
     monday_board_type: client.boardType,
     monday_client_board_id: client.clientBoardId || null,
     name: client.name,
@@ -15,24 +14,28 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
     updated_at: new Date().toISOString(),
   }
 
-  let { data, error } = await supabase
+  // Try update first — preserves columns like column_mapping_override and monday_active
+  const { data: existing } = await supabase
     .from("clients")
-    .upsert(payload, { onConflict: "monday_item_id" })
     .select("id")
+    .eq("monday_item_id", client.mondayItemId)
     .single()
 
-  // If the column doesn't exist in the DB, retry without it
-  if (error && (error.code === "PGRST204" || error.message?.includes("monday_client_board_id"))) {
-    console.warn("[sync-client] monday_client_board_id column missing — retrying without it. Run migration to fix permanently.")
-    delete payload.monday_client_board_id
-    const retry = await supabase
+  if (existing) {
+    const { error } = await supabase
       .from("clients")
-      .upsert(payload, { onConflict: "monday_item_id" })
-      .select("id")
-      .single()
-    data = retry.data
-    error = retry.error
+      .update(syncFields)
+      .eq("monday_item_id", client.mondayItemId)
+    if (error) throw new Error(`Supabase sync failed: ${error.message}`)
+    return existing.id
   }
+
+  // Insert new client
+  const { data, error } = await supabase
+    .from("clients")
+    .insert({ monday_item_id: client.mondayItemId, ...syncFields })
+    .select("id")
+    .single()
 
   if (error) throw new Error(`Supabase sync failed: ${error.message}`)
   return data!.id
