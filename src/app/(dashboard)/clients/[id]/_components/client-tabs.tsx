@@ -57,33 +57,33 @@ export function ClientTabs({ client, access }: Props) {
   return (
     <div className="space-y-6">
       {/* Tab bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 border-b border-border">
+      <div className="flex items-center justify-between border-b border-border/40">
+        <div className="flex items-center gap-0">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors relative ${
+              className={`relative flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-150 ${
                 activeTab === id
                   ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground/60 hover:text-foreground"
               }`}
               onClick={() => setActiveTab(id)}
             >
-              <Icon className={`h-4 w-4 ${activeTab === id ? "text-primary" : ""}`} />
+              <Icon className={`h-4 w-4 transition-colors ${activeTab === id ? "text-primary" : ""}`} />
               {label}
               {activeTab === id && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+                <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-t-full" />
               )}
             </button>
           ))}
         </div>
 
         <button
-          className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all mb-1"
           onClick={handleRefresh}
           disabled={isRefreshing}
         >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
         </button>
       </div>
 

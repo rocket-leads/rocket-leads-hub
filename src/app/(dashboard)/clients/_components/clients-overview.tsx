@@ -91,51 +91,49 @@ export function ClientsOverview({ onboarding, current }: Props) {
     ? new Date(lastUpdated).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
+  const tabItems = [
+    { id: "current" as const, label: "Current Clients", count: visibleCurrent.length },
+    { id: "onboarding" as const, label: "Onboarding", count: onboarding.length },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Tab bar + refresh */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 border-b border-border">
-          <button
-            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-              activeTab === "current"
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setActiveTab("current")}
-          >
-            Current Clients
-            <span className="ml-2 text-xs text-muted-foreground">{visibleCurrent.length}</span>
-            {activeTab === "current" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
-            )}
-          </button>
-          <button
-            className={`px-4 py-2 text-sm font-medium transition-colors relative ${
-              activeTab === "onboarding"
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setActiveTab("onboarding")}
-          >
-            Onboarding
-            <span className="ml-2 text-xs text-muted-foreground">{onboarding.length}</span>
-            {activeTab === "onboarding" && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
-            )}
-          </button>
+      <div className="flex items-center justify-between border-b border-border/40">
+        <div className="flex items-center gap-0">
+          {tabItems.map(({ id, label, count }) => (
+            <button
+              key={id}
+              className={`relative px-5 py-3 text-sm font-medium transition-all duration-150 ${
+                activeTab === id
+                  ? "text-foreground"
+                  : "text-muted-foreground/60 hover:text-foreground"
+              }`}
+              onClick={() => setActiveTab(id)}
+            >
+              {label}
+              <span className={`ml-2 text-xs tabular-nums ${
+                activeTab === id ? "text-primary" : "text-muted-foreground/40"
+              }`}>
+                {count}
+              </span>
+              {activeTab === id && (
+                <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-t-full" />
+              )}
+            </button>
+          ))}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 mb-1">
           {lastUpdatedLabel && (
-            <span className="text-xs text-muted-foreground">Updated {lastUpdatedLabel}</span>
+            <span className="text-[11px] text-muted-foreground/40">Updated {lastUpdatedLabel}</span>
           )}
           <button
-            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
             onClick={handleRefresh}
             disabled={isFetching}
           >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
@@ -146,7 +144,7 @@ export function ClientsOverview({ onboarding, current }: Props) {
           {hiddenCount > 0 && (
             <div className="flex items-center justify-between">
               {!showAll && (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground/50">
                   Showing Live and On hold — {hiddenCount} hidden
                 </p>
               )}
@@ -154,7 +152,7 @@ export function ClientsOverview({ onboarding, current }: Props) {
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowAll((v) => !v)}
-                className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+                className="ml-auto text-xs text-muted-foreground/60 hover:text-foreground"
               >
                 {showAll ? "Show active only" : `Show all ${current.length}`}
               </Button>

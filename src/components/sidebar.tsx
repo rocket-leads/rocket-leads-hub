@@ -1,8 +1,7 @@
 import { auth, signOut } from "@/lib/auth"
 import Link from "next/link"
 import Image from "next/image"
-import { Button } from "@/components/ui/button"
-import { Users, Target, Settings, LogOut } from "lucide-react"
+import { LogOut } from "lucide-react"
 import { SidebarNavLinks } from "./sidebar-nav-links"
 
 const NAV_ITEMS = [
@@ -20,16 +19,16 @@ export async function Sidebar() {
   ]
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-border/30 bg-card flex flex-col">
+    <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-border/20 bg-card flex flex-col">
       {/* Logo */}
-      <div className="px-6 py-7">
-        <Link href="/clients">
+      <div className="px-6 py-6 mb-2">
+        <Link href="/clients" className="block">
           <Image
             src="/logos/logo-white-purple.svg"
             alt="Rocket Leads"
             width={140}
             height={36}
-            className="h-6 w-auto hidden dark:block"
+            className="h-7 w-auto hidden dark:block"
             priority
           />
           <Image
@@ -37,24 +36,24 @@ export async function Sidebar() {
             alt="Rocket Leads"
             width={140}
             height={36}
-            className="h-6 w-auto block dark:hidden"
+            className="h-7 w-auto block dark:hidden"
             priority
           />
         </Link>
       </div>
 
-      {/* Navigation — client component for active state */}
+      {/* Navigation */}
       <SidebarNavLinks items={allItems} />
 
       {/* User section */}
-      <div className="border-t border-border/30 px-4 py-4">
+      <div className="mt-auto border-t border-border/20 p-4">
         <div className="flex items-center gap-3 mb-3">
-          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-xs font-bold text-primary ring-1 ring-primary/10">
             {session?.user.name?.[0]?.toUpperCase() ?? session?.user.email?.[0]?.toUpperCase() ?? "?"}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{session?.user.name ?? "User"}</p>
-            <p className="text-[11px] text-muted-foreground truncate">{session?.user.email}</p>
+            <p className="text-[11px] text-muted-foreground/60 truncate">{session?.user.email}</p>
           </div>
         </div>
         <form
@@ -63,10 +62,13 @@ export async function Sidebar() {
             await signOut({ redirectTo: "/auth/signin" })
           }}
         >
-          <Button type="submit" variant="ghost" size="sm" className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground h-8 text-xs">
+          <button
+            type="submit"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-all"
+          >
             <LogOut className="h-3.5 w-3.5" />
             Sign out
-          </Button>
+          </button>
         </form>
       </div>
     </aside>

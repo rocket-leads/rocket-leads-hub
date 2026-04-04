@@ -28,7 +28,7 @@ function fmt(n: number, type: "currency" | "percent" | "integer" | "multiplier")
     case "integer":
       return n.toLocaleString("en-GB")
     case "multiplier":
-      return n.toFixed(2)
+      return `${n.toFixed(2)}x`
   }
 }
 
@@ -50,37 +50,33 @@ type KpiGroup = {
   title: string
   cards: KpiCardDef[]
   section: keyof KpiVisibility
-  cols: number
 }
 
 const KPI_GROUPS: KpiGroup[] = [
   {
     title: "Leads",
     section: "leads",
-    cols: 4,
     cards: [
       { key: "adSpend", label: "Adspend", type: "currency", icon: Euro },
       { key: "leads", label: "Leads", type: "integer", icon: Users },
       { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Euro },
-      { key: "qrPercent", label: "QR% (Lead → Appointment)", type: "percent", icon: BarChart3, showWhen: "appointments" },
+      { key: "qrPercent", label: "QR%", type: "percent", icon: BarChart3, showWhen: "appointments" },
     ],
   },
   {
     title: "Appointments",
     section: "appointments",
-    cols: 5,
     cards: [
       { key: "bookedCalls", label: "Booked Appointments", type: "integer", icon: CalendarCheck },
-      { key: "costPerBookedCall", label: "Cost per Booked Appointment", type: "currency", icon: Euro },
+      { key: "costPerBookedCall", label: "Cost per Booked Appt.", type: "currency", icon: Euro },
       { key: "suPercent", label: "SU% (Show Up)", type: "percent", icon: BarChart3 },
       { key: "takenCalls", label: "Taken Appointments", type: "integer", icon: CalendarCheck2 },
-      { key: "costPerTakenCall", label: "Cost per Taken Appointment", type: "currency", icon: Euro },
+      { key: "costPerTakenCall", label: "Cost per Taken Appt.", type: "currency", icon: Euro },
     ],
   },
   {
     title: "Deals",
     section: "deals",
-    cols: 5,
     cards: [
       { key: "deals", label: "Deals", type: "integer", icon: Handshake },
       { key: "crPercent", label: "CR%", type: "percent", icon: BarChart3 },
@@ -91,15 +87,22 @@ const KPI_GROUPS: KpiGroup[] = [
   },
 ]
 
-const COL_CLASSES: Record<number, string> = {
-  4: "grid grid-cols-2 gap-3 sm:grid-cols-4",
-  5: "grid grid-cols-2 gap-3 sm:grid-cols-5",
-}
-
-const TARGET_BORDER: Record<TargetStatus, string> = {
-  green: "border-l-2 border-l-green-500",
-  orange: "border-l-2 border-l-amber-500",
-  red: "border-l-2 border-l-red-500",
+const STATUS_STYLES: Record<TargetStatus, { border: string; value: string; dot: string }> = {
+  green: {
+    border: "border-l-[3px] border-l-green-500",
+    value: "text-green-400",
+    dot: "bg-green-500",
+  },
+  orange: {
+    border: "border-l-[3px] border-l-amber-500",
+    value: "text-amber-400",
+    dot: "bg-amber-500",
+  },
+  red: {
+    border: "border-l-[3px] border-l-red-500",
+    value: "text-red-400",
+    dot: "bg-red-500",
+  },
 }
 
 type Props = {
@@ -111,7 +114,7 @@ type Props = {
 
 export function KpiCards({ data, isLoading, visibility = { leads: true, appointments: true, deals: true }, targets }: Props) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {KPI_GROUPS.map((group) => {
         if (!visibility[group.section]) return null
 
@@ -120,32 +123,44 @@ export function KpiCards({ data, isLoading, visibility = { leads: true, appointm
         )
         if (visibleCards.length === 0) return null
 
+        const colClass = visibleCards.length <= 3
+          ? "grid grid-cols-2 gap-3 sm:grid-cols-3"
+          : visibleCards.length === 4
+          ? "grid grid-cols-2 gap-3 sm:grid-cols-4"
+          : "grid grid-cols-2 gap-3 sm:grid-cols-5"
+
         return (
           <div key={group.title}>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              {group.title}
-            </h3>
-            <div className={COL_CLASSES[visibleCards.length <= 4 ? 4 : 5] ?? COL_CLASSES[4]}>
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                {group.title}
+              </h3>
+              <div className="flex-1 h-px bg-border/40" />
+            </div>
+            <div className={colClass}>
               {visibleCards.map((kpi) => {
                 const Icon = kpi.icon
                 const value = data?.[kpi.key] as number | undefined
                 const status = targets && value != null ? evaluateKpi(kpi.key, value, targets) : null
-                const borderClass = status ? TARGET_BORDER[status] : ""
+                const styles = status ? STATUS_STYLES[status] : null
 
                 return (
-                  <Card key={kpi.key} className={`relative overflow-hidden ${borderClass}`}>
+                  <Card key={kpi.key} className={`relative overflow-hidden transition-all duration-200 hover:shadow-md hover:shadow-black/5 ${styles?.border ?? "border-l-[3px] border-l-transparent"}`}>
                     <CardContent className="flex h-full flex-col justify-between p-4">
-                      <div className="flex items-start justify-between">
-                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 leading-tight">
                           {kpi.label}
                         </p>
-                        <Icon className="h-4 w-4 shrink-0 text-muted-foreground/50" />
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {status && <span className={`h-1.5 w-1.5 rounded-full ${styles?.dot}`} />}
+                          <Icon className="h-3.5 w-3.5 text-muted-foreground/30" />
+                        </div>
                       </div>
-                      <div className="mt-auto pt-2">
+                      <div className="mt-auto pt-3">
                         {isLoading ? (
-                          <Skeleton className="h-8 w-24" />
+                          <Skeleton className="h-7 w-20" />
                         ) : (
-                          <p className="text-2xl font-bold tracking-tight">
+                          <p className={`text-xl font-bold tabular-nums tracking-tight ${styles?.value ?? "text-foreground"}`}>
                             {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
                           </p>
                         )}
