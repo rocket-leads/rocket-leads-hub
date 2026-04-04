@@ -1,12 +1,11 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  DollarSign,
+  Euro,
   Users,
-  Target,
   BarChart3,
-  PhoneCall,
-  PhoneIncoming,
+  CalendarCheck,
+  CalendarCheck2,
   Handshake,
   TrendingUp,
   type LucideIcon,
@@ -37,49 +36,49 @@ type KpiCardDef = {
   label: string
   type: "currency" | "percent" | "integer" | "multiplier"
   icon: LucideIcon
-  requiresCrm?: boolean
+}
+
+export type KpiVisibility = {
+  leads: boolean
+  appointments: boolean
+  deals: boolean
 }
 
 type KpiGroup = {
   title: string
   cards: KpiCardDef[]
-  requiresCrm?: boolean
+  section: keyof KpiVisibility
 }
 
 const KPI_GROUPS: KpiGroup[] = [
   {
-    title: "Acquisitie",
+    title: "Leads",
+    section: "leads",
     cards: [
-      { key: "adSpend", label: "Adspend", type: "currency", icon: DollarSign },
+      { key: "adSpend", label: "Adspend", type: "currency", icon: Euro },
       { key: "leads", label: "Leads", type: "integer", icon: Users },
-      { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Target },
-      { key: "qrPercent", label: "QR% (Lead → Call)", type: "percent", icon: BarChart3, requiresCrm: true },
+      { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Euro },
     ],
   },
   {
-    title: "Calls",
-    requiresCrm: true,
+    title: "Appointments",
+    section: "appointments",
     cards: [
-      { key: "bookedCalls", label: "Booked Calls", type: "integer", icon: PhoneCall },
-      { key: "costPerBookedCall", label: "Cost per Booked Call", type: "currency", icon: DollarSign },
+      { key: "qrPercent", label: "QR% (Lead → Appointment)", type: "percent", icon: BarChart3 },
+      { key: "bookedCalls", label: "Booked Appointments", type: "integer", icon: CalendarCheck },
+      { key: "costPerBookedCall", label: "Cost per Booked Appointment", type: "currency", icon: Euro },
       { key: "suPercent", label: "SU% (Show Up)", type: "percent", icon: BarChart3 },
-      { key: "takenCalls", label: "Taken Calls", type: "integer", icon: PhoneIncoming },
+      { key: "takenCalls", label: "Taken Appointments", type: "integer", icon: CalendarCheck2 },
+      { key: "costPerTakenCall", label: "Cost per Taken Appointment", type: "currency", icon: Euro },
     ],
   },
   {
-    title: "Deals & Revenue",
-    requiresCrm: true,
+    title: "Deals",
+    section: "deals",
     cards: [
-      { key: "costPerTakenCall", label: "Cost per Taken Call", type: "currency", icon: DollarSign },
       { key: "deals", label: "Deals", type: "integer", icon: Handshake },
       { key: "crPercent", label: "CR%", type: "percent", icon: BarChart3 },
-      { key: "costPerDeal", label: "Cost per Deal", type: "currency", icon: Target },
-    ],
-  },
-  {
-    title: "Revenue & ROI",
-    requiresCrm: true,
-    cards: [
+      { key: "costPerDeal", label: "Cost per Deal", type: "currency", icon: Euro },
       { key: "revenue", label: "Closed Revenue", type: "currency", icon: TrendingUp },
       { key: "roi", label: "ROI", type: "multiplier", icon: TrendingUp },
     ],
@@ -89,18 +88,14 @@ const KPI_GROUPS: KpiGroup[] = [
 type Props = {
   data: KpiResult | null
   isLoading: boolean
-  crmActive?: boolean
+  visibility?: KpiVisibility
 }
 
-export function KpiCards({ data, isLoading, crmActive = true }: Props) {
+export function KpiCards({ data, isLoading, visibility = { leads: true, appointments: true, deals: true } }: Props) {
   return (
     <div className="space-y-6">
       {KPI_GROUPS.map((group) => {
-        if (group.requiresCrm && !crmActive) return null
-        const visibleCards = crmActive
-          ? group.cards
-          : group.cards.filter((kpi) => !kpi.requiresCrm)
-        if (visibleCards.length === 0) return null
+        if (!visibility[group.section]) return null
 
         return (
           <div key={group.title}>
@@ -108,7 +103,7 @@ export function KpiCards({ data, isLoading, crmActive = true }: Props) {
               {group.title}
             </h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {visibleCards.map((kpi) => {
+              {group.cards.map((kpi) => {
                 const Icon = kpi.icon
                 return (
                   <Card key={kpi.key} className="relative overflow-hidden">
