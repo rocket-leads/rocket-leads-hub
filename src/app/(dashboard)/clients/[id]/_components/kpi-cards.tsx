@@ -122,14 +122,14 @@ export function KpiCards({ data, isLoading, visibility = { leads: true, appointm
                 const Icon = kpi.icon
                 return (
                   <Card key={kpi.key} className="relative overflow-hidden">
-                    <CardContent className="p-4">
+                    <CardContent className="flex h-full flex-col justify-between p-4">
                       <div className="flex items-start justify-between">
                         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                           {kpi.label}
                         </p>
-                        <Icon className="h-4 w-4 text-muted-foreground/50" />
+                        <Icon className="h-4 w-4 shrink-0 text-muted-foreground/50" />
                       </div>
-                      <div className="mt-2">
+                      <div className="mt-auto pt-2">
                         {isLoading ? (
                           <Skeleton className="h-8 w-24" />
                         ) : (
