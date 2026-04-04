@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import type { KpiResult } from "@/lib/clients/kpis"
+import { evaluateKpi, type KpiTargets, type TargetStatus } from "@/lib/clients/targets"
 
 function fmt(n: number, type: "currency" | "percent" | "integer" | "multiplier"): string {
   if (!isFinite(n) || (n === 0 && type !== "integer")) {
@@ -95,13 +96,20 @@ const COL_CLASSES: Record<number, string> = {
   5: "grid grid-cols-2 gap-3 sm:grid-cols-5",
 }
 
+const TARGET_BORDER: Record<TargetStatus, string> = {
+  green: "border-l-2 border-l-green-500",
+  orange: "border-l-2 border-l-amber-500",
+  red: "border-l-2 border-l-red-500",
+}
+
 type Props = {
   data: KpiResult | null
   isLoading: boolean
   visibility?: KpiVisibility
+  targets?: KpiTargets | null
 }
 
-export function KpiCards({ data, isLoading, visibility = { leads: true, appointments: true, deals: true } }: Props) {
+export function KpiCards({ data, isLoading, visibility = { leads: true, appointments: true, deals: true }, targets }: Props) {
   return (
     <div className="space-y-6">
       {KPI_GROUPS.map((group) => {
@@ -120,8 +128,12 @@ export function KpiCards({ data, isLoading, visibility = { leads: true, appointm
             <div className={COL_CLASSES[visibleCards.length <= 4 ? 4 : 5] ?? COL_CLASSES[4]}>
               {visibleCards.map((kpi) => {
                 const Icon = kpi.icon
+                const value = data?.[kpi.key] as number | undefined
+                const status = targets && value != null ? evaluateKpi(kpi.key, value, targets) : null
+                const borderClass = status ? TARGET_BORDER[status] : ""
+
                 return (
-                  <Card key={kpi.key} className="relative overflow-hidden">
+                  <Card key={kpi.key} className={`relative overflow-hidden ${borderClass}`}>
                     <CardContent className="flex h-full flex-col justify-between p-4">
                       <div className="flex items-start justify-between">
                         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

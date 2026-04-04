@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import type { KpiResult } from "@/lib/clients/kpis"
 import type { MetaCampaign } from "@/lib/integrations/meta"
+import { mergeTargets, deriveTargets, DEFAULT_TARGETS, type KpiTargets } from "@/lib/clients/targets"
 
 const AdPerformance = dynamic(() => import("./ad-performance").then((m) => m.AdPerformance), {
   ssr: false,
@@ -56,6 +57,17 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
     () => selectedCampaigns.map((c) => c.id),
     [selectedCampaigns]
   )
+
+  const targetsQuery = useQuery<{ global: KpiTargets; overrides: Partial<KpiTargets> | null }>({
+    queryKey: ["target-overrides", mondayItemId],
+    queryFn: () => fetch(`/api/clients/${mondayItemId}/target-overrides`).then((r) => r.json()),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const effectiveTargets = useMemo(() => {
+    const global = targetsQuery.data?.global ?? DEFAULT_TARGETS
+    return deriveTargets(mergeTargets(global, targetsQuery.data?.overrides))
+  }, [targetsQuery.data])
 
   const kpisQuery = useQuery<KpiResult>({
     queryKey: ["kpis", mondayItemId, dateRange.startDate, dateRange.endDate, selectedIds],
@@ -127,7 +139,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
           {kpisQuery.isError && (
             <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
           )}
-          <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} visibility={kpiVisibility} />
+          <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} visibility={kpiVisibility} targets={effectiveTargets} />
           {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
             <div>
               <h3 className="text-base font-semibold mb-3">UTM / Ad Performance Breakdown</h3>

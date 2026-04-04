@@ -6,6 +6,8 @@ import { ApiTokensTab } from "./_components/api-tokens-tab"
 import { BoardConfigTab } from "./_components/board-config-tab"
 import { UsersTab } from "./_components/users-tab"
 import { ColumnMappingTab } from "./_components/column-mapping-tab"
+import { TargetsTab } from "./_components/targets-tab"
+import { DEFAULT_TARGETS, type KpiTargets } from "@/lib/clients/targets"
 import { ApiHealthBar } from "./_components/api-health-bar"
 import { fetchBothBoards } from "@/lib/integrations/monday"
 
@@ -15,9 +17,10 @@ export default async function SettingsPage() {
 
   const supabase = await createAdminClient()
 
-  const [{ data: tokens }, { data: settingsRow }, { data: users }, { data: columnMappings }] = await Promise.all([
+  const [{ data: tokens }, { data: settingsRow }, { data: targetsRow }, { data: users }, { data: columnMappings }] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
+    supabase.from("settings").select("value").eq("key", "kpi_targets").single(),
     supabase.from("users").select("id, email, name, role, created_at").order("created_at"),
     supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
   ])
@@ -71,6 +74,7 @@ export default async function SettingsPage() {
   }
 
   const boardConfig = (settingsRow?.value ?? defaultBoardConfig) as typeof defaultBoardConfig
+  const kpiTargets = (targetsRow?.value ?? DEFAULT_TARGETS) as KpiTargets
 
   return (
     <div className="container mx-auto max-w-4xl py-8 px-4">
@@ -86,6 +90,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="tokens">API Tokens</TabsTrigger>
           <TabsTrigger value="board">Board Config</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
+          <TabsTrigger value="targets">Targets</TabsTrigger>
           <TabsTrigger value="mapping">Column Mapping</TabsTrigger>
         </TabsList>
 
@@ -99,6 +104,10 @@ export default async function SettingsPage() {
 
         <TabsContent value="users">
           <UsersTab users={users ?? []} currentUserId={session.user.id} />
+        </TabsContent>
+
+        <TabsContent value="targets">
+          <TargetsTab initial={kpiTargets} />
         </TabsContent>
 
         <TabsContent value="mapping">

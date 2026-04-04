@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { CampaignSelector } from "./campaign-selector"
 import { ColumnOverrides } from "./column-overrides"
+import { TargetOverrides } from "./target-overrides"
 import { KpiVisibilityToggle } from "./kpi-visibility-toggle"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { MetaCampaign } from "@/lib/integrations/meta"
@@ -55,6 +56,15 @@ export function ClientSettingsTab({ mondayItemId, metaAdAccountId }: Props) {
           )}
         </div>
       )}
+
+      {/* KPI Targets */}
+      <div>
+        <h3 className="text-sm font-medium mb-1">KPI Targets</h3>
+        <p className="text-xs text-muted-foreground/60 mb-4">
+          Override global KPI target thresholds for this client. Derived metrics auto-recalculate. Leave as-is to use global defaults.
+        </p>
+        <TargetOverrides mondayItemId={mondayItemId} />
+      </div>
 
       {/* Board Column IDs */}
       <div>

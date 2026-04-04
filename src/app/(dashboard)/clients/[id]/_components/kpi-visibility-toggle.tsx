@@ -14,7 +14,7 @@ type Props = {
 
 const SECTIONS = [
   { key: "leads" as const, label: "Leads", description: "Adspend, Leads, Cost per Lead" },
-  { key: "appointments" as const, label: "Afspraken", description: "QR%, Booked Calls, Cost per Booked Call, SU%, Taken Calls, Cost per Taken Call" },
+  { key: "appointments" as const, label: "Appointments", description: "QR%, Booked Appointments, Cost per Booked Appointment, SU%, Taken Appointments, Cost per Taken Appointment" },
   { key: "deals" as const, label: "Deals", description: "Deals, CR%, Cost per Deal, Closed Revenue, ROI" },
 ]
 
