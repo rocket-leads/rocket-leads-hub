@@ -18,15 +18,11 @@ jobs:
         with:
           version: latest
 
-      - name: Link Supabase project
+      - name: Link and push migrations
         run: |
           supabase init --force
-          supabase link --project-ref prvcgzrvmdwomwfvlpds
+          supabase link --project-ref prvcgzrvmdwomwfvlpds --password "$SUPABASE_DB_PASSWORD"
+          supabase db push --password "$SUPABASE_DB_PASSWORD"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Push migrations
-        run: supabase db push --db-url "$DB_URL"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
