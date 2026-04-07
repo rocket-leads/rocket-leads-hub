@@ -88,7 +88,7 @@ export default async function ClientDetailPage({
   const { id } = await params
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-7xl mx-auto">
       <Suspense fallback={<ClientDetailLoading />}>
         <ClientDetailData id={id} />
       </Suspense>

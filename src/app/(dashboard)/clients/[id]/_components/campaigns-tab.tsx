@@ -8,10 +8,7 @@ import { Separator } from "@/components/ui/separator"
 import { DateFilter, defaultDateRange, type DateRange } from "./date-filter"
 import { KpiCards, type KpiVisibility } from "./kpi-cards"
 import { UtmTable } from "./utm-table"
-import { AdBudgetBalance } from "./ad-budget-balance"
-import { OptimizationProposal } from "./optimization-proposal"
 import { Skeleton } from "@/components/ui/skeleton"
-import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import type { KpiResult } from "@/lib/clients/kpis"
 import type { MetaCampaign } from "@/lib/integrations/meta"
 
@@ -41,10 +38,9 @@ type Props = {
   mondayItemId: string
   metaAdAccountId: string | null
   clientBoardId: string | null
-  stripeCustomerId: string | null
 }
 
-export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, stripeCustomerId }: Props) {
+export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId }: Props) {
   const [dateRange, setDateRange] = useState<DateRange>(defaultDateRange)
 
   const previousRange = useMemo(() => getPreviousRange(dateRange), [dateRange])
@@ -121,15 +117,6 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
 
   return (
     <div className="space-y-6">
-      {/* Ad budget balance for Rocket Leads ad account clients */}
-      {isRocketLeadsAdAccount(metaAdAccountId) && stripeCustomerId && (
-        <AdBudgetBalance
-          mondayItemId={mondayItemId}
-          metaAdAccountId={metaAdAccountId!}
-          stripeCustomerId={stripeCustomerId}
-        />
-      )}
-
       {/* KPI data */}
       {metaAdAccountId && selectedCount === 0 ? (
         <Card>
@@ -139,12 +126,6 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
         </Card>
       ) : (
         <div className="space-y-6">
-          <OptimizationProposal
-            mondayItemId={mondayItemId}
-            metaAdAccountId={metaAdAccountId}
-            clientBoardId={clientBoardId}
-            selectedCampaignIds={selectedIds}
-          />
           <div>
             <DateFilter value={dateRange} onChange={(r) => setDateRange(r)} />
           </div>
