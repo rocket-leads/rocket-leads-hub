@@ -14,13 +14,28 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import type { KpiResult } from "@/lib/clients/kpis"
 import type { MetaCampaign } from "@/lib/integrations/meta"
-import { mergeTargets, deriveTargets, DEFAULT_TARGETS, type KpiTargets } from "@/lib/clients/targets"
 
 const AdPerformance = dynamic(() => import("./ad-performance").then((m) => m.AdPerformance), {
   ssr: false,
 })
 
 type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
+
+function toISO(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+/** Compute the previous period of the same length ending the day before the current range starts. */
+function getPreviousRange(range: DateRange): DateRange {
+  const start = new Date(range.startDate)
+  const end = new Date(range.endDate)
+  const days = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  const prevEnd = new Date(start)
+  prevEnd.setDate(prevEnd.getDate() - 1)
+  const prevStart = new Date(prevEnd)
+  prevStart.setDate(prevStart.getDate() - (days - 1))
+  return { startDate: toISO(prevStart), endDate: toISO(prevEnd) }
+}
 
 type Props = {
   mondayItemId: string
@@ -31,6 +46,8 @@ type Props = {
 
 export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, stripeCustomerId }: Props) {
   const [dateRange, setDateRange] = useState<DateRange>(defaultDateRange)
+
+  const previousRange = useMemo(() => getPreviousRange(dateRange), [dateRange])
 
   const visibilityQuery = useQuery<{ kpiVisibility: KpiVisibility }>({
     queryKey: ["monday-active", mondayItemId],
@@ -58,29 +75,25 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
     [selectedCampaigns]
   )
 
-  const targetsQuery = useQuery<{ global: KpiTargets; overrides: Partial<KpiTargets> | null }>({
-    queryKey: ["target-overrides", mondayItemId],
-    queryFn: () => fetch(`/api/clients/${mondayItemId}/target-overrides`).then((r) => r.json()),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const effectiveTargets = useMemo(() => {
-    const global = targetsQuery.data?.global ?? DEFAULT_TARGETS
-    return deriveTargets(mergeTargets(global, targetsQuery.data?.overrides))
-  }, [targetsQuery.data])
+  function buildKpiParams(range: DateRange) {
+    return new URLSearchParams({
+      startDate: range.startDate,
+      endDate: range.endDate,
+      ...(metaAdAccountId ? { adAccountId: metaAdAccountId } : {}),
+      ...(clientBoardId ? { clientBoardId } : {}),
+      ...(selectedIds.length > 0 ? { selectedCampaignIds: selectedIds.join(",") } : {}),
+    })
+  }
 
   const kpisQuery = useQuery<KpiResult>({
     queryKey: ["kpis", mondayItemId, dateRange.startDate, dateRange.endDate, selectedIds],
-    queryFn: () => {
-      const p = new URLSearchParams({
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
-        ...(metaAdAccountId ? { adAccountId: metaAdAccountId } : {}),
-        ...(clientBoardId ? { clientBoardId } : {}),
-        ...(selectedIds.length > 0 ? { selectedCampaignIds: selectedIds.join(",") } : {}),
-      })
-      return fetch(`/api/clients/${mondayItemId}/kpis?${p}`).then((r) => r.json())
-    },
+    queryFn: () => fetch(`/api/clients/${mondayItemId}/kpis?${buildKpiParams(dateRange)}`).then((r) => r.json()),
+    enabled: !!mondayItemId,
+  })
+
+  const prevKpisQuery = useQuery<KpiResult>({
+    queryKey: ["kpis-prev", mondayItemId, previousRange.startDate, previousRange.endDate, selectedIds],
+    queryFn: () => fetch(`/api/clients/${mondayItemId}/kpis?${buildKpiParams(previousRange)}`).then((r) => r.json()),
     enabled: !!mondayItemId,
   })
 
@@ -139,7 +152,12 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
           {kpisQuery.isError && (
             <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
           )}
-          <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} visibility={kpiVisibility} targets={effectiveTargets} />
+          <KpiCards
+            data={kpisQuery.data ?? null}
+            previousData={prevKpisQuery.data ?? null}
+            isLoading={kpisQuery.isLoading}
+            visibility={kpiVisibility}
+          />
           {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
             <div>
               <h3 className="text-base font-semibold mb-3">UTM / Ad Performance Breakdown</h3>

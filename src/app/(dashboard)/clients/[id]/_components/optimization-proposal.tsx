@@ -4,9 +4,8 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { TrendingUp, TrendingDown, AlertTriangle, Lightbulb, ArrowRight } from "lucide-react"
+import { TrendingUp, TrendingDown, AlertTriangle, Lightbulb } from "lucide-react"
 import { scoreRows } from "./ad-performance"
-import { DEFAULT_TARGETS, mergeTargets, deriveTargets, evaluateKpi, type KpiTargets } from "@/lib/clients/targets"
 import type { KpiResult, UtmRow } from "@/lib/clients/kpis"
 
 type ScoredRow = UtmRow & {
@@ -67,7 +66,7 @@ function useTimeframeKpis(
   })
 }
 
-// ---- Insight generation ----
+// ---- Insight generation (trend-based, no fixed targets) ----
 
 type Insight = {
   type: "positive" | "warning" | "critical" | "action"
@@ -84,7 +83,6 @@ function generateKpiInsights(
   kpis7d: KpiResult | null,
   kpis14d: KpiResult | null,
   kpis30d: KpiResult | null,
-  targets: KpiTargets,
   hasCrm: boolean,
 ): Insight[] {
   const insights: Insight[] = []
@@ -93,36 +91,27 @@ function generateKpiInsights(
   const has30d = kpis30d && kpis30d.adSpend > 0
   const has14d = kpis14d && kpis14d.adSpend > 0
 
-  // 1. CPL trend analysis
+  // 1. CPL trend analysis (7d vs 30d)
   if (kpis7d.leads > 0 && has30d && kpis30d.leads > 0) {
     const cplChange = pctChange(kpis7d.costPerLead, kpis30d.costPerLead)
-    const cplStatus = evaluateKpi("costPerLead", kpis7d.costPerLead, targets)
 
-    if (cplChange > 30) {
+    if (cplChange > 50) {
       insights.push({
         type: "critical",
-        title: `CPL increased ${cplChange.toFixed(0)}% vs 30-day average`,
-        body: `Cost per lead is €${fmtNum(kpis7d.costPerLead)} (7d) vs €${fmtNum(kpis30d.costPerLead)} (30d). This is a significant spike. Possible causes: creative fatigue, audience saturation, or seasonal competition. Consider launching new creatives with fresh marketing angles and testing new hooks.`,
+        title: `CPL spiked +${cplChange.toFixed(0)}% vs 30-day average`,
+        body: `Cost per lead is €${fmtNum(kpis7d.costPerLead)} (7d) vs €${fmtNum(kpis30d.costPerLead)} (30d). This is a significant spike. Possible causes: creative fatigue, audience saturation, or seasonal competition. Launch new creatives with fresh marketing angles and test new hooks.`,
       })
-    } else if (cplChange > 15) {
+    } else if (cplChange > 25) {
       insights.push({
         type: "warning",
-        title: `CPL trending up — +${cplChange.toFixed(0)}% vs 30-day average`,
-        body: `Cost per lead rose from €${fmtNum(kpis30d.costPerLead)} to €${fmtNum(kpis7d.costPerLead)}. Not alarming yet, but monitor closely. If this continues, prepare new creatives and test different ad copy variations.`,
+        title: `CPL trending up +${cplChange.toFixed(0)}% vs 30-day average`,
+        body: `Cost per lead rose from €${fmtNum(kpis30d.costPerLead)} to €${fmtNum(kpis7d.costPerLead)}. Monitor closely — if this continues, prepare new creatives and test different ad copy variations.`,
       })
-    } else if (cplChange < -15 && cplStatus === "green") {
+    } else if (cplChange < -15) {
       insights.push({
         type: "positive",
         title: `CPL down ${Math.abs(cplChange).toFixed(0)}% — strong performance`,
         body: `Cost per lead dropped to €${fmtNum(kpis7d.costPerLead)} from €${fmtNum(kpis30d.costPerLead)}. The current creatives are performing well. Consider scaling budget by up to 20% per day to capture more of this efficient traffic.`,
-      })
-    }
-
-    if (cplStatus === "red" && cplChange <= 15) {
-      insights.push({
-        type: "critical",
-        title: `CPL above target (€${fmtNum(kpis7d.costPerLead)})`,
-        body: `Cost per lead exceeds the target threshold. Priority actions: 1) Review and refresh creatives — creatives are the most important lever, not targeting or ad copy. 2) Test new marketing angles based on what works in the industry. 3) Check if landing page conversion rate has dropped.`,
       })
     }
   }
@@ -159,58 +148,49 @@ function generateKpiInsights(
 
   // 4. CRM-based insights (only when Monday data exists)
   if (hasCrm && kpis7d.leads > 0) {
-    // QR% check
+    // QR% trend
     if (kpis7d.qrPercent > 0 && has30d && kpis30d.qrPercent > 0) {
-      const qrStatus = evaluateKpi("qrPercent", kpis7d.qrPercent, targets)
-      if (qrStatus === "red") {
+      const qrChange = pctChange(kpis7d.qrPercent, kpis30d.qrPercent)
+      if (qrChange < -25) {
         insights.push({
           type: "warning",
-          title: `Qualification rate low at ${kpis7d.qrPercent.toFixed(1)}%`,
-          body: `Only ${kpis7d.qrPercent.toFixed(1)}% of leads convert to appointments. This suggests lead quality issues. Consider: adding qualification questions to the form, adjusting the marketing angle to attract more serious prospects, or refining the landing page copy to better pre-qualify visitors.`,
+          title: `Qualification rate dropped ${Math.abs(qrChange).toFixed(0)}% (${kpis7d.qrPercent.toFixed(1)}%)`,
+          body: `Fewer leads are converting to appointments compared to the 30-day average (${kpis30d.qrPercent.toFixed(1)}%). Consider: adding qualification questions to the form, adjusting the marketing angle to attract more serious prospects.`,
         })
       }
     }
 
-    // Show-up rate
-    if (kpis7d.bookedCalls > 0 && kpis7d.suPercent > 0) {
-      const suStatus = evaluateKpi("suPercent", kpis7d.suPercent, targets)
-      if (suStatus === "red") {
+    // Show-up rate trend
+    if (kpis7d.bookedCalls > 0 && kpis7d.suPercent > 0 && has30d && kpis30d.suPercent > 0) {
+      const suChange = pctChange(kpis7d.suPercent, kpis30d.suPercent)
+      if (suChange < -25) {
         insights.push({
           type: "warning",
-          title: `Show-up rate critically low (${kpis7d.suPercent.toFixed(1)}%)`,
-          body: `Too many booked appointments are not showing up. Improve follow-up: ensure the automated WhatsApp confirmation and reminder sequences are working. Consider adding a same-day reminder. The follow-up loop should have 11 contact moments within 48 hours.`,
-        })
-      } else if (suStatus === "orange") {
-        insights.push({
-          type: "warning",
-          title: `Show-up rate below target (${kpis7d.suPercent.toFixed(1)}%)`,
-          body: `Show-up rate is trending below the ideal ${targets.su.green}%. Review the follow-up automation and consider adding extra touchpoints (SMS, email) to reduce no-shows.`,
+          title: `Show-up rate dropped ${Math.abs(suChange).toFixed(0)}% (${kpis7d.suPercent.toFixed(1)}%)`,
+          body: `More no-shows than usual. Ensure the automated WhatsApp confirmation and reminder sequences are working. The follow-up loop should have 11 contact moments within 48 hours.`,
         })
       }
     }
 
-    // CR% check
-    if (kpis7d.takenCalls >= 3) {
-      const crStatus = evaluateKpi("crPercent", kpis7d.crPercent, targets)
-      if (crStatus === "red" || crStatus === "orange") {
+    // CR% trend
+    if (kpis7d.takenCalls >= 3 && has30d && kpis30d.crPercent > 0) {
+      const crChange = pctChange(kpis7d.crPercent, kpis30d.crPercent)
+      if (crChange < -25) {
         insights.push({
           type: "warning",
-          title: `Close rate at ${kpis7d.crPercent.toFixed(1)}% — below target`,
-          body: `${kpis7d.takenCalls} appointments taken but only ${kpis7d.deals} deals closed. This is a sales-side issue, not marketing. Review: are the right leads reaching the sales team? Is the proposition clear? Consider adjusting the landing page to better set expectations.`,
+          title: `Close rate dropped ${Math.abs(crChange).toFixed(0)}% (${kpis7d.crPercent.toFixed(1)}%)`,
+          body: `${kpis7d.takenCalls} appointments taken but only ${kpis7d.deals} deals closed. This is a sales-side issue, not marketing. Review: are the right leads reaching the sales team? Is the proposition clear?`,
         })
       }
     }
 
-    // Cost per deal
-    if (kpis7d.deals > 0) {
-      const cpdStatus = evaluateKpi("costPerDeal", kpis7d.costPerDeal, targets)
-      if (cpdStatus === "green" && kpis7d.roi >= 2) {
-        insights.push({
-          type: "positive",
-          title: `Strong ROI: ${kpis7d.roi.toFixed(1)}x return on ad spend`,
-          body: `Generating €${fmtNum(kpis7d.revenue)} revenue on €${fmtNum(kpis7d.adSpend)} spend with a cost per deal of €${fmtNum(kpis7d.costPerDeal)}. The funnel is profitable — consider scaling budget by 20% per day to grow revenue.`,
-        })
-      }
+    // ROI positive signal
+    if (kpis7d.deals > 0 && kpis7d.roi >= 2) {
+      insights.push({
+        type: "positive",
+        title: `Strong ROI: ${kpis7d.roi.toFixed(1)}x return on ad spend`,
+        body: `Generating €${fmtNum(kpis7d.revenue)} revenue on €${fmtNum(kpis7d.adSpend)} spend with a cost per deal of €${fmtNum(kpis7d.costPerDeal)}. The funnel is profitable — consider scaling budget by 20% per day.`,
+      })
     }
   }
 
@@ -229,20 +209,28 @@ function generateKpiInsights(
     }
   }
 
-  // 6. General action items based on data availability
+  // 6. Default — no issues detected
   if (insights.length === 0 && kpis7d.adSpend > 0 && kpis7d.leads > 0) {
-    const cplStatus = evaluateKpi("costPerLead", kpis7d.costPerLead, targets)
-    if (cplStatus === "green") {
-      insights.push({
-        type: "positive",
-        title: "Performance on track",
-        body: `CPL at €${fmtNum(kpis7d.costPerLead)} with ${kpis7d.leads} leads in the past 7 days. All metrics within target range. Continue current approach and prepare next month's creative refresh to maintain momentum.`,
-      })
+    if (has30d) {
+      const cplChange = pctChange(kpis7d.costPerLead, kpis30d.costPerLead)
+      if (cplChange <= 0) {
+        insights.push({
+          type: "positive",
+          title: "Performance on track",
+          body: `CPL at €${fmtNum(kpis7d.costPerLead)} with ${kpis7d.leads} leads in the past 7 days. Stable or improving vs 30-day average. Continue current approach and prepare monthly creative refresh.`,
+        })
+      } else {
+        insights.push({
+          type: "action",
+          title: "Monthly creative refresh recommended",
+          body: `Campaign is running steadily. Creatives are the most important lever for Meta performance — plan new creatives and test different marketing angles. Even stable campaigns benefit from monthly refreshes.`,
+        })
+      }
     } else {
       insights.push({
         type: "action",
-        title: "Monthly creative refresh recommended",
-        body: `Campaign is running steadily. Creatives are the most important lever for performance on Meta — plan new creatives and test different marketing angles. Even stable campaigns benefit from monthly refreshes to prevent creative fatigue.`,
+        title: "Building baseline — keep campaigns running",
+        body: `${kpis7d.leads} leads at €${fmtNum(kpis7d.costPerLead)} CPL in the past 7 days. Not enough historical data yet for trend analysis. Keep running to build a 30-day baseline.`,
       })
     }
   }
@@ -252,16 +240,13 @@ function generateKpiInsights(
 
 function generateUtmInsights(
   kpis7d: KpiResult | null,
-  kpis30d: KpiResult | null,
 ): Insight[] {
   const insights: Insight[] = []
-  if (!kpis7d || !kpis30d) return insights
+  if (!kpis7d) return insights
 
   const scored7d = scoreRows(kpis7d.utmBreakdown ?? [])
-  const scored30d = scoreRows(kpis30d.utmBreakdown ?? [])
   if (!scored7d || scored7d.length === 0) return insights
 
-  // Find winners and losers from 7d
   const winners = scored7d.filter((r) => (r.category === "winner" || r.category === "sniper") && r.takenCalls >= 1)
   const losers = scored7d.filter((r) => (r.category === "fake" || r.category === "garbage") && r.leads >= 3)
 
@@ -283,12 +268,11 @@ function generateUtmInsights(
     })
   }
 
-  // Diversity check
   if (scored7d.length <= 2) {
     insights.push({
       type: "action",
       title: "Low creative diversity — only " + scored7d.length + " active ad(s)",
-      body: "Best practice is 4-5 active ads per ad set. Add more creatives with different marketing angles and hooks to test against the current ones. More variation means more data and faster optimization.",
+      body: "Best practice is 4-5 active ads per ad set. Add more creatives with different marketing angles and hooks to test against the current ones.",
     })
   }
 
@@ -316,19 +300,8 @@ export function OptimizationProposal({ mondayItemId, metaAdAccountId, clientBoar
   const q14d = useTimeframeKpis(mondayItemId, metaAdAccountId, clientBoardId, selectedCampaignIds, 14)
   const q30d = useTimeframeKpis(mondayItemId, metaAdAccountId, clientBoardId, selectedCampaignIds, 30)
 
-  const targetsQuery = useQuery<{ global: KpiTargets; overrides: Partial<KpiTargets> | null }>({
-    queryKey: ["target-overrides", mondayItemId],
-    queryFn: () => fetch(`/api/clients/${mondayItemId}/target-overrides`).then((r) => r.json()),
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const targets = useMemo(() => {
-    const global = targetsQuery.data?.global ?? DEFAULT_TARGETS
-    return deriveTargets(mergeTargets(global, targetsQuery.data?.overrides))
-  }, [targetsQuery.data])
-
   const queries = [q7d, q14d, q30d]
-  const isLoading = queries.some((q) => q.isLoading) || targetsQuery.isLoading
+  const isLoading = queries.some((q) => q.isLoading)
   const allFailed = queries.every((q) => q.isError)
 
   const hasCrm = !!clientBoardId
@@ -336,10 +309,9 @@ export function OptimizationProposal({ mondayItemId, metaAdAccountId, clientBoar
   const insights = useMemo(() => {
     if (!q7d.data) return []
 
-    const kpiInsights = generateKpiInsights(q7d.data, q14d.data ?? null, q30d.data ?? null, targets, hasCrm)
-    const utmInsights = generateUtmInsights(q7d.data, q30d.data ?? null)
+    const kpiInsights = generateKpiInsights(q7d.data, q14d.data ?? null, q30d.data ?? null, hasCrm)
+    const utmInsights = generateUtmInsights(q7d.data)
 
-    // Deduplicate by title, KPI insights first
     const all = [...kpiInsights, ...utmInsights]
     const seen = new Set<string>()
     return all.filter((insight) => {
@@ -347,7 +319,7 @@ export function OptimizationProposal({ mondayItemId, metaAdAccountId, clientBoar
       seen.add(insight.title)
       return true
     })
-  }, [q7d.data, q14d.data, q30d.data, targets, hasCrm])
+  }, [q7d.data, q14d.data, q30d.data, hasCrm])
 
   if (allFailed) return null
 
@@ -368,7 +340,6 @@ export function OptimizationProposal({ mondayItemId, metaAdAccountId, clientBoar
     )
   }
 
-  // Show proposal as long as we have ANY data (adSpend or leads)
   const kpis7d = q7d.data
   const hasAnyData = kpis7d && (kpis7d.adSpend > 0 || kpis7d.leads > 0)
   if (!hasAnyData) return null

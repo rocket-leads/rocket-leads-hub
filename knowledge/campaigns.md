@@ -1,6 +1,6 @@
 # Rocket Leads — Campaigns & Marketing Frameworks
 
-> **Last updated:** 2026-03-29
+> **Last updated:** 2026-04-04 05:30 CET
 > Dit document beschrijft alle campagne frameworks, marketing angles, ad formats, scripts, landingspagina's en testing methodieken van Rocket Leads. Gebruik dit als referentie voor AI agents die campagne deliverables genereren en voor campagnemanagers.
 
 ---
@@ -29,7 +29,20 @@ Rocket Leads draait campagnes op Meta (primair), Google en TikTok. De standaard 
 - Doel: sneller opschalen
 
 ### Naming convention
-<!-- TODO: Vaste naming convention voor campagnes, ad sets en ads documenteren -->
+**Campagnenaam:**
+- Format: `RL | {{country code}} | {{initials}} | {{company name}} | {{LF/LP}}`
+- LF = Leadforms campagne
+- LP = Landingspagina campagne
+- Voorbeeld: `RL | NL | RV | Rocket Leads | LP`
+
+**Ad set naam:**
+- Format: `{{LF/LP}} | Open targeting | {{date}}`
+- Voorbeeld: `LF | Open targeting | 01/12`
+
+**Ad naam:**
+- Format: `Photo/Video {{nr}} | {{Topic creative}}`
+- Voorbeeld: `Photo 1 | Pricelist`
+- Voorbeeld: `Video 2 | Guarantee`
 
 ---
 
@@ -146,31 +159,11 @@ Het kiezen van de juiste marketing angle is de belangrijkste stap. Hieronder het
 8. **Branche-specifiek**: "[Branche] opgelet!" of "Ben jij eigenaar van een [branche]bedrijf?"
 
 ### Content types
-1. **Professionele video op locatie** — b-roll, testimonials, hooks, productvisuals. Inbegrepen 1x per kwartaal bij HTO. Ook beschikbaar als losse optie tegen extra investering voor klanten zonder eigen content.
+1. **Professionele video op locatie** (1x per kwartaal bij HTO) — b-roll, testimonials, hooks, productvisuals
 2. **AI Avatar video's** — schaalbaar, snel, goedkoop. 5x meer output, 85% lagere kosten
 3. **Static ads** (Canva) — foto's, afbeeldingen
 4. **Manus** (Meta AI tool) — automatisch advertenties genereren
-5. **Stock content** — **altijd laatste optie.** Alleen inzetten als alle andere opties niet mogelijk zijn. Maak klant bewust dat dit negatief effect heeft op resultaat.
-
-### Content productie workflow (bij klant zonder eigen content)
-
-Volgorde van voorkeur:
-
-1. **Scripts schrijven → klant neemt op met telefoon → wij editen**
-   - Wij schrijven het script op basis van gekozen marketing angle
-   - Klant neemt op met telefoon (kwaliteit is prima, authenticiteit telt)
-   - Wij editen de video + ondertiteling
-   - Dit is de standaard aanpak bij klanten zonder eigen contentproductie
-
-2. **Professionele videoshoot op locatie (tegen extra investering)**
-   - Rocket Leads komt met camera langs bij de klant
-   - Professionele b-roll, testimonials, hooks op locatie
-   - Inbegrepen bij HTO (1x per kwartaal), voor andere klanten als betaalde meeroptie
-
-3. **Stock content (laatste optie)**
-   - Alleen als klant geen video kan of wil opnemen én geen professionele shoot wil
-   - Gebruik Canva of ChatGPT-gegenereerde afbeeldingen
-   - Altijd de klant informeren: stock content = lagere performance, garantie kan komen te vervallen
+5. **Stock content** (laatste optie als klant geen eigen content heeft)
 
 ---
 

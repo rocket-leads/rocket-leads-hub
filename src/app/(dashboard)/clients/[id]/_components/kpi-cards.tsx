@@ -11,7 +11,6 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import type { KpiResult } from "@/lib/clients/kpis"
-import { evaluateKpi, type KpiTargets, type TargetStatus } from "@/lib/clients/targets"
 
 function fmt(n: number, type: "currency" | "percent" | "integer" | "multiplier"): string {
   if (!isFinite(n) || (n === 0 && type !== "integer")) {
@@ -38,6 +37,8 @@ type KpiCardDef = {
   type: "currency" | "percent" | "integer" | "multiplier"
   icon: LucideIcon
   showWhen?: keyof KpiVisibility
+  /** "cost" = lower is better, "rate" = higher is better, "neutral" = no trend coloring */
+  direction: "cost" | "rate" | "neutral"
 }
 
 export type KpiVisibility = {
@@ -57,37 +58,39 @@ const KPI_GROUPS: KpiGroup[] = [
     title: "Leads",
     section: "leads",
     cards: [
-      { key: "adSpend", label: "Adspend", type: "currency", icon: Euro },
-      { key: "leads", label: "Leads", type: "integer", icon: Users },
-      { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Euro },
-      { key: "qrPercent", label: "QR%", type: "percent", icon: BarChart3, showWhen: "appointments" },
+      { key: "adSpend", label: "Adspend", type: "currency", icon: Euro, direction: "neutral" },
+      { key: "leads", label: "Leads", type: "integer", icon: Users, direction: "rate" },
+      { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Euro, direction: "cost" },
+      { key: "qrPercent", label: "QR%", type: "percent", icon: BarChart3, showWhen: "appointments", direction: "rate" },
     ],
   },
   {
     title: "Appointments",
     section: "appointments",
     cards: [
-      { key: "bookedCalls", label: "Booked Appointments", type: "integer", icon: CalendarCheck },
-      { key: "costPerBookedCall", label: "Cost per Booked Appt.", type: "currency", icon: Euro },
-      { key: "suPercent", label: "SU% (Show Up)", type: "percent", icon: BarChart3 },
-      { key: "takenCalls", label: "Taken Appointments", type: "integer", icon: CalendarCheck2 },
-      { key: "costPerTakenCall", label: "Cost per Taken Appt.", type: "currency", icon: Euro },
+      { key: "bookedCalls", label: "Booked Appointments", type: "integer", icon: CalendarCheck, direction: "rate" },
+      { key: "costPerBookedCall", label: "Cost per Booked Appt.", type: "currency", icon: Euro, direction: "cost" },
+      { key: "suPercent", label: "SU% (Show Up)", type: "percent", icon: BarChart3, direction: "rate" },
+      { key: "takenCalls", label: "Taken Appointments", type: "integer", icon: CalendarCheck2, direction: "rate" },
+      { key: "costPerTakenCall", label: "Cost per Taken Appt.", type: "currency", icon: Euro, direction: "cost" },
     ],
   },
   {
     title: "Deals",
     section: "deals",
     cards: [
-      { key: "deals", label: "Deals", type: "integer", icon: Handshake },
-      { key: "crPercent", label: "CR%", type: "percent", icon: BarChart3 },
-      { key: "costPerDeal", label: "Cost per Deal", type: "currency", icon: Euro },
-      { key: "revenue", label: "Closed Revenue", type: "currency", icon: TrendingUp },
-      { key: "roi", label: "ROI", type: "multiplier", icon: TrendingUp },
+      { key: "deals", label: "Deals", type: "integer", icon: Handshake, direction: "rate" },
+      { key: "crPercent", label: "CR%", type: "percent", icon: BarChart3, direction: "rate" },
+      { key: "costPerDeal", label: "Cost per Deal", type: "currency", icon: Euro, direction: "cost" },
+      { key: "revenue", label: "Closed Revenue", type: "currency", icon: TrendingUp, direction: "rate" },
+      { key: "roi", label: "ROI", type: "multiplier", icon: TrendingUp, direction: "rate" },
     ],
   },
 ]
 
-const STATUS_STYLES: Record<TargetStatus, { border: string; value: string; dot: string }> = {
+type TrendStatus = "green" | "orange" | "red"
+
+const STATUS_STYLES: Record<TrendStatus, { border: string; value: string; dot: string }> = {
   green: {
     border: "border-l-[3px] border-l-green-500",
     value: "text-green-400",
@@ -105,14 +108,38 @@ const STATUS_STYLES: Record<TargetStatus, { border: string; value: string; dot: 
   },
 }
 
-type Props = {
-  data: KpiResult | null
-  isLoading: boolean
-  visibility?: KpiVisibility
-  targets?: KpiTargets | null
+/**
+ * Evaluate a KPI value by comparing to the previous period.
+ * - Cost metrics: lower is better. >25% increase = red, any increase = orange, same/better = green.
+ * - Rate metrics: higher is better. >25% decrease = red, any decrease = orange, same/better = green.
+ */
+function evaluateTrend(current: number, previous: number, direction: "cost" | "rate" | "neutral"): TrendStatus | null {
+  if (direction === "neutral") return null
+  if (!isFinite(current) || !isFinite(previous) || previous === 0 || current === 0) return null
+
+  const pctChange = ((current - previous) / previous) * 100
+
+  if (direction === "cost") {
+    // Lower is better: increase = bad
+    if (pctChange > 25) return "red"
+    if (pctChange > 0) return "orange"
+    return "green"
+  }
+
+  // Rate: higher is better: decrease = bad
+  if (pctChange < -25) return "red"
+  if (pctChange < 0) return "orange"
+  return "green"
 }
 
-export function KpiCards({ data, isLoading, visibility = { leads: true, appointments: true, deals: true }, targets }: Props) {
+type Props = {
+  data: KpiResult | null
+  previousData?: KpiResult | null
+  isLoading: boolean
+  visibility?: KpiVisibility
+}
+
+export function KpiCards({ data, previousData, isLoading, visibility = { leads: true, appointments: true, deals: true } }: Props) {
   return (
     <div className="space-y-5">
       {KPI_GROUPS.map((group) => {
@@ -141,7 +168,10 @@ export function KpiCards({ data, isLoading, visibility = { leads: true, appointm
               {visibleCards.map((kpi) => {
                 const Icon = kpi.icon
                 const value = data?.[kpi.key] as number | undefined
-                const status = targets && value != null ? evaluateKpi(kpi.key, value, targets) : null
+                const prevValue = previousData?.[kpi.key] as number | undefined
+                const status = value != null && prevValue != null
+                  ? evaluateTrend(value, prevValue, kpi.direction)
+                  : null
                 const styles = status ? STATUS_STYLES[status] : null
 
                 return (

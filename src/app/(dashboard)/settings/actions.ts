@@ -81,15 +81,3 @@ export async function saveColumnMappings(mappings: ColumnMapping[]) {
   revalidatePath("/settings")
   revalidatePath("/clients")
 }
-
-export async function saveKpiTargets(targets: Record<string, unknown>) {
-  await requireAdmin()
-  const supabase = await createAdminClient()
-  const { error } = await supabase.from("settings").upsert({
-    key: "kpi_targets",
-    value: targets,
-    updated_at: new Date().toISOString(),
-  })
-  if (error) throw new Error(error.message)
-  revalidatePath("/settings")
-}

@@ -50,7 +50,7 @@ type HealthResult = {
   reasons: string[]
 }
 
-function getCampaignHealth(kpi: KpiSummary | undefined, adBudget: string, mondayActive = false): HealthResult {
+function getCampaignHealth(kpi: KpiSummary | undefined): HealthResult {
   if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
     return { status: "no-data", reasons: ["No campaign data available"] }
   }
@@ -58,48 +58,44 @@ function getCampaignHealth(kpi: KpiSummary | undefined, adBudget: string, monday
   const reasons: string[] = []
   let status: HealthStatus = "good"
 
-  const dailyBudget = parseFloat(adBudget.replace(/[^\d.,]/g, "").replace(",", ".")) / 30 || 0
+  // Trend-based: compare current 7d CPL vs previous 7d CPL
+  if (kpi.cpl > 0 && kpi.prevCpl > 0) {
+    const cplChange = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
 
-  // 🔴 Critical checks
+    if (cplChange > 50) {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev 7d (€${kpi.prevCpl.toFixed(2)})`)
+      status = "critical"
+    } else if (cplChange > 25) {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev 7d (€${kpi.prevCpl.toFixed(2)})`)
+      status = "warning"
+    } else if (cplChange < -10) {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — down ${Math.abs(cplChange).toFixed(0)}% vs prev 7d`)
+    } else {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — stable vs prev 7d`)
+    }
+  }
+
+  // Spend with zero leads = always critical
   if (kpi.adSpend > 50 && kpi.leads === 0) {
     reasons.push(`€${kpi.adSpend.toFixed(0)} spent with 0 leads`)
     status = "critical"
   }
-  if (kpi.cpl > 50 && kpi.leads > 0) {
-    reasons.push(`CPL €${kpi.cpl.toFixed(2)} exceeds €50 threshold`)
-    status = "critical"
-  }
-  // Only check appointments when Monday CRM is active
-  if (mondayActive && kpi.adSpend > 100 && kpi.appointments === 0) {
-    reasons.push(`€${kpi.adSpend.toFixed(0)} spent with 0 appointments`)
-    if (status !== "critical") status = "critical"
-  }
 
-  // 🟡 Warning checks (only if not already critical)
-  if (status !== "critical") {
-    if (kpi.cpl > 30 && kpi.leads > 0) {
-      reasons.push(`CPL €${kpi.cpl.toFixed(2)} is elevated (>€30)`)
-      status = "warning"
-    }
-    if (kpi.leads > 0 && kpi.leads < 3 && kpi.adSpend > 50) {
-      reasons.push(`Only ${kpi.leads} lead${kpi.leads !== 1 ? "s" : ""} in 7 days`)
-      status = "warning"
-    }
-    if (dailyBudget > 0 && dailyBudget < 50) {
-      reasons.push(`Daily budget €${dailyBudget.toFixed(0)} may be too low to scale`)
+  // CPA trend (when available)
+  if (kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0) {
+    const cpaChange = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
+    if (cpaChange > 50) {
+      reasons.push(`CPA €${kpi.costPerAppointment.toFixed(0)} — up ${cpaChange.toFixed(0)}% vs prev 7d`)
+      if (status !== "critical") status = "critical"
+    } else if (cpaChange > 25) {
+      reasons.push(`CPA €${kpi.costPerAppointment.toFixed(0)} — up ${cpaChange.toFixed(0)}% vs prev 7d`)
       if (status === "good") status = "warning"
     }
-    // Only check CPA when Monday CRM is active
-    if (mondayActive && kpi.costPerAppointment > 200 && kpi.appointments > 0) {
-      reasons.push(`CPA €${kpi.costPerAppointment.toFixed(0)} is high`)
-      status = "warning"
-    }
   }
 
-  if (status === "good") {
-    if (mondayActive && kpi.leads > 0) {
-      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — ${kpi.leads} leads, ${kpi.appointments} appointments`)
-    } else if (kpi.leads > 0) {
+  // Good summary
+  if (status === "good" && reasons.length === 0) {
+    if (kpi.leads > 0) {
       reasons.push(`CPL €${kpi.cpl.toFixed(2)} — ${kpi.leads} leads`)
     } else {
       reasons.push("Campaign running normally")
@@ -282,7 +278,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
       })()
       const matchesHealth = healthFilter === "All" || (() => {
         if (boardType !== "current") return true
-        const health = getCampaignHealth(kpiSummaries?.[c.mondayItemId], c.adBudget, mondayActiveMap?.[c.mondayItemId] ?? false)
+        const health = getCampaignHealth(kpiSummaries?.[c.mondayItemId])
         return health.status.toLowerCase() === healthFilter.toLowerCase()
       })()
       return matchesSearch && matchesStatus && matchesAM && matchesCM && matchesPayment && matchesHealth
@@ -327,8 +323,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         case "outstanding": valA = billingA?.outstanding ?? 0; valB = billingB?.outstanding ?? 0; break
         case "health": {
           const order: Record<string, number> = { critical: 0, warning: 1, good: 2, "no-data": 3 }
-          valA = order[getCampaignHealth(kpiA, a.adBudget, mondayActiveMap?.[a.mondayItemId] ?? false).status] ?? 3
-          valB = order[getCampaignHealth(kpiB, b.adBudget, mondayActiveMap?.[b.mondayItemId] ?? false).status] ?? 3
+          valA = order[getCampaignHealth(kpiA).status] ?? 3
+          valB = order[getCampaignHealth(kpiB).status] ?? 3
           break
         }
       }
@@ -466,10 +462,10 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[90px]" />
                   <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[65px]" />
                   <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[80px]" />
-                  <SortableHead label="CPL Δ7d" sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
+                  <SortableHead label="CPL % 7d" sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
                   <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[65px]" />
                   <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[80px]" />
-                  <SortableHead label="CPA Δ7d" sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
+                  <SortableHead label="CPA % 7d" sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
                 </>
               )}
             </TableRow>
@@ -553,7 +549,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           ) : kpi && kpi.cpl > 0 && kpi.prevCpl > 0 ? (() => {
                             const pct = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
                             return (
-                              <span className={pct < 0 ? "text-green-500" : pct > 0 ? "text-red-400" : "text-muted-foreground"}>
+                              <span className={pct < 0 ? "text-green-500" : pct >= 25 ? "text-red-400" : pct > 0 ? "text-amber-400" : "text-muted-foreground"}>
                                 {pct > 0 ? "+" : ""}{pct.toFixed(0)}%
                               </span>
                             )
@@ -571,7 +567,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           ) : kpi && kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0 ? (() => {
                             const pct = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
                             return (
-                              <span className={pct < 0 ? "text-green-500" : pct > 0 ? "text-red-400" : "text-muted-foreground"}>
+                              <span className={pct < 0 ? "text-green-500" : pct >= 25 ? "text-red-400" : pct > 0 ? "text-amber-400" : "text-muted-foreground"}>
                                 {pct > 0 ? "+" : ""}{pct.toFixed(0)}%
                               </span>
                             )

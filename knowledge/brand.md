@@ -1,7 +1,7 @@
 # Rocket Leads — Brand Knowledge Base
 
 > Single source of truth voor tone of voice, visuele identiteit en merkpositionering.
-> Last updated: 2026-03-29
+> Last updated: 2026-04-04 05:30 CET
 
 ---
 
@@ -11,7 +11,7 @@
 **Juridische entiteiten:** Rocket Leads Ltd. & Rocket Leads B.V.
 **Opgericht:** 2018
 **Oprichter:** Roy Vosters
-**Hoofdvestiging (primair, vanaf april 2025):** Rocket Leads Ltd. — 19 Lavele Str., 1000 Sofia, Bulgarije
+**Hoofdvestiging (primair, sinds april 2025):** Rocket Leads Ltd. — 19 Lavele Str., 1000 Sofia, Bulgarije
 **Secundaire vestiging:** Rocket Leads B.V. — Jacob van Lennepkade 155H, 1054 ZL Amsterdam, Nederland
 **Facturatie:** Alle klanten gefactureerd vanuit Rocket Leads Ltd. (Bulgarije)
 **Finance e-mail:** Finance@rocketleads.com
@@ -199,22 +199,7 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 
 ## 7. Organisatiestructuur
 
-| Naam | Rol(len) |
-|------|---------|
-| **Roy Vosters** | Founder & Adviseur (strategie, AI-integratie) + Campaign Manager |
-| **Mike** | CEO / Country Manager front-end (marketing, sales) + Campaign Manager Team 1 |
-| **Roel** | CEO / Country Manager back-end (delivery, finance, operations) + Account Manager Team 1 |
-| **Stefan** | Campaign Manager Team 2 |
-| **Danny** | Account Manager Team 2 |
-| **Quintus** | Appointment Setter |
-| **Shanna** | Graphic Designer & Content |
-| **Anel** | Closer (senior) |
-| **Jill** | Closer (junior, in training bij Roy & Anel) |
-| **Arno** | Finance — facturen, betalingen, cashflow, debiteurenbeheer |
-
-**Delivery teams:**
-- Team 1: Mike (campaign manager) + Roel (account manager)
-- Team 2: Stefan (campaign manager) + Danny (account manager)
+Zie **team-structure.md** voor de volledige teamstructuur, rollen, capaciteit en escalatiepaden.
 
 ---
 
