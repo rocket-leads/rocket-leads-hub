@@ -447,29 +447,29 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
 
       {/* Table */}
       <div className="rounded-xl border border-border/30 overflow-hidden">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow className="border-b border-border/30 hover:bg-transparent">
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Client</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Status</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center">AM</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center">CM</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center">AS</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[220px]">Client</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px]">Status</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[50px]">AM</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[50px]">CM</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[50px]">AS</TableHead>
               {boardType === "onboarding" && (
-                <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium" />
+                <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px]" />
               )}
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Payment</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Outstanding</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[95px]">Payment</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px]">Outstanding</TableHead>
               {boardType === "current" && (
                 <>
-                  <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center" />
-                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="CPL Δ7d" sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="CPA Δ7d" sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
+                  <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[90px]" />
+                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[90px]" />
+                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[65px]" />
+                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[80px]" />
+                  <SortableHead label="CPL Δ7d" sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
+                  <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[65px]" />
+                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[80px]" />
+                  <SortableHead label="CPA Δ7d" sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
                 </>
               )}
             </TableRow>
