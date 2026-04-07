@@ -145,7 +145,7 @@ function HealthBadge({ health }: { health: HealthResult }) {
   )
 }
 
-type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "kickOff" | "adspend" | "leads" | "cpl" | "appointments" | "cpa" | "paymentStatus" | "outstanding" | "health"
+type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "appointments" | "cpa" | "cpaDelta" | "paymentStatus" | "outstanding" | "health"
 type SortDir = "asc" | "desc"
 
 type Props = {
@@ -311,8 +311,18 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         case "adspend": valA = kpiA?.adSpend ?? 0; valB = kpiB?.adSpend ?? 0; break
         case "leads": valA = kpiA?.leads ?? 0; valB = kpiB?.leads ?? 0; break
         case "cpl": valA = kpiA?.cpl ?? 0; valB = kpiB?.cpl ?? 0; break
+        case "cplDelta": {
+          valA = (kpiA?.cpl && kpiA?.prevCpl) ? kpiA.cpl - kpiA.prevCpl : 0
+          valB = (kpiB?.cpl && kpiB?.prevCpl) ? kpiB.cpl - kpiB.prevCpl : 0
+          break
+        }
         case "appointments": valA = kpiA?.appointments ?? 0; valB = kpiB?.appointments ?? 0; break
         case "cpa": valA = kpiA?.costPerAppointment ?? 0; valB = kpiB?.costPerAppointment ?? 0; break
+        case "cpaDelta": {
+          valA = (kpiA?.costPerAppointment && kpiA?.prevCostPerAppointment) ? kpiA.costPerAppointment - kpiA.prevCostPerAppointment : 0
+          valB = (kpiB?.costPerAppointment && kpiB?.prevCostPerAppointment) ? kpiB.costPerAppointment - kpiB.prevCostPerAppointment : 0
+          break
+        }
         case "paymentStatus": valA = billingA?.status ?? ""; valB = billingB?.status ?? ""; break
         case "outstanding": valA = billingA?.outstanding ?? 0; valB = billingB?.outstanding ?? 0; break
         case "health": {
@@ -358,7 +368,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 8 : 13
+  const colSpan = boardType === "onboarding" ? 8 : 15
 
   const filterTriggerClass = "!h-8 !border-0 !bg-muted/40 hover:!bg-muted !rounded-lg !text-xs !px-3 !shadow-none dark:!bg-white/5 dark:hover:!bg-white/10"
   const activeFilterClass = "!bg-primary/10 !text-primary dark:!bg-primary/15 dark:!text-primary"
@@ -456,8 +466,10 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
                   <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
                   <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
+                  <SortableHead label="CPL Δ7d" sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
                   <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
                   <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
+                  <SortableHead label="CPA Δ7d" sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
                 </>
               )}
             </TableRow>
@@ -535,11 +547,29 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <TableCell className={`text-xs text-right tabular-nums font-medium ${kpi && kpi.cpl > 50 ? "text-red-400" : kpi && kpi.cpl > 30 ? "text-amber-400" : ""}`}>
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.cpl > 0 ? fmtKpi(kpi.cpl, "currency") : ""}
                         </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums">
+                          {kpiLoading ? (
+                            <span className="text-muted-foreground/40">...</span>
+                          ) : kpi && kpi.cpl > 0 && kpi.prevCpl > 0 ? (
+                            <span className={kpi.cpl - kpi.prevCpl < 0 ? "text-green-500" : kpi.cpl - kpi.prevCpl > 0 ? "text-red-400" : "text-muted-foreground"}>
+                              {kpi.cpl - kpi.prevCpl > 0 ? "+" : ""}{fmtKpi(kpi.cpl - kpi.prevCpl, "currency")}
+                            </span>
+                          ) : ""}
+                        </TableCell>
                         <TableCell className="text-xs text-right tabular-nums font-medium">
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.appointments > 0 ? fmtKpi(kpi.appointments, "integer") : ""}
                         </TableCell>
                         <TableCell className={`text-xs text-right tabular-nums ${kpi && kpi.costPerAppointment > 200 ? "text-red-400" : ""}`}>
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.costPerAppointment > 0 ? fmtKpi(kpi.costPerAppointment, "currency") : ""}
+                        </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums">
+                          {kpiLoading ? (
+                            <span className="text-muted-foreground/40">...</span>
+                          ) : kpi && kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0 ? (
+                            <span className={kpi.costPerAppointment - kpi.prevCostPerAppointment < 0 ? "text-green-500" : kpi.costPerAppointment - kpi.prevCostPerAppointment > 0 ? "text-red-400" : "text-muted-foreground"}>
+                              {kpi.costPerAppointment - kpi.prevCostPerAppointment > 0 ? "+" : ""}{fmtKpi(kpi.costPerAppointment - kpi.prevCostPerAppointment, "currency")}
+                            </span>
+                          ) : ""}
                         </TableCell>
                       </>
                     )}

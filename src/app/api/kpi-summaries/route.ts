@@ -11,6 +11,8 @@ export type KpiSummary = {
   cpl: number
   appointments: number
   costPerAppointment: number
+  prevCpl: number
+  prevCostPerAppointment: number
 }
 
 type ClientInput = {
@@ -28,17 +30,31 @@ function getLast7DaysRange() {
   return { startDate: fmt(start), endDate: fmt(end) }
 }
 
+function getPrevious7DaysRange() {
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  const end = new Date()
+  end.setDate(end.getDate() - 8) // day before the current 7-day window
+  const start = new Date(end)
+  start.setDate(start.getDate() - 6) // 7 days total
+  return { startDate: fmt(start), endDate: fmt(end) }
+}
+
 type FetchResult = { summary: KpiSummary; mondayActive: boolean }
 
 async function fetchSummary(
   client: ClientInput,
   startDate: string,
   endDate: string,
+  prevStartDate: string,
+  prevEndDate: string,
   selectedCampaignIds: Set<string>
 ): Promise<FetchResult> {
-  const [insights, items] = await Promise.all([
+  const [insights, prevInsights, items] = await Promise.all([
     client.metaAdAccountId
       ? fetchMetaInsights(client.metaAdAccountId, startDate, endDate).catch(() => [])
+      : Promise.resolve([]),
+    client.metaAdAccountId
+      ? fetchMetaInsights(client.metaAdAccountId, prevStartDate, prevEndDate).catch(() => [])
       : Promise.resolve([]),
     client.clientBoardId
       ? fetchClientBoardItems(client.clientBoardId).catch(() => [])
@@ -48,11 +64,20 @@ async function fetchSummary(
   const filtered = selectedCampaignIds.size > 0
     ? insights.filter((i) => selectedCampaignIds.has(i.campaignId))
     : insights
+  const prevFiltered = selectedCampaignIds.size > 0
+    ? prevInsights.filter((i) => selectedCampaignIds.has(i.campaignId))
+    : prevInsights
 
   const adSpend = filtered.reduce((sum, i) => sum + i.spend, 0)
   const leads = items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
   const appointments = items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
   const cpl = leads > 0 ? adSpend / leads : 0
+
+  const prevAdSpend = prevFiltered.reduce((sum, i) => sum + i.spend, 0)
+  const prevLeads = items.filter((i) => i.dateCreated >= prevStartDate && i.dateCreated <= prevEndDate).length
+  const prevAppointments = items.filter((i) => i.dateAppointment >= prevStartDate && i.dateAppointment <= prevEndDate).length
+  const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
+  const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
   return {
     summary: {
@@ -61,6 +86,8 @@ async function fetchSummary(
       cpl,
       appointments,
       costPerAppointment: appointments > 0 ? adSpend / appointments : 0,
+      prevCpl,
+      prevCostPerAppointment,
     },
     mondayActive: items.length > 0 ? detectMondayActivity(items) : false,
   }
@@ -70,6 +97,8 @@ async function batchProcess(
   clients: ClientInput[],
   startDate: string,
   endDate: string,
+  prevStartDate: string,
+  prevEndDate: string,
   batchSize: number,
   selectedByMondayItemId: Record<string, Set<string>>,
   supabase: Awaited<ReturnType<typeof createAdminClient>>
@@ -81,7 +110,7 @@ async function batchProcess(
     const batch = clients.slice(i, i + batchSize)
     const settled = await Promise.allSettled(
       batch.map((c) =>
-        fetchSummary(c, startDate, endDate, selectedByMondayItemId[c.mondayItemId] ?? new Set())
+        fetchSummary(c, startDate, endDate, prevStartDate, prevEndDate, selectedByMondayItemId[c.mondayItemId] ?? new Set())
       )
     )
     settled.forEach((result, j) => {
@@ -114,6 +143,7 @@ export async function POST(req: NextRequest) {
   if (!body.clients?.length) return NextResponse.json({})
 
   const { startDate, endDate } = getLast7DaysRange()
+  const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
 
   // Load selected campaigns for all clients in two queries (no N+1)
   const supabase = await createAdminClient()
@@ -149,7 +179,7 @@ export async function POST(req: NextRequest) {
   }
 
   const summaries = await batchProcess(
-    body.clients, startDate, endDate, 5, selectedByMondayItemId, supabase
+    body.clients, startDate, endDate, prevStartDate, prevEndDate, 5, selectedByMondayItemId, supabase
   )
 
   return NextResponse.json(summaries, {
