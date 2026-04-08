@@ -1,6 +1,6 @@
 # Rocket Leads — Company Info
 
-> **Last updated:** 2026-03-29
+> **Last updated:** 2026-04-04 05:30 CET
 > Single source of truth voor alle kerninfo over Rocket Leads. Gebruik dit als primaire context voor AI agents, chatbots en interne tooling.
 
 ---
@@ -137,30 +137,7 @@ Onboarding duurt gemiddeld 4–6 weken.
 
 ## Teamstructuur
 
-**Founder:** Roy Vosters — Strategie, AI-integratie, consultancy (werkt ON het bedrijf, niet IN) + Campaign Manager
-
-Mike en Roel hebben een dubbele rol: naast hun CEO/Country Manager-rol zijn ze ook actief in delivery.
-
-**Delivery teams:**
-- Team 1: Mike (campaign manager) + Roel (account manager)
-- Team 2: Stefan (campaign manager) + Danny (account manager)
-
-| Naam | Rol(len) |
-|------|---------|
-| Roy Vosters | Founder & Adviseur + Campaign Manager |
-| Mike | CEO / Country Manager front-end (marketing, sales) + Campaign Manager Team 1 |
-| Roel | CEO / Country Manager back-end (delivery, finance, operations) + Account Manager Team 1 |
-| Stefan | Campaign Manager Team 2 |
-| Danny | Account Manager Team 2 |
-| Quintus | Appointment Setter |
-| Shanna | Graphic Designer & Content |
-| Anel | Closer (senior) |
-| Jill | Closer (junior, in training) |
-| Arno | Finance — facturen, betalingen, cashflow, debiteurenbeheer |
-
-- 100% freelancers op uurtarief
-- Volledig remote
-- Shanna en Quintus werken over alle teams heen
+Zie **team-structure.md** voor de volledige teamstructuur, rollen, capaciteit en escalatiepaden.
 
 ---
 
@@ -178,8 +155,6 @@ Mike en Roel hebben een dubbele rol: naast hun CEO/Country Manager-rol zijn ze o
 **Interne KPI's (agency-niveau):**
 - ~100 actieve klanten
 - Winstmarge: huidig ~25%, target 60%+
-- MRR: [aan te vullen]
-- Klantretentie: [aan te vullen]
 
 **Klant KPI's (rapportage funnel):**
 1. Ad budget → 2. Aantal leads → 3. Cost per lead → 4. Qualification rate
@@ -194,6 +169,8 @@ Mike en Roel hebben een dubbele rol: naast hun CEO/Country Manager-rol zijn ze o
 2. Campagne automatisering: AI-gedreven scripts, angles, copy, landingspagina's
 3. Klantenservice automatisering: AI agents voor Trengo (email & WhatsApp)
 4. Schaalbaarheid: systemen die niet afhankelijk zijn van individuele teamleden
+
+**Voor de volledige visie op de Rocket Leads Hub en toekomstige capabilities, zie: VISION_ROCKET_LEADS_HUB.md**
 
 ---
 

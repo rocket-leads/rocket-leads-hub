@@ -1,5 +1,7 @@
 # CLIENT RETENTION & CHURN MANAGEMENT
 
+> **Last updated:** 2026-04-04 05:30 CET
+
 ## Gemiddelde Retention
 - **Gemiddelde client retention**: 5 maanden
 - **Grootste uitdaging**: Clients vallen vaak af na de eerste betaling

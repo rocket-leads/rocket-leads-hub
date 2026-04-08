@@ -1,6 +1,6 @@
 # Rocket Leads — Process
 
-> **Last updated:** 2026-03-29
+> **Last updated:** 2026-04-04 05:30 CET
 > Dit document beschrijft het volledige klantproces van Rocket Leads: van betaling tot offboarding. Gebruik dit als referentie voor AI agents, onboarding van teamleden, en procesoptimalisatie.
 
 ---
@@ -47,18 +47,13 @@ Het Rocket Leads proces loopt van betaling → kick-off → campagne opzet → l
 - Klant geeft toegang tot Meta Business Manager
   - Indien klant geen Meta Business Manager heeft of er bugs/errors zijn → Rocket Leads biedt de mogelijkheid om het eigen advertentieaccount te gebruiken (advertentiebudget wordt dan naar de klant gefactureerd)
 
-<!-- TODO: Roy stuurt het kick-off meeting script nog door -->
-<!-- TODO: Roy stuurt kick-off meeting recordings/transcripts door -->
-
 ---
 
 ## Fase 3: Campagne Opzet
 
 **Stap 1 — Marketing angles bepalen**
 - Op basis van ervaring en een interne sheet met winning marketing angles per branche
-- Vast framework voor het kiezen van de juiste hooks en invalshoeken
-
-<!-- TODO: Roy stuurt de sheet met winning marketing angles door -->
+- Vast framework voor het kiezen van de juiste hooks en invalshoeken (zie campaigns.md voor het volledige framework)
 
 **Stap 2 — Video scripts schrijven**
 - Scripts worden geschreven op basis van de gekozen marketing angles
@@ -73,8 +68,6 @@ Het Rocket Leads proces loopt van betaling → kick-off → campagne opzet → l
 - Er is een standaard prompt (gebouwd in Claude Chat) die in Loveable wordt ingevoerd
 - Hieruit komt de landingspagina
 - Geen Loveable template, wel een vaste prompt
-
-<!-- TODO: Landingspagina-prompt documenteren of linken -->
 
 **Stap 5 — Ad copy & creatives maken**
 - Ad copy wordt geschreven door het team

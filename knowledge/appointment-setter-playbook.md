@@ -1,5 +1,7 @@
 # APPOINTMENT SETTER PLAYBOOK - ROCKET LEADS
 
+> **Last updated:** 2026-04-04 05:30 CET
+
 *Complete guide van lead intake tot afspraak geboekt - Quintus's workflow*
 
 **Verantwoordelijk:** Quintus (+ Shanna voor haar campagnes)

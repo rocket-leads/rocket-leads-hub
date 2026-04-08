@@ -1,6 +1,6 @@
 # Rocket Leads — Sales
 
-> **Last updated:** 2026-03-29
+> **Last updated:** 2026-04-04 05:30 CET
 > Dit document beschrijft het salesproces, kwalificatiecriteria, gespreksstructuur en follow-up van Rocket Leads. Gebruik dit als referentie voor AI agents, sales consultants en appointment setters.
 
 ---

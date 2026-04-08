@@ -1,5 +1,7 @@
 # FINANCIAL DETAILS - PRICING, MARGINS & PAYMENT
 
+> **Last updated:** 2026-04-04 05:30 CET
+
 ## Pricing Structure
 
 ### Package Tiers

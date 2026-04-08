@@ -1,6 +1,6 @@
 # Rocket Leads — Tools & Stack
 
-> **Last updated:** 2026-03-29
+> **Last updated:** 2026-04-04 05:30 CET
 > Dit document beschrijft alle tools, platformen en koppelingen die Rocket Leads gebruikt. Gebruik dit als referentie voor AI agents, onboarding van teamleden, en bij het opzetten van automatiseringen.
 
 ---

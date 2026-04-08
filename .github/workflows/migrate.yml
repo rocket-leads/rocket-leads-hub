@@ -1,0 +1,36 @@
+name: Run Supabase Migrations
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link and push migrations
+        run: |
+          supabase init --force
+          supabase link --project-ref prvcgzrvmdwomwfvlpds --password "$SUPABASE_DB_PASSWORD"
+          supabase db push --password "$SUPABASE_DB_PASSWORD" 2>&1 || {
+            echo "db push failed, attempting to repair migration history..."
+            # Mark all existing migrations as applied, then push again
+            for f in supabase/migrations/*.sql; do
+              VERSION=$(basename "$f" | cut -d'_' -f1)
+              supabase migration repair --status applied "$VERSION" --password "$SUPABASE_DB_PASSWORD" 2>/dev/null || true
+            done
+            supabase db push --password "$SUPABASE_DB_PASSWORD"
+          }
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}

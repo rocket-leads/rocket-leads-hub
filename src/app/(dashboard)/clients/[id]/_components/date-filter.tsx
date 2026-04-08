@@ -63,7 +63,7 @@ type Props = {
 }
 
 export function DateFilter({ value, onChange }: Props) {
-  const [activePreset, setActivePreset] = useState("thisMonth")
+  const [activePreset, setActivePreset] = useState("last7")
 
   function handlePreset(key: string) {
     setActivePreset(key)
@@ -114,5 +114,5 @@ export function DateFilter({ value, onChange }: Props) {
 }
 
 export function defaultDateRange(): DateRange {
-  return getRange("thisMonth")
+  return getRange("last7")
 }

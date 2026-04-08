@@ -1,12 +1,11 @@
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  DollarSign,
+  Euro,
   Users,
-  Target,
   BarChart3,
-  PhoneCall,
-  PhoneIncoming,
+  CalendarCheck,
+  CalendarCheck2,
   Handshake,
   TrendingUp,
   type LucideIcon,
@@ -28,7 +27,7 @@ function fmt(n: number, type: "currency" | "percent" | "integer" | "multiplier")
     case "integer":
       return n.toLocaleString("en-GB")
     case "multiplier":
-      return n.toFixed(2)
+      return `${n.toFixed(2)}x`
   }
 }
 
@@ -37,91 +36,173 @@ type KpiCardDef = {
   label: string
   type: "currency" | "percent" | "integer" | "multiplier"
   icon: LucideIcon
+  showWhen?: keyof KpiVisibility
+  /** "cost" = lower is better, "rate" = higher is better, "neutral" = no trend coloring */
+  direction: "cost" | "rate" | "neutral"
+}
+
+export type KpiVisibility = {
+  leads: boolean
+  appointments: boolean
+  deals: boolean
 }
 
 type KpiGroup = {
   title: string
   cards: KpiCardDef[]
+  section: keyof KpiVisibility
 }
 
 const KPI_GROUPS: KpiGroup[] = [
   {
-    title: "Acquisitie",
+    title: "Leads",
+    section: "leads",
     cards: [
-      { key: "adSpend", label: "Adspend", type: "currency", icon: DollarSign },
-      { key: "leads", label: "Leads", type: "integer", icon: Users },
-      { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Target },
-      { key: "qrPercent", label: "QR% (Lead → Call)", type: "percent", icon: BarChart3 },
+      { key: "adSpend", label: "Adspend", type: "currency", icon: Euro, direction: "neutral" },
+      { key: "leads", label: "Leads", type: "integer", icon: Users, direction: "rate" },
+      { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Euro, direction: "cost" },
+      { key: "qrPercent", label: "QR%", type: "percent", icon: BarChart3, showWhen: "appointments", direction: "rate" },
     ],
   },
   {
-    title: "Calls",
+    title: "Appointments",
+    section: "appointments",
     cards: [
-      { key: "bookedCalls", label: "Booked Calls", type: "integer", icon: PhoneCall },
-      { key: "costPerBookedCall", label: "Cost per Booked Call", type: "currency", icon: DollarSign },
-      { key: "suPercent", label: "SU% (Show Up)", type: "percent", icon: BarChart3 },
-      { key: "takenCalls", label: "Taken Calls", type: "integer", icon: PhoneIncoming },
+      { key: "bookedCalls", label: "Booked Appointments", type: "integer", icon: CalendarCheck, direction: "rate" },
+      { key: "costPerBookedCall", label: "Cost per Booked Appt.", type: "currency", icon: Euro, direction: "cost" },
+      { key: "suPercent", label: "SU% (Show Up)", type: "percent", icon: BarChart3, direction: "rate" },
+      { key: "takenCalls", label: "Taken Appointments", type: "integer", icon: CalendarCheck2, direction: "rate" },
+      { key: "costPerTakenCall", label: "Cost per Taken Appt.", type: "currency", icon: Euro, direction: "cost" },
     ],
   },
   {
-    title: "Deals & Revenue",
+    title: "Deals",
+    section: "deals",
     cards: [
-      { key: "costPerTakenCall", label: "Cost per Taken Call", type: "currency", icon: DollarSign },
-      { key: "deals", label: "Deals", type: "integer", icon: Handshake },
-      { key: "crPercent", label: "CR%", type: "percent", icon: BarChart3 },
-      { key: "costPerDeal", label: "Cost per Deal", type: "currency", icon: Target },
-    ],
-  },
-  {
-    title: "Revenue & ROI",
-    cards: [
-      { key: "revenue", label: "Closed Revenue", type: "currency", icon: TrendingUp },
-      { key: "roi", label: "ROI", type: "multiplier", icon: TrendingUp },
+      { key: "deals", label: "Deals", type: "integer", icon: Handshake, direction: "rate" },
+      { key: "crPercent", label: "CR%", type: "percent", icon: BarChart3, direction: "rate" },
+      { key: "costPerDeal", label: "Cost per Deal", type: "currency", icon: Euro, direction: "cost" },
+      { key: "revenue", label: "Closed Revenue", type: "currency", icon: TrendingUp, direction: "rate" },
+      { key: "roi", label: "ROI", type: "multiplier", icon: TrendingUp, direction: "rate" },
     ],
   },
 ]
 
-type Props = {
-  data: KpiResult | null
-  isLoading: boolean
+type TrendStatus = "green" | "orange" | "red"
+
+const STATUS_STYLES: Record<TrendStatus, { border: string; value: string; dot: string }> = {
+  green: {
+    border: "border-l-[3px] border-l-green-500",
+    value: "text-green-400",
+    dot: "bg-green-500",
+  },
+  orange: {
+    border: "border-l-[3px] border-l-amber-500",
+    value: "text-amber-400",
+    dot: "bg-amber-500",
+  },
+  red: {
+    border: "border-l-[3px] border-l-red-500",
+    value: "text-red-400",
+    dot: "bg-red-500",
+  },
 }
 
-export function KpiCards({ data, isLoading }: Props) {
+/**
+ * Evaluate a KPI value by comparing to the previous period.
+ * - Cost metrics: lower is better. >25% increase = red, any increase = orange, same/better = green.
+ * - Rate metrics: higher is better. >25% decrease = red, any decrease = orange, same/better = green.
+ */
+function evaluateTrend(current: number, previous: number, direction: "cost" | "rate" | "neutral"): TrendStatus | null {
+  if (direction === "neutral") return null
+  if (!isFinite(current) || !isFinite(previous) || previous === 0 || current === 0) return null
+
+  const pctChange = ((current - previous) / previous) * 100
+
+  if (direction === "cost") {
+    // Lower is better: increase = bad
+    if (pctChange > 25) return "red"
+    if (pctChange > 0) return "orange"
+    return "green"
+  }
+
+  // Rate: higher is better: decrease = bad
+  if (pctChange < -25) return "red"
+  if (pctChange < 0) return "orange"
+  return "green"
+}
+
+type Props = {
+  data: KpiResult | null
+  previousData?: KpiResult | null
+  isLoading: boolean
+  visibility?: KpiVisibility
+}
+
+export function KpiCards({ data, previousData, isLoading, visibility = { leads: true, appointments: true, deals: true } }: Props) {
   return (
-    <div className="space-y-6">
-      {KPI_GROUPS.map((group) => (
-        <div key={group.title}>
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            {group.title}
-          </h3>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {group.cards.map((kpi) => {
-              const Icon = kpi.icon
-              return (
-                <Card key={kpi.key} className="relative overflow-hidden">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        {kpi.label}
-                      </p>
-                      <Icon className="h-4 w-4 text-muted-foreground/50" />
-                    </div>
-                    <div className="mt-2">
-                      {isLoading ? (
-                        <Skeleton className="h-8 w-24" />
-                      ) : (
-                        <p className="text-2xl font-bold tracking-tight">
-                          {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
+    <div className="space-y-5">
+      {KPI_GROUPS.map((group) => {
+        if (!visibility[group.section]) return null
+
+        const visibleCards = group.cards.filter(
+          (kpi) => !kpi.showWhen || visibility[kpi.showWhen]
+        )
+        if (visibleCards.length === 0) return null
+
+        const colClass = visibleCards.length <= 3
+          ? "grid grid-cols-2 gap-3 sm:grid-cols-3"
+          : visibleCards.length === 4
+          ? "grid grid-cols-2 gap-3 sm:grid-cols-4"
+          : "grid grid-cols-2 gap-3 sm:grid-cols-5"
+
+        return (
+          <div key={group.title}>
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                {group.title}
+              </h3>
+              <div className="flex-1 h-px bg-border/40" />
+            </div>
+            <div className={colClass}>
+              {visibleCards.map((kpi) => {
+                const Icon = kpi.icon
+                const value = data?.[kpi.key] as number | undefined
+                const prevValue = previousData?.[kpi.key] as number | undefined
+                const status = value != null && prevValue != null
+                  ? evaluateTrend(value, prevValue, kpi.direction)
+                  : null
+                const styles = status ? STATUS_STYLES[status] : null
+
+                return (
+                  <Card key={kpi.key} className={`relative overflow-hidden transition-all duration-200 hover:shadow-md hover:shadow-black/5 ${styles?.border ?? "border-l-[3px] border-l-transparent"}`}>
+                    <CardContent className="flex h-full flex-col justify-between p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 leading-tight">
+                          {kpi.label}
                         </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {status && <span className={`h-1.5 w-1.5 rounded-full ${styles?.dot}`} />}
+                          <Icon className="h-3.5 w-3.5 text-muted-foreground/30" />
+                        </div>
+                      </div>
+                      <div className="mt-auto pt-3">
+                        {isLoading ? (
+                          <Skeleton className="h-7 w-20" />
+                        ) : (
+                          <p className={`text-xl font-bold tabular-nums tracking-tight ${styles?.value ?? "text-foreground"}`}>
+                            {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

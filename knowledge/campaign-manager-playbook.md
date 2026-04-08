@@ -1,5 +1,7 @@
 # CAMPAIGN MANAGER PLAYBOOK - ROCKET LEADS
 
+> **Last updated:** 2026-04-04 05:30 CET
+
 *Complete guide van research tot schaling - Head of Campaigns deep dive*
 
 ---

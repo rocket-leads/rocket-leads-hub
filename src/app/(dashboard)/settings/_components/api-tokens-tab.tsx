@@ -21,7 +21,6 @@ const SERVICES = [
   { id: "meta", label: "Meta (Facebook)", description: "Graph API access token — expires periodically" },
   { id: "stripe", label: "Stripe", description: "Secret key (sk_live_... or sk_test_...)" },
   { id: "trengo", label: "Trengo", description: "API token from Trengo settings" },
-  { id: "google_drive", label: "Google Drive", description: "Service account JSON key — paste the entire JSON content" },
 ]
 
 function StatusDot({ status }: { status: ServiceStatus | undefined }) {

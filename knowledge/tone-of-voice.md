@@ -1,6 +1,6 @@
 # Rocket Leads — Tone of Voice
 
-> **Last updated:** 2026-03-29
+> **Last updated:** 2026-04-04 05:30 CET
 > Dit document beschrijft de communicatiestijl, brand voice en do's & don'ts van Rocket Leads. Gebruik dit als referentie voor AI agents, account managers, sales en content.
 
 ---

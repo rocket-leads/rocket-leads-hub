@@ -50,7 +50,7 @@ type HealthResult = {
   reasons: string[]
 }
 
-function getCampaignHealth(kpi: KpiSummary | undefined, adBudget: string): HealthResult {
+function getCampaignHealth(kpi: KpiSummary | undefined): HealthResult {
   if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
     return { status: "no-data", reasons: ["No campaign data available"] }
   }
@@ -58,45 +58,48 @@ function getCampaignHealth(kpi: KpiSummary | undefined, adBudget: string): Healt
   const reasons: string[] = []
   let status: HealthStatus = "good"
 
-  const dailyBudget = parseFloat(adBudget.replace(/[^\d.,]/g, "").replace(",", ".")) / 30 || 0
+  // Trend-based: compare current 7d CPL vs previous 7d CPL
+  if (kpi.cpl > 0 && kpi.prevCpl > 0) {
+    const cplChange = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
 
-  // 🔴 Critical checks
+    if (cplChange > 50) {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev 7d (€${kpi.prevCpl.toFixed(2)})`)
+      status = "critical"
+    } else if (cplChange > 25) {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev 7d (€${kpi.prevCpl.toFixed(2)})`)
+      status = "warning"
+    } else if (cplChange < -10) {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — down ${Math.abs(cplChange).toFixed(0)}% vs prev 7d`)
+    } else {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — stable vs prev 7d`)
+    }
+  }
+
+  // Spend with zero leads = always critical
   if (kpi.adSpend > 50 && kpi.leads === 0) {
     reasons.push(`€${kpi.adSpend.toFixed(0)} spent with 0 leads`)
     status = "critical"
   }
-  if (kpi.cpl > 50 && kpi.leads > 0) {
-    reasons.push(`CPL €${kpi.cpl.toFixed(2)} exceeds €50 threshold`)
-    status = "critical"
-  }
-  if (kpi.adSpend > 100 && kpi.appointments === 0) {
-    reasons.push(`€${kpi.adSpend.toFixed(0)} spent with 0 appointments`)
-    if (status !== "critical") status = "critical"
-  }
 
-  // 🟡 Warning checks (only if not already critical)
-  if (status !== "critical") {
-    if (kpi.cpl > 30 && kpi.leads > 0) {
-      reasons.push(`CPL €${kpi.cpl.toFixed(2)} is elevated (>€30)`)
-      status = "warning"
-    }
-    if (kpi.leads > 0 && kpi.leads < 3 && kpi.adSpend > 50) {
-      reasons.push(`Only ${kpi.leads} lead${kpi.leads !== 1 ? "s" : ""} in 7 days`)
-      status = "warning"
-    }
-    if (dailyBudget > 0 && dailyBudget < 50) {
-      reasons.push(`Daily budget €${dailyBudget.toFixed(0)} may be too low to scale`)
+  // CPA trend (when available)
+  if (kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0) {
+    const cpaChange = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
+    if (cpaChange > 50) {
+      reasons.push(`CPA €${kpi.costPerAppointment.toFixed(0)} — up ${cpaChange.toFixed(0)}% vs prev 7d`)
+      if (status !== "critical") status = "critical"
+    } else if (cpaChange > 25) {
+      reasons.push(`CPA €${kpi.costPerAppointment.toFixed(0)} — up ${cpaChange.toFixed(0)}% vs prev 7d`)
       if (status === "good") status = "warning"
     }
-    if (kpi.costPerAppointment > 200 && kpi.appointments > 0) {
-      reasons.push(`CPA €${kpi.costPerAppointment.toFixed(0)} is high`)
-      status = "warning"
-    }
   }
 
-  if (status === "good") {
-    if (kpi.leads > 0) reasons.push(`CPL €${kpi.cpl.toFixed(2)} — ${kpi.leads} leads, ${kpi.appointments} appointments`)
-    else reasons.push("Campaign running normally")
+  // Good summary
+  if (status === "good" && reasons.length === 0) {
+    if (kpi.leads > 0) {
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — ${kpi.leads} leads`)
+    } else {
+      reasons.push("Campaign running normally")
+    }
   }
 
   return { status, reasons }
@@ -138,7 +141,7 @@ function HealthBadge({ health }: { health: HealthResult }) {
   )
 }
 
-type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "kickOff" | "adspend" | "leads" | "cpl" | "appointments" | "cpa" | "paymentStatus" | "outstanding" | "health"
+type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "appointments" | "cpa" | "cpaDelta" | "paymentStatus" | "outstanding" | "health"
 type SortDir = "asc" | "desc"
 
 type Props = {
@@ -146,6 +149,7 @@ type Props = {
   boardType: "onboarding" | "current"
   billingSummaries?: Record<string, BillingSummary>
   kpiSummaries?: Record<string, KpiSummary>
+  mondayActiveMap?: Record<string, boolean>
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -229,7 +233,7 @@ function SortableHead({ label, sortKey, currentKey, currentDir, onSort, classNam
   )
 }
 
-export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries }: Props) {
+export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
@@ -274,7 +278,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
       })()
       const matchesHealth = healthFilter === "All" || (() => {
         if (boardType !== "current") return true
-        const health = getCampaignHealth(kpiSummaries?.[c.mondayItemId], c.adBudget)
+        const health = getCampaignHealth(kpiSummaries?.[c.mondayItemId])
         return health.status.toLowerCase() === healthFilter.toLowerCase()
       })()
       return matchesSearch && matchesStatus && matchesAM && matchesCM && matchesPayment && matchesHealth
@@ -303,14 +307,24 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         case "adspend": valA = kpiA?.adSpend ?? 0; valB = kpiB?.adSpend ?? 0; break
         case "leads": valA = kpiA?.leads ?? 0; valB = kpiB?.leads ?? 0; break
         case "cpl": valA = kpiA?.cpl ?? 0; valB = kpiB?.cpl ?? 0; break
+        case "cplDelta": {
+          valA = (kpiA?.cpl && kpiA?.prevCpl) ? ((kpiA.cpl - kpiA.prevCpl) / kpiA.prevCpl) * 100 : 0
+          valB = (kpiB?.cpl && kpiB?.prevCpl) ? ((kpiB.cpl - kpiB.prevCpl) / kpiB.prevCpl) * 100 : 0
+          break
+        }
         case "appointments": valA = kpiA?.appointments ?? 0; valB = kpiB?.appointments ?? 0; break
         case "cpa": valA = kpiA?.costPerAppointment ?? 0; valB = kpiB?.costPerAppointment ?? 0; break
+        case "cpaDelta": {
+          valA = (kpiA?.costPerAppointment && kpiA?.prevCostPerAppointment) ? ((kpiA.costPerAppointment - kpiA.prevCostPerAppointment) / kpiA.prevCostPerAppointment) * 100 : 0
+          valB = (kpiB?.costPerAppointment && kpiB?.prevCostPerAppointment) ? ((kpiB.costPerAppointment - kpiB.prevCostPerAppointment) / kpiB.prevCostPerAppointment) * 100 : 0
+          break
+        }
         case "paymentStatus": valA = billingA?.status ?? ""; valB = billingB?.status ?? ""; break
         case "outstanding": valA = billingA?.outstanding ?? 0; valB = billingB?.outstanding ?? 0; break
         case "health": {
           const order: Record<string, number> = { critical: 0, warning: 1, good: 2, "no-data": 3 }
-          valA = order[getCampaignHealth(kpiA, a.adBudget).status] ?? 3
-          valB = order[getCampaignHealth(kpiB, b.adBudget).status] ?? 3
+          valA = order[getCampaignHealth(kpiA).status] ?? 3
+          valB = order[getCampaignHealth(kpiB).status] ?? 3
           break
         }
       }
@@ -350,7 +364,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 8 : 13
+  const colSpan = boardType === "onboarding" ? 8 : 15
 
   const filterTriggerClass = "!h-8 !border-0 !bg-muted/40 hover:!bg-muted !rounded-lg !text-xs !px-3 !shadow-none dark:!bg-white/5 dark:hover:!bg-white/10"
   const activeFilterClass = "!bg-primary/10 !text-primary dark:!bg-primary/15 dark:!text-primary"
@@ -429,27 +443,29 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
 
       {/* Table */}
       <div className="rounded-xl border border-border/30 overflow-hidden">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow className="border-b border-border/30 hover:bg-transparent">
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Client</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Status</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center">AM</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center">CM</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center">AS</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[220px]">Client</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px]">Status</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[50px]">AM</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[50px]">CM</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[50px]">AS</TableHead>
               {boardType === "onboarding" && (
-                <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium" />
+                <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px]" />
               )}
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Payment</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">Outstanding</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[95px]">Payment</TableHead>
+              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px]">Outstanding</TableHead>
               {boardType === "current" && (
                 <>
-                  <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center" />
-                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
-                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right" />
+                  <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[90px]" />
+                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[90px]" />
+                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[65px]" />
+                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[80px]" />
+                  <SortableHead label="CPL % 7d" sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
+                  <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[65px]" />
+                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[80px]" />
+                  <SortableHead label="CPA % 7d" sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
                 </>
               )}
             </TableRow>
@@ -515,7 +531,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           {kpiLoading ? (
                             <span className="text-muted-foreground/40 text-xs">...</span>
                           ) : (
-                            <HealthBadge health={getCampaignHealth(kpi, client.adBudget)} />
+                            <HealthBadge health={getCampaignHealth(kpi)} />
                           )}
                         </TableCell>
                         <TableCell className="text-xs text-right tabular-nums text-muted-foreground">
@@ -527,11 +543,35 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <TableCell className={`text-xs text-right tabular-nums font-medium ${kpi && kpi.cpl > 50 ? "text-red-400" : kpi && kpi.cpl > 30 ? "text-amber-400" : ""}`}>
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.cpl > 0 ? fmtKpi(kpi.cpl, "currency") : ""}
                         </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums">
+                          {kpiLoading ? (
+                            <span className="text-muted-foreground/40">...</span>
+                          ) : kpi && kpi.cpl > 0 && kpi.prevCpl > 0 ? (() => {
+                            const pct = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
+                            return (
+                              <span className={pct < 0 ? "text-green-500" : pct >= 25 ? "text-red-400" : pct > 0 ? "text-amber-400" : "text-muted-foreground"}>
+                                {pct > 0 ? "+" : ""}{pct.toFixed(0)}%
+                              </span>
+                            )
+                          })() : ""}
+                        </TableCell>
                         <TableCell className="text-xs text-right tabular-nums font-medium">
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.appointments > 0 ? fmtKpi(kpi.appointments, "integer") : ""}
                         </TableCell>
                         <TableCell className={`text-xs text-right tabular-nums ${kpi && kpi.costPerAppointment > 200 ? "text-red-400" : ""}`}>
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.costPerAppointment > 0 ? fmtKpi(kpi.costPerAppointment, "currency") : ""}
+                        </TableCell>
+                        <TableCell className="text-xs text-right tabular-nums">
+                          {kpiLoading ? (
+                            <span className="text-muted-foreground/40">...</span>
+                          ) : kpi && kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0 ? (() => {
+                            const pct = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
+                            return (
+                              <span className={pct < 0 ? "text-green-500" : pct >= 25 ? "text-red-400" : pct > 0 ? "text-amber-400" : "text-muted-foreground"}>
+                                {pct > 0 ? "+" : ""}{pct.toFixed(0)}%
+                              </span>
+                            )
+                          })() : ""}
                         </TableCell>
                       </>
                     )}

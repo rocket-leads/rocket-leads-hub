@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchMetaInsights } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import { calculateKpis } from "@/lib/clients/kpis"
+import { detectMondayActivity } from "@/lib/clients/monday-activity"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
@@ -29,19 +30,19 @@ export async function GET(
   const [clientResult, { data: settingsRow }] = await Promise.all([
     supabase
       .from("clients")
-      .select("id, meta_ad_account_id, monday_client_board_id")
+      .select("id, meta_ad_account_id, monday_client_board_id, column_mapping_override")
       .eq("monday_item_id", mondayItemId)
       .single()
       .then((res) => {
         if (res.error && (res.error.code === "PGRST204" || res.error.message?.includes("monday_client_board_id"))) {
           console.warn("[kpis] monday_client_board_id column missing — querying without it")
-          return supabase.from("clients").select("id, meta_ad_account_id").eq("monday_item_id", mondayItemId).single()
+          return supabase.from("clients").select("id, meta_ad_account_id, column_mapping_override").eq("monday_item_id", mondayItemId).single()
         }
         return res
       }),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
   ])
-  const client = clientResult.data as { id: string; meta_ad_account_id: string | null; monday_client_board_id?: string | null } | null
+  const client = clientResult.data as { id: string; meta_ad_account_id: string | null; monday_client_board_id?: string | null; column_mapping_override?: Record<string, string> | null } | null
 
   // Fall back to query params if Supabase record not yet synced
   const adAccountId = client?.meta_ad_account_id ?? adAccountIdParam
@@ -72,7 +73,7 @@ export async function GET(
       ? fetchMetaInsights(adAccountId, startDate, endDate).catch((e) => { console.error("Meta insights error:", e); return [] })
       : Promise.resolve([]),
     clientBoardId
-      ? fetchClientBoardItems(clientBoardId).catch((e) => { console.error("Monday board error:", e); return [] })
+      ? fetchClientBoardItems(clientBoardId, client?.column_mapping_override ?? undefined).catch((e) => { console.error("Monday board error:", e); return [] })
       : Promise.resolve([]),
   ])
 
@@ -83,6 +84,15 @@ export async function GET(
 
   const kpis = calculateKpis(adSpend, leadItems, startDate, endDate, takenCallStatusValue)
 
+  // Auto-detect Monday activity and update Supabase (fire-and-forget)
+  if (leadItems.length > 0 && client?.id) {
+    const isActive = detectMondayActivity(leadItems)
+    void supabase
+      .from("clients")
+      .update({ monday_active: isActive })
+      .eq("monday_item_id", mondayItemId)
+  }
+
   return NextResponse.json({
     ...kpis,
     _debug: {
@@ -90,6 +100,14 @@ export async function GET(
       clientBoardId: clientBoardId || null,
       leadItemsCount: leadItems.length,
       insightsCount: insights.length,
+      takenCallStatusValue,
+      columnOverrides: client?.column_mapping_override ?? null,
+      leadStatus2Sample: leadItems.slice(0, 10).map((i) => ({
+        name: i.name,
+        leadStatus: i.leadStatus,
+        leadStatus2: i.leadStatus2,
+        dateAppointment: i.dateAppointment,
+      })),
     },
   }, {
     headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },

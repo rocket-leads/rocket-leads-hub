@@ -1,5 +1,7 @@
 # STANDARD OPERATING PROCEDURES (SOPs) - ROCKET LEADS
 
+> **Last updated:** 2026-04-04 05:30 CET
+
 *Complete operational workflows van lead acquisition tot offboarding*
 
 ---

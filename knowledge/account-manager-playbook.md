@@ -1,5 +1,7 @@
 # ACCOUNT MANAGER PLAYBOOK - ROEL'S WERKWIJZE
 
+> **Last updated:** 2026-04-04 05:30 CET
+
 *Gebaseerd op transcript van Roel van der Harst, Account Manager Rocket Leads*
 
 ---
