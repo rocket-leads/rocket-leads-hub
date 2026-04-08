@@ -1,10 +1,9 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import type { UtmRow, KpiResult } from "@/lib/clients/kpis"
 
-type ScoredRow = UtmRow & {
+export type ScoredRow = UtmRow & {
   takenCallRate: number
   bookingRate: number
   dealRate: number
@@ -136,7 +135,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
             </div>
             <div className="space-y-2">
               {scale.map((r) => (
-                <div key={r.utm} className="rounded-md border border-green-500/20 bg-green-500/5 px-3 py-2">
+                <div key={r.utm} className="rounded-md border border-green-500/20 bg-green-500/5 pl-4 pr-3 py-2">
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-mono text-xs break-all text-foreground">{r.utm}</span>
                     <ReliabilityBadge level={r.reliability} />
@@ -169,7 +168,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
             </div>
             <div className="space-y-2">
               {reduce.map((r) => (
-                <div key={r.utm} className="rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2">
+                <div key={r.utm} className="rounded-md border border-red-500/20 bg-red-500/5 pl-4 pr-3 py-2">
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-mono text-xs break-all text-foreground">{r.utm}</span>
                     <ReliabilityBadge level={r.reliability} />
@@ -196,7 +195,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
             </div>
             <div className="space-y-1">
               {monitor.map((r) => (
-                <div key={r.utm} className="flex items-center justify-between gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+                <div key={r.utm} className="flex items-center justify-between gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 pl-4 pr-3 py-2">
                   <span className="font-mono text-xs break-all text-foreground">{r.utm}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{r.leads} leads · {r.takenCalls} taken</span>
                 </div>
@@ -215,10 +214,9 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
 
 type Props = {
   rows: UtmRow[]
-  kpis: KpiResult
 }
 
-export function AdPerformance({ rows, kpis }: Props) {
+export function AdPerformance({ rows }: Props) {
   const scored = scoreRows(rows)
 
   if (!scored) {
@@ -231,8 +229,6 @@ export function AdPerformance({ rows, kpis }: Props) {
   return (
     <div className="space-y-4">
       <h3 className="text-base font-semibold">Ad Performance Analysis</h3>
-
-      <OptimizationProposal scored={scored} kpis={kpis} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {CATEGORIES.map(({ key, label, emoji, border, bg }) => {

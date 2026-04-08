@@ -20,10 +20,7 @@ import type { MetaCampaign } from "@/lib/integrations/meta"
 const AdPerformance = dynamic(() => import("./ad-performance").then((m) => m.AdPerformance), {
   ssr: false,
 })
-const OptimizationProposal = dynamic(() => import("./ad-performance").then((m) => m.OptimizationProposal), {
-  ssr: false,
-})
-const AiOptimizationProposal = dynamic(() => import("./ai-optimization-proposal").then((m) => m.AiOptimizationProposal), {
+const CampaignOptimizationProposal = dynamic(() => import("./ai-optimization-proposal").then((m) => m.CampaignOptimizationProposal), {
   ssr: false,
 })
 
@@ -141,17 +138,15 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
                 {kpisQuery.isError && (
                   <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
                 )}
-                {!kpisQuery.isLoading && kpisQuery.data && (() => {
-                  const scored = scoreRows(kpisQuery.data.utmBreakdown ?? [])
-                  return scored ? <OptimizationProposal scored={scored} kpis={kpisQuery.data} /> : null
-                })()}
-                <AiOptimizationProposal
+                <CampaignOptimizationProposal
                   mondayItemId={mondayItemId}
                   metaAdAccountId={metaAdAccountId}
                   clientBoardId={clientBoardId}
                   selectedCampaignIds={selectedIds}
                   clientName={clientName}
                   boardType={boardType}
+                  scored={!kpisQuery.isLoading && kpisQuery.data ? scoreRows(kpisQuery.data.utmBreakdown ?? []) : null}
+                  kpis={kpisQuery.data ?? null}
                 />
                 <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
                 {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
@@ -161,7 +156,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
                   </div>
                 ) : null}
                 {!kpisQuery.isLoading && kpisQuery.data && (kpisQuery.data.utmBreakdown?.length ?? 0) >= 2 && (
-                  <AdPerformance rows={kpisQuery.data.utmBreakdown} kpis={kpisQuery.data} />
+                  <AdPerformance rows={kpisQuery.data.utmBreakdown} />
                 )}
               </>
             )}
@@ -187,17 +182,15 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
           {kpisQuery.isError && (
             <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
           )}
-          {!kpisQuery.isLoading && kpisQuery.data && (() => {
-            const scored = scoreRows(kpisQuery.data.utmBreakdown ?? [])
-            return scored ? <OptimizationProposal scored={scored} kpis={kpisQuery.data} /> : null
-          })()}
-          <AiOptimizationProposal
+          <CampaignOptimizationProposal
             mondayItemId={mondayItemId}
             metaAdAccountId={metaAdAccountId}
             clientBoardId={clientBoardId}
             selectedCampaignIds={[]}
             clientName={clientName}
             boardType={boardType}
+            scored={!kpisQuery.isLoading && kpisQuery.data ? scoreRows(kpisQuery.data.utmBreakdown ?? []) : null}
+            kpis={kpisQuery.data ?? null}
           />
           <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
           {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
@@ -207,7 +200,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
             </div>
           ) : null}
           {!kpisQuery.isLoading && kpisQuery.data && (kpisQuery.data.utmBreakdown?.length ?? 0) >= 2 && (
-            <AdPerformance rows={kpisQuery.data.utmBreakdown} kpis={kpisQuery.data} />
+            <AdPerformance rows={kpisQuery.data.utmBreakdown} />
           )}
         </div>
       )}
