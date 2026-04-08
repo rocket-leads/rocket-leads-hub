@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchMetaInsights } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
+import { readCache } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 export type KpiSummary = {
@@ -92,6 +93,27 @@ export async function POST(req: NextRequest) {
 
   const body = (await req.json()) as { clients: ClientInput[] }
   if (!body.clients?.length) return NextResponse.json({})
+
+  // Try cache first — return cached data if fresh
+  const cached = await readCache<Record<string, KpiSummary>>("kpi_summaries")
+  if (cached) {
+    const requested = body.clients.map((c) => c.mondayItemId)
+    const result: Record<string, KpiSummary> = {}
+    let allHit = true
+    for (const id of requested) {
+      if (cached[id]) {
+        result[id] = cached[id]
+      } else {
+        allHit = false
+        break
+      }
+    }
+    if (allHit) {
+      return NextResponse.json(result, {
+        headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+      })
+    }
+  }
 
   const { startDate, endDate } = getLast7DaysRange()
 

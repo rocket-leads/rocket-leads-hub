@@ -71,6 +71,27 @@ async function testTrengo(token: string): Promise<TestResult> {
   return { ok: false, message: "All Trengo endpoints failed" }
 }
 
+async function testGoogleDrive(keyJson: string): Promise<TestResult> {
+  try {
+    const { google } = await import("googleapis")
+    const credentials = JSON.parse(keyJson)
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+    })
+    const drive = google.drive({ version: "v3", auth })
+    const res = await drive.about.get({ fields: "user" })
+    const email = res.data.user?.emailAddress
+    return { ok: true, message: `Connected as ${email ?? "service account"}` }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes("invalid_grant") || msg.includes("DECODER")) {
+      return { ok: false, message: "Invalid JSON key — make sure you pasted the complete JSON content" }
+    }
+    return { ok: false, message: msg.slice(0, 200) }
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session || session.user.role !== "admin") {
@@ -104,6 +125,7 @@ export async function POST(req: NextRequest) {
     case "meta": result = await testMeta(token); break
     case "stripe": result = await testStripe(token); break
     case "trengo": result = await testTrengo(token); break
+    case "google_drive": result = await testGoogleDrive(token); break
     default: return NextResponse.json({ ok: false, message: "Unknown service" })
   }
 

@@ -58,6 +58,7 @@ export type MondayClient = {
   stripeCustomerId: string
   trengoContactId: string
   clientBoardId: string
+  googleDriveFolderId: string
   boardType: "onboarding" | "current"
 }
 
@@ -134,6 +135,7 @@ function mapItem(
     stripeCustomerId: cv[columns.stripe_customer_id] ?? "",
     trengoContactId: cv[columns.trengo_contact_id] ?? "",
     clientBoardId: cv[columns.client_board_id] ?? "",
+    googleDriveFolderId: cv[columns.google_drive_folder_id] ?? "",
     boardType,
   }
 }
@@ -198,6 +200,104 @@ export async function fetchClientBoardItems(boardId: string): Promise<MondayLead
       dateDeal: cv[cols.date_deal] ?? "",
     }
   })
+}
+
+export type MondayItemWithUpdates = {
+  itemId: string
+  itemName: string
+  utm: string
+  leadStatus: string
+  updates: Array<{ text: string; createdAt: string }>
+}
+
+export async function fetchClientBoardItemsWithUpdates(
+  boardId: string,
+): Promise<MondayItemWithUpdates[]> {
+  const [token, config] = await Promise.all([getToken(), getBoardConfig()])
+  if (!config) throw new Error("Board config not found.")
+
+  const cols = config.client_board_columns
+
+  const query = `
+    query GetItemsWithUpdates($boardId: ID!, $cursor: String) {
+      boards(ids: [$boardId]) {
+        items_page(limit: 500, cursor: $cursor) {
+          cursor
+          items {
+            id
+            name
+            column_values {
+              id
+              text
+            }
+            updates(limit: 5) {
+              text_body
+              created_at
+            }
+          }
+        }
+      }
+    }
+  `
+
+  type RawItem = {
+    id: string
+    name: string
+    column_values: Array<{ id: string; text: string }>
+    updates: Array<{ text_body: string; created_at: string }>
+  }
+
+  const allItems: RawItem[] = []
+  let cursor: string | null = null
+
+  do {
+    const data = await gql(query, { boardId, cursor }, token)
+    const page = data.boards?.[0]?.items_page
+    if (!page) break
+    allItems.push(...(page.items ?? []))
+    cursor = page.cursor ?? null
+  } while (cursor)
+
+  return allItems.map((item) => {
+    const cv: Record<string, string> = {}
+    for (const col of item.column_values) {
+      cv[col.id] = col.text ?? ""
+    }
+    return {
+      itemId: item.id,
+      itemName: item.name,
+      utm: cv[cols.utm] ?? "",
+      leadStatus: cv[cols.lead_status] ?? "",
+      updates: (item.updates ?? []).map((u) => ({
+        text: u.text_body ?? "",
+        createdAt: u.created_at ?? "",
+      })),
+    }
+  })
+}
+
+export async function fetchClientItemUpdates(
+  itemId: string,
+): Promise<Array<{ text: string; createdAt: string }>> {
+  const token = await getToken()
+
+  const query = `
+    query GetItemUpdates($itemId: ID!) {
+      items(ids: [$itemId]) {
+        updates {
+          text_body
+          created_at
+        }
+      }
+    }
+  `
+
+  const data = await gql(query, { itemId }, token)
+  const updates = data.items?.[0]?.updates ?? []
+  return updates.map((u: { text_body: string; created_at: string }) => ({
+    text: u.text_body ?? "",
+    createdAt: u.created_at ?? "",
+  }))
 }
 
 export async function fetchClientById(itemId: string): Promise<MondayClient | null> {

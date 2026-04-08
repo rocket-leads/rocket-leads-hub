@@ -31,6 +31,7 @@ const ONBOARDING_FIELDS = [
   { key: "contact_direction", label: "Contact direction" },
   { key: "contact_channel", label: "Contact channel" },
   { key: "campaign_status", label: "Campaign status" },
+  { key: "google_drive_folder_id", label: "Google Drive Folder ID" },
 ]
 
 const CURRENT_FIELDS = [
@@ -46,6 +47,7 @@ const CURRENT_FIELDS = [
   { key: "contact_direction", label: "Contact direction" },
   { key: "contact_channel", label: "Contact channel" },
   { key: "campaign_status", label: "Campaign status" },
+  { key: "google_drive_folder_id", label: "Google Drive Folder ID" },
 ]
 
 const CLIENT_BOARD_FIELDS = [

@@ -23,6 +23,9 @@ const AdPerformance = dynamic(() => import("./ad-performance").then((m) => m.AdP
 const OptimizationProposal = dynamic(() => import("./ad-performance").then((m) => m.OptimizationProposal), {
   ssr: false,
 })
+const AiOptimizationProposal = dynamic(() => import("./ai-optimization-proposal").then((m) => m.AiOptimizationProposal), {
+  ssr: false,
+})
 
 type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
 
@@ -31,9 +34,11 @@ type Props = {
   metaAdAccountId: string | null
   clientBoardId: string | null
   stripeCustomerId: string | null
+  clientName: string
+  boardType: "onboarding" | "current"
 }
 
-export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, stripeCustomerId }: Props) {
+export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, stripeCustomerId, clientName, boardType }: Props) {
   const [dateRange, setDateRange] = useState<DateRange>(defaultDateRange)
 
   const campaignsQuery = useQuery<{ campaigns: CampaignWithSelection[] }>({
@@ -140,6 +145,14 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
                   const scored = scoreRows(kpisQuery.data.utmBreakdown ?? [])
                   return scored ? <OptimizationProposal scored={scored} kpis={kpisQuery.data} /> : null
                 })()}
+                <AiOptimizationProposal
+                  mondayItemId={mondayItemId}
+                  metaAdAccountId={metaAdAccountId}
+                  clientBoardId={clientBoardId}
+                  selectedCampaignIds={selectedIds}
+                  clientName={clientName}
+                  boardType={boardType}
+                />
                 <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
                 {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
                   <div>
@@ -178,6 +191,14 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
             const scored = scoreRows(kpisQuery.data.utmBreakdown ?? [])
             return scored ? <OptimizationProposal scored={scored} kpis={kpisQuery.data} /> : null
           })()}
+          <AiOptimizationProposal
+            mondayItemId={mondayItemId}
+            metaAdAccountId={metaAdAccountId}
+            clientBoardId={clientBoardId}
+            selectedCampaignIds={[]}
+            clientName={clientName}
+            boardType={boardType}
+          />
           <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
           {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
             <div>

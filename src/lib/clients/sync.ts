@@ -12,6 +12,7 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
     meta_ad_account_id: client.metaAdAccountId || null,
     stripe_customer_id: client.stripeCustomerId || null,
     trengo_contact_ids: client.trengoContactId ? [client.trengoContactId] : [],
+    google_drive_folder_id: client.googleDriveFolderId || null,
     updated_at: new Date().toISOString(),
   }
 

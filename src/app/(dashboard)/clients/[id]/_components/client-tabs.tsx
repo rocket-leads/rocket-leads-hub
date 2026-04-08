@@ -94,6 +94,8 @@ export function ClientTabs({ client, access }: Props) {
             metaAdAccountId={client.metaAdAccountId || null}
             clientBoardId={client.clientBoardId || null}
             stripeCustomerId={client.stripeCustomerId || null}
+            clientName={client.name}
+            boardType={client.boardType}
           />
         ) : <NoAccess />
       )}

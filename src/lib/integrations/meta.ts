@@ -53,6 +53,108 @@ export async function fetchMetaCampaigns(adAccountId: string): Promise<MetaCampa
   return fetchAllPages<MetaCampaign>(url)
 }
 
+export type MetaAdDetail = {
+  adId: string
+  adName: string
+  adsetName: string
+  status: string
+  spend: number
+  impressions: number
+  clicks: number
+  ctr: number
+  cpc: number
+  body: string
+  creativeType: "video" | "image" | "dynamic" | "unknown"
+  thumbnailUrl: string
+}
+
+export async function fetchMetaAdDetails(
+  adAccountId: string,
+  startDate: string,
+  endDate: string,
+  campaignIds?: Set<string>,
+): Promise<MetaAdDetail[]> {
+  const token = await getToken()
+  const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
+  const timeRange = encodeURIComponent(JSON.stringify({ since: startDate, until: endDate }))
+
+  // Fetch ad-level insights with creative fields
+  const url = `${META_API_BASE}/${accountId}/insights?fields=ad_id,ad_name,adset_name,campaign_id,spend,impressions,clicks,ctr,cpc&level=ad&time_range=${timeRange}&limit=200&access_token=${token}`
+  const insightsData = await fetchAllPages<{
+    ad_id: string
+    ad_name: string
+    adset_name: string
+    campaign_id: string
+    spend: string
+    impressions: string
+    clicks: string
+    ctr: string
+    cpc: string
+  }>(url)
+
+  // Filter by campaign if needed
+  const filtered = campaignIds && campaignIds.size > 0
+    ? insightsData.filter((d) => campaignIds.has(d.campaign_id))
+    : insightsData
+
+  // Fetch creative details for each ad (batch — get ad creative body and type)
+  const adIds = filtered.map((d) => d.ad_id).filter(Boolean)
+  const creativeMap = new Map<string, { body: string; creativeType: MetaAdDetail["creativeType"]; thumbnailUrl: string }>()
+
+  if (adIds.length > 0) {
+    // Fetch ads with their creative in batches of 50
+    for (let i = 0; i < adIds.length; i += 50) {
+      const batch = adIds.slice(i, i + 50)
+      const adsUrl = `${META_API_BASE}/?ids=${batch.join(",")}&fields=creative{body,object_type,thumbnail_url}&access_token=${token}`
+      try {
+        const res: Response = await fetch(adsUrl, { next: { revalidate: 300 } })
+        if (res.ok) {
+          const json = await res.json()
+          for (const [adId, adData] of Object.entries(json)) {
+            const creative = (adData as { creative?: { data?: { body?: string; object_type?: string; thumbnail_url?: string } } }).creative?.data
+            let creativeType: MetaAdDetail["creativeType"] = "unknown"
+            const objectType = (creative?.object_type ?? "").toUpperCase()
+            if (objectType.includes("VIDEO")) creativeType = "video"
+            else if (objectType.includes("PHOTO") || objectType.includes("IMAGE") || objectType.includes("LINK")) creativeType = "image"
+
+            // Detect dynamic ads from name or object type
+            const adName = filtered.find((d) => d.ad_id === adId)?.ad_name ?? ""
+            if (/dynamic|dyn\b|flexible/i.test(adName) || objectType.includes("DYNAMIC")) {
+              creativeType = "dynamic"
+            }
+
+            creativeMap.set(adId, {
+              body: creative?.body ?? "",
+              creativeType,
+              thumbnailUrl: creative?.thumbnail_url ?? "",
+            })
+          }
+        }
+      } catch {
+        // Continue without creative details
+      }
+    }
+  }
+
+  return filtered.map((d) => {
+    const creative = creativeMap.get(d.ad_id)
+    return {
+      adId: d.ad_id,
+      adName: d.ad_name,
+      adsetName: d.adset_name,
+      status: "ACTIVE",
+      spend: parseFloat(d.spend ?? "0"),
+      impressions: parseInt(d.impressions ?? "0", 10),
+      clicks: parseInt(d.clicks ?? "0", 10),
+      ctr: parseFloat(d.ctr ?? "0"),
+      cpc: parseFloat(d.cpc ?? "0"),
+      body: creative?.body ?? "",
+      creativeType: creative?.creativeType ?? "unknown",
+      thumbnailUrl: creative?.thumbnailUrl ?? "",
+    }
+  })
+}
+
 export async function fetchMetaInsights(
   adAccountId: string,
   startDate: string,

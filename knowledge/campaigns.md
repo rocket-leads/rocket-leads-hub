@@ -23,6 +23,19 @@ Rocket Leads draait campagnes op Meta (primair), Google en TikTok. De standaard 
 - **4-5 ads** onder de ad set
 - Extra ads achter de hand voor testing
 
+### Dynamic Ads (Flexible / Dynamic Creative)
+In sommige gevallen werken we met **dynamic ads** (ook wel Flexible Creative of DCO). Bij dynamic ads bevat één enkele ad meerdere creative variabelen (bijv. 10 verschillende afbeeldingen/video's, headlines, descriptions). Meta combineert deze automatisch tot tientallen varianten.
+
+**Belangrijk voor beoordeling:**
+- Het kan zijn dat er maar **2 dynamic ads** live staan, maar elke ad bevat bijv. 10 creative variabelen → in werkelijkheid worden er 20+ varianten getest
+- Het standaard advies van "4-5 ads live hebben" geldt **niet** voor dynamic ads — bij dynamic ads is 2-3 ads met veel variabelen voldoende
+- Bij het beoordelen van creative diversity moet je kijken naar het **totale aantal creative variabelen** over alle ads heen, niet alleen het aantal losse ads
+- Dynamic ads zijn herkenbaar aan "Dynamic" of "DYN" in de ad naam (naming convention: `Dynamic {{nr}} | {{Topic}}`)
+
+**Naming convention dynamic ads:**
+- Format: `Dynamic {{nr}} | {{Topic creative}}`
+- Voorbeeld: `Dynamic 1 | Guarantee`
+
 ### Hogere budgetten (€100+/dag, €3.000+/maand)
 - Aanvullend een **CBO-campagne** (Campaign Budget Optimization)
 - Alle winnende ads/ad sets hierin samenvoegen op hoger budget
@@ -794,3 +807,4 @@ Volgorde van voorkeur:
 - Seizoensgebondenheid meenemen bij branche-specifieke angles
 - Case studies worden actief gebruikt in sales framing — agents moeten deze kennen
 - Scripts zijn gevalideerde referentie voor nieuwe campagne copy — gebruik de volledige teksten hierboven, niet samengevatte versies
+
