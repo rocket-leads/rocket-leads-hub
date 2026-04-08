@@ -531,7 +531,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           {kpiLoading ? (
                             <span className="text-muted-foreground/40 text-xs">...</span>
                           ) : (
-                            <HealthBadge health={getCampaignHealth(kpi, client.adBudget, mondayActiveMap?.[client.mondayItemId] ?? false)} />
+                            <HealthBadge health={getCampaignHealth(kpi)} />
                           )}
                         </TableCell>
                         <TableCell className="text-xs text-right tabular-nums text-muted-foreground">
