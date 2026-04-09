@@ -5,8 +5,12 @@ import { fetchMetaInsights } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { writeCache } from "@/lib/cache"
+import { computeActionCategory } from "@/lib/clients/action-category"
+import Anthropic from "@anthropic-ai/sdk"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { BillingSummary } from "@/lib/integrations/stripe"
+
+const anthropic = new Anthropic()
 
 function getLast7DaysRange() {
   const fmt = (d: Date) => d.toISOString().slice(0, 10)
@@ -129,12 +133,56 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // 5. Write all caches (including Monday boards data)
+    // 5. Write KPI + billing + boards caches
     await Promise.all([
       writeCache("monday_boards", { onboarding, current }),
       writeCache("kpi_summaries", kpiSummaries),
       writeCache("billing_summaries", billingSummaries),
     ])
+
+    // 6. Generate AI summaries for critical/warning clients
+    const actionClients = allClients.filter((c) => {
+      const kpi = kpiSummaries[c.mondayItemId]
+      const billing = c.stripeCustomerId ? billingSummaries[c.stripeCustomerId] : undefined
+      const action = computeActionCategory(c, kpi, billing, undefined)
+      return action.priority <= 4 // critical, warning, monitor
+    })
+
+    const overviewProposals: Record<string, { type: string; title: string }> = {}
+
+    if (actionClients.length > 0) {
+      // Build a batch prompt with all action clients
+      const clientLines = actionClients.slice(0, 30).map((c) => {
+        const kpi = kpiSummaries[c.mondayItemId]
+        const billing = c.stripeCustomerId ? billingSummaries[c.stripeCustomerId] : undefined
+        const action = computeActionCategory(c, kpi, billing, undefined)
+        return `- ${c.mondayItemId} | ${c.name} | ${action.label}: ${action.reason} | Spend: €${kpi?.adSpend?.toFixed(0) ?? 0} | Leads: ${kpi?.leads ?? 0} | CPL: €${kpi?.cpl?.toFixed(2) ?? 0}`
+      }).join("\n")
+
+      try {
+        const msg = await anthropic.messages.create({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 2000,
+          system: `You are a performance marketing analyst at Rocket Leads. Generate a 1-line actionable recommendation for each client. Be specific — reference their KPIs. Output JSON only: { "monday_item_id": { "type": "critical"|"warning"|"action", "title": "1-line recommendation" } }`,
+          messages: [{ role: "user", content: `Generate 1-line recommendations for these clients:\n${clientLines}\n\nReturn ONLY a JSON object.` }],
+        })
+
+        const text = msg.content[0].type === "text" ? msg.content[0].text : ""
+        const jsonMatch = text.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0])
+          for (const [id, val] of Object.entries(parsed)) {
+            if (val && typeof val === "object" && "title" in val) {
+              overviewProposals[id] = val as { type: string; title: string }
+            }
+          }
+        }
+      } catch (e) {
+        console.error("AI overview proposals error:", e instanceof Error ? e.message : String(e))
+      }
+    }
+
+    await writeCache("overview_proposals", overviewProposals)
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1)
     return NextResponse.json({
@@ -143,6 +191,7 @@ export async function GET(req: NextRequest) {
       totalClients: allClients.length,
       kpiClients: Object.keys(kpiSummaries).length,
       billingClients: Object.keys(billingSummaries).length,
+      aiProposals: Object.keys(overviewProposals).length,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"

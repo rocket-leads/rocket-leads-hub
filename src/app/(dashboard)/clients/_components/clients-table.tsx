@@ -150,6 +150,8 @@ type Props = {
   billingSummaries?: Record<string, BillingSummary>
   kpiSummaries?: Record<string, KpiSummary>
   mondayActiveMap?: Record<string, boolean>
+  defaultSortKey?: SortKey
+  defaultSortDir?: SortDir
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -233,7 +235,7 @@ function SortableHead({ label, sortKey, currentKey, currentDir, onSort, classNam
   )
 }
 
-export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap }: Props) {
+export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap, defaultSortKey, defaultSortDir }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
@@ -241,8 +243,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   const [campaignManagerFilter, setCampaignManagerFilter] = useState("All")
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("All")
   const [healthFilter, setHealthFilter] = useState("All")
-  const [sortKey, setSortKey] = useState<SortKey | null>(null)
-  const [sortDir, setSortDir] = useState<SortDir>("asc")
+  const [sortKey, setSortKey] = useState<SortKey | null>(defaultSortKey ?? null)
+  const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir ?? "asc")
 
   const statuses = boardType === "onboarding" ? ONBOARDING_STATUSES : CURRENT_STATUSES
   const accountManagers = useMemo(() => uniqueSorted(clients.map((c) => c.accountManager)), [clients])
@@ -485,7 +487,14 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                 return (
                   <TableRow
                     key={client.mondayItemId}
-                    className="cursor-pointer row-hover border-b border-border/20"
+                    className={`cursor-pointer row-hover border-b border-border/20 ${
+                      boardType === "current" ? (() => {
+                        const h = getCampaignHealth(kpi)
+                        if (h.status === "critical") return "border-l-2 border-l-red-500/60"
+                        if (h.status === "warning") return "border-l-2 border-l-amber-500/60"
+                        return ""
+                      })() : ""
+                    }`}
                     onClick={() => router.push(`/clients/${client.mondayItemId}`)}
                   >
                     <TableCell>
