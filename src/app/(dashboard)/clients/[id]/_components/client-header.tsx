@@ -2,6 +2,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import Link from "next/link"
 import { ArrowLeft, ExternalLink } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { ClientSearch } from "@/components/client-search"
 
 const STATUS_COLORS: Record<string, string> = {
   "Kick off": "bg-blue-500/15 text-blue-400 border-blue-500/20",
@@ -16,13 +17,16 @@ type Props = { client: MondayClient }
 export function ClientHeader({ client }: Props) {
   return (
     <div className="mb-6">
-      <Link
-        href="/clients"
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-foreground transition-colors mb-5"
-      >
-        <ArrowLeft className="h-3 w-3" />
-        Back to Clients
-      </Link>
+      <div className="flex items-center justify-between mb-5">
+        <Link
+          href="/clients"
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-3 w-3" />
+          Back to Clients
+        </Link>
+        <ClientSearch />
+      </div>
 
       <div className="flex items-start justify-between gap-4">
         <div>
