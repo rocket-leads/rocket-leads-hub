@@ -3,7 +3,7 @@ import { decrypt } from "@/lib/encryption"
 
 const META_API_BASE = "https://graph.facebook.com/v20.0"
 
-async function getToken(): Promise<string> {
+export async function getToken(): Promise<string> {
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("api_tokens")

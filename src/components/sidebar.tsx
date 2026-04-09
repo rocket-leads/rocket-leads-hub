@@ -6,6 +6,7 @@ import { SidebarNavLinks } from "./sidebar-nav-links"
 
 const NAV_ITEMS = [
   { href: "/clients", label: "Clients", icon: "Users" as const },
+  { href: "/watchlist", label: "Watch List", icon: "Eye" as const },
   { href: "/targets", label: "Targets", icon: "Target" as const },
 ]
 

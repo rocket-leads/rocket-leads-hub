@@ -5,7 +5,7 @@ const MONDAY_API_URL = "https://api.monday.com/v2"
 
 let cachedToken: { value: string; expiresAt: number } | null = null
 
-async function getToken(): Promise<string> {
+export async function getToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt) return cachedToken.value
 
   const supabase = await createAdminClient()
@@ -77,7 +77,7 @@ async function gql(query: string, variables: Record<string, unknown>, token: str
   return json.data
 }
 
-async function fetchAllItems(boardId: string, token: string, maxRetries = 2) {
+export async function fetchAllItems(boardId: string, token: string, maxRetries = 2) {
   const query = `
     query GetItems($boardId: ID!, $cursor: String) {
       boards(ids: [$boardId]) {

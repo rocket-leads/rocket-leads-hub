@@ -2,9 +2,9 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Users, Target, Settings } from "lucide-react"
+import { Users, Eye, Target, Settings } from "lucide-react"
 
-const ICONS = { Users, Target, Settings }
+const ICONS = { Users, Eye, Target, Settings }
 
 type NavItem = { href: string; label: string; icon: keyof typeof ICONS }
 
