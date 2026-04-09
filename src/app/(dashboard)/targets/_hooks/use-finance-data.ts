@@ -1,9 +1,9 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { format, startOfMonth, getDaysInMonth } from "date-fns"
+import { format, getDaysInMonth } from "date-fns"
 import type { FinanceOverview, CostData, ProfitOverview } from "@/types/targets"
-import { useMemo } from "react"
 
 function getMonthKey(year: number, month: number): string {
   const names = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
@@ -63,10 +63,7 @@ export function useMonthSelector() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
 
-  const label = useMemo(() => {
-    return format(new Date(year, month - 1), "MMM yyyy")
-  }, [year, month])
-
+  const label = useMemo(() => format(new Date(year, month - 1), "MMM yyyy"), [year, month])
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
 
   const goToPrev = () => {
@@ -82,6 +79,3 @@ export function useMonthSelector() {
 
   return { year, month, label, isCurrentMonth, goToPrev, goToNext }
 }
-
-// Need to import useState
-import { useState } from "react"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import {
@@ -13,8 +13,6 @@ import {
 import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Sparkles } from "lucide-react"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
-
-type AiSummary = { type: string; title: string }
 
 type WatchCategory = "action" | "watch" | "good" | "no-data"
 
@@ -30,34 +28,22 @@ function categorize(client: MondayClient, kpi: KpiSummary | undefined): { catego
     return { category: "no-data", issue: "No campaign data" }
   }
 
-  // Spend with zero leads = action needed
   if (kpi.adSpend > 50 && kpi.leads === 0) {
     return { category: "action", issue: `0 leads — €${kpi.adSpend.toFixed(0)} spent` }
   }
 
-  // CPL trend
   if (kpi.cpl > 0 && kpi.prevCpl > 0) {
     const cplChange = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
-    if (cplChange >= 30) {
-      return { category: "action", issue: `CPL +${cplChange.toFixed(0)}%` }
-    }
-    if (cplChange >= 10) {
-      return { category: "watch", issue: `CPL +${cplChange.toFixed(0)}%` }
-    }
+    if (cplChange >= 30) return { category: "action", issue: `CPL +${cplChange.toFixed(0)}%` }
+    if (cplChange >= 10) return { category: "watch", issue: `CPL +${cplChange.toFixed(0)}%` }
   }
 
-  // CPA trend
   if (kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0) {
     const cpaChange = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
-    if (cpaChange >= 30) {
-      return { category: "action", issue: `CPA +${cpaChange.toFixed(0)}%` }
-    }
-    if (cpaChange >= 10) {
-      return { category: "watch", issue: `CPA +${cpaChange.toFixed(0)}%` }
-    }
+    if (cpaChange >= 30) return { category: "action", issue: `CPA +${cpaChange.toFixed(0)}%` }
+    if (cpaChange >= 10) return { category: "watch", issue: `CPA +${cpaChange.toFixed(0)}%` }
   }
 
-  // Good performance
   if (kpi.leads > 0) {
     const parts: string[] = []
     if (kpi.cpl > 0 && kpi.prevCpl > 0) {
@@ -88,6 +74,7 @@ const CATEGORY_CONFIG = {
     iconColor: "text-red-500",
     headerBg: "bg-red-500/5 border-red-500/20",
     rowBorder: "border-l-red-500/60",
+    issueColor: "text-red-400",
   },
   watch: {
     label: "Watch List",
@@ -96,6 +83,7 @@ const CATEGORY_CONFIG = {
     iconColor: "text-amber-500",
     headerBg: "bg-amber-500/5 border-amber-500/20",
     rowBorder: "border-l-amber-500/60",
+    issueColor: "text-amber-400",
   },
   good: {
     label: "Good Performance",
@@ -104,23 +92,20 @@ const CATEGORY_CONFIG = {
     iconColor: "text-green-500",
     headerBg: "bg-green-500/5 border-green-500/20",
     rowBorder: "border-l-green-500/60",
+    issueColor: "text-green-500",
   },
 } as const
 
 function WatchSection({
   category,
   items,
-  aiSummaries,
-  expandedId,
-  onToggle,
+  aiNotes,
   onNavigate,
   defaultOpen,
 }: {
   category: "action" | "watch" | "good"
   items: CategorizedClient[]
-  aiSummaries: Record<string, AiSummary> | undefined
-  expandedId: string | null
-  onToggle: (id: string) => void
+  aiNotes: Record<string, string>
   onNavigate: (id: string) => void
   defaultOpen: boolean
 }) {
@@ -145,9 +130,12 @@ function WatchSection({
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
           {/* Header */}
-          <div className="grid grid-cols-[1fr_120px_80px_80px_80px_80px_36px] gap-0 px-4 py-2 border-b border-border/20 bg-muted/20">
+          <div className="grid grid-cols-[200px_100px_1fr_70px_55px_65px_55px_28px] gap-0 px-4 py-2 border-b border-border/20 bg-muted/20">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Client</span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Issue</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium flex items-center gap-1">
+              <Sparkles className="h-2.5 w-2.5 text-violet-500" /> AI Note
+            </span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">Spend</span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">Leads</span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">CPL</span>
@@ -157,91 +145,62 @@ function WatchSection({
 
           {/* Rows */}
           {items.map(({ client, issue, kpi }) => {
-            const isExpanded = expandedId === client.mondayItemId
-            const ai = aiSummaries?.[client.mondayItemId]
+            const note = aiNotes[client.mondayItemId]
 
             return (
-              <div key={client.mondayItemId}>
-                <div
-                  className={`grid grid-cols-[1fr_120px_80px_80px_80px_80px_36px] gap-0 px-4 py-2.5 border-b border-border/10 border-l-2 ${config.rowBorder} cursor-pointer hover:bg-muted/30 transition-colors items-center`}
-                  onClick={() => onToggle(client.mondayItemId)}
-                >
-                  {/* Client name */}
-                  <div className="min-w-0">
-                    <span className="text-sm font-medium truncate block">{client.name}</span>
-                    {(client.accountManager || client.campaignManager) && (
-                      <span className="text-[10px] text-muted-foreground/40">
-                        {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Issue */}
-                  <span className={`text-xs font-medium ${category === "action" ? "text-red-400" : category === "watch" ? "text-amber-400" : "text-green-500"}`}>
-                    {issue}
+              <div
+                key={client.mondayItemId}
+                className={`grid grid-cols-[200px_100px_1fr_70px_55px_65px_55px_28px] gap-0 px-4 py-2.5 border-b border-border/10 border-l-2 ${config.rowBorder} cursor-pointer hover:bg-muted/30 transition-colors items-center`}
+                onClick={() => onNavigate(client.mondayItemId)}
+              >
+                {/* Client */}
+                <div className="min-w-0 pr-2">
+                  <span className="text-sm font-medium truncate block">{client.name}</span>
+                  <span className="text-[10px] text-muted-foreground/40 truncate block">
+                    {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
                   </span>
-
-                  {/* Spend */}
-                  <span className="text-xs tabular-nums text-muted-foreground text-right">
-                    {kpi && kpi.adSpend > 0 ? fmtCurrency(kpi.adSpend) : "—"}
-                  </span>
-
-                  {/* Leads */}
-                  <span className="text-xs tabular-nums font-medium text-right">
-                    {kpi && kpi.leads > 0 ? kpi.leads : kpi && kpi.adSpend > 0 ? "0" : "—"}
-                  </span>
-
-                  {/* CPL */}
-                  <span className="text-xs tabular-nums text-muted-foreground text-right">
-                    {kpi && kpi.cpl > 0 ? `€${kpi.cpl.toFixed(2)}` : "—"}
-                  </span>
-
-                  {/* Appointments */}
-                  <span className="text-xs tabular-nums text-muted-foreground text-right">
-                    {kpi && kpi.appointments > 0 ? kpi.appointments : "—"}
-                  </span>
-
-                  {/* Arrow */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onNavigate(client.mondayItemId) }}
-                    className="text-muted-foreground/30 hover:text-primary transition-colors flex justify-center"
-                    title="View client"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </button>
                 </div>
 
-                {/* Expanded AI summary */}
-                {isExpanded && (
-                  <div className={`px-4 py-3 border-b border-border/10 border-l-2 ${config.rowBorder} bg-muted/10`}>
-                    {ai ? (
-                      <div className="flex items-start gap-2">
-                        <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-violet-500" />
-                        <p className="text-xs text-muted-foreground leading-relaxed">{ai.title}</p>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground/40">No AI recommendation available yet. Refreshes every 30 minutes.</p>
-                    )}
-                    <div className="mt-2 flex items-center gap-3">
-                      <button
-                        onClick={() => onNavigate(client.mondayItemId)}
-                        className="text-[11px] text-primary font-medium hover:underline"
-                      >
-                        Open client details
-                      </button>
-                      {client.metaAdAccountId && (
-                        <a
-                          href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId.replace("act_", "")}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-foreground transition-colors"
-                        >
-                          Meta Ads <ExternalLink className="h-2.5 w-2.5" />
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                )}
+                {/* Issue */}
+                <span className={`text-xs font-medium ${config.issueColor}`}>{issue}</span>
+
+                {/* AI Note */}
+                <div className="min-w-0 pr-3">
+                  {note ? (
+                    <p className="text-[11px] text-muted-foreground leading-snug truncate" title={note}>{note}</p>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground/30 italic">Generating...</span>
+                  )}
+                </div>
+
+                {/* Spend */}
+                <span className="text-xs tabular-nums text-muted-foreground text-right">
+                  {kpi && kpi.adSpend > 0 ? fmtCurrency(kpi.adSpend) : "—"}
+                </span>
+
+                {/* Leads */}
+                <span className="text-xs tabular-nums font-medium text-right">
+                  {kpi && kpi.leads > 0 ? kpi.leads : kpi && kpi.adSpend > 0 ? "0" : "—"}
+                </span>
+
+                {/* CPL */}
+                <span className="text-xs tabular-nums text-muted-foreground text-right">
+                  {kpi && kpi.cpl > 0 ? `€${kpi.cpl.toFixed(2)}` : "—"}
+                </span>
+
+                {/* Appointments */}
+                <span className="text-xs tabular-nums text-muted-foreground text-right">
+                  {kpi && kpi.appointments > 0 ? kpi.appointments : "—"}
+                </span>
+
+                {/* Link */}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onNavigate(client.mondayItemId) }}
+                  className="text-muted-foreground/30 hover:text-primary transition-colors flex justify-center"
+                  title="View client"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </button>
               </div>
             )
           })}
@@ -251,6 +210,8 @@ function WatchSection({
   )
 }
 
+// --- Main Dashboard ---
+
 type Props = {
   clients: MondayClient[]
   userName: string
@@ -259,8 +220,9 @@ type Props = {
 export function WatchListDashboard({ clients, userName }: Props) {
   const router = useRouter()
   const [cmFilter, setCmFilter] = useState("All")
-  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [aiNotes, setAiNotes] = useState<Record<string, string>>({})
+  const aiGenerating = useRef(false)
 
   const campaignManagers = useMemo(() => uniqueSorted(clients.map((c) => c.campaignManager)), [clients])
 
@@ -294,13 +256,6 @@ export function WatchListDashboard({ clients, userName }: Props) {
     refetchOnWindowFocus: false,
   })
 
-  const aiQuery = useQuery<Record<string, AiSummary>>({
-    queryKey: ["overview-proposals"],
-    queryFn: () => fetch("/api/overview-proposals").then((r) => r.ok ? r.json() : {}),
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  })
-
   const lastUpdated = kpiQuery.dataUpdatedAt
     ? new Date(kpiQuery.dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
@@ -314,16 +269,13 @@ export function WatchListDashboard({ clients, userName }: Props) {
     for (const client of filteredClients) {
       const kpi = kpiQuery.data?.[client.mondayItemId]
       const { category, issue } = categorize(client, kpi)
-
       const item = { client, category, issue, kpi }
 
       if (category === "action") action.push(item)
       else if (category === "watch") watch.push(item)
       else if (category === "good") good.push(item)
-      // no-data clients are excluded
     }
 
-    // Sort action by spend descending (highest spend = most urgent)
     action.sort((a, b) => (b.kpi?.adSpend ?? 0) - (a.kpi?.adSpend ?? 0))
     watch.sort((a, b) => (b.kpi?.adSpend ?? 0) - (a.kpi?.adSpend ?? 0))
     good.sort((a, b) => (b.kpi?.leads ?? 0) - (a.kpi?.leads ?? 0))
@@ -331,10 +283,56 @@ export function WatchListDashboard({ clients, userName }: Props) {
     return { action, watch, good }
   }, [filteredClients, kpiQuery.data])
 
+  // Auto-generate AI notes when categorized data is ready
+  const allCategorized = useMemo(
+    () => [...categorized.action, ...categorized.watch, ...categorized.good],
+    [categorized]
+  )
+
+  useEffect(() => {
+    if (allCategorized.length === 0 || aiGenerating.current) return
+    // Only generate if we have KPI data and haven't generated yet
+    if (!kpiQuery.data) return
+
+    const clientsForAi = allCategorized
+      .filter((c) => c.kpi && (c.kpi.adSpend > 0 || c.kpi.leads > 0))
+      .map((c) => ({
+        id: c.client.mondayItemId,
+        name: c.client.name,
+        category: c.category as "action" | "watch" | "good",
+        issue: c.issue,
+        adSpend: c.kpi?.adSpend ?? 0,
+        leads: c.kpi?.leads ?? 0,
+        cpl: c.kpi?.cpl ?? 0,
+        prevCpl: c.kpi?.prevCpl ?? 0,
+        appointments: c.kpi?.appointments ?? 0,
+        costPerAppointment: c.kpi?.costPerAppointment ?? 0,
+        prevCostPerAppointment: c.kpi?.prevCostPerAppointment ?? 0,
+      }))
+
+    if (clientsForAi.length === 0) return
+
+    aiGenerating.current = true
+
+    fetch("/api/watchlist-summaries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clients: clientsForAi }),
+    })
+      .then((r) => r.ok ? r.json() : {})
+      .then((notes: Record<string, string>) => {
+        if (Object.keys(notes).length > 0) setAiNotes(notes)
+      })
+      .catch(() => {})
+      .finally(() => { aiGenerating.current = false })
+  }, [allCategorized, kpiQuery.data])
+
   async function handleRefresh() {
     setIsRefreshing(true)
+    aiGenerating.current = false
+    setAiNotes({})
     router.refresh()
-    await Promise.all([kpiQuery.refetch(), aiQuery.refetch()])
+    await kpiQuery.refetch()
     setIsRefreshing(false)
   }
 
@@ -402,27 +400,21 @@ export function WatchListDashboard({ clients, userName }: Props) {
         <WatchSection
           category="action"
           items={categorized.action}
-          aiSummaries={aiQuery.data}
-          expandedId={expandedId}
-          onToggle={(id) => setExpandedId(expandedId === id ? null : id)}
+          aiNotes={aiNotes}
           onNavigate={(id) => router.push(`/clients/${id}`)}
           defaultOpen={true}
         />
         <WatchSection
           category="watch"
           items={categorized.watch}
-          aiSummaries={aiQuery.data}
-          expandedId={expandedId}
-          onToggle={(id) => setExpandedId(expandedId === id ? null : id)}
+          aiNotes={aiNotes}
           onNavigate={(id) => router.push(`/clients/${id}`)}
           defaultOpen={true}
         />
         <WatchSection
           category="good"
           items={categorized.good}
-          aiSummaries={aiQuery.data}
-          expandedId={expandedId}
-          onToggle={(id) => setExpandedId(expandedId === id ? null : id)}
+          aiNotes={aiNotes}
           onNavigate={(id) => router.push(`/clients/${id}`)}
           defaultOpen={false}
         />
