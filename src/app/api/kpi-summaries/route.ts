@@ -143,21 +143,22 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as { clients: ClientInput[] }
   if (!body.clients?.length) return NextResponse.json({})
 
-  // Try cache first
+  // Serve from cache — cron keeps it fresh every 30 min
   const cached = await readCache<Record<string, KpiSummary>>("kpi_summaries")
   if (cached) {
     const summaries: Record<string, KpiSummary> = {}
     for (const c of body.clients) {
       if (cached[c.mondayItemId]) summaries[c.mondayItemId] = cached[c.mondayItemId]
     }
-    if (Object.keys(summaries).length === body.clients.length) {
+    // Return whatever we have from cache — don't block on live fetches
+    if (Object.keys(summaries).length > 0) {
       return NextResponse.json(summaries, {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
       })
     }
   }
 
-  // Cache miss — fetch live
+  // No cache at all — fetch live (first load only)
   const { startDate, endDate } = getLast7DaysRange()
   const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
 

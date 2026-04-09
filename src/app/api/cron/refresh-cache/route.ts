@@ -129,8 +129,9 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // 5. Write all caches
+    // 5. Write all caches (including Monday boards data)
     await Promise.all([
+      writeCache("monday_boards", { onboarding, current }),
       writeCache("kpi_summaries", kpiSummaries),
       writeCache("billing_summaries", billingSummaries),
     ])
@@ -139,6 +140,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       duration: `${duration}s`,
+      totalClients: allClients.length,
       kpiClients: Object.keys(kpiSummaries).length,
       billingClients: Object.keys(billingSummaries).length,
     })

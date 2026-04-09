@@ -1,8 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/server"
 
-const DEFAULT_MAX_AGE_MS = 35 * 60 * 1000 // 35 minutes — slightly longer than the 30-min cron interval
-
-export async function readCache<T>(key: string, maxAgeMs = DEFAULT_MAX_AGE_MS): Promise<T | null> {
+/**
+ * Read from cache. Always returns data if it exists — no TTL expiry.
+ * The cron job keeps data fresh; we never block the user waiting for live API calls.
+ */
+export async function readCache<T>(key: string): Promise<T | null> {
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("cache_store")
@@ -11,10 +13,6 @@ export async function readCache<T>(key: string, maxAgeMs = DEFAULT_MAX_AGE_MS): 
     .single()
 
   if (!data) return null
-
-  const age = Date.now() - new Date(data.updated_at).getTime()
-  if (age > maxAgeMs) return null
-
   return data.data as T
 }
 
@@ -29,16 +27,18 @@ export async function writeCache(key: string, value: unknown): Promise<void> {
  * Write-through cache: returns cached data if fresh, otherwise calls fetcher,
  * caches the result, and returns it. Cache writes are fire-and-forget.
  */
+/**
+ * Read cache first, fall back to live fetch only if no cache exists.
+ * Cache writes are fire-and-forget.
+ */
 export async function cachedFetch<T>(
   key: string,
   fetcher: () => Promise<T>,
-  maxAgeMs = DEFAULT_MAX_AGE_MS,
 ): Promise<T> {
-  const cached = await readCache<T>(key, maxAgeMs)
+  const cached = await readCache<T>(key)
   if (cached !== null) return cached
 
   const fresh = await fetcher()
-  // Fire-and-forget — don't slow down the response
   void writeCache(key, fresh)
   return fresh
 }

@@ -1,10 +1,12 @@
 import { Suspense } from "react"
 import { fetchBothBoards } from "@/lib/integrations/monday"
+import { readCache } from "@/lib/cache"
 import { ClientsOverview } from "./_components/clients-overview"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { auth } from "@/lib/auth"
 import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
+import type { MondayClient } from "@/lib/integrations/monday"
 
 function ClientsLoading() {
   return (
@@ -25,7 +27,9 @@ async function ClientsData() {
   const session = await auth()
 
   try {
-    const data = await fetchBothBoards()
+    // Try cache first (kept fresh by cron every 30 min), fall back to live API
+    const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards")
+    const data = cached ?? await fetchBothBoards()
 
     if (session?.user?.id && session.user.role) {
       onboarding = await filterClientsByUser(data.onboarding, session.user.id, session.user.role)

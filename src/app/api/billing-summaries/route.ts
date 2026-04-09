@@ -15,21 +15,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({})
   }
 
-  // Try cache first
+  // Serve from cache — cron keeps it fresh every 30 min
   const cached = await readCache<Record<string, BillingSummary>>("billing_summaries")
   if (cached) {
     const summaries: Record<string, BillingSummary> = {}
     for (const id of customerIds) {
       if (cached[id]) summaries[id] = cached[id]
     }
-    if (Object.keys(summaries).length === customerIds.length) {
+    if (Object.keys(summaries).length > 0) {
       return NextResponse.json(summaries, {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
       })
     }
   }
 
-  // Cache miss — fetch live
+  // No cache at all — fetch live (first load only)
   const results = await Promise.allSettled(customerIds.map((id) => fetchBillingSummary(id)))
 
   const summaries: Record<string, BillingSummary> = {}
