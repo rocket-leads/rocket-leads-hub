@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchMetaAdDetails, type MetaAdDetail } from "@/lib/integrations/meta"
+import { cachedFetch } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 export type { MetaAdDetail }
@@ -40,10 +41,15 @@ export async function GET(
     selectedCampaignIds = new Set(selectedCampaignIdsParam.split(",").filter(Boolean))
   }
 
-  const ads = await fetchMetaAdDetails(adAccountId, startDate, endDate, selectedCampaignIds).catch((e) => {
-    console.error("Meta ad details error:", e)
-    return []
-  })
+  const cacheKey = `meta_ad_details:${adAccountId}:${startDate}:${endDate}:${selectedCampaignIdsParam}`
+  const ads = await cachedFetch(
+    cacheKey,
+    () => fetchMetaAdDetails(adAccountId, startDate, endDate, selectedCampaignIds).catch((e) => {
+      console.error("Meta ad details error:", e)
+      return [] as MetaAdDetail[]
+    }),
+    30 * 60 * 1000,
+  )
 
   return NextResponse.json(
     { ads },

@@ -20,7 +20,7 @@ import type { MetaCampaign } from "@/lib/integrations/meta"
 const AdPerformance = dynamic(() => import("./ad-performance").then((m) => m.AdPerformance), {
   ssr: false,
 })
-const CampaignOptimizationProposal = dynamic(() => import("./ai-optimization-proposal").then((m) => m.CampaignOptimizationProposal), {
+const CampaignAnalysis = dynamic(() => import("./ai-optimization-proposal").then((m) => m.CampaignAnalysis), {
   ssr: false,
 })
 
@@ -138,7 +138,8 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
                 {kpisQuery.isError && (
                   <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
                 )}
-                <CampaignOptimizationProposal
+                <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
+                <CampaignAnalysis
                   mondayItemId={mondayItemId}
                   metaAdAccountId={metaAdAccountId}
                   clientBoardId={clientBoardId}
@@ -148,7 +149,6 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
                   scored={!kpisQuery.isLoading && kpisQuery.data ? scoreRows(kpisQuery.data.utmBreakdown ?? []) : null}
                   kpis={kpisQuery.data ?? null}
                 />
-                <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
                 {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
                   <div>
                     <h3 className="text-base font-semibold mb-3">UTM / Ad Performance Breakdown</h3>
@@ -182,7 +182,8 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
           {kpisQuery.isError && (
             <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
           )}
-          <CampaignOptimizationProposal
+          <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
+          <CampaignAnalysis
             mondayItemId={mondayItemId}
             metaAdAccountId={metaAdAccountId}
             clientBoardId={clientBoardId}
@@ -192,7 +193,6 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
             scored={!kpisQuery.isLoading && kpisQuery.data ? scoreRows(kpisQuery.data.utmBreakdown ?? []) : null}
             kpis={kpisQuery.data ?? null}
           />
-          <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
           {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
             <div>
               <h3 className="text-base font-semibold mb-3">UTM / Ad Performance Breakdown</h3>

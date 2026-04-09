@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchBillingData } from "@/lib/integrations/stripe"
+import { cachedFetch } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
@@ -26,7 +27,11 @@ export async function GET(
   }
 
   try {
-    const data = await fetchBillingData(stripeCustomerId)
+    const data = await cachedFetch(
+      `billing:${stripeCustomerId}`,
+      () => fetchBillingData(stripeCustomerId),
+      30 * 60 * 1000,
+    )
     return NextResponse.json(data, {
       headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
     })

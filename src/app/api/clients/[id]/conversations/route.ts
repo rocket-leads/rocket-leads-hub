@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import { fetchConversations } from "@/lib/integrations/trengo"
+import { cachedFetch } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
@@ -17,7 +18,11 @@ export async function GET(
   }
 
   try {
-    const conversations = await fetchConversations(trengoContactId)
+    const conversations = await cachedFetch(
+      `trengo_conversations:${trengoContactId}`,
+      () => fetchConversations(trengoContactId),
+      30 * 60 * 1000,
+    )
     return NextResponse.json(conversations, {
       headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
     })

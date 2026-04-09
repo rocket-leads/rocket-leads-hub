@@ -141,7 +141,7 @@ type Props = {
 
 export function KpiCards({ data, previousData, isLoading, visibility = { leads: true, appointments: true, deals: true } }: Props) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {KPI_GROUPS.map((group) => {
         if (!visibility[group.section]) return null
 
@@ -157,50 +157,51 @@ export function KpiCards({ data, previousData, isLoading, visibility = { leads: 
           : "grid grid-cols-2 gap-3 sm:grid-cols-5"
 
         return (
-          <div key={group.title}>
-            <div className="flex items-center gap-2 mb-3">
+          <Card key={group.title} className="overflow-hidden">
+            <div className="px-4 pt-3.5 pb-3">
               <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
                 {group.title}
               </h3>
-              <div className="flex-1 h-px bg-border/40" />
             </div>
-            <div className={colClass}>
-              {visibleCards.map((kpi) => {
-                const Icon = kpi.icon
-                const value = data?.[kpi.key] as number | undefined
-                const prevValue = previousData?.[kpi.key] as number | undefined
-                const status = value != null && prevValue != null
-                  ? evaluateTrend(value, prevValue, kpi.direction)
-                  : null
-                const styles = status ? STATUS_STYLES[status] : null
+            <CardContent className="px-4 pb-4 pt-0">
+              <div className={colClass}>
+                {visibleCards.map((kpi) => {
+                  const Icon = kpi.icon
+                  const value = data?.[kpi.key] as number | undefined
+                  const prevValue = previousData?.[kpi.key] as number | undefined
+                  const status = value != null && prevValue != null
+                    ? evaluateTrend(value, prevValue, kpi.direction)
+                    : null
+                  const styles = status ? STATUS_STYLES[status] : null
 
-                return (
-                  <Card key={kpi.key} className={`relative overflow-hidden transition-all duration-200 hover:shadow-md hover:shadow-black/5 ${styles?.border ?? "border-l-[3px] border-l-transparent"}`}>
-                    <CardContent className="flex h-full flex-col justify-between p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 leading-tight">
-                          {kpi.label}
-                        </p>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {status && <span className={`h-1.5 w-1.5 rounded-full ${styles?.dot}`} />}
-                          <Icon className="h-3.5 w-3.5 text-muted-foreground/30" />
+                  return (
+                    <div key={kpi.key} className={`relative rounded-lg border bg-card/50 overflow-hidden transition-all duration-200 hover:bg-card ${styles?.border ?? "border-l-[3px] border-l-transparent"}`}>
+                      <div className="flex h-full flex-col justify-between p-3.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 leading-tight">
+                            {kpi.label}
+                          </p>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {status && <span className={`h-1.5 w-1.5 rounded-full ${styles?.dot}`} />}
+                            <Icon className="h-3.5 w-3.5 text-muted-foreground/30" />
+                          </div>
+                        </div>
+                        <div className="mt-auto pt-2.5">
+                          {isLoading ? (
+                            <Skeleton className="h-7 w-20" />
+                          ) : (
+                            <p className={`text-xl font-bold tabular-nums tracking-tight ${styles?.value ?? "text-foreground"}`}>
+                              {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
+                            </p>
+                          )}
                         </div>
                       </div>
-                      <div className="mt-auto pt-3">
-                        {isLoading ? (
-                          <Skeleton className="h-7 w-20" />
-                        ) : (
-                          <p className={`text-xl font-bold tabular-nums tracking-tight ${styles?.value ?? "text-foreground"}`}>
-                            {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
-                          </p>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-          </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
         )
       })}
     </div>

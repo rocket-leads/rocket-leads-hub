@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientBoardItemsWithUpdates } from "@/lib/integrations/monday"
+import { cachedFetch } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 export type UtmFeedback = {
@@ -33,10 +34,14 @@ export async function GET(
     return NextResponse.json({ feedback: [] })
   }
 
-  const items = await fetchClientBoardItemsWithUpdates(clientBoardId).catch((e) => {
-    console.error("Monday updates fetch error:", e)
-    return []
-  })
+  const items = await cachedFetch(
+    `monday_board_updates:${clientBoardId}`,
+    () => fetchClientBoardItemsWithUpdates(clientBoardId).catch((e) => {
+      console.error("Monday updates fetch error:", e)
+      return [] as Awaited<ReturnType<typeof fetchClientBoardItemsWithUpdates>>
+    }),
+    30 * 60 * 1000,
+  )
 
   // Group updates by UTM — only include items that have updates
   const utmMap = new Map<string, UtmFeedback>()
