@@ -4,9 +4,8 @@ import { useState, useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { TrendingUp, TrendingDown, AlertTriangle, Lightbulb, Sparkles, RefreshCw, Clock, BarChart3, ChevronDown } from "lucide-react"
+import { TrendingUp, TrendingDown, AlertTriangle, Lightbulb, RefreshCw, Clock, ChevronDown } from "lucide-react"
 import type { KpiResult } from "@/lib/clients/kpis"
-import type { ScoredRow } from "./ad-performance"
 
 type Insight = {
   type: "positive" | "warning" | "critical" | "action"
@@ -97,14 +96,6 @@ function useTimeframeKpis(
   })
 }
 
-function fmtPct(n: number) {
-  return `${(n * 100).toFixed(0)}%`
-}
-
-function fmtEur(n: number) {
-  return `€${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
-}
-
 function timeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
   if (seconds < 60) return "just now"
@@ -114,118 +105,6 @@ function timeAgo(date: Date): string {
   return `${hours}h ago`
 }
 
-function ReliabilityBadge({ level }: { level: "high" | "medium" | "low" }) {
-  const styles = {
-    high: "bg-green-500/15 text-green-600 dark:text-green-400",
-    medium: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-    low: "bg-muted text-muted-foreground",
-  }
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${styles[level]}`}>
-      {level === "high" ? "Reliable" : level === "medium" ? "Limited data" : "Low data"}
-    </span>
-  )
-}
-
-function AdScoringSection({ scored }: { scored: ScoredRow[] }) {
-  const scale = scored.filter(
-    (r) => (r.category === "winner" || r.category === "sniper") && r.takenCalls >= 1
-  ).sort((a, b) => b.takenCalls - a.takenCalls)
-
-  const reduce = scored.filter(
-    (r) => (r.category === "fake" || r.category === "garbage") && r.leads >= 3
-  ).sort((a, b) => b.leads - a.leads)
-
-  const monitor = scored.filter(
-    (r) =>
-      (r.category === "winner" || r.category === "sniper") && r.takenCalls === 0 ||
-      r.reliability === "low"
-  )
-
-  if (scale.length === 0 && reduce.length === 0 && monitor.length === 0) return null
-
-  return (
-    <div className="space-y-4">
-      {scale.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-center gap-1.5 pl-4">
-            <span className="h-2 w-2 rounded-full bg-green-500" />
-            <span className="text-sm font-medium">Increase budget</span>
-          </div>
-          <div className="space-y-2">
-            {scale.map((r) => (
-              <div key={r.utm} className="rounded-md border border-green-500/20 bg-green-500/5 pl-4 pr-3 py-2">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="font-mono text-xs break-all text-foreground">{r.utm}</span>
-                  <ReliabilityBadge level={r.reliability} />
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {r.category === "winner"
-                    ? `All-round performer — ${r.takenCalls} taken calls (${fmtPct(r.takenCallRate)} rate), ${r.leads} leads. ${
-                        r.reliability === "low"
-                          ? "Scale cautiously — limited data so far."
-                          : "Strong across both volume and quality. Scale with confidence."
-                      }`
-                    : `Sniper — low opt-in volume but ${fmtPct(r.takenCallRate)} taken call rate. ${r.takenCalls} taken call${r.takenCalls !== 1 ? "s" : ""}. ${
-                        r.reliability === "low"
-                          ? "Promising early signal — scale modestly to gather more data before committing."
-                          : "Reliable signal. Scale budget to capture more of this high-quality traffic."
-                      }`}
-                  {r.deals > 0 && ` ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed${r.revenue > 0 ? ` (${fmtEur(r.revenue)})` : ""}.`}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {reduce.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-center gap-1.5 pl-4">
-            <span className="h-2 w-2 rounded-full bg-red-500" />
-            <span className="text-sm font-medium">Decrease budget</span>
-          </div>
-          <div className="space-y-2">
-            {reduce.map((r) => (
-              <div key={r.utm} className="rounded-md border border-red-500/20 bg-red-500/5 pl-4 pr-3 py-2">
-                <div className="flex items-start justify-between gap-2">
-                  <span className="font-mono text-xs break-all text-foreground">{r.utm}</span>
-                  <ReliabilityBadge level={r.reliability} />
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {r.category === "fake"
-                    ? `Fake winner — ${r.leads} opt-ins but only ${r.takenCalls} taken call${r.takenCalls !== 1 ? "s" : ""} (${fmtPct(r.takenCallRate)} rate). High volume of unqualified leads is inflating cost per taken call.`
-                    : `Low performer — ${r.leads} leads, ${r.takenCalls} taken call${r.takenCalls !== 1 ? "s" : ""}. Neither volume nor quality justifies continued spend.`}
-                  {r.deals > 0
-                    ? ` ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed — monitor before cutting entirely.`
-                    : " No deals closed in this period."}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {monitor.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-center gap-1.5 pl-4">
-            <span className="h-2 w-2 rounded-full bg-amber-500" />
-            <span className="text-sm font-medium">Monitor — insufficient data</span>
-          </div>
-          <div className="space-y-1">
-            {monitor.map((r) => (
-              <div key={r.utm} className="flex items-center justify-between gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 pl-4 pr-3 py-2">
-                <span className="font-mono text-xs break-all text-foreground">{r.utm}</span>
-                <span className="shrink-0 text-xs text-muted-foreground">{r.leads} leads · {r.takenCalls} taken</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 type Props = {
   mondayItemId: string
   metaAdAccountId: string | null
@@ -233,11 +112,9 @@ type Props = {
   selectedCampaignIds: string[]
   clientName: string
   boardType: "onboarding" | "current"
-  scored: ScoredRow[] | null
-  kpis: KpiResult | null
 }
 
-export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId, selectedCampaignIds, clientName, boardType, scored, kpis }: Props) {
+export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId, selectedCampaignIds, clientName, boardType }: Props) {
   const [insights, setInsights] = useState<Insight[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -330,7 +207,7 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
     }
   }, [isKpiLoading, hasAnyData]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (isKpiLoading && !scored) {
+  if (isKpiLoading) {
     return (
       <Card>
         <CardHeader className="pb-3">
@@ -344,10 +221,7 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
     )
   }
 
-  if (!hasAnyData && !scored) return null
-
-  const hasRoi = kpis && kpis.roi > 0
-  const hasScoring = scored && scored.length > 0
+  if (!hasAnyData) return null
 
   const statusBadge = insights
     ? insights.filter((i) => i.type === "critical").length > 0
@@ -398,40 +272,11 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
           </div>
         </div>
         <p className="text-xs text-muted-foreground/60 mt-1">
-          {hasScoring ? "Ad performance scoring" : ""}
-          {hasScoring && (insights || loading) ? " + " : ""}
-          {(insights || loading) ? "AI-powered insights" : ""}
-          {hasKnowledge ? " using client knowledge base" : ""}
-          {hasRoi && ` — Overall ROI: ${kpis.roi.toFixed(2)}x (${fmtEur(kpis.revenue)} revenue on ${fmtEur(kpis.adSpend)} spend)`}
+          AI-powered insights{hasKnowledge ? " using client knowledge base" : ""}
         </p>
       </CardHeader>
 
-      <CardContent className="space-y-0">
-        {/* Section 1: Rule-based ad scoring (instant, no API needed) */}
-        {scored && kpis && (
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <BarChart3 className="h-3.5 w-3.5 text-muted-foreground/50" />
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">Ad Scoring</span>
-              <div className="flex-1 h-px bg-border/40" />
-            </div>
-            <AdScoringSection scored={scored} />
-          </div>
-        )}
-
-        {/* Section 2: AI-generated insights */}
-        {(insights || loading || error) && (
-          <div className={`${scored && kpis ? "mt-5 pt-5 border-t border-border/30" : ""}`}>
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles className="h-3.5 w-3.5 text-violet-500" />
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">AI Insights</span>
-              {insights && (
-                <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-medium text-violet-500 flex items-center gap-1">
-                  AI{hasKnowledge ? " + Knowledge" : ""}
-                </span>
-              )}
-              <div className="flex-1 h-px bg-border/40" />
-            </div>
+      <CardContent>
 
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
@@ -462,8 +307,6 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
                 ))}
               </div>
             )}
-          </div>
-        )}
       </CardContent>
     </Card>
   )

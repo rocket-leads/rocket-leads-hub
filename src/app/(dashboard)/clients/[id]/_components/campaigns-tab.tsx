@@ -13,7 +13,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { Settings2 } from "lucide-react"
 import type { KpiResult } from "@/lib/clients/kpis"
-import { scoreRows } from "./ad-performance"
 import type { MetaCampaign } from "@/lib/integrations/meta"
 
 const AdPerformance = dynamic(() => import("./ad-performance").then((m) => m.AdPerformance), {
@@ -128,8 +127,6 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
         selectedCampaignIds={selectedIds}
         clientName={clientName}
         boardType={boardType}
-        scored={!kpisQuery.isLoading && kpisQuery.data ? scoreRows(kpisQuery.data.utmBreakdown ?? []) : null}
-        kpis={kpisQuery.data ?? null}
       />
 
       {/* Date filter + KPIs */}
