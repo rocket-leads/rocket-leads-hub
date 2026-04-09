@@ -6,6 +6,7 @@ import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { writeCache } from "@/lib/cache"
 import { computeActionCategory } from "@/lib/clients/action-category"
+import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import Anthropic from "@anthropic-ai/sdk"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { BillingSummary } from "@/lib/integrations/stripe"
@@ -80,9 +81,11 @@ export async function GET(req: NextRequest) {
       const results = await Promise.allSettled(
         batch.map(async (client) => {
           const selectedCampaignIds = selectedByMondayItemId[client.mondayItemId] ?? new Set<string>()
+          const isRlNoCampaign = isRocketLeadsAdAccount(client.metaAdAccountId) && selectedCampaignIds.size === 0
+          const shouldFetchMeta = client.metaAdAccountId && !isRlNoCampaign
 
           const [insights, items] = await Promise.all([
-            client.metaAdAccountId
+            shouldFetchMeta
               ? fetchMetaInsights(client.metaAdAccountId, startDate, endDate).catch(() => [])
               : Promise.resolve([]),
             client.clientBoardId
@@ -107,6 +110,7 @@ export async function GET(req: NextRequest) {
               cpl,
               appointments,
               costPerAppointment: appointments > 0 ? adSpend / appointments : 0,
+              ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
             } as KpiSummary,
           }
         })

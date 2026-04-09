@@ -4,6 +4,7 @@ import { format } from "date-fns"
 import { useDateRange } from "../_hooks/use-date-range"
 import { useTargetsData } from "../_hooks/use-targets-data"
 import { useKpiCalculations } from "../_hooks/use-kpi-calculations"
+import { useTargetsConfig } from "../_hooks/use-targets-config"
 import { KpiCard } from "./kpi-card"
 import { RevenueProgressBar } from "./revenue-progress-bar"
 import { WeeklyOverview } from "./weekly-overview"
@@ -13,10 +14,12 @@ import { IndustryTable } from "./industry-table"
 export function MarketingTab() {
   const { range, setStartDate, setEndDate, presets, applyPreset } = useDateRange()
   const data = useTargetsData(range)
+  const { data: targets } = useTargetsConfig()
   const { kpiGroups, revenueProgress } = useKpiCalculations(
     data.monday, data.meta, range,
     data.mondayLoading, data.metaLoading,
     data.mondayError, data.metaError,
+    targets ?? undefined,
   )
 
   return (

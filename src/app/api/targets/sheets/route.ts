@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { google } from "googleapis"
+import { createAdminClient } from "@/lib/supabase/server"
+import { decrypt } from "@/lib/encryption"
 import type { CostData } from "@/types/targets"
 
 const SHEET_RANGES: Record<string, string> = {
@@ -14,14 +16,33 @@ const MONTH_LABELS = [
   "jul-25", "aug-25", "sep-25", "okt-25", "nov-25", "dec-25",
 ]
 
-function getAuth() {
-  return new google.auth.GoogleAuth({
-    credentials: {
-      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      private_key: (process.env.GOOGLE_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
-    },
-    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+// Reuse the same Google service account stored in Supabase (same as google-drive.ts)
+let cachedAuth: { value: InstanceType<typeof google.auth.GoogleAuth>; expiresAt: number } | null = null
+
+async function getAuth() {
+  if (cachedAuth && Date.now() < cachedAuth.expiresAt) return cachedAuth.value
+
+  const supabase = await createAdminClient()
+  const { data } = await supabase
+    .from("api_tokens")
+    .select("token_encrypted")
+    .eq("service", "google_drive")
+    .single()
+
+  if (!data) throw new Error("Google service account not configured. Go to Settings → API Tokens.")
+
+  const keyJson = JSON.parse(decrypt(data.token_encrypted))
+
+  const authClient = new google.auth.GoogleAuth({
+    credentials: keyJson,
+    scopes: [
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/spreadsheets.readonly",
+    ],
   })
+
+  cachedAuth = { value: authClient, expiresAt: Date.now() + 30 * 60 * 1000 }
+  return authClient
 }
 
 function parseEuro(val: string | undefined): number {
@@ -60,20 +81,20 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const sheet = searchParams.get("sheet") || "profits"
-  const monthKey = searchParams.get("month") // e.g. "apr-25"
+  const monthKey = searchParams.get("month")
+  const spreadsheetId = searchParams.get("spreadsheetId") || process.env.GOOGLE_SHEETS_SPREADSHEET_ID
 
   const range = SHEET_RANGES[sheet]
   if (!range) {
     return NextResponse.json({ error: "Invalid sheet parameter" }, { status: 400 })
   }
 
-  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID
-  if (!spreadsheetId || !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
-    return NextResponse.json({ error: "Google Sheets not configured" }, { status: 500 })
+  if (!spreadsheetId) {
+    return NextResponse.json({ error: "Spreadsheet ID not configured. Pass ?spreadsheetId= or set GOOGLE_SHEETS_SPREADSHEET_ID env var." }, { status: 400 })
   }
 
   try {
-    const authClient = getAuth()
+    const authClient = await getAuth()
     const sheets = google.sheets({ version: "v4", auth: authClient })
     const response = await sheets.spreadsheets.values.get({ spreadsheetId, range })
     const rows = response.data.values as string[][] | undefined
@@ -94,7 +115,6 @@ export async function GET(request: Request) {
       })
     }
 
-    // Otherwise return raw rows
     return NextResponse.json(rows, {
       headers: { "Cache-Control": "private, s-maxage=300, stale-while-revalidate=600" },
     })

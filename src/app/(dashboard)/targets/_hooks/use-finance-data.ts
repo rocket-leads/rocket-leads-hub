@@ -36,7 +36,7 @@ export function useFinanceData(year: number, month: number) {
 
   const profit = useMemo<ProfitOverview | null>(() => {
     if (!stripeQuery.data || !costsQuery.data) return null
-    const revenue = stripeQuery.data.cashCollected
+    const revenue = stripeQuery.data.total.cashCollected
     const costs = costsQuery.data.totalCosts
     const netProfit = revenue - costs
     return {
@@ -44,7 +44,7 @@ export function useFinanceData(year: number, month: number) {
       costs,
       netProfit,
       margin: revenue > 0 ? netProfit / revenue : 0,
-      accountingProfit: stripeQuery.data.invoiced - costs,
+      accountingProfit: stripeQuery.data.total.invoiced - costs,
       cashProfit: netProfit,
     }
   }, [stripeQuery.data, costsQuery.data])

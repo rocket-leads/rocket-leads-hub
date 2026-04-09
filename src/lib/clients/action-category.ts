@@ -36,6 +36,17 @@ export function computeActionCategory(
     }
   }
 
+  // RL ad account with no campaign selected — treat as no data
+  if (kpi?.rlAccountNoCampaign) {
+    return {
+      priority: 5,
+      category: "autopilot",
+      label: "No Campaign Selected",
+      reason: "RL ad account — no campaign selected",
+      color: "green",
+    }
+  }
+
   // Priority 2: Campaign critical (spend with 0 leads, or CPL/CPA spike 50%+)
   if (kpi) {
     if (kpi.adSpend > 50 && kpi.leads === 0) {

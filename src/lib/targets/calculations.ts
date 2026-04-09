@@ -1,18 +1,6 @@
 import { differenceInDays, startOfMonth, getDaysInMonth, max } from "date-fns"
-import type { MondayTargetsData, MetaTargetsData, KpiCardData, KpiGroup, DateRange } from "@/types/targets"
+import type { MondayTargetsData, MetaTargetsData, KpiGroup, DateRange, TargetsConfig } from "@/types/targets"
 import { formatCurrency, formatCurrencyDecimal, formatNumber, formatPercent, formatMultiplier, safeDivide } from "./formatters"
-
-export const MONTHLY_TARGETS = {
-  calls: 141,
-  qualifiedCalls: 113,
-  takenCalls: 90,
-  deals: 15,
-  revenue: 52500,
-  cbc: 62.5,
-  cqc: 76,
-  ctc: 93,
-  cpd: 513,
-}
 
 export function getEffectiveDays(range: DateRange): number {
   const refMonthStart = startOfMonth(range.endDate)
@@ -34,6 +22,7 @@ export function calculateKpiGroups(
   metaLoading: boolean,
   mondayError: string | null,
   metaError: string | null,
+  targets?: TargetsConfig | null,
 ): KpiGroup[] {
   const spend = meta?.spend ?? 0
   const leads = monday?.leads ?? 0
@@ -43,11 +32,12 @@ export function calculateKpiGroups(
   const deals = monday?.deals ?? 0
   const closedRevenue = monday?.closedRevenue ?? 0
 
-  const prCalls = Math.round(getProRataTarget(MONTHLY_TARGETS.calls, range))
-  const prQualified = Math.round(getProRataTarget(MONTHLY_TARGETS.qualifiedCalls, range))
-  const prTaken = Math.round(getProRataTarget(MONTHLY_TARGETS.takenCalls, range))
-  const prDeals = Math.round(getProRataTarget(MONTHLY_TARGETS.deals, range))
-  const prRevenue = Math.round(getProRataTarget(MONTHLY_TARGETS.revenue, range))
+  const t = targets ?? null
+  const prCalls = t ? Math.round(getProRataTarget(t.calls, range)) : undefined
+  const prQualified = t ? Math.round(getProRataTarget(t.qualifiedCalls, range)) : undefined
+  const prTaken = t ? Math.round(getProRataTarget(t.takenCalls, range)) : undefined
+  const prDeals = t ? Math.round(getProRataTarget(t.deals, range)) : undefined
+  const prRevenue = t ? Math.round(getProRataTarget(t.revenue, range)) : undefined
 
   return [
     {
@@ -58,7 +48,7 @@ export function calculateKpiGroups(
           value: calls,
           formatted: formatNumber(calls),
           target: prCalls,
-          targetFormatted: `${formatNumber(calls)} of ${formatNumber(prCalls)}`,
+          targetFormatted: prCalls != null ? `${formatNumber(calls)} of ${formatNumber(prCalls)}` : undefined,
           variant: "volume",
           isLoading: mondayLoading,
           error: mondayError,
@@ -68,7 +58,7 @@ export function calculateKpiGroups(
           value: qualifiedCalls,
           formatted: formatNumber(qualifiedCalls),
           target: prQualified,
-          targetFormatted: `${formatNumber(qualifiedCalls)} of ${formatNumber(prQualified)}`,
+          targetFormatted: prQualified != null ? `${formatNumber(qualifiedCalls)} of ${formatNumber(prQualified)}` : undefined,
           variant: "volume",
           isLoading: mondayLoading,
           error: mondayError,
@@ -78,7 +68,7 @@ export function calculateKpiGroups(
           value: takenCalls,
           formatted: formatNumber(takenCalls),
           target: prTaken,
-          targetFormatted: `${formatNumber(takenCalls)} of ${formatNumber(prTaken)}`,
+          targetFormatted: prTaken != null ? `${formatNumber(takenCalls)} of ${formatNumber(prTaken)}` : undefined,
           variant: "volume",
           isLoading: mondayLoading,
           error: mondayError,
@@ -88,7 +78,7 @@ export function calculateKpiGroups(
           value: deals,
           formatted: formatNumber(deals),
           target: prDeals,
-          targetFormatted: `${formatNumber(deals)} of ${formatNumber(prDeals)}`,
+          targetFormatted: prDeals != null ? `${formatNumber(deals)} of ${formatNumber(prDeals)}` : undefined,
           variant: "volume",
           isLoading: mondayLoading,
           error: mondayError,
@@ -98,7 +88,7 @@ export function calculateKpiGroups(
           value: closedRevenue,
           formatted: formatCurrency(closedRevenue),
           target: prRevenue,
-          targetFormatted: `${formatCurrency(closedRevenue)} of ${formatCurrency(prRevenue)}`,
+          targetFormatted: prRevenue != null ? `${formatCurrency(closedRevenue)} of ${formatCurrency(prRevenue)}` : undefined,
           variant: "volume",
           isLoading: mondayLoading,
           error: mondayError,
@@ -128,8 +118,8 @@ export function calculateKpiGroups(
           label: "CBC",
           value: safeDivide(spend, calls),
           formatted: formatCurrencyDecimal(safeDivide(spend, calls)),
-          target: MONTHLY_TARGETS.cbc,
-          targetFormatted: `${formatCurrencyDecimal(safeDivide(spend, calls))} of ${formatCurrencyDecimal(MONTHLY_TARGETS.cbc)}`,
+          target: t?.cbc,
+          targetFormatted: t ? `${formatCurrencyDecimal(safeDivide(spend, calls))} of ${formatCurrencyDecimal(t.cbc)}` : undefined,
           variant: "cost",
           isLoading: mondayLoading || metaLoading,
           error: mondayError || metaError,
@@ -138,8 +128,8 @@ export function calculateKpiGroups(
           label: "CQC",
           value: safeDivide(spend, qualifiedCalls),
           formatted: formatCurrencyDecimal(safeDivide(spend, qualifiedCalls)),
-          target: MONTHLY_TARGETS.cqc,
-          targetFormatted: `${formatCurrencyDecimal(safeDivide(spend, qualifiedCalls))} of ${formatCurrencyDecimal(MONTHLY_TARGETS.cqc)}`,
+          target: t?.cqc,
+          targetFormatted: t ? `${formatCurrencyDecimal(safeDivide(spend, qualifiedCalls))} of ${formatCurrencyDecimal(t.cqc)}` : undefined,
           variant: "cost",
           isLoading: mondayLoading || metaLoading,
           error: mondayError || metaError,
@@ -148,8 +138,8 @@ export function calculateKpiGroups(
           label: "CTC",
           value: safeDivide(spend, takenCalls),
           formatted: formatCurrencyDecimal(safeDivide(spend, takenCalls)),
-          target: MONTHLY_TARGETS.ctc,
-          targetFormatted: `${formatCurrencyDecimal(safeDivide(spend, takenCalls))} of ${formatCurrencyDecimal(MONTHLY_TARGETS.ctc)}`,
+          target: t?.ctc,
+          targetFormatted: t ? `${formatCurrencyDecimal(safeDivide(spend, takenCalls))} of ${formatCurrencyDecimal(t.ctc)}` : undefined,
           variant: "cost",
           isLoading: mondayLoading || metaLoading,
           error: mondayError || metaError,
@@ -158,8 +148,8 @@ export function calculateKpiGroups(
           label: "CPD",
           value: safeDivide(spend, deals),
           formatted: formatCurrencyDecimal(safeDivide(spend, deals)),
-          target: MONTHLY_TARGETS.cpd,
-          targetFormatted: `${formatCurrencyDecimal(safeDivide(spend, deals))} of ${formatCurrencyDecimal(MONTHLY_TARGETS.cpd)}`,
+          target: t?.cpd,
+          targetFormatted: t ? `${formatCurrencyDecimal(safeDivide(spend, deals))} of ${formatCurrencyDecimal(t.cpd)}` : undefined,
           variant: "cost",
           isLoading: mondayLoading || metaLoading,
           error: mondayError || metaError,
@@ -209,12 +199,14 @@ export function calculateKpiGroups(
 export function getRevenueProgress(
   closedRevenue: number,
   range: DateRange,
+  targets?: TargetsConfig | null,
 ): { current: number; proRata: number; monthlyTarget: number; pct: number } {
-  const proRata = getProRataTarget(MONTHLY_TARGETS.revenue, range)
+  const monthlyTarget = targets?.revenue ?? 0
+  const proRata = monthlyTarget > 0 ? getProRataTarget(monthlyTarget, range) : 0
   return {
     current: closedRevenue,
     proRata,
-    monthlyTarget: MONTHLY_TARGETS.revenue,
+    monthlyTarget,
     pct: safeDivide(closedRevenue, proRata),
   }
 }

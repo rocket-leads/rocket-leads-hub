@@ -1,3 +1,18 @@
+// ─── Configurable targets ───
+
+export interface TargetsConfig {
+  calls: number
+  qualifiedCalls: number
+  takenCalls: number
+  deals: number
+  revenue: number
+  cbc: number
+  cqc: number
+  ctc: number
+  cpd: number
+}
+
+
 // ─── Marketing/Sales KPI types (ported from targets-import) ───
 
 export interface MondayTargetsData {
@@ -66,17 +81,18 @@ export type QuickPreset = {
 
 // ─── Finance types (Stripe-based) ───
 
-export interface FinanceOverview {
+export interface CategoryBreakdown {
   invoiced: number
   cashCollected: number
   open: number
   overdue: number
+}
+
+export interface FinanceOverview {
+  total: CategoryBreakdown
+  serviceFee: CategoryBreakdown
+  adBudget: CategoryBreakdown
   invoiceCount: number
-  byCategory: {
-    serviceFee: number
-    adBudget: number
-    unknown: number
-  }
 }
 
 // ─── Delivery types ───

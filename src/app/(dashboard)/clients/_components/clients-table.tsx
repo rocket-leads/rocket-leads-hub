@@ -51,6 +51,9 @@ type HealthResult = {
 }
 
 function getCampaignHealth(kpi: KpiSummary | undefined): HealthResult {
+  if (kpi?.rlAccountNoCampaign) {
+    return { status: "no-data", reasons: ["No campaign selected"] }
+  }
   if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
     return { status: "no-data", reasons: ["No campaign data available"] }
   }

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchMetaInsights } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import { detectMondayActivity } from "@/lib/clients/monday-activity"
+import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { readCache } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -14,6 +15,8 @@ export type KpiSummary = {
   costPerAppointment: number
   prevCpl: number
   prevCostPerAppointment: number
+  /** True when client uses RL ad account but has no campaigns selected — data should be ignored */
+  rlAccountNoCampaign?: boolean
 }
 
 type ClientInput = {
@@ -50,12 +53,16 @@ async function fetchSummary(
   prevEndDate: string,
   selectedCampaignIds: Set<string>
 ): Promise<FetchResult> {
+  // RL ad account with no campaigns selected → return empty data with flag
+  const isRlNoCampaign = isRocketLeadsAdAccount(client.metaAdAccountId) && selectedCampaignIds.size === 0
+  const shouldFetchMeta = client.metaAdAccountId && !isRlNoCampaign
+
   const [insights, prevInsights, items] = await Promise.all([
-    client.metaAdAccountId
-      ? fetchMetaInsights(client.metaAdAccountId, startDate, endDate).catch(() => [])
+    shouldFetchMeta
+      ? fetchMetaInsights(client.metaAdAccountId!, startDate, endDate).catch(() => [])
       : Promise.resolve([]),
-    client.metaAdAccountId
-      ? fetchMetaInsights(client.metaAdAccountId, prevStartDate, prevEndDate).catch(() => [])
+    shouldFetchMeta
+      ? fetchMetaInsights(client.metaAdAccountId!, prevStartDate, prevEndDate).catch(() => [])
       : Promise.resolve([]),
     client.clientBoardId
       ? fetchClientBoardItems(client.clientBoardId).catch(() => [])
@@ -89,6 +96,7 @@ async function fetchSummary(
       costPerAppointment: appointments > 0 ? adSpend / appointments : 0,
       prevCpl,
       prevCostPerAppointment,
+      ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
     },
     mondayActive: items.length > 0 ? detectMondayActivity(items) : false,
   }

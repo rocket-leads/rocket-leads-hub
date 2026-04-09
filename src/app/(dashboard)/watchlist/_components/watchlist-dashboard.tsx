@@ -14,47 +14,78 @@ import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, ChevronDown, ChevronR
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
+// --- Categorization ---
+
 type WatchCategory = "action" | "watch" | "good" | "no-data"
 
 type CategorizedClient = {
   client: MondayClient
   category: WatchCategory
-  issue: string
+  insight: string
   kpi: KpiSummary | undefined
 }
 
-function categorize(client: MondayClient, kpi: KpiSummary | undefined): { category: WatchCategory; issue: string } {
+function categorize(client: MondayClient, kpi: KpiSummary | undefined): { category: WatchCategory; insight: string } {
+  // Skip clients with RL ad account but no selected campaigns (bogus data)
+  if (kpi?.rlAccountNoCampaign) {
+    return { category: "no-data", insight: "No campaigns selected" }
+  }
+
   if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
-    return { category: "no-data", issue: "No campaign data" }
+    return { category: "no-data", insight: "No data" }
   }
 
+  // Action: spend with zero leads
   if (kpi.adSpend > 50 && kpi.leads === 0) {
-    return { category: "action", issue: `0 leads — €${kpi.adSpend.toFixed(0)} spent` }
+    return { category: "action", insight: `€${kpi.adSpend.toFixed(0)} spent, 0 leads in 7d` }
   }
 
-  if (kpi.cpl > 0 && kpi.prevCpl > 0) {
-    const cplChange = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
-    if (cplChange >= 30) return { category: "action", issue: `CPL +${cplChange.toFixed(0)}%` }
-    if (cplChange >= 10) return { category: "watch", issue: `CPL +${cplChange.toFixed(0)}%` }
+  // CPL trend analysis
+  const hasCplTrend = kpi.cpl > 0 && kpi.prevCpl > 0
+  const cplPct = hasCplTrend ? ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
+
+  // CPA trend analysis
+  const hasCpaTrend = kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0
+  const cpaPct = hasCpaTrend ? ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100 : 0
+
+  // Action: CPL or CPA spiked 30%+
+  if (hasCplTrend && cplPct >= 30) {
+    return { category: "action", insight: `CPL up ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} vs €${kpi.prevCpl.toFixed(2)} prev week` }
+  }
+  if (hasCpaTrend && cpaPct >= 30) {
+    return { category: "action", insight: `CPA up ${cpaPct.toFixed(0)}% — €${kpi.costPerAppointment.toFixed(0)} vs €${kpi.prevCostPerAppointment.toFixed(0)} prev week` }
   }
 
-  if (kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0) {
-    const cpaChange = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
-    if (cpaChange >= 30) return { category: "action", issue: `CPA +${cpaChange.toFixed(0)}%` }
-    if (cpaChange >= 10) return { category: "watch", issue: `CPA +${cpaChange.toFixed(0)}%` }
+  // Watch: CPL or CPA rising 10-30%
+  if (hasCplTrend && cplPct >= 10) {
+    return { category: "watch", insight: `CPL rising ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} from €${kpi.prevCpl.toFixed(2)}` }
+  }
+  if (hasCpaTrend && cpaPct >= 10) {
+    return { category: "watch", insight: `CPA rising ${cpaPct.toFixed(0)}% — €${kpi.costPerAppointment.toFixed(0)} from €${kpi.prevCostPerAppointment.toFixed(0)}` }
   }
 
+  // Good: has leads, CPL stable or declining
   if (kpi.leads > 0) {
     const parts: string[] = []
-    if (kpi.cpl > 0 && kpi.prevCpl > 0) {
-      const pct = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
-      parts.push(`CPL ${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`)
+
+    if (hasCplTrend && cplPct < -10) {
+      parts.push(`CPL dropped ${Math.abs(cplPct).toFixed(0)}% to €${kpi.cpl.toFixed(2)}`)
+    } else if (hasCplTrend && cplPct >= -10 && cplPct < 10) {
+      parts.push(`CPL stable at €${kpi.cpl.toFixed(2)}`)
+    } else if (kpi.cpl > 0) {
+      parts.push(`CPL €${kpi.cpl.toFixed(2)}`)
     }
-    parts.push(`${kpi.leads} leads`)
-    return { category: "good", issue: parts.join(" · ") }
+
+    parts.push(`${kpi.leads} leads from €${kpi.adSpend.toFixed(0)} spend`)
+
+    if (kpi.appointments > 0) {
+      parts.push(`${kpi.appointments} appts`)
+    }
+
+    return { category: "good", insight: parts.join(" · ") }
   }
 
-  return { category: "good", issue: "Stable" }
+  return { category: "good", insight: "Running — no leads yet" }
 }
 
 function fmtCurrency(v: number): string {
@@ -66,35 +97,36 @@ function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean))).sort()
 }
 
+// --- Section config ---
+
 const CATEGORY_CONFIG = {
   action: {
     label: "Action Needed",
     icon: AlertCircle,
-    dotColor: "bg-red-500",
     iconColor: "text-red-500",
     headerBg: "bg-red-500/5 border-red-500/20",
     rowBorder: "border-l-red-500/60",
-    issueColor: "text-red-400",
+    insightColor: "text-red-400",
   },
   watch: {
     label: "Watch List",
     icon: TrendingUp,
-    dotColor: "bg-amber-500",
     iconColor: "text-amber-500",
     headerBg: "bg-amber-500/5 border-amber-500/20",
     rowBorder: "border-l-amber-500/60",
-    issueColor: "text-amber-400",
+    insightColor: "text-amber-400",
   },
   good: {
     label: "Good Performance",
     icon: CheckCircle2,
-    dotColor: "bg-green-500",
     iconColor: "text-green-500",
     headerBg: "bg-green-500/5 border-green-500/20",
     rowBorder: "border-l-green-500/60",
-    issueColor: "text-green-500",
+    insightColor: "text-green-500",
   },
 } as const
+
+// --- Watch Section ---
 
 function WatchSection({
   category,
@@ -117,9 +149,10 @@ function WatchSection({
 
   return (
     <div>
+      {/* Section header */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-2.5 w-full px-4 py-2.5 rounded-lg border ${config.headerBg} mb-2 transition-colors hover:opacity-80`}
+        className={`flex items-center gap-2.5 w-full px-4 py-2.5 rounded-lg border ${config.headerBg} mb-3 transition-colors hover:opacity-80`}
       >
         {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/50" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />}
         <Icon className={`h-4 w-4 ${config.iconColor}`} />
@@ -129,12 +162,13 @@ function WatchSection({
 
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
-          {/* Header */}
-          <div className="grid grid-cols-[200px_100px_1fr_70px_55px_65px_55px_28px] gap-0 px-4 py-2 border-b border-border/20 bg-muted/20">
+          {/* Column headers */}
+          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_32px] gap-x-4 px-5 py-2.5 border-b border-border/20 bg-muted/20">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Client</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Issue</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Insight</span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium flex items-center gap-1">
-              <Sparkles className="h-2.5 w-2.5 text-violet-500" /> AI Note
+              <Sparkles className="h-2.5 w-2.5 text-violet-400" />
+              AI Note
             </span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">Spend</span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">Leads</span>
@@ -144,32 +178,36 @@ function WatchSection({
           </div>
 
           {/* Rows */}
-          {items.map(({ client, issue, kpi }) => {
+          {items.map(({ client, insight, kpi }) => {
             const note = aiNotes[client.mondayItemId]
 
             return (
               <div
                 key={client.mondayItemId}
-                className={`grid grid-cols-[200px_100px_1fr_70px_55px_65px_55px_28px] gap-0 px-4 py-2.5 border-b border-border/10 border-l-2 ${config.rowBorder} cursor-pointer hover:bg-muted/30 transition-colors items-center`}
+                className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_32px] gap-x-4 px-5 py-3 border-b border-border/10 border-l-2 ${config.rowBorder} cursor-pointer hover:bg-muted/20 transition-colors items-center`}
                 onClick={() => onNavigate(client.mondayItemId)}
               >
                 {/* Client */}
-                <div className="min-w-0 pr-2">
-                  <span className="text-sm font-medium truncate block">{client.name}</span>
-                  <span className="text-[10px] text-muted-foreground/40 truncate block">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{client.name}</p>
+                  <p className="text-[10px] text-muted-foreground/40 truncate">
                     {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
-                  </span>
+                  </p>
                 </div>
 
-                {/* Issue */}
-                <span className={`text-xs font-medium ${config.issueColor}`}>{issue}</span>
+                {/* Insight */}
+                <p className={`text-xs leading-snug ${config.insightColor}`}>
+                  {insight}
+                </p>
 
                 {/* AI Note */}
-                <div className="min-w-0 pr-3">
+                <div className="min-w-0">
                   {note ? (
-                    <p className="text-[11px] text-muted-foreground leading-snug truncate" title={note}>{note}</p>
+                    <p className="text-[11px] text-muted-foreground leading-snug" title={note}>
+                      {note}
+                    </p>
                   ) : (
-                    <span className="text-[11px] text-muted-foreground/30 italic">Generating...</span>
+                    <span className="text-[11px] text-muted-foreground/25 italic">Generating...</span>
                   )}
                 </div>
 
@@ -193,10 +231,10 @@ function WatchSection({
                   {kpi && kpi.appointments > 0 ? kpi.appointments : "—"}
                 </span>
 
-                {/* Link */}
+                {/* Link icon */}
                 <button
                   onClick={(e) => { e.stopPropagation(); onNavigate(client.mondayItemId) }}
-                  className="text-muted-foreground/30 hover:text-primary transition-colors flex justify-center"
+                  className="text-muted-foreground/20 hover:text-primary transition-colors flex justify-center"
                   title="View client"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -217,7 +255,7 @@ type Props = {
   userName: string
 }
 
-export function WatchListDashboard({ clients, userName }: Props) {
+export function WatchListDashboard({ clients }: Props) {
   const router = useRouter()
   const [cmFilter, setCmFilter] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -260,7 +298,7 @@ export function WatchListDashboard({ clients, userName }: Props) {
     ? new Date(kpiQuery.dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
-  // Categorize all clients
+  // Categorize
   const categorized = useMemo(() => {
     const action: CategorizedClient[] = []
     const watch: CategorizedClient[] = []
@@ -268,8 +306,8 @@ export function WatchListDashboard({ clients, userName }: Props) {
 
     for (const client of filteredClients) {
       const kpi = kpiQuery.data?.[client.mondayItemId]
-      const { category, issue } = categorize(client, kpi)
-      const item = { client, category, issue, kpi }
+      const { category, insight } = categorize(client, kpi)
+      const item = { client, category, issue: insight, insight, kpi }
 
       if (category === "action") action.push(item)
       else if (category === "watch") watch.push(item)
@@ -283,16 +321,14 @@ export function WatchListDashboard({ clients, userName }: Props) {
     return { action, watch, good }
   }, [filteredClients, kpiQuery.data])
 
-  // Auto-generate AI notes when categorized data is ready
+  // Auto-generate AI notes
   const allCategorized = useMemo(
     () => [...categorized.action, ...categorized.watch, ...categorized.good],
     [categorized]
   )
 
   useEffect(() => {
-    if (allCategorized.length === 0 || aiGenerating.current) return
-    // Only generate if we have KPI data and haven't generated yet
-    if (!kpiQuery.data) return
+    if (allCategorized.length === 0 || aiGenerating.current || !kpiQuery.data) return
 
     const clientsForAi = allCategorized
       .filter((c) => c.kpi && (c.kpi.adSpend > 0 || c.kpi.leads > 0))
@@ -300,7 +336,7 @@ export function WatchListDashboard({ clients, userName }: Props) {
         id: c.client.mondayItemId,
         name: c.client.name,
         category: c.category as "action" | "watch" | "good",
-        issue: c.issue,
+        issue: c.insight,
         adSpend: c.kpi?.adSpend ?? 0,
         leads: c.kpi?.leads ?? 0,
         cpl: c.kpi?.cpl ?? 0,
@@ -325,7 +361,7 @@ export function WatchListDashboard({ clients, userName }: Props) {
       })
       .catch(() => {})
       .finally(() => { aiGenerating.current = false })
-  }, [allCategorized, kpiQuery.data])
+  }, [allCategorized, kpiQuery.data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleRefresh() {
     setIsRefreshing(true)
@@ -395,8 +431,8 @@ export function WatchListDashboard({ clients, userName }: Props) {
         </Select>
       </div>
 
-      {/* Three sections */}
-      <div className="space-y-5">
+      {/* Sections */}
+      <div className="space-y-6">
         <WatchSection
           category="action"
           items={categorized.action}

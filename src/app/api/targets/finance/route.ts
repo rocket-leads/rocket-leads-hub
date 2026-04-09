@@ -3,9 +3,8 @@ import { auth } from "@/lib/auth"
 import Stripe from "stripe"
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
-import type { FinanceOverview } from "@/types/targets"
+import type { FinanceOverview, CategoryBreakdown } from "@/types/targets"
 
-// Keywords for categorizing Stripe line items
 const AD_BUDGET_KEYWORDS = [
   "advertentiebudget", "advertising budget", "adspend", "ad spend",
   "ad budget", "mediabudget", "media budget", "budget",
@@ -16,12 +15,12 @@ const SERVICE_FEE_KEYWORDS = [
   "fee", "maandelijkse", "monthly", "retainer",
 ]
 
-function categorizeLineItem(description: string | null): "ad_budget" | "service_fee" | "unknown" {
-  if (!description) return "unknown"
+function categorizeLineItem(description: string | null): "ad_budget" | "service_fee" {
+  if (!description) return "service_fee"
   const lower = description.toLowerCase()
   if (AD_BUDGET_KEYWORDS.some((kw) => lower.includes(kw))) return "ad_budget"
-  if (SERVICE_FEE_KEYWORDS.some((kw) => lower.includes(kw))) return "service_fee"
-  return "unknown"
+  // Default to service fee (including unknown) since most revenue is service
+  return "service_fee"
 }
 
 async function getStripe(): Promise<Stripe> {
@@ -33,6 +32,10 @@ async function getStripe(): Promise<Stripe> {
     .single()
   if (!data) throw new Error("Stripe token not configured.")
   return new Stripe(decrypt(data.token_encrypted))
+}
+
+function emptyBreakdown(): CategoryBreakdown {
+  return { invoiced: 0, cashCollected: 0, open: 0, overdue: 0 }
 }
 
 export async function GET(request: Request) {
@@ -51,15 +54,14 @@ export async function GET(request: Request) {
     const stripe = await getStripe()
     const startTs = Math.floor(new Date(startDate).getTime() / 1000)
     const endTs = Math.floor(new Date(endDate + "T23:59:59Z").getTime() / 1000)
-
-    // Fetch invoices created in period (for "invoiced" amount)
-    let invoiced = 0
-    let open = 0
-    let overdue = 0
-    let invoiceCount = 0
-    const byCategory = { serviceFee: 0, adBudget: 0, unknown: 0 }
     const now = Math.floor(Date.now() / 1000)
 
+    const serviceFee = emptyBreakdown()
+    const adBudget = emptyBreakdown()
+    const total = emptyBreakdown()
+    let invoiceCount = 0
+
+    // Fetch all invoices created in period
     let hasMore = true
     let startingAfter: string | undefined
 
@@ -72,26 +74,31 @@ export async function GET(request: Request) {
 
       for (const inv of page.data) {
         if (inv.status === "draft" || inv.status === "void") continue
-
         invoiceCount++
-        const amount = inv.amount_due / 100
-        invoiced += amount
 
-        if (inv.status === "open") {
-          if (inv.due_date && inv.due_date < now) {
-            overdue += amount
-          } else {
-            open += amount
-          }
-        }
+        const isOverdue = inv.status === "open" && inv.due_date && inv.due_date < now
+        const isOpen = inv.status === "open" && !isOverdue
+        const isPaid = inv.status === "paid"
 
-        // Categorize by line items
+        // Categorize each line item
         for (const line of inv.lines?.data ?? []) {
           const cat = categorizeLineItem(line.description)
-          const lineAmount = line.amount / 100
-          if (cat === "ad_budget") byCategory.adBudget += lineAmount
-          else if (cat === "service_fee") byCategory.serviceFee += lineAmount
-          else byCategory.unknown += lineAmount
+          const amount = line.amount / 100
+          const bucket = cat === "ad_budget" ? adBudget : serviceFee
+
+          bucket.invoiced += amount
+          total.invoiced += amount
+
+          if (isPaid) {
+            bucket.cashCollected += amount
+            total.cashCollected += amount
+          } else if (isOverdue) {
+            bucket.overdue += amount
+            total.overdue += amount
+          } else if (isOpen) {
+            bucket.open += amount
+            total.open += amount
+          }
         }
       }
 
@@ -99,36 +106,7 @@ export async function GET(request: Request) {
       startingAfter = page.data[page.data.length - 1]?.id
     }
 
-    // Fetch cash collected (successful charges in period)
-    let cashCollected = 0
-    hasMore = true
-    startingAfter = undefined
-
-    while (hasMore) {
-      const page: Awaited<ReturnType<typeof stripe.charges.list>> = await stripe.charges.list({
-        created: { gte: startTs, lte: endTs },
-        limit: 100,
-        ...(startingAfter ? { starting_after: startingAfter } : {}),
-      })
-
-      for (const charge of page.data) {
-        if (charge.status === "succeeded" && !charge.refunded) {
-          cashCollected += charge.amount / 100
-        }
-      }
-
-      hasMore = page.has_more
-      startingAfter = page.data[page.data.length - 1]?.id
-    }
-
-    const result: FinanceOverview = {
-      invoiced,
-      cashCollected,
-      open,
-      overdue,
-      invoiceCount,
-      byCategory,
-    }
+    const result: FinanceOverview = { total, serviceFee, adBudget, invoiceCount }
 
     return NextResponse.json(result, {
       headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=120" },
