@@ -21,7 +21,6 @@ export async function GET(
     const conversations = await cachedFetch(
       `trengo_conversations:${trengoContactId}`,
       () => fetchConversations(trengoContactId),
-      30 * 60 * 1000,
     )
     return NextResponse.json(conversations, {
       headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },

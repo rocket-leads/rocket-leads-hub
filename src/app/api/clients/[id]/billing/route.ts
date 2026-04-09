@@ -30,7 +30,6 @@ export async function GET(
     const data = await cachedFetch(
       `billing:${stripeCustomerId}`,
       () => fetchBillingData(stripeCustomerId),
-      30 * 60 * 1000,
     )
     return NextResponse.json(data, {
       headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },

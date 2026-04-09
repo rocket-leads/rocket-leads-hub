@@ -69,21 +69,17 @@ export async function GET(
     for (const r of selectedRows ?? []) selectedCampaignIds.add(r.meta_campaign_id)
   }
 
-  const CACHE_TTL = 30 * 60 * 1000 // 30 minutes
-
   const [insights, leadItems] = await Promise.all([
     adAccountId
       ? cachedFetch(
           `meta_insights:${adAccountId}:${startDate}:${endDate}`,
           () => fetchMetaInsights(adAccountId, startDate, endDate).catch((e) => { console.error("Meta insights error:", e); return [] as Awaited<ReturnType<typeof fetchMetaInsights>> }),
-          CACHE_TTL,
         )
       : Promise.resolve([]),
     clientBoardId
       ? cachedFetch(
           `monday_board_items:${clientBoardId}`,
           () => fetchClientBoardItems(clientBoardId, client?.column_mapping_override ?? undefined).catch((e) => { console.error("Monday board error:", e); return [] as Awaited<ReturnType<typeof fetchClientBoardItems>> }),
-          CACHE_TTL,
         )
       : Promise.resolve([]),
   ])

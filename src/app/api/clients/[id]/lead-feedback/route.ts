@@ -40,7 +40,6 @@ export async function GET(
       console.error("Monday updates fetch error:", e)
       return [] as Awaited<ReturnType<typeof fetchClientBoardItemsWithUpdates>>
     }),
-    30 * 60 * 1000,
   )
 
   // Group updates by UTM — only include items that have updates

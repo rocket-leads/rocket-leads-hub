@@ -48,7 +48,6 @@ export async function GET(
       console.error("Meta ad details error:", e)
       return [] as MetaAdDetail[]
     }),
-    30 * 60 * 1000,
   )
 
   return NextResponse.json(
