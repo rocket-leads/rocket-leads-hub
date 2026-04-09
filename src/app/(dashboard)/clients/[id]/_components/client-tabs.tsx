@@ -192,6 +192,7 @@ export function ClientTabs({ client, access }: Props) {
               stripeCustomerId={client.stripeCustomerId || null}
               clientName={client.name}
               boardType={client.boardType}
+              onNavigateToSettings={() => setActiveTab("settings")}
             />
           ) : <NoAccess />
         )}
