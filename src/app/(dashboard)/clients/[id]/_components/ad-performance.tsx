@@ -129,7 +129,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
       <CardContent className="space-y-4">
         {scale.length > 0 && (
           <div>
-            <div className="mb-2 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-1.5 pl-4">
               <span className="h-2 w-2 rounded-full bg-green-500" />
               <span className="text-sm font-medium">Increase budget</span>
             </div>
@@ -162,7 +162,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
 
         {reduce.length > 0 && (
           <div>
-            <div className="mb-2 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-1.5 pl-4">
               <span className="h-2 w-2 rounded-full bg-red-500" />
               <span className="text-sm font-medium">Decrease budget</span>
             </div>
@@ -189,7 +189,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
 
         {monitor.length > 0 && (
           <div>
-            <div className="mb-2 flex items-center gap-2">
+            <div className="mb-2 flex items-center gap-1.5 pl-4">
               <span className="h-2 w-2 rounded-full bg-amber-500" />
               <span className="text-sm font-medium">Monitor — insufficient data</span>
             </div>

@@ -77,7 +77,7 @@ async function gql(query: string, variables: Record<string, unknown>, token: str
   return json.data
 }
 
-async function fetchAllItems(boardId: string, token: string) {
+async function fetchAllItems(boardId: string, token: string, maxRetries = 2) {
   const query = `
     query GetItems($boardId: ID!, $cursor: String) {
       boards(ids: [$boardId]) {
@@ -96,18 +96,28 @@ async function fetchAllItems(boardId: string, token: string) {
     }
   `
 
-  const allItems: Array<{ id: string; name: string; column_values: Array<{ id: string; text: string }> }> = []
-  let cursor: string | null = null
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const allItems: Array<{ id: string; name: string; column_values: Array<{ id: string; text: string }> }> = []
+      let cursor: string | null = null
 
-  do {
-    const data = await gql(query, { boardId, cursor }, token)
-    const page = data.boards?.[0]?.items_page
-    if (!page) break
-    allItems.push(...(page.items ?? []))
-    cursor = page.cursor ?? null
-  } while (cursor)
+      do {
+        const data = await gql(query, { boardId, cursor }, token)
+        const page = data.boards?.[0]?.items_page
+        if (!page) break
+        allItems.push(...(page.items ?? []))
+        cursor = page.cursor ?? null
+      } while (cursor)
 
-  return allItems
+      return allItems
+    } catch (error) {
+      const isCursorExpired = error instanceof Error && error.message.includes("cursor")
+      if (!isCursorExpired || attempt === maxRetries) throw error
+      // Retry from scratch with a fresh cursor
+    }
+  }
+
+  return []
 }
 
 function mapItem(

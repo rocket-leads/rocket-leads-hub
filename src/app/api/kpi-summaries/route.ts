@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchMetaInsights } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import { detectMondayActivity } from "@/lib/clients/monday-activity"
+import { readCache } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 export type KpiSummary = {
@@ -142,10 +143,24 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as { clients: ClientInput[] }
   if (!body.clients?.length) return NextResponse.json({})
 
+  // Try cache first
+  const cached = await readCache<Record<string, KpiSummary>>("kpi_summaries")
+  if (cached) {
+    const summaries: Record<string, KpiSummary> = {}
+    for (const c of body.clients) {
+      if (cached[c.mondayItemId]) summaries[c.mondayItemId] = cached[c.mondayItemId]
+    }
+    if (Object.keys(summaries).length === body.clients.length) {
+      return NextResponse.json(summaries, {
+        headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+      })
+    }
+  }
+
+  // Cache miss — fetch live
   const { startDate, endDate } = getLast7DaysRange()
   const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
 
-  // Load selected campaigns for all clients in two queries (no N+1)
   const supabase = await createAdminClient()
   const mondayItemIds = body.clients.map((c) => c.mondayItemId)
 

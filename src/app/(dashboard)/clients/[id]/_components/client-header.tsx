@@ -41,7 +41,7 @@ export function ClientHeader({ client }: Props) {
         <div className="flex items-center gap-2 shrink-0">
           {client.metaAdAccountId && (
             <a
-              href={`https://adsmanager.facebook.com/adsmanaging/manage/campaigns?act=${client.metaAdAccountId.replace("act_", "")}`}
+              href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId.replace("act_", "")}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-md border border-border/30 bg-card px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-border/50 transition-colors"

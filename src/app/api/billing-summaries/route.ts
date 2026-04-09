@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
+import { readCache } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 
@@ -14,6 +15,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({})
   }
 
+  // Try cache first
+  const cached = await readCache<Record<string, BillingSummary>>("billing_summaries")
+  if (cached) {
+    const summaries: Record<string, BillingSummary> = {}
+    for (const id of customerIds) {
+      if (cached[id]) summaries[id] = cached[id]
+    }
+    if (Object.keys(summaries).length === customerIds.length) {
+      return NextResponse.json(summaries, {
+        headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+      })
+    }
+  }
+
+  // Cache miss — fetch live
   const results = await Promise.allSettled(customerIds.map((id) => fetchBillingSummary(id)))
 
   const summaries: Record<string, BillingSummary> = {}
