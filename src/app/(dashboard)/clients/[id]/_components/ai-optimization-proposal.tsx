@@ -4,14 +4,16 @@ import { useState, useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { TrendingUp, TrendingDown, AlertTriangle, Lightbulb, Sparkles, RefreshCw, Clock, BarChart3 } from "lucide-react"
+import { TrendingUp, TrendingDown, AlertTriangle, Lightbulb, Sparkles, RefreshCw, Clock, BarChart3, ChevronDown } from "lucide-react"
 import type { KpiResult } from "@/lib/clients/kpis"
 import type { ScoredRow } from "./ad-performance"
 
 type Insight = {
   type: "positive" | "warning" | "critical" | "action"
   title: string
-  body: string
+  action?: string
+  body?: string
+  detail?: string
 }
 
 const INSIGHT_STYLES: Record<Insight["type"], { icon: typeof TrendingUp; border: string; bg: string; iconColor: string }> = {
@@ -19,6 +21,42 @@ const INSIGHT_STYLES: Record<Insight["type"], { icon: typeof TrendingUp; border:
   warning: { icon: AlertTriangle, border: "border-amber-500/20", bg: "bg-amber-500/5", iconColor: "text-amber-500" },
   critical: { icon: TrendingDown, border: "border-red-500/20", bg: "bg-red-500/5", iconColor: "text-red-500" },
   action: { icon: Lightbulb, border: "border-primary/20", bg: "bg-primary/5", iconColor: "text-primary" },
+}
+
+function InsightRow({ insight }: { insight: Insight }) {
+  const [expanded, setExpanded] = useState(false)
+  const style = INSIGHT_STYLES[insight.type]
+  const Icon = style.icon
+  const hasDetail = !!insight.detail || !!insight.body
+
+  return (
+    <div className={`rounded-lg border ${style.border} ${style.bg} px-4 py-2.5`}>
+      <div className="flex items-start gap-3">
+        <Icon className={`h-4 w-4 shrink-0 mt-0.5 ${style.iconColor}`} />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-foreground leading-snug">{insight.title}</p>
+          {(insight.action || insight.body) && (
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+              → {insight.action || insight.body}
+            </p>
+          )}
+          {hasDetail && expanded && (
+            <p className="text-xs text-muted-foreground/60 mt-1.5 leading-relaxed border-t border-border/20 pt-1.5">
+              {insight.detail || insight.body}
+            </p>
+          )}
+        </div>
+        {hasDetail && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="shrink-0 mt-0.5 text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function toISO(d: Date): string {
@@ -418,22 +456,10 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
             )}
 
             {insights && (
-              <div className="space-y-2.5">
-                {insights.map((insight, i) => {
-                  const style = INSIGHT_STYLES[insight.type]
-                  const Icon = style.icon
-                  return (
-                    <div key={i} className={`rounded-lg border ${style.border} ${style.bg} px-4 py-3`}>
-                      <div className="flex items-start gap-3">
-                        <Icon className={`h-4 w-4 shrink-0 mt-0.5 ${style.iconColor}`} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground">{insight.title}</p>
-                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{insight.body}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+              <div className="space-y-2">
+                {insights.map((insight, i) => (
+                  <InsightRow key={i} insight={insight} />
+                ))}
               </div>
             )}
           </div>

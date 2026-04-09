@@ -94,29 +94,23 @@ export async function POST(
 ## Output format
 Return a JSON array of insights. Each insight has:
 - "type": "positive" | "warning" | "critical" | "action"
-- "title": short headline (max 80 chars)
-- "body": detailed explanation with specific, actionable advice (2-3 sentences)
+- "title": the observation — what's happening, with key numbers (max 60 chars). Example: "0 appointments booked in 7 days"
+- "action": the fix — one concrete next step (max 60 chars). Example: "Check follow-up loop in Zapier + WhatsApp sequence"
+- "detail": optional deeper context for those who want it (1-2 sentences max). This is hidden by default.
 
-Return 3-6 insights, prioritized by impact. Be specific — reference the client's industry, ICP, USPs, and actual KPI numbers.
+CRITICAL: A campaign manager reads this for 100 clients. Be extremely concise. Two scannable lines per insight: what's wrong + what to do. No fluff, no filler, no repeating numbers from the title.
+
+Return 2-4 insights max, only the highest-impact ones. Skip "everything looks fine" insights.
 
 ## Important rules
-- All currency in EUR (€), use dot as decimal separator
+- All currency in EUR (€), dot as decimal separator
 - Write in English
-- Be direct and actionable — no fluff
-- Reference specific marketing angles from the client's context when possible
-- When suggesting new creatives, be specific about what angle/hook to test based on the client's ICP and USPs
-- If CPL is rising, don't just say "launch new creatives" — suggest WHICH angle based on the client's context
-- If quality is dropping, reference the client's ICP to suggest better targeting/messaging
-- Always consider the client's board type (onboarding vs active) — onboarding clients need different advice
-- If lead feedback from Monday updates is provided, analyze patterns per UTM/ad. If multiple leads from the same ad have negative feedback (e.g. "niet geïnteresseerd", "niet de doelgroep", "slechte kwaliteit"), flag this as a critical issue and recommend pausing or adjusting that ad's marketing angle
-- Lead feedback gives you qualitative context that KPI numbers alone cannot — use it to explain WHY certain ads underperform, not just THAT they underperform
-- When dynamic ads are detected (ads with "Dynamic" or "DYN" in the name), do NOT flag low ad count as an issue — dynamic ads contain multiple creative variants per ad
-- If Meta ad details are provided (ad name, ad copy, creative type, spend, CTR, CPC), analyze which marketing angles and creative types perform best. The ad name contains the angle (e.g. "Video 1 | Guarantee", "Photo 3 | Pricelist"). Use this to:
-  1. Identify which marketing angles drive the best results (highest CTR, lowest CPC, most spend-efficient)
-  2. Identify which creative types work best (video vs image vs dynamic)
-  3. Suggest NEW specific creatives to create — reference the winning angles and recommend variations or complementary angles from the Rocket Leads framework
-  4. If an angle consistently underperforms across multiple ads, recommend retiring it and testing a different angle from the framework
-- Cross-reference ad details with lead feedback: if an ad has good CTR but negative lead feedback, the angle attracts clicks but the wrong audience — the messaging needs to be more qualifying
+- Title = observation with numbers. Action = specific fix. Detail = optional why/context.
+- Reference specific marketing angles and ad names when relevant
+- If lead feedback shows negative patterns per UTM (e.g. "niet geïnteresseerd"), name the specific ad
+- Cross-reference ad CTR with lead feedback quality — good CTR + bad feedback = wrong audience
+- Dynamic ads (name contains "Dynamic"/"DYN") have multiple variants — don't flag low ad count
+- Consider board type: onboarding clients need different advice than active clients
 
 ## Rocket Leads Campaign Framework
 ${campaignsKnowledge.slice(0, 3000)}
