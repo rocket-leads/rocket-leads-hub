@@ -5,16 +5,10 @@ import { useQuery } from "@tanstack/react-query"
 import { format, getDaysInMonth } from "date-fns"
 import type { FinanceOverview, CostData, ProfitOverview } from "@/types/targets"
 
-function getMonthKey(year: number, month: number): string {
-  const names = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
-  return `${names[month - 1]}-${String(year).slice(2)}`
-}
-
 export function useFinanceData(year: number, month: number) {
   const lastDay = getDaysInMonth(new Date(year, month - 1))
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
-  const monthKey = getMonthKey(year, month)
 
   const stripeQuery = useQuery<FinanceOverview>({
     queryKey: ["targets-finance", startDate, endDate],
@@ -26,8 +20,8 @@ export function useFinanceData(year: number, month: number) {
   })
 
   const costsQuery = useQuery<CostData>({
-    queryKey: ["targets-costs", monthKey],
-    queryFn: () => fetch(`/api/targets/sheets?month=${monthKey}`).then((r) => {
+    queryKey: ["targets-costs", year, month],
+    queryFn: () => fetch(`/api/targets/costs?year=${year}&month=${month}`).then((r) => {
       if (!r.ok) throw new Error("Failed to fetch cost data")
       return r.json()
     }),

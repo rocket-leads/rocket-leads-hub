@@ -150,6 +150,12 @@ export interface CostData {
   marketingCosts: number
   hqCosts: number
   totalCosts: number
+  /** Per-category flags indicating whether the value is actual (from sheet) or estimated */
+  estimated: {
+    teamCosts: boolean
+    marketingCosts: boolean
+    hqCosts: boolean
+  }
 }
 
 export interface ProfitOverview {

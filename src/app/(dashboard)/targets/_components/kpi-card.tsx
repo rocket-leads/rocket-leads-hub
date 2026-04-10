@@ -16,6 +16,8 @@ interface KpiCardProps {
   expected?: number
   /** Formatted expected value to display alongside the target label */
   expectedFormatted?: string
+  /** When true, marks the value as estimated (computed from historical data, not actual) */
+  isEstimated?: boolean
   variant: "cost" | "volume" | "neutral"
   isLoading: boolean
   error?: string | null
@@ -52,7 +54,7 @@ function getBarColor(variant: string, value: number, target: number): string {
 }
 
 export const KpiCard = memo(function KpiCard({
-  label, value, formatted, target, targetFormatted, expected, expectedFormatted, variant,
+  label, value, formatted, target, targetFormatted, expected, expectedFormatted, isEstimated, variant,
   isLoading, error, onRetry,
 }: KpiCardProps) {
   if (isLoading) {
@@ -86,10 +88,22 @@ export const KpiCard = memo(function KpiCard({
     : 0
 
   return (
-    <div className="bg-card rounded-lg p-3 flex flex-col border border-border/40 h-full">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
+    <div className={cn(
+      "bg-card rounded-lg p-3 flex flex-col h-full",
+      isEstimated
+        ? "border border-dashed border-primary/50"
+        : "border border-border/40",
+    )}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+        {isEstimated && (
+          <span className="text-[8px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary">
+            Expected
+          </span>
+        )}
+      </div>
       <span className={cn(
         "text-xl font-bold font-mono leading-tight tracking-tight mt-0.5",
         colorClass || "text-foreground",

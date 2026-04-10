@@ -148,54 +148,71 @@ export function FinanceTab() {
       </div>
 
       {/* ── COSTS ── */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Costs</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <KpiCard
-            label="Total Costs"
-            value={costs?.totalCosts ?? null}
-            formatted={formatCurrency(costs?.totalCosts ?? 0)}
-            target={t?.totalCosts || undefined}
-            targetFormatted={t?.totalCosts ? `${formatCurrency(costs?.totalCosts ?? 0)} of ${formatCurrency(t.totalCosts)}` : undefined}
-            expected={expectedTotalCosts}
-            expectedFormatted={expectedTotalCosts != null ? formatCurrency(expectedTotalCosts) : undefined}
-            variant="cost"
-            isLoading={loading}
-          />
-          <KpiCard label="Team Costs" value={costs?.teamCosts ?? null} formatted={formatCurrency(costs?.teamCosts ?? 0)} variant="neutral" isLoading={loading} />
-          <KpiCard label="Marketing Costs" value={costs?.marketingCosts ?? null} formatted={formatCurrency(costs?.marketingCosts ?? 0)} variant="neutral" isLoading={loading} />
-          <KpiCard label="HQ Costs" value={costs?.hqCosts ?? null} formatted={formatCurrency(costs?.hqCosts ?? 0)} variant="neutral" isLoading={loading} />
-        </div>
-      </div>
+      {(() => {
+        const teamEst = costs?.estimated.teamCosts ?? false
+        const mktEst = costs?.estimated.marketingCosts ?? false
+        const hqEst = costs?.estimated.hqCosts ?? false
+        // Total is estimated if any sub-cost is estimated
+        const totalEst = teamEst || mktEst || hqEst
+        // Profit / margin / accounting profit derive from costs, so they inherit the estimated flag
+        const profitEst = totalEst
 
-      {/* ── PROFIT ── */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Profit</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <KpiCard label="Revenue (Cash)" value={profit?.revenue ?? null} formatted={formatCurrency(profit?.revenue ?? 0)} variant="neutral" isLoading={loading} />
-          <KpiCard
-            label="Net Profit"
-            value={profit?.netProfit ?? null}
-            formatted={formatCurrency(profit?.netProfit ?? 0)}
-            target={t?.netProfit || undefined}
-            targetFormatted={t?.netProfit ? `${formatCurrency(profit?.netProfit ?? 0)} of ${formatCurrency(t.netProfit)}` : undefined}
-            expected={expectedNetProfit}
-            expectedFormatted={expectedNetProfit != null ? formatCurrency(expectedNetProfit) : undefined}
-            variant="volume"
-            isLoading={loading}
-          />
-          <KpiCard
-            label="Margin"
-            value={profit?.margin ?? null}
-            formatted={formatPercent(profit?.margin ?? 0)}
-            target={t?.profitMargin || undefined}
-            targetFormatted={t?.profitMargin ? `${formatPercent(profit?.margin ?? 0)} of ${formatPercent(t.profitMargin)}` : undefined}
-            variant="volume"
-            isLoading={loading}
-          />
-          <KpiCard label="Accounting Profit" value={profit?.accountingProfit ?? null} formatted={formatCurrency(profit?.accountingProfit ?? 0)} variant="neutral" isLoading={loading} />
-        </div>
-      </div>
+        return (
+          <>
+            <div className="space-y-3">
+              <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Costs</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <KpiCard
+                  label="Total Costs"
+                  value={costs?.totalCosts ?? null}
+                  formatted={formatCurrency(costs?.totalCosts ?? 0)}
+                  target={t?.totalCosts || undefined}
+                  targetFormatted={t?.totalCosts ? `${formatCurrency(costs?.totalCosts ?? 0)} of ${formatCurrency(t.totalCosts)}` : undefined}
+                  expected={expectedTotalCosts}
+                  expectedFormatted={expectedTotalCosts != null ? formatCurrency(expectedTotalCosts) : undefined}
+                  isEstimated={totalEst}
+                  variant="cost"
+                  isLoading={loading}
+                />
+                <KpiCard label="Team Costs" value={costs?.teamCosts ?? null} formatted={formatCurrency(costs?.teamCosts ?? 0)} isEstimated={teamEst} variant="neutral" isLoading={loading} />
+                <KpiCard label="Marketing Costs" value={costs?.marketingCosts ?? null} formatted={formatCurrency(costs?.marketingCosts ?? 0)} isEstimated={mktEst} variant="neutral" isLoading={loading} />
+                <KpiCard label="HQ Costs" value={costs?.hqCosts ?? null} formatted={formatCurrency(costs?.hqCosts ?? 0)} isEstimated={hqEst} variant="neutral" isLoading={loading} />
+              </div>
+            </div>
+
+            {/* ── PROFIT ── */}
+            <div className="space-y-3">
+              <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Profit</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <KpiCard label="Revenue (Cash)" value={profit?.revenue ?? null} formatted={formatCurrency(profit?.revenue ?? 0)} variant="neutral" isLoading={loading} />
+                <KpiCard
+                  label="Net Profit"
+                  value={profit?.netProfit ?? null}
+                  formatted={formatCurrency(profit?.netProfit ?? 0)}
+                  target={t?.netProfit || undefined}
+                  targetFormatted={t?.netProfit ? `${formatCurrency(profit?.netProfit ?? 0)} of ${formatCurrency(t.netProfit)}` : undefined}
+                  expected={expectedNetProfit}
+                  expectedFormatted={expectedNetProfit != null ? formatCurrency(expectedNetProfit) : undefined}
+                  isEstimated={profitEst}
+                  variant="volume"
+                  isLoading={loading}
+                />
+                <KpiCard
+                  label="Margin"
+                  value={profit?.margin ?? null}
+                  formatted={formatPercent(profit?.margin ?? 0)}
+                  target={t?.profitMargin || undefined}
+                  targetFormatted={t?.profitMargin ? `${formatPercent(profit?.margin ?? 0)} of ${formatPercent(t.profitMargin)}` : undefined}
+                  isEstimated={profitEst}
+                  variant="volume"
+                  isLoading={loading}
+                />
+                <KpiCard label="Accounting Profit" value={profit?.accountingProfit ?? null} formatted={formatCurrency(profit?.accountingProfit ?? 0)} isEstimated={profitEst} variant="neutral" isLoading={loading} />
+              </div>
+            </div>
+          </>
+        )
+      })()}
     </div>
   )
 }
