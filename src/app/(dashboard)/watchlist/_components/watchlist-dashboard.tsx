@@ -183,7 +183,7 @@ function WatchSection({
             return (
               <Link
                 key={client.mondayItemId}
-                href={`/clients/${client.mondayItemId}`}
+                href={`/clients/${client.mondayItemId}?from=watchlist`}
                 className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_32px] gap-x-4 px-5 py-3 border-b border-border/10 border-l-2 ${config.rowBorder} hover:bg-muted/20 transition-colors items-center`}
               >
                 {/* Client */}
