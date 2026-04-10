@@ -1,81 +1,27 @@
 "use client"
 
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { getDaysInMonth } from "date-fns"
 import { useFinanceData, useMonthSelector } from "../_hooks/use-finance-data"
+import { useTargetsConfig } from "../_hooks/use-targets-config"
+import { KpiCard } from "./kpi-card"
+import { RevenueProgressBar } from "./revenue-progress-bar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
-import { cn } from "@/lib/utils"
-import type { CategoryBreakdown } from "@/types/targets"
 
-function StatCard({ label, value, sub, badge, badgeColor, loading }: {
-  label: string; value: string; sub?: string; badge?: string; badgeColor?: string; loading: boolean
-}) {
+function SubCard({ label, value, loading }: { label: string; value: string; loading: boolean }) {
   if (loading) {
     return (
-      <div className="bg-card rounded-lg p-3 flex flex-col gap-2 border border-border/40">
-        <Skeleton className="h-3 w-20" />
-        <Skeleton className="h-7 w-28" />
+      <div className="bg-muted/30 rounded-lg p-3 flex flex-col gap-0.5 border border-border/20">
+        <Skeleton className="h-3 w-14" />
+        <Skeleton className="h-6 w-20" />
       </div>
     )
   }
   return (
-    <div className="bg-card rounded-lg p-3 border border-border/40">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground block">{label}</span>
-      <div className="flex items-baseline gap-2">
-        <span className="text-xl font-bold font-mono text-foreground">{value}</span>
-        {badge && (
-          <span className={cn("text-[10px] font-mono font-medium px-1.5 py-0.5 rounded", badgeColor)}>
-            {badge}
-          </span>
-        )}
-      </div>
-      {sub && <span className="text-[9px] text-muted-foreground/60 block mt-0.5">{sub}</span>}
-    </div>
-  )
-}
-
-function RevenueRow({ title, data, loading }: { title: string; data: CategoryBreakdown | null; loading: boolean }) {
-  return (
-    <div>
-      <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2 px-1">{title}</h3>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <StatCard label="Invoiced" value={formatCurrency(data?.invoiced ?? 0)} loading={loading} />
-        <StatCard label="Cash Collected" value={formatCurrency(data?.cashCollected ?? 0)} loading={loading} />
-        <StatCard label="Open" value={formatCurrency(data?.open ?? 0)} loading={loading} />
-        <StatCard label="Overdue" value={formatCurrency(data?.overdue ?? 0)} loading={loading} />
-      </div>
-    </div>
-  )
-}
-
-function CostTable({ title, rows, loading }: {
-  title: string; rows: { label: string; value: number }[]; loading: boolean
-}) {
-  if (loading) {
-    return (
-      <div className="bg-card rounded-lg p-4 border border-border/40">
-        <Skeleton className="h-4 w-32 mb-3" />
-        <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-6 w-full" />)}</div>
-      </div>
-    )
-  }
-  return (
-    <div className="bg-card rounded-lg p-4 border border-border/40">
-      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">{title}</h3>
-      <div className="space-y-1">
-        {rows.map((row, i) => (
-          <div
-            key={row.label}
-            className={cn(
-              "flex items-center justify-between py-1.5 text-xs",
-              i === rows.length - 1 && "border-t border-border/50 font-medium",
-            )}
-          >
-            <span className="text-muted-foreground">{row.label}</span>
-            <span className="font-mono text-foreground">{formatCurrency(row.value)}</span>
-          </div>
-        ))}
-      </div>
+    <div className="bg-muted/30 rounded-lg p-3 flex flex-col gap-0.5 border border-border/20 h-full">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{label}</span>
+      <span className="text-xl font-bold font-mono leading-tight tracking-tight text-foreground">{value}</span>
     </div>
   )
 }
@@ -83,13 +29,29 @@ function CostTable({ title, rows, loading }: {
 export function FinanceTab() {
   const { year, month, label, isCurrentMonth, goToPrev, goToNext } = useMonthSelector()
   const { finance, costs, profit, loading } = useFinanceData(year, month)
+  const { data: targets } = useTargetsConfig()
+  const t = targets ?? null
 
-  const margin = profit?.margin ?? 0
-  const marginColor = margin > 0.3
-    ? "bg-green-500/20 text-green-500"
-    : margin > 0.15
-    ? "bg-primary/20 text-primary"
-    : "bg-red-500/20 text-red-500"
+  const sf = finance?.serviceFee
+  const nb = finance?.serviceFeeNewBusiness
+  const mrr = finance?.serviceFeeMrr
+
+  // Pro-rata expected (only meaningful for current month)
+  const proRataFactor = (() => {
+    if (!isCurrentMonth) return 1
+    const today = new Date()
+    const daysInMonth = getDaysInMonth(today)
+    return today.getDate() / daysInMonth
+  })()
+  const expectedServiceFee = t?.serviceFeeRevenue ? t.serviceFeeRevenue * proRataFactor : undefined
+  const expectedAdBudget = t?.adBudgetRevenue ? t.adBudgetRevenue * proRataFactor : undefined
+  const expectedTotalCosts = t?.totalCosts ? t.totalCosts * proRataFactor : undefined
+  const expectedNetProfit = t?.netProfit ? t.netProfit * proRataFactor : undefined
+
+  // Total revenue target = service fee invoiced only
+  const totalRevenueTarget = t?.serviceFeeRevenue ?? 0
+  const totalRevenueExpected = totalRevenueTarget * proRataFactor
+  const totalRevenueActual = sf?.invoiced ?? 0
 
   return (
     <div className="space-y-6">
@@ -104,47 +66,105 @@ export function FinanceTab() {
         </button>
       </div>
 
-      {/* ── REVENUE ── */}
-      <div className="space-y-4">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue</h2>
-        <RevenueRow title="Service Fee" data={finance?.serviceFee ?? null} loading={loading} />
-        <RevenueRow title="Ad Budget" data={finance?.adBudget ?? null} loading={loading} />
+      {/* Service Fee Invoiced progress bar */}
+      {totalRevenueTarget > 0 && (
+        <RevenueProgressBar
+          label="Service Fee — Invoiced"
+          current={totalRevenueActual}
+          proRata={totalRevenueExpected}
+          monthlyTarget={totalRevenueTarget}
+          isLoading={loading}
+        />
+      )}
+
+      {/* ── REVENUE — SERVICE FEE ── */}
+      <div className="space-y-3">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue — Service Fee</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {/* Each column: main card + two sub-cards, all columns same structure */}
+          {([
+            {
+              label: "Invoiced", value: sf?.invoiced ?? null, formatted: formatCurrency(sf?.invoiced ?? 0),
+              variant: "neutral" as const,
+              nbVal: formatCurrency(nb?.invoiced ?? 0), mrrVal: formatCurrency(mrr?.invoiced ?? 0),
+            },
+            {
+              label: "Cash Collected", value: sf?.cashCollected ?? null, formatted: formatCurrency(sf?.cashCollected ?? 0),
+              variant: "neutral" as const,
+              nbVal: formatCurrency(nb?.cashCollected ?? 0), mrrVal: formatCurrency(mrr?.cashCollected ?? 0),
+            },
+            {
+              label: "Open", value: sf?.open ?? null, formatted: formatCurrency(sf?.open ?? 0),
+              variant: "neutral" as const,
+              nbVal: formatCurrency(nb?.open ?? 0), mrrVal: formatCurrency(mrr?.open ?? 0),
+            },
+            {
+              label: "Overdue", value: sf?.overdue ?? null, formatted: formatCurrency(sf?.overdue ?? 0),
+              variant: "neutral" as const,
+              nbVal: formatCurrency(nb?.overdue ?? 0), mrrVal: formatCurrency(mrr?.overdue ?? 0),
+            },
+          ] as Array<{
+            label: string; value: number | null; formatted: string;
+            target?: number; targetFormatted?: string;
+            expected?: number; expectedFormatted?: string;
+            variant: "cost" | "volume" | "neutral";
+            nbVal: string; mrrVal: string;
+          }>).map((col) => (
+            <div key={col.label} className="flex flex-col gap-1">
+              <KpiCard
+                label={col.label} value={col.value} formatted={col.formatted}
+                target={col.target} targetFormatted={col.targetFormatted}
+                expected={col.expected} expectedFormatted={col.expectedFormatted}
+                variant={col.variant} isLoading={loading}
+              />
+              <div className="grid grid-cols-2 gap-1">
+                <SubCard label="New Biz" value={col.nbVal} loading={loading} />
+                <SubCard label="MRR" value={col.mrrVal} loading={loading} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── REVENUE — AD BUDGET ── */}
+      <div className="space-y-3">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue — Ad Budget</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <KpiCard
+            label="Invoiced"
+            value={finance?.adBudget?.invoiced ?? null}
+            formatted={formatCurrency(finance?.adBudget?.invoiced ?? 0)}
+            target={t?.adBudgetRevenue || undefined}
+            targetFormatted={t?.adBudgetRevenue ? `${formatCurrency(finance?.adBudget?.invoiced ?? 0)} of ${formatCurrency(t.adBudgetRevenue)}` : undefined}
+            expected={expectedAdBudget}
+            expectedFormatted={expectedAdBudget != null ? formatCurrency(expectedAdBudget) : undefined}
+            variant="volume"
+            isLoading={loading}
+          />
+          <KpiCard label="Cash Collected" value={finance?.adBudget?.cashCollected ?? null} formatted={formatCurrency(finance?.adBudget?.cashCollected ?? 0)} variant="neutral" isLoading={loading} />
+          <KpiCard label="Open" value={finance?.adBudget?.open ?? null} formatted={formatCurrency(finance?.adBudget?.open ?? 0)} variant="neutral" isLoading={loading} />
+          <KpiCard label="Overdue" value={finance?.adBudget?.overdue ?? null} formatted={formatCurrency(finance?.adBudget?.overdue ?? 0)} variant="neutral" isLoading={loading} />
+        </div>
       </div>
 
       {/* ── COSTS ── */}
       <div className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Costs</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <CostTable
-            title="Team Costs"
-            rows={[
-              { label: "NL", value: costs?.teamCosts.nl ?? 0 },
-              { label: "BE", value: costs?.teamCosts.be ?? 0 },
-              { label: "DE", value: costs?.teamCosts.de ?? 0 },
-              { label: "Total", value: costs?.teamCosts.total ?? 0 },
-            ]}
-            loading={loading}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <KpiCard
+            label="Total Costs"
+            value={costs?.totalCosts ?? null}
+            formatted={formatCurrency(costs?.totalCosts ?? 0)}
+            target={t?.totalCosts || undefined}
+            targetFormatted={t?.totalCosts ? `${formatCurrency(costs?.totalCosts ?? 0)} of ${formatCurrency(t.totalCosts)}` : undefined}
+            expected={expectedTotalCosts}
+            expectedFormatted={expectedTotalCosts != null ? formatCurrency(expectedTotalCosts) : undefined}
+            variant="cost"
+            isLoading={loading}
           />
-          <CostTable
-            title="Marketing Costs"
-            rows={[
-              { label: "NL", value: costs?.marketingCosts.nl ?? 0 },
-              { label: "BE", value: costs?.marketingCosts.be ?? 0 },
-              { label: "DE", value: costs?.marketingCosts.de ?? 0 },
-              { label: "Total", value: costs?.marketingCosts.total ?? 0 },
-            ]}
-            loading={loading}
-          />
-          <CostTable
-            title="HQ / Other Costs"
-            rows={[
-              { label: "Software", value: costs?.hqCosts.software ?? 0 },
-              { label: "Marketing", value: costs?.hqCosts.marketing ?? 0 },
-              { label: "General", value: costs?.hqCosts.general ?? 0 },
-              { label: "Total", value: costs?.hqCosts.total ?? 0 },
-            ]}
-            loading={loading}
-          />
+          <KpiCard label="Team Costs" value={costs?.teamCosts ?? null} formatted={formatCurrency(costs?.teamCosts ?? 0)} variant="neutral" isLoading={loading} />
+          <KpiCard label="Marketing Costs" value={costs?.marketingCosts ?? null} formatted={formatCurrency(costs?.marketingCosts ?? 0)} variant="neutral" isLoading={loading} />
+          <KpiCard label="HQ Costs" value={costs?.hqCosts ?? null} formatted={formatCurrency(costs?.hqCosts ?? 0)} variant="neutral" isLoading={loading} />
         </div>
       </div>
 
@@ -152,16 +172,28 @@ export function FinanceTab() {
       <div className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Profit</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <StatCard label="Revenue (Cash)" value={formatCurrency(profit?.revenue ?? 0)} loading={loading} />
-          <StatCard label="Total Costs" value={formatCurrency(profit?.costs ?? 0)} loading={loading} />
-          <StatCard
+          <KpiCard label="Revenue (Cash)" value={profit?.revenue ?? null} formatted={formatCurrency(profit?.revenue ?? 0)} variant="neutral" isLoading={loading} />
+          <KpiCard
             label="Net Profit"
-            value={formatCurrency(profit?.netProfit ?? 0)}
-            badge={formatPercent(margin)}
-            badgeColor={marginColor}
-            loading={loading}
+            value={profit?.netProfit ?? null}
+            formatted={formatCurrency(profit?.netProfit ?? 0)}
+            target={t?.netProfit || undefined}
+            targetFormatted={t?.netProfit ? `${formatCurrency(profit?.netProfit ?? 0)} of ${formatCurrency(t.netProfit)}` : undefined}
+            expected={expectedNetProfit}
+            expectedFormatted={expectedNetProfit != null ? formatCurrency(expectedNetProfit) : undefined}
+            variant="volume"
+            isLoading={loading}
           />
-          <StatCard label="Accounting Profit" value={formatCurrency(profit?.accountingProfit ?? 0)} sub="Invoiced - Costs" loading={loading} />
+          <KpiCard
+            label="Margin"
+            value={profit?.margin ?? null}
+            formatted={formatPercent(profit?.margin ?? 0)}
+            target={t?.profitMargin || undefined}
+            targetFormatted={t?.profitMargin ? `${formatPercent(profit?.margin ?? 0)} of ${formatPercent(t.profitMargin)}` : undefined}
+            variant="volume"
+            isLoading={loading}
+          />
+          <KpiCard label="Accounting Profit" value={profit?.accountingProfit ?? null} formatted={formatCurrency(profit?.accountingProfit ?? 0)} variant="neutral" isLoading={loading} />
         </div>
       </div>
     </div>

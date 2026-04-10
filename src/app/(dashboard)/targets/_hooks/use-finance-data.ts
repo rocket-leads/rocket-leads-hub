@@ -27,7 +27,7 @@ export function useFinanceData(year: number, month: number) {
 
   const costsQuery = useQuery<CostData>({
     queryKey: ["targets-costs", monthKey],
-    queryFn: () => fetch(`/api/targets/sheets?sheet=profits&month=${monthKey}`).then((r) => {
+    queryFn: () => fetch(`/api/targets/sheets?month=${monthKey}`).then((r) => {
       if (!r.ok) throw new Error("Failed to fetch cost data")
       return r.json()
     }),

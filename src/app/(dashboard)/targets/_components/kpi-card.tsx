@@ -12,6 +12,10 @@ interface KpiCardProps {
   formatted: string
   target?: number
   targetFormatted?: string
+  /** Optional pro-rata expected value at this point in time. Renders a lighter background bar. */
+  expected?: number
+  /** Formatted expected value to display alongside the target label */
+  expectedFormatted?: string
   variant: "cost" | "volume" | "neutral"
   isLoading: boolean
   error?: string | null
@@ -48,12 +52,12 @@ function getBarColor(variant: string, value: number, target: number): string {
 }
 
 export const KpiCard = memo(function KpiCard({
-  label, value, formatted, target, targetFormatted, variant,
+  label, value, formatted, target, targetFormatted, expected, expectedFormatted, variant,
   isLoading, error, onRetry,
 }: KpiCardProps) {
   if (isLoading) {
     return (
-      <div className="bg-card rounded-lg p-3 flex flex-col gap-2 border border-border/40">
+      <div className="bg-card rounded-lg p-3 flex flex-col gap-2 border border-border/40 h-full">
         <Skeleton className="h-3 w-20" />
         <Skeleton className="h-7 w-28" />
       </div>
@@ -62,7 +66,7 @@ export const KpiCard = memo(function KpiCard({
 
   if (error) {
     return (
-      <div className="bg-card rounded-lg border border-red-500/20 p-3 flex flex-col items-center justify-center gap-1.5 min-h-[80px]">
+      <div className="bg-card rounded-lg border border-red-500/20 p-3 flex flex-col items-center justify-center gap-1.5 h-full">
         <AlertCircle className="w-4 h-4 text-red-500" />
         {onRetry && (
           <button onClick={onRetry} className="text-[10px] text-primary hover:underline flex items-center gap-1">
@@ -77,29 +81,44 @@ export const KpiCard = memo(function KpiCard({
   const hasTarget = target != null && target > 0 && value != null
   const colorClass = hasTarget ? getColor(variant, value!, target!) : ""
   const barPct = hasTarget ? Math.min(safeDivide(value!, target!) * 100, 100) : 0
+  const expectedPct = hasTarget && expected != null && expected > 0
+    ? Math.min(safeDivide(expected, target!) * 100, 100)
+    : 0
 
   return (
-    <div className="bg-card rounded-lg p-3 flex flex-col gap-0.5 border border-border/40">
+    <div className="bg-card rounded-lg p-3 flex flex-col border border-border/40 h-full">
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
       <span className={cn(
-        "text-xl font-bold font-mono leading-tight tracking-tight",
+        "text-xl font-bold font-mono leading-tight tracking-tight mt-0.5",
         colorClass || "text-foreground",
       )}>
         {formatted}
       </span>
+      <div className="mt-auto" />
       {hasTarget && (
         <div className="mt-1 space-y-0.5">
-          <div className="h-1 bg-muted rounded-full overflow-hidden">
+          <div className="relative h-1 bg-muted rounded-full overflow-hidden">
+            {/* Expected (pro-rata) — lighter background */}
+            {expectedPct > 0 && (
+              <div
+                className="absolute inset-y-0 left-0 bg-muted-foreground/30 rounded-full"
+                style={{ width: `${expectedPct}%` }}
+              />
+            )}
+            {/* Actual progress */}
             <div
-              className={cn("h-full rounded-full transition-all duration-700", getBarColor(variant, value!, target!))}
+              className={cn("absolute inset-y-0 left-0 rounded-full transition-all duration-700", getBarColor(variant, value!, target!))}
               style={{ width: `${barPct}%` }}
             />
           </div>
-          <span className="text-[9px] text-muted-foreground/60">
-            {targetFormatted}
-          </span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] text-muted-foreground/60">{targetFormatted}</span>
+            {expectedFormatted && (
+              <span className="text-[9px] text-muted-foreground/60">expected {expectedFormatted}</span>
+            )}
+          </div>
         </div>
       )}
     </div>

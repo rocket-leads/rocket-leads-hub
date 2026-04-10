@@ -1,53 +1,22 @@
 "use client"
 
-import { format, startOfMonth } from "date-fns"
+import { format } from "date-fns"
 import { useDateRange } from "../_hooks/use-date-range"
 import { useDeliveryData } from "../_hooks/use-delivery-data"
-import { Skeleton } from "@/components/ui/skeleton"
+import { useTargetsConfig } from "../_hooks/use-targets-config"
+import { KpiCard } from "./kpi-card"
 import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
-import { cn } from "@/lib/utils"
-
-function StatCard({ label, value, sub, badge, badgeColor, loading }: {
-  label: string; value: string; sub?: string; badge?: string; badgeColor?: string; loading: boolean
-}) {
-  if (loading) {
-    return (
-      <div className="bg-card rounded-lg p-3 flex flex-col gap-2 border border-border/40">
-        <Skeleton className="h-3 w-20" />
-        <Skeleton className="h-7 w-28" />
-      </div>
-    )
-  }
-  return (
-    <div className="bg-card rounded-lg p-3 border border-border/40">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground block">{label}</span>
-      <div className="flex items-baseline gap-2">
-        <span className="text-xl font-bold font-mono text-foreground">{value}</span>
-        {badge && (
-          <span className={cn("text-[10px] font-mono font-medium px-1.5 py-0.5 rounded", badgeColor)}>
-            {badge}
-          </span>
-        )}
-      </div>
-      {sub && <span className="text-[9px] text-muted-foreground/60 block mt-0.5">{sub}</span>}
-    </div>
-  )
-}
 
 export function DeliveryTab() {
   const { range, setStartDate, setEndDate, presets, applyPreset } = useDateRange()
   const startDate = format(range.startDate, "yyyy-MM-dd")
   const endDate = format(range.endDate, "yyyy-MM-dd")
   const { data, loading } = useDeliveryData(startDate, endDate)
-
-  const churnColor = (data?.churnRate ?? 0) < 0.05
-    ? "bg-green-500/20 text-green-500"
-    : (data?.churnRate ?? 0) < 0.1
-    ? "bg-primary/20 text-primary"
-    : "bg-red-500/20 text-red-500"
+  const { data: targets } = useTargetsConfig()
+  const t = targets ?? null
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Date picker */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
@@ -78,43 +47,73 @@ export function DeliveryTab() {
         </div>
       </div>
 
-      {/* Revenue KPIs */}
-      <div>
-        <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2 px-1">Revenue</h2>
+      {/* Revenue */}
+      <div className="space-y-3">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
-          <StatCard label="Total Revenue" value={formatCurrency(data?.totalRevenue ?? 0)} loading={loading} />
-          <StatCard label="MRR" value={formatCurrency(data?.mrr ?? 0)} sub="Returning customers" loading={loading} />
-          <StatCard label="New Business" value={formatCurrency(data?.newBusiness ?? 0)} sub="First-time customers" loading={loading} />
-          <StatCard label="Avg Revenue / Customer" value={formatCurrency(data?.avgRevenuePerCustomer ?? 0)} loading={loading} />
-          <StatCard label="Active Customers" value={String(data?.activeCustomers ?? 0)} loading={loading} />
+          <KpiCard label="Total Revenue" value={data?.totalRevenue ?? null} formatted={formatCurrency(data?.totalRevenue ?? 0)} variant="neutral" isLoading={loading} />
+          <KpiCard
+            label="MRR"
+            value={data?.mrr ?? null}
+            formatted={formatCurrency(data?.mrr ?? 0)}
+            target={t?.mrr || undefined}
+            targetFormatted={t?.mrr ? `${formatCurrency(data?.mrr ?? 0)} of ${formatCurrency(t.mrr)}` : undefined}
+            variant="volume"
+            isLoading={loading}
+          />
+          <KpiCard
+            label="New Business"
+            value={data?.newBusiness ?? null}
+            formatted={formatCurrency(data?.newBusiness ?? 0)}
+            target={t?.newBusiness || undefined}
+            targetFormatted={t?.newBusiness ? `${formatCurrency(data?.newBusiness ?? 0)} of ${formatCurrency(t.newBusiness)}` : undefined}
+            variant="volume"
+            isLoading={loading}
+          />
+          <KpiCard
+            label="Avg Revenue / Customer"
+            value={data?.avgRevenuePerCustomer ?? null}
+            formatted={formatCurrency(data?.avgRevenuePerCustomer ?? 0)}
+            target={t?.avgRevenuePerCustomer || undefined}
+            targetFormatted={t?.avgRevenuePerCustomer ? `${formatCurrency(data?.avgRevenuePerCustomer ?? 0)} of ${formatCurrency(t.avgRevenuePerCustomer)}` : undefined}
+            variant="volume"
+            isLoading={loading}
+          />
+          <KpiCard
+            label="Active Customers"
+            value={data?.activeCustomers ?? null}
+            formatted={String(data?.activeCustomers ?? 0)}
+            target={t?.activeCustomers || undefined}
+            targetFormatted={t?.activeCustomers ? `${data?.activeCustomers ?? 0} of ${t.activeCustomers}` : undefined}
+            variant="volume"
+            isLoading={loading}
+          />
         </div>
       </div>
 
-      {/* Churn */}
-      <div>
-        <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2 px-1">Retention</h2>
+      {/* Retention */}
+      <div className="space-y-3">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Retention</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <StatCard
+          <KpiCard
             label="Churn Rate"
-            value={formatPercent(data?.churnRate ?? 0)}
-            badge={`${data?.churned ?? 0} lost`}
-            badgeColor={churnColor}
-            loading={loading}
+            value={data?.churnRate ?? null}
+            formatted={formatPercent(data?.churnRate ?? 0)}
+            target={t?.maxChurnRate || undefined}
+            targetFormatted={t?.maxChurnRate ? `${formatPercent(data?.churnRate ?? 0)} of ${formatPercent(t.maxChurnRate)}` : undefined}
+            variant="cost"
+            isLoading={loading}
           />
-          <StatCard label="Previous Period" value={`${data?.previousPeriodCustomers ?? 0} customers`} loading={loading} />
-          <StatCard label="Current Period" value={`${data?.currentPeriodCustomers ?? 0} customers`} loading={loading} />
-          <StatCard
-            label="Net Change"
-            value={`${((data?.currentPeriodCustomers ?? 0) - (data?.previousPeriodCustomers ?? 0) >= 0 ? "+" : "")}${(data?.currentPeriodCustomers ?? 0) - (data?.previousPeriodCustomers ?? 0)}`}
-            loading={loading}
-          />
+          <KpiCard label="Churned" value={data?.churned ?? null} formatted={String(data?.churned ?? 0)} variant="neutral" isLoading={loading} />
+          <KpiCard label="Previous Period" value={data?.previousPeriodCustomers ?? null} formatted={`${data?.previousPeriodCustomers ?? 0} customers`} variant="neutral" isLoading={loading} />
+          <KpiCard label="Current Period" value={data?.currentPeriodCustomers ?? null} formatted={`${data?.currentPeriodCustomers ?? 0} customers`} variant="neutral" isLoading={loading} />
         </div>
       </div>
 
       {/* Revenue by Account Manager */}
       {data?.byAccountManager && data.byAccountManager.length > 0 && (
-        <div>
-          <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2 px-1">Revenue by Account Manager</h2>
+        <div className="space-y-3">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue by Account Manager</h2>
           <div className="bg-card rounded-lg border border-border/40 overflow-hidden">
             <table className="w-full text-xs">
               <thead>

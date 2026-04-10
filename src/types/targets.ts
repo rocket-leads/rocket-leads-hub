@@ -1,6 +1,7 @@
 // ─── Configurable targets ───
 
 export interface TargetsConfig {
+  // Marketing / Sales
   calls: number
   qualifiedCalls: number
   takenCalls: number
@@ -10,6 +11,18 @@ export interface TargetsConfig {
   cqc: number
   ctc: number
   cpd: number
+  // Finance
+  serviceFeeRevenue: number
+  adBudgetRevenue: number
+  totalCosts: number
+  netProfit: number
+  profitMargin: number // as decimal, e.g. 0.30 = 30%
+  // Delivery
+  mrr: number
+  newBusiness: number
+  activeCustomers: number
+  avgRevenuePerCustomer: number
+  maxChurnRate: number // as decimal, e.g. 0.05 = 5%
 }
 
 
@@ -91,6 +104,8 @@ export interface CategoryBreakdown {
 export interface FinanceOverview {
   total: CategoryBreakdown
   serviceFee: CategoryBreakdown
+  serviceFeeNewBusiness: CategoryBreakdown
+  serviceFeeMrr: CategoryBreakdown
   adBudget: CategoryBreakdown
   invoiceCount: number
 }
@@ -131,9 +146,9 @@ export interface AccountManagerRevenue {
 // ─── Google Sheets cost types ───
 
 export interface CostData {
-  teamCosts: { nl: number; be: number; de: number; total: number }
-  marketingCosts: { nl: number; be: number; de: number; total: number }
-  hqCosts: { software: number; marketing: number; general: number; total: number }
+  teamCosts: number
+  marketingCosts: number
+  hqCosts: number
   totalCosts: number
 }
 

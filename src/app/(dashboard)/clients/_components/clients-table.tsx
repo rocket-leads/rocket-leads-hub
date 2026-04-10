@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import {
   Select,
@@ -487,6 +488,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                 const summary = client.stripeCustomerId ? billingSummaries?.[client.stripeCustomerId] : undefined
                 const kpi = kpiSummaries?.[client.mondayItemId]
                 const kpiLoading = !kpiSummaries && (!!client.metaAdAccountId || !!client.clientBoardId)
+                const href = `/clients/${client.mondayItemId}`
                 return (
                   <TableRow
                     key={client.mondayItemId}
@@ -498,13 +500,30 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         return ""
                       })() : ""
                     }`}
-                    onClick={() => router.push(`/clients/${client.mondayItemId}`)}
+                    onClick={(e) => {
+                      // Only handle plain left-click — let modifier+click and middle-click pass through
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+                      router.push(href)
+                    }}
+                    onAuxClick={(e) => {
+                      // Middle-click opens in new tab
+                      if (e.button === 1) {
+                        e.preventDefault()
+                        window.open(href, "_blank", "noopener,noreferrer")
+                      }
+                    }}
                   >
                     <TableCell>
-                      <p className="font-medium text-sm">{client.name}</p>
-                      {client.firstName && (
-                        <p className="text-[11px] text-muted-foreground/60">{client.firstName}</p>
-                      )}
+                      <Link
+                        href={href}
+                        onClick={(e) => e.stopPropagation()}
+                        className="block hover:text-primary transition-colors"
+                      >
+                        <p className="font-medium text-sm">{client.name}</p>
+                        {client.firstName && (
+                          <p className="text-[11px] text-muted-foreground/60">{client.firstName}</p>
+                        )}
+                      </Link>
                     </TableCell>
                     <TableCell>
                       {client.campaignStatus && (

@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import {
   Select,
   SelectContent,
@@ -132,13 +133,11 @@ function WatchSection({
   category,
   items,
   aiNotes,
-  onNavigate,
   defaultOpen,
 }: {
   category: "action" | "watch" | "good"
   items: CategorizedClient[]
   aiNotes: Record<string, string>
-  onNavigate: (id: string) => void
   defaultOpen: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -182,10 +181,10 @@ function WatchSection({
             const note = aiNotes[client.mondayItemId]
 
             return (
-              <div
+              <Link
                 key={client.mondayItemId}
-                className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_32px] gap-x-4 px-5 py-3 border-b border-border/10 border-l-2 ${config.rowBorder} cursor-pointer hover:bg-muted/20 transition-colors items-center`}
-                onClick={() => onNavigate(client.mondayItemId)}
+                href={`/clients/${client.mondayItemId}`}
+                className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_32px] gap-x-4 px-5 py-3 border-b border-border/10 border-l-2 ${config.rowBorder} hover:bg-muted/20 transition-colors items-center`}
               >
                 {/* Client */}
                 <div className="min-w-0">
@@ -231,15 +230,11 @@ function WatchSection({
                   {kpi && kpi.appointments > 0 ? kpi.appointments : "—"}
                 </span>
 
-                {/* Link icon */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); onNavigate(client.mondayItemId) }}
-                  className="text-muted-foreground/20 hover:text-primary transition-colors flex justify-center"
-                  title="View client"
-                >
+                {/* External icon */}
+                <span className="text-muted-foreground/20 flex justify-center">
                   <ExternalLink className="h-3.5 w-3.5" />
-                </button>
-              </div>
+                </span>
+              </Link>
             )
           })}
         </div>
@@ -437,21 +432,18 @@ export function WatchListDashboard({ clients }: Props) {
           category="action"
           items={categorized.action}
           aiNotes={aiNotes}
-          onNavigate={(id) => router.push(`/clients/${id}`)}
           defaultOpen={true}
         />
         <WatchSection
           category="watch"
           items={categorized.watch}
           aiNotes={aiNotes}
-          onNavigate={(id) => router.push(`/clients/${id}`)}
           defaultOpen={true}
         />
         <WatchSection
           category="good"
           items={categorized.good}
           aiNotes={aiNotes}
-          onNavigate={(id) => router.push(`/clients/${id}`)}
           defaultOpen={false}
         />
       </div>
