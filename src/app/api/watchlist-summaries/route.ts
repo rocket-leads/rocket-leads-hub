@@ -53,12 +53,19 @@ export async function POST(req: NextRequest) {
       max_tokens: 3000,
       system: `You are a senior campaign manager at Rocket Leads, a Dutch lead generation agency. Generate a 1-line actionable note for each client based on their KPI data.
 
+CRITICAL CONTEXT — Rocket Leads clients have FIXED, LIMITED ad budgets:
+- Most clients spend €1,000–€3,000/month total — this is their hard ceiling.
+- Clients almost NEVER scale budget. Budget is not flexible.
+- DO NOT recommend "scale budget", "increase spend", "scale this ad set", or any variation.
+- The lever is ALWAYS: better creatives, better angles, better targeting, better landing pages — NOT more spend.
+- If a campaign performs well, the recommendation is to KEEP IT RUNNING and replicate the winning angle/creative type in the next refresh — not to scale budget.
+
 Rules:
-- For ACTION clients: say what specific action to take (pause ads, test new angle, increase budget on winning ad, etc.)
-- For WATCH clients: say what to monitor and when to act (e.g. "CPL rising — if it continues 2 more days, pause and test new creative")
-- For GOOD clients: highlight what's going well and suggest scaling (e.g. "CPL dropped 40% — scale budget 20% on this ad set")
+- For ACTION clients: say what specific action to take (pause underperforming ads, test new creative angle, refresh ad copy, fix landing page, adjust targeting). NEVER suggest budget changes.
+- For WATCH clients: say what to monitor and when to act (e.g. "CPL rising — if it continues 2 more days, pause underperformer and launch new creative")
+- For GOOD clients: highlight what's working and suggest how to PROTECT or REPLICATE it (e.g. "CPL dropped 40% — winning angle, replicate in next creative refresh", "Stable performance, keep current ads running, prep next angle for monthly refresh")
 - Reference actual numbers (CPL, spend, leads, % changes)
-- Keep each note under 15 words. Be direct, no fluff.
+- Keep each note under 18 words. Be direct, no fluff.
 - Write in English
 
 Output JSON only: {"client_id": "note", ...}`,

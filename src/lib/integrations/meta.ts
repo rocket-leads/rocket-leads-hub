@@ -24,6 +24,8 @@ export type MetaInsight = {
   campaignId: string
   campaignName: string
   spend: number
+  /** Lead count from Meta `actions` (any action_type containing "lead") */
+  leads: number
 }
 
 async function fetchAllPages<T>(url: string): Promise<T[]> {
@@ -61,14 +63,30 @@ export async function fetchMetaInsights(
   const token = await getToken()
   const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
   const timeRange = encodeURIComponent(JSON.stringify({ since: startDate, until: endDate }))
-  const url = `${META_API_BASE}/${accountId}/insights?fields=campaign_id,campaign_name,spend&level=campaign&time_range=${timeRange}&limit=100&access_token=${token}`
+  const url = `${META_API_BASE}/${accountId}/insights?fields=campaign_id,campaign_name,spend,actions&level=campaign&time_range=${timeRange}&limit=100&access_token=${token}`
 
-  const data = await fetchAllPages<{ campaign_id: string; campaign_name: string; spend: string }>(url)
-  return data.map((d) => ({
-    campaignId: d.campaign_id,
-    campaignName: d.campaign_name,
-    spend: parseFloat(d.spend ?? "0"),
-  }))
+  const data = await fetchAllPages<{
+    campaign_id: string
+    campaign_name: string
+    spend: string
+    actions?: Array<{ action_type: string; value: string }>
+  }>(url)
+  return data.map((d) => {
+    // Sum any action_type containing "lead": covers `lead`, `onsite_conversion.lead_grouped`,
+    // `offsite_conversion.fb_pixel_lead` — works for both Meta lead forms and pixel events.
+    const leads = (d.actions ?? []).reduce((sum, a) => {
+      if (a.action_type.toLowerCase().includes("lead")) {
+        return sum + (parseInt(a.value, 10) || 0)
+      }
+      return sum
+    }, 0)
+    return {
+      campaignId: d.campaign_id,
+      campaignName: d.campaign_name,
+      spend: parseFloat(d.spend ?? "0"),
+      leads,
+    }
+  })
 }
 
 export type MetaAdDetail = {

@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Sparkles } from "lucide-react"
+import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Sparkles, CircleDashed } from "lucide-react"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
@@ -96,6 +96,16 @@ function fmtCurrency(v: number): string {
 
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean))).sort()
+}
+
+// API IDs we surface as "open" setup gaps. Monday board ID is intentionally
+// excluded — it has a Meta-fallback path so it isn't a setup blocker.
+function getMissingIds(client: MondayClient): string[] {
+  const missing: string[] = []
+  if (!client.metaAdAccountId) missing.push("Meta Ad Account")
+  if (!client.stripeCustomerId) missing.push("Stripe")
+  if (!client.trengoContactId) missing.push("Trengo")
+  return missing
 }
 
 // --- Section config ---

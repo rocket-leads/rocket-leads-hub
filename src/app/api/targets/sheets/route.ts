@@ -97,18 +97,17 @@ export async function GET(request: Request) {
     const authClient = await getAuth()
     const sheets = google.sheets({ version: "v4", auth: authClient })
 
-    const [profitsRes, teamCostsRes] = await Promise.all([
-      sheets.spreadsheets.values.get({ spreadsheetId, range: "Profits!A1:N54" }),
-      sheets.spreadsheets.values.get({ spreadsheetId, range: "Team costs!A1:N100" }),
-    ])
+    const profitsRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "Profits!A1:N30",
+    })
 
     const profitsRows = profitsRes.data.values as string[][] | undefined
-    const teamCostsRows = teamCostsRes.data.values as string[][] | undefined
 
     // Read costs for a specific month column
     const readMonthCosts = (col: number): MonthCostRow => {
-      const marketingCosts = profitsRows ? parseEuro(profitsRows[7]?.[col]) : 0 // row 8
-      const teamCosts = teamCostsRows ? parseEuro(teamCostsRows[30]?.[col]) : 0 // row 31
+      const teamCosts = profitsRows ? parseEuro(profitsRows[18]?.[col]) : 0 // row 19
+      const marketingCosts = profitsRows ? parseEuro(profitsRows[24]?.[col]) : 0 // row 25
       return {
         monthKey: "",
         teamCosts,

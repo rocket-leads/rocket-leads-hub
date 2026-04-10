@@ -7,6 +7,14 @@ import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { writeCache } from "@/lib/cache"
 import { computeActionCategory } from "@/lib/clients/action-category"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
+import {
+  fetchMondayTargets,
+  fetchMetaTargets,
+  fetchFinance,
+  fetchCosts,
+  fetchDelivery,
+  getMtdRange,
+} from "@/lib/targets/fetchers"
 import Anthropic from "@anthropic-ai/sdk"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { BillingSummary } from "@/lib/integrations/stripe"
@@ -98,8 +106,16 @@ export async function GET(req: NextRequest) {
             : insights
 
           const adSpend = filtered.reduce((sum, i) => sum + i.spend, 0)
-          const leads = items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
-          const appointments = items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
+
+          // Fall back to Meta-reported leads when no Monday board is linked.
+          // Appointments aren't trackable without Monday CRM, so they stay 0.
+          const metaFallback = !client.clientBoardId && shouldFetchMeta && filtered.length > 0
+          const leads = metaFallback
+            ? filtered.reduce((sum, i) => sum + i.leads, 0)
+            : items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
+          const appointments = metaFallback
+            ? 0
+            : items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
           const cpl = leads > 0 ? adSpend / leads : 0
 
           return {
@@ -111,6 +127,7 @@ export async function GET(req: NextRequest) {
               appointments,
               costPerAppointment: appointments > 0 ? adSpend / appointments : 0,
               ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
+              ...(metaFallback ? { metaFallback: true } : {}),
             } as KpiSummary,
           }
         })
@@ -144,6 +161,51 @@ export async function GET(req: NextRequest) {
       writeCache("billing_summaries", billingSummaries),
     ])
 
+    // 5b. Refresh Targets dashboard data (MTD + current calendar month)
+    const mtd = getMtdRange()
+    const monthStart = `${mtd.year}-${String(mtd.month).padStart(2, "0")}-01`
+    const lastDay = new Date(mtd.year, mtd.month, 0).getDate()
+    const monthEnd = `${mtd.year}-${String(mtd.month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+
+    const targetsResults = await Promise.allSettled([
+      fetchMondayTargets(mtd.startDate, mtd.endDate),
+      fetchMetaTargets(mtd.startDate, mtd.endDate),
+      fetchFinance(monthStart, monthEnd),
+      fetchCosts(mtd.year, mtd.month),
+      fetchDelivery(mtd.startDate, mtd.endDate),
+    ])
+
+    const [mondayResult, metaResult, financeResult, costsResult, deliveryResult] = targetsResults
+    const targetsWrites: Array<Promise<void>> = []
+
+    if (mondayResult.status === "fulfilled") {
+      targetsWrites.push(writeCache("targets_marketing_monday", mondayResult.value))
+    } else {
+      console.error("[cron] targets monday failed:", mondayResult.reason)
+    }
+    if (metaResult.status === "fulfilled") {
+      targetsWrites.push(writeCache("targets_marketing_meta", metaResult.value))
+    } else {
+      console.error("[cron] targets meta failed:", metaResult.reason)
+    }
+    if (financeResult.status === "fulfilled") {
+      targetsWrites.push(writeCache("targets_finance", financeResult.value))
+    } else {
+      console.error("[cron] targets finance failed:", financeResult.reason)
+    }
+    if (costsResult.status === "fulfilled") {
+      targetsWrites.push(writeCache("targets_costs", costsResult.value))
+    } else {
+      console.error("[cron] targets costs failed:", costsResult.reason)
+    }
+    if (deliveryResult.status === "fulfilled") {
+      targetsWrites.push(writeCache("targets_delivery", deliveryResult.value))
+    } else {
+      console.error("[cron] targets delivery failed:", deliveryResult.reason)
+    }
+
+    await Promise.all(targetsWrites)
+
     // 6. Generate AI summaries for critical/warning clients
     const actionClients = allClients.filter((c) => {
       const kpi = kpiSummaries[c.mondayItemId]
@@ -167,7 +229,11 @@ export async function GET(req: NextRequest) {
         const msg = await anthropic.messages.create({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 2000,
-          system: `You are a performance marketing analyst at Rocket Leads. Generate a 1-line actionable recommendation for each client. Be specific — reference their KPIs. Output JSON only: { "monday_item_id": { "type": "critical"|"warning"|"action", "title": "1-line recommendation" } }`,
+          system: `You are a performance marketing analyst at Rocket Leads. Generate a 1-line actionable recommendation for each client. Be specific — reference their KPIs.
+
+CRITICAL: Rocket Leads clients have FIXED, LIMITED budgets (typically €1,000–€3,000/month total). Clients almost NEVER scale budget. NEVER recommend "scale budget", "increase spend", or any budget increase. The lever is always: better creatives, new angles, refined targeting, better landing pages — NOT more spend.
+
+Output JSON only: { "monday_item_id": { "type": "critical"|"warning"|"action", "title": "1-line recommendation" } }`,
           messages: [{ role: "user", content: `Generate 1-line recommendations for these clients:\n${clientLines}\n\nReturn ONLY a JSON object.` }],
         })
 

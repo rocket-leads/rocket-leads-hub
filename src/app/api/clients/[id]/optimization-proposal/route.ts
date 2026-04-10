@@ -112,6 +112,14 @@ Return 2-4 insights max, only the highest-impact ones. Skip "everything looks fi
 - Dynamic ads (name contains "Dynamic"/"DYN") have multiple variants — don't flag low ad count
 - Consider board type: onboarding clients need different advice than active clients
 
+## CRITICAL — Rocket Leads budget reality
+- Clients have FIXED, LIMITED ad budgets — typically €1,000–€3,000/month total. This is their ceiling.
+- Clients almost NEVER scale budget. Budget is not a flexible lever.
+- DO NOT recommend "scale budget", "increase spend", "scale this ad set", "scale up", or any variation.
+- The lever is ALWAYS: better creatives, new angles, refined targeting, better landing pages, improved follow-up — NOT more spend.
+- If a campaign performs well, recommend KEEPING IT RUNNING and replicating the winning angle/creative type in the next monthly creative refresh.
+- The only time budget can shift is REALLOCATION between ad sets within the same fixed total — never net new spend.
+
 ## Rocket Leads Campaign Framework
 ${campaignsKnowledge.slice(0, 3000)}
 

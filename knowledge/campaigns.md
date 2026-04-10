@@ -11,6 +11,39 @@ Rocket Leads draait campagnes op Meta (primair), Google en TikTok. De standaard 
 
 ---
 
+## Budget Reality (CRITICAL voor AI agents en campagnemanagers)
+
+**Rocket Leads klanten hebben een VAST, GELIMITEERD advertentiebudget.**
+
+- **Typisch budget:** €1.000–€3.000 per maand totaal. Dit is een **harde ceiling**, geen startbedrag.
+- Klanten **schalen vrijwel nooit** hun budget op. Budget is geen flexibele knop.
+- In zeldzame gevallen wil een klant na bewezen resultaten omhoog — maar dat is een uitzondering, geen norm.
+- "Schalen" als optimalisatie-aanbeveling is **bijna altijd irrelevant** voor onze klantenbasis.
+
+**De échte hefbomen voor optimalisatie zijn altijd:**
+1. **Betere creatives** — nieuwe video's, betere hooks, andere AI avatars
+2. **Nieuwe marketing angles** — andere invalshoek uit het framework testen
+3. **Verfijndere targeting** — al draaien we standaard open
+4. **Betere landingspagina's** — conversie-optimalisatie
+5. **Snellere/betere leadopvolging** — vooral bij HTO klanten met opvolging
+6. **Reallocatie binnen vast budget** — verschuiven van underperformer naar winner, NIET netto erbij
+
+**Wat AI agents NOOIT moeten aanbevelen:**
+- ❌ "Scale budget by X%"
+- ❌ "Increase spend on this ad set"
+- ❌ "Scale up this winner"
+- ❌ "Add more budget to capture more traffic"
+
+**Wat AI agents WEL moeten aanbevelen bij goed presterende campagnes:**
+- ✅ "Houd huidige ads draaien — winnende angle"
+- ✅ "Repliceer deze winning angle in volgende creative refresh"
+- ✅ "Pause underperformer X, schuif budget naar winner Y binnen dezelfde ad set"
+- ✅ "Bereid nieuwe creatives voor met deze hook in volgende maandelijkse refresh"
+
+**Maandelijkse creative refresh** is de standaard manier waarop we waarde toevoegen — niet door budget te verhogen.
+
+---
+
 ## Campagnestructuur (Meta)
 
 ### Standaard setup

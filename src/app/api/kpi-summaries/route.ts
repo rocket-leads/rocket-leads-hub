@@ -17,6 +17,8 @@ export type KpiSummary = {
   prevCostPerAppointment: number
   /** True when client uses RL ad account but has no campaigns selected — data should be ignored */
   rlAccountNoCampaign?: boolean
+  /** True when leads come from Meta `actions` because no Monday board is linked */
+  metaFallback?: boolean
 }
 
 type ClientInput = {
@@ -77,13 +79,25 @@ async function fetchSummary(
     : prevInsights
 
   const adSpend = filtered.reduce((sum, i) => sum + i.spend, 0)
-  const leads = items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
-  const appointments = items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
-  const cpl = leads > 0 ? adSpend / leads : 0
-
   const prevAdSpend = prevFiltered.reduce((sum, i) => sum + i.spend, 0)
-  const prevLeads = items.filter((i) => i.dateCreated >= prevStartDate && i.dateCreated <= prevEndDate).length
-  const prevAppointments = items.filter((i) => i.dateAppointment >= prevStartDate && i.dateAppointment <= prevEndDate).length
+
+  // Fall back to Meta-reported leads when no Monday board is linked.
+  // Appointments aren't trackable without Monday CRM, so they stay 0.
+  const metaFallback = !client.clientBoardId && shouldFetchMeta && filtered.length > 0
+  const leads = metaFallback
+    ? filtered.reduce((sum, i) => sum + i.leads, 0)
+    : items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
+  const prevLeads = metaFallback
+    ? prevFiltered.reduce((sum, i) => sum + i.leads, 0)
+    : items.filter((i) => i.dateCreated >= prevStartDate && i.dateCreated <= prevEndDate).length
+  const appointments = metaFallback
+    ? 0
+    : items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
+  const prevAppointments = metaFallback
+    ? 0
+    : items.filter((i) => i.dateAppointment >= prevStartDate && i.dateAppointment <= prevEndDate).length
+
+  const cpl = leads > 0 ? adSpend / leads : 0
   const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
   const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
@@ -97,6 +111,7 @@ async function fetchSummary(
       prevCpl,
       prevCostPerAppointment,
       ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
+      ...(metaFallback ? { metaFallback: true } : {}),
     },
     mondayActive: items.length > 0 ? detectMondayActivity(items) : false,
   }
