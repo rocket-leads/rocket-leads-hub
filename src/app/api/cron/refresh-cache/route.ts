@@ -30,6 +30,15 @@ function getLast7DaysRange() {
   return { startDate: fmt(start), endDate: fmt(end) }
 }
 
+function getPrevious7DaysRange() {
+  const fmt = (d: Date) => d.toISOString().slice(0, 10)
+  const end = new Date()
+  end.setDate(end.getDate() - 8)
+  const start = new Date(end)
+  start.setDate(start.getDate() - 6)
+  return { startDate: fmt(start), endDate: fmt(end) }
+}
+
 export const maxDuration = 300 // 5 minutes max for Vercel Pro
 
 export async function GET(req: NextRequest) {
@@ -79,6 +88,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { startDate, endDate } = getLast7DaysRange()
+    const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
 
     // 3. Compute KPI summaries in batches of 5
     const kpiClients = allClients.filter((c) => c.metaAdAccountId || c.clientBoardId)
@@ -92,9 +102,12 @@ export async function GET(req: NextRequest) {
           const isRlNoCampaign = isRocketLeadsAdAccount(client.metaAdAccountId) && selectedCampaignIds.size === 0
           const shouldFetchMeta = client.metaAdAccountId && !isRlNoCampaign
 
-          const [insights, items] = await Promise.all([
+          const [insights, prevInsights, items] = await Promise.all([
             shouldFetchMeta
               ? fetchMetaInsights(client.metaAdAccountId, startDate, endDate).catch(() => [])
+              : Promise.resolve([]),
+            shouldFetchMeta
+              ? fetchMetaInsights(client.metaAdAccountId, prevStartDate, prevEndDate).catch(() => [])
               : Promise.resolve([]),
             client.clientBoardId
               ? fetchClientBoardItems(client.clientBoardId).catch(() => [])
@@ -104,8 +117,12 @@ export async function GET(req: NextRequest) {
           const filtered = selectedCampaignIds.size > 0
             ? insights.filter((i) => selectedCampaignIds.has(i.campaignId))
             : insights
+          const prevFiltered = selectedCampaignIds.size > 0
+            ? prevInsights.filter((i) => selectedCampaignIds.has(i.campaignId))
+            : prevInsights
 
           const adSpend = filtered.reduce((sum, i) => sum + i.spend, 0)
+          const prevAdSpend = prevFiltered.reduce((sum, i) => sum + i.spend, 0)
 
           // Fall back to Meta-reported leads when no Monday board is linked.
           // Appointments aren't trackable without Monday CRM, so they stay 0.
@@ -113,10 +130,20 @@ export async function GET(req: NextRequest) {
           const leads = metaFallback
             ? filtered.reduce((sum, i) => sum + i.leads, 0)
             : items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
+          const prevLeads = metaFallback
+            ? prevFiltered.reduce((sum, i) => sum + i.leads, 0)
+            : items.filter((i) => i.dateCreated >= prevStartDate && i.dateCreated <= prevEndDate).length
           const appointments = metaFallback
             ? 0
             : items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
+          const prevAppointments = metaFallback
+            ? 0
+            : items.filter((i) => i.dateAppointment >= prevStartDate && i.dateAppointment <= prevEndDate).length
+
           const cpl = leads > 0 ? adSpend / leads : 0
+          const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
+          const costPerAppointment = appointments > 0 ? adSpend / appointments : 0
+          const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
           return {
             mondayItemId: client.mondayItemId,
@@ -125,7 +152,9 @@ export async function GET(req: NextRequest) {
               leads,
               cpl,
               appointments,
-              costPerAppointment: appointments > 0 ? adSpend / appointments : 0,
+              costPerAppointment,
+              prevCpl,
+              prevCostPerAppointment,
               ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
               ...(metaFallback ? { metaFallback: true } : {}),
             } as KpiSummary,
