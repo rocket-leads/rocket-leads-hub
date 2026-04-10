@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (!clients?.length) return NextResponse.json({})
 
   // Check cache first
-  const cached = await readCache<Record<string, string>>("watchlist_summaries")
+  const cached = await readCache<Record<string, string>>("watchlist_summaries_v2")
 
   // Find which clients need new summaries
   const needed = clients.filter((c) => !cached?.[c.id])
@@ -89,7 +89,7 @@ Output JSON only: {"client_id": "note", ...}`,
 
     // Merge with existing cache and write back
     const merged = { ...(cached ?? {}), ...result }
-    void writeCache("watchlist_summaries", merged)
+    void writeCache("watchlist_summaries_v2", merged)
 
     // Return only requested clients
     const response: Record<string, string> = {}

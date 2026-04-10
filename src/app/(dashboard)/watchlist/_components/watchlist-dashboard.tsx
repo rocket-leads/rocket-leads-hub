@@ -253,6 +253,83 @@ function WatchSection({
   )
 }
 
+// --- Open Section (setup gaps) ---
+
+type OpenItem = { client: MondayClient; missingIds: string[] }
+
+function OpenSection({
+  items,
+  defaultOpen,
+}: {
+  items: OpenItem[]
+  defaultOpen: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  if (items.length === 0) return null
+
+  return (
+    <div>
+      {/* Section header */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2.5 w-full px-4 py-2.5 rounded-lg border bg-muted/20 border-border/30 mb-3 transition-colors hover:opacity-80"
+      >
+        {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/50" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />}
+        <CircleDashed className="h-4 w-4 text-muted-foreground/60" />
+        <span className="text-sm font-medium text-muted-foreground">Open</span>
+        <span className="text-xs text-muted-foreground/50 tabular-nums">{items.length}</span>
+        <span className="text-[11px] text-muted-foreground/40 ml-1">setup incomplete — data is partial</span>
+      </button>
+
+      {open && (
+        <div className="rounded-xl border border-border/30 overflow-hidden">
+          {/* Column headers */}
+          <div className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-2.5 border-b border-border/20 bg-muted/20">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Client</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Missing IDs</span>
+            <span />
+          </div>
+
+          {/* Rows */}
+          {items.map(({ client, missingIds }) => (
+            <Link
+              key={client.mondayItemId}
+              href={`/clients/${client.mondayItemId}?from=watchlist`}
+              className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-3 border-b border-border/10 border-l-2 border-l-muted-foreground/30 hover:bg-muted/20 transition-colors items-center"
+            >
+              {/* Client */}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-muted-foreground/80 truncate">{client.name}</p>
+                <p className="text-[10px] text-muted-foreground/40 truncate">
+                  {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+
+              {/* Missing IDs as chips */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {missingIds.map((id) => (
+                  <span
+                    key={id}
+                    className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-muted/40 text-muted-foreground/70"
+                  >
+                    {id} missing
+                  </span>
+                ))}
+              </div>
+
+              {/* External icon */}
+              <span className="text-muted-foreground/20 flex justify-center">
+                <ExternalLink className="h-3.5 w-3.5" />
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // --- Main Dashboard ---
 
 type Props = {
@@ -308,6 +385,7 @@ export function WatchListDashboard({ clients }: Props) {
     const action: CategorizedClient[] = []
     const watch: CategorizedClient[] = []
     const good: CategorizedClient[] = []
+    const open: OpenItem[] = []
 
     for (const client of filteredClients) {
       const kpi = kpiQuery.data?.[client.mondayItemId]
@@ -317,13 +395,21 @@ export function WatchListDashboard({ clients }: Props) {
       if (category === "action") action.push(item)
       else if (category === "watch") watch.push(item)
       else if (category === "good") good.push(item)
+
+      // Setup gaps are tracked independently — a client can appear in both
+      // a performance bucket (with whatever data is available) and Open.
+      const missingIds = getMissingIds(client)
+      if (missingIds.length > 0) {
+        open.push({ client, missingIds })
+      }
     }
 
     action.sort((a, b) => (b.kpi?.adSpend ?? 0) - (a.kpi?.adSpend ?? 0))
     watch.sort((a, b) => (b.kpi?.adSpend ?? 0) - (a.kpi?.adSpend ?? 0))
     good.sort((a, b) => (b.kpi?.leads ?? 0) - (a.kpi?.leads ?? 0))
+    open.sort((a, b) => b.missingIds.length - a.missingIds.length || a.client.name.localeCompare(b.client.name))
 
-    return { action, watch, good }
+    return { action, watch, good, open }
   }, [filteredClients, kpiQuery.data])
 
   // Auto-generate AI notes
@@ -421,6 +507,11 @@ export function WatchListDashboard({ clients }: Props) {
             Good
             <span className="tabular-nums">{categorized.good.length}</span>
           </div>
+          <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-muted/40 text-muted-foreground">
+            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+            Open
+            <span className="tabular-nums">{categorized.open.length}</span>
+          </div>
         </div>
 
         <Select value={cmFilter} onValueChange={(v) => setCmFilter(v ?? "All")}>
@@ -449,6 +540,10 @@ export function WatchListDashboard({ clients }: Props) {
           items={categorized.watch}
           aiNotes={aiNotes}
           defaultOpen={true}
+        />
+        <OpenSection
+          items={categorized.open}
+          defaultOpen={false}
         />
         <WatchSection
           category="good"
