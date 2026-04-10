@@ -29,8 +29,8 @@ async function WatchListData() {
     current = await filterClientsByUser(data.current, session.user.id, session.user.role)
   }
 
-  // Only Live and On hold clients are relevant for the watch list
-  const active = current.filter((c) => ["Live", "On hold"].includes(c.campaignStatus ?? ""))
+  // Only Live clients are relevant for the watch list
+  const active = current.filter((c) => c.campaignStatus === "Live")
 
   return <WatchListDashboard clients={active} userName={session?.user?.name ?? "there"} />
 }
