@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { readCache } from "@/lib/cache"
 import { fetchMetaTargets, getMtdRange } from "@/lib/targets/fetchers"
-import type { MetaTargetsData } from "@/types/targets"
+import type { MetaTargetsByCountry } from "@/types/targets"
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -16,10 +16,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "startDate and endDate required" }, { status: 400 })
   }
 
-  // Cache hit only for MTD range
   const mtd = getMtdRange()
   if (startDate === mtd.startDate && endDate === mtd.endDate) {
-    const cached = await readCache<MetaTargetsData>("targets_marketing_meta")
+    const cached = await readCache<MetaTargetsByCountry>("targets_marketing_meta")
     if (cached) {
       return NextResponse.json(cached, {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },

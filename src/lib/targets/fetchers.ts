@@ -139,16 +139,49 @@ async function getGoogleAuth() {
 
 // ─── Fetchers ───────────────────────────────────────────────────────────────
 
-/** Marketing / Sales — Monday board data */
-export async function fetchMondayTargets(startDate: string, endDate: string): Promise<MondayTargetsData> {
+const COUNTRY_KEYS: CountryKey[] = ["all", "nl", "be", "de", "other"]
+
+function getCountryKey(countryValue: string): CountryKey {
+  const upper = countryValue.trim().toUpperCase()
+  if (upper === "NL") return "nl"
+  if (upper === "BE") return "be"
+  if (upper === "DE") return "de"
+  return "other"
+}
+
+/** Marketing / Sales — Monday board data, grouped by country */
+export async function fetchMondayTargets(startDate: string, endDate: string): Promise<MondayTargetsByCountry> {
   const token = await getMondayToken()
   const allItems = await fetchAllItems(TARGETS_BOARD_ID, token)
 
-  let leads = 0, calls = 0, qualifiedCalls = 0, rejections = 0
-  let noShows = 0, takenCalls = 0, deals = 0, closedRevenue = 0
-  const industryMap: Record<string, { deals: number; revenue: number }> = {}
+  // Per-country accumulators
+  type Acc = { leads: number; calls: number; qualifiedCalls: number; rejections: number; noShows: number; takenCalls: number; deals: number; closedRevenue: number; totalItems: number; industryMap: Record<string, { deals: number; revenue: number }> }
+  const acc: Record<CountryKey, Acc> = {} as Record<CountryKey, Acc>
+  for (const k of COUNTRY_KEYS) {
+    acc[k] = { leads: 0, calls: 0, qualifiedCalls: 0, rejections: 0, noShows: 0, takenCalls: 0, deals: 0, closedRevenue: 0, totalItems: 0, industryMap: {} }
+  }
+
+  // Weekly maps per country
+  const currentMonday = getMondayOfWeek(new Date().toISOString().split("T")[0])
+  const targetWeeks = new Set<string>()
+  for (let i = 0; i < 4; i++) {
+    const d = new Date(currentMonday)
+    d.setDate(d.getDate() - i * 7)
+    targetWeeks.add(d.toISOString().split("T")[0])
+  }
+  type WeekRow = { calls: number; qualified: number; taken: number; deals: number; revenue: number }
+  const weeklyMaps: Record<CountryKey, Record<string, WeekRow>> = {} as Record<CountryKey, Record<string, WeekRow>>
+  for (const k of COUNTRY_KEYS) {
+    weeklyMaps[k] = {}
+    for (const ws of targetWeeks) weeklyMaps[k][ws] = { calls: 0, qualified: 0, taken: 0, deals: 0, revenue: 0 }
+  }
+
+  // Helper: add to "all" + specific country bucket
+  const addTo = (country: CountryKey, fn: (a: Acc) => void) => { fn(acc.all); if (country !== "all") fn(acc[country]) }
+  const addWeek = (country: CountryKey, ws: string, fn: (w: WeekRow) => void) => { fn(weeklyMaps.all[ws]); if (country !== "all") fn(weeklyMaps[country][ws]) }
 
   for (const item of allItems) {
+    const country = getCountryKey(getColumnValue(item, "color"))
     const datumCreated = parseDate(getColumnValue(item, "datum_created"))
     const datumAfspraak = parseDate(getColumnValue(item, "datum_afspraak"))
     const dateDeal = parseDate(getColumnValue(item, "date3"))
@@ -156,100 +189,117 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     const dealValue = getNumericValue(item, "numbers")
     const industry = getColumnValue(item, "status_17") || "Unknown"
 
+    addTo(country, (a) => a.totalItems++)
+
     if (isInRange(datumCreated, startDate, endDate)) {
-      leads++; calls++
-      if (STATUS_MAP.rejections.includes(status)) rejections++
-      if (STATUS_MAP.qualified.includes(status)) qualifiedCalls++
-      if (STATUS_MAP.noShows.includes(status)) noShows++
+      addTo(country, (a) => { a.leads++; a.calls++ })
+      if (STATUS_MAP.rejections.includes(status)) addTo(country, (a) => a.rejections++)
+      if (STATUS_MAP.qualified.includes(status)) addTo(country, (a) => a.qualifiedCalls++)
+      if (STATUS_MAP.noShows.includes(status)) addTo(country, (a) => a.noShows++)
     }
-    if (isInRange(datumAfspraak, startDate, endDate)) {
-      if (STATUS_MAP.taken.includes(status)) takenCalls++
+    if (isInRange(datumAfspraak, startDate, endDate) && STATUS_MAP.taken.includes(status)) {
+      addTo(country, (a) => a.takenCalls++)
     }
-    // Deals are counted by their CLOSING date (date3), not by appointment date.
-    // This prevents deals from being attributed to the wrong month.
     if (isInRange(dateDeal, startDate, endDate) && STATUS_MAP.deals.includes(status)) {
-      deals++; closedRevenue += dealValue
-      if (!industryMap[industry]) industryMap[industry] = { deals: 0, revenue: 0 }
-      industryMap[industry].deals++
-      industryMap[industry].revenue += dealValue
+      addTo(country, (a) => {
+        a.deals++; a.closedRevenue += dealValue
+        if (!a.industryMap[industry]) a.industryMap[industry] = { deals: 0, revenue: 0 }
+        a.industryMap[industry].deals++
+        a.industryMap[industry].revenue += dealValue
+      })
     }
-  }
 
-  // Weekly aggregation: last 4 ISO weeks
-  const weeklyMap: Record<string, { calls: number; qualified: number; taken: number; deals: number; revenue: number }> = {}
-  const currentMonday = getMondayOfWeek(new Date().toISOString().split("T")[0])
-  const targetWeeks = new Set<string>()
-  for (let i = 0; i < 4; i++) {
-    const d = new Date(currentMonday)
-    d.setDate(d.getDate() - i * 7)
-    const ws = d.toISOString().split("T")[0]
-    targetWeeks.add(ws)
-    weeklyMap[ws] = { calls: 0, qualified: 0, taken: 0, deals: 0, revenue: 0 }
-  }
-
-  for (const item of allItems) {
-    const datumCreated = parseDate(getColumnValue(item, "datum_created"))
-    const datumAfspraak = parseDate(getColumnValue(item, "datum_afspraak"))
-    const dateDeal = parseDate(getColumnValue(item, "date3"))
-    const status = getColumnValue(item, "status")
+    // Weekly
     if (datumCreated) {
       const ws = getMondayOfWeek(datumCreated)
       if (targetWeeks.has(ws)) {
-        weeklyMap[ws].calls++
-        if (STATUS_MAP.qualified.includes(status)) weeklyMap[ws].qualified++
+        addWeek(country, ws, (w) => { w.calls++ })
+        if (STATUS_MAP.qualified.includes(status)) addWeek(country, ws, (w) => w.qualified++)
       }
     }
     if (datumAfspraak) {
       const ws = getMondayOfWeek(datumAfspraak)
-      if (targetWeeks.has(ws) && STATUS_MAP.taken.includes(status)) {
-        weeklyMap[ws].taken++
-      }
+      if (targetWeeks.has(ws) && STATUS_MAP.taken.includes(status)) addWeek(country, ws, (w) => w.taken++)
     }
     if (dateDeal && STATUS_MAP.deals.includes(status)) {
       const ws = getMondayOfWeek(dateDeal)
-      if (targetWeeks.has(ws)) {
-        weeklyMap[ws].deals++
-        weeklyMap[ws].revenue += getNumericValue(item, "numbers")
-      }
+      if (targetWeeks.has(ws)) addWeek(country, ws, (w) => { w.deals++; w.revenue += getNumericValue(item, "numbers") })
     }
   }
 
-  const weekly = Object.entries(weeklyMap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([weekStart, data]) => ({ weekStart, ...data }))
+  // Build final result
+  const result = {} as MondayTargetsByCountry
+  for (const k of COUNTRY_KEYS) {
+    const a = acc[k]
+    const weekly = Object.entries(weeklyMaps[k])
+      .sort(([x], [y]) => x.localeCompare(y))
+      .map(([weekStart, data]) => ({ weekStart, ...data }))
+    const industries = Object.entries(a.industryMap)
+      .sort(([, x], [, y]) => y.revenue - x.revenue)
+      .map(([industry, data]) => ({ industry, ...data }))
+    result[k] = { ...a, weekly, industries }
+  }
+  return result
+}
 
-  const industries = Object.entries(industryMap)
-    .sort(([, a], [, b]) => b.revenue - a.revenue)
-    .map(([industry, data]) => ({ industry, ...data }))
+function emptyMetaData(): MetaTargetsData {
+  return { spend: 0, impressions: 0, clicks: 0, cpc: 0, cpm: 0, ctr: 0 }
+}
 
+function getMetaCountryKey(campaignName: string): CountryKey {
+  const upper = campaignName.toUpperCase()
+  if (upper.includes("NL")) return "nl"
+  if (upper.includes("BE")) return "be"
+  if (upper.includes("DE")) return "de"
+  return "other"
+}
+
+function computeDerivedMetaMetrics(acc: { spend: number; impressions: number; clicks: number }): MetaTargetsData {
   return {
-    leads, calls, qualifiedCalls, rejections, noShows, takenCalls,
-    deals, closedRevenue, totalItems: allItems.length, weekly, industries,
+    spend: acc.spend,
+    impressions: acc.impressions,
+    clicks: acc.clicks,
+    cpc: acc.clicks > 0 ? acc.spend / acc.clicks : 0,
+    cpm: acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : 0,
+    ctr: acc.impressions > 0 ? (acc.clicks / acc.impressions) * 100 : 0,
   }
 }
 
-/** Marketing / Sales — Meta ad spend */
-export async function fetchMetaTargets(startDate: string, endDate: string): Promise<MetaTargetsData> {
+/** Marketing / Sales — Meta ad spend, grouped by country (campaign name contains NL/BE/DE) */
+export async function fetchMetaTargets(startDate: string, endDate: string): Promise<MetaTargetsByCountry> {
   const token = await getMetaToken()
   const timeRange = JSON.stringify({ since: startDate, until: endDate })
-  const fields = "spend,impressions,clicks,cpc,cpm,ctr"
-  const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${META_AD_ACCOUNT_ID}/insights?time_range=${encodeURIComponent(timeRange)}&fields=${fields}&level=account&access_token=${token}`
+  const fields = "campaign_name,spend,impressions,clicks"
 
-  const resp = await fetch(url)
-  const data = await resp.json()
-  if (data.error) throw new Error(data.error.message || "Meta API error")
+  // Accumulate raw spend/impressions/clicks per country
+  const raw: Record<CountryKey, { spend: number; impressions: number; clicks: number }> = {} as Record<CountryKey, { spend: number; impressions: number; clicks: number }>
+  for (const k of COUNTRY_KEYS) raw[k] = { spend: 0, impressions: 0, clicks: 0 }
 
-  const insights = data.data?.[0]
-  return insights
-    ? {
-        spend: parseFloat(insights.spend || "0"),
-        impressions: parseInt(insights.impressions || "0", 10),
-        clicks: parseInt(insights.clicks || "0", 10),
-        cpc: parseFloat(insights.cpc || "0"),
-        cpm: parseFloat(insights.cpm || "0"),
-        ctr: parseFloat(insights.ctr || "0"),
-      }
-    : { spend: 0, impressions: 0, clicks: 0, cpc: 0, cpm: 0, ctr: 0 }
+  let nextUrl: string | null = `https://graph.facebook.com/${META_GRAPH_VERSION}/${META_AD_ACCOUNT_ID}/insights?time_range=${encodeURIComponent(timeRange)}&fields=${fields}&level=campaign&limit=500&access_token=${token}`
+
+  while (nextUrl) {
+    const resp: Response = await fetch(nextUrl)
+    const data: { data?: Array<{ campaign_name?: string; spend?: string; impressions?: string; clicks?: string }>; paging?: { next?: string }; error?: { message?: string } } = await resp.json()
+    if (data.error) throw new Error(data.error.message || "Meta API error")
+
+    for (const row of data.data ?? []) {
+      const country = getMetaCountryKey(row.campaign_name || "")
+      const spend = parseFloat(row.spend || "0")
+      const impressions = parseInt(row.impressions || "0", 10)
+      const clicks = parseInt(row.clicks || "0", 10)
+
+      // Add to "all" + specific country
+      raw.all.spend += spend; raw.all.impressions += impressions; raw.all.clicks += clicks
+      raw[country].spend += spend; raw[country].impressions += impressions; raw[country].clicks += clicks
+    }
+
+    nextUrl = data.paging?.next ?? null
+  }
+
+  // Compute derived metrics (cpc, cpm, ctr) from aggregated raw values
+  const result = {} as MetaTargetsByCountry
+  for (const k of COUNTRY_KEYS) result[k] = computeDerivedMetaMetrics(raw[k])
+  return result
 }
 
 /** Finance — Stripe revenue with NB/MRR split */

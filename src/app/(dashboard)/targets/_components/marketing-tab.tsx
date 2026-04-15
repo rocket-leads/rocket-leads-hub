@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { format } from "date-fns"
 import { useDateRange } from "../_hooks/use-date-range"
 import { useTargetsData } from "../_hooks/use-targets-data"
@@ -10,10 +11,21 @@ import { RevenueProgressBar } from "./revenue-progress-bar"
 import { WeeklyOverview } from "./weekly-overview"
 import { FunnelChart } from "./funnel-chart"
 import { IndustryTable } from "./industry-table"
+import { cn } from "@/lib/utils"
+import type { CountryKey } from "@/types/targets"
+
+const COUNTRY_OPTIONS: Array<{ key: CountryKey; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "nl", label: "NL" },
+  { key: "be", label: "BE" },
+  { key: "de", label: "DE" },
+  { key: "other", label: "Other" },
+]
 
 export function MarketingTab() {
+  const [country, setCountry] = useState<CountryKey>("all")
   const { range, setStartDate, setEndDate, presets, applyPreset } = useDateRange()
-  const data = useTargetsData(range)
+  const data = useTargetsData(range, country)
   const { data: targets } = useTargetsConfig()
   const { kpiGroups, revenueProgress } = useKpiCalculations(
     data.monday, data.meta, range,
@@ -24,8 +36,8 @@ export function MarketingTab() {
 
   return (
     <div className="space-y-4">
-      {/* Date picker */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* Date picker + country filter */}
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
           <input
             type="date"
@@ -49,6 +61,24 @@ export function MarketingTab() {
               className="h-7 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
             >
               {preset.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Country filter */}
+        <div className="flex gap-0.5 ml-auto bg-muted rounded-md p-0.5">
+          {COUNTRY_OPTIONS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setCountry(key)}
+              className={cn(
+                "h-7 px-3 text-[11px] font-medium rounded transition-colors",
+                country === key
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {label}
             </button>
           ))}
         </div>

@@ -135,7 +135,7 @@ export function ClientTabs({ client, access }: Props) {
     client.clientBoardId && {
       icon: FolderOpen,
       label: "Monday Client Board",
-      href: `https://rocketleadsnl.monday.com/boards/${client.clientBoardId}`,
+      href: `https://rocketleads-team.monday.com/boards/${client.clientBoardId}`,
     },
   ].filter(Boolean) as { icon: LucideIcon; label: string; href: string }[]
 
