@@ -26,10 +26,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "startDate and endDate required" }, { status: 400 })
   }
 
-  // Cache hit only for current calendar month
+  // Cache hit only for current calendar month (skip if cache is missing the details field)
   if (isCurrentCalendarMonth(startDate, endDate)) {
     const cached = await readCache<FinanceOverview>("targets_finance")
-    if (cached) {
+    if (cached && cached.details) {
       return NextResponse.json(cached, {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
       })

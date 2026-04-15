@@ -1,5 +1,5 @@
 import type { MondayClient } from "@/lib/integrations/monday"
-import { ExternalLink, User, Briefcase } from "lucide-react"
+import { User, Briefcase } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ClientSearch } from "@/components/client-search"
 import { BackButton } from "./back-button"
@@ -81,19 +81,7 @@ export function ClientHeader({ client }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {client.metaAdAccountId && (
-              <a
-                href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId.replace("act_", "")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-border/30 bg-card px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-border/50 transition-colors"
-              >
-                Ad Account
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-          </div>
+          <div className="shrink-0" />
         </div>
       </div>
     </div>

@@ -17,6 +17,7 @@ import type {
   CountryKey,
   CategoryBreakdown,
   FinanceOverview,
+  InvoiceDetail,
   CostData,
   DeliveryOverview,
   AccountManagerRevenue,
@@ -362,6 +363,16 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
   const serviceFeeNewBusiness = emptyBreakdown()
   const serviceFeeMrr = emptyBreakdown()
   const adBudget = emptyBreakdown()
+  const details: InvoiceDetail[] = []
+
+  // Build a customer name cache
+  const customerNameCache = new Map<string, string>()
+  for (const inv of allInvoices) {
+    const custId = inv.customer as string
+    if (custId && !customerNameCache.has(custId)) {
+      customerNameCache.set(custId, inv.customer_name || inv.customer_email || custId)
+    }
+  }
 
   for (const inv of allInvoices) {
     const isOverdue = inv.status === "open" && inv.due_date != null && inv.due_date < now
@@ -369,11 +380,11 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     const isPaid = inv.status === "paid"
     const custId = inv.customer as string
     const isNew = isNewBusinessCustomer.get(custId) ?? false
+    const invDate = new Date(inv.created * 1000).toISOString().slice(0, 10)
+    const invStatus: InvoiceDetail["status"] = isPaid ? "paid" : isOverdue ? "overdue" : "open"
 
     for (const line of inv.lines?.data ?? []) {
       const isAd = isAdBudget(line.description)
-      // Use amount EXCLUDING tax. line.amount is pre-tax in Stripe.
-      // For the invoice-level total, use subtotal (excl tax) not total (incl tax).
       const amount = line.amount / 100
       addToBreakdown(total, amount, isPaid, isOverdue, isOpen)
       if (isAd) {
@@ -383,36 +394,71 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
         if (isNew) addToBreakdown(serviceFeeNewBusiness, amount, isPaid, isOverdue, isOpen)
         else addToBreakdown(serviceFeeMrr, amount, isPaid, isOverdue, isOpen)
       }
+
+      details.push({
+        invoiceId: inv.id,
+        invoiceNumber: inv.number,
+        customerName: customerNameCache.get(custId) || null,
+        date: invDate,
+        amount,
+        status: invStatus,
+        category: isAd ? "ad_budget" : "service_fee",
+        subCategory: isNew ? "new_business" : "mrr",
+      })
     }
   }
 
   // Apply credit notes as negative amounts (subtract from totals)
+  // Credit notes must be attributed to the correct category (fee vs ad budget, NB vs MRR)
+  // by looking at the ORIGINAL invoice's line items when the credit note has no lines itself.
   for (const cn of creditNotes) {
-    // Credit note amount is positive in Stripe — we subtract it
-    // Use subtotal (excl tax) to stay consistent with invoice amounts
     const creditAmount = (cn.subtotal ?? cn.amount) / 100
     const custId = cn.customer as string
     const isNew = isNewBusinessCustomer.get(custId) ?? false
+    const isPaid = cn.status === "issued" || cn.status === "void"
 
-    // Determine category from credit note line items
+    // Try to categorize from credit note's own line items first
     let serviceFeeCredit = 0
     let adBudgetCredit = 0
-    for (const line of cn.lines?.data ?? []) {
-      const lineAmount = line.amount / 100
-      if (isAdBudget(line.description)) {
-        adBudgetCredit += lineAmount
+
+    if (cn.lines?.data && cn.lines.data.length > 0) {
+      for (const line of cn.lines.data) {
+        const lineAmount = line.amount / 100
+        if (isAdBudget(line.description)) {
+          adBudgetCredit += lineAmount
+        } else {
+          serviceFeeCredit += lineAmount
+        }
+      }
+    } else {
+      // No line items on the credit note — look at the original invoice to determine category
+      const invoiceId = typeof cn.invoice === "string" ? cn.invoice : cn.invoice?.id
+      if (invoiceId) {
+        const originalInv = allInvoices.find((inv) => inv.id === invoiceId)
+        if (originalInv) {
+          // Use the original invoice's line item ratio to split the credit
+          let origFee = 0, origAd = 0
+          for (const line of originalInv.lines?.data ?? []) {
+            if (isAdBudget(line.description)) origAd += line.amount / 100
+            else origFee += line.amount / 100
+          }
+          const origTotal = origFee + origAd
+          if (origTotal > 0) {
+            serviceFeeCredit = creditAmount * (origFee / origTotal)
+            adBudgetCredit = creditAmount * (origAd / origTotal)
+          } else {
+            serviceFeeCredit = creditAmount
+          }
+        } else {
+          // Original invoice not in this period — default to service fee
+          serviceFeeCredit = creditAmount
+        }
       } else {
-        serviceFeeCredit += lineAmount
+        serviceFeeCredit = creditAmount
       }
     }
 
-    // If no line items, attribute entire credit to service fee
-    if (cn.lines?.data?.length === 0 || (!serviceFeeCredit && !adBudgetCredit)) {
-      serviceFeeCredit = creditAmount
-    }
-
-    // Subtract from breakdowns (credit notes reduce invoiced + cashCollected)
-    const isPaid = cn.status === "issued" || cn.status === "void"
+    // Subtract from breakdowns
     total.invoiced -= creditAmount
     if (isPaid) total.cashCollected -= creditAmount
 
@@ -431,11 +477,39 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
         if (isPaid) serviceFeeMrr.cashCollected -= serviceFeeCredit
       }
     }
+
+    // Add credit note to details as negative entries
+    const cnDate = new Date(cn.created * 1000).toISOString().slice(0, 10)
+    const cnCustomerName = customerNameCache.get(custId) || null
+    if (serviceFeeCredit > 0) {
+      details.push({
+        invoiceId: cn.id,
+        invoiceNumber: cn.number,
+        customerName: cnCustomerName,
+        date: cnDate,
+        amount: -serviceFeeCredit,
+        status: "credit",
+        category: "service_fee",
+        subCategory: isNew ? "new_business" : "mrr",
+      })
+    }
+    if (adBudgetCredit > 0) {
+      details.push({
+        invoiceId: cn.id,
+        invoiceNumber: cn.number,
+        customerName: cnCustomerName,
+        date: cnDate,
+        amount: -adBudgetCredit,
+        status: "credit",
+        category: "ad_budget",
+        subCategory: isNew ? "new_business" : "mrr",
+      })
+    }
   }
 
   return {
     total, serviceFee, serviceFeeNewBusiness, serviceFeeMrr,
-    adBudget, invoiceCount: allInvoices.length,
+    adBudget, invoiceCount: allInvoices.length, details,
   }
 }
 

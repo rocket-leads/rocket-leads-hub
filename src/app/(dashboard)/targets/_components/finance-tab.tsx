@@ -1,13 +1,16 @@
 "use client"
 
+import { useState, useCallback } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { getDaysInMonth } from "date-fns"
 import { useFinanceData, useMonthSelector } from "../_hooks/use-finance-data"
 import { useTargetsConfig } from "../_hooks/use-targets-config"
 import { KpiCard } from "./kpi-card"
 import { RevenueProgressBar } from "./revenue-progress-bar"
+import { InvoiceDetailModal } from "./invoice-detail-modal"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
+import type { InvoiceDetail } from "@/types/targets"
 
 function SubCard({ label, value, loading }: { label: string; value: string; loading: boolean }) {
   if (loading) {
@@ -31,6 +34,18 @@ export function FinanceTab() {
   const { finance, costs, loading } = useFinanceData(year, month)
   const { data: targets } = useTargetsConfig()
   const t = targets ?? null
+
+  // Drill-down modal state
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalTitle, setModalTitle] = useState("")
+  const [modalDetails, setModalDetails] = useState<InvoiceDetail[]>([])
+
+  const openDetail = useCallback((title: string, filter: (d: InvoiceDetail) => boolean) => {
+    const all = finance?.details ?? []
+    setModalTitle(title)
+    setModalDetails(all.filter(filter))
+    setModalOpen(true)
+  }, [finance?.details])
 
   const sf = finance?.serviceFee
   const nb = finance?.serviceFeeNewBusiness
@@ -58,14 +73,7 @@ export function FinanceTab() {
   const mktEst = costs?.estimated.marketingCosts ?? false
   const anyEstimated = teamEst || mktEst
 
-  // ── Projected cash collected (full-month) ──
-  // Use historical collection rate (collected / invoiced) × projected invoiced
-  const collectionRate = costs?.avgCollectionRate ?? 0
-  const projectedCashCollected = projectedServiceFee * collectionRate
-
-  // ── Projected profit (full-month, based on projected cash) ──
-  const projectedNetProfit = projectedCashCollected - totalCosts
-  const projectedMargin = projectedCashCollected > 0 ? projectedNetProfit / projectedCashCollected : 0
+  // ── Projected profit uses projected invoiced as revenue base ──
 
   // ── Target progress bar ──
   const totalRevenueTarget = t?.serviceFeeRevenue ?? 0
@@ -95,70 +103,24 @@ export function FinanceTab() {
         />
       )}
 
-      {/* ── PROJECTED END-OF-MONTH (only for current month) ── */}
-      {isCurrentMonth && !loading && (
-        <div className="space-y-3">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Projected End of Month</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            <KpiCard
-              label="Exp. Invoiced"
-              value={projectedServiceFee}
-              formatted={formatCurrency(projectedServiceFee)}
-              isEstimated
-              variant="neutral"
-              isLoading={loading}
-            />
-            <KpiCard
-              label="Exp. Cash Collected"
-              value={projectedCashCollected}
-              formatted={formatCurrency(projectedCashCollected)}
-              isEstimated
-              variant="neutral"
-              isLoading={loading}
-            />
-            <KpiCard
-              label="Exp. Total Costs"
-              value={totalCosts}
-              formatted={formatCurrency(totalCosts)}
-              isEstimated={anyEstimated}
-              variant="neutral"
-              isLoading={loading}
-            />
-            <KpiCard
-              label="Exp. Net Profit"
-              value={projectedNetProfit}
-              formatted={formatCurrency(projectedNetProfit)}
-              target={t?.netProfit || undefined}
-              targetFormatted={t?.netProfit ? `${formatCurrency(projectedNetProfit)} of ${formatCurrency(t.netProfit)}` : undefined}
-              isEstimated
-              variant="volume"
-              isLoading={loading}
-            />
-            <KpiCard
-              label="Exp. Margin"
-              value={projectedMargin}
-              formatted={formatPercent(projectedMargin)}
-              target={t?.profitMargin || undefined}
-              targetFormatted={t?.profitMargin ? `${formatPercent(projectedMargin)} of ${formatPercent(t.profitMargin)}` : undefined}
-              isEstimated
-              variant="volume"
-              isLoading={loading}
-            />
-          </div>
-        </div>
-      )}
-
       {/* ── REVENUE — SERVICE FEE ── */}
       <div className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue — Service Fee</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {([
-            { label: "Invoiced", value: sf?.invoiced ?? null, formatted: formatCurrency(sf?.invoiced ?? 0), nbVal: formatCurrency(nb?.invoiced ?? 0), mrrVal: formatCurrency(mrr?.invoiced ?? 0) },
-            { label: "Cash Collected", value: sf?.cashCollected ?? null, formatted: formatCurrency(sf?.cashCollected ?? 0), nbVal: formatCurrency(nb?.cashCollected ?? 0), mrrVal: formatCurrency(mrr?.cashCollected ?? 0) },
-            { label: "Open", value: sf?.open ?? null, formatted: formatCurrency(sf?.open ?? 0), nbVal: formatCurrency(nb?.open ?? 0), mrrVal: formatCurrency(mrr?.open ?? 0) },
-            { label: "Overdue", value: sf?.overdue ?? null, formatted: formatCurrency(sf?.overdue ?? 0), nbVal: formatCurrency(nb?.overdue ?? 0), mrrVal: formatCurrency(mrr?.overdue ?? 0) },
+            { label: "Invoiced", statusFilter: null, value: sf?.invoiced ?? null, formatted: formatCurrency(sf?.invoiced ?? 0), nbVal: formatCurrency(nb?.invoiced ?? 0), mrrVal: formatCurrency(mrr?.invoiced ?? 0) },
+            { label: "Cash Collected", statusFilter: "paid" as const, value: sf?.cashCollected ?? null, formatted: formatCurrency(sf?.cashCollected ?? 0), nbVal: formatCurrency(nb?.cashCollected ?? 0), mrrVal: formatCurrency(mrr?.cashCollected ?? 0) },
+            { label: "Open", statusFilter: "open" as const, value: sf?.open ?? null, formatted: formatCurrency(sf?.open ?? 0), nbVal: formatCurrency(nb?.open ?? 0), mrrVal: formatCurrency(mrr?.open ?? 0) },
+            { label: "Overdue", statusFilter: "overdue" as const, value: sf?.overdue ?? null, formatted: formatCurrency(sf?.overdue ?? 0), nbVal: formatCurrency(nb?.overdue ?? 0), mrrVal: formatCurrency(mrr?.overdue ?? 0) },
           ]).map((col) => (
-            <div key={col.label} className="flex flex-col gap-1">
+            <div
+              key={col.label}
+              className="flex flex-col gap-1 cursor-pointer"
+              onClick={() => openDetail(
+                `Service Fee — ${col.label}`,
+                (d) => d.category === "service_fee" && (col.statusFilter === null || d.status === col.statusFilter || d.status === "credit"),
+              )}
+            >
               <KpiCard label={col.label} value={col.value} formatted={col.formatted} variant="neutral" isLoading={loading} />
               <div className="grid grid-cols-2 gap-1">
                 <SubCard label="New Biz" value={col.nbVal} loading={loading} />
@@ -173,10 +135,18 @@ export function FinanceTab() {
       <div className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue — Ad Budget</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <KpiCard label="Invoiced" value={finance?.adBudget?.invoiced ?? null} formatted={formatCurrency(finance?.adBudget?.invoiced ?? 0)} variant="neutral" isLoading={loading} />
-          <KpiCard label="Cash Collected" value={finance?.adBudget?.cashCollected ?? null} formatted={formatCurrency(finance?.adBudget?.cashCollected ?? 0)} variant="neutral" isLoading={loading} />
-          <KpiCard label="Open" value={finance?.adBudget?.open ?? null} formatted={formatCurrency(finance?.adBudget?.open ?? 0)} variant="neutral" isLoading={loading} />
-          <KpiCard label="Overdue" value={finance?.adBudget?.overdue ?? null} formatted={formatCurrency(finance?.adBudget?.overdue ?? 0)} variant="neutral" isLoading={loading} />
+          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget — Invoiced", (d) => d.category === "ad_budget")}>
+            <KpiCard label="Invoiced" value={finance?.adBudget?.invoiced ?? null} formatted={formatCurrency(finance?.adBudget?.invoiced ?? 0)} variant="neutral" isLoading={loading} />
+          </div>
+          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget — Cash Collected", (d) => d.category === "ad_budget" && (d.status === "paid" || d.status === "credit"))}>
+            <KpiCard label="Cash Collected" value={finance?.adBudget?.cashCollected ?? null} formatted={formatCurrency(finance?.adBudget?.cashCollected ?? 0)} variant="neutral" isLoading={loading} />
+          </div>
+          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget — Open", (d) => d.category === "ad_budget" && d.status === "open")}>
+            <KpiCard label="Open" value={finance?.adBudget?.open ?? null} formatted={formatCurrency(finance?.adBudget?.open ?? 0)} variant="neutral" isLoading={loading} />
+          </div>
+          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget — Overdue", (d) => d.category === "ad_budget" && d.status === "overdue")}>
+            <KpiCard label="Overdue" value={finance?.adBudget?.overdue ?? null} formatted={formatCurrency(finance?.adBudget?.overdue ?? 0)} variant="neutral" isLoading={loading} />
+          </div>
         </div>
       </div>
 
@@ -191,17 +161,17 @@ export function FinanceTab() {
         </div>
       </div>
 
-      {/* ── CASH FLOW BALANCE ── */}
+      {/* ── PROFIT ── */}
       {(() => {
-        const cashServiceFee = sf?.cashCollected ?? 0
-        const netProfit = cashServiceFee - totalCosts
-        const margin = cashServiceFee > 0 ? netProfit / cashServiceFee : 0
+        const revenueForProfit = projectedServiceFee
+        const netProfit = revenueForProfit - totalCosts
+        const margin = revenueForProfit > 0 ? netProfit / revenueForProfit : 0
 
         return (
           <div className="space-y-3">
-            <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Cash Flow Balance</h2>
+            <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Profit</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <KpiCard label="Revenue (Cash SF)" value={cashServiceFee} formatted={formatCurrency(cashServiceFee)} variant="neutral" isLoading={loading} />
+              <KpiCard label="Revenue" value={revenueForProfit} formatted={formatCurrency(revenueForProfit)} isEstimated={isCurrentMonth} variant="neutral" isLoading={loading} />
               <KpiCard label="Total Costs" value={totalCosts} formatted={formatCurrency(totalCosts)} isEstimated={anyEstimated} variant="neutral" isLoading={loading} />
               <KpiCard
                 label="Net Profit"
@@ -209,7 +179,7 @@ export function FinanceTab() {
                 formatted={formatCurrency(netProfit)}
                 target={t?.netProfit || undefined}
                 targetFormatted={t?.netProfit ? `${formatCurrency(netProfit)} of ${formatCurrency(t.netProfit)}` : undefined}
-                isEstimated={anyEstimated}
+                isEstimated={isCurrentMonth || anyEstimated}
                 variant="volume"
                 isLoading={loading}
               />
@@ -219,7 +189,7 @@ export function FinanceTab() {
                 formatted={formatPercent(margin)}
                 target={t?.profitMargin || undefined}
                 targetFormatted={t?.profitMargin ? `${formatPercent(margin)} of ${formatPercent(t.profitMargin)}` : undefined}
-                isEstimated={anyEstimated}
+                isEstimated={isCurrentMonth || anyEstimated}
                 variant="volume"
                 isLoading={loading}
               />
@@ -227,6 +197,14 @@ export function FinanceTab() {
           </div>
         )
       })()}
+
+      {/* Drill-down modal */}
+      <InvoiceDetailModal
+        title={modalTitle}
+        details={modalDetails}
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+      />
     </div>
   )
 }

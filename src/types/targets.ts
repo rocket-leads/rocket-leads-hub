@@ -105,6 +105,17 @@ export interface CategoryBreakdown {
   overdue: number
 }
 
+export interface InvoiceDetail {
+  invoiceId: string
+  invoiceNumber: string | null
+  customerName: string | null
+  date: string
+  amount: number
+  status: "paid" | "open" | "overdue" | "credit"
+  category: "service_fee" | "ad_budget"
+  subCategory: "new_business" | "mrr"
+}
+
 export interface FinanceOverview {
   total: CategoryBreakdown
   serviceFee: CategoryBreakdown
@@ -112,6 +123,7 @@ export interface FinanceOverview {
   serviceFeeMrr: CategoryBreakdown
   adBudget: CategoryBreakdown
   invoiceCount: number
+  details: InvoiceDetail[]
 }
 
 // ─── Delivery types ───
