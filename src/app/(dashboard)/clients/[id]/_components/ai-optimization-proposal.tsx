@@ -96,9 +96,11 @@ function toISO(d: Date): string {
 }
 
 function getDateRange(days: number) {
-  const now = new Date()
-  const end = toISO(now)
-  const start = new Date(now)
+  // Exclude today — use yesterday as end date (today's data is incomplete)
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const end = toISO(yesterday)
+  const start = new Date(yesterday)
   start.setDate(start.getDate() - (days - 1))
   return { startDate: toISO(start), endDate: end }
 }

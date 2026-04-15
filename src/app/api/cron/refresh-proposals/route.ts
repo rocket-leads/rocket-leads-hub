@@ -19,7 +19,9 @@ function fmt(d: Date) {
 }
 
 function getDateRange(days: number) {
+  // Exclude today — use yesterday as end date (data won't be complete until day ends)
   const end = new Date()
+  end.setDate(end.getDate() - 1)
   const start = new Date(end)
   start.setDate(start.getDate() - (days - 1))
   return { startDate: fmt(start), endDate: fmt(end) }

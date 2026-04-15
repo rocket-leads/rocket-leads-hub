@@ -66,16 +66,21 @@ export const WeeklyOverview = memo(function WeeklyOverview({ data, isLoading }: 
   const chartData = data.map((w) => ({ ...w, label: weekLabel(w.weekStart) }))
 
   return (
-    <div className="bg-card rounded-lg p-4 border border-border/40">
+    <div className="bg-card rounded-lg p-5 border border-border/40 h-full flex flex-col">
       <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4">Weekly Overview</h3>
-      <ResponsiveContainer width="100%" height={280}>
-        <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+      <ResponsiveContainer width="100%" className="flex-1" minHeight={280}>
+        <ComposedChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-          <XAxis dataKey="label" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickLine={false} axisLine={false} />
-          <YAxis yAxisId="left" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickLine={false} axisLine={false} />
-          <YAxis yAxisId="right" orientation="right" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `€${Math.round(v / 1000)}k`} />
+          <XAxis dataKey="label" tick={{ fill: "#959AA4", fontSize: 10 }} tickLine={false} axisLine={false} />
+          <YAxis yAxisId="left" tick={{ fill: "#959AA4", fontSize: 10 }} tickLine={false} axisLine={false} />
+          <YAxis yAxisId="right" orientation="right" tick={{ fill: "#959AA4", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `€${Math.round(v / 1000)}k`} />
           <Tooltip content={<CustomTooltip />} />
-          <Legend wrapperStyle={{ fontSize: 10 }} iconType="circle" iconSize={6} />
+          <Legend
+            wrapperStyle={{ fontSize: 10 }}
+            iconType="circle"
+            iconSize={6}
+            formatter={(value: string) => <span style={{ color: "hsl(var(--muted-foreground))" }}>{value}</span>}
+          />
           <Bar yAxisId="left" dataKey="calls" name="Calls" fill="hsl(var(--muted))" radius={[2, 2, 0, 0]} barSize={18} />
           <Bar yAxisId="left" dataKey="qualified" name="Qualified" fill="#8967F3" radius={[2, 2, 0, 0]} barSize={18} />
           <Bar yAxisId="left" dataKey="taken" name="Taken" fill="#8967F366" radius={[2, 2, 0, 0]} barSize={18} />

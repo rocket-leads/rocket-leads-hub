@@ -42,20 +42,20 @@ export const FunnelChart = memo(function FunnelChart({
   }
 
   const stages = [
-    { label: "Booked Calls", shortLabel: "CBC", value: calls, color: "bg-muted-foreground/20" },
-    { label: "Qualified Calls", shortLabel: "CQC", value: qualified, color: "bg-muted-foreground/30" },
-    { label: "Taken Calls", shortLabel: "CTC", value: taken, color: "bg-muted-foreground/40" },
-    { label: "Deals", shortLabel: "CPD", value: deals, color: "bg-green-500/30" },
+    { label: "Booked Calls", shortLabel: "CBC", value: calls, color: "bg-[#8967F3]/15 border border-[#8967F3]/20" },
+    { label: "Qualified Calls", shortLabel: "CQC", value: qualified, color: "bg-[#8967F3]/20 border border-[#8967F3]/25" },
+    { label: "Taken Calls", shortLabel: "CTC", value: taken, color: "bg-[#8967F3]/25 border border-[#8967F3]/30" },
+    { label: "Deals", shortLabel: "CPD", value: deals, color: "bg-green-500/15 border border-green-500/25" },
   ]
 
   const top = Math.max(calls, 1)
   const widthFor = (val: number) => Math.max((val / top) * 100, 20)
 
   return (
-    <div className="bg-card rounded-lg p-5 border border-border/40">
+    <div className="bg-card rounded-lg p-5 border border-border/40 h-full flex flex-col">
       {/* Header with ad spend */}
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-sm font-medium text-foreground uppercase tracking-wider">Sales Funnel</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sales Funnel</h3>
         {adSpend > 0 && (
           <div className="text-right">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground block">Ad Spend</span>
@@ -64,7 +64,7 @@ export const FunnelChart = memo(function FunnelChart({
         )}
       </div>
 
-      <div className="space-y-0">
+      <div className="space-y-0 flex-1 flex flex-col justify-center">
         {stages.map((stage, i) => {
           const width = widthFor(stage.value)
           const convFromPrev = i > 0 ? pct(stage.value, stages[i - 1].value) : null
@@ -75,7 +75,7 @@ export const FunnelChart = memo(function FunnelChart({
             <div key={stage.label}>
               {/* Conversion arrow between stages */}
               {i > 0 && (
-                <div className="flex items-center justify-center gap-2 py-2">
+                <div className="flex items-center justify-center gap-2 py-1">
                   <ArrowDown className="h-3.5 w-3.5 text-muted-foreground/40" />
                   <span className="text-xs font-mono font-medium text-foreground">
                     {convFromPrev!.toFixed(0)}%
@@ -91,7 +91,7 @@ export const FunnelChart = memo(function FunnelChart({
 
               {/* Stage bar */}
               <div className="relative flex items-center justify-center mx-auto" style={{ width: `${width}%` }}>
-                <div className={cn("w-full rounded-lg py-4 px-4", stage.color)}>
+                <div className={cn("w-full rounded-lg py-3 px-4", stage.color)}>
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-[10px] uppercase tracking-wider text-muted-foreground leading-none mb-1">
@@ -120,18 +120,18 @@ export const FunnelChart = memo(function FunnelChart({
       </div>
 
       {/* Bottom stats */}
-      <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-border/40">
+      <div className="grid grid-cols-3 gap-3 mt-auto pt-3 border-t border-border/40">
         <div>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground block">Revenue</span>
-          <span className="text-lg font-bold font-mono text-foreground">{formatCurrency(revenue)}</span>
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground block">Revenue</span>
+          <span className="text-sm font-bold font-mono text-foreground">{formatCurrency(revenue)}</span>
         </div>
         <div>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground block">Booked → Deal</span>
-          <span className="text-lg font-bold font-mono text-foreground">{pct(deals, calls).toFixed(1)}%</span>
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground block">Booked → Deal</span>
+          <span className="text-sm font-bold font-mono text-foreground">{pct(deals, calls).toFixed(1)}%</span>
         </div>
         <div>
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground block">ROAS</span>
-          <span className="text-lg font-bold font-mono text-foreground">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground block">ROAS</span>
+          <span className="text-sm font-bold font-mono text-foreground">
             {adSpend > 0 ? `${(revenue / adSpend).toFixed(1)}×` : "—"}
           </span>
         </div>
