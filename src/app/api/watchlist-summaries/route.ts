@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import { readCache, writeCache } from "@/lib/cache"
+import type { ClientContext } from "@/lib/watchlist/collect-context"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -26,10 +27,9 @@ export async function POST(req: NextRequest) {
   const { clients } = (await req.json()) as { clients: ClientInput[] }
   if (!clients?.length) return NextResponse.json({})
 
-  // Check cache first
-  const cached = await readCache<Record<string, string>>("watchlist_summaries_v2")
+  // Check note cache
+  const cached = await readCache<Record<string, string>>("watchlist_summaries_v3")
 
-  // Find which clients need new summaries
   const needed = clients.filter((c) => !cached?.[c.id])
   if (needed.length === 0 && cached) {
     const result: Record<string, string> = {}
@@ -39,39 +39,68 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result)
   }
 
-  // Build prompt for all clients (needed + existing)
-  const allClients = clients.slice(0, 50) // cap at 50
+  // Load enriched context (Monday updates + Trengo conversations)
+  const contextCache = await readCache<Record<string, ClientContext>>("watchlist_context") ?? {}
+
+  // Build prompt with qualitative + quantitative data
+  const allClients = clients.slice(0, 50)
   const lines = allClients.map((c) => {
     const cplChange = c.prevCpl > 0 ? ((c.cpl - c.prevCpl) / c.prevCpl * 100).toFixed(0) : "n/a"
     const cpaChange = c.prevCostPerAppointment > 0 ? ((c.costPerAppointment - c.prevCostPerAppointment) / c.prevCostPerAppointment * 100).toFixed(0) : "n/a"
-    return `${c.id}|${c.name}|${c.category}|${c.issue}|spend:€${c.adSpend.toFixed(0)}|leads:${c.leads}|CPL:€${c.cpl.toFixed(2)}|CPL%:${cplChange}%|appts:${c.appointments}|CPA:€${c.costPerAppointment.toFixed(0)}|CPA%:${cpaChange}%`
-  }).join("\n")
+
+    const parts = [
+      `[CLIENT ${c.id}] ${c.name} | ${c.category.toUpperCase()} | ${c.issue}`,
+      `KPIs (7d): spend €${c.adSpend.toFixed(0)} | leads ${c.leads} | CPL €${c.cpl.toFixed(2)} (${cplChange}% wow) | appts ${c.appointments} | CPA €${c.costPerAppointment.toFixed(0)} (${cpaChange}% wow)`,
+    ]
+
+    const ctx = contextCache[c.id]
+    if (ctx?.mondayUpdates) {
+      parts.push(`MONDAY CRM:\n${ctx.mondayUpdates.slice(0, 800)}`)
+    }
+    if (ctx?.trengoSummary) {
+      parts.push(`TRENGO CONVERSATIONS:\n${ctx.trengoSummary.slice(0, 800)}`)
+    }
+    if (!ctx?.mondayUpdates && !ctx?.trengoSummary) {
+      parts.push(`(No qualitative data available — KPI only)`)
+    }
+
+    return parts.join("\n")
+  }).join("\n\n---\n\n")
 
   try {
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 3000,
-      system: `You are a senior campaign manager at Rocket Leads, a Dutch lead generation agency. Generate a 1-line actionable note for each client based on their KPI data.
+      max_tokens: 4000,
+      system: `You are a senior campaign manager at Rocket Leads, a Dutch lead generation agency. Generate a 1-line actionable note for each client.
 
-CRITICAL CONTEXT — Rocket Leads clients have FIXED, LIMITED ad budgets:
-- Most clients spend €1,000–€3,000/month total — this is their hard ceiling.
-- Clients almost NEVER scale budget. Budget is not flexible.
-- DO NOT recommend "scale budget", "increase spend", "scale this ad set", or any variation.
-- The lever is ALWAYS: better creatives, better angles, better targeting, better landing pages — NOT more spend.
-- If a campaign performs well, the recommendation is to KEEP IT RUNNING and replicate the winning angle/creative type in the next refresh — not to scale budget.
+## DATA PRIORITY (follow this order strictly)
+1. **MONDAY CRM UPDATES** (highest signal) — Account manager and appointment setter notes about lead quality, client feedback, follow-up status. This is ground truth from the people doing the work daily.
+2. **TRENGO CONVERSATIONS** (second signal) — Direct client messages showing satisfaction, complaints, lead quality feedback, requests. Read both CLIENT and RL messages for full context.
+3. **KPI DATA** (supporting signal) — Numbers are often incomplete or inaccurate. Use as supporting evidence, never as the sole basis for a recommendation.
 
-Rules:
-- For ACTION clients: say what specific action to take (pause underperforming ads, test new creative angle, refresh ad copy, fix landing page, adjust targeting). NEVER suggest budget changes.
-- For WATCH clients: say what to monitor and when to act (e.g. "CPL rising — if it continues 2 more days, pause underperformer and launch new creative")
-- For GOOD clients: highlight what's working and suggest how to PROTECT or REPLICATE it (e.g. "CPL dropped 40% — winning angle, replicate in next creative refresh", "Stable performance, keep current ads running, prep next angle for monthly refresh")
-- Reference actual numbers (CPL, spend, leads, % changes)
-- Keep each note under 18 words. Be direct, no fluff.
+## CRITICAL PRINCIPLES
+- Rocket Leads clients have FIXED, LIMITED budgets (€1,000–€3,000/month). NEVER recommend budget increases or scaling.
+- NEVER recommend "keep running" or "maintain current approach" — that's passive. Winners decay from ad fatigue. Always recommend iterating: new variants of the winning creative.
+- DON'T blindly trust client complaints. Apply RL's own experience:
+  - "Leads nemen niet op" (leads don't pick up) → optimization point: adjust follow-up timing, add reminder sequences, try different call times — NOT a campaign problem
+  - "Leads hebben geen budget" → real qualification issue: add budget question to form, adjust targeting
+  - "Leads zijn niet geïnteresseerd" → check if creative/angle attracts wrong audience, or if follow-up is too slow
+  - "Kwaliteit is slecht" → vague complaint, dig into specifics: which UTM, which ads, what % is actually bad?
+- When AM notes mention specific issues → that IS the note
+- When Trengo shows back-and-forth about an issue → summarize the actual problem and the RL-recommended fix
+
+## RULES
+- For ACTION: specific action to take (pause ads, test new angle, fix landing page, adjust targeting, improve follow-up sequence)
+- For WATCH: what to monitor and when to act
+- For GOOD: what's working and how to iterate on the winner (new creative variants, prep next angle)
+- Reference actual context: quote Monday notes or Trengo feedback when relevant
+- Keep each note under 22 words. Be direct, no fluff.
 - Write in English
 
 Output JSON only: {"client_id": "note", ...}`,
       messages: [{
         role: "user",
-        content: `Generate 1-line notes for these clients:\n${lines}\n\nReturn ONLY a JSON object mapping client ID to note string.`,
+        content: `Generate 1-line notes for these clients. Use the Monday CRM and Trengo data as primary signal:\n\n${lines}\n\nReturn ONLY a JSON object mapping client ID to note string.`,
       }],
     })
 
@@ -87,11 +116,10 @@ Output JSON only: {"client_id": "note", ...}`,
       }
     }
 
-    // Merge with existing cache and write back
+    // Merge with existing cache (bump to v3 for new prompt)
     const merged = { ...(cached ?? {}), ...result }
-    void writeCache("watchlist_summaries_v2", merged)
+    void writeCache("watchlist_summaries_v3", merged)
 
-    // Return only requested clients
     const response: Record<string, string> = {}
     for (const c of clients) {
       if (result[c.id]) response[c.id] = result[c.id]
@@ -101,7 +129,6 @@ Output JSON only: {"client_id": "note", ...}`,
     return NextResponse.json(response)
   } catch (e) {
     console.error("Watchlist summaries error:", e instanceof Error ? e.message : String(e))
-    // Return cached data if available
     if (cached) {
       const fallback: Record<string, string> = {}
       for (const c of clients) {

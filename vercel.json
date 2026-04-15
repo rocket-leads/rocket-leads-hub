@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/refresh-cache",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/refresh-proposals",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-watchlist-context",
+      "schedule": "0 */2 * * *"
     }
   ]
 }

@@ -73,14 +73,14 @@ export async function GET(
     adAccountId
       ? cachedFetch(
           `meta_insights:${adAccountId}:${startDate}:${endDate}`,
-          () => fetchMetaInsights(adAccountId, startDate, endDate).catch((e) => { console.error("Meta insights error:", e); return [] as Awaited<ReturnType<typeof fetchMetaInsights>> }),
-        )
+          () => fetchMetaInsights(adAccountId, startDate, endDate),
+        ).catch((e) => { console.error("Meta insights error:", e); return [] as Awaited<ReturnType<typeof fetchMetaInsights>> })
       : Promise.resolve([]),
     clientBoardId
       ? cachedFetch(
           `monday_board_items:${clientBoardId}`,
-          () => fetchClientBoardItems(clientBoardId, client?.column_mapping_override ?? undefined).catch((e) => { console.error("Monday board error:", e); return [] as Awaited<ReturnType<typeof fetchClientBoardItems>> }),
-        )
+          () => fetchClientBoardItems(clientBoardId, client?.column_mapping_override ?? undefined),
+        ).catch((e) => { console.error("Monday board error:", e); return [] as Awaited<ReturnType<typeof fetchClientBoardItems>> })
       : Promise.resolve([]),
   ])
 

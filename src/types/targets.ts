@@ -66,6 +66,10 @@ export interface MetaTargetsData {
   ctr: number
 }
 
+export type CountryKey = "all" | "nl" | "be" | "de" | "other"
+export type MondayTargetsByCountry = Record<CountryKey, MondayTargetsData>
+export type MetaTargetsByCountry = Record<CountryKey, MetaTargetsData>
+
 export interface DateRange {
   startDate: Date
   endDate: Date

@@ -260,7 +260,9 @@ export async function GET(req: NextRequest) {
           max_tokens: 2000,
           system: `You are a performance marketing analyst at Rocket Leads. Generate a 1-line actionable recommendation for each client. Be specific — reference their KPIs.
 
-CRITICAL: Rocket Leads clients have FIXED, LIMITED budgets (typically €1,000–€3,000/month total). Clients almost NEVER scale budget. NEVER recommend "scale budget", "increase spend", or any budget increase. The lever is always: better creatives, new angles, refined targeting, better landing pages — NOT more spend.
+CRITICAL: Rocket Leads clients have FIXED, LIMITED budgets (typically €1,000–€3,000/month total). Clients almost NEVER scale budget. NEVER recommend "scale budget", "increase spend", or any budget increase. The lever is always: better creatives, iterations on winning ads, new angles, refined targeting, better landing pages — NOT more spend.
+
+NEVER recommend "keep running" for winners — that's passive advice. Winners decay from ad fatigue. Always recommend ITERATING: new variants of the winning creative in the same direction (same hook/angle/format, fresh executions).
 
 Output JSON only: { "monday_item_id": { "type": "critical"|"warning"|"action", "title": "1-line recommendation" } }`,
           messages: [{ role: "user", content: `Generate 1-line recommendations for these clients:\n${clientLines}\n\nReturn ONLY a JSON object.` }],

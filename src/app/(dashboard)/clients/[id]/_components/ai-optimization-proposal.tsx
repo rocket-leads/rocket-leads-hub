@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { TrendingUp, TrendingDown, AlertTriangle, Lightbulb, RefreshCw, Clock, ChevronDown } from "lucide-react"
+import { TrendingUp, TrendingDown, AlertTriangle, Lightbulb, RefreshCw, Clock, ChevronDown, Check, Clock3, X, BarChart3, Sparkles } from "lucide-react"
 import type { KpiResult } from "@/lib/clients/kpis"
 
 type Insight = {
@@ -13,6 +13,44 @@ type Insight = {
   action?: string
   body?: string
   detail?: string
+  fingerprint?: string
+}
+
+type LeadAnalysisVerdict = "good" | "neutral" | "concerning"
+
+type LeadAnalysisSection = {
+  verdict: LeadAnalysisVerdict
+  headline: string
+  detail: string
+  patterns?: string[]
+}
+
+type LeadAnalysis = {
+  quantity: LeadAnalysisSection
+  quality: LeadAnalysisSection
+}
+
+type FeedbackStatus = "done" | "later" | "skip"
+
+const VERDICT_STYLES: Record<LeadAnalysisVerdict, { label: string; pill: string; border: string; bg: string }> = {
+  good: {
+    label: "Good",
+    pill: "bg-green-500/10 text-green-500",
+    border: "border-green-500/20",
+    bg: "bg-green-500/5",
+  },
+  neutral: {
+    label: "Neutral",
+    pill: "bg-amber-500/10 text-amber-500",
+    border: "border-amber-500/20",
+    bg: "bg-amber-500/5",
+  },
+  concerning: {
+    label: "Concerning",
+    pill: "bg-red-500/10 text-red-500",
+    border: "border-red-500/20",
+    bg: "bg-red-500/5",
+  },
 }
 
 const INSIGHT_STYLES: Record<Insight["type"], { icon: typeof TrendingUp; border: string; bg: string; iconColor: string }> = {
@@ -22,33 +60,117 @@ const INSIGHT_STYLES: Record<Insight["type"], { icon: typeof TrendingUp; border:
   action: { icon: Lightbulb, border: "border-primary/20", bg: "bg-primary/5", iconColor: "text-primary" },
 }
 
-function InsightRow({ insight }: { insight: Insight }) {
+function InsightRow({
+  insight,
+  onFeedback,
+}: {
+  insight: Insight
+  onFeedback: (insight: Insight, status: FeedbackStatus) => Promise<void>
+}) {
   const [expanded, setExpanded] = useState(false)
+  const [submitting, setSubmitting] = useState<FeedbackStatus | null>(null)
+  const [resolved, setResolved] = useState<FeedbackStatus | null>(null)
   const style = INSIGHT_STYLES[insight.type]
   const Icon = style.icon
   const hasDetail = !!insight.detail || !!insight.body
 
+  async function handleClick(status: FeedbackStatus) {
+    if (!insight.fingerprint || submitting) return
+    setSubmitting(status)
+    try {
+      await onFeedback(insight, status)
+      setResolved(status)
+    } finally {
+      setSubmitting(null)
+    }
+  }
+
+  // Once resolved, fade out — the next regeneration will hide it entirely.
+  if (resolved) {
+    const label = resolved === "done" ? "Marked done" : resolved === "later" ? "Snoozed for 7 days" : "Skipped"
+    const tone =
+      resolved === "done"
+        ? "text-green-500"
+        : resolved === "later"
+        ? "text-amber-500"
+        : "text-red-500"
+    return (
+      <div className="rounded-lg border border-border/20 bg-muted/10 px-4 py-2 opacity-60 transition-opacity">
+        <p className={`text-xs font-medium ${tone}`}>✓ {label} — “{insight.title}”</p>
+      </div>
+    )
+  }
+
+  const btnBase = "flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium transition-colors disabled:opacity-50"
+  const labelClass = "text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/50"
+  const actionText = insight.action || insight.body
+
   return (
-    <div className={`rounded-lg border ${style.border} ${style.bg} px-4 py-2.5`}>
+    <div className={`rounded-lg border ${style.border} ${style.bg} px-4 py-3`}>
       <div className="flex items-start gap-3">
-        <Icon className={`h-4 w-4 shrink-0 mt-0.5 ${style.iconColor}`} />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground leading-snug">{insight.title}</p>
-          {(insight.action || insight.body) && (
-            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-              → {insight.action || insight.body}
-            </p>
+        <Icon className={`h-4 w-4 shrink-0 mt-1 ${style.iconColor}`} />
+        <div className="flex-1 min-w-0 space-y-2.5">
+          {/* Analysis (observation) */}
+          <div>
+            <p className={labelClass}>Analysis</p>
+            <p className="text-sm text-foreground/80 leading-snug mt-0.5">{insight.title}</p>
+          </div>
+
+          {/* Action (the fix) — same size as analysis, bolder, full color */}
+          {actionText && (
+            <div>
+              <p className={labelClass}>Action</p>
+              <p className="text-sm font-semibold text-foreground leading-snug mt-0.5">{actionText}</p>
+            </div>
           )}
+
           {hasDetail && expanded && (
-            <p className="text-xs text-muted-foreground/60 mt-1.5 leading-relaxed border-t border-border/20 pt-1.5">
-              {insight.detail || insight.body}
-            </p>
+            <div className="border-t border-border/20 pt-2">
+              <p className={labelClass}>Context</p>
+              <p className="text-xs text-muted-foreground/70 leading-relaxed mt-0.5">
+                {insight.detail || insight.body}
+              </p>
+            </div>
           )}
+
+          {/* Feedback buttons */}
+          <div className="flex items-center gap-1.5 pt-1">
+            <button
+              type="button"
+              onClick={() => handleClick("done")}
+              disabled={submitting !== null}
+              title="Mark as done — good advice, actioned"
+              className={`${btnBase} border-green-500/30 bg-green-500/10 text-green-500 hover:bg-green-500/20`}
+            >
+              <Check className="h-3 w-3" />
+              Done
+            </button>
+            <button
+              type="button"
+              onClick={() => handleClick("later")}
+              disabled={submitting !== null}
+              title="Snooze for 7 days — good advice, wrong timing"
+              className={`${btnBase} border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20`}
+            >
+              <Clock3 className="h-3 w-3" />
+              Later
+            </button>
+            <button
+              type="button"
+              onClick={() => handleClick("skip")}
+              disabled={submitting !== null}
+              title="Skip — bad or irrelevant advice (the AI will learn from this)"
+              className={`${btnBase} border-red-500/30 bg-red-500/10 text-red-500 hover:bg-red-500/20`}
+            >
+              <X className="h-3 w-3" />
+              Skip
+            </button>
+          </div>
         </div>
         {hasDetail && (
           <button
             onClick={() => setExpanded(!expanded)}
-            className="shrink-0 mt-0.5 text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+            className="shrink-0 mt-1 text-muted-foreground/30 hover:text-muted-foreground transition-colors"
           >
             <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </button>
@@ -105,6 +227,104 @@ function timeAgo(date: Date): string {
   return `${hours}h ago`
 }
 
+function LeadAnalysisSectionRow({
+  label,
+  icon: Icon,
+  section,
+}: {
+  label: string
+  icon: typeof BarChart3
+  section: LeadAnalysisSection
+}) {
+  const v = VERDICT_STYLES[section.verdict]
+  return (
+    <div className={`rounded-lg border ${v.border} ${v.bg} px-4 py-3`}>
+      <div className="flex items-start gap-3">
+        <Icon className="h-4 w-4 shrink-0 mt-1 text-muted-foreground" />
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">{label}</span>
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase ${v.pill}`}>
+              {v.label}
+            </span>
+          </div>
+          <p className="text-sm font-semibold text-foreground leading-snug">{section.headline}</p>
+          {section.detail && (
+            <p className="text-xs text-muted-foreground leading-relaxed">{section.detail}</p>
+          )}
+          {section.patterns && section.patterns.length > 0 && (
+            <ul className="space-y-1 pt-1">
+              {section.patterns.map((p, i) => (
+                <li key={i} className="text-xs text-muted-foreground/80 leading-snug flex gap-1.5">
+                  <span className="text-muted-foreground/40">•</span>
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function LeadAnalysisCard({
+  leadAnalysis,
+  loading,
+  generatedAt,
+}: {
+  leadAnalysis: LeadAnalysis | null
+  loading: boolean
+  generatedAt: Date | null
+}) {
+  if (!leadAnalysis && !loading) return null
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            Lead Analysis
+          </CardTitle>
+          {generatedAt && (
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
+              <Clock className="h-2.5 w-2.5" />
+              {timeAgo(generatedAt)}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground/60 mt-1">
+          Quantity (volume + CPL vs baseline) and quality (Monday update sentiment)
+        </p>
+      </CardHeader>
+      <CardContent>
+        {loading && !leadAnalysis ? (
+          <div className="space-y-2.5">
+            {[...Array(2)].map((_, i) => (
+              <div key={i} className="rounded-lg border border-border/30 bg-muted/10 px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <Skeleton className="h-4 w-4 shrink-0 mt-0.5 rounded" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-3 w-24" />
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-full" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : leadAnalysis ? (
+          <div className="space-y-2">
+            <LeadAnalysisSectionRow label="Quantity" icon={BarChart3} section={leadAnalysis.quantity} />
+            <LeadAnalysisSectionRow label="Quality" icon={Sparkles} section={leadAnalysis.quality} />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
 type Props = {
   mondayItemId: string
   metaAdAccountId: string | null
@@ -116,11 +336,14 @@ type Props = {
 
 export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId, selectedCampaignIds, clientName, boardType }: Props) {
   const [insights, setInsights] = useState<Insight[] | null>(null)
+  const [leadAnalysis, setLeadAnalysis] = useState<LeadAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasKnowledge, setHasKnowledge] = useState(false)
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null)
+  const [cacheChecked, setCacheChecked] = useState(false)
   const hasAutoGenerated = useRef(false)
+  const cacheCheckStarted = useRef(false)
 
   const q7d = useTimeframeKpis(mondayItemId, metaAdAccountId, clientBoardId, selectedCampaignIds, 7)
   const q14d = useTimeframeKpis(mondayItemId, metaAdAccountId, clientBoardId, selectedCampaignIds, 14)
@@ -130,7 +353,35 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
   const hasCrm = !!clientBoardId
   const hasAnyData = q7d.data && (q7d.data.adSpend > 0 || q7d.data.leads > 0)
 
-  async function generate() {
+  // Try the cached proposal first — fast read, no KPI dependency.
+  // Cached proposals are valid for 24h; the cron / first viewer of the day
+  // populates them. This makes the analysis feel instant for everyone after
+  // the first generation.
+  useEffect(() => {
+    if (cacheCheckStarted.current) return
+    cacheCheckStarted.current = true
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/clients/${mondayItemId}/optimization-proposal`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.cached && Array.isArray(data.insights)) {
+            setInsights(data.insights)
+            setLeadAnalysis(data.leadAnalysis ?? null)
+            setHasKnowledge(!!data.hasKnowledge)
+            setGeneratedAt(data.generatedAt ? new Date(data.generatedAt) : new Date())
+            hasAutoGenerated.current = true // skip auto-generate
+          }
+        }
+      } catch {
+        // ignore — fall back to generate flow
+      } finally {
+        setCacheChecked(true)
+      }
+    })()
+  }, [mondayItemId])
+
+  async function generate(force = false) {
     if (!q7d.data) return
     setLoading(true)
     setError(null)
@@ -168,7 +419,8 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
     const adDetails = adDetailsResult.ads ?? []
 
     try {
-      const res = await fetch(`/api/clients/${mondayItemId}/optimization-proposal`, {
+      const url = `/api/clients/${mondayItemId}/optimization-proposal${force ? "?force=1" : ""}`
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -190,8 +442,9 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
 
       const data = await res.json()
       setInsights(data.insights)
+      setLeadAnalysis(data.leadAnalysis ?? null)
       setHasKnowledge(data.hasKnowledge)
-      setGeneratedAt(new Date())
+      setGeneratedAt(data.generatedAt ? new Date(data.generatedAt) : new Date())
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate analysis")
     } finally {
@@ -199,25 +452,37 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
     }
   }
 
-  // Auto-generate when KPI data becomes available
+  // Auto-generate ONLY when there's no cache hit and KPI data is ready.
   useEffect(() => {
+    if (!cacheChecked) return
     if (!isKpiLoading && hasAnyData && !hasAutoGenerated.current && !insights && !loading) {
       hasAutoGenerated.current = true
       generate()
     }
-  }, [isKpiLoading, hasAnyData]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cacheChecked, isKpiLoading, hasAnyData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isKpiLoading) {
     return (
-      <Card>
-        <CardHeader className="pb-3">
-          <Skeleton className="h-5 w-64" />
-          <Skeleton className="h-3 w-96 mt-1" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-16 w-full" />
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-3 w-80 mt-1" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-16 w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <Skeleton className="h-5 w-64" />
+            <Skeleton className="h-3 w-96 mt-1" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-16 w-full" />
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
@@ -232,11 +497,21 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
     : null
 
   return (
-    <Card>
+    <div className="space-y-4">
+      <LeadAnalysisCard
+        leadAnalysis={leadAnalysis}
+        loading={loading}
+        generatedAt={generatedAt}
+      />
+
+      <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <CardTitle className="text-base">Campaign Analysis</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-muted-foreground" />
+              AI Optimisation Proposal
+            </CardTitle>
             {statusBadge && (
               <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusBadge.style}`}>
                 {statusBadge.label}
@@ -252,8 +527,9 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
             )}
             {hasAnyData && (
               <button
-                onClick={generate}
+                onClick={() => generate(true)}
                 disabled={loading}
+                title="Force a fresh AI generation (the result is normally cached for 24h)"
                 className="flex items-center gap-1.5 rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors disabled:opacity-50"
               >
                 {loading ? (
@@ -272,7 +548,7 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
           </div>
         </div>
         <p className="text-xs text-muted-foreground/60 mt-1">
-          AI-powered insights{hasKnowledge ? " using client knowledge base" : ""}
+          Concrete next steps to optimise performance{hasKnowledge ? " — using client knowledge base" : ""}
         </p>
       </CardHeader>
 
@@ -303,12 +579,31 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
             {insights && (
               <div className="space-y-2">
                 {insights.map((insight, i) => (
-                  <InsightRow key={i} insight={insight} />
+                  <InsightRow
+                    key={insight.fingerprint ?? i}
+                    insight={insight}
+                    onFeedback={async (ins, status) => {
+                      await fetch(`/api/clients/${mondayItemId}/proposal-feedback`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          insightFingerprint: ins.fingerprint,
+                          insightType: ins.type,
+                          insightTitle: ins.title,
+                          insightAction: ins.action ?? null,
+                          insightDetail: ins.detail ?? ins.body ?? null,
+                          status,
+                          kpiSnapshot: q7d.data ?? null,
+                        }),
+                      })
+                    }}
+                  />
                 ))}
               </div>
             )}
       </CardContent>
     </Card>
+    </div>
   )
 }
 

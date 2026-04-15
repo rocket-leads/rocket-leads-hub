@@ -44,11 +44,11 @@ export async function GET(
   const cacheKey = `meta_ad_details:${adAccountId}:${startDate}:${endDate}:${selectedCampaignIdsParam}`
   const ads = await cachedFetch(
     cacheKey,
-    () => fetchMetaAdDetails(adAccountId, startDate, endDate, selectedCampaignIds).catch((e) => {
-      console.error("Meta ad details error:", e)
-      return [] as MetaAdDetail[]
-    }),
-  )
+    () => fetchMetaAdDetails(adAccountId, startDate, endDate, selectedCampaignIds),
+  ).catch((e) => {
+    console.error("Meta ad details error:", e)
+    return [] as MetaAdDetail[]
+  })
 
   return NextResponse.json(
     { ads },

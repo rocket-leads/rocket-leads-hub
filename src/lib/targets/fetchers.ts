@@ -11,7 +11,10 @@ import { getToken as getMondayToken, fetchAllItems, fetchBothBoards } from "@/li
 import { getToken as getMetaToken } from "@/lib/integrations/meta"
 import type {
   MondayTargetsData,
+  MondayTargetsByCountry,
   MetaTargetsData,
+  MetaTargetsByCountry,
+  CountryKey,
   CategoryBreakdown,
   FinanceOverview,
   CostData,
@@ -105,15 +108,6 @@ function monthKey(year: number, month: number): string {
   return `${MONTH_NAMES_NL[month - 1]}-${String(year).slice(2)}`
 }
 
-function getMonthBoundaries(year: number, month: number): { startTs: number; endTs: number } {
-  const start = new Date(Date.UTC(year, month - 1, 1))
-  const end = new Date(Date.UTC(year, month, 0, 23, 59, 59))
-  return {
-    startTs: Math.floor(start.getTime() / 1000),
-    endTs: Math.floor(end.getTime() / 1000),
-  }
-}
-
 async function getStripe(): Promise<Stripe> {
   const supabase = await createAdminClient()
   const { data } = await supabase
@@ -157,6 +151,7 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
   for (const item of allItems) {
     const datumCreated = parseDate(getColumnValue(item, "datum_created"))
     const datumAfspraak = parseDate(getColumnValue(item, "datum_afspraak"))
+    const dateDeal = parseDate(getColumnValue(item, "date3"))
     const status = getColumnValue(item, "status")
     const dealValue = getNumericValue(item, "numbers")
     const industry = getColumnValue(item, "status_17") || "Unknown"
@@ -169,12 +164,14 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     }
     if (isInRange(datumAfspraak, startDate, endDate)) {
       if (STATUS_MAP.taken.includes(status)) takenCalls++
-      if (STATUS_MAP.deals.includes(status)) {
-        deals++; closedRevenue += dealValue
-        if (!industryMap[industry]) industryMap[industry] = { deals: 0, revenue: 0 }
-        industryMap[industry].deals++
-        industryMap[industry].revenue += dealValue
-      }
+    }
+    // Deals are counted by their CLOSING date (date3), not by appointment date.
+    // This prevents deals from being attributed to the wrong month.
+    if (isInRange(dateDeal, startDate, endDate) && STATUS_MAP.deals.includes(status)) {
+      deals++; closedRevenue += dealValue
+      if (!industryMap[industry]) industryMap[industry] = { deals: 0, revenue: 0 }
+      industryMap[industry].deals++
+      industryMap[industry].revenue += dealValue
     }
   }
 
@@ -193,6 +190,7 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
   for (const item of allItems) {
     const datumCreated = parseDate(getColumnValue(item, "datum_created"))
     const datumAfspraak = parseDate(getColumnValue(item, "datum_afspraak"))
+    const dateDeal = parseDate(getColumnValue(item, "date3"))
     const status = getColumnValue(item, "status")
     if (datumCreated) {
       const ws = getMondayOfWeek(datumCreated)
@@ -203,12 +201,15 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     }
     if (datumAfspraak) {
       const ws = getMondayOfWeek(datumAfspraak)
+      if (targetWeeks.has(ws) && STATUS_MAP.taken.includes(status)) {
+        weeklyMap[ws].taken++
+      }
+    }
+    if (dateDeal && STATUS_MAP.deals.includes(status)) {
+      const ws = getMondayOfWeek(dateDeal)
       if (targetWeeks.has(ws)) {
-        if (STATUS_MAP.taken.includes(status)) weeklyMap[ws].taken++
-        if (STATUS_MAP.deals.includes(status)) {
-          weeklyMap[ws].deals++
-          weeklyMap[ws].revenue += getNumericValue(item, "numbers")
-        }
+        weeklyMap[ws].deals++
+        weeklyMap[ws].revenue += getNumericValue(item, "numbers")
       }
     }
   }

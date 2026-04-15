@@ -21,26 +21,153 @@ Rocket Leads draait campagnes op Meta (primair), Google en TikTok. De standaard 
 - "Schalen" als optimalisatie-aanbeveling is **bijna altijd irrelevant** voor onze klantenbasis.
 
 **De échte hefbomen voor optimalisatie zijn altijd:**
-1. **Betere creatives** — nieuwe video's, betere hooks, andere AI avatars
-2. **Nieuwe marketing angles** — andere invalshoek uit het framework testen
-3. **Verfijndere targeting** — al draaien we standaard open
-4. **Betere landingspagina's** — conversie-optimalisatie
-5. **Snellere/betere leadopvolging** — vooral bij HTO klanten met opvolging
-6. **Reallocatie binnen vast budget** — verschuiven van underperformer naar winner, NIET netto erbij
+1. **Itereren op winnende creatives** — bij een ad die goed presteert maken we direct nieuwe variaties in dezelfde richting (zelfde hook, angle, format, AI avatar) om CPL laag te houden en ad fatigue te voorkomen
+2. **Betere creatives** — nieuwe video's, betere hooks, andere AI avatars
+3. **Nieuwe marketing angles** — andere invalshoek uit het framework testen wanneer huidige angle uitgewerkt is
+4. **Verfijndere targeting** — al draaien we standaard open
+5. **Betere landingspagina's** — conversie-optimalisatie
+6. **Snellere/betere leadopvolging** — vooral bij HTO klanten met opvolging
+7. **Reallocatie binnen vast budget** — verschuiven van underperformer naar winner, NIET netto erbij
 
 **Wat AI agents NOOIT moeten aanbevelen:**
 - ❌ "Scale budget by X%"
 - ❌ "Increase spend on this ad set"
 - ❌ "Scale up this winner"
 - ❌ "Add more budget to capture more traffic"
+- ❌ "Houd deze ad draaien" / "Keep running this winner" — passief, leidt tot ad fatigue. Een winnende ad moet juist actief worden uitgebouwd met nieuwe iteraties.
 
 **Wat AI agents WEL moeten aanbevelen bij goed presterende campagnes:**
-- ✅ "Houd huidige ads draaien — winnende angle"
-- ✅ "Repliceer deze winning angle in volgende creative refresh"
+- ✅ "Itereer op [ad naam] — 3-5 nieuwe varianten in dezelfde richting (zelfde hook/angle/format) voor de volgende refresh"
+- ✅ "Repliceer deze winnende angle in nieuwe creatives met andere openers, B-roll en CTA's"
+- ✅ "Push meer creatives in deze richting om CPL laag te houden en fatigue te voorkomen"
 - ✅ "Pause underperformer X, schuif budget naar winner Y binnen dezelfde ad set"
-- ✅ "Bereid nieuwe creatives voor met deze hook in volgende maandelijkse refresh"
+
+**Kernprincipe:** Een winnende ad is geen rustpunt maar een signaal. Zodra iets werkt, verdubbelen we erop met nieuwe iteraties — zelfde DNA, frisse executies. Stilstaan = ad fatigue = stijgende CPL.
 
 **Maandelijkse creative refresh** is de standaard manier waarop we waarde toevoegen — niet door budget te verhogen.
+
+---
+
+## Lead Feedback uit Monday Updates — primaire kwaliteitssignaal
+
+De Monday updates op individuele lead-items (geschreven door account managers en appointment setters) zijn de **belangrijkste bron van waarheid** over leadkwaliteit. CPL en CTR zeggen niets als de leads zelf onbruikbaar zijn.
+
+**Hoe AI agents deze data MOETEN gebruiken bij optimalisatie:**
+
+1. **Match leads → ads via UTM**: elke lead heeft een UTM-tag die verwijst naar de specifieke advertentie. Groepeer Monday updates per UTM om per ad te zien welke kwaliteit eruit komt.
+
+2. **Scan voor negatieve patronen per UTM:**
+   - "geen budget" / "te duur" → ad trekt prijsgevoelige leads, kwalificatievraag toevoegen of angle aanpassen
+   - "niet geïnteresseerd" / "wist niet wat dit was" → ad belooft iets anders dan de propositie, copy/creative reviewen
+   - "verkeerde doelgroep" / "geen ICP" → targeting verfijnen of branchespecifieke angle gebruiken
+   - "geen beslisser" / "moet overleggen" → kwalificatievraag in formulier toevoegen
+   - Hoge no-show rate per UTM → reminder-flow checken óf de ad trekt te koude leads
+
+3. **Scan voor positieve patronen per UTM:**
+   - "afspraak ingepland" / "goede lead" / "interesse" / "deal" → dit is een winnende ad, direct itereren met nieuwe varianten in dezelfde richting
+
+4. **Cross-reference met ad performance:**
+   - Lage CPL + slechte feedback = **goedkope onbruikbare leads** = pauzeren, geen winner
+   - Hoge CPL + sterke feedback = **dure goede leads** = winner, itereren
+   - Lage CPL + sterke feedback = **dubbele winner** = direct opschalen via nieuwe iteraties
+   - Hoge CPL + slechte feedback = **direct pauzeren**
+
+5. **Wees specifiek in aanbevelingen:**
+   - ❌ "Sommige ads brengen slechte leads"
+   - ✅ "Ad 'Photo 2 | Pricelist' heeft 8 leads waarvan 6× 'geen budget' — pauzeer en vervang met budget-kwalificatie in formulier"
+
+**Zonder lead feedback is elke optimalisatie-aanbeveling halfblind.** CPL-cijfers zonder kwaliteitscontext leiden tot verkeerde conclusies.
+
+---
+
+## Lead Analysis Strategie (Quantity + Quality)
+
+Voor elke klant maken we twee oordelen die samen het volledige beeld vormen: **hoeveel** leads er binnenkomen en **hoe goed** ze zijn. Beide oordelen moeten elkaar aanvullen — niet vervangen.
+
+### 1. Quantity (kostefficiëntie — CPL & CPA vs baseline)
+
+**Wat:** judgement op pure kostefficiëntie — krijgen we per geïnvesteerde euro voldoende leads en afspraken?
+
+**KRITISCH — we kijken NOOIT naar absolute aantallen leads.**
+Het aantal leads is een functie van het advertentiebudget. Als spend daalt, dalen de leads automatisch mee. Dat zegt **niets** over performance. Volumeveranderingen kunnen komen door:
+- Budget verlagen of verhogen
+- Campagne pauzeren of starten
+- Een specifieke ad pauzeren
+- Weekend/feestdagen
+- Ad account issues bij Meta
+
+Geen van deze zijn actionable signalen over leadkwaliteit of efficiency. Daarom analyseren we leads NOOIT op volume, alleen op kost per actie.
+
+**De ENIGE metrics die tellen:**
+1. **CPL (cost per lead)** = adSpend ÷ leads
+2. **CPA (cost per appointment / booked call)** = adSpend ÷ booked calls
+
+Deze normaliseren voor budget en laten echte efficiency zien — onafhankelijk van hoeveel er is uitgegeven.
+
+**Hoe te beoordelen:**
+- Vergelijk huidige CPL en CPA (7d) met 14d en 30d baselines
+- 14d/30d = baseline (wat is normaal voor deze klant), 7d = huidige status
+- Gebruik branche-context (renovatie/verduurzaming/coaching/recruitment) om te bepalen of een CPL/CPA "goed" is in absolute zin — er is geen universele benchmark
+- Per-ad analyse: kijk naar CPL en CPA per UTM/ad, niet naar leads per UTM/ad
+
+### KRITISCH: 25% noise threshold
+
+Meta levert week-over-week wisselende resultaten door auction-dynamiek, audience saturation, dag-van-de-week effecten en creative rotation. **Kleine schommelingen zijn ruis, geen signaal.**
+
+**De regel:**
+- **CPL of CPA verandering van minder dan 25% (in beide richtingen) = NORMALE RUIS.** Nooit als concerning markeren, nooit een actie-insight over genereren. Behandel het als stabiel.
+- **+25% of meer STIJGING** in CPL of CPA t.o.v. de 14d/30d baseline = écht signaal, actie nodig
+- **−25% of meer DALING** = echte winst, winning ad/angle waar we op moeten itereren
+
+**Verdict op basis van 25% threshold:**
+- **good** = CPL OF CPA verbeterd met 25%+ t.o.v. baseline, OF beide stabiel binnen ±25% en in gezonde absolute range voor de branche
+- **concerning** = CPL OF CPA verslechterd met 25%+ t.o.v. baseline
+- **neutral** = zowel CPL als CPA binnen ±25% van baseline (normale Meta ruis — geen actie nodig)
+
+**Implicaties voor de Optimisation Proposal:**
+- Geen insights genereren over "CPL stijgt" of "CPA verslechtert" tenzij ≥25%
+- Geen insights genereren over lead-volume dalingen of stijgingen — ooit
+- Wel insights genereren als CPL/CPA de 25% drempel kruist, en altijd als Monday update sentiment kwaliteitsproblemen onthult — ongeacht cost trends
+
+**Wat NOOIT te doen:**
+- ❌ "Volume gedaald van X naar Y leads" — irrelevant zonder spend-context
+- ❌ Verdict baseren op lead-aantallen
+- ❌ Alarm slaan op een volume-daling (kan puur door budget/pauze komen)
+- ❌ Aanbevelen om budget te verhogen (zie budget reality)
+- ❌ Reageren op CPL/CPA fluctuaties onder de 25% drempel — dat is normale Meta ruis
+
+**Voorbeeldformuleringen:**
+- ✅ "CPL stabiel op €11.42 (binnen ruis vs €11.30 baseline). CPA verbeterd met 28% — sterke conversie naar afspraak."
+- ✅ "CPL gestegen van €9.20 naar €13.80 (+50% vs 14d, ruim boven 25% drempel). CPA volgt zelfde trend — efficiency degradeert."
+- ⚠️ "CPL gestegen van €9.20 naar €10.40 (+13%)." → Binnen ruis, niet noemen, niet flaggen.
+- ❌ "Volume gedaald van 36 naar 16 leads (-56%). CPL stabiel op €11.44." → De volume-zin is verboden.
+
+### 2. Quality (Monday updates + conversie)
+
+**Wat:** judgement op leadkwaliteit — komen er bruikbare leads binnen of vooral rotzooi?
+
+**Hoe te beoordelen:**
+- **Monday updates zijn de PRIMAIRE bron** — niet conversie-percentages
+- Lees per UTM/ad de updates en zoek patronen:
+  - Negatief: "geen budget", "niet geïnteresseerd", "verkeerde doelgroep", "geen beslisser", "te duur", no-shows
+  - Positief: "afspraak ingepland", "goede lead", "interesse", "deal", "kwalitatief"
+- Cross-check met conversie lead → afspraak, maar wees voorzichtig:
+  - Hoge conversie + slechte updates = **concerning** (de afspraken worden gemaakt maar de leads zijn waardeloos)
+  - Lage conversie + goede updates = **neutral** (kwaliteit is er maar opvolging hapert — process issue, niet ad issue)
+  - Hoge conversie + goede updates = **good**
+  - Lage conversie + slechte updates = **concerning** (dubbel rood)
+- Citeer altijd specifieke ad/UTM namen + concrete patronen ("Photo 2 | Pricelist: 5 van 8 leads zeiden 'geen budget'")
+- 2-4 patronen is genoeg — geen muur van bullets
+
+**Waarom Monday updates belangrijker zijn dan conversie %:**
+Conversie-statistieken meten of het opvolgproces werkt, niet of de leads kwalitatief zijn. Updates van setters/AM's geven ground truth over wat de leads écht zijn. Een ad kan 80% conversie naar afspraak hebben en alsnog waardeloos zijn als 100% van die afspraken "no budget" zegt.
+
+### Verschil met AI Optimisation Proposal
+
+- **Lead Analysis** = wat is er aan de hand? (state of the union) — geen acties, alleen oordelen
+- **AI Optimisation Proposal** = wat moeten we doen? — concrete acties
+
+De Lead Analysis informeert de Optimisation Proposal: een "concerning" quality verdict op een specifieke ad zou moeten leiden tot een actie-insight om die ad te pauzeren of te herwerken. Maar de Lead Analysis zelf bevat nooit acties — die horen in de Proposal.
 
 ---
 
@@ -769,11 +896,17 @@ Het kiezen van de juiste marketing angle is de belangrijkste stap. Hieronder het
 
 ## Optimalisatie
 
-**Dagelijks (3 opties):** nieuwe doelgroepen · nieuwe ads · budget verhogen (max 20%/dag)
+**Dagelijks:**
+- Nieuwe doelgroepen testen (ad set dupliceren met interesses)
+- Nieuwe ads / iteraties op winnende creatives lanceren
+- Lead feedback uit Monday updates per UTM scannen → bad-quality ads pauzeren
+- Budget verhogen (max 20%/dag) — ALLEEN bij klanten met flexibel budget; standaard klanten zitten op vast budget en hier is dit niet relevant
 
-**Creative refresh:** elke maand nieuwe creatives en ad copy. Creatives > ad copy in impact.
+**Creative refresh:** elke maand nieuwe creatives en ad copy. Creatives > ad copy in impact. Bij winnende ads: itereren in dezelfde richting (zelfde hook/angle/format, frisse executies) om CPL laag te houden en fatigue te voorkomen.
 
-**Wanneer nieuwe angle:** als meerdere creatives op dezelfde invalshoek niet werken.
+**Wanneer nieuwe angle:** als meerdere creatives op dezelfde invalshoek niet werken én lead feedback geen kwaliteitsproblemen aantoont.
+
+**Bij winnende ad:** nooit "laten lopen" — direct itereren. Een winnende ad is een signaal om te verdubbelen met nieuwe varianten, niet een rustpunt.
 
 ---
 

@@ -81,12 +81,12 @@ export function MarketingTab() {
         </div>
         <div className="space-y-3">
           <FunnelChart
-            leads={data.monday?.leads ?? 0}
             calls={data.monday?.calls ?? 0}
             qualified={data.monday?.qualifiedCalls ?? 0}
             taken={data.monday?.takenCalls ?? 0}
             deals={data.monday?.deals ?? 0}
-            isLoading={data.mondayLoading}
+            adSpend={data.meta?.spend ?? 0}
+            isLoading={data.mondayLoading || data.metaLoading}
           />
           <IndustryTable data={data.monday?.industries ?? []} isLoading={data.mondayLoading} />
         </div>

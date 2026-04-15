@@ -36,11 +36,11 @@ export async function GET(
 
   const items = await cachedFetch(
     `monday_board_updates:${clientBoardId}`,
-    () => fetchClientBoardItemsWithUpdates(clientBoardId).catch((e) => {
-      console.error("Monday updates fetch error:", e)
-      return [] as Awaited<ReturnType<typeof fetchClientBoardItemsWithUpdates>>
-    }),
-  )
+    () => fetchClientBoardItemsWithUpdates(clientBoardId),
+  ).catch((e) => {
+    console.error("Monday updates fetch error:", e)
+    return [] as Awaited<ReturnType<typeof fetchClientBoardItemsWithUpdates>>
+  })
 
   // Group updates by UTM — only include items that have updates
   const utmMap = new Map<string, UtmFeedback>()
