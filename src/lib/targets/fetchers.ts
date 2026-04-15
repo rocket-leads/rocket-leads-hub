@@ -242,10 +242,6 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
   return result
 }
 
-function emptyMetaData(): MetaTargetsData {
-  return { spend: 0, impressions: 0, clicks: 0, cpc: 0, cpm: 0, ctr: 0 }
-}
-
 function getMetaCountryKey(campaignName: string): CountryKey {
   const upper = campaignName.toUpperCase()
   if (upper.includes("NL")) return "nl"

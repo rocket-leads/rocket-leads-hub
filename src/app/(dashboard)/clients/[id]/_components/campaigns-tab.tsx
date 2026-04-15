@@ -8,9 +8,9 @@ import { Separator } from "@/components/ui/separator"
 import { DateFilter, defaultDateRange, type DateRange } from "./date-filter"
 import { KpiCards } from "./kpi-cards"
 import { UtmTable } from "./utm-table"
-import { AdBudgetBalance } from "./ad-budget-balance"
+
 import { Skeleton } from "@/components/ui/skeleton"
-import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
+
 import { Settings2 } from "lucide-react"
 import type { KpiResult } from "@/lib/clients/kpis"
 import type { MetaCampaign } from "@/lib/integrations/meta"
@@ -28,13 +28,12 @@ type Props = {
   mondayItemId: string
   metaAdAccountId: string | null
   clientBoardId: string | null
-  stripeCustomerId: string | null
   clientName: string
   boardType: "onboarding" | "current"
   onNavigateToSettings?: () => void
 }
 
-export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, stripeCustomerId, clientName, boardType, onNavigateToSettings }: Props) {
+export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, clientName, boardType, onNavigateToSettings }: Props) {
   const [dateRange, setDateRange] = useState<DateRange>(defaultDateRange)
 
   const campaignsQuery = useQuery<{ campaigns: CampaignWithSelection[] }>({
@@ -110,15 +109,6 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, str
 
   return (
     <div className="space-y-6">
-      {/* Ad budget balance for Rocket Leads ad account clients */}
-      {isRocketLeadsAdAccount(metaAdAccountId) && stripeCustomerId && (
-        <AdBudgetBalance
-          mondayItemId={mondayItemId}
-          metaAdAccountId={metaAdAccountId!}
-          stripeCustomerId={stripeCustomerId}
-        />
-      )}
-
       {/* Campaign Analysis — top of page */}
       <CampaignAnalysis
         mondayItemId={mondayItemId}
