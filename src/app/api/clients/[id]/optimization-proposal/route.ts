@@ -4,7 +4,6 @@ import {
   generateProposalForClient,
   proposalCacheKey,
   PROPOSAL_TTL_MS,
-  type CachedProposal,
   type ProposalInput,
 } from "@/lib/proposals/generate"
 import { NextRequest, NextResponse } from "next/server"
@@ -22,14 +21,18 @@ export async function GET(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id: mondayItemId } = await params
-  const cached = await readCache<CachedProposal>(proposalCacheKey(mondayItemId), PROPOSAL_TTL_MS)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cached = await readCache<any>(proposalCacheKey(mondayItemId), PROPOSAL_TTL_MS)
   if (!cached) return NextResponse.json({ cached: false })
+
+  // Backward compat: old cache entries have "insights" instead of "proposals"
+  const proposals = cached.proposals ?? cached.insights ?? []
 
   return NextResponse.json({
     cached: true,
-    proposals: cached.proposals,
+    proposals,
     leadAnalysis: cached.leadAnalysis ?? null,
-    hasKnowledge: cached.hasKnowledge,
+    hasKnowledge: cached.hasKnowledge ?? false,
     generatedAt: cached.generatedAt,
   })
 }

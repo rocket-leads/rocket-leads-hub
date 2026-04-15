@@ -455,36 +455,36 @@ export async function fetchCosts(year: number, month: number): Promise<CostData>
 
   const readMonth = (col: number) => ({
     invoicedRevenue: profitsRows ? parseEuro(profitsRows[5]?.[col]) : 0, // row 6 (Invoiced Revenue Total)
+    collectedRevenue: profitsRows ? parseEuro(profitsRows[12]?.[col]) : 0, // row 13 (Total Cash Collected)
     teamCosts: profitsRows ? parseEuro(profitsRows[18]?.[col]) : 0, // row 19
     marketingCosts: profitsRows ? parseEuro(profitsRows[24]?.[col]) : 0, // row 25
   })
 
   const currentKey = monthKey(year, month)
   const currentCol = getMonthCol(currentKey)
-  const current = currentCol >= 0 ? readMonth(currentCol) : { invoicedRevenue: 0, teamCosts: 0, marketingCosts: 0 }
+  const current = currentCol >= 0 ? readMonth(currentCol) : { invoicedRevenue: 0, collectedRevenue: 0, teamCosts: 0, marketingCosts: 0 }
 
   let teamCosts = current.teamCosts
   let marketingCosts = current.marketingCosts
   const hqCosts = HQ_COSTS_MONTHLY
   const estimated = { teamCosts: false, marketingCosts: false, hqCosts: false }
 
+  // Always build prior 3 months (needed for cost estimation AND collection rate)
+  const priorMonths: Array<{ year: number; month: number; key: string }> = []
+  let py = year, pm = month
+  for (let i = 0; i < 3; i++) {
+    pm--
+    if (pm === 0) { pm = 12; py-- }
+    priorMonths.push({ year: py, month: pm, key: monthKey(py, pm) })
+  }
+
+  const priorData = priorMonths.map((p) => {
+    const c = getMonthCol(p.key)
+    return c >= 0 ? readMonth(c) : { invoicedRevenue: 0, collectedRevenue: 0, teamCosts: 0, marketingCosts: 0 }
+  })
+
+  // Cost estimation: 3-month average (costs are mostly fixed, not revenue-dependent)
   if (teamCosts === 0 || marketingCosts === 0) {
-    // Build prior 3 month list
-    const priorMonths: Array<{ year: number; month: number; key: string }> = []
-    let py = year, pm = month
-    for (let i = 0; i < 3; i++) {
-      pm--
-      if (pm === 0) { pm = 12; py-- }
-      priorMonths.push({ year: py, month: pm, key: monthKey(py, pm) })
-    }
-
-    // Read costs from sheet for these months
-    const priorData = priorMonths.map((p) => {
-      const c = getMonthCol(p.key)
-      return c >= 0 ? readMonth(c) : { invoicedRevenue: 0, teamCosts: 0, marketingCosts: 0 }
-    })
-
-    // Use simple 3-month average (costs are mostly fixed, not revenue-dependent)
     const validTeam = priorData.filter((d) => d.teamCosts > 0)
     const validMarketing = priorData.filter((d) => d.marketingCosts > 0)
 
@@ -501,11 +501,18 @@ export async function fetchCosts(year: number, month: number): Promise<CostData>
     }
   }
 
+  // Cash collection rate: avg(collected / invoiced) over prior 3 months
+  const validCollectionMonths = priorData.filter((d) => d.invoicedRevenue > 0)
+  const avgCollectionRate = validCollectionMonths.length > 0
+    ? validCollectionMonths.reduce((s, d) => s + d.collectedRevenue / d.invoicedRevenue, 0) / validCollectionMonths.length
+    : 0
+
   return {
     teamCosts,
     marketingCosts,
     hqCosts,
     totalCosts: teamCosts + marketingCosts + hqCosts,
+    avgCollectionRate,
     estimated,
   }
 }

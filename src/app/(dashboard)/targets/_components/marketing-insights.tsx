@@ -209,7 +209,7 @@ function generateProposals(insights: Insight[], m: MondayTargetsData, meta: Meta
 }
 
 export const MarketingInsights = memo(function MarketingInsights({ monday, meta, targets, range, isLoading }: Props) {
-  if (isLoading) {
+  if (isLoading || !monday || !meta || !targets) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className="bg-card rounded-lg p-4 border border-border/40">
@@ -223,8 +223,6 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
       </div>
     )
   }
-
-  if (!monday || !meta || !targets) return null
 
   const insights = generateInsights(monday, meta, targets, range)
   const proposals = generateProposals(insights, monday, meta, targets, range)

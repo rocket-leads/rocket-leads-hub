@@ -154,6 +154,8 @@ export interface CostData {
   marketingCosts: number
   hqCosts: number
   totalCosts: number
+  /** Average cash collection rate from prior 3 months (collected / invoiced) */
+  avgCollectionRate: number
   /** Per-category flags indicating whether the value is actual (from sheet) or estimated */
   estimated: {
     teamCosts: boolean
