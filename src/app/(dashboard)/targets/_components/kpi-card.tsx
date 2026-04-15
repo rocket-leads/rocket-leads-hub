@@ -27,15 +27,11 @@ interface KpiCardProps {
 function getColor(variant: string, value: number, target: number): string {
   if (variant === "volume") {
     const pct = safeDivide(value, target)
-    if (pct >= 1) return "text-green-500"
-    if (pct >= 0.7) return "text-primary"
-    return "text-red-500"
+    return pct >= 1 ? "text-green-500" : "text-red-500"
   }
   if (variant === "cost") {
     const ratio = safeDivide(value, target)
-    if (ratio <= 1) return "text-green-500"
-    if (ratio <= 1.2) return "text-primary"
-    return "text-red-500"
+    return ratio <= 1 ? "text-green-500" : "text-red-500"
   }
   return ""
 }
@@ -43,14 +39,10 @@ function getColor(variant: string, value: number, target: number): string {
 function getBarColor(variant: string, value: number, target: number): string {
   if (variant === "volume") {
     const pct = safeDivide(value, target)
-    if (pct >= 1) return "bg-green-500"
-    if (pct >= 0.7) return "bg-primary"
-    return "bg-red-500"
+    return pct >= 1 ? "bg-green-500" : "bg-red-500"
   }
   const ratio = safeDivide(value, target)
-  if (ratio <= 1) return "bg-green-500"
-  if (ratio <= 1.2) return "bg-primary"
-  return "bg-red-500"
+  return ratio <= 1 ? "bg-green-500" : "bg-red-500"
 }
 
 export const KpiCard = memo(function KpiCard({

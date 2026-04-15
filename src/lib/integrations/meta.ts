@@ -99,6 +99,7 @@ export type MetaAdDetail = {
   clicks: number
   ctr: number
   cpc: number
+  leads: number
   body: string
   creativeType: "video" | "image" | "dynamic" | "unknown"
   thumbnailUrl: string
@@ -114,7 +115,7 @@ export async function fetchMetaAdDetails(
   const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
   const timeRange = encodeURIComponent(JSON.stringify({ since: startDate, until: endDate }))
 
-  const url = `${META_API_BASE}/${accountId}/insights?fields=ad_id,ad_name,adset_name,campaign_id,spend,impressions,clicks,ctr,cpc&level=ad&time_range=${timeRange}&limit=200&access_token=${token}`
+  const url = `${META_API_BASE}/${accountId}/insights?fields=ad_id,ad_name,adset_name,campaign_id,spend,impressions,clicks,ctr,cpc,actions&level=ad&time_range=${timeRange}&limit=200&access_token=${token}`
   const insightsData = await fetchAllPages<{
     ad_id: string
     ad_name: string
@@ -125,6 +126,7 @@ export async function fetchMetaAdDetails(
     clicks: string
     ctr: string
     cpc: string
+    actions?: Array<{ action_type: string; value: string }>
   }>(url)
 
   const filtered = campaignIds && campaignIds.size > 0
@@ -169,6 +171,12 @@ export async function fetchMetaAdDetails(
 
   return filtered.map((d) => {
     const creative = creativeMap.get(d.ad_id)
+    const leads = (d.actions ?? []).reduce((sum, a) => {
+      if (a.action_type.toLowerCase().includes("lead")) {
+        return sum + (parseInt(a.value, 10) || 0)
+      }
+      return sum
+    }, 0)
     return {
       adId: d.ad_id,
       adName: d.ad_name,
@@ -179,6 +187,7 @@ export async function fetchMetaAdDetails(
       clicks: parseInt(d.clicks ?? "0", 10),
       ctr: parseFloat(d.ctr ?? "0"),
       cpc: parseFloat(d.cpc ?? "0"),
+      leads,
       body: creative?.body ?? "",
       creativeType: creative?.creativeType ?? "unknown",
       thumbnailUrl: creative?.thumbnailUrl ?? "",

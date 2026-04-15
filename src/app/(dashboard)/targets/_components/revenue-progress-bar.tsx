@@ -38,15 +38,8 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
   const proRataPct = monthlyTarget > 0 ? (proRata / monthlyTarget) * 100 : 0
   const performance = proRata > 0 ? current / proRata : 0
 
-  const barColor =
-    performance >= 1 ? "bg-green-500" :
-    performance >= 0.8 ? "bg-primary" :
-    "bg-red-500"
-
-  const textColor =
-    performance >= 1 ? "text-green-500" :
-    performance >= 0.8 ? "text-primary" :
-    "text-red-500"
+  const barColor = performance >= 1 ? "bg-green-500" : "bg-red-500"
+  const textColor = performance >= 1 ? "text-green-500" : "text-red-500"
 
   return (
     <div className="bg-card rounded-lg p-4 border border-border/40 space-y-3">

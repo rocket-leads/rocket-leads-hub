@@ -53,6 +53,7 @@ export type AdDetailEntry = {
   clicks: number
   ctr: number
   cpc: number
+  leads: number
   body: string
   creativeType: string
 }
@@ -203,10 +204,17 @@ Return a SINGLE JSON OBJECT with this exact shape:
 - quality.verdict is primarily based on Monday update sentiment per UTM.
 - quality.patterns should cite SPECIFIC ad name / UTM with counts or quotes from updates.
 
+**CRITICAL — Every statement MUST include hard numbers. No vague language.**
+BAD: "[Ad name] — top spender, still generating leads"
+GOOD: "[Ad name]: €352 spend, 14 leads = €25.14 CPL (30d)"
+BAD: "[Ad name] — poor lead generation efficiency"
+GOOD: "[Ad name]: €154 spend, 2 leads = €77 CPL (30d) — 3x above account average"
+
 **Lead Analysis patterns should surface observations like:**
-- "Creative fatigue on [ad name] — top spender (€X, 30d) with CTR declining from X% to Y%"
-- "[Ad name] via UTM [X]: 5/8 leads said 'geen budget'"
-- "[Ad name] is the 30d winner: lowest CPL at €X with positive feedback"
+- "[Ad name]: €352 spend, 14 leads = €25.14 CPL (30d) — best performer, 4 appointments"
+- "[Ad name]: €154 spend, 2 leads = €77 CPL (30d) — 3x above account avg of €25"
+- "[Ad name] via UTM [X]: 5/8 leads said 'geen budget' — qualification issue"
+- "Creative fatigue on [ad name]: CTR dropped from 2.1% to 0.8% over 30d despite €280 spend"
 
 ## Optimisation Proposals rules
 
@@ -219,27 +227,33 @@ A campaign manager should be able to read each proposal and know EXACTLY what to
 - Which creative direction to take → "same hook/angle as [ad name], 3-5 new variants"
 - Which funnel element to change → "add budget qualification question to leadform" or "switch from leadform to landing page"
 
-**Types of valid proposals:**
-1. **Pause specific ads (category: "pause"):** "Pause [ad name] — €X spent, 0 leads in 7d" or "Pause [ad name] — cheap leads but 4/6 'niet geïnteresseerd'"
-2. **Iterate on winners (category: "creative"):** "Create 3-5 new variants of [ad name] — winning hook with €X CPL over 30d"
-3. **Refresh fatigued ads (category: "creative"):** "Refresh [ad name] — top spender (€X/30d) but CTR dropped from X% to Y%"
-4. **Funnel changes (category: "funnel"):** "Add budget question to leadform — 40% of leads via [UTM] have no budget"
-5. **New angle (category: "angle"):** "Test [specific angle] for next refresh — current [hook type] exhausted across 3 creatives"
-6. **Reallocate budget (category: "other"):** "Shift budget from [ad X] to [ad Y] — Y has 3x better CPL"
+**Types of valid proposals (title MUST include numbers):**
+1. **Pause (category: "pause"):** "Pause [ad name] — €154 spend, 2 leads = €77 CPL (30d), 3x above avg"
+2. **Iterate on winners (category: "creative"):** "Iterate on [ad name] — €25 CPL, 14 leads, 4 appointments (30d). Create 3-5 new variants"
+3. **Refresh fatigued (category: "creative"):** "Refresh [ad name] — €352 top spender (30d), CTR dropped 2.1% → 0.8%"
+4. **Funnel (category: "funnel"):** "Add budget question to leadform — 5/8 leads via [UTM] said 'geen budget'"
+5. **New angle (category: "angle"):** "Test [specific angle] — current 3 creatives all above €50 CPL, angle exhausted"
+6. **Reallocate (category: "other"):** "Shift budget from [ad X] (€77 CPL) to [ad Y] (€25 CPL)"
 
-**Detail field MUST include supporting data:**
-- Always cite the actual numbers: "14d: 8 leads, 4 appointments (50% rate). 30d: €280 spend, €35 CPL."
-- For winners: cite the timeframe, leads, appointments/deals, CPL
-- For losers: cite spend vs leads, negative feedback quotes
-- For creative fatigue: cite CTR trend with actual numbers and timeframe
+**TITLE FORMAT: always [ad name] + €spend + leads = €CPL (timeframe)**
+Every ad reference in a title MUST follow this pattern: "[Ad name]: €X spend, Y leads = €Z CPL (timeframe)".
+This is non-negotiable. A CM glancing at the title must immediately see the numbers.
+
+**Detail field provides the full data picture:**
+- Calculate and show: spend, leads, CPL, appointments (if available), conversion rate, CTR trend
+- Compare to account average: "Account avg CPL: €25. This ad: €77 = 3x above average"
+- Include Monday feedback if relevant: "3/5 leads said 'geen budget' — cheap but unqualified"
+- For creative iterations: "Same hook generated €25 CPL across 2 ad sets. Replicate with fresh visuals + new CTA variants"
 
 **NEVER generate:**
-- Vague proposals like "pause underperforming ads" (WHICH ads?)
+- Vague proposals like "pause underperforming ads" (WHICH ads? WHAT numbers?)
 - "Test new creatives" without saying what direction
 - "Improve lead quality" without saying HOW
 - Anything that restates the Lead Analysis without adding an action
 - Budget increase recommendations (clients have fixed €1k-3k/month budgets)
 - "Keep running" or "maintain current approach" — winners decay, always iterate
+- Phrases like "still generating leads", "poor efficiency", "good performer" WITHOUT hard numbers
+- Any title that doesn't include at least one € amount and one metric
 
 Return 2-4 proposals max (NEVER more than 4). Each one must be executable without further research.
 
@@ -289,9 +303,18 @@ ${input.kpis30d ? JSON.stringify(input.kpis30d, null, 2) : "No data"}
 
 ## Meta Ad Details (last 30 days)
 ${input.adDetails && input.adDetails.length > 0
-    ? input.adDetails.map((ad) =>
-        `- **${ad.adName}** (${ad.creativeType}) | Ad set: ${ad.adsetName}\n  Spend: €${ad.spend.toFixed(2)} | Impressions: ${ad.impressions} | Clicks: ${ad.clicks} | CTR: ${ad.ctr.toFixed(2)}% | CPC: €${ad.cpc.toFixed(2)}\n  Ad copy: "${ad.body.slice(0, 200)}${ad.body.length > 200 ? "…" : ""}"`
-      ).join("\n\n")
+    ? (() => {
+        const totalSpend = input.adDetails.reduce((s, a) => s + a.spend, 0)
+        const totalLeads = input.adDetails.reduce((s, a) => s + a.leads, 0)
+        const avgCpl = totalLeads > 0 ? totalSpend / totalLeads : 0
+        return `Account totals (30d): €${totalSpend.toFixed(0)} spend, ${totalLeads} leads, €${avgCpl.toFixed(2)} avg CPL\n\n` +
+          input.adDetails.map((ad) => {
+            const cpl = ad.leads > 0 ? ad.spend / ad.leads : 0
+            const cplStr = ad.leads > 0 ? `€${cpl.toFixed(2)}` : "∞ (no leads)"
+            const vsAvg = ad.leads > 0 && avgCpl > 0 ? `${(cpl / avgCpl).toFixed(1)}x avg` : ""
+            return `- **${ad.adName}** (${ad.creativeType}) | Ad set: ${ad.adsetName}\n  €${ad.spend.toFixed(2)} spend | ${ad.leads} leads | CPL: ${cplStr} ${vsAvg} | CTR: ${ad.ctr.toFixed(2)}% | CPC: €${ad.cpc.toFixed(2)}\n  Ad copy: "${ad.body.slice(0, 200)}${ad.body.length > 200 ? "…" : ""}"`
+          }).join("\n\n")
+      })()
     : "No ad details available."}
 
 ## Lead Feedback from Monday Updates (qualitative data from client/appointment setters)
