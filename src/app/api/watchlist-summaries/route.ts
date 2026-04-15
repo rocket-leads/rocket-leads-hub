@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (!clients?.length) return NextResponse.json({})
 
   // Check note cache
-  const cached = await readCache<Record<string, string>>("watchlist_summaries_v3")
+  const cached = await readCache<Record<string, string>>("watchlist_summaries_v4")
 
   const needed = clients.filter((c) => !cached?.[c.id])
   if (needed.length === 0 && cached) {
@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
     const cpaChange = c.prevCostPerAppointment > 0 ? ((c.costPerAppointment - c.prevCostPerAppointment) / c.prevCostPerAppointment * 100).toFixed(0) : "n/a"
 
     const parts = [
-      `[CLIENT ${c.id}] ${c.name} | ${c.category.toUpperCase()} | ${c.issue}`,
+      `[CLIENT ${c.id}] ${c.name} | ${c.category.toUpperCase()}`,
+      `INSIGHT COLUMN (already visible — DO NOT REPEAT): "${c.issue}"`,
       `KPIs (7d): spend €${c.adSpend.toFixed(0)} | leads ${c.leads} | CPL €${c.cpl.toFixed(2)} (${cplChange}% wow) | appts ${c.appointments} | CPA €${c.costPerAppointment.toFixed(0)} (${cpaChange}% wow)`,
     ]
 
@@ -71,36 +72,44 @@ export async function POST(req: NextRequest) {
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 4000,
-      system: `You are a senior campaign manager at Rocket Leads, a Dutch lead generation agency. Generate a 1-line actionable note for each client.
+      system: `You are a senior campaign manager at Rocket Leads, a Dutch lead generation agency. Generate a 1-line AI Note for each client.
 
-## DATA PRIORITY (follow this order strictly)
-1. **MONDAY CRM UPDATES** (highest signal) — Account manager and appointment setter notes about lead quality, client feedback, follow-up status. This is ground truth from the people doing the work daily.
-2. **TRENGO CONVERSATIONS** (second signal) — Direct client messages showing satisfaction, complaints, lead quality feedback, requests. Read both CLIENT and RL messages for full context.
-3. **KPI DATA** (supporting signal) — Numbers are often incomplete or inaccurate. Use as supporting evidence, never as the sole basis for a recommendation.
+## CRITICAL — THE AI NOTE IS AN ADDITION, NOT A REPEAT
+Each client already has an "Insight" column visible to the user (provided as "INSIGHT COLUMN" in the data). The AI Note appears NEXT to it. The user reads Insight FIRST, then AI Note.
 
-## CRITICAL PRINCIPLES
-- Rocket Leads clients have FIXED, LIMITED budgets (€1,000–€3,000/month). NEVER recommend budget increases or scaling.
-- NEVER recommend "keep running" or "maintain current approach" — that's passive. Winners decay from ad fatigue. Always recommend iterating: new variants of the winning creative.
-- DON'T blindly trust client complaints. Apply RL's own experience:
-  - "Leads nemen niet op" (leads don't pick up) → optimization point: adjust follow-up timing, add reminder sequences, try different call times — NOT a campaign problem
-  - "Leads hebben geen budget" → real qualification issue: add budget question to form, adjust targeting
-  - "Leads zijn niet geïnteresseerd" → check if creative/angle attracts wrong audience, or if follow-up is too slow
-  - "Kwaliteit is slecht" → vague complaint, dig into specifics: which UTM, which ads, what % is actually bad?
-- When AM notes mention specific issues → that IS the note
-- When Trengo shows back-and-forth about an issue → summarize the actual problem and the RL-recommended fix
+**ABSOLUTE RULE: NEVER repeat or rephrase what's in the Insight column.**
+- If Insight says "CPL up 239%" → your note must NOT mention CPL or the percentage again
+- If Insight says "€695 spent, 0 leads" → your note must NOT say "zero leads" or "no leads generated"
+- The AI Note adds the NEXT LAYER: what to DO about it, or WHY it's happening, or which specific ad to act on
 
-## RULES
-- For ACTION: specific action to take (pause ads, test new angle, fix landing page, adjust targeting, improve follow-up sequence)
-- For WATCH: what to monitor and when to act
-- For GOOD: what's working and how to iterate on the winner (new creative variants, prep next angle)
-- Reference actual context: quote Monday notes or Trengo feedback when relevant
-- Keep each note under 22 words. Be direct, no fluff.
+**The AI Note should answer: "OK I see the Insight, but what SPECIFICALLY should I do?"**
+
+## DATA PRIORITY
+1. **MONDAY CRM UPDATES** — AM/setter notes about lead quality, client feedback
+2. **TRENGO CONVERSATIONS** — Client messages, satisfaction, complaints
+3. **KPI DATA** — Supporting evidence only
+
+## BE CONCRETE — NAME THE AD
+When recommending creative iterations or pauses, reference the SPECIFIC winning/losing ad by name when available in Monday/Trengo context. Don't say "test 2 new variants" — say "iterate on [winning ad name], 2-3 new variants same hook".
+
+## PRINCIPLES
+- Fixed budgets (€1k-3k/month). NEVER recommend budget increases.
+- NEVER recommend "keep running" — winners decay. Always iterate.
+- Don't blindly trust client complaints:
+  - "Leads don't pick up" → follow-up timing issue, not campaign problem
+  - "No budget" → add budget question to form
+  - "Not interested" → wrong audience or slow follow-up
+
+## FORMAT RULES
+- The note must ADD information beyond the Insight column
+- Be specific: name ads, UTMs, or funnel elements where possible
+- Keep under 25 words. Direct, no fluff.
 - Write in English
 
 Output JSON only: {"client_id": "note", ...}`,
       messages: [{
         role: "user",
-        content: `Generate 1-line notes for these clients. Use the Monday CRM and Trengo data as primary signal:\n\n${lines}\n\nReturn ONLY a JSON object mapping client ID to note string.`,
+        content: `Generate AI Notes for these clients. Each client has an "INSIGHT COLUMN" already shown — your note must ADD to it, NEVER repeat it. Be concrete: name specific ads to iterate on or pause.\n\n${lines}\n\nReturn ONLY a JSON object mapping client ID to note string.`,
       }],
     })
 
@@ -118,7 +127,7 @@ Output JSON only: {"client_id": "note", ...}`,
 
     // Merge with existing cache (bump to v3 for new prompt)
     const merged = { ...(cached ?? {}), ...result }
-    void writeCache("watchlist_summaries_v3", merged)
+    void writeCache("watchlist_summaries_v4", merged)
 
     const response: Record<string, string> = {}
     for (const c of clients) {

@@ -36,7 +36,7 @@ export function MarketingTab() {
 
   return (
     <div className="space-y-4">
-      {/* Date picker + country filter */}
+      {/* ── FILTERS ── */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-1.5">
           <input
@@ -64,8 +64,6 @@ export function MarketingTab() {
             </button>
           ))}
         </div>
-
-        {/* Country filter */}
         <div className="flex gap-0.5 ml-auto bg-muted rounded-md p-0.5">
           {COUNTRY_OPTIONS.map(({ key, label }) => (
             <button
@@ -84,7 +82,7 @@ export function MarketingTab() {
         </div>
       </div>
 
-      {/* Revenue progress */}
+      {/* ── REVENUE BAR ── */}
       <RevenueProgressBar
         current={revenueProgress.current}
         proRata={revenueProgress.proRata}
@@ -92,11 +90,27 @@ export function MarketingTab() {
         isLoading={data.mondayLoading}
       />
 
-      {/* KPI groups */}
+      {/* ── SALES FUNNEL (full width, prominent) ── */}
+      <FunnelChart
+        calls={data.monday?.calls ?? 0}
+        qualified={data.monday?.qualifiedCalls ?? 0}
+        taken={data.monday?.takenCalls ?? 0}
+        deals={data.monday?.deals ?? 0}
+        revenue={data.monday?.closedRevenue ?? 0}
+        adSpend={data.meta?.spend ?? 0}
+        isLoading={data.mondayLoading || data.metaLoading}
+      />
+
+      {/* ── KPI CARDS ── */}
       {kpiGroups.map((group) => (
         <div key={group.title}>
           <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2 px-1">{group.title}</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+          <div className={cn(
+            "grid gap-2",
+            group.kpis.length <= 4
+              ? "grid-cols-2 sm:grid-cols-4"
+              : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6",
+          )}>
             {group.kpis.map((kpi) => (
               <KpiCard key={kpi.label} {...kpi} />
             ))}
@@ -104,22 +118,10 @@ export function MarketingTab() {
         </div>
       ))}
 
-      {/* Charts row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <div className="lg:col-span-2">
-          <WeeklyOverview data={data.monday?.weekly ?? []} isLoading={data.mondayLoading} />
-        </div>
-        <div className="space-y-3">
-          <FunnelChart
-            calls={data.monday?.calls ?? 0}
-            qualified={data.monday?.qualifiedCalls ?? 0}
-            taken={data.monday?.takenCalls ?? 0}
-            deals={data.monday?.deals ?? 0}
-            adSpend={data.meta?.spend ?? 0}
-            isLoading={data.mondayLoading || data.metaLoading}
-          />
-          <IndustryTable data={data.monday?.industries ?? []} isLoading={data.mondayLoading} />
-        </div>
+      {/* ── WEEKLY + INDUSTRY (equal height, side by side) ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <WeeklyOverview data={data.monday?.weekly ?? []} isLoading={data.mondayLoading} />
+        <IndustryTable data={data.monday?.industries ?? []} isLoading={data.mondayLoading} />
       </div>
     </div>
   )
