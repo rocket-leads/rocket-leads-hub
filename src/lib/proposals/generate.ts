@@ -1,6 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { readCache, writeCache } from "@/lib/cache"
-import { fingerprintInsight } from "@/lib/insight-fingerprint"
 import Anthropic from "@anthropic-ai/sdk"
 import { readFile } from "fs/promises"
 import { join } from "path"
@@ -12,11 +11,9 @@ export const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000
 const anthropic = new Anthropic()
 
 export type RawInsight = {
-  type: "positive" | "warning" | "critical" | "action"
+  type: "action"
   title: string
-  action?: string
   detail?: string
-  fingerprint?: string
 }
 
 export type LeadAnalysisVerdict = "good" | "neutral" | "concerning"
@@ -34,7 +31,7 @@ export type LeadAnalysis = {
 }
 
 export type CachedProposal = {
-  insights: RawInsight[]
+  proposals: RawInsight[]
   leadAnalysis: LeadAnalysis | null
   hasKnowledge: boolean
   generatedAt: string
@@ -71,7 +68,7 @@ export type ProposalInput = {
 }
 
 export type ProposalResult = {
-  insights: RawInsight[] // already feedback-filtered
+  proposals: RawInsight[]
   leadAnalysis: LeadAnalysis | null
   hasKnowledge: boolean
   generatedAt: string
@@ -80,29 +77,6 @@ export type ProposalResult = {
 
 export function proposalCacheKey(mondayItemId: string) {
   return `client_proposal:${mondayItemId}`
-}
-
-/**
- * Loads the set of fingerprints that should currently be hidden because
- * the manager already resolved them (done / skip / unsnoozed later).
- */
-export async function loadActiveFingerprints(clientId: string): Promise<Set<string>> {
-  const supabase = await createAdminClient()
-  const { data } = await supabase
-    .from("proposal_feedback")
-    .select("insight_fingerprint, status, snoozed_until")
-    .eq("client_id", clientId)
-
-  const now = Date.now()
-  const fingerprints = new Set<string>()
-  for (const row of data ?? []) {
-    const isActive =
-      row.status === "done" ||
-      row.status === "skip" ||
-      (row.status === "later" && row.snoozed_until && new Date(row.snoozed_until).getTime() > now)
-    if (isActive) fingerprints.add(row.insight_fingerprint)
-  }
-  return fingerprints
 }
 
 async function loadKnowledgeFile(filename: string): Promise<string> {
@@ -138,15 +112,12 @@ export async function generateProposalForClient(
     .eq("monday_item_id", mondayItemId)
     .single()
 
-  // Cache hit path — feedback filter is reapplied at read time so changes
-  // to the feedback table take effect immediately.
+  // Cache hit path
   if (!force) {
     const cached = await readCache<CachedProposal>(proposalCacheKey(mondayItemId), PROPOSAL_TTL_MS)
     if (cached) {
-      const activeFingerprints = client ? await loadActiveFingerprints(client.id) : new Set<string>()
-      const insights = cached.insights.filter((i) => !i.fingerprint || !activeFingerprints.has(i.fingerprint))
       return {
-        insights,
+        proposals: cached.proposals,
         leadAnalysis: cached.leadAnalysis ?? null,
         hasKnowledge: cached.hasKnowledge,
         generatedAt: cached.generatedAt,
@@ -155,51 +126,19 @@ export async function generateProposalForClient(
     }
   }
 
-  // Cache miss / forced regen — load knowledge + feedback history,
-  // build the prompt, call Anthropic, fingerprint, cache, return.
+  // Cache miss / forced regen — load knowledge, build prompt, call Anthropic
   let knowledgeContext = ""
-  let feedbackHistoryText = ""
-  const activeFingerprints: Set<string> = new Set()
 
   if (client) {
-    const [knowledgeRes, feedbackRes] = await Promise.all([
-      supabase
-        .from("client_knowledge")
-        .select("title, content, source")
-        .eq("client_id", client.id),
-      supabase
-        .from("proposal_feedback")
-        .select("insight_fingerprint, insight_type, insight_title, insight_action, status, feedback_note, snoozed_until, created_at")
-        .eq("client_id", client.id)
-        .order("created_at", { ascending: false })
-        .limit(30),
-    ])
+    const knowledgeRes = await supabase
+      .from("client_knowledge")
+      .select("title, content, source")
+      .eq("client_id", client.id)
 
     if (knowledgeRes.data && knowledgeRes.data.length > 0) {
       knowledgeContext = knowledgeRes.data
         .map((k) => `### ${k.title} (source: ${k.source})\n${k.content}`)
         .join("\n\n---\n\n")
-    }
-
-    const now = Date.now()
-    const historyLines: string[] = []
-    for (const row of feedbackRes.data ?? []) {
-      const isActive =
-        row.status === "done" ||
-        row.status === "skip" ||
-        (row.status === "later" && row.snoozed_until && new Date(row.snoozed_until).getTime() > now)
-      if (isActive) {
-        activeFingerprints.add(row.insight_fingerprint)
-      }
-
-      const date = row.created_at?.slice(0, 10) ?? ""
-      const tag = row.status.toUpperCase()
-      const note = row.feedback_note ? ` — note: "${row.feedback_note}"` : ""
-      historyLines.push(`- [${tag} ${date}] "${row.insight_title}"${row.insight_action ? ` → ${row.insight_action}` : ""}${note}`)
-    }
-
-    if (historyLines.length > 0) {
-      feedbackHistoryText = historyLines.join("\n")
     }
   }
 
@@ -208,16 +147,15 @@ export async function generateProposalForClient(
     loadKnowledgeFile("process.md"),
   ])
 
-  const systemPrompt = `You are a senior performance marketing strategist at Rocket Leads, a Dutch lead generation agency. You produce two things for each client: a Lead Analysis (current state) and an AI Optimisation Proposal (what to do).
+  const systemPrompt = `You are a senior performance marketing strategist at Rocket Leads, a Dutch lead generation agency. You produce two things:
 
-## Your role
-- **Lead Analysis** — judge how the client is doing right now in two dimensions: lead **quantity** (volume + CPL vs baseline) and lead **quality** (conversion + Monday update sentiment).
-- **AI Optimisation Proposal** — generate concrete actionable insights to improve performance.
-- Use client-specific context (kick-off notes, ICP, USPs, brand guidelines) to make everything highly personalized.
-- Reference Rocket Leads' proven frameworks and marketing angles.
+1. **Lead Analysis** — what is happening right now (observations only, no action items)
+2. **Optimisation Proposals** — concrete, specific actions a campaign manager can execute immediately
+
+These two sections must NEVER overlap. The Lead Analysis is the diagnosis. The Proposals are the prescription.
 
 ## Output format
-Return a SINGLE JSON OBJECT (not an array) with this exact shape:
+Return a SINGLE JSON OBJECT with this exact shape:
 
 {
   "leadAnalysis": {
@@ -225,106 +163,85 @@ Return a SINGLE JSON OBJECT (not an array) with this exact shape:
       "verdict": "good" | "neutral" | "concerning",
       "headline": "1-line summary with key numbers (max 80 chars)",
       "detail": "1-2 sentences explaining the trend vs baseline (7d vs 14d vs 30d)",
-      "patterns": ["optional bullet 1", "optional bullet 2"]
+      "patterns": ["optional bullet citing specific ad name + metric", "..."]
     },
     "quality": {
       "verdict": "good" | "neutral" | "concerning",
       "headline": "1-line summary of lead quality (max 80 chars)",
       "detail": "1-2 sentences about conversion + Monday update patterns",
-      "patterns": ["Photo 2 | Pricelist: 5/8 leads said 'geen budget'", "Photo 4: 3 leads progressed to deal"]
+      "patterns": ["Photo 2 | Pricelist: 5/8 leads said 'geen budget'", "..."]
     }
   },
-  "insights": [
+  "proposals": [
     {
-      "type": "positive" | "warning" | "critical" | "action",
-      "title": "observation with key numbers (max 60 chars)",
-      "action": "one concrete next step (max 60 chars)",
-      "detail": "optional 1-2 sentence why/context (hidden by default)"
+      "title": "Concrete action the CM must do — reference specific ad names, UTMs, or funnel elements (max 100 chars)",
+      "detail": "optional 1-2 sentence why/context with supporting data"
     }
   ]
 }
 
-### Lead Analysis rules
+## Lead Analysis rules
 
-**CRITICAL — Quantity is about COST EFFICIENCY, not volume.**
-- NEVER reference raw lead counts, volume drops, or volume increases. These are a function of ad budget — when spend goes down, leads go down. That tells us nothing about performance.
-- Volume changes can be caused by: budget reduction, campaign pause, ad pause, weekend/holiday effects, ad account issues. None of these are actionable signals about lead performance.
-- **The ONLY metrics that matter for quantity are CPL (cost per lead) and CPA (cost per appointment / booked call).** These normalise for budget and show real efficiency.
-- Compare current CPL/CPA (7d) against 14d and 30d baselines to detect efficiency trends.
+**Quantity = COST EFFICIENCY, not volume.**
+- NEVER reference raw lead counts or volume changes — those are a function of ad budget.
+- The ONLY metrics that matter: CPL (cost per lead) and CPA (cost per appointment).
+- Compare current CPL/CPA (7d) against 14d and 30d baselines.
+- ±25% change is normal Meta noise. Only flag changes ≥25%.
+- quantity.headline must lead with CPL/CPA numbers, not lead counts.
 
-**CRITICAL — 25% noise threshold for CPL/CPA changes.**
-Meta delivers fluctuates week-over-week due to auction dynamics, audience saturation, day-of-week effects, and creative rotation. Small changes are noise, not signal.
-- **CPL or CPA change of less than 25% (in either direction) is NORMAL NOISE — never flag as concerning, never generate an action insight about it.** Treat it as stable.
-- Only at **+25% or more INCREASE** in CPL or CPA versus the 14d/30d baseline does it become a real signal worth acting on.
-- A **−25% or more DECREASE** is a real win — a winning ad/angle worth iterating on.
-- This threshold applies to BOTH the Lead Analysis verdict AND the Optimisation Proposal insights. Do not waste a campaign manager's time with insights about ±15% CPL movements.
+**Quality = Monday update sentiment + conversion data.**
+- quality.verdict is primarily based on Monday update sentiment per UTM.
+- quality.patterns should cite SPECIFIC ad name / UTM with counts or quotes from updates.
 
-- **quantity.verdict**:
-  - "good" = CPL OR CPA improved by 25%+ vs baseline, OR both stable within ±25% AND in healthy absolute range for the industry
-  - "concerning" = CPL OR CPA degraded by 25%+ vs baseline
-  - "neutral" = both CPL and CPA within ±25% of baseline (normal Meta noise — no action needed)
-- **quantity.headline** must lead with CPL or CPA numbers, not lead counts. Example: "CPL stable at €11.42 (within noise vs €11.30 baseline)"
-- **quantity.detail** explains the cost efficiency trend AND explicitly states whether it crosses the 25% threshold. NEVER explain it via volume.
-- **quantity.patterns** if used should cite per-ad CPL/CPA where the change crosses ±25%. Skip ads within the noise band.
+**Lead Analysis patterns should surface observations like:**
+- "Creative fatigue on [ad name] — top spender (€X, 30d) with CTR declining from X% to Y%"
+- "[Ad name] via UTM [X]: 5/8 leads said 'geen budget'"
+- "[Ad name] is the 30d winner: lowest CPL at €X with positive feedback"
 
-**Insight (optimisation proposal) implications of the 25% rule:**
-- DO NOT generate "CPL trending up" or "CPA worsening" insights unless the change is ≥25%
-- DO NOT generate insights about lead volume drops or rises — ever
-- DO generate insights when CPL/CPA cross the 25% threshold, AND when Monday update sentiment reveals quality issues regardless of cost trends
+## Optimisation Proposals rules
 
-**Quality rules:**
-- **quality.verdict** = primarily based on Monday update sentiment per UTM. Ignore raw conversion rate if Monday updates tell a different story (e.g. high conversion to appointment but all updates say "geen budget" → concerning). Monday updates are MORE important than the raw conversion %.
-- **quality.patterns** should cite the SPECIFIC ad name / UTM and a count or quote from the updates. 2-4 bullets max. This is the most useful part — make every bullet a concrete observation.
+**CRITICAL — Proposals are CONCRETE ACTIONS, not observations.**
+A campaign manager should be able to read each proposal and know EXACTLY what to do, without any additional context.
 
-**Both sections:**
-- Headlines must include numbers or specific entities. No vague statements like "leads are okay".
-- Skip "patterns" arrays entirely if there are no meaningful patterns to cite.
+**Every proposal MUST reference specific entities:**
+- Which ad(s) to pause → by name, with spend + leads data
+- Which ad(s) to iterate on → by name, explaining WHY (winner based on what metric/feedback)
+- Which creative direction to take → "same hook/angle as [ad name], 3-5 new variants"
+- Which funnel element to change → "add budget qualification question to leadform" or "switch from leadform to landing page"
 
-### Insights (optimisation proposal) rules
-A campaign manager reads this for 100 clients. Be extremely concise. Two scannable lines per insight: what's wrong + what to do. No fluff, no filler, no repeating numbers from the title.
+**Types of valid proposals:**
+1. **Pause specific ads:** "Pause [ad name] — €X spent, 0 leads in 7d" or "Pause [ad name] — cheap leads but 4/6 'niet geïnteresseerd'"
+2. **Iterate on winners:** "Create 3-5 new variants of [ad name] — winning hook with €X CPL over 30d, replicate angle with fresh creative"
+3. **Refresh fatigued ads:** "Refresh [ad name] — top spender (€X/30d) but CTR dropped from X% to Y%, creative fatigue"
+4. **Funnel changes:** "Add budget question to leadform — 40% of leads via [UTM] have no budget" or "Switch [campaign] from leadform to landing page — high volume but low quality"
+5. **Targeting/angle shifts:** "Test new angle for next refresh — current [hook type] exhausted across 3 creatives, try [specific alternative angle]"
+6. **Reallocate budget:** "Shift budget from [ad X] to [ad Y] — Y has 3x better CPL within same ad set"
 
-Return 2-4 insights max, only the highest-impact ones. Skip "everything looks fine" insights.
+**NEVER generate:**
+- Vague proposals like "pause underperforming ads" (WHICH ads?)
+- "Test new creatives" without saying what direction
+- "Improve lead quality" without saying HOW
+- Anything that restates the Lead Analysis without adding an action
+- Budget increase recommendations (clients have fixed €1k-3k/month budgets)
+- "Keep running" or "maintain current approach" — winners decay, always iterate
 
-## Important rules
-- All currency in EUR (€), dot as decimal separator
-- Write in English
-- Title = observation with numbers. Action = specific fix. Detail = optional why/context.
-- Reference specific marketing angles and ad names when relevant
-- Dynamic ads (name contains "Dynamic"/"DYN") have multiple variants — don't flag low ad count
-- Consider board type: onboarding clients need different advice than active clients
+Return 2-4 proposals max. Each one must be executable without further research.
 
-## CRITICAL — Lead feedback from Monday updates is your most important signal
-The "Lead Feedback from Monday Updates" section contains qualitative notes from the account manager / appointment setter about each lead, grouped by ad UTM. This is the ground truth on lead quality — use it as the primary lens for optimization.
+## Data priority
+1. **Ad-level performance data** — which specific ads are spending, performing, or underperforming
+2. **Monday update feedback per UTM** — ground truth on lead quality per ad
+3. **KPI trends** (7d vs 14d vs 30d) — supporting context for cost efficiency
 
-You MUST:
-- For every ad/UTM with feedback, scan the updates for recurring negative patterns: "geen budget", "niet geïnteresseerd", "verkeerde doelgroep", "geen beslisser", "niet gekwalificeerd", "te duur", no-shows, etc.
-- Match ad UTM → ad name → ad performance (CTR, CPC, spend) to identify the SPECIFIC ad that brings bad leads. Name it.
-- An ad with low CPL but bad feedback is a LOSER (cheap unqualified leads), not a winner. Pause it or rework the targeting/copy.
-- An ad with high CPL but strong feedback (qualified leads, good budget fit, deals) is a WINNER — iterate on it (see below).
-- Conversely, scan for positive patterns: "goede lead", "afspraak ingeplant", "interesse", "deal" — those ads should be iterated on.
-- Always cite the specific UTM and 1-2 example feedback snippets in the detail field. Don't generalize.
+## Monday update feedback
+Scan updates for patterns per UTM:
+- Negative: "geen budget", "niet geïnteresseerd", "verkeerde doelgroep", "geen beslisser", "te duur", no-shows
+- Positive: "goede lead", "afspraak ingeplant", "interesse", "deal"
+- Match UTM → ad name → performance to identify which specific ad brings good/bad leads
 
-## CRITICAL — How to handle winning ads
-When an ad performs well (low CPL + good lead feedback, OR strong CTR + qualified leads), NEVER recommend "keep it running" — that is passive and useless advice. Winners decay due to ad fatigue. The right move is ALWAYS to iterate:
-- Recommend creating new iterations / variations of the winning creative for the next refresh
-- Same angle, hook, visual style, or AI avatar talking-head — but with fresh executions (new copy variants, new B-roll, new CTAs, new openers)
-- The goal is to push more creatives IN THIS WINNING DIRECTION to maintain low CPL and prevent fatigue
-- Be specific: "Iterate on [ad name] — same [hook/angle/format], 3-5 new variants for next refresh"
-
-## CRITICAL — Rocket Leads budget reality
-- Clients have FIXED, LIMITED ad budgets — typically €1,000–€3,000/month total. This is their ceiling.
-- Clients almost NEVER scale budget. Budget is not a flexible lever.
-- DO NOT recommend "scale budget", "increase spend", "scale this ad set", "scale up", or any variation.
-- The lever is ALWAYS: better creatives, iterations on winners, new angles, refined targeting, better landing pages, improved follow-up — NOT more spend.
-- The only time budget can shift is REALLOCATION between ad sets within the same fixed total — never net new spend.
-
-## CRITICAL — Learn from past feedback for this client
-The "Past feedback history" section in the user prompt shows previous insights and how the campaign manager handled them:
-- **DONE** = the manager actioned this. The advice was good and useful — generate similar high-quality recommendations.
-- **LATER** = good advice but wrong timing. The manager will revisit it; don't repeat it now.
-- **SKIP** = bad or irrelevant advice. The manager actively rejected it. NEVER generate the same kind of recommendation again. If multiple SKIPs share a pattern (e.g. always rejecting "test new audience" suggestions), avoid that pattern entirely for this client.
-
-Use this history as the most personalized signal you have about what works for THIS specific client. A pattern of SKIPs is a stronger negative signal than any framework rule.
+## Rocket Leads budget reality
+- Fixed budgets: €1,000–€3,000/month. NEVER recommend more spend.
+- Lever is ALWAYS: better creatives, new angles, funnel changes — NOT more budget.
+- Budget can only be REALLOCATED within the same total.
 
 ## Rocket Leads Campaign Framework
 ${campaignsKnowledge.slice(0, 3000)}
@@ -362,14 +279,11 @@ ${input.leadFeedback && input.leadFeedback.length > 0
     : "No lead feedback available."}
 
 ## Client Knowledge Base
-${knowledgeContext || "No client-specific knowledge available yet. Generate insights based on KPI data only."}
-
-## Past feedback history (manager verdicts on previous proposals)
-${feedbackHistoryText || "No feedback history yet."}
+${knowledgeContext || "No client-specific knowledge available yet. Generate proposals based on KPI + ad data only."}
 
 ---
 
-Generate the analysis. Return ONLY the JSON object (with leadAnalysis + insights), no markdown wrapping.`
+Generate the analysis and proposals. Return ONLY the JSON object (with leadAnalysis + proposals), no markdown wrapping.`
 
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
@@ -388,10 +302,8 @@ Generate the analysis. Return ONLY the JSON object (with leadAnalysis + insights
 
   let parsed: {
     leadAnalysis?: LeadAnalysis
-    insights?: Array<{
-      type: "positive" | "warning" | "critical" | "action"
+    proposals?: Array<{
       title: string
-      action?: string
       detail?: string
     }>
   }
@@ -401,29 +313,24 @@ Generate the analysis. Return ONLY the JSON object (with leadAnalysis + insights
     throw new Error(`Failed to parse AI response JSON: ${e instanceof Error ? e.message : String(e)}`)
   }
 
-  const rawInsights = parsed.insights ?? []
+  const proposals: RawInsight[] = (parsed.proposals ?? []).map((p) => ({
+    type: "action" as const,
+    title: p.title,
+    detail: p.detail,
+  }))
   const leadAnalysis = parsed.leadAnalysis ?? null
-
-  const fingerprinted: RawInsight[] = await Promise.all(
-    rawInsights.map(async (i) => ({
-      ...i,
-      fingerprint: await fingerprintInsight({ type: i.type, title: i.title }),
-    })),
-  )
 
   const generatedAt = new Date().toISOString()
   const cachePayload: CachedProposal = {
-    insights: fingerprinted,
+    proposals,
     leadAnalysis,
     hasKnowledge: !!knowledgeContext,
     generatedAt,
   }
   void writeCache(proposalCacheKey(mondayItemId), cachePayload)
 
-  const insights = fingerprinted.filter((i) => !activeFingerprints.has(i.fingerprint!))
-
   return {
-    insights,
+    proposals,
     leadAnalysis,
     hasKnowledge: !!knowledgeContext,
     generatedAt,

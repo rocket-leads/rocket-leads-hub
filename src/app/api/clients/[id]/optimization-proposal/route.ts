@@ -1,9 +1,7 @@
 import { auth } from "@/lib/auth"
-import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import {
   generateProposalForClient,
-  loadActiveFingerprints,
   proposalCacheKey,
   PROPOSAL_TTL_MS,
   type CachedProposal,
@@ -13,9 +11,8 @@ import { NextRequest, NextResponse } from "next/server"
 
 /**
  * GET — fast cached read. Returns the most recent cached proposal for
- * this client (within TTL) with the per-client feedback filter applied.
- * Returns { cached: false } if there's no cache yet — the UI then falls
- * back to a full POST.
+ * this client (within TTL). Returns { cached: false } if there's no
+ * cache yet — the UI then falls back to a full POST.
  */
 export async function GET(
   _req: NextRequest,
@@ -28,19 +25,9 @@ export async function GET(
   const cached = await readCache<CachedProposal>(proposalCacheKey(mondayItemId), PROPOSAL_TTL_MS)
   if (!cached) return NextResponse.json({ cached: false })
 
-  const supabase = await createAdminClient()
-  const { data: client } = await supabase
-    .from("clients")
-    .select("id")
-    .eq("monday_item_id", mondayItemId)
-    .single()
-
-  const activeFingerprints = client ? await loadActiveFingerprints(client.id) : new Set<string>()
-  const insights = cached.insights.filter((i) => !i.fingerprint || !activeFingerprints.has(i.fingerprint))
-
   return NextResponse.json({
     cached: true,
-    insights,
+    proposals: cached.proposals,
     leadAnalysis: cached.leadAnalysis ?? null,
     hasKnowledge: cached.hasKnowledge,
     generatedAt: cached.generatedAt,
@@ -64,7 +51,7 @@ export async function POST(
       { force },
     )
     return NextResponse.json({
-      insights: result.insights,
+      proposals: result.proposals,
       leadAnalysis: result.leadAnalysis,
       hasKnowledge: result.hasKnowledge,
       generatedAt: result.generatedAt,
