@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/refresh-proposals",
-      "schedule": "0 4 * * *"
+      "schedule": "0 4,16 * * *"
     },
     {
       "path": "/api/cron/refresh-watchlist-context",

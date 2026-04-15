@@ -12,7 +12,7 @@ import type { UtmFeedback } from "@/app/api/clients/[id]/lead-feedback/route"
 // fresh analyses ready when they start the day. Triggered by Vercel cron.
 export const maxDuration = 300 // 5 minutes (Vercel Pro)
 
-const BATCH_SIZE = 4 // concurrent Anthropic calls — keep modest to avoid rate limits
+const BATCH_SIZE = 3 // concurrent Anthropic calls — keep modest to avoid rate + timeout limits
 
 function fmt(d: Date) {
   return d.toISOString().slice(0, 10)
@@ -172,14 +172,18 @@ export async function GET(req: NextRequest) {
 
   try {
     const { current } = await fetchBothBoards()
-    // Only refresh proposals for clients on the "current" (live) board
-    // who have either Meta data or a Monday board to source from.
-    const eligible = current.filter((c) => c.metaAdAccountId || c.clientBoardId)
+    // Only refresh proposals for Live clients with Meta or Monday data
+    const eligible = current.filter((c) => c.campaignStatus === "Live" && (c.metaAdAccountId || c.clientBoardId))
     totalClients = eligible.length
 
     const { map: selectedByClient } = await loadSelectedCampaigns(eligible)
 
+    const TIME_BUDGET_MS = 270_000 // stop at 4.5 min to leave room for final response
+
     for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
+      // Time budget check — stop before we hit the Vercel 5 min limit
+      if (Date.now() - startTime > TIME_BUDGET_MS) break
+
       const batch = eligible.slice(i, i + BATCH_SIZE)
       const results = await Promise.allSettled(
         batch.map(async (client) => {

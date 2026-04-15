@@ -298,13 +298,14 @@ export async function fetchMetaTargets(startDate: string, endDate: string): Prom
   return result
 }
 
-/** Finance — Stripe revenue with NB/MRR split */
+/** Finance — Stripe revenue with NB/MRR split, excl. VAT, incl. credit notes */
 export async function fetchFinance(startDate: string, endDate: string): Promise<FinanceOverview> {
   const stripe = await getStripe()
   const startTs = Math.floor(new Date(startDate).getTime() / 1000)
   const endTs = Math.floor(new Date(endDate + "T23:59:59Z").getTime() / 1000)
   const now = Math.floor(Date.now() / 1000)
 
+  // Fetch all invoices in period (including credit notes which have negative amounts)
   const allInvoices: Stripe.Invoice[] = []
   let hasMore = true
   let startingAfter: string | undefined
@@ -320,6 +321,26 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     }
     hasMore = page.has_more
     startingAfter = page.data[page.data.length - 1]?.id
+  }
+
+  // Also fetch credit notes in the period — these are separate objects in Stripe
+  const creditNotes: Stripe.CreditNote[] = []
+  hasMore = true
+  startingAfter = undefined
+  while (hasMore) {
+    const page: Stripe.ApiList<Stripe.CreditNote> = await stripe.creditNotes.list({
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    })
+    for (const cn of page.data) {
+      if (cn.created >= startTs && cn.created <= endTs) {
+        creditNotes.push(cn)
+      }
+    }
+    hasMore = page.has_more
+    startingAfter = page.data[page.data.length - 1]?.id
+    // Stop early if we've gone past our date range
+    if (page.data.length > 0 && page.data[page.data.length - 1].created < startTs) break
   }
 
   // For each unique customer: check if they had an invoice before the period (= MRR), else New Business
@@ -351,6 +372,8 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
 
     for (const line of inv.lines?.data ?? []) {
       const isAd = isAdBudget(line.description)
+      // Use amount EXCLUDING tax. line.amount is pre-tax in Stripe.
+      // For the invoice-level total, use subtotal (excl tax) not total (incl tax).
       const amount = line.amount / 100
       addToBreakdown(total, amount, isPaid, isOverdue, isOpen)
       if (isAd) {
@@ -359,6 +382,53 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
         addToBreakdown(serviceFee, amount, isPaid, isOverdue, isOpen)
         if (isNew) addToBreakdown(serviceFeeNewBusiness, amount, isPaid, isOverdue, isOpen)
         else addToBreakdown(serviceFeeMrr, amount, isPaid, isOverdue, isOpen)
+      }
+    }
+  }
+
+  // Apply credit notes as negative amounts (subtract from totals)
+  for (const cn of creditNotes) {
+    // Credit note amount is positive in Stripe — we subtract it
+    // Use subtotal (excl tax) to stay consistent with invoice amounts
+    const creditAmount = (cn.subtotal ?? cn.amount) / 100
+    const custId = cn.customer as string
+    const isNew = isNewBusinessCustomer.get(custId) ?? false
+
+    // Determine category from credit note line items
+    let serviceFeeCredit = 0
+    let adBudgetCredit = 0
+    for (const line of cn.lines?.data ?? []) {
+      const lineAmount = line.amount / 100
+      if (isAdBudget(line.description)) {
+        adBudgetCredit += lineAmount
+      } else {
+        serviceFeeCredit += lineAmount
+      }
+    }
+
+    // If no line items, attribute entire credit to service fee
+    if (cn.lines?.data?.length === 0 || (!serviceFeeCredit && !adBudgetCredit)) {
+      serviceFeeCredit = creditAmount
+    }
+
+    // Subtract from breakdowns (credit notes reduce invoiced + cashCollected)
+    const isPaid = cn.status === "issued" || cn.status === "void"
+    total.invoiced -= creditAmount
+    if (isPaid) total.cashCollected -= creditAmount
+
+    if (adBudgetCredit > 0) {
+      adBudget.invoiced -= adBudgetCredit
+      if (isPaid) adBudget.cashCollected -= adBudgetCredit
+    }
+    if (serviceFeeCredit > 0) {
+      serviceFee.invoiced -= serviceFeeCredit
+      if (isPaid) serviceFee.cashCollected -= serviceFeeCredit
+      if (isNew) {
+        serviceFeeNewBusiness.invoiced -= serviceFeeCredit
+        if (isPaid) serviceFeeNewBusiness.cashCollected -= serviceFeeCredit
+      } else {
+        serviceFeeMrr.invoiced -= serviceFeeCredit
+        if (isPaid) serviceFeeMrr.cashCollected -= serviceFeeCredit
       }
     }
   }
@@ -408,29 +478,25 @@ export async function fetchCosts(year: number, month: number): Promise<CostData>
       priorMonths.push({ year: py, month: pm, key: monthKey(py, pm) })
     }
 
-    // Read costs + revenue from sheet for these months
+    // Read costs from sheet for these months
     const priorData = priorMonths.map((p) => {
       const c = getMonthCol(p.key)
       return c >= 0 ? readMonth(c) : { invoicedRevenue: 0, teamCosts: 0, marketingCosts: 0 }
     })
 
-    // Sum across the 3 prior months
-    const sumTeam = priorData.reduce((s, d) => s + d.teamCosts, 0)
-    const sumMarketing = priorData.reduce((s, d) => s + d.marketingCosts, 0)
-    const sumRevenue = priorData.reduce((s, d) => s + d.invoicedRevenue, 0)
+    // Use simple 3-month average (costs are mostly fixed, not revenue-dependent)
+    const validTeam = priorData.filter((d) => d.teamCosts > 0)
+    const validMarketing = priorData.filter((d) => d.marketingCosts > 0)
 
-    const teamRatio = sumRevenue > 0 ? sumTeam / sumRevenue : 0
-    const marketingRatio = sumRevenue > 0 ? sumMarketing / sumRevenue : 0
-
-    // Apply ratio to current month's invoiced revenue from the same sheet
-    const currentRevenue = current.invoicedRevenue
+    const avgTeam = validTeam.length > 0 ? validTeam.reduce((s, d) => s + d.teamCosts, 0) / validTeam.length : 0
+    const avgMarketing = validMarketing.length > 0 ? validMarketing.reduce((s, d) => s + d.marketingCosts, 0) / validMarketing.length : 0
 
     if (teamCosts === 0) {
-      teamCosts = Math.round(currentRevenue * teamRatio)
+      teamCosts = Math.round(avgTeam)
       estimated.teamCosts = true
     }
     if (marketingCosts === 0) {
-      marketingCosts = Math.round(currentRevenue * marketingRatio)
+      marketingCosts = Math.round(avgMarketing)
       estimated.marketingCosts = true
     }
   }
