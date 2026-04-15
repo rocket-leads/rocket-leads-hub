@@ -10,8 +10,10 @@ export const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000
 
 const anthropic = new Anthropic()
 
+export type ProposalCategory = "creative" | "pause" | "angle" | "funnel" | "other"
+
 export type RawInsight = {
-  type: "action"
+  category: ProposalCategory
   title: string
   detail?: string
 }
@@ -174,11 +176,19 @@ Return a SINGLE JSON OBJECT with this exact shape:
   },
   "proposals": [
     {
+      "category": "creative" | "pause" | "angle" | "funnel" | "other",
       "title": "Concrete action the CM must do — reference specific ad names, UTMs, or funnel elements (max 100 chars)",
-      "detail": "optional 1-2 sentence why/context with supporting data"
+      "detail": "1-2 sentences with DATA backing: cite actual numbers (leads, appointments, CPL, CTR, spend, timeframe). Example: '14d data: 12 leads, 6 appointments (50% conversion). This hook converts effectively — create variants with same angle, fresh execution.'"
     }
   ]
 }
+
+### Proposal categories
+- **"creative"** = create new ad variants, refresh creatives, iterate on a winner. Examples: "Create 3-5 new variants of [ad name]", "Refresh creative on [ad name] — ad fatigue"
+- **"pause"** = pause or turn off specific ads. Examples: "Pause [ad name] — €120 spent, 0 leads"
+- **"angle"** = test a new marketing angle or direction. Examples: "Test subsidie-angle for next refresh", "Try different ICP targeting"
+- **"funnel"** = change the funnel: leadform questions, landing page, follow-up sequence. Examples: "Add budget question to leadform", "Switch from leadform to landing page"
+- **"other"** = anything that doesn't fit the above (reallocation, targeting changes, etc.)
 
 ## Lead Analysis rules
 
@@ -210,12 +220,18 @@ A campaign manager should be able to read each proposal and know EXACTLY what to
 - Which funnel element to change → "add budget qualification question to leadform" or "switch from leadform to landing page"
 
 **Types of valid proposals:**
-1. **Pause specific ads:** "Pause [ad name] — €X spent, 0 leads in 7d" or "Pause [ad name] — cheap leads but 4/6 'niet geïnteresseerd'"
-2. **Iterate on winners:** "Create 3-5 new variants of [ad name] — winning hook with €X CPL over 30d, replicate angle with fresh creative"
-3. **Refresh fatigued ads:** "Refresh [ad name] — top spender (€X/30d) but CTR dropped from X% to Y%, creative fatigue"
-4. **Funnel changes:** "Add budget question to leadform — 40% of leads via [UTM] have no budget" or "Switch [campaign] from leadform to landing page — high volume but low quality"
-5. **Targeting/angle shifts:** "Test new angle for next refresh — current [hook type] exhausted across 3 creatives, try [specific alternative angle]"
-6. **Reallocate budget:** "Shift budget from [ad X] to [ad Y] — Y has 3x better CPL within same ad set"
+1. **Pause specific ads (category: "pause"):** "Pause [ad name] — €X spent, 0 leads in 7d" or "Pause [ad name] — cheap leads but 4/6 'niet geïnteresseerd'"
+2. **Iterate on winners (category: "creative"):** "Create 3-5 new variants of [ad name] — winning hook with €X CPL over 30d"
+3. **Refresh fatigued ads (category: "creative"):** "Refresh [ad name] — top spender (€X/30d) but CTR dropped from X% to Y%"
+4. **Funnel changes (category: "funnel"):** "Add budget question to leadform — 40% of leads via [UTM] have no budget"
+5. **New angle (category: "angle"):** "Test [specific angle] for next refresh — current [hook type] exhausted across 3 creatives"
+6. **Reallocate budget (category: "other"):** "Shift budget from [ad X] to [ad Y] — Y has 3x better CPL"
+
+**Detail field MUST include supporting data:**
+- Always cite the actual numbers: "14d: 8 leads, 4 appointments (50% rate). 30d: €280 spend, €35 CPL."
+- For winners: cite the timeframe, leads, appointments/deals, CPL
+- For losers: cite spend vs leads, negative feedback quotes
+- For creative fatigue: cite CTR trend with actual numbers and timeframe
 
 **NEVER generate:**
 - Vague proposals like "pause underperforming ads" (WHICH ads?)
@@ -225,7 +241,14 @@ A campaign manager should be able to read each proposal and know EXACTLY what to
 - Budget increase recommendations (clients have fixed €1k-3k/month budgets)
 - "Keep running" or "maintain current approach" — winners decay, always iterate
 
-Return 2-4 proposals max. Each one must be executable without further research.
+Return 2-4 proposals max (NEVER more than 4). Each one must be executable without further research.
+
+## CRITICAL — Time awareness for client context
+Client knowledge base entries and Monday updates may contain information from months ago. Apply these time rules:
+- **Client REQUESTS (e.g. "client wants X direction", "client asked for Y"):** Only act on requests from the LAST 30 DAYS. Older requests are stale — a client's priorities change. If you reference an older request, explicitly note the date and that it may no longer be current.
+- **General insights about lead quality, ICP, market dynamics:** Valid within 90 days. Older than that, treat as background context only.
+- **Performance data and KPIs:** Only use the data from the KPI sections (7d/14d/30d). Never cite old performance numbers from knowledge base entries.
+- **When citing any context from knowledge/updates, ALWAYS include the date** so the CM can judge recency. Say "per April 2 update:" not just "client mentioned".
 
 ## Data priority
 1. **Ad-level performance data** — which specific ads are spending, performing, or underperforming
@@ -303,6 +326,7 @@ Generate the analysis and proposals. Return ONLY the JSON object (with leadAnaly
   let parsed: {
     leadAnalysis?: LeadAnalysis
     proposals?: Array<{
+      category?: string
       title: string
       detail?: string
     }>
@@ -313,8 +337,9 @@ Generate the analysis and proposals. Return ONLY the JSON object (with leadAnaly
     throw new Error(`Failed to parse AI response JSON: ${e instanceof Error ? e.message : String(e)}`)
   }
 
-  const proposals: RawInsight[] = (parsed.proposals ?? []).map((p) => ({
-    type: "action" as const,
+  const validCategories = new Set(["creative", "pause", "angle", "funnel", "other"])
+  const proposals: RawInsight[] = (parsed.proposals ?? []).slice(0, 4).map((p) => ({
+    category: (validCategories.has(p.category ?? "") ? p.category : "other") as ProposalCategory,
     title: p.title,
     detail: p.detail,
   }))
