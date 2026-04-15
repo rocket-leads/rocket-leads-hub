@@ -28,7 +28,8 @@ Elk klantbord heet "Template NL / BE 3.0" en bestaat uit vijf vaste secties. Lea
 | Advertentiekosten | Nummer (€) | Wekelijkse ad spend (ingevuld in sectie Advertentiekosten) |
 | Aantal leads | Nummer | Aantal leads in de periode |
 | Kost per lead | Formule | Advertentiekosten ÷ Aantal leads (automatisch berekend) |
-| Date deal | Datum | Datum waarop de deal gesloten werd |
+| Date deal | Datum | Datum waarop de deal gesloten werd (kolom ID: `date3`). **BELANGRIJK:** deals in het Targets dashboard worden geteld op basis van deze datum, niet op basis van afspraakdatum. Dit voorkomt dat deals aan de verkeerde maand worden toegewezen. |
+| Country | Status | Land van de lead: NL, BE, DE. Kolom ID: `color`. Gebruikt in het Targets dashboard voor per-land filtering. |
 
 ---
 

@@ -24,13 +24,24 @@ function proRata(monthlyTarget: number, range: DateRange): number {
   return (monthlyTarget * days) / daysInMonth
 }
 
-function pct(val: number, target: number): number {
-  return target > 0 ? (val / target) * 100 : 0
-}
-
 interface Insight {
   type: "positive" | "warning" | "critical"
   text: string
+}
+
+// ─── The 4 root-cause pillars ───────────────────────────────────────────────
+// 1. CBC (creatives, targeting, ad testing)
+// 2. Qualification Rate (ICP, messaging, lead form filtering)
+// 3. Show-up Rate (reminders, lead warmth, scheduling)
+// 4. Conversion Rate (sales quality, proposition, closability)
+//
+// CPD and ROAS are OUTCOMES of these 4. Never cite CPD/ROAS as a root cause.
+
+interface PillarStatus {
+  name: string
+  onTrack: boolean
+  value: string
+  target: string
 }
 
 function generateInsights(
@@ -50,70 +61,83 @@ function generateInsights(
   const prCalls = Math.round(proRata(t.calls, range))
   const prTaken = Math.round(proRata(t.takenCalls, range))
   const prDeals = Math.round(proRata(t.deals, range))
-  const prRevenue = Math.round(proRata(t.revenue, range))
 
   const cbc = safeDivide(spend, calls)
-  const cqc = safeDivide(spend, qualified)
-  const ctc = safeDivide(spend, taken)
-  const cpd = safeDivide(spend, deals)
-  const cbcOnTrack = t.cbc > 0 && cbc <= t.cbc
-  const cqcOnTrack = t.cqc > 0 && cqc <= t.cqc
-  const ctcOnTrack = t.ctc > 0 && ctc <= t.ctc
-  const callsOnTrack = prCalls > 0 && calls >= prCalls
-  const takenOnTrack = prTaken > 0 && taken >= prTaken
   const qualRate = safeDivide(qualified, calls)
   const showUpRate = safeDivide(taken, qualified)
+  const conversionRate = safeDivide(deals, taken)
   const roas = safeDivide(revenue, spend)
   const avgDealValue = deals > 0 ? revenue / deals : 0
   const expectedDealValue = t.deals > 0 && t.revenue > 0 ? t.revenue / t.deals : 0
+  const callsOnTrack = prCalls > 0 && calls >= prCalls
 
-  // ── COMBINED: Front-of-funnel vs back-of-funnel analysis ──
-  // Only surface the interesting conclusion, not every individual metric
-  if (cbcOnTrack && cqcOnTrack && !takenOnTrack && showUpRate < 0.8 && qualified > 3) {
-    // Front is fine, back is broken by show-up rate
-    insights.push({
-      type: "warning",
-      text: `CBC (${formatCurrencyDecimal(cbc)}) and CQC (${formatCurrencyDecimal(cqc)}) are on track — front of funnel is efficient. But show-up rate of ${formatPercent(showUpRate)} is pulling taken calls off track (${taken}/${prTaken}). The bottleneck is no-shows, not lead generation.`,
-    })
-  } else if (t.cbc > 0 && cbc > t.cbc && t.ctc > 0 && ctcOnTrack && showUpRate >= 0.8) {
-    // CBC/CQC off track but compensated by high show-up
+  // Evaluate the 4 pillars
+  const cbcOnTrack = t.cbc > 0 ? cbc <= t.cbc : true
+  const qualOnTrack = calls > 3 ? qualRate >= 0.75 : true
+  const showUpOnTrack = qualified > 3 ? showUpRate >= 0.80 : true
+  const convOnTrack = taken > 3 ? conversionRate >= 0.30 : true
+
+  const pillars: PillarStatus[] = [
+    { name: "CBC", onTrack: cbcOnTrack, value: formatCurrencyDecimal(cbc), target: t.cbc > 0 ? formatCurrencyDecimal(t.cbc) : "—" },
+    { name: "Qualification Rate", onTrack: qualOnTrack, value: formatPercent(qualRate), target: "75%" },
+    { name: "Show-up Rate", onTrack: showUpOnTrack, value: formatPercent(showUpRate), target: "80%" },
+    { name: "Conversion Rate", onTrack: convOnTrack, value: formatPercent(conversionRate), target: "30%" },
+  ]
+
+  const offTrack = pillars.filter((p) => !p.onTrack)
+  const onTrack = pillars.filter((p) => p.onTrack)
+
+  // ── Combined pillar insight ──
+  if (offTrack.length === 0) {
     insights.push({
       type: "positive",
-      text: `CBC (${formatCurrencyDecimal(cbc)}) and CQC (${formatCurrencyDecimal(cqc)}) exceed targets, but a strong show-up rate of ${formatPercent(showUpRate)} compensates — CTC stays on track at ${formatCurrencyDecimal(ctc)}. No action needed on costs.`,
+      text: `All 4 pillars on track: ${onTrack.map((p) => `${p.name} (${p.value})`).join(", ")}. Funnel is healthy.`,
     })
-  } else if (cbcOnTrack && !callsOnTrack && prCalls > 0) {
-    // Efficient but not enough volume = spend issue
+  } else if (offTrack.length <= 2) {
+    const offStr = offTrack.map((p) => `${p.name} at ${p.value} (target: ${p.target})`).join(" and ")
+    const onStr = onTrack.map((p) => `${p.name} (${p.value})`).join(", ")
+    insights.push({
+      type: "warning",
+      text: `${offStr} ${offTrack.length === 1 ? "is" : "are"} off track. ${onTrack.length > 0 ? `On track: ${onStr}.` : ""}`,
+    })
+  } else {
+    const offStr = offTrack.map((p) => `${p.name} ${p.value}`).join(", ")
+    insights.push({
+      type: "critical",
+      text: `${offTrack.length} of 4 pillars off track (${offStr}). Funnel needs attention across multiple stages.`,
+    })
+  }
+
+  // ── Ad spend diagnostic (only when CBC is fine but volume is behind) ──
+  if (cbcOnTrack && !callsOnTrack && prCalls > 0) {
     const neededSpend = t.cbc * prCalls
     insights.push({
       type: "warning",
-      text: `Cost efficiency is on track (CBC ${formatCurrencyDecimal(cbc)}, CQC ${formatCurrencyDecimal(cqc)}), but booked calls are behind (${calls}/${prCalls}). Ad spend of ${formatCurrencyDecimal(spend)} is too low — need ~${formatCurrencyDecimal(neededSpend)} to hit call target at current efficiency.`,
-    })
-  } else if (t.cbc > 0 && cbc > t.cbc && !ctcOnTrack) {
-    // Everything is off
-    insights.push({
-      type: "critical",
-      text: `Cost efficiency is off track across the funnel: CBC ${formatCurrencyDecimal(cbc)} (target ${formatCurrencyDecimal(t.cbc)}), CTC ${formatCurrencyDecimal(ctc)} (target ${formatCurrencyDecimal(t.ctc)}). Creatives need a refresh.`,
+      text: `CBC is efficient (${formatCurrencyDecimal(cbc)}) but booked calls are behind (${calls}/${prCalls}). Ad spend of ${formatCurrencyDecimal(spend)} is the bottleneck — need ~${formatCurrencyDecimal(neededSpend)} at current efficiency.`,
     })
   }
 
-  // ── MISALIGNMENT: Deal value vs revenue target ──
+  // ── Deal value misalignment ──
   if (deals > 0 && expectedDealValue > 0 && avgDealValue < expectedDealValue * 0.8) {
-    const projectedRevenue = Math.round(prDeals * avgDealValue)
     insights.push({
       type: "warning",
-      text: `Avg deal value is ${formatCurrency(avgDealValue)} vs ${formatCurrency(expectedDealValue)} expected. Even hitting all ${t.deals} deals this month would only reach ~${formatCurrency(t.deals * avgDealValue)} — short of the ${formatCurrency(t.revenue)} revenue target.`,
+      text: `Avg deal value is ${formatCurrency(avgDealValue)} vs ${formatCurrency(expectedDealValue)} expected. Even at ${t.deals} deals/month, revenue would only reach ~${formatCurrency(t.deals * avgDealValue)} — below the ${formatCurrency(t.revenue)} target.`,
     })
   }
 
-  // ── ROAS (the ultimate metric) ──
+  // ── ROAS — trace back to pillars, never cite CPD as root cause ──
   if (spend > 0 && deals > 0) {
     if (roas >= 4) {
-      insights.push({ type: "positive", text: `ROAS at ${roas.toFixed(1)}× (target: 4×). Spend is converting efficiently into revenue.` })
+      insights.push({ type: "positive", text: `ROAS at ${roas.toFixed(1)}× (target: 4×).` })
     } else {
-      const mainDriver = cpd > (t.cpd || Infinity)
-        ? `high CPD (${formatCurrencyDecimal(cpd)})`
-        : `low avg deal value (${formatCurrency(avgDealValue)})`
-      insights.push({ type: roas < 3 ? "critical" : "warning", text: `ROAS at ${roas.toFixed(1)}× — below the 4× target. Primary driver: ${mainDriver}.` })
+      // Find the root causes from the 4 pillars
+      const rootCauses = offTrack.map((p) => p.name)
+      const rootStr = rootCauses.length > 0
+        ? `Driven by: ${rootCauses.join(", ").toLowerCase()}.`
+        : avgDealValue < expectedDealValue * 0.8
+        ? "Driven by: low avg deal value."
+        : "Review all 4 funnel pillars."
+      insights.push({ type: roas < 3 ? "critical" : "warning", text: `ROAS at ${roas.toFixed(1)}× — below the 4× target. ${rootStr}` })
     }
   }
 
@@ -129,53 +153,56 @@ function generateProposals(insights: Insight[], m: MondayTargetsData, meta: Meta
   const deals = m.deals
   const revenue = m.closedRevenue
   const cbc = safeDivide(spend, calls)
-  const cpd = safeDivide(spend, deals)
+  const qualRate = safeDivide(qualified, calls)
   const showUpRate = safeDivide(taken, qualified)
-  const roas = safeDivide(revenue, spend)
+  const conversionRate = safeDivide(deals, taken)
   const avgDealValue = deals > 0 ? revenue / deals : 0
   const expectedDealValue = t.deals > 0 && t.revenue > 0 ? t.revenue / t.deals : 0
   const prCalls = t.calls ? Math.round(proRata(t.calls, range)) : 0
   const noShows = qualified - taken
 
-  const hasSpendIssue = insights.some((i) => i.text.includes("too low"))
-  const hasNoShowIssue = insights.some((i) => i.text.includes("no-shows"))
-  const hasCostIssue = insights.some((i) => i.text.includes("Creatives need a refresh"))
-  const hasDealValueIssue = insights.some((i) => i.text.includes("Avg deal value"))
-  const hasRoasIssue = insights.some((i) => i.text.includes("ROAS") && i.type !== "positive")
-  const isCompensated = insights.some((i) => i.text.includes("No action needed on costs"))
+  const cbcOffTrack = t.cbc > 0 && cbc > t.cbc
+  const qualOffTrack = calls > 3 && qualRate < 0.75
+  const showUpOffTrack = qualified > 3 && showUpRate < 0.80
+  const convOffTrack = taken > 3 && conversionRate < 0.30
+  const spendIssue = !cbcOffTrack && prCalls > 0 && calls < prCalls
+  const dealValueIssue = deals > 0 && expectedDealValue > 0 && avgDealValue < expectedDealValue * 0.8
 
-  if (hasSpendIssue) {
+  // ── Pillar 1: CBC ──
+  if (cbcOffTrack) {
+    proposals.push(`CBC is ${formatCurrencyDecimal(cbc)} (target: ${formatCurrencyDecimal(t.cbc)}). Iterate on creatives — test new hooks, angles, and formats. Focus on the top-performing ad direction and create 3-5 fresh variations.`)
+  }
+
+  // ── Spend issue (CBC fine but volume behind) ──
+  if (spendIssue) {
     const neededSpend = t.cbc * prCalls
-    proposals.push(`Scale ad spend from ${formatCurrencyDecimal(spend)} to ~${formatCurrencyDecimal(neededSpend)}. Efficiency is proven (CBC ${formatCurrencyDecimal(cbc)}) — the only thing between us and ${prCalls} booked calls is budget.`)
+    proposals.push(`Scale ad spend from ${formatCurrencyDecimal(spend)} to ~${formatCurrencyDecimal(neededSpend)}. CBC is proven at ${formatCurrencyDecimal(cbc)} — the only gap between ${calls} and ${prCalls} booked calls is budget.`)
   }
 
-  if (hasNoShowIssue) {
-    proposals.push(`${noShows} qualified leads didn't show up (${formatPercent(showUpRate)} show-up vs 80% target). WhatsApp reminders are already in place — audit their delivery and timing. Consider adding a personal confirmation call or SMS 2h before the appointment.`)
+  // ── Pillar 2: Qualification Rate ──
+  if (qualOffTrack) {
+    proposals.push(`Qualification rate is ${formatPercent(qualRate)} (target: 75%) — we're reaching people who don't match the ICP. Refine ad messaging to speak directly to the ideal customer profile, use industry-specific angles, and add qualifying questions to the lead form.`)
   }
 
-  if (hasCostIssue) {
-    proposals.push(`Cost per acquisition is above target across the funnel. Launch 3-5 new creative variations this week — iterate on the best performing angle with fresh hooks and B-roll.`)
+  // ── Pillar 3: Show-up Rate ──
+  if (showUpOffTrack) {
+    proposals.push(`Show-up rate is ${formatPercent(showUpRate)} — ${noShows} no-shows from ${qualified} qualified leads. WhatsApp reminders are already active — audit their delivery timing and open rates. Consider a personal confirmation call 2h before the appointment, and check if leads can book too far ahead (reducing urgency).`)
   }
 
-  if (isCompensated) {
-    proposals.push(`Front-of-funnel costs are elevated but the strong show-up rate keeps CTC on track. No creative changes needed — protect the show-up rate as the key lever.`)
+  // ── Pillar 4: Conversion Rate ──
+  if (convOffTrack) {
+    proposals.push(`Conversion rate is ${formatPercent(conversionRate)} (target: 30%) — ${taken} taken calls resulted in only ${deals} deals. Review: are leads ICP-fit and closeable? Is the sales proposition strong enough? Evaluate the sales team's close technique and whether pricing/packaging needs adjustment.`)
   }
 
-  if (hasDealValueIssue) {
-    proposals.push(`Revenue gap is driven by deal value (${formatCurrency(avgDealValue)} vs ${formatCurrency(expectedDealValue)} expected), not deal volume. Steer sales towards HTO packages or review discount practices to close the gap.`)
+  // ── Deal value issue ──
+  if (dealValueIssue) {
+    proposals.push(`Avg deal value is ${formatCurrency(avgDealValue)} vs ${formatCurrency(expectedDealValue)} expected. Revenue target can't be hit on volume alone. Steer sales towards HTO packages or review discounting practices.`)
   }
 
-  if (hasRoasIssue && !hasDealValueIssue && !hasCostIssue) {
-    proposals.push(`ROAS is ${roas.toFixed(1)}× (target: 4×). With CPD at ${formatCurrencyDecimal(cpd)} and deal value at ${formatCurrency(avgDealValue)}, the fastest fix is improving creative performance to bring CPD down.`)
-  }
-
-  if (insights.every((i) => i.type === "positive")) {
-    proposals.push("All metrics are on track. Iterate on winning creatives — same direction, fresh executions to stay ahead of ad fatigue.")
+  // ── Everything on track ──
+  if (!cbcOffTrack && !qualOffTrack && !showUpOffTrack && !convOffTrack && !spendIssue && !dealValueIssue) {
+    proposals.push("All 4 pillars and deal value are on track. Iterate on winning creatives — same direction, fresh executions to stay ahead of ad fatigue.")
     proposals.push("Test a secondary marketing angle alongside the winner to build pipeline diversification for next month.")
-  }
-
-  if (proposals.length === 0) {
-    proposals.push("No immediate action required. Continue monitoring funnel performance.")
   }
 
   return proposals
@@ -187,7 +214,7 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className="bg-card rounded-lg p-4 border border-border/40">
           <Skeleton className="h-4 w-32 mb-3" />
-          <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}</div>
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}</div>
         </div>
         <div className="bg-card rounded-lg p-4 border border-border/40">
           <Skeleton className="h-4 w-40 mb-3" />
@@ -197,9 +224,7 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
     )
   }
 
-  if (!monday || !meta || !targets) {
-    return null
-  }
+  if (!monday || !meta || !targets) return null
 
   const insights = generateInsights(monday, meta, targets, range)
   const proposals = generateProposals(insights, monday, meta, targets, range)
@@ -215,7 +240,7 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
           <Lightbulb className="h-3.5 w-3.5 text-muted-foreground" />
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Key Insights</h3>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {insights.map((insight, i) => (
             <div key={i} className="flex items-start gap-2">
               <span className={`h-1.5 w-1.5 rounded-full mt-1.5 shrink-0 ${dotColor(insight.type)}`} />
@@ -234,7 +259,7 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
           <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Optimisation Proposal</h3>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {proposals.map((proposal, i) => (
             <div key={i} className="flex items-start gap-2">
               <span className="text-xs text-muted-foreground/60 font-mono shrink-0">{i + 1}.</span>

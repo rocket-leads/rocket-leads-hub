@@ -191,6 +191,10 @@ Framing is wanneer je aan het begin van een gesprek een bepaald kader zet om het
 | Gemiddelde sales cycle | 30 dagen (date created → date deal) |
 | Salesgesprekken per week | ~30 |
 
+**Targets dashboard benchmark:** Conversion Rate (deals / taken calls) target is ≥30%. Dit is één van de 4 pilaren die CPD en ROAS bepalen. Bij lage conversion rate: review lead kwaliteit (ICP fit), sales propositie, close technique. Lage conversion + goede qualification rate = sales issue, niet marketing issue.
+
+**Deal value:** Revenue target / deals target = verwachte gemiddelde deal value. Als actuele deal value structureel lager is (bijv. €2.200 vs €3.000 verwacht), kan het revenue target niet gehaald worden zelfs met genoeg deals. Stuur sales naar HTO packages of review kortingspraktijken.
+
 **Uitdaging:** Veel concurrentie en vergelijking in de markt. Rocket Leads zit iets duurder maar levert meer kwaliteit. Close rate opkrikken is een doelstelling voor de komende maanden.
 
 ---

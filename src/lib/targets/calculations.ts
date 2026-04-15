@@ -180,6 +180,16 @@ export function calculateKpiGroups(
           error: mondayError,
         },
         {
+          label: "Conversion Rate",
+          value: safeDivide(deals, takenCalls),
+          formatted: formatPercent(safeDivide(deals, takenCalls)),
+          target: 0.30,
+          targetFormatted: `${formatPercent(safeDivide(deals, takenCalls))} of 30%`,
+          variant: "volume",
+          isLoading: mondayLoading,
+          error: mondayError,
+        },
+        {
           label: "ROAS",
           value: safeDivide(closedRevenue, spend),
           formatted: formatMultiplier(safeDivide(closedRevenue, spend)),

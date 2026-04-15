@@ -156,10 +156,38 @@ Zie **team-structure.md** voor de volledige teamstructuur, rollen, capaciteit en
 - ~100 actieve klanten
 - Winstmarge: huidig ~25%, target 60%+
 
+**Interne Marketing/Sales funnel (Rocket Leads zelf — Targets dashboard):**
+1. Ad Spend → 2. Booked Calls → 3. Qualified Calls → 4. Taken Calls → 5. Deals → 6. Revenue
+
+**4 pilaren die CPD en ROAS bepalen:**
+CPD en ROAS zijn OUTCOMES, nooit root causes. Ze worden bepaald door:
+
+| Pilaar | Benchmark | Off track = oorzaak | Optimalisatie lever |
+|---|---|---|---|
+| CBC (Cost per Booked Call) | Instelbaar (Settings) | Creatives, targeting, ad testing | Nieuwe hooks, angles, formats |
+| Qualification Rate | ≥75% | ICP mismatch, messaging | Branche-specifieke ads, lead form filters |
+| Show-up Rate | ≥80% | Reminders, lead warmth, scheduling | WhatsApp delivery audit, confirmation calls, booking window |
+| Conversion Rate | ≥30% | Sales/proposition, lead fit | Sales coaching, pricing, ICP fit |
+
+**ROAS target:** ≥4× (groen), <4× (rood)
+
+**Belangrijk:** Als CBC on track is maar booked calls off track → het probleem is ad spend (te laag), niet efficiency.
+Als CBC/CQC off track zijn maar show-up rate hoog → CTC kan on track zijn, geen actie nodig op creatives.
+
+**Pro-rata targets:** Alle volume targets (booked calls, qualified, taken, deals, revenue) worden pro-rata berekend op basis van de huidige dag in de maand. Halverwege de maand = target/2.
+
+**Deal value misalignment:** Avg deal value wordt vergeleken met verwachte deal value (revenue target / deals target). Als deal value structureel lager is, kan het revenue target niet gehaald worden zelfs met genoeg deals.
+
+**Finance (Targets dashboard):**
+- Revenue: Stripe invoiced (Service Fee split in New Business vs MRR, Ad Budget apart)
+- Costs: Google Sheets Profits tab (Team costs rij 19, Marketing costs rij 25, HQ costs vast €5.000)
+- Als kosten nog niet ingevuld: estimated op basis van 3-maands gemiddelde ratio (kosten/revenue)
+- Profit: Revenue (cash collected) minus costs
+
 **Klant KPI's (rapportage funnel):**
 1. Ad budget → 2. Aantal leads → 3. Cost per lead → 4. Qualification rate
 → 5. Booked appointments → 6. Cost per appointment → 7. Taken appointments
-→ 8. Show-up rate → 9. Conversion rate → 10. Cost per deal → 11. ROI
+→ 8. Show-up rate → 9. Conversion rate → 10. Cost per deal → 11. ROAS
 
 ---
 

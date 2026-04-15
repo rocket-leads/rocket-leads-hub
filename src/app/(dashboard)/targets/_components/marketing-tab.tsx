@@ -216,7 +216,7 @@ export function MarketingTab() {
       {ratiosGroup && (
         <div>
           <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2 px-1">{ratiosGroup.title}</h2>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             {ratiosGroup.kpis.map((kpi) => (
               <KpiCard key={kpi.label} {...kpi} />
             ))}

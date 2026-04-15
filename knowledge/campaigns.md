@@ -1,6 +1,6 @@
 # Rocket Leads — Campaigns & Marketing Frameworks
 
-> **Last updated:** 2026-04-04 05:30 CET
+> **Last updated:** 2026-04-15 CET
 > Dit document beschrijft alle campagne frameworks, marketing angles, ad formats, scripts, landingspagina's en testing methodieken van Rocket Leads. Gebruik dit als referentie voor AI agents die campagne deliverables genereren en voor campagnemanagers.
 
 ---
@@ -168,6 +168,68 @@ Conversie-statistieken meten of het opvolgproces werkt, niet of de leads kwalita
 - **AI Optimisation Proposal** = wat moeten we doen? — concrete acties
 
 De Lead Analysis informeert de Optimisation Proposal: een "concerning" quality verdict op een specifieke ad zou moeten leiden tot een actie-insight om die ad te pauzeren of te herwerken. Maar de Lead Analysis zelf bevat nooit acties — die horen in de Proposal.
+
+---
+
+## Klant Feedback Interpretatie — Niet Blind Vertrouwen
+
+Klanten geven regelmatig feedback via Trengo (WhatsApp/email) en Monday updates. Deze feedback is waardevol maar moet altijd door onze eigen ervaring gefilterd worden. We nemen feedback serieus maar maken nooit blindelings aanpassingen.
+
+### Veelvoorkomende klantklachten en de juiste interpretatie
+
+| Klant zegt | Werkelijke oorzaak | Optimalisatie actie |
+|---|---|---|
+| "Leads nemen niet op" | Follow-up timing issue, NIET campagne-probleem | Andere beltijden proberen, WhatsApp reminder sequence toevoegen, ochtend vs avond testen |
+| "Leads hebben geen budget" | Echt kwalificatie-issue | Budget-vraag toevoegen aan leadformulier, targeting aanpassen |
+| "Leads zijn niet geïnteresseerd" | Te brede targeting OF te trage opvolging | Checken welke ads (per UTM) de slechte leads opleveren, angle-mismatch of follow-up snelheid |
+| "Kwaliteit is slecht" | Vaag — altijd doorvragen | Welke UTM? Welke ads? Wat % is daadwerkelijk slecht? Niet actie nemen op vage klacht |
+| "Er komen te weinig leads" | Budget-gerelateerd (vast budget) | Niet ons probleem als CPL goed is — volume = functie van budget. Wel kijken of CPL te hoog is |
+| "Ik zie geen resultaten" | Verwachtingsmanagement | Wekelijkse rapportage tonen, concrete cijfers delen, eventueel evaluatie call plannen |
+
+### Tijdsgevoeligheid van klant context
+
+- **Klant requests (< 30 dagen):** Actueel en direct relevant. Meenemen in optimalisatie.
+- **Klant insights over kwaliteit (< 90 dagen):** Bruikbaar als achtergrond. Nog relevant maar kan veranderd zijn.
+- **Oude requests (> 90 dagen):** Alleen als achtergrondcontext, NOOIT als directe aanleiding voor actie. Klantprioriteiten veranderen.
+- **Bij elke verwijzing naar klant context altijd de datum vermelden**, zodat de CM kan inschatten hoe actueel het is.
+
+---
+
+## Optimisation Proposal: Concrete Actie Categorieën
+
+Elke optimalisatie-aanbeveling valt in een van deze 5 categorieën. Elke aanbeveling MOET specifiek zijn met ad-namen, cijfers en een concreet plan.
+
+### 1. Creative (🎨) — Nieuwe varianten of refresh
+- **Wanneer:** Winnende ad gevonden (lage CPL + goede feedback), of bestaande creative vertoont fatigue (CTR daalt)
+- **Wat:** 3-5 nieuwe varianten in dezelfde richting. Zelfde hook/angle/format, verse uitvoering (nieuwe openers, andere B-roll, nieuwe CTA's)
+- **Altijd specifiek:** "Itereer op [ad naam] — €25 CPL, 14 leads (30d). Maak 3 varianten met zelfde hook, nieuwe visuals"
+
+### 2. Pause (⏸) — Specifieke ads uitzetten
+- **Wanneer:** Ad heeft hoge spend zonder resultaat, of goedkope leads maar slechte kwaliteit
+- **Wat:** Pauzeer de specifieke ad, schuif budget naar winner
+- **Altijd met data:** "Pauzeer [ad naam] — €154 spend, 2 leads = €77 CPL (30d), 3x boven account gemiddelde"
+
+### 3. Angle (🧭) — Nieuwe marketing angle testen
+- **Wanneer:** Huidige angle uitgewerkt (meerdere creatives getest, allemaal boven target CPL), of branche-specifieke seizoenseffecten
+- **Wat:** Concreet nieuwe angle voorstellen op basis van branche-framework
+- **Altijd specifiek:** "Test subsidie-angle — huidige 3 creatives allen boven €50 CPL, angle is uitgewerkt"
+
+### 4. Funnel (🎚) — Formulier, landingspagina of opvolging aanpassen
+- **Wanneer:** Lead quality issues die niet door creative changes opgelost worden (veel "geen budget", hoge no-show rate)
+- **Wat:** Leadform vragen aanpassen, overstappen van leadform naar landingspagina (of vice versa), reminder-flow toevoegen
+- **Altijd met reden:** "Voeg budgetvraag toe aan leadform — 5/8 leads via [UTM] hebben 'geen budget'"
+
+### 5. Other (🔧) — Reallocatie, targeting, overig
+- **Wanneer:** Budget verdeling suboptimaal, of targeting-issue geïdentificeerd
+- **Wat:** Budget verschuiven tussen ads/adsets, targeting aanpassen
+- **Altijd met vergelijking:** "Verschuif budget van [ad X] (€77 CPL) naar [ad Y] (€25 CPL)"
+
+### Hard Numbers Regel
+
+**Elke aanbeveling MOET harde cijfers bevatten:**
+- ❌ "Ad presteert goed" → ✅ "Ad heeft €25 CPL, 14 leads, 4 afspraken (30d)"
+- ❌ "Slechte efficiency" → ✅ "€154 spend, 2 leads = €77 CPL — 3x boven gemiddelde"
+- ❌ "Creative fatigue" → ✅ "CTR gedaald van 2.1% naar 0.8% over 30d bij €280 spend"
 
 ---
 
@@ -907,6 +969,41 @@ Het kiezen van de juiste marketing angle is de belangrijkste stap. Hieronder het
 **Wanneer nieuwe angle:** als meerdere creatives op dezelfde invalshoek niet werken én lead feedback geen kwaliteitsproblemen aantoont.
 
 **Bij winnende ad:** nooit "laten lopen" — direct itereren. Een winnende ad is een signaal om te verdubbelen met nieuwe varianten, niet een rustpunt.
+
+---
+
+## 4-Pilaren Optimalisatie Framework (Intern — Targets Dashboard)
+
+CPD (Cost per Deal) en ROAS zijn **outcomes**, nooit root causes. Bij diagnose altijd terugtraceren naar de 4 pilaren:
+
+### Pilaar 1: CBC (Cost per Booked Call)
+- **Benchmark:** instelbaar per maand in Settings
+- **Off track = oorzaak:** creatives presteren niet, targeting is te breed/smal
+- **Optimalisatie:** nieuwe hooks, angles, formats testen. Itereren op winnende richting. 3-5 nieuwe variaties per week.
+- **Let op:** als CBC on track is maar booked calls off track → het probleem is **ad spend** (te laag), niet creative performance
+
+### Pilaar 2: Qualification Rate (Qualified / Booked Calls)
+- **Benchmark:** ≥75%
+- **Off track = oorzaak:** we bereiken de verkeerde mensen (ICP mismatch), ad messaging sluit niet aan
+- **Optimalisatie:** branche-specifieke ads, betere invalshoeken die de ICP direct aanspreken, kwalificatievragen in lead form toevoegen (budget, tijdlijn, beslisser)
+- **Key insight:** lage qualification rate + lage CBC = goedkope maar verkeerde leads
+
+### Pilaar 3: Show-up Rate (Taken / Qualified Calls)
+- **Benchmark:** ≥80%
+- **Off track = oorzaak:** no-shows door gebrek aan urgentie, koude leads, scheduling issues
+- **Optimalisatie:** WhatsApp reminder delivery en timing auditen (zijn al actief — check of ze aankomen), persoonlijke bevestigingsbelletje 2u voor afspraak, booking window verkorten (niet te ver vooruit kunnen boeken)
+- **Let op:** als CBC/CQC off track zijn maar show-up rate ≥80% → CTC kan alsnog on track zijn. Geen actie nodig op creatives.
+
+### Pilaar 4: Conversion Rate (Deals / Taken Calls)
+- **Benchmark:** ≥30%
+- **Off track = oorzaak:** lead kwaliteit (ICP fit), sales propositie, close technique
+- **Optimalisatie:** lead kwaliteit reviewen (zijn ze closeable?), sales coaching, pricing/packaging aanpassen, HTO vs LTO mix evalueren
+- **Key insight:** lage conversion rate + goede qualification rate = sales issue, niet marketing issue
+
+### Misalignment Detection
+- **Deal value gap:** als gemiddelde deal value structureel lager is dan verwacht (revenue target / deals target), kan het revenue target niet gehaald worden zelfs met genoeg deals. Oplossing: sales sturen naar HTO, kortingspraktijken reviewen.
+- **Funnel compensatie:** pilaren compenseren elkaar. Hoge show-up rate compenseert hoge CBC. Lage CBC compenseert lage conversion rate. Altijd het eindresultaat (ROAS) als toets gebruiken.
+- **Spend vs efficiency:** als CBC on track is en booked calls off track → niet de creatives aanpassen maar ad spend verhogen. De efficiency is bewezen, het volume is de bottleneck.
 
 ---
 

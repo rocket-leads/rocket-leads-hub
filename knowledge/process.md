@@ -1,6 +1,6 @@
 # Rocket Leads — Process
 
-> **Last updated:** 2026-04-04 05:30 CET
+> **Last updated:** 2026-04-15 CET
 > Dit document beschrijft het volledige klantproces van Rocket Leads: van betaling tot offboarding. Gebruik dit als referentie voor AI agents, onboarding van teamleden, en procesoptimalisatie.
 
 ---
@@ -138,6 +138,27 @@ De campagnemanager kijkt **elke dag** naar alle accounts en ad sets.
 - Klanten krijgen **elke maand** nieuwe creatives en ad copy
 - Focus ligt op creatives — ad copy heeft minder impact dan de creative zelf
 
+### Watch List (Rocket Leads Hub)
+
+De Rocket Leads Hub heeft een **Watch List** die alle Live klanten automatisch categoriseert:
+- **Action Needed** — klanten met CPL/CPA stijging >25% of zero leads bij actieve spend
+- **Watch** — klanten met CPL/CPA stijging 10-25% (nog geen actie nodig, wel monitoren)
+- **Good Performance** — klanten met stabiele of dalende CPL/CPA
+
+De Watch List wordt verrijkt met:
+1. **Monday CRM updates** — lead feedback van setters/AM's (primaire kwaliteitssignaal)
+2. **Trengo conversaties** — recente klantcommunicatie (tevredenheid, klachten)
+3. **KPI data** — spend, leads, CPL, CPA trends (ondersteunend)
+
+**Insight kolom** toont de KPI-observatie ("CPL up 42%", "€695 spent, 0 leads").
+**AI Note kolom** toont de concrete actie als aanvulling (nooit herhaling): "Pauzeer [ad naam], test nieuwe angle met subsidie-hook".
+
+Per klant zijn er ook gedetailleerde **Lead Analysis** en **Optimisation Proposals** beschikbaar:
+- Lead Analysis = observatie (wat is er aan de hand)
+- Optimisation Proposals = concrete acties met ad-namen en cijfers
+
+De data wordt dagelijks gecached door een cron job zodat alles instant laadt.
+
 ---
 
 ## Fase 5: Klantcontact & Evaluatie
@@ -249,6 +270,9 @@ Dit principe wordt doorgevoerd in alles: de Hub, de automatiseringen, de tooling
 - Optimalisatie is **dagelijks** — niet wekelijks of maandelijks
 - Budget wordt maximaal **20% per dag** verhoogd
 - Bij offboarding krijgt de klant **niets mee** — geen campagnes, geen landingspagina's, geen creatives
+- **Deals worden geteld op "Date deal" (kolom `date3`)**, niet op afspraakdatum. Dit voorkomt dat deals aan de verkeerde maand worden toegewezen.
+- **Leads board (3762696870)** heeft een "Country" kolom (`color`) met waarden NL/BE/DE. Het Targets dashboard filtert hierop.
+- **Meta campagnes** worden per land gefilterd op basis van campagnenaam die "NL", "BE" of "DE" bevat.
 
 ---
 

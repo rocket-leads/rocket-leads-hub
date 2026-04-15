@@ -158,7 +158,13 @@ Rocket Leads draait op Meta Ads, Google Ads en TikTok Ads als advertentieplatfor
 
 ## Overige tools
 
-- **Rocket Leads Hub** — eigen dashboard/platform
+- **Rocket Leads Hub** (hub.rocketleads.com) — intern dashboard met:
+  - **Clients overzicht** — alle klanten met KPI's, health status, billing status
+  - **Watch List** — campagne performance monitor voor Live klanten. Categoriseert klanten in Action Needed / Watch / Good op basis van CPL/CPA trends. AI-verrijkt met Monday CRM updates + Trengo conversaties. Insight kolom (KPI observatie) + AI Note kolom (concrete actie aanbeveling)
+  - **Client detail pagina** — per klant: Lead Analysis (Quantity + Quality), AI Optimisation Proposals (concrete acties met ad-namen), KPI cards, UTM breakdown, ad performance, billing, Trengo communicatie
+  - **Targets dashboard** — agency-breed: delivery, finance, marketing insights
+  - Date ranges sluiten vandaag altijd uit (data tot gisteren)
+  - Dagelijkse cron genereert AI analyses voor alle klanten → instant laden
 - **Calendly** — klanten koppelen hun Calendly voor afspraakinplanning
 
 ---
