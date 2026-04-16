@@ -408,79 +408,75 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     }
   }
 
-  // Apply credit notes as negative amounts (subtract from totals)
-  // Credit notes must be attributed to the correct category (fee vs ad budget, NB vs MRR)
-  // by looking at the ORIGINAL invoice's line items when the credit note has no lines itself.
+  // Apply credit notes — only SAME-MONTH credits affect the totals.
+  // Cross-month credits (crediting an old invoice from a previous month) are tracked
+  // in details but do NOT reduce this month's revenue. This prevents admin cleanup
+  // of old invoices from dragging down the current month's performance.
   for (const cn of creditNotes) {
     const creditAmount = (cn.subtotal ?? cn.amount) / 100
     const custId = cn.customer as string
     const isNew = isNewBusinessCustomer.get(custId) ?? false
     const isPaid = cn.status === "issued" || cn.status === "void"
 
-    // Try to categorize from credit note's own line items first
+    // Determine if the original invoice is in the same period (same-month credit)
+    const invoiceId = typeof cn.invoice === "string" ? cn.invoice : cn.invoice?.id
+    const originalInv = invoiceId ? allInvoices.find((inv) => inv.id === invoiceId) : null
+    const isSameMonth = !!originalInv // original invoice is in allInvoices = same period
+
+    // Categorize: fee vs ad budget
     let serviceFeeCredit = 0
     let adBudgetCredit = 0
 
     if (cn.lines?.data && cn.lines.data.length > 0) {
       for (const line of cn.lines.data) {
         const lineAmount = line.amount / 100
-        if (isAdBudget(line.description)) {
-          adBudgetCredit += lineAmount
-        } else {
-          serviceFeeCredit += lineAmount
-        }
+        if (isAdBudget(line.description)) adBudgetCredit += lineAmount
+        else serviceFeeCredit += lineAmount
       }
-    } else {
-      // No line items on the credit note — look at the original invoice to determine category
-      const invoiceId = typeof cn.invoice === "string" ? cn.invoice : cn.invoice?.id
-      if (invoiceId) {
-        const originalInv = allInvoices.find((inv) => inv.id === invoiceId)
-        if (originalInv) {
-          // Use the original invoice's line item ratio to split the credit
-          let origFee = 0, origAd = 0
-          for (const line of originalInv.lines?.data ?? []) {
-            if (isAdBudget(line.description)) origAd += line.amount / 100
-            else origFee += line.amount / 100
-          }
-          const origTotal = origFee + origAd
-          if (origTotal > 0) {
-            serviceFeeCredit = creditAmount * (origFee / origTotal)
-            adBudgetCredit = creditAmount * (origAd / origTotal)
-          } else {
-            serviceFeeCredit = creditAmount
-          }
-        } else {
-          // Original invoice not in this period — default to service fee
-          serviceFeeCredit = creditAmount
-        }
+    } else if (originalInv) {
+      // Use the original invoice's line item ratio to split the credit
+      let origFee = 0, origAd = 0
+      for (const line of originalInv.lines?.data ?? []) {
+        if (isAdBudget(line.description)) origAd += line.amount / 100
+        else origFee += line.amount / 100
+      }
+      const origTotal = origFee + origAd
+      if (origTotal > 0) {
+        serviceFeeCredit = creditAmount * (origFee / origTotal)
+        adBudgetCredit = creditAmount * (origAd / origTotal)
       } else {
         serviceFeeCredit = creditAmount
       }
+    } else {
+      serviceFeeCredit = creditAmount
     }
 
-    // Subtract from breakdowns
-    total.invoiced -= creditAmount
-    if (isPaid) total.cashCollected -= creditAmount
+    // Only same-month credits affect the breakdowns
+    if (isSameMonth) {
+      total.invoiced -= creditAmount
+      if (isPaid) total.cashCollected -= creditAmount
 
-    if (adBudgetCredit > 0) {
-      adBudget.invoiced -= adBudgetCredit
-      if (isPaid) adBudget.cashCollected -= adBudgetCredit
-    }
-    if (serviceFeeCredit > 0) {
-      serviceFee.invoiced -= serviceFeeCredit
-      if (isPaid) serviceFee.cashCollected -= serviceFeeCredit
-      if (isNew) {
-        serviceFeeNewBusiness.invoiced -= serviceFeeCredit
-        if (isPaid) serviceFeeNewBusiness.cashCollected -= serviceFeeCredit
-      } else {
-        serviceFeeMrr.invoiced -= serviceFeeCredit
-        if (isPaid) serviceFeeMrr.cashCollected -= serviceFeeCredit
+      if (adBudgetCredit > 0) {
+        adBudget.invoiced -= adBudgetCredit
+        if (isPaid) adBudget.cashCollected -= adBudgetCredit
+      }
+      if (serviceFeeCredit > 0) {
+        serviceFee.invoiced -= serviceFeeCredit
+        if (isPaid) serviceFee.cashCollected -= serviceFeeCredit
+        if (isNew) {
+          serviceFeeNewBusiness.invoiced -= serviceFeeCredit
+          if (isPaid) serviceFeeNewBusiness.cashCollected -= serviceFeeCredit
+        } else {
+          serviceFeeMrr.invoiced -= serviceFeeCredit
+          if (isPaid) serviceFeeMrr.cashCollected -= serviceFeeCredit
+        }
       }
     }
 
-    // Add credit note to details as negative entries
+    // Always add to details (so they're visible in the drill-down modal)
     const cnDate = new Date(cn.created * 1000).toISOString().slice(0, 10)
     const cnCustomerName = customerNameCache.get(custId) || null
+    const creditStatus = isSameMonth ? "credit" as const : "credit_old" as const
     if (serviceFeeCredit > 0) {
       details.push({
         invoiceId: cn.id,
@@ -488,7 +484,7 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
         customerName: cnCustomerName,
         date: cnDate,
         amount: -serviceFeeCredit,
-        status: "credit",
+        status: creditStatus,
         category: "service_fee",
         subCategory: isNew ? "new_business" : "mrr",
       })
@@ -500,7 +496,7 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
         customerName: cnCustomerName,
         date: cnDate,
         amount: -adBudgetCredit,
-        status: "credit",
+        status: creditStatus,
         category: "ad_budget",
         subCategory: isNew ? "new_business" : "mrr",
       })

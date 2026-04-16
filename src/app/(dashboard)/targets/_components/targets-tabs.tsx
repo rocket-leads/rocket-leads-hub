@@ -1,12 +1,14 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { BarChart3, CreditCard, Users, Settings2 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { MarketingTab } from "./marketing-tab"
 import { FinanceTab } from "./finance-tab"
 import { DeliveryTab } from "./delivery-tab"
 import { SettingsTab } from "./settings-tab"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type Tab = {
   id: string
@@ -22,12 +24,20 @@ const TABS: Tab[] = [
   { id: "settings", label: "Settings", icon: Settings2, subtle: true },
 ]
 
-export function TargetsTabs() {
-  const [activeTab, setActiveTab] = useState("marketing")
+const VALID_TABS = new Set(TABS.map((t) => t.id))
+
+function TargetsTabsInner() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const tabParam = searchParams.get("tab") ?? ""
+  const activeTab = VALID_TABS.has(tabParam) ? tabParam : "marketing"
+
+  const setTab = (id: string) => {
+    router.replace(`/targets?tab=${id}`, { scroll: false })
+  }
 
   return (
     <div className="space-y-6">
-      {/* Tab bar */}
       <div className="flex items-center border-b border-border/40">
         <div className="flex items-center gap-0 flex-1">
           {TABS.filter((t) => !t.subtle).map(({ id, label, icon: Icon }) => (
@@ -38,7 +48,7 @@ export function TargetsTabs() {
                   ? "text-foreground"
                   : "text-muted-foreground/60 hover:text-foreground"
               }`}
-              onClick={() => setActiveTab(id)}
+              onClick={() => setTab(id)}
             >
               <Icon className={`h-4 w-4 transition-colors ${activeTab === id ? "text-primary" : ""}`} />
               {label}
@@ -48,8 +58,6 @@ export function TargetsTabs() {
             </button>
           ))}
         </div>
-
-        {/* Settings — right-aligned, subtle */}
         {TABS.filter((t) => t.subtle).map(({ id, icon: Icon }) => (
           <button
             key={id}
@@ -58,7 +66,7 @@ export function TargetsTabs() {
                 ? "text-foreground bg-muted/50"
                 : "text-muted-foreground/40 hover:text-foreground hover:bg-muted/50"
             }`}
-            onClick={() => setActiveTab(id)}
+            onClick={() => setTab(id)}
             title="Settings"
           >
             <Icon className="h-3.5 w-3.5" />
@@ -66,11 +74,26 @@ export function TargetsTabs() {
         ))}
       </div>
 
-      {/* Tab content */}
       {activeTab === "marketing" && <MarketingTab />}
       {activeTab === "finance" && <FinanceTab />}
       {activeTab === "delivery" && <DeliveryTab />}
       {activeTab === "settings" && <SettingsTab />}
     </div>
+  )
+}
+
+export function TargetsTabs() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <div className="flex items-center border-b border-border/40 h-[49px]" />
+        <div className="space-y-4">
+          <Skeleton className="h-20 w-full rounded-lg" />
+          <Skeleton className="h-40 w-full rounded-lg" />
+        </div>
+      </div>
+    }>
+      <TargetsTabsInner />
+    </Suspense>
   )
 }

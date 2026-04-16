@@ -111,7 +111,7 @@ export interface InvoiceDetail {
   customerName: string | null
   date: string
   amount: number
-  status: "paid" | "open" | "overdue" | "credit"
+  status: "paid" | "open" | "overdue" | "credit" | "credit_old"
   category: "service_fee" | "ad_budget"
   subCategory: "new_business" | "mrr"
 }

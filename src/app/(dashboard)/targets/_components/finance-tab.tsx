@@ -107,27 +107,34 @@ export function FinanceTab() {
       <div className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue — Service Fee</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {([
-            { label: "Invoiced", statusFilter: null, value: sf?.invoiced ?? null, formatted: formatCurrency(sf?.invoiced ?? 0), nbVal: formatCurrency(nb?.invoiced ?? 0), mrrVal: formatCurrency(mrr?.invoiced ?? 0) },
-            { label: "Cash Collected", statusFilter: "paid" as const, value: sf?.cashCollected ?? null, formatted: formatCurrency(sf?.cashCollected ?? 0), nbVal: formatCurrency(nb?.cashCollected ?? 0), mrrVal: formatCurrency(mrr?.cashCollected ?? 0) },
-            { label: "Open", statusFilter: "open" as const, value: sf?.open ?? null, formatted: formatCurrency(sf?.open ?? 0), nbVal: formatCurrency(nb?.open ?? 0), mrrVal: formatCurrency(mrr?.open ?? 0) },
-            { label: "Overdue", statusFilter: "overdue" as const, value: sf?.overdue ?? null, formatted: formatCurrency(sf?.overdue ?? 0), nbVal: formatCurrency(nb?.overdue ?? 0), mrrVal: formatCurrency(mrr?.overdue ?? 0) },
-          ]).map((col) => (
-            <div
-              key={col.label}
-              className="flex flex-col gap-1 cursor-pointer"
-              onClick={() => openDetail(
-                `Service Fee — ${col.label}`,
-                (d) => d.category === "service_fee" && (col.statusFilter === null || d.status === col.statusFilter || d.status === "credit"),
-              )}
-            >
-              <KpiCard label={col.label} value={col.value} formatted={col.formatted} variant="neutral" isLoading={loading} />
-              <div className="grid grid-cols-2 gap-1">
-                <SubCard label="New Biz" value={col.nbVal} loading={loading} />
-                <SubCard label="MRR" value={col.mrrVal} loading={loading} />
-              </div>
+          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee — Invoiced", (d) => d.category === "service_fee")}>
+            <KpiCard label="Invoiced" value={sf?.invoiced ?? null} formatted={formatCurrency(sf?.invoiced ?? 0)} variant="neutral" isLoading={loading} />
+            <div className="grid grid-cols-2 gap-1">
+              <SubCard label="New Biz" value={formatCurrency(nb?.invoiced ?? 0)} loading={loading} />
+              <SubCard label="MRR" value={formatCurrency(mrr?.invoiced ?? 0)} loading={loading} />
             </div>
-          ))}
+          </div>
+          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee — Cash Collected", (d) => d.category === "service_fee" && (d.status === "paid" || d.status === "credit" || d.status === "credit_old"))}>
+            <KpiCard label="Cash Collected" value={sf?.cashCollected ?? null} formatted={formatCurrency(sf?.cashCollected ?? 0)} variant="neutral" isLoading={loading} />
+            <div className="grid grid-cols-2 gap-1">
+              <SubCard label="New Biz" value={formatCurrency(nb?.cashCollected ?? 0)} loading={loading} />
+              <SubCard label="MRR" value={formatCurrency(mrr?.cashCollected ?? 0)} loading={loading} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee — Open", (d) => d.category === "service_fee" && d.status === "open")}>
+            <KpiCard label="Open" value={sf?.open ?? null} formatted={formatCurrency(sf?.open ?? 0)} variant="neutral" isLoading={loading} />
+            <div className="grid grid-cols-2 gap-1">
+              <SubCard label="New Biz" value={formatCurrency(nb?.open ?? 0)} loading={loading} />
+              <SubCard label="MRR" value={formatCurrency(mrr?.open ?? 0)} loading={loading} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee — Overdue", (d) => d.category === "service_fee" && d.status === "overdue")}>
+            <KpiCard label="Overdue" value={sf?.overdue ?? null} formatted={formatCurrency(sf?.overdue ?? 0)} variant="neutral" isLoading={loading} />
+            <div className="grid grid-cols-2 gap-1">
+              <SubCard label="New Biz" value={formatCurrency(nb?.overdue ?? 0)} loading={loading} />
+              <SubCard label="MRR" value={formatCurrency(mrr?.overdue ?? 0)} loading={loading} />
+            </div>
+          </div>
         </div>
       </div>
 

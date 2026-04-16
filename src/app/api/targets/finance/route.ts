@@ -26,10 +26,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "startDate and endDate required" }, { status: 400 })
   }
 
-  // Cache hit only for current calendar month (skip if cache is missing the details field)
+  // Cache hit only for current calendar month
+  // Skip cache if it doesn't have credit_old support (stale from before same-month/cross-month fix)
   if (isCurrentCalendarMonth(startDate, endDate)) {
     const cached = await readCache<FinanceOverview>("targets_finance")
-    if (cached && cached.details) {
+    const hasNewCreditLogic = cached?.details?.some((d) => d.status === "credit_old") ?? false
+    // Only use cache if it was built with the new credit logic, OR if there are no credits at all
+    const hasAnyCredits = cached?.details?.some((d) => d.status === "credit" || d.status === "credit_old") ?? false
+    if (cached && cached.details && (hasNewCreditLogic || !hasAnyCredits)) {
       return NextResponse.json(cached, {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
       })
