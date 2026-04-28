@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useMemo } from "react"
-import { startOfMonth, endOfMonth, subMonths, format } from "date-fns"
+import { startOfMonth, endOfMonth, subMonths, subDays, format } from "date-fns"
 import type { DateRange, QuickPreset } from "@/types/targets"
 
 export function useDateRange() {
@@ -15,6 +15,14 @@ export function useDateRange() {
     {
       label: "MTD",
       getRange: () => ({ startDate: startOfMonth(new Date()), endDate: new Date() }),
+    },
+    {
+      label: "Last 7 Days",
+      getRange: () => ({ startDate: subDays(new Date(), 6), endDate: new Date() }),
+    },
+    {
+      label: "Last 14 Days",
+      getRange: () => ({ startDate: subDays(new Date(), 13), endDate: new Date() }),
     },
     {
       label: "Last Month",
@@ -38,7 +46,12 @@ export function useDateRange() {
     setEndDate(e)
   }, [])
 
+  const setRange = useCallback((s: Date, e: Date) => {
+    setStartDate(s)
+    setEndDate(e)
+  }, [])
+
   const formatDate = useCallback((d: Date) => format(d, "yyyy-MM-dd"), [])
 
-  return { range, setStartDate, setEndDate, presets, applyPreset, formatDate }
+  return { range, setStartDate, setEndDate, setRange, presets, applyPreset, formatDate }
 }

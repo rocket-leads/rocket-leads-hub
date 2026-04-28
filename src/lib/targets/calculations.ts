@@ -14,6 +14,47 @@ function getProRataTarget(monthlyTarget: number, range: DateRange): number {
   return (monthlyTarget * days) / daysInMonth
 }
 
+/**
+ * Derive volume and ratio targets from the Settings inputs.
+ *
+ * Inputs (from Settings — Marketing/Sales): deals, revenue, cbc, cqc, ctc, cpd.
+ * Everything below is derived.
+ *
+ *   target ad spend = deals × cpd
+ *   target booked   = ad spend / cbc
+ *   target qualified = ad spend / cqc
+ *   target taken    = ad spend / ctc
+ *   qualification rate = cbc / cqc
+ *   show-up rate    = cqc / ctc
+ *   conversion rate = ctc / cpd
+ *   roas            = revenue / ad spend
+ */
+export interface DerivedTargets {
+  adSpend: number
+  calls: number
+  qualifiedCalls: number
+  takenCalls: number
+  qualRate: number
+  showUpRate: number
+  convRate: number
+  roas: number
+}
+
+export function deriveTargets(t: TargetsConfig | null | undefined): DerivedTargets {
+  if (!t) {
+    return { adSpend: 0, calls: 0, qualifiedCalls: 0, takenCalls: 0, qualRate: 0, showUpRate: 0, convRate: 0, roas: 0 }
+  }
+  const adSpend = t.deals > 0 && t.cpd > 0 ? t.deals * t.cpd : 0
+  const calls = adSpend > 0 && t.cbc > 0 ? adSpend / t.cbc : 0
+  const qualifiedCalls = adSpend > 0 && t.cqc > 0 ? adSpend / t.cqc : 0
+  const takenCalls = adSpend > 0 && t.ctc > 0 ? adSpend / t.ctc : 0
+  const qualRate = t.cbc > 0 && t.cqc > 0 ? t.cbc / t.cqc : 0
+  const showUpRate = t.cqc > 0 && t.ctc > 0 ? t.cqc / t.ctc : 0
+  const convRate = t.ctc > 0 && t.cpd > 0 ? t.ctc / t.cpd : 0
+  const roas = t.revenue > 0 && adSpend > 0 ? t.revenue / adSpend : 0
+  return { adSpend, calls, qualifiedCalls, takenCalls, qualRate, showUpRate, convRate, roas }
+}
+
 export function calculateKpiGroups(
   monday: MondayTargetsData | null,
   meta: MetaTargetsData | null,
@@ -33,11 +74,20 @@ export function calculateKpiGroups(
   const closedRevenue = monday?.closedRevenue ?? 0
 
   const t = targets ?? null
-  const prCalls = t ? Math.round(getProRataTarget(t.calls, range)) : undefined
-  const prQualified = t ? Math.round(getProRataTarget(t.qualifiedCalls, range)) : undefined
-  const prTaken = t ? Math.round(getProRataTarget(t.takenCalls, range)) : undefined
-  const prDeals = t ? Math.round(getProRataTarget(t.deals, range)) : undefined
-  const prRevenue = t ? Math.round(getProRataTarget(t.revenue, range)) : undefined
+  const derived = deriveTargets(t)
+
+  // Volume targets are derived (calls/qualified/taken) — only deals & revenue come straight from Settings.
+  const prCalls = derived.calls > 0 ? Math.round(getProRataTarget(derived.calls, range)) : undefined
+  const prQualified = derived.qualifiedCalls > 0 ? Math.round(getProRataTarget(derived.qualifiedCalls, range)) : undefined
+  const prTaken = derived.takenCalls > 0 ? Math.round(getProRataTarget(derived.takenCalls, range)) : undefined
+  const prDeals = t && t.deals > 0 ? Math.round(getProRataTarget(t.deals, range)) : undefined
+  const prRevenue = t && t.revenue > 0 ? Math.round(getProRataTarget(t.revenue, range)) : undefined
+
+  // Ratio targets derived from the cost ladder (cbc / cqc / ctc / cpd)
+  const qualRateTarget = derived.qualRate > 0 ? derived.qualRate : undefined
+  const showUpRateTarget = derived.showUpRate > 0 ? derived.showUpRate : undefined
+  const convRateTarget = derived.convRate > 0 ? derived.convRate : undefined
+  const roasTarget = derived.roas > 0 ? derived.roas : undefined
 
   return [
     {
@@ -163,8 +213,10 @@ export function calculateKpiGroups(
           label: "Qualification Rate",
           value: safeDivide(qualifiedCalls, calls),
           formatted: formatPercent(safeDivide(qualifiedCalls, calls)),
-          target: 0.75,
-          targetFormatted: `${formatPercent(safeDivide(qualifiedCalls, calls))} of 75%`,
+          target: qualRateTarget,
+          targetFormatted: qualRateTarget != null
+            ? `${formatPercent(safeDivide(qualifiedCalls, calls))} of ${formatPercent(qualRateTarget)}`
+            : undefined,
           variant: "volume",
           isLoading: mondayLoading,
           error: mondayError,
@@ -173,8 +225,10 @@ export function calculateKpiGroups(
           label: "Show-up Rate",
           value: safeDivide(takenCalls, qualifiedCalls),
           formatted: formatPercent(safeDivide(takenCalls, qualifiedCalls)),
-          target: 0.80,
-          targetFormatted: `${formatPercent(safeDivide(takenCalls, qualifiedCalls))} of 80%`,
+          target: showUpRateTarget,
+          targetFormatted: showUpRateTarget != null
+            ? `${formatPercent(safeDivide(takenCalls, qualifiedCalls))} of ${formatPercent(showUpRateTarget)}`
+            : undefined,
           variant: "volume",
           isLoading: mondayLoading,
           error: mondayError,
@@ -183,8 +237,10 @@ export function calculateKpiGroups(
           label: "Conversion Rate",
           value: safeDivide(deals, takenCalls),
           formatted: formatPercent(safeDivide(deals, takenCalls)),
-          target: 0.30,
-          targetFormatted: `${formatPercent(safeDivide(deals, takenCalls))} of 30%`,
+          target: convRateTarget,
+          targetFormatted: convRateTarget != null
+            ? `${formatPercent(safeDivide(deals, takenCalls))} of ${formatPercent(convRateTarget)}`
+            : undefined,
           variant: "volume",
           isLoading: mondayLoading,
           error: mondayError,
@@ -193,8 +249,10 @@ export function calculateKpiGroups(
           label: "ROAS",
           value: safeDivide(closedRevenue, spend),
           formatted: formatMultiplier(safeDivide(closedRevenue, spend)),
-          target: 4,
-          targetFormatted: `${formatMultiplier(safeDivide(closedRevenue, spend))} of 4.0×`,
+          target: roasTarget,
+          targetFormatted: roasTarget != null
+            ? `${formatMultiplier(safeDivide(closedRevenue, spend))} of ${formatMultiplier(roasTarget)}`
+            : undefined,
           variant: "volume",
           isLoading: mondayLoading || metaLoading,
           error: mondayError || metaError,

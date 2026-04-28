@@ -1,21 +1,17 @@
 // ─── Configurable targets ───
 
 export interface TargetsConfig {
-  // Marketing / Sales
-  calls: number
-  qualifiedCalls: number
-  takenCalls: number
+  // Marketing / Sales — volume targets for booked / qualified / taken calls are derived
+  // from (deals × cpd) ÷ {cbc, cqc, ctc}; ratios are derived from the cost ladder.
   deals: number
   revenue: number
   cbc: number
   cqc: number
   ctc: number
   cpd: number
-  // Finance
+  // Finance — net profit € and max total costs € are derived from serviceFeeRevenue × profitMargin
   serviceFeeRevenue: number
-  adBudgetRevenue: number
-  totalCosts: number
-  netProfit: number
+  teamCosts: number
   profitMargin: number // as decimal, e.g. 0.30 = 30%
   // Delivery
   mrr: number
@@ -40,6 +36,21 @@ export interface MondayTargetsData {
   totalItems: number
   weekly: WeeklyData[]
   industries: IndustryData[]
+  closers: CloserData[]
+}
+
+export interface CloserData {
+  closer: string
+  /** All past appointments scheduled with this closer in the period (regardless of status). */
+  qualifiedCalls: number
+  /** Future appointments scheduled in the period — visible workload but not yet measurable. */
+  upcomingCalls: number
+  /** Subset that was actually held (status in taken set: No deal/FU, No deal, DEAL). */
+  takenCalls: number
+  /** Past appointments still sitting in pre-call status (Qualified / Gepland) — closer hasn't updated. */
+  notUpdated: number
+  deals: number
+  revenue: number
 }
 
 export interface WeeklyData {
@@ -111,9 +122,11 @@ export interface InvoiceDetail {
   customerName: string | null
   date: string
   amount: number
-  status: "paid" | "open" | "overdue" | "credit" | "credit_old"
+  status: "paid" | "open" | "overdue" | "credit" | "credit_prev" | "credit_old"
   category: "service_fee" | "ad_budget"
   subCategory: "new_business" | "mrr"
+  /** Stripe hosted invoice page URL (https://invoice.stripe.com/...). Null for credit notes whose original invoice is outside the period. */
+  hostedUrl?: string | null
 }
 
 export interface FinanceOverview {

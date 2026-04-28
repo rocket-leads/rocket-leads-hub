@@ -51,3 +51,65 @@ export async function cachedFetch<T>(
   void writeCache(key, fresh)
   return fresh
 }
+
+/** True when (year, month) is strictly before the current calendar month. */
+export function isPastCalendarMonth(year: number, month: number): boolean {
+  const now = new Date()
+  const curYear = now.getFullYear()
+  const curMonth = now.getMonth() + 1
+  return year < curYear || (year === curYear && month < curMonth)
+}
+
+/**
+ * If the date range covers exactly one full calendar month (day 1 → last day of that month),
+ * returns its {year, month}. Otherwise null. Used to decide whether the request maps
+ * cleanly to a single historical-month cache entry.
+ */
+export function getRangeCalendarMonth(startDate: string, endDate: string): { year: number; month: number } | null {
+  const startMatch = startDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  const endMatch = endDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!startMatch || !endMatch) return null
+
+  const startYear = parseInt(startMatch[1], 10)
+  const startMonth = parseInt(startMatch[2], 10)
+  const startDay = parseInt(startMatch[3], 10)
+  const endYear = parseInt(endMatch[1], 10)
+  const endMonth = parseInt(endMatch[2], 10)
+  const endDay = parseInt(endMatch[3], 10)
+
+  if (startYear !== endYear || startMonth !== endMonth) return null
+  if (startDay !== 1) return null
+  const lastDay = new Date(startYear, startMonth, 0).getDate()
+  if (endDay !== lastDay) return null
+
+  return { year: startYear, month: startMonth }
+}
+
+/**
+ * Read-through cache for *historical* (closed) calendar months. The data for
+ * a past month is treated as immutable, so we cache it forever under the key
+ * `<baseKey>:YYYY-MM`. Pass `forceRefresh: true` to bypass the cache and
+ * rewrite it (e.g. when someone backfills a past month in the source sheet).
+ *
+ * Pass a `validate` predicate to detect stale schema — when an entry was
+ * cached with an older shape (missing newly-added fields). Returning false
+ * treats the entry as a cache miss and triggers a fresh fetch + write.
+ */
+export async function cachedHistoricalMonth<T>(
+  baseKey: string,
+  year: number,
+  month: number,
+  fetcher: () => Promise<T>,
+  options: { forceRefresh?: boolean; validate?: (cached: T) => boolean } = {},
+): Promise<T> {
+  const key = `${baseKey}:${year}-${String(month).padStart(2, "0")}`
+  if (!options.forceRefresh) {
+    const cached = await readCache<T>(key)
+    if (cached !== null && (options.validate ? options.validate(cached) : true)) {
+      return cached
+    }
+  }
+  const fresh = await fetcher()
+  void writeCache(key, fresh)
+  return fresh
+}

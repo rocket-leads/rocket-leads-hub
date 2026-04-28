@@ -10,9 +10,6 @@ import type { TargetsConfig } from "@/types/targets"
 type Field = { key: keyof TargetsConfig; label: string; prefix?: string; suffix?: string; step?: string }
 
 const MARKETING_FIELDS: Field[] = [
-  { key: "calls", label: "Booked Calls" },
-  { key: "qualifiedCalls", label: "Qualified Calls" },
-  { key: "takenCalls", label: "Taken Calls" },
   { key: "deals", label: "Deals" },
   { key: "revenue", label: "Revenue", prefix: "€" },
   { key: "cbc", label: "Max Cost per Booked Call", prefix: "€", step: "0.01" },
@@ -23,10 +20,8 @@ const MARKETING_FIELDS: Field[] = [
 
 const FINANCE_FIELDS: Field[] = [
   { key: "serviceFeeRevenue", label: "Service Fee Revenue", prefix: "€" },
-  { key: "adBudgetRevenue", label: "Ad Budget Revenue", prefix: "€" },
-  { key: "totalCosts", label: "Max Total Costs", prefix: "€" },
-  { key: "netProfit", label: "Net Profit", prefix: "€" },
-  { key: "profitMargin", label: "Profit Margin", suffix: "%", step: "0.01" },
+  { key: "teamCosts", label: "Team Costs", prefix: "€" },
+  { key: "profitMargin", label: "Net Profit Margin", suffix: "%", step: "0.01" },
 ]
 
 const DELIVERY_FIELDS: Field[] = [
@@ -44,9 +39,9 @@ const SECTIONS = [
 ]
 
 const EMPTY_CONFIG: TargetsConfig = {
-  calls: 0, qualifiedCalls: 0, takenCalls: 0, deals: 0, revenue: 0,
+  deals: 0, revenue: 0,
   cbc: 0, cqc: 0, ctc: 0, cpd: 0,
-  serviceFeeRevenue: 0, adBudgetRevenue: 0, totalCosts: 0, netProfit: 0, profitMargin: 0,
+  serviceFeeRevenue: 0, teamCosts: 0, profitMargin: 0,
   mrr: 0, newBusiness: 0, activeCustomers: 0, avgRevenuePerCustomer: 0, maxChurnRate: 0,
 }
 

@@ -2,10 +2,18 @@
 
 import { memo } from "react"
 import { startOfMonth, differenceInDays, getDaysInMonth, max as dateMax } from "date-fns"
-import { Lightbulb, TrendingUp } from "lucide-react"
+import { AlertCircle, AlertOctagon, CheckCircle2, Lightbulb, TrendingUp } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatCurrency, formatCurrencyDecimal, formatPercent, safeDivide } from "@/lib/targets/formatters"
+import { formatCurrency, formatCurrencyDecimal, formatMultiplier, formatPercent, safeDivide } from "@/lib/targets/formatters"
+import { deriveTargets } from "@/lib/targets/calculations"
 import type { MondayTargetsData, MetaTargetsData, TargetsConfig, DateRange } from "@/types/targets"
+
+const STATUS_ICON: Record<"positive" | "warning" | "critical", { icon: LucideIcon; color: string }> = {
+  positive: { icon: CheckCircle2, color: "text-green-500" },
+  warning: { icon: AlertCircle, color: "text-yellow-500" },
+  critical: { icon: AlertOctagon, color: "text-red-500" },
+}
 
 interface Props {
   monday: MondayTargetsData | null
@@ -58,8 +66,8 @@ function generateInsights(
   const deals = m.deals
   const revenue = m.closedRevenue
 
-  const prCalls = Math.round(proRata(t.calls, range))
-  const prTaken = Math.round(proRata(t.takenCalls, range))
+  const derived = deriveTargets(t)
+  const prCalls = Math.round(proRata(derived.calls, range))
   const prDeals = Math.round(proRata(t.deals, range))
 
   const cbc = safeDivide(spend, calls)
@@ -71,17 +79,23 @@ function generateInsights(
   const expectedDealValue = t.deals > 0 && t.revenue > 0 ? t.revenue / t.deals : 0
   const callsOnTrack = prCalls > 0 && calls >= prCalls
 
-  // Evaluate the 4 pillars
+  // Ratio targets derived from the cost ladder (cbc / cqc / ctc / cpd)
+  const qualRateTarget = derived.qualRate
+  const showUpRateTarget = derived.showUpRate
+  const convRateTarget = derived.convRate
+  const roasTarget = derived.roas
+
+  // Evaluate the 4 pillars (a pillar with no target is treated as on-track / skipped)
   const cbcOnTrack = t.cbc > 0 ? cbc <= t.cbc : true
-  const qualOnTrack = calls > 3 ? qualRate >= 0.75 : true
-  const showUpOnTrack = qualified > 3 ? showUpRate >= 0.80 : true
-  const convOnTrack = taken > 3 ? conversionRate >= 0.30 : true
+  const qualOnTrack = calls > 3 && qualRateTarget > 0 ? qualRate >= qualRateTarget : true
+  const showUpOnTrack = qualified > 3 && showUpRateTarget > 0 ? showUpRate >= showUpRateTarget : true
+  const convOnTrack = taken > 3 && convRateTarget > 0 ? conversionRate >= convRateTarget : true
 
   const pillars: PillarStatus[] = [
     { name: "CBC", onTrack: cbcOnTrack, value: formatCurrencyDecimal(cbc), target: t.cbc > 0 ? formatCurrencyDecimal(t.cbc) : "—" },
-    { name: "Qualification Rate", onTrack: qualOnTrack, value: formatPercent(qualRate), target: "75%" },
-    { name: "Show-up Rate", onTrack: showUpOnTrack, value: formatPercent(showUpRate), target: "80%" },
-    { name: "Conversion Rate", onTrack: convOnTrack, value: formatPercent(conversionRate), target: "30%" },
+    { name: "Qualification Rate", onTrack: qualOnTrack, value: formatPercent(qualRate), target: qualRateTarget > 0 ? formatPercent(qualRateTarget) : "—" },
+    { name: "Show-up Rate", onTrack: showUpOnTrack, value: formatPercent(showUpRate), target: showUpRateTarget > 0 ? formatPercent(showUpRateTarget) : "—" },
+    { name: "Conversion Rate", onTrack: convOnTrack, value: formatPercent(conversionRate), target: convRateTarget > 0 ? formatPercent(convRateTarget) : "—" },
   ]
 
   const offTrack = pillars.filter((p) => !p.onTrack)
@@ -126,9 +140,10 @@ function generateInsights(
   }
 
   // ── ROAS — trace back to pillars, never cite CPD as root cause ──
-  if (spend > 0 && deals > 0) {
-    if (roas >= 4) {
-      insights.push({ type: "positive", text: `ROAS at ${roas.toFixed(1)}× (target: 4×).` })
+  if (spend > 0 && deals > 0 && roasTarget > 0) {
+    const roasTargetStr = formatMultiplier(roasTarget)
+    if (roas >= roasTarget) {
+      insights.push({ type: "positive", text: `ROAS at ${roas.toFixed(1)}× (target: ${roasTargetStr}).` })
     } else {
       // Find the root causes from the 4 pillars
       const rootCauses = offTrack.map((p) => p.name)
@@ -137,7 +152,8 @@ function generateInsights(
         : avgDealValue < expectedDealValue * 0.8
         ? "Driven by: low avg deal value."
         : "Review all 4 funnel pillars."
-      insights.push({ type: roas < 3 ? "critical" : "warning", text: `ROAS at ${roas.toFixed(1)}× — below the 4× target. ${rootStr}` })
+      const isCritical = roas < roasTarget * 0.75
+      insights.push({ type: isCritical ? "critical" : "warning", text: `ROAS at ${roas.toFixed(1)}× — below the ${roasTargetStr} target. ${rootStr}` })
     }
   }
 
@@ -158,13 +174,19 @@ function generateProposals(insights: Insight[], m: MondayTargetsData, meta: Meta
   const conversionRate = safeDivide(deals, taken)
   const avgDealValue = deals > 0 ? revenue / deals : 0
   const expectedDealValue = t.deals > 0 && t.revenue > 0 ? t.revenue / t.deals : 0
-  const prCalls = t.calls ? Math.round(proRata(t.calls, range)) : 0
+  const derived = deriveTargets(t)
+  const prCalls = derived.calls > 0 ? Math.round(proRata(derived.calls, range)) : 0
   const noShows = qualified - taken
 
+  // Ratio targets derived from the cost ladder
+  const qualRateTarget = derived.qualRate
+  const showUpRateTarget = derived.showUpRate
+  const convRateTarget = derived.convRate
+
   const cbcOffTrack = t.cbc > 0 && cbc > t.cbc
-  const qualOffTrack = calls > 3 && qualRate < 0.75
-  const showUpOffTrack = qualified > 3 && showUpRate < 0.80
-  const convOffTrack = taken > 3 && conversionRate < 0.30
+  const qualOffTrack = calls > 3 && qualRateTarget > 0 && qualRate < qualRateTarget
+  const showUpOffTrack = qualified > 3 && showUpRateTarget > 0 && showUpRate < showUpRateTarget
+  const convOffTrack = taken > 3 && convRateTarget > 0 && conversionRate < convRateTarget
   const spendIssue = !cbcOffTrack && prCalls > 0 && calls < prCalls
   const dealValueIssue = deals > 0 && expectedDealValue > 0 && avgDealValue < expectedDealValue * 0.8
 
@@ -181,7 +203,7 @@ function generateProposals(insights: Insight[], m: MondayTargetsData, meta: Meta
 
   // ── Pillar 2: Qualification Rate ──
   if (qualOffTrack) {
-    proposals.push(`Qualification rate is ${formatPercent(qualRate)} (target: 75%) — we're reaching people who don't match the ICP. Refine ad messaging to speak directly to the ideal customer profile, use industry-specific angles, and add qualifying questions to the lead form.`)
+    proposals.push(`Qualification rate is ${formatPercent(qualRate)} (target: ${formatPercent(qualRateTarget)}) — we're reaching people who don't match the ICP. Refine ad messaging to speak directly to the ideal customer profile, use industry-specific angles, and add qualifying questions to the lead form.`)
   }
 
   // ── Pillar 3: Show-up Rate ──
@@ -191,7 +213,7 @@ function generateProposals(insights: Insight[], m: MondayTargetsData, meta: Meta
 
   // ── Pillar 4: Conversion Rate ──
   if (convOffTrack) {
-    proposals.push(`Conversion rate is ${formatPercent(conversionRate)} (target: 30%) — ${taken} taken calls resulted in only ${deals} deals. Review: are leads ICP-fit and closeable? Is the sales proposition strong enough? Evaluate the sales team's close technique and whether pricing/packaging needs adjustment.`)
+    proposals.push(`Conversion rate is ${formatPercent(conversionRate)} (target: ${formatPercent(convRateTarget)}) — ${taken} taken calls resulted in only ${deals} deals. Review: are leads ICP-fit and closeable? Is the sales proposition strong enough? Evaluate the sales team's close technique and whether pricing/packaging needs adjustment.`)
   }
 
   // ── Deal value issue ──
@@ -212,14 +234,12 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
   if (isLoading || !monday || !meta || !targets) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="bg-card rounded-lg p-4 border border-border/40">
-          <Skeleton className="h-4 w-32 mb-3" />
-          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}</div>
-        </div>
-        <div className="bg-card rounded-lg p-4 border border-border/40">
-          <Skeleton className="h-4 w-40 mb-3" />
-          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}</div>
-        </div>
+        {Array.from({ length: 2 }).map((_, idx) => (
+          <div key={idx} className="bg-card rounded-lg p-5 border border-border/40">
+            <Skeleton className="h-4 w-32 mb-4" />
+            <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}</div>
+          </div>
+        ))}
       </div>
     )
   }
@@ -227,41 +247,43 @@ export const MarketingInsights = memo(function MarketingInsights({ monday, meta,
   const insights = generateInsights(monday, meta, targets, range)
   const proposals = generateProposals(insights, monday, meta, targets, range)
 
-  const dotColor = (type: Insight["type"]) =>
-    type === "positive" ? "bg-green-500" : type === "warning" ? "bg-yellow-500" : "bg-red-500"
-
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {/* Key Insights */}
-      <div className="bg-card rounded-lg p-4 border border-border/40">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="bg-card rounded-lg p-5 border border-border/40">
+        <div className="flex items-center gap-2 mb-4">
           <Lightbulb className="h-3.5 w-3.5 text-muted-foreground" />
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Key Insights</h3>
         </div>
-        <div className="space-y-2.5">
-          {insights.map((insight, i) => (
-            <div key={i} className="flex items-start gap-2">
-              <span className={`h-1.5 w-1.5 rounded-full mt-1.5 shrink-0 ${dotColor(insight.type)}`} />
-              <span className="text-xs text-foreground/90 leading-relaxed">{insight.text}</span>
-            </div>
-          ))}
+        <div className="space-y-3">
+          {insights.map((insight, i) => {
+            const { icon: Icon, color } = STATUS_ICON[insight.type]
+            return (
+              <div key={i} className="flex items-start gap-2.5">
+                <Icon className={`h-4 w-4 shrink-0 mt-px ${color}`} strokeWidth={2.25} />
+                <p className="text-sm text-foreground leading-relaxed">{insight.text}</p>
+              </div>
+            )
+          })}
           {insights.length === 0 && (
-            <span className="text-xs text-muted-foreground">Set targets in Settings to enable insights.</span>
+            <p className="text-sm text-muted-foreground leading-relaxed">Set targets in Settings to enable insights.</p>
           )}
         </div>
       </div>
 
       {/* Optimisation Proposal */}
-      <div className="bg-card rounded-lg p-4 border border-border/40">
-        <div className="flex items-center gap-2 mb-3">
+      <div className="bg-card rounded-lg p-5 border border-border/40">
+        <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
           <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Optimisation Proposal</h3>
         </div>
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           {proposals.map((proposal, i) => (
-            <div key={i} className="flex items-start gap-2">
-              <span className="text-xs text-muted-foreground/60 font-mono shrink-0">{i + 1}.</span>
-              <span className="text-xs text-foreground/90 leading-relaxed">{proposal}</span>
+            <div key={i} className="flex items-start gap-2.5">
+              <span className="text-xs font-mono font-medium text-muted-foreground/60 shrink-0 mt-[3px] tabular-nums w-5">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <p className="text-sm text-foreground leading-relaxed">{proposal}</p>
             </div>
           ))}
         </div>

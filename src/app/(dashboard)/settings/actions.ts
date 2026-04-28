@@ -49,6 +49,33 @@ export async function updateUserRole(userId: string, role: "admin" | "member" | 
   revalidatePath("/settings")
 }
 
+export async function inviteUser(email: string, role: "admin" | "member" | "guest") {
+  await requireAdmin()
+  const normalized = email.trim().toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    throw new Error("Invalid email address")
+  }
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from("users")
+    .insert({ email: normalized, role })
+  if (error) {
+    if (error.code === "23505") throw new Error("User already exists")
+    throw new Error(error.message)
+  }
+  revalidatePath("/settings")
+}
+
+export async function removeUser(userId: string) {
+  await requireAdmin()
+  const session = await auth()
+  if (session?.user.id === userId) throw new Error("You cannot remove yourself")
+  const supabase = await createAdminClient()
+  const { error } = await supabase.from("users").delete().eq("id", userId)
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
 export type ColumnMapping = {
   user_id: string
   monday_column_role: string

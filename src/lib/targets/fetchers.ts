@@ -37,6 +37,8 @@ const STATUS_MAP = {
   deals: ["DEAL"],
   rejections: ["Not interested", "Lead cancelation"],
   noShows: ["No show"],
+  /** Past-appointment statuses that mean the closer hasn't processed the call yet — excluded from show-up rate. */
+  notUpdated: ["Qualified", "Gepland"],
 }
 
 const AD_BUDGET_KEYWORDS = [
@@ -154,12 +156,20 @@ function getCountryKey(countryValue: string): CountryKey {
 export async function fetchMondayTargets(startDate: string, endDate: string): Promise<MondayTargetsByCountry> {
   const token = await getMondayToken()
   const allItems = await fetchAllItems(TARGETS_BOARD_ID, token)
+  // Today (UTC, YYYY-MM-DD) — used to split closer appointments into past vs future.
+  const todayStr = new Date().toISOString().slice(0, 10)
 
   // Per-country accumulators
-  type Acc = { leads: number; calls: number; qualifiedCalls: number; rejections: number; noShows: number; takenCalls: number; deals: number; closedRevenue: number; totalItems: number; industryMap: Record<string, { deals: number; revenue: number }> }
+  type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; notUpdated: number; deals: number; revenue: number }
+  type Acc = {
+    leads: number; calls: number; qualifiedCalls: number; rejections: number; noShows: number;
+    takenCalls: number; deals: number; closedRevenue: number; totalItems: number;
+    industryMap: Record<string, { deals: number; revenue: number }>;
+    closerMap: Record<string, CloserAcc>;
+  }
   const acc: Record<CountryKey, Acc> = {} as Record<CountryKey, Acc>
   for (const k of COUNTRY_KEYS) {
-    acc[k] = { leads: 0, calls: 0, qualifiedCalls: 0, rejections: 0, noShows: 0, takenCalls: 0, deals: 0, closedRevenue: 0, totalItems: 0, industryMap: {} }
+    acc[k] = { leads: 0, calls: 0, qualifiedCalls: 0, rejections: 0, noShows: 0, takenCalls: 0, deals: 0, closedRevenue: 0, totalItems: 0, industryMap: {}, closerMap: {} }
   }
 
   // Weekly maps per country
@@ -189,6 +199,7 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     const status = getColumnValue(item, "status")
     const dealValue = getNumericValue(item, "numbers")
     const industry = getColumnValue(item, "status_17") || "Unknown"
+    const closer = getColumnValue(item, "wie_").trim()
 
     addTo(country, (a) => a.totalItems++)
 
@@ -208,6 +219,50 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
         a.industryMap[industry].deals++
         a.industryMap[industry].revenue += dealValue
       })
+    }
+
+    // Per-closer aggregation. Any action in range counts:
+    //   - past appointment   → qualifiedCalls (and notUpdated/taken subsets)
+    //   - future appointment → upcomingCalls (visible workload, but excluded from show-up math)
+    //   - deal closed        → deals + revenue
+    //
+    // Items without `wie_` populated are bucketed under "Unassigned" so the closer
+    // table totals always equal global closedRevenue (no silent leakage).
+    //
+    // Show-up rate is computed downstream as taken / (qualifiedCalls − notUpdated).
+    const closerKey = closer || "Unassigned"
+    const apptInRange = isInRange(datumAfspraak, startDate, endDate)
+    const dealInRangeForCloser = isInRange(dateDeal, startDate, endDate) && STATUS_MAP.deals.includes(status)
+
+    if (apptInRange || dealInRangeForCloser) {
+      const ensureCloser = (a: Acc) => {
+        if (!a.closerMap[closerKey]) {
+          a.closerMap[closerKey] = { qualifiedCalls: 0, upcomingCalls: 0, takenCalls: 0, notUpdated: 0, deals: 0, revenue: 0 }
+        }
+        return a.closerMap[closerKey]
+      }
+
+      if (apptInRange) {
+        const isPastAppointment = !!datumAfspraak && datumAfspraak < todayStr
+        if (isPastAppointment) {
+          addTo(country, (a) => { ensureCloser(a).qualifiedCalls++ })
+          if (STATUS_MAP.notUpdated.includes(status)) {
+            addTo(country, (a) => { ensureCloser(a).notUpdated++ })
+          } else if (STATUS_MAP.taken.includes(status)) {
+            addTo(country, (a) => { ensureCloser(a).takenCalls++ })
+          }
+        } else {
+          addTo(country, (a) => { ensureCloser(a).upcomingCalls++ })
+        }
+      }
+
+      if (dealInRangeForCloser) {
+        addTo(country, (a) => {
+          const c = ensureCloser(a)
+          c.deals++
+          c.revenue += dealValue
+        })
+      }
     }
 
     // Weekly
@@ -238,7 +293,10 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     const industries = Object.entries(a.industryMap)
       .sort(([, x], [, y]) => y.revenue - x.revenue)
       .map(([industry, data]) => ({ industry, ...data }))
-    result[k] = { ...a, weekly, industries }
+    const closers = Object.entries(a.closerMap)
+      .sort(([, x], [, y]) => y.revenue - x.revenue)
+      .map(([closer, data]) => ({ closer, ...data }))
+    result[k] = { ...a, weekly, industries, closers }
   }
   return result
 }
@@ -324,23 +382,33 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     startingAfter = page.data[page.data.length - 1]?.id
   }
 
-  // Also fetch credit notes in the period — these are separate objects in Stripe
+  // Fetch credit notes for this period.
+  // Stripe creditNotes.list doesn't support a `created` filter, so we paginate
+  // in reverse-chronological order and stop once we've passed our date range.
+  // This is fast for recent months (few pages) and breaks early for old months.
   const creditNotes: Stripe.CreditNote[] = []
-  hasMore = true
-  startingAfter = undefined
-  while (hasMore) {
+  let cnHasMore = true
+  let cnStartingAfter: string | undefined
+  let cnPagesScanned = 0
+  const CN_MAX_PAGES = 10 // Safety limit to avoid timeout on very old months
+
+  while (cnHasMore && cnPagesScanned < CN_MAX_PAGES) {
     const page: Stripe.ApiList<Stripe.CreditNote> = await stripe.creditNotes.list({
       limit: 100,
-      ...(startingAfter ? { starting_after: startingAfter } : {}),
+      ...(cnStartingAfter ? { starting_after: cnStartingAfter } : {}),
     })
+    cnPagesScanned++
+
     for (const cn of page.data) {
       if (cn.created >= startTs && cn.created <= endTs) {
         creditNotes.push(cn)
       }
     }
-    hasMore = page.has_more
-    startingAfter = page.data[page.data.length - 1]?.id
-    // Stop early if we've gone past our date range
+
+    cnHasMore = page.has_more
+    cnStartingAfter = page.data[page.data.length - 1]?.id
+
+    // Stop once we've gone past our date range (list is reverse-chronological)
     if (page.data.length > 0 && page.data[page.data.length - 1].created < startTs) break
   }
 
@@ -404,24 +472,49 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
         status: invStatus,
         category: isAd ? "ad_budget" : "service_fee",
         subCategory: isNew ? "new_business" : "mrr",
+        hostedUrl: inv.hosted_invoice_url ?? null,
       })
     }
   }
 
-  // Apply credit notes — only SAME-MONTH credits affect the totals.
-  // Cross-month credits (crediting an old invoice from a previous month) are tracked
-  // in details but do NOT reduce this month's revenue. This prevents admin cleanup
-  // of old invoices from dragging down the current month's performance.
+  // Apply credit notes with 3 tiers:
+  // - "credit": same-month (original invoice in this period) → counts against totals
+  // - "credit_prev": previous-month (original invoice from last month) → counts against totals
+  // - "credit_old": older than previous month → visible in details but does NOT affect totals
+  //
+  // Compute "previous month" boundary: first day of the month before our start date
+  const periodStart = new Date(startDate)
+  const prevMonthStart = new Date(Date.UTC(periodStart.getFullYear(), periodStart.getMonth() - 1, 1))
+  const prevMonthStartTs = Math.floor(prevMonthStart.getTime() / 1000)
+
   for (const cn of creditNotes) {
     const creditAmount = (cn.subtotal ?? cn.amount) / 100
     const custId = cn.customer as string
     const isNew = isNewBusinessCustomer.get(custId) ?? false
     const isPaid = cn.status === "issued" || cn.status === "void"
 
-    // Determine if the original invoice is in the same period (same-month credit)
+    // Determine credit tier based on the original invoice's creation date
     const invoiceId = typeof cn.invoice === "string" ? cn.invoice : cn.invoice?.id
     const originalInv = invoiceId ? allInvoices.find((inv) => inv.id === invoiceId) : null
-    const isSameMonth = !!originalInv // original invoice is in allInvoices = same period
+
+    let creditTier: "credit" | "credit_prev" | "credit_old"
+    if (originalInv) {
+      // Original invoice is in this period = same-month
+      creditTier = "credit"
+    } else if (invoiceId) {
+      // Original invoice is NOT in this period — check if it's from previous month
+      // We need to fetch the original invoice's created date
+      try {
+        const origInv = await stripe.invoices.retrieve(invoiceId)
+        creditTier = origInv.created >= prevMonthStartTs ? "credit_prev" : "credit_old"
+      } catch {
+        creditTier = "credit_old"
+      }
+    } else {
+      creditTier = "credit_old"
+    }
+
+    const countsAgainstTotal = creditTier === "credit" || creditTier === "credit_prev"
 
     // Categorize: fee vs ad budget
     let serviceFeeCredit = 0
@@ -434,7 +527,6 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
         else serviceFeeCredit += lineAmount
       }
     } else if (originalInv) {
-      // Use the original invoice's line item ratio to split the credit
       let origFee = 0, origAd = 0
       for (const line of originalInv.lines?.data ?? []) {
         if (isAdBudget(line.description)) origAd += line.amount / 100
@@ -451,8 +543,8 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
       serviceFeeCredit = creditAmount
     }
 
-    // Only same-month credits affect the breakdowns
-    if (isSameMonth) {
+    // Same-month and previous-month credits affect the breakdowns
+    if (countsAgainstTotal) {
       total.invoiced -= creditAmount
       if (isPaid) total.cashCollected -= creditAmount
 
@@ -473,32 +565,25 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
       }
     }
 
-    // Always add to details (so they're visible in the drill-down modal)
+    // Always add to details. For credit notes, link back to the original invoice's
+    // hosted page when available (only when the original invoice is in our period).
     const cnDate = new Date(cn.created * 1000).toISOString().slice(0, 10)
     const cnCustomerName = customerNameCache.get(custId) || null
-    const creditStatus = isSameMonth ? "credit" as const : "credit_old" as const
+    const cnHostedUrl = originalInv?.hosted_invoice_url ?? null
     if (serviceFeeCredit > 0) {
       details.push({
-        invoiceId: cn.id,
-        invoiceNumber: cn.number,
-        customerName: cnCustomerName,
-        date: cnDate,
-        amount: -serviceFeeCredit,
-        status: creditStatus,
-        category: "service_fee",
-        subCategory: isNew ? "new_business" : "mrr",
+        invoiceId: cn.id, invoiceNumber: cn.number, customerName: cnCustomerName,
+        date: cnDate, amount: -serviceFeeCredit, status: creditTier,
+        category: "service_fee", subCategory: isNew ? "new_business" : "mrr",
+        hostedUrl: cnHostedUrl,
       })
     }
     if (adBudgetCredit > 0) {
       details.push({
-        invoiceId: cn.id,
-        invoiceNumber: cn.number,
-        customerName: cnCustomerName,
-        date: cnDate,
-        amount: -adBudgetCredit,
-        status: creditStatus,
-        category: "ad_budget",
-        subCategory: isNew ? "new_business" : "mrr",
+        invoiceId: cn.id, invoiceNumber: cn.number, customerName: cnCustomerName,
+        date: cnDate, amount: -adBudgetCredit, status: creditTier,
+        category: "ad_budget", subCategory: isNew ? "new_business" : "mrr",
+        hostedUrl: cnHostedUrl,
       })
     }
   }

@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
-import { X } from "lucide-react"
+import { useEffect, useState } from "react"
+import { X, ArrowUpDown } from "lucide-react"
 import { formatCurrency } from "@/lib/targets/formatters"
 import { cn } from "@/lib/utils"
 import type { InvoiceDetail } from "@/types/targets"
@@ -13,15 +13,31 @@ interface Props {
   onClose: () => void
 }
 
-const STATUS_BADGE: Record<InvoiceDetail["status"], { label: string; className: string }> = {
-  paid: { label: "Paid", className: "bg-green-500/15 text-green-500" },
-  open: { label: "Open", className: "bg-yellow-500/15 text-yellow-500" },
-  overdue: { label: "Overdue", className: "bg-red-500/15 text-red-500" },
-  credit: { label: "Credit", className: "bg-blue-500/15 text-blue-500" },
-  credit_old: { label: "Old credit", className: "bg-muted-foreground/15 text-muted-foreground line-through" },
+const STATUS_BADGE: Record<InvoiceDetail["status"], { label: string; className: string; order: number }> = {
+  paid: { label: "Paid", className: "bg-green-500/15 text-green-500", order: 1 },
+  open: { label: "Open", className: "bg-yellow-500/15 text-yellow-500", order: 2 },
+  overdue: { label: "Overdue", className: "bg-red-500/15 text-red-500", order: 3 },
+  credit: { label: "Credit", className: "bg-blue-500/15 text-blue-500", order: 4 },
+  credit_prev: { label: "Credit (prev)", className: "bg-blue-500/10 text-blue-400", order: 5 },
+  credit_old: { label: "Credit (old)", className: "bg-muted-foreground/15 text-muted-foreground", order: 6 },
 }
 
+type SortKey = "date" | "status" | "amount" | "customer"
+type FilterStatus = "all" | "paid" | "open" | "overdue" | "credits"
+
+const FILTER_OPTIONS: Array<{ key: FilterStatus; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "paid", label: "Paid" },
+  { key: "open", label: "Open" },
+  { key: "overdue", label: "Overdue" },
+  { key: "credits", label: "Credits" },
+]
+
 export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
+  const [sortKey, setSortKey] = useState<SortKey>("date")
+  const [sortAsc, setSortAsc] = useState(false)
+  const [filter, setFilter] = useState<FilterStatus>("all")
+
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
@@ -37,19 +53,45 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
 
   if (!open) return null
 
-  const sorted = [...details].sort((a, b) => b.date.localeCompare(a.date))
+  // Filter
+  const filtered = details.filter((d) => {
+    if (filter === "all") return true
+    if (filter === "credits") return d.status === "credit" || d.status === "credit_prev" || d.status === "credit_old"
+    return d.status === filter
+  })
 
-  const invoices = sorted.filter((d) => d.status !== "credit" && d.status !== "credit_old")
-  const sameMonthCredits = sorted.filter((d) => d.status === "credit")
-  const oldCredits = sorted.filter((d) => d.status === "credit_old")
+  // Sort
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0
+    if (sortKey === "date") cmp = a.date.localeCompare(b.date)
+    else if (sortKey === "status") cmp = STATUS_BADGE[a.status].order - STATUS_BADGE[b.status].order
+    else if (sortKey === "amount") cmp = a.amount - b.amount
+    else if (sortKey === "customer") cmp = (a.customerName ?? "").localeCompare(b.customerName ?? "")
+    return sortAsc ? cmp : -cmp
+  })
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortAsc(!sortAsc)
+    else { setSortKey(key); setSortAsc(false) }
+  }
+
+  // Summary (always from full details, not filtered)
+  const invoices = details.filter((d) => !d.status.startsWith("credit"))
+  const sameCredits = details.filter((d) => d.status === "credit")
+  const prevCredits = details.filter((d) => d.status === "credit_prev")
+  const oldCredits = details.filter((d) => d.status === "credit_old")
 
   const totalInvoiced = invoices.reduce((s, d) => s + d.amount, 0)
   const totalPaid = invoices.filter((d) => d.status === "paid").reduce((s, d) => s + d.amount, 0)
   const totalOpen = invoices.filter((d) => d.status === "open").reduce((s, d) => s + d.amount, 0)
   const totalOverdue = invoices.filter((d) => d.status === "overdue").reduce((s, d) => s + d.amount, 0)
-  const totalCredited = Math.abs(sameMonthCredits.reduce((s, d) => s + d.amount, 0))
-  const totalOldCredited = Math.abs(oldCredits.reduce((s, d) => s + d.amount, 0))
-  const netTotal = totalInvoiced - totalCredited
+  const sameMonthCredited = Math.abs(sameCredits.reduce((s, d) => s + d.amount, 0))
+  const prevMonthCredited = Math.abs(prevCredits.reduce((s, d) => s + d.amount, 0))
+  const oldCredited = Math.abs(oldCredits.reduce((s, d) => s + d.amount, 0))
+  const allCredited = sameMonthCredited + prevMonthCredited + oldCredited
+
+  const grossAmount = totalInvoiced - sameMonthCredited - prevMonthCredited
+  const netAmount = totalInvoiced - allCredited
 
   return (
     <div className="fixed inset-0 z-50">
@@ -57,117 +99,140 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
 
       <div style={{ position: "fixed", top: "15vh", left: "50%", transform: "translateX(-50%)", width: "90vw", maxWidth: "48rem", height: "70vh", display: "flex", flexDirection: "column", overflow: "hidden" }} className="bg-card border border-border rounded-xl shadow-2xl z-50">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/40 shrink-0">
+        <div className="flex items-center justify-between px-6 py-3 border-b border-border/40 shrink-0">
           <div>
             <h2 className="text-base font-semibold text-foreground">{title}</h2>
-            <span className="text-xs text-muted-foreground">{sorted.length} line items</span>
+            <span className="text-xs text-muted-foreground">{details.length} line items</span>
           </div>
           <button onClick={onClose} className="h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Summary cards */}
+        {/* Summary */}
         <div className="px-6 py-4 border-b border-border/40 bg-muted/10 shrink-0">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-4 gap-3">
             {/* Invoiced */}
             <div className="bg-card rounded-lg p-3 border border-border/40">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Total Invoiced</span>
-              <span className="text-lg font-bold font-mono text-foreground">{formatCurrency(totalInvoiced)}</span>
-              <div className="mt-2 space-y-0.5 text-[11px]">
-                <div className="flex justify-between">
-                  <span className="text-green-500">Paid</span>
-                  <span className="font-mono text-green-500">{formatCurrency(totalPaid)}</span>
-                </div>
-                {totalOpen > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-yellow-500">Open</span>
-                    <span className="font-mono text-yellow-500">{formatCurrency(totalOpen)}</span>
-                  </div>
-                )}
-                {totalOverdue > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-red-500">Overdue</span>
-                    <span className="font-mono text-red-500">{formatCurrency(totalOverdue)}</span>
-                  </div>
-                )}
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-1">Invoiced</span>
+              <span className="text-base font-bold font-mono text-foreground">{formatCurrency(totalInvoiced)}</span>
+              <div className="mt-1.5 space-y-0.5 text-[10px]">
+                <div className="flex justify-between"><span className="text-green-500">Paid</span><span className="font-mono text-green-500">{formatCurrency(totalPaid)}</span></div>
+                {totalOpen > 0 && <div className="flex justify-between"><span className="text-yellow-500">Open</span><span className="font-mono text-yellow-500">{formatCurrency(totalOpen)}</span></div>}
+                {totalOverdue > 0 && <div className="flex justify-between"><span className="text-red-500">Overdue</span><span className="font-mono text-red-500">{formatCurrency(totalOverdue)}</span></div>}
               </div>
             </div>
 
             {/* Credits */}
             <div className="bg-card rounded-lg p-3 border border-border/40">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Credits</span>
-              <span className="text-lg font-bold font-mono text-foreground">
-                {totalCredited > 0 || totalOldCredited > 0 ? `-${formatCurrency(totalCredited + totalOldCredited)}` : "€0"}
-              </span>
-              <div className="mt-2 space-y-0.5 text-[11px]">
-                {totalCredited > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-blue-500">Same month</span>
-                    <span className="font-mono text-blue-500">-{formatCurrency(totalCredited)}</span>
-                  </div>
-                )}
-                {totalOldCredited > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground/60">Old invoices</span>
-                    <span className="font-mono text-muted-foreground/60">-{formatCurrency(totalOldCredited)}</span>
-                  </div>
-                )}
-                {totalOldCredited > 0 && (
-                  <div className="text-[9px] text-muted-foreground/40 mt-1">Old credits not counted in net total</div>
-                )}
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-1">Credits</span>
+              <span className="text-base font-bold font-mono text-foreground">{allCredited > 0 ? `-${formatCurrency(allCredited)}` : "€0"}</span>
+              <div className="mt-1.5 space-y-0.5 text-[10px]">
+                {sameMonthCredited > 0 && <div className="flex justify-between"><span className="text-blue-500">This month</span><span className="font-mono text-blue-500">-{formatCurrency(sameMonthCredited)}</span></div>}
+                {prevMonthCredited > 0 && <div className="flex justify-between"><span className="text-blue-400">Prev month</span><span className="font-mono text-blue-400">-{formatCurrency(prevMonthCredited)}</span></div>}
+                {oldCredited > 0 && <div className="flex justify-between"><span className="text-muted-foreground/50">Older</span><span className="font-mono text-muted-foreground/50">-{formatCurrency(oldCredited)}</span></div>}
               </div>
             </div>
 
-            {/* Net Total */}
+            {/* Gross */}
             <div className="bg-card rounded-lg p-3 border border-border/40">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">Net Total</span>
-              <span className="text-lg font-bold font-mono text-foreground">{formatCurrency(netTotal)}</span>
-              <div className="mt-2 text-[11px] text-muted-foreground">
-                {formatCurrency(totalInvoiced)} invoiced
-                {totalCredited > 0 && <> − {formatCurrency(totalCredited)} credited</>}
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-1">Gross Amount</span>
+              <span className="text-base font-bold font-mono text-foreground">{formatCurrency(grossAmount)}</span>
+              <div className="mt-1.5 text-[10px] text-muted-foreground/60">
+                Invoiced − this &amp; prev month credits
+              </div>
+            </div>
+
+            {/* Net */}
+            <div className="bg-card rounded-lg p-3 border border-border/40">
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground block mb-1">Net Amount</span>
+              <span className="text-base font-bold font-mono text-foreground">{formatCurrency(netAmount)}</span>
+              <div className="mt-1.5 text-[10px] text-muted-foreground/60">
+                Invoiced − all credits
               </div>
             </div>
           </div>
         </div>
 
+        {/* Filter bar */}
+        <div className="px-6 py-2 border-b border-border/40 shrink-0 flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Filter:</span>
+          <div className="flex gap-0.5 bg-muted rounded-md p-0.5">
+            {FILTER_OPTIONS.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                className={cn(
+                  "h-6 px-2.5 text-[10px] font-medium rounded transition-colors",
+                  filter === key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-[10px] text-muted-foreground ml-auto">{sorted.length} items</span>
+        </div>
+
         {/* Scrollable table */}
-        <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin">
+        <div className="flex-1 overflow-y-auto min-h-0">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-card z-10 shadow-sm">
               <tr className="border-b border-border/40">
-                <th className="text-left py-2.5 px-5 text-muted-foreground font-medium">Date</th>
-                <th className="text-left py-2.5 px-5 text-muted-foreground font-medium">Invoice</th>
-                <th className="text-left py-2.5 px-5 text-muted-foreground font-medium">Customer</th>
-                <th className="text-left py-2.5 px-5 text-muted-foreground font-medium">Type</th>
-                <th className="text-left py-2.5 px-5 text-muted-foreground font-medium">Status</th>
-                <th className="text-right py-2.5 px-5 text-muted-foreground font-medium">Amount</th>
+                <th className="text-left py-2 px-5 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => toggleSort("date")}>
+                  <span className="flex items-center gap-1">Date {sortKey === "date" && <ArrowUpDown className="h-2.5 w-2.5" />}</span>
+                </th>
+                <th className="text-left py-2 px-5 text-muted-foreground font-medium">Invoice</th>
+                <th className="text-left py-2 px-5 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => toggleSort("customer")}>
+                  <span className="flex items-center gap-1">Customer {sortKey === "customer" && <ArrowUpDown className="h-2.5 w-2.5" />}</span>
+                </th>
+                <th className="text-left py-2 px-5 text-muted-foreground font-medium">Type</th>
+                <th className="text-left py-2 px-5 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => toggleSort("status")}>
+                  <span className="flex items-center gap-1">Status {sortKey === "status" && <ArrowUpDown className="h-2.5 w-2.5" />}</span>
+                </th>
+                <th className="text-right py-2 px-5 text-muted-foreground font-medium cursor-pointer select-none" onClick={() => toggleSort("amount")}>
+                  <span className="flex items-center gap-1 justify-end">Amount {sortKey === "amount" && <ArrowUpDown className="h-2.5 w-2.5" />}</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((d, i) => {
                 const badge = STATUS_BADGE[d.status]
-                const isOldCredit = d.status === "credit_old"
+                const isOld = d.status === "credit_old"
+                const hasUrl = !!d.hostedUrl
                 return (
-                  <tr key={`${d.invoiceId}-${i}`} className={cn(
-                    "border-b border-border/20 last:border-0 hover:bg-muted/30 transition-colors",
-                    isOldCredit && "opacity-40",
-                  )}>
-                    <td className="py-2.5 px-5 font-mono text-muted-foreground">{d.date}</td>
-                    <td className="py-2.5 px-5 font-mono">{d.invoiceNumber || "—"}</td>
-                    <td className="py-2.5 px-5 truncate max-w-[180px]">{d.customerName || "—"}</td>
-                    <td className="py-2.5 px-5">
+                  <tr
+                    key={`${d.invoiceId}-${i}`}
+                    onClick={hasUrl ? () => window.open(d.hostedUrl!, "_blank", "noopener,noreferrer") : undefined}
+                    className={cn(
+                      "border-b border-border/20 last:border-0 hover:bg-muted/30 transition-colors",
+                      hasUrl && "cursor-pointer",
+                      isOld && "opacity-40",
+                    )}
+                  >
+                    <td className="py-2 px-5 font-mono text-muted-foreground">{d.date}</td>
+                    <td className="py-2 px-5 font-mono">
+                      {d.invoiceNumber ? (
+                        hasUrl ? (
+                          <span className="text-primary hover:underline">{d.invoiceNumber}</span>
+                        ) : (
+                          d.invoiceNumber
+                        )
+                      ) : "—"}
+                    </td>
+                    <td className="py-2 px-5 truncate max-w-[180px]">{d.customerName || "—"}</td>
+                    <td className="py-2 px-5">
                       <span className="text-[10px] text-muted-foreground">
                         {d.category === "ad_budget" ? "Ad Budget" : d.subCategory === "new_business" ? "New Biz" : "MRR"}
                       </span>
                     </td>
-                    <td className="py-2.5 px-5">
+                    <td className="py-2 px-5">
                       <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", badge.className)}>
                         {badge.label}
                       </span>
                     </td>
                     <td className={cn(
-                      "py-2.5 px-5 text-right font-mono font-medium",
+                      "py-2 px-5 text-right font-mono font-medium",
                       d.amount < 0 ? "text-red-500" : "text-foreground",
                     )}>
                       {formatCurrency(d.amount)}

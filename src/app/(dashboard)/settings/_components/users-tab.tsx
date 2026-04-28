@@ -1,8 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -11,13 +13,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { updateUserRole } from "../actions"
+import { inviteUser, removeUser, updateUserRole } from "../actions"
+
+type Role = "admin" | "member" | "guest"
 
 type User = {
   id: string
   email: string
   name: string | null
-  role: "admin" | "member" | "guest"
+  role: Role
   created_at: string
 }
 
@@ -32,8 +36,12 @@ const ROLE_COLORS: Record<string, string> = {
 export function UsersTab({ users: initial, currentUserId }: Props) {
   const [users, setUsers] = useState(initial)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteRole, setInviteRole] = useState<Role>("member")
+  const [inviting, setInviting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  async function handleRoleChange(userId: string, role: "admin" | "member" | "guest") {
+  async function handleRoleChange(userId: string, role: Role) {
     setUsers((u) => u.map((user) => (user.id === userId ? { ...user, role } : user)))
     setSaving((s) => ({ ...s, [userId]: true }))
     try {
@@ -45,61 +53,147 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
     }
   }
 
+  async function handleInvite() {
+    setError(null)
+    setInviting(true)
+    try {
+      await inviteUser(inviteEmail, inviteRole)
+      setUsers((u) => [
+        ...u,
+        {
+          id: crypto.randomUUID(),
+          email: inviteEmail.trim().toLowerCase(),
+          name: null,
+          role: inviteRole,
+          created_at: new Date().toISOString(),
+        },
+      ])
+      setInviteEmail("")
+      setInviteRole("member")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add user")
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  async function handleRemove(userId: string, email: string) {
+    if (!confirm(`Remove ${email}? They will lose access immediately.`)) return
+    const previous = users
+    setUsers((u) => u.filter((user) => user.id !== userId))
+    try {
+      await removeUser(userId)
+    } catch (e) {
+      setUsers(previous)
+      setError(e instanceof Error ? e.message : "Failed to remove user")
+    }
+  }
+
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>User</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Joined</TableHead>
-            <TableHead className="w-[140px]">Change role</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {users.map((user) => (
-            <TableRow key={user.id}>
-              <TableCell>
-                <div>
-                  <p className="font-medium">{user.name ?? "—"}</p>
-                  <p className="text-sm text-muted-foreground">{user.email}</p>
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline" className={ROLE_COLORS[user.role]}>
-                  {user.role}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {new Date(user.created_at).toLocaleDateString()}
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={user.role}
-                    onValueChange={(v) =>
-                      handleRoleChange(user.id, v as "admin" | "member" | "guest")
-                    }
-                    disabled={user.id === currentUserId}
-                  >
-                    <SelectTrigger className="h-8 w-[100px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="member">Member</SelectItem>
-                      <SelectItem value="guest">Guest</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {saving[user.id] && (
-                    <span className="text-xs text-muted-foreground">Saving...</span>
-                  )}
-                </div>
-              </TableCell>
+    <div className="space-y-4">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          handleInvite()
+        }}
+        className="flex flex-wrap items-end gap-2 rounded-md border p-4"
+      >
+        <div className="flex-1 min-w-[240px]">
+          <label className="mb-1.5 block text-sm font-medium">Email</label>
+          <Input
+            type="email"
+            required
+            placeholder="name@example.com"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+          />
+        </div>
+        <div className="w-[140px]">
+          <label className="mb-1.5 block text-sm font-medium">Role</label>
+          <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="member">Member</SelectItem>
+              <SelectItem value="guest">Guest</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button type="submit" disabled={inviting}>
+          {inviting ? "Adding..." : "Add user"}
+        </Button>
+        {error && <p className="basis-full text-sm text-destructive">{error}</p>}
+      </form>
+
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>User</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Joined</TableHead>
+              <TableHead className="w-[180px]">Change role</TableHead>
+              <TableHead className="w-[60px]"></TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {users.map((user) => (
+              <TableRow key={user.id}>
+                <TableCell>
+                  <div>
+                    <p className="font-medium">{user.name ?? <span className="text-muted-foreground">Pending invitation</span>}</p>
+                    <p className="text-sm text-muted-foreground">{user.email}</p>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={ROLE_COLORS[user.role]}>
+                    {user.role}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {new Date(user.created_at).toLocaleDateString()}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={user.role}
+                      onValueChange={(v) => handleRoleChange(user.id, v as Role)}
+                      disabled={user.id === currentUserId}
+                    >
+                      <SelectTrigger className="h-8 w-[100px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">Admin</SelectItem>
+                        <SelectItem value="member">Member</SelectItem>
+                        <SelectItem value="guest">Guest</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {saving[user.id] && (
+                      <span className="text-xs text-muted-foreground">Saving...</span>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {user.id !== currentUserId && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRemove(user.id, user.email)}
+                      title="Remove user"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }

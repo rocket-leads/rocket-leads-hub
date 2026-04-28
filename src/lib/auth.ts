@@ -2,16 +2,14 @@ import NextAuth from "next-auth"
 import Google from "next-auth/providers/google"
 import { createAdminClient } from "@/lib/supabase/server"
 
-const ALLOWED_DOMAIN = "rocketleads.com"
-const ALLOWED_EMAILS = [
-  "rocketleadsnl@gmail.com",
-  "rocketleadshq@gmail.com",
-]
-
-function isAllowed(email: string): boolean {
-  if (ALLOWED_EMAILS.includes(email)) return true
-  const domain = email.split("@")[1]
-  return domain === ALLOWED_DOMAIN
+async function isAllowed(email: string): Promise<boolean> {
+  const supabase = await createAdminClient()
+  const { data } = await supabase
+    .from("users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle()
+  return !!data
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -24,9 +22,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ user }) {
       const email = user.email ?? ""
-      if (!isAllowed(email)) return false
+      if (!(await isAllowed(email))) return false
 
-      // Upsert user in Supabase
+      // Upsert user in Supabase — preserves pre-invited role via ignoreDuplicates
       try {
         const supabase = await createAdminClient()
         const { error } = await supabase.from("users").upsert(

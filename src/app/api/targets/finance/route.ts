@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { readCache } from "@/lib/cache"
+import { cachedHistoricalMonth, getRangeCalendarMonth, isPastCalendarMonth, readCache } from "@/lib/cache"
 import { fetchFinance } from "@/lib/targets/fetchers"
 import type { FinanceOverview } from "@/types/targets"
 
@@ -21,6 +21,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const startDate = searchParams.get("startDate")
   const endDate = searchParams.get("endDate")
+  const forceRefresh = searchParams.get("refresh") === "1"
 
   if (!startDate || !endDate) {
     return NextResponse.json({ error: "startDate and endDate required" }, { status: 400 })
@@ -28,15 +29,34 @@ export async function GET(request: Request) {
 
   // Cache hit only for current calendar month
   // Skip cache if it doesn't have credit_old support (stale from before same-month/cross-month fix)
-  if (isCurrentCalendarMonth(startDate, endDate)) {
+  if (isCurrentCalendarMonth(startDate, endDate) && !forceRefresh) {
     const cached = await readCache<FinanceOverview>("targets_finance")
-    const hasNewCreditLogic = cached?.details?.some((d) => d.status === "credit_old") ?? false
-    // Only use cache if it was built with the new credit logic, OR if there are no credits at all
-    const hasAnyCredits = cached?.details?.some((d) => d.status === "credit" || d.status === "credit_old") ?? false
-    if (cached && cached.details && (hasNewCreditLogic || !hasAnyCredits)) {
+    const hasLatestCreditLogic = cached?.details?.some((d) => d.status === "credit_prev" || d.status === "credit_old") ?? false
+    const hasAnyCredits = cached?.details?.some((d) => d.status.startsWith("credit")) ?? false
+    if (cached && cached.details && (hasLatestCreditLogic || !hasAnyCredits)) {
       return NextResponse.json(cached, {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
       })
+    }
+  }
+
+  // Historical month: cache forever in cache_store under `targets_finance:YYYY-MM`
+  const periodMonth = getRangeCalendarMonth(startDate, endDate)
+  if (periodMonth && isPastCalendarMonth(periodMonth.year, periodMonth.month)) {
+    try {
+      const result = await cachedHistoricalMonth(
+        "targets_finance",
+        periodMonth.year,
+        periodMonth.month,
+        () => fetchFinance(startDate, endDate),
+        { forceRefresh },
+      )
+      return NextResponse.json(result, {
+        headers: { "Cache-Control": "private, s-maxage=3600, stale-while-revalidate=86400" },
+      })
+    } catch (error) {
+      console.error("[targets/finance]", error)
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Unknown error" }, { status: 500 })
     }
   }
 
