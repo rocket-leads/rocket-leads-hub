@@ -5,6 +5,8 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useTargetsConfig } from "../_hooks/use-targets-config"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Check, Loader2 } from "lucide-react"
+import { deriveTargets } from "@/lib/targets/calculations"
+import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
 import type { TargetsConfig } from "@/types/targets"
 
 type Field = { key: keyof TargetsConfig; label: string; prefix?: string; suffix?: string; step?: string }
@@ -124,6 +126,7 @@ export function SettingsTab() {
               </div>
             </div>
           ))}
+          {title === "Marketing / Sales" && <DerivedMarketingTargets values={values} />}
         </div>
       ))}
 
@@ -139,6 +142,58 @@ export function SettingsTab() {
         {hasChanges && !saving && (
           <span className="text-[11px] text-muted-foreground">Unsaved changes</span>
         )}
+      </div>
+    </div>
+  )
+}
+
+function DerivedMarketingTargets({ values }: { values: TargetsConfig }) {
+  const derived = deriveTargets(values)
+  const rows: Array<{ label: string; formula: string; value: string; available: boolean }> = [
+    {
+      label: "Target Ad Spend",
+      formula: "deals × max CPD",
+      value: derived.adSpend > 0 ? formatCurrency(derived.adSpend) : "—",
+      available: derived.adSpend > 0,
+    },
+    {
+      label: "Qualification Rate",
+      formula: "max CBC ÷ max CQC",
+      value: derived.qualRate > 0 ? formatPercent(derived.qualRate) : "—",
+      available: derived.qualRate > 0,
+    },
+    {
+      label: "Show-up Rate",
+      formula: "max CQC ÷ max CTC",
+      value: derived.showUpRate > 0 ? formatPercent(derived.showUpRate) : "—",
+      available: derived.showUpRate > 0,
+    },
+    {
+      label: "Conversion Rate",
+      formula: "max CTC ÷ max CPD",
+      value: derived.convRate > 0 ? formatPercent(derived.convRate) : "—",
+      available: derived.convRate > 0,
+    },
+  ]
+
+  return (
+    <div className="mt-4 pt-4 border-t border-dashed border-border/40">
+      <div className="flex items-baseline gap-2 mb-2">
+        <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground/80 font-medium">Derived</h4>
+        <span className="text-[10px] text-muted-foreground/50">auto-calculated · read only</span>
+      </div>
+      <div className="rounded-md border border-border/40 bg-muted/20 divide-y divide-border/30">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between py-2 px-3">
+            <div className="flex items-baseline gap-2 min-w-0">
+              <span className="text-xs">{row.label}</span>
+              <span className="text-[10px] font-mono text-muted-foreground/60 truncate">{row.formula}</span>
+            </div>
+            <span className={`text-sm font-mono font-medium tabular-nums shrink-0 ${row.available ? "text-foreground" : "text-muted-foreground/40"}`}>
+              {row.value}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )

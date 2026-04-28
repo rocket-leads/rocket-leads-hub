@@ -59,6 +59,9 @@ export function MarketingTab() {
   const qualified = m?.qualifiedCalls ?? 0
   const taken = m?.takenCalls ?? 0
   const deals = m?.deals ?? 0
+  // Past appointments where the closer hasn't updated the status yet — these
+  // would have counted as Taken if processed.
+  const notUpdatedTotal = (m?.closers ?? []).reduce((s, c) => s + c.notUpdated, 0)
   const loading = data.mondayLoading || data.metaLoading
 
   // Volume targets (calls/qualified/taken) are derived from ad-spend (= deals × cpd)
@@ -171,6 +174,8 @@ export function MarketingTab() {
               label="Taken Calls" value={taken} formatted={String(taken)}
               target={prTaken}
               targetFormatted={prTaken != null ? `${taken} of ${prTaken}` : undefined}
+              notice={notUpdatedTotal > 0 ? `${notUpdatedTotal} not updated` : undefined}
+              noticeTitle={notUpdatedTotal > 0 ? `${notUpdatedTotal} of these past appointments are still in Qualified / Gepland status. Counted as taken so the conversion rate isn't gamed, but flagged so closers update their statuses.` : undefined}
               variant="volume" isLoading={data.mondayLoading}
             />
             <KpiCard

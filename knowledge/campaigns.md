@@ -299,6 +299,26 @@ Voor elke AI-output die naast bestaande KPI-kolommen of een Insight-tekst getoon
 
 **Implementatie-hint voor prompts:** stuur de huidige Insight-tekst expliciet mee in de prompt zodat de AI kan vergelijken en niet dubbel-werk produceert. Cache-key bumpen wanneer het prompt verandert zodat oude soft summaries weggaan.
 
+### Top Ads — geen winners/losers split bij kleine ad-sets
+
+Voor de Watch List inline-expand (en vergelijkbare per-client overzichten) toon je **één** ranglijst van top ads, gesorteerd op spend, met per-ad een verdict relatief tot de account-gemiddelde CPL. Géén aparte "Top winners" en "Top losers" panelen.
+
+**Waarom:** klanten draaien meestal 5-10 advertenties. Met 5 ads zijn "laagste CPL met ≥3 leads" en "hoogste CPL met ≥€50 spend" niet wederzijds uitsluitend — dezelfde ad valt in beide buckets. Roy heeft dit gemarkeerd voor SiteJob: "Before/After Dynamics" stond én bij winners (€22.71 CPL, laagste) én bij losers (€22.71 CPL, hoogste). Dat sloopt het concept.
+
+**Verdict-regels (relatief tot account-avg CPL):**
+| Conditie | Verdict | UI kleur |
+|---|---|---|
+| `leads === 0 && spend ≥ €50` | loser | rood (CPL "—") |
+| `cpl ≤ 0.7 × accountAvgCpl` | winner | groen |
+| `cpl ≥ 1.4 × accountAvgCpl` | loser | rood |
+| anders (incl. te weinig data om te oordelen) | neutral | muted |
+
+Brede neutrale band (0.7 / 1.4) voorkomt dat met kleine ad-sets álles gekleurd wordt — alleen de duidelijke uitschieters krijgen een signaal.
+
+**Filter:** ad-sets met spend < €10 (30d) negeren — micro-tests vertekenen het account-gemiddelde anders.
+
+**Output cap:** max 5 ads, gesorteerd op spend desc. De ad waar je de meeste euro's in stopt wil je sowieso zien.
+
 ---
 
 ## Campagnestructuur (Meta)

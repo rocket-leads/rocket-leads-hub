@@ -22,8 +22,10 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
     )
   }
 
-  // Show-up rate denominator: only past calls that have been processed (qualified − notUpdated).
-  const showUpDenom = (row: CloserData) => Math.max(0, row.qualifiedCalls - row.notUpdated)
+  // Show-up rate: taken (which now includes Not Updated) ÷ qualified (all past).
+  // Not Updated is folded into Taken so the conversion rate can't be gamed by
+  // skipping status updates — but we keep the Not Updated column so the data-
+  // quality issue is still visible.
 
   const totalQualified = data.reduce((s, r) => s + r.qualifiedCalls, 0)
   const totalUpcoming = data.reduce((s, r) => s + r.upcomingCalls, 0)
@@ -31,8 +33,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
   const totalNotUpdated = data.reduce((s, r) => s + r.notUpdated, 0)
   const totalDeals = data.reduce((s, r) => s + r.deals, 0)
   const totalRevenue = data.reduce((s, r) => s + r.revenue, 0)
-  const totalShowUpDenom = data.reduce((s, r) => s + showUpDenom(r), 0)
-  const totalShowUp = safeDivide(totalTaken, totalShowUpDenom)
+  const totalShowUp = safeDivide(totalTaken, totalQualified)
   const totalConv = safeDivide(totalDeals, totalTaken)
   const totalAvg = safeDivide(totalRevenue, totalDeals)
 
@@ -49,7 +50,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
                 <th className="text-left font-medium pb-2">Closer</th>
                 <th className="text-right font-medium pb-2" title="Past appointments scheduled with this closer (all statuses)">Qualified</th>
                 <th className="text-right font-medium pb-2">Taken</th>
-                <th className="text-right font-medium pb-2" title="Taken ÷ (Qualified − Not Updated) — only counts processed past calls">Show-up</th>
+                <th className="text-right font-medium pb-2" title="Taken ÷ Qualified. Not Updated is included in Taken so closers can't game the conversion rate.">Show-up</th>
                 <th className="text-right font-medium pb-2" title="Past appointments still in Qualified / Gepland status — closer hasn't updated">Not Updated</th>
                 <th className="text-right font-medium pb-2" title="Future appointments scheduled in the period — pending workload">Upcoming</th>
                 <th className="text-right font-medium pb-2">Deals</th>
@@ -60,8 +61,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
             </thead>
             <tbody>
               {data.map((row) => {
-                const denom = showUpDenom(row)
-                const showUp = safeDivide(row.takenCalls, denom)
+                const showUp = safeDivide(row.takenCalls, row.qualifiedCalls)
                 const conv = safeDivide(row.deals, row.takenCalls)
                 const avg = safeDivide(row.revenue, row.deals)
                 const isUnassigned = row.closer === "Unassigned"
@@ -70,7 +70,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
                     <td className={`py-1.5 truncate max-w-[140px] ${isUnassigned ? "text-muted-foreground/60 italic" : "text-muted-foreground"}`}>{row.closer}</td>
                     <td className="py-1.5 text-right font-mono text-foreground">{row.qualifiedCalls}</td>
                     <td className="py-1.5 text-right font-mono text-foreground">{row.takenCalls}</td>
-                    <td className="py-1.5 text-right font-mono text-muted-foreground">{denom > 0 ? formatPercent(showUp) : "—"}</td>
+                    <td className="py-1.5 text-right font-mono text-muted-foreground">{row.qualifiedCalls > 0 ? formatPercent(showUp) : "—"}</td>
                     <td className={`py-1.5 text-right font-mono ${row.notUpdated > 0 ? "text-yellow-500" : "text-muted-foreground/40"}`}>{row.notUpdated > 0 ? row.notUpdated : "—"}</td>
                     <td className={`py-1.5 text-right font-mono ${row.upcomingCalls > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>{row.upcomingCalls > 0 ? row.upcomingCalls : "—"}</td>
                     <td className="py-1.5 text-right font-mono text-foreground">{row.deals}</td>
@@ -86,7 +86,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
                 <td className="pt-2 font-medium uppercase tracking-wider text-muted-foreground/60 text-[10px]">Total</td>
                 <td className="pt-2 text-right font-mono font-bold text-foreground">{totalQualified}</td>
                 <td className="pt-2 text-right font-mono font-bold text-foreground">{totalTaken}</td>
-                <td className="pt-2 text-right font-mono font-bold text-foreground">{totalShowUpDenom > 0 ? formatPercent(totalShowUp) : "—"}</td>
+                <td className="pt-2 text-right font-mono font-bold text-foreground">{totalQualified > 0 ? formatPercent(totalShowUp) : "—"}</td>
                 <td className={`pt-2 text-right font-mono font-bold ${totalNotUpdated > 0 ? "text-yellow-500" : "text-muted-foreground/40"}`}>{totalNotUpdated > 0 ? totalNotUpdated : "—"}</td>
                 <td className={`pt-2 text-right font-mono font-bold ${totalUpcoming > 0 ? "text-foreground" : "text-muted-foreground/40"}`}>{totalUpcoming > 0 ? totalUpcoming : "—"}</td>
                 <td className="pt-2 text-right font-mono font-bold text-foreground">{totalDeals}</td>

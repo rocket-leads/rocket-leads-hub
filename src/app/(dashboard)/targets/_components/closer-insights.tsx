@@ -23,13 +23,10 @@ const SHOW_UP_TARGET = 0.80
 const CONV_TARGET = 0.30
 
 // Sample-size minimums to keep insights from firing on noise
-const MIN_PROCESSED = 3
+const MIN_QUALIFIED = 3
 const MIN_TAKEN = 3
 const MIN_DEALS = 2
 const NOT_UPDATED_THRESHOLD = 3
-
-/** Show-up rate denominator: past appointments that have been processed (qualified − not-updated). */
-const processedCalls = (c: CloserData) => Math.max(0, c.qualifiedCalls - c.notUpdated)
 
 function generateCloserInsights(closers: CloserData[]): Insight[] {
   const active = closers.filter(
@@ -39,19 +36,20 @@ function generateCloserInsights(closers: CloserData[]): Insight[] {
 
   const insights: Insight[] = []
 
-  // Team baselines
-  const totalProcessed = active.reduce((s, c) => s + processedCalls(c), 0)
+  // Team baselines — Not Updated is folded into takenCalls so the conversion
+  // rate can't be gamed; show-up rate uses qualifiedCalls (all past) as denom.
+  const totalQualified = active.reduce((s, c) => s + c.qualifiedCalls, 0)
   const totalTaken = active.reduce((s, c) => s + c.takenCalls, 0)
   const totalDeals = active.reduce((s, c) => s + c.deals, 0)
   const totalRevenue = active.reduce((s, c) => s + c.revenue, 0)
-  const teamShowUp = safeDivide(totalTaken, totalProcessed)
+  const teamShowUp = safeDivide(totalTaken, totalQualified)
   const teamConv = safeDivide(totalDeals, totalTaken)
   const teamAvgDeal = safeDivide(totalRevenue, totalDeals)
 
   // ── Show-up rate ─────────────────────────────────────────────────
   const showUpData = active
-    .filter((c) => processedCalls(c) >= MIN_PROCESSED)
-    .map((c) => ({ closer: c.closer, rate: c.takenCalls / processedCalls(c), taken: c.takenCalls, booked: processedCalls(c) }))
+    .filter((c) => c.qualifiedCalls >= MIN_QUALIFIED)
+    .map((c) => ({ closer: c.closer, rate: safeDivide(c.takenCalls, c.qualifiedCalls), taken: c.takenCalls, booked: c.qualifiedCalls }))
   const bestShowUp = [...showUpData].sort((a, b) => b.rate - a.rate)[0]
   const worstShowUp = [...showUpData].sort((a, b) => a.rate - b.rate)[0]
 

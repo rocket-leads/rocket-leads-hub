@@ -11,14 +11,16 @@ import type { ClientContext } from "@/lib/watchlist/collect-context"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest, NextResponse } from "next/server"
 
+export type AdVerdict = "winner" | "neutral" | "loser"
+
 export type WatchlistExpandResponse = {
   /** 14d daily trend (spend + leads). Computed live so the chart works even when the
    *  parent KpiSummary cache predates the dailyTrend field. */
   dailyTrend: Array<{ date: string; spend: number; leads: number }>
-  /** Top-3 winning ads (30d) — lowest CPL with at least 3 leads. */
-  winningAds: Array<{ adName: string; spend: number; leads: number; cpl: number }>
-  /** Top-3 losing ads (30d) — highest CPL with at least €50 spend. */
-  losingAds: Array<{ adName: string; spend: number; leads: number; cpl: number }>
+  /** Top live ads in the last 30d, sorted by spend desc. Each ad gets a verdict relative
+   *  to the account-average CPL — single list (no winner/loser overlap with few ads).
+   *  `cpl: 0` is the on-the-wire convention for "no leads with spend"; the UI renders "—". */
+  topAds: Array<{ adName: string; spend: number; leads: number; cpl: number; verdict: AdVerdict }>
   /** Concise 14d activity summary, AI-generated from Monday updates (both boards) +
    *  Trengo conversations. Null when no qualitative input is available. */
   aiSummary: string | null
@@ -218,24 +220,48 @@ export async function GET(
     : dailyInsights
   const dailyTrend = fillTrend(aggregateMetaDailyByDate(dailyFiltered), trendRange.startDate)
 
-  // Winners/losers from ad-level data.
-  const enriched = ads.map((a) => ({
-    adName: a.adName,
-    spend: a.spend,
-    leads: a.leads,
-    cpl: a.leads > 0 ? a.spend / a.leads : Infinity,
-  }))
-  const winningAds = enriched
-    .filter((a) => a.leads >= 3)
-    .sort((a, b) => a.cpl - b.cpl)
-    .slice(0, 3)
-    .map((a) => ({ ...a }))
-  const losingAds = enriched
-    .filter((a) => a.spend >= 50)
-    .sort((a, b) => b.cpl - a.cpl)
-    .slice(0, 3)
-    // Serialize Infinity → 0; UI renders "—" for non-finite CPL anyway.
-    .map((a) => ({ ...a, cpl: isFinite(a.cpl) ? a.cpl : 0 }))
+  // Single ranked list of top ads (sorted by spend desc) with a per-ad verdict relative to
+  // the account-average CPL. Avoids the previous winner/loser overlap that happened when a
+  // client only had 3-5 live ads — the same ad would qualify as both "lowest CPL" and
+  // "highest CPL" because the ranks are non-exclusive on a tiny set.
+  const enriched = ads
+    .map((a) => ({
+      adName: a.adName,
+      spend: a.spend,
+      leads: a.leads,
+      cpl: a.leads > 0 ? a.spend / a.leads : Infinity,
+    }))
+    .filter((a) => a.spend >= 10) // drop micro-tests so they don't drag the average around
+
+  // Account-average CPL across ads with leads — used as the verdict reference point.
+  const adsWithLeads = enriched.filter((a) => a.leads > 0)
+  const totalSpendWithLeads = adsWithLeads.reduce((s, a) => s + a.spend, 0)
+  const totalLeads = adsWithLeads.reduce((s, a) => s + a.leads, 0)
+  const accountAvgCpl = totalLeads > 0 ? totalSpendWithLeads / totalLeads : 0
+
+  function verdict(ad: { cpl: number; spend: number; leads: number }): AdVerdict {
+    // 0 leads with material spend = pure waste, always loser.
+    if (ad.leads === 0 && ad.spend >= 50) return "loser"
+    // Not enough basis to judge (no account avg yet, or no leads on this ad).
+    if (accountAvgCpl <= 0 || !isFinite(ad.cpl)) return "neutral"
+    // Wide neutral band so we only color the clear winners/losers — keeps the
+    // signal honest with small ad counts where everything is above or below avg.
+    if (ad.cpl <= 0.7 * accountAvgCpl) return "winner"
+    if (ad.cpl >= 1.4 * accountAvgCpl) return "loser"
+    return "neutral"
+  }
+
+  const topAds = enriched
+    .sort((a, b) => b.spend - a.spend)
+    .slice(0, 5)
+    .map((a) => ({
+      adName: a.adName,
+      spend: a.spend,
+      leads: a.leads,
+      // Wire format: 0 means "no CPL because no leads"; UI renders this as "—".
+      cpl: isFinite(a.cpl) ? a.cpl : 0,
+      verdict: verdict(a),
+    }))
 
   // AI summary — cached 1h per client. Source mix: lead-board updates, current-board updates,
   // Trengo. The model receives explicit per-block window labels so it can't conflate sources,
@@ -255,8 +281,7 @@ export async function GET(
 
   return NextResponse.json<WatchlistExpandResponse>({
     dailyTrend,
-    winningAds,
-    losingAds,
+    topAds,
     aiSummary,
   }, {
     headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },

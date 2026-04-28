@@ -288,18 +288,8 @@ function ExpandedRow({ client, insight }: { client: MondayClient; kpi: KpiSummar
 
   return (
     <div className="border-b border-border/10 bg-muted/[0.04] px-5 py-5">
-      <div className="flex items-start justify-between gap-6 mb-5">
-        {/* CPL chart — uses live trend from the expand endpoint, not the parent KpiSummary,
-            so it works even when the kpi-summaries cache predates the dailyTrend field. */}
-        <div className="min-w-0 flex-1 max-w-[320px]">
-          {isLoading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : (
-            <CplChart trend={data?.dailyTrend} />
-          )}
-        </div>
-
-        {/* Open full client page */}
+      {/* Open client — top-right of the panel */}
+      <div className="flex justify-end mb-3">
         <Link
           href={`/clients/${client.mondayItemId}?from=watchlist`}
           className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors whitespace-nowrap"
@@ -309,33 +299,28 @@ function ExpandedRow({ client, insight }: { client: MondayClient; kpi: KpiSummar
         </Link>
       </div>
 
-      {/* Top winners + losers */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
-        <ExpandPanel title="Top winners (30d)" subtitle="Lowest CPL · ≥3 leads">
+      {/* Chart side-by-side with Top ads — keeps the panel compact and gives both signals
+          at the same eye-level. */}
+      <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 mb-4">
+        <div className="rounded-md border border-border/30 bg-muted/10 px-3.5 py-3">
           {isLoading ? (
-            <Skeleton className="h-16 w-full" />
-          ) : data?.winningAds.length ? (
-            <ul className="space-y-1.5">
-              {data.winningAds.map((ad) => (
-                <AdRow key={ad.adName} ad={ad} kind="winner" />
-              ))}
-            </ul>
+            <Skeleton className="h-24 w-full" />
           ) : (
-            <p className="text-[11px] text-muted-foreground/50 italic">No qualifying ads in the last 30d.</p>
+            <CplChart trend={data?.dailyTrend} />
           )}
-        </ExpandPanel>
+        </div>
 
-        <ExpandPanel title="Top losers (30d)" subtitle="Highest CPL · ≥€50 spend">
+        <ExpandPanel title="Top ads (30d)" subtitle="By spend · color = vs account avg CPL">
           {isLoading ? (
-            <Skeleton className="h-16 w-full" />
-          ) : data?.losingAds.length ? (
+            <Skeleton className="h-24 w-full" />
+          ) : data?.topAds.length ? (
             <ul className="space-y-1.5">
-              {data.losingAds.map((ad) => (
-                <AdRow key={ad.adName} ad={ad} kind="loser" />
+              {data.topAds.map((ad) => (
+                <AdRow key={ad.adName} ad={ad} />
               ))}
             </ul>
           ) : (
-            <p className="text-[11px] text-muted-foreground/50 italic">No qualifying ads in the last 30d.</p>
+            <p className="text-[11px] text-muted-foreground/50 italic">No ads with meaningful spend in the last 30d.</p>
           )}
         </ExpandPanel>
       </div>
@@ -368,9 +353,16 @@ function ExpandPanel({ title, subtitle, children }: { title: string; subtitle: s
   )
 }
 
-function AdRow({ ad, kind }: { ad: WatchlistExpandResponse["winningAds"][number]; kind: "winner" | "loser" }) {
+function AdRow({ ad }: { ad: WatchlistExpandResponse["topAds"][number] }) {
   const cplLabel = ad.leads > 0 && ad.cpl > 0 ? `€${ad.cpl.toFixed(2)}` : "—"
-  const cplColor = kind === "winner" ? "text-green-400" : "text-red-400"
+  // Verdict drives the CPL color. Neutral stays muted — only clear winners/losers
+  // get a strong color so the eye actually trusts the signal.
+  const cplColor =
+    ad.verdict === "winner"
+      ? "text-green-400"
+      : ad.verdict === "loser"
+        ? "text-red-400"
+        : "text-muted-foreground"
   return (
     <li className="flex items-baseline justify-between gap-3 text-[11px]">
       <span className="text-foreground/80 truncate flex-1 min-w-0" title={ad.adName}>{ad.adName}</span>

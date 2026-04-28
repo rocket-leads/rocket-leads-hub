@@ -209,8 +209,18 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
       if (STATUS_MAP.qualified.includes(status)) addTo(country, (a) => a.qualifiedCalls++)
       if (STATUS_MAP.noShows.includes(status)) addTo(country, (a) => a.noShows++)
     }
-    if (isInRange(datumAfspraak, startDate, endDate) && STATUS_MAP.taken.includes(status)) {
-      addTo(country, (a) => a.takenCalls++)
+    if (isInRange(datumAfspraak, startDate, endDate)) {
+      if (STATUS_MAP.taken.includes(status)) {
+        addTo(country, (a) => a.takenCalls++)
+      } else if (
+        STATUS_MAP.notUpdated.includes(status)
+        && datumAfspraak !== null
+        && datumAfspraak < todayStr
+      ) {
+        // Past appointment still in pre-call status — count as taken anyway so the
+        // conversion rate can't be gamed by closers leaving statuses un-updated.
+        addTo(country, (a) => a.takenCalls++)
+      }
     }
     if (isInRange(dateDeal, startDate, endDate) && STATUS_MAP.deals.includes(status)) {
       addTo(country, (a) => {
@@ -247,7 +257,13 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
         if (isPastAppointment) {
           addTo(country, (a) => { ensureCloser(a).qualifiedCalls++ })
           if (STATUS_MAP.notUpdated.includes(status)) {
-            addTo(country, (a) => { ensureCloser(a).notUpdated++ })
+            // Past + un-processed: count as taken AND track as notUpdated so we can
+            // flag the data-quality issue without skewing conversion rate.
+            addTo(country, (a) => {
+              const c = ensureCloser(a)
+              c.notUpdated++
+              c.takenCalls++
+            })
           } else if (STATUS_MAP.taken.includes(status)) {
             addTo(country, (a) => { ensureCloser(a).takenCalls++ })
           }

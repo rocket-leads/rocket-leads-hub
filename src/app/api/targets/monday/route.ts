@@ -5,16 +5,21 @@ import { fetchMondayTargets, getMtdRange } from "@/lib/targets/fetchers"
 import type { MondayTargetsByCountry } from "@/types/targets"
 
 // Cached entries from before the closers shape existed (qualifiedCalls / upcomingCalls /
-// notUpdated) are stale. If the cache has any closer rows, they must include the latest
-// fields — otherwise we treat as a miss and refetch.
+// notUpdated) are stale. Also detect the old takenCalls semantic — after the recent
+// change Not Updated is folded into Taken, so a closer with notUpdated > 0 must have
+// takenCalls >= notUpdated. Old caches violate that invariant.
 function hasFreshSchema(cached: MondayTargetsByCountry | null): boolean {
   const closers = cached?.all?.closers
   if (!Array.isArray(closers)) return false
   if (closers.length === 0) return true
   const first = closers[0]
-  return typeof first.qualifiedCalls === "number"
+  const hasFields =
+    typeof first.qualifiedCalls === "number"
     && typeof first.upcomingCalls === "number"
     && typeof first.notUpdated === "number"
+  if (!hasFields) return false
+  // Old takenCalls (held only) doesn't include notUpdated → invariant violation.
+  return !closers.some((c) => c.notUpdated > 0 && c.takenCalls < c.notUpdated)
 }
 
 export async function GET(request: Request) {
