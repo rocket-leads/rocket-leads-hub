@@ -31,9 +31,11 @@ type Props = {
   clientName: string
   boardType: "onboarding" | "current"
   onNavigateToSettings?: () => void
+  /** Bumped by the page-level refresh button to force AI proposal regeneration */
+  regenerateSignal?: number
 }
 
-export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, clientName, boardType, onNavigateToSettings }: Props) {
+export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, clientName, boardType, onNavigateToSettings, regenerateSignal }: Props) {
   const [dateRange, setDateRange] = useState<DateRange>(defaultDateRange)
 
   const campaignsQuery = useQuery<{ campaigns: CampaignWithSelection[] }>({
@@ -117,6 +119,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
         selectedCampaignIds={selectedIds}
         clientName={clientName}
         boardType={boardType}
+        regenerateSignal={regenerateSignal}
       />
 
       {/* Date filter + KPIs */}

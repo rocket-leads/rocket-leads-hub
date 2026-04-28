@@ -66,6 +66,7 @@ export function ClientTabs({ client, access }: Props) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [regenerateSignal, setRegenerateSignal] = useState(0)
 
   // Billing query for notification dot (overdue invoices)
   const billingQuery = useQuery<{ invoices?: Array<{ status: string }> }>({
@@ -106,12 +107,15 @@ export function ClientTabs({ client, access }: Props) {
   async function handleRefresh() {
     setIsRefreshing(true)
     router.refresh()
+    // Refetch all client-scoped queries (Meta/Monday data) and wait for them to settle.
     await queryClient.invalidateQueries({
       predicate: (query) => {
         const key = query.queryKey
         return Array.isArray(key) && key.length >= 2 && key[1] === client.mondayItemId
       },
     })
+    // Then bump the signal so the AI proposal regenerates against the fresh KPI data.
+    setRegenerateSignal((n) => n + 1)
     setIsRefreshing(false)
   }
 
@@ -176,7 +180,7 @@ export function ClientTabs({ client, access }: Props) {
             className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all mb-1"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            title="Refresh all data"
+            title="Refresh data and regenerate analysis"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
           </button>
@@ -192,6 +196,7 @@ export function ClientTabs({ client, access }: Props) {
               clientName={client.name}
               boardType={client.boardType}
               onNavigateToSettings={() => setActiveTab("settings")}
+              regenerateSignal={regenerateSignal}
             />
           ) : <NoAccess />
         )}

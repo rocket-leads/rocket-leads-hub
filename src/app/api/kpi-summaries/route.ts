@@ -1,10 +1,10 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { fetchMetaInsights } from "@/lib/integrations/meta"
+import { fetchMetaInsightsDaily, aggregateMetaDailyToTotals, aggregateMetaDailyByDate } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import { detectMondayActivity } from "@/lib/clients/monday-activity"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
-import { readCache } from "@/lib/cache"
+import { readCache, writeCache } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 export type KpiSummary = {
@@ -17,8 +17,21 @@ export type KpiSummary = {
   prevCostPerAppointment: number
   /** True when client uses RL ad account but has no campaigns selected — data should be ignored */
   rlAccountNoCampaign?: boolean
-  /** True when leads come from Meta `actions` because no Monday board is linked */
+  /** True when leads come from Meta `actions` because Monday returned no usable data */
   metaFallback?: boolean
+  /**
+   * True only when we successfully read items from a linked Monday board for this fetch.
+   * When false, `appointments` is NOT a real "zero" — the CRM source is missing entirely
+   * and the AI/UI should treat appointment-based metrics as UNKNOWN, not as zero.
+   */
+  mondayCrmConnected?: boolean
+  /**
+   * Per-day spend & leads for the trailing 14 days, sorted oldest → newest. Used to render
+   * inline sparklines in the Watch List. Days with no Meta activity are filled with zeros so
+   * the array length is always exactly the rendered window. Optional — older cache entries
+   * may not carry it.
+   */
+  dailyTrend?: Array<{ date: string; spend: number; leads: number }>
 }
 
 type ClientInput = {
@@ -27,25 +40,56 @@ type ClientInput = {
   clientBoardId: string | null
 }
 
+const SPARKLINE_DAYS = 14
+
+function fmtDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
 function getLast7DaysRange() {
-  const fmt = (d: Date) => d.toISOString().slice(0, 10)
   const end = new Date()
   end.setDate(end.getDate() - 1) // yesterday
   const start = new Date(end)
   start.setDate(start.getDate() - 6) // 7 days total
-  return { startDate: fmt(start), endDate: fmt(end) }
+  return { startDate: fmtDate(start), endDate: fmtDate(end) }
 }
 
 function getPrevious7DaysRange() {
-  const fmt = (d: Date) => d.toISOString().slice(0, 10)
   const end = new Date()
   end.setDate(end.getDate() - 8) // day before the current 7-day window
   const start = new Date(end)
   start.setDate(start.getDate() - 6) // 7 days total
-  return { startDate: fmt(start), endDate: fmt(end) }
+  return { startDate: fmtDate(start), endDate: fmtDate(end) }
 }
 
-type FetchResult = { summary: KpiSummary; mondayActive: boolean }
+function getTrendRange() {
+  const end = new Date()
+  end.setDate(end.getDate() - 1)
+  const start = new Date(end)
+  start.setDate(start.getDate() - (SPARKLINE_DAYS - 1))
+  return { startDate: fmtDate(start), endDate: fmtDate(end) }
+}
+
+/**
+ * Fill in missing dates with zero so the trend array is always exactly SPARKLINE_DAYS long
+ * and can be plotted as a continuous line.
+ */
+function fillTrend(
+  byDate: Array<{ date: string; spend: number; leads: number }>,
+  startDate: string,
+): Array<{ date: string; spend: number; leads: number }> {
+  const map = new Map(byDate.map((d) => [d.date, d]))
+  const out: Array<{ date: string; spend: number; leads: number }> = []
+  const cursor = new Date(startDate + "T00:00:00Z")
+  for (let i = 0; i < SPARKLINE_DAYS; i++) {
+    const d = fmtDate(cursor)
+    out.push(map.get(d) ?? { date: d, spend: 0, leads: 0 })
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return out
+}
+
+type FetchResult = { summary: KpiSummary; mondayActive: boolean; mondayOk: boolean }
 
 async function fetchSummary(
   client: ClientInput,
@@ -59,47 +103,89 @@ async function fetchSummary(
   const isRlNoCampaign = isRocketLeadsAdAccount(client.metaAdAccountId) && selectedCampaignIds.size === 0
   const shouldFetchMeta = client.metaAdAccountId && !isRlNoCampaign
 
-  const [insights, prevInsights, items] = await Promise.all([
+  type MondayItems = Awaited<ReturnType<typeof fetchClientBoardItems>>
+  type MondayResult = { ok: boolean; items: MondayItems }
+
+  // Single 14d daily fetch covers both the 7d / prev-7d totals AND the sparkline trend.
+  // Saves one Meta API roundtrip per client compared to fetching each window separately.
+  const trendRange = getTrendRange()
+
+  const [dailyInsights, monday] = await Promise.all([
     shouldFetchMeta
-      ? fetchMetaInsights(client.metaAdAccountId!, startDate, endDate).catch(() => [])
-      : Promise.resolve([]),
-    shouldFetchMeta
-      ? fetchMetaInsights(client.metaAdAccountId!, prevStartDate, prevEndDate).catch(() => [])
+      ? fetchMetaInsightsDaily(client.metaAdAccountId!, trendRange.startDate, trendRange.endDate).catch(() => [])
       : Promise.resolve([]),
     client.clientBoardId
-      ? fetchClientBoardItems(client.clientBoardId).catch(() => [])
-      : Promise.resolve([]),
+      ? fetchClientBoardItems(client.clientBoardId)
+          .then((items): MondayResult => ({ ok: true, items }))
+          .catch((e): MondayResult => {
+            console.error("Monday fetch failed for board", client.clientBoardId, e instanceof Error ? e.message : e)
+            return { ok: false, items: [] }
+          })
+      : Promise.resolve<MondayResult>({ ok: false, items: [] }),
   ])
+  const items = monday.items
 
-  const filtered = selectedCampaignIds.size > 0
-    ? insights.filter((i) => selectedCampaignIds.has(i.campaignId))
-    : insights
-  const prevFiltered = selectedCampaignIds.size > 0
-    ? prevInsights.filter((i) => selectedCampaignIds.has(i.campaignId))
-    : prevInsights
+  const dailyFiltered = selectedCampaignIds.size > 0
+    ? dailyInsights.filter((d) => selectedCampaignIds.has(d.campaignId))
+    : dailyInsights
+
+  // Slice daily rows into the two 7d windows and aggregate to per-campaign totals.
+  const inWindow = (date: string, s: string, e: string) => date >= s && date <= e
+  const filtered = aggregateMetaDailyToTotals(
+    dailyFiltered.filter((d) => inWindow(d.date, startDate, endDate))
+  )
+  const prevFiltered = aggregateMetaDailyToTotals(
+    dailyFiltered.filter((d) => inWindow(d.date, prevStartDate, prevEndDate))
+  )
 
   const adSpend = filtered.reduce((sum, i) => sum + i.spend, 0)
   const prevAdSpend = prevFiltered.reduce((sum, i) => sum + i.spend, 0)
 
-  // Fall back to Meta-reported leads when no Monday board is linked.
-  // Appointments aren't trackable without Monday CRM, so they stay 0.
-  const metaFallback = !client.clientBoardId && shouldFetchMeta && filtered.length > 0
-  const leads = metaFallback
-    ? filtered.reduce((sum, i) => sum + i.leads, 0)
-    : items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
-  const prevLeads = metaFallback
-    ? prevFiltered.reduce((sum, i) => sum + i.leads, 0)
-    : items.filter((i) => i.dateCreated >= prevStartDate && i.dateCreated <= prevEndDate).length
-  const appointments = metaFallback
-    ? 0
-    : items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
-  const prevAppointments = metaFallback
-    ? 0
-    : items.filter((i) => i.dateAppointment >= prevStartDate && i.dateAppointment <= prevEndDate).length
+  // Use Monday lead counts when available, otherwise fall back to Meta. We treat "Monday
+  // returned 0 leads in this window while Meta reports leads" the same as a fetch failure —
+  // it covers access issues, broken Zapier sync, wrong column mapping, etc. Appointments
+  // can only come from Monday CRM, so they always read from `items`.
+  const mondayLeads = monday.ok
+    ? items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
+    : 0
+  const mondayPrevLeads = monday.ok
+    ? items.filter((i) => i.dateCreated >= prevStartDate && i.dateCreated <= prevEndDate).length
+    : 0
+  const metaLeadsReported = filtered.reduce((sum, i) => sum + i.leads, 0)
+  const metaPrevLeadsReported = prevFiltered.reduce((sum, i) => sum + i.leads, 0)
+
+  const metaFallback = mondayLeads === 0 && metaLeadsReported > 0
+  const leads = metaFallback ? metaLeadsReported : mondayLeads
+  const prevLeads = mondayPrevLeads === 0 && metaPrevLeadsReported > 0 ? metaPrevLeadsReported : mondayPrevLeads
+
+  const appointments = monday.ok
+    ? items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
+    : 0
+  const prevAppointments = monday.ok
+    ? items.filter((i) => i.dateAppointment >= prevStartDate && i.dateAppointment <= prevEndDate).length
+    : 0
 
   const cpl = leads > 0 ? adSpend / leads : 0
   const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
   const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
+
+  // Build the 14d sparkline trend. Spend comes from Meta directly; daily leads come from
+  // Monday when the CRM is connected, otherwise we fall back to Meta's per-day lead count
+  // (mirrors the metaFallback rule applied to the 7d total).
+  const metaByDate = aggregateMetaDailyByDate(dailyFiltered)
+  const dailyTrend = shouldFetchMeta
+    ? fillTrend(
+        metaByDate.map((d) => {
+          if (monday.ok) {
+            const mondayLeadsForDay = items.filter((i) => i.dateCreated === d.date).length
+            // Use Monday count if it has any leads; otherwise fall back to Meta for that day.
+            return { date: d.date, spend: d.spend, leads: mondayLeadsForDay > 0 ? mondayLeadsForDay : d.leads }
+          }
+          return d
+        }),
+        trendRange.startDate,
+      )
+    : undefined
 
   return {
     summary: {
@@ -112,8 +198,11 @@ async function fetchSummary(
       prevCostPerAppointment,
       ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
       ...(metaFallback ? { metaFallback: true } : {}),
+      mondayCrmConnected: monday.ok,
+      ...(dailyTrend ? { dailyTrend } : {}),
     },
     mondayActive: items.length > 0 ? detectMondayActivity(items) : false,
+    mondayOk: monday.ok,
   }
 }
 
@@ -140,7 +229,9 @@ async function batchProcess(
     settled.forEach((result, j) => {
       if (result.status === "fulfilled") {
         results[batch[j].mondayItemId] = result.value.summary
-        if (batch[j].clientBoardId) {
+        // Only persist activity when Monday actually responded — a failed fetch
+        // (e.g. access denied) shouldn't flip a client to inactive.
+        if (batch[j].clientBoardId && result.value.mondayOk) {
           activityUpdates.push({ mondayItemId: batch[j].mondayItemId, active: result.value.mondayActive })
         }
       }
@@ -159,29 +250,36 @@ async function batchProcess(
   return results
 }
 
+export const maxDuration = 300
+
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  const force = req.nextUrl.searchParams.get("force") === "1"
+
   const body = (await req.json()) as { clients: ClientInput[] }
   if (!body.clients?.length) return NextResponse.json({})
 
-  // Serve from cache — cron keeps it fresh every 30 min
-  const cached = await readCache<Record<string, KpiSummary>>("kpi_summaries")
-  if (cached) {
-    const summaries: Record<string, KpiSummary> = {}
-    for (const c of body.clients) {
-      if (cached[c.mondayItemId]) summaries[c.mondayItemId] = cached[c.mondayItemId]
-    }
-    // Return whatever we have from cache — don't block on live fetches
-    if (Object.keys(summaries).length > 0) {
-      return NextResponse.json(summaries, {
-        headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
-      })
+  // Serve from cache — cron keeps it fresh every 30 min. Skipped on `?force=1`
+  // so the user can trigger a live re-fetch from the watchlist refresh button.
+  if (!force) {
+    const cached = await readCache<Record<string, KpiSummary>>("kpi_summaries")
+    if (cached) {
+      const summaries: Record<string, KpiSummary> = {}
+      for (const c of body.clients) {
+        if (cached[c.mondayItemId]) summaries[c.mondayItemId] = cached[c.mondayItemId]
+      }
+      // Return whatever we have from cache — don't block on live fetches
+      if (Object.keys(summaries).length > 0) {
+        return NextResponse.json(summaries, {
+          headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+        })
+      }
     }
   }
 
-  // No cache at all — fetch live (first load only)
+  // Live fetch — happens on cold-start (no cache) or when `force=1` is passed
   const { startDate, endDate } = getLast7DaysRange()
   const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
 
@@ -220,6 +318,13 @@ export async function POST(req: NextRequest) {
   const summaries = await batchProcess(
     body.clients, startDate, endDate, prevStartDate, prevEndDate, 5, selectedByMondayItemId, supabase
   )
+
+  // On force-refresh, merge fresh results into the existing cache so other
+  // consumers (and subsequent non-force loads) see the up-to-date numbers.
+  if (force && Object.keys(summaries).length > 0) {
+    const existing = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}
+    void writeCache("kpi_summaries", { ...existing, ...summaries })
+  }
 
   return NextResponse.json(summaries, {
     headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },

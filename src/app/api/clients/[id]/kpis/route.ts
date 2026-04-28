@@ -69,7 +69,10 @@ export async function GET(
     for (const r of selectedRows ?? []) selectedCampaignIds.add(r.meta_campaign_id)
   }
 
-  const [insights, leadItems] = await Promise.all([
+  type MondayItems = Awaited<ReturnType<typeof fetchClientBoardItems>>
+  type MondayResult = { ok: boolean; items: MondayItems }
+
+  const [insights, monday] = await Promise.all([
     adAccountId
       ? cachedFetch(
           `meta_insights:${adAccountId}:${startDate}:${endDate}`,
@@ -80,9 +83,15 @@ export async function GET(
       ? cachedFetch(
           `monday_board_items:${clientBoardId}`,
           () => fetchClientBoardItems(clientBoardId, client?.column_mapping_override ?? undefined),
-        ).catch((e) => { console.error("Monday board error:", e); return [] as Awaited<ReturnType<typeof fetchClientBoardItems>> })
-      : Promise.resolve([]),
+        )
+          .then((items): MondayResult => ({ ok: true, items }))
+          .catch((e): MondayResult => {
+            console.error("Monday board error:", e instanceof Error ? e.message : e)
+            return { ok: false, items: [] }
+          })
+      : Promise.resolve<MondayResult>({ ok: false, items: [] }),
   ])
+  const leadItems = monday.items
 
   const relevantInsights = selectedCampaignIds.size > 0
     ? insights.filter((i) => selectedCampaignIds.has(i.campaignId))
@@ -90,6 +99,15 @@ export async function GET(
   const adSpend = relevantInsights.reduce((sum, i) => sum + i.spend, 0)
 
   const kpis = calculateKpis(adSpend, leadItems, startDate, endDate, takenCallStatusValue)
+
+  // Fall back to Meta-reported leads whenever Monday returns zero in this window but Meta
+  // reports leads — covers no board, access denied, broken Zapier sync, wrong column mapping.
+  // Booked/taken/deals stay as-is since Meta can't track those.
+  const metaLeadsReported = relevantInsights.reduce((sum, i) => sum + i.leads, 0)
+  if (kpis.leads === 0 && metaLeadsReported > 0) {
+    kpis.leads = metaLeadsReported
+    kpis.costPerLead = adSpend / metaLeadsReported
+  }
 
   // Auto-detect Monday activity and update Supabase (fire-and-forget)
   if (leadItems.length > 0 && client?.id) {

@@ -18,6 +18,12 @@ type ClientInput = {
   appointments: number
   costPerAppointment: number
   prevCostPerAppointment: number
+  /** True only when a Monday board was linked AND we successfully read items from it */
+  mondayCrmConnected?: boolean
+  /** True when leads came from Meta because Monday returned no usable data */
+  leadsFromMetaFallback?: boolean
+  /** True when the client even has a Monday board ID configured */
+  hasClientBoardId?: boolean
 }
 
 export async function POST(req: NextRequest) {
@@ -28,7 +34,7 @@ export async function POST(req: NextRequest) {
   if (!clients?.length) return NextResponse.json({})
 
   // Check note cache
-  const cached = await readCache<Record<string, string>>("watchlist_summaries_v4")
+  const cached = await readCache<Record<string, string>>("watchlist_summaries_v6")
 
   const needed = clients.filter((c) => !cached?.[c.id])
   if (needed.length === 0 && cached) {
@@ -48,21 +54,34 @@ export async function POST(req: NextRequest) {
     const cplChange = c.prevCpl > 0 ? ((c.cpl - c.prevCpl) / c.prevCpl * 100).toFixed(0) : "n/a"
     const cpaChange = c.prevCostPerAppointment > 0 ? ((c.costPerAppointment - c.prevCostPerAppointment) / c.prevCostPerAppointment * 100).toFixed(0) : "n/a"
 
+    // Build the data-availability summary so the model knows what's UNKNOWN vs really zero.
+    const crmConnected = c.mondayCrmConnected === true
+    const leadsSource = c.leadsFromMetaFallback ? "Meta `actions` (Monday CRM unavailable)" : "Monday CRM"
+
+    // Appointments are ONLY trackable via Monday CRM. If Monday isn't connected,
+    // the on-screen "0" is missing data, not a real zero.
+    const apptsLine = crmConnected
+      ? `appts ${c.appointments} | CPA €${c.costPerAppointment.toFixed(0)} (${cpaChange}% wow)`
+      : `appts UNKNOWN — Monday CRM not connected (do NOT claim 0 appointments) | CPA UNKNOWN`
+
     const parts = [
       `[CLIENT ${c.id}] ${c.name} | ${c.category.toUpperCase()}`,
+      `DATA AVAILABILITY: leads source = ${leadsSource}; Monday CRM = ${crmConnected ? "CONNECTED" : "NOT CONNECTED (no board linked or fetch failed)"}; appointments trackable = ${crmConnected ? "yes" : "NO"}`,
       `INSIGHT COLUMN (already visible — DO NOT REPEAT): "${c.issue}"`,
-      `KPIs (7d): spend €${c.adSpend.toFixed(0)} | leads ${c.leads} | CPL €${c.cpl.toFixed(2)} (${cplChange}% wow) | appts ${c.appointments} | CPA €${c.costPerAppointment.toFixed(0)} (${cpaChange}% wow)`,
+      `KPIs [WINDOW: last 7d]: spend €${c.adSpend.toFixed(0)} | leads ${c.leads} | CPL €${c.cpl.toFixed(2)} (${cplChange}% wow) | ${apptsLine}`,
     ]
 
     const ctx = contextCache[c.id]
-    if (ctx?.mondayUpdates) {
-      parts.push(`MONDAY CRM:\n${ctx.mondayUpdates.slice(0, 800)}`)
+    if (crmConnected && ctx?.mondayUpdates) {
+      // Lead status counts in this block are ALL-TIME (lifetime board totals).
+      // Recent update texts are from the last 14d only.
+      parts.push(`MONDAY CRM [WINDOW: status counts = all-time, update texts = last 14d]:\n${ctx.mondayUpdates.slice(0, 800)}`)
     }
     if (ctx?.trengoSummary) {
-      parts.push(`TRENGO CONVERSATIONS:\n${ctx.trengoSummary.slice(0, 800)}`)
+      parts.push(`TRENGO CONVERSATIONS [WINDOW: last 14d]:\n${ctx.trengoSummary.slice(0, 800)}`)
     }
-    if (!ctx?.mondayUpdates && !ctx?.trengoSummary) {
-      parts.push(`(No qualitative data available — KPI only)`)
+    if ((!crmConnected || !ctx?.mondayUpdates) && !ctx?.trengoSummary) {
+      parts.push(`(No qualitative data available — Meta KPI data only. Focus on creative/CPL/ad-fatigue angles, not lead-quality or appointment claims.)`)
     }
 
     return parts.join("\n")
@@ -84,6 +103,40 @@ Each client already has an "Insight" column visible to the user (provided as "IN
 
 **The AI Note should answer: "OK I see the Insight, but what SPECIFICALLY should I do?"**
 
+## CRITICAL — KNOW WHAT DATA YOU HAVE BEFORE YOU WRITE ANYTHING
+Each client comes with a "DATA AVAILABILITY" line. Read it first. It tells you whether Monday CRM is connected and whether appointment data is trackable for that client.
+
+**When Monday CRM = NOT CONNECTED:**
+- The KPI block will show \`appts UNKNOWN\` and \`CPA UNKNOWN\`. The on-screen "0 appts" the user sees in the column is also missing-data, not a real zero. NEVER write any of these:
+  - "0 appointments"
+  - "no appointments generated"
+  - "zero appts"
+  - "leads aren't converting to appointments"
+  - "audience mismatch — no appts"
+  - any conversion-rate claim that uses appointments
+- Also DO NOT write claims about lead quality / lead sentiment — that data lives in Monday updates, which you don't have for this client.
+- Instead, focus on Meta-trackable angles only:
+  - CPL trend, ad-set fatigue, creative variation depth, CTR decay, CPM, frequency
+  - "Itereer op winning hook", "Test new angle X", "Pause [ad name] — €Y CPL spike (7d)"
+  - You may suggest: "Verify with client — no CRM linked, ask if appointments are being booked offline" — but only if the absence is itself the most useful insight.
+
+**When Monday CRM = CONNECTED:**
+- You can use leads, appts, lead-quality, and Monday update sentiment freely (with window labels per below).
+
+If you write a claim that depends on data flagged UNKNOWN, that's a hard failure — the campaign manager will lose trust in every note.
+
+## CRITICAL — TIME WINDOW LABELS ARE MANDATORY ON EVERY NUMBER
+The KPI columns the user sees on screen (spend, leads, CPL, appts) are LAST 7 DAYS. The qualitative inputs you receive cover different windows:
+- **KPIs block** = last 7d (and 7d-vs-prev-7d % deltas)
+- **MONDAY CRM block** = lead status counts are ALL-TIME (lifetime board totals); recent update texts are from the last 14d
+- **TRENGO CONVERSATIONS block** = last 14d
+
+**Every numeric claim in your note MUST include its window inline**, e.g. "25 leads (all-time), 0 appts (all-time)" or "8 'no budget' replies (14d)" or "47 'wrong region' updates (all-time)". Never write a bare number.
+
+**Why this matters:** if the column shows "5 leads (7d)" and your note says "25 leads, 0 appts" without a window, the campaign manager thinks the dashboard is broken. The window label is the proof that two different numbers are both correct. Without it the note kills trust in the whole product. This is non-negotiable.
+
+If you can't tell what window a number came from in the data you were given, do not use that number — pick a different angle.
+
 ## DATA PRIORITY
 1. **MONDAY CRM UPDATES** — AM/setter notes about lead quality, client feedback
 2. **TRENGO CONVERSATIONS** — Client messages, satisfaction, complaints
@@ -103,7 +156,8 @@ When recommending creative iterations or pauses, reference the SPECIFIC winning/
 ## FORMAT RULES
 - The note must ADD information beyond the Insight column
 - Be specific: name ads, UTMs, or funnel elements where possible
-- Keep under 25 words. Direct, no fluff.
+- Every number gets a window label in parentheses: (7d), (14d), (all-time)
+- Keep under 30 words. Direct, no fluff.
 - Write in English
 
 Output JSON only: {"client_id": "note", ...}`,
@@ -125,9 +179,9 @@ Output JSON only: {"client_id": "note", ...}`,
       }
     }
 
-    // Merge with existing cache (bump to v3 for new prompt)
+    // Merge with existing cache (bump cache key when prompt changes so stale notes regenerate)
     const merged = { ...(cached ?? {}), ...result }
-    void writeCache("watchlist_summaries_v4", merged)
+    void writeCache("watchlist_summaries_v6", merged)
 
     const response: Record<string, string> = {}
     for (const c of clients) {

@@ -231,6 +231,74 @@ Elke optimalisatie-aanbeveling valt in een van deze 5 categorieën. Elke aanbeve
 - ❌ "Slechte efficiency" → ✅ "€154 spend, 2 leads = €77 CPL — 3x boven gemiddelde"
 - ❌ "Creative fatigue" → ✅ "CTR gedaald van 2.1% naar 0.8% over 30d bij €280 spend"
 
+### Time Window Labels — verplicht op élk getal in AI output
+
+Elk getal dat een AI agent (Watch List AI Note, Optimisation Proposal, Lead Analysis, etc.) noemt MOET inline gelabeld zijn met de tijdvenster waar het uit komt. Geen blote getallen.
+
+- ❌ "25 leads, 0 appts = audience mismatch" → ✅ "25 leads (all-time), 0 appts (all-time) = audience mismatch"
+- ❌ "8 'no budget' replies" → ✅ "8 'no budget' replies (14d)"
+- ❌ "CPL €38 vs €23 prev week" → ✅ "CPL €38 (7d) vs €23 (prev 7d)"
+
+**Geldige labels:** `(7d)` · `(14d)` · `(30d)` · `(prev 7d)` · `(all-time)` — wat van toepassing is op de bron.
+
+**Waarom:** De Watch List kolommen tonen 7d cijfers (spend, leads, CPL, appts). De AI Note ernaast trekt vaak getallen uit bredere bronnen (all-time Monday status counts, 14d updates, 30d ad-detail data). Zonder window-label leest "25 leads" als tegenstrijdig met de "5 leads" kolom — de campaign manager denkt dat het dashboard kapot is. Het label is het bewijs dat twee verschillende getallen allebei kloppen. Zonder label sneuvelt het vertrouwen in het hele product.
+
+**Bron-windows die AI agents standaard ontvangen:**
+| Datablok | Window |
+|---|---|
+| KPI columns / KPI block | 7d (en `prev 7d` voor week-over-week deltas) |
+| Per-client KPI vergelijking | 7d / 14d / 30d (alle drie expliciet gelabeld) |
+| Monday CRM — lead status counts | all-time (lifetime board totals) |
+| Monday CRM — recent update texts | 14d |
+| Trengo conversations | 14d |
+| Per-ad performance details | meestal 30d, label per call mee |
+
+Als een AI agent niet kan vaststellen uit welk venster een getal komt, gebruik dat getal niet — kies een andere invalshoek.
+
+### Data Awareness — schrijf nooit conclusies over data die je niet hebt
+
+Elke client heeft een andere combinatie van bronnen die verbonden zijn. Vóór een AI agent een note of proposal schrijft moet hij eerst checken WELKE data daadwerkelijk beschikbaar is. Een ontbrekende bron is **niet** hetzelfde als een nul-uitkomst.
+
+**Bron-status combinaties die voorkomen:**
+| Status | Wat de AI heeft | Wat de AI NIET heeft | Wat NIET claimen |
+|---|---|---|---|
+| Monday CRM connected | leads, appointments, lead status, Monday updates per UTM | — | (geen restricties) |
+| Monday CRM **niet** connected (geen board OF fetch failed) | Meta spend/leads/CPL/CTR (Meta-fallback) | appointments, lead quality, conversie %, lead-status sentiment | "0 appointments", "no appts", "audience mismatch — geen afspraken", conversiepercentages, "leads converteren niet", lead-quality oordelen |
+| Geen Meta ad account gekoppeld | Monday-data (als CRM linked) | spend, CPL, ad performance | Cost-per-X claims, ad-fatigue oordelen, creative-iteratie aanbevelingen |
+| Geen Trengo contact | KPI + Monday updates | klant-sentiment via berichten | "Klant klaagt", "klant vraagt om X" — tenzij in Monday updates |
+
+**Waarom:** als appointments=0 staat in een KPI block terwijl Monday niet gekoppeld is, is dat 0 GEEN feit — het is afwezigheid van data. Een AI die schrijft "25 leads, 0 afspraken = audience mismatch" voor een client zonder Monday CRM ondermijnt het vertrouwen in het hele dashboard. Roy heeft dit expliciet gemarkeerd voor Juice Concepts Benelux en ZoomX: er stond "0 appointments" terwijl Monday niet gekoppeld was, dus die conclusie was onmogelijk te trekken.
+
+**Wat WEL doen als data ontbreekt:**
+- Focus op de bronnen die je wél hebt. Bij alleen Meta: CPL trend (7d/30d), CTR-decay, ad fatigue, frequency, creative variation depth, hook-iteratie kansen.
+- Stel ontbrekende-data zelf voor als actie: "Verify with client — no CRM linked, ask if appointments are being booked offline" — alleen als de afwezigheid zelf het meest nuttige inzicht is.
+- **Nooit verzinnen wat je niet weet.** Liever een kortere, smallere note die klopt dan een complete maar deels-fictieve.
+
+**Implementatie-hint voor prompts:** stuur per client een expliciete `DATA AVAILABILITY` regel mee (welke bronnen connected, welke metrics trackable) en label velden die niet beschikbaar zijn als `UNKNOWN` in plaats van `0`.
+
+### Signal Bar — geen filler in AI-genereerde lijsten
+
+Voor elke AI-output die naast bestaande KPI-kolommen of een Insight-tekst getoond wordt (Watch List Activity Summary, Optimisation Proposals, AI Note), geldt een hoge bar: minder bullets die kloppen verslaat meer bullets die zacht of overlappend zijn.
+
+**De drie failure modes die altijd geskipt moeten worden:**
+
+| Failure mode | Voorbeeld (BAD) | Waarom skippen |
+|---|---|---|
+| **Dubbele info met Insight kolom** | "CPL elevated this week" terwijl Insight zegt "CPL up 80%" | De CM ziet het al, herhaling kost leestijd zonder waarde |
+| **Bare counts zonder noemer** | "11 leads marked 'niet bereikbaar'" | Zonder totaal-pool of percentage zegt het niets — 11 op 1000 is geen probleem, 11 op 15 is een crisis. Verbieden tenzij als ratio: `X/Y (Z%, 14d)` |
+| **Vage referenties zonder uitkomst** | "Pending invoicing clarification", "video timeline discussion", "ongoing content alignment" | Geen concrete actie of beslissing. Of expand naar het specifieke besluit/blocker, of skip |
+
+**Wat WEL als signal telt:**
+1. **Campaign status changes** — on hold, paused, going live, killed, resuming after content delivery
+2. **Directe klant requests/decisions** — budget increase, scope change, complaint, content commitment (cite kanaal + datum)
+3. **Concrete blockers** — "wacht op nieuwe creatives voor restart", "klant moet Meta business manager verifiëren"
+4. **Lead-quality patterns als RATIO** — "11/15 'niet bereikbaar' (73%, 14d)", "5/8 leads via [UTM] 'geen budget' (14d)"
+5. **Pattern over meerdere Trengo berichten** — herhaalde klacht, escalatie, expliciete tevredenheid
+
+**Aantal bullets:** maximaal 3. Nul bullets is een geldig antwoord wanneer er geen concrete signalen zijn — output dan exact één regel `- No notable activity in the last 14d.` Geen padding.
+
+**Implementatie-hint voor prompts:** stuur de huidige Insight-tekst expliciet mee in de prompt zodat de AI kan vergelijken en niet dubbel-werk produceert. Cache-key bumpen wanneer het prompt verandert zodat oude soft summaries weggaan.
+
 ---
 
 ## Campagnestructuur (Meta)

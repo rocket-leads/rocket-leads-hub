@@ -24,8 +24,30 @@ export type MetaInsight = {
   campaignId: string
   campaignName: string
   spend: number
-  /** Lead count from Meta `actions` (any action_type containing "lead") */
+  /** Canonical lead count — prefers `lead`, falls back to max of per-source aliases */
   leads: number
+}
+
+/**
+ * Count leads from a Meta `actions` array. Meta returns the same conversion
+ * under multiple aliases (`lead`, `onsite_conversion.lead_grouped`,
+ * `leadgen_grouped`, `offsite_conversion.fb_pixel_lead`, ...) — summing all of
+ * them double-counts. Prefer the canonical `lead` total; fall back to the max
+ * of the per-source counts when `lead` isn't reported.
+ */
+function countLeads(actions: Array<{ action_type: string; value: string }> | undefined): number {
+  if (!actions?.length) return 0
+  const lookup = (type: string) =>
+    parseInt(actions.find((a) => a.action_type === type)?.value ?? "0", 10) || 0
+
+  const unified = lookup("lead")
+  if (unified > 0) return unified
+
+  return Math.max(
+    lookup("onsite_conversion.lead_grouped"),
+    lookup("offsite_conversion.fb_pixel_lead"),
+    lookup("leadgen_grouped"),
+  )
 }
 
 async function fetchAllPages<T>(url: string): Promise<T[]> {
@@ -71,22 +93,85 @@ export async function fetchMetaInsights(
     spend: string
     actions?: Array<{ action_type: string; value: string }>
   }>(url)
-  return data.map((d) => {
-    // Sum any action_type containing "lead": covers `lead`, `onsite_conversion.lead_grouped`,
-    // `offsite_conversion.fb_pixel_lead` — works for both Meta lead forms and pixel events.
-    const leads = (d.actions ?? []).reduce((sum, a) => {
-      if (a.action_type.toLowerCase().includes("lead")) {
-        return sum + (parseInt(a.value, 10) || 0)
-      }
-      return sum
-    }, 0)
-    return {
-      campaignId: d.campaign_id,
-      campaignName: d.campaign_name,
-      spend: parseFloat(d.spend ?? "0"),
-      leads,
+  return data.map((d) => ({
+    campaignId: d.campaign_id,
+    campaignName: d.campaign_name,
+    spend: parseFloat(d.spend ?? "0"),
+    leads: countLeads(d.actions),
+  }))
+}
+
+export type MetaDailyInsight = {
+  campaignId: string
+  campaignName: string
+  /** YYYY-MM-DD */
+  date: string
+  spend: number
+  leads: number
+}
+
+/**
+ * Per-day, per-campaign breakdown via Meta's `time_increment=1`. Use this when you need
+ * a daily trend (sparklines, time-series charts). Aggregate with `aggregateMetaDailyToTotals`
+ * or `aggregateMetaDailyByDate` to recover totals — saves a separate roundtrip.
+ *
+ * Note: Meta omits days with zero activity, so the returned array may be sparser than
+ * the requested range. Callers rendering a continuous timeline should fill missing dates.
+ */
+export async function fetchMetaInsightsDaily(
+  adAccountId: string,
+  startDate: string,
+  endDate: string
+): Promise<MetaDailyInsight[]> {
+  const token = await getToken()
+  const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
+  const timeRange = encodeURIComponent(JSON.stringify({ since: startDate, until: endDate }))
+  const url = `${META_API_BASE}/${accountId}/insights?fields=campaign_id,campaign_name,date_start,spend,actions&level=campaign&time_range=${timeRange}&time_increment=1&limit=1000&access_token=${token}`
+
+  const data = await fetchAllPages<{
+    campaign_id: string
+    campaign_name: string
+    date_start: string
+    spend: string
+    actions?: Array<{ action_type: string; value: string }>
+  }>(url)
+  return data.map((d) => ({
+    campaignId: d.campaign_id,
+    campaignName: d.campaign_name,
+    date: d.date_start,
+    spend: parseFloat(d.spend ?? "0"),
+    leads: countLeads(d.actions),
+  }))
+}
+
+/** Sum daily rows back to per-campaign totals (drop-in replacement for fetchMetaInsights output). */
+export function aggregateMetaDailyToTotals(daily: MetaDailyInsight[]): MetaInsight[] {
+  const map = new Map<string, MetaInsight>()
+  for (const d of daily) {
+    const cur = map.get(d.campaignId)
+    if (cur) {
+      cur.spend += d.spend
+      cur.leads += d.leads
+    } else {
+      map.set(d.campaignId, { campaignId: d.campaignId, campaignName: d.campaignName, spend: d.spend, leads: d.leads })
     }
-  })
+  }
+  return Array.from(map.values())
+}
+
+/** Sum daily rows by date (across campaigns), sorted ascending. Missing dates are NOT filled. */
+export function aggregateMetaDailyByDate(daily: MetaDailyInsight[]): Array<{ date: string; spend: number; leads: number }> {
+  const map = new Map<string, { date: string; spend: number; leads: number }>()
+  for (const d of daily) {
+    const cur = map.get(d.date)
+    if (cur) {
+      cur.spend += d.spend
+      cur.leads += d.leads
+    } else {
+      map.set(d.date, { date: d.date, spend: d.spend, leads: d.leads })
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export type MetaAdDetail = {
@@ -171,12 +256,7 @@ export async function fetchMetaAdDetails(
 
   return filtered.map((d) => {
     const creative = creativeMap.get(d.ad_id)
-    const leads = (d.actions ?? []).reduce((sum, a) => {
-      if (a.action_type.toLowerCase().includes("lead")) {
-        return sum + (parseInt(a.value, 10) || 0)
-      }
-      return sum
-    }, 0)
+    const leads = countLeads(d.actions)
     return {
       adId: d.ad_id,
       adName: d.ad_name,

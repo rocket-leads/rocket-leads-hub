@@ -101,9 +101,18 @@ export async function fetchAllItems(boardId: string, token: string, maxRetries =
       const allItems: Array<{ id: string; name: string; column_values: Array<{ id: string; text: string }> }> = []
       let cursor: string | null = null
 
+      let firstPage = true
       do {
         const data = await gql(query, { boardId, cursor }, token)
-        const page = data.boards?.[0]?.items_page
+        const board = data.boards?.[0]
+        // Monday returns an empty `boards` array (or a null entry) when the API token
+        // has no access to the requested board, instead of throwing. Surface that as
+        // an error so callers can distinguish "inaccessible" from "genuinely empty".
+        if (firstPage && (!data.boards?.length || board == null)) {
+          throw new Error(`Monday board ${boardId} not accessible (no access or board missing)`)
+        }
+        firstPage = false
+        const page = board?.items_page
         if (!page) break
         allItems.push(...(page.items ?? []))
         cursor = page.cursor ?? null
@@ -257,6 +266,42 @@ export type MondayItemWithUpdates = {
   utm: string
   leadStatus: string
   updates: Array<{ text: string; createdAt: string }>
+}
+
+/**
+ * Fetch the recent updates posted directly on a single Monday item — used to pull AM/CM
+ * notes from a client's row in the Current Clients board (board-level commentary), distinct
+ * from the per-lead updates in the client's lead board.
+ */
+export async function fetchItemUpdates(
+  itemId: string,
+  daysBack: number = 14,
+): Promise<Array<{ text: string; createdAt: string }>> {
+  const token = await getToken()
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - daysBack)
+  const cutoffStr = cutoff.toISOString().slice(0, 10)
+
+  const query = `
+    query GetItemUpdates($itemId: ID!) {
+      items(ids: [$itemId]) {
+        updates(limit: 50) {
+          text_body
+          created_at
+        }
+      }
+    }
+  `
+  const data = await gql(query, { itemId }, token)
+  const item = data.items?.[0]
+  if (!item) return []
+
+  return (item.updates ?? [])
+    .map((u: { text_body?: string; created_at?: string }) => ({
+      text: (u.text_body ?? "").trim(),
+      createdAt: (u.created_at ?? "").slice(0, 10),
+    }))
+    .filter((u: { text: string; createdAt: string }) => u.text && u.createdAt >= cutoffStr)
 }
 
 export async function fetchClientBoardItemsWithUpdates(

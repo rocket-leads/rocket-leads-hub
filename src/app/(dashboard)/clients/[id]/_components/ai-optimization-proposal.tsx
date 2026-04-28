@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { BarChart3, Sparkles, Lightbulb, RefreshCw, Clock, ChevronDown, PauseCircle, Palette, Compass, SlidersHorizontal, Wrench } from "lucide-react"
+import { BarChart3, Sparkles, Lightbulb, Clock, ChevronDown, PauseCircle, Palette, Compass, SlidersHorizontal, Wrench } from "lucide-react"
 import type { KpiResult } from "@/lib/clients/kpis"
 
 type ProposalCategory = "creative" | "pause" | "angle" | "funnel" | "other"
@@ -245,9 +245,11 @@ type Props = {
   selectedCampaignIds: string[]
   clientName: string
   boardType: "onboarding" | "current"
+  /** Increment to force regeneration of the AI proposal (triggered by the page-level refresh button) */
+  regenerateSignal?: number
 }
 
-export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId, selectedCampaignIds, clientName, boardType }: Props) {
+export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId, selectedCampaignIds, clientName, boardType, regenerateSignal = 0 }: Props) {
   const [proposals, setProposals] = useState<Proposal[] | null>(null)
   const [leadAnalysis, setLeadAnalysis] = useState<LeadAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
@@ -366,6 +368,14 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
     }
   }, [cacheChecked, isKpiLoading, hasAnyData]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Force-regenerate when the page-level refresh button is clicked.
+  // Skips the initial value (0) — only fires on increments.
+  useEffect(() => {
+    if (regenerateSignal === 0) return
+    if (loading) return
+    generate(true)
+  }, [regenerateSignal]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (isKpiLoading) {
     return (
       <div className="space-y-4">
@@ -404,33 +414,12 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
               <Lightbulb className="h-4 w-4 text-primary" />
               Optimisation Proposals
             </CardTitle>
-            <div className="flex items-center gap-2">
-              {generatedAt && (
-                <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
-                  <Clock className="h-2.5 w-2.5" />
-                  {timeAgo(generatedAt)}
-                </span>
-              )}
-              {hasAnyData && (
-                <button
-                  onClick={() => generate(true)}
-                  disabled={loading}
-                  className="flex items-center gap-1.5 rounded-lg border border-border/40 bg-muted/30 px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors disabled:opacity-50"
-                >
-                  {loading ? (
-                    <>
-                      <RefreshCw className="h-3 w-3 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-3 w-3" />
-                      Regenerate
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
+            {generatedAt && (
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground/40">
+                <Clock className="h-2.5 w-2.5" />
+                {timeAgo(generatedAt)}
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground/60 mt-1">
             Concrete actions to execute

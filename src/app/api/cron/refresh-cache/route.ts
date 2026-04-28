@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchBothBoards } from "@/lib/integrations/monday"
-import { fetchMetaInsights } from "@/lib/integrations/meta"
+import { fetchMetaInsightsDaily, aggregateMetaDailyToTotals, aggregateMetaDailyByDate } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { writeCache } from "@/lib/cache"
@@ -21,22 +21,49 @@ import type { BillingSummary } from "@/lib/integrations/stripe"
 
 const anthropic = new Anthropic()
 
+const SPARKLINE_DAYS = 14
+
+function fmtDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
 function getLast7DaysRange() {
-  const fmt = (d: Date) => d.toISOString().slice(0, 10)
   const end = new Date()
   end.setDate(end.getDate() - 1)
   const start = new Date(end)
   start.setDate(start.getDate() - 6)
-  return { startDate: fmt(start), endDate: fmt(end) }
+  return { startDate: fmtDate(start), endDate: fmtDate(end) }
 }
 
 function getPrevious7DaysRange() {
-  const fmt = (d: Date) => d.toISOString().slice(0, 10)
   const end = new Date()
   end.setDate(end.getDate() - 8)
   const start = new Date(end)
   start.setDate(start.getDate() - 6)
-  return { startDate: fmt(start), endDate: fmt(end) }
+  return { startDate: fmtDate(start), endDate: fmtDate(end) }
+}
+
+function getTrendRange() {
+  const end = new Date()
+  end.setDate(end.getDate() - 1)
+  const start = new Date(end)
+  start.setDate(start.getDate() - (SPARKLINE_DAYS - 1))
+  return { startDate: fmtDate(start), endDate: fmtDate(end) }
+}
+
+function fillTrend(
+  byDate: Array<{ date: string; spend: number; leads: number }>,
+  startDate: string,
+): Array<{ date: string; spend: number; leads: number }> {
+  const map = new Map(byDate.map((d) => [d.date, d]))
+  const out: Array<{ date: string; spend: number; leads: number }> = []
+  const cursor = new Date(startDate + "T00:00:00Z")
+  for (let i = 0; i < SPARKLINE_DAYS; i++) {
+    const d = fmtDate(cursor)
+    out.push(map.get(d) ?? { date: d, spend: 0, leads: 0 })
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return out
 }
 
 export const maxDuration = 300 // 5 minutes max for Vercel Pro
@@ -89,6 +116,7 @@ export async function GET(req: NextRequest) {
 
     const { startDate, endDate } = getLast7DaysRange()
     const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
+    const trendRange = getTrendRange()
 
     // 3. Compute KPI summaries in batches of 5
     const kpiClients = allClients.filter((c) => c.metaAdAccountId || c.clientBoardId)
@@ -102,48 +130,83 @@ export async function GET(req: NextRequest) {
           const isRlNoCampaign = isRocketLeadsAdAccount(client.metaAdAccountId) && selectedCampaignIds.size === 0
           const shouldFetchMeta = client.metaAdAccountId && !isRlNoCampaign
 
-          const [insights, prevInsights, items] = await Promise.all([
+          type MondayItems = Awaited<ReturnType<typeof fetchClientBoardItems>>
+          type MondayResult = { ok: boolean; items: MondayItems }
+
+          // One 14d daily Meta fetch covers the 7d total, prev-7d total, and sparkline trend.
+          const [dailyInsights, monday] = await Promise.all([
             shouldFetchMeta
-              ? fetchMetaInsights(client.metaAdAccountId, startDate, endDate).catch(() => [])
-              : Promise.resolve([]),
-            shouldFetchMeta
-              ? fetchMetaInsights(client.metaAdAccountId, prevStartDate, prevEndDate).catch(() => [])
+              ? fetchMetaInsightsDaily(client.metaAdAccountId, trendRange.startDate, trendRange.endDate).catch(() => [])
               : Promise.resolve([]),
             client.clientBoardId
-              ? fetchClientBoardItems(client.clientBoardId).catch(() => [])
-              : Promise.resolve([]),
+              ? fetchClientBoardItems(client.clientBoardId)
+                  .then((items): MondayResult => ({ ok: true, items }))
+                  .catch((e): MondayResult => {
+                    console.error("Monday fetch failed for board", client.clientBoardId, e instanceof Error ? e.message : e)
+                    return { ok: false, items: [] }
+                  })
+              : Promise.resolve<MondayResult>({ ok: false, items: [] }),
           ])
+          const items = monday.items
 
-          const filtered = selectedCampaignIds.size > 0
-            ? insights.filter((i) => selectedCampaignIds.has(i.campaignId))
-            : insights
-          const prevFiltered = selectedCampaignIds.size > 0
-            ? prevInsights.filter((i) => selectedCampaignIds.has(i.campaignId))
-            : prevInsights
+          const dailyFiltered = selectedCampaignIds.size > 0
+            ? dailyInsights.filter((d) => selectedCampaignIds.has(d.campaignId))
+            : dailyInsights
 
-          const adSpend = filtered.reduce((sum, i) => sum + i.spend, 0)
-          const prevAdSpend = prevFiltered.reduce((sum, i) => sum + i.spend, 0)
+          const inWindow = (date: string, s: string, e: string) => date >= s && date <= e
+          const filtered = aggregateMetaDailyToTotals(
+            dailyFiltered.filter((d) => inWindow(d.date, startDate, endDate))
+          )
+          const prevFiltered = aggregateMetaDailyToTotals(
+            dailyFiltered.filter((d) => inWindow(d.date, prevStartDate, prevEndDate))
+          )
 
-          // Fall back to Meta-reported leads when no Monday board is linked.
-          // Appointments aren't trackable without Monday CRM, so they stay 0.
-          const metaFallback = !client.clientBoardId && shouldFetchMeta && filtered.length > 0
-          const leads = metaFallback
-            ? filtered.reduce((sum, i) => sum + i.leads, 0)
-            : items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
-          const prevLeads = metaFallback
-            ? prevFiltered.reduce((sum, i) => sum + i.leads, 0)
-            : items.filter((i) => i.dateCreated >= prevStartDate && i.dateCreated <= prevEndDate).length
-          const appointments = metaFallback
-            ? 0
-            : items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
-          const prevAppointments = metaFallback
-            ? 0
-            : items.filter((i) => i.dateAppointment >= prevStartDate && i.dateAppointment <= prevEndDate).length
+          const adSpend = filtered.reduce((sum, x) => sum + x.spend, 0)
+          const prevAdSpend = prevFiltered.reduce((sum, x) => sum + x.spend, 0)
+
+          // Use Monday lead counts when available, otherwise fall back to Meta. "Monday
+          // returned 0 leads while Meta reports leads" is treated like a fetch failure — it
+          // covers access issues, broken Zapier sync, wrong column mapping, etc.
+          const mondayLeads = monday.ok
+            ? items.filter((it) => it.dateCreated >= startDate && it.dateCreated <= endDate).length
+            : 0
+          const mondayPrevLeads = monday.ok
+            ? items.filter((it) => it.dateCreated >= prevStartDate && it.dateCreated <= prevEndDate).length
+            : 0
+          const metaLeadsReported = filtered.reduce((sum, x) => sum + x.leads, 0)
+          const metaPrevLeadsReported = prevFiltered.reduce((sum, x) => sum + x.leads, 0)
+
+          const metaFallback = mondayLeads === 0 && metaLeadsReported > 0
+          const leads = metaFallback ? metaLeadsReported : mondayLeads
+          const prevLeads = mondayPrevLeads === 0 && metaPrevLeadsReported > 0 ? metaPrevLeadsReported : mondayPrevLeads
+
+          const appointments = monday.ok
+            ? items.filter((it) => it.dateAppointment >= startDate && it.dateAppointment <= endDate).length
+            : 0
+          const prevAppointments = monday.ok
+            ? items.filter((it) => it.dateAppointment >= prevStartDate && it.dateAppointment <= prevEndDate).length
+            : 0
 
           const cpl = leads > 0 ? adSpend / leads : 0
           const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
           const costPerAppointment = appointments > 0 ? adSpend / appointments : 0
           const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
+
+          // 14d daily trend: spend always from Meta; leads from Monday-per-day if CRM connected,
+          // else fall back to Meta's per-day count (mirrors metaFallback rule for the 7d total).
+          const metaByDate = aggregateMetaDailyByDate(dailyFiltered)
+          const dailyTrend = shouldFetchMeta
+            ? fillTrend(
+                metaByDate.map((d) => {
+                  if (monday.ok) {
+                    const mondayLeadsForDay = items.filter((it) => it.dateCreated === d.date).length
+                    return { date: d.date, spend: d.spend, leads: mondayLeadsForDay > 0 ? mondayLeadsForDay : d.leads }
+                  }
+                  return d
+                }),
+                trendRange.startDate,
+              )
+            : undefined
 
           return {
             mondayItemId: client.mondayItemId,
@@ -157,6 +220,8 @@ export async function GET(req: NextRequest) {
               prevCostPerAppointment,
               ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
               ...(metaFallback ? { metaFallback: true } : {}),
+              mondayCrmConnected: monday.ok,
+              ...(dailyTrend ? { dailyTrend } : {}),
             } as KpiSummary,
           }
         })

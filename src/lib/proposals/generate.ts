@@ -78,8 +78,10 @@ export type ProposalResult = {
   fromCache: boolean
 }
 
+// Bump the version suffix when the prompt changes so every client regenerates
+// once instead of serving notes built under the old rules.
 export function proposalCacheKey(mondayItemId: string) {
-  return `client_proposal:${mondayItemId}`
+  return `client_proposal_v2:${mondayItemId}`
 }
 
 async function loadKnowledgeFile(filename: string): Promise<string> {
@@ -256,6 +258,19 @@ This is non-negotiable. A CM glancing at the title must immediately see the numb
 - Any title that doesn't include at least one € amount and one metric
 
 Return 2-4 proposals max (NEVER more than 4). Each one must be executable without further research.
+
+## CRITICAL — Data awareness: never assert from missing data
+The user prompt includes \`Has CRM data: true|false\`. When **false**, the client has no Monday CRM linked (or it returned no usable data), so:
+- \`appointments\`, \`bookedCalls\`, \`takenCalls\`, \`deals\`, \`revenue\`, \`roi\`, \`crPercent\`, \`suPercent\`, and \`qrPercent\` in the KPI blocks are NOT real zeros — they're missing data masquerading as zero. Treat them as UNKNOWN.
+- The Lead Feedback block will be empty for the same reason.
+- NEVER claim "0 appointments", "no appts", "audience mismatch — no appts", "leads aren't converting", "no qualified leads", "low show-up rate", or any conversion-rate / appointment-based observation. The data simply isn't there.
+- Lead-quality / Monday-update sentiment claims are also off-limits — there are no updates to read.
+- Restrict your analysis and proposals to Meta-trackable signals: CPL trend (7d/14d/30d), ad-fatigue (CTR decay), creative variation depth, frequency, hook iteration, angle exhaustion based on CPL plateaus.
+- You may surface the absence itself as one proposal: \`category: "other"\`, "Verify offline with client whether appointments are being booked — no Monday CRM linked, conversion data unavailable" — but only when it's the most useful insight.
+
+When **Has CRM data: true**, all metrics are reliable; use them freely (with hard numbers + window labels).
+
+A confidently-written claim that depends on missing data is the worst possible failure mode — it makes the campaign manager distrust every other note. Better to write a shorter, narrower analysis that's correct than a complete one that's partly fictional.
 
 ## CRITICAL — Time awareness for client context
 Client knowledge base entries and Monday updates may contain information from months ago. Apply these time rules:
