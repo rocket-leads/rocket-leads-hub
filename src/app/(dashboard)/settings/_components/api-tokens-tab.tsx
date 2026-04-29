@@ -22,6 +22,7 @@ const SERVICES = [
   { id: "stripe", label: "Stripe", description: "Secret key (sk_live_... or sk_test_...)" },
   { id: "trengo", label: "Trengo", description: "API token from Trengo settings" },
   { id: "google_drive", label: "Google (Drive + Sheets)", description: "Full service account JSON — used for knowledge folder + targets cost sheet" },
+  { id: "slack", label: "Slack", description: "Bot User OAuth Token (starts with xoxb-) from your Slack App" },
 ]
 
 function StatusDot({ status }: { status: ServiceStatus | undefined }) {

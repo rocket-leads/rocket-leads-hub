@@ -44,6 +44,19 @@ async function testStripe(token: string): Promise<TestResult> {
   }
 }
 
+async function testSlack(token: string): Promise<TestResult> {
+  try {
+    const res = await fetch("https://slack.com/api/auth.test", {
+      headers: { Authorization: `Bearer ${token.trim()}` },
+    })
+    const data = await res.json()
+    if (data.ok) return { ok: true, message: `Connected as ${data.user} (workspace: ${data.team})` }
+    return { ok: false, message: data.error ?? "Invalid token" }
+  } catch {
+    return { ok: false, message: "Connection failed" }
+  }
+}
+
 async function testTrengo(token: string): Promise<TestResult> {
   const trimmed = token.trim()
   const endpoints = ["/users", "/labels", "/channels", "/teams"]
@@ -104,6 +117,7 @@ export async function POST(req: NextRequest) {
     case "meta": result = await testMeta(token); break
     case "stripe": result = await testStripe(token); break
     case "trengo": result = await testTrengo(token); break
+    case "slack": result = await testSlack(token); break
     default: return NextResponse.json({ ok: false, message: "Unknown service" })
   }
 
