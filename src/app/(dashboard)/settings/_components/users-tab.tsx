@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Trash2 } from "lucide-react"
+import { Check, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -38,7 +38,6 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
   const [users, setUsers] = useState(initial)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [slackDrafts, setSlackDrafts] = useState<Record<string, string>>({})
-  const [slackSavedAt, setSlackSavedAt] = useState<Record<string, number>>({})
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState<Role>("member")
   const [inviting, setInviting] = useState(false)
@@ -67,13 +66,11 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
     try {
       await updateUserSlackId(userId, trimmed)
       setUsers((u) => u.map((user) => (user.id === userId ? { ...user, slack_user_id: trimmed || null } : user)))
-      setSlackSavedAt((m) => ({ ...m, [userId]: Date.now() }))
-      setTimeout(() => {
-        setSlackSavedAt((m) => {
-          const { [userId]: _drop, ...rest } = m
-          return rest
-        })
-      }, 2000)
+      // Clear the draft so the input falls back to the saved value as source of truth
+      setSlackDrafts((d) => {
+        const { [userId]: _drop, ...rest } = d
+        return rest
+      })
     } catch (e) {
       console.error(e)
       setError(e instanceof Error ? e.message : "Failed to save Slack ID")
@@ -183,27 +180,42 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-1">
-                    <Input
-                      placeholder="U01ABC234XY"
-                      className="h-8 font-mono text-xs"
-                      value={slackDrafts[user.id] ?? user.slack_user_id ?? ""}
-                      onChange={(e) => setSlackDrafts((d) => ({ ...d, [user.id]: e.target.value }))}
-                      onBlur={() => handleSlackIdSave(user.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault()
-                          ;(e.target as HTMLInputElement).blur()
-                        }
-                      }}
-                    />
-                    {saving[`slack:${user.id}`] && (
-                      <span className="text-[10px] text-muted-foreground shrink-0">…</span>
-                    )}
-                    {slackSavedAt[user.id] && (
-                      <span className="text-[10px] text-green-500 shrink-0">✓</span>
-                    )}
-                  </div>
+                  {(() => {
+                    const draft = slackDrafts[user.id] ?? user.slack_user_id ?? ""
+                    const savedValue = user.slack_user_id ?? ""
+                    const trimmedDraft = draft.trim()
+                    const isSaving = !!saving[`slack:${user.id}`]
+                    const isDirty = trimmedDraft !== savedValue
+                    const isSaved = !isDirty && trimmedDraft.length > 0
+                    return (
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          placeholder="U01ABC234XY"
+                          className="h-8 font-mono text-xs"
+                          value={draft}
+                          onChange={(e) => setSlackDrafts((d) => ({ ...d, [user.id]: e.target.value }))}
+                          onBlur={() => handleSlackIdSave(user.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              ;(e.target as HTMLInputElement).blur()
+                            }
+                          }}
+                        />
+                        <div className="w-4 shrink-0 flex items-center justify-center">
+                          {isSaving && (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                          )}
+                          {!isSaving && isDirty && trimmedDraft.length > 0 && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title="Unsaved" />
+                          )}
+                          {!isSaving && isSaved && (
+                            <Check className="h-3.5 w-3.5 text-green-500" aria-label="Saved" />
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
