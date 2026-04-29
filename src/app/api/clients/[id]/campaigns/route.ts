@@ -45,9 +45,31 @@ export async function GET(
       : Promise.resolve([]),
   ])
 
-  const selectedSet = new Set(
-    selectedRows.filter((r) => r.is_selected).map((r) => r.meta_campaign_id)
-  )
+  // Auto-select new ACTIVE campaigns. Any active campaign that doesn't yet have a row in
+  // `client_campaigns` is treated as "track this by default" — covers brand-new clients
+  // (every active campaign opted in on first visit) and freshly-launched campaigns on
+  // existing clients (no manual toggle needed). Campaigns the user explicitly deselected
+  // already have a DB row with is_selected=false, so they're skipped here — user choice
+  // persists across status changes.
+  const knownIds = new Set(selectedRows.map((r) => r.meta_campaign_id))
+  const newActive = campaigns.filter((c) => c.status === "ACTIVE" && !knownIds.has(c.id))
+
+  if (newActive.length > 0 && clientId) {
+    void supabase.from("client_campaigns").upsert(
+      newActive.map((c) => ({
+        client_id: clientId,
+        meta_campaign_id: c.id,
+        campaign_name: c.name,
+        is_selected: true,
+      })),
+      { onConflict: "client_id,meta_campaign_id" }
+    )
+  }
+
+  const selectedSet = new Set<string>([
+    ...selectedRows.filter((r) => r.is_selected).map((r) => r.meta_campaign_id),
+    ...newActive.map((c) => c.id),
+  ])
 
   return NextResponse.json({
     campaigns: campaigns.map((c) => ({ ...c, isSelected: selectedSet.has(c.id) })),

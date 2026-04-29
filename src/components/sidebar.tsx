@@ -5,8 +5,8 @@ import { LogOut } from "lucide-react"
 import { SidebarNavLinks } from "./sidebar-nav-links"
 
 const NAV_ITEMS = [
-  { href: "/clients", label: "Clients", icon: "Users" as const },
   { href: "/watchlist", label: "Watch List", icon: "Eye" as const },
+  { href: "/clients", label: "Clients", icon: "Users" as const },
   { href: "/targets", label: "Targets", icon: "Target" as const },
 ]
 
@@ -23,7 +23,7 @@ export async function Sidebar() {
     <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-border/20 bg-card flex flex-col">
       {/* Logo */}
       <div className="px-6 py-6 mb-2">
-        <Link href="/clients" className="block">
+        <Link href="/watchlist" className="block">
           <Image
             src="/logos/logo-white-purple.svg"
             alt="Rocket Leads"

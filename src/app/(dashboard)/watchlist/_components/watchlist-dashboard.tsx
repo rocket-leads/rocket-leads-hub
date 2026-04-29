@@ -60,13 +60,20 @@ function severityScore(kpi: KpiSummary): number {
 }
 
 function categorize(client: MondayClient, kpi: KpiSummary | undefined): { category: WatchCategory; insight: string } {
-  // Skip clients with RL ad account but no selected campaigns (bogus data)
+  // Live client but RL ad account with no selected campaigns — surfaces in the No Data
+  // bucket so the CM can spot it and pick which campaigns to track in client settings.
   if (kpi?.rlAccountNoCampaign) {
-    return { category: "no-data", insight: "No campaigns selected" }
+    return { category: "no-data", insight: "RL ad account — no campaigns selected. Pick campaigns in client settings to start tracking." }
+  }
+
+  // Live client but no Meta ad account configured at all — distinct from "selected zero
+  // campaigns" so the CM knows whether the fix is "configure account" vs "pick campaigns".
+  if (!client.metaAdAccountId) {
+    return { category: "no-data", insight: "No Meta ad account configured for this client." }
   }
 
   if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
-    return { category: "no-data", insight: "No data" }
+    return { category: "no-data", insight: "No spend or leads in the last 7d — campaign paused, ad account issue, or genuinely idle." }
   }
 
   // Action: spend with zero leads
@@ -178,16 +185,6 @@ function CplSparkline({ trend }: { trend: KpiSummary["dailyTrend"] }) {
 
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean))).sort()
-}
-
-// API IDs we surface as "open" setup gaps. Monday board ID is intentionally
-// excluded — it has a Meta-fallback path so it isn't a setup blocker.
-function getMissingIds(client: MondayClient): string[] {
-  const missing: string[] = []
-  if (!client.metaAdAccountId) missing.push("Meta Ad Account")
-  if (!client.stripeCustomerId) missing.push("Stripe")
-  if (!client.trengoContactId) missing.push("Trengo")
-  return missing
 }
 
 // --- Section config ---
@@ -518,15 +515,16 @@ function WatchSection({
   )
 }
 
-// --- Open Section (setup gaps) ---
+// --- No Data Section ---
+// Live clients that have no actionable performance metrics for the 7d window — picked up
+// here so they're never silently dropped. Reasons surface inline: RL ad account with no
+// campaigns selected, no Meta ad account configured, or genuinely no spend/leads this week.
 
-type OpenItem = { client: MondayClient; missingIds: string[] }
-
-function OpenSection({
+function NoDataSection({
   items,
   defaultOpen,
 }: {
-  items: OpenItem[]
+  items: CategorizedClient[]
   defaultOpen: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -535,35 +533,31 @@ function OpenSection({
 
   return (
     <div>
-      {/* Section header */}
       <button
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2.5 w-full px-4 py-2.5 rounded-lg border bg-muted/20 border-border/30 mb-3 transition-colors hover:opacity-80"
       >
         {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/50" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />}
         <CircleDashed className="h-4 w-4 text-muted-foreground/60" />
-        <span className="text-sm font-medium text-muted-foreground">Open</span>
+        <span className="text-sm font-medium text-muted-foreground">No data</span>
         <span className="text-xs text-muted-foreground/50 tabular-nums">{items.length}</span>
-        <span className="text-[11px] text-muted-foreground/40 ml-1">setup incomplete — data is partial</span>
+        <span className="text-[11px] text-muted-foreground/40 ml-1">live in Monday but no usable Meta data this week</span>
       </button>
 
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
-          {/* Column headers */}
           <div className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-2.5 border-b border-border/20 bg-muted/20">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Client</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Missing IDs</span>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Reason</span>
             <span />
           </div>
 
-          {/* Rows */}
-          {items.map(({ client, missingIds }) => (
+          {items.map(({ client, insight }) => (
             <Link
               key={client.mondayItemId}
               href={`/clients/${client.mondayItemId}?from=watchlist`}
               className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-3 border-b border-border/10 border-l-2 border-l-muted-foreground/30 hover:bg-muted/20 transition-colors items-center"
             >
-              {/* Client */}
               <div className="min-w-0">
                 <p className="text-sm font-medium text-muted-foreground/80 truncate">{client.name}</p>
                 <p className="text-[10px] text-muted-foreground/40 truncate">
@@ -571,19 +565,8 @@ function OpenSection({
                 </p>
               </div>
 
-              {/* Missing IDs as chips */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {missingIds.map((id) => (
-                  <span
-                    key={id}
-                    className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-muted/40 text-muted-foreground/70"
-                  >
-                    {id} missing
-                  </span>
-                ))}
-              </div>
+              <p className="text-xs text-muted-foreground/70 leading-snug">{insight}</p>
 
-              {/* External icon */}
               <span className="text-muted-foreground/20 flex justify-center">
                 <ExternalLink className="h-3.5 w-3.5" />
               </span>
@@ -651,7 +634,7 @@ export function WatchListDashboard({ clients }: Props) {
     const action: CategorizedClient[] = []
     const watch: CategorizedClient[] = []
     const good: CategorizedClient[] = []
-    const open: OpenItem[] = []
+    const noData: CategorizedClient[] = []
 
     for (const client of filteredClients) {
       const kpi = kpiQuery.data?.[client.mondayItemId]
@@ -662,13 +645,7 @@ export function WatchListDashboard({ clients }: Props) {
       if (category === "action") action.push(item)
       else if (category === "watch") watch.push(item)
       else if (category === "good") good.push(item)
-
-      // Setup gaps are tracked independently — a client can appear in both
-      // a performance bucket (with whatever data is available) and Open.
-      const missingIds = getMissingIds(client)
-      if (missingIds.length > 0) {
-        open.push({ client, missingIds })
-      }
+      else if (category === "no-data") noData.push(item)
     }
 
     // Action & Watch: rank by severity (worst first → drop everything at the top).
@@ -676,9 +653,9 @@ export function WatchListDashboard({ clients }: Props) {
     action.sort((a, b) => b.severity - a.severity)
     watch.sort((a, b) => b.severity - a.severity)
     good.sort((a, b) => (b.kpi?.leads ?? 0) - (a.kpi?.leads ?? 0))
-    open.sort((a, b) => b.missingIds.length - a.missingIds.length || a.client.name.localeCompare(b.client.name))
+    noData.sort((a, b) => a.client.name.localeCompare(b.client.name))
 
-    return { action, watch, good, open }
+    return { action, watch, good, noData }
   }, [filteredClients, kpiQuery.data])
 
   // Auto-generate AI notes
@@ -796,8 +773,8 @@ export function WatchListDashboard({ clients }: Props) {
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-muted/40 text-muted-foreground">
             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-            Open
-            <span className="tabular-nums">{categorized.open.length}</span>
+            No data
+            <span className="tabular-nums">{categorized.noData.length}</span>
           </div>
         </div>
 
@@ -828,8 +805,8 @@ export function WatchListDashboard({ clients }: Props) {
           aiNotes={aiNotes}
           defaultOpen={true}
         />
-        <OpenSection
-          items={categorized.open}
+        <NoDataSection
+          items={categorized.noData}
           defaultOpen={false}
         />
         <WatchSection

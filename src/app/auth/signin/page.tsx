@@ -33,7 +33,7 @@ export default async function SignInPage({
             action={async () => {
               "use server"
               await signIn("google", {
-                redirectTo: callbackUrl ?? "/clients",
+                redirectTo: callbackUrl ?? "/watchlist",
               })
             }}
           >

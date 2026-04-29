@@ -11,7 +11,7 @@ import { fetchBothBoards } from "@/lib/integrations/monday"
 
 export default async function SettingsPage() {
   const session = await auth()
-  if (!session || session.user.role !== "admin") redirect("/clients")
+  if (!session || session.user.role !== "admin") redirect("/watchlist")
 
   const supabase = await createAdminClient()
 
