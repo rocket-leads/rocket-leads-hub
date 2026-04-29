@@ -103,7 +103,13 @@ export default async function SettingsPage() {
 
         <TabsContent value="mapping">
           <ColumnMappingTab
-            users={(users ?? []).map((u) => ({ id: u.id, email: u.email, name: u.name, role: u.role }))}
+            users={(users ?? []).map((u) => ({
+              id: u.id,
+              email: u.email,
+              name: u.name,
+              role: u.role,
+              slack_user_id: u.slack_user_id ?? null,
+            }))}
             mondayPeople={mondayPeople}
             existingMappings={(columnMappings ?? []).map((m) => ({
               user_id: m.user_id,

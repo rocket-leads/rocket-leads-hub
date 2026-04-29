@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, Loader2, Trash2 } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { inviteUser, removeUser, updateUserRole, updateUserSlackId } from "../actions"
+import { inviteUser, removeUser, updateUserRole } from "../actions"
 
 type Role = "admin" | "member" | "guest"
 
@@ -22,7 +22,6 @@ type User = {
   email: string
   name: string | null
   role: Role
-  slack_user_id: string | null
   created_at: string
 }
 
@@ -37,7 +36,6 @@ const ROLE_COLORS: Record<string, string> = {
 export function UsersTab({ users: initial, currentUserId }: Props) {
   const [users, setUsers] = useState(initial)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
-  const [slackDrafts, setSlackDrafts] = useState<Record<string, string>>({})
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState<Role>("member")
   const [inviting, setInviting] = useState(false)
@@ -55,30 +53,6 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
     }
   }
 
-  async function handleSlackIdSave(userId: string) {
-    const draft = slackDrafts[userId]
-    if (draft === undefined) return // never edited
-    const trimmed = draft.trim()
-    const current = users.find((u) => u.id === userId)
-    if (!current) return
-    if ((current.slack_user_id ?? "") === trimmed) return // no change
-    setSaving((s) => ({ ...s, [`slack:${userId}`]: true }))
-    try {
-      await updateUserSlackId(userId, trimmed)
-      setUsers((u) => u.map((user) => (user.id === userId ? { ...user, slack_user_id: trimmed || null } : user)))
-      // Clear the draft so the input falls back to the saved value as source of truth
-      setSlackDrafts((d) => {
-        const { [userId]: _drop, ...rest } = d
-        return rest
-      })
-    } catch (e) {
-      console.error(e)
-      setError(e instanceof Error ? e.message : "Failed to save Slack ID")
-    } finally {
-      setSaving((s) => ({ ...s, [`slack:${userId}`]: false }))
-    }
-  }
-
   async function handleInvite() {
     setError(null)
     setInviting(true)
@@ -91,7 +65,6 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
           email: inviteEmail.trim().toLowerCase(),
           name: null,
           role: inviteRole,
-          slack_user_id: null,
           created_at: new Date().toISOString(),
         },
       ])
@@ -160,7 +133,7 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
             <TableRow>
               <TableHead>User</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead className="w-[200px]">Slack user ID</TableHead>
+              <TableHead>Joined</TableHead>
               <TableHead className="w-[180px]">Change role</TableHead>
               <TableHead className="w-[60px]"></TableHead>
             </TableRow>
@@ -179,43 +152,8 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
                     {user.role}
                   </Badge>
                 </TableCell>
-                <TableCell>
-                  {(() => {
-                    const draft = slackDrafts[user.id] ?? user.slack_user_id ?? ""
-                    const savedValue = user.slack_user_id ?? ""
-                    const trimmedDraft = draft.trim()
-                    const isSaving = !!saving[`slack:${user.id}`]
-                    const isDirty = trimmedDraft !== savedValue
-                    const isSaved = !isDirty && trimmedDraft.length > 0
-                    return (
-                      <div className="flex items-center gap-1.5">
-                        <Input
-                          placeholder="U01ABC234XY"
-                          className="h-8 font-mono text-xs"
-                          value={draft}
-                          onChange={(e) => setSlackDrafts((d) => ({ ...d, [user.id]: e.target.value }))}
-                          onBlur={() => handleSlackIdSave(user.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault()
-                              ;(e.target as HTMLInputElement).blur()
-                            }
-                          }}
-                        />
-                        <div className="w-4 shrink-0 flex items-center justify-center">
-                          {isSaving && (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                          )}
-                          {!isSaving && isDirty && trimmedDraft.length > 0 && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title="Unsaved" />
-                          )}
-                          {!isSaving && isSaved && (
-                            <Check className="h-3.5 w-3.5 text-green-500" aria-label="Saved" />
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })()}
+                <TableCell className="text-sm text-muted-foreground">
+                  {new Date(user.created_at).toLocaleDateString()}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
