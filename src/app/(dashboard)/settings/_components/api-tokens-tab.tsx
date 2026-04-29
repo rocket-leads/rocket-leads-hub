@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -37,7 +38,11 @@ function StatusDot({ status }: { status: ServiceStatus | undefined }) {
   )
 }
 
-export function ApiTokensTab({ statuses }: Props) {
+export function ApiTokensTab({ statuses: initialStatuses }: Props) {
+  const router = useRouter()
+  // Local mirror of statuses — updated optimistically on save & after test results
+  // so the dot reflects the latest state without a full page reload.
+  const [statuses, setStatuses] = useState<Record<string, ServiceStatus>>(initialStatuses)
   const [tokens, setTokens] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [saved, setSaved] = useState<Record<string, boolean>>({})
@@ -53,6 +58,15 @@ export function ApiTokensTab({ statuses }: Props) {
       setTokens((t) => ({ ...t, [service]: "" }))
       setSaved((s) => ({ ...s, [service]: true }))
       setTimeout(() => setSaved((s) => ({ ...s, [service]: false })), 3000)
+      // After save the token is fresh but unverified — reset dot to "Not tested" grey
+      setStatuses((prev) => ({ ...prev, [service]: { is_valid: null, last_verified: null } }))
+      setTestResults((r) => {
+        const { [service]: _drop, ...rest } = r
+        return rest
+      })
+      // Run the verification immediately so the dot turns green/red without an extra click
+      void handleTest(service)
+      router.refresh()
     } catch (e) {
       console.error(e)
     } finally {
@@ -70,8 +84,17 @@ export function ApiTokensTab({ statuses }: Props) {
       })
       const data = await res.json()
       setTestResults((r) => ({ ...r, [service]: data }))
+      // Update local statuses so the dot + "Last tested" timestamp react immediately
+      setStatuses((prev) => ({
+        ...prev,
+        [service]: { is_valid: !!data.ok, last_verified: new Date().toISOString() },
+      }))
     } catch {
       setTestResults((r) => ({ ...r, [service]: { ok: false, message: "Request failed" } }))
+      setStatuses((prev) => ({
+        ...prev,
+        [service]: { is_valid: false, last_verified: new Date().toISOString() },
+      }))
     } finally {
       setTesting((t) => ({ ...t, [service]: false }))
     }

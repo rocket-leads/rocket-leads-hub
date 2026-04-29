@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
 import { NextRequest, NextResponse } from "next/server"
+import { google } from "googleapis"
 
 type TestResult = { ok: boolean; message: string }
 
@@ -41,6 +42,35 @@ async function testStripe(token: string): Promise<TestResult> {
     return { ok: false, message: data.error?.message ?? "Invalid key" }
   } catch {
     return { ok: false, message: "Connection failed" }
+  }
+}
+
+async function testGoogleDrive(token: string): Promise<TestResult> {
+  try {
+    let keyJson: { client_email?: string; private_key?: string }
+    try {
+      keyJson = JSON.parse(token.trim())
+    } catch {
+      return { ok: false, message: "Token is not valid JSON — paste the full service-account file contents" }
+    }
+    if (!keyJson.client_email || !keyJson.private_key) {
+      return { ok: false, message: "Service-account JSON is missing client_email or private_key" }
+    }
+    const authClient = new google.auth.GoogleAuth({
+      credentials: keyJson,
+      scopes: [
+        "https://www.googleapis.com/auth/drive.readonly",
+        "https://www.googleapis.com/auth/spreadsheets.readonly",
+      ],
+    })
+    const client = await authClient.getClient()
+    const accessToken = await client.getAccessToken()
+    if (accessToken?.token) {
+      return { ok: true, message: `Connected as ${keyJson.client_email}` }
+    }
+    return { ok: false, message: "Couldn't acquire access token" }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Connection failed" }
   }
 }
 
@@ -118,6 +148,7 @@ export async function POST(req: NextRequest) {
     case "stripe": result = await testStripe(token); break
     case "trengo": result = await testTrengo(token); break
     case "slack": result = await testSlack(token); break
+    case "google_drive": result = await testGoogleDrive(token); break
     default: return NextResponse.json({ ok: false, message: "Unknown service" })
   }
 
