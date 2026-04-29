@@ -100,6 +100,22 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
     }
   }
 
+  const [sendingDm, setSendingDm] = useState(false)
+  const [dmResult, setDmResult] = useState<{ ok: boolean; message: string } | null>(null)
+  async function handleSendTestDm() {
+    setSendingDm(true)
+    setDmResult(null)
+    try {
+      const res = await fetch("/api/slack/test-dm", { method: "POST" })
+      const data = await res.json()
+      setDmResult(data)
+    } catch {
+      setDmResult({ ok: false, message: "Request failed" })
+    } finally {
+      setSendingDm(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {SERVICES.map((svc) => (
@@ -151,6 +167,27 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
               <p className={`text-sm ${testResults[svc.id].ok ? "text-green-500" : "text-red-500"}`}>
                 {testResults[svc.id].message}
               </p>
+            )}
+            {svc.id === "slack" && statuses.slack?.is_valid && (
+              <div className="pt-2 border-t border-border/40 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Send a test DM to your own Slack to verify end-to-end delivery.
+                  Uses your sign-in email to look up your Slack user.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSendTestDm}
+                  disabled={sendingDm}
+                >
+                  {sendingDm ? "Sending..." : "Send test DM to me"}
+                </Button>
+                {dmResult && (
+                  <p className={`text-sm ${dmResult.ok ? "text-green-500" : "text-red-500"}`}>
+                    {dmResult.message}
+                  </p>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
