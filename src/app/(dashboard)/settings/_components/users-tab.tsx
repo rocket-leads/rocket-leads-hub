@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { inviteUser, removeUser, updateUserRole } from "../actions"
+import { inviteUser, removeUser, updateUserRole, updateUserSlackId } from "../actions"
 
 type Role = "admin" | "member" | "guest"
 
@@ -22,6 +22,7 @@ type User = {
   email: string
   name: string | null
   role: Role
+  slack_user_id: string | null
   created_at: string
 }
 
@@ -36,6 +37,8 @@ const ROLE_COLORS: Record<string, string> = {
 export function UsersTab({ users: initial, currentUserId }: Props) {
   const [users, setUsers] = useState(initial)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [slackDrafts, setSlackDrafts] = useState<Record<string, string>>({})
+  const [slackSavedAt, setSlackSavedAt] = useState<Record<string, number>>({})
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState<Role>("member")
   const [inviting, setInviting] = useState(false)
@@ -53,6 +56,32 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
     }
   }
 
+  async function handleSlackIdSave(userId: string) {
+    const draft = slackDrafts[userId]
+    if (draft === undefined) return // never edited
+    const trimmed = draft.trim()
+    const current = users.find((u) => u.id === userId)
+    if (!current) return
+    if ((current.slack_user_id ?? "") === trimmed) return // no change
+    setSaving((s) => ({ ...s, [`slack:${userId}`]: true }))
+    try {
+      await updateUserSlackId(userId, trimmed)
+      setUsers((u) => u.map((user) => (user.id === userId ? { ...user, slack_user_id: trimmed || null } : user)))
+      setSlackSavedAt((m) => ({ ...m, [userId]: Date.now() }))
+      setTimeout(() => {
+        setSlackSavedAt((m) => {
+          const { [userId]: _drop, ...rest } = m
+          return rest
+        })
+      }, 2000)
+    } catch (e) {
+      console.error(e)
+      setError(e instanceof Error ? e.message : "Failed to save Slack ID")
+    } finally {
+      setSaving((s) => ({ ...s, [`slack:${userId}`]: false }))
+    }
+  }
+
   async function handleInvite() {
     setError(null)
     setInviting(true)
@@ -65,6 +94,7 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
           email: inviteEmail.trim().toLowerCase(),
           name: null,
           role: inviteRole,
+          slack_user_id: null,
           created_at: new Date().toISOString(),
         },
       ])
@@ -133,7 +163,7 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
             <TableRow>
               <TableHead>User</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead>Joined</TableHead>
+              <TableHead className="w-[200px]">Slack user ID</TableHead>
               <TableHead className="w-[180px]">Change role</TableHead>
               <TableHead className="w-[60px]"></TableHead>
             </TableRow>
@@ -152,8 +182,28 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
                     {user.role}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {new Date(user.created_at).toLocaleDateString()}
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    <Input
+                      placeholder="U01ABC234XY"
+                      className="h-8 font-mono text-xs"
+                      value={slackDrafts[user.id] ?? user.slack_user_id ?? ""}
+                      onChange={(e) => setSlackDrafts((d) => ({ ...d, [user.id]: e.target.value }))}
+                      onBlur={() => handleSlackIdSave(user.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          ;(e.target as HTMLInputElement).blur()
+                        }
+                      }}
+                    />
+                    {saving[`slack:${user.id}`] && (
+                      <span className="text-[10px] text-muted-foreground shrink-0">…</span>
+                    )}
+                    {slackSavedAt[user.id] && (
+                      <span className="text-[10px] text-green-500 shrink-0">✓</span>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">

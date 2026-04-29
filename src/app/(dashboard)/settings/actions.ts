@@ -41,6 +41,18 @@ export async function saveBoardConfig(config: Record<string, unknown>) {
   revalidatePath("/settings")
 }
 
+export async function updateUserSlackId(userId: string, slackUserId: string) {
+  await requireAdmin()
+  const cleaned = slackUserId.trim() || null
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from("users")
+    .update({ slack_user_id: cleaned })
+    .eq("id", userId)
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
 export async function updateUserRole(userId: string, role: "admin" | "member" | "guest") {
   await requireAdmin()
   const supabase = await createAdminClient()

@@ -18,7 +18,7 @@ export default async function SettingsPage() {
   const [{ data: tokens }, { data: settingsRow }, { data: users }, { data: columnMappings }] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
-    supabase.from("users").select("id, email, name, role, created_at").order("created_at"),
+    supabase.from("users").select("id, email, name, role, slack_user_id, created_at").order("created_at"),
     supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
   ])
 
