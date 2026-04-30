@@ -13,8 +13,8 @@ export type ClientState = {
 type LiveCategory = "action" | "watch" | "good"
 
 const SEVERITY: Record<LiveCategory, number> = { good: 0, watch: 1, action: 2 }
-// Higher score = healthier portfolio.
-const SCORE_WEIGHT: Record<LiveCategory, number> = { action: -3, watch: -1, good: 1 }
+// Health score target — matches the watchlist dashboard.
+const HEALTH_TARGET = 75
 
 function categoryLabel(cat: LiveCategory): string {
   return cat === "action" ? "Action" : cat === "watch" ? "Watch" : "Healthy"
@@ -33,6 +33,17 @@ function daysBetween(fromYmd: string, toYmd: string): number {
 
 /** Bucket counts for { action, watch, good }. */
 type Buckets = Record<LiveCategory, number>
+
+/**
+ * Health score as a percentage — same formula as the watchlist dashboard.
+ * good / (action + watch + good) × 100. Returns null when no live clients
+ * (no signal, no point pretending it's "100%").
+ */
+function healthScore(b: Buckets): number | null {
+  const total = b.action + b.watch + b.good
+  if (total === 0) return null
+  return Math.round((b.good / total) * 100)
+}
 
 /**
  * Daily Slack summary that focuses on changes — what moved between buckets
@@ -106,45 +117,49 @@ export function buildWatchlistDailySummary(opts: {
     }
   }
 
-  const score = (b: Buckets) =>
-    b.good * SCORE_WEIGHT.good + b.watch * SCORE_WEIGHT.watch + b.action * SCORE_WEIGHT.action
-  const todayScore = score(todayBuckets)
-  const yesterdayScore = score(yesterdayBuckets)
-  const dayDelta = todayScore - yesterdayScore
+  const todayScore = healthScore(todayBuckets)
+  const yesterdayScore = healthScore(yesterdayBuckets)
+  const dayDelta =
+    todayScore !== null && yesterdayScore !== null ? todayScore - yesterdayScore : null
 
   const todayDeteriorations = todayTransitions.filter((t) => SEVERITY[t.to] > SEVERITY[t.from])
   const todayImprovements = todayTransitions.filter((t) => SEVERITY[t.to] < SEVERITY[t.from])
 
   const lines: string[] = []
 
-  // ── Greeting ── chosen to feel motivational without being saccharine. Driven
-  // by score delta + 7-day average so quiet days still have a personality.
+  // ── Greeting ── tone-aware based on delta + concerns mix.
   let greeting: string
   if (todayTransitions.length === 0 && milestones.length === 0 && dayDelta === 0) {
     greeting = "Goedemorgen. Niets veranderd sinds gisteren — alles stabiel."
-  } else if (dayDelta > 0 && todayDeteriorations.length === 0) {
-    greeting = "Goedemorgen. Score boven gisteren — lekker bezig 🚀"
-  } else if (dayDelta < 0 || todayDeteriorations.length > todayImprovements.length) {
-    greeting = "Goedemorgen. Score onder gisteren — even letten op:"
+  } else if (dayDelta !== null && dayDelta > 0 && todayDeteriorations.length === 0) {
+    greeting = "Goedemorgen. Score omhoog vs gisteren — lekker bezig 🚀"
+  } else if ((dayDelta !== null && dayDelta < 0) || todayDeteriorations.length > todayImprovements.length) {
+    greeting = "Goedemorgen. Score onder druk — even letten op:"
   } else {
     greeting = "Goedemorgen. Een paar bewegingen overnight."
   }
   lines.push(greeting)
   lines.push("")
 
-  // ── Score line ──
-  const scoreParts: string[] = [`Score: *${todayScore}*`]
-  if (dayDelta > 0) scoreParts.push(`↑ ${dayDelta} vs gisteren`)
-  else if (dayDelta < 0) scoreParts.push(`↓ ${Math.abs(dayDelta)} vs gisteren`)
-  else scoreParts.push("↔ vs gisteren")
-  if (sevenDayAvgScore !== null) {
-    const avgRounded = Math.round(sevenDayAvgScore * 10) / 10
-    const vs = todayScore - sevenDayAvgScore
-    const trend = vs > 0.5 ? `↑ vs 7d avg ${avgRounded}` : vs < -0.5 ? `↓ vs 7d avg ${avgRounded}` : `≈ 7d avg ${avgRounded}`
-    scoreParts.push(trend)
+  // ── Score line ── matches the watchlist dashboard's "Health Score" %.
+  if (todayScore !== null) {
+    const scoreParts: string[] = [`Health score: *${todayScore}%* (target ≥ ${HEALTH_TARGET}%)`]
+    if (dayDelta !== null) {
+      if (dayDelta > 0) scoreParts.push(`↑ ${dayDelta}pt vs gisteren`)
+      else if (dayDelta < 0) scoreParts.push(`↓ ${Math.abs(dayDelta)}pt vs gisteren`)
+      else scoreParts.push("↔ vs gisteren")
+    }
+    if (sevenDayAvgScore !== null) {
+      const avgRounded = Math.round(sevenDayAvgScore)
+      const vs = todayScore - sevenDayAvgScore
+      const trend = vs > 1 ? `↑ vs 7d avg ${avgRounded}%` : vs < -1 ? `↓ vs 7d avg ${avgRounded}%` : `≈ 7d avg ${avgRounded}%`
+      scoreParts.push(trend)
+    } else {
+      scoreParts.push("7d avg building…")
+    }
+    lines.push(scoreParts.join(" · "))
+    lines.push("")
   }
-  lines.push(scoreParts.join(" · "))
-  lines.push("")
 
   // ── New concerns today ──
   if (todayDeteriorations.length > 0) {
@@ -192,9 +207,10 @@ export function buildWatchlistDailySummary(opts: {
 }
 
 /**
- * Compute a 7-day rolling average score from the watchlist_score_history cache.
- * Pass the snapshot map keyed by date (YYYY-MM-DD), pre-filtered to the user's
- * relevant slice (e.g. their CM bucket totals or `_all` for admins).
+ * Compute a 7-day rolling average health-score percentage from the
+ * watchlist_score_history cache. Each daily snapshot contributes its own
+ * good / total ratio; we average those ratios. Same semantics as the
+ * dashboard's "vs 7d avg" KPI card.
  */
 export function computeSevenDayAvgScore(
   history: Record<string, { action: number; watch: number; good: number }>,
@@ -206,11 +222,8 @@ export function computeSevenDayAvgScore(
   const scores: number[] = []
   for (const [date, buckets] of Object.entries(history)) {
     if (date >= cutoffStr && date < todayYmd) {
-      scores.push(
-        buckets.good * SCORE_WEIGHT.good +
-          buckets.watch * SCORE_WEIGHT.watch +
-          buckets.action * SCORE_WEIGHT.action,
-      )
+      const total = buckets.action + buckets.watch + buckets.good
+      if (total > 0) scores.push((buckets.good / total) * 100)
     }
   }
   if (scores.length === 0) return null
