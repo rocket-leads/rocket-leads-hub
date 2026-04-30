@@ -100,53 +100,6 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
     }
   }
 
-  const [sendingDm, setSendingDm] = useState(false)
-  const [dmResult, setDmResult] = useState<{ ok: boolean; message: string } | null>(null)
-  async function handleSendTestDm() {
-    setSendingDm(true)
-    setDmResult(null)
-    try {
-      const res = await fetch("/api/slack/test-dm", { method: "POST" })
-      const data = await res.json()
-      setDmResult(data)
-    } catch {
-      setDmResult({ ok: false, message: "Request failed" })
-    } finally {
-      setSendingDm(false)
-    }
-  }
-
-  const [previewing, setPreviewing] = useState(false)
-  const [previewResult, setPreviewResult] = useState<{ ok: boolean; message: string } | null>(null)
-  async function handlePreviewDailyWatchlist() {
-    setPreviewing(true)
-    setPreviewResult(null)
-    try {
-      const res = await fetch("/api/slack/preview-daily-watchlist", { method: "POST" })
-      const data = await res.json()
-      setPreviewResult(data)
-    } catch {
-      setPreviewResult({ ok: false, message: "Request failed" })
-    } finally {
-      setPreviewing(false)
-    }
-  }
-
-  const [previewingTeam, setPreviewingTeam] = useState(false)
-  const [previewTeamResult, setPreviewTeamResult] = useState<{ ok: boolean; message: string } | null>(null)
-  async function handlePreviewTeamWatchlist() {
-    setPreviewingTeam(true)
-    setPreviewTeamResult(null)
-    try {
-      const res = await fetch("/api/slack/preview-team-watchlist", { method: "POST" })
-      const data = await res.json()
-      setPreviewTeamResult(data)
-    } catch {
-      setPreviewTeamResult({ ok: false, message: "Request failed" })
-    } finally {
-      setPreviewingTeam(false)
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -201,69 +154,11 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
               </p>
             )}
             {svc.id === "slack" && statuses.slack?.is_valid && (
-              <div className="pt-2 border-t border-border/40 space-y-3">
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">
-                    Send a test DM to your own Slack to verify end-to-end delivery. Uses the
-                    Slack user ID configured for your Hub account in{" "}
-                    <span className="font-medium">Settings → Column Mapping</span>.
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleSendTestDm}
-                    disabled={sendingDm}
-                  >
-                    {sendingDm ? "Sending..." : "Send test DM to me"}
-                  </Button>
-                  {dmResult && (
-                    <p className={`text-sm ${dmResult.ok ? "text-green-500" : "text-red-500"}`}>
-                      {dmResult.message}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2 pt-2 border-t border-border/30">
-                  <p className="text-xs text-muted-foreground">
-                    Preview the daily watchlist summary that will be sent at{" "}
-                    <span className="font-medium">06:00</span> every morning. Sends only to
-                    you (not the whole team) — safe for testing.
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handlePreviewDailyWatchlist}
-                    disabled={previewing}
-                  >
-                    {previewing ? "Building summary..." : "Preview daily watchlist (to me)"}
-                  </Button>
-                  {previewResult && (
-                    <p className={`text-sm ${previewResult.ok ? "text-green-500" : "text-red-500"}`}>
-                      {previewResult.message}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2 pt-2 border-t border-border/30">
-                  <p className="text-xs text-muted-foreground">
-                    Preview the team-wide channel summary (CM leaderboard + team pulse, no
-                    per-client details). Posts to your own DM for review — does not touch
-                    the team channel.
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handlePreviewTeamWatchlist}
-                    disabled={previewingTeam}
-                  >
-                    {previewingTeam ? "Building summary..." : "Preview team channel summary (to me)"}
-                  </Button>
-                  {previewTeamResult && (
-                    <p className={`text-sm ${previewTeamResult.ok ? "text-green-500" : "text-red-500"}`}>
-                      {previewTeamResult.message}
-                    </p>
-                  )}
-                </div>
+              <div className="pt-2 border-t border-border/40">
+                <p className="text-xs text-muted-foreground">
+                  Connection is live. Set up notifications and run previews in the{" "}
+                  <span className="font-medium text-foreground">Notifications</span> tab.
+                </p>
               </div>
             )}
           </CardContent>

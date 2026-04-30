@@ -6,6 +6,7 @@ import { ApiTokensTab } from "./_components/api-tokens-tab"
 import { BoardConfigTab } from "./_components/board-config-tab"
 import { UsersTab } from "./_components/users-tab"
 import { ColumnMappingTab } from "./_components/column-mapping-tab"
+import { NotificationsTab } from "./_components/notifications-tab"
 import { ApiHealthBar } from "./_components/api-health-bar"
 import { fetchBothBoards } from "@/lib/integrations/monday"
 
@@ -87,6 +88,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="board">Board Config</TabsTrigger>
           <TabsTrigger value="users">Users</TabsTrigger>
           <TabsTrigger value="mapping">Column Mapping</TabsTrigger>
+          <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tokens">
@@ -116,6 +118,18 @@ export default async function SettingsPage() {
               monday_column_role: m.monday_column_role,
               monday_person_name: m.monday_person_name,
             }))}
+          />
+        </TabsContent>
+
+        <TabsContent value="notifications">
+          <NotificationsTab
+            slackConnected={!!tokenStatuses.slack?.is_valid}
+            recipients={(users ?? []).map((u) => ({
+              name: u.name,
+              email: u.email,
+              hasSlack: !!u.slack_user_id,
+            }))}
+            teamChannelId={process.env.SLACK_TEAM_CHANNEL_ID ?? null}
           />
         </TabsContent>
       </Tabs>
