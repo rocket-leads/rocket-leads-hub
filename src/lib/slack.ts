@@ -29,9 +29,18 @@ async function slackPost<T>(method: string, body: object): Promise<T> {
   return data as T
 }
 
-/** Send a plain text DM to a Slack user by their workspace user ID (e.g. U01ABC234XY). */
+/**
+ * Send a plain text DM to a Slack user by their workspace user ID (e.g. U01ABC234XY).
+ *
+ * chat.postMessage doesn't reliably accept a user ID as the channel — you have to
+ * open (or look up) the DM channel first via conversations.open, then post to the
+ * returned `D...` channel ID. Requires the `im:write` scope.
+ */
 export async function sendSlackDm(slackUserId: string, text: string): Promise<void> {
-  await slackPost("chat.postMessage", { channel: slackUserId, text })
+  const opened = await slackPost<{ channel: { id: string } }>("conversations.open", {
+    users: slackUserId,
+  })
+  await slackPost("chat.postMessage", { channel: opened.channel.id, text })
 }
 
 /** Look up the Slack user ID for a Hub user. Returns null if not configured. */

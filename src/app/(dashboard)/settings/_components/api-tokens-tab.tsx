@@ -171,8 +171,9 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
             {svc.id === "slack" && statuses.slack?.is_valid && (
               <div className="pt-2 border-t border-border/40 space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Send a test DM to your own Slack to verify end-to-end delivery.
-                  Uses your sign-in email to look up your Slack user.
+                  Send a test DM to your own Slack to verify end-to-end delivery. Uses the
+                  Slack user ID configured for your Hub account in{" "}
+                  <span className="font-medium">Settings → Column Mapping</span>.
                 </p>
                 <Button
                   size="sm"
