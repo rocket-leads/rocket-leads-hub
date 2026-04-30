@@ -13,8 +13,6 @@ export type ClientState = {
 type LiveCategory = "action" | "watch" | "good"
 
 const SEVERITY: Record<LiveCategory, number> = { good: 0, watch: 1, action: 2 }
-// Health score target — matches the watchlist dashboard.
-const HEALTH_TARGET = 75
 
 function categoryLabel(cat: LiveCategory): string {
   return cat === "action" ? "Action" : cat === "watch" ? "Watch" : "Healthy"
@@ -130,20 +128,20 @@ export function buildWatchlistDailySummary(opts: {
   // ── Greeting ── tone-aware based on delta + concerns mix.
   let greeting: string
   if (todayTransitions.length === 0 && milestones.length === 0 && dayDelta === 0) {
-    greeting = "Goedemorgen. Niets veranderd sinds gisteren — alles stabiel."
+    greeting = "🌅 Goedemorgen. Niets veranderd sinds gisteren — alles stabiel."
   } else if (dayDelta !== null && dayDelta > 0 && todayDeteriorations.length === 0) {
-    greeting = "Goedemorgen. Score omhoog vs gisteren — lekker bezig 🚀"
+    greeting = "🌅 Goedemorgen. Score omhoog vs gisteren — lekker bezig 🚀"
   } else if ((dayDelta !== null && dayDelta < 0) || todayDeteriorations.length > todayImprovements.length) {
-    greeting = "Goedemorgen. Score onder druk — even letten op:"
+    greeting = "🌅 Goedemorgen. Score onder druk — even letten op:"
   } else {
-    greeting = "Goedemorgen. Een paar bewegingen overnight."
+    greeting = "🌅 Goedemorgen. Een paar bewegingen overnight."
   }
   lines.push(greeting)
   lines.push("")
 
-  // ── Score line ── matches the watchlist dashboard's "Health Score" %.
+  // ── Score line + bucket counts ── matches the watchlist dashboard.
   if (todayScore !== null) {
-    const scoreParts: string[] = [`Health score: *${todayScore}%* (target ≥ ${HEALTH_TARGET}%)`]
+    const scoreParts: string[] = [`Health score: ${todayScore}%`]
     if (dayDelta !== null) {
       if (dayDelta > 0) scoreParts.push(`↑ ${dayDelta}pt vs gisteren`)
       else if (dayDelta < 0) scoreParts.push(`↓ ${Math.abs(dayDelta)}pt vs gisteren`)
@@ -158,16 +156,19 @@ export function buildWatchlistDailySummary(opts: {
       scoreParts.push("7d avg building…")
     }
     lines.push(scoreParts.join(" · "))
-    lines.push("")
   }
+  lines.push(
+    `🟢 ${todayBuckets.good} healthy · 🟡 ${todayBuckets.watch} watch · 🔴 ${todayBuckets.action} action`,
+  )
+  lines.push("")
 
   // ── New concerns today ──
   if (todayDeteriorations.length > 0) {
-    lines.push(`*${todayDeteriorations.length} nieuwe ${todayDeteriorations.length === 1 ? "concern" : "concerns"} vandaag*`)
+    lines.push(`${todayDeteriorations.length} nieuwe ${todayDeteriorations.length === 1 ? "concern" : "concerns"} vandaag`)
     for (const t of todayDeteriorations.slice(0, 5)) {
-      lines.push(`• *${t.name}* → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
+      lines.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
     }
-    if (todayDeteriorations.length > 5) lines.push(`_…en ${todayDeteriorations.length - 5} meer_`)
+    if (todayDeteriorations.length > 5) lines.push(`…en ${todayDeteriorations.length - 5} meer`)
     lines.push("")
   }
 
@@ -175,33 +176,31 @@ export function buildWatchlistDailySummary(opts: {
   const day3 = milestones.filter((m) => m.days === 3)
   const day7 = milestones.filter((m) => m.days === 7)
   if (day3.length > 0 || day7.length > 0) {
-    lines.push("*Persistent concerns*")
+    lines.push("Persistent concerns")
     for (const m of day7.slice(0, 5)) {
       // Day 7 = escalation, bolded
-      lines.push(`• *${m.name}* — *7 dagen* in ${categoryLabel(m.bucket)} — ${m.insight}`)
+      lines.push(`• *${m.name} — 7 dagen in ${categoryLabel(m.bucket)}* — ${m.insight}`)
     }
     for (const m of day3.slice(0, 5)) {
       lines.push(`• ${m.name} — 3 dagen in ${categoryLabel(m.bucket)} — ${m.insight}`)
     }
     const totalShown = Math.min(day7.length, 5) + Math.min(day3.length, 5)
     const totalAll = day3.length + day7.length
-    if (totalAll > totalShown) lines.push(`_…en ${totalAll - totalShown} meer_`)
+    if (totalAll > totalShown) lines.push(`…en ${totalAll - totalShown} meer`)
     lines.push("")
   }
 
   // ── Wins today ──
   if (todayImprovements.length > 0) {
-    lines.push(`*${todayImprovements.length} ${todayImprovements.length === 1 ? "win" : "wins"} vandaag*`)
+    lines.push(`${todayImprovements.length} ${todayImprovements.length === 1 ? "win" : "wins"} vandaag`)
     for (const t of todayImprovements.slice(0, 5)) {
-      lines.push(`• *${t.name}* → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
+      lines.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
     }
-    if (todayImprovements.length > 5) lines.push(`_…en ${todayImprovements.length - 5} meer_`)
+    if (todayImprovements.length > 5) lines.push(`…en ${todayImprovements.length - 5} meer`)
     lines.push("")
   }
 
-  // ── Now line + link ──
-  lines.push(`Now: ${todayBuckets.good} healthy · ${todayBuckets.watch} watch · ${todayBuckets.action} action`)
-  lines.push(`<${HUB_URL}/watchlist|→ Open watchlist>`)
+  lines.push(`<${HUB_URL}/watchlist|Open Watchlist>`)
 
   return lines.join("\n")
 }
