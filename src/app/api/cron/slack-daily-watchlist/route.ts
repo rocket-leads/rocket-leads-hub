@@ -22,6 +22,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  // Vercel cron is UTC-only; we schedule at both 04:00 and 05:00 UTC so that
+  // exactly one of them lands on 06:00 Europe/Amsterdam regardless of DST.
+  // The other fire is dropped here. Bypass the guard with ?force=1 for testing.
+  const url = new URL(req.url)
+  const force = url.searchParams.get("force") === "1"
+  if (!force) {
+    const amsterdamHour = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Amsterdam",
+      hour: "2-digit",
+      hour12: false,
+    }).format(new Date())
+    if (amsterdamHour !== "06") {
+      return NextResponse.json({
+        ok: true,
+        skipped: `Not 06:00 Amsterdam (currently ${amsterdamHour}:00) — DST guard`,
+      })
+    }
+  }
+
   const supabase = await createAdminClient()
 
   const { data: users, error: usersErr } = await supabase
