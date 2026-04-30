@@ -30,7 +30,7 @@ const DELIVERY_FIELDS: Field[] = [
   { key: "mrr", label: "MRR (Returning Revenue)", prefix: "€" },
   { key: "newBusiness", label: "New Business Revenue", prefix: "€" },
   { key: "activeCustomers", label: "Active Customers" },
-  { key: "avgRevenuePerCustomer", label: "Avg Revenue / Customer", prefix: "€", step: "0.01" },
+  { key: "serviceFeePerCustomer", label: "Service Fee per Customer", prefix: "€", step: "0.01" },
   { key: "maxChurnRate", label: "Max Churn Rate", suffix: "%", step: "0.01" },
 ]
 
@@ -44,7 +44,7 @@ const EMPTY_CONFIG: TargetsConfig = {
   deals: 0, revenue: 0,
   cbc: 0, cqc: 0, ctc: 0, cpd: 0,
   serviceFeeRevenue: 0, teamCosts: 0, profitMargin: 0,
-  mrr: 0, newBusiness: 0, activeCustomers: 0, avgRevenuePerCustomer: 0, maxChurnRate: 0,
+  mrr: 0, newBusiness: 0, activeCustomers: 0, serviceFeePerCustomer: 0, maxChurnRate: 0,
 }
 
 export function SettingsTab() {

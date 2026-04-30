@@ -9,6 +9,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
 import { getToken as getMondayToken, fetchAllItems, fetchBothBoards } from "@/lib/integrations/monday"
 import { getToken as getMetaToken } from "@/lib/integrations/meta"
+import { TEAMS, teamForMember } from "@/lib/teams"
 import type {
   MondayTargetsData,
   MondayTargetsByCountry,
@@ -914,7 +915,50 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
 
   const byAccountManager: AccountManagerRevenue[] = [...amRevenue.entries()]
     .sort(([, a], [, b]) => b.revenue - a.revenue)
-    .map(([name, data]) => ({ name, ...data }))
+    .map(([name, data]) => ({
+      name,
+      revenue: data.revenue,
+      customers: data.customers,
+      mrr: data.mrr,
+      newBusiness: data.newBusiness,
+      serviceFee: data.mrr + data.newBusiness,
+      adBudget: data.adBudget,
+      serviceFeePerCustomer: data.customers > 0 ? (data.mrr + data.newBusiness) / data.customers : 0,
+    }))
+
+  // Roll AMs into delivery teams. Unassigned is excluded — it's surfaced separately
+  // at the bottom of the dashboard. AMs that don't match any TEAMS member fall into
+  // a synthetic "Other" bucket so nothing gets dropped silently.
+  const teamAcc = new Map<string, { revenue: number; customers: number; mrr: number; newBusiness: number; adBudget: number }>()
+  for (const am of byAccountManager) {
+    if (am.name === "Unassigned") continue
+    const teamName = teamForMember(am.name) ?? "Other"
+    const acc = teamAcc.get(teamName) ?? { revenue: 0, customers: 0, mrr: 0, newBusiness: 0, adBudget: 0 }
+    acc.revenue += am.revenue
+    acc.customers += am.customers
+    acc.mrr += am.mrr
+    acc.newBusiness += am.newBusiness
+    acc.adBudget += am.adBudget
+    teamAcc.set(teamName, acc)
+  }
+
+  // Order: TEAMS list first (display order), then "Other" pinned last.
+  const teamOrder = [...TEAMS.map((t) => t.name), "Other"]
+  const byTeam: AccountManagerRevenue[] = teamOrder
+    .filter((name) => teamAcc.has(name))
+    .map((name) => {
+      const data = teamAcc.get(name)!
+      return {
+        name,
+        revenue: data.revenue,
+        customers: data.customers,
+        mrr: data.mrr,
+        newBusiness: data.newBusiness,
+        serviceFee: data.mrr + data.newBusiness,
+        adBudget: data.adBudget,
+        serviceFeePerCustomer: data.customers > 0 ? (data.mrr + data.newBusiness) / data.customers : 0,
+      }
+    })
 
   // Top-level totals come straight from the breakdown — keeps Delivery and Finance aligned.
   const mrr = breakdown.serviceFeeMrr.invoiced
@@ -925,6 +969,7 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
 
   const activeCustomers = breakdown.currentCustomerIds.size
   const churned = [...prevCustomerIds].filter((id) => !breakdown.currentCustomerIds.has(id)).length
+  const newClients = [...breakdown.currentCustomerIds].filter((id) => !prevCustomerIds.has(id)).length
 
   return {
     mrr,
@@ -932,13 +977,15 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
     serviceFeeRevenue,
     adBudget,
     totalRevenue,
+    serviceFeePerCustomer: activeCustomers > 0 ? serviceFeeRevenue / activeCustomers : 0,
     activeCustomers,
-    avgRevenuePerCustomer: activeCustomers > 0 ? totalRevenue / activeCustomers : 0,
     churnRate: prevCustomerIds.size > 0 ? churned / prevCustomerIds.size : 0,
     previousPeriodCustomers: prevCustomerIds.size,
     currentPeriodCustomers: activeCustomers,
+    newClients,
     churned,
     byAccountManager,
+    byTeam,
     unassignedCustomers,
     unlinkedMondayItems,
   }

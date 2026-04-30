@@ -2,22 +2,12 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import type { AccountManagerRevenue } from "@/types/targets"
 import type { ClientState } from "./watchlist-summary"
 import { DEFAULT_TEMPLATES, renderTemplate } from "./notification-config"
+import { TEAMS } from "@/lib/teams"
 
 const HUB_URL = process.env.NEXT_PUBLIC_HUB_URL ?? "https://hub.rocketleads.com"
 
 type LiveCategory = "action" | "watch" | "good"
 type Buckets = Record<LiveCategory, number>
-
-/**
- * Account/Campaign managers grouped into delivery teams. A client belongs to
- * a team if EITHER its account manager OR its campaign manager is in the
- * team's members list. Revenue figures for the team sum the delivery data
- * across the same set of names.
- */
-const TEAMS: Array<{ name: string; members: string[] }> = [
-  { name: "Roel & Mike", members: ["Roel van der Harst", "Mike Sauer"] },
-  { name: "Danny & Stefan", members: ["Danny Palmeri", "Stefan vd Wijdeven"] },
-]
 
 function isLive(cat: string | null | undefined): cat is LiveCategory {
   return cat === "action" || cat === "watch" || cat === "good"

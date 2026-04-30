@@ -17,7 +17,7 @@ export interface TargetsConfig {
   mrr: number
   newBusiness: number
   activeCustomers: number
-  avgRevenuePerCustomer: number
+  serviceFeePerCustomer: number
   maxChurnRate: number // as decimal, e.g. 0.05 = 5%
 }
 
@@ -185,13 +185,19 @@ export interface DeliveryOverview {
   adBudget: number
   /** All invoiced revenue including ad budget = serviceFeeRevenue + adBudget. */
   totalRevenue: number
+  /** Service fee revenue divided by active customers. */
+  serviceFeePerCustomer: number
   activeCustomers: number
-  avgRevenuePerCustomer: number
   churnRate: number
   previousPeriodCustomers: number
   currentPeriodCustomers: number
+  /** Customers in current period not in previous period. */
+  newClients: number
+  /** Customers in previous period not in current period. */
   churned: number
   byAccountManager: AccountManagerRevenue[]
+  /** Same shape as AM rollup but grouped by delivery team. Excludes Unassigned. */
+  byTeam: AccountManagerRevenue[]
   /** Customer-level breakdown of the "Unassigned" AM bucket so it can be acted on directly. */
   unassignedCustomers: UnassignedCustomer[]
   /** Monday items without a stripe_customer_id — picker pool for manual assignment. */
@@ -207,8 +213,12 @@ export interface AccountManagerRevenue {
   mrr: number
   /** Service-fee new business for this AM. */
   newBusiness: number
+  /** Service fee total for this AM = mrr + newBusiness. */
+  serviceFee: number
   /** Ad budget pass-through for this AM. */
   adBudget: number
+  /** Service fee divided by this AM's customer count. */
+  serviceFeePerCustomer: number
 }
 
 // ─── Google Sheets cost types ───

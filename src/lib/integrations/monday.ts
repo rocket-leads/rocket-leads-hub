@@ -407,6 +407,37 @@ export async function setItemColumnValue(
   await gql(mutation, { boardId, itemId, columnId, value }, token)
 }
 
+/**
+ * Post an update on a Monday item. Used by the Hub's inbox-mirror so updates
+ * and tasks created in the Hub still surface on the client item's Monday
+ * timeline. Returns the new update's ID, or null when the call fails — we
+ * don't want a Monday outage to block the Supabase write.
+ */
+export async function postItemUpdate(
+  itemId: string,
+  body: string,
+  parentUpdateId?: string,
+): Promise<string | null> {
+  const token = await getToken()
+  const mutation = parentUpdateId
+    ? `mutation Reply($itemId: ID!, $parentId: ID!, $body: String!) {
+         create_update(item_id: $itemId, parent_id: $parentId, body: $body) { id }
+       }`
+    : `mutation Update($itemId: ID!, $body: String!) {
+         create_update(item_id: $itemId, body: $body) { id }
+       }`
+  const variables = parentUpdateId
+    ? { itemId, parentId: parentUpdateId, body }
+    : { itemId, body }
+  try {
+    const data = await gql(mutation, variables, token)
+    return data.create_update?.id ?? null
+  } catch (e) {
+    console.error("Monday postItemUpdate failed:", e)
+    return null
+  }
+}
+
 export async function fetchClientItemUpdates(
   itemId: string,
 ): Promise<Array<{ text: string; createdAt: string }>> {

@@ -337,7 +337,7 @@ export async function GET(req: NextRequest) {
       console.error("[cron] targets costs failed:", costsResult.reason)
     }
     if (deliveryResult.status === "fulfilled") {
-      targetsWrites.push(writeCache("targets_delivery", deliveryResult.value))
+      targetsWrites.push(writeCache("targets_delivery_v2", deliveryResult.value))
     } else {
       console.error("[cron] targets delivery failed:", deliveryResult.reason)
     }

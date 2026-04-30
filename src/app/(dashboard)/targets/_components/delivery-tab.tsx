@@ -1,14 +1,25 @@
 "use client"
 
-import { Fragment, useState } from "react"
-import { format } from "date-fns"
+import { useState } from "react"
+import { format, parseISO, subDays, differenceInCalendarDays } from "date-fns"
 import { useQueryClient } from "@tanstack/react-query"
+import { cn } from "@/lib/utils"
 import { useDateRange } from "../_hooks/use-date-range"
 import { useDeliveryData } from "../_hooks/use-delivery-data"
 import { useTargetsConfig } from "../_hooks/use-targets-config"
 import { KpiCard } from "./kpi-card"
 import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
-import type { UnassignedCustomer, UnlinkedMondayItem } from "@/types/targets"
+import type { UnassignedCustomer, UnlinkedMondayItem, AccountManagerRevenue } from "@/types/targets"
+
+/** Same-length window immediately preceding the selected range. Mirrors `fetchDelivery`. */
+function previousPeriodRange(startDate: string, endDate: string): { start: Date; end: Date } {
+  const start = parseISO(startDate)
+  const end = parseISO(endDate)
+  const days = differenceInCalendarDays(end, start) + 1
+  return { start: subDays(start, days), end: subDays(start, 1) }
+}
+
+const SHORT_DATE = "MMM d"
 
 export function DeliveryTab() {
   const { range, setStartDate, setEndDate, presets, applyPreset } = useDateRange()
@@ -18,6 +29,7 @@ export function DeliveryTab() {
   const { data: targets } = useTargetsConfig()
   const t = targets ?? null
   const [showUnassigned, setShowUnassigned] = useState(false)
+  const prevRange = previousPeriodRange(startDate, endDate)
 
   return (
     <div className="space-y-6">
@@ -95,21 +107,53 @@ export function DeliveryTab() {
             isLoading={loading}
           />
           <KpiCard
-            label="Avg Revenue / Customer"
-            value={data?.avgRevenuePerCustomer ?? null}
-            formatted={formatCurrency(data?.avgRevenuePerCustomer ?? 0)}
-            target={t?.avgRevenuePerCustomer || undefined}
-            targetFormatted={t?.avgRevenuePerCustomer ? `${formatCurrency(data?.avgRevenuePerCustomer ?? 0)} of ${formatCurrency(t.avgRevenuePerCustomer)}` : undefined}
+            label="Service Fee / Customer"
+            value={data?.serviceFeePerCustomer ?? null}
+            formatted={formatCurrency(data?.serviceFeePerCustomer ?? 0)}
+            target={t?.serviceFeePerCustomer || undefined}
+            targetFormatted={t?.serviceFeePerCustomer ? `${formatCurrency(data?.serviceFeePerCustomer ?? 0)} of ${formatCurrency(t.serviceFeePerCustomer)}` : undefined}
             variant="volume"
             isLoading={loading}
           />
         </div>
       </div>
 
-      {/* Retention */}
+      {/* Retention — ordered to read like the math: prev → +new → −churned → net → current → rate */}
       <div className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Retention</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          <RetentionCard
+            label="Previous Period"
+            sublabel={`${format(prevRange.start, SHORT_DATE)} – ${format(prevRange.end, SHORT_DATE)}`}
+            display={`${data?.previousPeriodCustomers ?? 0} customers`}
+            tone="neutral"
+            isLoading={loading}
+          />
+          <RetentionCard
+            label="New Clients"
+            display={`+${data?.newClients ?? 0}`}
+            tone="positive"
+            isLoading={loading}
+          />
+          <RetentionCard
+            label="Churned"
+            display={`−${data?.churned ?? 0}`}
+            tone="negative"
+            isLoading={loading}
+          />
+          <RetentionCard
+            label="Net Change"
+            display={netChangeFormatted(data?.newClients ?? 0, data?.churned ?? 0)}
+            tone={netChangeTone(data?.newClients ?? 0, data?.churned ?? 0)}
+            isLoading={loading}
+          />
+          <RetentionCard
+            label="Current Period"
+            sublabel={`${format(parseISO(startDate), SHORT_DATE)} – ${format(parseISO(endDate), SHORT_DATE)}`}
+            display={`${data?.currentPeriodCustomers ?? 0} customers`}
+            tone="neutral"
+            isLoading={loading}
+          />
           <KpiCard
             label="Churn Rate"
             value={data?.churnRate ?? null}
@@ -119,81 +163,211 @@ export function DeliveryTab() {
             variant="cost"
             isLoading={loading}
           />
-          <KpiCard label="Churned" value={data?.churned ?? null} formatted={String(data?.churned ?? 0)} variant="neutral" isLoading={loading} />
-          <KpiCard label="Previous Period" value={data?.previousPeriodCustomers ?? null} formatted={`${data?.previousPeriodCustomers ?? 0} customers`} variant="neutral" isLoading={loading} />
-          <KpiCard label="Current Period" value={data?.currentPeriodCustomers ?? null} formatted={`${data?.currentPeriodCustomers ?? 0} customers`} variant="neutral" isLoading={loading} />
         </div>
       </div>
 
-      {/* Revenue by Account Manager */}
-      {data?.byAccountManager && data.byAccountManager.length > 0 && (
+      {/* Revenue by Team — ranked by service fee (excl. ad budget); 1st place leftmost */}
+      {data?.byTeam && data.byTeam.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue by Account Manager</h2>
-          <div className="bg-card rounded-lg border border-border/40 overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border/40">
-                  <th className="text-left py-2.5 px-4 text-muted-foreground font-medium">Account Manager</th>
-                  <th className="text-right py-2.5 px-4 text-muted-foreground font-medium">Customers</th>
-                  <th className="text-right py-2.5 px-4 text-muted-foreground font-medium">MRR</th>
-                  <th className="text-right py-2.5 px-4 text-muted-foreground font-medium">New Business</th>
-                  <th className="text-right py-2.5 px-4 text-muted-foreground font-medium">Ad Budget</th>
-                  <th className="text-right py-2.5 px-4 text-muted-foreground font-medium">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.byAccountManager.map((am) => {
-                  const isUnassigned = am.name === "Unassigned"
-                  const expandable = isUnassigned && (data.unassignedCustomers?.length ?? 0) > 0
-                  const expanded = expandable && showUnassigned
-                  return (
-                    <Fragment key={am.name}>
-                      <tr
-                        className={`border-b border-border/20 last:border-0 ${expandable ? "cursor-pointer hover:bg-muted/30" : ""}`}
-                        onClick={expandable ? () => setShowUnassigned((v) => !v) : undefined}
-                      >
-                        <td className="py-2.5 px-4 font-medium">
-                          <span className="flex items-center gap-1.5">
-                            {expandable && (
-                              <span className={`text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`}>›</span>
-                            )}
-                            {am.name}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-4 text-right font-mono">{am.customers}</td>
-                        <td className="py-2.5 px-4 text-right font-mono">{formatCurrency(am.mrr)}</td>
-                        <td className="py-2.5 px-4 text-right font-mono">{formatCurrency(am.newBusiness)}</td>
-                        <td className="py-2.5 px-4 text-right font-mono">{formatCurrency(am.adBudget)}</td>
-                        <td className="py-2.5 px-4 text-right font-mono font-medium">{formatCurrency(am.revenue)}</td>
-                      </tr>
-                      {expanded && (
-                        <tr className="bg-muted/20 border-b border-border/20 last:border-0">
-                          <td colSpan={6} className="py-3 px-4">
-                            <div className="space-y-2">
-                              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                                {data.unassignedCustomers!.length} customer{data.unassignedCustomers!.length === 1 ? "" : "s"} need a fix
-                              </p>
-                              <div className="space-y-1">
-                                {data.unassignedCustomers!.map((u) => (
-                                  <UnassignedRow
-                                    key={u.customerId}
-                                    customer={u}
-                                    unlinkedItems={data.unlinkedMondayItems ?? []}
-                                  />
-                                ))}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
+          <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue by Team</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {[...data.byTeam]
+              .sort((a, b) => b.serviceFee - a.serviceFee)
+              .map((team, i) => (
+                <TeamCard key={team.name} row={team} rank={i + 1} />
+              ))}
           </div>
         </div>
       )}
+
+      {/* Unassigned Revenue — collapsible, only the Unassigned bucket with per-customer fix actions */}
+      {data?.byAccountManager?.find((am) => am.name === "Unassigned") && (data.unassignedCustomers?.length ?? 0) > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Unassigned Revenue</h2>
+          {(() => {
+            const unassigned = data.byAccountManager.find((am) => am.name === "Unassigned")!
+            return (
+              <div className="bg-card rounded-lg border border-border/40 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowUnassigned((v) => !v)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-xs hover:bg-muted/30 transition-colors text-left"
+                >
+                  <span className={`text-muted-foreground transition-transform ${showUnassigned ? "rotate-90" : ""}`}>›</span>
+                  <span className="font-medium flex-1">Unassigned</span>
+                  <span className="font-mono text-muted-foreground tabular-nums">{unassigned.customers} customer{unassigned.customers === 1 ? "" : "s"}</span>
+                  <span className="font-mono text-muted-foreground tabular-nums">MRR {formatCurrency(unassigned.mrr)}</span>
+                  <span className="font-mono text-muted-foreground tabular-nums">NB {formatCurrency(unassigned.newBusiness)}</span>
+                  <span className="font-mono text-muted-foreground tabular-nums">Ad {formatCurrency(unassigned.adBudget)}</span>
+                  <span className="font-mono font-medium tabular-nums">{formatCurrency(unassigned.revenue)}</span>
+                </button>
+                {showUnassigned && (
+                  <div className="bg-muted/20 px-4 py-3 border-t border-border/20 space-y-2">
+                    <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                      {data.unassignedCustomers!.length} customer{data.unassignedCustomers!.length === 1 ? "" : "s"} need a fix
+                    </p>
+                    <div className="space-y-1">
+                      {data.unassignedCustomers!.map((u) => (
+                        <UnassignedRow
+                          key={u.customerId}
+                          customer={u}
+                          unlinkedItems={data.unlinkedMondayItems ?? []}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Per-team rollup card ───────────────────────────────────────────────────
+
+function TeamCard({ row, rank }: { row: AccountManagerRevenue; rank: number }) {
+  return (
+    <div className="bg-card rounded-lg border border-border/40 p-5 space-y-4">
+      <div className="flex items-center gap-3">
+        <RankMedal rank={rank} />
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold truncate">{row.name}</h3>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
+            {row.customers} customer{row.customers === 1 ? "" : "s"}
+          </p>
+        </div>
+      </div>
+
+      {/* Service Fee — hero metric, ranking is based on this */}
+      <div className="rounded-md border border-primary/30 bg-primary/10 px-4 py-3">
+        <p className="text-[10px] uppercase tracking-wider text-primary/80 font-medium">
+          Service Fee Revenue
+        </p>
+        <p className="text-2xl font-bold font-mono leading-tight tabular-nums mt-0.5">
+          {formatCurrency(row.serviceFee)}
+        </p>
+      </div>
+
+      {/* Sub-metrics */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <Metric label="MRR" value={row.mrr} />
+        <Metric label="New Business" value={row.newBusiness} />
+        <Metric label="Ad Budget" value={row.adBudget} />
+        <Metric label="Service Fee / Cust" value={row.serviceFeePerCustomer} />
+      </div>
+    </div>
+  )
+}
+
+function RankMedal({ rank }: { rank: number }) {
+  // Official medal colors via inline style (avoids Tailwind JIT pruning arbitrary hex values).
+  // Three-stop gradient = highlight → mid → shadow gives a subtle metallic finish; the matching
+  // box-shadow halo makes the medal pop against the dark dashboard.
+  const palette = rank === 1 ? {
+    background: "linear-gradient(135deg, #FFE680 0%, #FFD700 50%, #B8860B 100%)",
+    color: "#000000",
+    glow: "rgba(255, 215, 0, 0.55)",
+  } : rank === 2 ? {
+    background: "linear-gradient(135deg, #F0F0F0 0%, #C0C0C0 50%, #7F7F7F 100%)",
+    color: "#000000",
+    glow: "rgba(192, 192, 192, 0.55)",
+  } : rank === 3 ? {
+    background: "linear-gradient(135deg, #E5A472 0%, #CD7F32 50%, #8B4513 100%)",
+    color: "#000000",
+    glow: "rgba(205, 127, 50, 0.55)",
+  } : null
+
+  if (!palette) {
+    return (
+      <div className="shrink-0 w-12 h-12 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-lg font-bold ring-2 ring-border">
+        {rank}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold"
+      style={{
+        background: palette.background,
+        color: palette.color,
+        boxShadow: `0 0 0 2px ${palette.glow}, 0 4px 14px ${palette.glow}`,
+      }}
+    >
+      {rank}
+    </div>
+  )
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">{label}</span>
+      <span className="text-xs font-mono tabular-nums">
+        {formatCurrency(value)}
+      </span>
+    </div>
+  )
+}
+
+// ─── Retention helpers ──────────────────────────────────────────────────────
+
+function netChangeFormatted(newClients: number, churned: number): string {
+  const delta = newClients - churned
+  if (delta > 0) return `+${delta}`
+  if (delta < 0) return `−${Math.abs(delta)}`
+  return "0"
+}
+
+function netChangeTone(newClients: number, churned: number): "positive" | "negative" | "neutral" {
+  const delta = newClients - churned
+  if (delta > 0) return "positive"
+  if (delta < 0) return "negative"
+  return "neutral"
+}
+
+function RetentionCard({
+  label,
+  sublabel,
+  display,
+  tone,
+  isLoading,
+}: {
+  label: string
+  sublabel?: string
+  display: string
+  tone: "neutral" | "positive" | "negative"
+  isLoading: boolean
+}) {
+  if (isLoading) {
+    return (
+      <div className="bg-card rounded-lg p-3 flex flex-col gap-2 border border-border/40 h-full">
+        <div className="h-3 w-20 bg-muted rounded animate-pulse" />
+        <div className="h-7 w-28 bg-muted rounded animate-pulse" />
+      </div>
+    )
+  }
+
+  const valueColor =
+    tone === "positive" ? "text-green-500" :
+    tone === "negative" ? "text-red-500" :
+    "text-foreground"
+
+  return (
+    <div className="bg-card rounded-lg p-3 flex flex-col h-full border border-border/40">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      {sublabel && (
+        <span className="text-[9px] text-muted-foreground/60 mt-0.5">{sublabel}</span>
+      )}
+      <span className={cn(
+        "text-xl font-bold font-mono leading-tight tracking-tight mt-0.5",
+        valueColor,
+      )}>
+        {display}
+      </span>
     </div>
   )
 }

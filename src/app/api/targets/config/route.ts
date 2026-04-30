@@ -7,7 +7,7 @@ const EMPTY: TargetsConfig = {
   deals: 0, revenue: 0,
   cbc: 0, cqc: 0, ctc: 0, cpd: 0,
   serviceFeeRevenue: 0, teamCosts: 0, profitMargin: 0,
-  mrr: 0, newBusiness: 0, activeCustomers: 0, avgRevenuePerCustomer: 0, maxChurnRate: 0,
+  mrr: 0, newBusiness: 0, activeCustomers: 0, serviceFeePerCustomer: 0, maxChurnRate: 0,
 }
 
 export async function GET() {
@@ -21,9 +21,17 @@ export async function GET() {
     .eq("key", "targets_config")
     .single()
 
-  // Merge with empty to ensure all fields exist (handles old configs missing new fields)
-  const stored = data?.value as Partial<TargetsConfig> | null
-  const config = stored ? { ...EMPTY, ...stored } : null
+  // Merge with empty to ensure all fields exist (handles old configs missing new fields).
+  // Also migrate the legacy `avgRevenuePerCustomer` key into the renamed
+  // `serviceFeePerCustomer` field so previously-saved targets are preserved.
+  const stored = data?.value as (Partial<TargetsConfig> & { avgRevenuePerCustomer?: number }) | null
+  let config: TargetsConfig | null = null
+  if (stored) {
+    config = { ...EMPTY, ...stored }
+    if (!stored.serviceFeePerCustomer && typeof stored.avgRevenuePerCustomer === "number") {
+      config.serviceFeePerCustomer = stored.avgRevenuePerCustomer
+    }
+  }
 
   return NextResponse.json(config)
 }
