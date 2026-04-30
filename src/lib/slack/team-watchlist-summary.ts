@@ -1,12 +1,22 @@
 import type { MondayClient } from "@/lib/integrations/monday"
-import type { KpiSummary } from "@/app/api/kpi-summaries/route"
+import type { AccountManagerRevenue } from "@/types/targets"
 import type { ClientState } from "./watchlist-summary"
 
 const HUB_URL = process.env.NEXT_PUBLIC_HUB_URL ?? "https://hub.rocketleads.com"
-const HEALTH_TARGET = 75
 
 type LiveCategory = "action" | "watch" | "good"
 type Buckets = Record<LiveCategory, number>
+
+/**
+ * Account/Campaign managers grouped into delivery teams. A client belongs to
+ * a team if EITHER its account manager OR its campaign manager is in the
+ * team's members list. Revenue figures for the team sum the delivery data
+ * across the same set of names.
+ */
+const TEAMS: Array<{ name: string; members: string[] }> = [
+  { name: "Roel & Mike", members: ["Roel van der Harst", "Mike Sauer"] },
+  { name: "Danny & Stefan", members: ["Danny Palmeri", "Stefan vd Wijdeven"] },
+]
 
 function isLive(cat: string | null | undefined): cat is LiveCategory {
   return cat === "action" || cat === "watch" || cat === "good"
@@ -18,12 +28,23 @@ function healthScore(b: Buckets): number | null {
   return Math.round((b.good / total) * 100)
 }
 
-/**
- * Day-aware mix-of-languages greetings. Picked deterministically by date so
- * cron retries within the same day stay consistent. Day-of-week specific
- * messages are weighted in for Mondays/Fridays so the room reads the rhythm
- * of the week.
- */
+function clientTeam(client: MondayClient): string | null {
+  for (const team of TEAMS) {
+    if (
+      (client.campaignManager && team.members.includes(client.campaignManager)) ||
+      (client.accountManager && team.members.includes(client.accountManager))
+    ) {
+      return team.name
+    }
+  }
+  return null
+}
+
+function formatEuroCompact(amount: number): string {
+  if (amount >= 1000) return `€${(amount / 1000).toFixed(1)}k`
+  return `€${Math.round(amount)}`
+}
+
 const DAILY_GREETINGS: string[] = [
   "Goedemorgen amigos! ☕",
   "Buenos días team! 🌞",
@@ -56,65 +77,68 @@ const DAY_OF_WEEK_GREETINGS: Record<number, string[]> = {
 
 function pickGreeting(today: string, dayOfWeekUtc: number): string {
   const pool = [...DAILY_GREETINGS, ...(DAY_OF_WEEK_GREETINGS[dayOfWeekUtc] ?? [])]
-  // Deterministic by date: same hash → same greeting all day.
   const seed = parseInt(today.replace(/-/g, ""), 10)
   return pool[seed % pool.length]
-}
-
-type CmRow = {
-  cm: string
-  buckets: Buckets
-  score: number | null
-  total: number
-}
-
-function ordinal(n: number): string {
-  if (n === 1) return "1st"
-  if (n === 2) return "2nd"
-  if (n === 3) return "3rd"
-  return `${n}th`
 }
 
 function medal(rank: number): string {
   if (rank === 1) return "🥇"
   if (rank === 2) return "🥈"
   if (rank === 3) return "🥉"
-  return ` ${ordinal(rank)} `
+  return ` ${rank}.`
+}
+
+type TeamRow = {
+  name: string
+  buckets: Buckets
+  score: number | null
+  total: number
+}
+
+type TeamRevenue = {
+  name: string
+  revenue: number
+  mrr: number
+  newBusiness: number
 }
 
 /**
- * Builds the team-wide channel summary. Same top section as the personal DM
- * (greeting + health score + bucket counts) so the framing is consistent,
- * then a CM leaderboard and a few team-level observations.
+ * Builds the team-wide channel summary. Two rankings:
+ *   1. Watch List — campaign-manager teams sorted by health score
+ *   2. Revenue — delivery-team revenue MTD sorted by total invoiced
+ *
+ * Only the two configured TEAMS are tracked — clients managed by anyone
+ * outside those names are excluded from this message entirely (they go to
+ * those CMs' personal DMs already).
  */
 export function buildTeamWatchlistSummary(opts: {
   liveClients: MondayClient[]
   states: Map<string, ClientState>
+  byAccountManager: AccountManagerRevenue[]
   today: string
   sevenDayAvgScore: number | null
 }): string {
-  const { liveClients, states, today, sevenDayAvgScore } = opts
+  const { liveClients, states, byAccountManager, today, sevenDayAvgScore } = opts
 
   const totalBuckets: Buckets = { action: 0, watch: 0, good: 0 }
   const yesterdayBuckets: Buckets = { action: 0, watch: 0, good: 0 }
-  const perCm = new Map<string, Buckets>()
+  const perTeam = new Map<string, Buckets>()
+  for (const team of TEAMS) perTeam.set(team.name, { action: 0, watch: 0, good: 0 })
 
   for (const client of liveClients) {
+    const teamName = clientTeam(client)
+    if (!teamName) continue
+
     const state = states.get(client.mondayItemId)
     if (!state || !isLive(state.category)) continue
 
     totalBuckets[state.category]++
-
-    // Yesterday reconstruction — invert today's transitions only
     if (state.since_date === today && state.prev_category && isLive(state.prev_category)) {
       yesterdayBuckets[state.prev_category]++
     } else {
       yesterdayBuckets[state.category]++
     }
-
-    const cm = client.campaignManager?.trim() || "Unassigned"
-    if (!perCm.has(cm)) perCm.set(cm, { action: 0, watch: 0, good: 0 })
-    perCm.get(cm)![state.category]++
+    perTeam.get(teamName)![state.category]++
   }
 
   const todayScore = healthScore(totalBuckets)
@@ -122,15 +146,34 @@ export function buildTeamWatchlistSummary(opts: {
   const dayDelta =
     todayScore !== null && yesterdayScore !== null ? todayScore - yesterdayScore : null
 
-  // Build CM rows, sorted by health score desc. Skip CMs with no live clients.
-  const cmRows: CmRow[] = []
-  for (const [cm, buckets] of perCm.entries()) {
+  // Team watchlist rows — sorted by health score desc.
+  const teamRows: TeamRow[] = []
+  for (const team of TEAMS) {
+    const buckets = perTeam.get(team.name)!
     const total = buckets.action + buckets.watch + buckets.good
-    if (total === 0) continue
-    cmRows.push({ cm, buckets, score: healthScore(buckets), total })
+    teamRows.push({ name: team.name, buckets, score: healthScore(buckets), total })
   }
-  // Stable sort: by score desc, then by deal-with-most-clients first as tiebreaker.
-  cmRows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.total - a.total)
+  teamRows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.total - a.total)
+
+  // Team revenue rows — sum delivery's byAccountManager rows per team.
+  const amByName = new Map<string, AccountManagerRevenue>()
+  for (const am of byAccountManager) amByName.set(am.name, am)
+
+  const revenueRows: TeamRevenue[] = []
+  for (const team of TEAMS) {
+    let revenue = 0
+    let mrr = 0
+    let newBusiness = 0
+    for (const member of team.members) {
+      const row = amByName.get(member)
+      if (!row) continue
+      revenue += row.revenue
+      mrr += row.mrr
+      newBusiness += row.newBusiness
+    }
+    revenueRows.push({ name: team.name, revenue, mrr, newBusiness })
+  }
+  revenueRows.sort((a, b) => b.revenue - a.revenue)
 
   const dayOfWeekUtc = new Date(`${today}T00:00:00Z`).getUTCDay()
   const greeting = pickGreeting(today, dayOfWeekUtc)
@@ -139,7 +182,7 @@ export function buildTeamWatchlistSummary(opts: {
   lines.push(greeting)
   lines.push("")
 
-  // ── Team score line + bucket counts ──
+  // ── Top: health score + bucket counts (filtered to TEAMS only) ──
   if (todayScore !== null) {
     const scoreParts: string[] = [`Health score: ${todayScore}%`]
     if (dayDelta !== null) {
@@ -163,65 +206,28 @@ export function buildTeamWatchlistSummary(opts: {
   )
   lines.push("")
 
-  // ── Campaign Manager leaderboard ──
-  if (cmRows.length > 0) {
-    lines.push("*🏆 Campaign Manager ranking*")
-    cmRows.forEach((row, idx) => {
+  // ── Watch list ranking per team ──
+  if (teamRows.some((r) => r.total > 0)) {
+    lines.push("*Campaign Manager ranking*")
+    teamRows.forEach((row, idx) => {
       const rank = idx + 1
       const scoreStr = row.score === null ? "—" : `${row.score}%`
-      const isUnassigned = row.cm === "Unassigned"
-      const cmLabel = isUnassigned ? "_Unassigned_" : row.cm
       lines.push(
-        `${medal(rank)} ${cmLabel} — *${scoreStr}* · 🟢 ${row.buckets.good} · 🟡 ${row.buckets.watch} · 🔴 ${row.buckets.action}`,
+        `${medal(rank)} ${row.name} — *${scoreStr}* · 🟢 ${row.buckets.good} · 🟡 ${row.buckets.watch} · 🔴 ${row.buckets.action}`,
       )
     })
     lines.push("")
   }
 
-  // ── Team pulse — short observations ──
-  const observations: string[] = []
-  const cmsAtTarget = cmRows.filter((r) => r.score !== null && r.score >= HEALTH_TARGET)
-  const cmsBelowTarget = cmRows.filter((r) => r.score !== null && r.score < HEALTH_TARGET)
-  const cmAvg =
-    cmRows.length > 0
-      ? Math.round(cmRows.reduce((s, r) => s + (r.score ?? 0), 0) / cmRows.length)
-      : null
-  const topCm = cmRows[0]
-  const lowestCm = cmRows[cmRows.length - 1]
-
-  if (cmsAtTarget.length > 0 && cmRows.length > 1) {
-    observations.push(
-      `${cmsAtTarget.length} van ${cmRows.length} CMs zit op of boven het ${HEALTH_TARGET}% target`,
-    )
-  }
-  if (cmsBelowTarget.length >= 2) {
-    observations.push(`${cmsBelowTarget.length} CMs onder target — focus op Action items deze week`)
-  }
-  if (topCm && cmAvg !== null && topCm.score !== null && topCm.score - cmAvg >= 10) {
-    observations.push(
-      `${topCm.cm} leidt met ${topCm.score}% (${topCm.score - cmAvg}pt boven team-gemiddelde van ${cmAvg}%)`,
-    )
-  }
-  if (
-    lowestCm &&
-    lowestCm.cm !== topCm?.cm &&
-    lowestCm.buckets.action >= 3 &&
-    !lowestCm.cm.includes("Unassigned")
-  ) {
-    observations.push(`${lowestCm.cm} heeft ${lowestCm.buckets.action} clients in Action — extra aandacht`)
-  }
-  if (totalBuckets.action === 0) {
-    observations.push("Geen enkele klant in Action vandaag — top performance team 🚀")
-  }
-  if (dayDelta !== null && dayDelta >= 5) {
-    observations.push(`Team score sprong ${dayDelta}pt omhoog vs gisteren — lekker bezig`)
-  } else if (dayDelta !== null && dayDelta <= -5) {
-    observations.push(`Team score zakte ${Math.abs(dayDelta)}pt vs gisteren — tijd voor stand-up?`)
-  }
-
-  if (observations.length > 0) {
-    lines.push("*Team pulse*")
-    for (const o of observations.slice(0, 4)) lines.push(`• ${o}`)
+  // ── Revenue ranking per team (MTD) ──
+  if (revenueRows.some((r) => r.revenue > 0)) {
+    lines.push("*Revenue ranking — deze maand*")
+    revenueRows.forEach((row, idx) => {
+      const rank = idx + 1
+      lines.push(
+        `${medal(rank)} ${row.name} — *${formatEuroCompact(row.revenue)}* (MRR ${formatEuroCompact(row.mrr)} · new biz ${formatEuroCompact(row.newBusiness)})`,
+      )
+    })
     lines.push("")
   }
 

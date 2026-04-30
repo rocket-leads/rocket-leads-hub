@@ -7,6 +7,7 @@ import { sendDmToHubUser } from "@/lib/slack"
 import { computeSevenDayAvgScore, type ClientState } from "@/lib/slack/watchlist-summary"
 import { buildTeamWatchlistSummary } from "@/lib/slack/team-watchlist-summary"
 import type { MondayClient } from "@/lib/integrations/monday"
+import type { DeliveryOverview } from "@/types/targets"
 
 type ScoreHistory = Record<string, Record<string, { action: number; watch: number; good: number }>>
 
@@ -71,9 +72,13 @@ export async function POST() {
   const today = new Date().toISOString().slice(0, 10)
   const sevenDayAvgScore = computeSevenDayAvgScore(sliceHistory, today)
 
+  const delivery = await readCache<DeliveryOverview>("targets_delivery")
+  const byAccountManager = delivery?.byAccountManager ?? []
+
   const message = buildTeamWatchlistSummary({
     liveClients,
     states,
+    byAccountManager,
     today,
     sevenDayAvgScore,
   })

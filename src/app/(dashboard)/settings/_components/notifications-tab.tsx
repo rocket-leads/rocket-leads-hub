@@ -89,14 +89,13 @@ Open Watchlist`,
 *Health score: 50% · ↑ 7pt vs gisteren · 7d avg building…*
 🟢 20 healthy · 🟡 6 watch · 🔴 14 action
 
-*🏆 Campaign Manager ranking*
-🥇 Mike Sauer — *75%* · 🟢 12 · 🟡 2 · 🔴 2
-🥈 Stefan vd Wijdeven — *56%* · 🟢 9 · 🟡 3 · 🔴 4
-🥉 Danny Palmeri — *45%* · 🟢 5 · 🟡 2 · 🔴 4
+*Campaign Manager ranking*
+🥇 Roel & Mike — *68%* · 🟢 13 · 🟡 3 · 🔴 3
+🥈 Danny & Stefan — *54%* · 🟢 7 · 🟡 3 · 🔴 3
 
-*Team pulse*
-• 1 van 4 CMs op of boven het 75% target
-• Mike leidt 21pt boven team-gemiddelde
+*Revenue ranking — deze maand*
+🥇 Roel & Mike — *€32.4k* (MRR €27.3k · new biz €5.1k)
+🥈 Danny & Stefan — *€30.1k* (MRR €18.9k · new biz €11.3k)
 
 Open Watchlist`,
     },
