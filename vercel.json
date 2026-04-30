@@ -14,11 +14,19 @@
     },
     {
       "path": "/api/cron/slack-daily-watchlist",
-      "schedule": "0 4,5 * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/slack-team-watchlist",
-      "schedule": "0 4,5 * * *"
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/slack-personal-sales",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/slack-team-sales",
+      "schedule": "0 * * * *"
     }
   ]
 }

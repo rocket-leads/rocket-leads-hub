@@ -1,11 +1,16 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchBothBoards } from "@/lib/integrations/monday"
 import { readCache } from "@/lib/cache"
 import { sendDmToHubUser } from "@/lib/slack"
 import { computeSevenDayAvgScore, type ClientState } from "@/lib/slack/watchlist-summary"
-import { buildTeamWatchlistSummary } from "@/lib/slack/team-watchlist-summary"
+import { computeTeamWatchlistVars } from "@/lib/slack/team-watchlist-summary"
+import {
+  DEFAULT_TEMPLATES,
+  getNotificationConfig,
+  renderTemplate,
+} from "@/lib/slack/notification-config"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { DeliveryOverview } from "@/types/targets"
 
@@ -16,13 +21,21 @@ type ScoreHistory = Record<string, Record<string, { action: number; watch: numbe
  * caller's own DM (not the team channel) so format can be reviewed without
  * spamming everyone. Same data + helper as the production cron.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 })
   }
   if ((session.user as { role?: string })?.role !== "admin") {
     return NextResponse.json({ ok: false, message: "Admin only" }, { status: 403 })
+  }
+
+  let bodyTemplate: string | undefined
+  try {
+    const body = (await req.json().catch(() => ({}))) as { template?: unknown }
+    if (typeof body.template === "string" && body.template.length > 0) bodyTemplate = body.template
+  } catch {
+    // No body — fine
   }
 
   const supabase = await createAdminClient()
@@ -75,13 +88,16 @@ export async function POST() {
   const delivery = await readCache<DeliveryOverview>("targets_delivery")
   const byAccountManager = delivery?.byAccountManager ?? []
 
-  const message = buildTeamWatchlistSummary({
+  const vars = computeTeamWatchlistVars({
     liveClients,
     states,
     byAccountManager,
     today,
     sevenDayAvgScore,
   })
+  const config = await getNotificationConfig("team_watchlist")
+  const template = bodyTemplate ?? config.template ?? DEFAULT_TEMPLATES.team_watchlist
+  const message = renderTemplate(template, vars)
 
   try {
     await sendDmToHubUser(

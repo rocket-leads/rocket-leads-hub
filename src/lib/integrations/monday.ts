@@ -370,6 +370,43 @@ export async function fetchClientBoardItemsWithUpdates(
   })
 }
 
+/**
+ * Write a single text/simple value to a Monday column on a client board item.
+ * `columnKey` is the logical key from board config (e.g. "stripe_customer_id"),
+ * not the Monday column ID — we resolve the actual ID per board type from the
+ * stored config so callers don't have to know the wiring.
+ *
+ * Returns a brief reason string when the column key isn't mapped or the GraphQL
+ * call fails; throws only on auth/config issues.
+ */
+export async function setItemColumnValue(
+  boardType: "onboarding" | "current",
+  itemId: string,
+  columnKey: string,
+  value: string,
+): Promise<void> {
+  const [token, config] = await Promise.all([getToken(), getBoardConfig()])
+  if (!config) throw new Error("Board config not found.")
+
+  const boardId = boardType === "onboarding" ? config.onboarding_board_id : config.current_board_id
+  const columns = boardType === "onboarding" ? config.onboarding_columns : config.current_columns
+  const columnId = columns[columnKey]
+  if (!columnId) throw new Error(`Column "${columnKey}" is not mapped for the ${boardType} board.`)
+
+  const mutation = `
+    mutation SetSimpleValue($boardId: ID!, $itemId: ID!, $columnId: String!, $value: String!) {
+      change_simple_column_value(
+        board_id: $boardId,
+        item_id: $itemId,
+        column_id: $columnId,
+        value: $value
+      ) { id }
+    }
+  `
+
+  await gql(mutation, { boardId, itemId, columnId, value }, token)
+}
+
 export async function fetchClientItemUpdates(
   itemId: string,
 ): Promise<Array<{ text: string; createdAt: string }>> {

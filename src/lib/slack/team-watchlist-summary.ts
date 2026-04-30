@@ -1,6 +1,7 @@
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { AccountManagerRevenue } from "@/types/targets"
 import type { ClientState } from "./watchlist-summary"
+import { DEFAULT_TEMPLATES, renderTemplate } from "./notification-config"
 
 const HUB_URL = process.env.NEXT_PUBLIC_HUB_URL ?? "https://hub.rocketleads.com"
 
@@ -102,22 +103,33 @@ type TeamRevenue = {
   newBusiness: number
 }
 
+type TeamWatchlistVars = {
+  greeting: string
+  score_line: string
+  bucket_line: string
+  healthy_count: number
+  watch_count: number
+  action_count: number
+  cm_ranking_section: string
+  revenue_ranking_section: string
+  open_link: string
+}
+
 /**
- * Builds the team-wide channel summary. Two rankings:
+ * Computes the variable bag for the team-wide channel summary. Two rankings:
  *   1. Watch List — campaign-manager teams sorted by health score
  *   2. Revenue — delivery-team revenue MTD sorted by total invoiced
  *
  * Only the two configured TEAMS are tracked — clients managed by anyone
- * outside those names are excluded from this message entirely (they go to
- * those CMs' personal DMs already).
+ * outside those names are excluded entirely.
  */
-export function buildTeamWatchlistSummary(opts: {
+export function computeTeamWatchlistVars(opts: {
   liveClients: MondayClient[]
   states: Map<string, ClientState>
   byAccountManager: AccountManagerRevenue[]
   today: string
   sevenDayAvgScore: number | null
-}): string {
+}): TeamWatchlistVars {
   const { liveClients, states, byAccountManager, today, sevenDayAvgScore } = opts
 
   const totalBuckets: Buckets = { action: 0, watch: 0, good: 0 }
@@ -178,11 +190,8 @@ export function buildTeamWatchlistSummary(opts: {
   const dayOfWeekUtc = new Date(`${today}T00:00:00Z`).getUTCDay()
   const greeting = pickGreeting(today, dayOfWeekUtc)
 
-  const lines: string[] = []
-  lines.push(greeting)
-  lines.push("")
-
-  // ── Top: health score + bucket counts (filtered to TEAMS only) ──
+  // ── Score line (no bold — template controls bold) ──
+  let score_line = ""
   if (todayScore !== null) {
     const scoreParts: string[] = [`Health score: ${todayScore}%`]
     if (dayDelta !== null) {
@@ -199,39 +208,55 @@ export function buildTeamWatchlistSummary(opts: {
     } else {
       scoreParts.push("7d avg building…")
     }
-    lines.push(`*${scoreParts.join(" · ")}*`)
+    score_line = scoreParts.join(" · ")
   }
-  lines.push(
-    `🟢 ${totalBuckets.good} healthy · 🟡 ${totalBuckets.watch} watch · 🔴 ${totalBuckets.action} action`,
-  )
-  lines.push("")
 
-  // ── Watch list ranking per team ──
+  const bucket_line = `🟢 ${totalBuckets.good} healthy · 🟡 ${totalBuckets.watch} watch · 🔴 ${totalBuckets.action} action`
+
+  // ── CM ranking section ──
+  let cm_ranking_section = ""
   if (teamRows.some((r) => r.total > 0)) {
-    lines.push("*Campaign Manager ranking*")
+    const block: string[] = ["*Campaign Manager ranking*"]
     teamRows.forEach((row, idx) => {
       const rank = idx + 1
       const scoreStr = row.score === null ? "—" : `${row.score}%`
-      lines.push(
+      block.push(
         `${medal(rank)} ${row.name} — *${scoreStr}* · 🟢 ${row.buckets.good} · 🟡 ${row.buckets.watch} · 🔴 ${row.buckets.action}`,
       )
     })
-    lines.push("")
+    cm_ranking_section = block.join("\n")
   }
 
-  // ── Revenue ranking per team (MTD) ──
+  // ── Revenue ranking section ──
+  let revenue_ranking_section = ""
   if (revenueRows.some((r) => r.revenue > 0)) {
-    lines.push("*Revenue ranking — deze maand*")
+    const block: string[] = ["*Revenue ranking — deze maand*"]
     revenueRows.forEach((row, idx) => {
       const rank = idx + 1
-      lines.push(
+      block.push(
         `${medal(rank)} ${row.name} — *${formatEuroCompact(row.revenue)}* (MRR ${formatEuroCompact(row.mrr)} · new biz ${formatEuroCompact(row.newBusiness)})`,
       )
     })
-    lines.push("")
+    revenue_ranking_section = block.join("\n")
   }
 
-  lines.push(`<${HUB_URL}/watchlist|Open Watchlist>`)
+  return {
+    greeting,
+    score_line,
+    bucket_line,
+    healthy_count: totalBuckets.good,
+    watch_count: totalBuckets.watch,
+    action_count: totalBuckets.action,
+    cm_ranking_section,
+    revenue_ranking_section,
+    open_link: `<${HUB_URL}/watchlist|Open Watchlist>`,
+  }
+}
 
-  return lines.join("\n")
+export function buildTeamWatchlistSummary(
+  opts: Parameters<typeof computeTeamWatchlistVars>[0],
+  template?: string | null,
+): string {
+  const vars = computeTeamWatchlistVars(opts)
+  return renderTemplate(template ?? DEFAULT_TEMPLATES.team_watchlist, vars)
 }

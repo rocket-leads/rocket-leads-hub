@@ -5,10 +5,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ApiTokensTab } from "./_components/api-tokens-tab"
 import { BoardConfigTab } from "./_components/board-config-tab"
 import { UsersTab } from "./_components/users-tab"
-import { ColumnMappingTab } from "./_components/column-mapping-tab"
 import { NotificationsTab } from "./_components/notifications-tab"
+import type { MondayRole } from "./actions"
 import { ApiHealthBar } from "./_components/api-health-bar"
-import { fetchBothBoards } from "@/lib/integrations/monday"
+import { fetchAllItems, fetchBothBoards, getToken as getMondayToken } from "@/lib/integrations/monday"
+import { getSlackChannels } from "@/lib/slack"
 
 export default async function SettingsPage() {
   const session = await auth()
@@ -16,16 +17,26 @@ export default async function SettingsPage() {
 
   const supabase = await createAdminClient()
 
-  const [{ data: tokens }, { data: settingsRow }, { data: users }, { data: columnMappings }] = await Promise.all([
+  const [
+    { data: tokens },
+    { data: settingsRow },
+    { data: users },
+    { data: columnMappings },
+    { data: closerMappingsRows },
+    slackChannels,
+  ] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
     supabase.from("users").select("id, email, name, role, slack_user_id, created_at").order("created_at"),
     supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
+    supabase.from("closer_slack_mappings").select("monday_person_name, slack_user_id"),
+    getSlackChannels(),
   ])
 
   // Collect unique Monday people names from active clients only (not churned/on hold)
   const ACTIVE_STATUSES = new Set(["Kick off", "In development", "Live"])
   let mondayPeople: string[] = []
+  let closerNames: string[] = []
   try {
     const { onboarding, current } = await fetchBothBoards()
     const allClients = [...onboarding, ...current]
@@ -38,6 +49,28 @@ export default async function SettingsPage() {
     mondayPeople = Array.from(names).sort()
   } catch {
     // Monday token might not be configured yet — that's fine
+  }
+
+  // Closer names from targets board `wie_` column — only include people who
+  // had at least one lead come in within the last 60 days. Old/inactive closers
+  // would otherwise clutter the mapping list forever.
+  try {
+    const token = await getMondayToken()
+    const items = await fetchAllItems("3762696870", token)
+    const cutoff = new Date()
+    cutoff.setUTCDate(cutoff.getUTCDate() - 60)
+    const cutoffIso = cutoff.toISOString().slice(0, 10)
+    const names = new Set<string>()
+    for (const item of items) {
+      const wie = item.column_values.find((c) => c.id === "wie_")?.text?.trim()
+      if (!wie) continue
+      const created = item.column_values.find((c) => c.id === "datum_created")?.text ?? ""
+      const createdDate = created.match(/(\d{4}-\d{2}-\d{2})/)?.[1]
+      if (createdDate && createdDate >= cutoffIso) names.add(wie)
+    }
+    closerNames = Array.from(names).sort()
+  } catch {
+    // Targets board not accessible — leave empty
   }
 
   const tokenStatuses = Object.fromEntries(
@@ -74,7 +107,7 @@ export default async function SettingsPage() {
   const boardConfig = (settingsRow?.value ?? defaultBoardConfig) as typeof defaultBoardConfig
 
   return (
-    <div className="container mx-auto max-w-4xl py-8 px-4">
+    <div className="container mx-auto max-w-6xl py-8 px-4">
       <div className="mb-8">
         <h1 className="text-2xl font-heading font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground">Manage API tokens, board configuration, and users</p>
@@ -82,57 +115,74 @@ export default async function SettingsPage() {
 
       <ApiHealthBar />
 
-      <Tabs defaultValue="tokens" className="mt-6">
-        <TabsList className="mb-6">
-          <TabsTrigger value="tokens">API Tokens</TabsTrigger>
-          <TabsTrigger value="board">Board Config</TabsTrigger>
-          <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="mapping">Column Mapping</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
-        </TabsList>
+      {(() => {
+        // Index Monday mappings by user_id — UI now enforces one mapping per user.
+        const mappingByUser = new Map<string, { role: MondayRole; name: string }>()
+        for (const m of columnMappings ?? []) {
+          mappingByUser.set(m.user_id, {
+            role: m.monday_column_role as MondayRole,
+            name: m.monday_person_name,
+          })
+        }
+        const usersWithMapping = (users ?? []).map((u) => ({
+          id: u.id,
+          email: u.email,
+          name: u.name,
+          role: u.role,
+          slack_user_id: u.slack_user_id ?? null,
+          monday_role: mappingByUser.get(u.id)?.role ?? null,
+          monday_person_name: mappingByUser.get(u.id)?.name ?? null,
+          created_at: u.created_at,
+        }))
 
-        <TabsContent value="tokens">
-          <ApiTokensTab statuses={tokenStatuses} />
-        </TabsContent>
+        const closerSlackById: Record<string, string> = {}
+        for (const m of closerMappingsRows ?? []) closerSlackById[m.monday_person_name] = m.slack_user_id
+        const closers = closerNames.map((name) => ({
+          name,
+          slackId: closerSlackById[name] ?? null,
+        }))
 
-        <TabsContent value="board">
-          <BoardConfigTab config={boardConfig} defaults={defaultBoardConfig} />
-        </TabsContent>
+        return (
+          <Tabs defaultValue="tokens" className="mt-6">
+            <TabsList className="mb-6">
+              <TabsTrigger value="tokens">API Tokens</TabsTrigger>
+              <TabsTrigger value="board">Board Config</TabsTrigger>
+              <TabsTrigger value="users">Users</TabsTrigger>
+              <TabsTrigger value="notifications">Notifications</TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="users">
-          <UsersTab users={users ?? []} currentUserId={session.user.id} />
-        </TabsContent>
+            <TabsContent value="tokens">
+              <ApiTokensTab statuses={tokenStatuses} />
+            </TabsContent>
 
-        <TabsContent value="mapping">
-          <ColumnMappingTab
-            users={(users ?? []).map((u) => ({
-              id: u.id,
-              email: u.email,
-              name: u.name,
-              role: u.role,
-              slack_user_id: u.slack_user_id ?? null,
-            }))}
-            mondayPeople={mondayPeople}
-            existingMappings={(columnMappings ?? []).map((m) => ({
-              user_id: m.user_id,
-              monday_column_role: m.monday_column_role,
-              monday_person_name: m.monday_person_name,
-            }))}
-          />
-        </TabsContent>
+            <TabsContent value="board">
+              <BoardConfigTab config={boardConfig} defaults={defaultBoardConfig} />
+            </TabsContent>
 
-        <TabsContent value="notifications">
-          <NotificationsTab
-            slackConnected={!!tokenStatuses.slack?.is_valid}
-            recipients={(users ?? []).map((u) => ({
-              name: u.name,
-              email: u.email,
-              hasSlack: !!u.slack_user_id,
-            }))}
-            teamChannelId={process.env.SLACK_TEAM_CHANNEL_ID ?? null}
-          />
-        </TabsContent>
-      </Tabs>
+            <TabsContent value="users">
+              <UsersTab
+                users={usersWithMapping}
+                currentUserId={session.user.id}
+                mondayPeople={mondayPeople}
+              />
+            </TabsContent>
+
+            <TabsContent value="notifications">
+              <NotificationsTab
+                slackConnected={!!tokenStatuses.slack?.is_valid}
+                recipients={(users ?? []).map((u) => ({
+                  name: u.name,
+                  email: u.email,
+                  hasSlack: !!u.slack_user_id,
+                }))}
+                teamChannelId={slackChannels.team_watchlist ?? null}
+                salesChannelId={slackChannels.sales ?? null}
+                closers={closers}
+              />
+            </TabsContent>
+          </Tabs>
+        )
+      })()}
     </div>
   )
 }

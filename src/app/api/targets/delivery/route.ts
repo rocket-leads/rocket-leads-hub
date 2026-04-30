@@ -21,7 +21,9 @@ export async function GET(request: Request) {
   const mtd = getMtdRange()
   if (startDate === mtd.startDate && endDate === mtd.endDate && !forceRefresh) {
     const cached = await readCache<DeliveryOverview>("targets_delivery")
-    if (cached) {
+    // Reject pre-split-shape cache entries so the user sees fee/ad-budget split immediately
+    // instead of waiting for the next cron pass to overwrite this key.
+    if (cached && "adBudget" in (cached as object)) {
       return NextResponse.json(cached, {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
       })
@@ -37,7 +39,12 @@ export async function GET(request: Request) {
         periodMonth.year,
         periodMonth.month,
         () => fetchDelivery(startDate, endDate),
-        { forceRefresh },
+        {
+          forceRefresh,
+          // Old cache entries from before the fee/ad-budget split lack `adBudget`.
+          // Treat those as a miss so they get refreshed with the new shape.
+          validate: (c) => c !== null && typeof c === "object" && "adBudget" in (c as object),
+        },
       )
       return NextResponse.json(result, {
         headers: { "Cache-Control": "private, s-maxage=3600, stale-while-revalidate=86400" },

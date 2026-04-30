@@ -69,3 +69,28 @@ export async function sendDmToHubUser(hubUserId: string, text: string): Promise<
 export async function sendSlackChannelMessage(channelId: string, text: string): Promise<void> {
   await slackPost("chat.postMessage", { channel: channelId, text })
 }
+
+export type SlackChannelKey = "team_watchlist" | "sales"
+
+export type SlackChannels = Partial<Record<SlackChannelKey, string>>
+
+/**
+ * Channel IDs for the various recurring notifications, stored in the `settings`
+ * table under key `slack_channels`. Empty string is normalised to undefined so
+ * callers can simply check for presence.
+ */
+export async function getSlackChannels(): Promise<SlackChannels> {
+  const supabase = await createAdminClient()
+  const { data } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", "slack_channels")
+    .maybeSingle()
+  const raw = (data?.value ?? {}) as Record<string, unknown>
+  const result: SlackChannels = {}
+  for (const k of ["team_watchlist", "sales"] as const) {
+    const v = raw[k]
+    if (typeof v === "string" && v.trim()) result[k] = v.trim()
+  }
+  return result
+}

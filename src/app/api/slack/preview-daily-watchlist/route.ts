@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchBothBoards } from "@/lib/integrations/monday"
@@ -6,10 +6,15 @@ import { filterClientsByUser } from "@/lib/clients/filter"
 import { readCache } from "@/lib/cache"
 import { sendDmToHubUser } from "@/lib/slack"
 import {
-  buildWatchlistDailySummary,
   computeSevenDayAvgScore,
+  computeWatchlistVars,
   type ClientState,
 } from "@/lib/slack/watchlist-summary"
+import {
+  DEFAULT_TEMPLATES,
+  getNotificationConfig,
+  renderTemplate,
+} from "@/lib/slack/notification-config"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
@@ -20,13 +25,22 @@ type ScoreHistory = Record<string, Record<string, { action: number; watch: numbe
  * calling user only. Useful for testing message format without waiting for the
  * 06:00 cron — and without spamming the team during dev.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 })
   }
   if ((session.user as { role?: string })?.role !== "admin") {
     return NextResponse.json({ ok: false, message: "Admin only" }, { status: 403 })
+  }
+
+  // Optional `template` in the body lets the Settings UI preview unsaved edits.
+  let bodyTemplate: string | undefined
+  try {
+    const body = (await req.json().catch(() => ({}))) as { template?: unknown }
+    if (typeof body.template === "string" && body.template.length > 0) bodyTemplate = body.template
+  } catch {
+    // No body — fine
   }
 
   const supabase = await createAdminClient()
@@ -38,7 +52,7 @@ export async function POST() {
 
   if (!user?.slack_user_id) {
     return NextResponse.json(
-      { ok: false, message: "No Slack user ID set for your account. Add it in Column Mapping." },
+      { ok: false, message: "No Slack user ID set for your account. Set it in Settings → Users." },
       { status: 400 },
     )
   }
@@ -87,13 +101,16 @@ export async function POST() {
   const sevenDayAvgScore = computeSevenDayAvgScore(sliceHistory, today)
 
   const visibleClients = await filterClientsByUser(liveClients, user.id, user.role)
-  const message = buildWatchlistDailySummary({
+  const vars = computeWatchlistVars({
     visibleClients,
     kpiMap: kpiCache,
     states,
     today,
     sevenDayAvgScore,
   })
+  const config = await getNotificationConfig("personal_watchlist")
+  const template = bodyTemplate ?? config.template ?? DEFAULT_TEMPLATES.personal_watchlist
+  const message = renderTemplate(template, vars)
 
   try {
     await sendDmToHubUser(user.id, message)

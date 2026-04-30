@@ -21,6 +21,9 @@ import type {
   CostData,
   DeliveryOverview,
   AccountManagerRevenue,
+  UnassignedCustomer,
+  MatchSuggestion,
+  UnlinkedMondayItem,
 } from "@/types/targets"
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -45,6 +48,42 @@ const AD_BUDGET_KEYWORDS = [
   "advertentiebudget", "advertising budget", "adspend", "ad spend",
   "ad budget", "mediabudget", "media budget", "budget",
 ]
+
+/** Common company-form suffixes stripped during name normalization to make matching robust. */
+const COMPANY_SUFFIXES = new Set([
+  "bv", "nv", "ltd", "limited", "gmbh", "inc", "llc",
+  "holding", "holdings", "group", "groep", "the",
+  "company", "co", "sa", "sl", "ag", "ek", "ug", "sro",
+])
+
+/** Lowercase, drop punctuation, strip company-form noise so "Acme B.V." == "acme". */
+function normalizeCompanyName(s: string): string {
+  const cleaned = s
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+  return cleaned
+    .split(/\s+/)
+    .filter((tok) => tok && !COMPANY_SUFFIXES.has(tok))
+    .join(" ")
+}
+
+/** 0–1 similarity. Exact normalized match → 1. Substring containment → 0.9. Otherwise token Jaccard. */
+function nameSimilarity(a: string, b: string): number {
+  const na = normalizeCompanyName(a)
+  const nb = normalizeCompanyName(b)
+  if (!na || !nb) return 0
+  if (na === nb) return 1
+  if (na.length >= 3 && nb.length >= 3 && (na.includes(nb) || nb.includes(na))) return 0.9
+  const aTokens = new Set(na.split(" ").filter(Boolean))
+  const bTokens = new Set(nb.split(" ").filter(Boolean))
+  if (aTokens.size === 0 || bTokens.size === 0) return 0
+  let intersection = 0
+  for (const t of aTokens) if (bTokens.has(t)) intersection++
+  const unionSize = aTokens.size + bTokens.size - intersection
+  return unionSize > 0 ? intersection / unionSize : 0
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -374,17 +413,51 @@ export async function fetchMetaTargets(startDate: string, endDate: string): Prom
 }
 
 /** Finance — Stripe revenue with NB/MRR split, excl. VAT, incl. credit notes */
-export async function fetchFinance(startDate: string, endDate: string): Promise<FinanceOverview> {
-  const stripe = await getStripe()
+/**
+ * Shared invoice-breakdown core. Both `fetchFinance` and `fetchDelivery` consume this so
+ * the line-item classification (service fee vs ad budget) and credit-note handling live
+ * in exactly one place.
+ *
+ * The credit logic mirrors what's surfaced in the Finance tab — same-month and
+ * previous-month credits reduce totals; older credits are visible in `details` only.
+ * Credits are split fee-vs-ad based on the credit note's own line items, falling back
+ * to the original invoice's line proportions (fetching it if it sits outside the range).
+ */
+type CustomerLineRollup = {
+  customerId: string
+  customerName: string
+  isNew: boolean
+  /** Service-fee invoiced minus same-/prev-month service-fee credits. */
+  feeAmount: number
+  /** Ad budget invoiced minus same-/prev-month ad-budget credits. */
+  adAmount: number
+}
+
+interface InvoiceBreakdown {
+  total: CategoryBreakdown
+  serviceFee: CategoryBreakdown
+  serviceFeeNewBusiness: CategoryBreakdown
+  serviceFeeMrr: CategoryBreakdown
+  adBudget: CategoryBreakdown
+  invoiceCount: number
+  details: InvoiceDetail[]
+  perCustomer: CustomerLineRollup[]
+  currentCustomerIds: Set<string>
+}
+
+async function buildInvoiceBreakdown(
+  stripe: Stripe,
+  startDate: string,
+  endDate: string,
+): Promise<InvoiceBreakdown> {
   const startTs = Math.floor(new Date(startDate).getTime() / 1000)
   const endTs = Math.floor(new Date(endDate + "T23:59:59Z").getTime() / 1000)
   const now = Math.floor(Date.now() / 1000)
 
-  // Fetch all invoices in period (including credit notes which have negative amounts)
+  // Invoices in period
   const allInvoices: Stripe.Invoice[] = []
   let hasMore = true
   let startingAfter: string | undefined
-
   while (hasMore) {
     const page = await stripe.invoices.list({
       created: { gte: startTs, lte: endTs },
@@ -398,40 +471,30 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     startingAfter = page.data[page.data.length - 1]?.id
   }
 
-  // Fetch credit notes for this period.
-  // Stripe creditNotes.list doesn't support a `created` filter, so we paginate
-  // in reverse-chronological order and stop once we've passed our date range.
-  // This is fast for recent months (few pages) and breaks early for old months.
+  // Credit notes in period — Stripe doesn't support a `created` filter on creditNotes.list,
+  // so we paginate reverse-chronologically and break out once we drop below startTs.
   const creditNotes: Stripe.CreditNote[] = []
   let cnHasMore = true
   let cnStartingAfter: string | undefined
   let cnPagesScanned = 0
-  const CN_MAX_PAGES = 10 // Safety limit to avoid timeout on very old months
-
+  const CN_MAX_PAGES = 10
   while (cnHasMore && cnPagesScanned < CN_MAX_PAGES) {
     const page: Stripe.ApiList<Stripe.CreditNote> = await stripe.creditNotes.list({
       limit: 100,
       ...(cnStartingAfter ? { starting_after: cnStartingAfter } : {}),
     })
     cnPagesScanned++
-
     for (const cn of page.data) {
-      if (cn.created >= startTs && cn.created <= endTs) {
-        creditNotes.push(cn)
-      }
+      if (cn.created >= startTs && cn.created <= endTs) creditNotes.push(cn)
     }
-
     cnHasMore = page.has_more
     cnStartingAfter = page.data[page.data.length - 1]?.id
-
-    // Stop once we've gone past our date range (list is reverse-chronological)
     if (page.data.length > 0 && page.data[page.data.length - 1].created < startTs) break
   }
 
-  // For each unique customer: check if they had an invoice before the period (= MRR), else New Business
+  // New-business detection: a customer with no earlier (non-draft/non-void) invoice is "new" this period.
   const customerIds = [...new Set(allInvoices.map((inv) => inv.customer as string).filter(Boolean))]
   const isNewBusinessCustomer = new Map<string, boolean>()
-
   for (const customerId of customerIds) {
     const earlier = await stripe.invoices.list({
       customer: customerId,
@@ -442,14 +505,7 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     isNewBusinessCustomer.set(customerId, !hasEarlier)
   }
 
-  const total = emptyBreakdown()
-  const serviceFee = emptyBreakdown()
-  const serviceFeeNewBusiness = emptyBreakdown()
-  const serviceFeeMrr = emptyBreakdown()
-  const adBudget = emptyBreakdown()
-  const details: InvoiceDetail[] = []
-
-  // Build a customer name cache
+  // Customer name cache (used for details + perCustomer)
   const customerNameCache = new Map<string, string>()
   for (const inv of allInvoices) {
     const custId = inv.customer as string
@@ -458,6 +514,30 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     }
   }
 
+  const total = emptyBreakdown()
+  const serviceFee = emptyBreakdown()
+  const serviceFeeNewBusiness = emptyBreakdown()
+  const serviceFeeMrr = emptyBreakdown()
+  const adBudget = emptyBreakdown()
+  const details: InvoiceDetail[] = []
+  const perCustomer = new Map<string, CustomerLineRollup>()
+
+  function ensureCustomer(custId: string, isNew: boolean): CustomerLineRollup {
+    let row = perCustomer.get(custId)
+    if (!row) {
+      row = {
+        customerId: custId,
+        customerName: customerNameCache.get(custId) || custId,
+        isNew,
+        feeAmount: 0,
+        adAmount: 0,
+      }
+      perCustomer.set(custId, row)
+    }
+    return row
+  }
+
+  // Walk invoice line items
   for (const inv of allInvoices) {
     const isOverdue = inv.status === "open" && inv.due_date != null && inv.due_date < now
     const isOpen = inv.status === "open" && !isOverdue
@@ -466,6 +546,7 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     const isNew = isNewBusinessCustomer.get(custId) ?? false
     const invDate = new Date(inv.created * 1000).toISOString().slice(0, 10)
     const invStatus: InvoiceDetail["status"] = isPaid ? "paid" : isOverdue ? "overdue" : "open"
+    const customerRow = custId ? ensureCustomer(custId, isNew) : null
 
     for (const line of inv.lines?.data ?? []) {
       const isAd = isAdBudget(line.description)
@@ -473,10 +554,12 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
       addToBreakdown(total, amount, isPaid, isOverdue, isOpen)
       if (isAd) {
         addToBreakdown(adBudget, amount, isPaid, isOverdue, isOpen)
+        if (customerRow) customerRow.adAmount += amount
       } else {
         addToBreakdown(serviceFee, amount, isPaid, isOverdue, isOpen)
         if (isNew) addToBreakdown(serviceFeeNewBusiness, amount, isPaid, isOverdue, isOpen)
         else addToBreakdown(serviceFeeMrr, amount, isPaid, isOverdue, isOpen)
+        if (customerRow) customerRow.feeAmount += amount
       }
 
       details.push({
@@ -493,12 +576,10 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     }
   }
 
-  // Apply credit notes with 3 tiers:
-  // - "credit": same-month (original invoice in this period) → counts against totals
-  // - "credit_prev": previous-month (original invoice from last month) → counts against totals
-  // - "credit_old": older than previous month → visible in details but does NOT affect totals
-  //
-  // Compute "previous month" boundary: first day of the month before our start date
+  // Apply credit notes
+  // - "credit": same-month original (in current period) → counts against totals
+  // - "credit_prev": previous-month original → counts against totals
+  // - "credit_old": older than previous month → visible in details, does NOT affect totals
   const periodStart = new Date(startDate)
   const prevMonthStart = new Date(Date.UTC(periodStart.getFullYear(), periodStart.getMonth() - 1, 1))
   const prevMonthStartTs = Math.floor(prevMonthStart.getTime() / 1000)
@@ -509,19 +590,21 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
     const isNew = isNewBusinessCustomer.get(custId) ?? false
     const isPaid = cn.status === "issued" || cn.status === "void"
 
-    // Determine credit tier based on the original invoice's creation date
     const invoiceId = typeof cn.invoice === "string" ? cn.invoice : cn.invoice?.id
-    const originalInv = invoiceId ? allInvoices.find((inv) => inv.id === invoiceId) : null
+    let originalInv: Stripe.Invoice | null = invoiceId
+      ? allInvoices.find((inv) => inv.id === invoiceId) ?? null
+      : null
 
     let creditTier: "credit" | "credit_prev" | "credit_old"
     if (originalInv) {
-      // Original invoice is in this period = same-month
       creditTier = "credit"
     } else if (invoiceId) {
-      // Original invoice is NOT in this period — check if it's from previous month
-      // We need to fetch the original invoice's created date
+      // Original invoice is outside the current period — fetch it once so we can both
+      // determine the credit tier AND use its line items for the fee/ad split when the
+      // credit note itself has no line breakdown (Stripe lets you create line-less CNs).
       try {
         const origInv = await stripe.invoices.retrieve(invoiceId)
+        originalInv = origInv
         creditTier = origInv.created >= prevMonthStartTs ? "credit_prev" : "credit_old"
       } catch {
         creditTier = "credit_old"
@@ -532,10 +615,12 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
 
     const countsAgainstTotal = creditTier === "credit" || creditTier === "credit_prev"
 
-    // Categorize: fee vs ad budget
+    // Split fee vs ad: prefer the credit note's own line items; otherwise pro-rate against
+    // the original invoice's line items (now works for older originals too — was previously
+    // a "all service fee" fallback that under-credited ad-budget). Last-resort fallback is
+    // unchanged: assume service fee.
     let serviceFeeCredit = 0
     let adBudgetCredit = 0
-
     if (cn.lines?.data && cn.lines.data.length > 0) {
       for (const line of cn.lines.data) {
         const lineAmount = line.amount / 100
@@ -559,7 +644,6 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
       serviceFeeCredit = creditAmount
     }
 
-    // Same-month and previous-month credits affect the breakdowns
     if (countsAgainstTotal) {
       total.invoiced -= creditAmount
       if (isPaid) total.cashCollected -= creditAmount
@@ -579,10 +663,15 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
           if (isPaid) serviceFeeMrr.cashCollected -= serviceFeeCredit
         }
       }
+
+      // Mirror credit application onto the per-customer rollup so AM totals net out properly.
+      if (custId && perCustomer.has(custId)) {
+        const row = perCustomer.get(custId)!
+        row.feeAmount -= serviceFeeCredit
+        row.adAmount -= adBudgetCredit
+      }
     }
 
-    // Always add to details. For credit notes, link back to the original invoice's
-    // hosted page when available (only when the original invoice is in our period).
     const cnDate = new Date(cn.created * 1000).toISOString().slice(0, 10)
     const cnCustomerName = customerNameCache.get(custId) || null
     const cnHostedUrl = originalInv?.hosted_invoice_url ?? null
@@ -605,8 +694,25 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
   }
 
   return {
-    total, serviceFee, serviceFeeNewBusiness, serviceFeeMrr,
-    adBudget, invoiceCount: allInvoices.length, details,
+    total, serviceFee, serviceFeeNewBusiness, serviceFeeMrr, adBudget,
+    invoiceCount: allInvoices.length,
+    details,
+    perCustomer: [...perCustomer.values()],
+    currentCustomerIds: new Set(customerIds),
+  }
+}
+
+export async function fetchFinance(startDate: string, endDate: string): Promise<FinanceOverview> {
+  const stripe = await getStripe()
+  const breakdown = await buildInvoiceBreakdown(stripe, startDate, endDate)
+  return {
+    total: breakdown.total,
+    serviceFee: breakdown.serviceFee,
+    serviceFeeNewBusiness: breakdown.serviceFeeNewBusiness,
+    serviceFeeMrr: breakdown.serviceFeeMrr,
+    adBudget: breakdown.adBudget,
+    invoiceCount: breakdown.invoiceCount,
+    details: breakdown.details,
   }
 }
 
@@ -688,99 +794,143 @@ export async function fetchCosts(year: number, month: number): Promise<CostData>
   }
 }
 
-/** Delivery — MRR/NB analysis + revenue per account manager */
+/**
+ * Delivery — service-fee MRR/NB + ad budget (kept separate) + revenue per account manager.
+ *
+ * Builds on the same `buildInvoiceBreakdown` core as Finance so the line-item split
+ * (service fee vs ad budget) and credit-note handling are identical between the two tabs.
+ * The only Delivery-specific work is: fetch the previous-period customer set for churn,
+ * map customers → account managers via Monday, and roll up per-AM totals from the core's
+ * per-customer breakdown.
+ */
 export async function fetchDelivery(startDate: string, endDate: string): Promise<DeliveryOverview> {
   const stripe = await getStripe()
   const startTs = Math.floor(new Date(startDate).getTime() / 1000)
   const endTs = Math.floor(new Date(endDate + "T23:59:59Z").getTime() / 1000)
 
-  const periodMs = (endTs - startTs) * 1000
-  const prevStartTs = startTs - Math.floor(periodMs / 1000)
+  const periodSeconds = endTs - startTs
+  const prevStartTs = startTs - periodSeconds
   const prevEndTs = startTs - 1
 
-  async function getInvoices(start: number, end: number): Promise<Stripe.Invoice[]> {
-    const invoices: Stripe.Invoice[] = []
+  // Previous-period customers (for churn) — only the customer set is needed, no line detail.
+  async function fetchPrevCustomerIds(): Promise<Set<string>> {
+    const ids = new Set<string>()
     let hasMore = true
     let startingAfter: string | undefined
     while (hasMore) {
       const page = await stripe.invoices.list({
-        created: { gte: start, lte: end },
+        created: { gte: prevStartTs, lte: prevEndTs },
         limit: 100,
         ...(startingAfter ? { starting_after: startingAfter } : {}),
       })
-      invoices.push(...page.data.filter((inv) => inv.status !== "draft" && inv.status !== "void"))
+      for (const inv of page.data) {
+        if (inv.status !== "draft" && inv.status !== "void" && inv.customer) {
+          ids.add(inv.customer as string)
+        }
+      }
       hasMore = page.has_more
       startingAfter = page.data[page.data.length - 1]?.id
     }
-    return invoices
+    return ids
   }
 
-  const [currentInvoices, prevInvoices, mondayData] = await Promise.all([
-    getInvoices(startTs, endTs),
-    getInvoices(prevStartTs, prevEndTs),
+  const [breakdown, prevCustomerIds, mondayData] = await Promise.all([
+    buildInvoiceBreakdown(stripe, startDate, endDate),
+    fetchPrevCustomerIds(),
     fetchBothBoards(),
   ])
 
-  // Build Stripe customer ID → account manager map from Monday
-  const amMap = new Map<string, string>()
+  // Stripe customer ID → Monday entry (account manager + item id). Storing the item id lets
+  // us tell *why* an AM ended up "Unassigned": no Monday match at all vs. matched but empty AM.
+  type MondayLink = { accountManager: string; mondayItemId: string }
+  const amMap = new Map<string, MondayLink>()
   const allClients = [...mondayData.onboarding, ...mondayData.current]
   for (const client of allClients) {
-    if (client.stripeCustomerId) amMap.set(client.stripeCustomerId, client.accountManager || "Unassigned")
+    if (client.stripeCustomerId) {
+      amMap.set(client.stripeCustomerId, {
+        accountManager: client.accountManager,
+        mondayItemId: client.mondayItemId,
+      })
+    }
   }
 
-  const currentCustomerIds = new Set(currentInvoices.map((inv) => inv.customer as string).filter(Boolean))
-  const prevCustomerIds = new Set(prevInvoices.map((inv) => inv.customer as string).filter(Boolean))
+  // Pool of Monday items that don't yet link a Stripe customer — these are the candidates
+  // for "no_monday_match" assignment (both fuzzy suggestions and the manual picker).
+  const unlinkedMondayItems: UnlinkedMondayItem[] = allClients
+    .filter((c) => !c.stripeCustomerId)
+    .map((c) => ({ id: c.mondayItemId, name: c.name, boardType: c.boardType }))
 
-  // Check first-invoice for each current customer
-  const firstInvoiceDates = new Map<string, number>()
-  for (const customerId of currentCustomerIds) {
-    if (firstInvoiceDates.has(customerId)) continue
-    const page = await stripe.invoices.list({
-      customer: customerId,
-      limit: 1,
-      status: "paid",
-    })
-    if (page.data.length > 0) firstInvoiceDates.set(customerId, page.data[0].created)
+  // Per-AM rollup. mrr / newBusiness are service-fee only; adBudget is the pass-through bucket.
+  // revenue is the total across all three so it stays usable for ranking.
+  type AmAcc = { revenue: number; customers: number; mrr: number; newBusiness: number; adBudget: number }
+  const amRevenue = new Map<string, AmAcc>()
+  const unassignedCustomers: UnassignedCustomer[] = []
+
+  for (const c of breakdown.perCustomer) {
+    const link = amMap.get(c.customerId)
+    const amName = link?.accountManager?.trim() || "Unassigned"
+    const acc = amRevenue.get(amName) ?? { revenue: 0, customers: 0, mrr: 0, newBusiness: 0, adBudget: 0 }
+    acc.customers++
+    acc.adBudget += c.adAmount
+    if (c.isNew) acc.newBusiness += c.feeAmount
+    else acc.mrr += c.feeAmount
+    acc.revenue = acc.mrr + acc.newBusiness + acc.adBudget
+    amRevenue.set(amName, acc)
+
+    if (amName === "Unassigned") {
+      // Smart suggestions only make sense when there's no Monday match yet — otherwise the
+      // fix is "fill the AM column", not "pick a Monday item".
+      let suggestions: MatchSuggestion[] | undefined
+      if (!link) {
+        const SUGGESTION_THRESHOLD = 0.4
+        const TOP_N = 3
+        suggestions = unlinkedMondayItems
+          .map((item) => ({
+            mondayItemId: item.id,
+            itemName: item.name,
+            boardType: item.boardType,
+            score: nameSimilarity(c.customerName, item.name),
+          }))
+          .filter((s) => s.score >= SUGGESTION_THRESHOLD)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, TOP_N)
+      }
+
+      unassignedCustomers.push({
+        customerId: c.customerId,
+        customerName: c.customerName,
+        fee: c.feeAmount,
+        adBudget: c.adAmount,
+        revenue: c.feeAmount + c.adAmount,
+        reason: link ? "empty_am" : "no_monday_match",
+        mondayItemId: link?.mondayItemId ?? null,
+        suggestions,
+      })
+    }
   }
 
-  const customerRevenue = new Map<string, { invoiced: number; isNew: boolean; am: string }>()
-  for (const inv of currentInvoices) {
-    const custId = inv.customer as string
-    if (!custId) continue
-    const existing = customerRevenue.get(custId) || { invoiced: 0, isNew: false, am: "Unassigned" }
-    existing.invoiced += inv.amount_due / 100
-    existing.am = amMap.get(custId) || "Unassigned"
-    const firstCreated = firstInvoiceDates.get(custId)
-    if (firstCreated && firstCreated >= startTs && firstCreated <= endTs) existing.isNew = true
-    customerRevenue.set(custId, existing)
-  }
-
-  let mrr = 0, newBusiness = 0, totalRevenue = 0
-  const amRevenue = new Map<string, { revenue: number; customers: number; mrr: number; newBusiness: number }>()
-
-  for (const [, data] of customerRevenue) {
-    totalRevenue += data.invoiced
-    if (data.isNew) newBusiness += data.invoiced
-    else mrr += data.invoiced
-
-    const amData = amRevenue.get(data.am) || { revenue: 0, customers: 0, mrr: 0, newBusiness: 0 }
-    amData.revenue += data.invoiced
-    amData.customers++
-    if (data.isNew) amData.newBusiness += data.invoiced
-    else amData.mrr += data.invoiced
-    amRevenue.set(data.am, amData)
-  }
-
-  const churned = [...prevCustomerIds].filter((id) => !currentCustomerIds.has(id)).length
+  // Sort unassigned by revenue desc — highest-impact gaps surface first.
+  unassignedCustomers.sort((a, b) => b.revenue - a.revenue)
 
   const byAccountManager: AccountManagerRevenue[] = [...amRevenue.entries()]
     .sort(([, a], [, b]) => b.revenue - a.revenue)
     .map(([name, data]) => ({ name, ...data }))
 
-  const activeCustomers = currentCustomerIds.size
+  // Top-level totals come straight from the breakdown — keeps Delivery and Finance aligned.
+  const mrr = breakdown.serviceFeeMrr.invoiced
+  const newBusiness = breakdown.serviceFeeNewBusiness.invoiced
+  const adBudget = breakdown.adBudget.invoiced
+  const serviceFeeRevenue = breakdown.serviceFee.invoiced
+  const totalRevenue = breakdown.total.invoiced
+
+  const activeCustomers = breakdown.currentCustomerIds.size
+  const churned = [...prevCustomerIds].filter((id) => !breakdown.currentCustomerIds.has(id)).length
+
   return {
     mrr,
     newBusiness,
+    serviceFeeRevenue,
+    adBudget,
     totalRevenue,
     activeCustomers,
     avgRevenuePerCustomer: activeCustomers > 0 ? totalRevenue / activeCustomers : 0,
@@ -789,6 +939,8 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
     currentPeriodCustomers: activeCustomers,
     churned,
     byAccountManager,
+    unassignedCustomers,
+    unlinkedMondayItems,
   }
 }
 

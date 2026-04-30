@@ -5,10 +5,16 @@ import { filterClientsByUser } from "@/lib/clients/filter"
 import { readCache } from "@/lib/cache"
 import { sendDmToHubUser } from "@/lib/slack"
 import {
-  buildWatchlistDailySummary,
   computeSevenDayAvgScore,
+  computeWatchlistVars,
   type ClientState,
 } from "@/lib/slack/watchlist-summary"
+import {
+  DEFAULT_TEMPLATES,
+  getNotificationConfig,
+  renderTemplate,
+  shouldRunNow,
+} from "@/lib/slack/notification-config"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
@@ -22,23 +28,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // Vercel cron is UTC-only; we schedule at both 04:00 and 05:00 UTC so that
-  // exactly one of them lands on 06:00 Europe/Amsterdam regardless of DST.
-  // The other fire is dropped here. Bypass the guard with ?force=1 for testing.
   const url = new URL(req.url)
   const force = url.searchParams.get("force") === "1"
-  if (!force) {
-    const amsterdamHour = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Europe/Amsterdam",
-      hour: "2-digit",
-      hour12: false,
-    }).format(new Date())
-    if (amsterdamHour !== "06") {
-      return NextResponse.json({
-        ok: true,
-        skipped: `Not 06:00 Amsterdam (currently ${amsterdamHour}:00) — DST guard`,
-      })
-    }
+
+  // Vercel cron is UTC-only and fires hourly; the user-configured hour in
+  // Settings → Notifications gates which fire actually does work.
+  const config = await getNotificationConfig("personal_watchlist")
+  const guard = shouldRunNow(config, force)
+  if (!guard.ok) {
+    return NextResponse.json({ ok: true, skipped: guard.reason })
   }
 
   const supabase = await createAdminClient()
@@ -90,6 +88,7 @@ export async function GET(req: NextRequest) {
   for (const m of cmMappings ?? []) userCmName.set(m.user_id, m.monday_person_name)
 
   const today = new Date().toISOString().slice(0, 10)
+  const template = config.template ?? DEFAULT_TEMPLATES.personal_watchlist
 
   let sent = 0
   let failed = 0
@@ -99,8 +98,6 @@ export async function GET(req: NextRequest) {
     try {
       const visibleClients = await filterClientsByUser(liveClients, user.id, user.role)
 
-      // Pick the relevant slice of score_history: CM-specific for non-admins
-      // with a campaign_manager mapping, else `_all`.
       const sliceKey = user.role === "admin" ? "_all" : userCmName.get(user.id) ?? "_all"
       const sliceHistory: Record<string, { action: number; watch: number; good: number }> = {}
       for (const [date, snapshot] of Object.entries(scoreHistory)) {
@@ -108,14 +105,14 @@ export async function GET(req: NextRequest) {
       }
       const sevenDayAvgScore = computeSevenDayAvgScore(sliceHistory, today)
 
-      const message = buildWatchlistDailySummary({
+      const vars = computeWatchlistVars({
         visibleClients,
         kpiMap: kpiCache,
         states,
         today,
         sevenDayAvgScore,
       })
-      await sendDmToHubUser(user.id, message)
+      await sendDmToHubUser(user.id, renderTemplate(template, vars))
       sent++
     } catch (e) {
       failed++

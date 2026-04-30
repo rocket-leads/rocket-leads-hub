@@ -141,19 +141,49 @@ export interface FinanceOverview {
 
 // ─── Delivery types ───
 
-export interface CustomerRevenue {
+export interface UnassignedCustomer {
   customerId: string
   customerName: string
-  invoiced: number
-  collected: number
-  isNewBusiness: boolean
-  category: "service_fee" | "ad_budget" | "unknown"
-  accountManager: string | null
+  /** Total revenue for this customer in the period: fee (incl. credits) + adBudget (incl. credits). */
+  revenue: number
+  fee: number
+  adBudget: number
+  /**
+   * Why this customer ended up under "Unassigned":
+   * - "no_monday_match": the Stripe customer ID is not present on any Monday item's stripe_customer_id column.
+   * - "empty_am": a Monday item links this Stripe customer, but its Account Manager column is empty.
+   */
+  reason: "no_monday_match" | "empty_am"
+  /** When `reason === "empty_am"`: the Monday item ID so the UI can deep-link to it. Null otherwise. */
+  mondayItemId: string | null
+  /** Top fuzzy matches against unlinked Monday items, only for `no_monday_match` rows. */
+  suggestions?: MatchSuggestion[]
+}
+
+export interface MatchSuggestion {
+  mondayItemId: string
+  itemName: string
+  boardType: "onboarding" | "current"
+  /** Match score 0-1, higher = better. */
+  score: number
+}
+
+export interface UnlinkedMondayItem {
+  id: string
+  name: string
+  boardType: "onboarding" | "current"
 }
 
 export interface DeliveryOverview {
+  /** Service-fee revenue for returning customers (no earlier invoice). */
   mrr: number
+  /** Service-fee revenue for new customers (first invoice this period). */
   newBusiness: number
+  /** Service fee total = mrr + newBusiness. */
+  serviceFeeRevenue: number
+  /** Ad budget pass-through revenue. Not split into MRR/NB by design. */
+  adBudget: number
+  /** All invoiced revenue including ad budget = serviceFeeRevenue + adBudget. */
   totalRevenue: number
   activeCustomers: number
   avgRevenuePerCustomer: number
@@ -162,14 +192,23 @@ export interface DeliveryOverview {
   currentPeriodCustomers: number
   churned: number
   byAccountManager: AccountManagerRevenue[]
+  /** Customer-level breakdown of the "Unassigned" AM bucket so it can be acted on directly. */
+  unassignedCustomers: UnassignedCustomer[]
+  /** Monday items without a stripe_customer_id — picker pool for manual assignment. */
+  unlinkedMondayItems: UnlinkedMondayItem[]
 }
 
 export interface AccountManagerRevenue {
   name: string
+  /** Total revenue for this AM = mrr + newBusiness + adBudget. */
   revenue: number
   customers: number
+  /** Service-fee MRR for this AM. */
   mrr: number
+  /** Service-fee new business for this AM. */
   newBusiness: number
+  /** Ad budget pass-through for this AM. */
+  adBudget: number
 }
 
 // ─── Google Sheets cost types ───

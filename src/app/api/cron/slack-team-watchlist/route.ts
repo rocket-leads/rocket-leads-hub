@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchBothBoards } from "@/lib/integrations/monday"
 import { readCache } from "@/lib/cache"
-import { sendSlackChannelMessage } from "@/lib/slack"
+import { getSlackChannels, sendSlackChannelMessage } from "@/lib/slack"
 import { computeSevenDayAvgScore, type ClientState } from "@/lib/slack/watchlist-summary"
-import { buildTeamWatchlistSummary } from "@/lib/slack/team-watchlist-summary"
+import { computeTeamWatchlistVars } from "@/lib/slack/team-watchlist-summary"
+import {
+  DEFAULT_TEMPLATES,
+  getNotificationConfig,
+  renderTemplate,
+  shouldRunNow,
+} from "@/lib/slack/notification-config"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { DeliveryOverview } from "@/types/targets"
 
@@ -12,35 +18,26 @@ export const maxDuration = 60
 
 type ScoreHistory = Record<string, Record<string, { action: number; watch: number; good: number }>>
 
-const TEAM_CHANNEL_ID = process.env.SLACK_TEAM_CHANNEL_ID
-
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization")
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  // DST guard: cron fires at both 04:00 and 05:00 UTC; only the one that
-  // lands on 06:00 Europe/Amsterdam proceeds. Bypass with ?force=1.
   const url = new URL(req.url)
   const force = url.searchParams.get("force") === "1"
-  if (!force) {
-    const amsterdamHour = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Europe/Amsterdam",
-      hour: "2-digit",
-      hour12: false,
-    }).format(new Date())
-    if (amsterdamHour !== "06") {
-      return NextResponse.json({
-        ok: true,
-        skipped: `Not 06:00 Amsterdam (currently ${amsterdamHour}:00) — DST guard`,
-      })
-    }
+
+  const config = await getNotificationConfig("team_watchlist")
+  const guard = shouldRunNow(config, force)
+  if (!guard.ok) {
+    return NextResponse.json({ ok: true, skipped: guard.reason })
   }
 
+  const channels = await getSlackChannels()
+  const TEAM_CHANNEL_ID = channels.team_watchlist
   if (!TEAM_CHANNEL_ID) {
     return NextResponse.json(
-      { ok: false, error: "SLACK_TEAM_CHANNEL_ID env var not set" },
+      { ok: false, error: "Team watchlist channel ID not configured. Set it in Settings → Notifications." },
       { status: 500 },
     )
   }
@@ -83,13 +80,15 @@ export async function GET(req: NextRequest) {
   const delivery = await readCache<DeliveryOverview>("targets_delivery")
   const byAccountManager = delivery?.byAccountManager ?? []
 
-  const message = buildTeamWatchlistSummary({
+  const vars = computeTeamWatchlistVars({
     liveClients,
     states,
     byAccountManager,
     today,
     sevenDayAvgScore,
   })
+  const template = config.template ?? DEFAULT_TEMPLATES.team_watchlist
+  const message = renderTemplate(template, vars)
 
   try {
     await sendSlackChannelMessage(TEAM_CHANNEL_ID, message)

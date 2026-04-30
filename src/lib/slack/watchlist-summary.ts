@@ -1,6 +1,7 @@
 import { categorize } from "@/lib/watchlist/categorize"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
+import { DEFAULT_TEMPLATES, renderTemplate } from "./notification-config"
 
 const HUB_URL = process.env.NEXT_PUBLIC_HUB_URL ?? "https://hub.rocketleads.com"
 
@@ -43,24 +44,37 @@ function healthScore(b: Buckets): number | null {
   return Math.round((b.good / total) * 100)
 }
 
+type WatchlistVars = {
+  greeting: string
+  score_line: string
+  bucket_line: string
+  healthy_count: number
+  watch_count: number
+  action_count: number
+  concerns_section: string
+  wins_section: string
+  persistent_section: string
+  open_link: string
+}
+
 /**
- * Daily Slack summary that focuses on changes — what moved between buckets
- * since yesterday — plus a daily score comparison and persistence milestones
- * (day 3 / day 7 in Action or Watch).
+ * Computes the variable bag for the personal watchlist DM. Pure function —
+ * the cron route then renders it against the user-configured (or default)
+ * template.
  *
  * Mute logic: a transition surfaces only on day 0. To prevent repeating the
  * same notification day after day, persistent stays in Action/Watch resurface
  * exactly on day 3 (warning) and day 7 (escalation, bolded). Days 1-2, 4-6,
  * and 8+ are silent.
  */
-export function buildWatchlistDailySummary(opts: {
+export function computeWatchlistVars(opts: {
   visibleClients: MondayClient[]
   kpiMap: Record<string, KpiSummary>
   states: Map<string, ClientState>
   today: string // YYYY-MM-DD
   /** 7-day rolling average score (computed by caller from score_history). null if unavailable. */
   sevenDayAvgScore: number | null
-}): string {
+}): WatchlistVars {
   const { visibleClients, kpiMap, states, today, sevenDayAvgScore } = opts
 
   type Transition = {
@@ -102,9 +116,6 @@ export function buildWatchlistDailySummary(opts: {
       yesterdayBuckets[state.category]++
     }
 
-    // Persistence milestone: show clients that have been in Action or Watch
-    // for exactly 3 or 7 days. Only for concerns (Action / Watch) — wins are
-    // celebrated once, no re-mention needed.
     if (!transitionedToday && (state.category === "action" || state.category === "watch")) {
       const daysIn = daysBetween(state.since_date, today)
       if (daysIn === 3 || daysIn === 7) {
@@ -123,9 +134,7 @@ export function buildWatchlistDailySummary(opts: {
   const todayDeteriorations = todayTransitions.filter((t) => SEVERITY[t.to] > SEVERITY[t.from])
   const todayImprovements = todayTransitions.filter((t) => SEVERITY[t.to] < SEVERITY[t.from])
 
-  const lines: string[] = []
-
-  // ── Greeting ── tone-aware based on delta + concerns mix.
+  // ── Greeting (tone-aware) ──
   let greeting: string
   if (todayTransitions.length === 0 && milestones.length === 0 && dayDelta === 0) {
     greeting = "🌅 Goedemorgen. Niets veranderd sinds gisteren — alles stabiel."
@@ -136,10 +145,9 @@ export function buildWatchlistDailySummary(opts: {
   } else {
     greeting = "🌅 Goedemorgen. Een paar bewegingen overnight."
   }
-  lines.push(greeting)
-  lines.push("")
 
-  // ── Score line + bucket counts ── score line is bolded as a whole.
+  // ── Score line (no surrounding bold — template controls bold) ──
+  let score_line = ""
   if (todayScore !== null) {
     const scoreParts: string[] = [`Health score: ${todayScore}%`]
     if (dayDelta !== null) {
@@ -155,54 +163,82 @@ export function buildWatchlistDailySummary(opts: {
     } else {
       scoreParts.push("7d avg building…")
     }
-    lines.push(`*${scoreParts.join(" · ")}*`)
+    score_line = scoreParts.join(" · ")
   }
-  lines.push(
-    `🟢 ${todayBuckets.good} healthy · 🟡 ${todayBuckets.watch} watch · 🔴 ${todayBuckets.action} action`,
-  )
-  lines.push("")
 
-  // ── New concerns today ──
+  const bucket_line = `🟢 ${todayBuckets.good} healthy · 🟡 ${todayBuckets.watch} watch · 🔴 ${todayBuckets.action} action`
+
+  // ── Concerns section ──
+  let concerns_section = ""
   if (todayDeteriorations.length > 0) {
-    lines.push(`*:warning: ${todayDeteriorations.length} nieuwe ${todayDeteriorations.length === 1 ? "concern" : "concerns"} vandaag*`)
+    const block: string[] = []
+    block.push(
+      `*:warning: ${todayDeteriorations.length} nieuwe ${todayDeteriorations.length === 1 ? "concern" : "concerns"} vandaag*`,
+    )
     for (const t of todayDeteriorations.slice(0, 5)) {
-      lines.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
+      block.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
     }
-    if (todayDeteriorations.length > 5) lines.push(`…en ${todayDeteriorations.length - 5} meer`)
-    lines.push("")
+    if (todayDeteriorations.length > 5) block.push(`…en ${todayDeteriorations.length - 5} meer`)
+    concerns_section = block.join("\n")
   }
 
-  // ── Persistence milestones (day 3 + day 7) ──
+  // ── Persistent section ──
+  let persistent_section = ""
   const day3 = milestones.filter((m) => m.days === 3)
   const day7 = milestones.filter((m) => m.days === 7)
   if (day3.length > 0 || day7.length > 0) {
-    lines.push("*:hourglass_flowing_sand: Persistent concerns*")
+    const block: string[] = []
+    block.push("*:hourglass_flowing_sand: Persistent concerns*")
     for (const m of day7.slice(0, 5)) {
-      // Day 7 = escalation, bolded
-      lines.push(`• *${m.name} — 7 dagen in ${categoryLabel(m.bucket)}* — ${m.insight}`)
+      block.push(`• *${m.name} — 7 dagen in ${categoryLabel(m.bucket)}* — ${m.insight}`)
     }
     for (const m of day3.slice(0, 5)) {
-      lines.push(`• ${m.name} — 3 dagen in ${categoryLabel(m.bucket)} — ${m.insight}`)
+      block.push(`• ${m.name} — 3 dagen in ${categoryLabel(m.bucket)} — ${m.insight}`)
     }
     const totalShown = Math.min(day7.length, 5) + Math.min(day3.length, 5)
     const totalAll = day3.length + day7.length
-    if (totalAll > totalShown) lines.push(`…en ${totalAll - totalShown} meer`)
-    lines.push("")
+    if (totalAll > totalShown) block.push(`…en ${totalAll - totalShown} meer`)
+    persistent_section = block.join("\n")
   }
 
-  // ── Wins today ──
+  // ── Wins section ──
+  let wins_section = ""
   if (todayImprovements.length > 0) {
-    lines.push(`*:white_check_mark: ${todayImprovements.length} ${todayImprovements.length === 1 ? "win" : "wins"} vandaag*`)
+    const block: string[] = []
+    block.push(
+      `*:white_check_mark: ${todayImprovements.length} ${todayImprovements.length === 1 ? "win" : "wins"} vandaag*`,
+    )
     for (const t of todayImprovements.slice(0, 5)) {
-      lines.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
+      block.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
     }
-    if (todayImprovements.length > 5) lines.push(`…en ${todayImprovements.length - 5} meer`)
-    lines.push("")
+    if (todayImprovements.length > 5) block.push(`…en ${todayImprovements.length - 5} meer`)
+    wins_section = block.join("\n")
   }
 
-  lines.push(`<${HUB_URL}/watchlist|Open Watchlist>`)
+  return {
+    greeting,
+    score_line,
+    bucket_line,
+    healthy_count: todayBuckets.good,
+    watch_count: todayBuckets.watch,
+    action_count: todayBuckets.action,
+    concerns_section,
+    wins_section,
+    persistent_section,
+    open_link: `<${HUB_URL}/watchlist|Open Watchlist>`,
+  }
+}
 
-  return lines.join("\n")
+/**
+ * Convenience wrapper — computes vars and renders against `template`
+ * (or the default if not provided).
+ */
+export function buildWatchlistDailySummary(
+  opts: Parameters<typeof computeWatchlistVars>[0],
+  template?: string | null,
+): string {
+  const vars = computeWatchlistVars(opts)
+  return renderTemplate(template ?? DEFAULT_TEMPLATES.personal_watchlist, vars)
 }
 
 /**

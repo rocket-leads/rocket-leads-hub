@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { encrypt } from "@/lib/encryption"
 import { revalidatePath } from "next/cache"
+import type { NotificationKey } from "@/lib/slack/notification-config"
 
 async function requireAdmin() {
   const session = await auth()
@@ -53,6 +54,102 @@ export async function updateUserSlackId(userId: string, slackUserId: string) {
   revalidatePath("/settings")
 }
 
+/**
+ * Update a single notification's config field. We merge into whatever exists
+ * under settings.slack_notifications so partial updates don't wipe the others.
+ */
+export async function updateNotificationConfig(
+  key: NotificationKey,
+  patch: Partial<{ enabled: boolean; hour: number; template: string | null }>,
+) {
+  await requireAdmin()
+  const supabase = await createAdminClient()
+
+  const { data: existing } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", "slack_notifications")
+    .maybeSingle()
+  const current = (existing?.value ?? {}) as Record<string, Record<string, unknown>>
+
+  const before = current[key] ?? {}
+  const next: Record<string, unknown> = { ...before }
+  if (typeof patch.enabled === "boolean") next.enabled = patch.enabled
+  if (typeof patch.hour === "number") {
+    const h = Math.trunc(patch.hour)
+    if (h < 0 || h > 23) throw new Error("hour must be 0–23")
+    next.hour = h
+  }
+  if (patch.template !== undefined) {
+    // null means "use the built-in default" — we strip the key so getNotificationConfig falls back.
+    if (patch.template === null || patch.template.trim() === "") delete next.template
+    else next.template = patch.template
+  }
+
+  const merged = { ...current, [key]: next }
+  const { error } = await supabase.from("settings").upsert({
+    key: "slack_notifications",
+    value: merged,
+    updated_at: new Date().toISOString(),
+  })
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
+export async function saveSlackChannelId(
+  key: "team_watchlist" | "sales",
+  channelId: string,
+) {
+  await requireAdmin()
+  const trimmed = channelId.trim()
+  const supabase = await createAdminClient()
+
+  const { data: existing } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", "slack_channels")
+    .maybeSingle()
+  const current = (existing?.value ?? {}) as Record<string, string>
+
+  const next = { ...current }
+  if (trimmed) next[key] = trimmed
+  else delete next[key]
+
+  const { error } = await supabase.from("settings").upsert({
+    key: "slack_channels",
+    value: next,
+    updated_at: new Date().toISOString(),
+  })
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
+export async function updateCloserSlackId(mondayPersonName: string, slackUserId: string) {
+  await requireAdmin()
+  const trimmed = slackUserId.trim()
+  const supabase = await createAdminClient()
+  if (!trimmed) {
+    const { error } = await supabase
+      .from("closer_slack_mappings")
+      .delete()
+      .eq("monday_person_name", mondayPersonName)
+    if (error) throw new Error(error.message)
+  } else {
+    const { error } = await supabase
+      .from("closer_slack_mappings")
+      .upsert(
+        {
+          monday_person_name: mondayPersonName,
+          slack_user_id: trimmed,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "monday_person_name" },
+      )
+    if (error) throw new Error(error.message)
+  }
+  revalidatePath("/settings")
+}
+
 export async function updateUserRole(userId: string, role: "admin" | "member" | "guest") {
   await requireAdmin()
   const supabase = await createAdminClient()
@@ -61,21 +158,80 @@ export async function updateUserRole(userId: string, role: "admin" | "member" | 
   revalidatePath("/settings")
 }
 
-export async function inviteUser(email: string, role: "admin" | "member" | "guest") {
+export type MondayRole = "account_manager" | "campaign_manager" | "appointment_setter"
+
+export async function inviteUser(input: {
+  email: string
+  role: "admin" | "member" | "guest"
+  mondayRole?: MondayRole | null
+  mondayPersonName?: string | null
+  slackUserId?: string | null
+}) {
   await requireAdmin()
-  const normalized = email.trim().toLowerCase()
+  const normalized = input.email.trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
     throw new Error("Invalid email address")
   }
+  const slackId = input.slackUserId?.trim() || null
   const supabase = await createAdminClient()
-  const { error } = await supabase
+  const { data: inserted, error } = await supabase
     .from("users")
-    .insert({ email: normalized, role })
+    .insert({ email: normalized, role: input.role, slack_user_id: slackId })
+    .select("id")
+    .single()
   if (error) {
     if (error.code === "23505") throw new Error("User already exists")
     throw new Error(error.message)
   }
+
+  if (input.mondayRole && input.mondayPersonName?.trim()) {
+    const { error: mappingErr } = await supabase
+      .from("user_column_mappings")
+      .insert({
+        user_id: inserted.id,
+        monday_column_role: input.mondayRole,
+        monday_person_name: input.mondayPersonName.trim(),
+      })
+    if (mappingErr) throw new Error(mappingErr.message)
+  }
+
   revalidatePath("/settings")
+  revalidatePath("/clients")
+  return { id: inserted.id }
+}
+
+/**
+ * Sets a user's Monday mapping to exactly one role+name pair (or clears it).
+ * Replaces any existing rows for the user — we now enforce one Monday identity
+ * per Hub user from the UI, even though the underlying schema allows multiple.
+ */
+export async function setUserMondayMapping(
+  userId: string,
+  mondayRole: MondayRole | null,
+  mondayPersonName: string | null,
+) {
+  await requireAdmin()
+  const supabase = await createAdminClient()
+
+  const { error: deleteErr } = await supabase
+    .from("user_column_mappings")
+    .delete()
+    .eq("user_id", userId)
+  if (deleteErr) throw new Error(deleteErr.message)
+
+  if (mondayRole && mondayPersonName?.trim()) {
+    const { error } = await supabase
+      .from("user_column_mappings")
+      .insert({
+        user_id: userId,
+        monday_column_role: mondayRole,
+        monday_person_name: mondayPersonName.trim(),
+      })
+    if (error) throw new Error(error.message)
+  }
+
+  revalidatePath("/settings")
+  revalidatePath("/clients")
 }
 
 export async function removeUser(userId: string) {
@@ -88,35 +244,3 @@ export async function removeUser(userId: string) {
   revalidatePath("/settings")
 }
 
-export type ColumnMapping = {
-  user_id: string
-  monday_column_role: string
-  monday_person_name: string
-}
-
-export async function saveColumnMappings(mappings: ColumnMapping[]) {
-  await requireAdmin()
-  const supabase = await createAdminClient()
-
-  // Delete all existing mappings and re-insert
-  const { error: deleteError } = await supabase
-    .from("user_column_mappings")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000") // delete all rows
-
-  if (deleteError) throw new Error(deleteError.message)
-
-  if (mappings.length > 0) {
-    const { error } = await supabase.from("user_column_mappings").insert(
-      mappings.map((m) => ({
-        user_id: m.user_id,
-        monday_column_role: m.monday_column_role,
-        monday_person_name: m.monday_person_name,
-      }))
-    )
-    if (error) throw new Error(error.message)
-  }
-
-  revalidatePath("/settings")
-  revalidatePath("/clients")
-}
