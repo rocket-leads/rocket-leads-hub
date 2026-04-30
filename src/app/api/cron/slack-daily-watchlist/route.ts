@@ -4,7 +4,7 @@ import { fetchBothBoards } from "@/lib/integrations/monday"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { readCache } from "@/lib/cache"
 import { sendDmToHubUser } from "@/lib/slack"
-import { buildWatchlistSummary } from "@/lib/slack/watchlist-summary"
+import { buildWatchlistDailySummary, type ClientState } from "@/lib/slack/watchlist-summary"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
@@ -18,7 +18,6 @@ export async function GET(req: NextRequest) {
 
   const supabase = await createAdminClient()
 
-  // 1) All users with a Slack ID configured
   const { data: users, error: usersErr } = await supabase
     .from("users")
     .select("id, name, role, slack_user_id")
@@ -30,7 +29,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, sent: 0, skipped: "no users with slack_user_id configured" })
   }
 
-  // 2) All current-board clients (filter to Live below per user)
   let liveClients: MondayClient[]
   try {
     const cached = await readCache<{ current: MondayClient[] }>("monday_boards")
@@ -43,18 +41,40 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // 3) KPI summaries from cache (refreshed by /api/cron/refresh-cache every 30 min)
   const kpiCache = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}
 
-  // 4) Per user: build personalized summary + DM
+  const { data: stateRows } = await supabase
+    .from("watchlist_client_state")
+    .select("monday_item_id, category, prev_category, since_date")
+  const states = new Map<string, ClientState>()
+  for (const row of stateRows ?? []) {
+    states.set(row.monday_item_id, {
+      category: row.category,
+      prev_category: row.prev_category,
+      since_date: row.since_date,
+    })
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const sevenDaysAgoDate = new Date()
+  sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7)
+  const sevenDaysAgo = sevenDaysAgoDate.toISOString().slice(0, 10)
+
   let sent = 0
   let failed = 0
   const errors: Array<{ userId: string; error: string }> = []
 
   for (const user of users) {
     try {
-      const visible = await filterClientsByUser(liveClients, user.id, user.role)
-      const message = buildWatchlistSummary(visible, kpiCache, user.name)
+      const visibleClients = await filterClientsByUser(liveClients, user.id, user.role)
+      const message = buildWatchlistDailySummary({
+        visibleClients,
+        kpiMap: kpiCache,
+        userName: user.name,
+        states,
+        today,
+        sevenDaysAgo,
+      })
       await sendDmToHubUser(user.id, message)
       sent++
     } catch (e) {

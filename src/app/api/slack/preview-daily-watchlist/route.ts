@@ -5,14 +5,14 @@ import { fetchBothBoards } from "@/lib/integrations/monday"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { readCache } from "@/lib/cache"
 import { sendDmToHubUser } from "@/lib/slack"
-import { buildWatchlistSummary } from "@/lib/slack/watchlist-summary"
+import { buildWatchlistDailySummary, type ClientState } from "@/lib/slack/watchlist-summary"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
 /**
- * Admin-triggered: send the daily watchlist summary right now, to the calling
- * user only. Useful for testing the message format without waiting for the
- * 06:00 cron — and without spamming the whole team during dev.
+ * Admin-triggered: send the daily watchlist change summary right now, to the
+ * calling user only. Useful for testing message format without waiting for the
+ * 06:00 cron — and without spamming the team during dev.
  */
 export async function POST() {
   const session = await auth()
@@ -50,14 +50,39 @@ export async function POST() {
   }
 
   const kpiCache = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}
-  const visible = await filterClientsByUser(liveClients, user.id, user.role)
-  const message = buildWatchlistSummary(visible, kpiCache, user.name)
+
+  const { data: stateRows } = await supabase
+    .from("watchlist_client_state")
+    .select("monday_item_id, category, prev_category, since_date")
+  const states = new Map<string, ClientState>()
+  for (const row of stateRows ?? []) {
+    states.set(row.monday_item_id, {
+      category: row.category,
+      prev_category: row.prev_category,
+      since_date: row.since_date,
+    })
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const sevenDaysAgoDate = new Date()
+  sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7)
+  const sevenDaysAgo = sevenDaysAgoDate.toISOString().slice(0, 10)
+
+  const visibleClients = await filterClientsByUser(liveClients, user.id, user.role)
+  const message = buildWatchlistDailySummary({
+    visibleClients,
+    kpiMap: kpiCache,
+    userName: user.name,
+    states,
+    today,
+    sevenDaysAgo,
+  })
 
   try {
     await sendDmToHubUser(user.id, message)
     return NextResponse.json({
       ok: true,
-      message: `Daily summary sent to your Slack — covering ${visible.length} live clients.`,
+      message: `Daily summary sent — covering ${visibleClients.length} live clients.`,
     })
   } catch (e) {
     return NextResponse.json(
