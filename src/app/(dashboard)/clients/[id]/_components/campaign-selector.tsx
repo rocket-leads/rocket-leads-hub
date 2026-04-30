@@ -24,6 +24,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelectionChange }: Props) {
   const [saving, setSaving] = useState<Record<string, boolean>>({})
+  const [bulkSaving, setBulkSaving] = useState(false)
   const [showInactive, setShowInactive] = useState(false)
   const [search, setSearch] = useState("")
 
@@ -42,6 +43,27 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
       onSelectionChange()
     } finally {
       setSaving((s) => ({ ...s, [campaign.id]: false }))
+    }
+  }
+
+  async function bulkSetSelection(targets: CampaignWithSelection[], isSelected: boolean) {
+    if (targets.length === 0) return
+    setBulkSaving(true)
+    try {
+      await fetch(`/api/clients/${mondayItemId}/campaigns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaigns: targets.map((c) => ({
+            campaignId: c.id,
+            campaignName: c.name,
+            isSelected,
+          })),
+        }),
+      })
+      onSelectionChange()
+    } finally {
+      setBulkSaving(false)
     }
   }
 
@@ -64,6 +86,7 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
     ? byStatus.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
     : byStatus
   const selectedCount = campaigns.filter((c) => c.isSelected).length
+  const allVisibleSelected = visible.length > 0 && visible.every((c) => c.isSelected)
 
   return (
     <div className="space-y-3">
@@ -79,18 +102,31 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
             ? "No campaigns selected — all spend is included in KPIs."
             : `${selectedCount} campaign${selectedCount > 1 ? "s" : ""} selected.`}
         </p>
-        {inactiveCampaigns.length > 0 && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-xs h-7"
-            onClick={() => setShowInactive((v) => !v)}
-          >
-            {showInactive
-              ? `Hide inactive (${inactiveCampaigns.length})`
-              : `Show inactive (${inactiveCampaigns.length})`}
-          </Button>
-        )}
+        <div className="flex items-center gap-1">
+          {visible.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs h-7"
+              disabled={bulkSaving}
+              onClick={() => bulkSetSelection(visible, !allVisibleSelected)}
+            >
+              {allVisibleSelected ? "Deselect all" : "Select all"}
+            </Button>
+          )}
+          {inactiveCampaigns.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs h-7"
+              onClick={() => setShowInactive((v) => !v)}
+            >
+              {showInactive
+                ? `Hide inactive (${inactiveCampaigns.length})`
+                : `Show inactive (${inactiveCampaigns.length})`}
+            </Button>
+          )}
+        </div>
       </div>
       <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
         {visible.length === 0 && (

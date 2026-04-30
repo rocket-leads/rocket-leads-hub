@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchMetaCampaigns } from "@/lib/integrations/meta"
+import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
@@ -45,14 +46,18 @@ export async function GET(
       : Promise.resolve([]),
   ])
 
-  // Auto-select new ACTIVE campaigns. Any active campaign that doesn't yet have a row in
-  // `client_campaigns` is treated as "track this by default" — covers brand-new clients
-  // (every active campaign opted in on first visit) and freshly-launched campaigns on
-  // existing clients (no manual toggle needed). Campaigns the user explicitly deselected
-  // already have a DB row with is_selected=false, so they're skipped here — user choice
-  // persists across status changes.
+  // Auto-select new ACTIVE campaigns — but never for the Rocket Leads ad account, where
+  // multiple unrelated clients share the same ad account and "all active" would pull in
+  // every other client's spend. For RL accounts, the user must explicitly select campaigns.
+  // Otherwise: any active campaign without a `client_campaigns` row is treated as "track
+  // this by default" — covers brand-new clients and freshly-launched campaigns on existing
+  // ones. User-deselected campaigns already have a DB row with is_selected=false, so their
+  // choice persists across status changes.
+  const skipAutoSelect = isRocketLeadsAdAccount(adAccountId)
   const knownIds = new Set(selectedRows.map((r) => r.meta_campaign_id))
-  const newActive = campaigns.filter((c) => c.status === "ACTIVE" && !knownIds.has(c.id))
+  const newActive = skipAutoSelect
+    ? []
+    : campaigns.filter((c) => c.status === "ACTIVE" && !knownIds.has(c.id))
 
   if (newActive.length > 0 && clientId) {
     void supabase.from("client_campaigns").upsert(
@@ -86,7 +91,12 @@ export async function POST(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id: mondayItemId } = await params
-  const { campaignId, campaignName, isSelected } = await req.json()
+  const body = await req.json()
+
+  const items: Array<{ campaignId: string; campaignName: string; isSelected: boolean }> =
+    Array.isArray(body.campaigns)
+      ? body.campaigns
+      : [{ campaignId: body.campaignId, campaignName: body.campaignName, isSelected: body.isSelected }]
 
   const supabase = await createAdminClient()
   const { data: client } = await supabase
@@ -98,7 +108,12 @@ export async function POST(
   if (!client) return NextResponse.json({ error: "Client not found in Supabase — visit the client page first to sync" }, { status: 404 })
 
   await supabase.from("client_campaigns").upsert(
-    { client_id: client.id, meta_campaign_id: campaignId, campaign_name: campaignName, is_selected: isSelected },
+    items.map((it) => ({
+      client_id: client.id,
+      meta_campaign_id: it.campaignId,
+      campaign_name: it.campaignName,
+      is_selected: it.isSelected,
+    })),
     { onConflict: "client_id,meta_campaign_id" }
   )
 

@@ -139,7 +139,7 @@ export function buildWatchlistDailySummary(opts: {
   lines.push(greeting)
   lines.push("")
 
-  // ── Score line + bucket counts ── matches the watchlist dashboard.
+  // ── Score line + bucket counts ── score line is bolded as a whole.
   if (todayScore !== null) {
     const scoreParts: string[] = [`Health score: ${todayScore}%`]
     if (dayDelta !== null) {
@@ -155,7 +155,7 @@ export function buildWatchlistDailySummary(opts: {
     } else {
       scoreParts.push("7d avg building…")
     }
-    lines.push(scoreParts.join(" · "))
+    lines.push(`*${scoreParts.join(" · ")}*`)
   }
   lines.push(
     `🟢 ${todayBuckets.good} healthy · 🟡 ${todayBuckets.watch} watch · 🔴 ${todayBuckets.action} action`,
@@ -164,7 +164,7 @@ export function buildWatchlistDailySummary(opts: {
 
   // ── New concerns today ──
   if (todayDeteriorations.length > 0) {
-    lines.push(`${todayDeteriorations.length} nieuwe ${todayDeteriorations.length === 1 ? "concern" : "concerns"} vandaag`)
+    lines.push(`*:warning: ${todayDeteriorations.length} nieuwe ${todayDeteriorations.length === 1 ? "concern" : "concerns"} vandaag*`)
     for (const t of todayDeteriorations.slice(0, 5)) {
       lines.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
     }
@@ -176,7 +176,7 @@ export function buildWatchlistDailySummary(opts: {
   const day3 = milestones.filter((m) => m.days === 3)
   const day7 = milestones.filter((m) => m.days === 7)
   if (day3.length > 0 || day7.length > 0) {
-    lines.push("Persistent concerns")
+    lines.push("*:hourglass_flowing_sand: Persistent concerns*")
     for (const m of day7.slice(0, 5)) {
       // Day 7 = escalation, bolded
       lines.push(`• *${m.name} — 7 dagen in ${categoryLabel(m.bucket)}* — ${m.insight}`)
@@ -192,7 +192,7 @@ export function buildWatchlistDailySummary(opts: {
 
   // ── Wins today ──
   if (todayImprovements.length > 0) {
-    lines.push(`${todayImprovements.length} ${todayImprovements.length === 1 ? "win" : "wins"} vandaag`)
+    lines.push(`*:white_check_mark: ${todayImprovements.length} ${todayImprovements.length === 1 ? "win" : "wins"} vandaag*`)
     for (const t of todayImprovements.slice(0, 5)) {
       lines.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
     }
