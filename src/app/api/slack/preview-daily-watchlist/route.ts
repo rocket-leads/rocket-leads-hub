@@ -5,9 +5,15 @@ import { fetchBothBoards } from "@/lib/integrations/monday"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { readCache } from "@/lib/cache"
 import { sendDmToHubUser } from "@/lib/slack"
-import { buildWatchlistDailySummary, type ClientState } from "@/lib/slack/watchlist-summary"
+import {
+  buildWatchlistDailySummary,
+  computeSevenDayAvgScore,
+  type ClientState,
+} from "@/lib/slack/watchlist-summary"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
+
+type ScoreHistory = Record<string, Record<string, { action: number; watch: number; good: number }>>
 
 /**
  * Admin-triggered: send the daily watchlist change summary right now, to the
@@ -50,6 +56,7 @@ export async function POST() {
   }
 
   const kpiCache = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}
+  const scoreHistory = (await readCache<ScoreHistory>("watchlist_score_history")) ?? {}
 
   const { data: stateRows } = await supabase
     .from("watchlist_client_state")
@@ -63,19 +70,29 @@ export async function POST() {
     })
   }
 
+  const { data: cmMapping } = await supabase
+    .from("user_column_mappings")
+    .select("monday_person_name")
+    .eq("user_id", user.id)
+    .eq("monday_column_role", "campaign_manager")
+    .maybeSingle()
+
+  const sliceKey = user.role === "admin" ? "_all" : cmMapping?.monday_person_name ?? "_all"
+  const sliceHistory: Record<string, { action: number; watch: number; good: number }> = {}
+  for (const [date, snapshot] of Object.entries(scoreHistory)) {
+    if (snapshot[sliceKey]) sliceHistory[date] = snapshot[sliceKey]
+  }
+
   const today = new Date().toISOString().slice(0, 10)
-  const sevenDaysAgoDate = new Date()
-  sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7)
-  const sevenDaysAgo = sevenDaysAgoDate.toISOString().slice(0, 10)
+  const sevenDayAvgScore = computeSevenDayAvgScore(sliceHistory, today)
 
   const visibleClients = await filterClientsByUser(liveClients, user.id, user.role)
   const message = buildWatchlistDailySummary({
     visibleClients,
     kpiMap: kpiCache,
-    userName: user.name,
     states,
     today,
-    sevenDaysAgo,
+    sevenDayAvgScore,
   })
 
   try {

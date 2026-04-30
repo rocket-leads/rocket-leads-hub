@@ -4,11 +4,17 @@ import { fetchBothBoards } from "@/lib/integrations/monday"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { readCache } from "@/lib/cache"
 import { sendDmToHubUser } from "@/lib/slack"
-import { buildWatchlistDailySummary, type ClientState } from "@/lib/slack/watchlist-summary"
+import {
+  buildWatchlistDailySummary,
+  computeSevenDayAvgScore,
+  type ClientState,
+} from "@/lib/slack/watchlist-summary"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
 export const maxDuration = 60
+
+type ScoreHistory = Record<string, Record<string, { action: number; watch: number; good: number }>>
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization")
@@ -42,6 +48,7 @@ export async function GET(req: NextRequest) {
   }
 
   const kpiCache = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}
+  const scoreHistory = (await readCache<ScoreHistory>("watchlist_score_history")) ?? {}
 
   const { data: stateRows } = await supabase
     .from("watchlist_client_state")
@@ -55,10 +62,15 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  // Each non-admin user's CM mapping (if any) → use their slice from score_history.
+  const { data: cmMappings } = await supabase
+    .from("user_column_mappings")
+    .select("user_id, monday_person_name")
+    .eq("monday_column_role", "campaign_manager")
+  const userCmName = new Map<string, string>()
+  for (const m of cmMappings ?? []) userCmName.set(m.user_id, m.monday_person_name)
+
   const today = new Date().toISOString().slice(0, 10)
-  const sevenDaysAgoDate = new Date()
-  sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 7)
-  const sevenDaysAgo = sevenDaysAgoDate.toISOString().slice(0, 10)
 
   let sent = 0
   let failed = 0
@@ -67,13 +79,22 @@ export async function GET(req: NextRequest) {
   for (const user of users) {
     try {
       const visibleClients = await filterClientsByUser(liveClients, user.id, user.role)
+
+      // Pick the relevant slice of score_history: CM-specific for non-admins
+      // with a campaign_manager mapping, else `_all`.
+      const sliceKey = user.role === "admin" ? "_all" : userCmName.get(user.id) ?? "_all"
+      const sliceHistory: Record<string, { action: number; watch: number; good: number }> = {}
+      for (const [date, snapshot] of Object.entries(scoreHistory)) {
+        if (snapshot[sliceKey]) sliceHistory[date] = snapshot[sliceKey]
+      }
+      const sevenDayAvgScore = computeSevenDayAvgScore(sliceHistory, today)
+
       const message = buildWatchlistDailySummary({
         visibleClients,
         kpiMap: kpiCache,
-        userName: user.name,
         states,
         today,
-        sevenDaysAgo,
+        sevenDayAvgScore,
       })
       await sendDmToHubUser(user.id, message)
       sent++
