@@ -75,7 +75,16 @@ async function ClientDetailData({ id }: { id: string }) {
   return (
     <>
       <ClientHeader client={client} />
-      <ClientTabs client={client} supabaseClientId={supabaseClientId} access={access} />
+      <ClientTabs
+        client={client}
+        supabaseClientId={supabaseClientId}
+        access={access}
+        currentUser={{
+          id: session.user.id,
+          name: session.user.name ?? session.user.email,
+          role: session.user.role ?? "member",
+        }}
+      />
     </>
   )
 }

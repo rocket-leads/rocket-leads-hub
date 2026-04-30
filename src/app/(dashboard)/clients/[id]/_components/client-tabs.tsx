@@ -3,12 +3,14 @@
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { RefreshCw, BarChart3, CreditCard, MessageCircle, Settings2, Wallet, Calendar, ExternalLink, FolderOpen, ChevronRight, type LucideIcon } from "lucide-react"
+import { RefreshCw, BarChart3, CreditCard, MessageCircle, Settings2, Wallet, Calendar, ExternalLink, FolderOpen, ChevronRight, Inbox as InboxIcon, type LucideIcon } from "lucide-react"
 import { CampaignsTab } from "./campaigns-tab"
 import { BillingTab } from "./billing-tab"
 import { CommunicationTab } from "./communication-tab"
 import { ClientSettingsTab } from "./client-settings-tab"
+import { InboxTab } from "./inbox-tab"
 import { AdBudgetBalance } from "./ad-budget-balance"
+import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
@@ -23,6 +25,7 @@ type Props = {
   client: MondayClient
   supabaseClientId: string
   access: ClientAccess
+  currentUser: CurrentUser
 }
 
 function NoAccess() {
@@ -152,7 +155,7 @@ function SidebarPaymentStatus({
   )
 }
 
-export function ClientTabs({ client, access }: Props) {
+export function ClientTabs({ client, access, currentUser }: Props) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -178,6 +181,7 @@ export function ClientTabs({ client, access }: Props) {
     ...(access.canViewCampaigns ? [{ id: "campaigns", label: "Campaigns", icon: BarChart3 }] : []),
     ...(access.canViewBilling ? [{ id: "billing", label: "Billing", icon: CreditCard, ...(hasOverdueInvoice ? { dot: "red" as const } : {}) }] : []),
     ...(access.canViewCommunication ? [{ id: "communication", label: "Communication", icon: MessageCircle }] : []),
+    { id: "inbox", label: "Inbox", icon: InboxIcon },
     { id: "settings", label: "Settings", icon: Settings2 },
   ]
 
@@ -308,6 +312,14 @@ export function ClientTabs({ client, access }: Props) {
               trengoContactId={client.trengoContactId || null}
             />
           ) : <NoAccess />
+        )}
+
+        {activeTab === "inbox" && (
+          <InboxTab
+            mondayItemId={client.mondayItemId}
+            clientName={client.name}
+            currentUser={currentUser}
+          />
         )}
 
         {activeTab === "settings" && (
