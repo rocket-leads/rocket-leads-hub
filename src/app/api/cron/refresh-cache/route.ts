@@ -3,8 +3,9 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchBothBoards } from "@/lib/integrations/monday"
 import { fetchMetaInsightsDaily, aggregateMetaDailyToTotals, aggregateMetaDailyByDate } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
+import { categorize, updateWatchlistClientState } from "@/lib/watchlist/categorize"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
-import { writeCache } from "@/lib/cache"
+import { readCache, writeCache } from "@/lib/cache"
 import { computeActionCategory } from "@/lib/clients/action-category"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import {
@@ -254,6 +255,49 @@ export async function GET(req: NextRequest) {
       writeCache("kpi_summaries", kpiSummaries),
       writeCache("billing_summaries", billingSummaries),
     ])
+
+    // 5a-pre. Daily score snapshot per CM. Used for the "vs 7d avg" KPI card on the
+    // watchlist header — kept in cache_store under a single rolling map so we don't need
+    // a dedicated table. Pruned to the trailing 14 days.
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      type BucketTotals = { action: number; watch: number; good: number }
+      type DailySnapshot = Record<string, BucketTotals> // keys: CM name + "_all"
+      const snapshot: DailySnapshot = { _all: { action: 0, watch: 0, good: 0 } }
+
+      for (const client of allClients) {
+        const kpi = kpiSummaries[client.mondayItemId]
+        const { category } = categorize(client, kpi)
+        if (category !== "action" && category !== "watch" && category !== "good") continue
+        const cmKey = client.campaignManager || "_unassigned"
+        if (!snapshot[cmKey]) snapshot[cmKey] = { action: 0, watch: 0, good: 0 }
+        snapshot[cmKey][category]++
+        snapshot._all[category]++
+      }
+
+      const historyKey = "watchlist_score_history"
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 14)
+      const cutoffStr = cutoff.toISOString().slice(0, 10)
+      const existing = (await readCache<Record<string, DailySnapshot>>(historyKey)) ?? {}
+      const merged: Record<string, DailySnapshot> = { ...existing, [today]: snapshot }
+      // Prune entries older than 14 days so the map can't grow unbounded.
+      for (const date of Object.keys(merged)) {
+        if (date < cutoffStr) delete merged[date]
+      }
+      await writeCache(historyKey, merged)
+    } catch (e) {
+      console.error("Watchlist score snapshot failed:", e instanceof Error ? e.message : e)
+    }
+
+    // 5a. Update Watch List bucket state (`watchlist_client_state`) for ALL clients.
+    // Shared helper does the diff-and-upsert so since_date stays anchored at the original
+    // transition date — the same helper is used by the kpi-summaries `?force=1` path so
+    // a manual refresh from the UI also populates state without waiting for cron.
+    try {
+      await updateWatchlistClientState(supabase, allClients, kpiSummaries)
+    } catch (e) {
+      console.error("Watchlist state update failed:", e instanceof Error ? e.message : e)
+    }
 
     // 5b. Refresh Targets dashboard data (MTD + current calendar month)
     const mtd = getMtdRange()

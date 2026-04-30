@@ -3,17 +3,19 @@
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { RefreshCw, BarChart3, CreditCard, MessageCircle, Settings2, Wallet, Calendar, ExternalLink, FolderOpen, type LucideIcon } from "lucide-react"
+import { RefreshCw, BarChart3, CreditCard, MessageCircle, Settings2, Wallet, Calendar, ExternalLink, FolderOpen, ChevronRight, type LucideIcon } from "lucide-react"
 import { CampaignsTab } from "./campaigns-tab"
 import { BillingTab } from "./billing-tab"
 import { CommunicationTab } from "./communication-tab"
 import { ClientSettingsTab } from "./client-settings-tab"
 import { AdBudgetBalance } from "./ad-budget-balance"
 import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
 import type { MetaCampaign } from "@/lib/integrations/meta"
+import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
 
 type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
 
@@ -62,14 +64,102 @@ function SidebarLink({ icon: Icon, label, href }: { icon: LucideIcon; label: str
   )
 }
 
+function fmtEuro(v: number): string {
+  return `€${v.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
+}
+
+type PaymentStatusSummary =
+  | { kind: "complete" }
+  | { kind: "open"; count: number; amount: number }
+  | { kind: "overdue"; count: number; amount: number }
+
+function summarizePayments(invoices: InvoiceRow[] | undefined): PaymentStatusSummary | null {
+  if (!invoices) return null
+  const overdue = invoices.filter((i) => i.status === "overdue")
+  const open = invoices.filter((i) => i.status === "open")
+
+  if (overdue.length > 0) {
+    const amount = overdue.reduce((s, i) => s + (i.amountDue - i.amountPaid), 0)
+    return { kind: "overdue", count: overdue.length, amount }
+  }
+  if (open.length > 0) {
+    const amount = open.reduce((s, i) => s + (i.amountDue - i.amountPaid), 0)
+    return { kind: "open", count: open.length, amount }
+  }
+  return { kind: "complete" }
+}
+
+function SidebarPaymentStatus({
+  summary,
+  isLoading,
+  onClick,
+}: {
+  summary: PaymentStatusSummary | null
+  isLoading: boolean
+  onClick: () => void
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-3 px-3.5 py-2.5">
+        <Skeleton className="h-8 w-8 rounded-md shrink-0" />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <Skeleton className="h-2.5 w-16" />
+          <Skeleton className="h-3.5 w-32" />
+        </div>
+      </div>
+    )
+  }
+  if (!summary) return null
+
+  const { dotClass, valueClass, valueText } = (() => {
+    if (summary.kind === "overdue") {
+      return {
+        dotClass: "bg-red-500",
+        valueClass: "text-red-400",
+        valueText: `${summary.count} ${summary.count === 1 ? "invoice" : "invoices"} · ${fmtEuro(summary.amount)} overdue`,
+      }
+    }
+    if (summary.kind === "open") {
+      return {
+        dotClass: "bg-amber-500",
+        valueClass: "text-amber-400",
+        valueText: `${summary.count} ${summary.count === 1 ? "invoice" : "invoices"} · ${fmtEuro(summary.amount)} open`,
+      }
+    }
+    return {
+      dotClass: "bg-green-500",
+      valueClass: "text-foreground",
+      valueText: "Paid up",
+    }
+  })()
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-3 px-3.5 py-2.5 w-full hover:bg-muted/30 transition-colors text-left group rounded-md"
+    >
+      <div className="h-8 w-8 rounded-md bg-muted/50 flex items-center justify-center shrink-0 relative">
+        <CreditCard className="h-3.5 w-3.5 text-muted-foreground/60" />
+        <span className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${dotClass} ring-2 ring-card`} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 leading-none mb-1">Payments</p>
+        <p className={`text-sm font-medium tabular-nums leading-none truncate ${valueClass}`}>{valueText}</p>
+      </div>
+      <ChevronRight className="h-3 w-3 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors shrink-0" />
+    </button>
+  )
+}
+
 export function ClientTabs({ client, access }: Props) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [regenerateSignal, setRegenerateSignal] = useState(0)
 
-  // Billing query for notification dot (overdue invoices)
-  const billingQuery = useQuery<{ invoices?: Array<{ status: string }> }>({
+  // Billing query — drives the tab notification dot AND the sidebar payment status row.
+  const billingQuery = useQuery<Partial<BillingData>>({
     queryKey: ["billing-check", client.mondayItemId],
     queryFn: () =>
       client.stripeCustomerId
@@ -79,7 +169,8 @@ export function ClientTabs({ client, access }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const hasOverdueInvoice = (billingQuery.data?.invoices ?? []).some((inv) => inv.status === "overdue")
+  const paymentSummary = summarizePayments(billingQuery.data?.invoices)
+  const hasOverdueInvoice = paymentSummary?.kind === "overdue"
 
   type TabDef = { id: string; label: string; icon: LucideIcon; dot?: "red" | "amber" }
 
@@ -230,7 +321,7 @@ export function ClientTabs({ client, access }: Props) {
       {/* Right — Sticky sidebar */}
       <div className="hidden lg:block">
         <div className="sticky top-6 space-y-4">
-          {/* Client info + quick links */}
+          {/* Client info + payment status + quick links */}
           <Card>
             <CardContent className="p-1.5">
               {infoItems.length > 0 && (
@@ -241,8 +332,19 @@ export function ClientTabs({ client, access }: Props) {
                 </div>
               )}
 
-              {quickLinks.length > 0 && (
+              {/* Payment status — at-a-glance Stripe state, tap to jump to billing tab */}
+              {client.stripeCustomerId && access.canViewBilling && (
                 <div className={`${infoItems.length > 0 ? "border-t border-border/30 mt-1 pt-1" : ""}`}>
+                  <SidebarPaymentStatus
+                    summary={paymentSummary}
+                    isLoading={billingQuery.isLoading}
+                    onClick={() => setActiveTab("billing")}
+                  />
+                </div>
+              )}
+
+              {quickLinks.length > 0 && (
+                <div className={`${(infoItems.length > 0 || (client.stripeCustomerId && access.canViewBilling)) ? "border-t border-border/30 mt-1 pt-1" : ""}`}>
                   {quickLinks.map(({ icon, label, href }) => (
                     <SidebarLink key={label} icon={icon} label={label} href={href} />
                   ))}

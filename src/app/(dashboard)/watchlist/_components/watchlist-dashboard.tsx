@@ -11,15 +11,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Sparkles, CircleDashed } from "lucide-react"
+import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Sparkles, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { WatchlistExpandResponse } from "@/app/api/watchlist/[id]/expand/route"
+import type { WatchlistStateResponse } from "@/app/api/watchlist/state/route"
+import type { WatchlistNarrativeResponse, WatchlistInsight } from "@/app/api/watchlist/narrative/route"
+import type { WatchlistScoreHistoryResponse } from "@/app/api/watchlist/score-history/route"
+import { categorize as sharedCategorize, severityScore as sharedSeverityScore, type WatchCategory as SharedWatchCategory } from "@/lib/watchlist/categorize"
 
 // --- Categorization ---
+//
+// The actual category logic lives in `src/lib/watchlist/categorize.ts` so the cron
+// (which writes the state table) and the UI agree on bucketing rules. This file just
+// adds the UI-only fields (severity score, days/new flags from the state table).
 
-type WatchCategory = "action" | "watch" | "good" | "no-data"
+type WatchCategory = SharedWatchCategory
 
 type CategorizedClient = {
   client: MondayClient
@@ -28,109 +37,16 @@ type CategorizedClient = {
   kpi: KpiSummary | undefined
   /** Severity score used to rank within Action/Watch — higher = more urgent */
   severity: number
+  /** Days the client has been in this category — null when state is still loading or unknown */
+  daysInBucket: number | null
+  /** True when the client transitioned into this category today */
+  isNewToday: boolean
+  /** Yesterday's bucket — null if unknown / brand-new client */
+  prevCategory: WatchCategory | null
 }
 
-/**
- * Tiered Watch/Action thresholds based on actual 7d ad spend.
- * Smaller accounts have inherently noisier week-over-week swings; larger accounts
- * deserve a more sensitive signal because % moves on big spend = real € lost.
- */
-function getThresholds(adSpend7d: number): { watchPct: number; actionPct: number } {
-  if (adSpend7d < 250) return { watchPct: 15, actionPct: 40 }
-  if (adSpend7d < 1000) return { watchPct: 10, actionPct: 30 }
-  return { watchPct: 5, actionPct: 20 }
-}
-
-/**
- * Severity score for ranking within Action/Watch buckets.
- *   score = adSpend × max(worstCostDelta_pct / 30, 1) × (zero-leads-with-spend ? 3 : 1)
- * Bigger spend × bigger CPL/CPA spike floats to the top. Zero-leads-with-spend is
- * pure waste, so it gets a 3× multiplier on raw spend.
- */
-function severityScore(kpi: KpiSummary): number {
-  const spend = kpi.adSpend
-  if (spend > 50 && kpi.leads === 0) return spend * 3
-
-  const cplPct = kpi.prevCpl > 0 ? Math.abs((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
-  const cpaPct = kpi.prevCostPerAppointment > 0
-    ? Math.abs((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
-    : 0
-  const worstPct = Math.max(cplPct, cpaPct)
-  return spend * Math.max(worstPct / 30, 1)
-}
-
-function categorize(client: MondayClient, kpi: KpiSummary | undefined): { category: WatchCategory; insight: string } {
-  // Live client but RL ad account with no selected campaigns — surfaces in the No Data
-  // bucket so the CM can spot it and pick which campaigns to track in client settings.
-  if (kpi?.rlAccountNoCampaign) {
-    return { category: "no-data", insight: "RL ad account — no campaigns selected. Pick campaigns in client settings to start tracking." }
-  }
-
-  // Live client but no Meta ad account configured at all — distinct from "selected zero
-  // campaigns" so the CM knows whether the fix is "configure account" vs "pick campaigns".
-  if (!client.metaAdAccountId) {
-    return { category: "no-data", insight: "No Meta ad account configured for this client." }
-  }
-
-  if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
-    return { category: "no-data", insight: "No spend or leads in the last 7d — campaign paused, ad account issue, or genuinely idle." }
-  }
-
-  // Action: spend with zero leads
-  if (kpi.adSpend > 50 && kpi.leads === 0) {
-    return { category: "action", insight: `€${kpi.adSpend.toFixed(0)} spent, 0 leads in 7d` }
-  }
-
-  // CPL trend analysis
-  const hasCplTrend = kpi.cpl > 0 && kpi.prevCpl > 0
-  const cplPct = hasCplTrend ? ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
-
-  // CPA trend analysis
-  const hasCpaTrend = kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0
-  const cpaPct = hasCpaTrend ? ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100 : 0
-
-  // Tiered thresholds based on this client's 7d spend
-  const { watchPct, actionPct } = getThresholds(kpi.adSpend)
-
-  // Action: CPL or CPA spiked above the action threshold
-  if (hasCplTrend && cplPct >= actionPct) {
-    return { category: "action", insight: `CPL up ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} vs €${kpi.prevCpl.toFixed(2)} prev week` }
-  }
-  if (hasCpaTrend && cpaPct >= actionPct) {
-    return { category: "action", insight: `CPA up ${cpaPct.toFixed(0)}% — €${kpi.costPerAppointment.toFixed(0)} vs €${kpi.prevCostPerAppointment.toFixed(0)} prev week` }
-  }
-
-  // Watch: CPL or CPA rising between watch and action thresholds
-  if (hasCplTrend && cplPct >= watchPct) {
-    return { category: "watch", insight: `CPL rising ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} from €${kpi.prevCpl.toFixed(2)}` }
-  }
-  if (hasCpaTrend && cpaPct >= watchPct) {
-    return { category: "watch", insight: `CPA rising ${cpaPct.toFixed(0)}% — €${kpi.costPerAppointment.toFixed(0)} from €${kpi.prevCostPerAppointment.toFixed(0)}` }
-  }
-
-  // Good: has leads, CPL stable or declining
-  if (kpi.leads > 0) {
-    const parts: string[] = []
-
-    if (hasCplTrend && cplPct < -10) {
-      parts.push(`CPL dropped ${Math.abs(cplPct).toFixed(0)}% to €${kpi.cpl.toFixed(2)}`)
-    } else if (hasCplTrend && cplPct >= -10 && cplPct < 10) {
-      parts.push(`CPL stable at €${kpi.cpl.toFixed(2)}`)
-    } else if (kpi.cpl > 0) {
-      parts.push(`CPL €${kpi.cpl.toFixed(2)}`)
-    }
-
-    parts.push(`${kpi.leads} leads from €${kpi.adSpend.toFixed(0)} spend`)
-
-    if (kpi.appointments > 0) {
-      parts.push(`${kpi.appointments} appts`)
-    }
-
-    return { category: "good", insight: parts.join(" · ") }
-  }
-
-  return { category: "good", insight: "Running — no leads yet" }
-}
+const categorize = sharedCategorize
+const severityScore = sharedSeverityScore
 
 function fmtCurrency(v: number): string {
   if (v >= 1000) return `€${(v / 1000).toFixed(1)}k`
@@ -185,6 +101,19 @@ function CplSparkline({ trend }: { trend: KpiSummary["dailyTrend"] }) {
 
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean))).sort()
+}
+
+/**
+ * Admin setup gaps surfaced in the No Data bucket. Meta ad account is intentionally
+ * excluded — that gap is already produced by `categorize()` itself (with a richer
+ * "no Meta ad account configured" reason). Monday board is excluded too because it
+ * has a Meta-fallback path and therefore isn't a setup blocker.
+ */
+function getSetupGaps(client: MondayClient): string[] {
+  const missing: string[] = []
+  if (!client.stripeCustomerId) missing.push("Stripe")
+  if (!client.trengoContactId) missing.push("Trengo")
+  return missing
 }
 
 // --- Section config ---
@@ -369,6 +298,179 @@ function AdRow({ ad }: { ad: WatchlistExpandResponse["topAds"][number] }) {
   )
 }
 
+/**
+ * Compact "how long has this client been in this bucket" indicator. Sits inline next
+ * to the client name. Three states:
+ *   - Just landed today  → red NEW pill (attention-grabbing, transient)
+ *   - 1–2 days           → muted "Nd" — recent, no alarm
+ *   - 3–6 days           → amber "Nd" — sticky, watch out
+ *   - 7+ days            → red "Nd" — stuck in the bucket, structural problem
+ * Returns null when there's nothing meaningful to show (state still loading, or 0d
+ * without the NEW signal). For Good clients we keep the visual subtle since long-good
+ * is a positive signal but not urgent.
+ */
+function BucketAge({
+  category,
+  daysInBucket,
+  isNewToday,
+}: {
+  category: WatchCategory
+  daysInBucket: number | null
+  isNewToday: boolean
+}) {
+  if (isNewToday) {
+    return (
+      <span className="inline-flex items-center rounded-sm px-1 py-px text-[9px] font-bold uppercase tracking-wider bg-red-500/15 text-red-400">
+        NEW
+      </span>
+    )
+  }
+  if (daysInBucket == null || daysInBucket <= 0) return null
+
+  // Color emphasis only for Action / Watch — for Good a long stretch is good news, just
+  // not something to highlight. No-data buckets don't show this at all (handled by caller).
+  let toneClass = "text-muted-foreground/50"
+  if (category === "action" || category === "watch") {
+    if (daysInBucket >= 7) toneClass = "text-red-400 font-medium"
+    else if (daysInBucket >= 3) toneClass = "text-amber-400"
+    else toneClass = "text-muted-foreground/60"
+  }
+
+  return <span className={`text-[10px] tabular-nums ${toneClass}`}>{daysInBucket}d</span>
+}
+
+// --- Summary Header ---
+//
+// Targets-page-style summary: 4 KPI cards in a row + a Key Insights / Optimisation
+// Proposal pair underneath. Each block uses the exact same card primitives (`bg-card
+// rounded-lg p-5 border border-border/40`) and typography conventions as
+// `targets/_components/hero-pillars.tsx` and `targets/_components/marketing-insights.tsx`
+// so the watchlist feels like a first-class part of the same dashboard family.
+
+type WatchlistKpiStatus = "good" | "bad" | "neutral"
+
+function WatchlistKpiCard({
+  label,
+  value,
+  subtitle,
+  status,
+  trendIcon,
+}: {
+  label: string
+  value: string
+  subtitle: string
+  status: WatchlistKpiStatus
+  trendIcon?: "up" | "down" | "flat"
+}) {
+  const valueColor = status === "good" ? "text-green-500" : status === "bad" ? "text-red-500" : "text-foreground"
+  const Trend = trendIcon === "up" ? ArrowUp : trendIcon === "down" ? ArrowDown : Minus
+  const trendColor = trendIcon === "up" ? "text-green-500" : trendIcon === "down" ? "text-red-500" : "text-muted-foreground/40"
+  return (
+    <div className="bg-card rounded-lg p-5 border border-border/40 flex flex-col gap-2 h-full">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{label}</span>
+        {trendIcon && <Trend className={cn("h-3.5 w-3.5", trendColor)} strokeWidth={2.5} />}
+      </div>
+      <span className={cn("text-3xl font-bold font-mono leading-none tracking-tight", valueColor)}>{value}</span>
+      <span className="text-xs text-muted-foreground leading-relaxed">{subtitle}</span>
+    </div>
+  )
+}
+
+function WatchlistKpiSkeletons() {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="bg-card rounded-lg p-5 border border-border/40">
+          <Skeleton className="h-3 w-20 mb-3" />
+          <Skeleton className="h-8 w-24 mb-3" />
+          <Skeleton className="h-3 w-28" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const INSIGHT_ICON: Record<"positive" | "warning" | "critical", { icon: typeof CheckCircle2; color: string }> = {
+  positive: { icon: CheckCircle2, color: "text-green-500" },
+  warning:  { icon: AlertCircle,  color: "text-yellow-500" },
+  critical: { icon: AlertOctagon, color: "text-red-500" },
+}
+
+function WatchlistInsightsAndProposals({
+  insights,
+  proposals,
+  isLoading,
+}: {
+  insights: WatchlistInsight[]
+  proposals: string[]
+  isLoading: boolean
+}) {
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {Array.from({ length: 2 }).map((_, idx) => (
+          <div key={idx} className="bg-card rounded-lg p-5 border border-border/40">
+            <Skeleton className="h-4 w-32 mb-4" />
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      {/* Key Insights */}
+      <div className="bg-card rounded-lg p-5 border border-border/40">
+        <div className="flex items-center gap-2 mb-4">
+          <Lightbulb className="h-3.5 w-3.5 text-muted-foreground" />
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Key Insights</h3>
+        </div>
+        <div className="space-y-3">
+          {insights.length === 0 ? (
+            <p className="text-sm text-muted-foreground leading-relaxed">No notable patterns yet — wait for the next sync.</p>
+          ) : (
+            insights.map((insight, i) => {
+              const { icon: Icon, color } = INSIGHT_ICON[insight.type]
+              return (
+                <div key={i} className="flex items-start gap-2.5">
+                  <Icon className={cn("h-4 w-4 shrink-0 mt-px", color)} strokeWidth={2.25} />
+                  <p className="text-sm text-foreground leading-relaxed">{insight.text}</p>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Optimisation Proposal */}
+      <div className="bg-card rounded-lg p-5 border border-border/40">
+        <div className="flex items-center gap-2 mb-4">
+          <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Optimisation Proposal</h3>
+        </div>
+        <div className="space-y-3">
+          {proposals.length === 0 ? (
+            <p className="text-sm text-muted-foreground leading-relaxed">No proposals yet — wait for the next sync.</p>
+          ) : (
+            proposals.map((proposal, i) => (
+              <div key={i} className="flex items-start gap-2.5">
+                <span className="text-xs font-mono font-medium text-muted-foreground/60 shrink-0 mt-[3px] tabular-nums w-5">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <p className="text-sm text-foreground leading-relaxed">{proposal}</p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // --- Watch Section ---
 
 function WatchSection({
@@ -430,7 +532,7 @@ function WatchSection({
           </div>
 
           {/* Rows */}
-          {items.map(({ client, insight, kpi }) => {
+          {items.map(({ client, insight, kpi, daysInBucket, isNewToday }) => {
             const note = aiNotes[client.mondayItemId]
             const id = client.mondayItemId
             const isExpanded = expandedRows.has(id)
@@ -452,7 +554,10 @@ function WatchSection({
                 >
                   {/* Client */}
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{client.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate">{client.name}</p>
+                      <BucketAge category={category} daysInBucket={daysInBucket} isNewToday={isNewToday} />
+                    </div>
                     <p className="text-[10px] text-muted-foreground/40 truncate">
                       {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
                     </p>
@@ -629,34 +734,190 @@ export function WatchListDashboard({ clients }: Props) {
     ? new Date(kpiQuery.dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
+  // Watch List bucket state — written by the cron, read here to render Days indicator,
+  // NEW badge, and yesterday-vs-today score trend.
+  const stateQuery = useQuery<WatchlistStateResponse>({
+    queryKey: ["watchlist-state"],
+    queryFn: () => fetch("/api/watchlist/state").then((r) => r.json()),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
+
+  function daysBetween(fromIso: string, toIso: string): number {
+    // Date strings are YYYY-MM-DD UTC — use UTC math to avoid DST drift.
+    const a = Date.UTC(+fromIso.slice(0, 4), +fromIso.slice(5, 7) - 1, +fromIso.slice(8, 10))
+    const b = Date.UTC(+toIso.slice(0, 4), +toIso.slice(5, 7) - 1, +toIso.slice(8, 10))
+    return Math.max(0, Math.floor((b - a) / 86400000))
+  }
+
   // Categorize
   const categorized = useMemo(() => {
     const action: CategorizedClient[] = []
     const watch: CategorizedClient[] = []
     const good: CategorizedClient[] = []
     const noData: CategorizedClient[] = []
+    const stateMap = stateQuery.data ?? {}
+
+    function buildItem(client: MondayClient, category: WatchCategory, insight: string, kpi: KpiSummary | undefined, severity: number): CategorizedClient {
+      const state = stateMap[client.mondayItemId]
+      const stateMatchesCategory = state?.category === category
+      // Days only meaningful when the cron-recorded state agrees with what we're rendering
+      // right now. If the UI computed a different bucket than the state row holds (e.g.
+      // mid-cron-run, or live data flipped), we'd rather show no day count than a wrong one.
+      const daysInBucket = stateMatchesCategory ? daysBetween(state!.sinceDate, today) : null
+      const isNewToday = stateMatchesCategory && state!.sinceDate === today
+      const prevCategory = stateMatchesCategory ? (state!.prevCategory as WatchCategory | null) : null
+      return { client, category, insight, kpi, severity, daysInBucket, isNewToday, prevCategory }
+    }
 
     for (const client of filteredClients) {
       const kpi = kpiQuery.data?.[client.mondayItemId]
       const { category, insight } = categorize(client, kpi)
       const severity = kpi ? severityScore(kpi) : 0
-      const item: CategorizedClient = { client, category, insight, kpi, severity }
+      const gaps = getSetupGaps(client)
 
-      if (category === "action") action.push(item)
-      else if (category === "watch") watch.push(item)
-      else if (category === "good") good.push(item)
-      else if (category === "no-data") noData.push(item)
+      if (category === "action") action.push(buildItem(client, category, insight, kpi, severity))
+      else if (category === "watch") watch.push(buildItem(client, category, insight, kpi, severity))
+      else if (category === "good") good.push(buildItem(client, category, insight, kpi, severity))
+      else if (category === "no-data") {
+        // Already a no-data client — append any Stripe/Trengo gap to the existing reason
+        // so the CM sees both "no spend this week" + "Stripe missing" in one row.
+        const augmented = gaps.length > 0 ? `${insight} · ${gaps.join(" + ")} missing` : insight
+        noData.push(buildItem(client, category, augmented, kpi, severity))
+      }
+
+      // Surface setup gaps even when performance data exists. These intentionally appear
+      // in BOTH the performance bucket (Action/Watch/Good) and in No Data — Roy explicitly
+      // wants admin gaps prominently visible regardless of campaign performance.
+      if (category !== "no-data" && gaps.length > 0) {
+        noData.push(buildItem(client, "no-data", `${gaps.join(" + ")} missing — admin setup incomplete`, kpi, 0))
+      }
     }
 
     // Action & Watch: rank by severity (worst first → drop everything at the top).
-    // Good: keep the existing "biggest contributors first" ordering.
-    action.sort((a, b) => b.severity - a.severity)
-    watch.sort((a, b) => b.severity - a.severity)
+    // Days-in-bucket is the tiebreaker so longer-stuck clients edge out fresher entries
+    // when their financial impact is similar.
+    const sortByImpact = (a: CategorizedClient, b: CategorizedClient) => {
+      if (b.severity !== a.severity) return b.severity - a.severity
+      return (b.daysInBucket ?? 0) - (a.daysInBucket ?? 0)
+    }
+    action.sort(sortByImpact)
+    watch.sort(sortByImpact)
     good.sort((a, b) => (b.kpi?.leads ?? 0) - (a.kpi?.leads ?? 0))
     noData.sort((a, b) => a.client.name.localeCompare(b.client.name))
 
     return { action, watch, good, noData }
-  }, [filteredClients, kpiQuery.data])
+  }, [filteredClients, kpiQuery.data, stateQuery.data, today])
+
+  // Health score for the summary header. Excludes no-data so setup gaps don't water down
+  // the percentage (Roy: "die wil ik niet dat die de data beïnvloed").
+  const healthScore = useMemo(() => {
+    const total = categorized.action.length + categorized.watch.length + categorized.good.length
+    return total > 0 ? Math.round((categorized.good.length / total) * 100) : 0
+  }, [categorized])
+
+  // Yesterday's bucket counts, reconstructed from the state table. For each client whose
+  // since_date === today, prev_category was their bucket yesterday; otherwise category is.
+  // Then we filter to the same CM scope and tally.
+  const yesterdayTotals = useMemo(() => {
+    const stateMap = stateQuery.data ?? {}
+    const totals = { action: 0, watch: 0, good: 0, noData: 0 }
+    for (const client of filteredClients) {
+      const state = stateMap[client.mondayItemId]
+      if (!state) continue
+      const yCat: WatchCategory | null = state.sinceDate === today ? state.prevCategory : state.category
+      if (yCat === "action") totals.action++
+      else if (yCat === "watch") totals.watch++
+      else if (yCat === "good") totals.good++
+      else if (yCat === "no-data") totals.noData++
+    }
+    return totals
+  }, [filteredClients, stateQuery.data, today])
+
+  // 7-day rolling history for the "vs 7d avg" KPI card. Cron writes one snapshot per
+  // day; here we read the trailing 14 to compute a 7d average score per filter scope.
+  const scoreHistoryQuery = useQuery<WatchlistScoreHistoryResponse>({
+    queryKey: ["watchlist-score-history"],
+    queryFn: () => fetch("/api/watchlist/score-history").then((r) => r.json()),
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const healthScore7dAvg = useMemo(() => {
+    const history = scoreHistoryQuery.data?.history ?? {}
+    const scopeKey = cmFilter === "All" ? "_all" : cmFilter
+    const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+    const cutoffStr = sevenDaysAgo.toISOString().slice(0, 10)
+    const todayStr = today
+    const scores: number[] = []
+    for (const [date, snap] of Object.entries(history)) {
+      // Strict 7-day window: dates after cutoff and before today (exclusive of today
+      // so the comparison isn't "today vs 7-day avg-incl-today").
+      if (date <= cutoffStr || date >= todayStr) continue
+      const totals = snap[scopeKey]
+      if (!totals) continue
+      const t = totals.action + totals.watch + totals.good
+      if (t > 0) scores.push((totals.good / t) * 100)
+    }
+    if (scores.length === 0) return null
+    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+  }, [scoreHistoryQuery.data, cmFilter, today])
+
+  // Average CPL across all currently-live clients (action + watch + good). Computed as
+  // SUM(spend) / SUM(leads) so the metric is weighted by spend — a single high-spend
+  // client doesn't get drowned out by many low-spend clients with extreme CPLs.
+  const avgCpl = useMemo(() => {
+    const liveClients = [...categorized.action, ...categorized.watch, ...categorized.good]
+    let totalSpend = 0
+    let totalLeads = 0
+    for (const c of liveClients) {
+      if (!c.kpi) continue
+      totalSpend += c.kpi.adSpend
+      totalLeads += c.kpi.leads
+    }
+    return totalLeads > 0 ? totalSpend / totalLeads : null
+  }, [categorized])
+
+  // AI narrative — recomputes when the filter scope changes. Rate-limited via 1h cache key
+  // server-side so a CM scrolling through filters doesn't blow the LLM budget.
+  const narrativePayload = useMemo(() => {
+    const totals = {
+      action: categorized.action.length,
+      watch: categorized.watch.length,
+      good: categorized.good.length,
+      noData: categorized.noData.length,
+    }
+    const allBuckets = [...categorized.action, ...categorized.watch, ...categorized.good]
+    return {
+      scope: cmFilter,
+      totals,
+      totalsYesterday: yesterdayTotals,
+      clients: allBuckets.map((c) => ({
+        id: c.client.mondayItemId,
+        name: c.client.name,
+        category: c.category as "action" | "watch" | "good",
+        insight: c.insight,
+        daysInBucket: c.daysInBucket,
+        isNewToday: c.isNewToday,
+        prevCategory: c.prevCategory,
+      })),
+    }
+  }, [categorized, yesterdayTotals, cmFilter])
+
+  const narrativeQuery = useQuery<WatchlistNarrativeResponse>({
+    queryKey: ["watchlist-narrative", cmFilter, today, narrativePayload.totals.action, narrativePayload.totals.watch, narrativePayload.totals.good],
+    queryFn: () =>
+      fetch("/api/watchlist/narrative", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(narrativePayload),
+      }).then((r) => r.json()),
+    enabled: !kpiQuery.isLoading && !stateQuery.isLoading && narrativePayload.clients.length > 0,
+    staleTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
 
   // Auto-generate AI notes
   const allCategorized = useMemo(
@@ -790,6 +1051,89 @@ export function WatchListDashboard({ clients }: Props) {
           </SelectContent>
         </Select>
       </div>
+
+      {/* 4 KPI cards — same primitive as the Targets HeroPillars so the watchlist reads
+          as the same product family. */}
+      {kpiQuery.isLoading || stateQuery.isLoading ? (
+        <WatchlistKpiSkeletons />
+      ) : (
+        (() => {
+          const total = categorized.action.length + categorized.watch.length + categorized.good.length
+
+          // Card 1 — health score (today). Color-coded by zone so 43% reads as "below
+          // target" without needing a label.
+          const scoreStatus: WatchlistKpiStatus =
+            total === 0 ? "neutral" : healthScore < 50 ? "bad" : healthScore < 75 ? "neutral" : "good"
+
+          // Card 2 — vs 7d avg. Cron-fed, so it stays "—" on the very first day after
+          // deploy and starts being meaningful from day 3 or 4 onwards.
+          const avg7d = healthScore7dAvg
+          const delta7d = avg7d != null ? healthScore - avg7d : null
+          const trend7d: "up" | "down" | "flat" | undefined =
+            delta7d == null ? undefined : delta7d > 1 ? "up" : delta7d < -1 ? "down" : "flat"
+          const status7d: WatchlistKpiStatus =
+            delta7d == null ? "neutral" : delta7d > 1 ? "good" : delta7d < -1 ? "bad" : "neutral"
+          const value7d = delta7d == null
+            ? "—"
+            : delta7d === 0
+              ? "0pp"
+              : `${delta7d > 0 ? "+" : ""}${delta7d}pp`
+          const subtitle7d = avg7d == null
+            ? "Building 7-day baseline…"
+            : `7-day average: ${avg7d}%`
+
+          // Card 3 — Healthy clients ratio. Always neutral status (it's a fact, not a verdict).
+          const valueHealthy = total === 0 ? "—" : `${categorized.good.length}/${total}`
+          const subtitleHealthy = total === 0 ? "No clients in scope" : "in good performance"
+
+          // Card 4 — Average CPL across live clients (weighted by spend).
+          const valueCpl = avgCpl == null
+            ? "—"
+            : `€${avgCpl.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          const liveCount = categorized.action.length + categorized.watch.length + categorized.good.length
+          const subtitleCpl = avgCpl == null
+            ? "No spend with leads in 7d"
+            : `across ${liveCount} live ${liveCount === 1 ? "client" : "clients"} (7d)`
+
+          return (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <WatchlistKpiCard
+                label="Health score"
+                value={total === 0 ? "—" : `${healthScore}%`}
+                subtitle={total === 0 ? "No clients in scope" : "target ≥ 75%"}
+                status={scoreStatus}
+              />
+              <WatchlistKpiCard
+                label="Vs 7-day avg"
+                value={value7d}
+                subtitle={subtitle7d}
+                status={status7d}
+                trendIcon={trend7d}
+              />
+              <WatchlistKpiCard
+                label="Healthy clients"
+                value={valueHealthy}
+                subtitle={subtitleHealthy}
+                status="neutral"
+              />
+              <WatchlistKpiCard
+                label="Avg CPL"
+                value={valueCpl}
+                subtitle={subtitleCpl}
+                status="neutral"
+              />
+            </div>
+          )
+        })()
+      )}
+
+      {/* Key Insights + Optimisation Proposal — same component contract as the Targets
+          page MarketingInsights so the visual rhythm is identical. */}
+      <WatchlistInsightsAndProposals
+        insights={narrativeQuery.data?.insights ?? []}
+        proposals={narrativeQuery.data?.proposals ?? []}
+        isLoading={narrativeQuery.isLoading || narrativeQuery.isFetching}
+      />
 
       {/* Sections */}
       <div className="space-y-6">

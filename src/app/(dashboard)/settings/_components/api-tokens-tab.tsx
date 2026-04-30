@@ -116,6 +116,22 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
     }
   }
 
+  const [previewing, setPreviewing] = useState(false)
+  const [previewResult, setPreviewResult] = useState<{ ok: boolean; message: string } | null>(null)
+  async function handlePreviewDailyWatchlist() {
+    setPreviewing(true)
+    setPreviewResult(null)
+    try {
+      const res = await fetch("/api/slack/preview-daily-watchlist", { method: "POST" })
+      const data = await res.json()
+      setPreviewResult(data)
+    } catch {
+      setPreviewResult({ ok: false, message: "Request failed" })
+    } finally {
+      setPreviewing(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {SERVICES.map((svc) => (
@@ -169,25 +185,48 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
               </p>
             )}
             {svc.id === "slack" && statuses.slack?.is_valid && (
-              <div className="pt-2 border-t border-border/40 space-y-2">
-                <p className="text-xs text-muted-foreground">
-                  Send a test DM to your own Slack to verify end-to-end delivery. Uses the
-                  Slack user ID configured for your Hub account in{" "}
-                  <span className="font-medium">Settings → Column Mapping</span>.
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleSendTestDm}
-                  disabled={sendingDm}
-                >
-                  {sendingDm ? "Sending..." : "Send test DM to me"}
-                </Button>
-                {dmResult && (
-                  <p className={`text-sm ${dmResult.ok ? "text-green-500" : "text-red-500"}`}>
-                    {dmResult.message}
+              <div className="pt-2 border-t border-border/40 space-y-3">
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    Send a test DM to your own Slack to verify end-to-end delivery. Uses the
+                    Slack user ID configured for your Hub account in{" "}
+                    <span className="font-medium">Settings → Column Mapping</span>.
                   </p>
-                )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSendTestDm}
+                    disabled={sendingDm}
+                  >
+                    {sendingDm ? "Sending..." : "Send test DM to me"}
+                  </Button>
+                  {dmResult && (
+                    <p className={`text-sm ${dmResult.ok ? "text-green-500" : "text-red-500"}`}>
+                      {dmResult.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-border/30">
+                  <p className="text-xs text-muted-foreground">
+                    Preview the daily watchlist summary that will be sent at{" "}
+                    <span className="font-medium">06:00</span> every morning. Sends only to
+                    you (not the whole team) — safe for testing.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handlePreviewDailyWatchlist}
+                    disabled={previewing}
+                  >
+                    {previewing ? "Building summary..." : "Preview daily watchlist (to me)"}
+                  </Button>
+                  {previewResult && (
+                    <p className={`text-sm ${previewResult.ok ? "text-green-500" : "text-red-500"}`}>
+                      {previewResult.message}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </CardContent>

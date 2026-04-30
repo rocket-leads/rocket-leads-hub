@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchMetaInsightsDaily, aggregateMetaDailyToTotals, aggregateMetaDailyByDate } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
+import { updateWatchlistClientState } from "@/lib/watchlist/categorize"
 import { detectMondayActivity } from "@/lib/clients/monday-activity"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { readCache, writeCache } from "@/lib/cache"
@@ -324,6 +325,19 @@ export async function POST(req: NextRequest) {
   if (force && Object.keys(summaries).length > 0) {
     const existing = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}
     void writeCache("kpi_summaries", { ...existing, ...summaries })
+
+    // Also populate the Watch List bucket state for the visible clients so the days/NEW
+    // pills work without waiting for the next 30-min cron tick. Same helper the cron
+    // uses, so the diff-and-upsert behaviour (only writes on transitions) is identical.
+    try {
+      await updateWatchlistClientState(
+        supabase,
+        body.clients.map((c) => ({ mondayItemId: c.mondayItemId, metaAdAccountId: c.metaAdAccountId })),
+        summaries,
+      )
+    } catch (e) {
+      console.error("Watchlist state update from kpi-summaries force-refresh failed:", e instanceof Error ? e.message : e)
+    }
   }
 
   return NextResponse.json(summaries, {

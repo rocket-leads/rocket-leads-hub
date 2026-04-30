@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/refresh-watchlist-context",
       "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/slack-daily-watchlist",
+      "schedule": "0 4 * * *"
     }
   ]
 }
