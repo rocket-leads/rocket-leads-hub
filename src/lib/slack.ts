@@ -60,3 +60,12 @@ export async function sendDmToHubUser(hubUserId: string, text: string): Promise<
   if (!slackId) throw new Error(`No Slack user ID configured for Hub user ${hubUserId}`)
   await sendSlackDm(slackId, text)
 }
+
+/**
+ * Post to a Slack channel by ID (e.g. C0B02NG6V39). The bot must be a member
+ * of the channel — invite it via `/invite @Rocket Leads Hub` if you get
+ * `not_in_channel`.
+ */
+export async function sendSlackChannelMessage(channelId: string, text: string): Promise<void> {
+  await slackPost("chat.postMessage", { channel: channelId, text })
+}

@@ -1,10 +1,12 @@
 "use client"
 
 import { useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 import type { MetaCampaign } from "@/lib/integrations/meta"
 
 type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
@@ -23,48 +25,53 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelectionChange }: Props) {
-  const [saving, setSaving] = useState<Record<string, boolean>>({})
-  const [bulkSaving, setBulkSaving] = useState(false)
+  const queryClient = useQueryClient()
   const [showInactive, setShowInactive] = useState(false)
   const [search, setSearch] = useState("")
+  const queryKey = ["campaigns", mondayItemId]
 
-  async function toggleCampaign(campaign: CampaignWithSelection) {
-    setSaving((s) => ({ ...s, [campaign.id]: true }))
-    try {
-      await fetch(`/api/clients/${mondayItemId}/campaigns`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          campaignId: campaign.id,
-          campaignName: campaign.name,
-          isSelected: !campaign.isSelected,
-        }),
-      })
-      onSelectionChange()
-    } finally {
-      setSaving((s) => ({ ...s, [campaign.id]: false }))
-    }
+  // Optimistically flip the selection in the React Query cache so the UI updates instantly,
+  // then fire the POST in the background. The parent's onSelectionChange refetches to reconcile.
+  function applyOptimistic(targetIds: Set<string>, isSelected: boolean) {
+    queryClient.setQueryData<{ campaigns: CampaignWithSelection[] }>(queryKey, (old) => {
+      if (!old) return old
+      return {
+        ...old,
+        campaigns: old.campaigns.map((c) =>
+          targetIds.has(c.id) ? { ...c, isSelected } : c
+        ),
+      }
+    })
   }
 
-  async function bulkSetSelection(targets: CampaignWithSelection[], isSelected: boolean) {
+  function toggleCampaign(campaign: CampaignWithSelection) {
+    const next = !campaign.isSelected
+    applyOptimistic(new Set([campaign.id]), next)
+    void fetch(`/api/clients/${mondayItemId}/campaigns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        isSelected: next,
+      }),
+    }).finally(onSelectionChange)
+  }
+
+  function bulkSetSelection(targets: CampaignWithSelection[], isSelected: boolean) {
     if (targets.length === 0) return
-    setBulkSaving(true)
-    try {
-      await fetch(`/api/clients/${mondayItemId}/campaigns`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          campaigns: targets.map((c) => ({
-            campaignId: c.id,
-            campaignName: c.name,
-            isSelected,
-          })),
-        }),
-      })
-      onSelectionChange()
-    } finally {
-      setBulkSaving(false)
-    }
+    applyOptimistic(new Set(targets.map((c) => c.id)), isSelected)
+    void fetch(`/api/clients/${mondayItemId}/campaigns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        campaigns: targets.map((c) => ({
+          campaignId: c.id,
+          campaignName: c.name,
+          isSelected,
+        })),
+      }),
+    }).finally(onSelectionChange)
   }
 
   if (isLoading) {
@@ -87,6 +94,34 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
     : byStatus
   const selectedCount = campaigns.filter((c) => c.isSelected).length
   const allVisibleSelected = visible.length > 0 && visible.every((c) => c.isSelected)
+  const selectedVisible = visible.filter((c) => c.isSelected)
+  const unselectedVisible = visible.filter((c) => !c.isSelected)
+  const showGroupHeaders = selectedVisible.length > 0 && unselectedVisible.length > 0
+
+  const renderRow = (campaign: CampaignWithSelection) => (
+    <label
+      key={campaign.id}
+      className={cn(
+        "flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer transition-colors",
+        campaign.isSelected
+          ? "border-primary/40 bg-primary/10 hover:bg-primary/15"
+          : "hover:bg-muted/50"
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={campaign.isSelected}
+        onChange={() => toggleCampaign(campaign)}
+        className="h-4 w-4 accent-primary"
+      />
+      <span className={cn("flex-1 text-sm truncate", campaign.isSelected && "font-medium")}>
+        {campaign.name}
+      </span>
+      <Badge variant="outline" className={`text-xs ${STATUS_COLORS[campaign.status] ?? ""}`}>
+        {campaign.status}
+      </Badge>
+    </label>
+  )
 
   return (
     <div className="space-y-3">
@@ -108,7 +143,6 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
               size="sm"
               variant="ghost"
               className="text-xs h-7"
-              disabled={bulkSaving}
               onClick={() => bulkSetSelection(visible, !allVisibleSelected)}
             >
               {allVisibleSelected ? "Deselect all" : "Select all"}
@@ -132,24 +166,18 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         {visible.length === 0 && (
           <p className="text-sm text-muted-foreground py-2">No campaigns match your search.</p>
         )}
-        {visible.map((campaign) => (
-          <label
-            key={campaign.id}
-            className="flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors"
-          >
-            <input
-              type="checkbox"
-              checked={campaign.isSelected}
-              onChange={() => toggleCampaign(campaign)}
-              disabled={saving[campaign.id]}
-              className="h-4 w-4 accent-primary"
-            />
-            <span className="flex-1 text-sm truncate">{campaign.name}</span>
-            <Badge variant="outline" className={`text-xs ${STATUS_COLORS[campaign.status] ?? ""}`}>
-              {campaign.status}
-            </Badge>
-          </label>
-        ))}
+        {showGroupHeaders && selectedVisible.length > 0 && (
+          <p className="text-[10px] font-medium uppercase tracking-wider text-primary/70 px-1 pt-0.5">
+            Selected ({selectedVisible.length})
+          </p>
+        )}
+        {selectedVisible.map(renderRow)}
+        {showGroupHeaders && unselectedVisible.length > 0 && (
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60 px-1 pt-3">
+            Available
+          </p>
+        )}
+        {unselectedVisible.map(renderRow)}
       </div>
     </div>
   )

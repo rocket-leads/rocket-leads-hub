@@ -1,0 +1,102 @@
+import { NextRequest, NextResponse } from "next/server"
+import { createAdminClient } from "@/lib/supabase/server"
+import { fetchBothBoards } from "@/lib/integrations/monday"
+import { readCache } from "@/lib/cache"
+import { sendSlackChannelMessage } from "@/lib/slack"
+import { computeSevenDayAvgScore, type ClientState } from "@/lib/slack/watchlist-summary"
+import { buildTeamWatchlistSummary } from "@/lib/slack/team-watchlist-summary"
+import type { MondayClient } from "@/lib/integrations/monday"
+
+export const maxDuration = 60
+
+type ScoreHistory = Record<string, Record<string, { action: number; watch: number; good: number }>>
+
+const TEAM_CHANNEL_ID = process.env.SLACK_TEAM_CHANNEL_ID
+
+export async function GET(req: NextRequest) {
+  const authHeader = req.headers.get("authorization")
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // DST guard: cron fires at both 04:00 and 05:00 UTC; only the one that
+  // lands on 06:00 Europe/Amsterdam proceeds. Bypass with ?force=1.
+  const url = new URL(req.url)
+  const force = url.searchParams.get("force") === "1"
+  if (!force) {
+    const amsterdamHour = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Amsterdam",
+      hour: "2-digit",
+      hour12: false,
+    }).format(new Date())
+    if (amsterdamHour !== "06") {
+      return NextResponse.json({
+        ok: true,
+        skipped: `Not 06:00 Amsterdam (currently ${amsterdamHour}:00) — DST guard`,
+      })
+    }
+  }
+
+  if (!TEAM_CHANNEL_ID) {
+    return NextResponse.json(
+      { ok: false, error: "SLACK_TEAM_CHANNEL_ID env var not set" },
+      { status: 500 },
+    )
+  }
+
+  const supabase = await createAdminClient()
+
+  let liveClients: MondayClient[]
+  try {
+    const cached = await readCache<{ current: MondayClient[] }>("monday_boards")
+    const data = cached ?? (await fetchBothBoards())
+    liveClients = data.current.filter((c) => c.campaignStatus === "Live")
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "Failed to load clients" },
+      { status: 500 },
+    )
+  }
+
+  const scoreHistory = (await readCache<ScoreHistory>("watchlist_score_history")) ?? {}
+  const sliceHistory: Record<string, { action: number; watch: number; good: number }> = {}
+  for (const [date, snapshot] of Object.entries(scoreHistory)) {
+    if (snapshot._all) sliceHistory[date] = snapshot._all
+  }
+
+  const { data: stateRows } = await supabase
+    .from("watchlist_client_state")
+    .select("monday_item_id, category, prev_category, since_date")
+  const states = new Map<string, ClientState>()
+  for (const row of stateRows ?? []) {
+    states.set(row.monday_item_id, {
+      category: row.category,
+      prev_category: row.prev_category,
+      since_date: row.since_date,
+    })
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const sevenDayAvgScore = computeSevenDayAvgScore(sliceHistory, today)
+
+  const message = buildTeamWatchlistSummary({
+    liveClients,
+    states,
+    today,
+    sevenDayAvgScore,
+  })
+
+  try {
+    await sendSlackChannelMessage(TEAM_CHANNEL_ID, message)
+    return NextResponse.json({
+      ok: true,
+      channel: TEAM_CHANNEL_ID,
+      clientCount: liveClients.length,
+    })
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "Failed to send" },
+      { status: 500 },
+    )
+  }
+}

@@ -132,6 +132,22 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
     }
   }
 
+  const [previewingTeam, setPreviewingTeam] = useState(false)
+  const [previewTeamResult, setPreviewTeamResult] = useState<{ ok: boolean; message: string } | null>(null)
+  async function handlePreviewTeamWatchlist() {
+    setPreviewingTeam(true)
+    setPreviewTeamResult(null)
+    try {
+      const res = await fetch("/api/slack/preview-team-watchlist", { method: "POST" })
+      const data = await res.json()
+      setPreviewTeamResult(data)
+    } catch {
+      setPreviewTeamResult({ ok: false, message: "Request failed" })
+    } finally {
+      setPreviewingTeam(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {SERVICES.map((svc) => (
@@ -224,6 +240,27 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
                   {previewResult && (
                     <p className={`text-sm ${previewResult.ok ? "text-green-500" : "text-red-500"}`}>
                       {previewResult.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-border/30">
+                  <p className="text-xs text-muted-foreground">
+                    Preview the team-wide channel summary (CM leaderboard + team pulse, no
+                    per-client details). Posts to your own DM for review — does not touch
+                    the team channel.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handlePreviewTeamWatchlist}
+                    disabled={previewingTeam}
+                  >
+                    {previewingTeam ? "Building summary..." : "Preview team channel summary (to me)"}
+                  </Button>
+                  {previewTeamResult && (
+                    <p className={`text-sm ${previewTeamResult.ok ? "text-green-500" : "text-red-500"}`}>
+                      {previewTeamResult.message}
                     </p>
                   )}
                 </div>
