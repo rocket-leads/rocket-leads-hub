@@ -30,7 +30,14 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${clashGrotesk.variable} h-full antialiased dark`} suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} ${clashGrotesk.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'){document.documentElement.classList.add('dark')}}catch(e){document.documentElement.classList.add('dark')}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-full bg-background text-foreground">{children}</body>
     </html>
   )

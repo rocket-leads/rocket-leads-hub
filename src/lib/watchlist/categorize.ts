@@ -3,10 +3,15 @@
 // can run on both server and client without dragging in fetch/auth machinery.
 //
 // Buckets:
-//   - action   : urgent — CPL/CPA spike above the action threshold, or zero leads with spend
-//   - watch    : trending wrong — rising above the watch threshold but not yet action-grade
+//   - action   : urgent — CPL spike above the action threshold, or zero leads with spend
+//   - watch    : trending wrong — CPL rising above the watch threshold but not yet action-grade
 //   - good     : healthy — has leads, CPL stable or improving
 //   - no-data  : nothing actionable to compute (no spend & no leads, or no Meta account)
+//
+// CPA (cost per appointment) is intentionally excluded from this signal path — Monday
+// appointment data is too sparse / inconsistent right now and was producing noisy flips.
+// CPA is still computed and stored on the KPI summary for future use; just not driving
+// concerns/actions until the underlying data is reliable.
 //
 // `severityScore` ranks within Action/Watch by potential € impact.
 
@@ -29,20 +34,19 @@ export function getThresholds(adSpend7d: number): { watchPct: number; actionPct:
 
 /**
  * Severity score for ranking within Action/Watch buckets.
- *   score = adSpend × max(worstCostDelta_pct / 30, 1) × (zero-leads-with-spend ? 3 : 1)
- * Bigger spend × bigger CPL/CPA spike floats to the top. Zero-leads-with-spend is
+ *   score = adSpend × max(cplDelta_pct / 30, 1) × (zero-leads-with-spend ? 3 : 1)
+ * Bigger spend × bigger CPL spike floats to the top. Zero-leads-with-spend is
  * pure waste, so it gets a 3× multiplier on raw spend.
+ *
+ * CPA was previously included in the worst-case calculation but is left out for
+ * now — see the file header for context on the appointment-data reliability gap.
  */
 export function severityScore(kpi: KpiSummary): number {
   const spend = kpi.adSpend
   if (spend > 50 && kpi.leads === 0) return spend * 3
 
   const cplPct = kpi.prevCpl > 0 ? Math.abs((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
-  const cpaPct = kpi.prevCostPerAppointment > 0
-    ? Math.abs((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
-    : 0
-  const worstPct = Math.max(cplPct, cpaPct)
-  return spend * Math.max(worstPct / 30, 1)
+  return spend * Math.max(cplPct / 30, 1)
 }
 
 export function categorize(client: MondayClient, kpi: KpiSummary | undefined): { category: WatchCategory; insight: string } {
@@ -62,25 +66,18 @@ export function categorize(client: MondayClient, kpi: KpiSummary | undefined): {
     return { category: "action", insight: `€${kpi.adSpend.toFixed(0)} spent, 0 leads in 7d` }
   }
 
+  // CPL is the only trend driving categorization for now. CPA branches were removed
+  // because appointment data is too sparse to be a reliable signal — see file header.
   const hasCplTrend = kpi.cpl > 0 && kpi.prevCpl > 0
   const cplPct = hasCplTrend ? ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
-
-  const hasCpaTrend = kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0
-  const cpaPct = hasCpaTrend ? ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100 : 0
 
   const { watchPct, actionPct } = getThresholds(kpi.adSpend)
 
   if (hasCplTrend && cplPct >= actionPct) {
     return { category: "action", insight: `CPL up ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} vs €${kpi.prevCpl.toFixed(2)} prev week` }
   }
-  if (hasCpaTrend && cpaPct >= actionPct) {
-    return { category: "action", insight: `CPA up ${cpaPct.toFixed(0)}% — €${kpi.costPerAppointment.toFixed(0)} vs €${kpi.prevCostPerAppointment.toFixed(0)} prev week` }
-  }
   if (hasCplTrend && cplPct >= watchPct) {
     return { category: "watch", insight: `CPL rising ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} from €${kpi.prevCpl.toFixed(2)}` }
-  }
-  if (hasCpaTrend && cpaPct >= watchPct) {
-    return { category: "watch", insight: `CPA rising ${cpaPct.toFixed(0)}% — €${kpi.costPerAppointment.toFixed(0)} from €${kpi.prevCostPerAppointment.toFixed(0)}` }
   }
 
   if (kpi.leads > 0) {

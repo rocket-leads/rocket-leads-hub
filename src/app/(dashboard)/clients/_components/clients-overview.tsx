@@ -3,8 +3,10 @@
 import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { RefreshCw } from "lucide-react"
+import { RefreshCw, Users, Sparkles } from "lucide-react"
+import { TopTabs } from "@/components/ui/top-tabs"
+import type { TopTab } from "@/components/ui/top-tabs"
+import { Panel } from "@/components/ui/panel"
 import { ClientsTable } from "./clients-table"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
@@ -91,91 +93,61 @@ export function ClientsOverview({ onboarding, current }: Props) {
     ? new Date(lastUpdated).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
-  const tabItems = [
-    { id: "current" as const, label: "Current Clients", count: visibleCurrent.length },
-    { id: "onboarding" as const, label: "Onboarding", count: onboarding.length },
+  const tabItems: TopTab<"current" | "onboarding">[] = [
+    { id: "current", label: "Current Clients", icon: Users, count: visibleCurrent.length },
+    { id: "onboarding", label: "Onboarding", icon: Sparkles, count: onboarding.length },
   ]
 
   return (
     <div className="space-y-6">
-      {/* Tab bar + refresh */}
-      <div className="flex items-center justify-between border-b border-border/40">
-        <div className="flex items-center gap-0">
-          {tabItems.map(({ id, label, count }) => (
+      <TopTabs<"current" | "onboarding">
+        tabs={tabItems}
+        value={activeTab}
+        onChange={setActiveTab}
+        rightContent={
+          <>
+            {lastUpdatedLabel && (
+              <span className="text-[11px] text-muted-foreground/40">Updated {lastUpdatedLabel}</span>
+            )}
             <button
-              key={id}
-              className={`relative px-5 py-3 text-sm font-medium transition-all duration-150 ${
-                activeTab === id
-                  ? "text-foreground"
-                  : "text-muted-foreground/60 hover:text-foreground"
-              }`}
-              onClick={() => setActiveTab(id)}
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
+              onClick={handleRefresh}
+              disabled={isFetching}
             >
-              {label}
-              <span className={`ml-2 text-xs tabular-nums ${
-                activeTab === id ? "text-primary" : "text-muted-foreground/40"
-              }`}>
-                {count}
-              </span>
-              {activeTab === id && (
-                <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-t-full" />
-              )}
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
             </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3 mb-1">
-          {lastUpdatedLabel && (
-            <span className="text-[11px] text-muted-foreground/40">Updated {lastUpdatedLabel}</span>
-          )}
-          <button
-            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
-            onClick={handleRefresh}
-            disabled={isFetching}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Content */}
       {activeTab === "current" && (
-        <div className="space-y-4">
-          {hiddenCount > 0 && (
-            <div className="flex items-center justify-between">
-              {!showAll && (
-                <p className="text-xs text-muted-foreground/50">
-                  Showing Live and On hold — {hiddenCount} hidden
-                </p>
-              )}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowAll((v) => !v)}
-                className="ml-auto text-xs text-muted-foreground/60 hover:text-foreground"
-              >
-                {showAll ? "Show active only" : `Show all ${current.length}`}
-              </Button>
-            </div>
-          )}
+        <Panel className="p-5">
           <ClientsTable
             clients={visibleCurrent}
             boardType="current"
             billingSummaries={summariesQuery.data}
             kpiSummaries={kpiQuery.data}
             mondayActiveMap={mondayActiveQuery.data}
+            showAllToggle={{
+              showAll,
+              setShowAll,
+              totalCount: current.length,
+            }}
           />
-        </div>
+        </Panel>
       )}
 
       {activeTab === "onboarding" && (
-        <ClientsTable
-          clients={onboarding}
-          boardType="onboarding"
-          billingSummaries={summariesQuery.data}
-          kpiSummaries={kpiQuery.data}
-          mondayActiveMap={mondayActiveQuery.data}
-        />
+        <Panel className="p-5">
+          <ClientsTable
+            clients={onboarding}
+            boardType="onboarding"
+            billingSummaries={summariesQuery.data}
+            kpiSummaries={kpiQuery.data}
+            mondayActiveMap={mondayActiveQuery.data}
+          />
+        </Panel>
       )}
     </div>
   )

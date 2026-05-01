@@ -102,6 +102,7 @@ type TeamWatchlistVars = {
   action_count: number
   cm_ranking_section: string
   revenue_ranking_section: string
+  unassigned_section: string
   open_link: string
 }
 
@@ -230,6 +231,20 @@ export function computeTeamWatchlistVars(opts: {
     revenue_ranking_section = block.join("\n")
   }
 
+  // ── Unassigned section ──
+  // Surfaced from delivery's byAccountManager. Renders only when there's actual unassigned
+  // revenue so the team can spot leakage and act on it (Stripe customer ↔ Monday item).
+  let unassigned_section = ""
+  const unassigned = byAccountManager.find((am) => am.name === "Unassigned")
+  if (unassigned && unassigned.revenue > 0) {
+    const customerLabel = `${unassigned.customers} customer${unassigned.customers === 1 ? "" : "s"}`
+    unassigned_section = [
+      "*Unassigned revenue*",
+      `⚠️ *${formatEuroCompact(unassigned.revenue)}* via ${customerLabel} (MRR ${formatEuroCompact(unassigned.mrr)} · new biz ${formatEuroCompact(unassigned.newBusiness)} · ad ${formatEuroCompact(unassigned.adBudget)})`,
+      `<${HUB_URL}/targets|Koppel in Targets → Delivery>`,
+    ].join("\n")
+  }
+
   return {
     greeting,
     score_line,
@@ -239,6 +254,7 @@ export function computeTeamWatchlistVars(opts: {
     action_count: totalBuckets.action,
     cm_ranking_section,
     revenue_ranking_section,
+    unassigned_section,
     open_link: `<${HUB_URL}/watchlist|Open Watchlist>`,
   }
 }

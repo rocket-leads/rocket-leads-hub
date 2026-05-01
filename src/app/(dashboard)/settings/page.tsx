@@ -1,11 +1,7 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ApiTokensTab } from "./_components/api-tokens-tab"
-import { BoardConfigTab } from "./_components/board-config-tab"
-import { UsersTab } from "./_components/users-tab"
-import { NotificationsTab } from "./_components/notifications-tab"
+import { SettingsTabs } from "./_components/settings-tabs"
 import type { MondayRole } from "./actions"
 import { ApiHealthBar } from "./_components/api-health-bar"
 import { fetchAllItems, fetchBothBoards, getToken as getMondayToken } from "@/lib/integrations/monday"
@@ -143,44 +139,25 @@ export default async function SettingsPage() {
         }))
 
         return (
-          <Tabs defaultValue="tokens" className="mt-6">
-            <TabsList className="mb-6">
-              <TabsTrigger value="tokens">API Tokens</TabsTrigger>
-              <TabsTrigger value="board">Board Config</TabsTrigger>
-              <TabsTrigger value="users">Users</TabsTrigger>
-              <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="tokens">
-              <ApiTokensTab statuses={tokenStatuses} />
-            </TabsContent>
-
-            <TabsContent value="board">
-              <BoardConfigTab config={boardConfig} defaults={defaultBoardConfig} />
-            </TabsContent>
-
-            <TabsContent value="users">
-              <UsersTab
-                users={usersWithMapping}
-                currentUserId={session.user.id}
-                mondayPeople={mondayPeople}
-              />
-            </TabsContent>
-
-            <TabsContent value="notifications">
-              <NotificationsTab
-                slackConnected={!!tokenStatuses.slack?.is_valid}
-                recipients={(users ?? []).map((u) => ({
-                  name: u.name,
-                  email: u.email,
-                  hasSlack: !!u.slack_user_id,
-                }))}
-                teamChannelId={slackChannels.team_watchlist ?? null}
-                salesChannelId={slackChannels.sales ?? null}
-                closers={closers}
-              />
-            </TabsContent>
-          </Tabs>
+          <SettingsTabs
+            tokenStatuses={tokenStatuses}
+            boardConfig={boardConfig}
+            defaultBoardConfig={defaultBoardConfig}
+            users={usersWithMapping}
+            currentUserId={session.user.id}
+            mondayPeople={mondayPeople}
+            notifications={{
+              slackConnected: !!tokenStatuses.slack?.is_valid,
+              recipients: (users ?? []).map((u) => ({
+                name: u.name,
+                email: u.email,
+                hasSlack: !!u.slack_user_id,
+              })),
+              teamChannelId: slackChannels.team_watchlist ?? null,
+              salesChannelId: slackChannels.sales ?? null,
+              closers,
+            }}
+          />
         )
       })()}
     </div>

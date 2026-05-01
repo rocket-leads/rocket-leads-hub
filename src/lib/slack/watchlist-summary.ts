@@ -169,17 +169,34 @@ export function computeWatchlistVars(opts: {
   const bucket_line = `🟢 ${todayBuckets.good} healthy · 🟡 ${todayBuckets.watch} watch · 🔴 ${todayBuckets.action} action`
 
   // ── Concerns section ──
+  // Only Action transitions get bullet lines — Watch is too noisy for a daily DM
+  // (10% CPL/CPA fluctuation crosses Watch easily). Watch deteriorations roll up
+  // into a single italic summary so the count is still visible without dominating
+  // the message. Persistent Watch issues resurface via the day-3 / day-7 milestones.
+  const actionDeteriorations = todayDeteriorations.filter((t) => t.to === "action")
+  const watchDeteriorations = todayDeteriorations.filter((t) => t.to === "watch")
+
+  const INLINE_CAP = 3
+
   let concerns_section = ""
-  if (todayDeteriorations.length > 0) {
+  if (actionDeteriorations.length > 0) {
     const block: string[] = []
     block.push(
-      `*:warning: ${todayDeteriorations.length} nieuwe ${todayDeteriorations.length === 1 ? "concern" : "concerns"} vandaag*`,
+      `*:warning: ${actionDeteriorations.length} nieuwe ${actionDeteriorations.length === 1 ? "concern" : "concerns"} vandaag*`,
     )
-    for (const t of todayDeteriorations.slice(0, 5)) {
+    for (const t of actionDeteriorations.slice(0, INLINE_CAP)) {
       block.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
     }
-    if (todayDeteriorations.length > 5) block.push(`…en ${todayDeteriorations.length - 5} meer`)
+    if (actionDeteriorations.length > INLINE_CAP) {
+      block.push(`…en ${actionDeteriorations.length - INLINE_CAP} meer`)
+    }
+    if (watchDeteriorations.length > 0) {
+      block.push(`_+ ${watchDeteriorations.length} naar Watch — zie dashboard_`)
+    }
     concerns_section = block.join("\n")
+  } else if (watchDeteriorations.length > 0) {
+    // No fires today — just a quiet note about clients slipping toward Watch.
+    concerns_section = `_${watchDeteriorations.length} naar Watch — zie dashboard_`
   }
 
   // ── Persistent section ──
@@ -189,13 +206,13 @@ export function computeWatchlistVars(opts: {
   if (day3.length > 0 || day7.length > 0) {
     const block: string[] = []
     block.push("*:hourglass_flowing_sand: Persistent concerns*")
-    for (const m of day7.slice(0, 5)) {
+    for (const m of day7.slice(0, INLINE_CAP)) {
       block.push(`• *${m.name} — 7 dagen in ${categoryLabel(m.bucket)}* — ${m.insight}`)
     }
-    for (const m of day3.slice(0, 5)) {
+    for (const m of day3.slice(0, INLINE_CAP)) {
       block.push(`• ${m.name} — 3 dagen in ${categoryLabel(m.bucket)} — ${m.insight}`)
     }
-    const totalShown = Math.min(day7.length, 5) + Math.min(day3.length, 5)
+    const totalShown = Math.min(day7.length, INLINE_CAP) + Math.min(day3.length, INLINE_CAP)
     const totalAll = day3.length + day7.length
     if (totalAll > totalShown) block.push(`…en ${totalAll - totalShown} meer`)
     persistent_section = block.join("\n")
@@ -208,10 +225,12 @@ export function computeWatchlistVars(opts: {
     block.push(
       `*:white_check_mark: ${todayImprovements.length} ${todayImprovements.length === 1 ? "win" : "wins"} vandaag*`,
     )
-    for (const t of todayImprovements.slice(0, 5)) {
+    for (const t of todayImprovements.slice(0, INLINE_CAP)) {
       block.push(`• ${t.name} → ${categoryLabel(t.to)} (was ${categoryLabel(t.from)}) — ${t.insight}`)
     }
-    if (todayImprovements.length > 5) block.push(`…en ${todayImprovements.length - 5} meer`)
+    if (todayImprovements.length > INLINE_CAP) {
+      block.push(`…en ${todayImprovements.length - INLINE_CAP} meer`)
+    }
     wins_section = block.join("\n")
   }
 

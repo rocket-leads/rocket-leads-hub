@@ -10,6 +10,8 @@ import { CommunicationTab } from "./communication-tab"
 import { ClientSettingsTab } from "./client-settings-tab"
 import { InboxTab } from "./inbox-tab"
 import { AdBudgetBalance } from "./ad-budget-balance"
+import { TopTabs } from "@/components/ui/top-tabs"
+import type { TopTab } from "@/components/ui/top-tabs"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -175,9 +177,7 @@ export function ClientTabs({ client, access, currentUser }: Props) {
   const paymentSummary = summarizePayments(billingQuery.data?.invoices)
   const hasOverdueInvoice = paymentSummary?.kind === "overdue"
 
-  type TabDef = { id: string; label: string; icon: LucideIcon; dot?: "red" | "amber" }
-
-  const tabs: TabDef[] = [
+  const tabs: TopTab<string>[] = [
     ...(access.canViewCampaigns ? [{ id: "campaigns", label: "Campaigns", icon: BarChart3 }] : []),
     ...(access.canViewBilling ? [{ id: "billing", label: "Billing", icon: CreditCard, ...(hasOverdueInvoice ? { dot: "red" as const } : {}) }] : []),
     ...(access.canViewCommunication ? [{ id: "communication", label: "Communication", icon: MessageCircle }] : []),
@@ -244,42 +244,21 @@ export function ClientTabs({ client, access, currentUser }: Props) {
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
       {/* Left — Main content */}
       <div className="min-w-0 space-y-6">
-        {/* Tab bar */}
-        <div className="flex items-center justify-between border-b border-border/40">
-          <div className="flex items-center gap-0">
-            {tabs.map(({ id, label, icon: Icon, dot }) => (
-              <button
-                key={id}
-                className={`relative flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all duration-150 ${
-                  activeTab === id
-                    ? "text-foreground"
-                    : "text-muted-foreground/60 hover:text-foreground"
-                }`}
-                onClick={() => setActiveTab(id)}
-              >
-                <span className="relative">
-                  <Icon className={`h-4 w-4 transition-colors ${activeTab === id ? "text-primary" : ""}`} />
-                  {dot && activeTab !== id && (
-                    <span className={`absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ${dot === "red" ? "bg-red-500" : "bg-amber-500"} ring-2 ring-background`} />
-                  )}
-                </span>
-                {label}
-                {activeTab === id && (
-                  <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-t-full" />
-                )}
-              </button>
-            ))}
-          </div>
-
-          <button
-            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all mb-1"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            title="Refresh data and regenerate analysis"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-          </button>
-        </div>
+        <TopTabs<string>
+          tabs={tabs}
+          value={activeTab}
+          onChange={setActiveTab}
+          rightContent={
+            <button
+              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              title="Refresh data and regenerate analysis"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+            </button>
+          }
+        />
 
         {/* Content */}
         {activeTab === "campaigns" && (

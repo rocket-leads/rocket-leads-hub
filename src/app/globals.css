@@ -58,7 +58,7 @@
 
 /* Light mode (off-white background per brand) */
 :root {
-  --background: #FAFAFA;
+  --background: #F5F5F7;
   --foreground: #222427;
   --card: #FFFFFF;
   --card-foreground: #222427;
@@ -68,13 +68,13 @@
   --primary-foreground: #FFFFFF;
   --secondary: #F0EDFA;
   --secondary-foreground: #222427;
-  --muted: #F4F4F5;
+  --muted: #F1F1F4;
   --muted-foreground: #797D85;
   --accent: #F0EDFA;
   --accent-foreground: #222427;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #DADEE7;
-  --input: #DADEE7;
+  --border: #E4E4E7;
+  --input: #E4E4E7;
   --ring: #8967F3;
   --chart-1: #8967F3;
   --chart-2: #7AF5D0;
@@ -82,13 +82,13 @@
   --chart-4: #959AA4;
   --chart-5: #222427;
   --radius: 0.625rem;
-  --sidebar: #FAFAFA;
+  --sidebar: #FFFFFF;
   --sidebar-foreground: #222427;
   --sidebar-primary: #8967F3;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #F0EDFA;
   --sidebar-accent-foreground: #222427;
-  --sidebar-border: #DADEE7;
+  --sidebar-border: #E4E4E7;
   --sidebar-ring: #8967F3;
 }
 

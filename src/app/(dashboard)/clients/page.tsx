@@ -10,9 +10,9 @@ import type { MondayClient } from "@/lib/integrations/monday"
 
 function ClientsLoading() {
   return (
-    <div className="space-y-4">
-      <Skeleton className="h-9 w-64" />
-      <div className="space-y-2">
+    <div className="space-y-6">
+      <Skeleton className="h-10 w-72 rounded-lg" />
+      <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-3 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
         {[...Array(8)].map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
       </div>
     </div>
@@ -61,9 +61,9 @@ async function ClientsData() {
 export default function ClientsPage() {
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-heading font-semibold tracking-tight">Clients</h1>
-        <p className="text-sm text-muted-foreground mt-1">Overview of all active client accounts</p>
+      <div className="mb-6">
+        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Clients</h1>
+        <p className="text-[13px] text-muted-foreground mt-1">Overview of all active client accounts</p>
       </div>
 
       <Suspense fallback={<ClientsLoading />}>

@@ -3,14 +3,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Badge } from "@/components/ui/badge"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -19,7 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react"
+import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
+import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
@@ -27,18 +20,29 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 const ONBOARDING_STATUSES = ["Kick off", "In development", "On hold"]
 const CURRENT_STATUSES = ["Live", "On hold", "Churned"]
 
-const STATUS_COLORS: Record<string, string> = {
-  "Kick off": "bg-blue-50 text-blue-600 border-blue-100",
-  "In development": "bg-amber-50 text-amber-600 border-amber-100",
-  "On hold": "bg-gray-100 text-gray-500 border-gray-200",
-  Live: "bg-green-50 text-green-600 border-green-100",
-  Churned: "bg-red-50 text-red-500 border-red-100",
+type PillTone = { dot: string; pill: string }
+
+const STATUS_TONES: Record<string, PillTone> = {
+  "Kick off": { dot: "bg-blue-500", pill: "bg-blue-500/10 text-blue-700 dark:text-blue-400" },
+  "In development": { dot: "bg-amber-500", pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  "On hold": { dot: "bg-zinc-400", pill: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400" },
+  Live: { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
+  Churned: { dot: "bg-red-500", pill: "bg-red-500/10 text-red-600 dark:text-red-400" },
 }
 
-const PAYMENT_STATUS_COLORS: Record<string, string> = {
-  complete: "bg-green-50 text-green-600 border-green-100",
-  open: "bg-amber-50 text-amber-600 border-amber-100",
-  overdue: "bg-red-50 text-red-500 border-red-100",
+const PAYMENT_TONES: Record<string, PillTone> = {
+  complete: { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
+  open: { dot: "bg-amber-500", pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  overdue: { dot: "bg-red-500", pill: "bg-red-500/10 text-red-600 dark:text-red-400" },
+}
+
+function StatusPill({ tone, label }: { tone: PillTone; label: string }) {
+  return (
+    <span className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium ${tone.pill}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
+      {label}
+    </span>
+  )
 }
 
 const PAYMENT_STATUSES = ["Complete", "Open", "Overdue"]
@@ -85,17 +89,9 @@ function getCampaignHealth(kpi: KpiSummary | undefined): HealthResult {
     status = "critical"
   }
 
-  // CPA trend (when available)
-  if (kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0) {
-    const cpaChange = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
-    if (cpaChange > 50) {
-      reasons.push(`CPA €${kpi.costPerAppointment.toFixed(0)} — up ${cpaChange.toFixed(0)}% vs prev 7d`)
-      if (status !== "critical") status = "critical"
-    } else if (cpaChange > 25) {
-      reasons.push(`CPA €${kpi.costPerAppointment.toFixed(0)} — up ${cpaChange.toFixed(0)}% vs prev 7d`)
-      if (status === "good") status = "warning"
-    }
-  }
+  // CPA trend is intentionally NOT a status driver right now — appointment data
+  // is too sparse to be reliable (see categorize.ts). The CPA column itself still
+  // displays the value; it just doesn't push a client into critical/warning.
 
   // Good summary
   if (status === "good" && reasons.length === 0) {
@@ -110,10 +106,10 @@ function getCampaignHealth(kpi: KpiSummary | undefined): HealthResult {
 }
 
 const HEALTH_STYLES: Record<HealthStatus, { dot: string; bg: string; text: string; label: string }> = {
-  critical: { dot: "bg-red-500", bg: "bg-red-50", text: "text-red-600", label: "Critical" },
-  warning: { dot: "bg-amber-500", bg: "bg-amber-50", text: "text-amber-600", label: "Warning" },
-  good: { dot: "bg-green-500", bg: "bg-green-50", text: "text-green-600", label: "Good" },
-  "no-data": { dot: "bg-gray-300", bg: "bg-gray-50", text: "text-gray-400", label: "—" },
+  critical: { dot: "bg-red-500", bg: "bg-red-500/10", text: "text-red-600 dark:text-red-400", label: "Critical" },
+  warning: { dot: "bg-amber-500", bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", label: "Warning" },
+  good: { dot: "bg-emerald-500", bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", label: "Good" },
+  "no-data": { dot: "bg-zinc-400", bg: "bg-zinc-500/10", text: "text-muted-foreground", label: "—" },
 }
 
 const HEALTH_FILTER_OPTIONS = ["Good", "Warning", "Critical"]
@@ -125,7 +121,7 @@ function HealthBadge({ health }: { health: HealthResult }) {
   }
   return (
     <div className="relative group">
-      <div className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium border ${style.bg} ${style.text}`}>
+      <div className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium ${style.bg} ${style.text}`}>
         <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
         {style.label}
       </div>
@@ -156,6 +152,12 @@ type Props = {
   mondayActiveMap?: Record<string, boolean>
   defaultSortKey?: SortKey
   defaultSortDir?: SortDir
+  /** When provided, renders a "X of Y clients" indicator + show all/active toggle in the search row. */
+  showAllToggle?: {
+    showAll: boolean
+    setShowAll: (next: boolean) => void
+    totalCount: number
+  }
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -223,23 +225,23 @@ function SortableHead({ label, sortKey, currentKey, currentDir, onSort, classNam
   return (
     <TableHead className={className}>
       <button
-        className="flex items-center gap-1 hover:text-foreground transition-colors"
+        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
         onClick={() => onSort(sortKey)}
       >
         {label}
         {active ? (
           currentDir === "asc"
-            ? <ArrowUp className="h-2.5 w-2.5 text-gray-500" />
-            : <ArrowDown className="h-2.5 w-2.5 text-gray-500" />
+            ? <ChevronUp className="h-3 w-3 text-foreground/80" />
+            : <ChevronDown className="h-3 w-3 text-foreground/80" />
         ) : (
-          <ArrowUpDown className="h-2.5 w-2.5 text-gray-400" />
+          <ChevronsUpDown className="h-3 w-3 text-muted-foreground/50" />
         )}
       </button>
     </TableHead>
   )
 }
 
-export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap, defaultSortKey, defaultSortDir }: Props) {
+export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap, defaultSortKey, defaultSortDir, showAllToggle }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
@@ -370,10 +372,47 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 8 : 15
+  const colSpan = boardType === "onboarding" ? 8 : 13
 
-  const filterTriggerClass = "!h-8 !border-0 !bg-muted/40 hover:!bg-muted !rounded-lg !text-xs !px-3 !shadow-none dark:!bg-white/5 dark:hover:!bg-white/10"
-  const activeFilterClass = "!bg-primary/10 !text-primary dark:!bg-primary/15 dark:!text-primary"
+  const filters: FilterConfig[] = [
+    {
+      key: "status",
+      label: "Status",
+      value: statusFilter,
+      onChange: setStatusFilter,
+      options: [{ value: "All", label: "All Statuses" }, ...statuses.map((s) => ({ value: s, label: s }))],
+    },
+    {
+      key: "am",
+      label: "Account Manager",
+      value: accountManagerFilter,
+      onChange: setAccountManagerFilter,
+      options: [{ value: "All", label: "All Account Managers" }, ...accountManagers.map((s) => ({ value: s, label: s }))],
+    },
+    {
+      key: "cm",
+      label: "Campaign Manager",
+      value: campaignManagerFilter,
+      onChange: setCampaignManagerFilter,
+      options: [{ value: "All", label: "All Campaign Managers" }, ...campaignManagers.map((s) => ({ value: s, label: s }))],
+    },
+    {
+      key: "payment",
+      label: "Payment",
+      value: paymentStatusFilter,
+      onChange: setPaymentStatusFilter,
+      options: [{ value: "All", label: "All Payment Statuses" }, ...PAYMENT_STATUSES.map((s) => ({ value: s, label: s }))],
+    },
+    ...(boardType === "current"
+      ? [{
+          key: "health",
+          label: "Health",
+          value: healthFilter,
+          onChange: setHealthFilter,
+          options: [{ value: "All", label: "All Health Statuses" }, ...HEALTH_FILTER_OPTIONS.map((s) => ({ value: s, label: s }))],
+        }]
+      : []),
+  ]
 
   return (
     <div className="space-y-5">
@@ -383,95 +422,56 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           placeholder="Search clients..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-52 h-8 border-0 bg-muted/40 dark:bg-white/5 rounded-lg text-xs text-foreground placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 px-3"
+          className="w-56 h-8 border border-border bg-background rounded-lg text-xs text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 px-3"
         />
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "All")}>
-          <SelectTrigger className={`${filterTriggerClass} ${statusFilter !== "All" ? activeFilterClass : ""}`}>
-            <SelectValue>{statusFilter === "All" ? "Status" : statusFilter}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Statuses</SelectItem>
-            {statuses.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={accountManagerFilter} onValueChange={(v) => setAccountManagerFilter(v ?? "All")}>
-          <SelectTrigger className={`${filterTriggerClass} ${accountManagerFilter !== "All" ? activeFilterClass : ""}`}>
-            <SelectValue>{accountManagerFilter === "All" ? "AM" : accountManagerFilter}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Account Managers</SelectItem>
-            {accountManagers.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={campaignManagerFilter} onValueChange={(v) => setCampaignManagerFilter(v ?? "All")}>
-          <SelectTrigger className={`${filterTriggerClass} ${campaignManagerFilter !== "All" ? activeFilterClass : ""}`}>
-            <SelectValue>{campaignManagerFilter === "All" ? "CM" : campaignManagerFilter}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Campaign Managers</SelectItem>
-            {campaignManagers.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={paymentStatusFilter} onValueChange={(v) => setPaymentStatusFilter(v ?? "All")}>
-          <SelectTrigger className={`${filterTriggerClass} ${paymentStatusFilter !== "All" ? activeFilterClass : ""}`}>
-            <SelectValue>{paymentStatusFilter === "All" ? "Payment" : paymentStatusFilter}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Payment Statuses</SelectItem>
-            {PAYMENT_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{s}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {boardType === "current" && (
-          <Select value={healthFilter} onValueChange={(v) => setHealthFilter(v ?? "All")}>
-            <SelectTrigger className={`${filterTriggerClass} ${healthFilter !== "All" ? activeFilterClass : ""}`}>
-              <SelectValue>{healthFilter === "All" ? "Health" : healthFilter}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All Health Statuses</SelectItem>
-              {HEALTH_FILTER_OPTIONS.map((s) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <FiltersPopover filters={filters} />
+        {showAllToggle ? (
+          <div className="ml-auto flex items-center gap-2 text-[11px] tabular-nums">
+            <span className="text-muted-foreground/70">
+              {showAllToggle.showAll
+                ? `${clients.length} clients`
+                : `${clients.length} of ${showAllToggle.totalCount} clients`}
+            </span>
+            {clients.length !== showAllToggle.totalCount || showAllToggle.showAll ? (
+              <button
+                type="button"
+                onClick={() => showAllToggle.setShowAll(!showAllToggle.showAll)}
+                className="text-primary hover:underline"
+              >
+                {showAllToggle.showAll ? "Show active only" : "Show all"}
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <span className="text-[11px] text-muted-foreground/60 ml-auto tabular-nums">
+            {sorted.length} client{sorted.length !== 1 ? "s" : ""}
+          </span>
         )}
-        <span className="text-[11px] text-muted-foreground/60 ml-1">
-          {sorted.length} client{sorted.length !== 1 ? "s" : ""}
-        </span>
       </div>
 
       {/* Table */}
-      <div className="rounded-xl border border-border/30 overflow-hidden">
+      <div className="-mx-1">
         <Table className="table-fixed">
           <TableHeader>
-            <TableRow className="border-b border-border/30 hover:bg-transparent">
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[220px]">Client</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px]">Status</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[50px]">AM</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[50px]">CM</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[50px]">AS</TableHead>
+            <TableRow className="border-b border-border/60 bg-muted/50 hover:bg-muted/50 [&>th]:h-10">
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[220px]">Client</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Status</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">AM</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">CM</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">AS</TableHead>
               {boardType === "onboarding" && (
-                <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px]" />
+                <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[100px]" />
               )}
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[95px]">Payment</TableHead>
-              <TableHead className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium w-[100px]">Outstanding</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[95px]">Payment</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Outstanding</TableHead>
               {boardType === "current" && (
                 <>
-                  <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-center w-[90px]" />
-                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[90px]" />
-                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[65px]" />
-                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[80px]" />
-                  <SortableHead label="CPL % 7d" sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
-                  <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[65px]" />
-                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[80px]" />
-                  <SortableHead label="CPA % 7d" sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium text-right w-[85px]" />
+                  <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold text-center w-[90px]" />
+                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[90px]" />
+                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
+                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
+                  <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
+                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
                 </>
               )}
             </TableRow>
@@ -492,7 +492,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                 return (
                   <TableRow
                     key={client.mondayItemId}
-                    className={`cursor-pointer row-hover border-b border-border/20 ${
+                    className={`cursor-pointer row-hover border-b border-border/40 ${
                       boardType === "current" ? (() => {
                         const h = getCampaignHealth(kpi)
                         if (h.status === "critical") return "border-l-2 border-l-red-500/60"
@@ -526,10 +526,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                       </Link>
                     </TableCell>
                     <TableCell>
-                      {client.campaignStatus && (
-                        <Badge variant="outline" className={STATUS_COLORS[client.campaignStatus] ?? ""}>
-                          {client.campaignStatus}
-                        </Badge>
+                      {client.campaignStatus && STATUS_TONES[client.campaignStatus] && (
+                        <StatusPill tone={STATUS_TONES[client.campaignStatus]} label={client.campaignStatus} />
                       )}
                     </TableCell>
                     <TableCell>{client.accountManager && <ManagerAvatar name={client.accountManager} />}</TableCell>
@@ -539,10 +537,11 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                       <TableCell className="text-xs text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
                     )}
                     <TableCell>
-                      {billingSummaries && summary && (
-                        <Badge variant="outline" className={PAYMENT_STATUS_COLORS[summary.status]}>
-                          {summary.status.charAt(0).toUpperCase() + summary.status.slice(1)}
-                        </Badge>
+                      {billingSummaries && summary && PAYMENT_TONES[summary.status] && (
+                        <StatusPill
+                          tone={PAYMENT_TONES[summary.status]}
+                          label={summary.status.charAt(0).toUpperCase() + summary.status.slice(1)}
+                        />
                       )}
                       {!billingSummaries && client.stripeCustomerId && (
                         <span className="text-muted-foreground/40 text-xs">...</span>
@@ -565,44 +564,20 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                             <HealthBadge health={getCampaignHealth(kpi)} />
                           )}
                         </TableCell>
-                        <TableCell className="text-xs text-right tabular-nums text-muted-foreground">
+                        <TableCell className="text-xs tabular-nums text-muted-foreground">
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.adSpend > 0 ? fmtKpi(kpi.adSpend, "currency") : ""}
                         </TableCell>
-                        <TableCell className="text-xs text-right tabular-nums font-medium">
+                        <TableCell className="text-xs tabular-nums font-medium">
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.leads > 0 ? fmtKpi(kpi.leads, "integer") : ""}
                         </TableCell>
-                        <TableCell className={`text-xs text-right tabular-nums font-medium ${kpi && kpi.cpl > 50 ? "text-red-400" : kpi && kpi.cpl > 30 ? "text-amber-400" : ""}`}>
+                        <TableCell className={`text-xs tabular-nums font-medium ${kpi && kpi.cpl > 50 ? "text-red-400" : kpi && kpi.cpl > 30 ? "text-amber-400" : ""}`}>
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.cpl > 0 ? fmtKpi(kpi.cpl, "currency") : ""}
                         </TableCell>
-                        <TableCell className="text-xs text-right tabular-nums">
-                          {kpiLoading ? (
-                            <span className="text-muted-foreground/40">...</span>
-                          ) : kpi && kpi.cpl > 0 && kpi.prevCpl > 0 ? (() => {
-                            const pct = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
-                            return (
-                              <span className={pct < 0 ? "text-green-500" : pct >= 25 ? "text-red-400" : pct > 0 ? "text-amber-400" : "text-muted-foreground"}>
-                                {pct > 0 ? "+" : ""}{pct.toFixed(0)}%
-                              </span>
-                            )
-                          })() : ""}
-                        </TableCell>
-                        <TableCell className="text-xs text-right tabular-nums font-medium">
+                        <TableCell className="text-xs tabular-nums font-medium">
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.appointments > 0 ? fmtKpi(kpi.appointments, "integer") : ""}
                         </TableCell>
-                        <TableCell className={`text-xs text-right tabular-nums ${kpi && kpi.costPerAppointment > 200 ? "text-red-400" : ""}`}>
+                        <TableCell className={`text-xs tabular-nums ${kpi && kpi.costPerAppointment > 200 ? "text-red-400" : ""}`}>
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.costPerAppointment > 0 ? fmtKpi(kpi.costPerAppointment, "currency") : ""}
-                        </TableCell>
-                        <TableCell className="text-xs text-right tabular-nums">
-                          {kpiLoading ? (
-                            <span className="text-muted-foreground/40">...</span>
-                          ) : kpi && kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0 ? (() => {
-                            const pct = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
-                            return (
-                              <span className={pct < 0 ? "text-green-500" : pct >= 25 ? "text-red-400" : pct > 0 ? "text-amber-400" : "text-muted-foreground"}>
-                                {pct > 0 ? "+" : ""}{pct.toFixed(0)}%
-                              </span>
-                            )
-                          })() : ""}
                         </TableCell>
                       </>
                     )}

@@ -108,7 +108,7 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 
 {{cm_ranking_section}}
 {{revenue_ranking_section}}
-{{open_link}}`,
+{{unassigned_section}}`,
 
   personal_sales: `Goedemorgen {{first_name}}.
 
@@ -121,8 +121,7 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 *Deze maand ({{month_label}})*
 {{mtd_lines}}
 
-{{action_items_section}}
-{{open_link}}`,
+{{action_items_section}}`,
 
   team_sales: `{{greeting}}
 
@@ -136,8 +135,7 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 {{mtd_lines}}
 
 {{leaderboard_section}}
-{{action_items_line}}
-{{open_link}}`,
+{{action_items_line}}`,
 }
 
 // ─── Variable reference (used by the Settings UI) ──────────────────────────
@@ -166,6 +164,7 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "action_count", description: "Just the count of action clients." },
     { name: "cm_ranking_section", description: "Campaign Manager ranking block (header + medal bullets)." },
     { name: "revenue_ranking_section", description: "Revenue ranking block (header + medal bullets)." },
+    { name: "unassigned_section", description: "Unassigned revenue callout (only renders when there's untracked revenue to fix)." },
     { name: "open_link", description: "Slack link to open the Watchlist page." },
   ],
   personal_sales: [

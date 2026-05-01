@@ -47,7 +47,9 @@ export function computeActionCategory(
     }
   }
 
-  // Priority 2: Campaign critical (spend with 0 leads, or CPL/CPA spike 50%+)
+  // Priority 2 + 3 are CPL-only for now. CPA branches were removed because Monday
+  // appointment data is too sparse to be a reliable signal — see categorize.ts header.
+  // CPA values stay on the KPI summary so the table can still display them.
   if (kpi) {
     if (kpi.adSpend > 50 && kpi.leads === 0) {
       return {
@@ -71,46 +73,17 @@ export function computeActionCategory(
         }
       }
     }
-
-    if (kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0) {
-      const cpaChange = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
-      if (cpaChange > 50) {
-        return {
-          priority: 2,
-          category: "campaign-critical",
-          label: "CPA Critical",
-          reason: `CPA €${kpi.costPerAppointment.toFixed(0)} — up ${cpaChange.toFixed(0)}% vs prev week`,
-          color: "red",
-        }
-      }
-    }
   }
 
-  // Priority 3: Performance warning (CPL/CPA up 25-50%)
-  if (kpi) {
-    if (kpi.cpl > 0 && kpi.prevCpl > 0) {
-      const cplChange = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
-      if (cplChange > 25) {
-        return {
-          priority: 3,
-          category: "performance-warning",
-          label: "CPL Rising",
-          reason: `CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev week`,
-          color: "amber",
-        }
-      }
-    }
-
-    if (kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0) {
-      const cpaChange = ((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100
-      if (cpaChange > 25) {
-        return {
-          priority: 3,
-          category: "performance-warning",
-          label: "CPA Rising",
-          reason: `CPA €${kpi.costPerAppointment.toFixed(0)} — up ${cpaChange.toFixed(0)}% vs prev week`,
-          color: "amber",
-        }
+  if (kpi && kpi.cpl > 0 && kpi.prevCpl > 0) {
+    const cplChange = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
+    if (cplChange > 25) {
+      return {
+        priority: 3,
+        category: "performance-warning",
+        label: "CPL Rising",
+        reason: `CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev week`,
+        color: "amber",
       }
     }
   }

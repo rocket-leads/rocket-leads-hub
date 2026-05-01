@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   if (!clients?.length) return NextResponse.json({})
 
   // Check note cache
-  const cached = await readCache<Record<string, string>>("watchlist_summaries_v6")
+  const cached = await readCache<Record<string, string>>("watchlist_summaries_v7")
 
   const needed = clients.filter((c) => !cached?.[c.id])
   if (needed.length === 0 && cached) {
@@ -52,17 +52,17 @@ export async function POST(req: NextRequest) {
   const allClients = clients.slice(0, 50)
   const lines = allClients.map((c) => {
     const cplChange = c.prevCpl > 0 ? ((c.cpl - c.prevCpl) / c.prevCpl * 100).toFixed(0) : "n/a"
-    const cpaChange = c.prevCostPerAppointment > 0 ? ((c.costPerAppointment - c.prevCostPerAppointment) / c.prevCostPerAppointment * 100).toFixed(0) : "n/a"
 
     // Build the data-availability summary so the model knows what's UNKNOWN vs really zero.
     const crmConnected = c.mondayCrmConnected === true
     const leadsSource = c.leadsFromMetaFallback ? "Meta `actions` (Monday CRM unavailable)" : "Monday CRM"
 
-    // Appointments are ONLY trackable via Monday CRM. If Monday isn't connected,
-    // the on-screen "0" is missing data, not a real zero.
+    // Appointment counts come along as informational context only. CPA is intentionally
+    // omitted from the prompt — appointment data is too sparse to be a reliable cost
+    // signal right now and was producing noisy AI conclusions.
     const apptsLine = crmConnected
-      ? `appts ${c.appointments} | CPA €${c.costPerAppointment.toFixed(0)} (${cpaChange}% wow)`
-      : `appts UNKNOWN — Monday CRM not connected (do NOT claim 0 appointments) | CPA UNKNOWN`
+      ? `appts ${c.appointments} (informational only — CPA is NOT a signal driver right now)`
+      : `appts UNKNOWN — Monday CRM not connected (do NOT claim 0 appointments)`
 
     const parts = [
       `[CLIENT ${c.id}] ${c.name} | ${c.category.toUpperCase()}`,
@@ -103,11 +103,26 @@ Each client already has an "Insight" column visible to the user (provided as "IN
 
 **The AI Note should answer: "OK I see the Insight, but what SPECIFICALLY should I do?"**
 
+## CRITICAL — CPA / COST-PER-APPOINTMENT IS NOT A SIGNAL RIGHT NOW
+Appointment data is too sparse and inconsistent to support reliable cost-per-appointment
+conclusions. The Watch List, AI Notes and action categories are CPL-only for now.
+
+**You MUST NOT write any of these:**
+- "CPA up X%" / "CPA rising" / "CPA dropped"
+- "high cost per appointment" / "appointment cost spiking"
+- Any week-over-week comparison of appointment cost
+- Any conclusion that uses CPA as the driver ("CPA up so pause this ad", etc.)
+
+Appointment *counts* are still in the data block as informational context — you may
+mention them descriptively (e.g. "10 appts (7d)") but the prescriptive logic must
+hang off CPL, ad spend efficiency, qualitative Monday/Trengo signals, or the Insight
+column. CPA gets re-enabled once we trust the data; for now treat it as off-limits.
+
 ## CRITICAL — KNOW WHAT DATA YOU HAVE BEFORE YOU WRITE ANYTHING
 Each client comes with a "DATA AVAILABILITY" line. Read it first. It tells you whether Monday CRM is connected and whether appointment data is trackable for that client.
 
 **When Monday CRM = NOT CONNECTED:**
-- The KPI block will show \`appts UNKNOWN\` and \`CPA UNKNOWN\`. The on-screen "0 appts" the user sees in the column is also missing-data, not a real zero. NEVER write any of these:
+- The KPI block will show \`appts UNKNOWN\`. The on-screen "0 appts" the user sees in the column is also missing-data, not a real zero. NEVER write any of these:
   - "0 appointments"
   - "no appointments generated"
   - "zero appts"
@@ -121,12 +136,13 @@ Each client comes with a "DATA AVAILABILITY" line. Read it first. It tells you w
   - You may suggest: "Verify with client — no CRM linked, ask if appointments are being booked offline" — but only if the absence is itself the most useful insight.
 
 **When Monday CRM = CONNECTED:**
-- You can use leads, appts, lead-quality, and Monday update sentiment freely (with window labels per below).
+- You can use leads and Monday update sentiment freely (with window labels per below).
+- Appointment *counts* are visible but stay descriptive — never use them in CPA-style cost reasoning.
 
 If you write a claim that depends on data flagged UNKNOWN, that's a hard failure — the campaign manager will lose trust in every note.
 
 ## CRITICAL — TIME WINDOW LABELS ARE MANDATORY ON EVERY NUMBER
-The KPI columns the user sees on screen (spend, leads, CPL, appts) are LAST 7 DAYS. The qualitative inputs you receive cover different windows:
+The KPI columns the user sees on screen (spend, leads, CPL) are LAST 7 DAYS. The qualitative inputs you receive cover different windows:
 - **KPIs block** = last 7d (and 7d-vs-prev-7d % deltas)
 - **MONDAY CRM block** = lead status counts are ALL-TIME (lifetime board totals); recent update texts are from the last 14d
 - **TRENGO CONVERSATIONS block** = last 14d
@@ -181,7 +197,7 @@ Output JSON only: {"client_id": "note", ...}`,
 
     // Merge with existing cache (bump cache key when prompt changes so stale notes regenerate)
     const merged = { ...(cached ?? {}), ...result }
-    void writeCache("watchlist_summaries_v6", merged)
+    void writeCache("watchlist_summaries_v7", merged)
 
     const response: Record<string, string> = {}
     for (const c of clients) {

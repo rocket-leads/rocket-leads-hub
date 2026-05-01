@@ -29,18 +29,28 @@ export type RawTargetsItem = {
 export type CloserSalesMetrics = {
   closer: string
   yesterday: {
+    /** Total calls "in scope" yesterday — resolved + empty. Drives the "X calls totaal" line. */
     taken: number
+    /** Status counts for *resolved* outcomes only (No show / No deal / DEAL). Empty stays out. */
     statusBreakdown: Record<string, number>
+    /** How many of yesterday's calls are still on Qualified / Gepland. */
+    empty: number
   }
   today: {
     planned: number
   }
   mtd: {
+    /** Booked calls = appointments in MTD where status is taken / no-show / empty. */
+    booked: number
+    /** Taken calls = booked calls that resulted in an actual call (excludes no-show + empty). */
     taken: number
+    /** Show-up rate = taken / booked. Null when nothing is booked yet. */
+    showRate: number | null
     deals: number
     revenue: number
     conversion: number | null
   }
+  /** Past appointments still on a pre-call status — backlog the closer should log. */
   emptyOutcomes: Array<{ name: string; daysOverdue: number; status: string }>
 }
 
@@ -55,24 +65,28 @@ export function computeCloserMetrics(
   yesterday: string,
   monthStart: string,
 ): CloserSalesMetrics {
-  const yesterdayMetrics = { taken: 0, statusBreakdown: {} as Record<string, number> }
+  const yesterdayMetrics = { taken: 0, statusBreakdown: {} as Record<string, number>, empty: 0 }
   let todayPlanned = 0
-  const mtd = { taken: 0, deals: 0, revenue: 0 }
+  const mtd = { booked: 0, taken: 0, deals: 0, revenue: 0 }
   const emptyOutcomes: Array<{ name: string; daysOverdue: number; status: string }> = []
+
+  const isTaken = (s: string) => STATUS.taken.includes(s as typeof STATUS.taken[number])
+  const isNoShow = (s: string) => STATUS.noShow.includes(s as typeof STATUS.noShow[number])
+  const isEmpty = (s: string) => STATUS.empty.includes(s as typeof STATUS.empty[number])
 
   for (const item of items) {
     if (item.closer !== closerName) continue
 
-    // Yesterday: appointments held yesterday
+    // Yesterday: appointments held yesterday — split resolved status counts from empty
+    // so the channel can show "Nx empty call outcomes" as its own line.
     if (item.datumAfspraak === yesterday) {
-      if (
-        STATUS.taken.includes(item.status as typeof STATUS.taken[number]) ||
-        STATUS.noShow.includes(item.status as typeof STATUS.noShow[number]) ||
-        STATUS.empty.includes(item.status as typeof STATUS.empty[number])
-      ) {
+      if (isTaken(item.status) || isNoShow(item.status)) {
         yesterdayMetrics.taken++
         yesterdayMetrics.statusBreakdown[item.status] =
           (yesterdayMetrics.statusBreakdown[item.status] ?? 0) + 1
+      } else if (isEmpty(item.status)) {
+        yesterdayMetrics.taken++ // total still counts the empty rows
+        yesterdayMetrics.empty++
       }
     }
 
@@ -81,14 +95,16 @@ export function computeCloserMetrics(
       todayPlanned++
     }
 
-    // MTD: appointments held this month
+    // MTD: appointments dated within the month and at-or-before today, where the
+    // status is anything that was actually booked (taken / no-show / empty).
     if (
       item.datumAfspraak &&
       item.datumAfspraak >= monthStart &&
       item.datumAfspraak <= today &&
-      STATUS.taken.includes(item.status as typeof STATUS.taken[number])
+      (isTaken(item.status) || isNoShow(item.status) || isEmpty(item.status))
     ) {
-      mtd.taken++
+      mtd.booked++
+      if (isTaken(item.status)) mtd.taken++
     }
 
     // MTD deals — by dateDeal
@@ -102,10 +118,11 @@ export function computeCloserMetrics(
       mtd.revenue += item.dealValue
     }
 
-    // Empty outcomes: past appointment + status still pre-call
+    // Empty outcomes: any past appointment still pre-call. Surfaced as a backlog
+    // — the closer should log every call eventually, this list is the to-do.
     if (
       isInPast(item.datumAfspraak, today) &&
-      STATUS.empty.includes(item.status as typeof STATUS.empty[number])
+      isEmpty(item.status)
     ) {
       const daysOverdue = Math.round(
         (new Date(`${today}T00:00:00Z`).getTime() - new Date(`${item.datumAfspraak}T00:00:00Z`).getTime()) /
@@ -122,6 +139,7 @@ export function computeCloserMetrics(
     mtd: {
       ...mtd,
       conversion: mtd.taken > 0 ? mtd.deals / mtd.taken : null,
+      showRate: mtd.booked > 0 ? mtd.taken / mtd.booked : null,
     },
     emptyOutcomes: emptyOutcomes.sort((a, b) => b.daysOverdue - a.daysOverdue),
   }
@@ -166,13 +184,18 @@ export function computeCloserSalesVars(opts: {
   const { metrics, targets, monthLabel } = opts
   const firstName = metrics.closer.split(" ")[0]
 
-  // Yesterday lines
+  // Yesterday lines — total, then resolved status breakdown, then empty count as own row.
   const yesterdayLines: string[] = []
   if (metrics.yesterday.taken === 0) {
     yesterdayLines.push("• Geen calls gepland gisteren")
   } else {
     yesterdayLines.push(`• ${metrics.yesterday.taken} call${metrics.yesterday.taken === 1 ? "" : "s"} totaal`)
-    yesterdayLines.push(`• ${statusBreakdownLine(metrics.yesterday.statusBreakdown)}`)
+    if (Object.keys(metrics.yesterday.statusBreakdown).length > 0) {
+      yesterdayLines.push(`• ${statusBreakdownLine(metrics.yesterday.statusBreakdown)}`)
+    }
+    if (metrics.yesterday.empty > 0) {
+      yesterdayLines.push(`• ${metrics.yesterday.empty}× empty call outcomes`)
+    }
   }
 
   // Today lines
@@ -183,11 +206,15 @@ export function computeCloserSalesVars(opts: {
     todayLines.push(`• ${metrics.today.planned} call${metrics.today.planned === 1 ? "" : "s"} ingepland`)
   }
 
-  // MTD lines
+  // MTD lines — order: booked → taken → show-up → deals → revenue → conversion.
   const dealTarget = targets?.deals ?? 0
   const revenueTarget = targets?.revenue ?? 0
   const mtdLines: string[] = []
+  mtdLines.push(`• ${metrics.mtd.booked} booked call${metrics.mtd.booked === 1 ? "" : "s"}`)
   mtdLines.push(`• ${metrics.mtd.taken} taken call${metrics.mtd.taken === 1 ? "" : "s"}`)
+  if (metrics.mtd.showRate !== null) {
+    mtdLines.push(`• Show-up: ${formatPercent(metrics.mtd.showRate)} (target 80%)`)
+  }
   if (dealTarget > 0) mtdLines.push(`• ${metrics.mtd.deals}/${dealTarget} deals`)
   else mtdLines.push(`• ${metrics.mtd.deals} deal${metrics.mtd.deals === 1 ? "" : "s"} closed`)
   if (revenueTarget > 0) mtdLines.push(`• ${formatEuro(metrics.mtd.revenue)} / ${formatEuro(revenueTarget)} revenue`)
@@ -196,19 +223,19 @@ export function computeCloserSalesVars(opts: {
     mtdLines.push(`• Conversion: ${formatPercent(metrics.mtd.conversion)} (target 30%)`)
   }
 
-  // Action items section (header + bullets)
+  // Action items section — past appointments still on a pre-call status (backlog).
   let action_items_section = ""
   if (metrics.emptyOutcomes.length > 0) {
-    const block: string[] = []
-    block.push(
-      `*Action items — ${metrics.emptyOutcomes.length} empty call outcome${metrics.emptyOutcomes.length === 1 ? "" : "s"}*`,
-    )
+    const n = metrics.emptyOutcomes.length
+    const block: string[] = [
+      `*Action items — ${n} empty call outcome${n === 1 ? "" : "s"}*`,
+    ]
     for (const item of metrics.emptyOutcomes.slice(0, 6)) {
       const daysLabel = item.daysOverdue === 1 ? "1 dag" : `${item.daysOverdue} dagen`
       block.push(`• ${item.name} — ${daysLabel} terug, status nog "${item.status}"`)
     }
-    if (metrics.emptyOutcomes.length > 6) {
-      block.push(`…en ${metrics.emptyOutcomes.length - 6} meer`)
+    if (n > 6) {
+      block.push(`…en ${n - 6} meer`)
     }
     action_items_section = block.join("\n")
   }
@@ -258,7 +285,9 @@ export function computeTeamSalesVars(opts: {
   const totals = {
     yesterdayTaken: 0,
     yesterdayBreakdown: {} as Record<string, number>,
+    yesterdayEmpty: 0,
     todayPlanned: 0,
+    mtdBooked: 0,
     mtdTaken: 0,
     mtdDeals: 0,
     mtdRevenue: 0,
@@ -266,16 +295,19 @@ export function computeTeamSalesVars(opts: {
   }
   for (const m of perCloser) {
     totals.yesterdayTaken += m.yesterday.taken
+    totals.yesterdayEmpty += m.yesterday.empty
     for (const [status, n] of Object.entries(m.yesterday.statusBreakdown)) {
       totals.yesterdayBreakdown[status] = (totals.yesterdayBreakdown[status] ?? 0) + n
     }
     totals.todayPlanned += m.today.planned
+    totals.mtdBooked += m.mtd.booked
     totals.mtdTaken += m.mtd.taken
     totals.mtdDeals += m.mtd.deals
     totals.mtdRevenue += m.mtd.revenue
     totals.emptyOutcomes += m.emptyOutcomes.length
   }
   const teamConversion = totals.mtdTaken > 0 ? totals.mtdDeals / totals.mtdTaken : null
+  const teamShowRate = totals.mtdBooked > 0 ? totals.mtdTaken / totals.mtdBooked : null
 
   const leaderboard = [...perCloser].sort((a, b) => {
     if (b.mtd.deals !== a.mtd.deals) return b.mtd.deals - a.mtd.deals
@@ -301,24 +333,57 @@ export function computeTeamSalesVars(opts: {
   const seed = parseInt(today.replace(/-/g, ""), 10)
   const greeting = pool[seed % pool.length]
 
-  // Yesterday lines
+  // Per-closer breakdowns for yesterday / today — surfaces *who* the calls belong
+  // to so the channel can read accountability at a glance.
+  const firstName = (full: string) => full.split(" ")[0]
+  const formatPerCloser = (rows: Array<{ closer: string; n: number }>): string =>
+    rows
+      .filter((r) => r.n > 0)
+      .sort((a, b) => b.n - a.n)
+      .map((r) => `${firstName(r.closer)} ${r.n}`)
+      .join(" · ")
+
+  const yesterdayPerCloser = formatPerCloser(
+    perCloser.map((m) => ({ closer: m.closer, n: m.yesterday.taken })),
+  )
+  const todayPerCloser = formatPerCloser(
+    perCloser.map((m) => ({ closer: m.closer, n: m.today.planned })),
+  )
+  const emptyPerCloser = formatPerCloser(
+    perCloser.map((m) => ({ closer: m.closer, n: m.emptyOutcomes.length })),
+  )
+
+  // Yesterday lines — total (with per-closer split), resolved status breakdown,
+  // then empty-call-outcomes count as its own row so it stands out.
   const yesterdayLines: string[] = []
   if (totals.yesterdayTaken === 0) {
     yesterdayLines.push("• Geen calls")
   } else {
-    yesterdayLines.push(`• ${totals.yesterdayTaken} call${totals.yesterdayTaken === 1 ? "" : "s"} totaal`)
-    yesterdayLines.push(`• ${statusBreakdownLine(totals.yesterdayBreakdown)}`)
+    const suffix = yesterdayPerCloser ? ` — ${yesterdayPerCloser}` : ""
+    yesterdayLines.push(`• ${totals.yesterdayTaken} call${totals.yesterdayTaken === 1 ? "" : "s"} totaal${suffix}`)
+    if (Object.keys(totals.yesterdayBreakdown).length > 0) {
+      yesterdayLines.push(`• ${statusBreakdownLine(totals.yesterdayBreakdown)}`)
+    }
+    if (totals.yesterdayEmpty > 0) {
+      yesterdayLines.push(`• ${totals.yesterdayEmpty}× empty call outcomes`)
+    }
   }
 
   // Today lines
+  const todaySuffix = todayPerCloser ? ` — ${todayPerCloser}` : ""
   const todayLines: string[] = [
-    `• ${totals.todayPlanned} call${totals.todayPlanned === 1 ? "" : "s"} ingepland`,
+    `• ${totals.todayPlanned} call${totals.todayPlanned === 1 ? "" : "s"} ingepland${todaySuffix}`,
   ]
 
-  // MTD lines
+  // MTD lines — booked → taken → show-up → deals → revenue → conversion.
   const dealTarget = targets?.deals ?? 0
   const revenueTarget = targets?.revenue ?? 0
-  const mtdLines: string[] = [`• ${totals.mtdTaken} taken calls`]
+  const mtdLines: string[] = []
+  mtdLines.push(`• ${totals.mtdBooked} booked call${totals.mtdBooked === 1 ? "" : "s"}`)
+  mtdLines.push(`• ${totals.mtdTaken} taken call${totals.mtdTaken === 1 ? "" : "s"}`)
+  if (teamShowRate !== null) {
+    mtdLines.push(`• Show-up: ${formatPercent(teamShowRate)} (target 80%)`)
+  }
   if (dealTarget > 0) mtdLines.push(`• ${totals.mtdDeals}/${dealTarget} deals`)
   else mtdLines.push(`• ${totals.mtdDeals} deals`)
   if (revenueTarget > 0) mtdLines.push(`• ${formatEuro(totals.mtdRevenue)} / ${formatEuro(revenueTarget)} revenue`)
@@ -341,10 +406,11 @@ export function computeTeamSalesVars(opts: {
     leaderboard_section = block.join("\n")
   }
 
-  // Action items line
+  // Action items line — per-closer breakdown of empty call outcomes so the channel
+  // sees exactly who needs to update what (was: a single team-wide total).
   let action_items_line = ""
   if (totals.emptyOutcomes > 0) {
-    action_items_line = `*Action items*: ${totals.emptyOutcomes} empty call outcome${totals.emptyOutcomes === 1 ? "" : "s"} verspreid over het team — checken in Monday.`
+    action_items_line = `*Action items — empty call outcomes*: ${emptyPerCloser} — checken in Monday`
   }
 
   return {

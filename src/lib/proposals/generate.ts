@@ -81,7 +81,7 @@ export type ProposalResult = {
 // Bump the version suffix when the prompt changes so every client regenerates
 // once instead of serving notes built under the old rules.
 export function proposalCacheKey(mondayItemId: string) {
-  return `client_proposal_v2:${mondayItemId}`
+  return `client_proposal_v3:${mondayItemId}`
 }
 
 async function loadKnowledgeFile(filename: string): Promise<string> {
@@ -197,10 +197,11 @@ Return a SINGLE JSON OBJECT with this exact shape:
 
 **Quantity = COST EFFICIENCY, not volume.**
 - NEVER reference raw lead counts or volume changes — those are a function of ad budget.
-- The ONLY metrics that matter: CPL (cost per lead) and CPA (cost per appointment).
-- Compare current CPL/CPA (7d) against 14d and 30d baselines.
+- **The ONLY cost signal right now is CPL (cost per lead).**
+- CPA (cost per appointment) is intentionally OFF-LIMITS as a signal — appointment data is too sparse to be reliable. Do not write CPA-based week-over-week comparisons or CPA-driven verdicts. Appointment counts may appear descriptively but never as cost ratios.
+- Compare current CPL (7d) against 14d and 30d baselines.
 - ±25% change is normal Meta noise. Only flag changes ≥25%.
-- quantity.headline must lead with CPL/CPA numbers, not lead counts.
+- quantity.headline must lead with CPL numbers, not lead counts and not CPA.
 
 **Quality = Monday update sentiment + conversion data.**
 - quality.verdict is primarily based on Monday update sentiment per UTM.
