@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { X, ArrowUpDown } from "lucide-react"
+import { useQueryClient } from "@tanstack/react-query"
 import { formatCurrency } from "@/lib/targets/formatters"
 import { cn } from "@/lib/utils"
 import type { InvoiceDetail } from "@/types/targets"
@@ -34,9 +35,34 @@ const FILTER_OPTIONS: Array<{ key: FilterStatus; label: string }> = [
 ]
 
 export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
+  const queryClient = useQueryClient()
   const [sortKey, setSortKey] = useState<SortKey>("date")
   const [sortAsc, setSortAsc] = useState(false)
   const [filter, setFilter] = useState<FilterStatus>("all")
+  const [openMenuFor, setOpenMenuFor] = useState<string | null>(null)
+  const [savingFor, setSavingFor] = useState<string | null>(null)
+
+  async function setOverride(invoiceId: string, subCategory: "mrr" | "new_business" | null) {
+    setSavingFor(invoiceId)
+    try {
+      const res = await fetch("/api/targets/finance/invoice-override", {
+        method: subCategory === null ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subCategory === null ? { invoiceId } : { invoiceId, subCategory }),
+      })
+      if (!res.ok) throw new Error(`Failed (${res.status})`)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["targets-finance"] }),
+        queryClient.invalidateQueries({ queryKey: ["targets-delivery"] }),
+        queryClient.invalidateQueries({ queryKey: ["targets-monday"] }),
+      ])
+    } catch (e) {
+      console.error("Override failed:", e)
+    } finally {
+      setSavingFor(null)
+      setOpenMenuFor(null)
+    }
+  }
 
   useEffect(() => {
     if (!open) return
@@ -221,10 +247,52 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
                       ) : "—"}
                     </td>
                     <td className="py-2 px-5 truncate max-w-[180px]">{d.customerName || "—"}</td>
-                    <td className="py-2 px-5">
-                      <span className="text-[10px] text-muted-foreground">
-                        {d.category === "ad_budget" ? "Ad Budget" : d.subCategory === "new_business" ? "New Biz" : "MRR"}
-                      </span>
+                    <td className="py-2 px-5 relative" onClick={(e) => e.stopPropagation()}>
+                      {d.category === "ad_budget" ? (
+                        <span className="text-[10px] text-muted-foreground">Ad Budget</span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={savingFor === d.invoiceId}
+                          onClick={() => setOpenMenuFor(openMenuFor === d.invoiceId ? null : d.invoiceId)}
+                          className="text-[10px] text-muted-foreground hover:text-foreground hover:underline underline-offset-2 disabled:opacity-50"
+                          title="Click to reclassify this invoice"
+                        >
+                          {d.subCategory === "new_business" ? "New Biz" : "MRR"} ▾
+                        </button>
+                      )}
+                      {openMenuFor === d.invoiceId && d.category !== "ad_budget" && (
+                        <div className="absolute left-3 top-full mt-1 z-10 bg-popover border border-border rounded-md shadow-lg py-1 text-[11px] min-w-[140px]">
+                          <button
+                            type="button"
+                            onClick={() => setOverride(d.invoiceId, "mrr")}
+                            className={cn(
+                              "w-full text-left px-3 py-1.5 hover:bg-muted",
+                              d.subCategory === "mrr" && "font-semibold",
+                            )}
+                          >
+                            MRR
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOverride(d.invoiceId, "new_business")}
+                            className={cn(
+                              "w-full text-left px-3 py-1.5 hover:bg-muted",
+                              d.subCategory === "new_business" && "font-semibold",
+                            )}
+                          >
+                            New Business
+                          </button>
+                          <div className="h-px bg-border my-1" />
+                          <button
+                            type="button"
+                            onClick={() => setOverride(d.invoiceId, null)}
+                            className="w-full text-left px-3 py-1.5 hover:bg-muted text-muted-foreground"
+                          >
+                            Use auto-detection
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td className="py-2 px-5">
                       <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", badge.className)}>

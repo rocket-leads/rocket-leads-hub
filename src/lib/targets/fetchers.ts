@@ -339,6 +339,20 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     }
   }
 
+  // Override the "all" bucket's revenue with the Stripe-based service-fee total so
+  // Marketing/Sales lines up with Finance/Delivery (single source of truth = Stripe).
+  // Per-country buckets (nl/be/de) stay Monday-based — Stripe doesn't have country
+  // attribution, and the per-country deal-value summary is still useful as a proxy.
+  // Falls back silently to Monday's closedRevenue if Stripe is unavailable.
+  try {
+    const stripe = await getStripe()
+    const overrides = await loadInvoiceOverrides()
+    const breakdown = await buildInvoiceBreakdown(stripe, startDate, endDate, overrides)
+    acc.all.closedRevenue = breakdown.serviceFee.invoiced
+  } catch (err) {
+    console.warn("[fetchMondayTargets] Stripe revenue alignment failed; falling back to Monday closedRevenue:", err instanceof Error ? err.message : String(err))
+  }
+
   // Build final result
   const result = {} as MondayTargetsByCountry
   for (const k of COUNTRY_KEYS) {
@@ -427,11 +441,37 @@ export async function fetchMetaTargets(startDate: string, endDate: string): Prom
 type CustomerLineRollup = {
   customerId: string
   customerName: string
-  isNew: boolean
-  /** Service-fee invoiced minus same-/prev-month service-fee credits. */
-  feeAmount: number
+  /** Default classification used when no per-invoice override exists. */
+  isNewByDefault: boolean
+  /** Service-fee invoiced classified as MRR (minus same-/prev-month MRR credits). */
+  feeMrr: number
+  /** Service-fee invoiced classified as New Business (minus same-/prev-month NB credits). */
+  feeNewBusiness: number
   /** Ad budget invoiced minus same-/prev-month ad-budget credits. */
   adAmount: number
+}
+
+/**
+ * Loads all per-invoice MRR/NB overrides keyed by stripe invoice id. Empty map
+ * means "no overrides — use auto-detection everywhere". Cheap query (small
+ * table — only manually-classified invoices).
+ */
+async function loadInvoiceOverrides(): Promise<Map<string, "mrr" | "new_business">> {
+  try {
+    const supabase = await createAdminClient()
+    const { data } = await supabase
+      .from("finance_invoice_overrides")
+      .select("stripe_invoice_id, sub_category")
+    const map = new Map<string, "mrr" | "new_business">()
+    for (const row of data ?? []) {
+      if (row.sub_category === "mrr" || row.sub_category === "new_business") {
+        map.set(row.stripe_invoice_id, row.sub_category)
+      }
+    }
+    return map
+  } catch {
+    return new Map()
+  }
 }
 
 interface InvoiceBreakdown {
@@ -450,6 +490,13 @@ async function buildInvoiceBreakdown(
   stripe: Stripe,
   startDate: string,
   endDate: string,
+  /**
+   * Optional per-invoice MRR/NB overrides. When an entry exists, it wins over
+   * the customer-level auto-detection for that invoice's lines (and any credit
+   * notes that reference it). Allows the user to correct edge cases like
+   * "this customer's 8th invoice triggered NB but is really MRR".
+   */
+  subCategoryOverrides: Map<string, "mrr" | "new_business"> = new Map(),
 ): Promise<InvoiceBreakdown> {
   const startTs = Math.floor(new Date(startDate).getTime() / 1000)
   const endTs = Math.floor(new Date(endDate + "T23:59:59Z").getTime() / 1000)
@@ -523,19 +570,27 @@ async function buildInvoiceBreakdown(
   const details: InvoiceDetail[] = []
   const perCustomer = new Map<string, CustomerLineRollup>()
 
-  function ensureCustomer(custId: string, isNew: boolean): CustomerLineRollup {
+  function ensureCustomer(custId: string, isNewByDefault: boolean): CustomerLineRollup {
     let row = perCustomer.get(custId)
     if (!row) {
       row = {
         customerId: custId,
         customerName: customerNameCache.get(custId) || custId,
-        isNew,
-        feeAmount: 0,
+        isNewByDefault,
+        feeMrr: 0,
+        feeNewBusiness: 0,
         adAmount: 0,
       }
       perCustomer.set(custId, row)
     }
     return row
+  }
+
+  /** Resolve invoice → "mrr" | "new_business" with override winning over customer-level auto-detection. */
+  function resolveSubCategory(invoiceId: string | undefined, customerIsNewDefault: boolean): "mrr" | "new_business" {
+    const override = invoiceId ? subCategoryOverrides.get(invoiceId) : undefined
+    if (override) return override
+    return customerIsNewDefault ? "new_business" : "mrr"
   }
 
   // Walk invoice line items
@@ -544,10 +599,11 @@ async function buildInvoiceBreakdown(
     const isOpen = inv.status === "open" && !isOverdue
     const isPaid = inv.status === "paid"
     const custId = inv.customer as string
-    const isNew = isNewBusinessCustomer.get(custId) ?? false
+    const isNewByDefault = isNewBusinessCustomer.get(custId) ?? false
+    const subCategory = resolveSubCategory(inv.id, isNewByDefault)
     const invDate = new Date(inv.created * 1000).toISOString().slice(0, 10)
     const invStatus: InvoiceDetail["status"] = isPaid ? "paid" : isOverdue ? "overdue" : "open"
-    const customerRow = custId ? ensureCustomer(custId, isNew) : null
+    const customerRow = custId ? ensureCustomer(custId, isNewByDefault) : null
 
     for (const line of inv.lines?.data ?? []) {
       const isAd = isAdBudget(line.description)
@@ -558,9 +614,13 @@ async function buildInvoiceBreakdown(
         if (customerRow) customerRow.adAmount += amount
       } else {
         addToBreakdown(serviceFee, amount, isPaid, isOverdue, isOpen)
-        if (isNew) addToBreakdown(serviceFeeNewBusiness, amount, isPaid, isOverdue, isOpen)
-        else addToBreakdown(serviceFeeMrr, amount, isPaid, isOverdue, isOpen)
-        if (customerRow) customerRow.feeAmount += amount
+        if (subCategory === "new_business") {
+          addToBreakdown(serviceFeeNewBusiness, amount, isPaid, isOverdue, isOpen)
+          if (customerRow) customerRow.feeNewBusiness += amount
+        } else {
+          addToBreakdown(serviceFeeMrr, amount, isPaid, isOverdue, isOpen)
+          if (customerRow) customerRow.feeMrr += amount
+        }
       }
 
       details.push({
@@ -571,7 +631,7 @@ async function buildInvoiceBreakdown(
         amount,
         status: invStatus,
         category: isAd ? "ad_budget" : "service_fee",
-        subCategory: isNew ? "new_business" : "mrr",
+        subCategory,
         hostedUrl: inv.hosted_invoice_url ?? null,
       })
     }
@@ -588,13 +648,16 @@ async function buildInvoiceBreakdown(
   for (const cn of creditNotes) {
     const creditAmount = (cn.subtotal ?? cn.amount) / 100
     const custId = cn.customer as string
-    const isNew = isNewBusinessCustomer.get(custId) ?? false
+    const isNewByDefault = isNewBusinessCustomer.get(custId) ?? false
     const isPaid = cn.status === "issued" || cn.status === "void"
 
     const invoiceId = typeof cn.invoice === "string" ? cn.invoice : cn.invoice?.id
     let originalInv: Stripe.Invoice | null = invoiceId
       ? allInvoices.find((inv) => inv.id === invoiceId) ?? null
       : null
+    // The credit's MRR/NB classification follows its original invoice — so an
+    // override on the original applies to the credit too.
+    const cnSubCategory = resolveSubCategory(invoiceId, isNewByDefault)
 
     let creditTier: "credit" | "credit_prev" | "credit_old"
     if (originalInv) {
@@ -656,7 +719,7 @@ async function buildInvoiceBreakdown(
       if (serviceFeeCredit > 0) {
         serviceFee.invoiced -= serviceFeeCredit
         if (isPaid) serviceFee.cashCollected -= serviceFeeCredit
-        if (isNew) {
+        if (cnSubCategory === "new_business") {
           serviceFeeNewBusiness.invoiced -= serviceFeeCredit
           if (isPaid) serviceFeeNewBusiness.cashCollected -= serviceFeeCredit
         } else {
@@ -666,9 +729,11 @@ async function buildInvoiceBreakdown(
       }
 
       // Mirror credit application onto the per-customer rollup so AM totals net out properly.
+      // The credit reduces the same MRR/NB bucket the original invoice belongs to.
       if (custId && perCustomer.has(custId)) {
         const row = perCustomer.get(custId)!
-        row.feeAmount -= serviceFeeCredit
+        if (cnSubCategory === "new_business") row.feeNewBusiness -= serviceFeeCredit
+        else row.feeMrr -= serviceFeeCredit
         row.adAmount -= adBudgetCredit
       }
     }
@@ -680,7 +745,7 @@ async function buildInvoiceBreakdown(
       details.push({
         invoiceId: cn.id, invoiceNumber: cn.number, customerName: cnCustomerName,
         date: cnDate, amount: -serviceFeeCredit, status: creditTier,
-        category: "service_fee", subCategory: isNew ? "new_business" : "mrr",
+        category: "service_fee", subCategory: cnSubCategory,
         hostedUrl: cnHostedUrl,
       })
     }
@@ -688,7 +753,7 @@ async function buildInvoiceBreakdown(
       details.push({
         invoiceId: cn.id, invoiceNumber: cn.number, customerName: cnCustomerName,
         date: cnDate, amount: -adBudgetCredit, status: creditTier,
-        category: "ad_budget", subCategory: isNew ? "new_business" : "mrr",
+        category: "ad_budget", subCategory: cnSubCategory,
         hostedUrl: cnHostedUrl,
       })
     }
@@ -705,7 +770,8 @@ async function buildInvoiceBreakdown(
 
 export async function fetchFinance(startDate: string, endDate: string): Promise<FinanceOverview> {
   const stripe = await getStripe()
-  const breakdown = await buildInvoiceBreakdown(stripe, startDate, endDate)
+  const overrides = await loadInvoiceOverrides()
+  const breakdown = await buildInvoiceBreakdown(stripe, startDate, endDate, overrides)
   return {
     total: breakdown.total,
     serviceFee: breakdown.serviceFee,
@@ -835,8 +901,9 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
     return ids
   }
 
+  const overrides = await loadInvoiceOverrides()
   const [breakdown, prevCustomerIds, mondayData] = await Promise.all([
-    buildInvoiceBreakdown(stripe, startDate, endDate),
+    buildInvoiceBreakdown(stripe, startDate, endDate, overrides),
     fetchPrevCustomerIds(),
     fetchBothBoards(),
   ])
@@ -873,8 +940,10 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
     const acc = amRevenue.get(amName) ?? { revenue: 0, customers: 0, mrr: 0, newBusiness: 0, adBudget: 0 }
     acc.customers++
     acc.adBudget += c.adAmount
-    if (c.isNew) acc.newBusiness += c.feeAmount
-    else acc.mrr += c.feeAmount
+    // perCustomer now splits fees by per-invoice classification (override-aware),
+    // so we just add MRR / NB directly instead of bucketing by a single isNew flag.
+    acc.mrr += c.feeMrr
+    acc.newBusiness += c.feeNewBusiness
     acc.revenue = acc.mrr + acc.newBusiness + acc.adBudget
     amRevenue.set(amName, acc)
 
@@ -897,12 +966,13 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
           .slice(0, TOP_N)
       }
 
+      const customerFee = c.feeMrr + c.feeNewBusiness
       unassignedCustomers.push({
         customerId: c.customerId,
         customerName: c.customerName,
-        fee: c.feeAmount,
+        fee: customerFee,
         adBudget: c.adAmount,
-        revenue: c.feeAmount + c.adAmount,
+        revenue: customerFee + c.adAmount,
         reason: link ? "empty_am" : "no_monday_match",
         mondayItemId: link?.mondayItemId ?? null,
         suggestions,
