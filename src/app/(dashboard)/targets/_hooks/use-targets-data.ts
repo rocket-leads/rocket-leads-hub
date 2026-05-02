@@ -8,16 +8,26 @@ function fmt(d: Date) {
   return format(d, "yyyy-MM-dd")
 }
 
-export function useTargetsData(range: DateRange, country: CountryKey = "all") {
+export function useTargetsData(
+  range: DateRange,
+  country: CountryKey = "all",
+  closer: string | null = null,
+) {
   const startDate = fmt(range.startDate)
   const endDate = fmt(range.endDate)
+  // Normalise: empty / "All" → no filter. Keeps the cache key stable for the default view.
+  const closerKey = closer && closer !== "All" ? closer : null
 
   const mondayQuery = useQuery<MondayTargetsByCountry>({
-    queryKey: ["targets-monday", startDate, endDate],
-    queryFn: () => fetch(`/api/targets/monday?startDate=${startDate}&endDate=${endDate}`).then((r) => {
-      if (!r.ok) throw new Error("Failed to fetch Monday data")
-      return r.json()
-    }),
+    queryKey: ["targets-monday", startDate, endDate, closerKey ?? "all"],
+    queryFn: () => {
+      const params = new URLSearchParams({ startDate, endDate })
+      if (closerKey) params.set("closer", closerKey)
+      return fetch(`/api/targets/monday?${params.toString()}`).then((r) => {
+        if (!r.ok) throw new Error("Failed to fetch Monday data")
+        return r.json()
+      })
+    },
     staleTime: 5 * 60 * 1000,
   })
 

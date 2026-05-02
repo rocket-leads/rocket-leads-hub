@@ -39,13 +39,17 @@ export async function GET(request: Request) {
   const startDate = searchParams.get("startDate")
   const endDate = searchParams.get("endDate")
   const forceRefresh = searchParams.get("refresh") === "1"
+  // `closer` filter — when present the dashboard scopes top-level metrics to that
+  // person. Cache is unfiltered (cron-warmed for the team), so a filtered request
+  // always live-fetches; that's cheap enough since it's a power-user toggle.
+  const closer = searchParams.get("closer")?.trim() || null
 
   if (!startDate || !endDate) {
     return NextResponse.json({ error: "startDate and endDate required" }, { status: 400 })
   }
 
   const mtd = getMtdRange()
-  if (startDate === mtd.startDate && endDate === mtd.endDate && !forceRefresh) {
+  if (!closer && startDate === mtd.startDate && endDate === mtd.endDate && !forceRefresh) {
     const cached = await readCache<MondayTargetsByCountry>("targets_marketing_monday")
     if (cached && hasFreshSchema(cached)) {
       return NextResponse.json(cached, {
@@ -54,9 +58,10 @@ export async function GET(request: Request) {
     }
   }
 
-  // Historical month: cache forever in cache_store under `targets_monday:YYYY-MM`
+  // Historical month: cache forever in cache_store under `targets_monday:YYYY-MM`.
+  // Skipped when a closer filter is active — historical cache is unfiltered.
   const periodMonth = getRangeCalendarMonth(startDate, endDate)
-  if (periodMonth && isPastCalendarMonth(periodMonth.year, periodMonth.month)) {
+  if (!closer && periodMonth && isPastCalendarMonth(periodMonth.year, periodMonth.month)) {
     try {
       const result = await cachedHistoricalMonth(
         "targets_monday",
@@ -75,10 +80,11 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await fetchMondayTargets(startDate, endDate)
+    const result = await fetchMondayTargets(startDate, endDate, closer)
     // Refresh the cron cache when this is the current MTD range, so the next
     // request hits warm cache instead of paying for another live fetch.
-    if (startDate === mtd.startDate && endDate === mtd.endDate) {
+    // Only when no closer filter is active — the cache stores team-wide data.
+    if (!closer && startDate === mtd.startDate && endDate === mtd.endDate) {
       void writeCache("targets_marketing_monday", result)
     }
     return NextResponse.json(result, {

@@ -194,12 +194,25 @@ function getCountryKey(countryValue: string): CountryKey {
   return "other"
 }
 
-/** Marketing / Sales — Monday board data, grouped by country */
-export async function fetchMondayTargets(startDate: string, endDate: string): Promise<MondayTargetsByCountry> {
+/**
+ * Marketing / Sales — Monday board data, grouped by country.
+ *
+ * When `closerFilter` is provided, the top-level / weekly / industries / closed-deals
+ * aggregations only include items where the `wie_` column matches. The per-closer
+ * rollup always uses every item regardless of the filter — that's what populates the
+ * "Closer" dropdown options on the dashboard, so we can't strip it down.
+ */
+export async function fetchMondayTargets(
+  startDate: string,
+  endDate: string,
+  closerFilter?: string | null,
+): Promise<MondayTargetsByCountry> {
   const token = await getMondayToken()
   const allItems = await fetchAllItems(TARGETS_BOARD_ID, token)
   // Today (UTC, YYYY-MM-DD) — used to split closer appointments into past vs future.
   const todayStr = new Date().toISOString().slice(0, 10)
+  const filter = closerFilter?.trim() || null
+  const matchesFilter = (closerKey: string): boolean => !filter || closerKey === filter
 
   // Per-country accumulators
   type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; notUpdated: number; deals: number; revenue: number }
@@ -245,16 +258,21 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     const dealValue = getNumericValue(item, "numbers")
     const industry = getColumnValue(item, "status_17") || "Unknown"
     const closer = getColumnValue(item, "wie_").trim()
+    const closerKey = closer || "Unassigned"
+    // Top-level + weekly + industries + closed-deals all respect the closer filter.
+    // The per-closer block further down ignores it on purpose so the dropdown always
+    // sees every closer.
+    const includeInTopLevel = matchesFilter(closerKey)
 
-    addTo(country, (a) => a.totalItems++)
+    if (includeInTopLevel) addTo(country, (a) => a.totalItems++)
 
-    if (isInRange(datumCreated, startDate, endDate)) {
+    if (includeInTopLevel && isInRange(datumCreated, startDate, endDate)) {
       addTo(country, (a) => { a.leads++; a.calls++ })
       if (STATUS_MAP.rejections.includes(status)) addTo(country, (a) => a.rejections++)
       if (STATUS_MAP.qualified.includes(status)) addTo(country, (a) => a.qualifiedCalls++)
       if (STATUS_MAP.noShows.includes(status)) addTo(country, (a) => a.noShows++)
     }
-    if (isInRange(datumAfspraak, startDate, endDate)) {
+    if (includeInTopLevel && isInRange(datumAfspraak, startDate, endDate)) {
       if (STATUS_MAP.taken.includes(status)) {
         addTo(country, (a) => a.takenCalls++)
       } else if (
@@ -267,7 +285,7 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
         addTo(country, (a) => a.takenCalls++)
       }
     }
-    if (isInRange(dateDeal, startDate, endDate) && STATUS_MAP.deals.includes(status)) {
+    if (includeInTopLevel && isInRange(dateDeal, startDate, endDate) && STATUS_MAP.deals.includes(status)) {
       addTo(country, (a) => {
         a.deals++; a.closedRevenue += dealValue
         if (!a.industryMap[industry]) a.industryMap[industry] = { deals: 0, revenue: 0 }
@@ -297,7 +315,8 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     // table totals always equal global closedRevenue (no silent leakage).
     //
     // Show-up rate is computed downstream as taken / (qualifiedCalls − notUpdated).
-    const closerKey = closer || "Unassigned"
+    // NOTE: this block intentionally ignores `closerFilter` so the closers map stays
+    // complete and the dashboard's Closer dropdown can list every option.
     const apptInRange = isInRange(datumAfspraak, startDate, endDate)
     const dealInRangeForCloser = isInRange(dateDeal, startDate, endDate) && STATUS_MAP.deals.includes(status)
 
@@ -338,21 +357,25 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
       }
     }
 
-    // Weekly
-    if (datumCreated) {
-      const ws = getMondayOfWeek(datumCreated)
-      if (targetWeeks.has(ws)) {
-        addWeek(country, ws, (w) => { w.calls++ })
-        if (STATUS_MAP.qualified.includes(status)) addWeek(country, ws, (w) => w.qualified++)
+    // Weekly — same filter rule as the top-level: no contribution when the closer
+    // doesn't match. Without this, a filtered view would still show team-wide
+    // weekly bars next to a single closer's KPI cards.
+    if (includeInTopLevel) {
+      if (datumCreated) {
+        const ws = getMondayOfWeek(datumCreated)
+        if (targetWeeks.has(ws)) {
+          addWeek(country, ws, (w) => { w.calls++ })
+          if (STATUS_MAP.qualified.includes(status)) addWeek(country, ws, (w) => w.qualified++)
+        }
       }
-    }
-    if (datumAfspraak) {
-      const ws = getMondayOfWeek(datumAfspraak)
-      if (targetWeeks.has(ws) && STATUS_MAP.taken.includes(status)) addWeek(country, ws, (w) => w.taken++)
-    }
-    if (dateDeal && STATUS_MAP.deals.includes(status)) {
-      const ws = getMondayOfWeek(dateDeal)
-      if (targetWeeks.has(ws)) addWeek(country, ws, (w) => { w.deals++; w.revenue += getNumericValue(item, "numbers") })
+      if (datumAfspraak) {
+        const ws = getMondayOfWeek(datumAfspraak)
+        if (targetWeeks.has(ws) && STATUS_MAP.taken.includes(status)) addWeek(country, ws, (w) => w.taken++)
+      }
+      if (dateDeal && STATUS_MAP.deals.includes(status)) {
+        const ws = getMondayOfWeek(dateDeal)
+        if (targetWeeks.has(ws)) addWeek(country, ws, (w) => { w.deals++; w.revenue += getNumericValue(item, "numbers") })
+      }
     }
   }
 

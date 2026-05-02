@@ -21,6 +21,7 @@ import { formatCurrencyDecimal, safeDivide } from "@/lib/targets/formatters"
 import { deriveTargets } from "@/lib/targets/calculations"
 import type { CountryKey, DateRange, StripeNewBusinessInvoice, ClosedDeal } from "@/types/targets"
 import { formatCurrency } from "@/lib/targets/formatters"
+import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 
 const COUNTRY_OPTIONS: Array<{ key: CountryKey; label: string }> = [
   { key: "all", label: "All" },
@@ -42,10 +43,11 @@ function proRata(monthlyTarget: number, range: DateRange): number {
 
 export function MarketingTab() {
   const [country, setCountry] = useState<CountryKey>("all")
+  const [closer, setCloser] = useState<string>("All")
   const [stripeGapOpen, setStripeGapOpen] = useState(false)
   const { range, setRange, presets, applyPreset } = useDateRange()
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
-  const data = useTargetsData(range, country)
+  const data = useTargetsData(range, country, closer)
   const { data: targets } = useTargetsConfig()
   const { kpiGroups, revenueProgress } = useKpiCalculations(
     data.monday, data.meta, range,
@@ -81,6 +83,33 @@ export function MarketingTab() {
   // Ratios group from calculations
   const ratiosGroup = kpiGroups.find((g) => g.title === "Ratios")
 
+  // Closer dropdown options. The backend always returns the full closers list
+  // (per-closer aggregation ignores the `closer` filter), so the dropdown stays
+  // populated even while a specific closer is selected. Sort alphabetically with
+  // "Unassigned" pinned to the bottom — hidden if there's nothing unassigned.
+  const closerOptions = useMemo(() => {
+    const names = (m?.closers ?? [])
+      .map((c) => c.closer)
+      .filter((n): n is string => !!n && n !== "Unassigned")
+      .sort((a, b) => a.localeCompare(b))
+    const hasUnassigned = (m?.closers ?? []).some((c) => c.closer === "Unassigned")
+    return [
+      { value: "All", label: "All Closers" },
+      ...names.map((n) => ({ value: n, label: n })),
+      ...(hasUnassigned ? [{ value: "Unassigned", label: "Unassigned" }] : []),
+    ]
+  }, [m?.closers])
+
+  const filters: FilterConfig[] = [
+    {
+      key: "closer",
+      label: "Closer",
+      value: closer,
+      onChange: setCloser,
+      options: closerOptions,
+    },
+  ]
+
   return (
     <div className="space-y-8">
       {/* ── FILTERS ── */}
@@ -91,6 +120,7 @@ export function MarketingTab() {
           onChange={setRange}
           maxDate={maxPickerDate}
         />
+        <FiltersPopover filters={filters} />
         <div className="flex gap-1 flex-wrap">
           {presets.map((preset) => (
             <button
