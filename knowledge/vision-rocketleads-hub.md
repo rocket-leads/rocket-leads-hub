@@ -60,6 +60,31 @@ De Hub neemt de operationele controle. De andere tools zakken naar de transportl
 
 ## Capability Roadmap (Gefaseerd)
 
+### FASE 0 — Client Edit Layer (Fundament)
+
+Voordat de Hub inboxes en to-do's overneemt, moet eerst de basis kloppen: klantmetadata Hub-canonical maken. Het probleem dat dit oplost is klein maar fundamenteel — een AM/CM moet voor het wijzigen van AM-toewijzing, status, ad budget of Meta ad account ID niet meer Monday hoeven openen.
+
+**Wat:**
+- Bewerkbare velden vanuit de Hub: company name, live status, AM, CM, appointment setter, ad budget, service fee, alle 5 IDs (Monday client board, Meta ad account, Stripe customer, Trengo contact, Google Drive folder).
+- Edit-locaties:
+  - **Clients overview tabel** — inline dropdowns voor live status, AM, CM, setter
+  - **Client detail header** — status edit + naam + AM/CM via meta-row
+  - **Client detail Settings tab** — volledig "Client Information" panel met alle velden
+  - **Global Settings → Clients tab** — zelfde panel, voor alle klanten in één lijst (admin)
+- Hub-canonical statussen: `Onboarding` / `Live` / `On Hold` / `Churned`. Monday-varianten ("Subcampaigns only", "Stopt - X", "Debt collecting agency", etc.) collapsen via een mapping naar deze 4. Onboarding-board clients zijn altijd "Onboarding" — afgeleid uit board-membership.
+- Auto-update van campaign status: cron checkt dagelijks per Live/On Hold-klant of er actieve Meta campagnes draaien — flipt automatisch tussen `Live` en `On Hold`. `Onboarding` (manual setup) en `Churned` (manual termination) worden nooit overschreven.
+
+**Architectuur:**
+- Bestaande `setItemColumnValue()` en nieuwe `setItemColumnValueRaw()` in [src/lib/integrations/monday.ts](src/lib/integrations/monday.ts) — schrijven naar Monday via `change_simple_column_value` (text/number/date) en `change_column_value` (status/person/dropdown).
+- `updateClientField()` in [src/lib/clients/edit.ts](src/lib/clients/edit.ts) — high-level helper die de juiste mutation kiest, naar Monday schrijft, en mirrored Supabase-kolommen resyncrt.
+- `PATCH /api/clients/[id]` — single endpoint, accepteert discriminated union van field updates.
+- `/api/monday/users` + `fetchMondayUsers()` — cached lijst van Monday users zodat AM/CM/setter dropdowns op naam tonen maar IDs sturen.
+- Status mapping in [src/lib/clients/status.ts](src/lib/clients/status.ts) — single source of truth voor Hub↔Monday status conversie.
+
+**Status:** Geïmplementeerd. Vormt het fundament waarop Fase A-G voortbouwen.
+
+---
+
 ### FASE A — Mirror In (Lees Alles)
 
 Hub laadt alle relevante data uit Trengo, Monday en Slack en presenteert het uniform.

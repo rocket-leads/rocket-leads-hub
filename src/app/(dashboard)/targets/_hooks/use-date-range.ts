@@ -101,6 +101,10 @@ export function useDateRange() {
       getRange: () => ({ startDate: subDays(new Date(), 14), endDate: yesterday() }),
     },
     {
+      label: "Last 30 Days",
+      getRange: () => ({ startDate: subDays(new Date(), 30), endDate: yesterday() }),
+    },
+    {
       label: "Last Month",
       getRange: () => ({
         startDate: startOfMonth(subMonths(new Date(), 1)),

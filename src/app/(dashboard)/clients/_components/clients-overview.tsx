@@ -1,28 +1,63 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { RefreshCw, Users, Sparkles } from "lucide-react"
 import { format, subDays } from "date-fns"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { Panel } from "@/components/ui/panel"
 import { ClientsTable } from "./clients-table"
+import { ClientSlideOver } from "./client-slide-over"
 import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
+import { mondayStatusToHub, type ClientStatus } from "@/lib/clients/status"
+import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 
-const ACTIVE_STATUSES = ["Live", "On hold"]
+const ACTIVE_HUB_STATUSES: ClientStatus[] = ["live", "on_hold"]
 
 type Props = {
   onboarding: MondayClient[]
   current: MondayClient[]
+  currentUser: CurrentUser | null
 }
 
-export function ClientsOverview({ onboarding, current }: Props) {
+export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const selectedClientId = searchParams.get("client")
+
+  const handleSelectClient = useCallback(
+    (mondayItemId: string) => {
+      const params = new URLSearchParams(searchParams.toString())
+      params.set("client", mondayItemId)
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+    },
+    [router, pathname, searchParams],
+  )
+
+  const handleClosePanel = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("client")
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [router, pathname, searchParams])
+
+  // Lock body scroll while the panel is open so the page behind doesn't move
+  // when the user scrolls inside the panel.
+  useEffect(() => {
+    if (!selectedClientId) return
+    const original = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = original
+    }
+  }, [selectedClientId])
+
   const [showAll, setShowAll] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState<"current" | "onboarding">("current")
@@ -32,8 +67,11 @@ export function ClientsOverview({ onboarding, current }: Props) {
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
 
   const visibleCurrent = useMemo(
-    () => showAll ? current : current.filter((c) => ACTIVE_STATUSES.includes(c.campaignStatus ?? "")),
-    [current, showAll]
+    () =>
+      showAll
+        ? current
+        : current.filter((c) => ACTIVE_HUB_STATUSES.includes(mondayStatusToHub(c.campaignStatus, "current"))),
+    [current, showAll],
   )
   const hiddenCount = current.length - visibleCurrent.length
 
@@ -135,6 +173,7 @@ export function ClientsOverview({ onboarding, current }: Props) {
             billingSummaries={summariesQuery.data}
             kpiSummaries={kpiQuery.data}
             mondayActiveMap={mondayActiveQuery.data}
+            onSelectClient={handleSelectClient}
             showAllToggle={{
               showAll,
               setShowAll,
@@ -160,8 +199,17 @@ export function ClientsOverview({ onboarding, current }: Props) {
             billingSummaries={summariesQuery.data}
             kpiSummaries={kpiQuery.data}
             mondayActiveMap={mondayActiveQuery.data}
+            onSelectClient={handleSelectClient}
           />
         </Panel>
+      )}
+
+      {currentUser && (
+        <ClientSlideOver
+          clientId={selectedClientId}
+          onClose={handleClosePanel}
+          currentUser={currentUser}
+        />
       )}
     </div>
   )

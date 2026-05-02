@@ -56,10 +56,12 @@ export type MondayClient = {
   campaignStatus: string
   kickOffDate: string
   adBudget: string
+  serviceFee: string
   metaAdAccountId: string
   stripeCustomerId: string
   trengoContactId: string
   clientBoardId: string
+  googleDriveId: string
   boardType: "onboarding" | "current"
 }
 
@@ -155,10 +157,12 @@ function mapItem(
     campaignStatus: cv[columns.campaign_status] ?? "",
     kickOffDate: cv[columns.kick_off_date] ?? "",
     adBudget: cv[columns.ad_budget] ?? "",
+    serviceFee: cv[columns.service_fee] ?? "",
     metaAdAccountId: cv[columns.meta_ad_account_id] ?? "",
     stripeCustomerId: cv[columns.stripe_customer_id] ?? "",
     trengoContactId: cv[columns.trengo_contact_id] ?? "",
     clientBoardId: cv[columns.client_board_id] ?? "",
+    googleDriveId: cv[columns.google_drive_id] ?? "",
     boardType,
   }
 }
@@ -185,6 +189,52 @@ export async function fetchBothBoards(): Promise<{
     fetchClients("current"),
   ])
   return { onboarding, current }
+}
+
+export type MondayUser = {
+  id: number
+  name: string
+  email: string
+}
+
+let cachedMondayUsers: { value: MondayUser[]; expiresAt: number } | null = null
+
+/**
+ * Fetch the workspace's Monday users. Used by the Hub's client edit UI to
+ * power AM/CM/setter dropdowns: the UI shows names but the API call back
+ * to Monday needs numeric person IDs. Cached for 15 minutes — Monday
+ * memberships rarely change. Excludes guests and disabled accounts.
+ */
+export async function fetchMondayUsers(): Promise<MondayUser[]> {
+  if (cachedMondayUsers && Date.now() < cachedMondayUsers.expiresAt) {
+    return cachedMondayUsers.value
+  }
+
+  const token = await getToken()
+  const query = `
+    query GetUsers {
+      users(limit: 200, kind: non_guests) {
+        id
+        name
+        email
+        enabled
+      }
+    }
+  `
+
+  const data = await gql(query, {}, token)
+  const users: MondayUser[] = (data.users ?? [])
+    .filter((u: { enabled?: boolean }) => u.enabled !== false)
+    .map((u: { id: string; name: string; email: string }) => ({
+      id: parseInt(u.id, 10),
+      name: u.name,
+      email: u.email,
+    }))
+    .filter((u: MondayUser) => Number.isFinite(u.id))
+    .sort((a: MondayUser, b: MondayUser) => a.name.localeCompare(b.name))
+
+  cachedMondayUsers = { value: users, expiresAt: Date.now() + 15 * 60 * 1000 }
+  return users
 }
 
 export type MondayLeadItem = {
@@ -427,6 +477,41 @@ export async function setItemColumnValue(
   `
 
   await gql(mutation, { boardId, itemId, columnId, value }, token)
+}
+
+/**
+ * Write a complex JSON-shape value to a Monday column. Use this for column
+ * types that don't accept a flat string: status (`{ label: "Live" }`),
+ * person/people (`{ personsAndTeams: [{ id, kind: "person" }] }`), dropdown
+ * (`{ labels: ["A"] }`), etc. `columnKey` is resolved via board config like
+ * `setItemColumnValue` does — callers pass logical keys, not Monday IDs.
+ */
+export async function setItemColumnValueRaw(
+  boardType: "onboarding" | "current",
+  itemId: string,
+  columnKey: string,
+  jsonValue: unknown,
+): Promise<void> {
+  const [token, config] = await Promise.all([getToken(), getBoardConfig()])
+  if (!config) throw new Error("Board config not found.")
+
+  const boardId = boardType === "onboarding" ? config.onboarding_board_id : config.current_board_id
+  const columns = boardType === "onboarding" ? config.onboarding_columns : config.current_columns
+  const columnId = columns[columnKey]
+  if (!columnId) throw new Error(`Column "${columnKey}" is not mapped for the ${boardType} board.`)
+
+  const mutation = `
+    mutation SetValue($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
+      change_column_value(
+        board_id: $boardId,
+        item_id: $itemId,
+        column_id: $columnId,
+        value: $value
+      ) { id }
+    }
+  `
+
+  await gql(mutation, { boardId, itemId, columnId, value: JSON.stringify(jsonValue) }, token)
 }
 
 /**

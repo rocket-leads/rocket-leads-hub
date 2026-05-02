@@ -13,6 +13,10 @@ import {
   Clock,
   CircleCheck,
   CircleX,
+  AlertOctagon,
+  CalendarDays,
+  CalendarClock,
+  CalendarX,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TopTabs } from "@/components/ui/top-tabs"
@@ -185,20 +189,15 @@ export function InboxView({
                 onCreate={() => openComposer("update")}
               />
             ) : (
-              <div className="space-y-2">
-                {updates.map((item) => (
-                  <InboxListRow
-                    key={item.id}
-                    item={item}
-                    showClient={!lockedClient}
-                    onClick={() => setDetailItem(item)}
-                    onAction={(action) => {
-                      if (action === "read") patchItem(item.id, { status: "read" })
-                      else if (action === "unread") patchItem(item.id, { status: "unread" })
-                    }}
-                  />
-                ))}
-              </div>
+              <GroupedUpdates
+                updates={updates}
+                showClient={!lockedClient}
+                onItemClick={(item) => setDetailItem(item)}
+                onAction={(item, action) => {
+                  if (action === "read") patchItem(item.id, { status: "read" })
+                  else if (action === "unread") patchItem(item.id, { status: "unread" })
+                }}
+              />
             )}
           </>
         ) : (
@@ -220,21 +219,16 @@ export function InboxView({
                 onCreate={() => openComposer("task")}
               />
             ) : (
-              <div className="space-y-2">
-                {tasks.map((item) => (
-                  <InboxListRow
-                    key={item.id}
-                    item={item}
-                    showClient={!lockedClient}
-                    onClick={() => setDetailItem(item)}
-                    onAction={(action) => {
-                      if (action === "done") patchItem(item.id, { status: "done" })
-                      else if (action === "cancel") patchItem(item.id, { status: "cancelled" })
-                      else if (action === "reopen") patchItem(item.id, { status: "open" })
-                    }}
-                  />
-                ))}
-              </div>
+              <GroupedTasks
+                tasks={tasks}
+                showClient={!lockedClient}
+                onItemClick={(item) => setDetailItem(item)}
+                onAction={(item, action) => {
+                  if (action === "done") patchItem(item.id, { status: "done" })
+                  else if (action === "cancel") patchItem(item.id, { status: "cancelled" })
+                  else if (action === "reopen") patchItem(item.id, { status: "open" })
+                }}
+              />
             )}
           </>
         )}
@@ -277,6 +271,286 @@ function EmptyState({ text, onCreate }: { text: string; onCreate?: () => void })
           Create one
         </Button>
       )}
+    </div>
+  )
+}
+
+// --- Grouping helpers ----------------------------------------------------
+
+function startOfDay(d: Date | string): Date {
+  const x = typeof d === "string" ? new Date(d) : new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+type TaskGroups = {
+  overdue: InboxItem[]
+  today: InboxItem[]
+  upcoming: InboxItem[]
+  noDueDate: InboxItem[]
+}
+
+function groupTasksByDeadline(tasks: InboxItem[]): TaskGroups {
+  const today = startOfDay(new Date())
+  const groups: TaskGroups = { overdue: [], today: [], upcoming: [], noDueDate: [] }
+  for (const t of tasks) {
+    if (!t.dueDate) {
+      groups.noDueDate.push(t)
+      continue
+    }
+    const due = startOfDay(t.dueDate).getTime()
+    const todayMs = today.getTime()
+    if (due < todayMs) groups.overdue.push(t)
+    else if (due === todayMs) groups.today.push(t)
+    else groups.upcoming.push(t)
+  }
+  // Sort: overdue most-overdue first, today/upcoming earliest-due first.
+  groups.overdue.sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+  groups.today.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  groups.upcoming.sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
+  groups.noDueDate.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return groups
+}
+
+type UpdateGroups = {
+  today: InboxItem[]
+  yesterday: InboxItem[]
+  thisWeek: InboxItem[]
+  older: InboxItem[]
+}
+
+function groupUpdatesByDate(updates: InboxItem[]): UpdateGroups {
+  const todayMs = startOfDay(new Date()).getTime()
+  const yesterdayMs = todayMs - 24 * 60 * 60 * 1000
+  const sevenDaysMs = todayMs - 7 * 24 * 60 * 60 * 1000
+  const groups: UpdateGroups = { today: [], yesterday: [], thisWeek: [], older: [] }
+  for (const u of updates) {
+    const created = startOfDay(u.createdAt).getTime()
+    if (created === todayMs) groups.today.push(u)
+    else if (created === yesterdayMs) groups.yesterday.push(u)
+    else if (created >= sevenDaysMs) groups.thisWeek.push(u)
+    else groups.older.push(u)
+  }
+  // Newest first within each group.
+  for (const arr of Object.values(groups) as InboxItem[][]) {
+    arr.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }
+  return groups
+}
+
+const SECTION_TONES = {
+  red: { dot: "bg-red-500", text: "text-red-500 dark:text-red-400" },
+  amber: { dot: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" },
+  emerald: { dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
+  muted: { dot: "bg-muted-foreground/40", text: "text-muted-foreground" },
+} as const
+
+type SectionTone = keyof typeof SECTION_TONES
+
+function SectionHeader({
+  icon: Icon,
+  label,
+  count,
+  tone,
+}: {
+  icon: typeof AlertOctagon
+  label: string
+  count: number
+  tone: SectionTone
+}) {
+  const t = SECTION_TONES[tone]
+  return (
+    <div className="flex items-center gap-2 px-1 mb-2">
+      <span className={`h-1.5 w-1.5 rounded-full ${t.dot}`} />
+      <Icon className={`h-3.5 w-3.5 ${t.text}`} />
+      <span className={`text-[11px] uppercase tracking-wider font-semibold ${t.text}`}>{label}</span>
+      <span className="text-[11px] tabular-nums text-muted-foreground/50">{count}</span>
+    </div>
+  )
+}
+
+function TaskGroupSection({
+  icon,
+  label,
+  tone,
+  items,
+  showClient,
+  onItemClick,
+  onAction,
+}: {
+  icon: typeof AlertOctagon
+  label: string
+  tone: SectionTone
+  items: InboxItem[]
+  showClient: boolean
+  onItemClick: (item: InboxItem) => void
+  onAction: (item: InboxItem, action: "done" | "cancel" | "reopen") => void
+}) {
+  if (items.length === 0) return null
+  return (
+    <div>
+      <SectionHeader icon={icon} label={label} count={items.length} tone={tone} />
+      <div className="space-y-2">
+        {items.map((item) => (
+          <InboxListRow
+            key={item.id}
+            item={item}
+            showClient={showClient}
+            onClick={() => onItemClick(item)}
+            onAction={(action) => {
+              if (action === "done" || action === "cancel" || action === "reopen") {
+                onAction(item, action)
+              }
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function GroupedTasks({
+  tasks,
+  showClient,
+  onItemClick,
+  onAction,
+}: {
+  tasks: InboxItem[]
+  showClient: boolean
+  onItemClick: (item: InboxItem) => void
+  onAction: (item: InboxItem, action: "done" | "cancel" | "reopen") => void
+}) {
+  const groups = useMemo(() => groupTasksByDeadline(tasks), [tasks])
+  return (
+    <div className="space-y-5">
+      <TaskGroupSection
+        icon={AlertOctagon}
+        label="Overdue"
+        tone="red"
+        items={groups.overdue}
+        showClient={showClient}
+        onItemClick={onItemClick}
+        onAction={onAction}
+      />
+      <TaskGroupSection
+        icon={CalendarDays}
+        label="Today"
+        tone="amber"
+        items={groups.today}
+        showClient={showClient}
+        onItemClick={onItemClick}
+        onAction={onAction}
+      />
+      <TaskGroupSection
+        icon={CalendarClock}
+        label="Upcoming"
+        tone="muted"
+        items={groups.upcoming}
+        showClient={showClient}
+        onItemClick={onItemClick}
+        onAction={onAction}
+      />
+      <TaskGroupSection
+        icon={CalendarX}
+        label="No due date"
+        tone="muted"
+        items={groups.noDueDate}
+        showClient={showClient}
+        onItemClick={onItemClick}
+        onAction={onAction}
+      />
+    </div>
+  )
+}
+
+function UpdateGroupSection({
+  icon,
+  label,
+  tone,
+  items,
+  showClient,
+  onItemClick,
+  onAction,
+}: {
+  icon: typeof CalendarDays
+  label: string
+  tone: SectionTone
+  items: InboxItem[]
+  showClient: boolean
+  onItemClick: (item: InboxItem) => void
+  onAction: (item: InboxItem, action: "read" | "unread") => void
+}) {
+  if (items.length === 0) return null
+  return (
+    <div>
+      <SectionHeader icon={icon} label={label} count={items.length} tone={tone} />
+      <div className="space-y-2">
+        {items.map((item) => (
+          <InboxListRow
+            key={item.id}
+            item={item}
+            showClient={showClient}
+            onClick={() => onItemClick(item)}
+            onAction={(action) => {
+              if (action === "read" || action === "unread") onAction(item, action)
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function GroupedUpdates({
+  updates,
+  showClient,
+  onItemClick,
+  onAction,
+}: {
+  updates: InboxItem[]
+  showClient: boolean
+  onItemClick: (item: InboxItem) => void
+  onAction: (item: InboxItem, action: "read" | "unread") => void
+}) {
+  const groups = useMemo(() => groupUpdatesByDate(updates), [updates])
+  return (
+    <div className="space-y-5">
+      <UpdateGroupSection
+        icon={CalendarDays}
+        label="Today"
+        tone="emerald"
+        items={groups.today}
+        showClient={showClient}
+        onItemClick={onItemClick}
+        onAction={onAction}
+      />
+      <UpdateGroupSection
+        icon={CalendarDays}
+        label="Yesterday"
+        tone="amber"
+        items={groups.yesterday}
+        showClient={showClient}
+        onItemClick={onItemClick}
+        onAction={onAction}
+      />
+      <UpdateGroupSection
+        icon={CalendarClock}
+        label="This week"
+        tone="muted"
+        items={groups.thisWeek}
+        showClient={showClient}
+        onItemClick={onItemClick}
+        onAction={onAction}
+      />
+      <UpdateGroupSection
+        icon={CalendarX}
+        label="Older"
+        tone="muted"
+        items={groups.older}
+        showClient={showClient}
+        onItemClick={onItemClick}
+        onAction={onAction}
+      />
     </div>
   )
 }

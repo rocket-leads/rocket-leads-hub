@@ -4,6 +4,7 @@ import { fetchBothBoards } from "@/lib/integrations/monday"
 import { fetchMetaInsightsDaily } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import type { DailyRollup, KpiDailyCache, KpiDailyClientData } from "@/app/api/kpi-summaries/route"
+import { isPrevPeriodReliable } from "@/app/api/kpi-summaries/route"
 import { categorize, updateWatchlistClientState } from "@/lib/watchlist/categorize"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { readCache, writeCache } from "@/lib/cache"
@@ -206,6 +207,14 @@ export async function GET(req: NextRequest) {
           const costPerAppointment = appointments > 0 ? adSpend / appointments : 0
           const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
+          // Coverage check on the prev window — same rule as kpi-summaries' live path:
+          // ≥80% of prev days had spend or (when CRM is connected) Monday leads. windowPrev
+          // is a slice of the dense rollup, so its length is the full prev-window length.
+          const prevDaysWithActivity = windowPrev.filter(
+            (d) => d.spend > 0 || (monday.ok && d.mondayLeads > 0),
+          ).length
+          const prevPeriodReliable = isPrevPeriodReliable(prevStartDate, prevEndDate, prevDaysWithActivity, prevAdSpend)
+
           // 14d sparkline = trailing 14 entries of the dense rollup. Per-day leads use
           // Monday count when CRM is connected and that day has any, else fall back to Meta.
           const sparkSlice = days.slice(-SPARKLINE_DAYS)
@@ -234,6 +243,7 @@ export async function GET(req: NextRequest) {
               costPerAppointment,
               prevCpl,
               prevCostPerAppointment,
+              prevPeriodReliable,
               ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
               ...(metaFallback ? { metaFallback: true } : {}),
               mondayCrmConnected: monday.ok,

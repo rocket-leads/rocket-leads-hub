@@ -55,7 +55,21 @@ async function ClientsData() {
     )
   }
 
-  return <ClientsOverview onboarding={onboarding} current={current} />
+  const currentUser = session?.user?.id
+    ? {
+        id: session.user.id,
+        name: session.user.name ?? session.user.email,
+        role: session.user.role ?? "member",
+      }
+    : null
+
+  return (
+    <ClientsOverview
+      onboarding={onboarding}
+      current={current}
+      currentUser={currentUser}
+    />
+  )
 }
 
 export default function ClientsPage() {

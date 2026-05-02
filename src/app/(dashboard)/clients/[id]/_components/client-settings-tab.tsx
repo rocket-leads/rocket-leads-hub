@@ -5,16 +5,20 @@ import { CampaignSelector } from "./campaign-selector"
 import { ColumnOverrides } from "./column-overrides"
 import { KpiVisibilityToggle } from "./kpi-visibility-toggle"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ClientInformationPanel } from "@/components/client-information-panel"
 import type { MetaCampaign } from "@/lib/integrations/meta"
+import type { MondayClient } from "@/lib/integrations/monday"
 
 type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
 
 type Props = {
-  mondayItemId: string
-  metaAdAccountId: string | null
+  client: MondayClient
 }
 
-export function ClientSettingsTab({ mondayItemId, metaAdAccountId }: Props) {
+export function ClientSettingsTab({ client }: Props) {
+  const mondayItemId = client.mondayItemId
+  const metaAdAccountId = client.metaAdAccountId || null
+
   const campaignsQuery = useQuery<{ campaigns: CampaignWithSelection[] }>({
     queryKey: ["campaigns", mondayItemId],
     queryFn: () =>
@@ -25,6 +29,15 @@ export function ClientSettingsTab({ mondayItemId, metaAdAccountId }: Props) {
 
   return (
     <div className="space-y-8">
+      {/* Client Information — name, IDs, financials, team. Edits write back to Monday. */}
+      <div>
+        <h3 className="text-sm font-medium mb-1">Client Information</h3>
+        <p className="text-xs text-muted-foreground/60 mb-4">
+          Edit the client&apos;s details. Changes write back to Monday and sync to the Hub.
+        </p>
+        <ClientInformationPanel client={client} />
+      </div>
+
       {/* KPI Visibility */}
       <div>
         <h3 className="text-sm font-medium mb-1">KPI Sections</h3>

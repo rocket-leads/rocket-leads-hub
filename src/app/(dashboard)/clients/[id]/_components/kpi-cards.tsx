@@ -150,6 +150,18 @@ export function KpiCards({ data, previousData, isLoading, visibility = { leads: 
         )
         if (visibleCards.length === 0) return null
 
+        // Auto-hide non-leads groups when there's nothing to show. Leads is the
+        // primary group and always renders (even at zero, the spend/cost frame
+        // is still useful context). Appointments and Deals only surface once
+        // they actually have data — otherwise they're noise.
+        if (group.section !== "leads" && data && !isLoading) {
+          const allZero = visibleCards.every((kpi) => {
+            const v = data[kpi.key] as number | undefined
+            return v == null || v === 0
+          })
+          if (allZero) return null
+        }
+
         const colClass = visibleCards.length <= 3
           ? "grid grid-cols-2 gap-3 sm:grid-cols-3"
           : visibleCards.length === 4

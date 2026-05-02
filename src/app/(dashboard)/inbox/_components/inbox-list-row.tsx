@@ -69,9 +69,18 @@ export function InboxListRow({
       )}
     >
       <div className="flex items-start gap-3">
+        {/* Updates get a leading checkbox so the read/unread toggle is the
+            primary affordance — click it to mark read, click again to unmark.
+            Tasks keep their right-side Done/Cancel/Reopen actions instead. */}
+        {isUpdate && onAction && (
+          <UpdateCheckbox
+            checked={!isUnread}
+            onToggle={() => onAction(isUnread ? "read" : "unread")}
+          />
+        )}
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            {isUnread && <span className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />}
             {isHighPriority && (
               <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
             )}
@@ -80,6 +89,7 @@ export function InboxListRow({
                 "text-sm truncate",
                 isUnread ? "font-semibold" : "font-medium",
                 item.status === "done" || item.status === "cancelled" ? "line-through text-muted-foreground" : "",
+                item.status === "read" && "text-muted-foreground",
               )}
             >
               {item.title}
@@ -127,9 +137,40 @@ export function InboxListRow({
           </div>
         </div>
 
-        {onAction && <RowActions item={item} onAction={onAction} />}
+        {/* Tasks keep right-side actions; update toggles live in the leading checkbox. */}
+        {!isUpdate && onAction && <RowActions item={item} onAction={onAction} />}
       </div>
     </div>
+  )
+}
+
+function UpdateCheckbox({
+  checked,
+  onToggle,
+}: {
+  checked: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      title={checked ? "Mark as unread" : "Mark as read"}
+      aria-label={checked ? "Mark as unread" : "Mark as read"}
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle()
+      }}
+      className={cn(
+        "h-5 w-5 shrink-0 rounded-full border-2 inline-flex items-center justify-center mt-0.5 transition-all",
+        checked
+          ? "bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600"
+          : "border-muted-foreground/40 hover:border-foreground hover:bg-muted/40",
+      )}
+    >
+      {checked && <Check className="h-3 w-3" strokeWidth={3} />}
+    </button>
   )
 }
 
@@ -142,29 +183,8 @@ function RowActions({
 }) {
   const stop = (e: React.MouseEvent) => e.stopPropagation()
 
-  if (item.kind === "update") {
-    return (
-      <div className="flex items-center gap-1 shrink-0" onClick={stop}>
-        {item.status === "unread" ? (
-          <ActionButton
-            tone="success"
-            label="Mark as read"
-            onClick={() => onAction("read")}
-            icon={<Check className="h-3.5 w-3.5" />}
-          />
-        ) : (
-          <ActionButton
-            tone="muted"
-            label="Mark as unread"
-            onClick={() => onAction("unread")}
-            icon={<RotateCcw className="h-3.5 w-3.5" />}
-          />
-        )}
-      </div>
-    )
-  }
-
-  // task
+  // Updates handle their read/unread toggle via the leading checkbox in the
+  // row itself, so this component only ever renders the task action buttons.
   return (
     <div className="flex items-center gap-1 shrink-0" onClick={stop}>
       {item.status === "open" || item.status === "in_progress" ? (

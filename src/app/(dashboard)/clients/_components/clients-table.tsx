@@ -18,19 +18,16 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { QuickPreset } from "@/types/targets"
-
-const ONBOARDING_STATUSES = ["Kick off", "In development", "On hold"]
-const CURRENT_STATUSES = ["Live", "On hold", "Churned"]
+import {
+  STATUS_LABELS,
+  STATUS_OPTIONS,
+  mondayStatusToHub,
+  type ClientStatus,
+} from "@/lib/clients/status"
+import { StatusEditCell } from "./status-edit-cell"
+import { PersonEditCell } from "./person-edit-cell"
 
 type PillTone = { dot: string; pill: string }
-
-const STATUS_TONES: Record<string, PillTone> = {
-  "Kick off": { dot: "bg-blue-500", pill: "bg-blue-500/10 text-blue-700 dark:text-blue-400" },
-  "In development": { dot: "bg-amber-500", pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
-  "On hold": { dot: "bg-zinc-400", pill: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400" },
-  Live: { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
-  Churned: { dot: "bg-red-500", pill: "bg-red-500/10 text-red-600 dark:text-red-400" },
-}
 
 const PAYMENT_TONES: Record<string, PillTone> = {
   complete: { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
@@ -93,8 +90,12 @@ function getCampaignHealth(kpi: KpiSummary | undefined): HealthResult {
   const reasons: string[] = []
   let status: HealthStatus = "good"
 
-  // Trend-based: compare current 7d CPL vs previous 7d CPL
-  if (kpi.cpl > 0 && kpi.prevCpl > 0) {
+  // Trend-based: compare current 7d CPL vs previous 7d CPL.
+  // Skip when prev period wasn't substantially live — a freshly-launched client
+  // would otherwise read as a wild +/-X% swing that's purely an artefact of the
+  // launch date. `prevPeriodReliable === false` is set explicitly by the API;
+  // older cached entries without the flag default to "show" (undefined check).
+  if (kpi.cpl > 0 && kpi.prevCpl > 0 && kpi.prevPeriodReliable !== false) {
     const cplChange = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
 
     if (cplChange > 50) {
@@ -199,6 +200,13 @@ type Props = {
     /** Latest selectable day in the calendar (used to disable today). */
     maxDate?: Date
   }
+  /**
+   * Row-click handler. When supplied, clicking a row calls this with the
+   * Monday item ID and skips full-page navigation — used by the slide-over
+   * panel UX on the All Clients page. Falls back to internal `/clients/[id]`
+   * navigation when omitted.
+   */
+  onSelectClient?: (mondayItemId: string) => void
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -212,46 +220,6 @@ function fmt(amount: number): string {
 function fmtKpi(value: number, type: "currency" | "integer"): string {
   if (type === "currency") return `€${value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   return value.toLocaleString("en-GB")
-}
-
-const SKIP_PARTS = new Set(["van", "de", "der", "den", "het", "het", "ten", "ter"])
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/)
-  if (parts.length === 0) return ""
-  const first = parts[0][0]?.toUpperCase() ?? ""
-  const lastPart = parts.findLast((p) => !SKIP_PARTS.has(p.toLowerCase()) && p !== parts[0])
-  const last = lastPart?.[0]?.toUpperCase() ?? ""
-  return first + last
-}
-
-const AVATAR_COLORS = [
-  "bg-blue-100 text-blue-700",
-  "bg-purple-100 text-purple-700",
-  "bg-teal-100 text-teal-700",
-  "bg-amber-100 text-amber-700",
-  "bg-rose-100 text-rose-700",
-  "bg-emerald-100 text-emerald-700",
-  "bg-indigo-100 text-indigo-700",
-  "bg-orange-100 text-orange-700",
-]
-
-function avatarColor(name: string): string {
-  let hash = 0
-  for (const ch of name) hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
-}
-
-function ManagerAvatar({ name }: { name: string }) {
-  if (!name) return <span className="text-muted-foreground">—</span>
-  const initials = getInitials(name)
-  return (
-    <div className="flex justify-center" title={name}>
-      <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${avatarColor(name)}`}>
-        {initials}
-      </span>
-    </div>
-  )
 }
 
 function SortableHead({ label, sortKey, currentKey, currentDir, onSort, className }: {
@@ -282,7 +250,7 @@ function SortableHead({ label, sortKey, currentKey, currentDir, onSort, classNam
   )
 }
 
-export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap, defaultSortKey, defaultSortDir, showAllToggle, dateRangeControl }: Props) {
+export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap, defaultSortKey, defaultSortDir, showAllToggle, dateRangeControl, onSelectClient }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
@@ -293,7 +261,6 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   const [sortKey, setSortKey] = useState<SortKey | null>(defaultSortKey ?? null)
   const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir ?? "asc")
 
-  const statuses = boardType === "onboarding" ? ONBOARDING_STATUSES : CURRENT_STATUSES
   const accountManagers = useMemo(() => uniqueSorted(clients.map((c) => c.accountManager)), [clients])
   const campaignManagers = useMemo(() => uniqueSorted(clients.map((c) => c.campaignManager)), [clients])
 
@@ -317,7 +284,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         !search ||
         c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.firstName.toLowerCase().includes(search.toLowerCase())
-      const matchesStatus = statusFilter === "All" || c.campaignStatus === statusFilter
+      const matchesStatus =
+        statusFilter === "All" ||
+        mondayStatusToHub(c.campaignStatus, c.boardType) === statusFilter
       const matchesAM = accountManagerFilter === "All" || c.accountManager === accountManagerFilter
       const matchesCM = campaignManagerFilter === "All" || c.campaignManager === campaignManagerFilter
       const matchesPayment = paymentStatusFilter === "All" || (() => {
@@ -351,7 +320,10 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         case "client": valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break
         case "accountManager": valA = a.accountManager.toLowerCase(); valB = b.accountManager.toLowerCase(); break
         case "campaignManager": valA = a.campaignManager.toLowerCase(); valB = b.campaignManager.toLowerCase(); break
-        case "status": valA = a.campaignStatus.toLowerCase(); valB = b.campaignStatus.toLowerCase(); break
+        case "status":
+          valA = STATUS_LABELS[mondayStatusToHub(a.campaignStatus, a.boardType)].toLowerCase()
+          valB = STATUS_LABELS[mondayStatusToHub(b.campaignStatus, b.boardType)].toLowerCase()
+          break
         case "kickOff": valA = a.kickOffDate; valB = b.kickOffDate; break
         case "adspend": valA = kpiA?.adSpend ?? 0; valB = kpiB?.adSpend ?? 0; break
         case "leads": valA = kpiA?.leads ?? 0; valB = kpiB?.leads ?? 0; break
@@ -416,13 +388,20 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   const colSpan = boardType === "onboarding" ? 8 : 15
 
   const filters: FilterConfig[] = [
-    {
-      key: "status",
-      label: "Status",
-      value: statusFilter,
-      onChange: setStatusFilter,
-      options: [{ value: "All", label: "All Statuses" }, ...statuses.map((s) => ({ value: s, label: s }))],
-    },
+    // Onboarding-board clients all collapse to "Onboarding" — status filter is
+    // only meaningful on the current board.
+    ...(boardType === "current"
+      ? [{
+          key: "status",
+          label: "Status",
+          value: statusFilter,
+          onChange: setStatusFilter,
+          options: [
+            { value: "All", label: "All Statuses" },
+            ...STATUS_OPTIONS.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+          ],
+        }]
+      : []),
     {
       key: "am",
       label: "Account Manager",
@@ -582,10 +561,15 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     onClick={(e) => {
                       // Only handle plain left-click — let modifier+click and middle-click pass through
                       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
-                      router.push(href)
+                      if (onSelectClient) {
+                        onSelectClient(client.mondayItemId)
+                      } else {
+                        router.push(href)
+                      }
                     }}
                     onAuxClick={(e) => {
-                      // Middle-click opens in new tab
+                      // Middle-click opens in new tab — keep this even with the slide-over
+                      // pattern so power users can still pop a full page in another window.
                       if (e.button === 1) {
                         e.preventDefault()
                         window.open(href, "_blank", "noopener,noreferrer")
@@ -594,23 +578,37 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   >
                     {/* Client section */}
                     <TableCell className="border-r border-border/40 bg-muted/20 max-w-0">
-                      <Link
-                        href={href}
-                        onClick={(e) => e.stopPropagation()}
-                        className="block hover:text-primary transition-colors min-w-0"
-                        title={client.name}
-                      >
-                        <p className="font-medium text-sm truncate">{client.name}</p>
-                        {client.firstName && (
-                          <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
-                        )}
-                      </Link>
+                      {onSelectClient ? (
+                        // In slide-over mode, the row click handles selection — render
+                        // the name as plain text so we don't have a Link competing with
+                        // the row's onClick.
+                        <div className="block min-w-0" title={client.name}>
+                          <p className="font-medium text-sm truncate">{client.name}</p>
+                          {client.firstName && (
+                            <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <Link
+                          href={href}
+                          onClick={(e) => e.stopPropagation()}
+                          className="block hover:text-primary transition-colors min-w-0"
+                          title={client.name}
+                        >
+                          <p className="font-medium text-sm truncate">{client.name}</p>
+                          {client.firstName && (
+                            <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
+                          )}
+                        </Link>
+                      )}
                     </TableCell>
                     {/* Status section */}
                     <TableCell>
-                      {client.campaignStatus && STATUS_TONES[client.campaignStatus] && (
-                        <StatusPill tone={STATUS_TONES[client.campaignStatus]} label={client.campaignStatus} />
-                      )}
+                      <StatusEditCell
+                        mondayItemId={client.mondayItemId}
+                        status={mondayStatusToHub(client.campaignStatus, client.boardType)}
+                        readOnly={client.boardType === "onboarding"}
+                      />
                     </TableCell>
                     {boardType === "onboarding" && (
                       <TableCell className="text-xs text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
@@ -644,10 +642,33 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                       )}
                     </TableCell>
                     {/* People section */}
-                    <TableCell>{client.accountManager && <ManagerAvatar name={client.accountManager} />}</TableCell>
-                    <TableCell>{client.campaignManager && <ManagerAvatar name={client.campaignManager} />}</TableCell>
+                    <TableCell>
+                      <PersonEditCell
+                        mondayItemId={client.mondayItemId}
+                        fieldKey="account_manager"
+                        value={client.accountManager}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <PersonEditCell
+                        mondayItemId={client.mondayItemId}
+                        fieldKey="campaign_manager"
+                        value={client.campaignManager}
+                      />
+                    </TableCell>
                     <TableCell className={boardType === "current" ? "border-r border-border/40" : ""}>
-                      {client.appointmentSetter && <ManagerAvatar name={client.appointmentSetter} />}
+                      {boardType === "current" ? (
+                        <PersonEditCell
+                          mondayItemId={client.mondayItemId}
+                          fieldKey="appointment_setter"
+                          value={client.appointmentSetter}
+                          multi
+                        />
+                      ) : (
+                        client.appointmentSetter && (
+                          <span className="text-xs text-muted-foreground">{client.appointmentSetter}</span>
+                        )
+                      )}
                     </TableCell>
                     {/* KPI section (current only) */}
                     {boardType === "current" && (

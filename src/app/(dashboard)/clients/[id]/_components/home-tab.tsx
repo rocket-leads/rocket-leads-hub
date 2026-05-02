@@ -1,0 +1,710 @@
+"use client"
+
+import { useMemo } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { subDays } from "date-fns"
+import {
+  Euro,
+  Users,
+  CreditCard,
+  Activity,
+  ChevronRight,
+  ListTodo,
+  TrendingUp,
+  TrendingDown,
+  Sparkles,
+  CalendarClock,
+  Trophy,
+  Radio,
+} from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
+import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
+import { categorize, type WatchCategory } from "@/lib/watchlist/categorize"
+import type { KpiResult } from "@/lib/clients/kpis"
+import type { KpiSummary } from "@/app/api/kpi-summaries/route"
+import type { MondayClient } from "@/lib/integrations/monday"
+import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
+import type { InboxItem } from "@/types/inbox"
+import type { WatchlistExpandResponse } from "@/app/api/watchlist/[id]/expand/route"
+
+type Props = {
+  client: MondayClient
+  supabaseClientId: string
+  canViewBilling: boolean
+  canViewCampaigns: boolean
+  onNavigateToCampaigns: () => void
+  onNavigateToInbox: () => void
+  onNavigateToBilling: () => void
+}
+
+type LeadAnalysisVerdict = "good" | "neutral" | "concerning"
+
+type LeadAnalysisSection = {
+  verdict: LeadAnalysisVerdict
+  headline: string
+  detail: string
+  patterns?: string[]
+}
+
+type ProposalResponse = {
+  cached?: boolean
+  leadAnalysis?: { quantity: LeadAnalysisSection; quality: LeadAnalysisSection } | null
+}
+
+const HEALTH_TONES: Record<WatchCategory, { bg: string; border: string; text: string; dot: string; label: string }> = {
+  action: {
+    bg: "bg-red-500/10",
+    border: "border-red-500/40",
+    text: "text-red-500 dark:text-red-400",
+    dot: "bg-red-500",
+    label: "Action",
+  },
+  watch: {
+    bg: "bg-amber-500/10",
+    border: "border-amber-500/40",
+    text: "text-amber-600 dark:text-amber-400",
+    dot: "bg-amber-500",
+    label: "Watch",
+  },
+  good: {
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/40",
+    text: "text-emerald-600 dark:text-emerald-400",
+    dot: "bg-emerald-500",
+    label: "Healthy",
+  },
+  "no-data": {
+    bg: "bg-muted/30",
+    border: "border-border/60",
+    text: "text-muted-foreground",
+    dot: "bg-muted-foreground/40",
+    label: "No data",
+  },
+}
+
+const VERDICT_TONES: Record<LeadAnalysisVerdict, { pill: string; bg: string; border: string }> = {
+  good: { pill: "bg-emerald-500/10 text-emerald-500", bg: "bg-emerald-500/5", border: "border-emerald-500/20" },
+  neutral: { pill: "bg-amber-500/10 text-amber-500", bg: "bg-amber-500/5", border: "border-amber-500/20" },
+  concerning: { pill: "bg-red-500/10 text-red-500", bg: "bg-red-500/5", border: "border-red-500/20" },
+}
+
+function fmtCurrency(n: number): string {
+  if (!isFinite(n) || n === 0) return "—"
+  return `€${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function fmtInt(n: number): string {
+  if (!isFinite(n) || n === 0) return "—"
+  return n.toLocaleString("en-GB")
+}
+
+function fmtCurrencyShort(n: number): string {
+  return `€${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
+}
+
+function summarizePayments(invoices: InvoiceRow[] | undefined) {
+  if (!invoices) return null
+  const overdue = invoices.filter((i) => i.status === "overdue")
+  const open = invoices.filter((i) => i.status === "open")
+  if (overdue.length > 0) {
+    return {
+      kind: "overdue" as const,
+      count: overdue.length,
+      amount: overdue.reduce((s, i) => s + (i.amountDue - i.amountPaid), 0),
+    }
+  }
+  if (open.length > 0) {
+    return {
+      kind: "open" as const,
+      count: open.length,
+      amount: open.reduce((s, i) => s + (i.amountDue - i.amountPaid), 0),
+    }
+  }
+  return { kind: "complete" as const }
+}
+
+function KpiCard({
+  label,
+  icon: Icon,
+  value,
+  loading,
+}: {
+  label: string
+  icon: typeof Euro
+  value: string
+  loading?: boolean
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">{label}</span>
+        </div>
+        {loading ? (
+          <Skeleton className="h-7 w-24" />
+        ) : (
+          <p className="text-2xl font-heading font-bold tracking-tight tabular-nums">{value}</p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function HealthCard({
+  category,
+  insight,
+  loading,
+}: {
+  category: WatchCategory
+  insight: string
+  loading?: boolean
+}) {
+  const tone = HEALTH_TONES[category]
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-4 space-y-2">
+          <Skeleton className="h-4 w-16" />
+          <Skeleton className="h-7 w-20" />
+          <Skeleton className="h-3 w-32" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className={`overflow-hidden ${tone.bg} ${tone.border} border`}>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Activity className={`h-3.5 w-3.5 ${tone.text}`} />
+          <span className={`text-[11px] uppercase tracking-wider font-medium ${tone.text}`}>Health</span>
+        </div>
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+          <p className={`text-2xl font-heading font-bold tracking-tight ${tone.text}`}>{tone.label}</p>
+        </div>
+        <p className={`text-[11px] leading-snug ${tone.text} opacity-80`}>{insight}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function LeadAnalysisCard({
+  section,
+  loading,
+  onSeeFull,
+}: {
+  section: LeadAnalysisSection | null
+  loading: boolean
+  onSeeFull: () => void
+}) {
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-4 space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-2/3" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!section) {
+    return (
+      <button
+        type="button"
+        onClick={onSeeFull}
+        className="block w-full text-left rounded-xl border border-border/60 bg-card hover:bg-muted/40 hover:border-border hover:shadow-sm transition-all duration-150 cursor-pointer group p-4"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground/70">
+            No lead analysis available yet — open Campaigns to generate.
+          </p>
+          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors shrink-0">
+            See full proposal
+            <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+          </span>
+        </div>
+      </button>
+    )
+  }
+
+  const tone = VERDICT_TONES[section.verdict]
+
+  return (
+    <button
+      type="button"
+      onClick={onSeeFull}
+      className={`block w-full text-left rounded-xl border ${tone.bg} ${tone.border} hover:brightness-110 hover:shadow-sm transition-all duration-150 cursor-pointer group p-4`}
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Sparkles className="h-3.5 w-3.5 text-muted-foreground/60" />
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
+            Lead Analysis · Quantity
+          </span>
+          <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tone.pill}`}>
+            {section.verdict}
+          </span>
+        </div>
+      </div>
+      <p className="text-sm font-medium mb-1.5">{section.headline}</p>
+      <p className="text-xs text-muted-foreground/80 leading-relaxed mb-3">{section.detail}</p>
+      <div className="flex items-center justify-end">
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors">
+          See full proposal
+          <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+        </span>
+      </div>
+    </button>
+  )
+}
+
+function TopAdsCard({
+  ads,
+  loading,
+}: {
+  ads: WatchlistExpandResponse["topAds"] | undefined
+  loading: boolean
+}) {
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-4 space-y-2">
+          <Skeleton className="h-4 w-32" />
+          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-5 w-full" />)}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-3.5 w-3.5 text-muted-foreground/60" />
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
+              Top Performing Ads
+            </span>
+          </div>
+          <span className="text-[10px] text-muted-foreground/40">By spend (30d) · color = vs account avg CPL</span>
+        </div>
+
+        {!ads || ads.length === 0 ? (
+          <p className="text-[12px] text-muted-foreground/60 italic py-2">
+            No ads with meaningful spend in the last 30d.
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {ads.map((ad) => {
+              const cplLabel = ad.leads > 0 && ad.cpl > 0 ? `€${ad.cpl.toFixed(2)}` : "—"
+              const cplColor =
+                ad.verdict === "winner"
+                  ? "text-emerald-500"
+                  : ad.verdict === "loser"
+                    ? "text-red-500"
+                    : "text-muted-foreground"
+              return (
+                <li key={ad.adName} className="flex items-baseline justify-between gap-3 text-[12px]">
+                  <span className="text-foreground/85 truncate flex-1 min-w-0" title={ad.adName}>
+                    {ad.adName}
+                  </span>
+                  <span className="text-muted-foreground/60 tabular-nums shrink-0">
+                    €{ad.spend.toFixed(0)} · {ad.leads}L
+                  </span>
+                  <span className={`tabular-nums font-medium shrink-0 ${cplColor}`}>{cplLabel}</span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ActivitySummaryCard({
+  summary,
+  loading,
+}: {
+  summary: string | null | undefined
+  loading: boolean
+}) {
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-4 space-y-2">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-3/4" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Radio className="h-3.5 w-3.5 text-muted-foreground/60" />
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
+              Activity Summary
+            </span>
+          </div>
+          <span className="text-[10px] text-muted-foreground/40">
+            Monday CRM · Current Clients · Trengo (14d)
+          </span>
+        </div>
+
+        {summary ? (
+          <p className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
+            {summary}
+          </p>
+        ) : (
+          <p className="text-[12px] text-muted-foreground/60 italic py-2">
+            No client communication or CRM activity in the last 14d.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function PaymentBanner({
+  summary,
+  loading,
+  onClick,
+}: {
+  summary: ReturnType<typeof summarizePayments> | null
+  loading: boolean
+  onClick: () => void
+}) {
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-4">
+          <Skeleton className="h-5 w-40" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!summary) {
+    return (
+      <Card>
+        <CardContent className="p-4 text-sm text-muted-foreground/60">No Stripe customer linked.</CardContent>
+      </Card>
+    )
+  }
+
+  const tone = (() => {
+    if (summary.kind === "complete") return { bg: "bg-emerald-500/10", border: "border-emerald-500/40", text: "text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500" }
+    if (summary.kind === "open") return { bg: "bg-amber-500/10", border: "border-amber-500/40", text: "text-amber-600 dark:text-amber-400", dot: "bg-amber-500" }
+    return { bg: "bg-red-500/10", border: "border-red-500/40", text: "text-red-500 dark:text-red-400", dot: "bg-red-500" }
+  })()
+
+  const label = (() => {
+    if (summary.kind === "complete") return "Paid up — no open or overdue invoices"
+    if (summary.kind === "open") return `${summary.count} open ${summary.count === 1 ? "invoice" : "invoices"} · ${fmtCurrencyShort(summary.amount)} outstanding`
+    return `${summary.count} overdue ${summary.count === 1 ? "invoice" : "invoices"} · ${fmtCurrencyShort(summary.amount)} outstanding`
+  })()
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left ${tone.bg} ${tone.border} border rounded-xl px-4 py-3.5 hover:brightness-110 hover:shadow-sm transition-all duration-150 cursor-pointer group`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className={`h-9 w-9 rounded-lg ${tone.bg} flex items-center justify-center`}>
+            <CreditCard className={`h-4 w-4 ${tone.text}`} />
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-0.5">Payment</p>
+            <p className={`text-sm font-semibold ${tone.text}`}>{label}</p>
+          </div>
+        </div>
+        <span className={`inline-flex items-center gap-1 text-[11px] ${tone.text} opacity-60 group-hover:opacity-100 transition-opacity shrink-0`}>
+          Open billing
+          <ChevronRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+        </span>
+      </div>
+    </button>
+  )
+}
+
+function relativeDue(due: string | null): { label: string; tone: string } {
+  if (!due) return { label: "No due date", tone: "text-muted-foreground/60" }
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const target = new Date(due); target.setHours(0, 0, 0, 0)
+  const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  if (diffDays < 0) return { label: `${Math.abs(diffDays)}d overdue`, tone: "text-red-500" }
+  if (diffDays === 0) return { label: "Due today", tone: "text-amber-500" }
+  if (diffDays === 1) return { label: "Due tomorrow", tone: "text-amber-500" }
+  if (diffDays <= 7) return { label: `Due in ${diffDays}d`, tone: "text-foreground/70" }
+  return { label: `Due ${due}`, tone: "text-muted-foreground/60" }
+}
+
+function TasksList({
+  tasks,
+  loading,
+  onSeeAll,
+}: {
+  tasks: InboxItem[]
+  loading: boolean
+  onSeeAll: () => void
+}) {
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-4 space-y-2">
+          <Skeleton className="h-4 w-32" />
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Whole card is one big click target — keeps the hover/click semantics
+  // consistent with the Lead Analysis and Payment cards above. Individual
+  // tasks aren't separately clickable; they all route to the same place
+  // anyway, so adding nested buttons just adds noise.
+  return (
+    <button
+      type="button"
+      onClick={onSeeAll}
+      className="block w-full text-left rounded-xl border border-border/60 bg-card hover:bg-muted/40 hover:border-border hover:shadow-sm transition-all duration-150 cursor-pointer group p-4"
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <ListTodo className="h-3.5 w-3.5 text-muted-foreground/60" />
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
+            Open Tasks
+          </span>
+          {tasks.length > 0 && (
+            <span className="inline-flex items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-foreground/70">
+              {tasks.length}
+            </span>
+          )}
+        </div>
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors">
+          Open inbox
+          <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+        </span>
+      </div>
+
+      {tasks.length === 0 ? (
+        <p className="text-sm text-muted-foreground/60 py-4 text-center">No open tasks for this client.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {tasks.slice(0, 5).map((task) => {
+            const due = relativeDue(task.dueDate)
+            return (
+              <div
+                key={task.id}
+                className="flex items-center justify-between gap-3 rounded-md px-3 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{task.title}</p>
+                  <p className="text-[11px] text-muted-foreground/60">
+                    Assigned to {task.assigneeName}
+                  </p>
+                </div>
+                <span className={`inline-flex items-center gap-1 text-[11px] shrink-0 ${due.tone}`}>
+                  <CalendarClock className="h-3 w-3" />
+                  {due.label}
+                </span>
+              </div>
+            )
+          })}
+          {tasks.length > 5 && (
+            <p className="w-full text-center text-[11px] text-muted-foreground py-1.5">
+              +{tasks.length - 5} more
+            </p>
+          )}
+        </div>
+      )}
+    </button>
+  )
+}
+
+export function HomeTab({
+  client,
+  supabaseClientId,
+  canViewBilling,
+  canViewCampaigns,
+  onNavigateToCampaigns,
+  onNavigateToInbox,
+  onNavigateToBilling,
+}: Props) {
+  const { range, setRange, presets, applyPreset, formatDate } = useDateRange()
+  const startDateStr = formatDate(range.startDate)
+  const endDateStr = formatDate(range.endDate)
+  const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
+
+  // Period KPIs (AdSpend, Leads, CPL) — driven by the period selector.
+  const kpisQuery = useQuery<KpiResult>({
+    queryKey: ["kpis", client.mondayItemId, startDateStr, endDateStr],
+    queryFn: () => {
+      const p = new URLSearchParams({
+        startDate: startDateStr,
+        endDate: endDateStr,
+        ...(client.metaAdAccountId ? { adAccountId: client.metaAdAccountId } : {}),
+        ...(client.clientBoardId ? { clientBoardId: client.clientBoardId } : {}),
+      })
+      return fetch(`/api/clients/${client.mondayItemId}/kpis?${p}`).then((r) => r.json())
+    },
+    enabled: canViewCampaigns && (!!client.metaAdAccountId || !!client.clientBoardId),
+  })
+
+  // 7d KPI summary for the Health card — Watch List logic is anchored to a 7d
+  // window and a prev-7d trend, so it stays fixed regardless of the period
+  // selector above.
+  const summaryQuery = useQuery<Record<string, KpiSummary>>({
+    queryKey: ["kpi-summary-single", client.mondayItemId],
+    queryFn: () =>
+      fetch("/api/kpi-summaries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clients: [
+            {
+              mondayItemId: client.mondayItemId,
+              metaAdAccountId: client.metaAdAccountId || null,
+              clientBoardId: client.clientBoardId || null,
+            },
+          ],
+        }),
+      }).then((r) => r.json()),
+    enabled: canViewCampaigns && (!!client.metaAdAccountId || !!client.clientBoardId),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const kpiSummary = summaryQuery.data?.[client.mondayItemId]
+  const health = useMemo(() => categorize(client, kpiSummary), [client, kpiSummary])
+
+  // Lead Analysis (Quantity) — pulled from the cached AI proposal. Same source
+  // as the Campaigns tab uses; the full Quality + action items live there.
+  const proposalQuery = useQuery<ProposalResponse>({
+    queryKey: ["optimization-proposal", client.mondayItemId],
+    queryFn: () =>
+      fetch(`/api/clients/${client.mondayItemId}/optimization-proposal`).then((r) => r.json()),
+    enabled: canViewCampaigns,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Top ads (30d) + AI activity summary (Monday updates + Trengo, 14d). Reuses
+  // the watchlist expand endpoint — same data, different surface. Empty `insight`
+  // because we're not de-duping against a watchlist insight here.
+  const expandQuery = useQuery<WatchlistExpandResponse>({
+    queryKey: ["client-expand", client.mondayItemId],
+    queryFn: () =>
+      fetch(`/api/watchlist/${client.mondayItemId}/expand?insight=`).then((r) => r.json()),
+    enabled: canViewCampaigns && !!client.metaAdAccountId,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
+  const billingQuery = useQuery<Partial<BillingData>>({
+    queryKey: ["billing-check", client.mondayItemId],
+    queryFn: () =>
+      client.stripeCustomerId
+        ? fetch(`/api/clients/${client.mondayItemId}/billing?stripeCustomerId=${client.stripeCustomerId}`).then((r) => r.json())
+        : Promise.resolve({}),
+    enabled: !!client.stripeCustomerId && canViewBilling,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const tasksQuery = useQuery<{ items: InboxItem[] }>({
+    queryKey: ["client-tasks", supabaseClientId],
+    queryFn: () =>
+      fetch(`/api/inbox?kind=task&clientId=${supabaseClientId}&statuses=open,in_progress`).then((r) => r.json()),
+    enabled: !!supabaseClientId,
+    staleTime: 60 * 1000,
+  })
+
+  const paymentSummary = summarizePayments(billingQuery.data?.invoices)
+
+  const adSpendValue = kpisQuery.data?.adSpend ?? 0
+  const leadsValue = kpisQuery.data?.leads ?? 0
+  const cplValue = kpisQuery.data?.costPerLead ?? 0
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center gap-3 flex-wrap">
+        <DateRangePicker
+          startDate={range.startDate}
+          endDate={range.endDate}
+          onChange={setRange}
+          maxDate={maxPickerDate}
+        />
+        <div className="flex gap-1 flex-wrap">
+          {presets.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => applyPreset(preset)}
+              className="h-8 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Ad Spend" icon={Euro} value={fmtCurrency(adSpendValue)} loading={kpisQuery.isLoading} />
+        <KpiCard label="Leads" icon={Users} value={fmtInt(leadsValue)} loading={kpisQuery.isLoading} />
+        <KpiCard
+          label="CPL"
+          icon={cplValue > 0 ? TrendingDown : TrendingUp}
+          value={fmtCurrency(cplValue)}
+          loading={kpisQuery.isLoading}
+        />
+        <HealthCard
+          category={health.category}
+          insight={health.insight}
+          loading={summaryQuery.isLoading && !kpiSummary}
+        />
+      </div>
+
+      <LeadAnalysisCard
+        section={proposalQuery.data?.leadAnalysis?.quantity ?? null}
+        loading={proposalQuery.isLoading}
+        onSeeFull={onNavigateToCampaigns}
+      />
+
+      {canViewCampaigns && client.metaAdAccountId && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <TopAdsCard ads={expandQuery.data?.topAds} loading={expandQuery.isLoading} />
+          <ActivitySummaryCard summary={expandQuery.data?.aiSummary} loading={expandQuery.isLoading} />
+        </div>
+      )}
+
+      {client.stripeCustomerId && canViewBilling && (
+        <PaymentBanner
+          summary={paymentSummary}
+          loading={billingQuery.isLoading}
+          onClick={onNavigateToBilling}
+        />
+      )}
+
+      <TasksList
+        tasks={tasksQuery.data?.items ?? []}
+        loading={tasksQuery.isLoading}
+        onSeeAll={onNavigateToInbox}
+      />
+    </div>
+  )
+}

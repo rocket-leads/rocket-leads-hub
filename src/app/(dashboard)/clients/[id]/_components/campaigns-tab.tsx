@@ -1,13 +1,15 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useMemo } from "react"
 import dynamic from "next/dynamic"
 import { useQuery } from "@tanstack/react-query"
+import { subDays } from "date-fns"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { DateFilter, defaultDateRange, type DateRange } from "./date-filter"
 import { KpiCards } from "./kpi-cards"
 import { UtmTable } from "./utm-table"
+import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
+import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -36,7 +38,10 @@ type Props = {
 }
 
 export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, clientName, boardType, onNavigateToSettings, regenerateSignal }: Props) {
-  const [dateRange, setDateRange] = useState<DateRange>(defaultDateRange)
+  const { range, setRange, presets, applyPreset, formatDate } = useDateRange()
+  const startDateStr = formatDate(range.startDate)
+  const endDateStr = formatDate(range.endDate)
+  const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
 
   const campaignsQuery = useQuery<{ campaigns: CampaignWithSelection[] }>({
     queryKey: ["campaigns", mondayItemId],
@@ -51,11 +56,11 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
   )
 
   const kpisQuery = useQuery<KpiResult>({
-    queryKey: ["kpis", mondayItemId, dateRange.startDate, dateRange.endDate, selectedIds],
+    queryKey: ["kpis", mondayItemId, startDateStr, endDateStr, selectedIds],
     queryFn: () => {
       const p = new URLSearchParams({
-        startDate: dateRange.startDate,
-        endDate: dateRange.endDate,
+        startDate: startDateStr,
+        endDate: endDateStr,
         ...(metaAdAccountId ? { adAccountId: metaAdAccountId } : {}),
         ...(clientBoardId ? { clientBoardId } : {}),
         ...(selectedIds.length > 0 ? { selectedCampaignIds: selectedIds.join(",") } : {}),
@@ -111,7 +116,37 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
 
   return (
     <div className="space-y-6">
-      {/* Campaign Analysis — top of page */}
+      {/* Date filter + KPIs at the top — what the CM looks at first */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <DateRangePicker
+          startDate={range.startDate}
+          endDate={range.endDate}
+          onChange={setRange}
+          maxDate={maxPickerDate}
+        />
+        <div className="flex gap-1 flex-wrap">
+          {presets.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => applyPreset(preset)}
+              className="h-8 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <Separator />
+
+      {kpisQuery.isError && (
+        <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
+      )}
+
+      <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
+
+      {/* AI Optimization Proposal — moved below KPIs since the numbers are
+          what the user looks at first; the AI commentary is supporting context. */}
       <CampaignAnalysis
         mondayItemId={mondayItemId}
         metaAdAccountId={metaAdAccountId}
@@ -121,18 +156,6 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
         boardType={boardType}
         regenerateSignal={regenerateSignal}
       />
-
-      {/* Date filter + KPIs */}
-      <div>
-        <DateFilter value={dateRange} onChange={(r) => setDateRange(r)} />
-      </div>
-      <Separator />
-
-      {kpisQuery.isError && (
-        <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
-      )}
-
-      <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
 
       {/* UTM breakdown */}
       {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (

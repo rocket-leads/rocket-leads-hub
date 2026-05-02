@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useMemo, useEffect, useRef } from "react"
+import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Sparkles, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb } from "lucide-react"
@@ -10,11 +10,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
-import type { WatchlistExpandResponse } from "@/app/api/watchlist/[id]/expand/route"
 import type { WatchlistStateResponse } from "@/app/api/watchlist/state/route"
 import type { WatchlistNarrativeResponse, WatchlistInsight } from "@/app/api/watchlist/narrative/route"
 import type { WatchlistScoreHistoryResponse } from "@/app/api/watchlist/score-history/route"
 import { categorize as sharedCategorize, severityScore as sharedSeverityScore, type WatchCategory as SharedWatchCategory } from "@/lib/watchlist/categorize"
+import { ClientSlideOver } from "@/app/(dashboard)/clients/_components/client-slide-over"
+import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 
 // --- Categorization ---
 //
@@ -138,159 +139,6 @@ const CATEGORY_CONFIG = {
     insightColor: "text-green-500",
   },
 } as const
-
-/**
- * Bigger 14-day CPL chart for the inline expand panel. Same data as `CplSparkline` but
- * with axis labels (min, max, first/last date) so the absolute scale is readable.
- */
-function CplChart({ trend }: { trend: KpiSummary["dailyTrend"] }) {
-  if (!trend || trend.length < 2) {
-    return <div className="text-xs text-muted-foreground/40 italic">No 14d trend data available</div>
-  }
-
-  const series: number[] = []
-  let last = 0
-  for (const d of trend) {
-    if (d.leads > 0) last = d.spend / d.leads
-    series.push(last)
-  }
-  if (series.every((v) => v === 0)) {
-    return <div className="text-xs text-muted-foreground/40 italic">No CPL data — no leads in the last 14d</div>
-  }
-
-  const max = Math.max(...series)
-  const min = Math.min(...series)
-  const range = max - min || 1
-  const w = 320
-  const h = 80
-  const padTop = 6
-  const padBottom = 6
-  const points = series
-    .map((v, i) => {
-      const x = (i / (series.length - 1)) * w
-      const y = padTop + (h - padTop - padBottom) - ((v - min) / range) * (h - padTop - padBottom)
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(" ")
-
-  const half = Math.floor(series.length / 2)
-  const prevAvg = series.slice(0, half).reduce((a, b) => a + b, 0) / Math.max(half, 1)
-  const currAvg = series.slice(half).reduce((a, b) => a + b, 0) / Math.max(series.length - half, 1)
-  const ratio = prevAvg > 0 ? currAvg / prevAvg : 1
-  const stroke = ratio >= 1.1 ? "rgb(248 113 113)" : ratio <= 0.9 ? "rgb(74 222 128)" : "rgb(148 163 184)"
-
-  return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between text-[10px] text-muted-foreground/60 tabular-nums">
-        <span>14-day CPL</span>
-        <span>min €{min.toFixed(2)} · max €{max.toFixed(2)}</span>
-      </div>
-      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block w-full max-w-[320px]">
-        <polyline points={points} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      <div className="flex items-baseline justify-between text-[10px] text-muted-foreground/40 tabular-nums">
-        <span>{trend[0].date}</span>
-        <span>{trend[trend.length - 1].date}</span>
-      </div>
-    </div>
-  )
-}
-
-function ExpandedRow({ client, insight }: { client: MondayClient; kpi: KpiSummary | undefined; insight: string }) {
-  const { data, isLoading } = useQuery<WatchlistExpandResponse>({
-    queryKey: ["watchlist-expand", client.mondayItemId, insight],
-    // Pass the visible Insight text to the endpoint so the AI summary won't repeat it.
-    queryFn: () =>
-      fetch(`/api/watchlist/${client.mondayItemId}/expand?insight=${encodeURIComponent(insight)}`).then((r) => r.json()),
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  })
-
-  return (
-    <div className="border-b border-border/10 bg-muted/[0.04] px-5 py-5">
-      {/* Open client — top-right of the panel */}
-      <div className="flex justify-end mb-3">
-        <Link
-          href={`/clients/${client.mondayItemId}?from=watchlist`}
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors whitespace-nowrap"
-        >
-          Open client
-          <ExternalLink className="h-3 w-3" />
-        </Link>
-      </div>
-
-      {/* Chart side-by-side with Top ads — keeps the panel compact and gives both signals
-          at the same eye-level. */}
-      <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-4 mb-4">
-        <div className="rounded-md border border-border/30 bg-muted/10 px-3.5 py-3">
-          {isLoading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : (
-            <CplChart trend={data?.dailyTrend} />
-          )}
-        </div>
-
-        <ExpandPanel title="Top ads (30d)" subtitle="By spend · color = vs account avg CPL">
-          {isLoading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : data?.topAds.length ? (
-            <ul className="space-y-1.5">
-              {data.topAds.map((ad) => (
-                <AdRow key={ad.adName} ad={ad} />
-              ))}
-            </ul>
-          ) : (
-            <p className="text-[11px] text-muted-foreground/50 italic">No ads with meaningful spend in the last 30d.</p>
-          )}
-        </ExpandPanel>
-      </div>
-
-      {/* AI activity summary — combines Monday lead board + Current Clients board + Trengo into one digest */}
-      <ExpandPanel title="Activity summary" subtitle="Monday CRM · Current Clients board · Trengo (14d)">
-        {isLoading ? (
-          <Skeleton className="h-12 w-full" />
-        ) : data?.aiSummary ? (
-          <div className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
-            {data.aiSummary}
-          </div>
-        ) : (
-          <p className="text-[11px] text-muted-foreground/50 italic">No client communication or CRM activity in the last 14d.</p>
-        )}
-      </ExpandPanel>
-    </div>
-  )
-}
-
-function ExpandPanel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-md border border-border/30 bg-muted/10 px-3.5 py-3">
-      <div className="flex items-baseline justify-between mb-2">
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">{title}</p>
-        <p className="text-[9px] text-muted-foreground/40">{subtitle}</p>
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function AdRow({ ad }: { ad: WatchlistExpandResponse["topAds"][number] }) {
-  const cplLabel = ad.leads > 0 && ad.cpl > 0 ? `€${ad.cpl.toFixed(2)}` : "—"
-  // Verdict drives the CPL color. Neutral stays muted — only clear winners/losers
-  // get a strong color so the eye actually trusts the signal.
-  const cplColor =
-    ad.verdict === "winner"
-      ? "text-green-400"
-      : ad.verdict === "loser"
-        ? "text-red-400"
-        : "text-muted-foreground"
-  return (
-    <li className="flex items-baseline justify-between gap-3 text-[11px]">
-      <span className="text-foreground/80 truncate flex-1 min-w-0" title={ad.adName}>{ad.adName}</span>
-      <span className="text-muted-foreground/60 tabular-nums shrink-0">€{ad.spend.toFixed(0)} · {ad.leads}L</span>
-      <span className={`tabular-nums font-medium shrink-0 ${cplColor}`}>{cplLabel}</span>
-    </li>
-  )
-}
 
 /**
  * Compact "how long has this client been in this bucket" indicator. Sits inline next
@@ -472,25 +320,17 @@ function WatchSection({
   items,
   aiNotes,
   defaultOpen,
+  onSelectClient,
 }: {
   category: "action" | "watch" | "good"
   items: CategorizedClient[]
   aiNotes: Record<string, string>
   defaultOpen: boolean
+  onSelectClient: (mondayItemId: string) => void
 }) {
   const [open, setOpen] = useState(defaultOpen)
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const config = CATEGORY_CONFIG[category]
   const Icon = config.icon
-
-  function toggleRow(id: string) {
-    setExpandedRows((s) => {
-      const next = new Set(s)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
 
   if (items.length === 0) return null
 
@@ -522,29 +362,26 @@ function WatchSection({
             <span className="text-[13px] text-foreground/80 font-semibold">CPL</span>
             <span className="text-[13px] text-foreground/80 font-semibold">Appts</span>
             <span className="text-[13px] text-foreground/80 font-semibold">14d CPL</span>
-            <span />
           </div>
 
           {/* Rows */}
           {items.map(({ client, insight, kpi, daysInBucket, isNewToday }) => {
             const note = aiNotes[client.mondayItemId]
             const id = client.mondayItemId
-            const isExpanded = expandedRows.has(id)
 
             return (
               <div key={id}>
                 <div
                   role="button"
                   tabIndex={0}
-                  aria-expanded={isExpanded}
-                  onClick={() => toggleRow(id)}
+                  onClick={() => onSelectClient(id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault()
-                      toggleRow(id)
+                      onSelectClient(id)
                     }
                   }}
-                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_70px_32px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
+                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_70px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
                 >
                   {/* Client */}
                   <div className="min-w-0">
@@ -597,14 +434,7 @@ function WatchSection({
                   <span className="flex items-center">
                     <CplSparkline trend={kpi?.dailyTrend} />
                   </span>
-
-                  {/* Expand chevron */}
-                  <span className="text-muted-foreground/40 flex justify-center">
-                    {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                  </span>
                 </div>
-
-                {isExpanded && <ExpandedRow client={client} kpi={kpi} insight={insight} />}
               </div>
             )
           })}
@@ -682,11 +512,40 @@ function NoDataSection({
 type Props = {
   clients: MondayClient[]
   userName: string
+  currentUser: CurrentUser | null
 }
 
-export function WatchListDashboard({ clients }: Props) {
+export function WatchListDashboard({ clients, currentUser }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
+  const selectedClientId = searchParams.get("client")
+
+  const handleSelectClient = useCallback(
+    (mondayItemId: string) => {
+      const params = new URLSearchParams(searchParams.toString())
+      params.set("client", mondayItemId)
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+    },
+    [router, pathname, searchParams],
+  )
+
+  const handleClosePanel = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("client")
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [router, pathname, searchParams])
+
+  // Lock body scroll while the slide-over is open.
+  useEffect(() => {
+    if (!selectedClientId) return
+    const original = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => { document.body.style.overflow = original }
+  }, [selectedClientId])
+
   const [cmFilter, setCmFilter] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [aiNotes, setAiNotes] = useState<Record<string, string>>({})
@@ -1137,12 +996,14 @@ export function WatchListDashboard({ clients }: Props) {
           items={categorized.action}
           aiNotes={aiNotes}
           defaultOpen={true}
+          onSelectClient={handleSelectClient}
         />
         <WatchSection
           category="watch"
           items={categorized.watch}
           aiNotes={aiNotes}
           defaultOpen={true}
+          onSelectClient={handleSelectClient}
         />
         <NoDataSection
           items={categorized.noData}
@@ -1153,8 +1014,17 @@ export function WatchListDashboard({ clients }: Props) {
           items={categorized.good}
           aiNotes={aiNotes}
           defaultOpen={false}
+          onSelectClient={handleSelectClient}
         />
       </div>
+
+      {currentUser && (
+        <ClientSlideOver
+          clientId={selectedClientId}
+          onClose={handleClosePanel}
+          currentUser={currentUser}
+        />
+      )}
     </div>
   )
 }

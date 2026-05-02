@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { encrypt } from "@/lib/encryption"
 import { revalidatePath } from "next/cache"
 import type { NotificationKey } from "@/lib/slack/notification-config"
+import { DEFAULT_INBOX_AUTOMATION_RULES } from "./types"
+import type { MondayRole, InboxAutomationRules } from "./types"
 
 async function requireAdmin() {
   const session = await auth()
@@ -158,8 +160,6 @@ export async function updateUserRole(userId: string, role: "admin" | "member" | 
   revalidatePath("/settings")
 }
 
-export type MondayRole = "account_manager" | "campaign_manager" | "appointment_setter"
-
 export async function inviteUser(input: {
   email: string
   role: "admin" | "member" | "guest"
@@ -232,6 +232,53 @@ export async function setUserMondayMapping(
 
   revalidatePath("/settings")
   revalidatePath("/clients")
+}
+
+/**
+ * Toggle a single inbox automation rule. Stored under a single settings row
+ * so adding new rules is just adding new keys here + new logic in the cron.
+ */
+export async function setInboxAutomationRule(
+  rule: keyof InboxAutomationRules,
+  enabled: boolean,
+) {
+  await requireAdmin()
+  const supabase = await createAdminClient()
+
+  const { data: existing } = await supabase
+    .from("settings")
+    .select("value")
+    .eq("key", "inbox_automation_rules")
+    .maybeSingle()
+  const current = (existing?.value ?? {}) as Partial<InboxAutomationRules>
+  const merged: InboxAutomationRules = {
+    ...DEFAULT_INBOX_AUTOMATION_RULES,
+    ...current,
+    [rule]: enabled,
+  }
+
+  const { error } = await supabase.from("settings").upsert({
+    key: "inbox_automation_rules",
+    value: merged,
+    updated_at: new Date().toISOString(),
+  })
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
+/**
+ * Manually trigger the inbox automations cron. Same code path as the daily
+ * Vercel cron — useful for verifying a rule end-to-end without waiting for the
+ * 07:00 UTC slot. Admin-only. Runs server-side, returns the structured result
+ * so the UI can show what was created/skipped.
+ */
+export async function triggerInboxAutomationsNow() {
+  await requireAdmin()
+  const { runInboxAutomations } = await import("@/lib/inbox/automations")
+  const result = await runInboxAutomations()
+  revalidatePath("/inbox")
+  revalidatePath("/settings")
+  return result
 }
 
 export async function removeUser(userId: string) {

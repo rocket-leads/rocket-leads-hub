@@ -1,106 +1,16 @@
-import { Suspense } from "react"
-import { auth } from "@/lib/auth"
-import { fetchClientById } from "@/lib/integrations/monday"
-import { syncClientToSupabase } from "@/lib/clients/sync"
-import { getClientAccess } from "@/lib/clients/access"
-import { ClientHeader } from "./_components/client-header"
-import { ClientTabs } from "./_components/client-tabs"
-import { Skeleton } from "@/components/ui/skeleton"
-import { notFound, redirect } from "next/navigation"
-import Link from "next/link"
+import { redirect } from "next/navigation"
 
-function ClientDetailLoading() {
-  return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-4 w-40" />
-      </div>
-      <Skeleton className="h-10 w-80" />
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24" />)}
-        </div>
-        <Skeleton className="h-64 w-full" />
-      </div>
-    </div>
-  )
-}
-
-async function ClientDetailData({ id }: { id: string }) {
-  const session = await auth()
-  if (!session?.user?.id) redirect("/auth/signin")
-
-  let client = null
-  let error: string | null = null
-
-  try {
-    client = await fetchClientById(id)
-    if (!client) return notFound()
-  } catch (e) {
-    error = e instanceof Error ? e.message : "Failed to load client"
-  }
-
-  // Await sync so API routes can reliably query Supabase
-  let supabaseClientId = ""
-  if (client) {
-    try {
-      supabaseClientId = await syncClientToSupabase(client)
-    } catch (e) {
-      console.error("Supabase sync failed:", e)
-    }
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-        {error}{" "}
-        {error.includes("token") && (
-          <Link href="/settings" className="underline font-medium">
-            Go to Settings
-          </Link>
-        )}
-      </div>
-    )
-  }
-
-  if (!client) return notFound()
-
-  const access = await getClientAccess(
-    session.user.id,
-    session.user.role ?? "member",
-    client.mondayItemId
-  )
-
-  return (
-    <>
-      <ClientHeader client={client} />
-      <ClientTabs
-        client={client}
-        supabaseClientId={supabaseClientId}
-        access={access}
-        currentUser={{
-          id: session.user.id,
-          name: session.user.name ?? session.user.email,
-          role: session.user.role ?? "member",
-        }}
-      />
-    </>
-  )
-}
-
-export default async function ClientDetailPage({
+/**
+ * Legacy client detail route. The Hub no longer uses a standalone client page —
+ * clicking a client opens a slide-over panel on /clients?client=<id>. This
+ * route exists as a redirect so old bookmarks and external deep links keep
+ * working without 404'ing.
+ */
+export default async function ClientRedirectPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-
-  return (
-    <div className="max-w-7xl mx-auto">
-      <Suspense fallback={<ClientDetailLoading />}>
-        <ClientDetailData id={id} />
-      </Suspense>
-    </div>
-  )
+  redirect(`/clients?client=${encodeURIComponent(id)}`)
 }

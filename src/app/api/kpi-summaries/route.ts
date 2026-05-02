@@ -16,6 +16,16 @@ export type KpiSummary = {
   costPerAppointment: number
   prevCpl: number
   prevCostPerAppointment: number
+  /**
+   * True when the prior comparison window was substantially live (≥80% of its
+   * days had ad spend or Monday leads, and total spend > 0). When false, the UI
+   * MUST hide CPL / CPA change indicators — a freshly-launched client compared
+   * against a window where they weren't live yet would otherwise read as a wild
+   * +/-100% swing that's purely an artefact of the launch date. Optional for
+   * backwards-compat with older cached entries; missing → treat as reliable so
+   * we don't regress until the cron rewrites the cache.
+   */
+  prevPeriodReliable?: boolean
   /** True when client uses RL ad account but has no campaigns selected — data should be ignored */
   rlAccountNoCampaign?: boolean
   /** True when leads come from Meta `actions` because Monday returned no usable data */
@@ -100,6 +110,35 @@ function getPreviousRange(startDate: string, endDate: string): { startDate: stri
   return { startDate: fmtDate(prevStart), endDate: fmtDate(prevEnd) }
 }
 
+/** Threshold for "prev period had substantial activity" — see KpiSummary.prevPeriodReliable. */
+export const PREV_PERIOD_COVERAGE_THRESHOLD = 0.8
+
+function daysBetween(startDate: string, endDate: string): number {
+  const start = new Date(startDate + "T00:00:00Z").getTime()
+  const end = new Date(endDate + "T00:00:00Z").getTime()
+  return Math.round((end - start) / 86400000) + 1
+}
+
+/**
+ * Returns true when the prev period was live for ≥80% of its days AND had
+ * total spend > 0. Both conditions matter — a single high-spend day in an
+ * otherwise-dead window passes "spend > 0" but fails the coverage check.
+ *
+ * Exported so the cron writes the same flag the live path returns — keeping
+ * a single source of truth for the threshold.
+ */
+export function isPrevPeriodReliable(
+  prevStartDate: string,
+  prevEndDate: string,
+  prevDaysWithActivity: number,
+  prevAdSpend: number,
+): boolean {
+  const totalDays = daysBetween(prevStartDate, prevEndDate)
+  if (totalDays <= 0) return false
+  if (prevAdSpend <= 0) return false
+  return prevDaysWithActivity / totalDays >= PREV_PERIOD_COVERAGE_THRESHOLD
+}
+
 /**
  * Aggregate per-day rollups for one client into a KpiSummary for the given window.
  * Mirrors the cron's window-level logic: metaFallback applies when Monday reports zero
@@ -136,6 +175,13 @@ function aggregateDailyToSummary(
   const costPerAppointment = appointments > 0 ? adSpend / appointments : 0
   const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
+  // Coverage = days in prev window that had any spend or (when CRM is connected) any
+  // Monday lead. dense rollups means `prev.length` is the full window length.
+  const prevDaysWithActivity = prev.filter(
+    (d) => d.spend > 0 || (daily.mondayCrmConnected && d.mondayLeads > 0),
+  ).length
+  const prevPeriodReliable = isPrevPeriodReliable(prevStartDate, prevEndDate, prevDaysWithActivity, prevAdSpend)
+
   return {
     adSpend,
     leads,
@@ -144,6 +190,7 @@ function aggregateDailyToSummary(
     costPerAppointment,
     prevCpl,
     prevCostPerAppointment,
+    prevPeriodReliable,
     ...(daily.rlAccountNoCampaign ? { rlAccountNoCampaign: true } : {}),
     ...(metaFallback ? { metaFallback: true } : {}),
     mondayCrmConnected: daily.mondayCrmConnected,
@@ -263,6 +310,21 @@ async function fetchSummary(
   const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
   const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
+  // Coverage check on the prev window — Meta data is sparse (no row for zero-spend
+  // days), so we collect distinct dates that had spend and union them with Monday
+  // lead dates when CRM is connected. Both contribute to "the client was live that
+  // day" since either signal proves activity.
+  const prevActiveDates = new Set<string>()
+  for (const d of dailyFiltered) {
+    if (d.spend > 0 && d.date >= prevStartDate && d.date <= prevEndDate) prevActiveDates.add(d.date)
+  }
+  if (monday.ok) {
+    for (const item of items) {
+      if (item.dateCreated >= prevStartDate && item.dateCreated <= prevEndDate) prevActiveDates.add(item.dateCreated)
+    }
+  }
+  const prevPeriodReliable = isPrevPeriodReliable(prevStartDate, prevEndDate, prevActiveDates.size, prevAdSpend)
+
   // Build the 14d sparkline trend. Spend comes from Meta directly; daily leads come from
   // Monday when the CRM is connected, otherwise we fall back to Meta's per-day lead count
   // (mirrors the metaFallback rule applied to the 7d total).
@@ -290,6 +352,7 @@ async function fetchSummary(
       costPerAppointment: appointments > 0 ? adSpend / appointments : 0,
       prevCpl,
       prevCostPerAppointment,
+      prevPeriodReliable,
       ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
       ...(metaFallback ? { metaFallback: true } : {}),
       mondayCrmConnected: monday.ok,

@@ -32,7 +32,21 @@ async function WatchListData() {
   // Only Live clients are relevant for the watch list
   const active = current.filter((c) => c.campaignStatus === "Live")
 
-  return <WatchListDashboard clients={active} userName={session?.user?.name ?? "there"} />
+  const currentUser = session?.user?.id
+    ? {
+        id: session.user.id,
+        name: session.user.name ?? session.user.email,
+        role: session.user.role ?? "member",
+      }
+    : null
+
+  return (
+    <WatchListDashboard
+      clients={active}
+      userName={session?.user?.name ?? "there"}
+      currentUser={currentUser}
+    />
+  )
 }
 
 export default function WatchListPage() {

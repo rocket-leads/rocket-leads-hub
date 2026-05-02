@@ -18,8 +18,8 @@ import {
   setUserMondayMapping,
   updateUserRole,
   updateUserSlackId,
-  type MondayRole,
 } from "../actions"
+import type { MondayRole } from "../types"
 
 type Role = "admin" | "member" | "guest"
 

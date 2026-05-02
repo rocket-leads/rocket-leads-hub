@@ -2,7 +2,11 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { SettingsTabs } from "./_components/settings-tabs"
-import type { MondayRole } from "./actions"
+import {
+  DEFAULT_INBOX_AUTOMATION_RULES,
+  type InboxAutomationRules,
+  type MondayRole,
+} from "./types"
 import { ApiHealthBar } from "./_components/api-health-bar"
 import { fetchAllItems, fetchBothBoards, getToken as getMondayToken } from "@/lib/integrations/monday"
 import { getSlackChannels } from "@/lib/slack"
@@ -19,6 +23,7 @@ export default async function SettingsPage() {
     { data: users },
     { data: columnMappings },
     { data: closerMappingsRows },
+    { data: automationRulesRow },
     slackChannels,
   ] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
@@ -26,6 +31,7 @@ export default async function SettingsPage() {
     supabase.from("users").select("id, email, name, role, slack_user_id, created_at").order("created_at"),
     supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
     supabase.from("closer_slack_mappings").select("monday_person_name, slack_user_id"),
+    supabase.from("settings").select("value").eq("key", "inbox_automation_rules").maybeSingle(),
     getSlackChannels(),
   ])
 
@@ -33,9 +39,10 @@ export default async function SettingsPage() {
   const ACTIVE_STATUSES = new Set(["Kick off", "In development", "Live"])
   let mondayPeople: string[] = []
   let closerNames: string[] = []
+  let allClients: Awaited<ReturnType<typeof fetchBothBoards>>["current"] = []
   try {
     const { onboarding, current } = await fetchBothBoards()
-    const allClients = [...onboarding, ...current]
+    allClients = [...onboarding, ...current]
     const names = new Set<string>()
     for (const c of allClients) {
       if (!ACTIVE_STATUSES.has(c.campaignStatus)) continue
@@ -79,17 +86,20 @@ export default async function SettingsPage() {
     onboarding_columns: {
       client_board_id: "text_mm1vbb2h", kick_off_date: "datum",
       meta_ad_account_id: "text_mm1vdkqg", stripe_customer_id: "text_mm1vy1bh",
-      trengo_contact_id: "text_mm1vtaxg", account_manager: "mensen8",
+      trengo_contact_id: "text_mm1vtaxg", google_drive_id: "",
+      account_manager: "mensen8",
       campaign_manager: "person", first_name: "text7", company_name: "bedrijfsnaam",
-      ad_budget: "numeric_mm1vfk40", contact_direction: "text6",
+      ad_budget: "numeric_mm1vfk40", service_fee: "", contact_direction: "text6",
       contact_channel: "status_11", campaign_status: "status",
     },
     current_columns: {
       client_board_id: "text_mm1vajgv", country: "color3",
       meta_ad_account_id: "text_mm1vqpb", stripe_customer_id: "text_mm1v2pte",
-      trengo_contact_id: "text_mm1vgtdy", account_manager: "dup__of_ad_manager",
-      campaign_manager: "person", first_name: "tekst74", company_name: "bedrijfsnaam",
-      ad_budget: "numeric_mm1vdpd1", contact_direction: "tekst7",
+      trengo_contact_id: "text_mm1vgtdy", google_drive_id: "",
+      account_manager: "dup__of_ad_manager",
+      campaign_manager: "person", appointment_setter: "multiple_person_mm1w4j0b",
+      first_name: "tekst74", company_name: "bedrijfsnaam",
+      ad_budget: "numeric_mm1vdpd1", service_fee: "", contact_direction: "tekst7",
       contact_channel: "status_17", campaign_status: "color5",
     },
     client_board_columns: {
@@ -138,6 +148,11 @@ export default async function SettingsPage() {
           slackId: closerSlackById[name] ?? null,
         }))
 
+        const inboxAutomationRules = {
+          ...DEFAULT_INBOX_AUTOMATION_RULES,
+          ...((automationRulesRow?.value as Partial<InboxAutomationRules> | undefined) ?? {}),
+        }
+
         return (
           <SettingsTabs
             tokenStatuses={tokenStatuses}
@@ -146,6 +161,8 @@ export default async function SettingsPage() {
             users={usersWithMapping}
             currentUserId={session.user.id}
             mondayPeople={mondayPeople}
+            clients={allClients}
+            inboxAutomationRules={inboxAutomationRules}
             notifications={{
               slackConnected: !!tokenStatuses.slack?.is_valid,
               recipients: (users ?? []).map((u) => ({
