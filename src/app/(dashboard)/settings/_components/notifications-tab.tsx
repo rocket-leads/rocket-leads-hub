@@ -189,13 +189,13 @@ Open Watchlist`,
 *Vandaag*
 • 3 calls ingepland
 
-*Deze maand (april)*
+*Deze maand (mei)*
 • 38 taken calls
 • 12/30 deals
 • €27.4k / €60.0k revenue
 • Conversion: 32% (target 30%)
 
-*Action items — 2 empty call outcomes*
+*Empty call outcomes — 2*
 • Acme BV — 3 dagen terug, status nog "Qualified"
 • Beta NV — 5 dagen terug, status nog "Gepland"
 
@@ -217,24 +217,27 @@ Open Targets`,
       examplePreview: `Goedemorgen sales team! ☕
 
 *Gisteren*
-• 11 calls totaal
-• 4× DEAL · 4× No deal/FU · 2× No show · 1× Qualified
+• Sebastiaan: 2 calls — 1× DEAL · 1× No deal/FU
+• Anel: 4 calls — 3× DEAL · 1× No show
 
 *Vandaag*
-• 9 calls ingepland
+• 4 calls ingepland bij Anel, 2 bij Sebastiaan en 1 bij Jill
 
-*Deze maand (april)*
-• 96 taken calls
-• 28/60 deals
-• €62.1k / €120.0k revenue
+:rotating_light: *Empty call outcomes*
+2 bij Sebastiaan en 1 bij Anel — checken in Monday
+
+*Deze maand (mei)*
+• 96 booked calls
+• 79 taken calls
+• Show-up: 82% (target 80%)
+• 28/60 deals · 🔴 87% pace
+• €62.1k / €120.0k revenue · 🟢 102% pace
 • Conversion: 29% (target 30%)
 
 *Leaderboard — deze maand*
 🥇 Anel — *12 deals* · €27.4k · 32%
 🥈 Jill — *9 deals* · €19.8k · 28%
-🥉 Quintus — *7 deals* · €14.9k · 26%
-
-*Action items*: 5 empty call outcomes verspreid over het team — checken in Monday.
+🥉 Sebastiaan — *7 deals* · €14.9k · 26%
 
 Open Targets`,
     },

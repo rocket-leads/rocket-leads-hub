@@ -175,7 +175,7 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "today_lines", description: "Bullet line(s) about today's planned calls." },
     { name: "mtd_lines", description: "Bullet lines for MTD: taken, deals, revenue, conversion vs targets." },
     { name: "month_label", description: "Lowercase Dutch month name (e.g. 'april')." },
-    { name: "action_items_section", description: "Empty-outcome action items block, or empty." },
+    { name: "action_items_section", description: "Empty call outcomes block (header + per-name backlog), or empty." },
     { name: "open_link", description: "Slack link to open the Targets page." },
   ],
   team_sales: [
@@ -185,7 +185,7 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "mtd_lines", description: "Aggregated MTD vs targets bullet lines." },
     { name: "month_label", description: "Lowercase Dutch month name." },
     { name: "leaderboard_section", description: "Closer leaderboard block (top 3 by deals, MTD-active closers only), or empty." },
-    { name: "action_items_section", description: ":rotating_light: header + per-closer empty-call-outcome counts. Empty when all outcomes are logged." },
+    { name: "action_items_section", description: ":rotating_light: *Empty call outcomes* header + per-closer breakdown ('2 bij Sebastiaan en 1 bij Anel — checken in Monday'). Empty when all outcomes are logged." },
     { name: "open_link", description: "Slack link to open the Targets page." },
   ],
 }

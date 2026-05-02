@@ -183,6 +183,37 @@ function statusBreakdownLine(breakdown: Record<string, number>): string {
   return entries.map(([s, n]) => `${n}× ${s}`).join(" · ")
 }
 
+/**
+ * Fraction of the current month elapsed (1.0 on the last calendar day). Used as
+ * the denominator for "expected pace" so a 60-deal target on day 15 of a 30-day
+ * month means 30 deals expected, not 60.
+ */
+function monthFractionFromToday(today: string): number {
+  const [yearStr, monthStr, dayStr] = today.split("-")
+  const year = parseInt(yearStr, 10)
+  const monthIdx = parseInt(monthStr, 10) - 1
+  const day = parseInt(dayStr, 10)
+  if (!Number.isFinite(year) || !Number.isFinite(monthIdx) || !Number.isFinite(day)) return 0
+  const lastDay = new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate()
+  if (lastDay <= 0) return 0
+  return day / lastDay
+}
+
+/**
+ * Renders ` · 🟢 102% pace` (or 🔴 when behind) to be appended to a target line.
+ * Returns "" when target/fraction can't produce a meaningful number — caller
+ * just concatenates so the line stays clean.
+ */
+function paceTag(actual: number, target: number, monthFraction: number): string {
+  if (target <= 0 || monthFraction <= 0) return ""
+  const expected = target * monthFraction
+  if (expected <= 0) return ""
+  const ratio = actual / expected
+  const pct = Math.round(ratio * 100)
+  const emoji = ratio >= 1 ? "🟢" : "🔴"
+  return ` · ${emoji} ${pct}% pace`
+}
+
 type CloserSalesVars = {
   first_name: string
   closer_name: string
@@ -245,12 +276,12 @@ export function computeCloserSalesVars(opts: {
     mtdLines.push(`• Conversion: ${formatPercent(metrics.mtd.conversion)} (target 30%)`)
   }
 
-  // Action items section — past appointments still on a pre-call status (backlog).
+  // Empty call outcomes — past appointments still on a pre-call status (backlog).
   let action_items_section = ""
   if (metrics.emptyOutcomes.length > 0) {
     const n = metrics.emptyOutcomes.length
     const block: string[] = [
-      `*Action items — ${n} empty call outcome${n === 1 ? "" : "s"}*`,
+      `*Empty call outcomes — ${n}*`,
     ]
     for (const item of metrics.emptyOutcomes.slice(0, 6)) {
       const daysLabel = item.daysOverdue === 1 ? "1 dag" : `${item.daysOverdue} dagen`
@@ -357,19 +388,20 @@ export function computeTeamSalesVars(opts: {
   const greeting = pool[seed % pool.length]
 
   const firstName = (full: string) => full.split(" ")[0]
-  const formatPerCloser = (rows: Array<{ closer: string; n: number }>): string =>
-    rows
-      .filter((r) => r.n > 0)
-      .sort((a, b) => b.n - a.n)
-      .map((r) => `${firstName(r.closer)} ${r.n}`)
-      .join(" · ")
 
-  const todayPerCloser = formatPerCloser(
-    perCloser.map((m) => ({ closer: m.closer, n: m.today.planned })),
-  )
-  const emptyPerCloser = formatPerCloser(
-    perCloser.map((m) => ({ closer: m.closer, n: m.emptyOutcomes.length })),
-  )
+  /**
+   * Natural-language join: "3 bij Anel, 2 bij Sebastiaan en 1 bij Jill".
+   * Reads like a sentence rather than a leaderboard ("Anel 3 · Sebastiaan 2"),
+   * which is what Roy wanted for the casual sections (today / empty outcomes).
+   */
+  const formatPerCloserOrganic = (rows: Array<{ closer: string; n: number }>): string => {
+    const filtered = rows.filter((r) => r.n > 0).sort((a, b) => b.n - a.n)
+    const parts = filtered.map((r) => `${r.n} bij ${firstName(r.closer)}`)
+    if (parts.length === 0) return ""
+    if (parts.length === 1) return parts[0]
+    if (parts.length === 2) return parts.join(" en ")
+    return `${parts.slice(0, -1).join(", ")} en ${parts[parts.length - 1]}`
+  }
 
   // Yesterday lines — show each closer's calls + outcome breakdown so the reader
   // sees "Sebastiaan: 2 calls — 2× No show" rather than a single team total that
@@ -409,25 +441,56 @@ export function computeTeamSalesVars(opts: {
     }
   }
 
-  // Today lines
-  const todaySuffix = todayPerCloser ? ` — ${todayPerCloser}` : ""
-  const todayLines: string[] = [
-    `• ${totals.todayPlanned} call${totals.todayPlanned === 1 ? "" : "s"} ingepland${todaySuffix}`,
-  ]
+  // Today line — reads like a sentence: "3 calls ingepland bij Anel" or
+  // "4 calls ingepland bij Anel, 2 bij Sebastiaan en 1 bij Jill". Avoids the
+  // robotic "9 calls ingepland — Anel 3 · Sebastiaan 1" leaderboard format.
+  const todayActiveClosers = perCloser
+    .filter((m) => m.today.planned > 0)
+    .sort((a, b) => b.today.planned - a.today.planned)
+  const todayLines: string[] = []
+  if (totals.todayPlanned === 0) {
+    todayLines.push("• Geen calls ingepland")
+  } else if (todayActiveClosers.length === 1) {
+    const m = todayActiveClosers[0]
+    const callWord = m.today.planned === 1 ? "call" : "calls"
+    todayLines.push(`• ${m.today.planned} ${callWord} ingepland bij ${firstName(m.closer)}`)
+  } else {
+    const [head, ...rest] = todayActiveClosers
+    const callWord = head.today.planned === 1 ? "call" : "calls"
+    const headPart = `${head.today.planned} ${callWord} ingepland bij ${firstName(head.closer)}`
+    const tailParts = rest.map((m) => `${m.today.planned} bij ${firstName(m.closer)}`)
+    const tail =
+      tailParts.length === 1
+        ? ` en ${tailParts[0]}`
+        : `, ${tailParts.slice(0, -1).join(", ")} en ${tailParts[tailParts.length - 1]}`
+    todayLines.push(`• ${headPart}${tail}`)
+  }
 
   // MTD lines — booked → taken → show-up → deals → revenue → conversion.
+  // Deals + revenue lines append an expected-pace tag (🟢/🔴 vs. linear pace
+  // for the days elapsed) so the team sees at a glance whether the month is
+  // on track without pulling up the dashboard.
   const dealTarget = targets?.deals ?? 0
   const revenueTarget = targets?.revenue ?? 0
+  const monthFraction = monthFractionFromToday(today)
   const mtdLines: string[] = []
   mtdLines.push(`• ${totals.mtdBooked} booked call${totals.mtdBooked === 1 ? "" : "s"}`)
   mtdLines.push(`• ${totals.mtdTaken} taken call${totals.mtdTaken === 1 ? "" : "s"}`)
   if (teamShowRate !== null) {
     mtdLines.push(`• Show-up: ${formatPercent(teamShowRate)} (target 80%)`)
   }
-  if (dealTarget > 0) mtdLines.push(`• ${totals.mtdDeals}/${dealTarget} deals`)
-  else mtdLines.push(`• ${totals.mtdDeals} deals`)
-  if (revenueTarget > 0) mtdLines.push(`• ${formatEuro(totals.mtdRevenue)} / ${formatEuro(revenueTarget)} revenue`)
-  else mtdLines.push(`• ${formatEuro(totals.mtdRevenue)} revenue`)
+  if (dealTarget > 0) {
+    mtdLines.push(`• ${totals.mtdDeals}/${dealTarget} deals${paceTag(totals.mtdDeals, dealTarget, monthFraction)}`)
+  } else {
+    mtdLines.push(`• ${totals.mtdDeals} deals`)
+  }
+  if (revenueTarget > 0) {
+    mtdLines.push(
+      `• ${formatEuro(totals.mtdRevenue)} / ${formatEuro(revenueTarget)} revenue${paceTag(totals.mtdRevenue, revenueTarget, monthFraction)}`,
+    )
+  } else {
+    mtdLines.push(`• ${formatEuro(totals.mtdRevenue)} revenue`)
+  }
   if (teamConversion !== null) {
     mtdLines.push(`• Conversion: ${formatPercent(teamConversion)} (target 30%)`)
   }
@@ -447,12 +510,15 @@ export function computeTeamSalesVars(opts: {
     leaderboard_section = block.join("\n")
   }
 
-  // Action items section — sits ABOVE "deze maand" so it gets attention before the
-  // CMs read summary numbers. Header uses :rotating_light: + bold so the visual
-  // weight matches its importance — this is the actual call-to-action of the post.
+  // Empty call outcomes — sits ABOVE "deze maand" so it gets attention before the
+  // closers scan the summary numbers. Per-closer line uses the same organic
+  // phrasing as the today block: "2 bij Sebastiaan en 1 bij Anel".
   let action_items_section = ""
   if (totals.emptyOutcomes > 0) {
-    action_items_section = `:rotating_light: *Action items — empty call outcomes*\n${emptyPerCloser} — checken in Monday`
+    const breakdown = formatPerCloserOrganic(
+      perCloser.map((m) => ({ closer: m.closer, n: m.emptyOutcomes.length })),
+    )
+    action_items_section = `:rotating_light: *Empty call outcomes*\n${breakdown} — checken in Monday`
   }
 
   return {
