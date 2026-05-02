@@ -194,13 +194,19 @@ async function fetchSummary(
   type MondayItems = Awaited<ReturnType<typeof fetchClientBoardItems>>
   type MondayResult = { ok: boolean; items: MondayItems }
 
-  // Single 14d daily fetch covers both the 7d / prev-7d totals AND the sparkline trend.
-  // Saves one Meta API roundtrip per client compared to fetching each window separately.
+  // Meta fetch range = union of (the 14d sparkline window) ∪ (the requested
+  // window + its prev range). Without this expansion, picking a custom date
+  // range outside the trailing 14 days (e.g. "last month") would return zeros
+  // because the Meta call only pulled the recent fortnight. The expansion is
+  // cheap — Meta paginates the daily insights and the route already lives
+  // behind a per-client rate limit.
   const trendRange = getTrendRange()
+  const metaFetchStart = prevStartDate < trendRange.startDate ? prevStartDate : trendRange.startDate
+  const metaFetchEnd = endDate > trendRange.endDate ? endDate : trendRange.endDate
 
   const [dailyInsights, monday] = await Promise.all([
     shouldFetchMeta
-      ? fetchMetaInsightsDaily(client.metaAdAccountId!, trendRange.startDate, trendRange.endDate).catch(() => [])
+      ? fetchMetaInsightsDaily(client.metaAdAccountId!, metaFetchStart, metaFetchEnd).catch(() => [])
       : Promise.resolve([]),
     client.clientBoardId
       ? fetchClientBoardItems(client.clientBoardId)
@@ -355,29 +361,32 @@ export async function POST(req: NextRequest) {
 
   // Date-range path: when the caller specifies a window, aggregate from the daily
   // rollup cache. Range is exclusive of today (cache only contains up to yesterday).
-  // If the daily cache is empty (cron hasn't run with the new code yet) we fall through
-  // to the legacy 7d-summary cache so the UI still shows Health/CPL/CPA — the values
-  // won't reflect a non-default range, but a partly-correct view beats no data at all.
-  if (body.startDate && body.endDate) {
+  // If the daily cache is empty we fall straight through to a LIVE fetch with the
+  // REQUESTED dates — never to the 7d cache. The old fall-through quietly served
+  // 7d numbers for any custom range, which looked indistinguishable from a working
+  // filter and was the source of "data doesn't change when I change the range".
+  const hasRequestedRange = !!(body.startDate && body.endDate)
+  if (hasRequestedRange) {
     const dailyCache = await readCache<KpiDailyCache>("kpi_daily")
     if (dailyCache && Object.keys(dailyCache).length > 0) {
-      const { startDate: prevStartDate, endDate: prevEndDate } = getPreviousRange(body.startDate, body.endDate)
+      const { startDate: prevStartDate, endDate: prevEndDate } = getPreviousRange(body.startDate!, body.endDate!)
       const summaries: Record<string, KpiSummary> = {}
       for (const c of body.clients) {
         const daily = dailyCache[c.mondayItemId]
         if (!daily) continue
-        summaries[c.mondayItemId] = aggregateDailyToSummary(daily, body.startDate, body.endDate, prevStartDate, prevEndDate)
+        summaries[c.mondayItemId] = aggregateDailyToSummary(daily, body.startDate!, body.endDate!, prevStartDate, prevEndDate)
       }
       return NextResponse.json(summaries, {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
       })
     }
-    // else: daily cache is empty — fall through to the legacy 7d path below
+    console.log("[kpi-summaries] daily cache empty — live fetch for requested range", body.startDate, body.endDate)
+    // fall through to live fetch (uses the requested dates — see below)
   }
 
-  // Default 7d path: serve the pre-aggregated 7d cache (kept fresh by cron). Skipped
-  // on `?force=1` so the user can trigger a live re-fetch from the watchlist refresh button.
-  if (!force) {
+  // 7d cache shortcut: only valid when the caller didn't ask for a custom range.
+  // Otherwise we'd silently return 7d numbers for, say, March, and Roy can't tell.
+  if (!force && !hasRequestedRange) {
     const cached = await readCache<Record<string, KpiSummary>>("kpi_summaries")
     if (cached) {
       const summaries: Record<string, KpiSummary> = {}
@@ -393,9 +402,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Live fetch — happens on cold-start (no cache) or when `force=1` is passed
-  const { startDate, endDate } = getLast7DaysRange()
-  const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
+  // Live fetch — uses the REQUESTED window when provided, otherwise last 7d.
+  // Cold-start or `?force=1` for the default view also reaches here.
+  const { startDate, endDate } = hasRequestedRange
+    ? { startDate: body.startDate!, endDate: body.endDate! }
+    : getLast7DaysRange()
+  const { startDate: prevStartDate, endDate: prevEndDate } = hasRequestedRange
+    ? getPreviousRange(startDate, endDate)
+    : getPrevious7DaysRange()
 
   const supabase = await createAdminClient()
   const mondayItemIds = body.clients.map((c) => c.mondayItemId)
@@ -433,9 +447,11 @@ export async function POST(req: NextRequest) {
     body.clients, startDate, endDate, prevStartDate, prevEndDate, 5, selectedByMondayItemId, supabase
   )
 
-  // On force-refresh, merge fresh results into the existing cache so other
-  // consumers (and subsequent non-force loads) see the up-to-date numbers.
-  if (force && Object.keys(summaries).length > 0) {
+  // On force-refresh of the DEFAULT (7d) view, merge fresh results into the
+  // shared 7d cache so other consumers see the up-to-date numbers. A custom
+  // date range must never write to this cache — it'd serve March numbers as
+  // "today's" KPIs to the watchlist and Slack summaries.
+  if (force && !hasRequestedRange && Object.keys(summaries).length > 0) {
     const existing = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}
     void writeCache("kpi_summaries", { ...existing, ...summaries })
 
