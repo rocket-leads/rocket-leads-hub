@@ -201,14 +201,28 @@ export function shouldRunNow(config: NotificationConfig, force: boolean): {
 } {
   if (force) return { ok: config.enabled, reason: config.enabled ? undefined : "disabled in settings" }
   if (!config.enabled) return { ok: false, reason: "disabled in settings" }
-  const amsterdamHour = new Intl.DateTimeFormat("en-GB", {
+
+  // Round to nearest hour Amsterdam-time so a cron fire at 05:59 still counts as "06:00".
+  // Vercel cron timing can drift a few seconds in either direction; a strict equality on
+  // the hour string previously caused entire days to be skipped when the cron fired
+  // 1-2 seconds early. The cron schedule (`0 * * * *`) only fires at minute 0 each hour,
+  // so the ±30-min window around the configured hour overlaps exactly one firing — no
+  // double-fire risk.
+  const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Amsterdam",
     hour: "2-digit",
+    minute: "2-digit",
     hour12: false,
-  }).format(new Date())
+  }).formatToParts(new Date())
+  const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10)
+  const minute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10)
+  const effectiveHour = minute < 30 ? hour : (hour + 1) % 24
   const targetStr = String(config.hour).padStart(2, "0")
-  if (amsterdamHour !== targetStr) {
-    return { ok: false, reason: `Not ${targetStr}:00 Amsterdam (currently ${amsterdamHour}:00)` }
+  if (effectiveHour !== config.hour) {
+    return {
+      ok: false,
+      reason: `Not ${targetStr}:00 Amsterdam (currently ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}, effective hour ${String(effectiveHour).padStart(2, "0")})`,
+    }
   }
   return { ok: true }
 }

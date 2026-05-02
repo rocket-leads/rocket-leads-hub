@@ -1,191 +1,208 @@
-# Vision Document: Rocket Leads Hub v2.0
+# Vision Document: Rocket Leads Hub v3.0 — De Operationele Hub
 
-> **Last updated:** 2026-04-04 05:30 CET
+> **Last updated:** 2026-05-02 CET
 
-> **Let op:** Dit document beschrijft de lange-termijn visie en strategische richting voor de Rocket Leads Hub. Het dient als inspiratiebron en context voor toekomstige ontwikkeling, niet als directe implementatie-instructies. Gebruik dit om de grote lijnen te begrijpen en richting te bepalen, maar bouw features alleen wanneer expliciet gevraagd.
+> **Let op:** Dit document beschrijft de lange-termijn visie en strategische richting voor de Rocket Leads Hub. Het dient als inspiratiebron en context voor toekomstige ontwikkeling, niet als directe implementatie-instructies. Bouw features alleen wanneer expliciet gevraagd.
 
 ---
 
-## Context: Huidige Situatie
+## Kernverschuiving: Van Analyselaag naar Operationele Hub
 
-De Rocket Leads organisatie heeft drie primaire tijdvreters geïdentificeerd:
+De Hub begon als analytisch dashboard bovenop Trengo, Monday en Slack — een extra venster waarin AM's en CM's data konden inzien. Het probleem: het team werkt nu op vier plekken in plaats van drie. De Hub is een aanvulling, geen vervanging.
 
-1. **Trengo reactietijd & standaard antwoorden** — Account Managers besteden 3–5 uur per dag aan klantcommunicatie
-2. **Facturatie & debiteurenbeheer** — Handmatig facturen versturen, herinneringen sturen, achter betalingen aanbellen
-3. **Campagne-analyse & beslissingen** — Campaign Managers scrollen door 50+ adaccounts om performance te beoordelen
+**De nieuwe visie:** de Hub wordt de single source of truth waarin het hele team opereert. Trengo, Monday en Slack zakken weg naar de onderkant van de stack en functioneren alleen nog als onderliggende databases en transport layers. Het dagelijkse werk — communicatie, to-do's, updates, coördinatie — gebeurt 100% in de Hub.
+
+**Eindbeeld:** een AM of CM opent op maandag de Hub en heeft daar alles: alle inkomende klantvragen, alle interne updates, alle to-do's, alle data. Trengo/Monday/Slack worden hooguit één keer per week geopend, niet meer dagelijks.
+
+---
+
+## Het Probleem: Drie Versplinterde Workflows
+
+### 1. Versplinterde inbox
+Een klantvraag of intern signaal komt binnen via:
+- **Trengo** — WhatsApp/email van klanten
+- **Monday** — update op een lead-item, vaak met @mention naar AM of CM
+- **Slack** — DM tussen teamleden, of een #client-x kanaal
+
+Een AM moet drie inboxen op orde houden om niets te missen. Eén kanaal vergeten = ticket valt door de mand.
+
+### 2. Versplinterde to-do's
+To-do's ontstaan op alle drie plekken:
+- Trengo: klant vraagt iets → AM moet actie nemen, vaak in samenspraak met CM
+- Monday: AM vraagt CM om een aanpassing via een update
+- Slack: heen-en-weer gesprek waar uiteindelijk een actie uit volgt
+
+Geen centrale lijst van "wat moet ik vandaag doen". Geen overzicht per klant. To-do's verdwijnen tussen kanalen.
+
+### 3. Versplinterde interne communicatie tussen AM en CM
+Coördinatie tussen account manager en campaign manager loopt door alle drie de tools, vaak voor dezelfde klant tegelijk:
+- Slack DM voor snelle vragen
+- Monday updates voor formele to-do's
+- Trengo notes voor klant-context
+
+Niemand heeft één plek waar de volledige context per klant samenkomt. Een nieuwe teamlid kan onmogelijk de geschiedenis van een klant teruglezen zonder drie tools te doorzoeken.
+
+---
 
 ## Strategische Visie
 
-De hub evolueert van een read-only dashboard naar een intelligent actieplatform dat:
-- Proactief problemen detecteert en oplossingen voorstelt
-- Repetitieve communicatie automatiseert zonder menselijkheid te verliezen
-- Teamleden van reactief naar strategisch werk verschuift
-- Marges verhoogt van 25% naar 60% door efficiëntiewinst
+De Hub neemt de operationele controle. De andere tools zakken naar de transportlaag.
+
+**Trengo wordt** de transport layer voor externe klantcommunicatie. WhatsApp en email blijven via Trengo verstuurd, maar conversaties worden gevoerd in de Hub. Niemand opent meer de Trengo UI.
+
+**Monday wordt** de canonical database voor leads, deals en pipeline-data. De CRM-rol blijft, maar updates en interne to-do's verhuizen naar de Hub. Monday wordt alleen nog door Zapier-flows beschreven, niet door mensen.
+
+**Slack wordt** een notificatie-kanaal in de transitiefase en eventueel volledig vervangen door Hub-native chat (per-klant threads, @mentions, reacties). Slack blijft eventueel actief voor externe integraties en niet-klantgerelateerde chat.
+
+**De Hub wordt** de single pane of glass waar het team werkt: unified inbox, unified to-do's, unified per-klant communicatie, unified team chat.
 
 ---
 
-## Toekomstige Capabilities (Gefaseerd)
+## Capability Roadmap (Gefaseerd)
 
-### FASE 1: Foundation — Quick Wins
+### FASE A — Mirror In (Lees Alles)
 
-#### 1.1 — Automatische Facturatie Flow
-**Probleem:** Arno en AM's verliezen veel tijd aan handmatige facturatie en achterstallige betalingen.
+Hub laadt alle relevante data uit Trengo, Monday en Slack en presenteert het uniform.
 
-**Visie:**
-```
-Day -7: Automatische factuur (Stripe)
-Day 0:  Betalingsdatum
-Day +1: Auto-pause campagnes bij non-payment
-        → Multi-channel notificaties (team + klant)
-        → Visual indicator in hub (rode "OVERDUE" status)
-Day +3: Automatische tweede reminder
-Day +7: Derde reminder + escalatie opties
-```
+**Wat:**
+- Trengo conversations + messages per klant (gedeeltelijk al gebouwd: communication-tab + dedicated inbox page)
+- Monday item updates en @mentions per lead, voor alle klanten waar de gebruiker toegang toe heeft
+- Slack berichten uit relevante #client-* kanalen + DM's met team
+- Per-klant unified view: alle communicatie over klant X in chronologische volgorde, ongeacht kanaal
 
-**Integraties:**
-- Stripe webhooks (`invoice.payment_failed`, `invoice.overdue`)
-- Meta API voor campaign pause
-- Trengo API voor klantcommunicatie
-- Slack voor team alerts
+**Doel:** team kan vanuit één scherm alle context voor een klant zien zonder te switchen.
 
-**Impact:** -5-10 uur/week (Arno), -2-3 uur/week per AM
+**Webhooks:** real-time inbound via Trengo webhooks, Monday webhooks, Slack Events API. Geen polling.
 
 ---
 
-#### 1.2 — Trengo AI Agent (Eerste Respons)
-**Probleem:** Klanten wachten uren op antwoord, AM's zitten vast in repetitieve communicatie.
+### FASE B — Reply Out (Schrijf Terug)
 
-**Visie:**
-- 70% van tickets krijgt binnen 60 seconden intelligent antwoord
-- AI leert tone of voice per AM (Roel WhatsApp style ≠ Danny email style)
-- Alleen complexe tickets escaleren naar mensen
-- Klanten ervaren snellere service, AM's focussen op échte problemen
+Hub mag namens de gebruiker terugschrijven naar de bron. De gebruiker hoeft de bron-UI nooit meer te openen.
 
-**Flow:**
-```
-Incoming message → AI classifier
-  ↓
-Standaard (70%):
-  → AI drafts antwoord in juiste tone
-  → Stuurt direct + tagged AM voor follow-up
-  
-Complex (30%):
-  → Tagged "Requires human"
-  → Notificatie naar verantwoordelijke AM
-```
+**Wat:**
+- Reply op Trengo conversation vanuit Hub composer → Trengo API → klant ontvangt WhatsApp/email zoals normaal
+- Post Monday update vanuit Hub → Monday API → update verschijnt op het lead-item
+- Post Slack message vanuit Hub → Slack API → bericht in kanaal/DM
 
-**Training data:** Historische Trengo tickets per kanaal/persoon
+**Plus:**
+- Tone-of-voice templates per AM (Roy WhatsApp ≠ Danny email)
+- AI-draft assistance: "draft a reply" → Claude API met klantcontext + AM's tone
+- Bijlagen, emoji, reacties
 
-**Impact:** -2-3 uur/dag per AM
+**Doel:** vanaf nu hoeft een AM Trengo niet meer te openen om een klant te beantwoorden.
 
 ---
 
-#### 1.3 — Campaign Health Dashboard
-**Probleem:** CM's besteden veel tijd aan het opsporen van probleemcampagnes in adaccounts.
+### FASE C — Unified Inbox
 
-**Visie:**
-- Realtime health scoring (🟢 Good / 🟡 Warning / 🔴 Critical)
-- Automatische detectie van afwijkingen (CPL spikes, volume drops, CTR dips)
-- Actionable insights: "Campaign X needs refresh — hier zijn winning ads van afgelopen 14 dagen"
-- Filters: "Show only critical" voor gefocuste aandacht
+Eén inbox, één feed, voor alles wat aandacht vraagt.
 
-**Logica:**
-```
-🔴 Critical:
-  - CPL > target voor 3+ dagen
-  - Lead volume < 50% van 14-dag gemiddelde
-  - CTR < 1% voor 5+ dagen
-  - Ad disapproved/rejected
+**Wat:**
+- Eén feed met alle ongelezen items uit Trengo + Monday + Slack
+- Filterbaar per kanaal, per klant, per type
+- "Mijn inbox" filter: alleen items waarvoor jij verantwoordelijk bent
+- Read/unread state gesynced naar bron (Trengo conversation gemarkeerd als gelezen, Slack thread gemarkeerd als read, etc.)
+- Snooze, archive, mark-as-read direct vanuit Hub
 
-🟡 Warning:
-  - CPL +30% vs vorige week
-  - CTR -20% vs vorige week
-  - Budget < €50/dag
+**Layout:** linksbalk met klanten + badge counts, midden inbox feed, rechts thread view + composer.
 
-🟢 Good:
-  - Binnen targets, stabiel/groeiend
-```
-
-**Quick actions:** Direct vanuit alert campagne pauzeren of creative request triggeren
-
-**Impact:** -1-2 uur/dag per CM
+**Doel:** "ik open de Hub en zie wat er moet gebeuren" — vervangt het openen van Trengo/Monday/Slack apart.
 
 ---
 
-### FASE 2: Force Multipliers
+### FASE D — Unified To-Do System
 
-#### 2.1 — Proactive Client Reporting
-**Visie:** Klanten krijgen automatisch wekelijkse/maandelijkse rapporten zonder dat AM's deze handmatig samenstellen.
+To-do's worden Hub-native. Geen Monday updates of Slack berichten als de-facto to-do-systeem meer.
 
-**Delivery:**
-- Elke maandag 08:00: weekrapport
-- Elke 1e van maand: maandrapport
-- Multi-channel: branded email + WhatsApp samenvatting
+**Datamodel (Supabase):**
+- `tasks` tabel
+- Velden: `title`, `description`, `assignee_id`, `client_id`, `status` (open / in_progress / waiting_on / done), `due_date`, `source` (trengo / monday / slack / manual), `source_ref` (URL of ID terug naar bron), `created_by`
+- Comments thread per task
 
-**Content:**
-- Leads gegenereerd
-- CPL vs target
-- Top performing ads
-- AI-gegenereerde next steps in Rocket Leads tone
+**Capabilities:**
+- Convert any inbox item naar task in één klik ("Klant vraagt om creatives refresh, deadline vrijdag" → task voor CM)
+- Per-klant task lijst zichtbaar op client detail page
+- "Mijn to-do's" lijst over alle klanten heen
+- AM en CM kunnen elkaar tasks toewijzen
+- Optioneel mirroren tijdens transitie: een task in de Hub kan een Monday update mirroren zodat niemand iets mist
 
-**Impact:** -3-5 uur/week per AM
-
----
-
-#### 2.2 — AI Creative Generator
-**Visie:** Van reactive naar proactive creative testing. Wanneer performance daalt, genereert de hub automatisch nieuwe concepten.
-
-**Flow:**
-```
-Performance dip gedetecteerd
-  ↓
-AI analyseert:
-  - Welke ads werkten (afgelopen 30 dagen)
-  - Welke angles al getest
-  - Client industry + ICP (Monday.com)
-  ↓
-Output:
-  - 3 video script variaties
-  - 5 ad copy variaties
-  - Gestructureerde brief voor creative team
-  ↓
-CM reviewed → Shanna krijgt duidelijke opdracht
-```
-
-**Impact:** -2-3 uur/week per CM, betere creative briefs
+**Doel:** elke AM/CM heeft één to-do-lijst, geen inbox-duiken meer om te weten wat te doen.
 
 ---
 
-#### 2.3 — Churn Risk Scoring
-**Visie:** Preventief handelen voordat klanten churnen.
+### FASE E — Native Internal Communication
 
-**Score factoren:**
-- Campaign performance trends
-- Betaalgedrag (Stripe)
-- Communicatie sentiment (Trengo AI analysis)
-- Contact frequency (Monday.com)
+Slack als operationele tool wordt vervangen door Hub-native chat.
 
-**Dashboard features:**
-- Sorteerbare "Churn Risk" kolom
-- Filter: High risk clients
-- Proactive alerts: "Client X needs check-in call"
+**Wat:**
+- Per-klant interne thread (zichtbaar op client detail page) — alle AM↔CM gesprekken over die klant op één plek
+- Team-brede kanalen (#general, #campaigns) als chat-functionaliteit in Hub
+- DM's tussen teamleden
+- @mentions, reacties, threading, file uploads
+- Notificaties (browser push, email digest, optioneel mobile push)
 
-**Impact:** Hogere retention → meer stabiele MRR
+**Transitie:**
+- Eerst: Hub-chat mirrored naar Slack zodat niemand iets mist
+- Daarna: Slack-mirror uit, Hub is canonical
+- Slack blijft alleen draaien voor: incident notificaties, externe integraties (GitHub, Linear), legacy
+
+**Doel:** klantcontext samenbrengen op de klantpagina i.p.v. verspreid over #client-x kanalen die niemand teruggevonden krijgt.
 
 ---
 
-### FASE 3: Advanced Features (Toekomst)
+### FASE F — Notificaties die het Team naar de Hub Trekken
 
-#### 3.1 — Zapier Health Monitor
-Realtime monitoring van Zaps om lead routing failures te voorkomen.
+Zonder push notifications opent niemand de Hub spontaan. Dit is wat de gewoonte breekt.
 
-#### 3.2 — Meeting Transcripts → Auto To-Do's
-FATM transcripts uploaden → AI extraheert actiepunten → automatisch in Monday.com
+**Wat:**
+- Browser push notifications voor nieuwe inbox items en task assignments
+- Email digest (configureerbaar per gebruiker: realtime / hourly / daily)
+- Optionele mobile push (service worker, eventueel later native app)
+- Slack-bridge: per gebruiker instelbaar — wil je nog Slack-pings? Aan/uit
+- Daily morning digest: "Vandaag staan er 3 to-do's open en 2 nieuwe klantvragen"
 
-#### 3.3 — Client Self-Service Portal
-Klanten loggen in voor eigen dashboard (campaigns, KPI's, facturen) → minder statusupdate calls
+**Doel:** team merkt dat ze in de Hub gemist worden als ze hem niet openen — andersom dan voorheen.
 
-**Let op:** Dit vereist aparte branding, onboarding en support infrastructuur.
+---
+
+### FASE G — Decommissioning Daily Use
+
+Trengo/Monday/Slack worden onzichtbare backends.
+
+**Wat:**
+- Audit: hoe vaak opent het team nog Trengo/Monday/Slack? (Self-report of via integratie)
+- Migratie van workflows die nog in Slack/Monday gebeuren maar Hub-native moeten zijn
+- Onboarding-document: "vanaf nu doe je X in de Hub, niet in Slack"
+- Slack-channels worden archived of read-only voor klant-coördinatie
+- Monday updates worden alleen nog gebruikt door geautomatiseerde flows (Zapier), niet door mensen
+- Trengo wordt alleen geopend voor uitzonderingen (bv. WhatsApp Business settings)
+
+**Eindstate:** team logt 1× per week max in op Trengo/Monday/Slack — meestal alleen voor admin of audit.
+
+---
+
+## Supporting Capabilities (Behouden uit v2.0)
+
+De analytische en automatiseringslaag uit de vorige visie blijft, maar wordt ondergeschikt aan de operationele laag. Outputs van deze capabilities verschijnen nu als items in de unified inbox of als tasks in het unified to-do-systeem — niet als losse notificaties in Slack of mailtjes.
+
+### Campaign Health & Watch List
+Al gebouwd. Triages active clients per CPL/CPA trend met AI Notes, Insights en Optimisation Proposals. Blijft de "wat heeft mijn aandacht nodig op campagne-niveau" view.
+
+### Automatische Facturatie Flow
+Stripe → auto-pause Meta → multi-channel notificaties bij wanbetaling. Notificaties verschijnen in de unified inbox, niet als losse Slack-pings.
+
+### AI Creative Generator
+Bij performance-dip → AI genereert nieuwe scripts en copy. Resultaat verschijnt als task in het unified to-do-systeem ("Review nieuwe creatives voor klant X").
+
+### Proactive Client Reporting
+Wekelijkse/maandelijkse rapporten worden automatisch gegenereerd. AM krijgt task: "Review report Klant X voordat het verzonden wordt" — geen handmatige samenstelling meer.
+
+### Churn Risk Scoring
+Sentiment uit Trengo + payment history + campaign trends → ranglijst van klanten met churn-risico → tasks voor AM ("Inplannen check-in call met Klant X").
+
+### Trengo AI Agent (gereframed)
+70% van klantvragen krijgt een AI-draft die in de Hub composer verschijnt. AM reviewed in 5 seconden en stuurt af. AI is geen autonoom systeem dat klanten beantwoordt — het is een drafting layer binnen de Hub.
 
 ---
 
@@ -193,81 +210,111 @@ Klanten loggen in voor eigen dashboard (campaigns, KPI's, facturen) → minder s
 
 | Feature | Reden |
 |---------|-------|
-| Automatisch campagnes pauzeren bij slechte performance | Te risicovol zonder menselijke validatie |
+| Eigen WhatsApp Business API | Trengo blijft de transport layer; geen reden om dat te vervangen |
+| Eigen email infrastructuur | Idem — Trengo doet het al |
+| Volledige Slack-vervanger voor non-RL communicatie | Slack blijft handig voor externe integraties en non-klant chat |
+| Autonoom klantvragen beantwoorden zonder review | Te risicovol; AI drafts, mens stuurt af |
+| Eigen videocalling | Google Meet/Zoom blijft |
 | New Client Wizard in hub | Beter via dedicated onboarding tool |
 | Google Ads integratie | Niet prioriteit, mogelijk later |
-| Automation builder in hub | Overlapping met bestaande tools |
 
 ---
 
-## Technische Bouwstenen (Referentie)
+## Architecturale Bouwstenen
 
-### Integraties
-- **Meta API**: Campaign data, ads performance, pause/resume
-- **Stripe**: Facturatie, payment status, webhooks
-- **Trengo**: Messaging, webhooks, sentiment data
-- **Monday.com**: Client info, ICP data, contact history
-- **Slack**: Team notificaties
-- **Supabase**: Data opslag, cron jobs
+### Webhook Ingest Layer
+- `POST /api/webhooks/trengo` — ontvangt nieuwe messages, conversation updates
+- `POST /api/webhooks/monday` — ontvangt item updates, status changes, mentions
+- `POST /api/webhooks/slack` — Events API, message events, mention events
+- Elk webhook normaliseert payload → schrijft naar `inbox_events` tabel met source + source_ref
 
-### AI Components
-- **Claude API**: 
-  - Ticket classificatie (standaard vs complex)
-  - Tone of voice matching per AM
-  - Creative generation (scripts, copy)
-  - Sentiment analysis
-  - Report summaries
+### Realtime Layer
+- Supabase Realtime channels per user → frontend luistert op nieuwe inbox events en task changes
+- Service Worker voor browser push notifications
 
-### Cron Jobs
-- Dagelijks: Health scores berekenen
-- Wekelijks: Rapporten genereren (maandag 08:00)
-- Maandelijks: Maandrapporten (1e vd maand)
+### Unified Data Model (Supabase, nieuw)
+- `inbox_events` — alle inkomende items, gekoppeld aan client + assignee + source
+- `tasks` — Hub-native to-do's
+- `threads` — Hub-native interne gesprekken (per-client of team-wide)
+- `messages` — berichten binnen threads
+- `notification_prefs` — per gebruiker: welke kanalen, welke frequentie
+- Bestaande `clients`, `users`, `client_access`, etc. blijven
+
+### Outbound Adapters
+- `lib/integrations/trengo.ts` — uitbreiden met `sendMessage()`, `markAsRead()`, `sendInternalNote()`
+- `lib/integrations/monday.ts` — uitbreiden met `postUpdate()`, `setStatus()`, `mention()`
+- `lib/integrations/slack.ts` — nieuw: `postMessage()`, `replyInThread()`, `addReaction()`
+
+### AI Layer
+- Tone-of-voice templates per gebruiker (geleerd uit historische Trengo data)
+- Reply drafting via Claude API met cache van klantcontext
+- Task auto-creation suggestions: "Deze klantvraag lijkt op een task — aanmaken?"
+- Inbox triage: prioriteit scoren, ICP-relevante items naar boven
+- Cross-channel deduplication: zelfde klantvraag via Trengo én Slack → één inbox item
 
 ---
 
-## Verwachte Impact (Na Volledige Implementatie)
+## Verwachte Impact
 
-### Tijdsbesparing
+### Tijdsbesparing per Rol
+
 | Rol | Huidig | Besparing | Target |
 |-----|--------|-----------|--------|
-| Account Managers | 40u/week | -15u | 25u/week |
-| Campaign Managers | 40u/week | -10u | 30u/week |
+| Account Managers | 40u/week | -20u | 20u/week |
+| Campaign Managers | 40u/week | -12u | 28u/week |
 | Finance (Arno) | 20u/week | -8u | 12u/week |
 
-**Totaal:** ~33 uur/week besparing → €150K+/jaar bij €75/uur gemiddeld
+Belangrijkste winst: tool-switching elimineren. Een AM die nu tientallen keren per dag wisselt tussen Trengo/Monday/Slack/Hub bespaart structureel 1-2 uur per dag aan context-switching alleen al.
 
 ### Marge Impact
 - Huidig: 25%
 - Target: 60%
-- Dit plan: 45-50% (rest via andere AI integraties)
+- Operationele Hub draagt naar schatting 30 procentpunten bij (rest via AI integraties zoals AI avatars en campagne-automatisering)
+
+### Kwalitatieve Impact
+- Snellere klantrespons (alles in één inbox, niets blijft liggen)
+- Betere coördinatie AM↔CM (per-klant context volledig zichtbaar)
+- Lagere onboarding tijd nieuwe teamleden (één tool leren ipv vier)
+- Hogere klantretentie (geen gemiste tickets, betere opvolging)
+- Volledige audit trail per klant — alle communicatie en beslissingen op één plek
 
 ---
 
 ## Ontwikkelprincipes
 
-1. **Human-in-the-loop**: AI stelt voor, mens beslist bij kritieke acties
-2. **Progressive enhancement**: Start simpel, voeg intelligentie toe waar ROI hoog is
-3. **Data-driven**: Baseer health scores en alerts op harde KPI's, niet aannames
-4. **Tone preservation**: AI moet onzichtbaar zijn voor klanten (tone matching cruciaal)
-5. **Fail-safe**: Bij twijfel escaleren naar mens, niet automaten
+1. **Hub als canonical UI, externe tools als API:** alles wat een gebruiker doet gebeurt in de Hub; integraties blijven onder de motorkap.
+2. **Bidirectionele sync:** Hub schrijft terug naar bron zodat data consistent blijft tijdens transitieperiode. Slack/Trengo/Monday blijven correct werken voor wie er nog inlogt.
+3. **Geleidelijke migratie:** elke fase moet werken naast bestaande tools. Geen big-bang vervanging.
+4. **Notificatie-gedreven adoptie:** team gebruikt de Hub omdat ze er gepingd worden, niet omdat het moet.
+5. **Tone preservation:** AI helpt met drafts, mens stuurt af. Klant mag niets merken van de transitie.
+6. **Fail-safe:** webhook-failure mag nooit een ticket laten verdwijnen. Daily reconciliation cron als backstop.
 
 ---
 
 ## Referentie: Mogelijke Build Volgorde
 
-*Disclaimer: Dit is indicatief, geen directe instructie*
+*Indicatief, geen directe instructie.*
 
-**Sprint 1-2:** Facturatie flow (Stripe + Meta + notificaties)  
-**Sprint 3-4:** Trengo AI Agent (webhooks + classifier + tone training)  
-**Sprint 5-6:** Campaign Health Dashboard (scoring + alerts)  
-**Sprint 7-8:** Proactive Reporting (generators + scheduling)  
-**Sprint 9-10:** AI Creative Generator (analysis + generation)  
-**Sprint 11-12:** Churn Risk (scoring + sentiment)
+| Sprint | Focus |
+|---|---|
+| 1-2 | Webhook ingest layer (Trengo + Monday + Slack) → `inbox_events` tabel |
+| 3-4 | Per-klant unified view (lees-alles UI op client detail page) |
+| 5-6 | Reply out — Trengo composer in Hub |
+| 7-8 | Reply out — Monday + Slack composer |
+| 9-10 | Unified inbox feed + filtering + read state sync |
+| 11-12 | `tasks` tabel + create-from-inbox + per-klant task list |
+| 13-14 | Hub-native internal chat (per-klant threads + team channels) |
+| 15-16 | Notifications (browser push + email digest) |
+| 17-18 | Slack mirror-in voor team chat + transition tooling |
+| 19-20 | AI drafting + tone-of-voice templates |
+| 21-22 | Decommissioning audit + onboarding docs + Slack mirror-out |
 
 ---
 
 ## Slotgedachte
 
-Deze visie beschrijft een hub die niet alleen data toont, maar actief meedenkt en handelt. Van passief dashboard naar intelligent actieplatform. Van menselijke bottlenecks naar geautomatiseerde efficiency met behoud van persoonlijke touch.
+De v2.0 visie zag de Hub als slim dashboard met automatiseringen erbovenop. De v3.0 visie ziet de Hub als de werkplek zelf — de plek waar AM's en CM's hun dag beginnen en eindigen. Trengo, Monday en Slack zakken weg naar de onzichtbare laag eronder.
+
+Dit is geen analytics tool meer. Dit is de operationele cockpit voor het hele team.
 
 **Build features alleen wanneer expliciet gevraagd. Dit document is context, geen takenlijst.**

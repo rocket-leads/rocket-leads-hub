@@ -1,7 +1,7 @@
 @AGENTS.md
 @knowledge/company.md
 @knowledge/brand.md
-@knowledge/hub-vision.md
+@knowledge/vision-rocketleads-hub.md
 @knowledge/process.md
 @knowledge/campaigns.md
 @knowledge/sales.md

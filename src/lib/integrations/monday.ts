@@ -145,11 +145,10 @@ function mapItem(
     mondayItemId: item.id,
     name: item.name,
     firstName: cv[columns.first_name] ?? "",
-    // `company_name` is optional in the board config — admin pastes the column ID via
-    // Settings → Board Config when the board has a dedicated bedrijfsnaam column. When
-    // missing, `columns.company_name` is undefined, so the lookup yields "" and the
-    // matchers fall back to item.name.
-    companyName: cv[columns.company_name] ?? "",
+    // `company_name` resolves through board config first, then falls back to the literal
+    // "bedrijfsnaam" column ID — the column has the same ID across all three boards, so
+    // existing saved configs (without `company_name` set) still pick it up automatically.
+    companyName: cv[columns.company_name] ?? cv["bedrijfsnaam"] ?? "",
     accountManager: cv[columns.account_manager] ?? "",
     campaignManager: cv[columns.campaign_manager] ?? "",
     appointmentSetter: cv[columns.appointment_setter] ?? cv["multiple_person_mm1w4j0b"] ?? "",

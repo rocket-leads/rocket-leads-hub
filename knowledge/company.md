@@ -198,7 +198,7 @@ Als CBC/CQC off track zijn maar show-up rate hoog → CTC kan on track zijn, gee
 3. Klantenservice automatisering: AI agents voor Trengo (email & WhatsApp)
 4. Schaalbaarheid: systemen die niet afhankelijk zijn van individuele teamleden
 
-**Voor de volledige visie op de Rocket Leads Hub en toekomstige capabilities, zie: VISION_ROCKET_LEADS_HUB.md**
+**Voor de volledige visie op de Rocket Leads Hub en toekomstige capabilities, zie: vision-rocketleads-hub.md**
 
 ---
 
