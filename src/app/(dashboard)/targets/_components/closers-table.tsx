@@ -46,7 +46,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-border/40 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+              <tr className="border-b border-border/60 text-[12px] text-foreground/80 font-semibold">
                 <th className="text-left font-medium pb-2">Closer</th>
                 <th className="text-right font-medium pb-2" title="Past appointments scheduled with this closer (all statuses)">Qualified</th>
                 <th className="text-right font-medium pb-2">Taken</th>
@@ -83,7 +83,7 @@ export const ClosersTable = memo(function ClosersTable({ data, isLoading }: Prop
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-border/40 text-[11px]">
-                <td className="pt-2 font-medium uppercase tracking-wider text-muted-foreground/60 text-[10px]">Total</td>
+                <td className="pt-2 text-[12px] text-foreground/80 font-semibold">Total</td>
                 <td className="pt-2 text-right font-mono font-bold text-foreground">{totalQualified}</td>
                 <td className="pt-2 text-right font-mono font-bold text-foreground">{totalTaken}</td>
                 <td className="pt-2 text-right font-mono font-bold text-foreground">{totalQualified > 0 ? formatPercent(totalShowUp) : "—"}</td>

@@ -103,10 +103,10 @@ export default async function SettingsPage() {
   const boardConfig = (settingsRow?.value ?? defaultBoardConfig) as typeof defaultBoardConfig
 
   return (
-    <div className="container mx-auto max-w-6xl py-8 px-4">
-      <div className="mb-8">
-        <h1 className="text-2xl font-heading font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground">Manage API tokens, board configuration, and users</p>
+    <div>
+      <div className="mb-6">
+        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Settings</h1>
+        <p className="text-[13px] text-muted-foreground mt-1">API tokens, board config, users and notifications.</p>
       </div>
 
       <ApiHealthBar />

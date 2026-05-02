@@ -1,15 +1,15 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { format, getDaysInMonth } from "date-fns"
 import type { FinanceOverview, CostData, ProfitOverview } from "@/types/targets"
 
-export function useFinanceData(year: number, month: number) {
-  const lastDay = getDaysInMonth(new Date(year, month - 1))
-  const startDate = `${year}-${String(month).padStart(2, "0")}-01`
-  const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
-
+/**
+ * `startDate`/`endDate` drive the Stripe revenue query at exact day resolution.
+ * `year`/`month` drive the costs query — costs come from a Google Sheet with
+ * one column per calendar month, so we derive these from the range start.
+ */
+export function useFinanceData(startDate: string, endDate: string, year: number, month: number) {
   const stripeQuery = useQuery<FinanceOverview>({
     queryKey: ["targets-finance", startDate, endDate],
     queryFn: () => fetch(`/api/targets/finance?startDate=${startDate}&endDate=${endDate}`).then((r) => {
@@ -52,24 +52,3 @@ export function useFinanceData(year: number, month: number) {
   }
 }
 
-export function useMonthSelector() {
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
-
-  const label = useMemo(() => format(new Date(year, month - 1), "MMM yyyy"), [year, month])
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
-
-  const goToPrev = () => {
-    if (month === 1) { setYear((y) => y - 1); setMonth(12) }
-    else setMonth((m) => m - 1)
-  }
-
-  const goToNext = () => {
-    if (isCurrentMonth) return
-    if (month === 12) { setYear((y) => y + 1); setMonth(1) }
-    else setMonth((m) => m + 1)
-  }
-
-  return { year, month, label, isCurrentMonth, goToPrev, goToNext }
-}

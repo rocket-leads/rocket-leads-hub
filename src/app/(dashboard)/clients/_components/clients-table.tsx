@@ -12,10 +12,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
-import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react"
+import { ChevronDown, ChevronUp, ChevronsUpDown, TrendingUpDown } from "lucide-react"
+import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
+import type { QuickPreset } from "@/types/targets"
 
 const ONBOARDING_STATUSES = ["Kick off", "In development", "On hold"]
 const CURRENT_STATUSES = ["Live", "On hold", "Churned"]
@@ -41,6 +43,31 @@ function StatusPill({ tone, label }: { tone: PillTone; label: string }) {
     <span className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium ${tone.pill}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
       {label}
+    </span>
+  )
+}
+
+/**
+ * Period-over-period change indicator for CPL/CPA.
+ * Down (cheaper) is good → green; up significantly → red; minor up → amber.
+ * Chevron alone conveys direction; we drop the +/- to avoid duplication.
+ */
+function DeltaPill({ pct }: { pct: number }) {
+  if (Math.abs(pct) < 0.5) {
+    return <span className="text-muted-foreground/60">—</span>
+  }
+  const isDown = pct < 0
+  const isHighUp = pct >= 25
+  const colorClass = isDown
+    ? "text-emerald-600 dark:text-emerald-400"
+    : isHighUp
+    ? "text-red-500 dark:text-red-400"
+    : "text-amber-600 dark:text-amber-400"
+  const Icon = isDown ? ChevronDown : ChevronUp
+  return (
+    <span className={`inline-flex items-center gap-0.5 font-medium ${colorClass}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {Math.abs(pct).toFixed(0)}%
     </span>
   )
 }
@@ -158,6 +185,20 @@ type Props = {
     setShowAll: (next: boolean) => void
     totalCount: number
   }
+  /**
+   * When provided, renders a date-range picker + preset chips in the search row.
+   * The selected range is used by the parent to fetch period-scoped KPI data, so this
+   * component only owns the UI control surface — state lives in the parent.
+   */
+  dateRangeControl?: {
+    startDate: Date
+    endDate: Date
+    setRange: (start: Date, end: Date) => void
+    presets: QuickPreset[]
+    applyPreset: (preset: QuickPreset) => void
+    /** Latest selectable day in the calendar (used to disable today). */
+    maxDate?: Date
+  }
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -214,7 +255,7 @@ function ManagerAvatar({ name }: { name: string }) {
 }
 
 function SortableHead({ label, sortKey, currentKey, currentDir, onSort, className }: {
-  label: string
+  label: React.ReactNode
   sortKey: SortKey
   currentKey: SortKey | null
   currentDir: SortDir
@@ -241,7 +282,7 @@ function SortableHead({ label, sortKey, currentKey, currentDir, onSort, classNam
   )
 }
 
-export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap, defaultSortKey, defaultSortDir, showAllToggle }: Props) {
+export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap, defaultSortKey, defaultSortDir, showAllToggle, dateRangeControl }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
@@ -372,7 +413,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 8 : 13
+  const colSpan = boardType === "onboarding" ? 8 : 15
 
   const filters: FilterConfig[] = [
     {
@@ -425,6 +466,28 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           className="w-56 h-8 border border-border bg-background rounded-lg text-xs text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 px-3"
         />
         <FiltersPopover filters={filters} />
+        {dateRangeControl && (
+          <>
+            <DateRangePicker
+              startDate={dateRangeControl.startDate}
+              endDate={dateRangeControl.endDate}
+              onChange={dateRangeControl.setRange}
+              maxDate={dateRangeControl.maxDate}
+            />
+            <div className="flex gap-1 flex-wrap">
+              {dateRangeControl.presets.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => dateRangeControl.applyPreset(preset)}
+                  className="h-8 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         {showAllToggle ? (
           <div className="ml-auto flex items-center gap-2 text-[11px] tabular-nums">
             <span className="text-muted-foreground/70">
@@ -454,24 +517,40 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         <Table className="table-fixed">
           <TableHeader>
             <TableRow className="border-b border-border/60 bg-muted/50 hover:bg-muted/50 [&>th]:h-10">
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[220px]">Client</TableHead>
+              {/* Client section */}
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[220px] border-r border-border/60">Client</TableHead>
+              {/* Status section */}
               <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Status</TableHead>
-              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">AM</TableHead>
-              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">CM</TableHead>
-              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">AS</TableHead>
               {boardType === "onboarding" && (
                 <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[100px]" />
               )}
+              {boardType === "current" && (
+                <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold text-center w-[90px]" />
+              )}
               <TableHead className="text-[13px] text-foreground/80 font-semibold w-[95px]">Payment</TableHead>
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Outstanding</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px] border-r border-border/60">Outstanding</TableHead>
+              {/* People section */}
+              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">AM</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">CM</TableHead>
+              <TableHead className={`text-[13px] text-foreground/80 font-semibold text-center w-[50px] ${boardType === "current" ? "border-r border-border/60" : ""}`}>AS</TableHead>
+              {/* KPI section (current only) */}
               {boardType === "current" && (
                 <>
-                  <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold text-center w-[90px]" />
                   <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[90px]" />
                   <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
                   <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
+                  <SortableHead
+                    label={<span className="inline-flex items-center gap-1.5">CPL <TrendingUpDown className="h-3.5 w-3.5 text-muted-foreground/70" /></span>}
+                    sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort}
+                    className="text-[13px] text-foreground/80 font-semibold w-[90px]"
+                  />
                   <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
                   <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
+                  <SortableHead
+                    label={<span className="inline-flex items-center gap-1.5">CPA <TrendingUpDown className="h-3.5 w-3.5 text-muted-foreground/70" /></span>}
+                    sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort}
+                    className="text-[13px] text-foreground/80 font-semibold w-[90px]"
+                  />
                 </>
               )}
             </TableRow>
@@ -513,28 +592,37 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                       }
                     }}
                   >
-                    <TableCell>
+                    {/* Client section */}
+                    <TableCell className="border-r border-border/40 bg-muted/20 max-w-0">
                       <Link
                         href={href}
                         onClick={(e) => e.stopPropagation()}
-                        className="block hover:text-primary transition-colors"
+                        className="block hover:text-primary transition-colors min-w-0"
+                        title={client.name}
                       >
-                        <p className="font-medium text-sm">{client.name}</p>
+                        <p className="font-medium text-sm truncate">{client.name}</p>
                         {client.firstName && (
-                          <p className="text-[11px] text-muted-foreground/60">{client.firstName}</p>
+                          <p className="text-[11px] text-muted-foreground/60 truncate">{client.firstName}</p>
                         )}
                       </Link>
                     </TableCell>
+                    {/* Status section */}
                     <TableCell>
                       {client.campaignStatus && STATUS_TONES[client.campaignStatus] && (
                         <StatusPill tone={STATUS_TONES[client.campaignStatus]} label={client.campaignStatus} />
                       )}
                     </TableCell>
-                    <TableCell>{client.accountManager && <ManagerAvatar name={client.accountManager} />}</TableCell>
-                    <TableCell>{client.campaignManager && <ManagerAvatar name={client.campaignManager} />}</TableCell>
-                    <TableCell>{client.appointmentSetter && <ManagerAvatar name={client.appointmentSetter} />}</TableCell>
                     {boardType === "onboarding" && (
                       <TableCell className="text-xs text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
+                    )}
+                    {boardType === "current" && (
+                      <TableCell>
+                        {kpiLoading ? (
+                          <span className="text-muted-foreground/40 text-xs">...</span>
+                        ) : (
+                          <HealthBadge health={getCampaignHealth(kpi)} />
+                        )}
+                      </TableCell>
                     )}
                     <TableCell>
                       {billingSummaries && summary && PAYMENT_TONES[summary.status] && (
@@ -547,7 +635,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <span className="text-muted-foreground/40 text-xs">...</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs tabular-nums">
+                    <TableCell className="text-xs tabular-nums border-r border-border/40">
                       {summary && summary.outstanding > 0 && (
                         <span className={summary.status === "overdue" ? "text-red-400 font-medium" : "text-muted-foreground"}>{fmt(summary.outstanding)}</span>
                       )}
@@ -555,15 +643,15 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <span className="text-muted-foreground/40">...</span>
                       )}
                     </TableCell>
+                    {/* People section */}
+                    <TableCell>{client.accountManager && <ManagerAvatar name={client.accountManager} />}</TableCell>
+                    <TableCell>{client.campaignManager && <ManagerAvatar name={client.campaignManager} />}</TableCell>
+                    <TableCell className={boardType === "current" ? "border-r border-border/40" : ""}>
+                      {client.appointmentSetter && <ManagerAvatar name={client.appointmentSetter} />}
+                    </TableCell>
+                    {/* KPI section (current only) */}
                     {boardType === "current" && (
                       <>
-                        <TableCell>
-                          {kpiLoading ? (
-                            <span className="text-muted-foreground/40 text-xs">...</span>
-                          ) : (
-                            <HealthBadge health={getCampaignHealth(kpi)} />
-                          )}
-                        </TableCell>
                         <TableCell className="text-xs tabular-nums text-muted-foreground">
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.adSpend > 0 ? fmtKpi(kpi.adSpend, "currency") : ""}
                         </TableCell>
@@ -573,11 +661,25 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <TableCell className={`text-xs tabular-nums font-medium ${kpi && kpi.cpl > 50 ? "text-red-400" : kpi && kpi.cpl > 30 ? "text-amber-400" : ""}`}>
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.cpl > 0 ? fmtKpi(kpi.cpl, "currency") : ""}
                         </TableCell>
+                        <TableCell className="text-xs tabular-nums">
+                          {kpiLoading ? (
+                            <span className="text-muted-foreground/40">...</span>
+                          ) : kpi && kpi.cpl > 0 && kpi.prevCpl > 0 ? (
+                            <DeltaPill pct={((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100} />
+                          ) : ""}
+                        </TableCell>
                         <TableCell className="text-xs tabular-nums font-medium">
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.appointments > 0 ? fmtKpi(kpi.appointments, "integer") : ""}
                         </TableCell>
                         <TableCell className={`text-xs tabular-nums ${kpi && kpi.costPerAppointment > 200 ? "text-red-400" : ""}`}>
                           {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.costPerAppointment > 0 ? fmtKpi(kpi.costPerAppointment, "currency") : ""}
+                        </TableCell>
+                        <TableCell className="text-xs tabular-nums">
+                          {kpiLoading ? (
+                            <span className="text-muted-foreground/40">...</span>
+                          ) : kpi && kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0 ? (
+                            <DeltaPill pct={((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100} />
+                          ) : ""}
                         </TableCell>
                       </>
                     )}

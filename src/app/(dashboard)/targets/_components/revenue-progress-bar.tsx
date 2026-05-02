@@ -11,10 +11,18 @@ interface Props {
   monthlyTarget: number
   isLoading: boolean
   label?: string
+  /** Stripe-side cross-check value. When higher than `current`, the gap is surfaced as a yellow chip. */
+  stripeCrossCheck?: number
+  /** Click handler for the gap chip — host can open a drilldown listing the underlying Stripe invoices. */
+  onGapClick?: () => void
 }
+
+// Sub-€100 differences are noise (rounding, single-line credits etc.) — don't flag.
+const GAP_THRESHOLD = 100
 
 export const RevenueProgressBar = memo(function RevenueProgressBar({
   current, proRata, monthlyTarget, isLoading, label = "Revenue",
+  stripeCrossCheck, onGapClick,
 }: Props) {
   const [animated, setAnimated] = useState(false)
 
@@ -41,11 +49,32 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
   const barColor = performance >= 1 ? "bg-green-500" : "bg-red-500"
   const textColor = performance >= 1 ? "text-green-500" : "text-red-500"
 
+  // Surface a gap when Stripe shows more new business than Monday's closed deals —
+  // means deals are invoiced but not yet logged in Monday. Click → drilldown.
+  const gap = stripeCrossCheck != null ? stripeCrossCheck - current : 0
+  const showGapChip = gap > GAP_THRESHOLD
+
   return (
     <div className="bg-card rounded-lg p-4 border border-border/40 space-y-3">
-      {/* Header: label + actual / target */}
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      {/* Header: label + gap chip + actual / target */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+          {showGapChip && (
+            <button
+              type="button"
+              onClick={onGapClick}
+              className={cn(
+                "inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium",
+                "bg-yellow-500/15 text-yellow-500 hover:bg-yellow-500/25 transition-colors",
+                onGapClick && "cursor-pointer",
+              )}
+              title="Stripe shows more New Business than Monday — click to see which invoices"
+            >
+              Stripe shows +{formatCurrency(gap)} not in Monday
+            </button>
+          )}
+        </div>
         <div className="flex items-baseline gap-2">
           <span className={cn("text-xl font-bold font-mono", textColor)}>{formatCurrency(current)}</span>
           <span className="text-xs text-muted-foreground/60 font-mono">of {formatCurrency(monthlyTarget)}</span>

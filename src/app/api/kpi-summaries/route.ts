@@ -35,6 +35,29 @@ export type KpiSummary = {
   dailyTrend?: Array<{ date: string; spend: number; leads: number }>
 }
 
+/**
+ * Per-day rollup for one client, written by the daily cron and aggregated on-the-fly by
+ * `/api/kpi-summaries` for any requested startDate/endDate. Days are sorted oldest → newest
+ * and contain dense entries for the entire DAILY_HISTORY_DAYS window — missing days are
+ * filled with zeros so range aggregation is just `.filter(d => d.date >= start && d.date <= end)`.
+ */
+export type DailyRollup = {
+  date: string         // YYYY-MM-DD
+  spend: number        // Meta ad spend (post campaign filter)
+  metaLeads: number    // Meta-reported leads from `actions`
+  mondayLeads: number  // Monday lead count (items where dateCreated == this day)
+  mondayAppts: number  // Monday appointment count (items where dateAppointment == this day)
+}
+
+export type KpiDailyClientData = {
+  mondayItemId: string
+  days: DailyRollup[]
+  mondayCrmConnected: boolean
+  rlAccountNoCampaign?: boolean
+}
+
+export type KpiDailyCache = Record<string, KpiDailyClientData>
+
 type ClientInput = {
   mondayItemId: string
   metaAdAccountId: string | null
@@ -61,6 +84,70 @@ function getPrevious7DaysRange() {
   const start = new Date(end)
   start.setDate(start.getDate() - 6) // 7 days total
   return { startDate: fmtDate(start), endDate: fmtDate(end) }
+}
+
+/**
+ * For a given range, return the same-length range immediately before it.
+ * Used to compute period-over-period CPL/CPA deltas for any date filter.
+ */
+function getPreviousRange(startDate: string, endDate: string): { startDate: string; endDate: string } {
+  const start = new Date(startDate + "T00:00:00Z")
+  const end = new Date(endDate + "T00:00:00Z")
+  const dayMs = 86400000
+  const lengthDays = Math.round((end.getTime() - start.getTime()) / dayMs) + 1
+  const prevEnd = new Date(start.getTime() - dayMs)
+  const prevStart = new Date(prevEnd.getTime() - (lengthDays - 1) * dayMs)
+  return { startDate: fmtDate(prevStart), endDate: fmtDate(prevEnd) }
+}
+
+/**
+ * Aggregate per-day rollups for one client into a KpiSummary for the given window.
+ * Mirrors the cron's window-level logic: metaFallback applies when Monday reports zero
+ * leads in the window but Meta has them. Returned shape matches the existing 7d-summary
+ * contract so consumers don't need to branch on data source.
+ */
+function aggregateDailyToSummary(
+  daily: KpiDailyClientData,
+  startDate: string,
+  endDate: string,
+  prevStartDate: string,
+  prevEndDate: string,
+): KpiSummary {
+  const window = daily.days.filter((d) => d.date >= startDate && d.date <= endDate)
+  const prev = daily.days.filter((d) => d.date >= prevStartDate && d.date <= prevEndDate)
+
+  const adSpend = window.reduce((s, d) => s + d.spend, 0)
+  const prevAdSpend = prev.reduce((s, d) => s + d.spend, 0)
+
+  const mondayLeadsTotal = daily.mondayCrmConnected ? window.reduce((s, d) => s + d.mondayLeads, 0) : 0
+  const mondayPrevLeadsTotal = daily.mondayCrmConnected ? prev.reduce((s, d) => s + d.mondayLeads, 0) : 0
+  const metaLeadsTotal = window.reduce((s, d) => s + d.metaLeads, 0)
+  const metaPrevLeadsTotal = prev.reduce((s, d) => s + d.metaLeads, 0)
+
+  const metaFallback = mondayLeadsTotal === 0 && metaLeadsTotal > 0
+  const leads = metaFallback ? metaLeadsTotal : mondayLeadsTotal
+  const prevLeads = mondayPrevLeadsTotal === 0 && metaPrevLeadsTotal > 0 ? metaPrevLeadsTotal : mondayPrevLeadsTotal
+
+  const appointments = daily.mondayCrmConnected ? window.reduce((s, d) => s + d.mondayAppts, 0) : 0
+  const prevAppointments = daily.mondayCrmConnected ? prev.reduce((s, d) => s + d.mondayAppts, 0) : 0
+
+  const cpl = leads > 0 ? adSpend / leads : 0
+  const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
+  const costPerAppointment = appointments > 0 ? adSpend / appointments : 0
+  const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
+
+  return {
+    adSpend,
+    leads,
+    cpl,
+    appointments,
+    costPerAppointment,
+    prevCpl,
+    prevCostPerAppointment,
+    ...(daily.rlAccountNoCampaign ? { rlAccountNoCampaign: true } : {}),
+    ...(metaFallback ? { metaFallback: true } : {}),
+    mondayCrmConnected: daily.mondayCrmConnected,
+  }
 }
 
 function getTrendRange() {
@@ -259,11 +346,37 @@ export async function POST(req: NextRequest) {
 
   const force = req.nextUrl.searchParams.get("force") === "1"
 
-  const body = (await req.json()) as { clients: ClientInput[] }
+  const body = (await req.json()) as {
+    clients: ClientInput[]
+    startDate?: string
+    endDate?: string
+  }
   if (!body.clients?.length) return NextResponse.json({})
 
-  // Serve from cache — cron keeps it fresh every 30 min. Skipped on `?force=1`
-  // so the user can trigger a live re-fetch from the watchlist refresh button.
+  // Date-range path: when the caller specifies a window, aggregate from the daily
+  // rollup cache. Range is exclusive of today (cache only contains up to yesterday).
+  // If the daily cache is empty (cron hasn't run with the new code yet) we fall through
+  // to the legacy 7d-summary cache so the UI still shows Health/CPL/CPA — the values
+  // won't reflect a non-default range, but a partly-correct view beats no data at all.
+  if (body.startDate && body.endDate) {
+    const dailyCache = await readCache<KpiDailyCache>("kpi_daily")
+    if (dailyCache && Object.keys(dailyCache).length > 0) {
+      const { startDate: prevStartDate, endDate: prevEndDate } = getPreviousRange(body.startDate, body.endDate)
+      const summaries: Record<string, KpiSummary> = {}
+      for (const c of body.clients) {
+        const daily = dailyCache[c.mondayItemId]
+        if (!daily) continue
+        summaries[c.mondayItemId] = aggregateDailyToSummary(daily, body.startDate, body.endDate, prevStartDate, prevEndDate)
+      }
+      return NextResponse.json(summaries, {
+        headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+      })
+    }
+    // else: daily cache is empty — fall through to the legacy 7d path below
+  }
+
+  // Default 7d path: serve the pre-aggregated 7d cache (kept fresh by cron). Skipped
+  // on `?force=1` so the user can trigger a live re-fetch from the watchlist refresh button.
   if (!force) {
     const cached = await readCache<Record<string, KpiSummary>>("kpi_summaries")
     if (cached) {

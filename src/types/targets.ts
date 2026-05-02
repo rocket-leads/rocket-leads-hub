@@ -37,6 +37,43 @@ export interface MondayTargetsData {
   weekly: WeeklyData[]
   industries: IndustryData[]
   closers: CloserData[]
+  /**
+   * Stripe-side cross-check: total New Business invoiced this period (service fee, after
+   * credits, override-aware). Only populated on the "all" country bucket — Stripe has no
+   * country attribution. Compare against `closedRevenue` to surface a gap (deals invoiced
+   * in Stripe but not yet logged in Monday).
+   */
+  stripeNewBusinessRevenue: number
+  /**
+   * The individual Stripe NB invoices behind `stripeNewBusinessRevenue`, so the UI can
+   * offer a drilldown when there's a gap. Only the "all" bucket is populated.
+   */
+  stripeNewBusinessInvoices: StripeNewBusinessInvoice[]
+  /**
+   * Monday closed deals (status=DEAL, dateDeal in period) behind `closedRevenue`. Surfaced
+   * alongside the Stripe NB list so a CM can eyeball both sides of the gap: deals logged
+   * in Monday but not yet invoiced in Stripe → unpaid; Stripe invoices not yet logged in
+   * Monday → missing CRM entry.
+   */
+  closedDeals: ClosedDeal[]
+}
+
+export interface StripeNewBusinessInvoice {
+  customerName: string
+  invoiceNumber: string | null
+  date: string
+  amount: number
+  hostedUrl: string | null
+}
+
+export interface ClosedDeal {
+  /** Monday item name = lead/company name. */
+  name: string
+  closer: string | null
+  /** YYYY-MM-DD when the deal was closed. */
+  dateDeal: string
+  dealValue: number
+  mondayItemId: string
 }
 
 export interface CloserData {
@@ -172,6 +209,12 @@ export interface UnlinkedMondayItem {
   id: string
   name: string
   boardType: "onboarding" | "current"
+  /**
+   * Raw `stripe_customer_id` column value (may be empty, single, or comma-separated).
+   * Carried in the payload so the assign-customer endpoint can append the new ID without
+   * needing an extra Monday read round-trip — that read was the main source of slowness.
+   */
+  stripeCustomerId: string
 }
 
 export interface DeliveryOverview {

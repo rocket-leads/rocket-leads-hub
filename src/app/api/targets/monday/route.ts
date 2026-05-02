@@ -8,8 +8,17 @@ import type { MondayTargetsByCountry } from "@/types/targets"
 // notUpdated) are stale. Also detect the old takenCalls semantic — after the recent
 // change Not Updated is folded into Taken, so a closer with notUpdated > 0 must have
 // takenCalls >= notUpdated. Old caches violate that invariant.
+//
+// Also requires the Stripe-cross-check fields (`stripeNewBusinessRevenue` and
+// `closedDeals`). Earlier code briefly overwrote `closedRevenue` with the Stripe
+// service-fee total — those caches still exist and silently mis-render the bar.
+// Requiring the new fields forces a fresh fetch with the corrected logic.
 function hasFreshSchema(cached: MondayTargetsByCountry | null): boolean {
-  const closers = cached?.all?.closers
+  if (!cached?.all) return false
+  if (!("stripeNewBusinessRevenue" in cached.all)) return false
+  if (!Array.isArray(cached.all.closedDeals)) return false
+
+  const closers = cached.all.closers
   if (!Array.isArray(closers)) return false
   if (closers.length === 0) return true
   const first = closers[0]

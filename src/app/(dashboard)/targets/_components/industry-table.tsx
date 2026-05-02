@@ -36,7 +36,7 @@ export const IndustryTable = memo(function IndustryTable({ data, isLoading }: Pr
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-border/40 text-[10px] uppercase tracking-wider text-muted-foreground/60">
+              <tr className="border-b border-border/60 text-[12px] text-foreground/80 font-semibold">
                 <th className="text-left font-medium pb-2">Industry</th>
                 <th className="text-right font-medium pb-2">Deals</th>
                 <th className="text-right font-medium pb-2">Total</th>
@@ -58,7 +58,7 @@ export const IndustryTable = memo(function IndustryTable({ data, isLoading }: Pr
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-border/40 text-[11px]">
-                <td className="pt-2 font-medium uppercase tracking-wider text-muted-foreground/60 text-[10px]">Total</td>
+                <td className="pt-2 text-[12px] text-foreground/80 font-semibold">Total</td>
                 <td className="pt-2 text-right font-mono font-bold text-foreground">{totalDeals}</td>
                 <td className="pt-2 text-right font-mono font-bold text-foreground">{formatCurrency(totalRevenue)}</td>
                 <td className="pt-2 text-right font-mono font-bold text-foreground">{formatCurrency(avgDealSize)}</td>

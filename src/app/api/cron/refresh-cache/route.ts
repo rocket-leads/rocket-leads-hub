@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchBothBoards } from "@/lib/integrations/monday"
-import { fetchMetaInsightsDaily, aggregateMetaDailyToTotals, aggregateMetaDailyByDate } from "@/lib/integrations/meta"
+import { fetchMetaInsightsDaily } from "@/lib/integrations/meta"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
+import type { DailyRollup, KpiDailyCache, KpiDailyClientData } from "@/app/api/kpi-summaries/route"
 import { categorize, updateWatchlistClientState } from "@/lib/watchlist/categorize"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { readCache, writeCache } from "@/lib/cache"
@@ -23,6 +24,7 @@ import type { BillingSummary } from "@/lib/integrations/stripe"
 const anthropic = new Anthropic()
 
 const SPARKLINE_DAYS = 14
+const DAILY_HISTORY_DAYS = 365
 
 function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -44,27 +46,46 @@ function getPrevious7DaysRange() {
   return { startDate: fmtDate(start), endDate: fmtDate(end) }
 }
 
-function getTrendRange() {
+function getDailyHistoryRange() {
   const end = new Date()
-  end.setDate(end.getDate() - 1)
+  end.setDate(end.getDate() - 1) // yesterday — we never include today in cached data
   const start = new Date(end)
-  start.setDate(start.getDate() - (SPARKLINE_DAYS - 1))
+  start.setDate(start.getDate() - (DAILY_HISTORY_DAYS - 1))
   return { startDate: fmtDate(start), endDate: fmtDate(end) }
 }
 
-function fillTrend(
-  byDate: Array<{ date: string; spend: number; leads: number }>,
-  startDate: string,
-): Array<{ date: string; spend: number; leads: number }> {
-  const map = new Map(byDate.map((d) => [d.date, d]))
-  const out: Array<{ date: string; spend: number; leads: number }> = []
-  const cursor = new Date(startDate + "T00:00:00Z")
-  for (let i = 0; i < SPARKLINE_DAYS; i++) {
+/**
+ * Build a dense per-day rollup spanning the full daily-history window. Every day in the
+ * window has a row (zero-filled when no Meta or Monday activity), so any range query is
+ * just `.filter(d => d.date >= start && d.date <= end)` — no missing-date handling needed
+ * downstream.
+ */
+function buildDailyRollups(
+  metaDaily: Array<{ date: string; spend: number; leads: number; campaignId: string }>,
+  mondayItems: Array<{ dateCreated: string; dateAppointment: string }>,
+  rangeStart: string,
+): DailyRollup[] {
+  const byDate = new Map<string, DailyRollup>()
+  const cursor = new Date(rangeStart + "T00:00:00Z")
+  for (let i = 0; i < DAILY_HISTORY_DAYS; i++) {
     const d = fmtDate(cursor)
-    out.push(map.get(d) ?? { date: d, spend: 0, leads: 0 })
+    byDate.set(d, { date: d, spend: 0, metaLeads: 0, mondayLeads: 0, mondayAppts: 0 })
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
-  return out
+  for (const m of metaDaily) {
+    const entry = byDate.get(m.date)
+    if (entry) {
+      entry.spend += m.spend
+      entry.metaLeads += m.leads
+    }
+  }
+  for (const it of mondayItems) {
+    const lead = byDate.get(it.dateCreated)
+    if (lead) lead.mondayLeads += 1
+    const appt = byDate.get(it.dateAppointment)
+    if (appt) appt.mondayAppts += 1
+  }
+  return Array.from(byDate.values())
 }
 
 export const maxDuration = 300 // 5 minutes max for Vercel Pro
@@ -117,11 +138,15 @@ export async function GET(req: NextRequest) {
 
     const { startDate, endDate } = getLast7DaysRange()
     const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
-    const trendRange = getTrendRange()
+    const dailyHistoryRange = getDailyHistoryRange()
 
-    // 3. Compute KPI summaries in batches of 5
+    // 3. Compute KPI summaries in batches of 5.
+    // Single 365d Meta fetch per client. We build a dense per-day rollup once, derive the
+    // 7d / prev-7d totals + 14d sparkline as windows over that data, AND emit the full
+    // 365d rollup to a separate cache for date-range queries via /api/kpi-summaries.
     const kpiClients = allClients.filter((c) => c.metaAdAccountId || c.clientBoardId)
     const kpiSummaries: Record<string, KpiSummary> = {}
+    const kpiDaily: KpiDailyCache = {}
 
     for (let i = 0; i < kpiClients.length; i += 5) {
       const batch = kpiClients.slice(i, i + 5)
@@ -134,10 +159,10 @@ export async function GET(req: NextRequest) {
           type MondayItems = Awaited<ReturnType<typeof fetchClientBoardItems>>
           type MondayResult = { ok: boolean; items: MondayItems }
 
-          // One 14d daily Meta fetch covers the 7d total, prev-7d total, and sparkline trend.
+          // One 365d Meta fetch covers all date-range queries we'll ever need.
           const [dailyInsights, monday] = await Promise.all([
             shouldFetchMeta
-              ? fetchMetaInsightsDaily(client.metaAdAccountId, trendRange.startDate, trendRange.endDate).catch(() => [])
+              ? fetchMetaInsightsDaily(client.metaAdAccountId, dailyHistoryRange.startDate, dailyHistoryRange.endDate).catch(() => [])
               : Promise.resolve([]),
             client.clientBoardId
               ? fetchClientBoardItems(client.clientBoardId)
@@ -148,66 +173,56 @@ export async function GET(req: NextRequest) {
                   })
               : Promise.resolve<MondayResult>({ ok: false, items: [] }),
           ])
-          const items = monday.items
 
           const dailyFiltered = selectedCampaignIds.size > 0
             ? dailyInsights.filter((d) => selectedCampaignIds.has(d.campaignId))
             : dailyInsights
 
-          const inWindow = (date: string, s: string, e: string) => date >= s && date <= e
-          const filtered = aggregateMetaDailyToTotals(
-            dailyFiltered.filter((d) => inWindow(d.date, startDate, endDate))
-          )
-          const prevFiltered = aggregateMetaDailyToTotals(
-            dailyFiltered.filter((d) => inWindow(d.date, prevStartDate, prevEndDate))
-          )
+          const days = buildDailyRollups(dailyFiltered, monday.items, dailyHistoryRange.startDate)
 
-          const adSpend = filtered.reduce((sum, x) => sum + x.spend, 0)
-          const prevAdSpend = prevFiltered.reduce((sum, x) => sum + x.spend, 0)
+          // Derive the 7d / prev-7d windows from the dense rollup. metaFallback is decided
+          // at the window level (mirrors the prior behaviour): when Monday reports 0 leads
+          // for the window but Meta has leads, treat Meta as the source of truth.
+          const window7d = days.filter((d) => d.date >= startDate && d.date <= endDate)
+          const windowPrev = days.filter((d) => d.date >= prevStartDate && d.date <= prevEndDate)
 
-          // Use Monday lead counts when available, otherwise fall back to Meta. "Monday
-          // returned 0 leads while Meta reports leads" is treated like a fetch failure — it
-          // covers access issues, broken Zapier sync, wrong column mapping, etc.
-          const mondayLeads = monday.ok
-            ? items.filter((it) => it.dateCreated >= startDate && it.dateCreated <= endDate).length
-            : 0
-          const mondayPrevLeads = monday.ok
-            ? items.filter((it) => it.dateCreated >= prevStartDate && it.dateCreated <= prevEndDate).length
-            : 0
-          const metaLeadsReported = filtered.reduce((sum, x) => sum + x.leads, 0)
-          const metaPrevLeadsReported = prevFiltered.reduce((sum, x) => sum + x.leads, 0)
+          const adSpend = window7d.reduce((s, d) => s + d.spend, 0)
+          const prevAdSpend = windowPrev.reduce((s, d) => s + d.spend, 0)
 
-          const metaFallback = mondayLeads === 0 && metaLeadsReported > 0
-          const leads = metaFallback ? metaLeadsReported : mondayLeads
-          const prevLeads = mondayPrevLeads === 0 && metaPrevLeadsReported > 0 ? metaPrevLeadsReported : mondayPrevLeads
+          const mondayLeadsTotal = monday.ok ? window7d.reduce((s, d) => s + d.mondayLeads, 0) : 0
+          const mondayPrevLeadsTotal = monday.ok ? windowPrev.reduce((s, d) => s + d.mondayLeads, 0) : 0
+          const metaLeadsTotal = window7d.reduce((s, d) => s + d.metaLeads, 0)
+          const metaPrevLeadsTotal = windowPrev.reduce((s, d) => s + d.metaLeads, 0)
 
-          const appointments = monday.ok
-            ? items.filter((it) => it.dateAppointment >= startDate && it.dateAppointment <= endDate).length
-            : 0
-          const prevAppointments = monday.ok
-            ? items.filter((it) => it.dateAppointment >= prevStartDate && it.dateAppointment <= prevEndDate).length
-            : 0
+          const metaFallback = mondayLeadsTotal === 0 && metaLeadsTotal > 0
+          const leads = metaFallback ? metaLeadsTotal : mondayLeadsTotal
+          const prevLeads = mondayPrevLeadsTotal === 0 && metaPrevLeadsTotal > 0 ? metaPrevLeadsTotal : mondayPrevLeadsTotal
+
+          const appointments = monday.ok ? window7d.reduce((s, d) => s + d.mondayAppts, 0) : 0
+          const prevAppointments = monday.ok ? windowPrev.reduce((s, d) => s + d.mondayAppts, 0) : 0
 
           const cpl = leads > 0 ? adSpend / leads : 0
           const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
           const costPerAppointment = appointments > 0 ? adSpend / appointments : 0
           const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
-          // 14d daily trend: spend always from Meta; leads from Monday-per-day if CRM connected,
-          // else fall back to Meta's per-day count (mirrors metaFallback rule for the 7d total).
-          const metaByDate = aggregateMetaDailyByDate(dailyFiltered)
+          // 14d sparkline = trailing 14 entries of the dense rollup. Per-day leads use
+          // Monday count when CRM is connected and that day has any, else fall back to Meta.
+          const sparkSlice = days.slice(-SPARKLINE_DAYS)
           const dailyTrend = shouldFetchMeta
-            ? fillTrend(
-                metaByDate.map((d) => {
-                  if (monday.ok) {
-                    const mondayLeadsForDay = items.filter((it) => it.dateCreated === d.date).length
-                    return { date: d.date, spend: d.spend, leads: mondayLeadsForDay > 0 ? mondayLeadsForDay : d.leads }
-                  }
-                  return d
-                }),
-                trendRange.startDate,
-              )
+            ? sparkSlice.map((d) => ({
+                date: d.date,
+                spend: d.spend,
+                leads: monday.ok && d.mondayLeads > 0 ? d.mondayLeads : d.metaLeads,
+              }))
             : undefined
+
+          const dailyEntry: KpiDailyClientData = {
+            mondayItemId: client.mondayItemId,
+            days,
+            mondayCrmConnected: monday.ok,
+            ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
+          }
 
           return {
             mondayItemId: client.mondayItemId,
@@ -224,6 +239,7 @@ export async function GET(req: NextRequest) {
               mondayCrmConnected: monday.ok,
               ...(dailyTrend ? { dailyTrend } : {}),
             } as KpiSummary,
+            daily: dailyEntry,
           }
         })
       )
@@ -231,6 +247,7 @@ export async function GET(req: NextRequest) {
       for (const result of results) {
         if (result.status === "fulfilled") {
           kpiSummaries[result.value.mondayItemId] = result.value.summary
+          kpiDaily[result.value.mondayItemId] = result.value.daily
         }
       }
     }
@@ -253,6 +270,7 @@ export async function GET(req: NextRequest) {
     await Promise.all([
       writeCache("monday_boards", { onboarding, current }),
       writeCache("kpi_summaries", kpiSummaries),
+      writeCache("kpi_daily", kpiDaily),
       writeCache("billing_summaries", billingSummaries),
     ])
 
@@ -337,7 +355,7 @@ export async function GET(req: NextRequest) {
       console.error("[cron] targets costs failed:", costsResult.reason)
     }
     if (deliveryResult.status === "fulfilled") {
-      targetsWrites.push(writeCache("targets_delivery_v2", deliveryResult.value))
+      targetsWrites.push(writeCache("targets_delivery_v3", deliveryResult.value))
     } else {
       console.error("[cron] targets delivery failed:", deliveryResult.reason)
     }

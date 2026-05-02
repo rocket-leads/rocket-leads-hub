@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { format, parseISO, subDays, differenceInCalendarDays } from "date-fns"
 import { useQueryClient } from "@tanstack/react-query"
 import { cn } from "@/lib/utils"
 import { useDateRange } from "../_hooks/use-date-range"
 import { useDeliveryData } from "../_hooks/use-delivery-data"
 import { useTargetsConfig } from "../_hooks/use-targets-config"
+import { DateRangePicker } from "./date-range-picker"
 import { KpiCard } from "./kpi-card"
 import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
 import type { UnassignedCustomer, UnlinkedMondayItem, AccountManagerRevenue } from "@/types/targets"
@@ -22,7 +23,8 @@ function previousPeriodRange(startDate: string, endDate: string): { start: Date;
 const SHORT_DATE = "MMM d"
 
 export function DeliveryTab() {
-  const { range, setStartDate, setEndDate, presets, applyPreset } = useDateRange()
+  const { range, setRange, presets, applyPreset } = useDateRange()
+  const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
   const startDate = format(range.startDate, "yyyy-MM-dd")
   const endDate = format(range.endDate, "yyyy-MM-dd")
   const { data, loading } = useDeliveryData(startDate, endDate)
@@ -33,29 +35,20 @@ export function DeliveryTab() {
 
   return (
     <div className="space-y-6">
-      {/* Date picker */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center gap-1.5">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(new Date(e.target.value))}
-            className="h-8 rounded-md border border-border bg-card px-2 text-xs"
-          />
-          <span className="text-xs text-muted-foreground">→</span>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(new Date(e.target.value))}
-            className="h-8 rounded-md border border-border bg-card px-2 text-xs"
-          />
-        </div>
-        <div className="flex gap-1">
+      {/* Date picker — same component as Marketing/Sales for consistency */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <DateRangePicker
+          startDate={range.startDate}
+          endDate={range.endDate}
+          onChange={setRange}
+          maxDate={maxPickerDate}
+        />
+        <div className="flex gap-1 flex-wrap">
           {presets.map((preset) => (
             <button
               key={preset.label}
               onClick={() => applyPreset(preset)}
-              className="h-7 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
+              className="h-8 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
             >
               {preset.label}
             </button>
@@ -229,10 +222,25 @@ export function DeliveryTab() {
 // ─── Per-team rollup card ───────────────────────────────────────────────────
 
 function TeamCard({ row, rank }: { row: AccountManagerRevenue; rank: number }) {
+  // Subtle ranking through opacity of the brand purple — no medals. Position 1
+  // also gets a thin top accent line so the leader is visible at a glance, but
+  // the cards stay visually equal otherwise (we don't want to demotivate #2).
+  const rankOpacity = rank === 1 ? "text-primary" : rank === 2 ? "text-primary/55" : "text-primary/30"
+  const rankNumber = String(rank).padStart(2, "0")
+
   return (
-    <div className="bg-card rounded-lg border border-border/40 p-5 space-y-4">
-      <div className="flex items-center gap-3">
-        <RankMedal rank={rank} />
+    <div className="bg-card rounded-lg border border-border/40 p-5 space-y-4 relative overflow-hidden">
+      {rank === 1 && (
+        <div
+          aria-hidden
+          className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-primary via-primary/60 to-transparent"
+        />
+      )}
+
+      <div className="flex items-baseline gap-3">
+        <span className={cn("text-[11px] font-mono tracking-wider tabular-nums shrink-0", rankOpacity)}>
+          {rankNumber}
+        </span>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-semibold truncate">{row.name}</h3>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-0.5">
@@ -258,46 +266,6 @@ function TeamCard({ row, rank }: { row: AccountManagerRevenue; rank: number }) {
         <Metric label="Ad Budget" value={row.adBudget} />
         <Metric label="Service Fee / Cust" value={row.serviceFeePerCustomer} />
       </div>
-    </div>
-  )
-}
-
-function RankMedal({ rank }: { rank: number }) {
-  // Official medal colors via inline style (avoids Tailwind JIT pruning arbitrary hex values).
-  // Three-stop gradient = highlight → mid → shadow gives a subtle metallic finish; the matching
-  // box-shadow halo makes the medal pop against the dark dashboard.
-  const palette = rank === 1 ? {
-    background: "linear-gradient(135deg, #FFE680 0%, #FFD700 50%, #B8860B 100%)",
-    color: "#000000",
-    glow: "rgba(255, 215, 0, 0.55)",
-  } : rank === 2 ? {
-    background: "linear-gradient(135deg, #F0F0F0 0%, #C0C0C0 50%, #7F7F7F 100%)",
-    color: "#000000",
-    glow: "rgba(192, 192, 192, 0.55)",
-  } : rank === 3 ? {
-    background: "linear-gradient(135deg, #E5A472 0%, #CD7F32 50%, #8B4513 100%)",
-    color: "#000000",
-    glow: "rgba(205, 127, 50, 0.55)",
-  } : null
-
-  if (!palette) {
-    return (
-      <div className="shrink-0 w-12 h-12 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-lg font-bold ring-2 ring-border">
-        {rank}
-      </div>
-    )
-  }
-
-  return (
-    <div
-      className="shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold"
-      style={{
-        background: palette.background,
-        color: palette.color,
-        boxShadow: `0 0 0 2px ${palette.glow}, 0 4px 14px ${palette.glow}`,
-      }}
-    >
-      {rank}
     </div>
   )
 }
@@ -386,12 +354,23 @@ function UnassignedRow({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [error, setError] = useState<string | null>(null)
+  // Once we've fired an auto-assign for this customer, don't fire again — the
+  // row disappears on the next refetch but we may render once more in the meantime.
+  const autoAssignFired = useRef(false)
 
-  async function assignTo(item: UnlinkedMondayItem) {
+  // Look up existing IDs for the chosen Monday item so the API can skip its read.
+  const itemsById = useMemo(() => {
+    const m = new Map<string, UnlinkedMondayItem>()
+    for (const i of unlinkedItems) m.set(i.id, i)
+    return m
+  }, [unlinkedItems])
+
+  const assignTo = useCallback(async (item: { id: string; boardType: "onboarding" | "current" }) => {
     if (assigning) return
     setAssigning(true)
     setError(null)
     try {
+      const existingStripeIds = itemsById.get(item.id)?.stripeCustomerId ?? ""
       const res = await fetch("/api/targets/delivery/assign-customer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -399,6 +378,7 @@ function UnassignedRow({
           stripeCustomerId: customer.customerId,
           mondayItemId: item.id,
           boardType: item.boardType,
+          existingStripeIds,
         }),
       })
       if (!res.ok) {
@@ -411,14 +391,27 @@ function UnassignedRow({
       setAssigning(false)
     }
     // On success the row will disappear via refetch — no need to reset state.
-  }
+  }, [assigning, customer.customerId, itemsById, queryClient])
 
-  // Manual picker filtering: cap at 8 and tell the user when there are more.
+  // Auto-assign when the top fuzzy suggestion is ≥80% confident — that's "definitely
+  // the same client, just not linked yet" territory. Saves a click per high-confidence
+  // match and is reversible via Monday if it ever picks wrong.
+  const AUTO_ASSIGN_THRESHOLD = 0.8
+  useEffect(() => {
+    if (autoAssignFired.current || assigning || error) return
+    if (customer.reason !== "no_monday_match") return
+    const top = customer.suggestions?.[0]
+    if (!top || top.score < AUTO_ASSIGN_THRESHOLD) return
+    autoAssignFired.current = true
+    void assignTo({ id: top.mondayItemId, boardType: top.boardType })
+  }, [customer, assigning, error, assignTo])
+
+  // Manual picker filtering: cap at 30 (was 8 — too low for the ~150 item board).
   const lowerQuery = query.toLowerCase().trim()
   const filtered = lowerQuery
     ? unlinkedItems.filter((i) => i.name.toLowerCase().includes(lowerQuery))
     : unlinkedItems
-  const visiblePool = filtered.slice(0, 8)
+  const visiblePool = filtered.slice(0, 30)
   const moreCount = Math.max(0, filtered.length - visiblePool.length)
 
   return (
@@ -474,7 +467,7 @@ function UnassignedRow({
                 <button
                   key={s.mondayItemId}
                   disabled={assigning}
-                  onClick={() => assignTo({ id: s.mondayItemId, name: s.itemName, boardType: s.boardType })}
+                  onClick={() => assignTo({ id: s.mondayItemId, boardType: s.boardType })}
                   className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 hover:bg-primary/10 px-2 py-1 text-[11px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   title={`${s.boardType} board · ${Math.round(s.score * 100)}% match`}
                 >

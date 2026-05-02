@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   // Cache hit only for MTD
   const mtd = getMtdRange()
   if (startDate === mtd.startDate && endDate === mtd.endDate && !forceRefresh) {
-    const cached = await readCache<DeliveryOverview>("targets_delivery_v2")
+    const cached = await readCache<DeliveryOverview>("targets_delivery_v3")
     // Reject any cache entry that predates a UI-required field — otherwise stale caches
     // render 0/undefined for newly-added KPIs (e.g. newClients, byTeam) until cron refreshes.
     if (isFreshDeliveryShape(cached)) {
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
   if (periodMonth && isPastCalendarMonth(periodMonth.year, periodMonth.month)) {
     try {
       const result = await cachedHistoricalMonth(
-        "targets_delivery_v2",
+        "targets_delivery_v3",
         periodMonth.year,
         periodMonth.month,
         () => fetchDelivery(startDate, endDate),

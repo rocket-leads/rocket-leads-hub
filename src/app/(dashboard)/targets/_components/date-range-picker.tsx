@@ -12,6 +12,11 @@ interface Props {
   startDate: Date
   endDate: Date
   onChange: (start: Date, end: Date) => void
+  /**
+   * Latest selectable day. Anything after this is disabled in the calendar — used to
+   * prevent picking today when the underlying data only goes up to yesterday.
+   */
+  maxDate?: Date
 }
 
 function formatLabel(start: Date, end: Date): string {
@@ -21,13 +26,22 @@ function formatLabel(start: Date, end: Date): string {
   return `${format(start, "d MMM yyyy")} – ${format(end, "d MMM yyyy")}`
 }
 
-export function DateRangePicker({ startDate, endDate, onChange }: Props) {
+export function DateRangePicker({ startDate, endDate, onChange, maxDate }: Props) {
   const [open, setOpen] = useState(false)
   const [pending, setPending] = useState<RdpDateRange | undefined>({ from: startDate, to: endDate })
+  // Track the click count since the popover opened. We only commit once the user has
+  // explicitly picked TWO dates (start + end). Without this guard, react-day-picker
+  // can emit a same-day range on the very first click — which previously slammed the
+  // popover closed before the user got to pick the end date.
+  const [clickCount, setClickCount] = useState(0)
 
   const handleSelect = (range: RdpDateRange | undefined) => {
     setPending(range)
-    // Commit when both ends are selected
+    if (clickCount === 0) {
+      // First click — keep the popup open so the user can pick the end date.
+      setClickCount(1)
+      return
+    }
     if (range?.from && range?.to) {
       onChange(range.from, range.to)
       setOpen(false)
@@ -39,7 +53,10 @@ export function DateRangePicker({ startDate, endDate, onChange }: Props) {
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
-        if (next) setPending({ from: startDate, to: endDate })
+        if (next) {
+          setPending({ from: startDate, to: endDate })
+          setClickCount(0)
+        }
       }}
     >
       <Popover.Trigger
@@ -69,6 +86,7 @@ export function DateRangePicker({ startDate, endDate, onChange }: Props) {
               showOutsideDays
               weekStartsOn={1}
               className="rdp-rl"
+              {...(maxDate ? { disabled: { after: maxDate } } : {})}
             />
           </Popover.Popup>
         </Popover.Positioner>

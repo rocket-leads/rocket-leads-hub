@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { getDaysInMonth, startOfMonth, differenceInDays, max as dateMax } from "date-fns"
+import { useMemo, useState } from "react"
+import { getDaysInMonth, startOfMonth, differenceInDays, max as dateMax, subDays } from "date-fns"
 import { useDateRange } from "../_hooks/use-date-range"
 import { useTargetsData } from "../_hooks/use-targets-data"
 import { useKpiCalculations } from "../_hooks/use-kpi-calculations"
@@ -19,7 +19,8 @@ import { HeroPillars } from "./hero-pillars"
 import { cn } from "@/lib/utils"
 import { formatCurrencyDecimal, safeDivide } from "@/lib/targets/formatters"
 import { deriveTargets } from "@/lib/targets/calculations"
-import type { CountryKey, DateRange } from "@/types/targets"
+import type { CountryKey, DateRange, StripeNewBusinessInvoice, ClosedDeal } from "@/types/targets"
+import { formatCurrency } from "@/lib/targets/formatters"
 
 const COUNTRY_OPTIONS: Array<{ key: CountryKey; label: string }> = [
   { key: "all", label: "All" },
@@ -41,7 +42,9 @@ function proRata(monthlyTarget: number, range: DateRange): number {
 
 export function MarketingTab() {
   const [country, setCountry] = useState<CountryKey>("all")
+  const [stripeGapOpen, setStripeGapOpen] = useState(false)
   const { range, setRange, presets, applyPreset } = useDateRange()
+  const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
   const data = useTargetsData(range, country)
   const { data: targets } = useTargetsConfig()
   const { kpiGroups, revenueProgress } = useKpiCalculations(
@@ -86,6 +89,7 @@ export function MarketingTab() {
           startDate={range.startDate}
           endDate={range.endDate}
           onChange={setRange}
+          maxDate={maxPickerDate}
         />
         <div className="flex gap-1 flex-wrap">
           {presets.map((preset) => (
@@ -126,6 +130,8 @@ export function MarketingTab() {
           proRata={revenueProgress.proRata}
           monthlyTarget={revenueProgress.monthlyTarget}
           isLoading={data.mondayLoading}
+          stripeCrossCheck={country === "all" ? m?.stripeNewBusinessRevenue : undefined}
+          onGapClick={() => setStripeGapOpen(true)}
         />
         <MarketingInsights
           monday={m}
@@ -248,6 +254,139 @@ export function MarketingTab() {
           <CloserInsights data={m?.closers ?? []} isLoading={data.mondayLoading} />
         </div>
       </section>
+
+      <StripeGapModal
+        open={stripeGapOpen}
+        onClose={() => setStripeGapOpen(false)}
+        invoices={m?.stripeNewBusinessInvoices ?? []}
+        deals={m?.closedDeals ?? []}
+        mondayRevenue={revenueProgress.current}
+        stripeRevenue={m?.stripeNewBusinessRevenue ?? 0}
+      />
+    </div>
+  )
+}
+
+// ─── Stripe gap drilldown ───────────────────────────────────────────────────
+
+function StripeGapModal({
+  open, onClose, invoices, deals, mondayRevenue, stripeRevenue,
+}: {
+  open: boolean
+  onClose: () => void
+  invoices: StripeNewBusinessInvoice[]
+  deals: ClosedDeal[]
+  mondayRevenue: number
+  stripeRevenue: number
+}) {
+  if (!open) return null
+  const gap = stripeRevenue - mondayRevenue
+  return (
+    <div className="fixed inset-0 z-50">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="bg-card border border-border rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden"
+        style={{ position: "fixed", top: "10vh", left: "50%", transform: "translateX(-50%)", width: "92vw", maxWidth: "60rem", maxHeight: "80vh" }}
+      >
+        <div className="px-5 py-4 border-b border-border/40">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Monday vs Stripe — Revenue cross-check</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Both lists side-by-side. Use them to spot deals logged in Monday but not yet invoiced (unpaid), or Stripe invoices that don&apos;t have a matching Monday deal (missing CRM entry).
+              </p>
+            </div>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none shrink-0">×</button>
+          </div>
+          <div className="grid grid-cols-3 gap-3 mt-4 text-xs">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Monday closed deals</p>
+              <p className="font-mono font-medium mt-0.5">{formatCurrency(mondayRevenue)} <span className="text-muted-foreground/60 font-normal">· {deals.length}</span></p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Stripe new business</p>
+              <p className="font-mono font-medium mt-0.5">{formatCurrency(stripeRevenue)} <span className="text-muted-foreground/60 font-normal">· {invoices.length}</span></p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-yellow-500/80">Gap (Stripe − Monday)</p>
+              <p className={cn("font-mono font-semibold mt-0.5", gap > 0 ? "text-yellow-500" : "text-foreground")}>{formatCurrency(gap)}</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border/40">
+          {/* Monday side */}
+          <div className="flex flex-col overflow-hidden">
+            <div className="px-4 py-2 border-b border-border/40 bg-muted/20">
+              <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Monday closed deals</h4>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {deals.length === 0 ? (
+                <p className="px-4 py-6 text-xs text-muted-foreground text-center">No closed deals in this period.</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-card border-b border-border/40">
+                    <tr>
+                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Date</th>
+                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Lead / Closer</th>
+                      <th className="text-right py-2 px-4 font-medium text-muted-foreground">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deals.map((d) => (
+                      <tr key={d.mondayItemId} className="border-b border-border/20 last:border-0 hover:bg-muted/30">
+                        <td className="py-2 px-4 font-mono text-muted-foreground">{d.dateDeal || "—"}</td>
+                        <td className="py-2 px-4 truncate max-w-[200px]">
+                          <div className="truncate">{d.name}</div>
+                          {d.closer && <div className="text-[10px] text-muted-foreground/70 truncate">{d.closer}</div>}
+                        </td>
+                        <td className="py-2 px-4 text-right font-mono font-medium">{formatCurrency(d.dealValue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* Stripe side */}
+          <div className="flex flex-col overflow-hidden">
+            <div className="px-4 py-2 border-b border-border/40 bg-muted/20">
+              <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Stripe new-business invoices</h4>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {invoices.length === 0 ? (
+                <p className="px-4 py-6 text-xs text-muted-foreground text-center">No Stripe new-business invoices in this period.</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-card border-b border-border/40">
+                    <tr>
+                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Date</th>
+                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Customer / Invoice</th>
+                      <th className="text-right py-2 px-4 font-medium text-muted-foreground">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.map((inv) => (
+                      <tr
+                        key={`${inv.invoiceNumber}-${inv.date}`}
+                        onClick={inv.hostedUrl ? () => window.open(inv.hostedUrl!, "_blank", "noopener,noreferrer") : undefined}
+                        className={cn("border-b border-border/20 last:border-0 hover:bg-muted/30 transition-colors", inv.hostedUrl && "cursor-pointer")}
+                      >
+                        <td className="py-2 px-4 font-mono text-muted-foreground">{inv.date}</td>
+                        <td className="py-2 px-4 truncate max-w-[200px]">
+                          <div className="truncate">{inv.customerName}</div>
+                          {inv.invoiceNumber && <div className={cn("text-[10px] font-mono truncate", inv.hostedUrl ? "text-primary" : "text-muted-foreground/70")}>{inv.invoiceNumber}</div>}
+                        </td>
+                        <td className="py-2 px-4 text-right font-mono font-medium">{formatCurrency(inv.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

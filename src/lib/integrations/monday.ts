@@ -371,6 +371,22 @@ export async function fetchClientBoardItemsWithUpdates(
 }
 
 /**
+ * Splits the `stripe_customer_id` column value into individual customer IDs.
+ * One Monday item can map to multiple Stripe customers (entity changes, alt
+ * payment methods, etc.) — we store them comma-separated. Trims, dedupes, and
+ * filters empty tokens. Whitespace tolerant.
+ */
+export function parseStripeCustomerIds(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  const seen = new Set<string>()
+  for (const part of raw.split(",")) {
+    const id = part.trim()
+    if (id) seen.add(id)
+  }
+  return [...seen]
+}
+
+/**
  * Write a single text/simple value to a Monday column on a client board item.
  * `columnKey` is the logical key from board config (e.g. "stripe_customer_id"),
  * not the Monday column ID — we resolve the actual ID per board type from the

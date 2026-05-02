@@ -4,10 +4,12 @@ import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { RefreshCw, Users, Sparkles } from "lucide-react"
+import { format, subDays } from "date-fns"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { Panel } from "@/components/ui/panel"
 import { ClientsTable } from "./clients-table"
+import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
@@ -24,6 +26,10 @@ export function ClientsOverview({ onboarding, current }: Props) {
   const [showAll, setShowAll] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState<"current" | "onboarding">("current")
+  const dateRange = useDateRange()
+  const startDateStr = format(dateRange.range.startDate, "yyyy-MM-dd")
+  const endDateStr = format(dateRange.range.endDate, "yyyy-MM-dd")
+  const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
 
   const visibleCurrent = useMemo(
     () => showAll ? current : current.filter((c) => ACTIVE_STATUSES.includes(c.campaignStatus ?? "")),
@@ -67,12 +73,12 @@ export function ClientsOverview({ onboarding, current }: Props) {
   })
 
   const kpiQuery = useQuery<Record<string, KpiSummary>>({
-    queryKey: ["kpi-summaries", kpiClients.map((c) => c.mondayItemId)],
+    queryKey: ["kpi-summaries", kpiClients.map((c) => c.mondayItemId), startDateStr, endDateStr],
     queryFn: () =>
       fetch("/api/kpi-summaries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clients: kpiClients }),
+        body: JSON.stringify({ clients: kpiClients, startDate: startDateStr, endDate: endDateStr }),
       }).then((r) => r.json()),
     enabled: kpiClients.length > 0,
     staleTime: 60 * 60 * 1000,
@@ -133,6 +139,14 @@ export function ClientsOverview({ onboarding, current }: Props) {
               showAll,
               setShowAll,
               totalCount: current.length,
+            }}
+            dateRangeControl={{
+              startDate: dateRange.range.startDate,
+              endDate: dateRange.range.endDate,
+              setRange: dateRange.setRange,
+              presets: dateRange.presets,
+              applyPreset: dateRange.applyPreset,
+              maxDate: maxPickerDate,
             }}
           />
         </Panel>

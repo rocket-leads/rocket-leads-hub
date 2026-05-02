@@ -63,7 +63,6 @@ export default function ClientsPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Clients</h1>
-        <p className="text-[13px] text-muted-foreground mt-1">Overview of all active client accounts</p>
       </div>
 
       <Suspense fallback={<ClientsLoading />}>

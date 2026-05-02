@@ -4,13 +4,7 @@ import { useState, useMemo, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Sparkles, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
@@ -516,18 +510,18 @@ function WatchSection({
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
           {/* Column headers */}
-          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_70px_32px] gap-x-4 px-5 py-2.5 border-b border-border/20 bg-muted/20">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Client</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Insight</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium flex items-center gap-1">
-              <Sparkles className="h-2.5 w-2.5 text-violet-400" />
+          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_70px_32px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
+            <span className="text-[13px] text-foreground/80 font-semibold">Client</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">Insight</span>
+            <span className="text-[13px] text-foreground/80 font-semibold flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-violet-400" />
               AI Note
             </span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">Spend</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">Leads</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">CPL</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">Appts</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium text-right">14d CPL</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">Spend</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">Leads</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">CPL</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">Appts</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">14d CPL</span>
             <span />
           </div>
 
@@ -550,7 +544,7 @@ function WatchSection({
                       toggleRow(id)
                     }
                   }}
-                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_70px_32px] gap-x-4 px-5 py-3 border-b border-border/10 border-l-2 ${config.rowBorder} hover:bg-muted/20 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
+                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_70px_32px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
                 >
                   {/* Client */}
                   <div className="min-w-0">
@@ -580,27 +574,27 @@ function WatchSection({
                   </div>
 
                   {/* Spend */}
-                  <span className="text-xs tabular-nums text-muted-foreground text-right">
+                  <span className="text-xs tabular-nums text-muted-foreground">
                     {kpi && kpi.adSpend > 0 ? fmtCurrency(kpi.adSpend) : "—"}
                   </span>
 
                   {/* Leads */}
-                  <span className="text-xs tabular-nums font-medium text-right">
+                  <span className="text-xs tabular-nums font-medium">
                     {kpi && kpi.leads > 0 ? kpi.leads : kpi && kpi.adSpend > 0 ? "0" : "—"}
                   </span>
 
                   {/* CPL */}
-                  <span className="text-xs tabular-nums text-muted-foreground text-right">
+                  <span className="text-xs tabular-nums text-muted-foreground">
                     {kpi && kpi.cpl > 0 ? `€${kpi.cpl.toFixed(2)}` : "—"}
                   </span>
 
                   {/* Appointments */}
-                  <span className="text-xs tabular-nums text-muted-foreground text-right">
+                  <span className="text-xs tabular-nums text-muted-foreground">
                     {kpi && kpi.appointments > 0 ? kpi.appointments : "—"}
                   </span>
 
                   {/* 14d CPL sparkline */}
-                  <span className="flex items-center justify-end">
+                  <span className="flex items-center">
                     <CplSparkline trend={kpi?.dailyTrend} />
                   </span>
 
@@ -651,9 +645,9 @@ function NoDataSection({
 
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
-          <div className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-2.5 border-b border-border/20 bg-muted/20">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Client</span>
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium">Reason</span>
+          <div className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
+            <span className="text-[13px] text-foreground/80 font-semibold">Client</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">Reason</span>
             <span />
           </div>
 
@@ -661,7 +655,7 @@ function NoDataSection({
             <Link
               key={client.mondayItemId}
               href={`/clients/${client.mondayItemId}?from=watchlist`}
-              className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-3 border-b border-border/10 border-l-2 border-l-muted-foreground/30 hover:bg-muted/20 transition-colors items-center"
+              className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 border-l-muted-foreground/30 hover:bg-muted/30 transition-colors items-center"
             >
               <div className="min-w-0">
                 <p className="text-sm font-medium text-muted-foreground/80 truncate">{client.name}</p>
@@ -995,7 +989,7 @@ export function WatchListDashboard({ clients }: Props) {
       {/* Header */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-2xl font-heading font-semibold tracking-tight">Watch List</h1>
+          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Watch List</h1>
           <div className="flex items-center gap-3">
             {lastUpdated && (
               <span className="text-[11px] text-muted-foreground/40">Updated {lastUpdated}</span>
@@ -1009,9 +1003,6 @@ export function WatchListDashboard({ clients }: Props) {
             </button>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Campaign performance monitor — {filteredClients.length} active clients
-        </p>
       </div>
 
       {/* Summary pills + CM filter */}
@@ -1039,17 +1030,21 @@ export function WatchListDashboard({ clients }: Props) {
           </div>
         </div>
 
-        <Select value={cmFilter} onValueChange={(v) => setCmFilter(v ?? "All")}>
-          <SelectTrigger className="!h-8 !w-auto !min-w-[140px] !border-0 !bg-muted/40 !rounded-lg !text-xs !px-3 !shadow-none dark:!bg-white/5">
-            <SelectValue>{cmFilter === "All" ? "All Campaign Managers" : cmFilter}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Campaign Managers</SelectItem>
-            {campaignManagers.map((cm) => (
-              <SelectItem key={cm} value={cm}>{cm}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <FiltersPopover
+          align="end"
+          filters={[
+            {
+              key: "cm",
+              label: "Campaign Manager",
+              value: cmFilter,
+              onChange: setCmFilter,
+              options: [
+                { value: "All", label: "All Campaign Managers" },
+                ...campaignManagers.map((cm) => ({ value: cm, label: cm })),
+              ],
+            } satisfies FilterConfig,
+          ]}
+        />
       </div>
 
       {/* 4 KPI cards — same primitive as the Targets HeroPillars so the watchlist reads

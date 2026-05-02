@@ -1,10 +1,11 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
-import { getDaysInMonth } from "date-fns"
-import { useFinanceData, useMonthSelector } from "../_hooks/use-finance-data"
+import { useMemo, useState, useCallback } from "react"
+import { format, subDays } from "date-fns"
+import { useFinanceData } from "../_hooks/use-finance-data"
+import { useDateRange } from "../_hooks/use-date-range"
 import { useTargetsConfig } from "../_hooks/use-targets-config"
+import { DateRangePicker } from "./date-range-picker"
 import { KpiCard } from "./kpi-card"
 import { RevenueProgressBar } from "./revenue-progress-bar"
 import { InvoiceDetailModal } from "./invoice-detail-modal"
@@ -34,8 +35,17 @@ function SubCard({ label, value, loading, onClick }: { label: string; value: str
 }
 
 export function FinanceTab() {
-  const { year, month, label, isCurrentMonth, goToPrev, goToNext } = useMonthSelector()
-  const { finance, costs, loading } = useFinanceData(year, month)
+  const { range, setRange, presets, applyPreset } = useDateRange()
+  const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
+  const startDate = format(range.startDate, "yyyy-MM-dd")
+  const endDate = format(range.endDate, "yyyy-MM-dd")
+  // Costs come from the Sheet at calendar-month resolution. We pull the month
+  // containing the start of the selected range — for ranges that span a month
+  // boundary the costs shown will be from the start month only. UI should make
+  // this clear; revenue numbers respect the exact selected range.
+  const year = range.startDate.getFullYear()
+  const month = range.startDate.getMonth() + 1
+  const { finance, costs, loading } = useFinanceData(startDate, endDate, year, month)
   const { data: targets } = useTargetsConfig()
   const t = targets ?? null
 
@@ -55,18 +65,23 @@ export function FinanceTab() {
   const nb = finance?.serviceFeeNewBusiness
   const mrr = finance?.serviceFeeMrr
 
-  // ── Pro-rata factor: how far through the month are we ──
+  // ── Pro-rata factor: how far through the selected range are we ──
+  // 0 = range entirely in the future, 1 = range entirely in the past, in-between
+  // = elapsed share of a range that crosses today (used for projections + targets).
   const proRataFactor = (() => {
-    if (!isCurrentMonth) return 1
-    const today = new Date()
-    const daysInMonth = getDaysInMonth(today)
-    return today.getDate() / daysInMonth
+    const now = new Date()
+    if (now <= range.startDate) return 0
+    if (now >= range.endDate) return 1
+    const total = range.endDate.getTime() - range.startDate.getTime()
+    const elapsed = now.getTime() - range.startDate.getTime()
+    return total > 0 ? elapsed / total : 1
   })()
+  const isCurrentRange = proRataFactor > 0 && proRataFactor < 1
 
   // ── Revenue actuals ──
   const actualServiceFee = sf?.invoiced ?? 0
-  // ── PROJECTED full-month revenue (extrapolate at current pace) ──
-  const projectedServiceFee = isCurrentMonth && proRataFactor > 0 ? actualServiceFee / proRataFactor : actualServiceFee
+  // ── PROJECTED full-period revenue (extrapolate at current pace) ──
+  const projectedServiceFee = isCurrentRange && proRataFactor > 0 ? actualServiceFee / proRataFactor : actualServiceFee
 
   // ── Costs: the API returns full-month values (either actual from sheet or 3-month average) ──
   const teamCostsActual = costs?.teamCosts ?? 0
@@ -96,15 +111,25 @@ export function FinanceTab() {
 
   return (
     <div className="space-y-6">
-      {/* Month selector */}
-      <div className="flex items-center gap-3">
-        <button onClick={goToPrev} className="h-8 w-8 rounded-md bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors">
-          <ChevronLeft className="h-4 w-4" />
-        </button>
-        <span className="text-sm font-medium min-w-[80px] text-center">{label}</span>
-        <button onClick={goToNext} disabled={isCurrentMonth} className="h-8 w-8 rounded-md bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors disabled:opacity-30">
-          <ChevronRight className="h-4 w-4" />
-        </button>
+      {/* Date picker — same component as Marketing/Sales + Delivery */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <DateRangePicker
+          startDate={range.startDate}
+          endDate={range.endDate}
+          onChange={setRange}
+          maxDate={maxPickerDate}
+        />
+        <div className="flex gap-1 flex-wrap">
+          {presets.map((preset) => (
+            <button
+              key={preset.label}
+              onClick={() => applyPreset(preset)}
+              className="h-8 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Service Fee Invoiced progress bar */}
@@ -217,7 +242,7 @@ export function FinanceTab() {
           <div className="space-y-3">
             <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Profit</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <KpiCard label="Revenue" value={revenueForProfit} formatted={formatCurrency(revenueForProfit)} isEstimated={isCurrentMonth} variant="neutral" isLoading={loading} />
+              <KpiCard label="Revenue" value={revenueForProfit} formatted={formatCurrency(revenueForProfit)} isEstimated={isCurrentRange} variant="neutral" isLoading={loading} />
               <KpiCard
                 label="Total Costs"
                 value={totalCosts}
@@ -234,7 +259,7 @@ export function FinanceTab() {
                 formatted={formatCurrency(netProfit)}
                 target={netProfitTarget || undefined}
                 targetFormatted={netProfitTarget ? `${formatCurrency(netProfit)} of ${formatCurrency(netProfitTarget)}` : undefined}
-                isEstimated={isCurrentMonth || anyEstimated}
+                isEstimated={isCurrentRange || anyEstimated}
                 variant="volume"
                 isLoading={loading}
               />
@@ -244,7 +269,7 @@ export function FinanceTab() {
                 formatted={formatPercent(margin)}
                 target={profitMargin || undefined}
                 targetFormatted={profitMargin ? `${formatPercent(margin)} of ${formatPercent(profitMargin)}` : undefined}
-                isEstimated={isCurrentMonth || anyEstimated}
+                isEstimated={isCurrentRange || anyEstimated}
                 variant="volume"
                 isLoading={loading}
               />

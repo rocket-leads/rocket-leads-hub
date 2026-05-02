@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
   const today = new Date().toISOString().slice(0, 10)
   const sevenDayAvgScore = computeSevenDayAvgScore(sliceHistory, today)
 
-  const delivery = await readCache<DeliveryOverview>("targets_delivery_v2")
+  const delivery = await readCache<DeliveryOverview>("targets_delivery_v3")
   const byAccountManager = delivery?.byAccountManager ?? []
 
   const vars = computeTeamWatchlistVars({

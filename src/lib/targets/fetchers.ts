@@ -7,7 +7,7 @@ import Stripe from "stripe"
 import { google } from "googleapis"
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
-import { getToken as getMondayToken, fetchAllItems, fetchBothBoards } from "@/lib/integrations/monday"
+import { getToken as getMondayToken, fetchAllItems, fetchBothBoards, parseStripeCustomerIds } from "@/lib/integrations/monday"
 import { getToken as getMetaToken } from "@/lib/integrations/meta"
 import { TEAMS, teamForMember } from "@/lib/teams"
 import type {
@@ -25,6 +25,8 @@ import type {
   UnassignedCustomer,
   MatchSuggestion,
   UnlinkedMondayItem,
+  StripeNewBusinessInvoice,
+  ClosedDeal,
 } from "@/types/targets"
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -211,6 +213,9 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
   for (const k of COUNTRY_KEYS) {
     acc[k] = { leads: 0, calls: 0, qualifiedCalls: 0, rejections: 0, noShows: 0, takenCalls: 0, deals: 0, closedRevenue: 0, totalItems: 0, industryMap: {}, closerMap: {} }
   }
+  // Per-deal list (only populated for "all") so the gap modal can show every Monday-side
+  // deal alongside the Stripe-side invoices.
+  const closedDealsAll: ClosedDeal[] = []
 
   // Weekly maps per country
   const currentMonday = getMondayOfWeek(new Date().toISOString().split("T")[0])
@@ -268,6 +273,13 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
         if (!a.industryMap[industry]) a.industryMap[industry] = { deals: 0, revenue: 0 }
         a.industryMap[industry].deals++
         a.industryMap[industry].revenue += dealValue
+      })
+      closedDealsAll.push({
+        name: item.name,
+        closer: closer || null,
+        dateDeal: dateDeal ?? "",
+        dealValue,
+        mondayItemId: item.id,
       })
     }
 
@@ -339,18 +351,42 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     }
   }
 
-  // Override the "all" bucket's revenue with the Stripe-based service-fee total so
-  // Marketing/Sales lines up with Finance/Delivery (single source of truth = Stripe).
-  // Per-country buckets (nl/be/de) stay Monday-based — Stripe doesn't have country
-  // attribution, and the per-country deal-value summary is still useful as a proxy.
-  // Falls back silently to Monday's closedRevenue if Stripe is unavailable.
+  // Stripe cross-check: pull NB invoices for the period so the UI can flag a gap
+  // between Monday-tracked deals and Stripe-invoiced new business. We INTENTIONALLY
+  // do NOT override `closedRevenue` — that stays Monday-based so the funnel (deals
+  // → revenue) reads from one source. Stripe is shown alongside as a sanity check.
+  // Country attribution is unavailable in Stripe, so only the "all" bucket is filled.
+  let stripeNewBusinessRevenue = 0
+  let stripeNewBusinessInvoices: StripeNewBusinessInvoice[] = []
   try {
     const stripe = await getStripe()
     const overrides = await loadInvoiceOverrides()
     const breakdown = await buildInvoiceBreakdown(stripe, startDate, endDate, overrides)
-    acc.all.closedRevenue = breakdown.serviceFee.invoiced
+    stripeNewBusinessRevenue = breakdown.serviceFeeNewBusiness.invoiced
+
+    // Aggregate per invoice: a single invoice can contribute multiple line items in
+    // `details`. Sum line amounts under the same invoiceId (positive only — credits
+    // are handled by the aggregate above) and emit one row per invoice for the UI.
+    const byInvoice = new Map<string, StripeNewBusinessInvoice>()
+    for (const d of breakdown.details) {
+      if (d.category !== "service_fee" || d.subCategory !== "new_business") continue
+      if (d.amount <= 0) continue // credits land as negative; surface only positive lines
+      const existing = byInvoice.get(d.invoiceId)
+      if (existing) {
+        existing.amount += d.amount
+      } else {
+        byInvoice.set(d.invoiceId, {
+          customerName: d.customerName ?? "Unknown",
+          invoiceNumber: d.invoiceNumber,
+          date: d.date,
+          amount: d.amount,
+          hostedUrl: d.hostedUrl ?? null,
+        })
+      }
+    }
+    stripeNewBusinessInvoices = [...byInvoice.values()].sort((a, b) => b.amount - a.amount)
   } catch (err) {
-    console.warn("[fetchMondayTargets] Stripe revenue alignment failed; falling back to Monday closedRevenue:", err instanceof Error ? err.message : String(err))
+    console.warn("[fetchMondayTargets] Stripe NB cross-check failed:", err instanceof Error ? err.message : String(err))
   }
 
   // Build final result
@@ -366,7 +402,16 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
     const closers = Object.entries(a.closerMap)
       .sort(([, x], [, y]) => y.revenue - x.revenue)
       .map(([closer, data]) => ({ closer, ...data }))
-    result[k] = { ...a, weekly, industries, closers }
+    // Only the "all" bucket carries Stripe data — Stripe is country-agnostic.
+    result[k] = {
+      ...a,
+      weekly,
+      industries,
+      closers,
+      stripeNewBusinessRevenue: k === "all" ? stripeNewBusinessRevenue : 0,
+      stripeNewBusinessInvoices: k === "all" ? stripeNewBusinessInvoices : [],
+      closedDeals: k === "all" ? [...closedDealsAll].sort((x, y) => y.dealValue - x.dealValue) : [],
+    }
   }
   return result
 }
@@ -553,6 +598,22 @@ async function buildInvoiceBreakdown(
     isNewBusinessCustomer.set(customerId, !hasEarlier)
   }
 
+  // For each "new" customer, identify the FIRST invoice they had in this period —
+  // that single invoice gets the New Business label. Subsequent invoices for the
+  // same customer in the same period are MRR (auto), even though the customer is
+  // new-this-period overall. Without this, ArcadeLab/ProsperBiz-style cases where
+  // a fresh customer has 2+ invoices in their first month would all be tagged NB.
+  const firstInvoiceInPeriodByCustomer = new Map<string, string>()
+  for (const customerId of customerIds) {
+    if (!isNewBusinessCustomer.get(customerId)) continue
+    let earliest: Stripe.Invoice | null = null
+    for (const inv of allInvoices) {
+      if (inv.customer !== customerId) continue
+      if (!earliest || inv.created < earliest.created) earliest = inv
+    }
+    if (earliest) firstInvoiceInPeriodByCustomer.set(customerId, earliest.id)
+  }
+
   // Customer name cache (used for details + perCustomer)
   const customerNameCache = new Map<string, string>()
   for (const inv of allInvoices) {
@@ -586,11 +647,24 @@ async function buildInvoiceBreakdown(
     return row
   }
 
-  /** Resolve invoice → "mrr" | "new_business" with override winning over customer-level auto-detection. */
-  function resolveSubCategory(invoiceId: string | undefined, customerIsNewDefault: boolean): "mrr" | "new_business" {
+  /**
+   * Resolve invoice → "mrr" | "new_business". Override wins; otherwise:
+   * - Customer not new this period → MRR
+   * - Customer new this period AND this is their first invoice in the period → New Business
+   * - Customer new this period BUT this is a later invoice → MRR
+   */
+  function resolveSubCategory(
+    invoiceId: string | undefined,
+    customerId: string | undefined,
+    customerIsNewDefault: boolean,
+  ): "mrr" | "new_business" {
     const override = invoiceId ? subCategoryOverrides.get(invoiceId) : undefined
     if (override) return override
-    return customerIsNewDefault ? "new_business" : "mrr"
+    if (!customerIsNewDefault) return "mrr"
+    if (customerId && invoiceId && firstInvoiceInPeriodByCustomer.get(customerId) === invoiceId) {
+      return "new_business"
+    }
+    return "mrr"
   }
 
   // Walk invoice line items
@@ -600,7 +674,7 @@ async function buildInvoiceBreakdown(
     const isPaid = inv.status === "paid"
     const custId = inv.customer as string
     const isNewByDefault = isNewBusinessCustomer.get(custId) ?? false
-    const subCategory = resolveSubCategory(inv.id, isNewByDefault)
+    const subCategory = resolveSubCategory(inv.id, custId, isNewByDefault)
     const invDate = new Date(inv.created * 1000).toISOString().slice(0, 10)
     const invStatus: InvoiceDetail["status"] = isPaid ? "paid" : isOverdue ? "overdue" : "open"
     const customerRow = custId ? ensureCustomer(custId, isNewByDefault) : null
@@ -656,8 +730,10 @@ async function buildInvoiceBreakdown(
       ? allInvoices.find((inv) => inv.id === invoiceId) ?? null
       : null
     // The credit's MRR/NB classification follows its original invoice — so an
-    // override on the original applies to the credit too.
-    const cnSubCategory = resolveSubCategory(invoiceId, isNewByDefault)
+    // override on the original applies to the credit too. We pass the *original
+    // invoice's* id (not the credit note's id) because resolveSubCategory checks
+    // whether that id is the customer's first-in-period.
+    const cnSubCategory = resolveSubCategory(invoiceId, custId, isNewByDefault)
 
     let creditTier: "credit" | "credit_prev" | "credit_old"
     if (originalInv) {
@@ -783,7 +859,7 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
   }
 }
 
-/** Costs — Google Sheets only, with 3-month average estimation if current month is empty */
+/** Costs — Google Sheets only, with per-team-member augmentation when current month is partially filled. */
 export async function fetchCosts(year: number, month: number): Promise<CostData> {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID
   if (!spreadsheetId) throw new Error("Spreadsheet ID not configured.")
@@ -827,20 +903,55 @@ export async function fetchCosts(year: number, month: number): Promise<CostData>
     return c >= 0 ? readMonth(c) : { invoicedRevenue: 0, collectedRevenue: 0, teamCosts: 0, marketingCosts: 0 }
   })
 
-  // Cost estimation: 3-month average (costs are mostly fixed, not revenue-dependent)
-  if (teamCosts === 0 || marketingCosts === 0) {
+  // ── Team-cost augmentation ────────────────────────────────────────────────
+  // If the current month is empty entirely → fall back to 3-month average.
+  // If some team members have invoiced but others haven't yet → for each member
+  // who's absent this month but invoiced in any of the last 3 months, add their
+  // most-recent value as an "expected" amount. Without this, current team costs
+  // look artificially low (e.g. 5 of 9 invoiced = 28k of expected ~50k) and the
+  // resulting margin is way off.
+  if (teamCosts === 0) {
     const validTeam = priorData.filter((d) => d.teamCosts > 0)
-    const validMarketing = priorData.filter((d) => d.marketingCosts > 0)
-
-    const avgTeam = validTeam.length > 0 ? validTeam.reduce((s, d) => s + d.teamCosts, 0) / validTeam.length : 0
-    const avgMarketing = validMarketing.length > 0 ? validMarketing.reduce((s, d) => s + d.marketingCosts, 0) / validMarketing.length : 0
-
-    if (teamCosts === 0) {
-      teamCosts = Math.round(avgTeam)
+    if (validTeam.length > 0) {
+      teamCosts = Math.round(validTeam.reduce((s, d) => s + d.teamCosts, 0) / validTeam.length)
       estimated.teamCosts = true
     }
-    if (marketingCosts === 0) {
-      marketingCosts = Math.round(avgMarketing)
+  } else if (profitsRows && currentCol >= 0) {
+    // Scan rows above the team-total (row 19, idx 18) for individual member rows.
+    // Detection: non-empty label in col A, and not one of the known total/header rows.
+    const SKIP_LABELS = new Set([
+      "invoiced revenue total", "total cash collected", "team costs total",
+      "team costs", "marketing costs total", "marketing costs", "hq costs",
+      "total costs", "net profit", "margin",
+    ])
+    const priorCols = priorMonths.map((p) => getMonthCol(p.key)).filter((c) => c >= 0)
+    let expectedFromMissing = 0
+    for (let i = 0; i < 18; i++) {
+      const row = profitsRows[i]
+      if (!row) continue
+      const label = (row[0] ?? "").trim()
+      if (!label || SKIP_LABELS.has(label.toLowerCase())) continue
+      const currentVal = parseEuro(row[currentCol])
+      if (currentVal > 0) continue // already invoiced this month
+      // Find their most recent prior-month value (last month → 2 months ago → 3 months ago).
+      let lastKnown = 0
+      for (const c of priorCols) {
+        const v = parseEuro(row[c])
+        if (v > 0) { lastKnown = v; break }
+      }
+      if (lastKnown > 0) expectedFromMissing += lastKnown
+    }
+    if (expectedFromMissing > 0) {
+      teamCosts += Math.round(expectedFromMissing)
+      estimated.teamCosts = true
+    }
+  }
+
+  // Marketing — same simple 3-month-average fallback (no per-person logic).
+  if (marketingCosts === 0) {
+    const validMarketing = priorData.filter((d) => d.marketingCosts > 0)
+    if (validMarketing.length > 0) {
+      marketingCosts = Math.round(validMarketing.reduce((s, d) => s + d.marketingCosts, 0) / validMarketing.length)
       estimated.marketingCosts = true
     }
   }
@@ -908,25 +1019,35 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
     fetchBothBoards(),
   ])
 
-  // Stripe customer ID → Monday entry (account manager + item id). Storing the item id lets
-  // us tell *why* an AM ended up "Unassigned": no Monday match at all vs. matched but empty AM.
+  // Stripe customer ID → Monday entry (account manager + item id). One Monday item can
+  // map to MULTIPLE Stripe customer IDs — entity changes, alt payment methods, the same
+  // client billed via two Stripe customers. The Monday `stripe_customer_id` column holds
+  // them comma-separated; `parseStripeCustomerIds` splits them.
   type MondayLink = { accountManager: string; mondayItemId: string }
   const amMap = new Map<string, MondayLink>()
   const allClients = [...mondayData.onboarding, ...mondayData.current]
   for (const client of allClients) {
-    if (client.stripeCustomerId) {
-      amMap.set(client.stripeCustomerId, {
+    const ids = parseStripeCustomerIds(client.stripeCustomerId)
+    for (const id of ids) {
+      amMap.set(id, {
         accountManager: client.accountManager,
         mondayItemId: client.mondayItemId,
       })
     }
   }
 
-  // Pool of Monday items that don't yet link a Stripe customer — these are the candidates
-  // for "no_monday_match" assignment (both fuzzy suggestions and the manual picker).
+  // Picker pool — every Monday item, regardless of whether it already has a Stripe link.
+  // Already-linked items must remain pickable so the user can attach a SECOND Stripe
+  // customer to the same client (the assign endpoint appends rather than overwrites).
+  // Carrying the existing `stripeCustomerId` value lets the assign endpoint skip its own
+  // Monday read — saves one round-trip per assign click.
   const unlinkedMondayItems: UnlinkedMondayItem[] = allClients
-    .filter((c) => !c.stripeCustomerId)
-    .map((c) => ({ id: c.mondayItemId, name: c.name, boardType: c.boardType }))
+    .map((c) => ({
+      id: c.mondayItemId,
+      name: c.name,
+      boardType: c.boardType,
+      stripeCustomerId: c.stripeCustomerId ?? "",
+    }))
 
   // Per-AM rollup. mrr / newBusiness are service-fee only; adBudget is the pass-through bucket.
   // revenue is the total across all three so it stays usable for ranking.
