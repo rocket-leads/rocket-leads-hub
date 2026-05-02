@@ -18,6 +18,7 @@ import {
   renderTemplate,
   shouldRunNow,
 } from "@/lib/slack/notification-config"
+import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import type { TargetsConfig } from "@/types/targets"
 
 export const maxDuration = 60
@@ -46,13 +47,13 @@ async function alertAdmins(reason: string) {
 }
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization")
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const authz = await authorizeCronOrAdmin(req)
+  if (!authz.ok) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const url = new URL(req.url)
-  const force = url.searchParams.get("force") === "1"
+  const force = authz.forcedByAdmin || url.searchParams.get("force") === "1"
 
   const config = await getNotificationConfig("team_sales")
   const guard = shouldRunNow(config, force)

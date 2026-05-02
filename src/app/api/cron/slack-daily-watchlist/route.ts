@@ -4,6 +4,7 @@ import { fetchBothBoards } from "@/lib/integrations/monday"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { readCache } from "@/lib/cache"
 import { sendDmToHubUser } from "@/lib/slack"
+import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import {
   computeSevenDayAvgScore,
   computeWatchlistVars,
@@ -23,13 +24,15 @@ export const maxDuration = 60
 type ScoreHistory = Record<string, Record<string, { action: number; watch: number; good: number }>>
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization")
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const authz = await authorizeCronOrAdmin(req)
+  if (!authz.ok) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const url = new URL(req.url)
-  const force = url.searchParams.get("force") === "1"
+  // Admins firing this from the UI mean "send it to everyone right now" — bypass
+  // the hour-of-day guard. Cron callers still need ?force=1 to override.
+  const force = authz.forcedByAdmin || url.searchParams.get("force") === "1"
 
   // Vercel cron is UTC-only and fires hourly; the user-configured hour in
   // Settings → Notifications gates which fire actually does work.

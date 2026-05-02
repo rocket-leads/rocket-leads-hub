@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Bell, MessageSquare, Send, Users, Check, Loader2 } from "lucide-react"
+import { Bell, MessageSquare, Send, Users, Check, Loader2, Zap } from "lucide-react"
 import { saveSlackChannelId, updateCloserSlackId } from "../actions"
 
 type Recipient = {
@@ -48,6 +48,8 @@ type NotificationDef = {
   channelId?: string | null
   schedule: string
   previewEndpoint: string
+  /** Cron URL — invoked with GET as admin to send the real notification to recipients now. */
+  cronEndpoint: string
   description: string
   examplePreview: string
   audience: AudienceKind
@@ -77,6 +79,37 @@ export function NotificationsTab({
     }
   }
 
+  async function runSendNow(id: string, def: NotificationDef) {
+    const audienceLabel =
+      def.destination === "dm"
+        ? def.audience === "closers"
+          ? "alle closers/setters met een Slack ID"
+          : "alle Hub users met een Slack ID"
+        : `het Slack channel (${def.channelLabel.toLowerCase()})`
+    const confirmed = window.confirm(
+      `Verstuur "${def.title}" nu naar ${audienceLabel}?\n\nDit is geen test — de echte ontvangers krijgen het bericht.`,
+    )
+    if (!confirmed) return
+
+    setBusy((b) => ({ ...b, [id]: true }))
+    setResults((r) => ({ ...r, [id]: { ok: false, message: "" } }))
+    try {
+      const res = await fetch(`${def.cronEndpoint}?force=1`, { method: "GET" })
+      const data = await res.json().catch(() => ({}))
+      const ok = res.ok && data?.ok !== false
+      const message = ok
+        ? data?.skipped
+          ? `Skipped: ${data.skipped}`
+          : "Sent to recipients."
+        : data?.error || `Failed (HTTP ${res.status})`
+      setResults((r) => ({ ...r, [id]: { ok, message } }))
+    } catch {
+      setResults((r) => ({ ...r, [id]: { ok: false, message: "Request failed" } }))
+    } finally {
+      setBusy((b) => ({ ...b, [id]: false }))
+    }
+  }
+
   const recipientsWithSlack = recipients.filter((r) => r.hasSlack)
   const recipientsMissing = recipients.filter((r) => !r.hasSlack)
 
@@ -88,6 +121,7 @@ export function NotificationsTab({
       channelLabel: "Direct Message — per Hub user",
       schedule: "Daily · 06:00 Europe/Amsterdam",
       previewEndpoint: "/api/slack/preview-daily-watchlist",
+      cronEndpoint: "/api/cron/slack-daily-watchlist",
       audience: "hub-users",
       description:
         "Every Hub user with a Slack ID gets a personal morning DM about their own clients (filtered by column mapping). Focuses on changes since yesterday — new concerns, wins, persistent issues — not a copy of the watchlist.",
@@ -116,6 +150,7 @@ Open Watchlist`,
       channelId: teamChannelId,
       schedule: "Daily · 06:00 Europe/Amsterdam",
       previewEndpoint: "/api/slack/preview-team-watchlist",
+      cronEndpoint: "/api/cron/slack-team-watchlist",
       audience: "hub-users",
       description:
         "Team-wide overview posted to a shared Slack channel. No per-client details (those go to individual CMs already) — just team health, CM leaderboard, and a few overall observations.",
@@ -141,6 +176,7 @@ Open Watchlist`,
       channelLabel: "Direct Message — per closer/setter",
       schedule: "Daily · 06:00 Europe/Amsterdam",
       previewEndpoint: "/api/slack/preview-daily-sales",
+      cronEndpoint: "/api/cron/slack-personal-sales",
       audience: "closers",
       description:
         "Every closer/setter mapped to a Slack ID gets a personal morning DM with yesterday's calls + status breakdown, today's planned calls, MTD progress vs targets, and any past appointments still in pre-call status.",
@@ -174,6 +210,7 @@ Open Targets`,
       channelId: salesChannelId,
       schedule: "Daily · 06:00 Europe/Amsterdam",
       previewEndpoint: "/api/slack/preview-team-sales",
+      cronEndpoint: "/api/cron/slack-team-sales",
       audience: "closers",
       description:
         "Team-wide sales overview posted to the sales channel. Aggregated yesterday/today/MTD numbers across all closers, plus a leaderboard sorted by deals.",
@@ -289,6 +326,7 @@ Open Targets`,
               busy={!!busy[n.id]}
               result={results[n.id]}
               onPreview={() => runPreview(n.id, n.previewEndpoint)}
+              onSendNow={() => runSendNow(n.id, n)}
               recipientsWithSlack={audienceWith}
               recipientsMissing={audienceMissing}
             />
@@ -307,6 +345,7 @@ function NotificationCard({
   busy,
   result,
   onPreview,
+  onSendNow,
   recipientsWithSlack,
   recipientsMissing,
 }: {
@@ -315,6 +354,7 @@ function NotificationCard({
   busy: boolean
   result?: { ok: boolean; message: string }
   onPreview: () => void
+  onSendNow: () => void
   recipientsWithSlack: Recipient[]
   recipientsMissing: Recipient[]
 }) {
@@ -404,18 +444,30 @@ function NotificationCard({
           )}
         </div>
 
-        {/* Preview action */}
-        <div className="flex items-center gap-3">
+        {/* Actions */}
+        <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={onPreview} disabled={busy || !slackConnected}>
             <Send className="h-3.5 w-3.5 mr-1.5" />
-            {busy ? "Building summary..." : `Preview to me`}
+            {busy ? "Working..." : "Preview to me"}
           </Button>
-          <span className="text-[11px] text-muted-foreground">
-            {def.destination === "channel"
-              ? "Sends to your DM (not the channel) for safe testing."
-              : "Sends to your Slack with live data."}
-          </span>
+          <Button size="sm" onClick={onSendNow} disabled={busy || !slackConnected}>
+            <Zap className="h-3.5 w-3.5 mr-1.5" />
+            {busy ? "Sending..." : "Send to recipients now"}
+          </Button>
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          <span className="font-medium">Preview to me</span>:{" "}
+          {def.destination === "channel"
+            ? "posts to your own DM (not the channel) for safe testing."
+            : "sends only to your own Slack with live data."}{" "}
+          ·{" "}
+          <span className="font-medium">Send to recipients now</span>:{" "}
+          {def.destination === "channel"
+            ? "posts the real message to the configured channel."
+            : `sends the real DM to ${
+                def.audience === "closers" ? "all mapped closers/setters" : "all mapped Hub users"
+              }.`}
+        </p>
         {result?.message && (
           <p className={`text-sm ${result.ok ? "text-green-500" : "text-red-500"}`}>{result.message}</p>
         )}
