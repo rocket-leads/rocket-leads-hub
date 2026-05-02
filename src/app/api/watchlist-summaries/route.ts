@@ -18,6 +18,12 @@ type ClientInput = {
   appointments: number
   costPerAppointment: number
   prevCostPerAppointment: number
+  /**
+   * False when the prev comparison window wasn't substantially live (newly-launched
+   * client). The AI should treat CPL/CPA "vs prev" as UNAVAILABLE rather than
+   * report a wild swing that's an artefact of the launch date.
+   */
+  prevPeriodReliable?: boolean
   /** True only when a Monday board was linked AND we successfully read items from it */
   mondayCrmConnected?: boolean
   /** True when leads came from Meta because Monday returned no usable data */
@@ -51,7 +57,12 @@ export async function POST(req: NextRequest) {
   // Build prompt with qualitative + quantitative data
   const allClients = clients.slice(0, 50)
   const lines = allClients.map((c) => {
-    const cplChange = c.prevCpl > 0 ? ((c.cpl - c.prevCpl) / c.prevCpl * 100).toFixed(0) : "n/a"
+    // "n/a" both when there's no prev CPL AND when the prev window wasn't reliable
+    // (newly-launched client). Suppresses spurious "+X% vs prev" lines in AI notes.
+    const cplChange =
+      c.prevCpl > 0 && c.prevPeriodReliable !== false
+        ? ((c.cpl - c.prevCpl) / c.prevCpl * 100).toFixed(0)
+        : "n/a"
 
     // Build the data-availability summary so the model knows what's UNKNOWN vs really zero.
     const crmConnected = c.mondayCrmConnected === true

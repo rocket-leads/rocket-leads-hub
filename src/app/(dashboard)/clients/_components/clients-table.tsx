@@ -329,15 +329,22 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         case "leads": valA = kpiA?.leads ?? 0; valB = kpiB?.leads ?? 0; break
         case "cpl": valA = kpiA?.cpl ?? 0; valB = kpiB?.cpl ?? 0; break
         case "cplDelta": {
-          valA = (kpiA?.cpl && kpiA?.prevCpl) ? ((kpiA.cpl - kpiA.prevCpl) / kpiA.prevCpl) * 100 : 0
-          valB = (kpiB?.cpl && kpiB?.prevCpl) ? ((kpiB.cpl - kpiB.prevCpl) / kpiB.prevCpl) * 100 : 0
+          // Rows where the prev period wasn't fully live get sorted as 0 — they're
+          // displayed without a delta pill anyway, so giving them a real swing
+          // value here would put them where they don't belong in the ranking.
+          const reliableA = kpiA?.prevPeriodReliable !== false
+          const reliableB = kpiB?.prevPeriodReliable !== false
+          valA = (reliableA && kpiA?.cpl && kpiA?.prevCpl) ? ((kpiA.cpl - kpiA.prevCpl) / kpiA.prevCpl) * 100 : 0
+          valB = (reliableB && kpiB?.cpl && kpiB?.prevCpl) ? ((kpiB.cpl - kpiB.prevCpl) / kpiB.prevCpl) * 100 : 0
           break
         }
         case "appointments": valA = kpiA?.appointments ?? 0; valB = kpiB?.appointments ?? 0; break
         case "cpa": valA = kpiA?.costPerAppointment ?? 0; valB = kpiB?.costPerAppointment ?? 0; break
         case "cpaDelta": {
-          valA = (kpiA?.costPerAppointment && kpiA?.prevCostPerAppointment) ? ((kpiA.costPerAppointment - kpiA.prevCostPerAppointment) / kpiA.prevCostPerAppointment) * 100 : 0
-          valB = (kpiB?.costPerAppointment && kpiB?.prevCostPerAppointment) ? ((kpiB.costPerAppointment - kpiB.prevCostPerAppointment) / kpiB.prevCostPerAppointment) * 100 : 0
+          const reliableA = kpiA?.prevPeriodReliable !== false
+          const reliableB = kpiB?.prevPeriodReliable !== false
+          valA = (reliableA && kpiA?.costPerAppointment && kpiA?.prevCostPerAppointment) ? ((kpiA.costPerAppointment - kpiA.prevCostPerAppointment) / kpiA.prevCostPerAppointment) * 100 : 0
+          valB = (reliableB && kpiB?.costPerAppointment && kpiB?.prevCostPerAppointment) ? ((kpiB.costPerAppointment - kpiB.prevCostPerAppointment) / kpiB.prevCostPerAppointment) * 100 : 0
           break
         }
         case "paymentStatus": valA = billingA?.status ?? ""; valB = billingB?.status ?? ""; break
@@ -685,8 +692,15 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <TableCell className="text-xs tabular-nums">
                           {kpiLoading ? (
                             <span className="text-muted-foreground/40">...</span>
-                          ) : kpi && kpi.cpl > 0 && kpi.prevCpl > 0 ? (
+                          ) : kpi && kpi.cpl > 0 && kpi.prevCpl > 0 && kpi.prevPeriodReliable !== false ? (
                             <DeltaPill pct={((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100} />
+                          ) : kpi && kpi.cpl > 0 && kpi.prevPeriodReliable === false ? (
+                            <span
+                              className="text-muted-foreground/40"
+                              title="No comparable prior period — this client wasn't live for most of the previous window."
+                            >
+                              —
+                            </span>
                           ) : ""}
                         </TableCell>
                         <TableCell className="text-xs tabular-nums font-medium">
@@ -698,8 +712,15 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <TableCell className="text-xs tabular-nums">
                           {kpiLoading ? (
                             <span className="text-muted-foreground/40">...</span>
-                          ) : kpi && kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0 ? (
+                          ) : kpi && kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0 && kpi.prevPeriodReliable !== false ? (
                             <DeltaPill pct={((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100} />
+                          ) : kpi && kpi.costPerAppointment > 0 && kpi.prevPeriodReliable === false ? (
+                            <span
+                              className="text-muted-foreground/40"
+                              title="No comparable prior period — this client wasn't live for most of the previous window."
+                            >
+                              —
+                            </span>
                           ) : ""}
                         </TableCell>
                       </>

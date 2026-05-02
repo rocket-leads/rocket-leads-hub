@@ -795,6 +795,8 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         appointments: c.kpi?.appointments ?? 0,
         costPerAppointment: c.kpi?.costPerAppointment ?? 0,
         prevCostPerAppointment: c.kpi?.prevCostPerAppointment ?? 0,
+        // Suppresses "vs prev" claims for newly-launched clients in AI notes.
+        prevPeriodReliable: c.kpi?.prevPeriodReliable,
         // Tells the AI whether appointment data is real-zero vs unknown-because-CRM-missing
         mondayCrmConnected: c.kpi?.mondayCrmConnected ?? false,
         leadsFromMetaFallback: c.kpi?.metaFallback ?? false,
