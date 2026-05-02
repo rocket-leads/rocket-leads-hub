@@ -131,11 +131,12 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 *Vandaag*
 {{today_lines}}
 
+{{action_items_section}}
+
 *Deze maand ({{month_label}})*
 {{mtd_lines}}
 
-{{leaderboard_section}}
-{{action_items_line}}`,
+{{leaderboard_section}}`,
 }
 
 // ─── Variable reference (used by the Settings UI) ──────────────────────────
@@ -179,12 +180,12 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
   ],
   team_sales: [
     { name: "greeting", description: "Date-deterministic random morning greeting." },
-    { name: "yesterday_lines", description: "Aggregated bullet lines about yesterday's team calls + breakdown." },
+    { name: "yesterday_lines", description: "Per-closer yesterday breakdown (calls + outcomes); plus a sub-section for deals closed yesterday from older calls." },
     { name: "today_lines", description: "Aggregated bullet line about today's planned calls." },
     { name: "mtd_lines", description: "Aggregated MTD vs targets bullet lines." },
     { name: "month_label", description: "Lowercase Dutch month name." },
-    { name: "leaderboard_section", description: "Closer leaderboard block (top 5 by deals), or empty." },
-    { name: "action_items_line", description: "Single line about empty call outcomes across the team, or empty." },
+    { name: "leaderboard_section", description: "Closer leaderboard block (top 3 by deals, MTD-active closers only), or empty." },
+    { name: "action_items_section", description: ":rotating_light: header + per-closer empty-call-outcome counts. Empty when all outcomes are logged." },
     { name: "open_link", description: "Slack link to open the Targets page." },
   ],
 }
