@@ -279,8 +279,18 @@ function StripeGapModal({
   mondayRevenue: number
   stripeRevenue: number
 }) {
+  const [showAll, setShowAll] = useState(false)
   if (!open) return null
   const gap = stripeRevenue - mondayRevenue
+
+  // Default view = unmatched only — that's the actual gap. Server-side fuzzy pairing
+  // marks `matched: true` on rows that have a counterpart on the other side. Toggle
+  // shows the full list if the user wants to verify a specific name.
+  const visibleDeals = showAll ? deals : deals.filter((d) => !d.matched)
+  const visibleInvoices = showAll ? invoices : invoices.filter((i) => !i.matched)
+  const matchedCount = deals.filter((d) => d.matched).length
+  const dealsTotalLabel = showAll ? `${deals.length} total` : `${visibleDeals.length} unmatched · ${matchedCount} matched`
+  const invoicesTotalLabel = showAll ? `${invoices.length} total` : `${visibleInvoices.length} unmatched · ${matchedCount} matched`
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -293,7 +303,7 @@ function StripeGapModal({
             <div>
               <h3 className="text-sm font-semibold">Monday vs Stripe — Revenue cross-check</h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Both lists side-by-side. Use them to spot deals logged in Monday but not yet invoiced (unpaid), or Stripe invoices that don&apos;t have a matching Monday deal (missing CRM entry).
+                Showing only items without a counterpart on the other side. Matched pairs are hidden by default — toggle below to see everything.
               </p>
             </div>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none shrink-0">×</button>
@@ -312,31 +322,42 @@ function StripeGapModal({
               <p className={cn("font-mono font-semibold mt-0.5", gap > 0 ? "text-yellow-500" : "text-foreground")}>{formatCurrency(gap)}</p>
             </div>
           </div>
+          <div className="flex items-center justify-end mt-3">
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {showAll ? "Show only unmatched" : "Show all (incl. matched)"}
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border/40">
           {/* Monday side */}
           <div className="flex flex-col overflow-hidden">
-            <div className="px-4 py-2 border-b border-border/40 bg-muted/20">
+            <div className="px-4 py-2 border-b border-border/40 bg-muted/20 flex items-center justify-between">
               <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Monday closed deals</h4>
+              <span className="text-[10px] text-muted-foreground/70">{dealsTotalLabel}</span>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {deals.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-muted-foreground text-center">No closed deals in this period.</p>
+              {visibleDeals.length === 0 ? (
+                <p className="px-4 py-6 text-xs text-muted-foreground text-center">{deals.length === 0 ? "No closed deals in this period." : "Every deal has a Stripe match. Nothing to fix."}</p>
               ) : (
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card border-b border-border/40">
                     <tr>
                       <th className="text-left py-2 px-4 font-medium text-muted-foreground">Date</th>
-                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Lead / Closer</th>
+                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Lead · Company · Closer</th>
                       <th className="text-right py-2 px-4 font-medium text-muted-foreground">Value</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {deals.map((d) => (
-                      <tr key={d.mondayItemId} className="border-b border-border/20 last:border-0 hover:bg-muted/30">
+                    {visibleDeals.map((d) => (
+                      <tr key={d.mondayItemId} className={cn("border-b border-border/20 last:border-0 hover:bg-muted/30", d.matched && "opacity-60")}>
                         <td className="py-2 px-4 font-mono text-muted-foreground">{d.dateDeal || "—"}</td>
-                        <td className="py-2 px-4 truncate max-w-[200px]">
+                        <td className="py-2 px-4 truncate max-w-[220px]">
                           <div className="truncate">{d.name}</div>
+                          {d.companyName && <div className="text-[10px] text-muted-foreground/70 truncate">{d.companyName}</div>}
                           {d.closer && <div className="text-[10px] text-muted-foreground/70 truncate">{d.closer}</div>}
                         </td>
                         <td className="py-2 px-4 text-right font-mono font-medium">{formatCurrency(d.dealValue)}</td>
@@ -350,12 +371,13 @@ function StripeGapModal({
 
           {/* Stripe side */}
           <div className="flex flex-col overflow-hidden">
-            <div className="px-4 py-2 border-b border-border/40 bg-muted/20">
+            <div className="px-4 py-2 border-b border-border/40 bg-muted/20 flex items-center justify-between">
               <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Stripe new-business invoices</h4>
+              <span className="text-[10px] text-muted-foreground/70">{invoicesTotalLabel}</span>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {invoices.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-muted-foreground text-center">No Stripe new-business invoices in this period.</p>
+              {visibleInvoices.length === 0 ? (
+                <p className="px-4 py-6 text-xs text-muted-foreground text-center">{invoices.length === 0 ? "No Stripe new-business invoices in this period." : "Every invoice has a Monday match. Nothing to fix."}</p>
               ) : (
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card border-b border-border/40">
@@ -366,11 +388,15 @@ function StripeGapModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {invoices.map((inv) => (
+                    {visibleInvoices.map((inv) => (
                       <tr
                         key={`${inv.invoiceNumber}-${inv.date}`}
                         onClick={inv.hostedUrl ? () => window.open(inv.hostedUrl!, "_blank", "noopener,noreferrer") : undefined}
-                        className={cn("border-b border-border/20 last:border-0 hover:bg-muted/30 transition-colors", inv.hostedUrl && "cursor-pointer")}
+                        className={cn(
+                          "border-b border-border/20 last:border-0 hover:bg-muted/30 transition-colors",
+                          inv.hostedUrl && "cursor-pointer",
+                          inv.matched && "opacity-60",
+                        )}
                       >
                         <td className="py-2 px-4 font-mono text-muted-foreground">{inv.date}</td>
                         <td className="py-2 px-4 truncate max-w-[200px]">

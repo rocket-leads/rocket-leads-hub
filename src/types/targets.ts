@@ -64,16 +64,22 @@ export interface StripeNewBusinessInvoice {
   date: string
   amount: number
   hostedUrl: string | null
+  /** True when fuzzy-matched to a Monday closed deal — UI hides matched rows by default. */
+  matched: boolean
 }
 
 export interface ClosedDeal {
   /** Monday item name = lead/company name. */
   name: string
+  /** Optional company name (separate `bedrijfsnaam` column on the targets board). */
+  companyName: string | null
   closer: string | null
   /** YYYY-MM-DD when the deal was closed. */
   dateDeal: string
   dealValue: number
   mondayItemId: string
+  /** True when fuzzy-matched to a Stripe NB invoice — UI hides matched rows by default. */
+  matched: boolean
 }
 
 export interface CloserData {
@@ -209,6 +215,10 @@ export interface UnlinkedMondayItem {
   id: string
   name: string
   boardType: "onboarding" | "current"
+  /** First name from the Monday client board — fed into fuzzy matching alongside `name`. */
+  firstName: string
+  /** Optional `bedrijfsnaam` column when configured — used for fuzzy matching when present. */
+  companyName: string
   /**
    * Raw `stripe_customer_id` column value (may be empty, single, or comma-separated).
    * Carried in the payload so the assign-customer endpoint can append the new ID without

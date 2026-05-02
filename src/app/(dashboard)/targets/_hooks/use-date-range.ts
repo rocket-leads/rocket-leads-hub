@@ -5,26 +5,58 @@ import { startOfMonth, endOfMonth, subMonths, subDays, format } from "date-fns"
 import type { DateRange, QuickPreset } from "@/types/targets"
 
 /**
- * In-memory cache of the most recently chosen date range. Lives at module scope
- * so it survives tab switches (Marketing → Delivery → Finance) within the same
- * page load. A real page refresh wipes the JS module, returning the default to
- * MTD — which matches Roy's expectation that "switching tabs keeps the range,
- * refresh resets it".
+ * Two-layer persistence for the chosen date range:
+ *  1. `cachedRange` (module scope) — survives tab switches within a page load, no flash
+ *     when re-mounting the hook because state is read synchronously from this var.
+ *  2. `localStorage` — survives full page refreshes. Loaded into module cache on the
+ *     first mount of the hook, then kept in sync on every change.
  */
 let cachedRange: { start: Date; end: Date } | null = null
+
+const STORAGE_KEY = "rl-hub-date-range"
 
 /** All ranges end at yesterday: source data (Meta + Monday) is only complete up to yesterday. */
 function yesterday(): Date {
   return subDays(new Date(), 1)
 }
 
+function readPersistedRange(): { start: Date; end: Date } | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { start: string; end: string }
+    const s = new Date(parsed.start)
+    const e = new Date(parsed.end)
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return null
+    return { start: s, end: e }
+  } catch {
+    return null
+  }
+}
+
+function writePersistedRange(start: Date, end: Date) {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ start: start.toISOString(), end: end.toISOString() }),
+    )
+  } catch {}
+}
+
 /**
  * Snapshot read of the cached range — for non-reactive callers like the page-level
  * refresh button which just needs "what's the user looking at right now". Falls back
- * to MTD defaults when the cache is empty (initial page load with no tab visited yet).
+ * to localStorage, then to MTD defaults.
  */
 export function getCachedDateRangeSnapshot(): { startDate: Date; endDate: Date } {
   if (cachedRange) return { startDate: cachedRange.start, endDate: cachedRange.end }
+  const persisted = readPersistedRange()
+  if (persisted) {
+    cachedRange = persisted
+    return { startDate: persisted.start, endDate: persisted.end }
+  }
   return { startDate: startOfMonth(new Date()), endDate: yesterday() }
 }
 
@@ -32,9 +64,25 @@ export function useDateRange() {
   const [startDate, setStartDate] = useState<Date>(() => cachedRange?.start ?? startOfMonth(new Date()))
   const [endDate, setEndDate] = useState<Date>(() => cachedRange?.end ?? yesterday())
 
-  // Persist every change so the next tab's instance picks it up on mount.
+  // First-mount hydration: SSR and the client's first render both use the MTD default
+  // (localStorage isn't available on the server), so we pull the persisted range here
+  // after mount. Only fires when the module cache is still empty for this tab — once
+  // hydrated, subsequent uses of the hook in the same page lifecycle skip this path.
+  useEffect(() => {
+    if (cachedRange) return
+    const persisted = readPersistedRange()
+    if (persisted) {
+      cachedRange = persisted
+      setStartDate(persisted.start)
+      setEndDate(persisted.end)
+    }
+  }, [])
+
+  // Persist every change to both module cache and localStorage so the next tab and the
+  // next page load pick up the user's last-chosen range.
   useEffect(() => {
     cachedRange = { start: startDate, end: endDate }
+    writePersistedRange(startDate, endDate)
   }, [startDate, endDate])
 
   const range: DateRange = useMemo(() => ({ startDate, endDate }), [startDate, endDate])

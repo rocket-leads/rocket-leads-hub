@@ -48,6 +48,8 @@ export type MondayClient = {
   mondayItemId: string
   name: string
   firstName: string
+  /** Optional `bedrijfsnaam` column. Empty when the column isn't configured on the board. */
+  companyName: string
   accountManager: string
   campaignManager: string
   appointmentSetter: string
@@ -143,6 +145,11 @@ function mapItem(
     mondayItemId: item.id,
     name: item.name,
     firstName: cv[columns.first_name] ?? "",
+    // `company_name` is optional in the board config — admin pastes the column ID via
+    // Settings → Board Config when the board has a dedicated bedrijfsnaam column. When
+    // missing, `columns.company_name` is undefined, so the lookup yields "" and the
+    // matchers fall back to item.name.
+    companyName: cv[columns.company_name] ?? "",
     accountManager: cv[columns.account_manager] ?? "",
     campaignManager: cv[columns.campaign_manager] ?? "",
     appointmentSetter: cv[columns.appointment_setter] ?? cv["multiple_person_mm1w4j0b"] ?? "",

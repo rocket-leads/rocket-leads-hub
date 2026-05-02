@@ -274,12 +274,17 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
         a.industryMap[industry].deals++
         a.industryMap[industry].revenue += dealValue
       })
+      // companyName falls back to "" when the targets board doesn't expose a
+      // bedrijfsnaam column — the matcher then just uses item.name as today.
+      const companyName = getColumnValue(item, "bedrijfsnaam") || ""
       closedDealsAll.push({
         name: item.name,
+        companyName: companyName || null,
         closer: closer || null,
         dateDeal: dateDeal ?? "",
         dealValue,
         mondayItemId: item.id,
+        matched: false, // filled in below after the fuzzy pairing
       })
     }
 
@@ -381,12 +386,48 @@ export async function fetchMondayTargets(startDate: string, endDate: string): Pr
           date: d.date,
           amount: d.amount,
           hostedUrl: d.hostedUrl ?? null,
+          matched: false, // filled in below after the fuzzy pairing
         })
       }
     }
     stripeNewBusinessInvoices = [...byInvoice.values()].sort((a, b) => b.amount - a.amount)
   } catch (err) {
     console.warn("[fetchMondayTargets] Stripe NB cross-check failed:", err instanceof Error ? err.message : String(err))
+  }
+
+  // Bidirectional fuzzy matching between Monday closed deals and Stripe NB invoices.
+  // Greedy — sort all candidate pairs by similarity, claim the highest first, never let
+  // either side be claimed twice. Anything still unclaimed is a real gap and shows in the UI.
+  // Threshold 0.6 is permissive enough to catch most genuine matches (substring + Jaccard
+  // both score 0.6+ on real-world variations) without false-pairing on weak overlaps.
+  if (closedDealsAll.length > 0 && stripeNewBusinessInvoices.length > 0) {
+    type Pair = { dealIdx: number; invIdx: number; score: number }
+    const pairs: Pair[] = []
+    const PAIR_THRESHOLD = 0.6
+    for (let dIdx = 0; dIdx < closedDealsAll.length; dIdx++) {
+      const d = closedDealsAll[dIdx]
+      // Score against the deal's name AND companyName (when present) — pick the best.
+      const dealVariants = [d.name, d.companyName].filter((s): s is string => !!s)
+      for (let iIdx = 0; iIdx < stripeNewBusinessInvoices.length; iIdx++) {
+        const inv = stripeNewBusinessInvoices[iIdx]
+        let best = 0
+        for (const variant of dealVariants) {
+          const s = nameSimilarity(variant, inv.customerName)
+          if (s > best) best = s
+        }
+        if (best >= PAIR_THRESHOLD) pairs.push({ dealIdx: dIdx, invIdx: iIdx, score: best })
+      }
+    }
+    pairs.sort((a, b) => b.score - a.score)
+    const claimedDeals = new Set<number>()
+    const claimedInvoices = new Set<number>()
+    for (const p of pairs) {
+      if (claimedDeals.has(p.dealIdx) || claimedInvoices.has(p.invIdx)) continue
+      claimedDeals.add(p.dealIdx)
+      claimedInvoices.add(p.invIdx)
+      closedDealsAll[p.dealIdx].matched = true
+      stripeNewBusinessInvoices[p.invIdx].matched = true
+    }
   }
 
   // Build final result
@@ -1041,11 +1082,15 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
   // customer to the same client (the assign endpoint appends rather than overwrites).
   // Carrying the existing `stripeCustomerId` value lets the assign endpoint skip its own
   // Monday read — saves one round-trip per assign click.
+  // `firstName` + `companyName` are passed through so the suggestion scorer can match on
+  // multiple fields (Stripe name vs Monday item / first name / company), not just item.name.
   const unlinkedMondayItems: UnlinkedMondayItem[] = allClients
     .map((c) => ({
       id: c.mondayItemId,
       name: c.name,
       boardType: c.boardType,
+      firstName: c.firstName ?? "",
+      companyName: c.companyName ?? "",
       stripeCustomerId: c.stripeCustomerId ?? "",
     }))
 
@@ -1075,13 +1120,27 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
       if (!link) {
         const SUGGESTION_THRESHOLD = 0.4
         const TOP_N = 3
+        // Score against every available Monday-side variant — item.name, firstName,
+        // companyName, and combined "first name + item name" — and pick the best.
+        // Captures cases where Stripe customer is a person ("John Smith") while Monday
+        // splits the same client into name=Acme BV / firstName=John, or where Monday
+        // has the company name in a separate `bedrijfsnaam` column.
         suggestions = unlinkedMondayItems
-          .map((item) => ({
-            mondayItemId: item.id,
-            itemName: item.name,
-            boardType: item.boardType,
-            score: nameSimilarity(c.customerName, item.name),
-          }))
+          .map((item) => {
+            const variants = [item.name, item.firstName, item.companyName].filter(Boolean)
+            if (item.firstName && item.name) variants.push(`${item.firstName} ${item.name}`)
+            let best = 0
+            for (const v of variants) {
+              const s = nameSimilarity(c.customerName, v)
+              if (s > best) best = s
+            }
+            return {
+              mondayItemId: item.id,
+              itemName: item.name,
+              boardType: item.boardType,
+              score: best,
+            }
+          })
           .filter((s) => s.score >= SUGGESTION_THRESHOLD)
           .sort((a, b) => b.score - a.score)
           .slice(0, TOP_N)
