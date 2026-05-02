@@ -23,7 +23,11 @@ export function useTargetsData(
     queryFn: () => {
       const params = new URLSearchParams({ startDate, endDate })
       if (closerKey) params.set("closer", closerKey)
-      return fetch(`/api/targets/monday?${params.toString()}`).then((r) => {
+      // `no-store` defeats any browser/HTTP cache layer that might otherwise
+      // collapse `?closer=X` and `?closer=Y` onto the same response — the
+      // earlier symptom (data not changing on closer pick) pointed at exactly
+      // that. React Query still owns logical caching via queryKey above.
+      return fetch(`/api/targets/monday?${params.toString()}`, { cache: "no-store" }).then((r) => {
         if (!r.ok) throw new Error("Failed to fetch Monday data")
         return r.json()
       })

@@ -64,9 +64,17 @@ export function MarketingTab() {
   const qualified = m?.qualifiedCalls ?? 0
   const taken = m?.takenCalls ?? 0
   const deals = m?.deals ?? 0
-  // Past appointments where the closer hasn't updated the status yet — these
-  // would have counted as Taken if processed.
-  const notUpdatedTotal = (m?.closers ?? []).reduce((s, c) => s + c.notUpdated, 0)
+  // Closer dropdown options come from the FULL closers list (the backend keeps
+  // it complete regardless of the filter so this dropdown always lists every
+  // option). Everything else under "Breakdown" — closers table + insights and
+  // the notUpdated counter — should reflect the active filter, otherwise the
+  // KPI cards say "Anel only" while the table below still shows the team.
+  const closerActive = closer !== "All"
+  const closersForBreakdown = useMemo(() => {
+    const all = m?.closers ?? []
+    return closerActive ? all.filter((c) => c.closer === closer) : all
+  }, [m?.closers, closer, closerActive])
+  const notUpdatedTotal = closersForBreakdown.reduce((s, c) => s + c.notUpdated, 0)
   const loading = data.mondayLoading || data.metaLoading
 
   // Volume targets (calls/qualified/taken) are derived from ad-spend (= deals × cpd)
@@ -121,6 +129,17 @@ export function MarketingTab() {
           maxDate={maxPickerDate}
         />
         <FiltersPopover filters={filters} />
+        {closerActive && (
+          <button
+            type="button"
+            onClick={() => setCloser("All")}
+            className="inline-flex items-center gap-1.5 h-8 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/15 transition-colors"
+            title="Click to clear the closer filter"
+          >
+            <span>Filtering by closer: <span className="font-semibold">{closer}</span></span>
+            <span className="text-primary/70">×</span>
+          </button>
+        )}
         <div className="flex gap-1 flex-wrap">
           {presets.map((preset) => (
             <button
@@ -278,10 +297,10 @@ export function MarketingTab() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <ClosersTable
-            data={m?.closers ?? []}
+            data={closersForBreakdown}
             isLoading={data.mondayLoading}
           />
-          <CloserInsights data={m?.closers ?? []} isLoading={data.mondayLoading} />
+          <CloserInsights data={closersForBreakdown} isLoading={data.mondayLoading} />
         </div>
       </section>
 

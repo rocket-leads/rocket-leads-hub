@@ -80,6 +80,7 @@ export async function GET(request: Request) {
   }
 
   try {
+    console.log("[targets/monday] live fetch:", { startDate, endDate, closer })
     const result = await fetchMondayTargets(startDate, endDate, closer)
     // Refresh the cron cache when this is the current MTD range, so the next
     // request hits warm cache instead of paying for another live fetch.
@@ -87,8 +88,14 @@ export async function GET(request: Request) {
     if (!closer && startDate === mtd.startDate && endDate === mtd.endDate) {
       void writeCache("targets_marketing_monday", result)
     }
+    // Filtered responses must not be cached at any layer — switching closers
+    // cycles through them quickly and a stale slice would silently lie. The
+    // unfiltered response keeps the short s-maxage so the cron-warmed cache
+    // still serves bursts of dashboard loads efficiently.
     return NextResponse.json(result, {
-      headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=120" },
+      headers: closer
+        ? { "Cache-Control": "private, no-store" }
+        : { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=120" },
     })
   } catch (error) {
     console.error("[targets/monday]", error)
