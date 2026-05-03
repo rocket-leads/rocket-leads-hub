@@ -3,13 +3,14 @@
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { RefreshCw, BarChart3, CreditCard, MessageCircle, Settings2, LayoutDashboard, Inbox as InboxIcon } from "lucide-react"
+import { RefreshCw, BarChart3, CreditCard, MessageCircle, Settings2, LayoutDashboard, Inbox as InboxIcon, Video } from "lucide-react"
 import { CampaignsTab } from "./campaigns-tab"
 import { BillingTab } from "./billing-tab"
 import { CommunicationTab } from "./communication-tab"
 import { ClientSettingsTab } from "./client-settings-tab"
 import { InboxTab } from "./inbox-tab"
 import { HomeTab } from "./home-tab"
+import { MeetingsTab } from "./meetings-tab"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
@@ -68,6 +69,7 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
     { id: "inbox", label: "Inbox", icon: InboxIcon },
     ...(access.canViewBilling ? [{ id: "billing", label: "Billing", icon: CreditCard, ...(hasOverdueInvoice ? { dot: "red" as const } : {}) }] : []),
     ...(access.canViewCommunication ? [{ id: "communication", label: "Communication", icon: MessageCircle }] : []),
+    { id: "meetings", label: "Meetings", icon: Video },
     { id: "settings", label: "Settings", icon: Settings2 },
   ]
 
@@ -170,6 +172,10 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
             trengoContactId={client.trengoContactId || null}
           />
         ) : <NoAccess />
+      )}
+
+      {activeTab === "meetings" && (
+        <MeetingsTab mondayItemId={client.mondayItemId} />
       )}
 
       {activeTab === "settings" && (

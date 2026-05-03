@@ -276,6 +276,20 @@ export function verifyFathomWebhook(
   })
 }
 
+// ─── Team filtering ─────────────────────────────────────────────────────────
+
+/**
+ * Roy's Fathom account spans multiple teams (Rocket Leads delivery, Rocket
+ * Leads sales, Founder Download, etc.). Only Rocket Leads recordings belong
+ * in the Hub — anything else gets skipped at ingest time. Match is a
+ * case-insensitive substring on "rocket leads" so renames like "Sales Rocket
+ * Leads NL" still pass.
+ */
+export function isRocketLeadsTeam(team: string | null | undefined): boolean {
+  if (!team) return false
+  return team.toLowerCase().includes("rocket leads")
+}
+
 // ─── Meeting type classification ────────────────────────────────────────────
 
 export type MeetingType = "sales" | "kick_off" | "evaluation" | "internal" | "other"

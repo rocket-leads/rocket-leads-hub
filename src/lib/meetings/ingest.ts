@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import {
   classifyMeetingType,
+  isRocketLeadsTeam,
   renderTranscript,
   type FathomMeeting,
 } from "@/lib/integrations/fathom"
@@ -8,6 +9,7 @@ import {
 export type IngestResult =
   | { ok: true; status: "inserted"; recording_id: string; meeting_type: string; link_status: string }
   | { ok: true; status: "deduped"; recording_id: string }
+  | { ok: true; status: "skipped_team"; recording_id: string; team: string | null }
   | { ok: false; status: "error"; error: string }
 
 /**
@@ -32,6 +34,14 @@ export async function ingestFathomMeeting(
   const recordingId = payload.recording_id != null ? String(payload.recording_id) : ""
   if (!recordingId) {
     return { ok: false, status: "error", error: "Missing recording_id in payload" }
+  }
+
+  // Only ingest recordings made within a Rocket Leads team. Roy's Fathom
+  // account also has Founder Download / personal teams whose calls don't
+  // belong in the Hub — they'd just clutter the Unlinked inbox forever.
+  const team = payload.recorded_by?.team ?? null
+  if (!isRocketLeadsTeam(team)) {
+    return { ok: true, status: "skipped_team", recording_id: recordingId, team }
   }
 
   const { data: existing } = await supabase
