@@ -2,7 +2,10 @@ import { auth } from "@/lib/auth"
 import { NextResponse } from "next/server"
 import type { NextAuthRequest } from "next-auth"
 
-const PUBLIC_PATHS = ["/auth/signin", "/api/auth", "/api/cron/"]
+// Webhook endpoints (Slack Events, Trengo, future Monday) authenticate themselves
+// via signed payloads or shared secrets — they never have a session cookie, so
+// they MUST be exempt from the auth redirect that catches the rest of the app.
+const PUBLIC_PATHS = ["/auth/signin", "/api/auth", "/api/cron/", "/api/webhooks/"]
 
 export default auth((req: NextAuthRequest) => {
   const { pathname } = req.nextUrl
