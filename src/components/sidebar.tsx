@@ -53,15 +53,19 @@ export async function Sidebar() {
         <div className="mb-1">
           <ThemeToggle />
         </div>
-        <div className="flex items-center gap-3 px-3 py-2">
+        <Link
+          href="/account"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors group"
+          title="My Account — connect Slack, Trengo, Monday"
+        >
           <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/25 to-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary ring-1 ring-primary/15">
             {session?.user.name?.[0]?.toUpperCase() ?? session?.user.email?.[0]?.toUpperCase() ?? "?"}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium leading-tight truncate">{session?.user.name ?? "User"}</p>
+            <p className="text-[13px] font-medium leading-tight truncate group-hover:text-foreground transition-colors">{session?.user.name ?? "User"}</p>
             <p className="text-[11px] text-muted-foreground/70 truncate">{session?.user.email}</p>
           </div>
-        </div>
+        </Link>
         <form
           action={async () => {
             "use server"
