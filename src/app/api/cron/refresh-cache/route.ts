@@ -157,11 +157,15 @@ export async function GET(req: NextRequest) {
     const kpiSummaries: Record<string, KpiSummary> = {}
     const kpiDaily: KpiDailyCache = {}
 
+    // Bumped from 5 → 10 to halve the number of sequential batches. Meta's
+    // per-account rate limit isn't hit at this scale (one call per client per
+    // batch), and the per-client board fetches are independent.
+    const KPI_BATCH = 10
     const kpiStartedAt = Date.now()
-    for (let i = 0; i < kpiClients.length; i += 5) {
-      const batch = kpiClients.slice(i, i + 5)
+    for (let i = 0; i < kpiClients.length; i += KPI_BATCH) {
+      const batch = kpiClients.slice(i, i + KPI_BATCH)
       const elapsedSec = ((Date.now() - kpiStartedAt) / 1000).toFixed(0)
-      console.log(`[refresh-cache] KPI batch ${i / 5 + 1}/${Math.ceil(kpiClients.length / 5)} — ${i}/${kpiClients.length} done — ${elapsedSec}s elapsed`)
+      console.log(`[refresh-cache] KPI batch ${i / KPI_BATCH + 1}/${Math.ceil(kpiClients.length / KPI_BATCH)} — ${i}/${kpiClients.length} done — ${elapsedSec}s elapsed`)
       const results = await Promise.allSettled(
         batch.map(async (client) => {
           const selectedCampaignIds = selectedByMondayItemId[client.mondayItemId] ?? new Set<string>()
