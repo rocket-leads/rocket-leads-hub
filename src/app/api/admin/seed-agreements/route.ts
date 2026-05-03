@@ -2,20 +2,23 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { fetchBothBoards } from "@/lib/integrations/monday"
 import { readCache } from "@/lib/cache"
-import { syncClientToSupabase } from "@/lib/clients/sync"
 import { seedDefaultAgreementIfMissing, type SeedMode } from "@/lib/clients/agreement"
 import { createAdminClient } from "@/lib/supabase/server"
 import type { MondayClient } from "@/lib/integrations/monday"
 
 /**
  * One-shot bulk backfill: seeds a default agreement for every client that
- * doesn't have one yet. Each client gets re-synced to Supabase, which in turn
- * triggers `seedDefaultAgreementIfMissing` — so this also benefits from any
- * Monday-side updates that haven't been picked up yet (new clients, renamed
- * companies, edited service fees, etc.).
+ * doesn't have one yet (or, with `mode=if-untouched`, also re-seeds rows
+ * that were auto-seeded but never edited via the UI). Pulls live data from
+ * Monday so newly-added MondayClient fields are picked up.
  *
- * Idempotent: clients with an existing agreement are skipped. Safe to re-run.
- * Admin-only — pricing data is finance-sensitive.
+ * Idempotent: rows with `updated_by` set are always skipped, so manual edits
+ * are never overwritten. Admin-only — pricing data is finance-sensitive.
+ *
+ * Does NOT re-sync clients to Supabase — assumes the regular sync (running
+ * on every client-page open + the cache cron) keeps `clients` rows fresh.
+ * Skipping the sync keeps the loop fast enough to finish in Vercel's time
+ * budget for ~800 clients.
  *
  * Both GET and POST are accepted so an admin can trigger this from the
  * browser address bar; the operation is idempotent and admin-gated, so the
@@ -80,34 +83,42 @@ async function runBackfill(req: NextRequest) {
   }
 
   const supabase = await createAdminClient()
-  const counts = { inserted: 0, updated: 0, skipped: 0 }
+  const counts = { inserted: 0, updated: 0, skipped: 0, missing: 0 }
   const failures: Array<{ name: string; error: string }> = []
 
-  // Sequential rather than parallel — keeps Monday API + Supabase load
-  // predictable, and the loop finishes well under a minute even with 800+
-  // clients. Sync writes to `clients`, then the seed call decides whether to
-  // touch `client_agreements` based on the mode.
-  for (const client of clients) {
-    try {
-      await syncClientToSupabase(client)
+  // Pre-load the monday_item_id → clients.id map in one query so the per-row
+  // loop doesn't pay a roundtrip per client. Clients with no mapping yet are
+  // skipped (they need a normal client-page open to trigger sync first).
+  const { data: rows } = await supabase
+    .from("clients")
+    .select("id, monday_item_id")
+  const idByMondayId = new Map<string, string>()
+  for (const r of rows ?? []) idByMondayId.set(r.monday_item_id, r.id)
 
-      // Resolve Supabase clients.id from the Monday item ID for the seed call.
-      // syncClientToSupabase already did the upsert so this lookup never misses.
-      const { data: row } = await supabase
-        .from("clients")
-        .select("id")
-        .eq("monday_item_id", client.mondayItemId)
-        .single()
-      if (!row) continue
-
-      const result = await seedDefaultAgreementIfMissing(client, row.id, mode)
-      counts[result]++
-    } catch (e) {
-      failures.push({
-        name: client.name,
-        error: e instanceof Error ? e.message : String(e),
-      })
-    }
+  // Bounded concurrency — running all seeds in parallel hammers Supabase and
+  // risks rate limits; running them sequentially blows the Vercel time budget
+  // at ~800 clients. 20-at-a-time gets the full backfill done in a few seconds.
+  const CONCURRENCY = 20
+  for (let i = 0; i < clients.length; i += CONCURRENCY) {
+    const batch = clients.slice(i, i + CONCURRENCY)
+    await Promise.all(
+      batch.map(async (client) => {
+        const id = idByMondayId.get(client.mondayItemId)
+        if (!id) {
+          counts.missing++
+          return
+        }
+        try {
+          const result = await seedDefaultAgreementIfMissing(client, id, mode)
+          counts[result]++
+        } catch (e) {
+          failures.push({
+            name: client.name,
+            error: e instanceof Error ? e.message : String(e),
+          })
+        }
+      }),
+    )
   }
 
   return NextResponse.json({
