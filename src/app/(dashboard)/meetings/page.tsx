@@ -27,19 +27,15 @@ export default async function MeetingsPage() {
 
   const meetings = (rawMeetings ?? []) as MeetingRow[]
 
-  // Resolve client names for the linked rows so the cards can show "→ Acme"
-  // without N+1 fetches client-side.
-  const clientIds = Array.from(
-    new Set(meetings.map((m) => m.client_id).filter((id): id is string => !!id)),
-  )
-  let clientNameById: Record<string, string> = {}
-  if (clientIds.length > 0) {
-    const { data: clients } = await supabase
-      .from("clients")
-      .select("monday_item_id, name")
-      .in("monday_item_id", clientIds)
-    clientNameById = Object.fromEntries((clients ?? []).map((c) => [c.monday_item_id, c.name]))
-  }
+  // Pull every client (id + name) so the manual link picker can search the
+  // full set, not just the ones that already have a meeting attached.
+  const { data: allClients } = await supabase
+    .from("clients")
+    .select("monday_item_id, name")
+    .order("name", { ascending: true })
+
+  const clients = (allClients ?? []).map((c) => ({ id: c.monday_item_id, name: c.name }))
+  const clientNameById = Object.fromEntries(clients.map((c) => [c.id, c.name]))
 
   return (
     <div>
@@ -53,7 +49,7 @@ export default async function MeetingsPage() {
         </p>
       </div>
 
-      <MeetingsView meetings={meetings} clientNameById={clientNameById} />
+      <MeetingsView meetings={meetings} clientNameById={clientNameById} clients={clients} />
     </div>
   )
 }
