@@ -54,12 +54,6 @@ export async function POST(req: NextRequest) {
   // We need the raw body string for signature verification — reading it
   // first as text and JSON-parsing later avoids consuming the stream twice.
   const rawBody = await req.text()
-  const timestamp = req.headers.get("x-slack-request-timestamp")
-  const signature = req.headers.get("x-slack-signature")
-
-  if (!verifySlackSignature(rawBody, timestamp, signature)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
-  }
 
   let payload: SlackEventPayload
   try {
@@ -69,8 +63,20 @@ export async function POST(req: NextRequest) {
   }
 
   // 1. URL verification — echo the challenge so Slack accepts the endpoint.
+  // We intentionally answer this BEFORE the signature check: the challenge
+  // response carries no sensitive data and Slack treats this ping as the
+  // proof-of-life for the URL. Letting it through without a configured
+  // SLACK_SIGNING_SECRET means the URL can be verified even on a brand-new
+  // env. Every real event below still requires a valid signature.
   if (payload.type === "url_verification") {
     return NextResponse.json({ challenge: payload.challenge })
+  }
+
+  // From here on signature is required.
+  const timestamp = req.headers.get("x-slack-request-timestamp")
+  const signature = req.headers.get("x-slack-signature")
+  if (!verifySlackSignature(rawBody, timestamp, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
   }
 
   // 2. Real events.
