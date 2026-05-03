@@ -278,13 +278,26 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // 5. Write KPI + billing + boards caches
-    await Promise.all([
-      writeCache("monday_boards", { onboarding, current }),
-      writeCache("kpi_summaries", kpiSummaries),
-      writeCache("kpi_daily", kpiDaily),
-      writeCache("billing_summaries", billingSummaries),
-    ])
+    // 5. Write KPI + billing + boards caches.
+    // Each write is wrapped individually so one failure (e.g. kpi_daily exceeding
+    // Supabase's REST payload limit) doesn't take down the others — and the
+    // failure is logged so it's actually visible in Vercel.
+    type CacheJob = { key: string; bytesApprox: number; run: () => Promise<void> }
+    const cacheJobs: CacheJob[] = [
+      { key: "monday_boards", bytesApprox: JSON.stringify({ onboarding, current }).length, run: () => writeCache("monday_boards", { onboarding, current }) },
+      { key: "kpi_summaries", bytesApprox: JSON.stringify(kpiSummaries).length, run: () => writeCache("kpi_summaries", kpiSummaries) },
+      { key: "kpi_daily", bytesApprox: JSON.stringify(kpiDaily).length, run: () => writeCache("kpi_daily", kpiDaily) },
+      { key: "billing_summaries", bytesApprox: JSON.stringify(billingSummaries).length, run: () => writeCache("billing_summaries", billingSummaries) },
+    ]
+    for (const job of cacheJobs) {
+      console.log(`[refresh-cache] writing ${job.key} — ${(job.bytesApprox / 1024).toFixed(0)}KB`)
+    }
+    const writeResults = await Promise.allSettled(cacheJobs.map((j) => j.run()))
+    writeResults.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.error(`[refresh-cache] ${cacheJobs[i].key} write failed:`, r.reason instanceof Error ? r.reason.message : r.reason)
+      }
+    })
 
     // 5a-pre. Daily score snapshot per CM. Used for the "vs 7d avg" KPI card on the
     // watchlist header — kept in cache_store under a single rolling map so we don't need

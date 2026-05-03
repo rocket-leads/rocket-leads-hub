@@ -27,9 +27,16 @@ export async function readCache<T>(key: string, ttlMs?: number): Promise<T | nul
 
 export async function writeCache(key: string, value: unknown): Promise<void> {
   const supabase = await createAdminClient()
-  await supabase
+  const { error } = await supabase
     .from("cache_store")
     .upsert({ key, data: value, updated_at: new Date().toISOString() }, { onConflict: "key" })
+  if (error) {
+    // Was previously swallowed — that's how kpi_daily silently disappeared from
+    // cache_store while the rest of the cron's writes succeeded, leaving
+    // /clients to live-fetch Meta + Monday on every page load.
+    console.error(`[writeCache] failed to write "${key}":`, error.message)
+    throw new Error(`writeCache(${key}): ${error.message}`)
+  }
 }
 
 /**
