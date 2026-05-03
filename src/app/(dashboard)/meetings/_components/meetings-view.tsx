@@ -34,8 +34,11 @@ export function MeetingsView({ meetings, clientNameById, clients }: Props) {
         const res = await fetch("/api/meetings/match", { method: "POST" })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "Matcher failed")
+        const fromArchive = data.unarchivedAndLinked > 0
+          ? ` (${data.unarchivedAndLinked} from archive)`
+          : ""
         setMatchSummary(
-          `${data.linked} linked · ${data.suggested} suggested · ${data.unmatched} still unmatched`,
+          `${data.linked} linked${fromArchive} · ${data.suggested} suggested · ${data.unmatched} unmatched`,
         )
         router.refresh()
       } catch (e) {
