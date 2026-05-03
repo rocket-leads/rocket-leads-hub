@@ -174,10 +174,10 @@ function RunNowPanel() {
         <div>
           <p className="text-sm font-semibold inline-flex items-center gap-2">
             <Play className="h-3.5 w-3.5 text-foreground/70" />
-            Run all rules now
+            Run as test (assigned to you)
           </p>
           <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-            Same code path as the daily cron — runs every enabled rule against the cached client data and creates tasks immediately.
+            Same code path as the daily cron, but tasks are assigned to <span className="font-medium text-foreground/80">you</span> with a <span className="font-mono">[TEST]</span> prefix — so you can validate AI output and rule logic without spamming the team. Idempotency check is skipped, so re-running always produces fresh items.
           </p>
         </div>
         <button
@@ -194,7 +194,7 @@ function RunNowPanel() {
           ) : (
             <>
               <Play className="h-3.5 w-3.5" />
-              Run now
+              Run test
             </>
           )}
         </button>

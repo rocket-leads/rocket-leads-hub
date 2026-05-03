@@ -43,6 +43,21 @@ export type AutomationRunResult = {
   skipped: SkippedItem[]
   skippedTotal: number
   reason?: string
+  testMode?: boolean
+}
+
+/**
+ * Options for the automation runner. The cron passes nothing; the manual
+ * Run-now trigger from Settings passes `testMode` so tasks land in the admin's
+ * own inbox instead of being fanned out to AMs — useful for QA/preview without
+ * spamming the team.
+ */
+export type RunOptions = {
+  testMode?: {
+    /** Override task assignee. The would-be AM is still recorded in the body
+     *  so the admin can see who *would* have received the task in production. */
+    assigneeUserId: string
+  }
 }
 
 async function loadRules(
@@ -106,29 +121,43 @@ async function ensurePaymentOverdueTask(
   invoice: InvoiceRow,
   authorId: string,
   assigneeId: string,
+  testMode: boolean,
 ): Promise<CreatedItem | null> {
-  const { data: existing } = await supabase
-    .from("inbox_items")
-    .select("id")
-    .eq("source", "automation")
-    .filter("source_ref->>invoiceId", "eq", invoice.id)
-    .maybeSingle()
-  if (existing) return null
+  // Idempotency only matters for real production runs — test runs always
+  // recreate so the admin can iterate on the rule output.
+  if (!testMode) {
+    const { data: existing } = await supabase
+      .from("inbox_items")
+      .select("id")
+      .eq("source", "automation")
+      .filter("source_ref->>invoiceId", "eq", invoice.id)
+      .filter("source_ref->>testRun", "is", null)
+      .maybeSingle()
+    if (existing) return null
+  }
 
   const outstanding = invoice.amountDue - invoice.amountPaid
   const today = new Date().toISOString().slice(0, 10)
 
-  const title = `Contact ${client.firstName || client.name} about overdue payment — ${fmtEuro(outstanding)}`
-  const body = [
+  const titleCore = `Contact ${client.firstName || client.name} about overdue payment — ${fmtEuro(outstanding)}`
+  const title = testMode ? `[TEST] ${titleCore}` : titleCore
+  const bodyParts = [
     `Stripe invoice ${invoice.number ?? invoice.id} is overdue.`,
     `Outstanding: ${fmtEuro(outstanding)}.`,
     invoice.dueDate
       ? `Due date: ${new Date(invoice.dueDate * 1000).toISOString().slice(0, 10)}.`
       : null,
     `Contact the client today and confirm next payment step.`,
-  ]
-    .filter(Boolean)
-    .join("\n")
+  ].filter(Boolean) as string[]
+
+  if (testMode) {
+    bodyParts.unshift(
+      `[TEST RUN] In production this would be assigned to ${client.accountManager || "the AM"}.`,
+      "",
+    )
+  }
+
+  const body = bodyParts.join("\n")
 
   const { error } = await supabase.from("inbox_items").insert({
     kind: "task",
@@ -145,6 +174,7 @@ async function ensurePaymentOverdueTask(
       rule: "payment_overdue_task",
       invoiceId: invoice.id,
       mondayItemId: client.mondayItemId,
+      ...(testMode ? { testRun: true } : {}),
     },
   })
 
@@ -337,13 +367,10 @@ async function ensurePositiveCplDropTask(
   daily: KpiDailyClientData,
   authorId: string,
   assigneeId: string,
+  testMode: boolean,
 ): Promise<CreatedItem | null> {
-  // Reliability gate: client must have been running for at least MIN_HISTORY_DAYS.
-  // Anything younger is too noisy for a public-facing message to the client.
   if (getDaysSinceFirstSpend(daily) < MIN_HISTORY_DAYS) return null
 
-  // Evaluate both periods. 30d wins when both trigger — longer windows are more
-  // reliable, so we prefer them. Never emit two tasks for the same client at once.
   const candidates: CplComparison[] = []
   for (const period of PERIODS) {
     const cmp = evaluatePeriod(daily, period)
@@ -353,20 +380,20 @@ async function ensurePositiveCplDropTask(
 
   const cmp = candidates.find((c) => c.period.name === "30d") ?? candidates[0]
 
-  // Idempotency: skip when a positive-signal task for this client already exists
-  // in the last IDEMPOTENCY_DAYS days, regardless of period — we don't want the
-  // AM bombarded with "good news" tasks every day.
-  const idempotencyCutoff = new Date()
-  idempotencyCutoff.setDate(idempotencyCutoff.getDate() - IDEMPOTENCY_DAYS)
-  const { data: existing } = await supabase
-    .from("inbox_items")
-    .select("id")
-    .eq("source", "automation")
-    .filter("source_ref->>rule", "eq", "positive_client_signal_cpl_drop")
-    .filter("source_ref->>mondayItemId", "eq", client.mondayItemId)
-    .gte("created_at", idempotencyCutoff.toISOString())
-    .maybeSingle()
-  if (existing) return null
+  if (!testMode) {
+    const idempotencyCutoff = new Date()
+    idempotencyCutoff.setDate(idempotencyCutoff.getDate() - IDEMPOTENCY_DAYS)
+    const { data: existing } = await supabase
+      .from("inbox_items")
+      .select("id")
+      .eq("source", "automation")
+      .filter("source_ref->>rule", "eq", "positive_client_signal_cpl_drop")
+      .filter("source_ref->>mondayItemId", "eq", client.mondayItemId)
+      .filter("source_ref->>testRun", "is", null)
+      .gte("created_at", idempotencyCutoff.toISOString())
+      .maybeSingle()
+    if (existing) return null
+  }
 
   const message = await generatePositiveSignalMessage({ client, cmp })
   if (!message) return null
@@ -374,15 +401,25 @@ async function ensurePositiveCplDropTask(
   const todayStr = new Date().toISOString().slice(0, 10)
   const dropPctRounded = Math.round(cmp.dropPct)
 
-  const title = `Client update — CPL ${client.name} met ${dropPctRounded}% verlaagd, ${cmp.period.labelNL}`
-  const body = [
+  const titleCore = `Client update — CPL ${client.name} met ${dropPctRounded}% verlaagd, ${cmp.period.labelNL}`
+  const title = testMode ? `[TEST] ${titleCore}` : titleCore
+
+  const bodyParts: string[] = []
+  if (testMode) {
+    bodyParts.push(
+      `[TEST RUN] In production this would be assigned to ${client.accountManager || "the AM"}.`,
+      "",
+    )
+  }
+  bodyParts.push(
     message,
     "",
     "— Voorgesteld door automatisering, voel vrij om aan te passen voor je het verstuurt.",
     "",
     `CPL ${cmp.period.labelNL}: €${cmp.curr.cpl.toFixed(2)} (vs €${cmp.prev.cpl.toFixed(2)} ${cmp.period.prevLabelNL})`,
     `Spend: ${fmtEuro(cmp.curr.spend)} · Leads: ${cmp.curr.leads}`,
-  ].join("\n")
+  )
+  const body = bodyParts.join("\n")
 
   const { error } = await supabase.from("inbox_items").insert({
     kind: "task",
@@ -402,6 +439,7 @@ async function ensurePositiveCplDropTask(
       dropPct: dropPctRounded,
       currCpl: cmp.curr.cpl,
       prevCpl: cmp.prev.cpl,
+      ...(testMode ? { testRun: true } : {}),
     },
   })
 
@@ -423,10 +461,11 @@ async function ensurePositiveCplDropTask(
 
 // --- Run-loop -----------------------------------------------------------
 
-export async function runInboxAutomations(): Promise<AutomationRunResult> {
+export async function runInboxAutomations(opts?: RunOptions): Promise<AutomationRunResult> {
   const startTime = Date.now()
   const supabase = await createAdminClient()
   const rules = await loadRules(supabase)
+  const testMode = !!opts?.testMode
 
   const skipped: SkippedItem[] = []
   const created: CreatedItem[] = []
@@ -440,6 +479,7 @@ export async function runInboxAutomations(): Promise<AutomationRunResult> {
       skipped,
       skippedTotal: 0,
       reason: "All automation rules disabled",
+      testMode,
     }
   }
 
@@ -474,11 +514,18 @@ export async function runInboxAutomations(): Promise<AutomationRunResult> {
       continue
     }
 
-    const assigneeId = await lookupAccountManagerId(supabase, client.accountManager)
-    if (!assigneeId) {
+    // In test mode the AM mapping isn't strictly required — assignee comes
+    // from the override. But we still record the would-be AM in the body for
+    // the admin to validate, so we can keep the lookup attempt and let it be
+    // null. In real runs, missing AM mapping is a hard skip.
+    const realAssigneeId = await lookupAccountManagerId(supabase, client.accountManager)
+    if (!realAssigneeId && !testMode) {
       skipped.push({ reason: "no_am_mapping", client: client.name })
       continue
     }
+    const assigneeId = testMode
+      ? opts!.testMode!.assigneeUserId
+      : (realAssigneeId as string)
 
     if (rules.payment_overdue_task && client.stripeCustomerId) {
       try {
@@ -492,6 +539,7 @@ export async function runInboxAutomations(): Promise<AutomationRunResult> {
             invoice,
             authorId,
             assigneeId,
+            testMode,
           )
           if (result) created.push(result)
         }
@@ -515,6 +563,7 @@ export async function runInboxAutomations(): Promise<AutomationRunResult> {
           daily,
           authorId,
           assigneeId,
+          testMode,
         )
         if (result) created.push(result)
       } catch (e) {
@@ -535,5 +584,6 @@ export async function runInboxAutomations(): Promise<AutomationRunResult> {
     created,
     skipped: skipped.slice(0, 50),
     skippedTotal: skipped.length,
+    testMode,
   }
 }

@@ -267,15 +267,21 @@ export async function setInboxAutomationRule(
 }
 
 /**
- * Manually trigger the inbox automations cron. Same code path as the daily
- * Vercel cron — useful for verifying a rule end-to-end without waiting for the
- * 07:00 UTC slot. Admin-only. Runs server-side, returns the structured result
- * so the UI can show what was created/skipped.
+ * Manually trigger the inbox automations runner in TEST MODE — produces the
+ * same tasks the daily cron would, but routes them to the admin's own inbox
+ * (with [TEST] prefix and a body note about who *would* have received it in
+ * production). Lets us validate AI-generated content and rule logic without
+ * spamming AMs. Skips the idempotency check so the admin can re-run freely.
  */
 export async function triggerInboxAutomationsNow() {
   await requireAdmin()
+  const session = await auth()
+  if (!session?.user?.id) throw new Error("No session")
+
   const { runInboxAutomations } = await import("@/lib/inbox/automations")
-  const result = await runInboxAutomations()
+  const result = await runInboxAutomations({
+    testMode: { assigneeUserId: session.user.id },
+  })
   revalidatePath("/inbox")
   revalidatePath("/settings")
   return result

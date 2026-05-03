@@ -10,6 +10,7 @@ import {
   BarChart3,
   LayoutGrid,
   FolderOpen,
+  MessageSquare,
 } from "lucide-react"
 import { ClientSearch } from "@/components/client-search"
 import { BackButton } from "./back-button"
@@ -133,6 +134,20 @@ export function ClientHeader({ client, canViewBilling }: Props) {
           label: "Drive",
           icon: FolderOpen,
           href: `https://drive.google.com/drive/folders/${client.googleDriveId}`,
+        }]
+      : []),
+    ...(client.stripeCustomerId
+      ? [{
+          label: "Stripe",
+          icon: CreditCard,
+          href: `https://dashboard.stripe.com/customers/${client.stripeCustomerId}`,
+        }]
+      : []),
+    ...(client.trengoContactId
+      ? [{
+          label: "Trengo",
+          icon: MessageSquare,
+          href: `https://app.trengo.com/contacts/${client.trengoContactId}`,
         }]
       : []),
   ]

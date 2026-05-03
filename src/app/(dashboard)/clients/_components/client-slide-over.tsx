@@ -50,7 +50,9 @@ export function ClientSlideOver({ clientId, onClose, currentUser }: Props) {
         <DialogPrimitive.Backdrop
           className={cn(
             "fixed inset-0 isolate z-50 bg-black/40 backdrop-blur-sm",
-            "duration-200",
+            // Backdrop fades faster than the panel slides — feels snappier and the
+            // panel reads as the leading element of the transition.
+            "duration-100 ease-out",
             "data-open:animate-in data-open:fade-in-0",
             "data-closed:animate-out data-closed:fade-out-0",
           )}
@@ -60,7 +62,10 @@ export function ClientSlideOver({ clientId, onClose, currentUser }: Props) {
             "fixed inset-y-0 right-0 z-50 w-full lg:w-[70%] max-w-[1500px]",
             "bg-background shadow-2xl ring-1 ring-foreground/10 outline-none",
             "flex flex-col",
-            "duration-200",
+            // 120ms with ease-out matches Linear/Discord feel — fast enough to
+            // feel instant on click but long enough that the slide motion still
+            // reads as deliberate.
+            "duration-[120ms] ease-out",
             "data-open:animate-in data-open:slide-in-from-right",
             "data-closed:animate-out data-closed:slide-out-to-right",
           )}

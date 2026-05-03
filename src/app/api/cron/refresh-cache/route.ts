@@ -26,7 +26,13 @@ import type { BillingSummary } from "@/lib/integrations/stripe"
 const anthropic = new Anthropic()
 
 const SPARKLINE_DAYS = 14
-const DAILY_HISTORY_DAYS = 365
+// Trimmed from 365 → 120 because the cron was reliably exceeding Vercel's 300s
+// maxDuration on the KPI batch loop, leaving kpi_daily un-written and forcing
+// /clients into the slow live-fetch fallback. 120 days covers every date preset
+// the dashboard exposes (MTD, Last 7/14/30 Days, Last Month, Last 3 Months);
+// anything older still works — it just falls through to live-fetch via
+// /api/kpi-summaries' date-range path with `cache: "no-store"`.
+const DAILY_HISTORY_DAYS = 120
 
 function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10)
