@@ -49,6 +49,24 @@ export function MyAccount({ userName, userEmail, slack, trengo, monday }: Props)
 // --- Slack (OAuth — coming in C.4) ---
 
 function SlackCard({ connection }: { connection: UserPlatformConnection | null }) {
+  const [pending, setPending] = useState<"disconnecting" | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
+
+  function disconnect() {
+    setPending("disconnecting")
+    setError(null)
+    startTransition(async () => {
+      try {
+        await disconnectMyPlatform("slack")
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to disconnect")
+      } finally {
+        setPending(null)
+      }
+    })
+  }
+
   return (
     <PlatformCard
       icon={<Hash className="h-4 w-4" />}
@@ -59,15 +77,32 @@ function SlackCard({ connection }: { connection: UserPlatformConnection | null }
       meta={connection?.meta}
       connectedAt={connection?.connectedAt}
     >
-      <button
-        type="button"
-        disabled
-        className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-border/40 bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground/60 cursor-not-allowed"
-        title="Slack OAuth ships in Phase C.4"
-      >
-        <ExternalLink className="h-3.5 w-3.5" />
-        Connect Slack (coming soon)
-      </button>
+      {connection ? (
+        <button
+          type="button"
+          onClick={disconnect}
+          disabled={pending !== null}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
+        >
+          {pending === "disconnecting" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <X className="h-3.5 w-3.5" />
+          )}
+          Disconnect
+        </button>
+      ) : (
+        // Server-side redirect to Slack OAuth — using an <a> tag (not a button)
+        // so the browser does a full navigation rather than fetch.
+        <a
+          href="/api/auth/slack/start"
+          className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Connect Slack
+        </a>
+      )}
+      {error && <p className="text-[11px] text-destructive mt-2">{error}</p>}
     </PlatformCard>
   )
 }
