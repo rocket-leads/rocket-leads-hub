@@ -17,6 +17,8 @@ import {
   CalendarDays,
   CalendarClock,
   CalendarX,
+  Users,
+  MessageCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TopTabs } from "@/components/ui/top-tabs"
@@ -24,6 +26,7 @@ import type { TopTab } from "@/components/ui/top-tabs"
 import { InboxListRow } from "./inbox-list-row"
 import { ComposerDialog } from "./composer-dialog"
 import { ItemDetailDialog } from "./item-detail-dialog"
+import { ChatPane } from "./chat-pane"
 import type { InboxItem, TaskStatus, UpdateStatus } from "@/types/inbox"
 
 export type InboxUser = { id: string; name: string | null; email: string; role: string }
@@ -40,7 +43,7 @@ type Props = {
   lockedClient?: InboxClientOption
 }
 
-type MainTab = "updates" | "tasks"
+type MainTab = "tasks" | "updates" | "team-inbox" | "client-inbox"
 type UpdateFilter = "all" | UpdateStatus
 type TaskFilter = "all" | TaskStatus
 
@@ -73,7 +76,7 @@ export function InboxView({
   lockedClient,
 }: Props) {
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<MainTab>("updates")
+  const [activeTab, setActiveTab] = useState<MainTab>("tasks")
   const [assignedToMe, setAssignedToMe] = useState(true)
   const [updateFilter, setUpdateFilter] = useState<UpdateFilter>(DEFAULT_UPDATE_FILTER)
   const [taskFilter, setTaskFilter] = useState<TaskFilter>(DEFAULT_TASK_FILTER)
@@ -139,10 +142,22 @@ export function InboxView({
   const updates = updatesQuery.data?.items ?? []
   const tasks = tasksQuery.data?.items ?? []
 
-  const mainTabs: TopTab<MainTab>[] = [
-    { id: "updates", label: "Updates", icon: InboxIcon, count: updates.length },
-    { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
-  ]
+  // Per-client view (locked-client tab on client detail page) only surfaces
+  // discrete tasks/updates linked to that client. Chats live at the global
+  // inbox where the thread substrate makes sense across all clients.
+  const mainTabs: TopTab<MainTab>[] = lockedClient
+    ? [
+        { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
+        { id: "updates", label: "Updates", icon: InboxIcon, count: updates.length },
+      ]
+    : [
+        { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
+        { id: "updates", label: "Updates", icon: InboxIcon, count: updates.length },
+        { id: "team-inbox", label: "Team Inbox", icon: Users },
+        { id: "client-inbox", label: "Client Inbox", icon: MessageCircle },
+      ]
+
+  const isChatTab = activeTab === "team-inbox" || activeTab === "client-inbox"
 
   return (
     <div className="space-y-6">
@@ -160,47 +175,19 @@ export function InboxView({
               {assignedToMe ? "Assigned to me" : "All"}
             </Button>
           )}
-          <Button size="sm" onClick={() => openComposer(activeTab === "tasks" ? "task" : "update")}>
-            <Plus className="h-4 w-4" />
-            New {activeTab === "tasks" ? "task" : "update"}
-          </Button>
+          {!isChatTab && (
+            <Button size="sm" onClick={() => openComposer(activeTab === "tasks" ? "task" : "update")}>
+              <Plus className="h-4 w-4" />
+              New {activeTab === "tasks" ? "task" : "update"}
+            </Button>
+          )}
         </div>
       </div>
 
       <TopTabs<MainTab> tabs={mainTabs} value={activeTab} onChange={setActiveTab} />
 
       <div className="space-y-4">
-        {activeTab === "updates" ? (
-          <>
-            <TopTabs<UpdateFilter>
-              tabs={UPDATE_FILTERS}
-              value={updateFilter}
-              onChange={setUpdateFilter}
-            />
-            {updatesQuery.isLoading ? (
-              <EmptyState text="Loading updates…" />
-            ) : updates.length === 0 ? (
-              <EmptyState
-                text={
-                  updateFilter === "all"
-                    ? "No updates yet."
-                    : `No ${updateFilter} updates${assignedToMe ? " assigned to you" : ""}.`
-                }
-                onCreate={() => openComposer("update")}
-              />
-            ) : (
-              <GroupedUpdates
-                updates={updates}
-                showClient={!lockedClient}
-                onItemClick={(item) => setDetailItem(item)}
-                onAction={(item, action) => {
-                  if (action === "read") patchItem(item.id, { status: "read" })
-                  else if (action === "unread") patchItem(item.id, { status: "unread" })
-                }}
-              />
-            )}
-          </>
-        ) : (
+        {activeTab === "tasks" && (
           <>
             <TopTabs<TaskFilter>
               tabs={TASK_FILTERS}
@@ -232,6 +219,42 @@ export function InboxView({
             )}
           </>
         )}
+
+        {activeTab === "updates" && (
+          <>
+            <TopTabs<UpdateFilter>
+              tabs={UPDATE_FILTERS}
+              value={updateFilter}
+              onChange={setUpdateFilter}
+            />
+            {updatesQuery.isLoading ? (
+              <EmptyState text="Loading updates…" />
+            ) : updates.length === 0 ? (
+              <EmptyState
+                text={
+                  updateFilter === "all"
+                    ? "No updates yet."
+                    : `No ${updateFilter} updates${assignedToMe ? " assigned to you" : ""}.`
+                }
+                onCreate={() => openComposer("update")}
+              />
+            ) : (
+              <GroupedUpdates
+                updates={updates}
+                showClient={!lockedClient}
+                onItemClick={(item) => setDetailItem(item)}
+                onAction={(item, action) => {
+                  if (action === "read") patchItem(item.id, { status: "read" })
+                  else if (action === "unread") patchItem(item.id, { status: "unread" })
+                }}
+              />
+            )}
+          </>
+        )}
+
+        {activeTab === "team-inbox" && <ChatPane scope="internal" />}
+
+        {activeTab === "client-inbox" && <ChatPane scope="external" />}
       </div>
 
       <ComposerDialog

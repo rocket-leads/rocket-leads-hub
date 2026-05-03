@@ -277,4 +277,228 @@ export async function getInboxBadgeCounts(
   }
 }
 
+// --- Chat substrate fetchers (Phase C.7) ----------------------------------
+//
+// Inbox events that carry a thread_key are part of the chat substrate —
+// continuous conversation threads from Trengo (per-contact) and Slack
+// (per-DM, per-channel, per-mpim). They live in the Team Inbox / Client
+// Inbox tabs, separate from the discrete Tasks/Updates panes.
+//
+// scope routes:
+//   - 'external' → Client Inbox tab (Trengo today, future client-facing chats)
+//   - 'internal' → Team Inbox tab (Slack DMs + channels)
+//
+// Visibility mirrors listInboxItems(): admins see all, others see threads
+// where they're author/assignee of any event OR have access to the linked
+// client. We filter at the event level then group, so a thread shows up
+// with whatever events the user can see.
+
+export type ChatScope = "external" | "internal"
+
+export type ChatThreadSummary = {
+  threadKey: string
+  scope: ChatScope
+  source: InboxSource
+  /** Display name — primary other-party (Trengo contact, Slack channel, etc). */
+  primaryName: string
+  /** Linked Hub client name when client_id is set on any event in the thread. */
+  clientName: string | null
+  /** Most recent message preview (truncated). */
+  latestPreview: string
+  /** Most recent message timestamp (uses created_at_src when available). */
+  latestAt: string
+  /** Latest event id — used by the reply UI to derive source/thread metadata. */
+  latestEventId: string
+  totalCount: number
+  unreadCount: number
+}
+
+export type ChatMessage = {
+  id: string
+  authorKind: "rl_team" | "client" | "external" | null
+  authorName: string
+  authorExternal: string | null
+  body: string
+  /** Display-time timestamp — created_at_src when the source provided one. */
+  at: string
+  source: InboxSource
+  status: string
+}
+
+type RawChatRow = {
+  id: string
+  source: InboxSource
+  scope: string | null
+  thread_key: string | null
+  client_id: string
+  author_id: string
+  assignee_id: string
+  author_kind: string | null
+  author_external: string | null
+  author_name_cached: string | null
+  title: string
+  body: string | null
+  status: string
+  created_at: string
+  created_at_src: string | null
+  author: { id: string; name: string | null; email: string } | null
+  assignee: { id: string; name: string | null; email: string } | null
+}
+
+const CHAT_SELECT = `
+  id, source, scope, thread_key, client_id, author_id, assignee_id,
+  author_kind, author_external, author_name_cached, title, body, status,
+  created_at, created_at_src,
+  author:users!inbox_items_author_id_fkey(id, name, email),
+  assignee:users!inbox_items_assignee_id_fkey(id, name, email)
+`
+
+function rowAuthorName(row: RawChatRow): string {
+  if (row.author_kind === "rl_team") {
+    return row.author?.name ?? row.author?.email ?? row.author_name_cached ?? "Team"
+  }
+  return row.author_name_cached ?? "Unknown"
+}
+
+function rowDisplayAt(row: RawChatRow): string {
+  return row.created_at_src ?? row.created_at
+}
+
+/** Derive a human-friendly primary name for a thread from its thread_key.
+ *  We keep this deterministic so the UI doesn't need extra round-trips. */
+function deriveThreadName(threadKey: string, fallback: string): string {
+  // trengo:contact:<id> → use latest external author name
+  // slack:dm:<user_id> → use latest external author name
+  // slack:channel:<id> → "#<channel id>" until we resolve real names
+  // slack:mpim:<id> → "Group DM"
+  if (threadKey.startsWith("slack:channel:")) {
+    return `#channel ${threadKey.replace("slack:channel:", "").slice(0, 8)}`
+  }
+  if (threadKey.startsWith("slack:mpim:")) return "Group DM"
+  return fallback
+}
+
+export async function listChatThreads(
+  userId: string,
+  role: Role,
+  scope: ChatScope,
+): Promise<ChatThreadSummary[]> {
+  const supabase = await createAdminClient()
+
+  let query = supabase
+    .from("inbox_events")
+    .select(CHAT_SELECT)
+    .not("thread_key", "is", null)
+    .eq("scope", scope)
+    .order("created_at", { ascending: false })
+    // Cap the raw row pull — threads with hundreds of messages still surface
+    // because we group post-hoc. 1k is generous for now.
+    .limit(1000)
+
+  if (role !== "admin") {
+    const allowed = await getAllowedClientIds(userId, role)
+    if (allowed !== "all") {
+      const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+      query = query.or(
+        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}`,
+      )
+    }
+  }
+
+  const { data, error } = await query
+  if (error) throw new Error(`Failed to list chat threads: ${error.message}`)
+
+  const rows = ((data ?? []) as unknown as RawChatRow[]).filter((r) => r.thread_key)
+
+  // Group by thread_key. Newest event wins for the summary fields since rows
+  // are already ordered by created_at DESC.
+  const byThread = new Map<string, { rows: RawChatRow[] }>()
+  for (const row of rows) {
+    const key = row.thread_key as string
+    let entry = byThread.get(key)
+    if (!entry) {
+      entry = { rows: [] }
+      byThread.set(key, entry)
+    }
+    entry.rows.push(row)
+  }
+
+  const clientMap = await getMondayClientMap()
+
+  const threads: ChatThreadSummary[] = []
+  for (const [threadKey, { rows: threadRows }] of byThread) {
+    if (threadRows.length === 0) continue
+    const latest = threadRows[0]
+    const externalAuthor = threadRows.find(
+      (r) => r.author_kind && r.author_kind !== "rl_team",
+    )
+    const fallbackName =
+      externalAuthor?.author_name_cached ?? latest.author_name_cached ?? "Unknown"
+    const primaryName = deriveThreadName(threadKey, fallbackName)
+    const clientName = latest.client_id
+      ? clientMap.get(latest.client_id)?.name ?? null
+      : null
+    const previewSrc = latest.body ?? latest.title ?? ""
+    const latestPreview =
+      previewSrc.length > 120 ? previewSrc.slice(0, 120) + "…" : previewSrc
+    const unreadCount = threadRows.filter((r) => r.status === "unread").length
+    threads.push({
+      threadKey,
+      scope: latest.scope === "external" ? "external" : "internal",
+      source: latest.source,
+      primaryName,
+      clientName,
+      latestPreview,
+      latestAt: rowDisplayAt(latest),
+      latestEventId: latest.id,
+      totalCount: threadRows.length,
+      unreadCount,
+    })
+  }
+
+  threads.sort((a, b) => b.latestAt.localeCompare(a.latestAt))
+  return threads
+}
+
+export async function getChatThreadMessages(
+  threadKey: string,
+  userId: string,
+  role: Role,
+): Promise<ChatMessage[]> {
+  const supabase = await createAdminClient()
+
+  let query = supabase
+    .from("inbox_events")
+    .select(CHAT_SELECT)
+    .eq("thread_key", threadKey)
+    .order("created_at", { ascending: true })
+
+  if (role !== "admin") {
+    const allowed = await getAllowedClientIds(userId, role)
+    if (allowed !== "all") {
+      const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+      query = query.or(
+        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}`,
+      )
+    }
+  }
+
+  const { data, error } = await query
+  if (error) throw new Error(`Failed to load thread: ${error.message}`)
+
+  return ((data ?? []) as unknown as RawChatRow[]).map((r) => {
+    const authorKind = (r.author_kind ?? null) as ChatMessage["authorKind"]
+    return {
+      id: r.id,
+      authorKind,
+      authorName: rowAuthorName(r),
+      authorExternal: r.author_external ?? null,
+      body: (r.body ?? r.title ?? "").trim(),
+      at: rowDisplayAt(r),
+      source: r.source,
+      status: r.status,
+    }
+  })
+}
+
 export type { InboxKind, InboxPriority, InboxSource, TaskStatus, UpdateStatus }

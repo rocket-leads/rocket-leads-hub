@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { fetchBothBoards } from "@/lib/integrations/monday"
+import { readCache } from "@/lib/cache"
 import { syncClientToSupabase } from "@/lib/clients/sync"
 import { seedDefaultAgreementIfMissing, type SeedMode } from "@/lib/clients/agreement"
 import { createAdminClient } from "@/lib/supabase/server"
@@ -28,24 +29,53 @@ async function runBackfill(req: NextRequest) {
   // `mode=if-untouched` → also re-seed agreements that exist but were never
   // edited via the UI (used to refresh stale defaults after the seed logic
   // itself improves). Default `if-missing` is non-destructive.
+  // `live=1` → bypass the cron cache and read live from Monday; needed when
+  // the cache hasn't yet been repopulated with newly-added MondayClient
+  // fields (e.g. right after a deploy). Slower but guaranteed fresh.
   const url = new URL(req.url)
   const modeParam = url.searchParams.get("mode")
   const mode: SeedMode = modeParam === "if-untouched" ? "if-untouched" : "if-missing"
+  const live = url.searchParams.get("live") === "1"
 
   let clients: MondayClient[]
+  let source: "live" | "cache"
   try {
-    // Always fetch live, never the cron cache. The cache may be missing
-    // recently-added MondayClient fields (e.g. after a release that adds new
-    // column reads), and seeding off stale data would silently produce
-    // incorrect agreements across hundreds of clients. The runtime cost is a
-    // single Monday API call vs subtle data corruption — easy trade-off for a
-    // one-shot admin operation.
-    const data = await fetchBothBoards()
-    clients = [...data.onboarding, ...data.current]
+    if (live) {
+      const data = await fetchBothBoards()
+      clients = [...data.onboarding, ...data.current]
+      source = "live"
+    } else {
+      const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards")
+      if (cached) {
+        clients = [...cached.onboarding, ...cached.current]
+        source = "cache"
+      } else {
+        const data = await fetchBothBoards()
+        clients = [...data.onboarding, ...data.current]
+        source = "live"
+      }
+    }
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to load Monday clients" },
       { status: 500 },
+    )
+  }
+
+  // Refuse to seed off a stale cache — would silently produce wrong defaults
+  // for hundreds of clients (followUpStatus would be undefined → toggle off
+  // for everyone). Caller can retry with ?live=1.
+  const cacheStale =
+    source === "cache" &&
+    clients.length > 0 &&
+    !Object.prototype.hasOwnProperty.call(clients[0], "followUpStatus")
+  if (cacheStale) {
+    return NextResponse.json(
+      {
+        error:
+          "Cached Monday data is missing followUpStatus — refusing to seed off stale data. Retry with ?live=1, or wait for the next /api/cron/refresh-cache run.",
+      },
+      { status: 409 },
     )
   }
 
@@ -82,6 +112,7 @@ async function runBackfill(req: NextRequest) {
 
   return NextResponse.json({
     mode,
+    source,
     total: clients.length,
     ...counts,
     failed: failures.length,
