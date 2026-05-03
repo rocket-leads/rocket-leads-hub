@@ -8,6 +8,7 @@ import { isPrevPeriodReliable } from "@/app/api/kpi-summaries/route"
 import { categorize, updateWatchlistClientState } from "@/lib/watchlist/categorize"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { readCache, writeCache } from "@/lib/cache"
+import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { computeActionCategory } from "@/lib/clients/action-category"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import {
@@ -92,9 +93,10 @@ function buildDailyRollups(
 export const maxDuration = 300 // 5 minutes max for Vercel Pro
 
 export async function GET(req: NextRequest) {
-  // Verify cron secret — Vercel sends this header for cron jobs
-  const authHeader = req.headers.get("authorization")
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  // Accept either Vercel's CRON_SECRET (scheduled run) or an admin session
+  // (manual re-warm from the browser when the daily cron didn't pick up).
+  const authz = await authorizeCronOrAdmin(req)
+  if (!authz.ok) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
