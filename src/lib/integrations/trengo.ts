@@ -111,6 +111,19 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
   return all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }
 
+/**
+ * List all channels in the Trengo workspace. Used by the per-user channel
+ * subscription picker on /account so users can pick which Trengo channels
+ * (Email, WhatsApp, Voice, etc.) surface in their Hub Client Inbox.
+ *
+ * Uses the system Trengo token — channel listings are workspace-wide metadata,
+ * not tied to a specific agent. Cheap and cached for 5 minutes by trengoFetch.
+ */
+export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
+  const data = await trengoFetch<{ data: TrengoChannel[] }>(`/channels`)
+  return [...data.data].sort((a, b) => a.name.localeCompare(b.name))
+}
+
 export async function fetchMessages(ticketId: number): Promise<TrengoMessage[]> {
   const all: TrengoMessage[] = []
   let page = 1

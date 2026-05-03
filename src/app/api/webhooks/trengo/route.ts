@@ -37,6 +37,8 @@ type TrengoWebhookPayload = {
   ticket?: {
     id: number | string
     contact?: { id: number | string; name?: string }
+    channel?: { id: number | string; name?: string; type?: string }
+    channel_id?: number | string
   }
   message?: {
     id: number | string
@@ -83,6 +85,14 @@ export async function POST(req: NextRequest) {
   const ticketId = String(ticket.id ?? "")
   const messageId = String(message.id ?? "")
   const contactId = String(ticket.contact?.id ?? "")
+  // Channel id is what powers per-user channel subscriptions. Trengo varies the
+  // payload shape across plans/event types — try the nested object first, then
+  // the flat fallback. Stored as integer; null if Trengo didn't send one.
+  const rawChannelId = ticket.channel?.id ?? ticket.channel_id ?? null
+  const trengoChannelId =
+    rawChannelId != null && Number.isFinite(Number(rawChannelId))
+      ? Number(rawChannelId)
+      : null
   if (!ticketId || !messageId || !contactId) {
     return NextResponse.json(
       { ok: false, error: "Missing ticket id, message id, or contact id" },
@@ -180,6 +190,7 @@ export async function POST(req: NextRequest) {
     classify_conf: classification.confidence,
     classify_method: "ai",
     created_at_src: createdAtSrc,
+    trengo_channel_id: trengoChannelId,
     raw: payload,
     attachments:
       message.attachments && message.attachments.length > 0 ? message.attachments : null,

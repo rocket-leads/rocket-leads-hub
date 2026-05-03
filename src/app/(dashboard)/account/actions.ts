@@ -7,6 +7,7 @@ import {
   disconnectUserPlatform,
   type Platform,
 } from "@/lib/inbox/user-platform-tokens"
+import { setUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 
 async function requireSession() {
   const session = await auth()
@@ -32,4 +33,16 @@ export async function disconnectMyPlatform(platform: Platform) {
   const userId = await requireSession()
   await disconnectUserPlatform(userId, platform)
   revalidatePath("/account")
+}
+
+/**
+ * Save the logged-in user's Trengo channel subscriptions. Empty array means
+ * no extra subscriptions — visibility falls back to client-access only.
+ */
+export async function saveMyTrengoChannels(channelIds: number[]) {
+  const userId = await requireSession()
+  await setUserTrengoChannelIds(userId, channelIds)
+  revalidatePath("/account")
+  // The Client Inbox view depends on this; bust its server-rendered shell too.
+  revalidatePath("/inbox")
 }

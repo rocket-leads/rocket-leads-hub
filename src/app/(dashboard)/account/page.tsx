@@ -1,13 +1,17 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { listUserPlatformConnections } from "@/lib/inbox/user-platform-tokens"
+import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 import { MyAccount } from "./_components/my-account"
 
 export default async function AccountPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
 
-  const connections = await listUserPlatformConnections(session.user.id)
+  const [connections, trengoChannelIds] = await Promise.all([
+    listUserPlatformConnections(session.user.id),
+    getUserTrengoChannelIds(session.user.id),
+  ])
 
   // Map by platform for quick lookup in the UI.
   const connectionMap = Object.fromEntries(connections.map((c) => [c.platform, c]))
@@ -29,6 +33,7 @@ export default async function AccountPage() {
         slack={connectionMap.slack ?? null}
         trengo={connectionMap.trengo ?? null}
         monday={connectionMap.monday ?? null}
+        trengoChannelIds={trengoChannelIds}
       />
     </div>
   )

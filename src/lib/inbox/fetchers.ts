@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { filterClientsByUser } from "@/lib/clients/filter"
+import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 import type {
   InboxItem,
   InboxComment,
@@ -28,6 +29,7 @@ type RawInboxRow = {
   source: InboxSource
   source_ref: Record<string, unknown> | null
   monday_update_id: string | null
+  trengo_channel_id: number | null
   created_at: string
   updated_at: string
   completed_at: string | null
@@ -130,7 +132,8 @@ function rowToItem(row: RawInboxRow, clientMap: Map<string, MondayClient>): Inbo
 
 const ITEM_SELECT = `
   id, kind, client_id, author_id, assignee_id, title, body, status, priority,
-  due_date, source, source_ref, monday_update_id, created_at, updated_at, completed_at,
+  due_date, source, source_ref, monday_update_id, trengo_channel_id,
+  created_at, updated_at, completed_at,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email),
   inbox_comments(count)
@@ -166,12 +169,15 @@ export async function listInboxItems(
     const allowed = await getAllowedClientIds(userId, role)
     if (allowed !== "all") {
       const ids = allowed
-      // Always allow author/assignee on the item; otherwise require client access.
-      // PostgREST `or` with nested `in.(...)` — IDs are numeric Monday strings so
-      // no quoting is needed.
+      const channelIds = await getUserTrengoChannelIds(userId)
+      // Always allow author/assignee on the item; otherwise require client access
+      // OR a Trengo channel subscription match. PostgREST `or` with nested
+      // `in.(...)` — IDs are numeric so no quoting is needed.
       const inClause = ids.length > 0 ? `,client_id.in.(${ids.join(",")})` : ""
+      const channelClause =
+        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
       query = query.or(
-        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}`,
+        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
       )
     }
   }
@@ -205,7 +211,14 @@ export async function getInboxItem(
       const allowed = await getAllowedClientIds(userId, role)
       const allAllowed = allowed === "all"
       const inAllowed = allAllowed || allowed.includes(row.client_id)
-      if (!inAllowed) return null
+      if (!inAllowed) {
+        // Channel-subscription fallback: visible if the row's Trengo channel
+        // is in the user's subscribed set.
+        const channelIds = await getUserTrengoChannelIds(userId)
+        const channelMatch =
+          row.trengo_channel_id != null && channelIds.includes(row.trengo_channel_id)
+        if (!channelMatch) return null
+      }
     }
   }
 
@@ -398,9 +411,12 @@ export async function listChatThreads(
   if (role !== "admin") {
     const allowed = await getAllowedClientIds(userId, role)
     if (allowed !== "all") {
+      const channelIds = await getUserTrengoChannelIds(userId)
       const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+      const channelClause =
+        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
       query = query.or(
-        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}`,
+        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
       )
     }
   }
@@ -476,9 +492,12 @@ export async function getChatThreadMessages(
   if (role !== "admin") {
     const allowed = await getAllowedClientIds(userId, role)
     if (allowed !== "all") {
+      const channelIds = await getUserTrengoChannelIds(userId)
       const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+      const channelClause =
+        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
       query = query.or(
-        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}`,
+        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
       )
     }
   }
