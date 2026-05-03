@@ -144,7 +144,7 @@ export async function listInboxItems(
   const supabase = await createAdminClient()
 
   let query = supabase
-    .from("inbox_items")
+    .from("inbox_events")
     .select(ITEM_SELECT)
     .order("created_at", { ascending: false })
 
@@ -190,7 +190,7 @@ export async function getInboxItem(
 ): Promise<InboxItem | null> {
   const supabase = await createAdminClient()
   const { data, error } = await supabase
-    .from("inbox_items")
+    .from("inbox_events")
     .select(ITEM_SELECT)
     .eq("id", id)
     .single()
@@ -258,13 +258,13 @@ export async function getInboxBadgeCounts(
 
   const [updatesRes, tasksRes] = await Promise.all([
     supabase
-      .from("inbox_items")
+      .from("inbox_events")
       .select("id", { count: "exact", head: true })
       .eq("assignee_id", userId)
       .eq("kind", "update")
       .eq("status", "unread"),
     supabase
-      .from("inbox_items")
+      .from("inbox_events")
       .select("id", { count: "exact", head: true })
       .eq("assignee_id", userId)
       .eq("kind", "task")

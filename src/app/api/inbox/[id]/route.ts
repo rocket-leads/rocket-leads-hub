@@ -87,7 +87,7 @@ export async function PATCH(
   }
 
   const supabase = await createAdminClient()
-  const { error } = await supabase.from("inbox_items").update(update).eq("id", id)
+  const { error } = await supabase.from("inbox_events").update(update).eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Mirror task status changes to Monday (done/cancelled only — see helper)
@@ -122,7 +122,7 @@ export async function DELETE(
   }
 
   const supabase = await createAdminClient()
-  const { error } = await supabase.from("inbox_items").delete().eq("id", id)
+  const { error } = await supabase.from("inbox_events").delete().eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   return NextResponse.json({ ok: true })

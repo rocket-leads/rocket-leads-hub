@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createAdminClient()
   const { data, error } = await supabase
-    .from("inbox_items")
+    .from("inbox_events")
     .insert({
       kind: body.kind,
       client_id: body.clientId,
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
     .then(async (mondayUpdateId) => {
       if (mondayUpdateId) {
         await supabase
-          .from("inbox_items")
+          .from("inbox_events")
           .update({ monday_update_id: mondayUpdateId })
           .eq("id", row.id)
       }

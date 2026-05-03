@@ -127,7 +127,7 @@ async function ensurePaymentOverdueTask(
   // recreate so the admin can iterate on the rule output.
   if (!testMode) {
     const { data: existing } = await supabase
-      .from("inbox_items")
+      .from("inbox_events")
       .select("id")
       .eq("source", "automation")
       .filter("source_ref->>invoiceId", "eq", invoice.id)
@@ -159,7 +159,7 @@ async function ensurePaymentOverdueTask(
 
   const body = bodyParts.join("\n")
 
-  const { error } = await supabase.from("inbox_items").insert({
+  const { error } = await supabase.from("inbox_events").insert({
     kind: "task",
     client_id: supabaseClientId,
     author_id: authorId,
@@ -384,7 +384,7 @@ async function ensurePositiveCplDropTask(
     const idempotencyCutoff = new Date()
     idempotencyCutoff.setDate(idempotencyCutoff.getDate() - IDEMPOTENCY_DAYS)
     const { data: existing } = await supabase
-      .from("inbox_items")
+      .from("inbox_events")
       .select("id")
       .eq("source", "automation")
       .filter("source_ref->>rule", "eq", "positive_client_signal_cpl_drop")
@@ -421,7 +421,7 @@ async function ensurePositiveCplDropTask(
   )
   const body = bodyParts.join("\n")
 
-  const { error } = await supabase.from("inbox_items").insert({
+  const { error } = await supabase.from("inbox_events").insert({
     kind: "task",
     client_id: supabaseClientId,
     author_id: authorId,
