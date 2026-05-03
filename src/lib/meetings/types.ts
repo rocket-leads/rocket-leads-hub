@@ -16,7 +16,7 @@ export type MeetingRow = {
   recorded_by_email: string | null
   recorded_by_team: string | null
   meeting_type: "sales" | "kick_off" | "evaluation" | "internal" | "other" | null
-  link_status: "linked" | "suggested" | "unlinked" | "internal" | "prospect"
+  link_status: "linked" | "suggested" | "unlinked" | "internal" | "prospect" | "archived"
   summary: string | null
   action_items: Array<{
     description: string

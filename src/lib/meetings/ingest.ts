@@ -10,7 +10,26 @@ export type IngestResult =
   | { ok: true; status: "inserted"; recording_id: string; meeting_type: string; link_status: string }
   | { ok: true; status: "deduped"; recording_id: string }
   | { ok: true; status: "skipped_team"; recording_id: string; team: string | null }
+  | { ok: true; status: "skipped_sales"; recording_id: string }
   | { ok: false; status: "error"; error: string }
+
+// Cache the set of Hub-user emails (incl. fathom_email overrides). Backfills
+// loop hundreds of meetings — querying users on every iteration is wasteful.
+// 5-minute TTL is plenty short for a long-running backfill since users rarely
+// change their fathom_email mid-flight.
+let hubEmailsCache: { emails: Set<string>; expiresAt: number } | null = null
+
+async function getHubUserEmails(supabase: SupabaseClient): Promise<Set<string>> {
+  if (hubEmailsCache && Date.now() < hubEmailsCache.expiresAt) return hubEmailsCache.emails
+  const { data } = await supabase.from("users").select("email, fathom_email")
+  const emails = new Set<string>()
+  for (const row of (data ?? []) as Array<{ email: string | null; fathom_email: string | null }>) {
+    if (row.email) emails.add(row.email.toLowerCase())
+    if (row.fathom_email) emails.add(row.fathom_email.toLowerCase())
+  }
+  hubEmailsCache = { emails, expiresAt: Date.now() + 5 * 60 * 1000 }
+  return emails
+}
 
 /**
  * Insert a single Fathom Meeting payload into the `meetings` table.
@@ -36,12 +55,35 @@ export async function ingestFathomMeeting(
     return { ok: false, status: "error", error: "Missing recording_id in payload" }
   }
 
-  // Only ingest recordings made within a Rocket Leads team. Roy's Fathom
-  // account also has Founder Download / personal teams whose calls don't
-  // belong in the Hub — they'd just clutter the Unlinked inbox forever.
+  // Only ingest recordings that belong to Rocket Leads work. Two paths:
+  //   (a) team is tagged "Rocket Leads …" — the canonical case, e.g. "Sales
+  //       Rocketleads", "Delivery Rocketleads".
+  //   (b) team is null/empty AND the host is a known Hub user — covers people
+  //       like Roel who record under their personal Fathom user without
+  //       tagging a team. Without this, those calls would silently disappear.
+  // Other combinations (Founder Download teams, externals, personal calls by
+  // non-Hub users) stay skipped — they'd just clutter the Unlinked inbox.
   const team = payload.recorded_by?.team ?? null
-  if (!isRocketLeadsTeam(team)) {
+  const recorderEmail = payload.recorded_by?.email?.toLowerCase() ?? null
+  const teamTrimmed = team?.trim() ?? ""
+
+  let included = isRocketLeadsTeam(team)
+  if (!included && teamTrimmed === "" && recorderEmail) {
+    const hubEmails = await getHubUserEmails(supabase)
+    included = hubEmails.has(recorderEmail)
+  }
+  if (!included) {
     return { ok: true, status: "skipped_team", recording_id: recordingId, team }
+  }
+
+  // Sales meetings are deliberately not stored at ingest. We only need them
+  // once a deal converts to a client — at that point the matcher pulls the
+  // call from Fathom by attendee email and links it to the client. Storing
+  // every sales call up front would clutter the meetings overview with
+  // recordings that may never become clients (most sales calls don't close).
+  const meetingType = classifyMeetingType(payload)
+  if (meetingType === "sales") {
+    return { ok: true, status: "skipped_sales", recording_id: recordingId }
   }
 
   const { data: existing } = await supabase
@@ -53,7 +95,6 @@ export async function ingestFathomMeeting(
     return { ok: true, status: "deduped", recording_id: recordingId }
   }
 
-  const meetingType = classifyMeetingType(payload)
   const isInternal = payload.calendar_invitees_domains_type === "only_internal"
   const linkStatus = isInternal ? "internal" : "unlinked"
 

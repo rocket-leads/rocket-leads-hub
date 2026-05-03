@@ -90,6 +90,7 @@ export async function GET(req: NextRequest) {
   const inserted = results.filter((r) => r.result.ok && r.result.status === "inserted").length
   const deduped = results.filter((r) => r.result.ok && r.result.status === "deduped").length
   const skippedTeam = results.filter((r) => r.result.ok && r.result.status === "skipped_team").length
+  const skippedSales = results.filter((r) => r.result.ok && r.result.status === "skipped_sales").length
   const errored = results.filter((r) => !r.result.ok).length
 
   return NextResponse.json({
@@ -100,6 +101,7 @@ export async function GET(req: NextRequest) {
     inserted,
     deduped,
     skipped_team: skippedTeam,
+    skipped_sales: skippedSales,
     errored,
     results,
   })
