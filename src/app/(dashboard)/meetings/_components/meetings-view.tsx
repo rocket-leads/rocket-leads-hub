@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { Inbox as InboxIcon, History, Users, Archive } from "lucide-react"
+import { useMemo, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { Inbox as InboxIcon, History, Users, Archive, Sparkles, Loader2 } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
@@ -21,7 +22,27 @@ function isUnlinked(m: MeetingRow): boolean {
 }
 
 export function MeetingsView({ meetings, clientNameById, clients }: Props) {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState<TabId>("unlinked")
+  const [matching, startMatch] = useTransition()
+  const [matchSummary, setMatchSummary] = useState<string | null>(null)
+
+  function runMatcher() {
+    setMatchSummary(null)
+    startMatch(async () => {
+      try {
+        const res = await fetch("/api/meetings/match", { method: "POST" })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Matcher failed")
+        setMatchSummary(
+          `${data.linked} linked · ${data.suggested} suggested · ${data.unmatched} still unmatched`,
+        )
+        router.refresh()
+      } catch (e) {
+        setMatchSummary(e instanceof Error ? e.message : "Matcher failed")
+      }
+    })
+  }
 
   const buckets = useMemo(() => {
     const unlinked = meetings.filter(isUnlinked)
@@ -54,7 +75,24 @@ export function MeetingsView({ meetings, clientNameById, clients }: Props) {
 
   return (
     <div className="space-y-6">
-      <TopTabs<TabId> tabs={tabs} value={activeTab} onChange={setActiveTab} />
+      <div className="flex items-center justify-between gap-3">
+        <TopTabs<TabId> tabs={tabs} value={activeTab} onChange={setActiveTab} />
+        {activeTab === "unlinked" && buckets.unlinked.length > 0 && (
+          <button
+            type="button"
+            onClick={runMatcher}
+            disabled={matching}
+            className="inline-flex items-center gap-1.5 h-8 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60 shrink-0"
+          >
+            {matching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            Run matcher
+          </button>
+        )}
+      </div>
+
+      {matchSummary && (
+        <p className="text-[11px] text-muted-foreground">{matchSummary}</p>
+      )}
 
       <p className="text-[11px] text-muted-foreground">
         {activeTab === "unlinked" &&

@@ -5,9 +5,10 @@ import {
   renderTranscript,
   type FathomMeeting,
 } from "@/lib/integrations/fathom"
+import { matchSingleMeeting } from "@/lib/meetings/matcher"
 
 export type IngestResult =
-  | { ok: true; status: "inserted"; recording_id: string; meeting_type: string; link_status: string }
+  | { ok: true; status: "inserted"; recording_id: string; meeting_type: string; link_status: string; matched?: { clientId: string; strategy: string } }
   | { ok: true; status: "deduped"; recording_id: string }
   | { ok: true; status: "skipped_team"; recording_id: string; team: string | null }
   | { ok: true; status: "skipped_sales"; recording_id: string }
@@ -112,27 +113,44 @@ export async function ingestFathomMeeting(
       ? Math.round((end.getTime() - start.getTime()) / 1000)
       : null
 
-  const { error } = await supabase.from("meetings").insert({
-    fathom_recording_id: recordingId,
-    meeting_type: meetingType,
-    link_status: linkStatus,
-    title: payload.title ?? payload.meeting_title ?? null,
-    scheduled_at: payload.scheduled_start_time ?? null,
-    duration_sec: durationSec,
-    recording_url: payload.url ?? null,
-    share_url: payload.share_url ?? null,
-    recorded_by_email: payload.recorded_by?.email ?? null,
-    recorded_by_name: payload.recorded_by?.name ?? null,
-    recorded_by_team: payload.recorded_by?.team ?? null,
-    attendees,
-    summary: payload.default_summary?.markdown_formatted ?? null,
-    action_items: payload.action_items ?? null,
-    transcript: renderTranscript(payload.transcript),
-    raw: payload,
-  })
+  const { data: inserted, error } = await supabase
+    .from("meetings")
+    .insert({
+      fathom_recording_id: recordingId,
+      meeting_type: meetingType,
+      link_status: linkStatus,
+      title: payload.title ?? payload.meeting_title ?? null,
+      scheduled_at: payload.scheduled_start_time ?? null,
+      duration_sec: durationSec,
+      recording_url: payload.url ?? null,
+      share_url: payload.share_url ?? null,
+      recorded_by_email: payload.recorded_by?.email ?? null,
+      recorded_by_name: payload.recorded_by?.name ?? null,
+      recorded_by_team: payload.recorded_by?.team ?? null,
+      attendees,
+      summary: payload.default_summary?.markdown_formatted ?? null,
+      action_items: payload.action_items ?? null,
+      transcript: renderTranscript(payload.transcript),
+      raw: payload,
+    })
+    .select("id")
+    .single()
 
-  if (error) {
-    return { ok: false, status: "error", error: error.message }
+  if (error || !inserted) {
+    return { ok: false, status: "error", error: error?.message ?? "Insert returned no row" }
+  }
+
+  // Auto-match against clients only when the row landed unlinked (internal
+  // calls don't need a client, archived isn't possible at insert time).
+  // Failure to match is non-fatal — the row still exists; user can fix manually.
+  let matched: { clientId: string; strategy: string } | undefined
+  if (linkStatus === "unlinked") {
+    try {
+      const result = await matchSingleMeeting(supabase, inserted.id)
+      if (result) matched = { clientId: result.clientId, strategy: result.strategy }
+    } catch (e) {
+      console.error("Matcher failed for meeting", inserted.id, e)
+    }
   }
 
   return {
@@ -141,5 +159,6 @@ export async function ingestFathomMeeting(
     recording_id: recordingId,
     meeting_type: meetingType,
     link_status: linkStatus,
+    matched,
   }
 }
