@@ -63,8 +63,27 @@ async function checkTrengo(token: string): Promise<Omit<ServiceResult, "checkedA
   return { ok: false, message: "Invalid token" }
 }
 
-const SERVICES = ["monday", "meta", "stripe", "trengo"] as const
-const checkers = { monday: checkMonday, meta: checkMeta, stripe: checkStripe, trengo: checkTrengo }
+async function checkFathom(token: string): Promise<Omit<ServiceResult, "checkedAt">> {
+  try {
+    const res = await fetch("https://api.fathom.ai/external/v1/team_members", {
+      headers: { "X-Api-Key": token, Accept: "application/json" },
+    })
+    if (res.ok) return { ok: true, message: "Fathom connected" }
+    const text = await res.text().catch(() => "")
+    return { ok: false, message: `HTTP ${res.status}: ${text.slice(0, 80) || res.statusText}` }
+  } catch {
+    return { ok: false, message: "Connection failed" }
+  }
+}
+
+const SERVICES = ["monday", "meta", "stripe", "trengo", "fathom"] as const
+const checkers = {
+  monday: checkMonday,
+  meta: checkMeta,
+  stripe: checkStripe,
+  trengo: checkTrengo,
+  fathom: checkFathom,
+}
 
 export async function GET() {
   const session = await auth()

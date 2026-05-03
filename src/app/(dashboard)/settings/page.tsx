@@ -10,6 +10,7 @@ import {
 import { ApiHealthBar } from "./_components/api-health-bar"
 import { fetchAllItems, fetchBothBoards, getToken as getMondayToken } from "@/lib/integrations/monday"
 import { getSlackChannels } from "@/lib/slack"
+import { fetchFathomTeamMembers, type FathomTeamMember } from "@/lib/integrations/fathom"
 
 export default async function SettingsPage() {
   const session = await auth()
@@ -28,7 +29,7 @@ export default async function SettingsPage() {
   ] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
-    supabase.from("users").select("id, email, name, role, slack_user_id, created_at").order("created_at"),
+    supabase.from("users").select("id, email, name, role, slack_user_id, fathom_email, created_at").order("created_at"),
     supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
     supabase.from("closer_slack_mappings").select("monday_person_name, slack_user_id"),
     supabase.from("settings").select("value").eq("key", "inbox_automation_rules").maybeSingle(),
@@ -52,6 +53,16 @@ export default async function SettingsPage() {
     mondayPeople = Array.from(names).sort()
   } catch {
     // Monday token might not be configured yet — that's fine
+  }
+
+  // Fathom team members — used to populate the per-user Fathom email dropdown
+  // in the Users tab. Empty list if Fathom isn't configured yet, that just
+  // disables the dropdown gracefully rather than blocking the whole page.
+  let fathomTeamMembers: FathomTeamMember[] = []
+  try {
+    fathomTeamMembers = await fetchFathomTeamMembers()
+  } catch {
+    // Fathom token missing or invalid — leave empty
   }
 
   // Closer names from targets board `wie_` column — only include people who
@@ -136,6 +147,7 @@ export default async function SettingsPage() {
           name: u.name,
           role: u.role,
           slack_user_id: u.slack_user_id ?? null,
+          fathom_email: u.fathom_email ?? null,
           monday_role: mappingByUser.get(u.id)?.role ?? null,
           monday_person_name: mappingByUser.get(u.id)?.name ?? null,
           created_at: u.created_at,
@@ -161,6 +173,7 @@ export default async function SettingsPage() {
             users={usersWithMapping}
             currentUserId={session.user.id}
             mondayPeople={mondayPeople}
+            fathomTeamMembers={fathomTeamMembers}
             clients={allClients}
             inboxAutomationRules={inboxAutomationRules}
             notifications={{

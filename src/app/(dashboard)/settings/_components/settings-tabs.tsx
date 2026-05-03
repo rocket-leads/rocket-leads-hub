@@ -31,6 +31,7 @@ type Props = {
   users: React.ComponentProps<typeof UsersTab>["users"]
   currentUserId: string
   mondayPeople: string[]
+  fathomTeamMembers: React.ComponentProps<typeof UsersTab>["fathomTeamMembers"]
   clients: MondayClient[]
   inboxAutomationRules: InboxAutomationRules
   notifications: {
@@ -49,6 +50,7 @@ export function SettingsTabs({
   users,
   currentUserId,
   mondayPeople,
+  fathomTeamMembers,
   clients,
   inboxAutomationRules,
   notifications,
@@ -63,7 +65,12 @@ export function SettingsTabs({
       {activeTab === "tokens" && <ApiTokensTab statuses={tokenStatuses} />}
       {activeTab === "board" && <BoardConfigTab config={boardConfig} defaults={defaultBoardConfig} />}
       {activeTab === "users" && (
-        <UsersTab users={users} currentUserId={currentUserId} mondayPeople={mondayPeople} />
+        <UsersTab
+          users={users}
+          currentUserId={currentUserId}
+          mondayPeople={mondayPeople}
+          fathomTeamMembers={fathomTeamMembers}
+        />
       )}
       {activeTab === "notifications" && (
         <NotificationsTab

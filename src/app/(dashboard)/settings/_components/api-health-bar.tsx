@@ -12,6 +12,7 @@ const SERVICES = [
   { id: "meta", label: "Meta" },
   { id: "stripe", label: "Stripe" },
   { id: "trengo", label: "Trengo" },
+  { id: "fathom", label: "Fathom" },
 ]
 
 async function fetchHealth(): Promise<HealthData> {

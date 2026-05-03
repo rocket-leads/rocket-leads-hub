@@ -114,6 +114,23 @@ async function testTrengo(token: string): Promise<TestResult> {
   return { ok: false, message: "All Trengo endpoints failed" }
 }
 
+async function testFathom(token: string): Promise<TestResult> {
+  try {
+    const res = await fetch("https://api.fathom.ai/external/v1/team_members", {
+      headers: { "X-Api-Key": token.trim(), Accept: "application/json" },
+    })
+    if (res.ok) {
+      const data = await res.json().catch(() => ({})) as { items?: Array<{ name?: string }> }
+      const count = data.items?.length ?? 0
+      return { ok: true, message: `Connected to Fathom (${count} team member${count === 1 ? "" : "s"} visible)` }
+    }
+    const text = await res.text().catch(() => "")
+    return { ok: false, message: `Fathom HTTP ${res.status}: ${text.slice(0, 120) || res.statusText}` }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Connection failed" }
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session || session.user.role !== "admin") {
@@ -149,6 +166,7 @@ export async function POST(req: NextRequest) {
     case "trengo": result = await testTrengo(token); break
     case "slack": result = await testSlack(token); break
     case "google_drive": result = await testGoogleDrive(token); break
+    case "fathom": result = await testFathom(token); break
     default: return NextResponse.json({ ok: false, message: "Unknown service" })
   }
 

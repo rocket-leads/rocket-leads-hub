@@ -24,6 +24,7 @@ const SERVICES = [
   { id: "trengo", label: "Trengo", description: "API token from Trengo settings" },
   { id: "google_drive", label: "Google (Drive + Sheets)", description: "Full service account JSON — used for knowledge folder + targets cost sheet" },
   { id: "slack", label: "Slack", description: "Bot User OAuth Token (starts with xoxb-) from your Slack App" },
+  { id: "fathom", label: "Fathom", description: "API key from Fathom → Settings → API Access. Webhook secret goes in FATHOM_WEBHOOK_SECRET env var." },
 ]
 
 function StatusDot({ status }: { status: ServiceStatus | undefined }) {

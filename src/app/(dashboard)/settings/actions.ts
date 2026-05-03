@@ -57,6 +57,25 @@ export async function updateUserSlackId(userId: string, slackUserId: string) {
 }
 
 /**
+ * Map a Hub user to their Fathom user (by email). Hub emails (@rocketleads.com)
+ * don't necessarily match Fathom login emails, so the AM picks their Fathom
+ * identity from a dropdown sourced from Fathom's `/team_members` endpoint.
+ *
+ * Used by the meeting matcher to know which AM/CM was in a recorded meeting.
+ */
+export async function updateUserFathomEmail(userId: string, fathomEmail: string | null) {
+  await requireAdmin()
+  const cleaned = fathomEmail?.trim().toLowerCase() || null
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from("users")
+    .update({ fathom_email: cleaned })
+    .eq("id", userId)
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
+/**
  * Update a single notification's config field. We merge into whatever exists
  * under settings.slack_notifications so partial updates don't wipe the others.
  */

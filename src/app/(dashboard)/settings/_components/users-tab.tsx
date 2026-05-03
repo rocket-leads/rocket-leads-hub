@@ -16,6 +16,7 @@ import {
   inviteUser,
   removeUser,
   setUserMondayMapping,
+  updateUserFathomEmail,
   updateUserRole,
   updateUserSlackId,
 } from "../actions"
@@ -29,15 +30,22 @@ type User = {
   name: string | null
   role: Role
   slack_user_id: string | null
+  fathom_email: string | null
   monday_role: MondayRole | null
   monday_person_name: string | null
   created_at: string
+}
+
+type FathomTeamMember = {
+  name: string
+  email: string
 }
 
 type Props = {
   users: User[]
   currentUserId: string
   mondayPeople: string[]
+  fathomTeamMembers: FathomTeamMember[]
 }
 
 const NONE = "__none__"
@@ -48,7 +56,7 @@ const MONDAY_ROLE_LABELS: Record<MondayRole, string> = {
   appointment_setter: "Appointment Setter",
 }
 
-export function UsersTab({ users: initial, currentUserId, mondayPeople }: Props) {
+export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTeamMembers }: Props) {
   const [users, setUsers] = useState(initial)
   const [error, setError] = useState<string | null>(null)
 
@@ -65,6 +73,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople }: Props)
   const [mondaySaving, setMondaySaving] = useState<Record<string, boolean>>({})
   const [slackDrafts, setSlackDrafts] = useState<Record<string, string>>({})
   const [slackSaving, setSlackSaving] = useState<Record<string, boolean>>({})
+  const [fathomSaving, setFathomSaving] = useState<Record<string, boolean>>({})
 
   async function handleRoleChange(userId: string, role: Role) {
     setUsers((u) => u.map((user) => (user.id === userId ? { ...user, role } : user)))
@@ -116,6 +125,19 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople }: Props)
     }
   }
 
+  async function handleFathomEmailChange(userId: string, value: string) {
+    const newEmail = value === NONE ? null : value
+    setUsers((u) => u.map((user) => (user.id === userId ? { ...user, fathom_email: newEmail } : user)))
+    setFathomSaving((s) => ({ ...s, [userId]: true }))
+    try {
+      await updateUserFathomEmail(userId, newEmail)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setFathomSaving((s) => ({ ...s, [userId]: false }))
+    }
+  }
+
   async function handleSlackIdSave(userId: string) {
     const draft = slackDrafts[userId]
     if (draft === undefined) return
@@ -159,6 +181,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople }: Props)
           name: null,
           role: inviteRole,
           slack_user_id: inviteSlackId.trim() || null,
+          fathom_email: null,
           monday_role: inviteMondayRole,
           monday_person_name: inviteMondayName,
           created_at: new Date().toISOString(),
@@ -291,6 +314,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople }: Props)
               <TableHead className="w-[180px]">Monday role</TableHead>
               <TableHead className="w-[200px]">Monday name</TableHead>
               <TableHead className="w-[200px]">Slack user ID</TableHead>
+              <TableHead className="w-[220px]">Fathom email</TableHead>
               <TableHead className="w-[100px]">Joined</TableHead>
               <TableHead className="w-[60px]"></TableHead>
             </TableRow>
@@ -412,6 +436,35 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople }: Props)
                     </div>
                   </TableCell>
 
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Select
+                        value={user.fathom_email ?? NONE}
+                        onValueChange={(v) => handleFathomEmailChange(user.id, v ?? NONE)}
+                        disabled={fathomTeamMembers.length === 0}
+                      >
+                        <SelectTrigger className="h-8 w-[210px]">
+                          <SelectValue
+                            placeholder={
+                              fathomTeamMembers.length === 0 ? "Connect Fathom first" : "Pick Fathom user"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE}>—</SelectItem>
+                          {fathomTeamMembers.map((m) => (
+                            <SelectItem key={m.email} value={m.email}>
+                              {m.name} <span className="text-muted-foreground">({m.email})</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {fathomSaving[user.id] && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                  </TableCell>
+
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(user.created_at).toLocaleDateString()}
                   </TableCell>
@@ -439,7 +492,9 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople }: Props)
       <p className="text-xs text-muted-foreground">
         Hub role controls access. Monday role + name decide which clients non-admin
         users see (admins always see all). Slack ID is used for DM notifications.
-        All fields autosave. Reference for label: {Object.values(MONDAY_ROLE_LABELS).join(" · ")}.
+        Fathom email maps this Hub user to their Fathom account so the meeting
+        matcher knows which AM/CM was in a recorded call. All fields autosave.
+        Reference for label: {Object.values(MONDAY_ROLE_LABELS).join(" · ")}.
       </p>
     </div>
   )
