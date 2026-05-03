@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Trash2, Send, Calendar, AlertCircle, Loader2 } from "lucide-react"
+import { Trash2, Send, Calendar, AlertCircle, Loader2, MessageSquare, Hash } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -92,9 +93,48 @@ export function ItemDetailDialog({ itemId, currentUser, onClose, onChanged }: Pr
     }
   }
 
+  // --- Platform reply (Trengo / Slack) -------------------------------------
+  const [replyBody, setReplyBody] = useState("")
+  const [sendingReply, setSendingReply] = useState(false)
+  const [replyError, setReplyError] = useState<string | null>(null)
+  const [needsConnect, setNeedsConnect] = useState<"trengo" | "slack" | "monday" | null>(null)
+
+  async function sendPlatformReply() {
+    if (!replyBody.trim() || !item) return
+    setSendingReply(true)
+    setReplyError(null)
+    setNeedsConnect(null)
+    try {
+      const res = await fetch(`/api/inbox/${itemId}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: replyBody.trim() }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        needsConnect?: "trengo" | "slack" | "monday"
+        error?: string
+      }
+      if (!res.ok) {
+        if (data.needsConnect) setNeedsConnect(data.needsConnect)
+        else setReplyError(data.error ?? "Reply failed")
+        return
+      }
+      setReplyBody("")
+      await queryClient.invalidateQueries({ queryKey: ["inbox-item", itemId] })
+      await queryClient.invalidateQueries({ queryKey: ["inbox"] })
+      onChanged()
+    } catch (e) {
+      setReplyError(e instanceof Error ? e.message : "Reply failed")
+    } finally {
+      setSendingReply(false)
+    }
+  }
+
   const isUpdate = item?.kind === "update"
   const isTask = item?.kind === "task"
   const canDelete = !!item && (item.authorId === currentUser.id || currentUser.role === "admin")
+  const canReplyToSource = !!item && (item.source === "trengo" || item.source === "slack")
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -228,6 +268,62 @@ export function ItemDetailDialog({ itemId, currentUser, onClose, onChanged }: Pr
                     </Button>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {canReplyToSource && (
+              <div className="border-t border-border/40 pt-3">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 mb-2 inline-flex items-center gap-1.5">
+                  {item.source === "trengo" ? (
+                    <MessageSquare className="h-3 w-3" />
+                  ) : (
+                    <Hash className="h-3 w-3" />
+                  )}
+                  Reply via {item.source === "trengo" ? "Trengo" : "Slack"} as you
+                </p>
+                {needsConnect && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 mb-2 text-xs">
+                    Connect your {needsConnect} account first.{" "}
+                    <Link href="/account" className="underline font-medium">
+                      Go to My Account
+                    </Link>
+                  </div>
+                )}
+                {replyError && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 mb-2 text-xs text-destructive">
+                    {replyError}
+                  </div>
+                )}
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={replyBody}
+                    onChange={(e) => setReplyBody(e.target.value)}
+                    placeholder={`Type your reply — sent via ${item.source} as you`}
+                    rows={3}
+                    disabled={sendingReply}
+                    className="flex-1 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault()
+                        sendPlatformReply()
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={sendPlatformReply}
+                    disabled={!replyBody.trim() || sendingReply}
+                  >
+                    {sendingReply ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground/50 mt-1.5">
+                  Cmd/Ctrl + Enter to send. The reply lands in {item.source === "trengo" ? "Trengo" : "Slack"} as your account, not as a bot.
+                </p>
               </div>
             )}
 

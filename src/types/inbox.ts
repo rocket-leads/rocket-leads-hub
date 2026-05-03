@@ -5,7 +5,7 @@ export type TaskStatus = "open" | "in_progress" | "done" | "cancelled"
 
 export type InboxPriority = "low" | "normal" | "high"
 
-export type InboxSource = "manual" | "watchlist" | "meeting" | "monday" | "trengo" | "automation"
+export type InboxSource = "manual" | "watchlist" | "meeting" | "monday" | "trengo" | "slack" | "automation"
 
 export type InboxItem = {
   id: string
