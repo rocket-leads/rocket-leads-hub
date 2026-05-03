@@ -156,7 +156,11 @@ export async function GET(req: NextRequest) {
               ? fetchClientBoardItems(client.clientBoardId)
                   .then((items): MondayResult => ({ ok: true, items }))
                   .catch((e): MondayResult => {
-                    console.error("[refresh-kpi] Monday fetch failed for board", client.clientBoardId, e instanceof Error ? e.message : e)
+                    // Include the client name so the log points at WHICH client to fix
+                    // (board IDs alone require a Monday lookup to identify).
+                    console.error(
+                      `[refresh-kpi] Monday board fetch failed: client="${client.name}" (mondayItemId=${client.mondayItemId}) board=${client.clientBoardId} — ${e instanceof Error ? e.message : e}`,
+                    )
                     return { ok: false, items: [] }
                   })
               : Promise.resolve<MondayResult>({ ok: false, items: [] }),
