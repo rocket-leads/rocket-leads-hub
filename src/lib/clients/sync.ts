@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import type { MondayClient } from "@/lib/integrations/monday"
+import { seedDefaultAgreementIfMissing } from "./agreement"
 
 export async function syncClientToSupabase(client: MondayClient): Promise<string> {
   const supabase = await createAdminClient()
@@ -22,22 +23,33 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
     .eq("monday_item_id", client.mondayItemId)
     .single()
 
+  let clientId: string
   if (existing) {
     const { error } = await supabase
       .from("clients")
       .update(syncFields)
       .eq("monday_item_id", client.mondayItemId)
     if (error) throw new Error(`Supabase sync failed: ${error.message}`)
-    return existing.id
+    clientId = existing.id
+  } else {
+    const { data, error } = await supabase
+      .from("clients")
+      .insert({ monday_item_id: client.mondayItemId, ...syncFields })
+      .select("id")
+      .single()
+    if (error) throw new Error(`Supabase sync failed: ${error.message}`)
+    clientId = data!.id
   }
 
-  // Insert new client
-  const { data, error } = await supabase
-    .from("clients")
-    .insert({ monday_item_id: client.mondayItemId, ...syncFields })
-    .select("id")
-    .single()
+  // Seed a default agreement on first sync (or first sync after the feature
+  // shipped). Idempotent: never overwrites an existing row, so manual edits
+  // via the UI are always preserved. Failures here are intentionally swallowed
+  // — a broken seed shouldn't block the client from loading.
+  try {
+    await seedDefaultAgreementIfMissing(client, clientId)
+  } catch (e) {
+    console.error("Agreement seed failed:", e)
+  }
 
-  if (error) throw new Error(`Supabase sync failed: ${error.message}`)
-  return data!.id
+  return clientId
 }

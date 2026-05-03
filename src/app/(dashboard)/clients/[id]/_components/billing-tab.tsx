@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
+import { AgreementSection } from "./agreement-section"
 
 type Props = {
   mondayItemId: string
@@ -27,6 +28,17 @@ function fmt(amount: number): string {
   return `€${amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+function InvoicesHeader({ sub }: { sub?: string }) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-foreground/80">Invoices</h3>
+      <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+        {sub ?? "What this client has actually been billed via Stripe."}
+      </p>
+    </div>
+  )
+}
+
 function SummaryCard({ title, value, sub }: { title: string; value: string; sub?: string }) {
   return (
     <Card>
@@ -42,33 +54,43 @@ function SummaryCard({ title, value, sub }: { title: string; value: string; sub?
 }
 
 export function BillingTab({ mondayItemId, stripeCustomerId }: Props) {
+  return (
+    <div className="space-y-6">
+      <AgreementSection mondayItemId={mondayItemId} />
+      <InvoicesSection mondayItemId={mondayItemId} stripeCustomerId={stripeCustomerId} />
+    </div>
+  )
+}
+
+function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
   const query = useQuery<BillingData>({
     queryKey: ["billing", mondayItemId],
-    queryFn: () => {
+    queryFn: async () => {
       const p = new URLSearchParams()
       if (stripeCustomerId) p.set("stripeCustomerId", stripeCustomerId)
-      return fetch(`/api/clients/${mondayItemId}/billing?${p}`).then(async (r) => {
-        const data = await r.json()
-        if (!r.ok) throw new Error(data.error ?? "Failed to load billing data")
-        return data
-      })
+      const r = await fetch(`/api/clients/${mondayItemId}/billing?${p}`)
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error ?? "Failed to load billing data")
+      return data
     },
     enabled: !!stripeCustomerId,
   })
 
   if (!stripeCustomerId) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+      <div className="space-y-3">
+        <InvoicesHeader />
+        <div className="rounded-md border border-dashed border-border/50 p-6 text-center text-sm text-muted-foreground">
           No Stripe Customer ID linked in Monday.com for this client.
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   if (query.isLoading) {
     return (
       <div className="space-y-4">
+        <InvoicesHeader />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24" />)}
         </div>
@@ -79,24 +101,22 @@ export function BillingTab({ mondayItemId, stripeCustomerId }: Props) {
 
   if (query.isError || !query.data) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center text-sm text-destructive">
-          {query.error instanceof Error ? query.error.message : "Failed to load billing data."}
-        </CardContent>
-      </Card>
+      <div className="space-y-3">
+        <InvoicesHeader />
+        <Card>
+          <CardContent className="py-8 text-center text-sm text-destructive">
+            {query.error instanceof Error ? query.error.message : "Failed to load billing data."}
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
   const { invoices, totalInvoiced, totalPaid, totalOutstanding, avgPaymentDays, customerName, customerEmail } = query.data
 
   return (
-    <div className="space-y-6">
-      {/* Customer info */}
-      <div className="text-sm text-muted-foreground">
-        Stripe customer:{" "}
-        <span className="text-foreground font-medium">{customerName ?? stripeCustomerId}</span>
-        {customerEmail && <span className="ml-2">· {customerEmail}</span>}
-      </div>
+    <div className="space-y-4">
+      <InvoicesHeader sub={customerName ? `${customerName}${customerEmail ? ` · ${customerEmail}` : ""}` : undefined} />
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

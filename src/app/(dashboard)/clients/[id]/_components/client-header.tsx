@@ -1,16 +1,14 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
+import Image from "next/image"
 import {
   User,
   Briefcase,
   Wallet,
   CreditCard,
   ExternalLink,
-  BarChart3,
-  LayoutGrid,
-  FolderOpen,
-  MessageSquare,
+  Layers,
 } from "lucide-react"
 import { ClientSearch } from "@/components/client-search"
 import { BackButton } from "./back-button"
@@ -18,6 +16,7 @@ import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edi
 import { mondayStatusToHub } from "@/lib/clients/status"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
+import type { Agreement } from "@/lib/clients/agreement"
 
 function getInitials(name: string): string {
   return name
@@ -112,41 +111,55 @@ export function ClientHeader({ client, canViewBilling }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const paymentSummary = summarize(billingQuery.data?.invoices)
+  // Drive the multi-campaign pill. Same queryKey as AgreementSection so React
+  // Query dedupes the fetch when the user opens the Billing tab.
+  const agreementQuery = useQuery<Agreement>({
+    queryKey: ["agreement", client.mondayItemId],
+    queryFn: () => fetch(`/api/clients/${client.mondayItemId}/agreement`).then((r) => r.json()),
+    enabled: canViewBilling,
+    staleTime: 5 * 60 * 1000,
+  })
 
-  const quickLinks: Array<{ label: string; icon: typeof BarChart3; href: string }> = [
+  const paymentSummary = summarize(billingQuery.data?.invoices)
+  const campaignCount = agreementQuery.data?.campaigns?.length ?? 0
+
+  // Quick links to the canonical view of this client in each external system.
+  // Brand SVGs/PNGs live in /public/logos/brands so the marks render at their
+  // real colors (Meta blue, Monday tri-dot, Drive multi-color triangle, etc.)
+  // — closer to what the user sees when they actually visit those tools.
+  const quickLinks: Array<{ label: string; logo: string; href: string }> = [
     ...(client.metaAdAccountId
       ? [{
           label: "Meta",
-          icon: BarChart3,
+          logo: "/logos/brands/meta.svg",
           href: `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId.replace("act_", "")}`,
         }]
       : []),
     ...(client.clientBoardId
       ? [{
           label: "Monday",
-          icon: LayoutGrid,
+          logo: "/logos/brands/monday.svg",
           href: `https://rocketleads-team.monday.com/boards/${client.clientBoardId}`,
         }]
       : []),
     ...(client.googleDriveId
       ? [{
           label: "Drive",
-          icon: FolderOpen,
+          logo: "/logos/brands/google-drive.svg",
           href: `https://drive.google.com/drive/folders/${client.googleDriveId}`,
         }]
       : []),
     ...(client.stripeCustomerId
       ? [{
           label: "Stripe",
-          icon: CreditCard,
+          logo: "/logos/brands/stripe.svg",
           href: `https://dashboard.stripe.com/customers/${client.stripeCustomerId}`,
         }]
       : []),
     ...(client.trengoContactId
       ? [{
           label: "Trengo",
-          icon: MessageSquare,
+          logo: "/logos/brands/trengo.svg",
           href: `https://app.trengo.com/contacts/${client.trengoContactId}`,
         }]
       : []),
@@ -191,6 +204,7 @@ export function ClientHeader({ client, canViewBilling }: Props) {
                 adBudget={client.adBudget}
                 showPayment={!!client.stripeCustomerId && canViewBilling}
                 paymentSummary={paymentSummary}
+                campaignCount={campaignCount}
               />
             </div>
           </div>
@@ -198,7 +212,7 @@ export function ClientHeader({ client, canViewBilling }: Props) {
           {/* Right: Quick links to external systems */}
           {quickLinks.length > 0 && (
             <div className="flex items-center gap-1.5 shrink-0">
-              {quickLinks.map(({ label, icon: Icon, href }) => (
+              {quickLinks.map(({ label, logo, href }) => (
                 <a
                   key={label}
                   href={href}
@@ -206,7 +220,14 @@ export function ClientHeader({ client, canViewBilling }: Props) {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 rounded-md border border-border/50 bg-background/40 px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
                 >
-                  <Icon className="h-3.5 w-3.5" />
+                  <Image
+                    src={logo}
+                    alt=""
+                    width={14}
+                    height={14}
+                    className="h-3.5 w-3.5 object-contain"
+                    unoptimized
+                  />
                   {label}
                   <ExternalLink className="h-3 w-3 opacity-50" />
                 </a>
@@ -227,6 +248,7 @@ function MetaRow({
   adBudget,
   showPayment,
   paymentSummary,
+  campaignCount,
 }: {
   firstName: string
   accountManager: string
@@ -234,6 +256,7 @@ function MetaRow({
   adBudget: string
   showPayment: boolean
   paymentSummary: PaymentSummary | null
+  campaignCount: number
 }) {
   // Build the visible items first so we know where to drop separators.
   const items: React.ReactNode[] = []
@@ -269,6 +292,19 @@ function MetaRow({
         <Wallet className="h-3.5 w-3.5 text-muted-foreground/40" />
         <span className="text-muted-foreground/40">Budget</span>
         <span className="text-foreground/80 font-medium tabular-nums">{fmtBudget(adBudget)}</span>
+      </span>,
+    )
+  }
+  // Only surface the campaign count when it's >1 — single-campaign is the
+  // default mental model, so the pill would just be visual noise there.
+  if (campaignCount > 1) {
+    items.push(
+      <span
+        key="campaigns"
+        className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
+      >
+        <Layers className="h-3 w-3" />
+        {campaignCount} campaigns
       </span>,
     )
   }

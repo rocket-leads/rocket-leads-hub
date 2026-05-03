@@ -25,10 +25,12 @@ CREATE TABLE IF NOT EXISTS client_agreements (
   updated_by UUID REFERENCES users(id)
 );
 
+DROP TRIGGER IF EXISTS client_agreements_updated_at ON client_agreements;
 CREATE TRIGGER client_agreements_updated_at
   BEFORE UPDATE ON client_agreements
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 ALTER TABLE client_agreements ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "No anon access to client_agreements" ON client_agreements;
 CREATE POLICY "No anon access to client_agreements"
   ON client_agreements FOR ALL TO anon USING (false);

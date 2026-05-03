@@ -57,6 +57,10 @@ export type MondayClient = {
   kickOffDate: string
   adBudget: string
   serviceFee: string
+  /** Numeric follow-up fee from Monday (`numbers0__1`). Empty when not set. */
+  followUpFee: string
+  /** Status text from Monday (`status__1`). Used to detect whether RL is doing the lead follow-up. */
+  followUpStatus: string
   metaAdAccountId: string
   stripeCustomerId: string
   trengoContactId: string
@@ -158,6 +162,11 @@ function mapItem(
     kickOffDate: cv[columns.kick_off_date] ?? "",
     adBudget: cv[columns.ad_budget] ?? "",
     serviceFee: cv[columns.service_fee] ?? "",
+    // Same literal-fallback pattern we already use for `bedrijfsnaam` /
+    // `multiple_person_mm1w4j0b` — column IDs are stable across boards, board
+    // config can override later if needed.
+    followUpFee: cv[columns.follow_up_fee] ?? cv["numbers0__1"] ?? "",
+    followUpStatus: cv[columns.follow_up_status] ?? cv["status__1"] ?? "",
     metaAdAccountId: cv[columns.meta_ad_account_id] ?? "",
     stripeCustomerId: cv[columns.stripe_customer_id] ?? "",
     trengoContactId: cv[columns.trengo_contact_id] ?? "",
