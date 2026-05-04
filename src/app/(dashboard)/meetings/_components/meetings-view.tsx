@@ -57,9 +57,13 @@ export function MeetingsView({ meetings, clientNameById, clients, isAdmin = fals
         const res = await fetch("/api/admin/fathom-backfill?hours=2160", { method: "POST" })
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? "Backfill failed")
+        const skips: string[] = []
+        if (data.ingest.skipped_team > 0) skips.push(`${data.ingest.skipped_team} non-RL team`)
+        if (data.ingest.skipped_sales > 0) skips.push(`${data.ingest.skipped_sales} sales`)
+        if (data.ingest.deduped > 0) skips.push(`${data.ingest.deduped} already in DB`)
+        const skipPart = skips.length > 0 ? ` (${skips.join(", ")})` : ""
         setMatchSummary(
-          `Backfill: pulled ${data.ingest.fetched} · inserted ${data.ingest.inserted} · ` +
-            `skipped ${data.ingest.skipped_team + data.ingest.skipped_sales} · ` +
+          `Backfill: pulled ${data.ingest.fetched} · inserted ${data.ingest.inserted}${skipPart} · ` +
             `then matcher: ${data.match.linked} linked · ${data.match.suggested} suggested`,
         )
         router.refresh()
