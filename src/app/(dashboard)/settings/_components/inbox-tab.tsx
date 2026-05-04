@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import {
+  CalendarClock,
   CreditCard,
   Zap,
   Loader2,
@@ -41,6 +42,15 @@ const RULES: RuleConfig[] = [
     trigger: "CPL drops ≥50% vs previous period (7d or 30d)",
     effect: "Task created · AI-drafted Dutch update in body · assigned to AM",
     icon: TrendingDown,
+  },
+  {
+    key: "next_invoice_due_task",
+    title: "Next invoice date arrived → finance task",
+    description:
+      "When a client's next-invoice date is today (or in the past and not yet handled), the cron creates a task assigned to the user with the Finance flag. Body includes client name, MRR from the Hub agreement, and Stripe customer ID so finance can act without context-switching. Idempotent per client + date.",
+    trigger: "clients.next_invoice_date ≤ today",
+    effect: "Task created · assigned to Finance user · priority high · due today",
+    icon: CalendarClock,
   },
 ]
 
@@ -304,6 +314,19 @@ function CreatedRow({ item }: { item: CreatedItem }) {
         <span className="text-muted-foreground/60">→ {item.assigneeName}</span>
         <span className="text-muted-foreground/60 tabular-nums">
           €{item.amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      </div>
+    )
+  }
+  if (item.rule === "next_invoice_due_task") {
+    return (
+      <div className="text-[11px] py-0.5 flex items-baseline gap-2">
+        <span className="text-sky-500 font-medium">Next invoice due</span>
+        <span className="text-foreground/80">{item.clientName}</span>
+        <span className="text-muted-foreground/60">→ {item.assigneeName}</span>
+        <span className="text-muted-foreground/60 tabular-nums">
+          {item.invoiceDate}
+          {item.mrr > 0 && ` · €${item.mrr.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`}
         </span>
       </div>
     )
