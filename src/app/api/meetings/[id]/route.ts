@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
+import { learnIdentitiesFromMeeting } from "@/lib/meetings/matcher"
 
 export const maxDuration = 30
 
@@ -72,5 +73,15 @@ export async function PATCH(
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-  return NextResponse.json({ ok: true, ...update })
+
+  // Identity learning loop: every manual link feeds the matcher with the
+  // external attendees of this call so the next meeting with the same
+  // people auto-matches. Best-effort — never fails the parent update.
+  let learned = 0
+  if (update.client_id && update.link_status === "linked") {
+    const result = await learnIdentitiesFromMeeting(supabase, update.client_id, id)
+    learned = result.learned
+  }
+
+  return NextResponse.json({ ok: true, ...update, learned })
 }
