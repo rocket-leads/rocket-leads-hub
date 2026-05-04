@@ -103,11 +103,11 @@ Vier dingen. Geen code. Alleen klikken en invullen.
 
 **Wat is er aan de hand:** Webhook staat aan in Fathom (URL + alle scopes correct), maar we hebben nog geen bewijs dat hij echt fired bij een nieuwe opname. De vorige test zat in team "Delivery Founder Download" — die werd terecht overgeslagen.
 
-**Update vandaag:** ingest filter is verbreed. Persoonlijke calls van Roel landen nu in de Hub **ongeacht in welk Fathom-team de opname terechtkomt**, omdat hij als Hub user gemapped is. Maakt het testen makkelijker.
+**Filter:** alleen calls in een **Rocket Leads team** komen in de Hub. Persoonlijke calls van Hub-users in andere teams worden geskipped — bewuste keuze om de Unlinked queue schoon te houden.
 
 **Hoe los je het op:**
-1. Laat **Roel** een korte Fathom opname maken (2 min is genoeg) in een echte client meeting of test-call
-2. Maakt niet uit welk team — Roel is gekoppeld dus elk team werkt
+1. Laat **Roel** een korte Fathom opname maken (2 min is genoeg)
+2. ⚠️ **BELANGRIJK:** team moet **"Sales Rocket Leads"** of **"Delivery Rocket Leads"** zijn — anders skipt de filter de opname
 3. Stop de opname → wacht 3–5 min (Fathom moet eerst AI processing doen)
 4. Open `https://hub.rocketleads.com/meetings` → **Unlinked** tab
 5. **Zie je hem staan?** ✅ webhook werkt — klaar
