@@ -290,6 +290,18 @@ export function isRocketLeadsTeam(team: string | null | undefined): boolean {
   return team.toLowerCase().includes("rocket leads")
 }
 
+/**
+ * Exact Fathom team names to pass to the API's `teams[]=` filter. Cuts the
+ * backfill from "fetch every recording in the workspace, drop 99%" down to
+ * "ask Fathom only for our teams" — typically dozens of recordings instead
+ * of hundreds, which keeps us well under the pagination cap.
+ *
+ * The API filter is exact-match, so add new exact team names here when Roy
+ * spins up another Rocket Leads team. The substring `isRocketLeadsTeam`
+ * stays as a defensive check on the data side.
+ */
+export const ROCKET_LEADS_TEAMS = ["Sales Rocket Leads", "Delivery Rocket Leads"] as const
+
 // ─── Meeting type classification ────────────────────────────────────────────
 
 export type MeetingType = "sales" | "kick_off" | "evaluation" | "internal" | "other"

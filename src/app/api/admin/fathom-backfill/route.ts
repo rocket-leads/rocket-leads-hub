@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { fetchRecentFathomMeetings } from "@/lib/integrations/fathom"
+import { fetchRecentFathomMeetings, ROCKET_LEADS_TEAMS } from "@/lib/integrations/fathom"
 import { ingestFathomMeeting } from "@/lib/meetings/ingest"
 import { runMatcherBatch } from "@/lib/meetings/matcher"
 
@@ -46,8 +46,14 @@ export async function POST(req: NextRequest) {
   let errored = 0
 
   try {
-    // Up to ~10 pages (a few thousand meetings) for an annual backfill.
-    const meetings = await fetchRecentFathomMeetings({ createdAfter, maxPages: 10 })
+    // API-side filter on Rocket Leads teams only — typically dozens of
+    // recordings instead of hundreds, well under the pagination cap.
+    // Bumped maxPages to 20 as a safety buffer in case team volume grows.
+    const meetings = await fetchRecentFathomMeetings({
+      createdAfter,
+      teams: [...ROCKET_LEADS_TEAMS],
+      maxPages: 20,
+    })
     fetched = meetings.length
     for (const m of meetings) {
       const r = await ingestFathomMeeting(supabase, m)
