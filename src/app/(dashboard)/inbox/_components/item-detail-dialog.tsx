@@ -3,12 +3,15 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Trash2, Send, Calendar, AlertCircle, Loader2, MessageSquare, Hash } from "lucide-react"
+import { Trash2, Send, Calendar, AlertCircle, Loader2, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
-import type { InboxComment, InboxItem, TaskStatus } from "@/types/inbox"
+import type { InboxComment, InboxItem, InboxKind, InboxSource, TaskStatus } from "@/types/inbox"
 import type { CurrentUser, InboxUser } from "./inbox-view"
+import { LinkTrengoContactDialog } from "./link-trengo-dialog"
+import { SourcePill } from "./source-pill"
 
 type Props = {
   itemId: string
@@ -34,7 +37,7 @@ function fmtDateTime(iso: string): string {
   })
 }
 
-export function ItemDetailDialog({ itemId, currentUser, onClose, onChanged }: Props) {
+export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChanged }: Props) {
   const queryClient = useQueryClient()
   const [commentBody, setCommentBody] = useState("")
   const [submittingComment, setSubmittingComment] = useState(false)
@@ -61,6 +64,53 @@ export function ItemDetailDialog({ itemId, currentUser, onClose, onChanged }: Pr
       onChanged()
     } finally {
       setUpdatingStatus(false)
+    }
+  }
+
+  // Reassign — open to anyone with visibility, since handing a task off is a
+  // routine team operation. We optimistically refresh on success but don't
+  // close the dialog: the user might want to keep working with the item.
+  const [reassigning, setReassigning] = useState(false)
+  async function reassign(userId: string) {
+    if (!item || userId === item.assigneeId) return
+    setReassigning(true)
+    try {
+      const res = await fetch(`/api/inbox/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigneeId: userId }),
+      })
+      if (!res.ok) return
+      await queryClient.invalidateQueries({ queryKey: ["inbox-item", itemId] })
+      await queryClient.invalidateQueries({ queryKey: ["inbox"] })
+      await queryClient.invalidateQueries({ queryKey: ["inbox-badge"] })
+      onChanged()
+    } finally {
+      setReassigning(false)
+    }
+  }
+
+  // Reclassify the item to a different kind. The server resets status +
+  // priority for the new kind, so we close the dialog after — the item moves
+  // to a different tab and the user picks it back up there if needed.
+  const [reclassifying, setReclassifying] = useState(false)
+  async function reclassify(kind: "task" | "update" | "chat") {
+    if (!item || kind === item.kind) return
+    setReclassifying(true)
+    try {
+      const res = await fetch(`/api/inbox/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind }),
+      })
+      if (!res.ok) return
+      await queryClient.invalidateQueries({ queryKey: ["inbox"] })
+      await queryClient.invalidateQueries({ queryKey: ["inbox-item", itemId] })
+      await queryClient.invalidateQueries({ queryKey: ["inbox-badge"] })
+      onChanged()
+      onClose()
+    } finally {
+      setReclassifying(false)
     }
   }
 
@@ -131,6 +181,8 @@ export function ItemDetailDialog({ itemId, currentUser, onClose, onChanged }: Pr
     }
   }
 
+  const [linkOpen, setLinkOpen] = useState(false)
+
   const isUpdate = item?.kind === "update"
   const isTask = item?.kind === "task"
   const canDelete = !!item && (item.authorId === currentUser.id || currentUser.role === "admin")
@@ -150,14 +202,29 @@ export function ItemDetailDialog({ itemId, currentUser, onClose, onChanged }: Pr
                 {item.priority === "high" && (
                   <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
                 )}
-                <DialogTitle className="leading-snug">{item.title}</DialogTitle>
+                <DialogTitle className="leading-snug flex-1">{item.title}</DialogTitle>
+                <SourcePill source={item.source} className="shrink-0 mt-1" />
               </div>
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70 mt-1">
-                <span className="font-medium">{item.clientName}</span>
+                {item.isUnlinked ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-500 dark:text-amber-400 px-1.5 py-0.5 font-medium">
+                    <Link2Off className="h-3 w-3" />
+                    Unlinked Trengo contact
+                  </span>
+                ) : (
+                  <span className="font-medium">{item.clientName}</span>
+                )}
                 <span>·</span>
                 <span>{item.authorName}</span>
                 <span>→</span>
-                <span>{item.assigneeName}</span>
+                <AssigneePicker
+                  currentAssigneeId={item.assigneeId}
+                  currentAssigneeName={item.assigneeName}
+                  users={users}
+                  currentUserId={currentUser.id}
+                  onChange={reassign}
+                  disabled={reassigning}
+                />
                 <span>·</span>
                 <span>{fmtDateTime(item.createdAt)}</span>
                 {item.dueDate && (
@@ -172,11 +239,63 @@ export function ItemDetailDialog({ itemId, currentUser, onClose, onChanged }: Pr
               </div>
             </DialogHeader>
 
+            {item.isUnlinked && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400/90 leading-snug">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium mb-0.5">This Trengo contact isn&apos;t linked to a client yet.</p>
+                    <p className="text-amber-600/80 dark:text-amber-400/70">
+                      Pick a client and we&apos;ll attach{" "}
+                      <span className="font-mono">{item.authorExternal ?? "this contact"}</span>{" "}
+                      + re-route past unlinked messages to it.
+                    </p>
+                  </div>
+                  {item.authorExternal && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setLinkOpen(true)}
+                      className="shrink-0"
+                    >
+                      <Link2 className="h-3.5 w-3.5" />
+                      Link to client
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {linkOpen && item.authorExternal && (
+              <LinkTrengoContactDialog
+                trengoContactId={item.authorExternal}
+                contactName={item.authorName}
+                onClose={() => setLinkOpen(false)}
+                onLinked={() => {
+                  setLinkOpen(false)
+                  queryClient.invalidateQueries({ queryKey: ["inbox"] })
+                  queryClient.invalidateQueries({ queryKey: ["inbox-item", itemId] })
+                  queryClient.invalidateQueries({ queryKey: ["inbox-badge"] })
+                  onChanged()
+                  onClose()
+                }}
+              />
+            )}
+
             {item.body && (
               <div className="text-sm whitespace-pre-wrap text-foreground/90 leading-relaxed">
                 {item.body}
               </div>
             )}
+
+            {/* Reclassify — escape hatch when AI put it in the wrong tab.
+                Chat is only offered for thread-bearing sources (Trengo/Slack);
+                Monday/automation/manual items don't have a thread to live in. */}
+            <ReclassifyControl
+              currentKind={item.kind}
+              source={item.source}
+              disabled={reclassifying}
+              onChange={reclassify}
+            />
 
             {/* Update controls */}
             {isUpdate && (
@@ -339,5 +458,144 @@ export function ItemDetailDialog({ itemId, currentUser, onClose, onChanged }: Pr
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Click-to-reassign control. Renders the current assignee as an inline button
+ * styled to match the surrounding metadata text (so it doesn't look out of
+ * place), and opens a small popover with the team list on click. Open to
+ * anyone with visibility — handing tasks off is a routine team operation.
+ */
+function AssigneePicker({
+  currentAssigneeId,
+  currentAssigneeName,
+  users,
+  currentUserId,
+  onChange,
+  disabled,
+}: {
+  currentAssigneeId: string
+  currentAssigneeName: string
+  users: InboxUser[]
+  currentUserId: string
+  onChange: (userId: string) => void
+  disabled: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const sorted = [...users].sort((a, b) => {
+    // "You" first so single-click "Assign to me" is fastest.
+    if (a.id === currentUserId) return -1
+    if (b.id === currentUserId) return 1
+    return (a.name ?? a.email).localeCompare(b.name ?? b.email)
+  })
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        type="button"
+        disabled={disabled}
+        className={cn(
+          "inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 -mx-1 -my-0.5 transition-colors",
+          "hover:bg-muted/60 hover:text-foreground",
+          "data-[popup-open]:bg-muted/60 data-[popup-open]:text-foreground",
+          disabled && "opacity-60 cursor-wait",
+        )}
+        title="Reassign"
+      >
+        {currentAssigneeName}
+        <ChevronDown className="h-3 w-3 opacity-50" />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="p-1 w-56">
+        <div className="max-h-72 overflow-y-auto">
+          {sorted.map((u) => {
+            const active = u.id === currentAssigneeId
+            const label = u.name ?? u.email
+            return (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  onChange(u.id)
+                }}
+                disabled={active}
+                className={cn(
+                  "w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors flex items-center justify-between gap-2",
+                  active
+                    ? "bg-primary/10 text-foreground"
+                    : "hover:bg-muted/60",
+                )}
+              >
+                <span className="truncate">
+                  {label}
+                  {u.id === currentUserId && (
+                    <span className="text-muted-foreground/60"> (you)</span>
+                  )}
+                </span>
+                {active && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+              </button>
+            )
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/**
+ * Three-pill segmented control to move an item between Tasks / Updates / Chat
+ * tabs. Currently-selected kind is highlighted. Chat is only shown when the
+ * item came from a thread-bearing source (Trengo or Slack) — Monday updates
+ * and manual items don't have a thread to live in.
+ */
+function ReclassifyControl({
+  currentKind,
+  source,
+  disabled,
+  onChange,
+}: {
+  currentKind: InboxKind
+  source: InboxSource
+  disabled: boolean
+  onChange: (kind: "task" | "update" | "chat") => void
+}) {
+  const canChat = source === "trengo" || source === "slack"
+
+  const options: Array<{ value: "task" | "update" | "chat"; label: string; icon: typeof ListTodo }> = [
+    { value: "task", label: "Task", icon: ListTodo },
+    { value: "update", label: "Update", icon: InboxIcon },
+    ...(canChat ? [{ value: "chat" as const, label: "Chat", icon: MessagesSquare }] : []),
+  ]
+
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 mb-1.5">
+        Type
+      </p>
+      <div className="inline-flex items-center rounded-lg border border-border/60 bg-muted/30 p-0.5">
+        {options.map((opt) => {
+          const active = opt.value === currentKind
+          const Icon = opt.icon
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onChange(opt.value)}
+              disabled={disabled || active}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 h-7 rounded-md text-xs font-medium transition-colors",
+                active
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }

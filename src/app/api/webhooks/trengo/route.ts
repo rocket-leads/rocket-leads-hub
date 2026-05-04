@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
+import { resolveClientAssignee } from "@/lib/inbox/assignee"
 
 export const maxDuration = 60
 
@@ -148,6 +149,15 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Route classified tasks/updates to the AM responsible for this client.
+  // Without this, every ingested item sits on the HQ system inbox and never
+  // reaches the AM's "Assigned to me" filter. Falls back to HQ when the
+  // contact isn't linked to a client or the client's AM isn't mapped.
+  const assigneeId =
+    (clientRow?.monday_item_id
+      ? await resolveClientAssignee(clientRow.monday_item_id)
+      : null) ?? hq.id
+
   // Classify with AI. Defaults to 'chat' on any uncertainty.
   const classification = await classifyInboxMessage({
     source: "trengo",
@@ -174,7 +184,7 @@ export async function POST(req: NextRequest) {
     // simply skips empty-string rows. A future migration may relax this NOT NULL.
     client_id: clientRow?.monday_item_id ?? "",
     author_id: hq.id,
-    assignee_id: hq.id,
+    assignee_id: assigneeId,
     title: titlePreview || `Message from ${authorName}`,
     body: bodyFull,
     status,

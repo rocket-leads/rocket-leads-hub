@@ -30,6 +30,14 @@ type RawInboxRow = {
   source_ref: Record<string, unknown> | null
   monday_update_id: string | null
   trengo_channel_id: number | null
+  /** Set by webhook ingesters to the *real* author name (the Trengo contact,
+   *  Monday user, or Slack user) since the FK `author_id` always points at the
+   *  system HQ account for those events. Manual creates leave it null. */
+  author_name_cached: string | null
+  /** External author identifier — the Trengo contact id / Slack user id /
+   *  Monday user id from the original event. Used by the "Link to client" UX
+   *  to know which Trengo contact to attach to a client. */
+  author_external: string | null
   created_at: string
   updated_at: string
   completed_at: string | null
@@ -106,13 +114,31 @@ async function getMondayClientMap(): Promise<Map<string, MondayClient>> {
 }
 
 function rowToItem(row: RawInboxRow, clientMap: Map<string, MondayClient>): InboxItem {
+  // Prefer author_name_cached when set — webhook ingesters store the real
+  // Trengo contact / Monday user / Slack user there because the FK author_id
+  // is forced to the system HQ account. Manual creates leave it null and
+  // fall through to the joined Hub user, which is correct for those rows.
+  const authorName =
+    row.author_name_cached?.trim() ||
+    row.author?.name ||
+    row.author?.email ||
+    "Unknown"
+
+  // Trengo events whose contact id isn't on any client.trengo_contact_ids[]
+  // land with client_id="". Surface this so the UI can render "Unlinked"
+  // instead of the "(unknown)" fallback — the AM should know to link this
+  // contact to the right client. Other sources always have a client_id set.
+  const isUnlinked = row.source === "trengo" && (!row.client_id || row.client_id === "")
+  const linkedClientName = clientMap.get(row.client_id)?.name
+
   return {
     id: row.id,
     kind: row.kind,
     clientId: row.client_id,
-    clientName: clientMap.get(row.client_id)?.name ?? "(unknown)",
+    clientName: linkedClientName ?? (isUnlinked ? "" : "(unknown)"),
     authorId: row.author_id,
-    authorName: row.author?.name ?? row.author?.email ?? "Unknown",
+    authorName,
+    authorExternal: row.author_external,
     assigneeId: row.assignee_id,
     assigneeName: row.assignee?.name ?? row.assignee?.email ?? "Unknown",
     title: row.title,
@@ -123,6 +149,7 @@ function rowToItem(row: RawInboxRow, clientMap: Map<string, MondayClient>): Inbo
     source: row.source,
     sourceRef: row.source_ref,
     mondayUpdateId: row.monday_update_id,
+    isUnlinked,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -133,6 +160,7 @@ function rowToItem(row: RawInboxRow, clientMap: Map<string, MondayClient>): Inbo
 const ITEM_SELECT = `
   id, kind, client_id, author_id, assignee_id, title, body, status, priority,
   due_date, source, source_ref, monday_update_id, trengo_channel_id,
+  author_name_cached, author_external,
   created_at, updated_at, completed_at,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email),

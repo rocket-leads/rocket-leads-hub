@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
+import { resolveClientAssignee } from "@/lib/inbox/assignee"
 
 export const maxDuration = 60
 
@@ -158,8 +159,10 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // System author for the FK; assignee defaults to system too. C.6 will route
-  // task-classified events to the actual AM via user_column_mappings lookup.
+  // System author for the FK. Assignee resolves to the AM of the client so
+  // classified Monday updates land on the right person's "Assigned to me"
+  // view rather than a phantom HQ inbox. Falls back to HQ when the client's
+  // AM isn't mapped via user_column_mappings.
   const { data: hq } = await supabase
     .from("users")
     .select("id")
@@ -169,6 +172,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "no system author" }, { status: 500 })
   }
 
+  const assigneeId = (await resolveClientAssignee(pulseId)) ?? hq.id
+
   const titlePreview = text.length > 100 ? text.slice(0, 100) + "…" : text
   const bodyFull = text.length > 100 ? text : null
 
@@ -176,7 +181,7 @@ export async function POST(req: NextRequest) {
     kind: classification.kind,
     client_id: pulseId, // Monday item id IS our client_id text key
     author_id: hq.id,
-    assignee_id: hq.id,
+    assignee_id: assigneeId,
     title: titlePreview || `Monday update from ${userName}`,
     body: bodyFull,
     status: classification.kind === "task" ? "open" : "unread",

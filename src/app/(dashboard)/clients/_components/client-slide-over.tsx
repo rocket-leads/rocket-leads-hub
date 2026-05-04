@@ -48,8 +48,14 @@ export function ClientSlideOver({ clientId, onClose, currentUser }: Props) {
     <DialogPrimitive.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop
+          onClick={onClose}
           className={cn(
             "fixed inset-0 isolate z-50 bg-black/40 backdrop-blur-sm",
+            // Click-to-dismiss + a clear cursor + a subtle hover-darken so the
+            // dim strip on the left reads as interactive instead of dead space.
+            // The hover delta is small on purpose — strong enough to notice on
+            // mouse-over but not so loud it competes with the panel content.
+            "cursor-pointer transition-colors hover:bg-black/55",
             // Backdrop fades faster than the panel slides — feels snappier and the
             // panel reads as the leading element of the transition.
             "duration-100 ease-out",

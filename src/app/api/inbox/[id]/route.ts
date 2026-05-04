@@ -49,7 +49,42 @@ export async function PATCH(
   // (title, body, assignee, due date, priority) are author/admin only.
   const update: Record<string, unknown> = {}
 
-  if (patch.status !== undefined) {
+  // Reclassify (Move to Tasks / Updates / Chat) — open to anyone with
+  // visibility, since it's a triage operation on a misclassified ingest. We
+  // reset status + priority to sane defaults for the new kind so we don't
+  // strand cross-enum statuses (e.g. "in_progress" sticking around on an
+  // Update). Stamp classify_method='manual' so it's clear a human overrode AI.
+  if (patch.kind !== undefined) {
+    if (!["task", "update", "chat"].includes(patch.kind)) {
+      return NextResponse.json({ error: "Invalid kind" }, { status: 400 })
+    }
+    if (patch.kind === item.kind) {
+      // No-op kind change; ignore so we don't reset status/priority.
+    } else {
+      // Disallow moving Monday/automation/watchlist/manual items to chat —
+      // they don't have a thread_key so they'd disappear from every view.
+      if (patch.kind === "chat" && item.source !== "trengo" && item.source !== "slack") {
+        return NextResponse.json(
+          { error: "Only Trengo or Slack items can be moved to Chat" },
+          { status: 400 },
+        )
+      }
+      update.kind = patch.kind
+      update.classify_method = "manual"
+      if (patch.kind === "task") {
+        update.status = "open"
+        update.priority = "normal"
+        update.completed_at = null
+      } else {
+        // update or chat — both default to unread, no priority
+        update.status = "unread"
+        update.priority = null
+        update.completed_at = null
+      }
+    }
+  }
+
+  if (patch.status !== undefined && update.kind === undefined) {
     const valid = item.kind === "task"
       ? TASK_STATUSES.includes(patch.status as TaskStatus)
       : UPDATE_STATUSES.includes(patch.status as UpdateStatus)
@@ -61,17 +96,21 @@ export async function PATCH(
     update.completed_at = isTerminal ? new Date().toISOString() : null
   }
 
+  // Reassignment is open to anyone with visibility — handing a task off is a
+  // routine team operation, not an authorial edit. The other metadata edits
+  // (title, body, due date, priority) stay author/admin-only because changing
+  // them silently after creation can mislead the assignee.
+  if (patch.assigneeId !== undefined) update.assignee_id = patch.assigneeId
+
   if (canEditMeta) {
     if (patch.title !== undefined) update.title = patch.title.trim()
     if (patch.body !== undefined) update.body = patch.body?.trim() || null
-    if (patch.assigneeId !== undefined) update.assignee_id = patch.assigneeId
     if (patch.dueDate !== undefined) update.due_date = patch.dueDate
     if (patch.priority !== undefined) update.priority = patch.priority
   } else {
     const triedToEditMeta =
       patch.title !== undefined ||
       patch.body !== undefined ||
-      patch.assigneeId !== undefined ||
       patch.dueDate !== undefined ||
       patch.priority !== undefined
     if (triedToEditMeta) {

@@ -1,7 +1,8 @@
 "use client"
 
-import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw } from "lucide-react"
+import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw, Link2Off } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { SourcePill } from "./source-pill"
 import type { InboxItem, TaskStatus } from "@/types/inbox"
 
 const TASK_STATUS_LABELS: Record<TaskStatus, { label: string; cls: string }> = {
@@ -103,7 +104,17 @@ export function InboxListRow({
           <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground/70 flex-wrap">
             {showClient && (
               <>
-                <span className="font-medium">{item.clientName}</span>
+                {item.isUnlinked ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-500 dark:text-amber-400 px-1.5 py-0.5 font-medium"
+                    title="This Trengo contact isn't linked to a client yet"
+                  >
+                    <Link2Off className="h-3 w-3" />
+                    Unlinked
+                  </span>
+                ) : (
+                  <span className="font-medium">{item.clientName}</span>
+                )}
                 <span>·</span>
               </>
             )}
@@ -134,6 +145,11 @@ export function InboxListRow({
                 </span>
               </>
             )}
+            {/* Source pill — pushed to the right edge of the metadata row.
+                Per the Phase C design: brand-coloured chip so AMs can tell at
+                a glance whether a task came from a client message, a Monday
+                update, an automation, etc. */}
+            <SourcePill source={item.source} className="ml-auto" />
           </div>
         </div>
 
