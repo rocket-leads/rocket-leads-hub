@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Inbox as InboxIcon, History, Users, Archive, Sparkles, Loader2 } from "lucide-react"
+import { Inbox as InboxIcon, History, Users, Archive, Sparkles, Loader2, Download } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
@@ -15,16 +15,18 @@ type Props = {
   meetings: MeetingRow[]
   clientNameById: Record<string, string>
   clients: ClientOption[]
+  isAdmin?: boolean
 }
 
 function isUnlinked(m: MeetingRow): boolean {
   return m.link_status === "unlinked" || m.link_status === "suggested" || m.link_status === "prospect"
 }
 
-export function MeetingsView({ meetings, clientNameById, clients }: Props) {
+export function MeetingsView({ meetings, clientNameById, clients, isAdmin = false }: Props) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<TabId>("unlinked")
   const [matching, startMatch] = useTransition()
+  const [backfilling, startBackfill] = useTransition()
   const [matchSummary, setMatchSummary] = useState<string | null>(null)
 
   function runMatcher() {
@@ -43,6 +45,26 @@ export function MeetingsView({ meetings, clientNameById, clients }: Props) {
         router.refresh()
       } catch (e) {
         setMatchSummary(e instanceof Error ? e.message : "Matcher failed")
+      }
+    })
+  }
+
+  function runBackfill() {
+    if (!confirm("Pull last 90 days from Fathom + run matcher? Can take 30-60 seconds.")) return
+    setMatchSummary(null)
+    startBackfill(async () => {
+      try {
+        const res = await fetch("/api/admin/fathom-backfill?hours=2160", { method: "POST" })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? "Backfill failed")
+        setMatchSummary(
+          `Backfill: pulled ${data.ingest.fetched} · inserted ${data.ingest.inserted} · ` +
+            `skipped ${data.ingest.skipped_team + data.ingest.skipped_sales} · ` +
+            `then matcher: ${data.match.linked} linked · ${data.match.suggested} suggested`,
+        )
+        router.refresh()
+      } catch (e) {
+        setMatchSummary(e instanceof Error ? e.message : "Backfill failed")
       }
     })
   }
@@ -80,17 +102,31 @@ export function MeetingsView({ meetings, clientNameById, clients }: Props) {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <TopTabs<TabId> tabs={tabs} value={activeTab} onChange={setActiveTab} />
-        {activeTab === "unlinked" && buckets.unlinked.length > 0 && (
-          <button
-            type="button"
-            onClick={runMatcher}
-            disabled={matching}
-            className="inline-flex items-center gap-1.5 h-8 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60 shrink-0"
-          >
-            {matching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            Run matcher
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={runBackfill}
+              disabled={backfilling || matching}
+              title="Pull last 90 days from Fathom + run matcher"
+              className="inline-flex items-center gap-1.5 h-8 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
+            >
+              {backfilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Backfill 90d
+            </button>
+          )}
+          {activeTab === "unlinked" && buckets.unlinked.length > 0 && (
+            <button
+              type="button"
+              onClick={runMatcher}
+              disabled={matching || backfilling}
+              className="inline-flex items-center gap-1.5 h-8 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
+            >
+              {matching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              Run matcher
+            </button>
+          )}
+        </div>
       </div>
 
       {matchSummary && (

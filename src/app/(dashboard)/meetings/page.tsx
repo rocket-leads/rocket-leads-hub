@@ -36,6 +36,7 @@ export default async function MeetingsPage() {
 
   const clients = (allClients ?? []).map((c) => ({ id: c.monday_item_id, name: c.name }))
   const clientNameById = Object.fromEntries(clients.map((c) => [c.id, c.name]))
+  const isAdmin = session.user.role === "admin"
 
   return (
     <div>
@@ -49,7 +50,12 @@ export default async function MeetingsPage() {
         </p>
       </div>
 
-      <MeetingsView meetings={meetings} clientNameById={clientNameById} clients={clients} />
+      <MeetingsView
+        meetings={meetings}
+        clientNameById={clientNameById}
+        clients={clients}
+        isAdmin={isAdmin}
+      />
     </div>
   )
 }
