@@ -13,6 +13,8 @@ import {
 import { ClientSearch } from "@/components/client-search"
 import { BackButton } from "./back-button"
 import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edit-cell"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { mondayStatusToHub } from "@/lib/clients/status"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
@@ -149,20 +151,6 @@ export function ClientHeader({ client, canViewBilling }: Props) {
           href: `https://drive.google.com/drive/folders/${client.googleDriveId}`,
         }]
       : []),
-    ...(client.stripeCustomerId
-      ? [{
-          label: "Stripe",
-          logo: "/logos/brands/stripe.svg",
-          href: `https://dashboard.stripe.com/customers/${client.stripeCustomerId}`,
-        }]
-      : []),
-    ...(client.trengoContactId
-      ? [{
-          label: "Trengo",
-          logo: "/logos/brands/trengo.svg",
-          href: `https://app.trengo.com/contacts/${client.trengoContactId}`,
-        }]
-      : []),
   ]
 
   return (
@@ -211,25 +199,25 @@ export function ClientHeader({ client, canViewBilling }: Props) {
 
           {/* Right: Quick links to external systems */}
           {quickLinks.length > 0 && (
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               {quickLinks.map(({ label, logo, href }) => (
                 <a
                   key={label}
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border/50 bg-background/40 px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }), "text-foreground/80")}
                 >
                   <Image
                     src={logo}
                     alt=""
                     width={14}
                     height={14}
-                    className="h-3.5 w-3.5 object-contain"
+                    className="h-4 w-4 object-contain"
                     unoptimized
                   />
                   {label}
-                  <ExternalLink className="h-3 w-3 opacity-50" />
+                  <ExternalLink className="h-3.5 w-3.5 opacity-50" />
                 </a>
               ))}
             </div>

@@ -179,8 +179,34 @@ export async function updateUserRole(userId: string, role: "admin" | "member" | 
   revalidatePath("/settings")
 }
 
+/**
+ * Toggle the `is_finance` flag — used by the next-invoice automation to know
+ * who to assign the auto-task to. Orthogonal to access role: a member can be
+ * finance, an admin can be finance, etc.
+ */
+export async function updateUserIsFinance(userId: string, isFinance: boolean) {
+  await requireAdmin()
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from("users")
+    .update({ is_finance: isFinance })
+    .eq("id", userId)
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
+export async function updateUserName(userId: string, name: string | null) {
+  await requireAdmin()
+  const trimmed = name?.trim() || null
+  const supabase = await createAdminClient()
+  const { error } = await supabase.from("users").update({ name: trimmed }).eq("id", userId)
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
 export async function inviteUser(input: {
   email: string
+  name?: string | null
   role: "admin" | "member" | "guest"
   mondayRole?: MondayRole | null
   mondayPersonName?: string | null
@@ -192,10 +218,11 @@ export async function inviteUser(input: {
     throw new Error("Invalid email address")
   }
   const slackId = input.slackUserId?.trim() || null
+  const name = input.name?.trim() || null
   const supabase = await createAdminClient()
   const { data: inserted, error } = await supabase
     .from("users")
-    .insert({ email: normalized, role: input.role, slack_user_id: slackId })
+    .insert({ email: normalized, name, role: input.role, slack_user_id: slackId })
     .select("id")
     .single()
   if (error) {

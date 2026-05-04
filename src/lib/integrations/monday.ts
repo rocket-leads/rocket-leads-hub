@@ -66,6 +66,9 @@ export type MondayClient = {
   trengoContactId: string
   clientBoardId: string
   googleDriveId: string
+  /** Next-invoice date from Monday `date3` column (or board-config override).
+   *  Stored as `YYYY-MM-DD` string from Monday, or "" when unset. */
+  nextInvoiceDate: string
   boardType: "onboarding" | "current"
 }
 
@@ -172,6 +175,10 @@ function mapItem(
     trengoContactId: cv[columns.trengo_contact_id] ?? "",
     clientBoardId: cv[columns.client_board_id] ?? "",
     googleDriveId: cv[columns.google_drive_id] ?? "",
+    // Same literal-fallback pattern as `bedrijfsnaam` / `numbers0__1`:
+    // Monday `date3` is the "next invoice" column on both client boards. Board
+    // config can still override via `next_invoice_date` if Monday IDs ever drift.
+    nextInvoiceDate: cv[columns.next_invoice_date] ?? cv["date3"] ?? "",
     boardType,
   }
 }

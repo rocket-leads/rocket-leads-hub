@@ -19,6 +19,7 @@ import {
   CalendarX,
   Users,
   MessageCircle,
+  Video,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TopTabs } from "@/components/ui/top-tabs"
@@ -27,11 +28,21 @@ import { InboxListRow } from "./inbox-list-row"
 import { ComposerDialog } from "./composer-dialog"
 import { ItemDetailDialog } from "./item-detail-dialog"
 import { ChatPane } from "./chat-pane"
+import { CommunicationTab } from "@/app/(dashboard)/clients/[id]/_components/communication-tab"
+import { MeetingsTab } from "@/app/(dashboard)/clients/[id]/_components/meetings-tab"
 import type { InboxItem, TaskStatus, UpdateStatus } from "@/types/inbox"
 
 export type InboxUser = { id: string; name: string | null; email: string; role: string }
 export type InboxClientOption = { id: string; name: string }
 export type CurrentUser = { id: string; name: string; role: string }
+
+type LockedClient = InboxClientOption & {
+  /** Trengo contact ID — if present, the Client Inbox sub-tab renders the
+   * Trengo conversation history for this client. Otherwise the tab is hidden. */
+  trengoContactId?: string | null
+  /** Role-based gate on the Client Inbox sub-tab. */
+  canViewCommunication?: boolean
+}
 
 type Props = {
   currentUser: CurrentUser
@@ -40,10 +51,10 @@ type Props = {
   users: InboxUser[]
   clients: InboxClientOption[]
   /** When set, the view is scoped to a single client (per-client tab). */
-  lockedClient?: InboxClientOption
+  lockedClient?: LockedClient
 }
 
-type MainTab = "tasks" | "updates" | "team-inbox" | "client-inbox"
+type MainTab = "tasks" | "updates" | "team-inbox" | "client-inbox" | "meetings"
 type UpdateFilter = "all" | UpdateStatus
 type TaskFilter = "all" | TaskStatus
 
@@ -142,13 +153,18 @@ export function InboxView({
   const updates = updatesQuery.data?.items ?? []
   const tasks = tasksQuery.data?.items ?? []
 
-  // Per-client view (locked-client tab on client detail page) only surfaces
-  // discrete tasks/updates linked to that client. Chats live at the global
-  // inbox where the thread substrate makes sense across all clients.
+  // Per-client view (locked-client tab on client detail page) surfaces
+  // tasks/updates linked to that client plus a Client Inbox (Trengo
+  // conversations) and Meetings sub-tab — keeping all per-client activity
+  // under one tab. Global mode keeps the team/all-clients chat tabs.
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
         { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
         { id: "updates", label: "Updates", icon: InboxIcon, count: updates.length },
+        ...(lockedClient.canViewCommunication
+          ? [{ id: "client-inbox" as const, label: "Client Inbox", icon: MessageCircle }]
+          : []),
+        { id: "meetings", label: "Meetings", icon: Video },
       ]
     : [
         { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
@@ -158,6 +174,7 @@ export function InboxView({
       ]
 
   const isChatTab = activeTab === "team-inbox" || activeTab === "client-inbox"
+  const isClientOnlyTab = activeTab === "meetings" || (!!lockedClient && activeTab === "client-inbox")
 
   return (
     <div className="space-y-6">
@@ -175,7 +192,7 @@ export function InboxView({
               {assignedToMe ? "Assigned to me" : "All"}
             </Button>
           )}
-          {!isChatTab && (
+          {!isChatTab && !isClientOnlyTab && (
             <Button size="sm" onClick={() => openComposer(activeTab === "tasks" ? "task" : "update")}>
               <Plus className="h-4 w-4" />
               New {activeTab === "tasks" ? "task" : "update"}
@@ -254,7 +271,20 @@ export function InboxView({
 
         {activeTab === "team-inbox" && <ChatPane scope="internal" />}
 
-        {activeTab === "client-inbox" && <ChatPane scope="external" />}
+        {activeTab === "client-inbox" && (
+          lockedClient ? (
+            <CommunicationTab
+              mondayItemId={lockedClient.id}
+              trengoContactId={lockedClient.trengoContactId ?? null}
+            />
+          ) : (
+            <ChatPane scope="external" />
+          )
+        )}
+
+        {activeTab === "meetings" && lockedClient && (
+          <MeetingsTab mondayItemId={lockedClient.id} />
+        )}
       </div>
 
       <ComposerDialog
@@ -289,7 +319,7 @@ function EmptyState({ text, onCreate }: { text: string; onCreate?: () => void })
     <div className="border border-dashed border-border/40 rounded-lg p-8 text-center">
       <p className="text-sm text-muted-foreground">{text}</p>
       {onCreate && (
-        <Button variant="outline" size="sm" className="mt-4" onClick={onCreate}>
+        <Button size="sm" className="mt-4" onClick={onCreate}>
           <Plus className="h-4 w-4" />
           Create one
         </Button>

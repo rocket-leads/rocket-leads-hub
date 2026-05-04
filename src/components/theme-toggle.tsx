@@ -6,12 +6,12 @@ import { Moon, Sun } from "lucide-react"
 type Theme = "light" | "dark"
 
 function readTheme(): Theme {
-  if (typeof window === "undefined") return "dark"
+  if (typeof window === "undefined") return "light"
   return document.documentElement.classList.contains("dark") ? "dark" : "light"
 }
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("dark")
+  const [theme, setTheme] = useState<Theme>("light")
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {

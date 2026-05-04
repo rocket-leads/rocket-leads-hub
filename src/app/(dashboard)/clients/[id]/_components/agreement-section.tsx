@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Trash2, Loader2, Check } from "lucide-react"
+import { Plus, Trash2, Loader2, Check, Handshake } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,6 +19,7 @@ import {
   totalAdBudget,
   totalMRR,
 } from "@/lib/clients/agreement"
+import { BillingSectionShell } from "./billing-section-shell"
 
 const PLATFORM_LABEL: Record<Platform, string> = {
   meta: "Meta",
@@ -66,24 +67,20 @@ export function AgreementSection({ mondayItemId }: Props) {
 
   if (query.isLoading || !draft) {
     return (
-      <div className="space-y-4">
-        <Header />
+      <BillingSectionShell icon={Handshake} title="Agreement" subtitle="What this client pays per month, broken down per campaign.">
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-40 w-full" />
-      </div>
+      </BillingSectionShell>
     )
   }
 
   if (query.isError) {
     return (
-      <div className="space-y-3">
-        <Header />
-        <Card>
-          <CardContent className="py-6 text-sm text-destructive">
-            {query.error instanceof Error ? query.error.message : "Failed to load agreement."}
-          </CardContent>
-        </Card>
-      </div>
+      <BillingSectionShell icon={Handshake} title="Agreement" subtitle="What this client pays per month, broken down per campaign.">
+        <div className="py-6 text-sm text-destructive">
+          {query.error instanceof Error ? query.error.message : "Failed to load agreement."}
+        </div>
+      </BillingSectionShell>
     )
   }
 
@@ -134,10 +131,17 @@ export function AgreementSection({ mondayItemId }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <Header onAdd={addCampaign} />
-
-      {/* Totals — same SummaryCard pattern as the invoices section below */}
+    <BillingSectionShell
+      icon={Handshake}
+      title="Agreement"
+      subtitle="What this client pays per month, broken down per campaign."
+      actions={
+        <Button size="sm" variant="outline" onClick={addCampaign}>
+          <Plus className="h-3.5 w-3.5" /> Add campaign
+        </Button>
+      }
+    >
+      {/* Totals — same SummaryCard pattern as the invoices section above */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <SummaryCard title="MRR" value={fmtEuro(mrr)} sub="recurring per month" />
         <SummaryCard title="Total ad budget" value={fmtEuro(adBudget)} sub="across all campaigns" />
@@ -193,25 +197,7 @@ export function AgreementSection({ mondayItemId }: Props) {
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-function Header({ onAdd }: { onAdd?: () => void }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground/80">Agreement</h3>
-        <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-          What this client pays per month, broken down per campaign.
-        </p>
-      </div>
-      {onAdd && (
-        <Button size="sm" variant="outline" onClick={onAdd}>
-          <Plus className="h-3.5 w-3.5" /> Add campaign
-        </Button>
-      )}
-    </div>
+    </BillingSectionShell>
   )
 }
 

@@ -32,6 +32,13 @@ export type CreatedItem =
       currCpl: number
       prevCpl: number
     }
+  | {
+      rule: "next_invoice_due_task"
+      clientName: string
+      assigneeName: string
+      invoiceDate: string
+      mrr: number
+    }
 
 export type SkippedItem = { reason: string; client?: string; detail?: string }
 
@@ -189,6 +196,95 @@ async function ensurePaymentOverdueTask(
     assigneeName: client.accountManager,
     invoiceId: invoice.id,
     amount: outstanding,
+  }
+}
+
+// --- Rule 3: next invoice date arrived ----------------------------------
+
+/**
+ * For every client with `next_invoice_date <= today`, create a task in the
+ * Hub inbox assigned to the user with `is_finance = true` (first one if
+ * multiple). The task tells finance that an invoice should go out today, with
+ * the client + total MRR + Stripe customer ID surfaced so they don't have to
+ * dig.
+ *
+ * Idempotency: each task carries `source_ref.invoiceDate = YYYY-MM-DD` plus
+ * the client_id, so a re-run on the same day is a no-op even if the cron
+ * fires twice (e.g. retry).
+ */
+async function ensureNextInvoiceDueTask(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  client: MondayClient,
+  supabaseClientId: string,
+  invoiceDate: string,
+  mrr: number,
+  authorId: string,
+  assigneeId: string,
+  testMode: boolean,
+): Promise<CreatedItem | null> {
+  if (!testMode) {
+    const { data: existing } = await supabase
+      .from("inbox_events")
+      .select("id")
+      .eq("source", "automation")
+      .filter("source_ref->>rule", "eq", "next_invoice_due_task")
+      .filter("source_ref->>clientId", "eq", supabaseClientId)
+      .filter("source_ref->>invoiceDate", "eq", invoiceDate)
+      .filter("source_ref->>testRun", "is", null)
+      .maybeSingle()
+    if (existing) return null
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
+  const titleCore = `Send invoice for ${client.name}`
+  const title = testMode ? `[TEST] ${titleCore}` : titleCore
+  const stripeBit = client.stripeCustomerId
+    ? `Stripe customer: ${client.stripeCustomerId}`
+    : `No Stripe customer on file — manual invoice.`
+  const dateLabel = invoiceDate === today ? "today" : invoiceDate < today ? `overdue since ${invoiceDate}` : invoiceDate
+
+  const bodyParts = [
+    `Next invoice date is ${dateLabel}.`,
+    mrr > 0 ? `MRR (per Hub agreement): ${fmtEuro(mrr)}.` : null,
+    stripeBit,
+    `Send the invoice and update the next-invoice date on the client to schedule the next one.`,
+  ].filter(Boolean) as string[]
+
+  if (testMode) {
+    bodyParts.unshift(`[TEST RUN] In production this would be assigned to the finance user.`, "")
+  }
+
+  const { error } = await supabase.from("inbox_events").insert({
+    kind: "task",
+    client_id: supabaseClientId,
+    author_id: authorId,
+    assignee_id: assigneeId,
+    title,
+    body: bodyParts.join("\n"),
+    status: "open",
+    priority: "high",
+    due_date: today,
+    source: "automation",
+    source_ref: {
+      rule: "next_invoice_due_task",
+      clientId: supabaseClientId,
+      invoiceDate,
+      mondayItemId: client.mondayItemId,
+      ...(testMode ? { testRun: true } : {}),
+    },
+  })
+
+  if (error) {
+    console.error("Next invoice task insert failed:", error.message)
+    return null
+  }
+
+  return {
+    rule: "next_invoice_due_task",
+    clientName: client.name,
+    assigneeName: "Finance",
+    invoiceDate,
+    mrr,
   }
 }
 
@@ -470,7 +566,11 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
   const skipped: SkippedItem[] = []
   const created: CreatedItem[] = []
 
-  if (!rules.payment_overdue_task && !rules.positive_client_signal_cpl_drop) {
+  if (
+    !rules.payment_overdue_task &&
+    !rules.positive_client_signal_cpl_drop &&
+    !rules.next_invoice_due_task
+  ) {
     return {
       ranAt: new Date().toISOString(),
       duration: "0.0s",
@@ -497,13 +597,91 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
   const mondayItemIds = allClients.map((c) => c.mondayItemId)
   const { data: clientRows } = await supabase
     .from("clients")
-    .select("id, monday_item_id")
+    .select("id, monday_item_id, next_invoice_date")
     .in("monday_item_id", mondayItemIds)
 
   const supabaseIdByItem = new Map<string, string>()
-  for (const row of clientRows ?? []) supabaseIdByItem.set(row.monday_item_id, row.id)
+  const nextInvoiceByItem = new Map<string, string>()
+  for (const row of clientRows ?? []) {
+    supabaseIdByItem.set(row.monday_item_id, row.id)
+    if (row.next_invoice_date) {
+      nextInvoiceByItem.set(row.monday_item_id, row.next_invoice_date)
+    }
+  }
+
+  // Resolve the finance-role assignee once. In test mode the override wins.
+  // In production, if no finance user is configured we skip the rule entirely
+  // rather than falling back to admin — the failure mode of "Roy gets every
+  // invoice task" is worse than "task didn't fire and someone notices".
+  let financeAssigneeId: string | null = null
+  if (rules.next_invoice_due_task) {
+    if (testMode) {
+      financeAssigneeId = opts!.testMode!.assigneeUserId
+    } else {
+      const { data: financeRows } = await supabase
+        .from("users")
+        .select("id")
+        .eq("is_finance", true)
+        .order("created_at", { ascending: true })
+        .limit(1)
+      financeAssigneeId = financeRows?.[0]?.id ?? null
+      if (!financeAssigneeId) {
+        skipped.push({ reason: "no_finance_user_configured" })
+      }
+    }
+  }
+
+  // Fetch all agreements once so we can include MRR in each invoice task
+  // without per-client round-trips.
+  let mrrByClientId = new Map<string, number>()
+  if (rules.next_invoice_due_task && financeAssigneeId) {
+    const { data: agreementRows } = await supabase
+      .from("client_agreements")
+      .select("client_id, campaigns")
+    if (agreementRows) {
+      const { totalMRR, normalizeCampaigns } = await import("@/lib/clients/agreement")
+      mrrByClientId = new Map(
+        agreementRows.map((row) => [
+          row.client_id as string,
+          totalMRR(normalizeCampaigns(row.campaigns)),
+        ]),
+      )
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10)
 
   const dailyCache = await readCache<KpiDailyCache>("kpi_daily")
+
+  // The next-invoice rule doesn't require an AM (it goes to finance), so we
+  // run it over ALL clients in a separate loop before the AM-gated rules.
+  if (rules.next_invoice_due_task && financeAssigneeId) {
+    for (const client of allClients) {
+      const supabaseClientId = supabaseIdByItem.get(client.mondayItemId)
+      if (!supabaseClientId) continue
+      const due = nextInvoiceByItem.get(client.mondayItemId)
+      if (!due || due > today) continue
+      try {
+        const result = await ensureNextInvoiceDueTask(
+          supabase,
+          client,
+          supabaseClientId,
+          due,
+          mrrByClientId.get(supabaseClientId) ?? 0,
+          authorId,
+          financeAssigneeId,
+          testMode,
+        )
+        if (result) created.push(result)
+      } catch (e) {
+        skipped.push({
+          reason: "next_invoice_failed",
+          client: client.name,
+          detail: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
+  }
 
   const candidates = allClients.filter((c) => c.accountManager)
 

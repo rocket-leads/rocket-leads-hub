@@ -14,9 +14,11 @@ export type MondayRole = "account_manager" | "campaign_manager" | "appointment_s
 export type InboxAutomationRules = {
   payment_overdue_task: boolean
   positive_client_signal_cpl_drop: boolean
+  next_invoice_due_task: boolean
 }
 
 export const DEFAULT_INBOX_AUTOMATION_RULES: InboxAutomationRules = {
   payment_overdue_task: true,
   positive_client_signal_cpl_drop: true,
+  next_invoice_due_task: true,
 }

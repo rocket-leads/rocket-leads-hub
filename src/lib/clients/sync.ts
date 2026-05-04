@@ -5,6 +5,12 @@ import { seedDefaultAgreementIfMissing } from "./agreement"
 export async function syncClientToSupabase(client: MondayClient): Promise<string> {
   const supabase = await createAdminClient()
 
+  // Monday returns dates as `YYYY-MM-DD` text; treat anything else as unset
+  // rather than risk feeding Postgres a malformed value.
+  const nextInvoiceDate = /^\d{4}-\d{2}-\d{2}$/.test(client.nextInvoiceDate)
+    ? client.nextInvoiceDate
+    : null
+
   const syncFields = {
     monday_board_type: client.boardType,
     monday_client_board_id: client.clientBoardId || null,
@@ -13,6 +19,7 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
     stripe_customer_id: client.stripeCustomerId || null,
     trengo_contact_ids: client.trengoContactId ? [client.trengoContactId] : [],
     google_drive_folder_id: client.googleDriveId || null,
+    next_invoice_date: nextInvoiceDate,
     updated_at: new Date().toISOString(),
   }
 

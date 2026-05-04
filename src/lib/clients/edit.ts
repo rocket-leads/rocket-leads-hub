@@ -17,6 +17,7 @@ const SIMPLE_FIELDS = [
   "client_board_id",
   "google_drive_id",
   "kick_off_date",
+  "next_invoice_date",
 ] as const
 
 const STATUS_FIELDS = ["campaign_status", "country", "contact_channel"] as const

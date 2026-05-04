@@ -24,19 +24,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const email = user.email ?? ""
       if (!(await isAllowed(email))) return false
 
-      // Upsert user in Supabase — preserves pre-invited role via ignoreDuplicates
-      try {
-        const supabase = await createAdminClient()
-        const { error } = await supabase.from("users").upsert(
-          {
-            email,
-            name: user.name ?? "",
-          },
-          { onConflict: "email", ignoreDuplicates: true }
-        )
-        if (error) console.error("Supabase upsert error:", error)
-      } catch (err) {
-        console.error("Failed to upsert user:", err)
+      // Backfill name from the Google profile when the row was pre-created by
+      // inviteUser (which leaves name NULL) and the admin hasn't typed one in
+      // manually. Don't overwrite an existing name — admins can edit it in
+      // Settings → Users and we shouldn't clobber their edit.
+      const googleName = user.name?.trim()
+      if (googleName) {
+        try {
+          const supabase = await createAdminClient()
+          const { error } = await supabase
+            .from("users")
+            .update({ name: googleName })
+            .eq("email", email)
+            .or("name.is.null,name.eq.")
+          if (error) console.error("Supabase name backfill error:", error)
+        } catch (err) {
+          console.error("Failed to backfill user name:", err)
+        }
       }
 
       return true

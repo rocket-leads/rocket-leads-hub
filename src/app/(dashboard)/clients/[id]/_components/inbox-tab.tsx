@@ -9,9 +9,17 @@ type Props = {
   mondayItemId: string
   clientName: string
   currentUser: CurrentUser
+  trengoContactId: string | null
+  canViewCommunication: boolean
 }
 
-export function InboxTab({ mondayItemId, clientName, currentUser }: Props) {
+export function InboxTab({
+  mondayItemId,
+  clientName,
+  currentUser,
+  trengoContactId,
+  canViewCommunication,
+}: Props) {
   const usersQuery = useQuery<{ users: InboxUser[] }>({
     queryKey: ["inbox-users"],
     queryFn: () => fetch("/api/inbox/users").then((r) => r.json()),
@@ -34,7 +42,12 @@ export function InboxTab({ mondayItemId, clientName, currentUser }: Props) {
       initialTasks={[]}
       users={usersQuery.data?.users ?? []}
       clients={[{ id: mondayItemId, name: clientName }]}
-      lockedClient={{ id: mondayItemId, name: clientName }}
+      lockedClient={{
+        id: mondayItemId,
+        name: clientName,
+        trengoContactId,
+        canViewCommunication,
+      }}
     />
   )
 }

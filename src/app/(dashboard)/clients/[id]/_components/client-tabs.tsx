@@ -165,6 +165,7 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
           <BillingTab
             mondayItemId={client.mondayItemId}
             stripeCustomerId={client.stripeCustomerId || null}
+            initialNextInvoiceDate={client.nextInvoiceDate || null}
           />
         ) : <NoAccess />
       )}

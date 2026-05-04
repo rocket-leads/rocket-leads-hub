@@ -225,6 +225,17 @@ function fmtEuro(amount: number): string {
   return `€${amount.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
 }
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+/** YYYY-MM-DD → "5 May" — keep the overview cell narrow. */
+function fmtDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+}
+
 function fmtKpi(value: number, type: "currency" | "integer"): string {
   if (type === "currency") return `€${value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   return value.toLocaleString("en-GB")
@@ -664,18 +675,33 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     <TableCell className="border-r border-border/40">
                       {(() => {
                         const a = agreementSummaries?.[client.mondayItemId]
+                        const nextInvoice = client.nextInvoiceDate
                         if (!agreementSummaries) {
                           return <span className="text-muted-foreground/40 text-xs">...</span>
                         }
-                        if (!a || (a.mrr === 0 && a.adBudget === 0)) {
+                        if ((!a || (a.mrr === 0 && a.adBudget === 0)) && !nextInvoice) {
                           return null
                         }
                         return (
                           <div className="leading-tight">
-                            <p className="text-xs tabular-nums font-medium">{fmtEuro(a.mrr)}</p>
-                            <p className="text-[10px] tabular-nums text-muted-foreground/60">
-                              {fmtEuro(a.adBudget)} budget
-                            </p>
+                            {a && (a.mrr > 0 || a.adBudget > 0) && (
+                              <>
+                                <p className="text-xs tabular-nums font-medium">{fmtEuro(a.mrr)}</p>
+                                <p className="text-[10px] tabular-nums text-muted-foreground/60">
+                                  {fmtEuro(a.adBudget)} budget
+                                </p>
+                              </>
+                            )}
+                            {nextInvoice && (
+                              <p
+                                className={`text-[10px] tabular-nums ${
+                                  nextInvoice <= todayIso() ? "text-amber-500 font-medium" : "text-muted-foreground/60"
+                                }`}
+                                title="Next invoice date"
+                              >
+                                Next: {fmtDate(nextInvoice)}
+                              </p>
+                            )}
                           </div>
                         )
                       })()}
