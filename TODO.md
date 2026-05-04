@@ -136,6 +136,23 @@ Action items uit Fathom + tickets uit Trengo + updates uit Monday → één geza
 ### MRR kolom op Clients overview
 Naast Budget kolom op `/clients` ook MRR uit `client_agreements` tonen (small win voor finance).
 
+### Next invoice date — billing tracker per klant
+> *"Wanneer moet deze klant z'n volgende factuur?"*
+
+Tool die per klant de eerstvolgende factuurdatum bijhoudt zodat het team niet meer hoeft te gokken wanneer wie aan de beurt is. Belangrijk: **echt per klant verschillend** — geen automatisch ritme afdwingen.
+
+- Klant A betaalt 3 maanden vooruit
+- Klant B betaalt 2 maanden vooruit
+- Klant C draait 1 maand → 2 weken pauze → weer 1 maand
+- Etc.
+
+Vereisten:
+- `next_invoice_date` veld op de klant (handmatig instelbaar, niet auto-bumped op basis van starts/contractduur)
+- Bewerkbaar vanuit de **Billing tab** op de client detail page (snelle datepicker)
+- Bidirectionele sync met de Monday **"next invoice" kolom** — column ID `date3`
+- Overzicht/widget op `/clients` of `/billing` met "facturen die deze week / volgende week binnenkomen"
+- **Auto-task in Hub Inbox** op de invoice-datum (assignee = Arno, kind=`task`, body verwijst naar de klant + bedrag uit `client_agreements`). Optioneel ook een reminder N dagen vooraf — beslissen bij build.
+
 ### Settings — board config voor follow-up velden
 Hardcoded `status__1` en `numbers0__1` configureerbaar maken (niet urgent, ID's zijn stabiel).
 
