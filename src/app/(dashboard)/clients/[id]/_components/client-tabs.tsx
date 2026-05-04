@@ -3,14 +3,13 @@
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { RefreshCw, BarChart3, CreditCard, MessageCircle, Settings2, LayoutDashboard, Inbox as InboxIcon, Video } from "lucide-react"
+import { RefreshCw, BarChart3, CreditCard, Settings2, LayoutDashboard, Inbox as InboxIcon, Activity } from "lucide-react"
 import { CampaignsTab } from "./campaigns-tab"
 import { BillingTab } from "./billing-tab"
-import { CommunicationTab } from "./communication-tab"
 import { ClientSettingsTab } from "./client-settings-tab"
 import { InboxTab } from "./inbox-tab"
 import { HomeTab } from "./home-tab"
-import { MeetingsTab } from "./meetings-tab"
+import { TimelineTab } from "./timeline-tab"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
@@ -67,9 +66,8 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
     { id: "home", label: "Home", icon: LayoutDashboard },
     ...(access.canViewCampaigns ? [{ id: "campaigns", label: "Campaigns", icon: BarChart3 }] : []),
     { id: "inbox", label: "Inbox", icon: InboxIcon },
+    { id: "timeline", label: "Timeline", icon: Activity },
     ...(access.canViewBilling ? [{ id: "billing", label: "Billing", icon: CreditCard, ...(hasOverdueInvoice ? { dot: "red" as const } : {}) }] : []),
-    ...(access.canViewCommunication ? [{ id: "communication", label: "Communication", icon: MessageCircle }] : []),
-    { id: "meetings", label: "Meetings", icon: Video },
     { id: "settings", label: "Settings", icon: Settings2 },
   ]
 
@@ -153,7 +151,13 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
           mondayItemId={client.mondayItemId}
           clientName={client.name}
           currentUser={currentUser}
+          trengoContactId={client.trengoContactId || null}
+          canViewCommunication={access.canViewCommunication}
         />
+      )}
+
+      {activeTab === "timeline" && (
+        <TimelineTab mondayItemId={client.mondayItemId} />
       )}
 
       {activeTab === "billing" && (
@@ -163,19 +167,6 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
             stripeCustomerId={client.stripeCustomerId || null}
           />
         ) : <NoAccess />
-      )}
-
-      {activeTab === "communication" && (
-        access.canViewCommunication ? (
-          <CommunicationTab
-            mondayItemId={client.mondayItemId}
-            trengoContactId={client.trengoContactId || null}
-          />
-        ) : <NoAccess />
-      )}
-
-      {activeTab === "meetings" && (
-        <MeetingsTab mondayItemId={client.mondayItemId} />
       )}
 
       {activeTab === "settings" && (
