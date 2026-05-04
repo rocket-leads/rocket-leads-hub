@@ -22,7 +22,12 @@ export async function Sidebar() {
 
   const allItems = [
     ...NAV_ITEMS,
-    ...(isAdmin ? [{ href: "/settings", label: "Settings", icon: "Settings" as const }] : []),
+    ...(isAdmin
+      ? [
+          { href: "/billing", label: "Billing", icon: "Receipt" as const },
+          { href: "/settings", label: "Settings", icon: "Settings" as const },
+        ]
+      : []),
   ]
 
   // Count missing platform connections so we can flag the avatar with a dot.
