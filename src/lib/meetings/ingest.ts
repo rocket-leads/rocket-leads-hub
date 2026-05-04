@@ -57,19 +57,23 @@ export async function ingestFathomMeeting(
   }
 
   // Only ingest recordings that belong to Rocket Leads work. Two paths:
-  //   (a) team is tagged "Rocket Leads …" — the canonical case, e.g. "Sales
-  //       Rocketleads", "Delivery Rocketleads".
-  //   (b) team is null/empty AND the host is a known Hub user — covers people
-  //       like Roel who record under their personal Fathom user without
-  //       tagging a team. Without this, those calls would silently disappear.
-  // Other combinations (Founder Download teams, externals, personal calls by
-  // non-Hub users) stay skipped — they'd just clutter the Unlinked inbox.
+  //   (a) team is tagged "Rocket Leads …" — canonical case (any host).
+  //   (b) recorder is a known Hub user (matched via `users.fathom_email`
+  //       or via the regular Hub email) — covers personal recordings of
+  //       AMs whose calls land in non-RL teams (e.g. Roel records client
+  //       work but the call gets tagged under "Founder Download" or his
+  //       personal team). If a Hub user recorded it, we want it.
+  // Anything else (externals, untagged personal calls by non-Hub users)
+  // stays skipped to keep the Unlinked queue clean.
+  //
+  // Implication: only map AMs in Settings → Users for now. Mapping CMs /
+  // appointment setters would pull in their Fathom calls too, which aren't
+  // client meetings.
   const team = payload.recorded_by?.team ?? null
   const recorderEmail = payload.recorded_by?.email?.toLowerCase() ?? null
-  const teamTrimmed = team?.trim() ?? ""
 
   let included = isRocketLeadsTeam(team)
-  if (!included && teamTrimmed === "" && recorderEmail) {
+  if (!included && recorderEmail) {
     const hubEmails = await getHubUserEmails(supabase)
     included = hubEmails.has(recorderEmail)
   }

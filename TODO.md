@@ -88,28 +88,31 @@ Vier dingen. Geen code. Alleen klikken en invullen.
 1. In Monday: selecteer alle sub-items op de 762 klanten → **Delete**
 2. Filter op klanten met empty `status__1` → vul in: **"Client"** of **"Rocket Leads"**
 
-### Klus 3 — Fathom emails koppelen aan teamleden 👥 (~5 min)
+### Klus 3 — Fathom emails koppelen aan AMs 👥 (~5 min)
 
-**Wat is er aan de hand:** De Hub weet nog niet wie wie is in Fathom. Hub email (`@rocketleads.com`) ≠ Fathom email. Zonder mapping kan de matcher (later) niet zien welke AM in welke call zat.
+**Wat is er aan de hand:** De Hub weet nog niet wie wie is in Fathom. Hub email (`@rocketleads.com`) ≠ Fathom email. Zonder mapping (a) weet de matcher straks niet welke AM in welke call zat, en (b) pakt de ingest géén persoonlijke calls van die AM mee.
 
-**Hoe los je het op:**
-1. Hub → **Settings** → **Users** tab
-2. Bij jouw eigen rij: klik op de **Fathom email** dropdown → kies je Fathom account
-3. Doe daarna Roel, Anel, Jill (senior AMs)
-4. Rest van het team mag deze week
-
-### Klus 4 — Test of Fathom webhook werkt 🧪 (~10 min)
-
-**Wat is er aan de hand:** Webhook staat aan in Fathom (URL + alle scopes correct), maar we hebben nog geen bewijs dat hij echt fired bij een nieuwe opname. De vorige test zat in team **"Delivery Founder Download"** — die wordt nu terecht overgeslagen door de team-filter.
+**Alleen AMs koppelen voor nu.** Campaign managers en appointment setters doen geen client meetings → niet relevant. Sales (closers) komt later als we daar bewust ingest voor toevoegen.
 
 **Hoe los je het op:**
-1. Start Fathom in een willekeurige meeting (2 min is genoeg)
-2. ⚠️ **BELANGRIJK:** team moet **"Sales Rocket Leads"** of **"Delivery Rocket Leads"** zijn — anders skippen we de opname
-3. Stop de opname → wacht 3–5 min (Fathom moet AI processing doen)
+1. ✅ **Roel is al gekoppeld** — test-target voor Klus 4
+2. Andere AMs: Hub → **Settings** → **Users** tab → bij elke AM-rij de **Fathom email** dropdown invullen
+3. Deze week afronden
+
+### Klus 4 — Test Fathom webhook met Roel 🧪 (~10 min)
+
+**Wat is er aan de hand:** Webhook staat aan in Fathom (URL + alle scopes correct), maar we hebben nog geen bewijs dat hij echt fired bij een nieuwe opname. De vorige test zat in team "Delivery Founder Download" — die werd terecht overgeslagen.
+
+**Update vandaag:** ingest filter is verbreed. Persoonlijke calls van Roel landen nu in de Hub **ongeacht in welk Fathom-team de opname terechtkomt**, omdat hij als Hub user gemapped is. Maakt het testen makkelijker.
+
+**Hoe los je het op:**
+1. Laat **Roel** een korte Fathom opname maken (2 min is genoeg) in een echte client meeting of test-call
+2. Maakt niet uit welk team — Roel is gekoppeld dus elk team werkt
+3. Stop de opname → wacht 3–5 min (Fathom moet eerst AI processing doen)
 4. Open `https://hub.rocketleads.com/meetings` → **Unlinked** tab
 5. **Zie je hem staan?** ✅ webhook werkt — klaar
 6. **Zie je niets?** Open Vercel → Logs → filter op `/api/webhooks/fathom` → kijk of er een request binnenkwam
-7. **Werkt het echt niet?** Workaround: ga naar `https://hub.rocketleads.com/api/admin/fathom-fetch?hours=4&ingest=1` — die haalt 'm alsnog binnen via de API
+7. **Werkt het echt niet?** Workaround: open `https://hub.rocketleads.com/api/admin/fathom-fetch?hours=4&ingest=1` — die haalt 'm alsnog binnen via de API
 
 ---
 
