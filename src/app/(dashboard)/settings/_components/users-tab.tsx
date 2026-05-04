@@ -17,12 +17,15 @@ import {
   removeUser,
   setUserMondayMapping,
   updateUserFathomEmail,
-  updateUserIsFinance,
   updateUserName,
   updateUserRole,
   updateUserSlackId,
 } from "../actions"
-import type { MondayRole } from "../types"
+import {
+  MONDAY_ROLE_LABELS,
+  ROLES_NEEDING_MONDAY_NAME,
+  type MondayRole,
+} from "../types"
 
 type Role = "admin" | "member" | "guest"
 
@@ -33,7 +36,6 @@ type User = {
   role: Role
   slack_user_id: string | null
   fathom_email: string | null
-  is_finance: boolean
   monday_role: MondayRole | null
   monday_person_name: string | null
   created_at: string
@@ -52,12 +54,7 @@ type Props = {
 }
 
 const NONE = "__none__"
-
-const MONDAY_ROLE_LABELS: Record<MondayRole, string> = {
-  account_manager: "Account Manager",
-  campaign_manager: "Campaign Manager",
-  appointment_setter: "Appointment Setter",
-}
+const UNSET_LABEL = "—"
 
 export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTeamMembers }: Props) {
   const [users, setUsers] = useState(initial)
@@ -79,27 +76,8 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
   const [slackDrafts, setSlackDrafts] = useState<Record<string, string>>({})
   const [slackSaving, setSlackSaving] = useState<Record<string, boolean>>({})
   const [fathomSaving, setFathomSaving] = useState<Record<string, boolean>>({})
-  const [financeSaving, setFinanceSaving] = useState<Record<string, boolean>>({})
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({})
   const [nameSaving, setNameSaving] = useState<Record<string, boolean>>({})
-
-  async function handleFinanceToggle(userId: string, isFinance: boolean) {
-    setUsers((u) =>
-      u.map((user) => (user.id === userId ? { ...user, is_finance: isFinance } : user)),
-    )
-    setFinanceSaving((s) => ({ ...s, [userId]: true }))
-    try {
-      await updateUserIsFinance(userId, isFinance)
-    } catch (e) {
-      console.error(e)
-      // Roll back on failure so the UI doesn't lie about state.
-      setUsers((u) =>
-        u.map((user) => (user.id === userId ? { ...user, is_finance: !isFinance } : user)),
-      )
-    } finally {
-      setFinanceSaving((s) => ({ ...s, [userId]: false }))
-    }
-  }
 
   async function handleRoleChange(userId: string, role: Role) {
     setUsers((u) => u.map((user) => (user.id === userId ? { ...user, role } : user)))
@@ -237,7 +215,6 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           role: inviteRole,
           slack_user_id: inviteSlackId.trim() || null,
           fathom_email: null,
-          is_finance: false,
           monday_role: inviteMondayRole,
           monday_person_name: inviteMondayName,
           created_at: new Date().toISOString(),
@@ -324,17 +301,19 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
             onValueChange={(v) => {
               const next = v === NONE ? null : (v as MondayRole)
               setInviteMondayRole(next)
-              if (!next) setInviteMondayName(null)
+              if (!next || !ROLES_NEEDING_MONDAY_NAME.has(next)) setInviteMondayName(null)
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="None" />
+              <SelectValue placeholder={UNSET_LABEL} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NONE}>None</SelectItem>
-              <SelectItem value="account_manager">Account Manager</SelectItem>
-              <SelectItem value="campaign_manager">Campaign Manager</SelectItem>
-              <SelectItem value="appointment_setter">Appointment Setter</SelectItem>
+              <SelectItem value={NONE}>{UNSET_LABEL}</SelectItem>
+              {(Object.keys(MONDAY_ROLE_LABELS) as MondayRole[]).map((r) => (
+                <SelectItem key={r} value={r}>
+                  {MONDAY_ROLE_LABELS[r]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -343,13 +322,21 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           <Select
             value={inviteMondayName ?? NONE}
             onValueChange={(v) => setInviteMondayName(v === NONE ? null : v)}
-            disabled={!inviteMondayRole}
+            disabled={!inviteMondayRole || !ROLES_NEEDING_MONDAY_NAME.has(inviteMondayRole)}
           >
             <SelectTrigger>
-              <SelectValue placeholder={inviteMondayRole ? "Pick a person" : "—"} />
+              <SelectValue
+                placeholder={
+                  !inviteMondayRole
+                    ? UNSET_LABEL
+                    : !ROLES_NEEDING_MONDAY_NAME.has(inviteMondayRole)
+                    ? "Not applicable"
+                    : "Pick a person"
+                }
+              />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NONE}>—</SelectItem>
+              <SelectItem value={NONE}>{UNSET_LABEL}</SelectItem>
               {mondayPeople.map((name) => (
                 <SelectItem key={name} value={name}>
                   {name}
@@ -385,9 +372,6 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
             <TableRow>
               <TableHead>User</TableHead>
               <TableHead className="w-[130px]">Hub role</TableHead>
-              <TableHead className="w-[80px]" title="Receives auto-tasks when a client's next invoice date arrives">
-                Finance
-              </TableHead>
               <TableHead className="w-[180px]">Monday role</TableHead>
               <TableHead className="w-[200px]">Monday name</TableHead>
               <TableHead className="w-[200px]">Slack user ID</TableHead>
@@ -472,34 +456,20 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                   </TableCell>
 
                   <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-border accent-foreground cursor-pointer disabled:cursor-not-allowed"
-                        checked={user.is_finance}
-                        disabled={!!financeSaving[user.id]}
-                        onChange={(e) => handleFinanceToggle(user.id, e.target.checked)}
-                        aria-label="Finance role"
-                      />
-                      {financeSaving[user.id] && (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                      )}
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
                     <Select
                       value={user.monday_role ?? NONE}
                       onValueChange={(v) => handleMondayRoleChange(user.id, v ?? NONE)}
                     >
                       <SelectTrigger className="h-8 w-[170px]">
-                        <SelectValue placeholder="None" />
+                        <SelectValue placeholder={UNSET_LABEL} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={NONE}>None</SelectItem>
-                        <SelectItem value="account_manager">Account Manager</SelectItem>
-                        <SelectItem value="campaign_manager">Campaign Manager</SelectItem>
-                        <SelectItem value="appointment_setter">Appointment Setter</SelectItem>
+                        <SelectItem value={NONE}>{UNSET_LABEL}</SelectItem>
+                        {(Object.keys(MONDAY_ROLE_LABELS) as MondayRole[]).map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {MONDAY_ROLE_LABELS[r]}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -509,15 +479,21 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                       <Select
                         value={user.monday_person_name ?? NONE}
                         onValueChange={(v) => handleMondayNameChange(user.id, v ?? NONE)}
-                        disabled={!user.monday_role}
+                        disabled={!user.monday_role || !ROLES_NEEDING_MONDAY_NAME.has(user.monday_role)}
                       >
                         <SelectTrigger className="h-8 w-[180px]">
                           <SelectValue
-                            placeholder={user.monday_role ? "Pick a person" : "—"}
+                            placeholder={
+                              !user.monday_role
+                                ? UNSET_LABEL
+                                : !ROLES_NEEDING_MONDAY_NAME.has(user.monday_role)
+                                ? "Not applicable"
+                                : "Pick a person"
+                            }
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NONE}>—</SelectItem>
+                          <SelectItem value={NONE}>{UNSET_LABEL}</SelectItem>
                           {mondayPeople.map((name) => (
                             <SelectItem key={name} value={name}>
                               {name}
@@ -616,11 +592,13 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Hub role controls access. Monday role + name decide which clients non-admin
-        users see (admins always see all). Slack ID is used for DM notifications.
-        Fathom email maps this Hub user to their Fathom account so the meeting
-        matcher knows which AM/CM was in a recorded call. All fields autosave.
-        Reference for label: {Object.values(MONDAY_ROLE_LABELS).join(" · ")}.
+        Hub role controls access. Monday role decides what this user does — for
+        AM/CM/Setter, the Monday name picks which clients they see (admins
+        always see all). Finance is org-level and doesn&apos;t need a Monday
+        name; it triggers invoice tasks via the inbox automation. Slack ID is
+        used for DM notifications. Fathom email maps this Hub user to their
+        Fathom account so the meeting matcher knows who was in a recorded
+        call. All fields autosave.
       </p>
     </div>
   )

@@ -29,7 +29,7 @@ export default async function SettingsPage() {
   ] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
-    supabase.from("users").select("id, email, name, role, slack_user_id, fathom_email, is_finance, created_at").order("created_at"),
+    supabase.from("users").select("id, email, name, role, slack_user_id, fathom_email, created_at").order("created_at"),
     supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
     supabase.from("closer_slack_mappings").select("monday_person_name, slack_user_id"),
     supabase.from("settings").select("value").eq("key", "inbox_automation_rules").maybeSingle(),
@@ -148,7 +148,6 @@ export default async function SettingsPage() {
           role: u.role,
           slack_user_id: u.slack_user_id ?? null,
           fathom_email: u.fathom_email ?? null,
-          is_finance: u.is_finance ?? false,
           monday_role: mappingByUser.get(u.id)?.role ?? null,
           monday_person_name: mappingByUser.get(u.id)?.name ?? null,
           created_at: u.created_at,

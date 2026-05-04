@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import {
   CalendarClock,
+  CheckCircle2,
   CreditCard,
   Zap,
   Loader2,
@@ -47,10 +48,19 @@ const RULES: RuleConfig[] = [
     key: "next_invoice_due_task",
     title: "Next invoice date arrived → finance task",
     description:
-      "When a client's next-invoice date is today (or in the past and not yet handled), the cron creates a task assigned to the user with the Finance flag. Body includes client name, MRR from the Hub agreement, and Stripe customer ID so finance can act without context-switching. Idempotent per client + date.",
+      "When a client's next-invoice date is today (or in the past and not yet handled), the cron creates a task assigned to the user with the Finance Monday role. Body includes client name, MRR from the Hub agreement, and Stripe customer ID so finance can act without context-switching. Idempotent per client + date.",
     trigger: "clients.next_invoice_date ≤ today",
     effect: "Task created · assigned to Finance user · priority high · due today",
     icon: CalendarClock,
+  },
+  {
+    key: "auto_complete_invoice_tasks",
+    title: "Stripe invoice sent → auto-complete the finance task",
+    description:
+      "Closes the loop on the previous rule. When a non-draft Stripe invoice appears for a client whose finance task is still open, the cron marks the task done and notes the invoice ID in the body. 7-day grace before the due date so an early send still counts. Skips tasks that are already in progress (someone is actively handling them).",
+    trigger: "Open finance task + matching Stripe invoice exists",
+    effect: "Task status → done · audit note appended · auto_completed flag in source_ref",
+    icon: CheckCircle2,
   },
 ]
 
@@ -327,6 +337,17 @@ function CreatedRow({ item }: { item: CreatedItem }) {
         <span className="text-muted-foreground/60 tabular-nums">
           {item.invoiceDate}
           {item.mrr > 0 && ` · €${item.mrr.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`}
+        </span>
+      </div>
+    )
+  }
+  if (item.rule === "auto_complete_invoice_tasks") {
+    return (
+      <div className="text-[11px] py-0.5 flex items-baseline gap-2">
+        <span className="text-emerald-500 font-medium">Auto-completed invoice task</span>
+        <span className="text-foreground/80">{item.clientName}</span>
+        <span className="text-muted-foreground/60 tabular-nums">
+          invoice {item.invoiceId.slice(0, 12)}…
         </span>
       </div>
     )

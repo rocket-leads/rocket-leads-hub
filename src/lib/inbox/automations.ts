@@ -39,6 +39,13 @@ export type CreatedItem =
       invoiceDate: string
       mrr: number
     }
+  | {
+      rule: "auto_complete_invoice_tasks"
+      clientName: string
+      taskId: string
+      invoiceId: string
+      invoiceCreatedAt: string
+    }
 
 export type SkippedItem = { reason: string; client?: string; detail?: string }
 
@@ -286,6 +293,143 @@ async function ensureNextInvoiceDueTask(
     invoiceDate,
     mrr,
   }
+}
+
+// --- Rule 4: auto-complete invoice tasks ---------------------------------
+
+/**
+ * Closes the loop on rule 3: when the Hub creates a "send invoice" task and
+ * Arno (or whoever has the Finance role) actually sends the invoice in
+ * Stripe, the cron sees a fresh invoice and marks the task as `done` instead
+ * of leaving it sitting in finance's inbox. The task body is appended with a
+ * note explaining why it was auto-completed, and `source_ref.auto_completed_*`
+ * fields record the audit trail.
+ *
+ * "Fresh" = a non-draft Stripe invoice whose `created` timestamp is at or
+ * after the task's `next_invoice_date` minus a 7-day grace window. The grace
+ * accounts for finance sending the invoice a few days early — without it,
+ * we'd leave the task open even though the work is clearly done.
+ */
+async function ensureAutoCompleteInvoiceTasks(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  allClients: MondayClient[],
+  testMode: boolean,
+): Promise<CreatedItem[]> {
+  const completed: CreatedItem[] = []
+
+  // Pull every still-open next-invoice task. `kind = task` + `status = open`
+  // is the entire universe — we never auto-complete in_progress tasks because
+  // that would step on someone actively handling it.
+  const { data: openTasks } = await supabase
+    .from("inbox_events")
+    .select("id, client_id, source_ref, body")
+    .eq("kind", "task")
+    .eq("status", "open")
+    .eq("source", "automation")
+    .filter("source_ref->>rule", "eq", "next_invoice_due_task")
+
+  if (!openTasks || openTasks.length === 0) return completed
+
+  // Build a lookup from supabase client_id → MondayClient (for stripeCustomerId).
+  const supabaseIds = openTasks
+    .map((t) => t.client_id)
+    .filter((id): id is string => !!id)
+  if (supabaseIds.length === 0) return completed
+
+  const { data: clientRows } = await supabase
+    .from("clients")
+    .select("id, monday_item_id")
+    .in("id", supabaseIds)
+  const mondayItemByClientId = new Map<string, string>()
+  for (const r of clientRows ?? []) mondayItemByClientId.set(r.id, r.monday_item_id)
+
+  const clientByItemId = new Map<string, MondayClient>()
+  for (const c of allClients) clientByItemId.set(c.mondayItemId, c)
+
+  const { fetchBillingData } = await import("@/lib/integrations/stripe")
+
+  for (const task of openTasks) {
+    const clientId = task.client_id as string | null
+    if (!clientId) continue
+    const mondayItemId = mondayItemByClientId.get(clientId)
+    if (!mondayItemId) continue
+    const client = clientByItemId.get(mondayItemId)
+    if (!client?.stripeCustomerId) continue
+
+    const sourceRef = (task.source_ref ?? {}) as Record<string, unknown>
+    const invoiceDateStr = typeof sourceRef.invoiceDate === "string" ? sourceRef.invoiceDate : null
+    if (!invoiceDateStr) continue
+
+    // 7-day grace before the due date — covers "Arno sent it a few days early".
+    const dueMs = new Date(invoiceDateStr).getTime()
+    if (Number.isNaN(dueMs)) continue
+    const cutoffSec = Math.floor((dueMs - 7 * 24 * 60 * 60 * 1000) / 1000)
+
+    let billing
+    try {
+      billing = await fetchBillingData(client.stripeCustomerId)
+    } catch {
+      // If Stripe is down or the customer has no invoices, leave the task
+      // alone — it'll get retried tomorrow.
+      continue
+    }
+
+    const match = billing.invoices
+      .filter((inv) => inv.status !== "draft")
+      .find((inv) => inv.created >= cutoffSec)
+    if (!match) continue
+
+    const invoiceCreatedAt = new Date(match.created * 1000).toISOString()
+    const completionNote = `\n\n— Auto-completed: detected Stripe invoice ${match.number ?? match.id} sent ${invoiceCreatedAt.slice(0, 10)}.`
+
+    const updatedBody = (task.body ?? "") + completionNote
+    const updatedSourceRef = {
+      ...sourceRef,
+      auto_completed: true,
+      auto_completed_at: new Date().toISOString(),
+      auto_completed_invoice_id: match.id,
+      auto_completed_invoice_number: match.number ?? null,
+    }
+
+    if (testMode) {
+      // In test mode we report the would-be auto-completion but don't actually
+      // close the row — admin should be able to keep iterating on the rule
+      // without losing test tasks.
+      completed.push({
+        rule: "auto_complete_invoice_tasks",
+        clientName: client.name,
+        taskId: task.id,
+        invoiceId: match.id,
+        invoiceCreatedAt,
+      })
+      continue
+    }
+
+    const { error } = await supabase
+      .from("inbox_events")
+      .update({
+        status: "done",
+        body: updatedBody,
+        source_ref: updatedSourceRef,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", task.id)
+
+    if (error) {
+      console.error("Auto-complete invoice task update failed:", error.message)
+      continue
+    }
+
+    completed.push({
+      rule: "auto_complete_invoice_tasks",
+      clientName: client.name,
+      taskId: task.id,
+      invoiceId: match.id,
+      invoiceCreatedAt,
+    })
+  }
+
+  return completed
 }
 
 // --- Rule 2: positive CPL drop signal -----------------------------------
@@ -569,7 +713,8 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
   if (
     !rules.payment_overdue_task &&
     !rules.positive_client_signal_cpl_drop &&
-    !rules.next_invoice_due_task
+    !rules.next_invoice_due_task &&
+    !rules.auto_complete_invoice_tasks
   ) {
     return {
       ranAt: new Date().toISOString(),
@@ -613,19 +758,23 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
   // In production, if no finance user is configured we skip the rule entirely
   // rather than falling back to admin — the failure mode of "Roy gets every
   // invoice task" is worse than "task didn't fire and someone notices".
+  //
+  // Finance is now stored as a value of `monday_column_role` (alongside
+  // account_manager / campaign_manager / appointment_setter), not a separate
+  // boolean — see migration 20240022.
   let financeAssigneeId: string | null = null
-  if (rules.next_invoice_due_task) {
+  if (rules.next_invoice_due_task || rules.auto_complete_invoice_tasks) {
     if (testMode) {
       financeAssigneeId = opts!.testMode!.assigneeUserId
     } else {
       const { data: financeRows } = await supabase
-        .from("users")
-        .select("id")
-        .eq("is_finance", true)
-        .order("created_at", { ascending: true })
+        .from("user_column_mappings")
+        .select("user_id, users!inner(created_at)")
+        .eq("monday_column_role", "finance")
+        .order("created_at", { foreignTable: "users", ascending: true })
         .limit(1)
-      financeAssigneeId = financeRows?.[0]?.id ?? null
-      if (!financeAssigneeId) {
+      financeAssigneeId = financeRows?.[0]?.user_id ?? null
+      if (!financeAssigneeId && rules.next_invoice_due_task) {
         skipped.push({ reason: "no_finance_user_configured" })
       }
     }
@@ -680,6 +829,26 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
           detail: e instanceof Error ? e.message : String(e),
         })
       }
+    }
+  }
+
+  // Auto-complete any open `next_invoice_due_task` items where a fresh Stripe
+  // invoice has appeared since the task was scheduled. Runs in production AND
+  // test mode (test mode just won't write back the completion if the task was
+  // [TEST] flagged — see ensureAutoCompleteInvoiceTasks).
+  if (rules.auto_complete_invoice_tasks) {
+    try {
+      const completed = await ensureAutoCompleteInvoiceTasks(
+        supabase,
+        allClients,
+        testMode,
+      )
+      created.push(...completed)
+    } catch (e) {
+      skipped.push({
+        reason: "auto_complete_failed",
+        detail: e instanceof Error ? e.message : String(e),
+      })
     }
   }
 

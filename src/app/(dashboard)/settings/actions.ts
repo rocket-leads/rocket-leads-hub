@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { encrypt } from "@/lib/encryption"
 import { revalidatePath } from "next/cache"
 import type { NotificationKey } from "@/lib/slack/notification-config"
-import { DEFAULT_INBOX_AUTOMATION_RULES } from "./types"
+import { DEFAULT_INBOX_AUTOMATION_RULES, ROLES_NEEDING_MONDAY_NAME } from "./types"
 import type { MondayRole, InboxAutomationRules } from "./types"
 
 async function requireAdmin() {
@@ -179,22 +179,6 @@ export async function updateUserRole(userId: string, role: "admin" | "member" | 
   revalidatePath("/settings")
 }
 
-/**
- * Toggle the `is_finance` flag — used by the next-invoice automation to know
- * who to assign the auto-task to. Orthogonal to access role: a member can be
- * finance, an admin can be finance, etc.
- */
-export async function updateUserIsFinance(userId: string, isFinance: boolean) {
-  await requireAdmin()
-  const supabase = await createAdminClient()
-  const { error } = await supabase
-    .from("users")
-    .update({ is_finance: isFinance })
-    .eq("id", userId)
-  if (error) throw new Error(error.message)
-  revalidatePath("/settings")
-}
-
 export async function updateUserName(userId: string, name: string | null) {
   await requireAdmin()
   const trimmed = name?.trim() || null
@@ -230,15 +214,25 @@ export async function inviteUser(input: {
     throw new Error(error.message)
   }
 
-  if (input.mondayRole && input.mondayPersonName?.trim()) {
-    const { error: mappingErr } = await supabase
-      .from("user_column_mappings")
-      .insert({
-        user_id: inserted.id,
-        monday_column_role: input.mondayRole,
-        monday_person_name: input.mondayPersonName.trim(),
-      })
-    if (mappingErr) throw new Error(mappingErr.message)
+  if (input.mondayRole) {
+    // Roles that map to a Monday client-board column require a person name to
+    // resolve which client rows belong to this user. Finance doesn't — its
+    // mapping is purely "this Hub user is the org's finance person".
+    const requiresName = ROLES_NEEDING_MONDAY_NAME.has(input.mondayRole)
+    const personName = input.mondayPersonName?.trim() || null
+    if (requiresName && !personName) {
+      // Skip silently — the user can be assigned a Monday name later from the
+      // users table without having to recreate the account.
+    } else {
+      const { error: mappingErr } = await supabase
+        .from("user_column_mappings")
+        .insert({
+          user_id: inserted.id,
+          monday_column_role: input.mondayRole,
+          monday_person_name: personName,
+        })
+      if (mappingErr) throw new Error(mappingErr.message)
+    }
   }
 
   revalidatePath("/settings")
@@ -265,15 +259,21 @@ export async function setUserMondayMapping(
     .eq("user_id", userId)
   if (deleteErr) throw new Error(deleteErr.message)
 
-  if (mondayRole && mondayPersonName?.trim()) {
-    const { error } = await supabase
-      .from("user_column_mappings")
-      .insert({
-        user_id: userId,
-        monday_column_role: mondayRole,
-        monday_person_name: mondayPersonName.trim(),
-      })
-    if (error) throw new Error(error.message)
+  if (mondayRole) {
+    // Same rule as `inviteUser`: roles tied to Monday client-board columns
+    // need a person name; finance doesn't.
+    const requiresName = ROLES_NEEDING_MONDAY_NAME.has(mondayRole)
+    const personName = mondayPersonName?.trim() || null
+    if (!requiresName || personName) {
+      const { error } = await supabase
+        .from("user_column_mappings")
+        .insert({
+          user_id: userId,
+          monday_column_role: mondayRole,
+          monday_person_name: personName,
+        })
+      if (error) throw new Error(error.message)
+    }
   }
 
   revalidatePath("/settings")
