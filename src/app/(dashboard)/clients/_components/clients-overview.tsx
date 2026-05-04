@@ -14,6 +14,7 @@ import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
+import type { AgreementSummary } from "@/app/api/clients/agreements-summary/route"
 import { mondayStatusToHub, type ClientStatus } from "@/lib/clients/status"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 
@@ -110,6 +111,12 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
+  const agreementsQuery = useQuery<Record<string, AgreementSummary>>({
+    queryKey: ["agreements-summary"],
+    queryFn: () => fetch("/api/clients/agreements-summary").then((r) => r.json()),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const kpiQuery = useQuery<Record<string, KpiSummary>>({
     queryKey: ["kpi-summaries", kpiClients.map((c) => c.mondayItemId), startDateStr, endDateStr],
     queryFn: () =>
@@ -172,6 +179,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
             boardType="current"
             billingSummaries={summariesQuery.data}
             kpiSummaries={kpiQuery.data}
+            agreementSummaries={agreementsQuery.data}
             mondayActiveMap={mondayActiveQuery.data}
             onSelectClient={handleSelectClient}
             showAllToggle={{
@@ -198,6 +206,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
             boardType="onboarding"
             billingSummaries={summariesQuery.data}
             kpiSummaries={kpiQuery.data}
+            agreementSummaries={agreementsQuery.data}
             mondayActiveMap={mondayActiveQuery.data}
             onSelectClient={handleSelectClient}
           />

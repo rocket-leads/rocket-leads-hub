@@ -208,7 +208,7 @@ function parseEuro(raw: string): number {
  * coerce each field to its expected shape on read/write. Keeps the rest of
  * the code from having to handle malformed legacy rows.
  */
-function normalizeCampaigns(raw: unknown): AgreementCampaign[] {
+export function normalizeCampaigns(raw: unknown): AgreementCampaign[] {
   if (!Array.isArray(raw)) return []
   return raw.map((c) => {
     const x = (c ?? {}) as Record<string, unknown>

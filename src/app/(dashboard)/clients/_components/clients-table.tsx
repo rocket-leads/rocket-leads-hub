@@ -17,6 +17,7 @@ import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-rang
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
+import type { AgreementSummary } from "@/app/api/clients/agreements-summary/route"
 import type { QuickPreset } from "@/types/targets"
 import {
   STATUS_LABELS,
@@ -169,7 +170,7 @@ function HealthBadge({ health }: { health: HealthResult }) {
   )
 }
 
-type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "appointments" | "cpa" | "cpaDelta" | "paymentStatus" | "outstanding" | "health"
+type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "appointments" | "cpa" | "cpaDelta" | "paymentStatus" | "outstanding" | "health" | "mrr"
 type SortDir = "asc" | "desc"
 
 type Props = {
@@ -177,6 +178,7 @@ type Props = {
   boardType: "onboarding" | "current"
   billingSummaries?: Record<string, BillingSummary>
   kpiSummaries?: Record<string, KpiSummary>
+  agreementSummaries?: Record<string, AgreementSummary>
   mondayActiveMap?: Record<string, boolean>
   defaultSortKey?: SortKey
   defaultSortDir?: SortDir
@@ -217,6 +219,12 @@ function fmt(amount: number): string {
   return `€${amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+/** Whole-euro formatter — used for monthly figures (MRR, ad budget) where
+ *  cents would just be visual noise on a packed overview row. */
+function fmtEuro(amount: number): string {
+  return `€${amount.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
+}
+
 function fmtKpi(value: number, type: "currency" | "integer"): string {
   if (type === "currency") return `€${value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   return value.toLocaleString("en-GB")
@@ -250,7 +258,7 @@ function SortableHead({ label, sortKey, currentKey, currentDir, onSort, classNam
   )
 }
 
-export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, mondayActiveMap, defaultSortKey, defaultSortDir, showAllToggle, dateRangeControl, onSelectClient }: Props) {
+export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, agreementSummaries, mondayActiveMap, defaultSortKey, defaultSortDir, showAllToggle, dateRangeControl, onSelectClient }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
@@ -349,6 +357,10 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         }
         case "paymentStatus": valA = billingA?.status ?? ""; valB = billingB?.status ?? ""; break
         case "outstanding": valA = billingA?.outstanding ?? 0; valB = billingB?.outstanding ?? 0; break
+        case "mrr":
+          valA = agreementSummaries?.[a.mondayItemId]?.mrr ?? 0
+          valB = agreementSummaries?.[b.mondayItemId]?.mrr ?? 0
+          break
         case "health": {
           const order: Record<string, number> = { critical: 0, warning: 1, good: 2, "no-data": 3 }
           valA = order[getCampaignHealth(kpiA).status] ?? 3
@@ -392,7 +404,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 8 : 15
+  const colSpan = boardType === "onboarding" ? 9 : 16
 
   const filters: FilterConfig[] = [
     // Onboarding-board clients all collapse to "Onboarding" — status filter is
@@ -514,7 +526,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                 <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold text-center w-[90px]" />
               )}
               <TableHead className="text-[13px] text-foreground/80 font-semibold w-[95px]">Payment</TableHead>
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px] border-r border-border/60">Outstanding</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Outstanding</TableHead>
+              <SortableHead label="MRR" sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px] border-r border-border/60" />
               {/* People section */}
               <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">AM</TableHead>
               <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">CM</TableHead>
@@ -640,13 +653,32 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <span className="text-muted-foreground/40 text-xs">...</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs tabular-nums border-r border-border/40">
+                    <TableCell className="text-xs tabular-nums">
                       {summary && summary.outstanding > 0 && (
                         <span className={summary.status === "overdue" ? "text-red-400 font-medium" : "text-muted-foreground"}>{fmt(summary.outstanding)}</span>
                       )}
                       {!billingSummaries && client.stripeCustomerId && (
                         <span className="text-muted-foreground/40">...</span>
                       )}
+                    </TableCell>
+                    <TableCell className="border-r border-border/40">
+                      {(() => {
+                        const a = agreementSummaries?.[client.mondayItemId]
+                        if (!agreementSummaries) {
+                          return <span className="text-muted-foreground/40 text-xs">...</span>
+                        }
+                        if (!a || (a.mrr === 0 && a.adBudget === 0)) {
+                          return null
+                        }
+                        return (
+                          <div className="leading-tight">
+                            <p className="text-xs tabular-nums font-medium">{fmtEuro(a.mrr)}</p>
+                            <p className="text-[10px] tabular-nums text-muted-foreground/60">
+                              {fmtEuro(a.adBudget)} budget
+                            </p>
+                          </div>
+                        )
+                      })()}
                     </TableCell>
                     {/* People section */}
                     <TableCell>
