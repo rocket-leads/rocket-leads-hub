@@ -4,6 +4,9 @@ import Image from "next/image"
 import { LogOut } from "lucide-react"
 import { SidebarNavLinks } from "./sidebar-nav-links"
 import { ThemeToggle } from "./theme-toggle"
+import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-platform-tokens"
+
+const REQUIRED_PLATFORMS: Platform[] = ["slack", "trengo", "monday"]
 
 const NAV_ITEMS = [
   { href: "/watchlist", label: "Watch List", icon: "Eye" as const },
@@ -21,6 +24,23 @@ export async function Sidebar() {
     ...NAV_ITEMS,
     ...(isAdmin ? [{ href: "/settings", label: "Settings", icon: "Settings" as const }] : []),
   ]
+
+  // Count missing platform connections so we can flag the avatar with a dot.
+  // Replies-as-self require Slack/Trengo/Monday tokens per user — if any are
+  // missing, the user's reply path is broken until they connect.
+  let missingPlatforms = 0
+  if (session?.user?.id) {
+    try {
+      const connections = await listUserPlatformConnections(session.user.id)
+      const connected = new Set(connections.map((c) => c.platform))
+      missingPlatforms = REQUIRED_PLATFORMS.filter((p) => !connected.has(p)).length
+    } catch {
+      // Don't block the sidebar render if the lookup fails.
+    }
+  }
+  const accountTitle = missingPlatforms > 0
+    ? `My Account — ${missingPlatforms} platform${missingPlatforms === 1 ? "" : "s"} not connected (Slack, Trengo, Monday)`
+    : "My Account — connect Slack, Trengo, Monday"
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-sidebar-border bg-sidebar flex flex-col">
@@ -57,10 +77,18 @@ export async function Sidebar() {
         <Link
           href="/account"
           className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors group"
-          title="My Account — connect Slack, Trengo, Monday"
+          title={accountTitle}
         >
-          <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/25 to-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary ring-1 ring-primary/15">
-            {session?.user.name?.[0]?.toUpperCase() ?? session?.user.email?.[0]?.toUpperCase() ?? "?"}
+          <div className="relative">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/25 to-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary ring-1 ring-primary/15">
+              {session?.user.name?.[0]?.toUpperCase() ?? session?.user.email?.[0]?.toUpperCase() ?? "?"}
+            </div>
+            {missingPlatforms > 0 && (
+              <span
+                aria-label={`${missingPlatforms} platform${missingPlatforms === 1 ? "" : "s"} not connected`}
+                className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-sidebar"
+              />
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[13px] font-medium leading-tight truncate group-hover:text-foreground transition-colors">{session?.user.name ?? "User"}</p>

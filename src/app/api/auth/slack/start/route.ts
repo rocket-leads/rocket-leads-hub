@@ -21,7 +21,22 @@ export async function GET(req: NextRequest) {
   const state = crypto.randomBytes(24).toString("hex")
   const redirectUri = `${req.nextUrl.origin}/api/auth/slack/callback`
 
-  const authUrl = buildSlackAuthUrl(state, redirectUri)
+  let authUrl: string
+  try {
+    authUrl = buildSlackAuthUrl(state, redirectUri)
+  } catch (e) {
+    // Most common cause: SLACK_CLIENT_ID env var not set yet (Slack app
+    // hasn't been created/configured for this deployment). Send the user
+    // back to /account with a readable error instead of a generic 500.
+    const failUrl = new URL("/account", req.url)
+    failUrl.searchParams.set(
+      "slack_error",
+      e instanceof Error && e.message.includes("SLACK_CLIENT_ID")
+        ? "oauth_not_configured"
+        : "start_failed",
+    )
+    return NextResponse.redirect(failUrl)
+  }
   const res = NextResponse.redirect(authUrl)
 
   // 10 minutes is plenty for the OAuth round-trip; longer leaves a stale

@@ -25,6 +25,7 @@ type Props = {
   trengo: UserPlatformConnection | null
   monday: UserPlatformConnection | null
   trengoChannelIds: number[]
+  slackError: string | null
 }
 
 export function MyAccount({
@@ -34,6 +35,7 @@ export function MyAccount({
   trengo,
   monday,
   trengoChannelIds,
+  slackError,
 }: Props) {
   return (
     <div className="space-y-6 max-w-3xl">
@@ -50,7 +52,7 @@ export function MyAccount({
         </p>
 
         <div className="space-y-3">
-          <SlackCard connection={slack} />
+          <SlackCard connection={slack} initialError={slackError} />
           <TrengoCard connection={trengo} />
           <MondayCard connection={monday} />
         </div>
@@ -69,9 +71,30 @@ export function MyAccount({
 
 // --- Slack (OAuth — coming in C.4) ---
 
-function SlackCard({ connection }: { connection: UserPlatformConnection | null }) {
+const SLACK_ERROR_MESSAGES: Record<string, string> = {
+  oauth_not_configured:
+    "Slack OAuth isn't set up on this deployment yet. An admin needs to create a Slack app and add SLACK_CLIENT_ID, SLACK_CLIENT_SECRET and SLACK_SIGNING_SECRET to the environment.",
+  start_failed: "Couldn't start the Slack connect flow. Please try again or contact an admin.",
+  missing_code_or_state: "Slack returned without a code. Try connecting again.",
+  missing_state_cookie: "Your browser blocked the OAuth state cookie. Try again in a non-incognito window.",
+  state_mismatch: "OAuth state mismatch — possible CSRF or expired flow. Try again.",
+  exchange_failed: "Slack rejected the OAuth code exchange. Try again.",
+  oauth_failed: "Slack reported an OAuth failure. Try again.",
+  store_failed: "Couldn't save your Slack token. Try again or contact an admin.",
+  access_denied: "You cancelled the Slack authorization.",
+}
+
+function SlackCard({
+  connection,
+  initialError,
+}: {
+  connection: UserPlatformConnection | null
+  initialError: string | null
+}) {
   const [pending, setPending] = useState<"disconnecting" | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(
+    initialError ? SLACK_ERROR_MESSAGES[initialError] ?? `Slack connect failed (${initialError}).` : null,
+  )
   const [, startTransition] = useTransition()
 
   function disconnect() {
