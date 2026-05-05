@@ -35,7 +35,7 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   let totalInserted = 0
-  let totalCompletedSynced = 0
+  let totalUpdated = 0
   let totalSkipped = 0
   let processed = 0
   const failures: Array<{ id: string; error: string }> = []
@@ -44,7 +44,7 @@ export async function GET() {
     try {
       const stats = await ingestMeetingActionItems(supabase, m.id)
       totalInserted += stats.inserted
-      totalCompletedSynced += stats.completedSynced
+      totalUpdated += stats.updated
       totalSkipped += stats.skipped
       processed++
     } catch (e) {
@@ -56,9 +56,9 @@ export async function GET() {
     ok: true,
     meetings_total: meetings?.length ?? 0,
     meetings_processed: processed,
-    inserted: totalInserted,
-    completed_synced: totalCompletedSynced,
-    skipped_empty: totalSkipped,
+    bundles_inserted: totalInserted,
+    bundles_updated: totalUpdated,
+    skipped_already_bundled: totalSkipped,
     failures: failures.slice(0, 20),
     failure_count: failures.length,
   })
