@@ -29,7 +29,7 @@ export default async function SettingsPage() {
   ] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
-    supabase.from("users").select("id, email, name, role, slack_user_id, fathom_email, created_at").order("created_at"),
+    supabase.from("users").select("id, email, name, role, slack_user_id, fathom_email, whatsapp_template_name, created_at").order("created_at"),
     supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
     supabase.from("closer_slack_mappings").select("monday_person_name, slack_user_id"),
     supabase.from("settings").select("value").eq("key", "inbox_automation_rules").maybeSingle(),
@@ -102,7 +102,8 @@ export default async function SettingsPage() {
       campaign_manager: "person", first_name: "text7", company_name: "bedrijfsnaam",
       ad_budget: "numeric_mm1vfk40", service_fee: "", contact_direction: "text6",
       contact_channel: "status_11", campaign_status: "status",
-      follow_up_status: "status__1", follow_up_fee: "numbers0__1", next_invoice_date: "date3",
+      follow_up_status: "status__1", follow_up_fee: "numbers0__1",
+      cycle_start_date: "date3", next_invoice_date: "date_mm3297df",
     },
     current_columns: {
       client_board_id: "text_mm1vajgv", country: "color3",
@@ -113,7 +114,8 @@ export default async function SettingsPage() {
       first_name: "tekst74", company_name: "bedrijfsnaam",
       ad_budget: "numeric_mm1vdpd1", service_fee: "", contact_direction: "tekst7",
       contact_channel: "status_17", campaign_status: "color5",
-      follow_up_status: "status__1", follow_up_fee: "numbers0__1", next_invoice_date: "date3",
+      follow_up_status: "status__1", follow_up_fee: "numbers0__1",
+      cycle_start_date: "date3", next_invoice_date: "date_mm3297df",
     },
     client_board_columns: {
       date_created: "date4", date_appointment: "dup__of_date_created__1",
@@ -150,6 +152,7 @@ export default async function SettingsPage() {
           role: u.role,
           slack_user_id: u.slack_user_id ?? null,
           fathom_email: u.fathom_email ?? null,
+          whatsapp_template_name: u.whatsapp_template_name ?? null,
           monday_role: mappingByUser.get(u.id)?.role ?? null,
           monday_person_name: mappingByUser.get(u.id)?.name ?? null,
           created_at: u.created_at,

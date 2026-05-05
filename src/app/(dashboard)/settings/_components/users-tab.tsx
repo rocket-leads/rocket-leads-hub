@@ -20,6 +20,7 @@ import {
   updateUserName,
   updateUserRole,
   updateUserSlackId,
+  updateUserWhatsappTemplate,
 } from "../actions"
 import {
   MONDAY_ROLE_LABELS,
@@ -36,6 +37,7 @@ type User = {
   role: Role
   slack_user_id: string | null
   fathom_email: string | null
+  whatsapp_template_name: string | null
   monday_role: MondayRole | null
   monday_person_name: string | null
   created_at: string
@@ -75,6 +77,8 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
   const [mondaySaving, setMondaySaving] = useState<Record<string, boolean>>({})
   const [slackDrafts, setSlackDrafts] = useState<Record<string, string>>({})
   const [slackSaving, setSlackSaving] = useState<Record<string, boolean>>({})
+  const [waDrafts, setWaDrafts] = useState<Record<string, string>>({})
+  const [waSaving, setWaSaving] = useState<Record<string, boolean>>({})
   const [fathomSaving, setFathomSaving] = useState<Record<string, boolean>>({})
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({})
   const [nameSaving, setNameSaving] = useState<Record<string, boolean>>({})
@@ -190,6 +194,32 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
     }
   }
 
+  async function handleWaTemplateSave(userId: string) {
+    const draft = waDrafts[userId]
+    if (draft === undefined) return
+    const trimmed = draft.trim()
+    const current = users.find((u) => u.id === userId)
+    if (!current) return
+    if ((current.whatsapp_template_name ?? "") === trimmed) return
+    setWaSaving((s) => ({ ...s, [userId]: true }))
+    try {
+      await updateUserWhatsappTemplate(userId, trimmed)
+      setUsers((u) =>
+        u.map((user) =>
+          user.id === userId ? { ...user, whatsapp_template_name: trimmed || null } : user,
+        ),
+      )
+      setWaDrafts((d) => {
+        const { [userId]: _drop, ...rest } = d
+        return rest
+      })
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setWaSaving((s) => ({ ...s, [userId]: false }))
+    }
+  }
+
   async function handleInvite() {
     setError(null)
     setInviting(true)
@@ -215,6 +245,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           role: inviteRole,
           slack_user_id: inviteSlackId.trim() || null,
           fathom_email: null,
+          whatsapp_template_name: null,
           monday_role: inviteMondayRole,
           monday_person_name: inviteMondayName,
           created_at: new Date().toISOString(),
@@ -375,6 +406,9 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
               <TableHead className="w-[180px]">Monday role</TableHead>
               <TableHead className="w-[200px]">Monday name</TableHead>
               <TableHead className="w-[200px]">Slack user ID</TableHead>
+              <TableHead className="w-[200px]" title="Trengo WhatsApp template name (e.g. rl_universal_roel) — used for outbound buiten 24u session window">
+                WhatsApp template
+              </TableHead>
               <TableHead className="w-[220px]">Fathom email</TableHead>
               <TableHead className="w-[100px]">Joined</TableHead>
               <TableHead className="w-[60px]"></TableHead>
@@ -533,6 +567,31 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                         )}
                         {!slackIsSaving && slackIsSaved && (
                           <Check className="h-3.5 w-3.5 text-green-500" aria-label="Saved" />
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
+
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        placeholder="rl_universal_roel"
+                        className="h-8 font-mono text-xs"
+                        value={waDrafts[user.id] ?? user.whatsapp_template_name ?? ""}
+                        onChange={(e) =>
+                          setWaDrafts((d) => ({ ...d, [user.id]: e.target.value }))
+                        }
+                        onBlur={() => handleWaTemplateSave(user.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            ;(e.target as HTMLInputElement).blur()
+                          }
+                        }}
+                      />
+                      <div className="w-4 shrink-0 flex items-center justify-center">
+                        {waSaving[user.id] && (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                         )}
                       </div>
                     </div>

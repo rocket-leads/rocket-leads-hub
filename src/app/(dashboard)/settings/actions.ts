@@ -179,6 +179,23 @@ export async function updateUserRole(userId: string, role: "admin" | "member" | 
   revalidatePath("/settings")
 }
 
+/**
+ * Per-user WhatsApp template name registered in Trengo (e.g.
+ * `rl_universal_roel`). The send-endpoint uses this when posting outside the
+ * 24h session window. Empty string clears the assignment.
+ */
+export async function updateUserWhatsappTemplate(userId: string, templateName: string) {
+  await requireAdmin()
+  const cleaned = templateName.trim() || null
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from("users")
+    .update({ whatsapp_template_name: cleaned })
+    .eq("id", userId)
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
 export async function updateUserName(userId: string, name: string | null) {
   await requireAdmin()
   const trimmed = name?.trim() || null

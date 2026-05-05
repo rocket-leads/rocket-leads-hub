@@ -51,11 +51,12 @@ export async function POST(
 
   const { data: task } = await supabase
     .from("inbox_events")
-    .select("id, client_id, status, source_ref, body")
+    .select("id, client_id, assignee_id, status, source_ref, body")
     .eq("id", taskId)
     .maybeSingle<{
       id: string
       client_id: string | null
+      assignee_id: string | null
       status: string
       source_ref: Record<string, unknown> | null
       body: string | null
@@ -123,18 +124,108 @@ export async function POST(
       )
     }
 
-    // 24h session window: the latest *contact-authored* message must be ≤24h
-    // old. Trengo requires a registered, approved template for outbound text
-    // outside the window. We don't yet wire those up — that's the Stap 3 slice.
+    // 24h session window: free text only allowed when the latest *contact-
+    // authored* message is ≤24h old. Outside the window we have to send via
+    // a Meta-approved template registered in Trengo. The assignee's template
+    // name is stored on `users.whatsapp_template_name` (e.g. rl_universal_roel).
     const windowOpen = await isSessionWindowOpen(waTicket.id)
     if (!windowOpen) {
-      return NextResponse.json(
-        {
-          error:
-            "Buiten het 24-uurs WhatsApp session window — Meta vereist een goedgekeurd template voor outbound buiten dat venster. Voor nu: stuur 'm even handmatig vanuit Trengo (template-flow komt binnenkort).",
-        },
-        { status: 501 },
-      )
+      // Look up the assignee's registered template. Without one, we can't
+      // initiate outbound — fall back to "send manually" with a friendly hint
+      // pointing at where to register it.
+      const assigneeId = task.assignee_id
+      if (!assigneeId) {
+        return NextResponse.json(
+          { error: "Task has no assignee — kan geen template-naam opzoeken." },
+          { status: 400 },
+        )
+      }
+      const { data: assignee } = await supabase
+        .from("users")
+        .select("name, whatsapp_template_name")
+        .eq("id", assigneeId)
+        .maybeSingle<{ name: string | null; whatsapp_template_name: string | null }>()
+      const templateName = assignee?.whatsapp_template_name?.trim() ?? ""
+      if (!templateName) {
+        return NextResponse.json(
+          {
+            error: `Buiten 24u session window en ${assignee?.name ?? "deze AM"} heeft nog geen WhatsApp-template gekoppeld in Settings → Users. Stuur 'm even handmatig of vraag een admin om de template_name in te stellen.`,
+          },
+          { status: 501 },
+        )
+      }
+
+      // Send via Trengo's HSM template endpoint. We post into the existing
+      // ticket so the conversation stays threaded. Trengo accepts a `template`
+      // payload on the message endpoint that wraps the WA template send.
+      let templateOutboundId: string
+      try {
+        const res = await fetch(
+          `https://app.trengo.com/api/v2/tickets/${waTicket.id}/messages`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${userToken}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify({
+              type: "TEMPLATE",
+              template_name: templateName,
+              language: "nl",
+              params: [trimmed],
+              internal_note: false,
+            }),
+          },
+        )
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "")
+          return NextResponse.json(
+            {
+              error: `Trengo template send failed (${res.status}): ${errText.slice(0, 200)}. Verifieer dat template '${templateName}' goedgekeurd is.`,
+            },
+            { status: 502 },
+          )
+        }
+        const json = (await res.json()) as { id?: number | string; data?: { id?: number | string } }
+        templateOutboundId = String(json.id ?? json.data?.id ?? "")
+      } catch (e) {
+        return NextResponse.json(
+          { error: `Trengo template send failed: ${e instanceof Error ? e.message : String(e)}` },
+          { status: 502 },
+        )
+      }
+
+      // Audit + done in one shot — the regular post path is skipped because
+      // we already wrote the message above.
+      const sentAt = new Date().toISOString()
+      const auditNote = `\n\n— Verstuurd via Trengo WhatsApp template '${templateName}' (ticket ${waTicket.id}, message ${templateOutboundId}) op ${sentAt.slice(0, 10)}.`
+      const sourceRef = (task.source_ref ?? {}) as Record<string, unknown>
+      await supabase
+        .from("inbox_events")
+        .update({
+          status: "done",
+          completed_at: sentAt,
+          body: (task.body ?? "") + auditNote,
+          source_ref: {
+            ...sourceRef,
+            sent_via: "trengo_whatsapp_template",
+            sent_template_name: templateName,
+            sent_ticket_id: waTicket.id,
+            sent_message_id: templateOutboundId,
+            sent_at: sentAt,
+          },
+        })
+        .eq("id", taskId)
+        .in("status", ["open", "in_progress"])
+
+      return NextResponse.json({
+        ok: true,
+        ticketId: waTicket.id,
+        messageId: templateOutboundId,
+        channel: "trengo_whatsapp_template",
+        templateName,
+      })
     }
 
     targetTicket = waTicket

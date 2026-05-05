@@ -207,20 +207,26 @@ STIJL (email):
 - Geen "Met vriendelijke groet" — geen formele afsluiting
 
 OUTPUT: Alleen de berichttekst, geen quotes, geen markdown.`
-    : `Je schrijft een korte Nederlandse betalingsherinnering via WHATSAPP voor een Account Manager bij Rocket Leads.
+    : `Je schrijft de body van een korte Nederlandse WhatsApp-betalingsherinnering die via een Trengo template verstuurd wordt.
 
-DOEL: De klant vriendelijk attenderen op een openstaande factuur, alsof je een appje stuurt — kort, persoonlijk, niet zakelijk.
+CONTEXT: Het template heeft de structuur "Hey {{1}} Groetjes <AM-naam>". Jouw output gaat in de {{1}}-placeholder. Begin daarom met de voornaam gevolgd door een komma, daarna de boodschap, en eindig met een punt zodat het mooi aansluit op "Groetjes <AM>".
 
-STIJL (WhatsApp):
-- Nederlands, conversationeel
-- Opener: "Hé {voornaam}" of "Hi {voornaam}" — geen "Hallo" of "Beste"
+OUTPUT-FORMAT (verplicht): "{voornaam}, {body eindigend op een punt}"
+
+VOORBEELD: "Dietrich, kleine vraag — factuur RL-2026-1234 (€1.250) staat al 4 dagen open. Even checken of er iets is misgegaan?"
+→ Resulteert in WhatsApp-bericht: "Hey Dietrich, kleine vraag — factuur RL-2026-1234 (€1.250) staat al 4 dagen open. Even checken of er iets is misgegaan? Groetjes Roel"
+
+STIJL:
+- Nederlands, conversationeel — alsof je een appje stuurt
+- Begin met de voornaam + komma
 - 1-3 korte zinnen, max ~40 woorden
-- Noem het factuurnummer en het bedrag, en eventueel hoe lang het al openstaat
+- Noem expliciet: factuurnummer, bedrag, en hoe lang het openstaat (als bekend)
 - Frame: "kleine vraag", "zag net dat...", "is er iets misgegaan?"
-- Geen formele afsluiting, geen handtekening
+- Geen "Hé" of "Hi" als opener — de "Hey" zit al in het template
+- Geen "Groetjes" of handtekening — die zitten al in het template
 - Geen emoji's
 
-OUTPUT: Alleen de berichttekst, geen quotes, geen markdown.`
+OUTPUT: Alleen de body-tekst die in {{1}} komt, geen quotes, geen markdown, geen "Hey" prefix.`
 
   const msg = await anthropic.messages.create({
     model: "claude-haiku-4-5-20251001",
