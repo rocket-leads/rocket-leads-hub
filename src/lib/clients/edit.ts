@@ -5,6 +5,7 @@ import {
   setItemColumnValueRaw,
 } from "@/lib/integrations/monday"
 import { syncClientToSupabase } from "./sync"
+import { deriveInvoiceDate } from "./billing-cycle"
 
 const SIMPLE_FIELDS = [
   "company_name",
@@ -17,6 +18,11 @@ const SIMPLE_FIELDS = [
   "client_board_id",
   "google_drive_id",
   "kick_off_date",
+  // The cycle-start drives the invoice date — see updateClientField below for
+  // the dual-write that keeps Monday's `date_mm3297df` in lockstep with this.
+  "cycle_start_date",
+  // Kept editable for legacy paths and admin overrides, but the canonical
+  // flow is to edit `cycle_start_date` and let the derived value flow.
   "next_invoice_date",
 ] as const
 
@@ -65,6 +71,13 @@ export async function updateClientField(
 
   if (SIMPLE_SET.has(update.fieldKey) && "value" in update) {
     await setItemColumnValue(boardType, mondayItemId, update.fieldKey, update.value)
+    // Cycle start drives the invoice date. Whenever cycle changes (incl. clearing
+    // it), recompute the invoice date and write that to Monday too so the two
+    // columns there can never drift. Empty cycle → empty invoice.
+    if (update.fieldKey === "cycle_start_date") {
+      const derivedInvoice = deriveInvoiceDate(update.value) ?? ""
+      await setItemColumnValue(boardType, mondayItemId, "next_invoice_date", derivedInvoice)
+    }
   } else if (STATUS_SET.has(update.fieldKey) && "label" in update) {
     // Empty label clears the status — Monday accepts `{ label: "" }` as a reset.
     await setItemColumnValueRaw(boardType, mondayItemId, update.fieldKey, {

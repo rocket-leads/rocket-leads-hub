@@ -1,8 +1,10 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { ExternalLink } from "lucide-react"
+import { ExternalLink, FilePlus } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -15,14 +17,31 @@ import { Panel } from "@/components/ui/panel"
 import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edit-cell"
 import type { ClientStatus } from "@/lib/clients/status"
 import { NextInvoiceDateCell } from "./next-invoice-date-cell"
+import { CreateInvoiceDialog } from "./create-invoice-dialog"
 
 export type UpcomingInvoice = {
   mondayItemId: string
   name: string
+  /** When finance sends the invoice. Always derived as `cycleStartDate - 7d`,
+   *  read-only in the UI — edit the cycle to move the invoice. */
   nextInvoiceDate: string
+  /** When the new billing cycle starts for the client. Manual source of truth;
+   *  changing this here writes both Monday columns in lockstep. */
+  cycleStartDate: string
   stripeCustomerId: string | null
-  mrr: number
+  /** Service fee (sum of platform fees + follow-up fee from the agreement).
+   *  Was previously called "MRR" — renamed to "Fee" because finance reads it
+   *  as "what we charge for managing the campaign", not "monthly recurring
+   *  revenue projection". The number is the same. */
+  fee: number
+  /** Total ad budget across the agreement's campaigns. Only meaningful when
+   *  the client runs ads via Rocket Leads' own ad account — otherwise the
+   *  client is paying Meta directly and we don't invoice it. */
   adBudget: number
+  /** True when the client's Meta ad account ID matches Rocket Leads'. When
+   *  false, the ad-budget cell renders as "—" and the create-invoice dialog
+   *  omits the ad-budget line — surfacing it would just confuse finance. */
+  usesRocketLeadsAdAccount: boolean
   /** Hub-canonical campaign status (live / onboarding / on_hold / churned).
    *  On Hold + Churned are filtered out server-side because they don't get
    *  invoiced; the column shows live vs onboarding so finance can spot which
@@ -122,7 +141,7 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
   }
 
   // Headline numbers across the whole page so finance has a one-glance summary.
-  const totalMrr = rows.reduce((s, r) => s + r.mrr, 0)
+  const totalFee = rows.reduce((s, r) => s + r.fee, 0)
   const dueThisWeek = groups
     .filter((g) => g.key === "overdue" || g.key === "today" || g.key === "this_week")
     .reduce((s, g) => s + g.rows.length, 0)
@@ -137,7 +156,7 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SummaryStat label="Scheduled clients" value={String(rows.length)} />
         <SummaryStat label="Due this week" value={String(dueThisWeek)} tone={dueThisWeek > 0 ? "amber" : undefined} />
-        <SummaryStat label="Total MRR" value={fmtEuro(totalMrr)} />
+        <SummaryStat label="Total fee" value={fmtEuro(totalFee)} hint="Sum of service fees across scheduled clients" />
         <SummaryStat
           label="Outstanding (Stripe)"
           value={fmtEuro(totalOutstanding)}
@@ -161,9 +180,11 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
             <TableHeader>
               <TableRow className="border-b border-border/40 bg-muted/30 hover:bg-muted/30 [&>th]:h-9">
                 <TableHead className="text-[12px] text-foreground/80 font-semibold">Client</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[150px]">Action</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Status</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Next invoice</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">MRR</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Invoice date</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">New cycle</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Fee</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[110px]">Ad budget</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Payment (Stripe)</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Stripe</TableHead>
@@ -171,73 +192,127 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
             </TableHeader>
             <TableBody>
               {group.rows.map((row) => (
-                <TableRow
-                  key={row.mondayItemId}
-                  className="border-b border-border/40 row-hover"
-                >
-                  <TableCell className="py-2.5">
-                    <Link
-                      href={`/clients/${row.mondayItemId}`}
-                      className="text-sm font-medium hover:text-primary transition-colors"
-                    >
-                      {row.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="py-2.5">
-                    <StatusEditCell
-                      mondayItemId={row.mondayItemId}
-                      status={row.campaignStatus}
-                    />
-                  </TableCell>
-                  <TableCell className="py-2.5">
-                    <NextInvoiceDateCell
-                      mondayItemId={row.mondayItemId}
-                      value={row.nextInvoiceDate}
-                    />
-                  </TableCell>
-                  <TableCell className="py-2.5 text-xs tabular-nums font-medium">
-                    {row.mrr > 0 ? fmtEuro(row.mrr) : <span className="text-muted-foreground/40">—</span>}
-                  </TableCell>
-                  <TableCell className="py-2.5 text-xs tabular-nums text-muted-foreground">
-                    {row.adBudget > 0 ? fmtEuro(row.adBudget) : <span className="text-muted-foreground/40">—</span>}
-                  </TableCell>
-                  <TableCell className="py-2.5">
-                    <PaymentStatusCell
-                      status={row.paymentStatus}
-                      outstanding={row.outstanding}
-                      hasStripe={!!row.stripeCustomerId}
-                    />
-                  </TableCell>
-                  <TableCell className="py-2.5">
-                    {row.stripeCustomerId ? (
-                      <a
-                        href={`https://dashboard.stripe.com/customers/${row.stripeCustomerId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        <Image
-                          src="/logos/brands/stripe.svg"
-                          alt=""
-                          width={12}
-                          height={12}
-                          className="h-3 w-3 object-contain"
-                          unoptimized
-                        />
-                        Open
-                        <ExternalLink className="h-3 w-3 opacity-50" />
-                      </a>
-                    ) : (
-                      <span className="text-[11px] text-muted-foreground/50">No Stripe</span>
-                    )}
-                  </TableCell>
-                </TableRow>
+                <BillingRow key={row.mondayItemId} row={row} />
               ))}
             </TableBody>
           </Table>
         </Panel>
       ))}
     </div>
+  )
+}
+
+/**
+ * Per-row state holder. Lifted into its own component so the create-invoice
+ * dialog state is row-scoped — opening one row's dialog doesn't bleed into
+ * the others. Keeps the table body declarative.
+ */
+function BillingRow({ row }: { row: UpcomingInvoice }) {
+  const [invoiceOpen, setInvoiceOpen] = useState(false)
+
+  return (
+    <>
+      <TableRow className="border-b border-border/40 row-hover">
+        <TableCell className="py-2.5">
+          <Link
+            href={`/clients/${row.mondayItemId}`}
+            className="text-sm font-medium hover:text-primary transition-colors"
+          >
+            {row.name}
+          </Link>
+        </TableCell>
+        <TableCell className="py-2.5">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!row.stripeCustomerId}
+            onClick={() => setInvoiceOpen(true)}
+            title={row.stripeCustomerId ? "Create + send a Stripe invoice" : "No Stripe customer linked"}
+          >
+            <FilePlus className="h-3.5 w-3.5" />
+            Create invoice
+          </Button>
+        </TableCell>
+        <TableCell className="py-2.5">
+          <StatusEditCell
+            mondayItemId={row.mondayItemId}
+            status={row.campaignStatus}
+          />
+        </TableCell>
+        <TableCell className="py-2.5 text-xs tabular-nums">
+          {/* Invoice date is derived (cycle − 7d) — read-only here. Edit the
+              cycle column instead and we'll keep both Monday columns synced. */}
+          {row.nextInvoiceDate ? (
+            fmtDate(row.nextInvoiceDate)
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </TableCell>
+        <TableCell className="py-2.5">
+          <NextInvoiceDateCell
+            mondayItemId={row.mondayItemId}
+            value={row.cycleStartDate}
+            fieldKey="cycle_start_date"
+            placeholder="Set cycle start"
+          />
+        </TableCell>
+        <TableCell className="py-2.5 text-xs tabular-nums font-medium">
+          {row.fee > 0 ? fmtEuro(row.fee) : <span className="text-muted-foreground/40">—</span>}
+        </TableCell>
+        <TableCell className="py-2.5 text-xs tabular-nums text-muted-foreground">
+          {/* Only show ad budget when the client runs ads via OUR ad account.
+              Otherwise the client pays Meta directly and surfacing the figure
+              would just confuse finance into thinking we invoice it. */}
+          {row.usesRocketLeadsAdAccount && row.adBudget > 0 ? (
+            fmtEuro(row.adBudget)
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </TableCell>
+        <TableCell className="py-2.5">
+          <PaymentStatusCell
+            status={row.paymentStatus}
+            outstanding={row.outstanding}
+            hasStripe={!!row.stripeCustomerId}
+          />
+        </TableCell>
+        <TableCell className="py-2.5">
+          {row.stripeCustomerId ? (
+            <a
+              href={`https://dashboard.stripe.com/customers/${row.stripeCustomerId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Image
+                src="/logos/brands/stripe.svg"
+                alt=""
+                width={12}
+                height={12}
+                className="h-3 w-3 object-contain"
+                unoptimized
+              />
+              Open
+              <ExternalLink className="h-3 w-3 opacity-50" />
+            </a>
+          ) : (
+            <span className="text-[11px] text-muted-foreground/50">No Stripe</span>
+          )}
+        </TableCell>
+      </TableRow>
+
+      {invoiceOpen && row.stripeCustomerId && (
+        <CreateInvoiceDialog
+          mondayItemId={row.mondayItemId}
+          stripeCustomerId={row.stripeCustomerId}
+          clientName={row.name}
+          fee={row.fee}
+          adBudget={row.adBudget}
+          usesRocketLeadsAdAccount={row.usesRocketLeadsAdAccount}
+          onClose={() => setInvoiceOpen(false)}
+        />
+      )}
+    </>
   )
 }
 

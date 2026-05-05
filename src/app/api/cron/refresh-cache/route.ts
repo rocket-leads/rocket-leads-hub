@@ -126,26 +126,56 @@ export async function GET(req: NextRequest) {
       itemToClientId[row.monday_item_id] = row.id
     }
 
-    // 2a. Sync `next_invoice_date` (Monday's `date3` column) back to Supabase.
-    // The /billing page queries Supabase for speed; without a recurring sync
-    // the column is only populated when individual client pages get visited
-    // (sync.ts is fire-and-forget on detail-page load), so most clients show
-    // as unscheduled here even when Monday has a date set. We only update
-    // existing rows — never create stub rows for unsynced clients.
+    // 2a. Sync billing dates (cycle + invoice) back to Supabase, with drift
+    // correction: invoice date = cycle - 7d is enforced on every tick, so if
+    // Monday's invoice column got out of sync (cycle edited but invoice not
+    // recomputed, manual override, etc.) we rewrite Monday's `date_mm3297df`
+    // column to match. Cycle is the single source of truth.
+    //
+    // Only update existing Supabase rows — never insert stubs for unsynced
+    // clients.
     {
+      const { setItemColumnValue } = await import("@/lib/integrations/monday")
+      const { deriveInvoiceDate } = await import("@/lib/clients/billing-cycle")
       const dateRe = /^\d{4}-\d{2}-\d{2}$/
       const targets = allClients.filter((c) => itemToClientId[c.mondayItemId])
+
+      // Pass 1 — drift correct Monday's invoice column where cycle - 7 != current
+      // invoice. Best-effort: if a write fails we still proceed to the Supabase
+      // sync below so the page reflects current state.
+      const driftWrites: Array<Promise<unknown>> = []
+      for (const c of targets) {
+        const cycle = dateRe.test(c.cycleStartDate) ? c.cycleStartDate : null
+        const expected = cycle ? deriveInvoiceDate(cycle) : null
+        const current = dateRe.test(c.nextInvoiceDate) ? c.nextInvoiceDate : null
+        if ((expected ?? "") !== (current ?? "")) {
+          // Mutate the in-memory Monday client so the Supabase mirror below
+          // writes the corrected value rather than the stale one.
+          c.nextInvoiceDate = expected ?? ""
+          driftWrites.push(
+            setItemColumnValue(c.boardType, c.mondayItemId, "next_invoice_date", expected ?? "")
+              .catch((e) => console.error(`[refresh-cache] drift write failed for ${c.mondayItemId}:`, e instanceof Error ? e.message : e)),
+          )
+        }
+      }
+      if (driftWrites.length > 0) {
+        await Promise.allSettled(driftWrites)
+        console.log(`[refresh-cache] drift-corrected Monday invoice date on ${driftWrites.length} clients`)
+      }
+
+      // Pass 2 — mirror both date columns into Supabase in one round per client.
       const dateSyncs = targets.map((c) => {
-        const value = dateRe.test(c.nextInvoiceDate) ? c.nextInvoiceDate : null
+        const cycle = dateRe.test(c.cycleStartDate) ? c.cycleStartDate : null
+        const invoice = dateRe.test(c.nextInvoiceDate) ? c.nextInvoiceDate : null
         return supabase
           .from("clients")
-          .update({ next_invoice_date: value })
+          .update({ cycle_start_date: cycle, next_invoice_date: invoice })
           .eq("monday_item_id", c.mondayItemId)
       })
       const results = await Promise.allSettled(dateSyncs)
       const failed = results.filter((r) => r.status === "rejected").length
       const written = results.length - failed
-      console.log(`[refresh-cache] next_invoice_date synced for ${written}/${results.length} clients${failed > 0 ? ` (${failed} failed)` : ""}`)
+      console.log(`[refresh-cache] cycle + invoice dates synced for ${written}/${results.length} clients${failed > 0 ? ` (${failed} failed)` : ""}`)
     }
 
     const clientIds = Object.values(itemToClientId)

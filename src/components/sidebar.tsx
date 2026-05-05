@@ -5,6 +5,8 @@ import { LogOut } from "lucide-react"
 import { SidebarNavLinks } from "./sidebar-nav-links"
 import { ThemeToggle } from "./theme-toggle"
 import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-platform-tokens"
+import { readCache } from "@/lib/cache"
+import type { BillingSummary } from "@/lib/integrations/stripe"
 
 const REQUIRED_PLATFORMS: Platform[] = ["slack", "trengo", "monday"]
 
@@ -49,6 +51,22 @@ export async function Sidebar() {
       // Don't block the sidebar render if the lookup fails.
     }
   }
+
+  // For finance users, surface a purple dot on the Billing nav whenever
+  // Stripe reports any overdue invoices across our customers. Reads the
+  // existing `billing_summaries` cache the cron writes — fast (zero extra
+  // queries during render) and only off by at most one cron tick.
+  let billingOverdueCount = 0
+  if (isFinance) {
+    try {
+      const summaries = await readCache<Record<string, BillingSummary>>("billing_summaries")
+      if (summaries) {
+        billingOverdueCount = Object.values(summaries).filter((s) => s.status === "overdue").length
+      }
+    } catch {
+      // Silent — a missing cache shouldn't break the sidebar.
+    }
+  }
   const accountTitle = missingPlatforms > 0
     ? `My Account — ${missingPlatforms} platform${missingPlatforms === 1 ? "" : "s"} not connected (Slack, Trengo, Monday)`
     : "My Account — connect Slack, Trengo, Monday"
@@ -78,7 +96,7 @@ export async function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <SidebarNavLinks items={allItems} />
+      <SidebarNavLinks items={allItems} billingOverdueCount={billingOverdueCount} />
 
       {/* User section */}
       <div className="mt-auto border-t border-sidebar-border p-3">

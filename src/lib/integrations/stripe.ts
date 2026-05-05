@@ -220,3 +220,91 @@ export async function fetchBillingData(customerId: string): Promise<BillingData>
     avgPaymentDays: avgPaymentDays ? Math.round(avgPaymentDays) : null,
   }
 }
+
+export type CreateInvoiceInput = {
+  customerId: string
+  /** One line per service. Amounts are expected in EUR (e.g. 450 for €450.00),
+   *  converted to cents on the way into Stripe. Empty array → throws. */
+  items: Array<{ description: string; amountEuro: number }>
+  /** Days from today until the invoice is due. Defaults to 7 — matches the
+   *  standard Rocket Leads payment term. */
+  daysUntilDue?: number
+  currency?: string
+}
+
+export type CreateInvoiceResult = {
+  invoiceId: string
+  number: string | null
+  status: string
+  amountDue: number
+  hostedUrl: string | null
+  invoicePdf: string | null
+}
+
+/**
+ * Create + finalize + send a Stripe invoice for a customer in one shot.
+ * Mirrors the manual workflow finance currently does in the Stripe dashboard:
+ *   1. New draft invoice with `collection_method: 'send_invoice'`.
+ *   2. One invoice-item per line.
+ *   3. Finalize → status moves from draft to open.
+ *   4. Send → email goes out via Stripe's hosted template.
+ *
+ * Best-effort cleanup on failure: if any step after `invoices.create` errors,
+ * the draft is voided so it doesn't sit in Stripe forever as half-built.
+ */
+export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<CreateInvoiceResult> {
+  const items = input.items.filter((i) => i.description.trim() && i.amountEuro > 0)
+  if (items.length === 0) {
+    throw new Error("At least one line item with a description and amount is required.")
+  }
+
+  const stripe = await getStripe()
+  const currency = (input.currency ?? "eur").toLowerCase()
+  const daysUntilDue = Math.max(0, Math.trunc(input.daysUntilDue ?? 7))
+
+  // 1. Draft.
+  const draft = await stripe.invoices.create({
+    customer: input.customerId,
+    collection_method: "send_invoice",
+    days_until_due: daysUntilDue,
+    currency,
+    auto_advance: false,
+  })
+
+  if (!draft.id) throw new Error("Stripe did not return an invoice id")
+  const invoiceId = draft.id
+
+  try {
+    // 2. Line items — must use cents, Stripe truncates fractional cents.
+    for (const item of items) {
+      await stripe.invoiceItems.create({
+        customer: input.customerId,
+        invoice: invoiceId,
+        amount: Math.round(item.amountEuro * 100),
+        currency,
+        description: item.description.trim(),
+      })
+    }
+
+    // 3. Finalize and 4. send.
+    await stripe.invoices.finalizeInvoice(invoiceId)
+    const sent = await stripe.invoices.sendInvoice(invoiceId)
+
+    return {
+      invoiceId,
+      number: sent.number,
+      status: sent.status ?? "open",
+      amountDue: (sent.amount_due ?? 0) / 100,
+      hostedUrl: sent.hosted_invoice_url ?? null,
+      invoicePdf: sent.invoice_pdf ?? null,
+    }
+  } catch (e) {
+    // Roll back the draft so half-built invoices don't pile up.
+    try {
+      await stripe.invoices.voidInvoice(invoiceId)
+    } catch {
+      // Best-effort — if we can't void it the draft will still need manual cleanup.
+    }
+    throw e
+  }
+}

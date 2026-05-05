@@ -7,9 +7,7 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
 
   // Monday returns dates as `YYYY-MM-DD` text; treat anything else as unset
   // rather than risk feeding Postgres a malformed value.
-  const nextInvoiceDate = /^\d{4}-\d{2}-\d{2}$/.test(client.nextInvoiceDate)
-    ? client.nextInvoiceDate
-    : null
+  const dateOrNull = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null)
 
   const syncFields = {
     monday_board_type: client.boardType,
@@ -19,7 +17,8 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
     stripe_customer_id: client.stripeCustomerId || null,
     trengo_contact_ids: client.trengoContactId ? [client.trengoContactId] : [],
     google_drive_folder_id: client.googleDriveId || null,
-    next_invoice_date: nextInvoiceDate,
+    cycle_start_date: dateOrNull(client.cycleStartDate),
+    next_invoice_date: dateOrNull(client.nextInvoiceDate),
     updated_at: new Date().toISOString(),
   }
 

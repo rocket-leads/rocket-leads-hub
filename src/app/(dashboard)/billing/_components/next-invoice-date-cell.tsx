@@ -7,18 +7,28 @@ import { Calendar, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
- * Inline-editable next-invoice-date cell. Shows the current date as a button;
- * click reveals a native date input that auto-saves on change. After save we
- * `router.refresh()` so the row reshuffles into the right time-bucket (overdue
- * → today → this week → …) without a full page reload.
+ * Inline-editable date cell used by the Billing page for the cycle-start
+ * date (and historically the invoice date — invoice is now read-only since
+ * it's always derived as `cycle - 7d`). Shows the current date as a button;
+ * click reveals a native date input that auto-saves on change.
  *
- * Backed by PATCH /api/clients/[id] with `fieldKey: "next_invoice_date"`,
- * which writes Monday's `date3` column and re-syncs Supabase.
+ * Backed by PATCH /api/clients/[id]. When the field is `cycle_start_date`,
+ * the server-side edit pipeline ALSO writes Monday's invoice column to
+ * `cycle - 7d` so the two columns there stay locked in step.
+ *
+ * After save we `router.refresh()` so the row reshuffles into the right
+ * time-bucket (overdue → today → this week → …) without a full page reload.
  */
 type Props = {
   mondayItemId: string
   /** YYYY-MM-DD or empty when unset. */
   value: string
+  /** Which Monday-mirrored column to write. Defaults to `next_invoice_date`
+   *  for backwards compatibility; pass `cycle_start_date` for the New cycle
+   *  column on the Billing page. */
+  fieldKey?: "next_invoice_date" | "cycle_start_date"
+  /** Empty-state label. Defaults to "Set date". */
+  placeholder?: string
 }
 
 function fmt(iso: string): string {
@@ -27,7 +37,12 @@ function fmt(iso: string): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
 }
 
-export function NextInvoiceDateCell({ mondayItemId, value }: Props) {
+export function NextInvoiceDateCell({
+  mondayItemId,
+  value,
+  fieldKey = "next_invoice_date",
+  placeholder = "Set date",
+}: Props) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [optimistic, setOptimistic] = useState(value)
@@ -54,7 +69,7 @@ export function NextInvoiceDateCell({ mondayItemId, value }: Props) {
       const res = await fetch(`/api/clients/${mondayItemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fieldKey: "next_invoice_date", value: next }),
+        body: JSON.stringify({ fieldKey, value: next }),
       })
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string }
@@ -104,7 +119,7 @@ export function NextInvoiceDateCell({ mondayItemId, value }: Props) {
           title="Click to edit"
         >
           <Calendar className="h-3 w-3 text-muted-foreground/60" />
-          {optimistic ? fmt(optimistic) : <span className="text-muted-foreground/60">Set date</span>}
+          {optimistic ? fmt(optimistic) : <span className="text-muted-foreground/60">{placeholder}</span>}
         </button>
       )}
       {mutation.isPending && (

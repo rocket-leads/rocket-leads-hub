@@ -30,7 +30,15 @@ function InboxBadge() {
   )
 }
 
-export function SidebarNavLinks({ items }: { items: NavItem[] }) {
+type Props = {
+  items: NavItem[]
+  /** When > 0, renders a small purple dot next to the Billing nav item. Set
+   *  by the server based on Stripe's overdue count and only populated for
+   *  the finance user — non-finance users see no dot regardless of state. */
+  billingOverdueCount?: number
+}
+
+export function SidebarNavLinks({ items, billingOverdueCount = 0 }: Props) {
   const pathname = usePathname()
 
   return (
@@ -42,6 +50,7 @@ export function SidebarNavLinks({ items }: { items: NavItem[] }) {
         const Icon = ICONS[icon]
         const active = pathname.startsWith(href)
         const isInbox = href === "/inbox"
+        const isBilling = href === "/billing"
         return (
           <Link
             key={href}
@@ -55,6 +64,13 @@ export function SidebarNavLinks({ items }: { items: NavItem[] }) {
             <Icon className={`h-[17px] w-[17px] transition-colors ${active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"}`} />
             {label}
             {isInbox && <InboxBadge />}
+            {isBilling && billingOverdueCount > 0 && (
+              <span
+                className="ml-auto h-2 w-2 rounded-full bg-primary"
+                title={`${billingOverdueCount} overdue Stripe invoice${billingOverdueCount === 1 ? "" : "s"}`}
+                aria-label={`${billingOverdueCount} overdue invoices`}
+              />
+            )}
           </Link>
         )
       })}
