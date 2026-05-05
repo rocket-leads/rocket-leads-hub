@@ -60,6 +60,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (data) {
           session.user.id = data.id
           session.user.role = data.role
+
+          // Detect the finance role from user_column_mappings — orthogonal to
+          // the access role, so a finance person can still be a member or an
+          // admin. Used by the sidebar to swap to a finance-tailored nav and
+          // by gates that surface billing-only flows.
+          const { data: financeRow } = await supabase
+            .from("user_column_mappings")
+            .select("user_id")
+            .eq("user_id", data.id)
+            .eq("monday_column_role", "finance")
+            .maybeSingle()
+          session.user.isFinance = !!financeRow
         }
       } catch (err) {
         console.error("Failed to load user role:", err)

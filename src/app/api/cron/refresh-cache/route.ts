@@ -126,6 +126,28 @@ export async function GET(req: NextRequest) {
       itemToClientId[row.monday_item_id] = row.id
     }
 
+    // 2a. Sync `next_invoice_date` (Monday's `date3` column) back to Supabase.
+    // The /billing page queries Supabase for speed; without a recurring sync
+    // the column is only populated when individual client pages get visited
+    // (sync.ts is fire-and-forget on detail-page load), so most clients show
+    // as unscheduled here even when Monday has a date set. We only update
+    // existing rows — never create stub rows for unsynced clients.
+    {
+      const dateRe = /^\d{4}-\d{2}-\d{2}$/
+      const targets = allClients.filter((c) => itemToClientId[c.mondayItemId])
+      const dateSyncs = targets.map((c) => {
+        const value = dateRe.test(c.nextInvoiceDate) ? c.nextInvoiceDate : null
+        return supabase
+          .from("clients")
+          .update({ next_invoice_date: value })
+          .eq("monday_item_id", c.mondayItemId)
+      })
+      const results = await Promise.allSettled(dateSyncs)
+      const failed = results.filter((r) => r.status === "rejected").length
+      const written = results.length - failed
+      console.log(`[refresh-cache] next_invoice_date synced for ${written}/${results.length} clients${failed > 0 ? ` (${failed} failed)` : ""}`)
+    }
+
     const clientIds = Object.values(itemToClientId)
     const selectedByMondayItemId: Record<string, Set<string>> = {}
 

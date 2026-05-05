@@ -17,10 +17,13 @@ export const STATUS_LABELS: Record<ClientStatus, string> = {
 /** Order shown in dropdowns and filters. */
 export const STATUS_OPTIONS: ClientStatus[] = ["onboarding", "live", "on_hold", "churned"]
 
+// Colour palette mirrors Monday's column-option styling so the Hub and the
+// CRM read identically at-a-glance: grey Onboarding · green Live · yellow
+// On Hold · red Churned. Used for both the dot and the pill background.
 export const STATUS_TONES: Record<ClientStatus, { dot: string; pill: string }> = {
-  onboarding: { dot: "bg-amber-500", pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  onboarding: { dot: "bg-zinc-400", pill: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400" },
   live: { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
-  on_hold: { dot: "bg-zinc-400", pill: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400" },
+  on_hold: { dot: "bg-yellow-500", pill: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" },
   churned: { dot: "bg-red-500", pill: "bg-red-500/10 text-red-600 dark:text-red-400" },
 }
 

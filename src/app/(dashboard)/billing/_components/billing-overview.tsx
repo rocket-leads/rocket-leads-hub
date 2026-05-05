@@ -12,6 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Panel } from "@/components/ui/panel"
+import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edit-cell"
+import type { ClientStatus } from "@/lib/clients/status"
+import { NextInvoiceDateCell } from "./next-invoice-date-cell"
 
 export type UpcomingInvoice = {
   mondayItemId: string
@@ -20,6 +23,20 @@ export type UpcomingInvoice = {
   stripeCustomerId: string | null
   mrr: number
   adBudget: number
+  /** Hub-canonical campaign status (live / onboarding / on_hold / churned).
+   *  On Hold + Churned are filtered out server-side because they don't get
+   *  invoiced; the column shows live vs onboarding so finance can spot which
+   *  ones are still in setup. */
+  campaignStatus: ClientStatus
+  /** Stripe is the source of truth for payment state. Monday's "Administration"
+   *  column is ignored here on purpose — it gets out of sync. Null when the
+   *  client has no Stripe customer linked OR the billing summary cache hasn't
+   *  resolved them yet. */
+  paymentStatus: "complete" | "open" | "overdue" | null
+  /** Total € outstanding across all open Stripe invoices for this customer.
+   *  Useful context when finance is scheduling the *next* invoice — chase
+   *  unpaid first if there's already a balance. */
+  outstanding: number
 }
 
 type Group = {
@@ -109,6 +126,11 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
   const dueThisWeek = groups
     .filter((g) => g.key === "overdue" || g.key === "today" || g.key === "this_week")
     .reduce((s, g) => s + g.rows.length, 0)
+  // Stripe-derived: total € unpaid across all scheduled clients, and how many
+  // of them have an overdue balance. Lets finance triage "send next invoice"
+  // vs "chase the overdue first".
+  const totalOutstanding = rows.reduce((s, r) => s + r.outstanding, 0)
+  const overdueCount = rows.filter((r) => r.paymentStatus === "overdue").length
 
   return (
     <div className="space-y-6">
@@ -117,9 +139,10 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
         <SummaryStat label="Due this week" value={String(dueThisWeek)} tone={dueThisWeek > 0 ? "amber" : undefined} />
         <SummaryStat label="Total MRR" value={fmtEuro(totalMrr)} />
         <SummaryStat
-          label="This-month run rate"
-          value={fmtEuro(totalMrr)}
-          hint="Sum of MRR across all scheduled clients"
+          label="Outstanding (Stripe)"
+          value={fmtEuro(totalOutstanding)}
+          hint={overdueCount > 0 ? `${overdueCount} overdue` : "Across all scheduled clients"}
+          tone={overdueCount > 0 ? "red" : totalOutstanding > 0 ? "amber" : undefined}
         />
       </div>
 
@@ -138,10 +161,12 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
             <TableHeader>
               <TableRow className="border-b border-border/40 bg-muted/30 hover:bg-muted/30 [&>th]:h-9">
                 <TableHead className="text-[12px] text-foreground/80 font-semibold">Client</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Next invoice</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Status</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Next invoice</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">MRR</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[110px]">Ad budget</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[120px]">Stripe</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Payment (Stripe)</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Stripe</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -158,14 +183,30 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
                       {row.name}
                     </Link>
                   </TableCell>
-                  <TableCell className="py-2.5 text-xs tabular-nums">
-                    {fmtDate(row.nextInvoiceDate)}
+                  <TableCell className="py-2.5">
+                    <StatusEditCell
+                      mondayItemId={row.mondayItemId}
+                      status={row.campaignStatus}
+                    />
+                  </TableCell>
+                  <TableCell className="py-2.5">
+                    <NextInvoiceDateCell
+                      mondayItemId={row.mondayItemId}
+                      value={row.nextInvoiceDate}
+                    />
                   </TableCell>
                   <TableCell className="py-2.5 text-xs tabular-nums font-medium">
                     {row.mrr > 0 ? fmtEuro(row.mrr) : <span className="text-muted-foreground/40">—</span>}
                   </TableCell>
                   <TableCell className="py-2.5 text-xs tabular-nums text-muted-foreground">
                     {row.adBudget > 0 ? fmtEuro(row.adBudget) : <span className="text-muted-foreground/40">—</span>}
+                  </TableCell>
+                  <TableCell className="py-2.5">
+                    <PaymentStatusCell
+                      status={row.paymentStatus}
+                      outstanding={row.outstanding}
+                      hasStripe={!!row.stripeCustomerId}
+                    />
                   </TableCell>
                   <TableCell className="py-2.5">
                     {row.stripeCustomerId ? (
@@ -200,6 +241,51 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
   )
 }
 
+/**
+ * Mirrors the PaymentInline pill from the client header so the same payment
+ * state reads identically across the app. Driven by Stripe via the
+ * `billing_summaries` cache — Monday's "Administration" column is intentionally
+ * not consulted here because Stripe is the source of truth for payments.
+ */
+function PaymentStatusCell({
+  status,
+  outstanding,
+  hasStripe,
+}: {
+  status: UpcomingInvoice["paymentStatus"]
+  outstanding: number
+  hasStripe: boolean
+}) {
+  if (!hasStripe) {
+    return <span className="text-[11px] text-muted-foreground/40">—</span>
+  }
+  if (status === null) {
+    return <span className="text-[11px] text-muted-foreground/40">—</span>
+  }
+  if (status === "complete") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-emerald-500 font-medium">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        Paid up
+      </span>
+    )
+  }
+  if (status === "open") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-amber-500 font-medium">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+        Open · {fmtEuro(outstanding)}
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-red-500 font-medium">
+      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+      Overdue · {fmtEuro(outstanding)}
+    </span>
+  )
+}
+
 function SummaryStat({
   label,
   value,
@@ -209,14 +295,15 @@ function SummaryStat({
   label: string
   value: string
   hint?: string
-  tone?: "amber"
+  tone?: "amber" | "red"
 }) {
+  const valueTone = tone === "red" ? "text-red-500" : tone === "amber" ? "text-amber-500" : ""
   return (
     <div className="rounded-xl border border-border/60 bg-card px-4 py-3">
       <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-medium">
         {label}
       </p>
-      <p className={`text-xl font-semibold mt-0.5 tabular-nums ${tone === "amber" ? "text-amber-500" : ""}`}>
+      <p className={`text-xl font-semibold mt-0.5 tabular-nums ${valueTone}`}>
         {value}
       </p>
       {hint && <p className="text-[10px] text-muted-foreground/60 mt-0.5">{hint}</p>}

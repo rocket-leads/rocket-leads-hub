@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { cookies } from "next/headers"
 import { Inter } from "next/font/google"
 import localFont from "next/font/local"
 import "./globals.css"
@@ -24,20 +25,24 @@ export const metadata: Metadata = {
   description: "Rocket Leads Client Dashboard",
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  // Read the user's theme preference from a cookie at render time so the
+  // <html> ships with the right `dark` class already applied — no flash, no
+  // client-side bootstrap script, no React 19 / Next 16 "script tag inside
+  // React component" warning. ThemeToggle keeps the cookie in sync.
+  const themeCookie = (await cookies()).get("theme")?.value
+  const isDark = themeCookie === "dark"
+
   return (
-    <html lang="en" className={`${inter.variable} ${clashGrotesk.variable} h-full antialiased`} suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.classList.add('dark')}}catch(e){}})();`,
-          }}
-        />
-      </head>
+    <html
+      lang="en"
+      className={`${inter.variable} ${clashGrotesk.variable} h-full antialiased${isDark ? " dark" : ""}`}
+      suppressHydrationWarning
+    >
       <body className="min-h-full bg-background text-foreground">{children}</body>
     </html>
   )

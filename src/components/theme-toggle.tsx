@@ -6,8 +6,18 @@ import { Moon, Sun } from "lucide-react"
 type Theme = "light" | "dark"
 
 function readTheme(): Theme {
-  if (typeof window === "undefined") return "light"
+  if (typeof document === "undefined") return "light"
   return document.documentElement.classList.contains("dark") ? "dark" : "light"
+}
+
+/**
+ * Stores the choice as a cookie so RootLayout can read it server-side and
+ * paint the `dark` class into the initial HTML — no flash, no client script.
+ * 1-year expiry so the preference survives normal sessions.
+ */
+function writeThemeCookie(theme: Theme) {
+  const oneYear = 60 * 60 * 24 * 365
+  document.cookie = `theme=${theme}; path=/; max-age=${oneYear}; samesite=lax`
 }
 
 export function ThemeToggle() {
@@ -23,9 +33,7 @@ export function ThemeToggle() {
     const next: Theme = theme === "dark" ? "light" : "dark"
     setTheme(next)
     document.documentElement.classList.toggle("dark", next === "dark")
-    try {
-      localStorage.setItem("theme", next)
-    } catch {}
+    writeThemeCookie(next)
   }
 
   const isDark = theme === "dark"

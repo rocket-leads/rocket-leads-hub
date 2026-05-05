@@ -8,25 +8,31 @@ import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-pla
 
 const REQUIRED_PLATFORMS: Platform[] = ["slack", "trengo", "monday"]
 
-const NAV_ITEMS = [
-  { href: "/watchlist", label: "Watch List", icon: "Eye" as const },
+// Default nav for members, admins and finance users alike. Watch List is
+// pulled out below for the finance role (they don't action campaigns).
+// Billing is in the shared section so everyone — finance, members, admins —
+// can see invoice scheduling.
+const WATCH_LIST = { href: "/watchlist", label: "Watch List", icon: "Eye" as const }
+const SHARED_NAV = [
   { href: "/clients", label: "Clients", icon: "Users" as const },
   { href: "/inbox", label: "Inbox", icon: "Inbox" as const },
   { href: "/meetings", label: "Meetings", icon: "Video" as const },
   { href: "/targets", label: "Targets", icon: "Target" as const },
-]
+  { href: "/billing", label: "Billing", icon: "Receipt" as const },
+] as const
 
 export async function Sidebar() {
   const session = await auth()
   const isAdmin = session?.user.role === "admin"
+  const isFinance = !!session?.user.isFinance
 
   const allItems = [
-    ...NAV_ITEMS,
+    // Finance gets a tailored stack without the Watch List; everyone else
+    // keeps the full list.
+    ...(isFinance ? [] : [WATCH_LIST]),
+    ...SHARED_NAV,
     ...(isAdmin
-      ? [
-          { href: "/billing", label: "Billing", icon: "Receipt" as const },
-          { href: "/settings", label: "Settings", icon: "Settings" as const },
-        ]
+      ? [{ href: "/settings", label: "Settings", icon: "Settings" as const }]
       : []),
   ]
 
@@ -51,7 +57,7 @@ export async function Sidebar() {
     <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-sidebar-border bg-sidebar flex flex-col">
       {/* Logo */}
       <div className="px-5 pt-6 pb-5">
-        <Link href="/watchlist" className="block">
+        <Link href={isFinance ? "/billing" : "/watchlist"} className="block">
           <Image
             src="/logos/logo-white-purple.svg"
             alt="Rocket Leads"
