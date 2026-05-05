@@ -1,6 +1,6 @@
 # TODO — Rocket Leads Hub
 
-> Stand van zaken: **2026-05-03** EOD.
+> Stand van zaken: **2026-05-05** EOD.
 
 ---
 
@@ -9,7 +9,7 @@
 Snelle tour. Per stuk: wat doet het?
 
 ### Sidebar (links in beeld)
-Watch List · Clients · Inbox · **Meetings (NIEUW)** · Targets · My Account · Settings
+Watch List · Clients · Inbox · Meetings · Targets · **Billing (NIEUW, admin)** · My Account · Settings
 
 ### 1. Watch List
 > *"Welke klanten gaan niet goed?"*
@@ -19,7 +19,7 @@ Triage scherm. Rood = nu iets doen. Geel = in de gaten houden. Groen = lekker be
 ### 2. Clients lijst
 > *"Wie zijn al onze klanten?"*
 
-Zoeken, filteren, doorklikken naar één klant.
+Zoeken, filteren, doorklikken naar één klant. **Nieuw:** MRR-kolom (uit Hub agreement) met ad-budget en next-invoice-datum als sub-regels.
 
 ### 3. Klant detail page (klik op een klant)
 > *"Alles over deze ene klant op één plek."*
@@ -28,149 +28,93 @@ Tabs:
 - **Home** — overzicht
 - **Campaigns** — Meta ads, KPI's, AI analyses, ad performance
 - **Inbox** — berichten over deze klant
-- **Billing** — Stripe facturen + per-campagne wat ze betalen + MRR
+- **Billing** — Stripe facturen + per-campagne wat ze betalen + MRR + **next-invoice datepicker (NIEUW)**
 - **Communication** — WhatsApp + email gesprekken via Trengo
-- **Meetings** ✨ NIEUW — Fathom calls van deze klant
+- **Meetings** — Fathom calls van deze klant
 - **Settings** — alle ID's en koppelingen
 
 ### 4. Inbox (`/inbox`)
 > *"Wat moet ik vandaag doen of lezen?"*
 
-Eén plek voor alles. AI sorteert berichten uit Trengo, Slack en Monday in **Tasks**, **Updates** en **Chat**.
+Eén plek voor alles. AI sorteert berichten uit Trengo, Slack en Monday in **Tasks**, **Updates** en **Chat**. **Nieuw:** ingest-events worden automatisch naar de juiste AM gerouteerd (geen poel meer op het HQ-account). Trengo-berichten zonder gekoppelde klant kun je via "Link to client"-dialog ter plekke aan de juiste klant hangen.
 
-### 5. Meetings (`/meetings`) ✨ NIEUW deze sessie
+### 5. Meetings (`/meetings`)
 > *"Al onze Fathom calls op één plek."*
 
-Fathom opnames komen vanzelf binnen. Vier tabs:
-- **Unlinked** — nog niet aan een klant gekoppeld (rode bolletje als er werk ligt)
-- **Recent** — al gekoppeld aan een klant
-- **Internal** — interne RL teammeetings
-- **Archived** — opzij gezet (sales calls die niet door zijn gegaan etc.)
-
-Per opname: titel + datum + Fathom AI summary + action items + knop terug naar Fathom voor de video.
+Fathom opnames komen vanzelf binnen. Vier tabs: Unlinked / Recent / Internal / Archived. Per opname: titel + datum + Fathom AI summary + action items + knop terug naar Fathom voor de video.
 
 ### 6. Targets (`/targets`)
 > *"Hoe goed gaan we deze maand?"*
 
 Maand-doelen vs werkelijkheid. Vier pijlers: CBC, kwalificatie, show-up, conversie. Pro-rata berekend.
 
-### 7. My Account (`/account`)
+### 7. Billing (`/billing`) ✨ NIEUW
+> *"Welke facturen moeten deze week eruit?"*
+
+Admin-only overzichtspagina. Alle klanten met een `next_invoice_date` ingesteld, gegroepeerd in Overdue / Today / This week / Next week / Later. Per rij: klantnaam, datum, MRR, ad-budget, Stripe deeplink. Top: 4 summary cards (scheduled clients, due this week, total MRR, run rate).
+
+### 8. My Account (`/account`)
 > *"Mijn eigen koppelingen."*
 
-Koppel je eigen Slack/Trengo/Monday tokens → replies vanuit de Hub komen op naam van jou, niet van een bot.
+Koppel je eigen Slack/Trengo/Monday tokens → replies vanuit de Hub komen op naam van jou, niet van een bot. Sidebar avatar toont een paars puntje als één van de drie nog niet is geconnect.
 
-### 8. Settings (alleen admin)
-API keys beheren, gebruikers, board config (Monday kolommen), notificatie-instellingen.
-
----
-
-## 🔥 Morgen — concrete klusjes
-
-Vier dingen. Geen code. Alleen klikken en invullen.
-
-### Klus 1 — Klanten met meerdere campagnes invullen 🟡 (~30 min)
-
-**Wat is er aan de hand:** Ongeveer 20% van klanten heeft meer dan 1 Meta-campagne. De Hub heeft nu voor iedereen 1 standaard campagne aangemaakt met de service fee uit Monday. De splitsing per campagne moet je zelf invullen.
-
-**Hoe los je het op:**
-1. Open Monday → filter op klanten met `status__1 = "Rocket Leads"`
-2. Voor elke klant: ga naar de Hub → klant openen → **Billing** tab
-3. Klik **Add campaign** → vul ad-budget + service fee in per campagne
-4. Check **Varel** even ter referentie — die staat goed (€1950 MRR is de blauwdruk)
-
-### Klus 2 — Monday opschonen 🧹 (~20 min)
-
-**Wat is er aan de hand:**
-- De Hub leest sub-items niet meer, dus die mogen weg (op alle 762 klanten).
-- 38 klanten hebben een lege `status__1` — die moet "Client" of "Rocket Leads" zijn.
-
-**Hoe los je het op:**
-1. In Monday: selecteer alle sub-items op de 762 klanten → **Delete**
-2. Filter op klanten met empty `status__1` → vul in: **"Client"** of **"Rocket Leads"**
-
-### Klus 3 — Fathom emails koppelen aan AMs 👥 (~5 min)
-
-**Wat is er aan de hand:** De Hub weet nog niet wie wie is in Fathom. Hub email (`@rocketleads.com`) ≠ Fathom email. Zonder mapping (a) weet de matcher straks niet welke AM in welke call zat, en (b) pakt de ingest géén persoonlijke calls van die AM mee.
-
-**Alleen AMs koppelen voor nu.** Campaign managers en appointment setters doen geen client meetings → niet relevant. Sales (closers) komt later als we daar bewust ingest voor toevoegen.
-
-**Hoe los je het op:**
-1. ✅ **Roel is al gekoppeld** — test-target voor Klus 4
-2. Andere AMs: Hub → **Settings** → **Users** tab → bij elke AM-rij de **Fathom email** dropdown invullen
-3. Deze week afronden
-
-### Klus 4 — Test Fathom webhook met Roel 🧪 (~10 min)
-
-**Wat is er aan de hand:** Webhook staat aan in Fathom (URL + alle scopes correct), maar we hebben nog geen bewijs dat hij echt fired bij een nieuwe opname. De vorige test zat in team "Delivery Founder Download" — die werd terecht overgeslagen.
-
-**Filter:** alleen calls in een **Rocket Leads team** komen in de Hub. Persoonlijke calls van Hub-users in andere teams worden geskipped — bewuste keuze om de Unlinked queue schoon te houden.
-
-**Hoe los je het op:**
-1. Laat **Roel** een korte Fathom opname maken (2 min is genoeg)
-2. ⚠️ **BELANGRIJK:** team moet **"Sales Rocket Leads"** of **"Delivery Rocket Leads"** zijn — anders skipt de filter de opname
-3. Stop de opname → wacht 3–5 min (Fathom moet eerst AI processing doen)
-4. Open `https://hub.rocketleads.com/meetings` → **Unlinked** tab
-5. **Zie je hem staan?** ✅ webhook werkt — klaar
-6. **Zie je niets?** Open Vercel → Logs → filter op `/api/webhooks/fathom` → kijk of er een request binnenkwam
-7. **Werkt het echt niet?** Workaround: open `https://hub.rocketleads.com/api/admin/fathom-fetch?hours=4&ingest=1` — die haalt 'm alsnog binnen via de API
+### 9. Settings (alleen admin)
+API keys beheren, gebruikers, board config (Monday kolommen), notificatie-instellingen. **Nieuw:** Finance is een Monday role geworden — geen aparte kolom meer. Board config laat nu ook `follow_up_status`, `follow_up_fee` en `next_invoice_date` aanpassen.
 
 ---
 
-## 🟢 Volgende week / binnenkort
+## 🆕 Wat is er deze sprint live gegaan
 
-Niet morgen, wel binnenkort. Per stuk in één zin.
+In willekeurige volgorde:
 
-### Fathom matcher (C.5.b)
-Hub gaat zelf klanten herkennen aan email + naam + bedrijf. Nu nog handmatig via "Link to client" knop op elke meeting card.
+- **Next invoice date tracker** — per-klant datum, bidi sync met Monday `date3`, datepicker op Billing tab, sortable kolom op /clients overview, dedicated /billing overview pagina
+- **Finance-rol via Monday role** — geen `is_finance` boolean meer, gewoon een waarde in `monday_column_role`
+- **Auto-task voor finance** — daily cron creëert "Send invoice for {klant}"-task wanneer `next_invoice_date <= today`, geassigneerd aan de finance user, met MRR + Stripe customer ID in de body
+- **Auto-complete via Stripe** — task gaat automatisch op done zodra Stripe `invoice.finalized` of `invoice.sent` event vuurt voor die klant. Cron is backup. Lag van 24u → seconden
+- **MRR-kolom op /clients** — sortable, met budget en next-invoice als sub-regels
+- **Sidebar platform-token indicator** — paars puntje wanneer Slack/Trengo/Monday niet geconnect is
+- **Slack OAuth fix** — geen 500 meer wanneer `SLACK_CLIENT_ID` ontbreekt; redirect met readable error
+- **Inbox AM-routing** — Trengo + Monday webhook ingesters resolven nu de juiste AM via `user_column_mappings`
+- **Trengo contact linking** — koppel ongelinkte Trengo-berichten ter plekke aan de juiste klant
+- **Source pills op inbox-rijen** — Trengo/Slack/Monday/automation/watchlist/meeting markers
+- **Board config polish** — `follow_up_status`, `follow_up_fee`, `next_invoice_date` configureerbaar
+- **Cleanup** — throwaway admin endpoints `fathom-fetch` + `meetings-debug` weg
 
-### Fathom backfill (C.5.e)
-Alle Fathom opnames van afgelopen 90 dagen in één keer importeren + matchen tegen klanten.
+---
 
-### Fathom knowledge docs (C.5.f)
-Drie templates schrijven: `sales-calls.md`, `kick-off-calls.md`, `evaluation-calls.md` — zodat AI weet welke patronen bij welke type call horen.
+## 🛠️ Eénmalig nog door jou in te richten
 
-### Inbox uitbreiden (C.7 + C.8)
-- **C.7** — Team Inbox (Slack DMs) + Client Inbox (Trengo merged per contact)
-- **C.8** — Per-klant timeline op de klant detail page met alle events chronologisch
+Geen code, wel klikken/invullen.
+
+### A. Klanten met meerdere campagnes invullen 🟡 (~30 min)
+Ongeveer 20% van klanten heeft >1 Meta-campagne. Hub heeft voor iedereen 1 standaard agreement aangemaakt. Splits per campagne moet je zelf invullen via Hub → klant → Billing → Add campaign. Varel staat goed (€1950 MRR is de blauwdruk).
+
+### B. Monday opschonen 🧹 (~20 min)
+- Sub-items op alle 762 klanten verwijderen (Hub leest ze niet meer)
+- 38 klanten met lege `status__1` → invullen "Client" of "Rocket Leads"
+
+---
+
+## 🟢 Volgende — wat er nog aankomt
 
 ### Phase D — Centraal taken-systeem
-Action items uit Fathom + tickets uit Trengo + updates uit Monday → één gezamenlijke Hub takenlijst.
+> *"Eén Hub-takenlijst voor alles."*
 
-### MRR kolom op Clients overview
-Naast Budget kolom op `/clients` ook MRR uit `client_agreements` tonen (small win voor finance).
+Action items uit Fathom + tickets uit Trengo + updates uit Monday + auto-tasks uit cron → één gezamenlijke takenlijst per persoon. AI dedupliceert ("Arno moet factuur sturen voor Klant X" via Trengo + via cron = één task). Vraagt 30 min alignment voor we beginnen: welke sources zijn first-class, hoe AI items dedupliceert, wat de UX is.
 
-### Next invoice date — billing tracker per klant
-> *"Wanneer moet deze klant z'n volgende factuur?"*
-
-Tool die per klant de eerstvolgende factuurdatum bijhoudt zodat het team niet meer hoeft te gokken wanneer wie aan de beurt is. Belangrijk: **echt per klant verschillend** — geen automatisch ritme afdwingen.
-
-- Klant A betaalt 3 maanden vooruit
-- Klant B betaalt 2 maanden vooruit
-- Klant C draait 1 maand → 2 weken pauze → weer 1 maand
-- Etc.
-
-Vereisten:
-- `next_invoice_date` veld op de klant (handmatig instelbaar, niet auto-bumped op basis van starts/contractduur)
-- Bewerkbaar vanuit de **Billing tab** op de client detail page (snelle datepicker)
-- Bidirectionele sync met de Monday **"next invoice" kolom** — column ID `date3`
-- Overzicht/widget op `/clients` of `/billing` met "facturen die deze week / volgende week binnenkomen"
-- **Auto-task in Hub Inbox** op de invoice-datum (assignee = Arno, kind=`task`, body verwijst naar de klant + bedrag uit `client_agreements`). Optioneel ook een reminder N dagen vooraf — beslissen bij build.
-
-### Settings — board config voor follow-up velden
-Hardcoded `status__1` en `numbers0__1` configureerbaar maken (niet urgent, ID's zijn stabiel).
+### Stripe subscription auto-send (later)
+Nu: finance maakt invoice handmatig in Stripe → webhook auto-completet de task. Volgende stap: de Hub triggert de invoice-creatie via Stripe subscription, met optionele approval-knop in de inbox-task. Wachten tot het huidige flow comfortabel zit.
 
 ### Phase E-G — Veel later
 Slack als operationele tool vervangen, push notificaties, Trengo/Monday/Slack daily-decommissioning. Visie staat in `vision-rocketleads-hub.md`.
 
 ---
 
-## 📌 Open vragen voor jou
+## 📌 Open vragen — reeds beantwoord
 
-Drie keuzes die ik niet voor je kan maken:
-
-- **Quick-link logos op de Clients overview tabel?** Nu alleen op detail pagina zichtbaar. Op de overview ook handig?
-- **Multi-campagne KPIs splitsen?** Nu rolt alles op per Meta ad-account. Wil je in de toekomst per-campagne KPI's apart kunnen zien?
-- **Meetings access control?** Nu zien alle Hub-gebruikers alle meetings op `/meetings`. Moet dit per-klant beperkt worden zoals billing/communication? Transcripts kunnen gevoelige info bevatten.
+- ~~Quick-link logos op de Clients overview tabel?~~ → Nee, clutter
+- ~~Multi-campagne KPIs splitsen?~~ → Niet nu; in de toekomst krijgt iedere campagne een eigen Monday item
+- ~~Meetings access control per-klant?~~ → Nee, iedereen mag alles zien
 
 ---
 
@@ -178,6 +122,6 @@ Drie keuzes die ik niet voor je kan maken:
 
 Niet urgent, mag op een rustige dag.
 
-- **Test-opname** "Impromptu Google Meet Meeting" (team Delivery Founder Download) staat nog in `meetings` tabel van vóór de team-filter. Mag via Supabase weg, of laten staan tot de matcher hem auto-archived.
-- **Admin endpoints** `/api/admin/fathom-fetch` en `/api/admin/meetings-debug` zijn throwaway diagnostics. Opruimen zodra C.5.b matcher + cron-backfill live zijn.
+- **Test-opname** "Impromptu Google Meet Meeting" (team Delivery Founder Download) staat nog in `meetings` tabel. Mag via Supabase weg.
 - **`seed-agreements` endpoint** blijft staan voor toekomstige re-seeds (bv. na schema wijzigingen).
+- **`fathom-backfill` endpoint** blijft staan zolang we niet zeker weten dat de webhook 100% reliable is.

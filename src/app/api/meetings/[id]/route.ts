@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { learnIdentitiesFromMeeting } from "@/lib/meetings/matcher"
+import { backfillActionItemClientId } from "@/lib/meetings/action-items"
 
 export const maxDuration = 30
 
@@ -78,10 +79,21 @@ export async function PATCH(
   // external attendees of this call so the next meeting with the same
   // people auto-matches. Best-effort — never fails the parent update.
   let learned = 0
+  let actionItemsLinked = 0
   if (update.client_id && update.link_status === "linked") {
     const result = await learnIdentitiesFromMeeting(supabase, update.client_id, id)
     learned = result.learned
+
+    // Phase D.1 — patch any inbox tasks created from this meeting's action
+    // items so they're tied to the right client. Tasks created while the
+    // meeting was still unlinked land with client_id='' and would otherwise
+    // never show up on the client's per-client timeline.
+    try {
+      actionItemsLinked = await backfillActionItemClientId(supabase, id, update.client_id)
+    } catch (e) {
+      console.error("Action item client backfill failed:", e)
+    }
   }
 
-  return NextResponse.json({ ok: true, ...update, learned })
+  return NextResponse.json({ ok: true, ...update, learned, action_items_linked: actionItemsLinked })
 }

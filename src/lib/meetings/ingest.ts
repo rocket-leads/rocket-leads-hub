@@ -6,6 +6,7 @@ import {
   type FathomMeeting,
 } from "@/lib/integrations/fathom"
 import { matchSingleMeeting } from "@/lib/meetings/matcher"
+import { ingestMeetingActionItems } from "@/lib/meetings/action-items"
 
 export type IngestResult =
   | { ok: true; status: "inserted"; recording_id: string; meeting_type: string; link_status: string; matched?: { clientId: string; strategy: string } }
@@ -121,6 +122,17 @@ export async function ingestFathomMeeting(
     } catch (e) {
       console.error("Matcher failed for meeting", inserted.id, e)
     }
+  }
+
+  // Phase D.1 — fan action items into the inbox. Runs regardless of whether
+  // the matcher linked the meeting: each action item has its own assignee
+  // resolved from fathom_email mapping, so the task can land on the right
+  // person even if the meeting itself isn't yet attached to a client.
+  // Non-fatal: a failure here shouldn't roll back the meeting insert.
+  try {
+    await ingestMeetingActionItems(supabase, inserted.id)
+  } catch (e) {
+    console.error("Action item ingest failed for meeting", inserted.id, e)
   }
 
   return {
