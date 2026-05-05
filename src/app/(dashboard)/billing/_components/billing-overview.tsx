@@ -16,8 +16,10 @@ import {
 import { Panel } from "@/components/ui/panel"
 import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edit-cell"
 import type { ClientStatus } from "@/lib/clients/status"
+import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
 import { NextInvoiceDateCell } from "./next-invoice-date-cell"
 import { CreateInvoiceDialog } from "./create-invoice-dialog"
+import { InvoiceReadinessCell } from "./invoice-readiness-cell"
 
 export type UpcomingInvoice = {
   mondayItemId: string
@@ -56,6 +58,10 @@ export type UpcomingInvoice = {
    *  Useful context when finance is scheduling the *next* invoice — chase
    *  unpaid first if there's already a balance. */
   outstanding: number
+  /** AI verdict on whether finance should send the invoice today. Pre-loaded
+   *  from the `invoice_readiness` cache; null when not yet computed for this
+   *  client (the cell falls back to a "Run AI check" affordance). */
+  readiness: InvoiceReadiness | null
 }
 
 type Group = {
@@ -187,6 +193,7 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Fee</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[110px]">Ad budget</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Payment (Stripe)</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[180px]">AI check</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Stripe</TableHead>
               </TableRow>
             </TableHeader>
@@ -274,6 +281,13 @@ function BillingRow({ row }: { row: UpcomingInvoice }) {
             status={row.paymentStatus}
             outstanding={row.outstanding}
             hasStripe={!!row.stripeCustomerId}
+          />
+        </TableCell>
+        <TableCell className="py-2.5">
+          <InvoiceReadinessCell
+            mondayItemId={row.mondayItemId}
+            clientName={row.name}
+            initial={row.readiness}
           />
         </TableCell>
         <TableCell className="py-2.5">

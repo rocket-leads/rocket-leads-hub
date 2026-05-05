@@ -181,11 +181,21 @@ function mapItem(
     googleDriveId: cv[columns.google_drive_id] ?? "",
     // Two-date model — see lib/clients/billing-cycle.ts for the relationship:
     //   cycleStartDate   = manual source of truth, Monday `date3`
-    //   nextInvoiceDate  = derived (cycle - 7d), stored on Monday in `date_mm3297df`
-    // Both fall back to literal column IDs so existing board configs keep
-    // working without manual setting changes.
+    //   nextInvoiceDate  = derived (cycle - 7d), stored on Monday `date_mm3297df`
+    //
+    // Defensive read: legacy board_config rows still have
+    // `next_invoice_date: "date3"` (when date3 was the *invoice* column,
+    // before the model split). Reading that would surface the cycle date as
+    // the invoice date — the bug Roy is seeing right now. Skip the configured
+    // mapping when it points at the cycle column, fall through to the new
+    // literal id instead.
     cycleStartDate: cv[columns.cycle_start_date] ?? cv["date3"] ?? "",
-    nextInvoiceDate: cv[columns.next_invoice_date] ?? cv["date_mm3297df"] ?? "",
+    nextInvoiceDate:
+      (columns.next_invoice_date && columns.next_invoice_date !== "date3"
+        ? cv[columns.next_invoice_date]
+        : null) ??
+      cv["date_mm3297df"] ??
+      "",
     boardType,
   }
 }
@@ -352,10 +362,20 @@ export type MondayItemWithUpdates = {
  * notes from a client's row in the Current Clients board (board-level commentary), distinct
  * from the per-lead updates in the client's lead board.
  */
+export type ItemUpdate = {
+  text: string
+  createdAt: string
+  /** Author name from Monday's `creator` field. Used downstream by AI checks
+   *  to weigh updates differently depending on who wrote them (e.g. Finance
+   *  saying "wacht met factureren" carries more decisive weight than a
+   *  campaign manager note). Empty when Monday didn't return a creator. */
+  creatorName: string
+}
+
 export async function fetchItemUpdates(
   itemId: string,
   daysBack: number = 14,
-): Promise<Array<{ text: string; createdAt: string }>> {
+): Promise<ItemUpdate[]> {
   const token = await getToken()
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - daysBack)
@@ -367,6 +387,9 @@ export async function fetchItemUpdates(
         updates(limit: 50) {
           text_body
           created_at
+          creator {
+            name
+          }
         }
       }
     }
@@ -376,11 +399,12 @@ export async function fetchItemUpdates(
   if (!item) return []
 
   return (item.updates ?? [])
-    .map((u: { text_body?: string; created_at?: string }) => ({
+    .map((u: { text_body?: string; created_at?: string; creator?: { name?: string } | null }) => ({
       text: (u.text_body ?? "").trim(),
       createdAt: (u.created_at ?? "").slice(0, 10),
+      creatorName: (u.creator?.name ?? "").trim(),
     }))
-    .filter((u: { text: string; createdAt: string }) => u.text && u.createdAt >= cutoffStr)
+    .filter((u: ItemUpdate) => u.text && u.createdAt >= cutoffStr)
 }
 
 export async function fetchClientBoardItemsWithUpdates(

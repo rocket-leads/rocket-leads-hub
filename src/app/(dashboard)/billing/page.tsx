@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
+import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
 import {
   normalizeCampaigns,
   totalAdBudget,
@@ -142,6 +143,11 @@ export default async function BillingPage() {
   // cache (refreshed by the same cron that syncs next_invoice_date back here).
   const billingCache = (await readCache<Record<string, BillingSummary>>("billing_summaries")) ?? {}
 
+  // AI invoice-readiness verdicts — pre-computed by /api/billing/invoice-readiness.
+  // Cache miss = the row renders a "Run AI check" affordance and the inline
+  // cell fetches on demand, populating the cache for subsequent loads.
+  const readinessCache = (await readCache<Record<string, InvoiceReadiness>>("invoice_readiness")) ?? {}
+
   const rows: UpcomingInvoice[] = scheduled.map((c) => {
     const money = moneyByMondayId.get(c.mondayItemId)
     const summary = c.stripeCustomerId ? billingCache[c.stripeCustomerId] : undefined
@@ -157,6 +163,7 @@ export default async function BillingPage() {
       campaignStatus: c._status,
       paymentStatus: summary?.status ?? null,
       outstanding: summary?.outstanding ?? 0,
+      readiness: readinessCache[c.mondayItemId] ?? null,
     }
   })
 
