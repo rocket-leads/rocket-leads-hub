@@ -74,7 +74,15 @@ export async function GET(req: NextRequest) {
         slack_user_id: oauth.authed_user.id,
         team_id: oauth.team?.id ?? null,
         team_name: oauth.team?.name ?? null,
+        // User scopes (for replies-as-you).
         scope: oauth.authed_user.scope ?? null,
+        // Bot-side metadata: useful for diagnosing why Events API delivery
+        // isn't firing. We don't store the bot_access_token (Slack delivers
+        // events based on workspace install, not stored tokens), but knowing
+        // bot_user_id tells us whether the workspace install actually
+        // provisioned a bot user.
+        bot_user_id: oauth.bot_user_id ?? null,
+        bot_scope: oauth.scope ?? null,
       },
     )
   } catch (e) {

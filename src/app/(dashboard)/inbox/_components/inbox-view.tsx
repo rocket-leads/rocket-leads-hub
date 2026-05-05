@@ -18,7 +18,6 @@ import {
   CalendarDays,
   CalendarClock,
   CalendarX,
-  Users,
   MessageCircle,
   Video,
 } from "lucide-react"
@@ -55,7 +54,7 @@ type Props = {
   lockedClient?: LockedClient
 }
 
-type MainTab = "tasks" | "updates" | "team-inbox" | "client-inbox" | "meetings"
+type MainTab = "tasks" | "updates" | "client-inbox" | "meetings"
 type UpdateFilter = "all" | UpdateStatus
 /**
  * Snoozed is treated as a top-level task filter alongside open/in_progress/etc.
@@ -177,7 +176,10 @@ export function InboxView({
   // Per-client view (locked-client tab on client detail page) surfaces
   // tasks/updates linked to that client plus a Client Inbox (Trengo
   // conversations) and Meetings sub-tab — keeping all per-client activity
-  // under one tab. Global mode keeps the team/all-clients chat tabs.
+  // under one tab. Global mode shows the cross-client Client Inbox.
+  // Team Inbox (Slack DMs) is intentionally not shown — Slack's API can't
+  // expose human-to-human DMs, so we replace that workflow in Phase E
+  // (Hub-native team chat) instead of half-syncing it.
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
         { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
@@ -190,11 +192,10 @@ export function InboxView({
     : [
         { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
         { id: "updates", label: "Updates", icon: InboxIcon, count: updates.length },
-        { id: "team-inbox", label: "Team Inbox", icon: Users },
         { id: "client-inbox", label: "Client Inbox", icon: MessageCircle },
       ]
 
-  const isChatTab = activeTab === "team-inbox" || activeTab === "client-inbox"
+  const isChatTab = activeTab === "client-inbox"
   const isClientOnlyTab = activeTab === "meetings" || (!!lockedClient && activeTab === "client-inbox")
 
   return (
@@ -293,8 +294,6 @@ export function InboxView({
             )}
           </>
         )}
-
-        {activeTab === "team-inbox" && <ChatPane scope="internal" />}
 
         {activeTab === "client-inbox" && (
           lockedClient ? (

@@ -56,8 +56,20 @@ async function trengoFetch<T>(path: string, retries = 3): Promise<T> {
 
 export type TrengoChannel = {
   id: number
-  name: string
+  /** Trengo's `name` field is null for many WhatsApp/Email channels — the
+   *  human-readable label lives in different fields per channel type
+   *  (title / display_name / phone / email_address / from). Coalesce before
+   *  showing to users. Type kept loose to reflect API reality. */
+  name: string | null
   type: string
+  /** All additional fields Trengo returns. Probed for display name fallbacks. */
+  title?: string | null
+  display_name?: string | null
+  phone?: string | null
+  email_address?: string | null
+  from?: string | null
+  // Allow any other shape Trengo returns without breaking callers.
+  [key: string]: unknown
 }
 
 // Trengo calls these "tickets" in their API
@@ -121,7 +133,7 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
  */
 export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
   const data = await trengoFetch<{ data: TrengoChannel[] }>(`/channels`)
-  return [...data.data].sort((a, b) => a.name.localeCompare(b.name))
+  return [...data.data].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
 }
 
 export async function fetchMessages(ticketId: number): Promise<TrengoMessage[]> {

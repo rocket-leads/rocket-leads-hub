@@ -69,8 +69,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
+  // Trengo's webhook UI splits messages into separate event types per direction
+  // (Inbound message / Outbound message / Internal message), each with its own
+  // string. We accept all message-bearing events and let downstream code use
+  // `author_type` to differentiate inbound vs outbound. Anything that doesn't
+  // carry a message body (Ticket created/closed/assigned, Voice call, …) falls
+  // through to the missing-body branch below and is acked without being stored.
   const eventType = payload.event_type ?? payload.type ?? ""
-  if (eventType !== "ticket.message.created") {
+  const MESSAGE_EVENT_TYPES = new Set([
+    "ticket.message.created", // legacy/older Trengo plans
+    "message.created",
+    "inbound.message.created",
+    "outbound.message.created",
+    "internal.message.created",
+    "inbound_message",
+    "outbound_message",
+    "internal_message",
+  ])
+  const isLegacyMessageEvent = MESSAGE_EVENT_TYPES.has(eventType)
+  // Permissive fallback: if Trengo's event_type string doesn't match a known
+  // alias but the payload carries a ticket + message, treat it as a message
+  // event. Better to ingest one extra row than to drop real messages because
+  // Trengo renamed an event.
+  const looksLikeMessageEvent =
+    !!(payload.message ?? payload.data?.message) &&
+    !!(payload.ticket ?? payload.data?.ticket)
+  if (!isLegacyMessageEvent && !looksLikeMessageEvent) {
     return NextResponse.json({ ok: true, ignored: eventType })
   }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { resolveClientAssignee } from "@/lib/inbox/assignee"
+import { stripHtml } from "@/lib/html"
 
 export const maxDuration = 60
 
@@ -117,13 +118,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "missing pulseId" }, { status: 400 })
   }
 
-  const text = (
-    event.body ??
+  // Monday sends rich HTML for `body` (mention anchors, <p> wrappers, etc.)
+  // and the plain `textBody` variant when available. Prefer textBody, fall
+  // back to stripping the HTML body so mentions render as their anchor text
+  // (`@Arno Vosters`) instead of raw markup.
+  const rawText =
     event.textBody ??
     event.value?.text ??
+    event.body ??
     event.value?.body ??
     ""
-  ).trim()
+  const text = stripHtml(rawText)
   if (!text) return NextResponse.json({ ok: true, skipped: "empty body" })
 
   const userId = String(event.userId ?? "")
