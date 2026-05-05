@@ -7,6 +7,7 @@ import {
   CreditCard,
   Zap,
   Loader2,
+  Sparkles,
   TrendingDown,
   Play,
   ChevronDown,
@@ -61,6 +62,15 @@ const RULES: RuleConfig[] = [
     trigger: "Open finance task + matching Stripe invoice exists",
     effect: "Task status → done · audit note appended · auto_completed flag in source_ref",
     icon: CheckCircle2,
+  },
+  {
+    key: "dedup_overlapping_tasks",
+    title: "AI dedup → cancel duplicate tasks across sources",
+    description:
+      "Same logical action can land in the inbox via multiple paths (Trengo classification + Fathom action item + automation cron). Claude Haiku scans recently-created open tasks per client and merges semantic duplicates: the OLDEST in each group survives, the rest get cancelled with an audit note pointing back at the kept task. Conservative defaults — confidence threshold ≥0.85, only same-client groups, only tasks created in the last 7 days. Reversible via Reopen on the cancelled rows.",
+    trigger: "≥2 open tasks for the same client created in last 7d",
+    effect: "Newer duplicates → cancelled · source_ref.duplicate_of set · audit note in body",
+    icon: Sparkles,
   },
 ]
 
@@ -348,6 +358,18 @@ function CreatedRow({ item }: { item: CreatedItem }) {
         <span className="text-foreground/80">{item.clientName}</span>
         <span className="text-muted-foreground/60 tabular-nums">
           invoice {item.invoiceId.slice(0, 12)}…
+        </span>
+      </div>
+    )
+  }
+  if (item.rule === "dedup_overlapping_tasks") {
+    return (
+      <div className="text-[11px] py-0.5 flex items-baseline gap-2">
+        <span className="text-violet-500 font-medium">Deduped tasks</span>
+        <span className="text-foreground/80">{item.clientName}</span>
+        <span className="text-muted-foreground/80 truncate">{item.keptTaskTitle}</span>
+        <span className="text-muted-foreground/60 tabular-nums">
+          −{item.cancelledTaskIds.length} ({Math.round(item.confidence * 100)}%)
         </span>
       </div>
     )

@@ -33,6 +33,7 @@ export type InboxAutomationRules = {
   positive_client_signal_cpl_drop: boolean
   next_invoice_due_task: boolean
   auto_complete_invoice_tasks: boolean
+  dedup_overlapping_tasks: boolean
 }
 
 export const DEFAULT_INBOX_AUTOMATION_RULES: InboxAutomationRules = {
@@ -40,4 +41,7 @@ export const DEFAULT_INBOX_AUTOMATION_RULES: InboxAutomationRules = {
   positive_client_signal_cpl_drop: true,
   next_invoice_due_task: true,
   auto_complete_invoice_tasks: true,
+  // Dedup defaults OFF — admin opts in after reviewing what AI would cancel
+  // (see Settings → Inbox automations → "Run now (test mode)").
+  dedup_overlapping_tasks: false,
 }

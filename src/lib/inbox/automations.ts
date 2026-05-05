@@ -46,6 +46,15 @@ export type CreatedItem =
       invoiceId: string
       invoiceCreatedAt: string
     }
+  | {
+      rule: "dedup_overlapping_tasks"
+      clientName: string
+      keptTaskId: string
+      keptTaskTitle: string
+      cancelledTaskIds: string[]
+      confidence: number
+      reason: string
+    }
 
 export type SkippedItem = { reason: string; client?: string; detail?: string }
 
@@ -432,6 +441,236 @@ async function ensureAutoCompleteInvoiceTasks(
   return completed
 }
 
+// --- Rule 5: AI deduplication of overlapping tasks ---------------------
+
+/**
+ * Scans recently-created open tasks per client and asks Claude Haiku whether
+ * any are semantically duplicates of each other. When the model is confident
+ * (≥0.85), the OLDEST task in each duplicate group survives and the rest get
+ * cancelled with an audit note + `source_ref.duplicate_of` pointing back at
+ * the kept task.
+ *
+ * Why oldest-survives: the first task usually has the most context (it's the
+ * trigger that explains why the work exists). Newer tasks are typically
+ * lower-context echoes — a Trengo classification of an existing automation
+ * task, a Fathom action item that mentions a known cron job. Cancelling them
+ * is reversible: a human can reopen via the Hub if the model got it wrong.
+ *
+ * Conservative defaults:
+ *  - Only looks at tasks created in the last 7 days (older tasks are stable
+ *    enough that any overlap was already worked around)
+ *  - Only same-client groups (cross-client matches are almost never valid)
+ *  - Hard confidence threshold (0.85) to avoid false positives
+ *  - Cap of 10 tasks per client per call so the prompt stays small + the
+ *    model has a fighting chance of noticing real overlaps
+ *
+ * Default OFF in DEFAULT_INBOX_AUTOMATION_RULES; admin enables in Settings
+ * after reviewing test-mode output.
+ */
+
+type DedupCandidate = {
+  id: string
+  client_id: string
+  title: string
+  body: string | null
+  source: string
+  created_at: string
+  source_ref: Record<string, unknown> | null
+}
+
+async function dedupOverlappingTasks(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  testMode: boolean,
+): Promise<CreatedItem[]> {
+  const created: CreatedItem[] = []
+
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: candidates } = await supabase
+    .from("inbox_events")
+    .select("id, client_id, title, body, source, created_at, source_ref")
+    .eq("kind", "task")
+    .in("status", ["open", "in_progress"])
+    .gte("created_at", sevenDaysAgo)
+    .not("client_id", "is", null)
+    .neq("client_id", "")
+    .order("created_at", { ascending: true })
+
+  if (!candidates || candidates.length < 2) return created
+
+  // Group by client.
+  const byClient = new Map<string, DedupCandidate[]>()
+  for (const row of candidates as DedupCandidate[]) {
+    const list = byClient.get(row.client_id) ?? []
+    list.push(row)
+    byClient.set(row.client_id, list)
+  }
+
+  for (const [clientId, tasks] of byClient.entries()) {
+    if (tasks.length < 2) continue
+
+    // Cap per-client tasks sent to AI; if there are >10, look at the most
+    // recent 10 (those are most likely to overlap with each other).
+    const slice = tasks.length > 10 ? tasks.slice(-10) : tasks
+
+    let groups: Array<{ task_ids: string[]; confidence: number; reason: string }>
+    try {
+      groups = await classifyDuplicatesWithAi(slice)
+    } catch (e) {
+      console.error("Dedup AI call failed for client", clientId, e)
+      continue
+    }
+    if (groups.length === 0) continue
+
+    const clientName = await getClientName(supabase, clientId)
+
+    for (const group of groups) {
+      if (group.confidence < 0.85 || group.task_ids.length < 2) continue
+
+      // Resolve to actual task rows + sort by created_at to pick the survivor.
+      const groupTasks = group.task_ids
+        .map((id) => slice.find((t) => t.id === id))
+        .filter((t): t is DedupCandidate => !!t)
+      if (groupTasks.length < 2) continue
+      groupTasks.sort((a, b) => a.created_at.localeCompare(b.created_at))
+
+      const keep = groupTasks[0]
+      const drop = groupTasks.slice(1)
+
+      const cancelledIds: string[] = []
+      if (testMode) {
+        // Don't actually cancel — just record what we would have done.
+        cancelledIds.push(...drop.map((d) => d.id))
+      } else {
+        for (const dup of drop) {
+          const note = `\n\n— Auto-cancelled as duplicate of "${keep.title}" (id ${keep.id}). Reason: ${group.reason}`
+          const sourceRef = (dup.source_ref ?? {}) as Record<string, unknown>
+          const { error } = await supabase
+            .from("inbox_events")
+            .update({
+              status: "cancelled",
+              completed_at: new Date().toISOString(),
+              body: (dup.body ?? "") + note,
+              source_ref: {
+                ...sourceRef,
+                duplicate_of: keep.id,
+                dedup_confidence: group.confidence,
+                dedup_reason: group.reason,
+                dedup_via: "ai_haiku",
+                dedup_at: new Date().toISOString(),
+              },
+            })
+            .eq("id", dup.id)
+            .in("status", ["open", "in_progress"])
+
+          if (!error) cancelledIds.push(dup.id)
+        }
+      }
+
+      if (cancelledIds.length > 0) {
+        created.push({
+          rule: "dedup_overlapping_tasks",
+          clientName: clientName ?? "(unknown)",
+          keptTaskId: keep.id,
+          keptTaskTitle: keep.title,
+          cancelledTaskIds: cancelledIds,
+          confidence: group.confidence,
+          reason: group.reason,
+        })
+      }
+    }
+  }
+
+  return created
+}
+
+async function classifyDuplicatesWithAi(
+  tasks: DedupCandidate[],
+): Promise<Array<{ task_ids: string[]; confidence: number; reason: string }>> {
+  const lines = tasks.map((t, i) => {
+    const bodyPreview = (t.body ?? "").trim().slice(0, 280).replace(/\s+/g, " ")
+    const created = t.created_at.slice(0, 10)
+    return `[${t.id}] (${i + 1}/${tasks.length}, source: ${t.source}, created ${created})
+Title: ${t.title}
+Body: ${bodyPreview || "(no body)"}`
+  })
+
+  const msg = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 600,
+    system: `You triage duplicate inbox tasks for a marketing agency Hub.
+
+Return groups of tasks that describe the SAME logical action — i.e. doing one
+of them satisfies all of them. Tasks come from different sources (Trengo
+ingest, Fathom action items, automation cron, manual creates) and the same
+real-world job sometimes shows up multiple times.
+
+Rules:
+- Only group tasks that, if a human did the work once, would close out all of
+  them. "Send invoice for Vlex" + "Stuur Vlex factuur" = duplicate. "Send
+  invoice for Vlex" + "Bel Vlex over inhoud van factuur" = NOT duplicate.
+- A Fathom bundle ("Taken uit kick-off call met X") contains multiple
+  underlying items — only call it a duplicate if ALL the work in the bundle
+  overlaps with the other task. When in doubt, keep them separate.
+- Be conservative. Confidence ≥0.85 means "I'm sure"; <0.85 means "skip".
+- Output JSON ONLY, no prose. Format:
+  {"groups":[{"task_ids":["uuid1","uuid2"],"confidence":0.92,"reason":"both about sending the next invoice"}]}
+  Empty array when nothing matches: {"groups":[]}`,
+    messages: [
+      {
+        role: "user",
+        content: `Tasks to triage (all for the same client):\n\n${lines.join("\n\n")}`,
+      },
+    ],
+  })
+
+  // Anthropic SDK ContentBlock is a union (text / thinking / tool_use / …);
+  // narrow to the text branch via `type` so we can read `.text` safely.
+  const text = msg.content
+    .flatMap((b) => (b.type === "text" ? [b.text] : []))
+    .join("\n")
+    .trim()
+
+  // Extract JSON safely — model occasionally adds a code fence even when told not to.
+  const jsonStart = text.indexOf("{")
+  const jsonEnd = text.lastIndexOf("}")
+  if (jsonStart === -1 || jsonEnd === -1) return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1))
+  } catch {
+    return []
+  }
+  const groups = (parsed as { groups?: unknown }).groups
+  if (!Array.isArray(groups)) return []
+
+  const valid: Array<{ task_ids: string[]; confidence: number; reason: string }> = []
+  for (const g of groups) {
+    const ids = Array.isArray((g as { task_ids?: unknown }).task_ids)
+      ? ((g as { task_ids: unknown[] }).task_ids.filter((x) => typeof x === "string") as string[])
+      : []
+    const conf = typeof (g as { confidence?: unknown }).confidence === "number"
+      ? (g as { confidence: number }).confidence
+      : 0
+    const reason = typeof (g as { reason?: unknown }).reason === "string"
+      ? (g as { reason: string }).reason
+      : ""
+    if (ids.length >= 2) valid.push({ task_ids: ids, confidence: conf, reason })
+  }
+  return valid
+}
+
+async function getClientName(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  mondayItemId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from("clients")
+    .select("name")
+    .eq("monday_item_id", mondayItemId)
+    .maybeSingle()
+  return (data?.name as string | undefined) ?? null
+}
+
 // --- Rule 2: positive CPL drop signal -----------------------------------
 
 type Period = {
@@ -714,7 +953,8 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
     !rules.payment_overdue_task &&
     !rules.positive_client_signal_cpl_drop &&
     !rules.next_invoice_due_task &&
-    !rules.auto_complete_invoice_tasks
+    !rules.auto_complete_invoice_tasks &&
+    !rules.dedup_overlapping_tasks
   ) {
     return {
       ranAt: new Date().toISOString(),
@@ -847,6 +1087,23 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
     } catch (e) {
       skipped.push({
         reason: "auto_complete_failed",
+        detail: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
+  // AI dedup runs LAST — after every other rule has had a chance to create
+  // its tasks for this run. That way if the cron creates a "Send invoice"
+  // task that overlaps with a Trengo-classified task from earlier, dedup
+  // catches it in the same pass instead of leaving the user with a duplicate
+  // for 24h until the next run.
+  if (rules.dedup_overlapping_tasks) {
+    try {
+      const deduped = await dedupOverlappingTasks(supabase, testMode)
+      created.push(...deduped)
+    } catch (e) {
+      skipped.push({
+        reason: "dedup_failed",
         detail: e instanceof Error ? e.message : String(e),
       })
     }
