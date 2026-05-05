@@ -1,6 +1,7 @@
 "use client"
 
-import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw, Link2Off } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw, Link2Off, Clock, BellOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SourcePill } from "./source-pill"
 import type { InboxItem, TaskStatus } from "@/types/inbox"
@@ -33,7 +34,14 @@ function fmtDueDate(iso: string): { text: string; overdue: boolean } {
   return { text: fmtDate(iso), overdue: false }
 }
 
-export type RowAction = "done" | "cancel" | "reopen" | "read" | "unread"
+export type RowAction =
+  | "done"
+  | "cancel"
+  | "reopen"
+  | "read"
+  | "unread"
+  | { type: "snooze"; until: string }
+  | "unsnooze"
 
 export function InboxListRow({
   item,
@@ -198,12 +206,14 @@ function RowActions({
   onAction: (action: RowAction) => void
 }) {
   const stop = (e: React.MouseEvent) => e.stopPropagation()
+  const isActive = item.status === "open" || item.status === "in_progress"
+  const isSnoozed = !!item.snoozedUntil && new Date(item.snoozedUntil).getTime() > Date.now()
 
   // Updates handle their read/unread toggle via the leading checkbox in the
   // row itself, so this component only ever renders the task action buttons.
   return (
     <div className="flex items-center gap-1 shrink-0" onClick={stop}>
-      {item.status === "open" || item.status === "in_progress" ? (
+      {isActive ? (
         <>
           <ActionButton
             tone="success"
@@ -211,6 +221,16 @@ function RowActions({
             onClick={() => onAction("done")}
             icon={<Check className="h-3.5 w-3.5" />}
           />
+          {isSnoozed ? (
+            <ActionButton
+              tone="muted"
+              label={`Snoozed until ${formatSnoozeLabel(item.snoozedUntil!)} — click to wake`}
+              onClick={() => onAction("unsnooze")}
+              icon={<BellOff className="h-3.5 w-3.5" />}
+            />
+          ) : (
+            <SnoozeButton onPick={(until) => onAction({ type: "snooze", until })} />
+          )}
           <ActionButton
             tone="danger"
             label="Cancel"
@@ -228,6 +248,179 @@ function RowActions({
       )}
     </div>
   )
+}
+
+function formatSnoozeLabel(iso: string): string {
+  const d = new Date(iso)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const dayMs = 24 * 60 * 60 * 1000
+  const dueDay = new Date(d)
+  dueDay.setHours(0, 0, 0, 0)
+  const diffDays = Math.round((dueDay.getTime() - today.getTime()) / dayMs)
+  const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+  if (diffDays === 0) return `today ${time}`
+  if (diffDays === 1) return `tomorrow ${time}`
+  if (diffDays < 7) return d.toLocaleDateString("en-GB", { weekday: "short" }) + ` ${time}`
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+}
+
+/** Snooze quick-pick menu. Built from scratch (instead of pulling in a popover
+ *  primitive) to keep the row compact — a tiny relative-positioned panel
+ *  closes on outside-click and on Esc. */
+function SnoozeButton({ onPick }: { onPick: (untilIso: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDoc)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  function pick(option: SnoozeOption) {
+    setOpen(false)
+    if (option === "custom") {
+      const input = window.prompt(
+        "Snooze until (YYYY-MM-DD or YYYY-MM-DD HH:MM)",
+        defaultCustomValue(),
+      )
+      if (!input) return
+      const iso = parseCustomSnooze(input)
+      if (!iso) return
+      onPick(iso)
+      return
+    }
+    const iso = computeSnoozeIso(option)
+    if (iso) onPick(iso)
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <ActionButton
+        tone="muted"
+        label="Snooze"
+        onClick={() => setOpen((s) => !s)}
+        icon={<Clock className="h-3.5 w-3.5" />}
+      />
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-md border border-border bg-popover shadow-lg py-1 text-xs">
+          {SNOOZE_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => pick(opt.id)}
+              className="w-full text-left px-3 py-1.5 hover:bg-muted/60 flex items-center justify-between gap-3"
+            >
+              <span>{opt.label}</span>
+              <span className="text-[10px] text-muted-foreground/70 tabular-nums">{opt.preview()}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type SnoozeOption =
+  | "later_today"
+  | "tomorrow_morning"
+  | "weekend"
+  | "next_week"
+  | "in_2_weeks"
+  | "custom"
+
+const SNOOZE_OPTIONS: Array<{ id: SnoozeOption; label: string; preview: () => string }> = [
+  { id: "later_today", label: "Later today", preview: () => previewIso(computeSnoozeIso("later_today")) },
+  { id: "tomorrow_morning", label: "Tomorrow morning", preview: () => previewIso(computeSnoozeIso("tomorrow_morning")) },
+  { id: "weekend", label: "This weekend", preview: () => previewIso(computeSnoozeIso("weekend")) },
+  { id: "next_week", label: "Next week", preview: () => previewIso(computeSnoozeIso("next_week")) },
+  { id: "in_2_weeks", label: "In 2 weeks", preview: () => previewIso(computeSnoozeIso("in_2_weeks")) },
+  { id: "custom", label: "Custom…", preview: () => "" },
+]
+
+function computeSnoozeIso(option: SnoozeOption): string | null {
+  const now = new Date()
+  switch (option) {
+    case "later_today": {
+      const d = new Date(now)
+      d.setHours(Math.max(now.getHours() + 3, 17), 0, 0, 0)
+      // Don't roll over to tomorrow — if "later today" would land past 22:00,
+      // snap to 22:00 today instead.
+      if (d.getDate() !== now.getDate()) {
+        d.setDate(now.getDate())
+        d.setHours(22, 0, 0, 0)
+      }
+      return d.toISOString()
+    }
+    case "tomorrow_morning": {
+      const d = new Date(now)
+      d.setDate(d.getDate() + 1)
+      d.setHours(9, 0, 0, 0)
+      return d.toISOString()
+    }
+    case "weekend": {
+      // Next Saturday at 09:00 (or this Saturday if we're earlier in the week)
+      const d = new Date(now)
+      const daysUntilSat = (6 - d.getDay() + 7) % 7 || 7
+      d.setDate(d.getDate() + daysUntilSat)
+      d.setHours(9, 0, 0, 0)
+      return d.toISOString()
+    }
+    case "next_week": {
+      const d = new Date(now)
+      const daysUntilMon = (1 - d.getDay() + 7) % 7 || 7
+      d.setDate(d.getDate() + daysUntilMon)
+      d.setHours(9, 0, 0, 0)
+      return d.toISOString()
+    }
+    case "in_2_weeks": {
+      const d = new Date(now)
+      d.setDate(d.getDate() + 14)
+      d.setHours(9, 0, 0, 0)
+      return d.toISOString()
+    }
+    default:
+      return null
+  }
+}
+
+function previewIso(iso: string | null): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  return formatSnoozeLabel(iso === d.toISOString() ? iso : d.toISOString())
+}
+
+function defaultCustomValue(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 7)
+  return d.toISOString().slice(0, 10)
+}
+
+function parseCustomSnooze(input: string): string | null {
+  const trimmed = input.trim()
+  // Accept YYYY-MM-DD (defaults to 09:00) or YYYY-MM-DD HH:MM
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/
+  const dateTime = /^\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}$/
+  if (dateOnly.test(trimmed)) {
+    const d = new Date(trimmed + "T09:00:00")
+    return Number.isNaN(d.getTime()) ? null : d.toISOString()
+  }
+  if (dateTime.test(trimmed)) {
+    const d = new Date(trimmed.replace(" ", "T"))
+    return Number.isNaN(d.getTime()) ? null : d.toISOString()
+  }
+  return null
 }
 
 function ActionButton({

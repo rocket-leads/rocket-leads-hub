@@ -22,6 +22,11 @@ export async function GET(req: NextRequest) {
   const statuses = statusesParam !== null
     ? statusesParam.split(",").map((s) => s.trim()).filter(Boolean)
     : undefined
+  const snoozedRaw = sp.get("snoozed")
+  const snoozed: "active" | "snoozed" | "all" | undefined =
+    snoozedRaw === "active" || snoozedRaw === "snoozed" || snoozedRaw === "all"
+      ? snoozedRaw
+      : undefined
 
   try {
     const items = await listInboxItems(session.user.id, session.user.role, {
@@ -29,6 +34,7 @@ export async function GET(req: NextRequest) {
       clientId,
       assignedToMe,
       statuses,
+      snoozed,
     })
     return NextResponse.json({ items })
   } catch (e) {

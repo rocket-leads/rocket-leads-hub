@@ -102,6 +102,23 @@ export async function PATCH(
   // them silently after creation can mislead the assignee.
   if (patch.assigneeId !== undefined) update.assignee_id = patch.assigneeId
 
+  // Snooze is also open to anyone with visibility — pushing a task to later
+  // is a personal triage move, not an authorial edit. Null wakes it up.
+  // Only valid on tasks; ignored on updates (which have their own read flow).
+  if (patch.snoozedUntil !== undefined && item.kind === "task") {
+    if (patch.snoozedUntil === null) {
+      update.snoozed_until = null
+    } else if (typeof patch.snoozedUntil === "string") {
+      const ts = new Date(patch.snoozedUntil)
+      if (Number.isNaN(ts.getTime())) {
+        return NextResponse.json({ error: "Invalid snoozedUntil timestamp" }, { status: 400 })
+      }
+      update.snoozed_until = ts.toISOString()
+    } else {
+      return NextResponse.json({ error: "snoozedUntil must be ISO string or null" }, { status: 400 })
+    }
+  }
+
   if (canEditMeta) {
     if (patch.title !== undefined) update.title = patch.title.trim()
     if (patch.body !== undefined) update.body = patch.body?.trim() || null

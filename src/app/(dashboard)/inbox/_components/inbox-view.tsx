@@ -13,6 +13,7 @@ import {
   Clock,
   CircleCheck,
   CircleX,
+  BellOff,
   AlertOctagon,
   CalendarDays,
   CalendarClock,
@@ -24,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
-import { InboxListRow } from "./inbox-list-row"
+import { InboxListRow, type RowAction } from "./inbox-list-row"
 import { ComposerDialog } from "./composer-dialog"
 import { ItemDetailDialog } from "./item-detail-dialog"
 import { ChatPane } from "./chat-pane"
@@ -56,7 +57,13 @@ type Props = {
 
 type MainTab = "tasks" | "updates" | "team-inbox" | "client-inbox" | "meetings"
 type UpdateFilter = "all" | UpdateStatus
-type TaskFilter = "all" | TaskStatus
+/**
+ * Snoozed is treated as a top-level task filter alongside open/in_progress/etc.
+ * so users have a single mental model: "what kind of tasks am I looking at?"
+ * Picking it forces snoozed=only on the API and shows tasks that are actively
+ * hidden from the default list — letting users wake them up early.
+ */
+type TaskFilter = "all" | TaskStatus | "snoozed"
 
 const UPDATE_FILTERS: TopTab<UpdateFilter>[] = [
   { id: "all", label: "All updates", icon: LayoutList },
@@ -68,6 +75,7 @@ const TASK_FILTERS: TopTab<TaskFilter>[] = [
   { id: "all", label: "All tasks", icon: LayoutList },
   { id: "open", label: "Open", icon: Circle },
   { id: "in_progress", label: "In progress", icon: Clock },
+  { id: "snoozed", label: "Snoozed", icon: BellOff },
   { id: "done", label: "Done", icon: CircleCheck },
   { id: "cancelled", label: "Cancelled", icon: CircleX },
 ]
@@ -99,16 +107,29 @@ export function InboxView({
     () => (updateFilter === "all" ? ALL_UPDATE_STATUSES : [updateFilter]),
     [updateFilter],
   )
-  const taskStatuses = useMemo(
-    () => (taskFilter === "all" ? ALL_TASK_STATUSES : [taskFilter]),
-    [taskFilter],
-  )
+  const taskStatuses = useMemo(() => {
+    if (taskFilter === "all") return ALL_TASK_STATUSES
+    // The Snoozed filter shows snoozed tasks regardless of their inner state
+    // (they're still status='open' or 'in_progress' under the hood — snooze is
+    // orthogonal). Pass both so the user sees everything they snoozed.
+    if (taskFilter === "snoozed") return ["open", "in_progress"]
+    return [taskFilter]
+  }, [taskFilter])
+
+  // Default behaviour: hide snoozed tasks from active filters; the dedicated
+  // Snoozed filter explicitly opts in. 'done' / 'cancelled' / 'all' include
+  // them too (a task can be snoozed when it's closed — though uncommon).
+  const taskSnoozeMode: "active" | "snoozed" | "all" =
+    taskFilter === "snoozed" ? "snoozed"
+    : taskFilter === "open" || taskFilter === "in_progress" ? "active"
+    : "all"
 
   const buildUrl = (kind: "update" | "task", statuses: string[]) => {
     const params = new URLSearchParams({ kind })
     if (assignedToMe && !lockedClient) params.set("assignedToMe", "true")
     if (lockedClient) params.set("clientId", lockedClient.id)
     params.set("statuses", statuses.join(","))
+    if (kind === "task") params.set("snoozed", taskSnoozeMode)
     return `/api/inbox?${params.toString()}`
   }
 
@@ -125,7 +146,7 @@ export function InboxView({
   })
 
   const tasksQuery = useQuery<{ items: InboxItem[] }>({
-    queryKey: ["inbox", "task", { assignedToMe, clientId: lockedClient?.id, filter: taskFilter }],
+    queryKey: ["inbox", "task", { assignedToMe, clientId: lockedClient?.id, filter: taskFilter, snooze: taskSnoozeMode }],
     queryFn: () => fetch(buildUrl("task", taskStatuses)).then((r) => r.json()),
     initialData: tasksUsesDefaults ? { items: initialTasks } : undefined,
     staleTime: 30 * 1000,
@@ -231,6 +252,10 @@ export function InboxView({
                   if (action === "done") patchItem(item.id, { status: "done" })
                   else if (action === "cancel") patchItem(item.id, { status: "cancelled" })
                   else if (action === "reopen") patchItem(item.id, { status: "open" })
+                  else if (action === "unsnooze") patchItem(item.id, { snoozedUntil: null })
+                  else if (typeof action === "object" && action.type === "snooze") {
+                    patchItem(item.id, { snoozedUntil: action.until })
+                  }
                 }}
               />
             )}
@@ -422,6 +447,8 @@ function SectionHeader({
   )
 }
 
+type TaskAction = Extract<RowAction, "done" | "cancel" | "reopen" | "unsnooze"> | { type: "snooze"; until: string }
+
 function TaskGroupSection({
   icon,
   label,
@@ -437,7 +464,7 @@ function TaskGroupSection({
   items: InboxItem[]
   showClient: boolean
   onItemClick: (item: InboxItem) => void
-  onAction: (item: InboxItem, action: "done" | "cancel" | "reopen") => void
+  onAction: (item: InboxItem, action: TaskAction) => void
 }) {
   if (items.length === 0) return null
   return (
@@ -451,8 +478,14 @@ function TaskGroupSection({
             showClient={showClient}
             onClick={() => onItemClick(item)}
             onAction={(action) => {
-              if (action === "done" || action === "cancel" || action === "reopen") {
-                onAction(item, action)
+              if (
+                action === "done" ||
+                action === "cancel" ||
+                action === "reopen" ||
+                action === "unsnooze" ||
+                (typeof action === "object" && action.type === "snooze")
+              ) {
+                onAction(item, action as TaskAction)
               }
             }}
           />
@@ -471,7 +504,7 @@ function GroupedTasks({
   tasks: InboxItem[]
   showClient: boolean
   onItemClick: (item: InboxItem) => void
-  onAction: (item: InboxItem, action: "done" | "cancel" | "reopen") => void
+  onAction: (item: InboxItem, action: TaskAction) => void
 }) {
   const groups = useMemo(() => groupTasksByDeadline(tasks), [tasks])
   return (

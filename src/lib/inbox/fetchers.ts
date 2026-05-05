@@ -26,6 +26,7 @@ type RawInboxRow = {
   status: string
   priority: InboxPriority | null
   due_date: string | null
+  snoozed_until: string | null
   source: InboxSource
   source_ref: Record<string, unknown> | null
   monday_update_id: string | null
@@ -56,6 +57,13 @@ type ListFilters = {
    * array to short-circuit and return nothing.
    */
   statuses?: string[]
+  /**
+   * Snooze handling:
+   *  - 'active'  (default for active filters) — hide currently snoozed items
+   *  - 'snoozed' — show ONLY currently snoozed items
+   *  - 'all'     — return both, ignoring snooze state
+   */
+  snoozed?: "active" | "snoozed" | "all"
 }
 
 /**
@@ -150,6 +158,7 @@ function rowToItem(row: RawInboxRow, clientMap: Map<string, MondayClient>): Inbo
     sourceRef: row.source_ref,
     mondayUpdateId: row.monday_update_id,
     isUnlinked,
+    snoozedUntil: row.snoozed_until,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -159,7 +168,7 @@ function rowToItem(row: RawInboxRow, clientMap: Map<string, MondayClient>): Inbo
 
 const ITEM_SELECT = `
   id, kind, client_id, author_id, assignee_id, title, body, status, priority,
-  due_date, source, source_ref, monday_update_id, trengo_channel_id,
+  due_date, snoozed_until, source, source_ref, monday_update_id, trengo_channel_id,
   author_name_cached, author_external,
   created_at, updated_at, completed_at,
   author:users!inbox_items_author_id_fkey(id, name, email),
@@ -189,6 +198,17 @@ export async function listInboxItems(
   } else {
     if (filters.kind === "update") query = query.eq("status", "unread")
     else if (filters.kind === "task") query = query.in("status", ["open", "in_progress"])
+  }
+
+  // Snooze handling — defaults to hiding snoozed items in "active" task views.
+  // PostgREST `or` lets us express "snoozed_until IS NULL OR snoozed_until <= now".
+  const snoozeMode = filters.snoozed ?? (filters.kind === "task" ? "active" : "all")
+  if (snoozeMode === "active") {
+    const nowIso = new Date().toISOString()
+    query = query.or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`)
+  } else if (snoozeMode === "snoozed") {
+    const nowIso = new Date().toISOString()
+    query = query.gt("snoozed_until", nowIso)
   }
 
   // Visibility: skip when scoped to a specific client (the API caller has
@@ -297,6 +317,9 @@ export async function getInboxBadgeCounts(
 ): Promise<{ unreadUpdates: number; openTasks: number }> {
   const supabase = await createAdminClient()
 
+  // Snoozed tasks shouldn't ping the sidebar — that's the point of snoozing.
+  // Active = snoozed_until IS NULL OR has already passed.
+  const nowIso = new Date().toISOString()
   const [updatesRes, tasksRes] = await Promise.all([
     supabase
       .from("inbox_events")
@@ -309,7 +332,8 @@ export async function getInboxBadgeCounts(
       .select("id", { count: "exact", head: true })
       .eq("assignee_id", userId)
       .eq("kind", "task")
-      .in("status", ["open", "in_progress"]),
+      .in("status", ["open", "in_progress"])
+      .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`),
   ])
 
   return {

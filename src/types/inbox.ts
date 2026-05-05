@@ -32,6 +32,10 @@ export type InboxItem = {
    *  to any Hub client yet — the contact id wasn't found in `clients.trengo_contact_ids`.
    *  Drives the "Unlinked" UI hint so AMs notice and link the contact. */
   isUnlinked: boolean
+  /** ISO timestamp until which the item is hidden from the default active
+   *  list. Snoozed items remain status='open' (still on someone's plate);
+   *  they just don't clutter today's view. Auto-reappears once passed. */
+  snoozedUntil: string | null
   createdAt: string
   updatedAt: string
   completedAt: string | null
@@ -67,6 +71,8 @@ export type UpdateInboxItemInput = {
   priority?: InboxPriority | null
   dueDate?: string | null
   assigneeId?: string
+  /** ISO timestamp to snooze until, or null to wake the item up immediately. */
+  snoozedUntil?: string | null
   /** Manual reclassification override — moves the item between Task / Update /
    *  Chat tabs when the AI classifier got it wrong. Server resets status +
    *  priority to sane defaults for the new kind. */
