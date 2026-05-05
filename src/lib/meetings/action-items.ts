@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { MeetingRow } from "./types"
+import { detectMostActiveTrengoChannel } from "@/lib/inbox/channel-detect"
+import { draftMeetingFollowupMessage } from "@/lib/inbox/reply-drafter"
 
 /**
  * Phase D.1 — Fathom action items → ONE bundled Hub task per meeting.
@@ -152,6 +154,53 @@ export async function ingestMeetingActionItems(
     client: categorized.client,
   })
 
+  // Smart-inbox: when the meeting is linked to a client AND there are open
+  // client-bucket items, pre-draft a friendly Dutch follow-up so the AM can
+  // ping the client about the items they owe straight from the task detail
+  // dialog. Skip when:
+  //   - meeting isn't linked yet (no client → no channel detection possible)
+  //   - all client items are already completed (nothing to chase)
+  //   - allCompleted (the bundle is closed; no point drafting)
+  const openClientItems = categorized.client.filter((i) => !i.completed)
+  let draftMessage: string | null = null
+  let draftChannel: "trengo_email" | "trengo_whatsapp" | null = null
+  if (
+    !allCompleted &&
+    openClientItems.length > 0 &&
+    meeting.client_id &&
+    clientName
+  ) {
+    try {
+      // Look up the trengo contact id via clients table — meeting.client_id is
+      // the monday_item_id, but we need the trengo_contact_ids[] from clients.
+      const { data: clientRow } = await supabase
+        .from("clients")
+        .select("trengo_contact_ids")
+        .eq("monday_item_id", meeting.client_id)
+        .maybeSingle<{ trengo_contact_ids: string[] | null }>()
+      const trengoContactId = clientRow?.trengo_contact_ids?.[0] ?? null
+      const detected = trengoContactId
+        ? await detectMostActiveTrengoChannel(trengoContactId)
+        : null
+      const channel = detected ?? "email"
+      draftChannel = channel === "whatsapp" ? "trengo_whatsapp" : "trengo_email"
+      // First attendee that's external is usually the client contact — best
+      // guess for "first name" when the meeting has it. Fall back to the
+      // client record's name.
+      const externalAttendee = (meeting.attendees ?? []).find((a) => a.is_external)
+      const firstName = externalAttendee?.name?.split(" ")[0] ?? clientName.split(" ")[0]
+      draftMessage = await draftMeetingFollowupMessage({
+        firstName,
+        clientName,
+        meetingTypeLabel: typeLabel,
+        items: openClientItems.map((i) => i.description),
+        channel,
+      })
+    } catch (e) {
+      console.error("Meeting follow-up draft failed:", e)
+    }
+  }
+
   const sourceRef = {
     rule: ACTION_ITEM_RULE,
     fathomRecordingId: meeting.fathom_recording_id,
@@ -159,6 +208,9 @@ export async function ingestMeetingActionItems(
     teamItemCount: categorized.team.length,
     clientItemCount: categorized.client.length,
     allCompleted,
+    ...(draftMessage && draftChannel
+      ? { draft_message: draftMessage, draft_channel: draftChannel }
+      : {}),
   }
 
   const { data: existing } = await supabase
