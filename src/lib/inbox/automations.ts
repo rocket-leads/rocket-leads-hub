@@ -836,6 +836,36 @@ function evaluatePeriod(daily: KpiDailyClientData, period: Period): CplCompariso
   }
 }
 
+/**
+ * Reshape a casual AM-tone message ("Hey Roy, lekker bezig — CPL ...")
+ * into the format Roy's WA template expects in `{{1}}`:
+ *   "{firstName}, {body ending in a period}"
+ *
+ * The template wraps it as "Hey {{1}} Groetjes <AM>", so dropping the leading
+ * "Hey/Hi/Hallo {firstName}" prefix avoids a doubled greeting in the output.
+ * Also normalises trailing punctuation to a period since the template signs
+ * off with " Groetjes <AM>" and a sentence break reads cleaner there.
+ *
+ * Pure string transform — deterministic, no AI call. We accept it'll
+ * occasionally produce a slightly odd "{firstName}, " when the original
+ * message used an unexpected opener; the AM can edit before sending.
+ */
+function adaptMessageForWhatsappTemplate(message: string, firstName: string): string {
+  let body = message.trim()
+  // Strip any leading greeting + first name. Match Hey/Hi/Hallo case-insensitive.
+  const greetingPattern = new RegExp(
+    `^(hey|hi|hallo)\\s+${firstName.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}\\b[,!\\s]*`,
+    "i",
+  )
+  body = body.replace(greetingPattern, "").trim()
+  // If the message lost its leading content for some reason, fall back to
+  // generic. Keeps the contract: starts with firstName.
+  if (!body) body = "lekker bezig"
+  // Normalise terminal punctuation — the template signs off after this.
+  body = body.replace(/[.!?\s]+$/u, "") + "."
+  return `${firstName}, ${body}`
+}
+
 async function generatePositiveSignalMessage(args: {
   client: MondayClient
   cmp: CplComparison
@@ -951,6 +981,25 @@ async function ensurePositiveCplDropTask(
   const message = await generatePositiveSignalMessage({ client, cmp })
   if (!message) return null
 
+  // Smart-inbox: same channel-detection + draft-channel pattern as the
+  // payment reminder rule. The AI generator above always produces a casual
+  // "Hey {firstName}" opener — fine for email, but the WA template already
+  // starts with "Hey ", so for WhatsApp we strip that prefix and reshape into
+  // the "{firstName}, body." format the template's {{1}} expects.
+  let draftMessage: string | null = message
+  let draftChannel: "email" | "whatsapp" = "email"
+  try {
+    const detected = client.trengoContactId
+      ? await detectMostActiveTrengoChannel(client.trengoContactId)
+      : null
+    draftChannel = detected ?? "email"
+    if (draftChannel === "whatsapp") {
+      draftMessage = adaptMessageForWhatsappTemplate(message, client.firstName || client.name)
+    }
+  } catch (e) {
+    console.error("Channel detection failed for positive signal:", e)
+  }
+
   const todayStr = new Date().toISOString().slice(0, 10)
   const dropPctRounded = Math.round(cmp.dropPct)
 
@@ -992,6 +1041,12 @@ async function ensurePositiveCplDropTask(
       dropPct: dropPctRounded,
       currCpl: cmp.curr.cpl,
       prevCpl: cmp.prev.cpl,
+      ...(draftMessage
+        ? {
+            draft_message: draftMessage,
+            draft_channel: draftChannel === "whatsapp" ? "trengo_whatsapp" : "trengo_email",
+          }
+        : {}),
       ...(testMode ? { testRun: true } : {}),
     },
   })
