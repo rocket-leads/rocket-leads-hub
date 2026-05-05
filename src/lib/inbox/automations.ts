@@ -33,13 +33,6 @@ export type CreatedItem =
       prevCpl: number
     }
   | {
-      rule: "next_invoice_due_task"
-      clientName: string
-      assigneeName: string
-      invoiceDate: string
-      mrr: number
-    }
-  | {
       rule: "auto_complete_invoice_tasks"
       clientName: string
       taskId: string
@@ -135,6 +128,124 @@ function fmtEuro(v: number): string {
   return `€${v.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+// --- AI drafters (smart-inbox layer) ------------------------------------
+
+/**
+ * Detect the client's most-active Trengo channel by counting recent
+ * conversations per channel-type. Returns 'email' or 'whatsapp' (the only
+ * two we differentiate for now), or null when no Trengo history exists.
+ *
+ * Heuristic: most recent ~20 conversations weigh equal — channel that owns
+ * the majority wins. Ties go to email (more appropriate for finance comms).
+ *
+ * Failure mode: when Trengo is unreachable we return null so the caller
+ * defaults to email-tone — safer for a payment reminder than guessing.
+ */
+async function detectMostActiveTrengoChannel(
+  trengoContactId: string,
+): Promise<"email" | "whatsapp" | null> {
+  try {
+    const all = await fetchConversations(trengoContactId)
+    if (all.length === 0) return null
+    const recent = all.slice(0, 20)
+    let email = 0
+    let whatsapp = 0
+    for (const c of recent) {
+      const type = (c.channel?.type ?? "").toLowerCase()
+      if (type.includes("email") || type.includes("mail")) email++
+      else if (type.includes("whats") || type.includes("wa_")) whatsapp++
+    }
+    if (whatsapp > email) return "whatsapp"
+    if (email > 0 || whatsapp > 0) return "email"
+    return null
+  } catch (e) {
+    console.error("Channel detection failed for", trengoContactId, e)
+    return null
+  }
+}
+
+/**
+ * Generate a short Dutch payment reminder message tailored to the channel.
+ *
+ * Email tone:
+ *   - "Hallo {voornaam}", 3-5 sentences, friendly-but-professional
+ *   - Closes with thanks/question, no signature (AM signs via Trengo footer)
+ *
+ * WhatsApp tone:
+ *   - "Hé {voornaam}" or "Hi {voornaam}", 1-3 short sentences
+ *   - Punchier, conversational, no formal opener/closer
+ *   - Note: outside Trengo's 24h session window, WA needs a template message —
+ *     the send-endpoint will guard against that case
+ */
+async function draftPaymentReminderMessage(input: {
+  firstName: string
+  invoiceNumber: string
+  outstanding: number
+  dueDate: string | null
+  daysOverdue: number | null
+  channel: "email" | "whatsapp"
+}): Promise<string> {
+  const dueLine = input.dueDate
+    ? `Verloopdatum: ${input.dueDate}` + (input.daysOverdue ? ` (${input.daysOverdue} dag${input.daysOverdue === 1 ? "" : "en"} over tijd).` : ".")
+    : "Deze factuur staat al even open."
+
+  const isEmail = input.channel === "email"
+
+  const systemPrompt = isEmail
+    ? `Je schrijft een korte Nederlandse betalingsherinnering per EMAIL voor een Account Manager bij Rocket Leads.
+
+DOEL: De klant vriendelijk attenderen op een openstaande factuur, met de aanname dat het waarschijnlijk over het hoofd is gezien — niet onwil.
+
+STIJL (email):
+- Nederlands
+- Vriendelijk en menselijk, maar niet informeel — "Hallo {voornaam}" of "Beste {voornaam}" als opener
+- Niet té formeel — het is geen incassobureau-brief
+- 3-5 zinnen, max ~80 woorden
+- Noem expliciet: factuurnummer, bedrag, hoeveel dagen over tijd (als bekend)
+- Frame: "onze administratie zag dat...", "klein checkje even", "is er ergens iets misgegaan?"
+- Sluit af met dank/vraag, GEEN handtekening (AM tekent zelf via Trengo)
+- Geen "Met vriendelijke groet" — geen formele afsluiting
+
+OUTPUT: Alleen de berichttekst, geen quotes, geen markdown.`
+    : `Je schrijft een korte Nederlandse betalingsherinnering via WHATSAPP voor een Account Manager bij Rocket Leads.
+
+DOEL: De klant vriendelijk attenderen op een openstaande factuur, alsof je een appje stuurt — kort, persoonlijk, niet zakelijk.
+
+STIJL (WhatsApp):
+- Nederlands, conversationeel
+- Opener: "Hé {voornaam}" of "Hi {voornaam}" — geen "Hallo" of "Beste"
+- 1-3 korte zinnen, max ~40 woorden
+- Noem het factuurnummer en het bedrag, en eventueel hoe lang het al openstaat
+- Frame: "kleine vraag", "zag net dat...", "is er iets misgegaan?"
+- Geen formele afsluiting, geen handtekening
+- Geen emoji's
+
+OUTPUT: Alleen de berichttekst, geen quotes, geen markdown.`
+
+  const msg = await anthropic.messages.create({
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 250,
+    system: systemPrompt,
+    messages: [
+      {
+        role: "user",
+        content: `Klant: ${input.firstName}
+Factuurnummer: ${input.invoiceNumber}
+Openstaand bedrag: ${fmtEuro(input.outstanding)}
+${dueLine}
+
+Schrijf nu de berichttekst.`,
+      },
+    ],
+  })
+
+  const text = msg.content
+    .map((b) => (b.type === "text" ? b.text : ""))
+    .join("\n")
+    .trim()
+  return text
+}
+
 // --- Rule 1: payment overdue ---------------------------------------------
 
 async function ensurePaymentOverdueTask(
@@ -161,15 +272,47 @@ async function ensurePaymentOverdueTask(
 
   const outstanding = invoice.amountDue - invoice.amountPaid
   const today = new Date().toISOString().slice(0, 10)
+  const dueDateIso = invoice.dueDate
+    ? new Date(invoice.dueDate * 1000).toISOString().slice(0, 10)
+    : null
+  const daysOverdue = invoice.dueDate
+    ? Math.max(1, Math.floor((Date.now() - invoice.dueDate * 1000) / (24 * 60 * 60 * 1000)))
+    : null
+
+  // Smart-inbox v1: pre-draft a friendly Dutch payment reminder so the AM
+  // can review-and-send straight from the task detail dialog. We detect the
+  // client's most-active Trengo channel first and tailor tone accordingly —
+  // email gets a longer, more formal reminder; WhatsApp gets a punchier
+  // "even checken"-appje. Stored alongside `draft_channel` in source_ref so
+  // the send-endpoint knows which Trengo channel to target.
+  //
+  // Failure to draft is non-fatal — the task still lands, just without the
+  // pre-filled message; the AM can still close the loop manually.
+  let draftMessage: string | null = null
+  let draftChannel: "email" | "whatsapp" = "email"
+  try {
+    const detected = client.trengoContactId
+      ? await detectMostActiveTrengoChannel(client.trengoContactId)
+      : null
+    draftChannel = detected ?? "email"
+    draftMessage = await draftPaymentReminderMessage({
+      firstName: client.firstName || client.name,
+      invoiceNumber: invoice.number ?? invoice.id,
+      outstanding,
+      dueDate: dueDateIso,
+      daysOverdue,
+      channel: draftChannel,
+    })
+  } catch (e) {
+    console.error("Payment reminder AI draft failed:", e)
+  }
 
   const titleCore = `Contact ${client.firstName || client.name} about overdue payment — ${fmtEuro(outstanding)}`
   const title = testMode ? `[TEST] ${titleCore}` : titleCore
   const bodyParts = [
     `Stripe invoice ${invoice.number ?? invoice.id} is overdue.`,
     `Outstanding: ${fmtEuro(outstanding)}.`,
-    invoice.dueDate
-      ? `Due date: ${new Date(invoice.dueDate * 1000).toISOString().slice(0, 10)}.`
-      : null,
+    dueDateIso ? `Due date: ${dueDateIso}${daysOverdue ? ` (${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue)` : ""}.` : null,
     `Contact the client today and confirm next payment step.`,
   ].filter(Boolean) as string[]
 
@@ -197,6 +340,12 @@ async function ensurePaymentOverdueTask(
       rule: "payment_overdue_task",
       invoiceId: invoice.id,
       mondayItemId: client.mondayItemId,
+      ...(draftMessage
+        ? {
+            draft_message: draftMessage,
+            draft_channel: draftChannel === "whatsapp" ? "trengo_whatsapp" : "trengo_email",
+          }
+        : {}),
       ...(testMode ? { testRun: true } : {}),
     },
   })
@@ -217,92 +366,11 @@ async function ensurePaymentOverdueTask(
 
 // --- Rule 3: next invoice date arrived ----------------------------------
 
-/**
- * For every client with `next_invoice_date <= today`, create a task in the
- * Hub inbox assigned to the user with `is_finance = true` (first one if
- * multiple). The task tells finance that an invoice should go out today, with
- * the client + total MRR + Stripe customer ID surfaced so they don't have to
- * dig.
- *
- * Idempotency: each task carries `source_ref.invoiceDate = YYYY-MM-DD` plus
- * the client_id, so a re-run on the same day is a no-op even if the cron
- * fires twice (e.g. retry).
- */
-async function ensureNextInvoiceDueTask(
-  supabase: Awaited<ReturnType<typeof createAdminClient>>,
-  client: MondayClient,
-  supabaseClientId: string,
-  invoiceDate: string,
-  mrr: number,
-  authorId: string,
-  assigneeId: string,
-  testMode: boolean,
-): Promise<CreatedItem | null> {
-  if (!testMode) {
-    const { data: existing } = await supabase
-      .from("inbox_events")
-      .select("id")
-      .eq("source", "automation")
-      .filter("source_ref->>rule", "eq", "next_invoice_due_task")
-      .filter("source_ref->>clientId", "eq", supabaseClientId)
-      .filter("source_ref->>invoiceDate", "eq", invoiceDate)
-      .filter("source_ref->>testRun", "is", null)
-      .maybeSingle()
-    if (existing) return null
-  }
-
-  const today = new Date().toISOString().slice(0, 10)
-  const titleCore = `Send invoice for ${client.name}`
-  const title = testMode ? `[TEST] ${titleCore}` : titleCore
-  const stripeBit = client.stripeCustomerId
-    ? `Stripe customer: ${client.stripeCustomerId}`
-    : `No Stripe customer on file — manual invoice.`
-  const dateLabel = invoiceDate === today ? "today" : invoiceDate < today ? `overdue since ${invoiceDate}` : invoiceDate
-
-  const bodyParts = [
-    `Next invoice date is ${dateLabel}.`,
-    mrr > 0 ? `MRR (per Hub agreement): ${fmtEuro(mrr)}.` : null,
-    stripeBit,
-    `Send the invoice and update the next-invoice date on the client to schedule the next one.`,
-  ].filter(Boolean) as string[]
-
-  if (testMode) {
-    bodyParts.unshift(`[TEST RUN] In production this would be assigned to the finance user.`, "")
-  }
-
-  const { error } = await supabase.from("inbox_events").insert({
-    kind: "task",
-    client_id: supabaseClientId,
-    author_id: authorId,
-    assignee_id: assigneeId,
-    title,
-    body: bodyParts.join("\n"),
-    status: "open",
-    priority: "high",
-    due_date: today,
-    source: "automation",
-    source_ref: {
-      rule: "next_invoice_due_task",
-      clientId: supabaseClientId,
-      invoiceDate,
-      mondayItemId: client.mondayItemId,
-      ...(testMode ? { testRun: true } : {}),
-    },
-  })
-
-  if (error) {
-    console.error("Next invoice task insert failed:", error.message)
-    return null
-  }
-
-  return {
-    rule: "next_invoice_due_task",
-    clientName: client.name,
-    assigneeName: "Finance",
-    invoiceDate,
-    mrr,
-  }
-}
+// (Rule 3 — `next_invoice_due_task` — was removed: finance handles invoicing
+// fast enough that the task adds noise. The Billing page surfaces overdue
+// state via a sidebar dot for the finance user instead. Rule 4 below stays
+// to clean up any legacy open tasks once Stripe registers the matching
+// invoice.)
 
 // --- Rule 4: auto-complete invoice tasks ---------------------------------
 
@@ -952,7 +1020,6 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
   if (
     !rules.payment_overdue_task &&
     !rules.positive_client_signal_cpl_drop &&
-    !rules.next_invoice_due_task &&
     !rules.auto_complete_invoice_tasks &&
     !rules.dedup_overlapping_tasks
   ) {
@@ -1003,7 +1070,7 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
   // account_manager / campaign_manager / appointment_setter), not a separate
   // boolean — see migration 20240022.
   let financeAssigneeId: string | null = null
-  if (rules.next_invoice_due_task || rules.auto_complete_invoice_tasks) {
+  if (rules.auto_complete_invoice_tasks) {
     if (testMode) {
       financeAssigneeId = opts!.testMode!.assigneeUserId
     } else {
@@ -1014,27 +1081,6 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
         .order("created_at", { foreignTable: "users", ascending: true })
         .limit(1)
       financeAssigneeId = financeRows?.[0]?.user_id ?? null
-      if (!financeAssigneeId && rules.next_invoice_due_task) {
-        skipped.push({ reason: "no_finance_user_configured" })
-      }
-    }
-  }
-
-  // Fetch all agreements once so we can include MRR in each invoice task
-  // without per-client round-trips.
-  let mrrByClientId = new Map<string, number>()
-  if (rules.next_invoice_due_task && financeAssigneeId) {
-    const { data: agreementRows } = await supabase
-      .from("client_agreements")
-      .select("client_id, campaigns")
-    if (agreementRows) {
-      const { totalMRR, normalizeCampaigns } = await import("@/lib/clients/agreement")
-      mrrByClientId = new Map(
-        agreementRows.map((row) => [
-          row.client_id as string,
-          totalMRR(normalizeCampaigns(row.campaigns)),
-        ]),
-      )
     }
   }
 
@@ -1042,40 +1088,12 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
 
   const dailyCache = await readCache<KpiDailyCache>("kpi_daily")
 
-  // The next-invoice rule doesn't require an AM (it goes to finance), so we
-  // run it over ALL clients in a separate loop before the AM-gated rules.
-  if (rules.next_invoice_due_task && financeAssigneeId) {
-    for (const client of allClients) {
-      const supabaseClientId = supabaseIdByItem.get(client.mondayItemId)
-      if (!supabaseClientId) continue
-      const due = nextInvoiceByItem.get(client.mondayItemId)
-      if (!due || due > today) continue
-      try {
-        const result = await ensureNextInvoiceDueTask(
-          supabase,
-          client,
-          supabaseClientId,
-          due,
-          mrrByClientId.get(supabaseClientId) ?? 0,
-          authorId,
-          financeAssigneeId,
-          testMode,
-        )
-        if (result) created.push(result)
-      } catch (e) {
-        skipped.push({
-          reason: "next_invoice_failed",
-          client: client.name,
-          detail: e instanceof Error ? e.message : String(e),
-        })
-      }
-    }
-  }
-
-  // Auto-complete any open `next_invoice_due_task` items where a fresh Stripe
-  // invoice has appeared since the task was scheduled. Runs in production AND
-  // test mode (test mode just won't write back the completion if the task was
-  // [TEST] flagged — see ensureAutoCompleteInvoiceTasks).
+  // Auto-complete any legacy `next_invoice_due_task` items where a fresh Stripe
+  // invoice has appeared since the task was scheduled. The creation rule was
+  // removed (finance handles invoicing fast enough that the task adds noise),
+  // but auto-complete stays so existing open tasks get cleaned up gracefully.
+  // Runs in production AND test mode (test mode just won't write back the
+  // completion if the task was [TEST] flagged — see ensureAutoCompleteInvoiceTasks).
   if (rules.auto_complete_invoice_tasks) {
     try {
       const completed = await ensureAutoCompleteInvoiceTasks(

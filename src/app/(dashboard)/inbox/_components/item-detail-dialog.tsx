@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Trash2, Send, Calendar, AlertCircle, Loader2, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown } from "lucide-react"
+import { Trash2, Send, Calendar, AlertCircle, Loader2, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown, Sparkles } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -187,6 +187,63 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
   const isTask = item?.kind === "task"
   const canDelete = !!item && (item.authorId === currentUser.id || currentUser.role === "admin")
   const canReplyToSource = !!item && (item.source === "trengo" || item.source === "slack")
+
+  // --- Smart-inbox draft (AI-prefilled outbound message) ------------------
+  // For tasks where the automation generated a ready-to-send draft (currently
+  // payment_overdue_task), show an editable textarea + Send button so the
+  // AM can review, tweak and ship without leaving the Hub.
+  const draftMessage = (item?.sourceRef as Record<string, unknown> | null)?.draft_message
+  const draftChannel = (item?.sourceRef as Record<string, unknown> | null)?.draft_channel
+  const hasDraft =
+    isTask &&
+    typeof draftMessage === "string" &&
+    draftMessage.trim().length > 0 &&
+    (item?.status === "open" || item?.status === "in_progress")
+  const [draftBody, setDraftBody] = useState<string>(
+    typeof draftMessage === "string" ? draftMessage : "",
+  )
+  const [sendingDraft, setSendingDraft] = useState(false)
+  const [draftError, setDraftError] = useState<string | null>(null)
+  const [draftNeedsConnect, setDraftNeedsConnect] = useState(false)
+
+  // Re-sync the textarea when the dialog switches between items (e.g. after a
+  // server refresh) so the prefilled message follows the active task.
+  useEffect(() => {
+    setDraftBody(typeof draftMessage === "string" ? draftMessage : "")
+    setDraftError(null)
+    setDraftNeedsConnect(false)
+  }, [draftMessage, itemId])
+
+  async function sendDraft() {
+    if (!draftBody.trim()) return
+    setSendingDraft(true)
+    setDraftError(null)
+    setDraftNeedsConnect(false)
+    try {
+      const res = await fetch(`/api/inbox/${itemId}/send-trengo-message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: draftBody.trim() }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok) {
+        if (res.status === 409 && data.error?.toLowerCase().includes("trengo")) {
+          setDraftNeedsConnect(true)
+        } else {
+          setDraftError(data.error ?? "Send failed")
+        }
+        return
+      }
+      await queryClient.invalidateQueries({ queryKey: ["inbox-item", itemId] })
+      await queryClient.invalidateQueries({ queryKey: ["inbox"] })
+      onChanged()
+      onClose()
+    } catch (e) {
+      setDraftError(e instanceof Error ? e.message : "Send failed")
+    } finally {
+      setSendingDraft(false)
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -386,6 +443,52 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                       <Send className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {hasDraft && (
+              <div className="border-t border-border/40 pt-3">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 mb-2 inline-flex items-center gap-1.5">
+                  <Sparkles className="h-3 w-3" />
+                  AI draft — {channelLabel(draftChannel)}
+                </p>
+                {draftNeedsConnect && (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 mb-2 text-xs">
+                    Connect your Trengo account first.{" "}
+                    <Link href="/account" className="underline font-medium">
+                      Go to My Account
+                    </Link>
+                  </div>
+                )}
+                {draftError && (
+                  <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 mb-2 text-xs text-destructive">
+                    {draftError}
+                  </div>
+                )}
+                <textarea
+                  value={draftBody}
+                  onChange={(e) => setDraftBody(e.target.value)}
+                  rows={6}
+                  disabled={sendingDraft}
+                  className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none mb-2"
+                />
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] text-muted-foreground/50">
+                    Past aan en stuur direct vanuit de Hub. Verschijnt in Trengo als jou.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={sendDraft}
+                    disabled={!draftBody.trim() || sendingDraft}
+                  >
+                    {sendingDraft ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
+                    Verstuur
+                  </Button>
                 </div>
               </div>
             )}
@@ -598,4 +701,10 @@ function ReclassifyControl({
       </div>
     </div>
   )
+}
+
+function channelLabel(channel: unknown): string {
+  if (channel === "trengo_email") return "verstuur als email"
+  if (channel === "trengo_whatsapp") return "verstuur als WhatsApp"
+  return "verstuur via Trengo"
 }
