@@ -9,7 +9,7 @@
 Snelle tour. Per stuk: wat doet het?
 
 ### Sidebar (links in beeld)
-Watch List · Clients · Inbox · Meetings · Targets · **Billing (NIEUW, admin)** · My Account · Settings
+Watch List · Clients · Inbox · Meetings · Targets · Billing (admin) · My Account · Settings
 
 ### 1. Watch List
 > *"Welke klanten gaan niet goed?"*
@@ -19,66 +19,40 @@ Triage scherm. Rood = nu iets doen. Geel = in de gaten houden. Groen = lekker be
 ### 2. Clients lijst
 > *"Wie zijn al onze klanten?"*
 
-Zoeken, filteren, doorklikken naar één klant. **Nieuw:** MRR-kolom (uit Hub agreement) met ad-budget en next-invoice-datum als sub-regels.
+Zoeken, filteren, doorklikken. MRR-kolom (uit Hub agreement) met ad-budget en next-invoice-datum als sub-regels.
 
-### 3. Klant detail page (klik op een klant)
+### 3. Klant detail page
 > *"Alles over deze ene klant op één plek."*
 
-Tabs:
-- **Home** — overzicht
-- **Campaigns** — Meta ads, KPI's, AI analyses, ad performance
-- **Inbox** — berichten over deze klant
-- **Billing** — Stripe facturen + per-campagne wat ze betalen + MRR + **next-invoice datepicker (NIEUW)**
-- **Communication** — WhatsApp + email gesprekken via Trengo
-- **Meetings** — Fathom calls van deze klant
-- **Settings** — alle ID's en koppelingen
+Tabs: Home · Campaigns · Inbox · Billing · Communication · Meetings · Settings. Billing tab heeft per-klant next-invoice datepicker.
 
 ### 4. Inbox (`/inbox`)
 > *"Wat moet ik vandaag doen of lezen?"*
 
-Eén plek voor alles. AI sorteert berichten uit Trengo, Slack en Monday in **Tasks**, **Updates** en **Chat**. **Nieuw:** ingest-events worden automatisch naar de juiste AM gerouteerd (geen poel meer op het HQ-account). Trengo-berichten zonder gekoppelde klant kun je via "Link to client"-dialog ter plekke aan de juiste klant hangen.
+Eén plek voor alles uit Trengo, Slack, Monday, Fathom action items, automation cron en handmatige creaties. Ingest events worden auto-gerouteerd naar de juiste AM. Snooze beschikbaar op alle open tasks. AI dedup tussen bronnen (opt-in).
 
 ### 5. Meetings (`/meetings`)
 > *"Al onze Fathom calls op één plek."*
 
-Fathom opnames komen vanzelf binnen. Vier tabs: Unlinked / Recent / Internal / Archived. Per opname: titel + datum + Fathom AI summary + action items + knop terug naar Fathom voor de video.
+Vier tabs (Unlinked / Recent / Internal / Archived). Action items uit elke meeting komen automatisch als bundled Hub-task (split in team-taken vs klant-taken).
 
 ### 6. Targets (`/targets`)
 > *"Hoe goed gaan we deze maand?"*
 
 Maand-doelen vs werkelijkheid. Vier pijlers: CBC, kwalificatie, show-up, conversie. Pro-rata berekend.
 
-### 7. Billing (`/billing`) ✨ NIEUW
+### 7. Billing (`/billing`)
 > *"Welke facturen moeten deze week eruit?"*
 
-Admin-only overzichtspagina. Alle klanten met een `next_invoice_date` ingesteld, gegroepeerd in Overdue / Today / This week / Next week / Later. Per rij: klantnaam, datum, MRR, ad-budget, Stripe deeplink. Top: 4 summary cards (scheduled clients, due this week, total MRR, run rate).
+Admin-only finance dashboard. Klanten met `next_invoice_date`, gegroepeerd in Overdue / Today / This week / Next week / Later. Top: 4 summary cards. Auto-task voor finance op de vervaldatum + auto-complete via Stripe webhook (instant) of cron-fallback.
 
 ### 8. My Account (`/account`)
 > *"Mijn eigen koppelingen."*
 
-Koppel je eigen Slack/Trengo/Monday tokens → replies vanuit de Hub komen op naam van jou, niet van een bot. Sidebar avatar toont een paars puntje als één van de drie nog niet is geconnect.
+Persoonlijke Slack/Trengo/Monday tokens → replies vanuit de Hub komen op naam van jou. Sidebar avatar toont een paars puntje als één van de drie nog niet is geconnect.
 
 ### 9. Settings (alleen admin)
-API keys beheren, gebruikers, board config (Monday kolommen), notificatie-instellingen. **Nieuw:** Finance is een Monday role geworden — geen aparte kolom meer. Board config laat nu ook `follow_up_status`, `follow_up_fee` en `next_invoice_date` aanpassen.
-
----
-
-## 🆕 Wat is er deze sprint live gegaan
-
-In willekeurige volgorde:
-
-- **Next invoice date tracker** — per-klant datum, bidi sync met Monday `date3`, datepicker op Billing tab, sortable kolom op /clients overview, dedicated /billing overview pagina
-- **Finance-rol via Monday role** — geen `is_finance` boolean meer, gewoon een waarde in `monday_column_role`
-- **Auto-task voor finance** — daily cron creëert "Send invoice for {klant}"-task wanneer `next_invoice_date <= today`, geassigneerd aan de finance user, met MRR + Stripe customer ID in de body
-- **Auto-complete via Stripe** — task gaat automatisch op done zodra Stripe `invoice.finalized` of `invoice.sent` event vuurt voor die klant. Cron is backup. Lag van 24u → seconden
-- **MRR-kolom op /clients** — sortable, met budget en next-invoice als sub-regels
-- **Sidebar platform-token indicator** — paars puntje wanneer Slack/Trengo/Monday niet geconnect is
-- **Slack OAuth fix** — geen 500 meer wanneer `SLACK_CLIENT_ID` ontbreekt; redirect met readable error
-- **Inbox AM-routing** — Trengo + Monday webhook ingesters resolven nu de juiste AM via `user_column_mappings`
-- **Trengo contact linking** — koppel ongelinkte Trengo-berichten ter plekke aan de juiste klant
-- **Source pills op inbox-rijen** — Trengo/Slack/Monday/automation/watchlist/meeting markers
-- **Board config polish** — `follow_up_status`, `follow_up_fee`, `next_invoice_date` configureerbaar
-- **Cleanup** — throwaway admin endpoints `fathom-fetch` + `meetings-debug` weg
+API keys, gebruikers (incl. finance Monday role), board config (alle Monday kolommen incl. `follow_up_status` / `follow_up_fee` / `next_invoice_date`), inbox automation rules, notificaties.
 
 ---
 
@@ -93,20 +67,54 @@ Ongeveer 20% van klanten heeft >1 Meta-campagne. Hub heeft voor iedereen 1 stand
 - Sub-items op alle 762 klanten verwijderen (Hub leest ze niet meer)
 - 38 klanten met lege `status__1` → invullen "Client" of "Rocket Leads"
 
+### C. AI dedup live zetten (~5 min, na test-run)
+- Settings → Inbox automations → "Run now (test mode)" → review de paarse "Deduped tasks" rijen
+- Tevreden? → toggle `dedup_overlapping_tasks` aan → kandelt vanaf de volgende cron echt
+
 ---
 
 ## 🟢 Volgende — wat er nog aankomt
 
-### Phase D — Centraal taken-systeem
-> *"Eén Hub-takenlijst voor alles."*
+Phase A-D zijn af. Volgorde van prioriteit:
 
-Action items uit Fathom + tickets uit Trengo + updates uit Monday + auto-tasks uit cron → één gezamenlijke takenlijst per persoon. AI dedupliceert ("Arno moet factuur sturen voor Klant X" via Trengo + via cron = één task). Vraagt 30 min alignment voor we beginnen: welke sources zijn first-class, hoe AI items dedupliceert, wat de UX is.
+### 1. Stripe subscription auto-send (klein, scope met Arno)
+Nu: finance maakt invoice handmatig in Stripe → webhook auto-completet de task. Volgende stap: de Hub triggert de invoice-creatie via een Stripe subscription, met optionele approval-knop in de inbox-task. Roy bespreekt scope eerst met Billing voordat we bouwen — beslissingen die nog open zijn: pure auto-send vs. approval-flow, hoe omgaan met klanten met variabele bedragen per maand, prorate-handling.
 
-### Stripe subscription auto-send (later)
-Nu: finance maakt invoice handmatig in Stripe → webhook auto-completet de task. Volgende stap: de Hub triggert de invoice-creatie via Stripe subscription, met optionele approval-knop in de inbox-task. Wachten tot het huidige flow comfortabel zit.
+### 2. Phase F — Push notificaties
+> *"De Hub pingt jou, in plaats van dat jij steeds moet kijken."*
 
-### Phase E-G — Veel later
-Slack als operationele tool vervangen, push notificaties, Trengo/Monday/Slack daily-decommissioning. Visie staat in `vision-rocketleads-hub.md`.
+Browser push (native OS-level notificaties die ook verschijnen als de Hub-tab dicht is — zelfde tech als WhatsApp Web / Linear / Slack web). Plus optioneel email digest voor wie geen real-time pings wil.
+
+**Triggers (per-persoon configureerbaar):**
+- Je wordt @mentioned in een task/comment
+- Een task wordt aan je toegewezen
+- Nieuwe inbox-event landt op je "Assigned to me"-filter
+- Automation creëert iets voor jou (payment overdue, finance task)
+- Een snoozed task wordt wakker
+
+**Implementatie:** Service Worker + Web Push (VAPID keys), one-time browser permission prompt. Email digest via een dagelijkse cron rond 09:00 NL. Phase F is klein-tot-medium — geen schemawijzigingen, alleen een `push_subscriptions` tabel + cron + frontend permission flow.
+
+### 3. Phase G — Daily decommissioning van Trengo / Monday / Slack
+> *"Niemand opent deze tools nog dagelijks."*
+
+**Geen code-fase, een gedragsverandering.** Eindstation uit `vision-rocketleads-hub.md`: het team werkt 100% in de Hub; Trengo/Monday/Slack zakken naar de onderste laag als transport/storage. Hoogstens 1× per week openen voor admin (Trengo: WhatsApp Business settings, Monday: data audit, Slack: externe integraties).
+
+**Wat het vraagt:**
+- Audit: hoe vaak opent elk teamlid nog Trengo/Monday/Slack?
+- Voor élke workflow die ze daar nog doen → bouw de Hub-equivalent (of accepteer 1× per week als acceptabel)
+- Onboarding-doc: "vanaf nu doe je X in de Hub, niet in Slack"
+- Slack-kanalen archiveren of read-only zetten
+
+Hangt af van Phase E (chat) voordat het écht volledig kan.
+
+### 4. Phase E — Hub-native team chat (Slack-vervanger) — HELEMAAL ACHTERAAN
+> *"In het begin werken we gewoon door in Slack."*
+
+Geen prioriteit nu. Te grote klus om aan het begin op te pakken. Slack blijft de chat-tool tot we hier verder mee gaan.
+
+**Wanneer we 't ooit doen:** Slack als operationele tool vervangen door chat in de Hub. Per-klant interne thread (op de klantpagina), team-brede kanalen, DM's tussen teamleden, @mentions, reacties, threading. Snelle Google Meet-knop voor Huddle-vervanging. Reden om eigen te bouwen i.p.v. Slack te integreren: Slack DM's tussen teamleden zijn niet leesbaar via de Slack API (privacy-by-design).
+
+Visie voor het hele plaatje staat in `vision-rocketleads-hub.md`.
 
 ---
 
@@ -120,8 +128,9 @@ Slack als operationele tool vervangen, push notificaties, Trengo/Monday/Slack da
 
 ## 🧹 Klein opruimwerk
 
-Niet urgent, mag op een rustige dag.
+Niet urgent.
 
-- **Test-opname** "Impromptu Google Meet Meeting" (team Delivery Founder Download) staat nog in `meetings` tabel. Mag via Supabase weg.
-- **`seed-agreements` endpoint** blijft staan voor toekomstige re-seeds (bv. na schema wijzigingen).
+- **Test-opname** "Impromptu Google Meet Meeting" (team Delivery Founder Download) staat nog in `meetings`. Mag via Supabase weg.
+- **`seed-agreements` endpoint** blijft staan voor toekomstige re-seeds.
 - **`fathom-backfill` endpoint** blijft staan zolang we niet zeker weten dat de webhook 100% reliable is.
+- **`meetings-backfill-tasks` endpoint** — eenmalige bulk-ingest van Fathom action items voor historische meetings. Hit 'm één keer (`/api/admin/meetings-backfill-tasks`) als je alle bestaande meetings in de inbox wilt. Mag daarna weg, maar geen haast.
