@@ -14,6 +14,17 @@ export const STATUS_LABELS: Record<ClientStatus, string> = {
   churned: "Churned",
 }
 
+/** Label for missing / unmapped status. Used everywhere the UI renders a
+ *  status pill — so empty Monday statuses surface as a muted dash instead of
+ *  a misleading "Onboarding" label. */
+export const STATUS_LABEL_NONE = "—"
+
+/** Look up the label for a possibly-null status without exploding the type
+ *  system at call sites that previously did `STATUS_LABELS[status]`. */
+export function statusLabel(status: ClientStatus | null): string {
+  return status === null ? STATUS_LABEL_NONE : STATUS_LABELS[status]
+}
+
 /** Order shown in dropdowns and filters. */
 export const STATUS_OPTIONS: ClientStatus[] = ["onboarding", "live", "on_hold", "churned"]
 
@@ -25,6 +36,18 @@ export const STATUS_TONES: Record<ClientStatus, { dot: string; pill: string }> =
   live: { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
   on_hold: { dot: "bg-yellow-500", pill: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" },
   churned: { dot: "bg-red-500", pill: "bg-red-500/10 text-red-600 dark:text-red-400" },
+}
+
+/** Tone for the null/unmapped status. Muted so it reads as "no value" and
+ *  doesn't compete with the four real statuses. */
+export const STATUS_TONE_NONE = {
+  dot: "bg-muted-foreground/30",
+  pill: "bg-muted/40 text-muted-foreground",
+} as const
+
+/** Tone lookup for nullable status — returns the muted tone when null. */
+export function statusTone(status: ClientStatus | null): { dot: string; pill: string } {
+  return status === null ? STATUS_TONE_NONE : STATUS_TONES[status]
 }
 
 /**
@@ -41,7 +64,11 @@ export const STATUS_TONES: Record<ClientStatus, { dot: string; pill: string }> =
  *
  * Both literal "Churned" and "Onboarding" are also accepted, so when Monday's
  * status column is renamed to canonical labels the mapping keeps working
- * without a code change. Empty / unknown values fall back to onboarding.
+ * without a code change.
+ *
+ * Empty Monday status → null (renders as "—" in the UI rather than a
+ * misleading Onboarding badge). Truly unknown labels also collapse to null
+ * so we never silently misclassify a new Monday option.
  *
  * Boards: clients on the Onboarding board are always "onboarding" regardless
  * of column value — the board itself signals the lifecycle phase.
@@ -49,11 +76,11 @@ export const STATUS_TONES: Record<ClientStatus, { dot: string; pill: string }> =
 export function mondayStatusToHub(
   mondayLabel: string | null | undefined,
   boardType: "onboarding" | "current",
-): ClientStatus {
+): ClientStatus | null {
   if (boardType === "onboarding") return "onboarding"
 
   const normalized = (mondayLabel ?? "").trim().toLowerCase()
-  if (!normalized) return "onboarding"
+  if (!normalized) return null
 
   // Live family
   if (normalized === "live" || normalized === "subcampaigns only") return "live"
@@ -84,7 +111,10 @@ export function mondayStatusToHub(
     return "churned"
   }
 
-  return "onboarding"
+  // Unknown/new Monday label — surface as null so a missing mapping doesn't
+  // hide behind a phantom "Onboarding" badge. Add the label to the ladders
+  // above when it shows up in real data.
+  return null
 }
 
 const HUB_TO_MONDAY_LABEL: Record<ClientStatus, string> = {

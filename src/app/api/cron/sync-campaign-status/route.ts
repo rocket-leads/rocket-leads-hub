@@ -96,6 +96,15 @@ export async function GET(req: NextRequest) {
         const desired: ClientStatus = activeCount > 0 ? "live" : "on_hold"
         const currentHub = mondayStatusToHub(client.campaignStatus, "current")
 
+        // Skip clients whose Monday status is empty / unmapped — auto-flipping
+        // them would silently set a status finance hasn't reviewed yet. They
+        // surface as "—" in the Hub; admin should explicitly pick a status
+        // before the cron starts toggling.
+        if (currentHub === null) {
+          unchanged.push(client.mondayItemId)
+          continue
+        }
+
         if (currentHub === desired) {
           unchanged.push(client.mondayItemId)
           continue

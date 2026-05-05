@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
-import { resolveClientAssignee } from "@/lib/inbox/assignee"
 import { stripHtml } from "@/lib/html"
 
 export const maxDuration = 60
@@ -55,6 +54,68 @@ function verifyAuth(req: NextRequest): boolean {
   const auth = req.headers.get("authorization")
   if (auth === `Bearer ${expected}`) return true
   return false
+}
+
+/**
+ * Parse @-mentions out of a Monday update body's HTML. Mentions render as:
+ *   <a class="user_mention_editor router"
+ *      data-mention-type="User"
+ *      data-mention-id="<monday_user_id>">@<display name></a>
+ *
+ * Returns an array of `{ mondayUserId, displayName }` in document order.
+ * `mondayUserId` is the numeric Monday user id; `displayName` is the anchor
+ * text without the leading "@". Empty array when no mentions found (i.e.
+ * the body contains no <a class="user_mention_editor"> anchor).
+ */
+function parseMondayMentions(html: string): Array<{ mondayUserId: string; displayName: string }> {
+  if (!html) return []
+  const re =
+    /<a[^>]*\bdata-mention-type=["']User["'][^>]*\bdata-mention-id=["'](\d+)["'][^>]*>(?:@)?([^<]+)<\/a>/gi
+  const out: Array<{ mondayUserId: string; displayName: string }> = []
+  for (const m of html.matchAll(re)) {
+    const mondayUserId = m[1]
+    const displayName = m[2].replace(/^@/, "").trim()
+    if (mondayUserId && displayName) out.push({ mondayUserId, displayName })
+  }
+  return out
+}
+
+/**
+ * Resolve mentioned Monday display names to Hub user ids via
+ * `user_column_mappings.monday_person_name`. Returns the FIRST matched Hub
+ * user id (the assignee for the inbox event). Null when none of the
+ * mentioned names map to a Hub user — caller should skip the event.
+ *
+ * Why first-match: a Monday update that mentions multiple people would
+ * otherwise need a fan-out per mention, doubling event counts. First-match
+ * keeps the inbox lean; we can revisit if the team explicitly wants
+ * everyone-mentioned to receive their own row.
+ */
+async function resolveFirstMentionToHubUser(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  mentions: Array<{ displayName: string }>,
+): Promise<string | null> {
+  if (mentions.length === 0) return null
+  const names = mentions.map((m) => m.displayName)
+  const { data } = await supabase
+    .from("user_column_mappings")
+    .select("user_id, monday_person_name")
+    .in("monday_person_name", names)
+  if (!data || data.length === 0) return null
+
+  // Preserve the order of mentions: route to the user matching the FIRST
+  // mention that resolves, not whichever Postgres returned first.
+  const byName = new Map<string, string>()
+  for (const row of data) {
+    if (row.monday_person_name && row.user_id) {
+      byName.set(row.monday_person_name as string, row.user_id as string)
+    }
+  }
+  for (const m of mentions) {
+    const id = byName.get(m.displayName)
+    if (id) return id
+  }
+  return null
 }
 
 async function getBoardConfig(supabase: Awaited<ReturnType<typeof createAdminClient>>) {
@@ -119,17 +180,23 @@ export async function POST(req: NextRequest) {
   }
 
   // Monday sends rich HTML for `body` (mention anchors, <p> wrappers, etc.)
-  // and the plain `textBody` variant when available. Prefer textBody, fall
-  // back to stripping the HTML body so mentions render as their anchor text
-  // (`@Arno Vosters`) instead of raw markup.
-  const rawText =
-    event.textBody ??
-    event.value?.text ??
-    event.body ??
-    event.value?.body ??
-    ""
+  // We need both forms: HTML to parse the mention anchors, plain text for
+  // the inbox row title/body. textBody is the plain variant when available.
+  const rawHtml = event.body ?? event.value?.body ?? ""
+  const rawText = event.textBody ?? event.value?.text ?? rawHtml
   const text = stripHtml(rawText)
   if (!text) return NextResponse.json({ ok: true, skipped: "empty body" })
+
+  // Strict mention-only routing (per Roy's call): a Monday update lands in
+  // the Hub inbox ONLY if a Hub user is @-mentioned in the body. Updates
+  // without mentions, or with mentions of people who don't have a Hub
+  // user_column_mappings row, are dropped without classification — no AI
+  // spend, no AM-fallback noise, no "everything on every client lands on
+  // the AM regardless of who needs to act."
+  const mentions = parseMondayMentions(rawHtml)
+  if (mentions.length === 0) {
+    return NextResponse.json({ ok: true, skipped: "no_mention" })
+  }
 
   const userId = String(event.userId ?? "")
   const userName = event.userName ?? "Monday user"
@@ -164,10 +231,23 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  // System author for the FK. Assignee resolves to the AM of the client so
-  // classified Monday updates land on the right person's "Assigned to me"
-  // view rather than a phantom HQ inbox. Falls back to HQ when the client's
-  // AM isn't mapped via user_column_mappings.
+  // Resolve the first @-mention to a Hub user. If nobody mentioned has a
+  // user_column_mappings row, drop the event — we can't deliver to a name
+  // that doesn't map to a Hub account. (Returning a 200 OK with `skipped`
+  // keeps Monday from retrying.)
+  const mentionedUserId = await resolveFirstMentionToHubUser(supabase, mentions)
+  if (!mentionedUserId) {
+    return NextResponse.json({
+      ok: true,
+      skipped: "mention_not_in_user_column_mappings",
+      mentions: mentions.map((m) => m.displayName),
+    })
+  }
+
+  // System author for the FK — Monday webhook ingest doesn't have a
+  // session-bound user_id and we don't try to map the *poster* to a Hub
+  // account (that's a different problem; the body credits them by name via
+  // author_name_cached).
   const { data: hq } = await supabase
     .from("users")
     .select("id")
@@ -177,7 +257,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "no system author" }, { status: 500 })
   }
 
-  const assigneeId = (await resolveClientAssignee(pulseId)) ?? hq.id
+  const assigneeId = mentionedUserId
 
   const titlePreview = text.length > 100 ? text.slice(0, 100) + "…" : text
   const bodyFull = text.length > 100 ? text : null

@@ -71,7 +71,10 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
     () =>
       showAll
         ? current
-        : current.filter((c) => ACTIVE_HUB_STATUSES.includes(mondayStatusToHub(c.campaignStatus, "current"))),
+        : current.filter((c) => {
+            const status = mondayStatusToHub(c.campaignStatus, "current")
+            return status !== null && ACTIVE_HUB_STATUSES.includes(status)
+          }),
     [current, showAll],
   )
   const hiddenCount = current.length - visibleCurrent.length

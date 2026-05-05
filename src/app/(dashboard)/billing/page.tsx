@@ -79,7 +79,11 @@ export default async function BillingPage() {
     _cycle: string
     _status: ReturnType<typeof mondayStatusToHub>
   }
-  const scheduled: ScheduledClient[] = allClients
+  // Don't annotate the variable — let inference keep the narrower `_status`
+  // type produced by the type-guard filter below, otherwise the narrowing is
+  // widened back to `ClientStatus | null` and the .map can't satisfy
+  // `UpcomingInvoice.campaignStatus: ClientStatus`.
+  const scheduled = allClients
     .map((c) => {
       const fallback = supaDates.get(c.mondayItemId)
       const invoice =
@@ -96,8 +100,9 @@ export default async function BillingPage() {
     // - On Hold + Churned drop off — those clients aren't billed this period.
     //   Live + Onboarding remain (Onboarding clients still get their first
     //   invoice on the date set in Monday).
-    .filter((c) => DATE_RE.test(c._invoice))
-    .filter((c) => c._status === "live" || c._status === "onboarding")
+    .filter((c): c is typeof c & { _status: "live" | "onboarding" } =>
+      DATE_RE.test(c._invoice) && (c._status === "live" || c._status === "onboarding"),
+    )
     .sort((a, b) => a._invoice.localeCompare(b._invoice))
 
   // Look up MRR / ad budget for the scheduled set in one round-trip. We need

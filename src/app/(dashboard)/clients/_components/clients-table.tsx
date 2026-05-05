@@ -23,6 +23,7 @@ import {
   STATUS_LABELS,
   STATUS_OPTIONS,
   mondayStatusToHub,
+  statusLabel,
   type ClientStatus,
 } from "@/lib/clients/status"
 import { StatusEditCell } from "./status-edit-cell"
@@ -340,8 +341,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         case "accountManager": valA = a.accountManager.toLowerCase(); valB = b.accountManager.toLowerCase(); break
         case "campaignManager": valA = a.campaignManager.toLowerCase(); valB = b.campaignManager.toLowerCase(); break
         case "status":
-          valA = STATUS_LABELS[mondayStatusToHub(a.campaignStatus, a.boardType)].toLowerCase()
-          valB = STATUS_LABELS[mondayStatusToHub(b.campaignStatus, b.boardType)].toLowerCase()
+          valA = statusLabel(mondayStatusToHub(a.campaignStatus, a.boardType)).toLowerCase()
+          valB = statusLabel(mondayStatusToHub(b.campaignStatus, b.boardType)).toLowerCase()
           break
         case "kickOff": valA = a.kickOffDate; valB = b.kickOffDate; break
         case "adspend": valA = kpiA?.adSpend ?? 0; valB = kpiB?.adSpend ?? 0; break

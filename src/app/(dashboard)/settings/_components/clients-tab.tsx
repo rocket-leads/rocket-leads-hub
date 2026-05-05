@@ -4,7 +4,7 @@ import { useState, useMemo } from "react"
 import { ChevronDown, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ClientInformationPanel } from "@/components/client-information-panel"
-import { mondayStatusToHub, STATUS_LABELS, STATUS_TONES } from "@/lib/clients/status"
+import { mondayStatusToHub, statusLabel, statusTone } from "@/lib/clients/status"
 import type { MondayClient } from "@/lib/integrations/monday"
 
 type Props = {
@@ -54,7 +54,7 @@ export function ClientsTab({ clients }: Props) {
         {sorted.map((client) => {
           const isOpen = openId === client.mondayItemId
           const hubStatus = mondayStatusToHub(client.campaignStatus, client.boardType)
-          const tone = STATUS_TONES[hubStatus]
+          const tone = statusTone(hubStatus)
 
           return (
             <div
@@ -72,7 +72,7 @@ export function ClientsTab({ clients }: Props) {
                     className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium shrink-0 ${tone.pill}`}
                   >
                     <span className={`h-1 w-1 rounded-full ${tone.dot}`} />
-                    {STATUS_LABELS[hubStatus]}
+                    {statusLabel(hubStatus)}
                   </span>
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground/40 shrink-0">
                     {client.boardType}
