@@ -28,10 +28,23 @@ export const STATUS_TONES: Record<ClientStatus, { dot: string; pill: string }> =
 }
 
 /**
- * Map a Monday `campaign_status` cell value to a Hub status. Clients on the
- * Onboarding board are always "onboarding" regardless of column value, since
- * the board itself signals the lifecycle phase. Anything in the "Stopt" group
- * (multiple variants) and "Debt collecting agency" collapse to churned.
+ * Map a Monday `campaign_status` cell value to a Hub status.
+ *
+ * Read mapping aligned with the actual Monday status options observed in the
+ * board (counts as of 2026-05-05, n=761):
+ *   - Live / Subcampaigns only                    → live
+ *   - On hold / PAUSED (long term)                → on_hold
+ *   - In development / Kickoff scheduled / Kick off → onboarding
+ *   - Stopped 1st month / Stopped 2nd month+ /
+ *     Stopped (subcampaign) / Stopt* /
+ *     Debt collection agency / Guarantee not met  → churned
+ *
+ * Both literal "Churned" and "Onboarding" are also accepted, so when Monday's
+ * status column is renamed to canonical labels the mapping keeps working
+ * without a code change. Empty / unknown values fall back to onboarding.
+ *
+ * Boards: clients on the Onboarding board are always "onboarding" regardless
+ * of column value — the board itself signals the lifecycle phase.
  */
 export function mondayStatusToHub(
   mondayLabel: string | null | undefined,
@@ -42,10 +55,34 @@ export function mondayStatusToHub(
   const normalized = (mondayLabel ?? "").trim().toLowerCase()
   if (!normalized) return "onboarding"
 
+  // Live family
   if (normalized === "live" || normalized === "subcampaigns only") return "live"
-  if (normalized === "on hold") return "on_hold"
-  if (normalized === "in development" || normalized === "kick off") return "onboarding"
-  if (normalized.startsWith("stopt") || normalized === "debt collecting agency") return "churned"
+
+  // On-hold family
+  if (normalized === "on hold" || normalized.startsWith("paused")) return "on_hold"
+
+  // Onboarding family
+  if (
+    normalized === "onboarding" ||
+    normalized === "in development" ||
+    normalized === "kick off" ||
+    normalized === "kickoff scheduled"
+  ) {
+    return "onboarding"
+  }
+
+  // Churned family — covers all "Stopped …" / "Stopt …" variants plus
+  // collection/guarantee outcomes which are functionally a churn.
+  if (
+    normalized === "churned" ||
+    normalized.startsWith("stopt") ||
+    normalized.startsWith("stopped") ||
+    normalized === "debt collection agency" ||
+    normalized === "debt collecting agency" ||
+    normalized === "guarantee not met"
+  ) {
+    return "churned"
+  }
 
   return "onboarding"
 }
@@ -54,7 +91,7 @@ const HUB_TO_MONDAY_LABEL: Record<ClientStatus, string> = {
   live: "Live",
   on_hold: "On hold",
   onboarding: "In development",
-  churned: "Stopt",
+  churned: "Churned",
 }
 
 /**
