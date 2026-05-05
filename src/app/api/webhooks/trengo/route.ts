@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
+import { draftTrengoReply } from "@/lib/inbox/reply-drafter"
 import { resolveClientAssignee } from "@/lib/inbox/assignee"
 
 export const maxDuration = 60
@@ -153,7 +154,7 @@ export async function POST(req: NextRequest) {
   // Look up the linked client via the Trengo contact id (clients.trengo_contact_ids[]).
   const { data: clientRow } = await supabase
     .from("clients")
-    .select("id, monday_item_id")
+    .select("id, monday_item_id, name")
     .contains("trengo_contact_ids", [contactId])
     .maybeSingle()
 
@@ -201,6 +202,40 @@ export async function POST(req: NextRequest) {
   const titlePreview = messageBody.length > 100 ? messageBody.slice(0, 100) + "…" : messageBody
   const bodyFull = messageBody.length > 100 ? messageBody : null
 
+  // Smart-inbox: when the AI classifies as `task`, also pre-draft a Dutch
+  // reply so the AM can review-and-send straight from the detail dialog
+  // instead of starting from a blank textarea every time. Skip on tasks
+  // where the body is too short to draft against meaningfully (under 10
+  // chars — usually "ok", "👍", etc., where a reply isn't really needed).
+  // Failure is non-fatal: the task lands without a draft.
+  let draftMessage: string | null = null
+  let draftChannel: "trengo_email" | "trengo_whatsapp" | null = null
+  if (
+    classification.kind === "task" &&
+    messageBody.trim().length >= 10 &&
+    authorKind === "client"
+  ) {
+    const channelType = (ticket.channel?.type ?? "").toLowerCase()
+    const isWhatsapp = channelType.includes("whats") || channelType.includes("wa_")
+    draftChannel = isWhatsapp ? "trengo_whatsapp" : "trengo_email"
+    try {
+      draftMessage = await draftTrengoReply({
+        clientName: clientRow?.name ?? null,
+        firstName: authorName.split(" ")[0] ?? null,
+        inboundMessage: messageBody,
+        channel: isWhatsapp ? "whatsapp" : "email",
+      })
+    } catch (e) {
+      console.error("Reply drafter failed:", e)
+    }
+  }
+
+  // Source ref persists the draft so the detail dialog renders the existing
+  // reply textarea pre-filled with the AI suggestion.
+  const sourceRef = draftMessage
+    ? { draft_message: draftMessage, draft_channel: draftChannel }
+    : null
+
   const { error } = await supabase.from("inbox_events").insert({
     kind: classification.kind,
     // client_id is `text NOT NULL` — for unlinked Trengo contacts we use empty
@@ -225,6 +260,7 @@ export async function POST(req: NextRequest) {
     classify_method: "ai",
     created_at_src: createdAtSrc,
     trengo_channel_id: trengoChannelId,
+    source_ref: sourceRef,
     raw: payload,
     attachments:
       message.attachments && message.attachments.length > 0 ? message.attachments : null,

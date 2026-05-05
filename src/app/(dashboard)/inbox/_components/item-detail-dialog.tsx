@@ -145,6 +145,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
 
   // --- Platform reply (Trengo / Slack) -------------------------------------
   const [replyBody, setReplyBody] = useState("")
+  const [replyPrefilledFromAi, setReplyPrefilledFromAi] = useState(false)
   const [sendingReply, setSendingReply] = useState(false)
   const [replyError, setReplyError] = useState<string | null>(null)
   const [needsConnect, setNeedsConnect] = useState<"trengo" | "slack" | "monday" | null>(null)
@@ -194,11 +195,16 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
   // AM can review, tweak and ship without leaving the Hub.
   const draftMessage = (item?.sourceRef as Record<string, unknown> | null)?.draft_message
   const draftChannel = (item?.sourceRef as Record<string, unknown> | null)?.draft_channel
+  // Trengo-source items already have a Reply panel that knows the source
+  // ticket — for those we prefill that textarea instead of showing the
+  // smart-draft panel separately. Avoids two competing send buttons.
+  const draftIsForExistingReplyPanel = item?.source === "trengo"
   const hasDraft =
     isTask &&
     typeof draftMessage === "string" &&
     draftMessage.trim().length > 0 &&
-    (item?.status === "open" || item?.status === "in_progress")
+    (item?.status === "open" || item?.status === "in_progress") &&
+    !draftIsForExistingReplyPanel
   const [draftBody, setDraftBody] = useState<string>(
     typeof draftMessage === "string" ? draftMessage : "",
   )
@@ -213,6 +219,27 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
     setDraftError(null)
     setDraftNeedsConnect(false)
   }, [draftMessage, itemId])
+
+  // Smart-inbox prefill for Trengo tasks: when the webhook ingest set a
+  // draft_message, populate the existing reply textarea with it. The smart-
+  // draft panel above is hidden for trengo source items (see hasDraft) so
+  // there's no double UI; the AM reviews-and-sends through the normal
+  // platform-reply path that targets the correct ticket.
+  const replyDraftFromIngest =
+    item?.source === "trengo" && typeof draftMessage === "string" && draftMessage.trim().length > 0
+      ? draftMessage
+      : null
+  useEffect(() => {
+    if (replyDraftFromIngest) {
+      setReplyBody(replyDraftFromIngest)
+      setReplyPrefilledFromAi(true)
+    } else {
+      setReplyBody("")
+      setReplyPrefilledFromAi(false)
+    }
+    setReplyError(null)
+    setNeedsConnect(null)
+  }, [replyDraftFromIngest, itemId])
 
   async function sendDraft() {
     if (!draftBody.trim()) return
@@ -516,12 +543,23 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                     {replyError}
                   </div>
                 )}
+                {replyPrefilledFromAi && (
+                  <div className="mb-2 inline-flex items-center gap-1.5 text-[10px] text-violet-500 font-medium">
+                    <Sparkles className="h-3 w-3" />
+                    AI-voorstel — review en pas aan voor je verstuurt
+                  </div>
+                )}
                 <div className="flex items-end gap-2">
                   <textarea
                     value={replyBody}
-                    onChange={(e) => setReplyBody(e.target.value)}
+                    onChange={(e) => {
+                      setReplyBody(e.target.value)
+                      // Once the AM edits the prefilled draft, drop the AI hint —
+                      // it's their message now.
+                      if (replyPrefilledFromAi) setReplyPrefilledFromAi(false)
+                    }}
                     placeholder={`Type your reply — sent via ${item.source} as you`}
-                    rows={3}
+                    rows={replyPrefilledFromAi ? 5 : 3}
                     disabled={sendingReply}
                     className="flex-1 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none"
                     onKeyDown={(e) => {
