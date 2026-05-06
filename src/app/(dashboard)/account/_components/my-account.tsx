@@ -10,6 +10,8 @@ import {
   Check,
   X,
   ExternalLink,
+  Bell,
+  BellOff,
 } from "lucide-react"
 import {
   connectMyPlatform,
@@ -56,6 +58,14 @@ export function MyAccount({
           <TrengoCard connection={trengo} />
           <MondayCard connection={monday} />
         </div>
+      </div>
+
+      <div>
+        <h2 className="text-sm font-medium mb-1">Browser notifications</h2>
+        <p className="text-xs text-muted-foreground/60 mb-4">
+          Krijg een melding op je desktop of telefoon zodra er een nieuwe taak op je naam komt — ook als de Hub-tab dicht is.
+        </p>
+        <BrowserNotificationsCard />
       </div>
 
       <div>
@@ -568,6 +578,187 @@ function PlatformCard({
             </div>
           )}
           {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// --- Browser notifications (Phase F) -------------------------------------
+
+/** Convert the URL-safe base64 VAPID key to a Uint8Array, which the
+ *  browser PushManager.subscribe API needs as the application server key. */
+function urlBase64ToUint8Array(base64: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64.length % 4)) % 4)
+  const decoded = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/")
+  const raw = atob(decoded)
+  const out = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i)
+  return out
+}
+
+function BrowserNotificationsCard() {
+  const [supported, setSupported] = useState<boolean | null>(null)
+  const [permission, setPermission] = useState<NotificationPermission>("default")
+  const [subscribed, setSubscribed] = useState<boolean>(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+
+  // Detect Service Worker + Notification support and check current state.
+  useEffect(() => {
+    const ok =
+      typeof window !== "undefined" &&
+      "serviceWorker" in navigator &&
+      "PushManager" in window &&
+      "Notification" in window
+    setSupported(ok)
+    if (!ok) return
+    setPermission(Notification.permission)
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => setSubscribed(!!sub))
+      .catch(() => setSubscribed(false))
+  }, [])
+
+  async function enable() {
+    if (!supported) return
+    if (!vapidKey) {
+      setError("Server-side push is nog niet geconfigureerd (VAPID keys ontbreken).")
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      const reg = await navigator.serviceWorker.register("/sw.js")
+      const perm = await Notification.requestPermission()
+      setPermission(perm)
+      if (perm !== "granted") {
+        setBusy(false)
+        return
+      }
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        // PushManager's TS types want a BufferSource — Uint8Array on a
+        // SharedArrayBuffer is too narrow. Cast through unknown to keep TS
+        // happy without leaking SharedArrayBuffer constraints into our code.
+        applicationServerKey: urlBase64ToUint8Array(vapidKey) as unknown as BufferSource,
+      })
+      const res = await fetch("/api/notifications/push-subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: sub.toJSON(),
+          userAgent: navigator.userAgent,
+        }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? "Server kon de subscription niet opslaan.")
+      }
+      setSubscribed(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kon notificaties niet inschakelen.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function disable() {
+    if (!supported) return
+    setBusy(true)
+    setError(null)
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        await fetch(
+          `/api/notifications/push-subscribe?endpoint=${encodeURIComponent(sub.endpoint)}`,
+          { method: "DELETE" },
+        )
+        await sub.unsubscribe()
+      }
+      setSubscribed(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kon notificaties niet uitschakelen.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (supported === null) {
+    return (
+      <div className="rounded-xl border border-border/60 bg-card px-4 py-4">
+        <div className="text-xs text-muted-foreground/60">Loading…</div>
+      </div>
+    )
+  }
+
+  if (!supported) {
+    return (
+      <div className="rounded-xl border border-border/40 bg-muted/20 px-4 py-4 text-xs text-muted-foreground">
+        Deze browser ondersteunt geen push notificaties (Safari op iOS pas vanaf 16.4).
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card px-4 py-4">
+      <div className="flex items-start gap-4">
+        <div
+          className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
+            subscribed ? "bg-emerald-500/10 text-emerald-500" : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {subscribed ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <p className="text-sm font-semibold">
+              {subscribed ? "Notificaties staan aan" : "Notificaties zijn uit"}
+            </p>
+            {subscribed ? (
+              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-500 font-medium">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                Actief
+              </span>
+            ) : (
+              <span className="text-[11px] text-muted-foreground/60">
+                {permission === "denied" ? "Geblokkeerd door browser" : "Uit"}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground/80 leading-relaxed mb-3">
+            {subscribed
+              ? "Je krijgt nu desktop/mobiele meldingen voor nieuwe taken. Werkt op deze browser; herhaal op andere apparaten als je daar ook gepingd wilt worden."
+              : permission === "denied"
+                ? "Je hebt eerder de toestemming geweigerd. Open je browser-instellingen en sta meldingen toe voor deze site om opnieuw te proberen."
+                : "Eén klik om aan te zetten — je browser vraagt toestemming."}
+          </p>
+          {error && <p className="text-[11px] text-destructive mb-2">{error}</p>}
+          <div className="flex items-center gap-2">
+            {subscribed ? (
+              <button
+                type="button"
+                onClick={disable}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
+              >
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                Uitschakelen
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={enable}
+                disabled={busy || permission === "denied"}
+                className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+                Inschakelen
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

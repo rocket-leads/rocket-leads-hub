@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { listInboxItems } from "@/lib/inbox/fetchers"
 import { mirrorItemToMonday } from "@/lib/inbox/monday-mirror"
+import { sendPushToUser } from "@/lib/notifications/push"
 import type {
   CreateInboxItemInput,
   InboxKind,
@@ -113,6 +114,18 @@ export async function POST(req: NextRequest) {
   const row = data as unknown as Row
   const authorName = row.author?.name ?? row.author?.email ?? "Unknown"
   const assigneeName = row.assignee?.name ?? row.assignee?.email ?? "Unknown"
+
+  // Push notification: notify the assignee about a new task on their plate.
+  // Skip self-assigned items (you don't ping yourself when creating a task
+  // for yourself). Updates are noisier; only push for tasks for now.
+  if (body.kind === "task" && body.assigneeId !== session.user.id) {
+    sendPushToUser(body.assigneeId, {
+      title: "Nieuwe taak op je naam",
+      body: row.title.length > 120 ? row.title.slice(0, 117) + "…" : row.title,
+      url: "/inbox",
+      tag: `inbox-task-${row.id}`,
+    }).catch((e) => console.error("Inbox-create push failed:", e))
+  }
 
   mirrorItemToMonday({
     kind: row.kind,

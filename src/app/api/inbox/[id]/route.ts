@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getInboxItem, listInboxComments } from "@/lib/inbox/fetchers"
 import { mirrorStatusChangeToMonday } from "@/lib/inbox/monday-mirror"
+import { sendPushToUser } from "@/lib/notifications/push"
 import type { TaskStatus, UpdateInboxItemInput, UpdateStatus } from "@/types/inbox"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -145,6 +146,22 @@ export async function PATCH(
   const supabase = await createAdminClient()
   const { error } = await supabase.from("inbox_events").update(update).eq("id", id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Push notification on reassignment to a different user. Skip when the new
+  // assignee is the actor (you don't notify yourself), and best-effort fail
+  // silently — notification delivery shouldn't block the API response.
+  if (
+    patch.assigneeId !== undefined &&
+    patch.assigneeId !== item.assigneeId &&
+    patch.assigneeId !== session.user.id
+  ) {
+    sendPushToUser(patch.assigneeId, {
+      title: "Nieuwe taak op je naam",
+      body: item.title.length > 120 ? item.title.slice(0, 117) + "…" : item.title,
+      url: "/inbox",
+      tag: `inbox-task-${id}`,
+    }).catch((e) => console.error("Reassign push send failed:", e))
+  }
 
   // Mirror task status changes to Monday (done/cancelled only — see helper)
   if (patch.status && item.kind === "task") {
