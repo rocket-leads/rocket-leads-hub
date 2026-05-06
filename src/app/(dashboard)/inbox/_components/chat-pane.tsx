@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Send, MessageSquare, Hash, LayoutGrid, Inbox, Mail, Phone } from "lucide-react"
+import { Loader2, Send, MessageSquare, Hash, LayoutGrid, Inbox, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { ChatScope, ChatThreadSummary, ChatMessage } from "@/lib/inbox/fetchers"
@@ -370,14 +370,31 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   )
 }
 
+/** Inline WhatsApp brandmark — speech bubble + phone in WA brand green
+ *  (#25D366). Lucide doesn't ship this glyph (trademark policy), so we
+ *  embed the SVG directly to avoid pulling in an extra icon dependency. */
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M19.11 17.205c-.372 0-1.088 1.39-1.518 1.39a.63.63 0 0 1-.315-.1c-.802-.402-1.504-.817-2.163-1.4-.545-.484-1.064-1.04-1.474-1.638-.347-.5-.428-.875-.428-1.018 0-.13.087-.27.227-.395.4-.36.94-.733 1.04-1.218.087-.422-.117-.81-.342-1.115-.34-.45-.81-1.16-1.21-1.585-.137-.142-.32-.2-.5-.2-.205 0-.412.063-.63.16-.625.288-1.07.96-1.07 1.835 0 1.213.808 2.456 1.598 3.34 1.205 1.35 2.55 2.4 4.085 3.13.46.227 1.026.46 1.48.586.224.063.456.097.69.097.7 0 1.347-.295 1.747-.83.137-.18.222-.42.222-.66 0-.18-.034-.36-.117-.515-.196-.395-.633-.747-.873-.96-.084-.075-.318-.187-.486-.187z" />
+      <path d="M16 0C7.16 0 0 7.16 0 16c0 2.84.74 5.61 2.14 8.05L0 32l8.07-2.115C10.45 31.27 13.18 32 16 32c8.84 0 16-7.16 16-16S24.84 0 16 0zm0 29.32c-2.65 0-5.22-.713-7.46-2.063l-.535-.32-5.59 1.466 1.49-5.453-.346-.56C2.265 19.99 1.5 18.04 1.5 16 1.5 7.99 7.99 1.5 16 1.5S30.5 7.99 30.5 16 24.01 30.5 16 30.5z" />
+    </svg>
+  )
+}
+
 /** Channel icon for Client Inbox rows. For Trengo we differentiate WhatsApp
- *  (green phone) vs email (blue mail) vs other Trengo channels (cyan chat) so
- *  it's instantly clear which medium a thread came in on — Roy's spec. Slack
- *  and Monday keep their existing single-icon treatment. */
+ *  (brand-green logo) vs email (blue mail) vs other Trengo channels (cyan
+ *  chat) so it's instantly clear which medium a thread came in on — Roy's
+ *  spec. Slack and Monday keep their existing single-icon treatment. */
 function SourceIcon({ thread }: { thread: ChatThreadSummary }) {
   if (thread.source === "trengo") {
     if (thread.channelKind === "whatsapp") {
-      return <Phone className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+      return <WhatsAppIcon className="h-3.5 w-3.5 text-[#25D366] shrink-0" />
     }
     if (thread.channelKind === "email") {
       return <Mail className="h-3.5 w-3.5 text-blue-500 shrink-0" />
