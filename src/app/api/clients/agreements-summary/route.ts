@@ -1,10 +1,6 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import {
-  normalizeCampaigns,
-  totalAdBudget,
-  totalMRR,
-} from "@/lib/clients/agreement"
+import { agreementMonthly, normalizeAgreement } from "@/lib/clients/agreement"
 import { NextResponse } from "next/server"
 
 export type AgreementSummary = {
@@ -28,7 +24,9 @@ export async function GET() {
   const supabase = await createAdminClient()
   const { data, error } = await supabase
     .from("client_agreements")
-    .select("campaigns, clients!inner(monday_item_id)")
+    .select(
+      "ad_budget, platforms, platform_fees, follow_up, follow_up_fee, clients!inner(monday_item_id)",
+    )
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -46,10 +44,10 @@ export async function GET() {
       ? joined[0]?.monday_item_id
       : joined?.monday_item_id
     if (!mondayItemId) continue
-    const campaigns = normalizeCampaigns(row.campaigns)
+    const agreement = normalizeAgreement(row)
     summaries[mondayItemId] = {
-      adBudget: totalAdBudget(campaigns),
-      mrr: totalMRR(campaigns),
+      adBudget: agreement.ad_budget,
+      mrr: agreementMonthly(agreement),
     }
   }
 

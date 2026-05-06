@@ -42,7 +42,7 @@ export async function PUT(
   if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
   const body = (await req.json()) as Agreement
-  if (!body || !Array.isArray(body.campaigns)) {
+  if (!body || !Array.isArray(body.platforms)) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 })
   }
 

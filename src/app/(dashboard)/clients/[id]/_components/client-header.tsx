@@ -8,7 +8,6 @@ import {
   Wallet,
   CreditCard,
   ExternalLink,
-  Layers,
 } from "lucide-react"
 import { ClientSearch } from "@/components/client-search"
 import { BackButton } from "./back-button"
@@ -18,7 +17,6 @@ import { cn } from "@/lib/utils"
 import { mondayStatusToHub } from "@/lib/clients/status"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
-import type { Agreement } from "@/lib/clients/agreement"
 
 function getInitials(name: string): string {
   return name
@@ -113,17 +111,7 @@ export function ClientHeader({ client, canViewBilling }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Drive the multi-campaign pill. Same queryKey as AgreementSection so React
-  // Query dedupes the fetch when the user opens the Billing tab.
-  const agreementQuery = useQuery<Agreement>({
-    queryKey: ["agreement", client.mondayItemId],
-    queryFn: () => fetch(`/api/clients/${client.mondayItemId}/agreement`).then((r) => r.json()),
-    enabled: canViewBilling,
-    staleTime: 5 * 60 * 1000,
-  })
-
   const paymentSummary = summarize(billingQuery.data?.invoices)
-  const campaignCount = agreementQuery.data?.campaigns?.length ?? 0
 
   // Quick links to the canonical view of this client in each external system.
   // Brand SVGs/PNGs live in /public/logos/brands so the marks render at their
@@ -192,7 +180,6 @@ export function ClientHeader({ client, canViewBilling }: Props) {
                 adBudget={client.adBudget}
                 showPayment={!!client.stripeCustomerId && canViewBilling}
                 paymentSummary={paymentSummary}
-                campaignCount={campaignCount}
               />
             </div>
           </div>
@@ -236,7 +223,6 @@ function MetaRow({
   adBudget,
   showPayment,
   paymentSummary,
-  campaignCount,
 }: {
   firstName: string
   accountManager: string
@@ -244,7 +230,6 @@ function MetaRow({
   adBudget: string
   showPayment: boolean
   paymentSummary: PaymentSummary | null
-  campaignCount: number
 }) {
   // Build the visible items first so we know where to drop separators.
   const items: React.ReactNode[] = []
@@ -280,19 +265,6 @@ function MetaRow({
         <Wallet className="h-3.5 w-3.5 text-muted-foreground/40" />
         <span className="text-muted-foreground/40">Budget</span>
         <span className="text-foreground/80 font-medium tabular-nums">{fmtBudget(adBudget)}</span>
-      </span>,
-    )
-  }
-  // Only surface the campaign count when it's >1 — single-campaign is the
-  // default mental model, so the pill would just be visual noise there.
-  if (campaignCount > 1) {
-    items.push(
-      <span
-        key="campaigns"
-        className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
-      >
-        <Layers className="h-3 w-3" />
-        {campaignCount} campaigns
       </span>,
     )
   }

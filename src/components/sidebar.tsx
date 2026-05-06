@@ -6,7 +6,6 @@ import { SidebarNavLinks } from "./sidebar-nav-links"
 import { ThemeToggle } from "./theme-toggle"
 import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-platform-tokens"
 import { readCache } from "@/lib/cache"
-import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { MondayClient } from "@/lib/integrations/monday"
 import { mondayStatusToHub } from "@/lib/clients/status"
 
@@ -55,22 +54,13 @@ export async function Sidebar() {
     }
   }
 
-  // For finance users, surface a purple dot on the Billing nav whenever
-  // either (a) Stripe reports overdue invoices (clients haven't paid us) or
-  // (b) there are clients past their next-invoice date that still need an
-  // invoice sent. Both reads come from existing caches the crons populate —
-  // zero extra DB queries during sidebar render.
-  let stripeOverdueCount = 0
+  // For finance users, surface a numeric badge on the Billing nav showing how
+  // many invoices need to go out this week (overdue + today + through Sunday)
+  // — same "Due this week" window the Billing page uses. Reads the existing
+  // `monday_boards` cache the cron writes — zero extra DB queries during
+  // sidebar render. Lag is at most one cron tick.
   let invoicesToSendCount = 0
   if (isFinance) {
-    try {
-      const summaries = await readCache<Record<string, BillingSummary>>("billing_summaries")
-      if (summaries) {
-        stripeOverdueCount = Object.values(summaries).filter((s) => s.status === "overdue").length
-      }
-    } catch {
-      // Silent — a missing cache shouldn't break the sidebar.
-    }
     try {
       const boards = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
         "monday_boards",
@@ -79,18 +69,36 @@ export async function Sidebar() {
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         const todayMs = today.getTime()
+        const dayMs = 24 * 60 * 60 * 1000
+        const dayOfWeek = today.getDay() // 0 = Sun
+        const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek
+        const endOfThisWeekMs = todayMs + daysUntilSunday * dayMs
         const all = [...boards.onboarding, ...boards.current]
-        invoicesToSendCount = all.filter((c) => {
-          if (!DATE_RE.test(c.nextInvoiceDate)) return false
+
+        // Walk the eligible rows once, deduping by Stripe customer so
+        // multi-campaign clients (B2B + B2C sharing one customer) count as
+        // a single invoice — matching the Billing-page tab badge logic.
+        // Rows without a Stripe customer count individually (we'll still
+        // need to handle them, even if grouping isn't possible).
+        const seenCustomers = new Set<string>()
+        let count = 0
+        for (const c of all) {
+          if (!DATE_RE.test(c.nextInvoiceDate)) continue
           const status = mondayStatusToHub(c.campaignStatus, c.boardType)
-          if (status !== "live" && status !== "onboarding") return false
+          if (status !== "live" && status !== "onboarding") continue
           const d = new Date(c.nextInvoiceDate)
           d.setHours(0, 0, 0, 0)
-          return d.getTime() < todayMs
-        }).length
+          if (d.getTime() > endOfThisWeekMs) continue
+          if (c.stripeCustomerId) {
+            if (seenCustomers.has(c.stripeCustomerId)) continue
+            seenCustomers.add(c.stripeCustomerId)
+          }
+          count++
+        }
+        invoicesToSendCount = count
       }
     } catch {
-      // Silent.
+      // Silent — a missing cache shouldn't break the sidebar.
     }
   }
   const accountTitle = missingPlatforms > 0
@@ -122,11 +130,7 @@ export async function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <SidebarNavLinks
-        items={allItems}
-        stripeOverdueCount={stripeOverdueCount}
-        invoicesToSendCount={invoicesToSendCount}
-      />
+      <SidebarNavLinks items={allItems} invoicesToSendCount={invoicesToSendCount} />
 
       {/* User section */}
       <div className="mt-auto border-t border-sidebar-border p-3">

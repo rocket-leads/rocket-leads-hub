@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Plus, Trash2, Loader2, Check, Handshake } from "lucide-react"
+import { Loader2, Check, Handshake } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,12 +12,8 @@ import { cn } from "@/lib/utils"
 import {
   PLATFORMS,
   type Agreement,
-  type AgreementCampaign,
   type Platform,
-  campaignMonthly,
-  newCampaign,
-  totalAdBudget,
-  totalMRR,
+  agreementMonthly,
 } from "@/lib/clients/agreement"
 import { BillingSectionShell } from "./billing-section-shell"
 
@@ -35,6 +31,13 @@ type Props = {
   mondayItemId: string
 }
 
+/**
+ * Single-campaign agreement editor. Each Monday client row is its own
+ * campaign, so this section captures exactly what RL invoices for THIS row.
+ * When two Monday rows share a Stripe customer (e.g. "O2 Plus | B2B" and
+ * "O2 Plus | B2C"), each carries its own ad budget + platform fees here, and
+ * the Billing page consolidates them into a single invoice at send time.
+ */
 export function AgreementSection({ mondayItemId }: Props) {
   const queryClient = useQueryClient()
   const queryKey = ["agreement", mondayItemId]
@@ -67,7 +70,7 @@ export function AgreementSection({ mondayItemId }: Props) {
 
   if (query.isLoading || !draft) {
     return (
-      <BillingSectionShell icon={Handshake} title="Agreement" subtitle="What this client pays per month, broken down per campaign.">
+      <BillingSectionShell icon={Handshake} title="Agreement" subtitle="What this client pays per month for this campaign.">
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-40 w-full" />
       </BillingSectionShell>
@@ -76,7 +79,7 @@ export function AgreementSection({ mondayItemId }: Props) {
 
   if (query.isError) {
     return (
-      <BillingSectionShell icon={Handshake} title="Agreement" subtitle="What this client pays per month, broken down per campaign.">
+      <BillingSectionShell icon={Handshake} title="Agreement" subtitle="What this client pays per month for this campaign.">
         <div className="py-6 text-sm text-destructive">
           {query.error instanceof Error ? query.error.message : "Failed to load agreement."}
         </div>
@@ -84,23 +87,23 @@ export function AgreementSection({ mondayItemId }: Props) {
     )
   }
 
-  const mrr = totalMRR(draft.campaigns)
-  const adBudget = totalAdBudget(draft.campaigns)
+  const mrr = agreementMonthly(draft)
 
-  function update(next: AgreementCampaign[]) {
-    setDraft((d) => (d ? { ...d, campaigns: next } : d))
+  function patch(p: Partial<Agreement>) {
+    setDraft((d) => (d ? { ...d, ...p } : d))
   }
 
-  function patchCampaign(id: string, patch: Partial<AgreementCampaign>) {
-    update(draft!.campaigns.map((c) => (c.id === id ? { ...c, ...patch } : c)))
-  }
-
-  function addCampaign() {
-    update([...draft!.campaigns, newCampaign()])
-  }
-
-  function removeCampaign(id: string) {
-    update(draft!.campaigns.filter((c) => c.id !== id))
+  function togglePlatform(p: Platform) {
+    if (!draft) return
+    const has = draft.platforms.includes(p)
+    const nextPlatforms = has
+      ? draft.platforms.filter((x) => x !== p)
+      : [...draft.platforms, p]
+    // Seed a fee at 0 the first time a platform is selected, but preserve any
+    // previously entered amount when re-selecting after a deselect.
+    const nextFees = { ...draft.platform_fees }
+    if (!has && nextFees[p] === undefined) nextFees[p] = 0
+    patch({ platforms: nextPlatforms, platform_fees: nextFees })
   }
 
   async function save() {
@@ -134,42 +137,94 @@ export function AgreementSection({ mondayItemId }: Props) {
     <BillingSectionShell
       icon={Handshake}
       title="Agreement"
-      subtitle="What this client pays per month, broken down per campaign."
-      actions={
-        <Button size="sm" variant="outline" onClick={addCampaign}>
-          <Plus className="h-3.5 w-3.5" /> Add campaign
-        </Button>
-      }
+      subtitle="What this client pays per month for this campaign."
     >
       {/* Totals — same SummaryCard pattern as the invoices section above */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3">
         <SummaryCard title="MRR" value={fmtEuro(mrr)} sub="recurring per month" />
-        <SummaryCard title="Total ad budget" value={fmtEuro(adBudget)} sub="across all campaigns" />
-        <SummaryCard
-          title="Campaigns"
-          value={String(draft.campaigns.length)}
-          sub={draft.campaigns.length === 1 ? "campaign" : "campaigns"}
-        />
+        <SummaryCard title="Ad budget" value={fmtEuro(draft.ad_budget)} sub="per month" />
       </div>
 
-      {draft.campaigns.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border/50 p-8 text-center text-sm text-muted-foreground">
-          No campaigns yet. Add the first one to capture what this client pays.
-        </div>
-      ) : (
-        <div className="rounded-md border bg-card divide-y divide-border/60 overflow-hidden">
-          {draft.campaigns.map((c, idx) => (
-            <CampaignRow
-              key={c.id}
-              index={idx}
-              total={draft.campaigns.length}
-              campaign={c}
-              onChange={(patch) => patchCampaign(c.id, patch)}
-              onRemove={() => removeCampaign(c.id)}
+      <div className="rounded-md border bg-card p-4 space-y-2">
+        <FieldRow label="Ad budget">
+          <EuroInput
+            value={draft.ad_budget}
+            onChange={(v) => patch({ ad_budget: v })}
+            className="w-32"
+          />
+        </FieldRow>
+
+        <FieldRow label="Platforms">
+          <div className="flex flex-wrap gap-1.5">
+            {PLATFORMS.map((p) => {
+              const active = draft.platforms.includes(p)
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => togglePlatform(p)}
+                  className={cn(
+                    "inline-flex items-center h-7 rounded-md border px-2.5 text-[12px] font-medium transition-colors",
+                    active
+                      ? "border-foreground/20 bg-foreground/[0.06] text-foreground"
+                      : "border-border bg-background text-muted-foreground hover:bg-muted/50",
+                  )}
+                >
+                  {PLATFORM_LABEL[p]}
+                </button>
+              )
+            })}
+          </div>
+        </FieldRow>
+
+        {draft.platforms.map((p) => (
+          <FieldRow key={p} label={`${PLATFORM_LABEL[p]} fee`}>
+            <EuroInput
+              value={draft.platform_fees[p] ?? 0}
+              onChange={(v) =>
+                patch({ platform_fees: { ...draft.platform_fees, [p]: v } })
+              }
+              className="w-32"
             />
-          ))}
-        </div>
-      )}
+          </FieldRow>
+        ))}
+
+        <FieldRow label="Lead follow-up">
+          <div className="flex items-center gap-3">
+            <ToggleSwitch
+              on={draft.follow_up}
+              onChange={(v) => patch({ follow_up: v })}
+            />
+            <span
+              className={cn(
+                "text-xs",
+                draft.follow_up ? "text-foreground" : "text-muted-foreground/60",
+              )}
+            >
+              {draft.follow_up ? "Done by Rocket Leads" : "Done by client"}
+            </span>
+          </div>
+        </FieldRow>
+
+        {draft.follow_up && (
+          <FieldRow label="Follow-up fee">
+            <EuroInput
+              value={draft.follow_up_fee}
+              onChange={(v) => patch({ follow_up_fee: v })}
+              className="w-32"
+            />
+          </FieldRow>
+        )}
+
+        <FieldRow label="Notes">
+          <Input
+            value={draft.notes}
+            onChange={(e) => patch({ notes: e.target.value })}
+            placeholder="Optional"
+            className="h-8 text-sm"
+          />
+        </FieldRow>
+      </div>
 
       {(dirty || error || savedFlash) && (
         <div className="flex items-center justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2">
@@ -212,145 +267,6 @@ function SummaryCard({ title, value, sub }: { title: string; value: string; sub?
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </CardContent>
     </Card>
-  )
-}
-
-function CampaignRow({
-  index,
-  total,
-  campaign,
-  onChange,
-  onRemove,
-}: {
-  index: number
-  total: number
-  campaign: AgreementCampaign
-  onChange: (patch: Partial<AgreementCampaign>) => void
-  onRemove: () => void
-}) {
-  const monthly = campaignMonthly(campaign)
-
-  function togglePlatform(p: Platform) {
-    const has = campaign.platforms.includes(p)
-    const nextPlatforms = has
-      ? campaign.platforms.filter((x) => x !== p)
-      : [...campaign.platforms, p]
-    // Seed a fee at 0 the first time a platform is selected, but preserve any
-    // previously entered amount when re-selecting after a deselect.
-    const nextFees = { ...campaign.platform_fees }
-    if (!has && nextFees[p] === undefined) nextFees[p] = 0
-    onChange({ platforms: nextPlatforms, platform_fees: nextFees })
-  }
-
-  return (
-    <div className="p-4 space-y-4">
-      {/* Row header — campaign index, name, monthly subtotal, delete */}
-      <div className="flex items-center gap-3">
-        <span className="text-[11px] font-medium text-muted-foreground/60 w-8 shrink-0 tabular-nums">
-          {total > 1 ? `#${index + 1}` : ""}
-        </span>
-        <Input
-          value={campaign.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          placeholder="Campaign name"
-          className="flex-1 h-8 font-medium text-sm"
-        />
-        <div className="text-xs text-muted-foreground hidden sm:flex items-center gap-1.5 shrink-0">
-          <span>Monthly</span>
-          <span className="font-semibold tabular-nums text-foreground">{fmtEuro(monthly)}</span>
-        </div>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={onRemove}
-          title="Remove campaign"
-          className="text-muted-foreground hover:text-destructive"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      <div className="space-y-2 pl-8">
-        <FieldRow label="Ad budget">
-          <EuroInput
-            value={campaign.ad_budget}
-            onChange={(v) => onChange({ ad_budget: v })}
-            className="w-32"
-          />
-        </FieldRow>
-
-        <FieldRow label="Platforms">
-          <div className="flex flex-wrap gap-1.5">
-            {PLATFORMS.map((p) => {
-              const active = campaign.platforms.includes(p)
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => togglePlatform(p)}
-                  className={cn(
-                    "inline-flex items-center h-7 rounded-md border px-2.5 text-[12px] font-medium transition-colors",
-                    active
-                      ? "border-foreground/20 bg-foreground/[0.06] text-foreground"
-                      : "border-border bg-background text-muted-foreground hover:bg-muted/50",
-                  )}
-                >
-                  {PLATFORM_LABEL[p]}
-                </button>
-              )
-            })}
-          </div>
-        </FieldRow>
-
-        {campaign.platforms.map((p) => (
-          <FieldRow key={p} label={`${PLATFORM_LABEL[p]} fee`}>
-            <EuroInput
-              value={campaign.platform_fees[p] ?? 0}
-              onChange={(v) =>
-                onChange({ platform_fees: { ...campaign.platform_fees, [p]: v } })
-              }
-              className="w-32"
-            />
-          </FieldRow>
-        ))}
-
-        <FieldRow label="Lead follow-up">
-          <div className="flex items-center gap-3">
-            <ToggleSwitch
-              on={campaign.follow_up}
-              onChange={(v) => onChange({ follow_up: v })}
-            />
-            <span
-              className={cn(
-                "text-xs",
-                campaign.follow_up ? "text-foreground" : "text-muted-foreground/60",
-              )}
-            >
-              {campaign.follow_up ? "Done by Rocket Leads" : "Done by client"}
-            </span>
-          </div>
-        </FieldRow>
-
-        {campaign.follow_up && (
-          <FieldRow label="Follow-up fee">
-            <EuroInput
-              value={campaign.follow_up_fee}
-              onChange={(v) => onChange({ follow_up_fee: v })}
-              className="w-32"
-            />
-          </FieldRow>
-        )}
-
-        <FieldRow label="Notes">
-          <Input
-            value={campaign.notes}
-            onChange={(e) => onChange({ notes: e.target.value })}
-            placeholder="Optional"
-            className="h-8 text-sm"
-          />
-        </FieldRow>
-      </div>
-    </div>
   )
 }
 

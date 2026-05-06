@@ -8,9 +8,13 @@ export const DEFAULT_FOLLOW_UP_FEE = 750
 export const PLATFORMS = ["meta", "google", "tiktok"] as const
 export type Platform = (typeof PLATFORMS)[number]
 
-export type AgreementCampaign = {
-  id: string
-  name: string
+/**
+ * Flat agreement shape — one Monday client row = one campaign. The legacy
+ * `campaigns[]` array is gone; consolidation across siblings sharing a Stripe
+ * customer happens at the billing UI layer (group by stripe_customer_id), not
+ * in the data model. See migration 20240026000000_flatten_client_agreements.
+ */
+export type Agreement = {
   ad_budget: number
   platforms: Platform[]
   platform_fees: Partial<Record<Platform, number>>
@@ -19,24 +23,13 @@ export type AgreementCampaign = {
   notes: string
 }
 
-export type Agreement = {
-  campaigns: AgreementCampaign[]
-  notes: string | null
-}
-
-export const EMPTY_AGREEMENT: Agreement = { campaigns: [], notes: null }
-
-export function newCampaign(): AgreementCampaign {
-  return {
-    id: crypto.randomUUID(),
-    name: "",
-    ad_budget: 0,
-    platforms: ["meta"],
-    platform_fees: { meta: 0 },
-    follow_up: false,
-    follow_up_fee: 0,
-    notes: "",
-  }
+export const EMPTY_AGREEMENT: Agreement = {
+  ad_budget: 0,
+  platforms: [],
+  platform_fees: {},
+  follow_up: false,
+  follow_up_fee: 0,
+  notes: "",
 }
 
 /**
@@ -45,17 +38,9 @@ export function newCampaign(): AgreementCampaign {
  * way deselecting a platform doesn't silently still bill it, and reselecting
  * restores the previous number without re-typing.
  */
-export function campaignMonthly(c: AgreementCampaign): number {
-  const platformFees = c.platforms.reduce((sum, p) => sum + (c.platform_fees[p] ?? 0), 0)
-  return platformFees + (c.follow_up ? c.follow_up_fee : 0)
-}
-
-export function totalMRR(campaigns: AgreementCampaign[]): number {
-  return campaigns.reduce((sum, c) => sum + campaignMonthly(c), 0)
-}
-
-export function totalAdBudget(campaigns: AgreementCampaign[]): number {
-  return campaigns.reduce((sum, c) => sum + (c.ad_budget || 0), 0)
+export function agreementMonthly(a: Agreement): number {
+  const platformFees = a.platforms.reduce((sum, p) => sum + (a.platform_fees[p] ?? 0), 0)
+  return platformFees + (a.follow_up ? a.follow_up_fee : 0)
 }
 
 /**
@@ -80,15 +65,12 @@ export async function getAgreement(mondayItemId: string): Promise<Agreement> {
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("client_agreements")
-    .select("campaigns, notes")
+    .select("ad_budget, platforms, platform_fees, follow_up, follow_up_fee, notes")
     .eq("client_id", clientId)
     .maybeSingle()
 
   if (!data) return EMPTY_AGREEMENT
-  return {
-    campaigns: normalizeCampaigns(data.campaigns),
-    notes: data.notes,
-  }
+  return normalizeAgreement(data)
 }
 
 export async function saveAgreement(
@@ -103,11 +85,16 @@ export async function saveAgreement(
     )
   }
 
+  const clean = normalizeAgreement(agreement)
   const supabase = await createAdminClient()
   const { error } = await supabase.from("client_agreements").upsert({
     client_id: clientId,
-    campaigns: normalizeCampaigns(agreement.campaigns),
-    notes: agreement.notes,
+    ad_budget: clean.ad_budget,
+    platforms: clean.platforms,
+    platform_fees: clean.platform_fees,
+    follow_up: clean.follow_up,
+    follow_up_fee: clean.follow_up_fee,
+    notes: clean.notes,
     updated_by: updatedBy,
     updated_at: new Date().toISOString(),
   })
@@ -117,12 +104,12 @@ export async function saveAgreement(
 export type SeedMode = "if-missing" | "if-untouched"
 
 /**
- * Seed a default single-Meta-campaign agreement for a freshly-synced client.
+ * Seed a default Meta-only agreement for a freshly-synced client.
  *
- * Defaults derived from Monday: campaign name = client name, ad budget =
- * Monday adBudget, Meta fee = Monday serviceFee, follow-up = on when Monday's
- * "follow-up by" status mentions Rocket Leads, follow-up fee = Monday's
- * number column or `DEFAULT_FOLLOW_UP_FEE` when empty.
+ * Defaults derived from Monday: ad budget = Monday adBudget, Meta fee = Monday
+ * serviceFee, follow-up = on when Monday's "follow-up by" status mentions
+ * Rocket Leads, follow-up fee = Monday's number column or DEFAULT_FOLLOW_UP_FEE
+ * when empty.
  *
  * Modes:
  * - `if-missing` (default, used during sync): only seed when no agreement
@@ -160,9 +147,8 @@ export async function seedDefaultAgreementIfMissing(
     ? parseEuro(client.followUpFee) || DEFAULT_FOLLOW_UP_FEE
     : DEFAULT_FOLLOW_UP_FEE
 
-  const campaign: AgreementCampaign = {
-    id: crypto.randomUUID(),
-    name: client.name,
+  const seed = {
+    client_id: supabaseClientId,
     ad_budget: adBudget,
     platforms: ["meta"],
     platform_fees: { meta: serviceFee },
@@ -174,15 +160,12 @@ export async function seedDefaultAgreementIfMissing(
   if (existing) {
     await supabase
       .from("client_agreements")
-      .update({ campaigns: [campaign], updated_at: new Date().toISOString() })
+      .update({ ...seed, updated_at: new Date().toISOString() })
       .eq("client_id", supabaseClientId)
     return "updated"
   }
 
-  await supabase.from("client_agreements").insert({
-    client_id: supabaseClientId,
-    campaigns: [campaign],
-  })
+  await supabase.from("client_agreements").insert(seed)
   return "inserted"
 }
 
@@ -204,32 +187,28 @@ function parseEuro(raw: string): number {
 }
 
 /**
- * Defensive normalisation — JSONB can technically contain anything, so we
- * coerce each field to its expected shape on read/write. Keeps the rest of
- * the code from having to handle malformed legacy rows.
+ * Defensive normalisation — JSONB / array columns can technically contain
+ * anything, so we coerce each field to its expected shape on read/write.
+ * Keeps callers from having to handle malformed legacy rows.
  */
-export function normalizeCampaigns(raw: unknown): AgreementCampaign[] {
-  if (!Array.isArray(raw)) return []
-  return raw.map((c) => {
-    const x = (c ?? {}) as Record<string, unknown>
-    const platforms = Array.isArray(x.platforms)
-      ? (x.platforms.filter((p) => PLATFORMS.includes(p as Platform)) as Platform[])
-      : []
-    const platformFeesRaw = (x.platform_fees ?? {}) as Record<string, unknown>
-    const platform_fees: Partial<Record<Platform, number>> = {}
-    for (const p of PLATFORMS) {
-      const v = platformFeesRaw[p]
-      if (typeof v === "number" && isFinite(v)) platform_fees[p] = v
-    }
-    return {
-      id: typeof x.id === "string" && x.id ? x.id : crypto.randomUUID(),
-      name: typeof x.name === "string" ? x.name : "",
-      ad_budget: typeof x.ad_budget === "number" ? x.ad_budget : 0,
-      platforms,
-      platform_fees,
-      follow_up: x.follow_up === true,
-      follow_up_fee: typeof x.follow_up_fee === "number" ? x.follow_up_fee : 0,
-      notes: typeof x.notes === "string" ? x.notes : "",
-    }
-  })
+export function normalizeAgreement(raw: unknown): Agreement {
+  const x = (raw ?? {}) as Record<string, unknown>
+  const platforms = Array.isArray(x.platforms)
+    ? (x.platforms.filter((p) => PLATFORMS.includes(p as Platform)) as Platform[])
+    : []
+  const platformFeesRaw = (x.platform_fees ?? {}) as Record<string, unknown>
+  const platform_fees: Partial<Record<Platform, number>> = {}
+  for (const p of PLATFORMS) {
+    const v = platformFeesRaw[p]
+    if (typeof v === "number" && isFinite(v)) platform_fees[p] = v
+  }
+  return {
+    ad_budget: typeof x.ad_budget === "number" ? x.ad_budget : Number(x.ad_budget) || 0,
+    platforms,
+    platform_fees,
+    follow_up: x.follow_up === true,
+    follow_up_fee:
+      typeof x.follow_up_fee === "number" ? x.follow_up_fee : Number(x.follow_up_fee) || 0,
+    notes: typeof x.notes === "string" ? x.notes : "",
+  }
 }

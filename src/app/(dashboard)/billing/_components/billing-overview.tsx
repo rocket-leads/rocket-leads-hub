@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import { ExternalLink, FilePlus } from "lucide-react"
+import { ChevronRight, ExternalLink, FilePlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -20,6 +20,31 @@ import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/
 import { NextInvoiceDateCell } from "./next-invoice-date-cell"
 import { CreateInvoiceDialog } from "./create-invoice-dialog"
 import { InvoiceReadinessCell } from "./invoice-readiness-cell"
+
+/**
+ * A billable group — one or more Monday rows that share a Stripe customer.
+ * Each Monday row IS one campaign; when several share a customer (e.g.
+ * "O2 Plus | B2B" + "O2 Plus | B2C"), they're billed on a single invoice.
+ *
+ * - Single-sibling groups behave like the old per-row entries.
+ * - Multi-sibling groups expand to show the per-campaign breakdown.
+ *
+ * `primary` is the sibling whose dates we trust for bucketing into Overdue /
+ * Today / This week. With sibling-sync (see `lib/clients/edit.ts`) all
+ * siblings should share the same dates, but if drift is detected we surface
+ * it via `hasDateDrift` so finance can fix it.
+ */
+export type BillingGroup = {
+  /** stripeCustomerId, or `unlinked-{mondayItemId}` for ungrouped rows. */
+  groupKey: string
+  primary: UpcomingInvoice
+  /** All sibling rows including `primary`. Length ≥ 1. */
+  siblings: UpcomingInvoice[]
+  totalFee: number
+  totalAdBudget: number
+  /** True when at least two siblings disagree on `cycleStartDate`. */
+  hasDateDrift: boolean
+}
 
 export type UpcomingInvoice = {
   mondayItemId: string
@@ -64,12 +89,12 @@ export type UpcomingInvoice = {
   readiness: InvoiceReadiness | null
 }
 
-type Group = {
+type Bucket = {
   key: "overdue" | "today" | "this_week" | "next_week" | "later"
   label: string
   hint: string
   tone: string
-  rows: UpcomingInvoice[]
+  groups: BillingGroup[]
 }
 
 function fmtEuro(amount: number): string {
@@ -83,12 +108,13 @@ function fmtDate(iso: string): string {
 }
 
 /**
- * Bucket each row into a time-window group so finance sees what needs action
+ * Bucket each group into a time-window so finance sees what needs action
  * today vs what's just on the radar. Pure date math against the user's local
- * "today" — server tz drift won't bump rows into the wrong bucket because we
- * compute everything from `new Date()` on the client.
+ * "today" — server tz drift won't bump groups into the wrong bucket because
+ * we compute everything from `new Date()` on the client. The `primary` row
+ * carries the bucketing date (siblings agree post-sync).
  */
-function groupRows(rows: UpcomingInvoice[]): Group[] {
+function bucketGroups(groups: BillingGroup[]): Bucket[] {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const todayMs = today.getTime()
@@ -101,7 +127,7 @@ function groupRows(rows: UpcomingInvoice[]): Group[] {
   const endOfThisWeek = todayMs + daysUntilSunday * dayMs
   const endOfNextWeek = endOfThisWeek + 7 * dayMs
 
-  const buckets: Record<Group["key"], UpcomingInvoice[]> = {
+  const buckets: Record<Bucket["key"], BillingGroup[]> = {
     overdue: [],
     today: [],
     this_week: [],
@@ -109,31 +135,31 @@ function groupRows(rows: UpcomingInvoice[]): Group[] {
     later: [],
   }
 
-  for (const row of rows) {
-    const d = new Date(row.nextInvoiceDate)
+  for (const group of groups) {
+    const d = new Date(group.primary.nextInvoiceDate)
     d.setHours(0, 0, 0, 0)
     const ms = d.getTime()
-    if (ms < todayMs) buckets.overdue.push(row)
-    else if (ms === todayMs) buckets.today.push(row)
-    else if (ms <= endOfThisWeek) buckets.this_week.push(row)
-    else if (ms <= endOfNextWeek) buckets.next_week.push(row)
-    else buckets.later.push(row)
+    if (ms < todayMs) buckets.overdue.push(group)
+    else if (ms === todayMs) buckets.today.push(group)
+    else if (ms <= endOfThisWeek) buckets.this_week.push(group)
+    else if (ms <= endOfNextWeek) buckets.next_week.push(group)
+    else buckets.later.push(group)
   }
 
-  const all: Group[] = [
-    { key: "overdue", label: "Overdue", hint: "Past their next-invoice date", tone: "text-red-500", rows: buckets.overdue },
-    { key: "today", label: "Today", hint: "Send today", tone: "text-amber-500", rows: buckets.today },
-    { key: "this_week", label: "This week", hint: "Through Sunday", tone: "text-foreground", rows: buckets.this_week },
-    { key: "next_week", label: "Next week", hint: "On the radar", tone: "text-muted-foreground", rows: buckets.next_week },
-    { key: "later", label: "Later", hint: "More than two weeks out", tone: "text-muted-foreground/70", rows: buckets.later },
+  const all: Bucket[] = [
+    { key: "overdue", label: "Overdue", hint: "Past their next-invoice date", tone: "text-red-500", groups: buckets.overdue },
+    { key: "today", label: "Today", hint: "Send today", tone: "text-amber-500", groups: buckets.today },
+    { key: "this_week", label: "This week", hint: "Through Sunday", tone: "text-foreground", groups: buckets.this_week },
+    { key: "next_week", label: "Next week", hint: "On the radar", tone: "text-muted-foreground", groups: buckets.next_week },
+    { key: "later", label: "Later", hint: "More than two weeks out", tone: "text-muted-foreground/70", groups: buckets.later },
   ]
-  return all.filter((g) => g.rows.length > 0)
+  return all.filter((b) => b.groups.length > 0)
 }
 
-export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
-  const groups = groupRows(rows)
+export function BillingOverview({ groups }: { groups: BillingGroup[] }) {
+  const buckets = bucketGroups(groups)
 
-  if (groups.length === 0) {
+  if (buckets.length === 0) {
     return (
       <Panel className="p-8">
         <div className="text-center text-sm text-muted-foreground">
@@ -147,20 +173,22 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
   }
 
   // Headline numbers across the whole page so finance has a one-glance summary.
-  const totalFee = rows.reduce((s, r) => s + r.fee, 0)
-  const dueThisWeek = groups
-    .filter((g) => g.key === "overdue" || g.key === "today" || g.key === "this_week")
-    .reduce((s, g) => s + g.rows.length, 0)
+  // All aggregations operate on GROUPS (= invoices), not Monday rows, so a
+  // multi-campaign client counts once for "scheduled clients" + summed fee.
+  const totalFee = groups.reduce((s, g) => s + g.totalFee, 0)
+  const dueThisWeek = buckets
+    .filter((b) => b.key === "overdue" || b.key === "today" || b.key === "this_week")
+    .reduce((s, b) => s + b.groups.length, 0)
   // Stripe-derived: total € unpaid across all scheduled clients, and how many
-  // of them have an overdue balance. Lets finance triage "send next invoice"
-  // vs "chase the overdue first".
-  const totalOutstanding = rows.reduce((s, r) => s + r.outstanding, 0)
-  const overdueCount = rows.filter((r) => r.paymentStatus === "overdue").length
+  // of them have an overdue balance. Outstanding is stored on the primary
+  // (it's a customer-level number from Stripe, identical across siblings).
+  const totalOutstanding = groups.reduce((s, g) => s + g.primary.outstanding, 0)
+  const overdueCount = groups.filter((g) => g.primary.paymentStatus === "overdue").length
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryStat label="Scheduled clients" value={String(rows.length)} />
+        <SummaryStat label="Scheduled clients" value={String(groups.length)} />
         <SummaryStat label="Due this week" value={String(dueThisWeek)} tone={dueThisWeek > 0 ? "amber" : undefined} />
         <SummaryStat label="Total fee" value={fmtEuro(totalFee)} hint="Sum of service fees across scheduled clients" />
         <SummaryStat
@@ -171,15 +199,15 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
         />
       </div>
 
-      {groups.map((group) => (
-        <Panel key={group.key} className="overflow-hidden">
+      {buckets.map((bucket) => (
+        <Panel key={bucket.key} className="overflow-hidden">
           <div className="px-5 pt-4 pb-3 flex items-baseline justify-between border-b border-border/40">
             <div>
-              <h2 className={`text-sm font-semibold ${group.tone}`}>{group.label}</h2>
-              <p className="text-[11px] text-muted-foreground/60">{group.hint}</p>
+              <h2 className={`text-sm font-semibold ${bucket.tone}`}>{bucket.label}</h2>
+              <p className="text-[11px] text-muted-foreground/60">{bucket.hint}</p>
             </div>
             <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-              {group.rows.length} {group.rows.length === 1 ? "client" : "clients"}
+              {bucket.groups.length} {bucket.groups.length === 1 ? "client" : "clients"}
             </span>
           </div>
           <Table>
@@ -198,8 +226,8 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {group.rows.map((row) => (
-                <BillingRow key={row.mondayItemId} row={row} />
+              {bucket.groups.map((group) => (
+                <BillingGroupRow key={group.groupKey} group={group} />
               ))}
             </TableBody>
           </Table>
@@ -210,31 +238,83 @@ export function BillingOverview({ rows }: { rows: UpcomingInvoice[] }) {
 }
 
 /**
- * Per-row state holder. Lifted into its own component so the create-invoice
- * dialog state is row-scoped — opening one row's dialog doesn't bleed into
- * the others. Keeps the table body declarative.
+ * Per-group state holder. Lifted into its own component so the create-invoice
+ * dialog state and the sibling expand state are group-scoped — opening one
+ * group's dialog or expanding its siblings doesn't bleed into the others.
+ *
+ * Single-sibling groups render flat (no chevron). Multi-sibling groups show a
+ * combined "client" label (shared prefix or "X campaigns") + chevron to
+ * reveal a child sub-table with each campaign's own row data.
  */
-function BillingRow({ row }: { row: UpcomingInvoice }) {
+function BillingGroupRow({ group }: { group: BillingGroup }) {
   const [invoiceOpen, setInvoiceOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const isMulti = group.siblings.length > 1
+  const { primary } = group
+
+  // Collapsed display: trim a shared prefix off the campaign names so the
+  // combined label reads as the parent client instead of the longest name.
+  // Falls back to the primary's name if no useful prefix is found.
+  const displayName = isMulti ? combinedClientName(group.siblings) : primary.name
 
   return (
     <>
       <TableRow className="border-b border-border/40 row-hover">
         <TableCell className="py-2.5">
-          <Link
-            href={`/clients/${row.mondayItemId}`}
-            className="text-sm font-medium hover:text-primary transition-colors"
-          >
-            {row.name}
-          </Link>
+          <div className="flex items-center gap-1.5">
+            {isMulti && (
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                className="text-muted-foreground/60 hover:text-foreground transition-colors"
+                aria-label={expanded ? "Collapse campaigns" : "Expand campaigns"}
+                title={expanded ? "Hide campaigns" : "Show campaigns"}
+              >
+                <ChevronRight
+                  className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-90" : ""}`}
+                />
+              </button>
+            )}
+            <div className="flex flex-col min-w-0">
+              {isMulti ? (
+                <span className="text-sm font-medium">{displayName}</span>
+              ) : (
+                <Link
+                  href={`/clients/${primary.mondayItemId}`}
+                  className="text-sm font-medium hover:text-primary transition-colors"
+                >
+                  {primary.name}
+                </Link>
+              )}
+              {isMulti && (
+                <span className="text-[11px] text-muted-foreground/70">
+                  {group.siblings.length} campaigns
+                  {group.hasDateDrift && (
+                    <span
+                      className="ml-1.5 text-amber-500"
+                      title="Cycle dates differ across campaigns. Edit one to auto-sync the others."
+                    >
+                      · cycles drift
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+          </div>
         </TableCell>
         <TableCell className="py-2.5">
           <Button
             size="sm"
             variant="outline"
-            disabled={!row.stripeCustomerId}
+            disabled={!primary.stripeCustomerId}
             onClick={() => setInvoiceOpen(true)}
-            title={row.stripeCustomerId ? "Create + send a Stripe invoice" : "No Stripe customer linked"}
+            title={
+              primary.stripeCustomerId
+                ? isMulti
+                  ? `Create one Stripe invoice covering all ${group.siblings.length} campaigns`
+                  : "Create + send a Stripe invoice"
+                : "No Stripe customer linked"
+            }
           >
             <FilePlus className="h-3.5 w-3.5" />
             Create invoice
@@ -242,58 +322,59 @@ function BillingRow({ row }: { row: UpcomingInvoice }) {
         </TableCell>
         <TableCell className="py-2.5">
           <StatusEditCell
-            mondayItemId={row.mondayItemId}
-            status={row.campaignStatus}
+            mondayItemId={primary.mondayItemId}
+            status={primary.campaignStatus}
           />
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums">
           {/* Invoice date is derived (cycle − 7d) — read-only here. Edit the
               cycle column instead and we'll keep both Monday columns synced. */}
-          {row.nextInvoiceDate ? (
-            fmtDate(row.nextInvoiceDate)
+          {primary.nextInvoiceDate ? (
+            fmtDate(primary.nextInvoiceDate)
           ) : (
             <span className="text-muted-foreground/40">—</span>
           )}
         </TableCell>
         <TableCell className="py-2.5">
           <NextInvoiceDateCell
-            mondayItemId={row.mondayItemId}
-            value={row.cycleStartDate}
+            mondayItemId={primary.mondayItemId}
+            value={primary.cycleStartDate}
             fieldKey="cycle_start_date"
             placeholder="Set cycle start"
           />
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums font-medium">
-          {row.fee > 0 ? fmtEuro(row.fee) : <span className="text-muted-foreground/40">—</span>}
+          {group.totalFee > 0 ? (
+            fmtEuro(group.totalFee)
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums text-muted-foreground">
-          {/* Only show ad budget when the client runs ads via OUR ad account.
-              Otherwise the client pays Meta directly and surfacing the figure
-              would just confuse finance into thinking we invoice it. */}
-          {row.usesRocketLeadsAdAccount && row.adBudget > 0 ? (
-            fmtEuro(row.adBudget)
+          {group.totalAdBudget > 0 ? (
+            fmtEuro(group.totalAdBudget)
           ) : (
             <span className="text-muted-foreground/40">—</span>
           )}
         </TableCell>
         <TableCell className="py-2.5">
           <PaymentStatusCell
-            status={row.paymentStatus}
-            outstanding={row.outstanding}
-            hasStripe={!!row.stripeCustomerId}
+            status={primary.paymentStatus}
+            outstanding={primary.outstanding}
+            hasStripe={!!primary.stripeCustomerId}
           />
         </TableCell>
         <TableCell className="py-2.5">
           <InvoiceReadinessCell
-            mondayItemId={row.mondayItemId}
-            clientName={row.name}
-            initial={row.readiness}
+            mondayItemId={primary.mondayItemId}
+            clientName={displayName}
+            initial={primary.readiness}
           />
         </TableCell>
         <TableCell className="py-2.5">
-          {row.stripeCustomerId ? (
+          {primary.stripeCustomerId ? (
             <a
-              href={`https://dashboard.stripe.com/customers/${row.stripeCustomerId}`}
+              href={`https://dashboard.stripe.com/customers/${primary.stripeCustomerId}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -315,19 +396,89 @@ function BillingRow({ row }: { row: UpcomingInvoice }) {
         </TableCell>
       </TableRow>
 
-      {invoiceOpen && row.stripeCustomerId && (
+      {/* Sibling breakdown — shown only when the user expands a multi-campaign
+          group. Indented child rows so it's obvious they belong to the parent. */}
+      {isMulti && expanded &&
+        group.siblings.map((sib) => (
+          <TableRow
+            key={`sib-${sib.mondayItemId}`}
+            className="border-b border-border/40 bg-muted/20"
+          >
+            <TableCell className="py-2 pl-10">
+              <Link
+                href={`/clients/${sib.mondayItemId}`}
+                className="text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+              >
+                {sib.name}
+              </Link>
+            </TableCell>
+            <TableCell colSpan={2} className="py-2" />
+            <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground/80">
+              {sib.nextInvoiceDate ? fmtDate(sib.nextInvoiceDate) : "—"}
+            </TableCell>
+            <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground/80">
+              {sib.cycleStartDate ? fmtDate(sib.cycleStartDate) : "—"}
+            </TableCell>
+            <TableCell className="py-2 text-[11px] tabular-nums">
+              {sib.fee > 0 ? fmtEuro(sib.fee) : "—"}
+            </TableCell>
+            <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground">
+              {sib.usesRocketLeadsAdAccount && sib.adBudget > 0 ? fmtEuro(sib.adBudget) : "—"}
+            </TableCell>
+            <TableCell colSpan={3} className="py-2" />
+          </TableRow>
+        ))}
+
+      {invoiceOpen && primary.stripeCustomerId && (
         <CreateInvoiceDialog
-          mondayItemId={row.mondayItemId}
-          stripeCustomerId={row.stripeCustomerId}
-          clientName={row.name}
-          fee={row.fee}
-          adBudget={row.adBudget}
-          usesRocketLeadsAdAccount={row.usesRocketLeadsAdAccount}
+          mondayItemId={primary.mondayItemId}
+          stripeCustomerId={primary.stripeCustomerId}
+          clientName={displayName}
+          fee={primary.fee}
+          adBudget={primary.adBudget}
+          usesRocketLeadsAdAccount={primary.usesRocketLeadsAdAccount}
+          siblingCampaigns={
+            isMulti
+              ? group.siblings.map((s) => ({
+                  name: s.name,
+                  fee: s.fee,
+                  adBudget: s.adBudget,
+                  usesRocketLeadsAdAccount: s.usesRocketLeadsAdAccount,
+                }))
+              : undefined
+          }
           onClose={() => setInvoiceOpen(false)}
         />
       )}
     </>
   )
+}
+
+/**
+ * Pick a friendly label for a multi-campaign group. Strategy:
+ *   1. If all sibling names share a non-trivial common prefix (length ≥ 3),
+ *      use that prefix. e.g. "O2 Plus | B2B" + "O2 Plus | B2C" → "O2 Plus".
+ *   2. Otherwise fall back to the primary's name.
+ *
+ * Trims trailing separators ("|", "-", ":", "·" with surrounding whitespace)
+ * so the prefix doesn't end on a divider.
+ */
+function combinedClientName(siblings: UpcomingInvoice[]): string {
+  if (siblings.length === 0) return ""
+  if (siblings.length === 1) return siblings[0].name
+  const names = siblings.map((s) => s.name)
+  let prefixLen = 0
+  const minLen = Math.min(...names.map((n) => n.length))
+  outer: for (let i = 0; i < minLen; i++) {
+    const ch = names[0][i]
+    for (let j = 1; j < names.length; j++) {
+      if (names[j][i] !== ch) break outer
+    }
+    prefixLen = i + 1
+  }
+  const prefix = names[0].slice(0, prefixLen).replace(/[\s|\-:·]+$/, "").trim()
+  if (prefix.length >= 3) return prefix
+  return siblings[0].name
 }
 
 /**

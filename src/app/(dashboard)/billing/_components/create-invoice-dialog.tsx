@@ -14,17 +14,33 @@ type LineItemDraft = {
   amountEuro: string
 }
 
+/** Per-campaign info used to seed line items when the parent client has
+ *  multiple Monday rows (= multiple campaigns) sharing one Stripe customer. */
+export type SiblingCampaignSeed = {
+  name: string
+  fee: number
+  adBudget: number
+  usesRocketLeadsAdAccount: boolean
+}
+
 type Props = {
   mondayItemId: string
   stripeCustomerId: string
   clientName: string
-  /** Service fee (e.g. €450). Pre-fills the first line item. */
+  /** Service fee (e.g. €450). Pre-fills the first line item — used when no
+   *  `siblingCampaigns` is provided (single-campaign client). */
   fee: number
   /** Ad budget. Pre-fills a second line item *only* when the client runs ads
    *  via Rocket Leads' ad account. Otherwise the field is hidden entirely so
    *  finance doesn't accidentally invoice for ads we don't pay for. */
   adBudget: number
   usesRocketLeadsAdAccount: boolean
+  /** When the parent client has multiple campaigns sharing this Stripe
+   *  customer, pass them all here. Each entry contributes its own
+   *  service-fee + (when applicable) ad-budget line items, suffixed with the
+   *  unique part of the campaign name so the customer can tell which is
+   *  which on the invoice. Overrides the single-campaign `fee`/`adBudget`. */
+  siblingCampaigns?: SiblingCampaignSeed[]
   onClose: () => void
 }
 
@@ -32,19 +48,75 @@ function fmtEuro(amount: number): string {
   return `€${amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+/** Strip the longest common prefix shared by all sibling names from one
+ *  name, then trim leftover separators. Used to derive a per-campaign
+ *  suffix like "B2B" or "B2C" from "O2 Plus | B2B" / "O2 Plus | B2C".
+ *  Returns the original name when there's no useful prefix to strip. */
+function suffixFromSiblings(name: string, allNames: string[]): string {
+  if (allNames.length < 2) return name
+  let prefixLen = 0
+  const minLen = Math.min(...allNames.map((n) => n.length))
+  outer: for (let i = 0; i < minLen; i++) {
+    const ch = allNames[0][i]
+    for (let j = 1; j < allNames.length; j++) {
+      if (allNames[j][i] !== ch) break outer
+    }
+    prefixLen = i + 1
+  }
+  if (prefixLen < 3) return name
+  const suffix = name.slice(prefixLen).replace(/^[\s|\-:·]+/, "").trim()
+  return suffix || name
+}
+
 /** Build the default line items based on what the agreement says.
- *  Service fee always present (finance can adjust); ad budget only when
- *  routed through our ad account. Description prefilled with the current
- *  month, since invoices are typically a month at a time. */
-function buildInitialItems(fee: number, adBudget: number, usesRl: boolean): LineItemDraft[] {
+ *
+ *  Single-campaign path: service fee + (when via RL) ad budget, both labelled
+ *  with the current month.
+ *
+ *  Multi-campaign path (`siblings`): one fee + one ad-budget per sibling that
+ *  has a non-zero amount, each suffixed with the campaign's distinguishing
+ *  name part. e.g. for an O2 Plus group:
+ *    "Service fee — B2B — May 2026"
+ *    "Advertising budget — B2B — May 2026"
+ *    "Service fee — B2C — May 2026"
+ *  Finance can still edit / add / remove lines before sending. */
+function buildInitialItems(
+  fee: number,
+  adBudget: number,
+  usesRl: boolean,
+  siblings: SiblingCampaignSeed[] | undefined,
+): LineItemDraft[] {
   const monthLabel = new Date().toLocaleDateString("en-GB", { month: "long", year: "numeric" })
   const items: LineItemDraft[] = []
-  if (fee > 0) {
-    items.push({ id: crypto.randomUUID(), description: `Service fee — ${monthLabel}`, amountEuro: String(fee) })
+
+  if (siblings && siblings.length > 1) {
+    const allNames = siblings.map((s) => s.name)
+    for (const sib of siblings) {
+      const suffix = suffixFromSiblings(sib.name, allNames)
+      if (sib.fee > 0) {
+        items.push({
+          id: crypto.randomUUID(),
+          description: `Service fee — ${suffix} — ${monthLabel}`,
+          amountEuro: String(sib.fee),
+        })
+      }
+      if (sib.usesRocketLeadsAdAccount && sib.adBudget > 0) {
+        items.push({
+          id: crypto.randomUUID(),
+          description: `Advertising budget — ${suffix} — ${monthLabel}`,
+          amountEuro: String(sib.adBudget),
+        })
+      }
+    }
+  } else {
+    if (fee > 0) {
+      items.push({ id: crypto.randomUUID(), description: `Service fee — ${monthLabel}`, amountEuro: String(fee) })
+    }
+    if (usesRl && adBudget > 0) {
+      items.push({ id: crypto.randomUUID(), description: `Advertising budget — ${monthLabel}`, amountEuro: String(adBudget) })
+    }
   }
-  if (usesRl && adBudget > 0) {
-    items.push({ id: crypto.randomUUID(), description: `Advertising budget — ${monthLabel}`, amountEuro: String(adBudget) })
-  }
+
   if (items.length === 0) {
     items.push({ id: crypto.randomUUID(), description: "", amountEuro: "" })
   }
@@ -65,11 +137,12 @@ export function CreateInvoiceDialog({
   fee,
   adBudget,
   usesRocketLeadsAdAccount,
+  siblingCampaigns,
   onClose,
 }: Props) {
   const router = useRouter()
   const [items, setItems] = useState<LineItemDraft[]>(() =>
-    buildInitialItems(fee, adBudget, usesRocketLeadsAdAccount),
+    buildInitialItems(fee, adBudget, usesRocketLeadsAdAccount, siblingCampaigns),
   )
   // 7 days = standard Rocket Leads payment term.
   const [daysUntilDue, setDaysUntilDue] = useState<string>("7")

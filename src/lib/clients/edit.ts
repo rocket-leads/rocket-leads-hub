@@ -77,6 +77,13 @@ export async function updateClientField(
     if (update.fieldKey === "cycle_start_date") {
       const derivedInvoice = deriveInvoiceDate(update.value) ?? ""
       await setItemColumnValue(boardType, mondayItemId, "next_invoice_date", derivedInvoice)
+      // Sibling sync: if multiple Monday rows share a Stripe customer (e.g.
+      // "O2 Plus | B2B" and "O2 Plus | B2C"), they're consolidated into one
+      // invoice at send time — so their cycles HAVE to be in lockstep or
+      // we'd unintentionally produce two separate invoices a few days apart.
+      // Propagate the same cycle/invoice dates to every sibling. Errors on
+      // any one sibling don't block the others — finance can rerun later.
+      await syncCycleToSiblings(mondayItemId, update.value, derivedInvoice)
     }
   } else if (STATUS_SET.has(update.fieldKey) && "label" in update) {
     // Empty label clears the status — Monday accepts `{ label: "" }` as a reset.
@@ -93,4 +100,60 @@ export async function updateClientField(
 
   const refreshed = await fetchClientById(mondayItemId)
   if (refreshed) await syncClientToSupabase(refreshed)
+}
+
+/**
+ * Find all OTHER Monday rows that share this client's Stripe customer ID and
+ * write the same cycle/invoice dates to them. This is the auto-sync that
+ * keeps multi-campaign clients (B2B + B2C, etc.) on a single invoice cadence.
+ *
+ * Called immediately after the target row's dates are written, so the target
+ * is excluded by `monday_item_id`. Source-of-truth for "who shares a Stripe
+ * customer" is Supabase's mirrored `stripe_customer_id` column on `clients`.
+ *
+ * Per-sibling failures are logged but don't throw — finance can hit Refresh
+ * to re-attempt the sync via a follow-up edit. The target row is already
+ * updated by the time we get here.
+ */
+async function syncCycleToSiblings(
+  sourceMondayItemId: string,
+  cycleStartDate: string,
+  derivedInvoiceDate: string,
+): Promise<void> {
+  const supabase = await createAdminClient()
+
+  // Resolve the source's Stripe customer. Empty/null = no siblings to sync —
+  // the row isn't billable yet, so cycle drift between siblings can't bite.
+  const { data: source } = await supabase
+    .from("clients")
+    .select("stripe_customer_id")
+    .eq("monday_item_id", sourceMondayItemId)
+    .maybeSingle()
+
+  const stripeCustomerId = source?.stripe_customer_id as string | null | undefined
+  if (!stripeCustomerId) return
+
+  const { data: siblings } = await supabase
+    .from("clients")
+    .select("monday_item_id, monday_board_type")
+    .eq("stripe_customer_id", stripeCustomerId)
+    .neq("monday_item_id", sourceMondayItemId)
+
+  if (!siblings || siblings.length === 0) return
+
+  for (const sib of siblings) {
+    const sibId = sib.monday_item_id as string
+    const sibBoardType = sib.monday_board_type as "onboarding" | "current"
+    try {
+      await setItemColumnValue(sibBoardType, sibId, "cycle_start_date", cycleStartDate)
+      await setItemColumnValue(sibBoardType, sibId, "next_invoice_date", derivedInvoiceDate)
+      const refreshed = await fetchClientById(sibId)
+      if (refreshed) await syncClientToSupabase(refreshed)
+    } catch (e) {
+      console.error(
+        `Sibling cycle sync failed for ${sibId} (Stripe ${stripeCustomerId}):`,
+        e instanceof Error ? e.message : e,
+      )
+    }
+  }
 }

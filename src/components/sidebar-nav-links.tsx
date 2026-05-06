@@ -32,35 +32,14 @@ function InboxBadge() {
 
 type Props = {
   items: NavItem[]
-  /** Clients with at least one overdue Stripe invoice — they haven't paid us.
-   *  Finance-only signal; non-finance users always see 0. */
-  stripeOverdueCount?: number
-  /** Clients past their `nextInvoiceDate` who still need an invoice sent.
-   *  This is the "send-out queue" trigger — the primary signal finance asked
-   *  the dot for. Finance-only. */
+  /** Clients with an invoice due this week (overdue + today + through Sunday)
+   *  — same "Due this week" window the Billing page uses. Drives the numeric
+   *  badge next to Billing. Finance-only; non-finance users always see 0. */
   invoicesToSendCount?: number
 }
 
-export function SidebarNavLinks({
-  items,
-  stripeOverdueCount = 0,
-  invoicesToSendCount = 0,
-}: Props) {
+export function SidebarNavLinks({ items, invoicesToSendCount = 0 }: Props) {
   const pathname = usePathname()
-  // Combined dot — fires on either signal. We don't show a numeric badge
-  // because the finance dashboard surfaces the breakdown one click away;
-  // sidebar just needs to say "open Billing, there's something for you".
-  const showBillingDot = stripeOverdueCount > 0 || invoicesToSendCount > 0
-  const billingTitle = (() => {
-    const parts: string[] = []
-    if (invoicesToSendCount > 0) {
-      parts.push(`${invoicesToSendCount} invoice${invoicesToSendCount === 1 ? "" : "s"} to send`)
-    }
-    if (stripeOverdueCount > 0) {
-      parts.push(`${stripeOverdueCount} overdue payment${stripeOverdueCount === 1 ? "" : "s"}`)
-    }
-    return parts.join(" · ")
-  })()
 
   return (
     <nav className="flex-1 px-3 space-y-0.5">
@@ -85,12 +64,14 @@ export function SidebarNavLinks({
             <Icon className={`h-[17px] w-[17px] transition-colors ${active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"}`} />
             {label}
             {isInbox && <InboxBadge />}
-            {isBilling && showBillingDot && (
+            {isBilling && invoicesToSendCount > 0 && (
               <span
-                className="ml-auto h-2 w-2 rounded-full bg-primary"
-                title={billingTitle}
-                aria-label={billingTitle}
-              />
+                className="ml-auto rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary"
+                title={`${invoicesToSendCount} invoice${invoicesToSendCount === 1 ? "" : "s"} to send this week`}
+                aria-label={`${invoicesToSendCount} invoices to send this week`}
+              >
+                {invoicesToSendCount > 99 ? "99+" : invoicesToSendCount}
+              </span>
             )}
           </Link>
         )

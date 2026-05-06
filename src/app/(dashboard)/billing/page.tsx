@@ -5,14 +5,10 @@ import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary, PastInvoice } from "@/lib/integrations/stripe"
 import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
-import {
-  normalizeCampaigns,
-  totalAdBudget,
-  totalMRR,
-} from "@/lib/clients/agreement"
+import { agreementMonthly, normalizeAgreement } from "@/lib/clients/agreement"
 import { mondayStatusToHub } from "@/lib/clients/status"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
-import { BillingOverview, type UpcomingInvoice } from "./_components/billing-overview"
+import type { BillingGroup, UpcomingInvoice } from "./_components/billing-overview"
 import { BillingTabs, type PastInvoiceRow } from "./_components/billing-tabs"
 import { RefreshBillingButton } from "./_components/refresh-billing-button"
 
@@ -109,7 +105,7 @@ export default async function BillingPage() {
 
   // Look up MRR / ad budget for the scheduled set in one round-trip. We need
   // the Supabase clients.id to join client_agreements, so this is two queries:
-  // monday_item_id → clients.id, then clients.id → campaigns.
+  // monday_item_id → clients.id, then clients.id → flat agreement columns.
   const mondayIds = scheduled.map((c) => c.mondayItemId)
   const moneyByMondayId = new Map<string, { mrr: number; adBudget: number }>()
 
@@ -125,15 +121,17 @@ export default async function BillingPage() {
     if (mondayIdById.size > 0) {
       const { data: agreements } = await supabase
         .from("client_agreements")
-        .select("client_id, campaigns")
+        .select(
+          "client_id, ad_budget, platforms, platform_fees, follow_up, follow_up_fee",
+        )
         .in("client_id", Array.from(mondayIdById.keys()))
       for (const a of agreements ?? []) {
         const mondayItemId = mondayIdById.get(a.client_id as string)
         if (!mondayItemId) continue
-        const campaigns = normalizeCampaigns(a.campaigns)
+        const agreement = normalizeAgreement(a)
         moneyByMondayId.set(mondayItemId, {
-          mrr: totalMRR(campaigns),
-          adBudget: totalAdBudget(campaigns),
+          mrr: agreementMonthly(agreement),
+          adBudget: agreement.ad_budget,
         })
       }
     }
@@ -192,6 +190,13 @@ export default async function BillingPage() {
     }
   })
 
+  // Group Monday rows that share a Stripe customer into a single billable
+  // entity. Multi-row groups (e.g. "O2 Plus | B2B" + "O2 Plus | B2C") get one
+  // consolidated invoice; rows without a Stripe customer become singleton
+  // groups using a synthetic key so the rest of the pipeline can treat them
+  // uniformly.
+  const groups: BillingGroup[] = groupBillingRows(rows)
+
   return (
     <div>
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -207,7 +212,55 @@ export default async function BillingPage() {
         </div>
         <RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />
       </div>
-      <BillingTabs futureRows={rows} pastInvoices={pastInvoices} />
+      <BillingTabs futureGroups={groups} pastInvoices={pastInvoices} />
     </div>
   )
+}
+
+/**
+ * Build BillingGroups from the flat scheduled-row list.
+ *
+ * - Rows with the same `stripeCustomerId` collapse into one group.
+ * - Rows without a Stripe customer each become their own group (synthetic
+ *   `unlinked-{mondayItemId}` key) so the table still renders them.
+ *
+ * Within a multi-sibling group, the "primary" is the row with the earliest
+ * `nextInvoiceDate` so the group lands in the bucket the most-urgent sibling
+ * belongs to (after sibling-sync this rarely matters — siblings agree on
+ * dates — but it gracefully handles drift while the user is fixing things).
+ *
+ * `hasDateDrift` flags groups where siblings disagree on `cycleStartDate`,
+ * which surfaces a warning in the UI so finance can correct it.
+ */
+function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
+  const byCustomer = new Map<string, UpcomingInvoice[]>()
+  for (const row of rows) {
+    const key = row.stripeCustomerId
+      ? `stripe:${row.stripeCustomerId}`
+      : `unlinked:${row.mondayItemId}`
+    const list = byCustomer.get(key) ?? []
+    list.push(row)
+    byCustomer.set(key, list)
+  }
+
+  const groups: BillingGroup[] = []
+  for (const [groupKey, siblings] of byCustomer) {
+    siblings.sort((a, b) => a.nextInvoiceDate.localeCompare(b.nextInvoiceDate))
+    const primary = siblings[0]
+    const totalFee = siblings.reduce((s, r) => s + r.fee, 0)
+    // Only count ad budget when the campaign actually runs through our ad
+    // account — otherwise the client pays Meta directly and we don't bill it.
+    const totalAdBudget = siblings.reduce(
+      (s, r) => s + (r.usesRocketLeadsAdAccount ? r.adBudget : 0),
+      0,
+    )
+    const cycleDates = new Set(siblings.map((s) => s.cycleStartDate).filter(Boolean))
+    const hasDateDrift = cycleDates.size > 1
+    groups.push({ groupKey, primary, siblings, totalFee, totalAdBudget, hasDateDrift })
+  }
+
+  // Sort groups by their primary's invoice date so the surrounding bucketing
+  // logic doesn't depend on insertion order.
+  groups.sort((a, b) => a.primary.nextInvoiceDate.localeCompare(b.primary.nextInvoiceDate))
+  return groups
 }
