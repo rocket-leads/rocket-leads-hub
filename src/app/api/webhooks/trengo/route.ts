@@ -68,11 +68,15 @@ export async function POST(req: NextRequest) {
   const haveSecret = !!req.nextUrl.searchParams.get("secret")
   const haveAuthHeader = !!req.headers.get("authorization")
   const ua = req.headers.get("user-agent") ?? ""
+  // Log keys + a body preview (first ~400 chars) so we can see what Trengo
+  // actually sends. No secrets in the body for Trengo webhooks, so logging
+  // this is safe for diagnostic purposes.
   console.log(
     `[trengo-webhook] POST received bodyLen=${rawBody.length} ` +
       `hasSecretQuery=${haveSecret} hasAuthHeader=${haveAuthHeader} ` +
       `ua=${ua.slice(0, 80)}`,
   )
+  console.log(`[trengo-webhook] body preview: ${rawBody.slice(0, 400)}`)
 
   if (!verifyAuth(req)) {
     console.log("[trengo-webhook] auth FAILED — rejecting with 401")
@@ -82,11 +86,14 @@ export async function POST(req: NextRequest) {
   let payload: TrengoWebhookPayload
   try {
     payload = JSON.parse(rawBody) as TrengoWebhookPayload
-  } catch {
+  } catch (e) {
+    console.log(`[trengo-webhook] JSON parse FAILED: ${e instanceof Error ? e.message : String(e)}`)
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
+  const topKeys = Object.keys(payload as Record<string, unknown>).join(",")
   console.log(
-    `[trengo-webhook] auth OK event_type=${payload.event_type ?? payload.type ?? "(none)"} ` +
+    `[trengo-webhook] auth OK event_type="${payload.event_type ?? payload.type ?? "(none)"}" ` +
+      `topKeys=[${topKeys}] ` +
       `hasTicket=${!!(payload.ticket ?? payload.data?.ticket)} ` +
       `hasMessage=${!!(payload.message ?? payload.data?.message)}`,
   )
@@ -117,12 +124,14 @@ export async function POST(req: NextRequest) {
     !!(payload.message ?? payload.data?.message) &&
     !!(payload.ticket ?? payload.data?.ticket)
   if (!isLegacyMessageEvent && !looksLikeMessageEvent) {
+    console.log(`[trengo-webhook] IGNORED — eventType="${eventType}" not in known message types and no ticket+message`)
     return NextResponse.json({ ok: true, ignored: eventType })
   }
 
   const ticket = payload.ticket ?? payload.data?.ticket
   const message = payload.message ?? payload.data?.message
   if (!ticket || !message) {
+    console.log(`[trengo-webhook] REJECTED 400 — missing ticket=${!!ticket} message=${!!message}`)
     return NextResponse.json(
       { ok: false, error: "Missing ticket or message in payload" },
       { status: 400 },
