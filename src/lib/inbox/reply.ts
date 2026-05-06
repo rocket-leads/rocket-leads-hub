@@ -77,9 +77,25 @@ async function sendTrengoReplyAsUser(
     throw new Error(`Trengo send failed (${res.status}): ${errText.slice(0, 200)}`)
   }
 
-  const json = (await res.json()) as { id?: number | string; data?: { id?: number | string } }
-  const id = json.id ?? json.data?.id
-  return { message_id: String(id ?? "") }
+  // Trengo's actual response shape (verified via probe 2026-05-06):
+  //   { "message": { "id": <int>, "ticket_id": …, "type": "OUTBOUND", … } }
+  // Older/other endpoints return { id } at top level or { data: { id } }, so
+  // we try all three paths to stay robust. Without a valid message id the
+  // mirror row gets `source_msg_id=trengo:msg:` (empty), which fails to dedup
+  // against Trengo's later OUTBOUND webhook → the Hub shows the reply twice.
+  const json = (await res.json()) as {
+    id?: number | string
+    message_id?: number | string
+    data?: { id?: number | string }
+    message?: { id?: number | string }
+  }
+  const id = json.message?.id ?? json.id ?? json.data?.id ?? json.message_id
+  if (id == null) {
+    throw new Error(
+      `Trengo send returned no message id — keys: ${Object.keys(json).join(",")}`,
+    )
+  }
+  return { message_id: String(id) }
 }
 
 // --- Slack ---------------------------------------------------------------
