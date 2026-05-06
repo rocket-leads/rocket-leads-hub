@@ -37,14 +37,26 @@ export function BillingTabs({
   pastInvoices: PastInvoiceRow[]
 }) {
   const [tab, setTab] = useState<Tab>("future")
-  // Both counts in the tab label so finance sees at a glance how full each
-  // bucket is. "Past" excludes voids — those aren't useful debt to surface.
-  const futureCount = futureRows.length
-  const pastCount = pastInvoices.filter((i) => i.status !== "void").length
+  // Tab badges count overdue only — finance is triaging "what needs chasing
+  // today", not "how many invoices exist". For Future = clients past their
+  // next-invoice date (same rule as the Overdue section in BillingOverview).
+  // For Past = Stripe invoices in overdue state.
+  const todayMs = (() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d.getTime()
+  })()
+  const futureOverdueCount = futureRows.filter((r) => {
+    if (!r.nextInvoiceDate) return false
+    const d = new Date(r.nextInvoiceDate)
+    d.setHours(0, 0, 0, 0)
+    return d.getTime() < todayMs
+  }).length
+  const pastOverdueCount = pastInvoices.filter((i) => i.status === "overdue").length
 
   const tabsWithCounts: TopTab<Tab>[] = TABS.map((t) => ({
     ...t,
-    count: t.id === "future" ? futureCount : pastCount,
+    count: t.id === "future" ? futureOverdueCount : pastOverdueCount,
   }))
 
   return (

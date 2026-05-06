@@ -460,10 +460,21 @@ export async function listChatThreads(
     // because we group post-hoc. 1k is generous for now.
     .limit(1000)
 
+  // Trengo channel subscriptions ALWAYS narrow the Client Inbox down to the
+  // user's chosen channels — applies to admins too. Without this, an admin
+  // sees every Trengo conversation in the workspace regardless of which
+  // channels they actually want to follow. Non-Trengo events bypass this
+  // filter via `source.neq.trengo`.
+  const channelIds = await getUserTrengoChannelIds(userId)
+  if (channelIds.length > 0) {
+    query = query.or(
+      `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+    )
+  }
+
   if (role !== "admin") {
     const allowed = await getAllowedClientIds(userId, role)
     if (allowed !== "all") {
-      const channelIds = await getUserTrengoChannelIds(userId)
       const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
       const channelClause =
         channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
@@ -541,10 +552,20 @@ export async function getChatThreadMessages(
     .eq("thread_key", threadKey)
     .order("created_at", { ascending: true })
 
+  // Mirror listChatThreads: Trengo channel subscriptions narrow the chat
+  // substrate even for admins. Without this, opening a thread surfaced via
+  // the list filter would still show messages from non-subscribed channels
+  // for the same contact.
+  const channelIds = await getUserTrengoChannelIds(userId)
+  if (channelIds.length > 0) {
+    query = query.or(
+      `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+    )
+  }
+
   if (role !== "admin") {
     const allowed = await getAllowedClientIds(userId, role)
     if (allowed !== "all") {
-      const channelIds = await getUserTrengoChannelIds(userId)
       const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
       const channelClause =
         channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""

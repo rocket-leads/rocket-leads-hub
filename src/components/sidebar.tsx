@@ -7,8 +7,11 @@ import { ThemeToggle } from "./theme-toggle"
 import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-platform-tokens"
 import { readCache } from "@/lib/cache"
 import type { BillingSummary } from "@/lib/integrations/stripe"
+import type { MondayClient } from "@/lib/integrations/monday"
+import { mondayStatusToHub } from "@/lib/clients/status"
 
 const REQUIRED_PLATFORMS: Platform[] = ["slack", "trengo", "monday"]
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 // Default nav for members, admins and finance users alike. Watch List is
 // pulled out below for the finance role (they don't action campaigns).
@@ -53,18 +56,41 @@ export async function Sidebar() {
   }
 
   // For finance users, surface a purple dot on the Billing nav whenever
-  // Stripe reports any overdue invoices across our customers. Reads the
-  // existing `billing_summaries` cache the cron writes — fast (zero extra
-  // queries during render) and only off by at most one cron tick.
-  let billingOverdueCount = 0
+  // either (a) Stripe reports overdue invoices (clients haven't paid us) or
+  // (b) there are clients past their next-invoice date that still need an
+  // invoice sent. Both reads come from existing caches the crons populate —
+  // zero extra DB queries during sidebar render.
+  let stripeOverdueCount = 0
+  let invoicesToSendCount = 0
   if (isFinance) {
     try {
       const summaries = await readCache<Record<string, BillingSummary>>("billing_summaries")
       if (summaries) {
-        billingOverdueCount = Object.values(summaries).filter((s) => s.status === "overdue").length
+        stripeOverdueCount = Object.values(summaries).filter((s) => s.status === "overdue").length
       }
     } catch {
       // Silent — a missing cache shouldn't break the sidebar.
+    }
+    try {
+      const boards = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+        "monday_boards",
+      )
+      if (boards) {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const todayMs = today.getTime()
+        const all = [...boards.onboarding, ...boards.current]
+        invoicesToSendCount = all.filter((c) => {
+          if (!DATE_RE.test(c.nextInvoiceDate)) return false
+          const status = mondayStatusToHub(c.campaignStatus, c.boardType)
+          if (status !== "live" && status !== "onboarding") return false
+          const d = new Date(c.nextInvoiceDate)
+          d.setHours(0, 0, 0, 0)
+          return d.getTime() < todayMs
+        }).length
+      }
+    } catch {
+      // Silent.
     }
   }
   const accountTitle = missingPlatforms > 0
@@ -96,7 +122,11 @@ export async function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <SidebarNavLinks items={allItems} billingOverdueCount={billingOverdueCount} />
+      <SidebarNavLinks
+        items={allItems}
+        stripeOverdueCount={stripeOverdueCount}
+        invoicesToSendCount={invoicesToSendCount}
+      />
 
       {/* User section */}
       <div className="mt-auto border-t border-sidebar-border p-3">
