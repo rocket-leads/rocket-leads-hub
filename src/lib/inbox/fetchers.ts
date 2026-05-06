@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
+import { fetchTrengoChannels } from "@/lib/integrations/trengo"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 import type {
@@ -360,6 +361,12 @@ export async function getInboxBadgeCounts(
 
 export type ChatScope = "external" | "internal"
 
+/** High-level channel medium used to drive the icon/badge in the thread row.
+ *  We only differentiate WhatsApp vs email today — voice / chat / social are
+ *  bucketed under `other` until we surface them. Null when the thread isn't
+ *  Trengo (Slack threads ride a separate icon path). */
+export type ChatChannelKind = "whatsapp" | "email" | "other" | null
+
 export type ChatThreadSummary = {
   threadKey: string
   scope: ChatScope
@@ -368,6 +375,14 @@ export type ChatThreadSummary = {
   primaryName: string
   /** Linked Hub client name when client_id is set on any event in the thread. */
   clientName: string | null
+  /** WhatsApp / email / other — drives the icon shown next to the thread.
+   *  Resolved from Trengo channel id at fetch time so the UI doesn't need
+   *  a separate roundtrip. Null for Slack and other non-Trengo sources. */
+  channelKind: ChatChannelKind
+  /** Human-readable Trengo channel name (e.g. "Roy Personal", "Roy Vosters"
+   *  for the WA line). Useful in the thread header so the user can see
+   *  exactly which inbox the message came in on. */
+  channelName: string | null
   /** Most recent message preview (truncated). */
   latestPreview: string
   /** Most recent message timestamp (uses created_at_src when available). */
@@ -406,6 +421,7 @@ type RawChatRow = {
   status: string
   created_at: string
   created_at_src: string | null
+  trengo_channel_id: number | null
   author: { id: string; name: string | null; email: string } | null
   assignee: { id: string; name: string | null; email: string } | null
 }
@@ -413,7 +429,7 @@ type RawChatRow = {
 const CHAT_SELECT = `
   id, source, scope, thread_key, client_id, author_id, assignee_id,
   author_kind, author_external, author_name_cached, title, body, status,
-  created_at, created_at_src,
+  created_at, created_at_src, trengo_channel_id,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
 `
@@ -427,6 +443,42 @@ function rowAuthorName(row: RawChatRow): string {
 
 function rowDisplayAt(row: RawChatRow): string {
   return row.created_at_src ?? row.created_at
+}
+
+/** Resolve a Trengo channel id → its kind (whatsapp/email/other) plus the
+ *  human-readable label. Result is small (< 100 channels) and the underlying
+ *  Trengo fetch is itself cached for 5 minutes via the integrations layer,
+ *  so calling this on every chat-pane poll is cheap. */
+async function getTrengoChannelLookup(): Promise<
+  Map<number, { kind: ChatChannelKind; name: string }>
+> {
+  const map = new Map<number, { kind: ChatChannelKind; name: string }>()
+  try {
+    const channels = await fetchTrengoChannels()
+    for (const c of channels) {
+      const t = (c.type ?? "").toUpperCase()
+      let kind: ChatChannelKind = "other"
+      if (t === "WA_BUSINESS" || t === "WHATSAPP" || t.includes("WHATSAPP")) {
+        kind = "whatsapp"
+      } else if (t === "EMAIL") {
+        kind = "email"
+      }
+      // Mirror the display logic from /api/integrations/trengo/channels:
+      // prefer `title` (Trengo sidebar label), fall back to display_name and
+      // finally `Channel <id>` so the UI never shows a blank.
+      const title = typeof c.title === "string" ? c.title.trim() : ""
+      const display = typeof c.display_name === "string" ? c.display_name.trim() : ""
+      const name =
+        title && title.toLowerCase() !== t.toLowerCase()
+          ? title
+          : display || `Channel ${c.id}`
+      map.set(c.id, { kind, name })
+    }
+  } catch {
+    // If Trengo is briefly unreachable, the chat list still renders without
+    // channel decoration — falling back to the generic chat icon.
+  }
+  return map
 }
 
 /** Derive a human-friendly primary name for a thread from its thread_key.
@@ -503,6 +555,7 @@ export async function listChatThreads(
   }
 
   const clientMap = await getMondayClientMap()
+  const channelLookup = await getTrengoChannelLookup()
 
   const threads: ChatThreadSummary[] = []
   for (const [threadKey, { rows: threadRows }] of byThread) {
@@ -521,12 +574,33 @@ export async function listChatThreads(
     const latestPreview =
       previewSrc.length > 120 ? previewSrc.slice(0, 120) + "…" : previewSrc
     const unreadCount = threadRows.filter((r) => r.status === "unread").length
+
+    // Resolve channel kind/name from the most recent Trengo channel id we
+    // saw on this thread. Walk back through events because the latest one
+    // might be an outbound mirror without a channel id (legacy rows).
+    let channelKind: ChatChannelKind = null
+    let channelName: string | null = null
+    if (latest.source === "trengo") {
+      for (const r of threadRows) {
+        if (r.trengo_channel_id != null) {
+          const info = channelLookup.get(r.trengo_channel_id)
+          if (info) {
+            channelKind = info.kind
+            channelName = info.name
+            break
+          }
+        }
+      }
+    }
+
     threads.push({
       threadKey,
       scope: latest.scope === "external" ? "external" : "internal",
       source: latest.source,
       primaryName,
       clientName,
+      channelKind,
+      channelName,
       latestPreview,
       latestAt: rowDisplayAt(latest),
       latestEventId: latest.id,

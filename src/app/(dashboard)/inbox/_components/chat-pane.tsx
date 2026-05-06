@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Send, MessageSquare, Hash, LayoutGrid, Inbox } from "lucide-react"
+import { Loader2, Send, MessageSquare, Hash, LayoutGrid, Inbox, Mail, Phone } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { ChatScope, ChatThreadSummary, ChatMessage } from "@/lib/inbox/fetchers"
@@ -134,8 +134,9 @@ function ThreadList({
           >
             <div className="flex items-start justify-between gap-2 mb-0.5">
               <div className="flex items-center gap-1.5 min-w-0">
-                <SourceIcon source={thread.source} />
+                <SourceIcon thread={thread} />
                 <span className="text-sm font-medium truncate">{thread.primaryName}</span>
+                <ChannelBadge thread={thread} />
               </div>
               {thread.unreadCount > 0 && (
                 <span className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums">
@@ -143,9 +144,9 @@ function ThreadList({
                 </span>
               )}
             </div>
-            {thread.clientName && (
+            {(thread.clientName || thread.channelName) && (
               <p className="text-[10px] text-muted-foreground/70 truncate mb-1">
-                {thread.clientName}
+                {thread.clientName ?? thread.channelName}
               </p>
             )}
             <p className="text-[11px] text-muted-foreground/80 truncate leading-snug">
@@ -260,12 +261,17 @@ function ThreadMessages({
       <div className="border-b border-border/40 px-4 py-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <SourceIcon source={thread.source} />
+            <SourceIcon thread={thread} />
             <p className="text-sm font-semibold truncate">{thread.primaryName}</p>
+            <ChannelBadge thread={thread} />
           </div>
-          {thread.clientName && (
+          {(thread.clientName || thread.channelName) && (
             <p className="text-[11px] text-muted-foreground/70 truncate">
-              {thread.clientName}
+              {thread.clientName
+                ? thread.channelName
+                  ? `${thread.clientName} · via ${thread.channelName}`
+                  : thread.clientName
+                : `via ${thread.channelName}`}
             </p>
           )}
         </div>
@@ -364,14 +370,43 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   )
 }
 
-function SourceIcon({ source }: { source: ChatThreadSummary["source"] }) {
-  if (source === "trengo")
+/** Channel icon for Client Inbox rows. For Trengo we differentiate WhatsApp
+ *  (green phone) vs email (blue mail) vs other Trengo channels (cyan chat) so
+ *  it's instantly clear which medium a thread came in on — Roy's spec. Slack
+ *  and Monday keep their existing single-icon treatment. */
+function SourceIcon({ thread }: { thread: ChatThreadSummary }) {
+  if (thread.source === "trengo") {
+    if (thread.channelKind === "whatsapp") {
+      return <Phone className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+    }
+    if (thread.channelKind === "email") {
+      return <Mail className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+    }
     return <MessageSquare className="h-3.5 w-3.5 text-cyan-500 shrink-0" />
-  if (source === "slack")
+  }
+  if (thread.source === "slack")
     return <Hash className="h-3.5 w-3.5 text-purple-500 shrink-0" />
-  if (source === "monday")
+  if (thread.source === "monday")
     return <LayoutGrid className="h-3.5 w-3.5 text-orange-500 shrink-0" />
   return null
+}
+
+/** Compact text badge showing the channel medium. Sits next to the icon in
+ *  the row + header so users can see "WhatsApp" / "Email" without hovering. */
+function ChannelBadge({ thread }: { thread: ChatThreadSummary }) {
+  if (thread.source !== "trengo" || !thread.channelKind || thread.channelKind === "other") {
+    return null
+  }
+  const label = thread.channelKind === "whatsapp" ? "WhatsApp" : "Email"
+  const tone =
+    thread.channelKind === "whatsapp"
+      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+      : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
+  return (
+    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${tone}`}>
+      {label}
+    </span>
+  )
 }
 
 // --- Date helpers --------------------------------------------------------
