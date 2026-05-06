@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
-import type { BillingSummary } from "@/lib/integrations/stripe"
+import type { BillingSummary, PastInvoice } from "@/lib/integrations/stripe"
 import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
 import {
   normalizeCampaigns,
@@ -13,7 +13,8 @@ import {
 import { mondayStatusToHub } from "@/lib/clients/status"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { BillingOverview, type UpcomingInvoice } from "./_components/billing-overview"
-import { SyncFromMondayButton } from "./_components/sync-from-monday-button"
+import { BillingTabs, type PastInvoiceRow } from "./_components/billing-tabs"
+import { RefreshBillingButton } from "./_components/refresh-billing-button"
 
 /**
  * Finance overview page — open to anyone signed in. Surfaces every client
@@ -143,6 +144,30 @@ export default async function BillingPage() {
   // cache (refreshed by the same cron that syncs next_invoice_date back here).
   const billingCache = (await readCache<Record<string, BillingSummary>>("billing_summaries")) ?? {}
 
+  // Last-refreshed timestamp from the manual Refresh button + the hourly
+  // Stripe-summaries cron. Drives the "Last updated X ago" hint so finance
+  // can see freshness at a glance.
+  const lastRefreshedAt = (await readCache<string>("billing_refreshed_at")) ?? null
+
+  // Past invoices — global Stripe list refreshed hourly + on manual refresh.
+  // Join customerId → client name from the Monday cache so the table reads
+  // human (not "cus_…").
+  const pastInvoicesRaw = (await readCache<PastInvoice[]>("past_invoices")) ?? []
+  const clientByStripeId = new Map<string, { mondayItemId: string; name: string }>()
+  for (const c of allClients) {
+    if (c.stripeCustomerId) {
+      clientByStripeId.set(c.stripeCustomerId, { mondayItemId: c.mondayItemId, name: c.name })
+    }
+  }
+  const pastInvoices: PastInvoiceRow[] = pastInvoicesRaw.map((inv) => {
+    const linked = clientByStripeId.get(inv.customerId)
+    return {
+      ...inv,
+      clientName: linked?.name ?? null,
+      clientMondayItemId: linked?.mondayItemId ?? null,
+    }
+  })
+
   // AI invoice-readiness verdicts — pre-computed by /api/billing/invoice-readiness.
   // Cache miss = the row renders a "Run AI check" affordance and the inline
   // cell fetches on demand, populating the cache for subsequent loads.
@@ -180,9 +205,9 @@ export default async function BillingPage() {
             client&apos;s cycle to move both dates in lockstep.
           </p>
         </div>
-        <SyncFromMondayButton />
+        <RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />
       </div>
-      <BillingOverview rows={rows} />
+      <BillingTabs futureRows={rows} pastInvoices={pastInvoices} />
     </div>
   )
 }

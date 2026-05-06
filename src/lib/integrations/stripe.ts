@@ -56,6 +56,116 @@ export type BillingSummary = {
   status: "complete" | "open" | "overdue"
 }
 
+export type PastInvoice = {
+  id: string
+  number: string | null
+  /** Stripe customer ID — joined to Monday clients on the page so finance
+   *  can see "client name" instead of `cus_…`. */
+  customerId: string
+  amountDue: number
+  amountPaid: number
+  status: "paid" | "open" | "overdue" | "void" | "draft"
+  /** Invoice creation timestamp (Unix seconds). */
+  created: number
+  /** Invoice due date (Unix seconds), or null when collection is "charge_automatically". */
+  dueDate: number | null
+  /** When the invoice flipped to paid (Unix seconds), or null. */
+  paidAt: number | null
+  invoicePdf: string | null
+  hostedUrl: string | null
+}
+
+/**
+ * Pull every Stripe invoice across all customers within the last `daysBack`
+ * days. Uses Stripe's global `invoices.list` with a `created[gte]` filter so
+ * we don't have to iterate per customer (much cheaper for the dashboard
+ * "past invoices" view that needs the union of everyone's history).
+ *
+ * Pagination handled internally — yields the full list in one return. Stops
+ * at 5000 invoices as a safety cap (we'd never legitimately need more for a
+ * default 180-day window; misconfiguration would otherwise burn API quota).
+ */
+export async function fetchAllRecentInvoices(daysBack: number): Promise<PastInvoice[]> {
+  const stripe = await getStripe()
+  const since = Math.floor((Date.now() - daysBack * 24 * 60 * 60 * 1000) / 1000)
+  const out: PastInvoice[] = []
+  const HARD_CAP = 5000
+
+  let startingAfter: string | undefined
+  let hasMore = true
+  while (hasMore && out.length < HARD_CAP) {
+    const page = await stripe.invoices.list({
+      created: { gte: since },
+      limit: 100,
+      expand: ["data.status_transitions"],
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    })
+    for (const inv of page.data) {
+      // Drafts are noise on the past-invoices view — finance hasn't sent them
+      // yet, so they don't belong in the "what's gone out" list.
+      if (inv.status === "draft") continue
+      const customerId =
+        typeof inv.customer === "string"
+          ? inv.customer
+          : (inv.customer as { id?: string } | null)?.id ?? ""
+      if (!customerId) continue
+      out.push({
+        id: inv.id ?? "",
+        number: inv.number,
+        customerId,
+        amountDue: inv.amount_due / 100,
+        amountPaid: inv.amount_paid / 100,
+        status: deriveStatus(inv),
+        created: inv.created,
+        dueDate: inv.due_date ?? null,
+        paidAt: (inv.status_transitions as Stripe.Invoice.StatusTransitions)?.paid_at ?? null,
+        invoicePdf: inv.invoice_pdf ?? null,
+        hostedUrl: inv.hosted_invoice_url ?? null,
+      })
+    }
+    hasMore = page.has_more
+    startingAfter = page.data[page.data.length - 1]?.id
+    if (!startingAfter) break
+  }
+
+  // Most-recent first — matches what finance expects to see at the top.
+  out.sort((a, b) => b.created - a.created)
+  return out
+}
+
+/**
+ * Refresh BillingSummary for a list of Stripe customer IDs in parallel,
+ * returning the resulting map. Used by the hourly Stripe-refresh cron and
+ * the manual Refresh button on /billing so payment state never goes stale
+ * by more than an hour. Concurrency capped to 5 — Stripe rate-limits at
+ * ~25 req/s but we want to leave headroom for other Stripe traffic.
+ *
+ * Caller is responsible for writing the cache; this only produces data.
+ * Per-customer failures are logged and skipped (those entries are absent
+ * from the returned map, so the cache write only updates resolved ones).
+ */
+export async function refreshBillingSummaries(
+  customerIds: string[],
+): Promise<{ summaries: Record<string, BillingSummary>; failed: number }> {
+  const summaries: Record<string, BillingSummary> = {}
+  let failed = 0
+  const queue = [...customerIds]
+  async function worker() {
+    while (queue.length > 0) {
+      const id = queue.shift()
+      if (!id) return
+      try {
+        summaries[id] = await fetchBillingSummary(id)
+      } catch (e) {
+        failed++
+        console.error(`refreshBillingSummaries(${id}) failed:`, e instanceof Error ? e.message : e)
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: 5 }, worker))
+  return { summaries, failed }
+}
+
 export async function fetchBillingSummary(customerId: string): Promise<BillingSummary> {
   const stripe = await getStripe()
   const now = Math.floor(Date.now() / 1000)

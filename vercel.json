@@ -17,6 +17,14 @@
       "schedule": "0 7 * * *"
     },
     {
+      "path": "/api/cron/refresh-invoice-readiness",
+      "schedule": "30 */6 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-billing-summaries",
+      "schedule": "15 * * * *"
+    },
+    {
       "path": "/api/cron/refresh-proposals",
       "schedule": "0 4,16 * * *"
     },

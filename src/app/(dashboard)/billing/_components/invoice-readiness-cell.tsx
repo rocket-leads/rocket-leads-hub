@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Sparkles, Loader2, RefreshCw, MessageSquareText } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
@@ -42,27 +41,25 @@ const VERDICT_TONES = {
  * and to refresh the verdict on demand.
  */
 export function InvoiceReadinessCell({ mondayItemId, clientName, initial }: Props) {
-  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-
-  const queryKey = ["invoice-readiness", mondayItemId]
-
-  const { data, isFetching } = useQuery<InvoiceReadiness | null>({
-    queryKey,
-    initialData: initial,
-    // Only fetch on demand — the popover opens, or the user clicks Refresh.
-    // Keeps the page from firing 50 Claude calls on first render when the
-    // cache is cold.
-    enabled: false,
-    staleTime: Infinity,
-  })
+  // Local state keeps things simple — we never want to auto-fetch on mount
+  // (would fire ~50 Claude calls per page load), so the React Query machinery
+  // doesn't add anything here. Compute is on-demand only: popover open or
+  // explicit Refresh click.
+  const [data, setData] = useState<InvoiceReadiness | null>(initial)
+  const [isFetching, setIsFetching] = useState(false)
 
   async function fetchReadiness(refresh = false) {
-    const url = `/api/billing/invoice-readiness/${mondayItemId}${refresh ? "?refresh=1" : ""}`
-    const res = await fetch(url)
-    if (!res.ok) return
-    const json = (await res.json()) as InvoiceReadiness
-    queryClient.setQueryData(queryKey, json)
+    setIsFetching(true)
+    try {
+      const url = `/api/billing/invoice-readiness/${mondayItemId}${refresh ? "?refresh=1" : ""}`
+      const res = await fetch(url)
+      if (!res.ok) return
+      const json = (await res.json()) as InvoiceReadiness
+      setData(json)
+    } finally {
+      setIsFetching(false)
+    }
   }
 
   function handleOpenChange(next: boolean) {
