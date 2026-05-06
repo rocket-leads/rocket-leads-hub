@@ -23,6 +23,7 @@ import {
   Video,
   Check,
   X,
+  Search,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TopTabs } from "@/components/ui/top-tabs"
@@ -180,8 +181,25 @@ export function InboxView({
     refreshAll()
   }
 
-  const updates = updatesQuery.data?.items ?? []
-  const tasks = tasksQuery.data?.items ?? []
+  const allUpdates = updatesQuery.data?.items ?? []
+  const allTasks = tasksQuery.data?.items ?? []
+
+  // Free-text search over the loaded items. Cheap client-side filter — no
+  // round-trip needed since the lists are already capped by the server-side
+  // `assignedToMe`/status filters. Searches title, body, client name and
+  // author, so an AM can find "that thing about Vlex" via either the client
+  // or a quoted phrase from the body.
+  const [searchQuery, setSearchQuery] = useState("")
+  const filteredUpdates = useMemo(
+    () => filterByQuery(allUpdates, searchQuery),
+    [allUpdates, searchQuery],
+  )
+  const filteredTasks = useMemo(
+    () => filterByQuery(allTasks, searchQuery),
+    [allTasks, searchQuery],
+  )
+  const updates = filteredUpdates
+  const tasks = filteredTasks
 
   // Per-client view (locked-client tab on client detail page) surfaces
   // tasks/updates linked to that client plus a Client Inbox (Trengo
@@ -215,6 +233,31 @@ export function InboxView({
           <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Inbox</h1>
         </div>
         <div className="flex items-center gap-2">
+          {!isChatTab && !isClientOnlyTab && (
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setSearchQuery("")
+                }}
+                placeholder="Search inbox…"
+                className="h-8 w-56 rounded-md border border-input bg-background pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 inline-flex items-center justify-center"
+                  aria-label="Clear search"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
           {!lockedClient && (
             <Button
               variant={assignedToMe ? "default" : "outline"}
@@ -982,4 +1025,25 @@ function GroupedUpdates({
       />
     </div>
   )
+}
+
+/** Free-text search across loaded inbox items. Matches title, body excerpt,
+ *  client name, author and assignee. Whitespace-tolerant; multiple words act
+ *  as AND filters (each word must hit somewhere on the row). */
+function filterByQuery(items: InboxItem[], query: string): InboxItem[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return items
+  const words = q.split(/\s+/).filter(Boolean)
+  return items.filter((it) => {
+    const haystack = [
+      it.title,
+      it.body ?? "",
+      it.clientName,
+      it.authorName,
+      it.assigneeName,
+    ]
+      .join(" ")
+      .toLowerCase()
+    return words.every((w) => haystack.includes(w))
+  })
 }
