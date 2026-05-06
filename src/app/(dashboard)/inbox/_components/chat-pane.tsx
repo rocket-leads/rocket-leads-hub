@@ -30,7 +30,12 @@ export function ChatPane({ scope }: Props) {
   const threadsQuery = useQuery<{ threads: ChatThreadSummary[] }>({
     queryKey: ["inbox-threads", scope],
     queryFn: () => fetch(`/api/inbox/threads?scope=${scope}`).then((r) => r.json()),
-    staleTime: 30 * 1000,
+    // Poll every 5s while the inbox tab is in focus so newly-arrived
+    // messages bubble in without a manual refresh. React Query auto-pauses
+    // refetching when the window blurs (refetchIntervalInBackground=false
+    // is the default), so this isn't a constant network hammer.
+    staleTime: 5 * 1000,
+    refetchInterval: 5 * 1000,
   })
 
   const threads = threadsQuery.data?.threads ?? []
@@ -196,7 +201,10 @@ function ThreadMessages({
       fetch(`/api/inbox/threads/${encodeURIComponent(thread.threadKey)}`).then((r) =>
         r.json(),
       ),
-    staleTime: 15 * 1000,
+    // Mirror the thread-list polling cadence so an open thread also picks up
+    // newly-delivered Trengo messages without needing a manual refresh.
+    staleTime: 5 * 1000,
+    refetchInterval: 5 * 1000,
   })
 
   const messages = messagesQuery.data?.messages ?? []

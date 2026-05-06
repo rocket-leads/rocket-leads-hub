@@ -32,6 +32,11 @@ type InboxEventRow = {
   thread_key: string | null
   scope: "external" | "internal" | null
   client_id: string
+  /** Trengo channel id of the original event — propagated to the outbound
+   *  mirror so the user's own replies pass the channel-subscription filter
+   *  in listChatThreads / getChatThreadMessages (otherwise an admin who
+   *  subscribed to a specific channel wouldn't see their own outbound). */
+  trengo_channel_id: number | null
   raw: Record<string, unknown> | null
 }
 
@@ -39,7 +44,9 @@ async function loadEvent(eventId: string): Promise<InboxEventRow | null> {
   const supabase = await createAdminClient()
   const { data } = await supabase
     .from("inbox_events")
-    .select("id, source, source_thread, source_msg_id, thread_key, scope, client_id, raw")
+    .select(
+      "id, source, source_thread, source_msg_id, thread_key, scope, client_id, trengo_channel_id, raw",
+    )
     .eq("id", eventId)
     .maybeSingle()
   return (data as InboxEventRow | null) ?? null
@@ -213,6 +220,10 @@ export async function replyToInboxEvent(
       author_name_cached: hubUser.name ?? hubUser.email,
       classify_method: "manual",
       created_at_src: createdAtSrc,
+      // Propagate the original event's channel id so the outbound row passes
+      // the per-user channel-subscription filter (Trengo only — Slack uses
+      // different routing and channel_id stays null for it).
+      trengo_channel_id: event.source === "trengo" ? event.trengo_channel_id : null,
     })
     .select("id")
     .single()
