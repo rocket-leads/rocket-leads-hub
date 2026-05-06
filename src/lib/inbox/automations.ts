@@ -280,18 +280,20 @@ async function ensurePaymentOverdueTask(
     console.error("Payment reminder AI draft failed:", e)
   }
 
-  const titleCore = `Contact ${client.firstName || client.name} about overdue payment — ${fmtEuro(outstanding)}`
+  const titleCore = `Bel ${client.firstName || client.name} over openstaande factuur — ${fmtEuro(outstanding)}`
   const title = testMode ? `[TEST] ${titleCore}` : titleCore
   const bodyParts = [
-    `Stripe invoice ${invoice.number ?? invoice.id} is overdue.`,
-    `Outstanding: ${fmtEuro(outstanding)}.`,
-    dueDateIso ? `Due date: ${dueDateIso}${daysOverdue ? ` (${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue)` : ""}.` : null,
-    `Contact the client today and confirm next payment step.`,
+    `Stripe factuur ${invoice.number ?? invoice.id} staat open.`,
+    `Openstaand bedrag: ${fmtEuro(outstanding)}.`,
+    dueDateIso
+      ? `Vervaldatum: ${dueDateIso}${daysOverdue ? ` (${daysOverdue} dag${daysOverdue === 1 ? "" : "en"} over tijd)` : ""}.`
+      : null,
+    `Neem vandaag contact op met de klant en bevestig de volgende betaalstap.`,
   ].filter(Boolean) as string[]
 
   if (testMode) {
     bodyParts.unshift(
-      `[TEST RUN] In production this would be assigned to ${client.accountManager || "the AM"}.`,
+      `[TEST RUN] In productie zou dit naar ${client.accountManager || "de AM"} gaan.`,
       "",
     )
   }
@@ -430,7 +432,7 @@ async function ensureAutoCompleteInvoiceTasks(
     if (!match) continue
 
     const invoiceCreatedAt = new Date(match.created * 1000).toISOString()
-    const completionNote = `\n\n— Auto-completed: detected Stripe invoice ${match.number ?? match.id} sent ${invoiceCreatedAt.slice(0, 10)}.`
+    const completionNote = `\n\n— Automatisch afgevinkt: Stripe factuur ${match.number ?? match.id} verstuurd op ${invoiceCreatedAt.slice(0, 10)}.`
 
     const updatedBody = (task.body ?? "") + completionNote
     const updatedSourceRef = {
@@ -583,7 +585,7 @@ async function dedupOverlappingTasks(
         cancelledIds.push(...drop.map((d) => d.id))
       } else {
         for (const dup of drop) {
-          const note = `\n\n— Auto-cancelled as duplicate of "${keep.title}" (id ${keep.id}). Reason: ${group.reason}`
+          const note = `\n\n— Automatisch geannuleerd als duplicaat van "${keep.title}" (id ${keep.id}). Reden: ${group.reason}`
           const sourceRef = (dup.source_ref ?? {}) as Record<string, unknown>
           const { error } = await supabase
             .from("inbox_events")
@@ -970,13 +972,13 @@ async function ensurePositiveCplDropTask(
   const todayStr = new Date().toISOString().slice(0, 10)
   const dropPctRounded = Math.round(cmp.dropPct)
 
-  const titleCore = `Client update — CPL ${client.name} met ${dropPctRounded}% verlaagd, ${cmp.period.labelNL}`
+  const titleCore = `Goed nieuws delen — CPL ${client.name} met ${dropPctRounded}% verlaagd (${cmp.period.labelNL})`
   const title = testMode ? `[TEST] ${titleCore}` : titleCore
 
   const bodyParts: string[] = []
   if (testMode) {
     bodyParts.push(
-      `[TEST RUN] In production this would be assigned to ${client.accountManager || "the AM"}.`,
+      `[TEST RUN] In productie zou dit naar ${client.accountManager || "de AM"} gaan.`,
       "",
     )
   }
@@ -986,7 +988,7 @@ async function ensurePositiveCplDropTask(
     "— Voorgesteld door automatisering, voel vrij om aan te passen voor je het verstuurt.",
     "",
     `CPL ${cmp.period.labelNL}: €${cmp.curr.cpl.toFixed(2)} (vs €${cmp.prev.cpl.toFixed(2)} ${cmp.period.prevLabelNL})`,
-    `Spend: ${fmtEuro(cmp.curr.spend)} · Leads: ${cmp.curr.leads}`,
+    `Adspend: ${fmtEuro(cmp.curr.spend)} · Leads: ${cmp.curr.leads}`,
   )
   const body = bodyParts.join("\n")
 

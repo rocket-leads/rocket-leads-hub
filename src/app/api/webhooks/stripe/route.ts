@@ -104,7 +104,8 @@ export async function POST(req: NextRequest) {
   const verb = event.type === "invoice.sent" ? "sent" : "finalized"
   const invoiceLabel = invoice.number ?? invoice.id
   const sentDate = new Date(invoice.created * 1000).toISOString().slice(0, 10)
-  const note = `\n\n— Auto-completed via Stripe webhook: invoice ${invoiceLabel} ${verb} ${sentDate}.`
+  const verbNl = verb === "sent" ? "verstuurd" : "afgerond"
+  const note = `\n\n— Automatisch afgevinkt via Stripe webhook: factuur ${invoiceLabel} ${verbNl} op ${sentDate}.`
 
   const completed: string[] = []
   for (const task of openTasks) {
