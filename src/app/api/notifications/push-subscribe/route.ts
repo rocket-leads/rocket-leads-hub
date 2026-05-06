@@ -39,17 +39,38 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = await createAdminClient()
-  const { error } = await supabase.from("push_subscriptions").upsert(
-    {
-      user_id: session.user.id,
-      endpoint,
-      p256dh,
-      auth: auth_,
-      user_agent: body.userAgent?.slice(0, 256) ?? null,
-    },
-    { onConflict: "user_id,endpoint" },
-  )
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const { data, error } = await supabase
+    .from("push_subscriptions")
+    .upsert(
+      {
+        user_id: session.user.id,
+        endpoint,
+        p256dh,
+        auth: auth_,
+        user_agent: body.userAgent?.slice(0, 256) ?? null,
+      },
+      { onConflict: "user_id,endpoint" },
+    )
+    .select("id")
+  if (error) {
+    console.error("[push-subscribe] upsert failed:", {
+      userId: session.user.id,
+      error: error.message,
+      code: error.code,
+    })
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  console.log("[push-subscribe] upsert ok:", {
+    userId: session.user.id,
+    rowId: data?.[0]?.id,
+    endpointHost: (() => {
+      try {
+        return new URL(endpoint).host
+      } catch {
+        return "(invalid)"
+      }
+    })(),
+  })
 
   return NextResponse.json({ ok: true })
 }

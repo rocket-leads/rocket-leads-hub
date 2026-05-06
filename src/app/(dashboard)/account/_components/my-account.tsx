@@ -696,18 +696,31 @@ function BrowserNotificationsCard() {
         delivered?: number
         cleanedUp?: number
         error?: string
+        userId?: string
+        vapidConfigured?: boolean
+        subscriptionsBeforeSend?: Array<{
+          id: string
+          endpointHost: string
+          userAgent: string | null
+          createdAt: string
+        }>
       }
       if (!res.ok) {
         setError(data.error ?? "Test failed")
         return
       }
-      // Surface the count so we know if the server thinks it sent (delivered ≥ 1)
-      // even if the browser never showed a notification — that narrows it down
-      // to a service-worker / browser issue vs a server-side issue.
-      setTestInfo(
-        `Server delivered=${data.delivered ?? 0}` +
-          (data.cleanedUp ? `, cleaned up ${data.cleanedUp} dead subscription(s)` : ""),
-      )
+      // Surface enough state to debug end-to-end without DevTools spelunking.
+      const subs = data.subscriptionsBeforeSend ?? []
+      const lines: string[] = []
+      lines.push(`User: ${data.userId?.slice(0, 8)}…`)
+      lines.push(`VAPID configured: ${data.vapidConfigured ? "yes" : "NO — server side env missing"}`)
+      lines.push(`Subscriptions in DB: ${subs.length}`)
+      for (const s of subs) {
+        lines.push(`  • ${s.endpointHost} (since ${s.createdAt.slice(0, 10)})`)
+      }
+      lines.push(`Delivered this run: ${data.delivered ?? 0}`)
+      if (data.cleanedUp) lines.push(`Cleaned up dead: ${data.cleanedUp}`)
+      setTestInfo(lines.join("\n"))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Test failed")
     }
@@ -763,7 +776,11 @@ function BrowserNotificationsCard() {
                 : "Eén klik om aan te zetten — je browser vraagt toestemming."}
           </p>
           {error && <p className="text-[11px] text-destructive mb-2">{error}</p>}
-          {testInfo && <p className="text-[11px] text-emerald-500 mb-2">{testInfo}</p>}
+          {testInfo && (
+            <pre className="text-[11px] text-muted-foreground mb-2 whitespace-pre-wrap font-mono leading-relaxed">
+              {testInfo}
+            </pre>
+          )}
           <div className="flex items-center gap-2">
             {subscribed ? (
               <>
