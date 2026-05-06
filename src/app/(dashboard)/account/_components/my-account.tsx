@@ -686,6 +686,33 @@ function BrowserNotificationsCard() {
     }
   }
 
+  const [testInfo, setTestInfo] = useState<string | null>(null)
+  async function sendTestPush() {
+    setError(null)
+    setTestInfo(null)
+    try {
+      const res = await fetch("/api/notifications/test-push", { method: "POST" })
+      const data = (await res.json().catch(() => ({}))) as {
+        delivered?: number
+        cleanedUp?: number
+        error?: string
+      }
+      if (!res.ok) {
+        setError(data.error ?? "Test failed")
+        return
+      }
+      // Surface the count so we know if the server thinks it sent (delivered ≥ 1)
+      // even if the browser never showed a notification — that narrows it down
+      // to a service-worker / browser issue vs a server-side issue.
+      setTestInfo(
+        `Server delivered=${data.delivered ?? 0}` +
+          (data.cleanedUp ? `, cleaned up ${data.cleanedUp} dead subscription(s)` : ""),
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Test failed")
+    }
+  }
+
   if (supported === null) {
     return (
       <div className="rounded-xl border border-border/60 bg-card px-4 py-4">
@@ -736,17 +763,28 @@ function BrowserNotificationsCard() {
                 : "Eén klik om aan te zetten — je browser vraagt toestemming."}
           </p>
           {error && <p className="text-[11px] text-destructive mb-2">{error}</p>}
+          {testInfo && <p className="text-[11px] text-emerald-500 mb-2">{testInfo}</p>}
           <div className="flex items-center gap-2">
             {subscribed ? (
-              <button
-                type="button"
-                onClick={disable}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
-              >
-                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                Uitschakelen
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={disable}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
+                >
+                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                  Uitschakelen
+                </button>
+                <button
+                  type="button"
+                  onClick={sendTestPush}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/60 transition-colors"
+                >
+                  <Bell className="h-3.5 w-3.5" />
+                  Stuur test
+                </button>
+              </>
             ) : (
               <button
                 type="button"
