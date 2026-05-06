@@ -9,8 +9,11 @@ type UserMapping = {
 /**
  * Filter clients based on the user's column mappings.
  * - Admins see all clients.
- * - Users with no mappings see all clients (no restriction configured).
- * - Users with mappings only see clients where at least one mapped column matches.
+ * - Finance users see all clients (org-wide invoicing/billing scope — can't
+ *   do their job with per-client mapping).
+ * - Users with no client-level mappings see all clients (no restriction).
+ * - Users with AM/CM/Setter mappings only see clients where at least one
+ *   mapped column matches.
  */
 export async function filterClientsByUser(
   clients: MondayClient[],
@@ -26,6 +29,12 @@ export async function filterClientsByUser(
     .eq("user_id", userId)
 
   if (!mappings || mappings.length === 0) return clients
+
+  // Finance is org-level — they need to see everyone for invoicing /
+  // billing context. Treat the same as admin for visibility.
+  if ((mappings as UserMapping[]).some((m) => m.monday_column_role === "finance")) {
+    return clients
+  }
 
   const mappingsByRole = new Map<string, string>()
   for (const m of mappings as UserMapping[]) {

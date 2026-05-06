@@ -21,6 +21,8 @@ const NO_ACCESS: ClientAccess = {
 /**
  * Get per-tab access for a user on a specific client.
  * - Admins always get full access.
+ * - Finance users always get full access (org-level role; need every tab to
+ *   contextualise an invoice).
  * - If a client_access row exists, use its permissions.
  * - Members without a row get full access; guests without a row get no access.
  */
@@ -32,6 +34,16 @@ export async function getClientAccess(
   if (role === "admin") return FULL_ACCESS
 
   const supabase = await createAdminClient()
+
+  // Finance gets the same blanket access as admin — same reasoning as
+  // filterClientsByUser. Single mapping check is cheap (indexed on user_id).
+  const { data: financeRow } = await supabase
+    .from("user_column_mappings")
+    .select("user_id")
+    .eq("user_id", userId)
+    .eq("monday_column_role", "finance")
+    .maybeSingle()
+  if (financeRow) return FULL_ACCESS
 
   // Look up the Supabase client ID from the Monday item ID
   const { data: client } = await supabase
