@@ -68,19 +68,19 @@ export function ComposerDialog({
 
   async function submit() {
     if (!clientId) {
-      setError("Kies een klant.")
+      setError("Pick a client.")
       return
     }
     if (!assigneeId) {
-      setError("Kies een ontvanger.")
+      setError("Pick a recipient.")
       return
     }
     if (!title.trim()) {
-      setError("Titel is verplicht.")
+      setError("Title is required.")
       return
     }
     if (kind === "task" && !dueDate) {
-      setError("Due date is verplicht voor taken.")
+      setError("Due date is required for tasks.")
       return
     }
     setError(null)
@@ -115,7 +115,7 @@ export function ComposerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{kind === "task" ? "Nieuwe taak" : "Nieuwe update"}</DialogTitle>
+          <DialogTitle>New {kind === "task" ? "task" : "update"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -133,14 +133,14 @@ export function ComposerDialog({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {k === "update" ? "Update" : "Taak"}
+                {k === "update" ? "Update" : "Task"}
               </button>
             ))}
           </div>
 
           {!lockedClient && (
             <div className="space-y-1.5">
-              <Label htmlFor="client">Klant</Label>
+              <Label htmlFor="client">Client</Label>
               <ClientCombobox
                 clients={clients}
                 value={clientId}
@@ -150,7 +150,7 @@ export function ComposerDialog({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="assignee">{kind === "update" ? "Aan" : "Toewijzen aan"}</Label>
+            <Label htmlFor="assignee">{kind === "update" ? "To" : "Assignee"}</Label>
             <select
               id="assignee"
               value={assigneeId}
@@ -160,19 +160,19 @@ export function ComposerDialog({
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name ?? u.email}
-                  {u.id === currentUserId ? " (jij)" : ""}
+                  {u.id === currentUserId ? " (you)" : ""}
                 </option>
               ))}
             </select>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="title">Titel</Label>
+            <Label htmlFor="title">Title</Label>
             <Input
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={kind === "task" ? "Wat moet er gebeuren?" : "Wat is de update?"}
+              placeholder={kind === "task" ? "What needs to happen?" : "What's the update?"}
             />
           </div>
 
@@ -184,23 +184,23 @@ export function ComposerDialog({
               onChange={(e) => setBody(e.target.value)}
               rows={4}
               className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none"
-              placeholder="Optionele context, links, instructies…"
+              placeholder="Optional context, links, instructions…"
             />
           </div>
 
           {kind === "task" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="priority">Prioriteit</Label>
+                <Label htmlFor="priority">Priority</Label>
                 <select
                   id="priority"
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as InboxPriority)}
                   className={SELECT_CLS}
                 >
-                  <option value="low">Laag</option>
-                  <option value="normal">Normaal</option>
-                  <option value="high">Hoog</option>
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
                 </select>
               </div>
               <div className="space-y-1.5">
@@ -221,10 +221,10 @@ export function ComposerDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Annuleren
+            Cancel
           </Button>
           <Button onClick={submit} disabled={submitting}>
-            {submitting ? "Opslaan…" : kind === "task" ? "Maak taak" : "Plaats update"}
+            {submitting ? "Creating…" : `Create ${kind}`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -270,8 +270,14 @@ function ClientCombobox({
   }, [open])
 
   const filtered = useMemo(() => {
+    // Sort: live clients first (most-used in practice — those AMs work on
+    // every day), alphabetical within each group. When the user types, the
+    // filter still respects this order so live matches lead the dropdown.
+    const sorted = [...clients].sort((a, b) => {
+      if (!!a.isLive !== !!b.isLive) return a.isLive ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
     const q = query.trim().toLowerCase()
-    const sorted = [...clients].sort((a, b) => a.name.localeCompare(b.name))
     if (!q) return sorted.slice(0, 50)
     return sorted.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 50)
   }, [clients, query])
@@ -295,7 +301,7 @@ function ClientCombobox({
         <input
           type="text"
           value={query}
-          placeholder="Zoek een klant…"
+          placeholder="Search a client…"
           onChange={(e) => {
             setQuery(e.target.value)
             setHighlight(0)
@@ -362,7 +368,7 @@ function ClientCombobox({
       )}
       {open && filtered.length === 0 && (
         <div className="absolute z-30 mt-1 w-full rounded-lg border border-border bg-popover shadow-lg px-3 py-2 text-xs text-muted-foreground">
-          Geen klant gevonden voor &quot;{query}&quot;.
+          No client found for &quot;{query}&quot;.
         </div>
       )}
     </div>

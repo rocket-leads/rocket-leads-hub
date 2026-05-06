@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { filterClientsByUser } from "@/lib/clients/filter"
+import { mondayStatusToHub } from "@/lib/clients/status"
 import { listInboxItems } from "@/lib/inbox/fetchers"
 import { Skeleton } from "@/components/ui/skeleton"
 import { InboxView } from "./_components/inbox-view"
@@ -63,7 +64,11 @@ async function InboxData() {
       initialUpdates={updates}
       initialTasks={tasks}
       users={users}
-      clients={visibleClients.map((c) => ({ id: c.mondayItemId, name: c.name }))}
+      clients={visibleClients.map((c) => ({
+        id: c.mondayItemId,
+        name: c.name,
+        isLive: mondayStatusToHub(c.campaignStatus, c.boardType) === "live",
+      }))}
     />
   )
 }

@@ -34,7 +34,14 @@ import { MeetingsTab } from "@/app/(dashboard)/clients/[id]/_components/meetings
 import type { InboxItem, TaskStatus, UpdateStatus } from "@/types/inbox"
 
 export type InboxUser = { id: string; name: string | null; email: string; role: string }
-export type InboxClientOption = { id: string; name: string }
+export type InboxClientOption = {
+  id: string
+  name: string
+  /** Whether the client is currently live (Hub-canonical status). The composer
+   *  client picker pins live ones to the top so AMs see their active book
+   *  first instead of having to type to find them. */
+  isLive?: boolean
+}
 export type CurrentUser = { id: string; name: string; role: string }
 
 type LockedClient = InboxClientOption & {
