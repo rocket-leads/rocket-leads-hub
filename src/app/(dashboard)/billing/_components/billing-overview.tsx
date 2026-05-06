@@ -20,6 +20,7 @@ import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/
 import { NextInvoiceDateCell } from "./next-invoice-date-cell"
 import { CreateInvoiceDialog } from "./create-invoice-dialog"
 import { InvoiceReadinessCell } from "./invoice-readiness-cell"
+import { AgreementAmountCell } from "./agreement-amount-cell"
 
 /**
  * A billable group — one or more Monday rows that share a Stripe customer.
@@ -344,17 +345,39 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
           />
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums font-medium">
-          {group.totalFee > 0 ? (
-            fmtEuro(group.totalFee)
+          {/* Multi-sibling groups show the read-only sum here — editing happens
+              on the per-sibling sub-rows below so each campaign owns its own
+              fee. Single-sibling groups expose the inline editor directly. */}
+          {isMulti ? (
+            group.totalFee > 0 ? (
+              fmtEuro(group.totalFee)
+            ) : (
+              <span className="text-muted-foreground/40">—</span>
+            )
           ) : (
-            <span className="text-muted-foreground/40">—</span>
+            <AgreementAmountCell
+              mondayItemId={primary.mondayItemId}
+              field="fee"
+              value={primary.fee}
+              className="text-foreground font-medium"
+            />
           )}
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums text-muted-foreground">
-          {group.totalAdBudget > 0 ? (
-            fmtEuro(group.totalAdBudget)
+          {isMulti ? (
+            group.totalAdBudget > 0 ? (
+              fmtEuro(group.totalAdBudget)
+            ) : (
+              <span className="text-muted-foreground/40">—</span>
+            )
           ) : (
-            <span className="text-muted-foreground/40">—</span>
+            <AgreementAmountCell
+              mondayItemId={primary.mondayItemId}
+              field="ad_budget"
+              value={primary.usesRocketLeadsAdAccount ? primary.adBudget : 0}
+              editable={primary.usesRocketLeadsAdAccount}
+              placeholder={primary.usesRocketLeadsAdAccount ? "0" : "—"}
+            />
           )}
         </TableCell>
         <TableCell className="py-2.5">
@@ -420,10 +443,20 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
               {sib.cycleStartDate ? fmtDate(sib.cycleStartDate) : "—"}
             </TableCell>
             <TableCell className="py-2 text-[11px] tabular-nums">
-              {sib.fee > 0 ? fmtEuro(sib.fee) : "—"}
+              <AgreementAmountCell
+                mondayItemId={sib.mondayItemId}
+                field="fee"
+                value={sib.fee}
+              />
             </TableCell>
             <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground">
-              {sib.usesRocketLeadsAdAccount && sib.adBudget > 0 ? fmtEuro(sib.adBudget) : "—"}
+              <AgreementAmountCell
+                mondayItemId={sib.mondayItemId}
+                field="ad_budget"
+                value={sib.usesRocketLeadsAdAccount ? sib.adBudget : 0}
+                editable={sib.usesRocketLeadsAdAccount}
+                placeholder={sib.usesRocketLeadsAdAccount ? "0" : "—"}
+              />
             </TableCell>
             <TableCell colSpan={3} className="py-2" />
           </TableRow>
