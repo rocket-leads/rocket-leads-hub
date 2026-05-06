@@ -1,8 +1,30 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
+import { readCache, writeCache } from "@/lib/cache"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { draftTrengoReply } from "@/lib/inbox/reply-drafter"
 import { resolveClientAssignee } from "@/lib/inbox/assignee"
+
+// --- Diagnostic ring buffer ---------------------------------------------
+
+type TrengoDebugEntry = {
+  receivedAt: string
+  bodyLen: number
+  bodyPreview: string
+  hasSecretQuery: boolean
+  hasAuthHeader: boolean
+  userAgent: string
+  outcome?: string
+}
+
+const DEBUG_KEY = "trengo_webhook_debug"
+const DEBUG_KEEP = 20
+
+async function recordTrengoDebug(entry: TrengoDebugEntry): Promise<void> {
+  const prev = (await readCache<TrengoDebugEntry[]>(DEBUG_KEY)) ?? []
+  const next = [entry, ...prev].slice(0, DEBUG_KEEP)
+  await writeCache(DEBUG_KEY, next)
+}
 
 export const maxDuration = 60
 
@@ -77,6 +99,19 @@ export async function POST(req: NextRequest) {
       `ua=${ua.slice(0, 80)}`,
   )
   console.log(`[trengo-webhook] body preview: ${rawBody.slice(0, 400)}`)
+
+  // Persist a small debug ring buffer in cache_store so we can inspect what
+  // Trengo actually sends without needing live log streaming. Keeps the last
+  // N records; admin endpoint reads them. Best-effort — never fails the
+  // webhook if the debug write throws.
+  void recordTrengoDebug({
+    receivedAt: new Date().toISOString(),
+    bodyLen: rawBody.length,
+    bodyPreview: rawBody.slice(0, 1500),
+    hasSecretQuery: haveSecret,
+    hasAuthHeader: haveAuthHeader,
+    userAgent: ua.slice(0, 120),
+  }).catch((e) => console.error("[trengo-webhook] debug record failed", e))
 
   if (!verifyAuth(req)) {
     console.log("[trengo-webhook] auth FAILED — rejecting with 401")
