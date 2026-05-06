@@ -219,14 +219,14 @@ function RowActions({
             tone="success"
             label="Mark done"
             onClick={() => onAction("done")}
-            icon={<Check className="h-3.5 w-3.5" />}
+            icon={<Check className="h-4 w-4" />}
           />
           {isSnoozed ? (
             <ActionButton
               tone="muted"
               label={`Snoozed until ${formatSnoozeLabel(item.snoozedUntil!)} — click to wake`}
               onClick={() => onAction("unsnooze")}
-              icon={<BellOff className="h-3.5 w-3.5" />}
+              icon={<BellOff className="h-4 w-4" />}
             />
           ) : (
             <SnoozeButton onPick={(until) => onAction({ type: "snooze", until })} />
@@ -235,7 +235,7 @@ function RowActions({
             tone="danger"
             label="Cancel"
             onClick={() => onAction("cancel")}
-            icon={<X className="h-3.5 w-3.5" />}
+            icon={<X className="h-4 w-4" />}
           />
         </>
       ) : (
@@ -243,7 +243,7 @@ function RowActions({
           tone="muted"
           label="Reopen"
           onClick={() => onAction("reopen")}
-          icon={<RotateCcw className="h-3.5 w-3.5" />}
+          icon={<RotateCcw className="h-4 w-4" />}
         />
       )}
     </div>
@@ -311,7 +311,7 @@ function SnoozeButton({ onPick }: { onPick: (untilIso: string) => void }) {
         tone="muted"
         label="Snooze"
         onClick={() => setOpen((s) => !s)}
-        icon={<Clock className="h-3.5 w-3.5" />}
+        icon={<Clock className="h-4 w-4" />}
       />
       {open && (
         <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-md border border-border bg-popover shadow-lg py-1 text-xs">
@@ -434,13 +434,16 @@ function ActionButton({
   onClick: () => void
   icon: React.ReactNode
 }) {
+  // Roy's feedback: "icons wil ik groter en meer opvallend, moet gewoon
+  // duidelijker." Always-on background tint so the buttons aren't
+  // ghost-actions on hover, plus a step up in icon + button size.
   const cls = {
     success:
-      "text-emerald-400 hover:bg-emerald-500/15 hover:text-emerald-300 border-transparent hover:border-emerald-500/30",
+      "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-700 dark:hover:text-emerald-300 border-emerald-500/20 hover:border-emerald-500/40",
     danger:
-      "text-muted-foreground/60 hover:bg-red-500/15 hover:text-red-300 border-transparent hover:border-red-500/30",
+      "bg-muted/50 text-muted-foreground hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 border-border hover:border-red-500/40",
     muted:
-      "text-muted-foreground/60 hover:bg-muted hover:text-foreground border-transparent hover:border-border",
+      "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border-border",
   }[tone]
 
   return (
@@ -450,7 +453,7 @@ function ActionButton({
       title={label}
       aria-label={label}
       className={cn(
-        "h-7 w-7 inline-flex items-center justify-center rounded-md border transition-colors",
+        "h-9 w-9 inline-flex items-center justify-center rounded-md border transition-colors",
         cls,
       )}
     >

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Plus,
@@ -18,6 +18,7 @@ import {
   CalendarDays,
   CalendarClock,
   CalendarX,
+  ChevronDown,
   MessageCircle,
   Video,
 } from "lucide-react"
@@ -364,15 +365,19 @@ type TaskGroups = {
   overdue: InboxItem[]
   today: InboxItem[]
   upcoming: InboxItem[]
-  noDueDate: InboxItem[]
 }
 
 function groupTasksByDeadline(tasks: InboxItem[]): TaskGroups {
   const today = startOfDay(new Date())
-  const groups: TaskGroups = { overdue: [], today: [], upcoming: [], noDueDate: [] }
+  const groups: TaskGroups = { overdue: [], today: [], upcoming: [] }
   for (const t of tasks) {
+    // No due date = treat as Today. Roy's directive: composer enforces a
+    // due date on every new task, but historical rows or auto-ingested ones
+    // may still be null — surface them in the most actionable bucket rather
+    // than hiding them in a "No due date" section that requires extra
+    // clicks to find.
     if (!t.dueDate) {
-      groups.noDueDate.push(t)
+      groups.today.push(t)
       continue
     }
     const due = startOfDay(t.dueDate).getTime()
@@ -385,7 +390,6 @@ function groupTasksByDeadline(tasks: InboxItem[]): TaskGroups {
   groups.overdue.sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
   groups.today.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   groups.upcoming.sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""))
-  groups.noDueDate.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   return groups
 }
 
@@ -416,10 +420,30 @@ function groupUpdatesByDate(updates: InboxItem[]): UpdateGroups {
 }
 
 const SECTION_TONES = {
-  red: { dot: "bg-red-500", text: "text-red-500 dark:text-red-400" },
-  amber: { dot: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" },
-  emerald: { dot: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
-  muted: { dot: "bg-muted-foreground/40", text: "text-muted-foreground" },
+  red: {
+    bar: "bg-red-500",
+    bg: "bg-red-500/10 hover:bg-red-500/15",
+    text: "text-red-700 dark:text-red-400",
+    iconBg: "bg-red-500/20 text-red-600 dark:text-red-400",
+  },
+  amber: {
+    bar: "bg-amber-500",
+    bg: "bg-amber-500/10 hover:bg-amber-500/15",
+    text: "text-amber-800 dark:text-amber-400",
+    iconBg: "bg-amber-500/20 text-amber-700 dark:text-amber-400",
+  },
+  emerald: {
+    bar: "bg-emerald-500",
+    bg: "bg-emerald-500/10 hover:bg-emerald-500/15",
+    text: "text-emerald-700 dark:text-emerald-400",
+    iconBg: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
+  },
+  muted: {
+    bar: "bg-muted-foreground/30",
+    bg: "bg-muted/40 hover:bg-muted/60",
+    text: "text-foreground/80",
+    iconBg: "bg-muted-foreground/15 text-muted-foreground",
+  },
 } as const
 
 type SectionTone = keyof typeof SECTION_TONES
@@ -429,20 +453,37 @@ function SectionHeader({
   label,
   count,
   tone,
+  collapsed,
+  onToggle,
 }: {
   icon: typeof AlertOctagon
   label: string
   count: number
   tone: SectionTone
+  collapsed: boolean
+  onToggle: () => void
 }) {
   const t = SECTION_TONES[tone]
   return (
-    <div className="flex items-center gap-2 px-1 mb-2">
-      <span className={`h-1.5 w-1.5 rounded-full ${t.dot}`} />
-      <Icon className={`h-3.5 w-3.5 ${t.text}`} />
-      <span className={`text-[11px] uppercase tracking-wider font-semibold ${t.text}`}>{label}</span>
-      <span className="text-[11px] tabular-nums text-muted-foreground/50">{count}</span>
-    </div>
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`group w-full flex items-stretch gap-3 rounded-lg overflow-hidden transition-colors ${t.bg} mb-2`}
+    >
+      <span className={`w-1 shrink-0 ${t.bar}`} aria-hidden />
+      <div className="flex items-center gap-3 flex-1 min-w-0 px-3 py-2.5">
+        <span className={`h-7 w-7 rounded-md flex items-center justify-center shrink-0 ${t.iconBg}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className={`text-sm font-semibold ${t.text}`}>{label}</span>
+        <span className={`text-xs tabular-nums ${t.text} opacity-70`}>{count}</span>
+        <ChevronDown
+          className={`h-4 w-4 ml-auto transition-transform ${t.text} opacity-50 group-hover:opacity-100 ${
+            collapsed ? "-rotate-90" : ""
+          }`}
+        />
+      </div>
+    </button>
   )
 }
 
@@ -454,6 +495,8 @@ function TaskGroupSection({
   tone,
   items,
   showClient,
+  collapsed,
+  onToggle,
   onItemClick,
   onAction,
 }: {
@@ -462,36 +505,85 @@ function TaskGroupSection({
   tone: SectionTone
   items: InboxItem[]
   showClient: boolean
+  collapsed: boolean
+  onToggle: () => void
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: TaskAction) => void
 }) {
   if (items.length === 0) return null
   return (
     <div>
-      <SectionHeader icon={icon} label={label} count={items.length} tone={tone} />
-      <div className="space-y-2">
-        {items.map((item) => (
-          <InboxListRow
-            key={item.id}
-            item={item}
-            showClient={showClient}
-            onClick={() => onItemClick(item)}
-            onAction={(action) => {
-              if (
-                action === "done" ||
-                action === "cancel" ||
-                action === "reopen" ||
-                action === "unsnooze" ||
-                (typeof action === "object" && action.type === "snooze")
-              ) {
-                onAction(item, action as TaskAction)
-              }
-            }}
-          />
-        ))}
-      </div>
+      <SectionHeader
+        icon={icon}
+        label={label}
+        count={items.length}
+        tone={tone}
+        collapsed={collapsed}
+        onToggle={onToggle}
+      />
+      {!collapsed && (
+        <div className="space-y-2 mb-1">
+          {items.map((item) => (
+            <InboxListRow
+              key={item.id}
+              item={item}
+              showClient={showClient}
+              onClick={() => onItemClick(item)}
+              onAction={(action) => {
+                if (
+                  action === "done" ||
+                  action === "cancel" ||
+                  action === "reopen" ||
+                  action === "unsnooze" ||
+                  (typeof action === "object" && action.type === "snooze")
+                ) {
+                  onAction(item, action as TaskAction)
+                }
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
+}
+
+/** Collapse state per task section, persisted in localStorage so closing
+ *  Overdue (after working through it) stays closed across reloads. */
+type TaskSectionKey = "overdue" | "today" | "upcoming"
+
+function useTaskCollapse() {
+  const [collapsed, setCollapsed] = useState<Record<TaskSectionKey, boolean>>({
+    overdue: false,
+    today: false,
+    upcoming: false,
+  })
+
+  // Hydrate from localStorage on mount.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("inbox.taskCollapse")
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<Record<TaskSectionKey, boolean>>
+      setCollapsed((s) => ({ ...s, ...parsed }))
+    } catch {
+      // ignore — bad localStorage shouldn't break the page
+    }
+  }, [])
+
+  function toggle(key: TaskSectionKey) {
+    setCollapsed((s) => {
+      const next = { ...s, [key]: !s[key] }
+      try {
+        localStorage.setItem("inbox.taskCollapse", JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+
+  return { collapsed, toggle }
 }
 
 function GroupedTasks({
@@ -506,14 +598,17 @@ function GroupedTasks({
   onAction: (item: InboxItem, action: TaskAction) => void
 }) {
   const groups = useMemo(() => groupTasksByDeadline(tasks), [tasks])
+  const { collapsed, toggle } = useTaskCollapse()
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <TaskGroupSection
         icon={AlertOctagon}
         label="Overdue"
         tone="red"
         items={groups.overdue}
         showClient={showClient}
+        collapsed={collapsed.overdue}
+        onToggle={() => toggle("overdue")}
         onItemClick={onItemClick}
         onAction={onAction}
       />
@@ -523,6 +618,8 @@ function GroupedTasks({
         tone="amber"
         items={groups.today}
         showClient={showClient}
+        collapsed={collapsed.today}
+        onToggle={() => toggle("today")}
         onItemClick={onItemClick}
         onAction={onAction}
       />
@@ -532,15 +629,8 @@ function GroupedTasks({
         tone="muted"
         items={groups.upcoming}
         showClient={showClient}
-        onItemClick={onItemClick}
-        onAction={onAction}
-      />
-      <TaskGroupSection
-        icon={CalendarX}
-        label="No due date"
-        tone="muted"
-        items={groups.noDueDate}
-        showClient={showClient}
+        collapsed={collapsed.upcoming}
+        onToggle={() => toggle("upcoming")}
         onItemClick={onItemClick}
         onAction={onAction}
       />
@@ -554,6 +644,8 @@ function UpdateGroupSection({
   tone,
   items,
   showClient,
+  collapsed,
+  onToggle,
   onItemClick,
   onAction,
 }: {
@@ -562,28 +654,72 @@ function UpdateGroupSection({
   tone: SectionTone
   items: InboxItem[]
   showClient: boolean
+  collapsed: boolean
+  onToggle: () => void
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: "read" | "unread") => void
 }) {
   if (items.length === 0) return null
   return (
     <div>
-      <SectionHeader icon={icon} label={label} count={items.length} tone={tone} />
-      <div className="space-y-2">
-        {items.map((item) => (
-          <InboxListRow
-            key={item.id}
-            item={item}
-            showClient={showClient}
-            onClick={() => onItemClick(item)}
-            onAction={(action) => {
-              if (action === "read" || action === "unread") onAction(item, action)
-            }}
-          />
-        ))}
-      </div>
+      <SectionHeader
+        icon={icon}
+        label={label}
+        count={items.length}
+        tone={tone}
+        collapsed={collapsed}
+        onToggle={onToggle}
+      />
+      {!collapsed && (
+        <div className="space-y-2 mb-1">
+          {items.map((item) => (
+            <InboxListRow
+              key={item.id}
+              item={item}
+              showClient={showClient}
+              onClick={() => onItemClick(item)}
+              onAction={(action) => {
+                if (action === "read" || action === "unread") onAction(item, action)
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
+}
+
+type UpdateSectionKey = "today" | "yesterday" | "thisWeek" | "older"
+
+function useUpdateCollapse() {
+  const [collapsed, setCollapsed] = useState<Record<UpdateSectionKey, boolean>>({
+    today: false,
+    yesterday: false,
+    thisWeek: true, // default-collapsed — older context, less actionable
+    older: true,
+  })
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("inbox.updateCollapse")
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<Record<UpdateSectionKey, boolean>>
+      setCollapsed((s) => ({ ...s, ...parsed }))
+    } catch {
+      // ignore
+    }
+  }, [])
+  function toggle(key: UpdateSectionKey) {
+    setCollapsed((s) => {
+      const next = { ...s, [key]: !s[key] }
+      try {
+        localStorage.setItem("inbox.updateCollapse", JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
+  return { collapsed, toggle }
 }
 
 function GroupedUpdates({
@@ -598,14 +734,17 @@ function GroupedUpdates({
   onAction: (item: InboxItem, action: "read" | "unread") => void
 }) {
   const groups = useMemo(() => groupUpdatesByDate(updates), [updates])
+  const { collapsed, toggle } = useUpdateCollapse()
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <UpdateGroupSection
         icon={CalendarDays}
         label="Today"
         tone="emerald"
         items={groups.today}
         showClient={showClient}
+        collapsed={collapsed.today}
+        onToggle={() => toggle("today")}
         onItemClick={onItemClick}
         onAction={onAction}
       />
@@ -615,6 +754,8 @@ function GroupedUpdates({
         tone="amber"
         items={groups.yesterday}
         showClient={showClient}
+        collapsed={collapsed.yesterday}
+        onToggle={() => toggle("yesterday")}
         onItemClick={onItemClick}
         onAction={onAction}
       />
@@ -624,6 +765,8 @@ function GroupedUpdates({
         tone="muted"
         items={groups.thisWeek}
         showClient={showClient}
+        collapsed={collapsed.thisWeek}
+        onToggle={() => toggle("thisWeek")}
         onItemClick={onItemClick}
         onAction={onAction}
       />
@@ -633,6 +776,8 @@ function GroupedUpdates({
         tone="muted"
         items={groups.older}
         showClient={showClient}
+        collapsed={collapsed.older}
+        onToggle={() => toggle("older")}
         onItemClick={onItemClick}
         onAction={onAction}
       />

@@ -1,46 +1,37 @@
-import {
-  MessageSquare,
-  Hash,
-  LayoutGrid,
-  Bot,
-  Eye,
-  Video,
-  type LucideIcon,
-} from "lucide-react"
+import Image from "next/image"
+import { Bot, Eye, Video, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { InboxSource } from "@/types/inbox"
 
 type SourceConfig = {
   label: string
-  icon: LucideIcon
+  /** Either a static brand SVG (Slack/Trengo/Monday) or a Lucide icon
+   *  (Automation/Watchlist/Meeting) — branded sources get the real mark
+   *  per Roy's request, internal/system sources stay on Lucide. */
+  brandLogo?: string
+  icon?: LucideIcon
   /** Pre-composed Tailwind classes that pair an icon-tone color with a soft
    *  background tint matching the brand colour from the Phase C design doc. */
   cls: string
 }
 
-/**
- * Per-source visual config — colours follow the Phase C design doc:
- *   Slack purple · Trengo cyan · Monday orange · Manual zinc · Automation amber
- * Watch list and Meeting reuse blue/emerald to stay distinct from the four core
- * channels without burning the brand palette.
- */
 const SOURCE_CONFIG: Record<InboxSource, SourceConfig | null> = {
   // Manual is the implicit default — surfacing a pill for "you typed this in
   // yourself" is just visual noise.
   manual: null,
   trengo: {
     label: "Trengo",
-    icon: MessageSquare,
+    brandLogo: "/logos/brands/trengo.svg",
     cls: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   },
   slack: {
     label: "Slack",
-    icon: Hash,
+    brandLogo: "/logos/brands/slack.svg",
     cls: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
   },
   monday: {
     label: "Monday",
-    icon: LayoutGrid,
+    brandLogo: "/logos/brands/monday.svg",
     cls: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
   },
   automation: {
@@ -70,7 +61,6 @@ type Props = {
 export function SourcePill({ source, compact = false, className }: Props) {
   const cfg = SOURCE_CONFIG[source]
   if (!cfg) return null
-  const Icon = cfg.icon
   return (
     <span
       title={`Source: ${cfg.label}`}
@@ -80,7 +70,18 @@ export function SourcePill({ source, compact = false, className }: Props) {
         className,
       )}
     >
-      <Icon className="h-3 w-3" />
+      {cfg.brandLogo ? (
+        <Image
+          src={cfg.brandLogo}
+          alt=""
+          width={12}
+          height={12}
+          className="h-3 w-3 object-contain"
+          unoptimized
+        />
+      ) : cfg.icon ? (
+        <cfg.icon className="h-3 w-3" />
+      ) : null}
       {!compact && cfg.label}
     </span>
   )
