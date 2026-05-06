@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Check, Search, X } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,7 +21,12 @@ type Props = {
   onCreated: () => void
 }
 
-const SELECT_CLS = "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+const SELECT_CLS =
+  "h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
 
 export function ComposerDialog({
   open,
@@ -38,16 +44,16 @@ export function ComposerDialog({
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [priority, setPriority] = useState<InboxPriority>("normal")
-  const [dueDate, setDueDate] = useState("")
+  const [dueDate, setDueDate] = useState<string>(todayIso())
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Reset form on open / when defaults change.
+  // Reset form on open / when defaults change. Due date defaults to today on
+  // every fresh open so the AM doesn't have to type/click — Roy's directive.
   useEffect(() => {
     if (!open) return
     setKind(defaultKind)
     setClientId(lockedClient?.id ?? "")
-    // Updates default to "send to first non-self user", tasks default to self.
     setAssigneeId(
       defaultKind === "task"
         ? currentUserId
@@ -56,18 +62,25 @@ export function ComposerDialog({
     setTitle("")
     setBody("")
     setPriority("normal")
-    setDueDate("")
+    setDueDate(todayIso())
     setError(null)
   }, [open, defaultKind, lockedClient?.id, currentUserId, users])
 
-  const sortedClients = useMemo(
-    () => [...clients].sort((a, b) => a.name.localeCompare(b.name)),
-    [clients],
-  )
-
   async function submit() {
-    if (!clientId || !assigneeId || !title.trim()) {
-      setError("Client, assignee and title are required.")
+    if (!clientId) {
+      setError("Kies een klant.")
+      return
+    }
+    if (!assigneeId) {
+      setError("Kies een ontvanger.")
+      return
+    }
+    if (!title.trim()) {
+      setError("Titel is verplicht.")
+      return
+    }
+    if (kind === "task" && !dueDate) {
+      setError("Due date is verplicht voor taken.")
       return
     }
     setError(null)
@@ -83,7 +96,7 @@ export function ComposerDialog({
           title: title.trim(),
           body: body.trim() || undefined,
           priority: kind === "task" ? priority : undefined,
-          dueDate: kind === "task" && dueDate ? dueDate : undefined,
+          dueDate: kind === "task" ? dueDate : undefined,
         }),
       })
       if (!res.ok) {
@@ -102,7 +115,7 @@ export function ComposerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>New {kind === "task" ? "task" : "update"}</DialogTitle>
+          <DialogTitle>{kind === "task" ? "Nieuwe taak" : "Nieuwe update"}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -120,32 +133,24 @@ export function ComposerDialog({
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                {k === "update" ? "Update" : "Task"}
+                {k === "update" ? "Update" : "Taak"}
               </button>
             ))}
           </div>
 
           {!lockedClient && (
             <div className="space-y-1.5">
-              <Label htmlFor="client">Client</Label>
-              <select
-                id="client"
+              <Label htmlFor="client">Klant</Label>
+              <ClientCombobox
+                clients={clients}
                 value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                className={SELECT_CLS}
-              >
-                <option value="">Select a client…</option>
-                {sortedClients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setClientId}
+              />
             </div>
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="assignee">{kind === "update" ? "To" : "Assignee"}</Label>
+            <Label htmlFor="assignee">{kind === "update" ? "Aan" : "Toewijzen aan"}</Label>
             <select
               id="assignee"
               value={assigneeId}
@@ -155,19 +160,19 @@ export function ComposerDialog({
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name ?? u.email}
-                  {u.id === currentUserId ? " (you)" : ""}
+                  {u.id === currentUserId ? " (jij)" : ""}
                 </option>
               ))}
             </select>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="title">Title</Label>
+            <Label htmlFor="title">Titel</Label>
             <Input
               id="title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={kind === "task" ? "What needs to happen?" : "What's the update?"}
+              placeholder={kind === "task" ? "Wat moet er gebeuren?" : "Wat is de update?"}
             />
           </div>
 
@@ -179,23 +184,23 @@ export function ComposerDialog({
               onChange={(e) => setBody(e.target.value)}
               rows={4}
               className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none"
-              placeholder="Optional context, links, instructions…"
+              placeholder="Optionele context, links, instructies…"
             />
           </div>
 
           {kind === "task" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="priority">Priority</Label>
+                <Label htmlFor="priority">Prioriteit</Label>
                 <select
                   id="priority"
                   value={priority}
                   onChange={(e) => setPriority(e.target.value as InboxPriority)}
                   className={SELECT_CLS}
                 >
-                  <option value="low">Low</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
+                  <option value="low">Laag</option>
+                  <option value="normal">Normaal</option>
+                  <option value="high">Hoog</option>
                 </select>
               </div>
               <div className="space-y-1.5">
@@ -205,6 +210,7 @@ export function ComposerDialog({
                   type="date"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
+                  required
                 />
               </div>
             </div>
@@ -215,13 +221,150 @@ export function ComposerDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Cancel
+            Annuleren
           </Button>
           <Button onClick={submit} disabled={submitting}>
-            {submitting ? "Creating…" : `Create ${kind}`}
+            {submitting ? "Opslaan…" : kind === "task" ? "Maak taak" : "Plaats update"}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Search-as-you-type client picker. Shows the selected client's name in
+ *  the input; typing filters a dropdown of matches. Click a row or hit
+ *  Enter on the highlighted row to pick. Esc closes the dropdown without
+ *  changing the selection. */
+function ClientCombobox({
+  clients,
+  value,
+  onChange,
+}: {
+  clients: InboxClientOption[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const [highlight, setHighlight] = useState(0)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const selected = useMemo(() => clients.find((c) => c.id === value) ?? null, [clients, value])
+
+  // When the dialog re-uses the same composer instance and the parent
+  // resets `value` to "", we want the visible text to clear too.
+  useEffect(() => {
+    if (!value) setQuery("")
+    else setQuery(selected?.name ?? "")
+  }, [value, selected])
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (!containerRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [open])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const sorted = [...clients].sort((a, b) => a.name.localeCompare(b.name))
+    if (!q) return sorted.slice(0, 50)
+    return sorted.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 50)
+  }, [clients, query])
+
+  function pick(client: InboxClientOption) {
+    onChange(client.id)
+    setQuery(client.name)
+    setOpen(false)
+  }
+
+  function clear() {
+    onChange("")
+    setQuery("")
+    setOpen(true)
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
+        <input
+          type="text"
+          value={query}
+          placeholder="Zoek een klant…"
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setHighlight(0)
+            setOpen(true)
+            if (selected && e.target.value !== selected.name) {
+              // User started typing on top of the selected name → clear value
+              // until they pick a new one. Avoids a stale id with mismatched
+              // visible text.
+              onChange("")
+            }
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault()
+              setOpen(true)
+              setHighlight((h) => Math.min(filtered.length - 1, h + 1))
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault()
+              setHighlight((h) => Math.max(0, h - 1))
+            } else if (e.key === "Enter" && filtered[highlight]) {
+              e.preventDefault()
+              pick(filtered[highlight])
+            } else if (e.key === "Escape") {
+              setOpen(false)
+            }
+          }}
+          className={cn(SELECT_CLS, "pl-8 pr-8")}
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={clear}
+            className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 inline-flex items-center justify-center"
+            aria-label="Clear"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+
+      {open && filtered.length > 0 && (
+        <div className="absolute z-30 mt-1 w-full max-h-64 overflow-auto rounded-lg border border-border bg-popover shadow-lg py-1">
+          {filtered.map((c, i) => {
+            const isSelected = c.id === value
+            const isHighlighted = i === highlight
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onMouseEnter={() => setHighlight(i)}
+                onClick={() => pick(c)}
+                className={cn(
+                  "w-full text-left px-3 py-1.5 text-sm flex items-center justify-between gap-2",
+                  isHighlighted && "bg-muted/60",
+                )}
+              >
+                <span className="truncate">{c.name}</span>
+                {isSelected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {open && filtered.length === 0 && (
+        <div className="absolute z-30 mt-1 w-full rounded-lg border border-border bg-popover shadow-lg px-3 py-2 text-xs text-muted-foreground">
+          Geen klant gevonden voor &quot;{query}&quot;.
+        </div>
+      )}
+    </div>
   )
 }
