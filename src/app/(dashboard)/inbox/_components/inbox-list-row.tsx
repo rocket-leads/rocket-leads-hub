@@ -48,17 +48,24 @@ export function InboxListRow({
   showClient,
   onClick,
   onAction,
+  selected,
+  onToggleSelect,
 }: {
   item: InboxItem
   showClient: boolean
   onClick: () => void
   onAction?: (action: RowAction) => void
+  /** When defined, renders a leading checkbox for bulk-select on tasks.
+   *  Updates use their existing read/unread checkbox path. */
+  selected?: boolean
+  onToggleSelect?: () => void
 }) {
   const isUpdate = item.kind === "update"
   const isUnread = isUpdate && item.status === "unread"
   const taskStatus = !isUpdate ? TASK_STATUS_LABELS[item.status as TaskStatus] : null
   const isHighPriority = item.priority === "high"
   const isCompleted = ["done", "cancelled", "read"].includes(item.status)
+  const showSelectCheckbox = !isUpdate && onToggleSelect !== undefined
 
   return (
     <div
@@ -74,10 +81,35 @@ export function InboxListRow({
       className={cn(
         "group w-full text-left rounded-lg border border-border/40 bg-card hover:border-border hover:bg-muted/30 transition-all px-4 py-3 cursor-pointer",
         isUnread && "ring-1 ring-primary/30 bg-primary/[0.02]",
+        selected && "ring-2 ring-primary/60 bg-primary/[0.05] border-primary/40",
         isCompleted && "opacity-60",
       )}
     >
       <div className="flex items-start gap-3">
+        {/* Bulk-select checkbox for tasks. Hover-revealed by default, pinned
+            visible when this row is selected so the AM can see what's in their
+            current batch without hovering. Clicking it doesn't open the row. */}
+        {showSelectCheckbox && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={!!selected}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelect?.()
+            }}
+            className={cn(
+              "h-5 w-5 shrink-0 rounded border-2 inline-flex items-center justify-center mt-0.5 transition-all",
+              selected
+                ? "bg-primary border-primary text-primary-foreground"
+                : "border-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:border-foreground hover:bg-muted/40",
+            )}
+            title={selected ? "Deselecteer" : "Selecteer voor bulk-actie"}
+          >
+            {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+          </button>
+        )}
+
         {/* Updates get a leading checkbox so the read/unread toggle is the
             primary affordance — click it to mark read, click again to unmark.
             Tasks keep their right-side Done/Cancel/Reopen actions instead. */}
@@ -157,7 +189,11 @@ export function InboxListRow({
                 Per the Phase C design: brand-coloured chip so AMs can tell at
                 a glance whether a task came from a client message, a Monday
                 update, an automation, etc. */}
-            <SourcePill source={item.source} className="ml-auto" />
+            <SourcePill
+              source={item.source}
+              channelKind={item.channelKind}
+              className="ml-auto"
+            />
           </div>
         </div>
 

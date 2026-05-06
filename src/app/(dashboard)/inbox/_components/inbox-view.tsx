@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Plus,
@@ -21,6 +21,8 @@ import {
   ChevronDown,
   MessageCircle,
   Video,
+  Check,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TopTabs } from "@/components/ui/top-tabs"
@@ -506,6 +508,8 @@ function TaskGroupSection({
   onToggle,
   onItemClick,
   onAction,
+  selectedIds,
+  onToggleSelect,
 }: {
   icon: typeof AlertOctagon
   label: string
@@ -516,6 +520,8 @@ function TaskGroupSection({
   onToggle: () => void
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: TaskAction) => void
+  selectedIds: Set<string>
+  onToggleSelect: (id: string) => void
 }) {
   if (items.length === 0) return null
   return (
@@ -535,6 +541,8 @@ function TaskGroupSection({
               key={item.id}
               item={item}
               showClient={showClient}
+              selected={selectedIds.has(item.id)}
+              onToggleSelect={() => onToggleSelect(item.id)}
               onClick={() => onItemClick(item)}
               onAction={(action) => {
                 if (
@@ -606,8 +614,50 @@ function GroupedTasks({
 }) {
   const groups = useMemo(() => groupTasksByDeadline(tasks), [tasks])
   const { collapsed, toggle } = useTaskCollapse()
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  // Auto-prune selection when items leave the visible set (filter switch,
+  // task closed via single-row action, etc.). Without this, ghost ids stay
+  // selected and the bulk bar lies about the count.
+  useEffect(() => {
+    const visible = new Set(tasks.map((t) => t.id))
+    setSelectedIds((prev) => {
+      let dirty = false
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (visible.has(id)) next.add(id)
+        else dirty = true
+      }
+      return dirty ? next : prev
+    })
+  }, [tasks])
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  function handleBulk(action: TaskAction) {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    // Optimistic clear — fan out the per-item PATCHes through the existing
+    // single-item action handler so each fires through patchItem + cache
+    // invalidation in the parent.
+    const items = tasks.filter((t) => selectedIds.has(t.id))
+    clearSelection()
+    for (const item of items) onAction(item, action)
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-20">
       <TaskGroupSection
         icon={AlertOctagon}
         label="Overdue"
@@ -618,6 +668,8 @@ function GroupedTasks({
         onToggle={() => toggle("overdue")}
         onItemClick={onItemClick}
         onAction={onAction}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
       />
       <TaskGroupSection
         icon={CalendarDays}
@@ -629,6 +681,8 @@ function GroupedTasks({
         onToggle={() => toggle("today")}
         onItemClick={onItemClick}
         onAction={onAction}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
       />
       <TaskGroupSection
         icon={CalendarClock}
@@ -640,7 +694,145 @@ function GroupedTasks({
         onToggle={() => toggle("upcoming")}
         onItemClick={onItemClick}
         onAction={onAction}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
       />
+
+      {selectedIds.size > 0 && (
+        <BulkActionBar
+          count={selectedIds.size}
+          onClear={clearSelection}
+          onBulk={handleBulk}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Floating bottom bar that appears when 1+ tasks are selected. Lets the AM
+ * batch through the inbox: mark a stack of items done, snooze them all to
+ * tomorrow, or cancel a row of duplicates without opening each detail.
+ */
+function BulkActionBar({
+  count,
+  onClear,
+  onBulk,
+}: {
+  count: number
+  onClear: () => void
+  onBulk: (action: TaskAction) => void
+}) {
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-full border border-border bg-popover shadow-lg px-2 py-1.5">
+      <span className="text-xs font-medium px-2 tabular-nums">
+        {count} {count === 1 ? "geselecteerd" : "geselecteerd"}
+      </span>
+      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <button
+        type="button"
+        onClick={() => onBulk("done")}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+        title="Markeer geselecteerde taken als done"
+      >
+        <Check className="h-3.5 w-3.5" />
+        Done
+      </button>
+      <BulkSnoozeButton
+        onPick={(until) => onBulk({ type: "snooze", until })}
+      />
+      <button
+        type="button"
+        onClick={() => onBulk("cancel")}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-red-500/10 hover:text-red-500 transition-colors"
+        title="Annuleer geselecteerde taken"
+      >
+        <X className="h-3.5 w-3.5" />
+        Cancel
+      </button>
+      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <button
+        type="button"
+        onClick={onClear}
+        className="text-[11px] text-muted-foreground hover:text-foreground px-2"
+        title="Selectie wissen"
+      >
+        Clear
+      </button>
+    </div>
+  )
+}
+
+function BulkSnoozeButton({ onPick }: { onPick: (until: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open])
+
+  function pick(option: "tomorrow_morning" | "next_week" | "in_2_weeks") {
+    setOpen(false)
+    const now = new Date()
+    let d: Date
+    if (option === "tomorrow_morning") {
+      d = new Date(now)
+      d.setDate(d.getDate() + 1)
+      d.setHours(9, 0, 0, 0)
+    } else if (option === "next_week") {
+      d = new Date(now)
+      const daysUntilMon = (1 - d.getDay() + 7) % 7 || 7
+      d.setDate(d.getDate() + daysUntilMon)
+      d.setHours(9, 0, 0, 0)
+    } else {
+      d = new Date(now)
+      d.setDate(d.getDate() + 14)
+      d.setHours(9, 0, 0, 0)
+    }
+    onPick(d.toISOString())
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-muted/60 transition-colors"
+        title="Snooze geselecteerde taken"
+      >
+        <Clock className="h-3.5 w-3.5" />
+        Snooze
+      </button>
+      {open && (
+        <div className="absolute bottom-full mb-2 right-0 w-44 rounded-md border border-border bg-popover shadow-lg py-1 text-xs">
+          <button
+            type="button"
+            onClick={() => pick("tomorrow_morning")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            Morgen ochtend
+          </button>
+          <button
+            type="button"
+            onClick={() => pick("next_week")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            Volgende week
+          </button>
+          <button
+            type="button"
+            onClick={() => pick("in_2_weeks")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            Over 2 weken
+          </button>
+        </div>
+      )}
     </div>
   )
 }
