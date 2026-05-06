@@ -5,6 +5,39 @@ import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { draftTrengoReply } from "@/lib/inbox/reply-drafter"
 import { resolveClientAssignee } from "@/lib/inbox/assignee"
 
+export const maxDuration = 60
+
+/**
+ * Trengo webhook receiver — POST endpoint that ingests new ticket messages
+ * into `inbox_events` and classifies them via AI as chat / task / update.
+ *
+ * Auth: shared secret. Roy configures `TRENGO_WEBHOOK_SECRET` as an env var,
+ * then sets the webhook URL in Trengo to either include `?secret=<val>` as a
+ * query param OR add `Authorization: Bearer <val>` as a custom header.
+ *
+ * **Two payload shapes** Trengo sends, depending on plan + webhook type:
+ *
+ *   1. **form-urlencoded** (the actual default for INBOUND/OUTBOUND/NOTE
+ *      webhooks on the current plan). Flat keys:
+ *        type=INBOUND&event_type=INBOUND&message_id=...&ticket_id=...
+ *        &message=...&channel_id=...&contact_id=...&contact_name=Roy+test
+ *        &contact_identifier=%2B31640693209
+ *      No nested objects, no message body length, no created_at.
+ *
+ *   2. **JSON** (older plans, our test probes). Nested:
+ *        { event_type, ticket: { id, contact, channel }, message: { id, body, … } }
+ *
+ * The handler normalizes both into the same shape and proceeds. Anything
+ * that isn't a message event (Ticket created/closed/voice call) returns 200
+ * with an `ignored` reason so Trengo doesn't retry.
+ *
+ * Idempotency: by `(source='trengo', source_msg_id='trengo:msg:<id>')`.
+ *
+ * Diagnostic ring buffer: every received POST is logged to cache_store
+ * before any auth/shape checks via `recordTrengoDebug`. Inspect via
+ * `/api/admin/trengo-webhook-debug`. Drop the buffer once the flow is healthy.
+ */
+
 // --- Diagnostic ring buffer ---------------------------------------------
 
 type TrengoDebugEntry = {
@@ -14,7 +47,6 @@ type TrengoDebugEntry = {
   hasSecretQuery: boolean
   hasAuthHeader: boolean
   userAgent: string
-  outcome?: string
 }
 
 const DEBUG_KEY = "trengo_webhook_debug"
@@ -26,24 +58,7 @@ async function recordTrengoDebug(entry: TrengoDebugEntry): Promise<void> {
   await writeCache(DEBUG_KEY, next)
 }
 
-export const maxDuration = 60
-
-/**
- * Trengo webhook receiver — POST endpoint that ingests new ticket messages
- * into `inbox_events` and classifies them via AI as chat / task / update.
- *
- * Auth: shared secret. Roy configures `TRENGO_WEBHOOK_SECRET` as an env var,
- * then sets the webhook URL in Trengo to either include `?secret=<val>` as a
- * query param OR add `Authorization: Bearer <val>` as a custom header. Either
- * works — Trengo's webhook UI varies by plan.
- *
- * Event scope: only `ticket.message.created` is processed for now. Other
- * event types (ticket.assigned, ticket.closed, etc.) are accepted with a
- * 200 OK so Trengo doesn't retry but stored as no-ops.
- *
- * Idempotency: by `(source='trengo', source_msg_id='trengo:msg:<id>')`. Trengo
- * occasionally retries delivery; we never double-store the same message.
- */
+// --- Auth ----------------------------------------------------------------
 
 function verifyAuth(req: NextRequest): boolean {
   const expected = process.env.TRENGO_WEBHOOK_SECRET
@@ -55,55 +70,192 @@ function verifyAuth(req: NextRequest): boolean {
   return false
 }
 
-type TrengoWebhookPayload = {
-  event_type?: string
-  type?: string
-  ticket?: {
-    id: number | string
-    contact?: { id: number | string; name?: string }
-    channel?: { id: number | string; name?: string; type?: string }
-    channel_id?: number | string
-  }
-  message?: {
-    id: number | string
-    body?: string
-    message?: string
-    author_type?: "User" | "Contact" | string
-    author?: { id: number | string; name?: string }
-    created_at?: string
-    type?: string
-    attachments?: Array<{ name?: string; url?: string }>
-  }
-  data?: {
-    ticket?: TrengoWebhookPayload["ticket"]
-    message?: TrengoWebhookPayload["message"]
+// --- Normalized payload --------------------------------------------------
+
+/** Internal flat shape produced by parseTrengoPayload(). Both form and JSON
+ *  inputs collapse onto this. */
+type NormalizedPayload = {
+  /** Uppercase canonical: INBOUND / OUTBOUND / NOTE / (legacy event-type string). */
+  eventType: string
+  ticketId: string
+  messageId: string
+  messageBody: string
+  contactId: string
+  contactName: string | null
+  channelId: number | null
+  /** Only present in the JSON shape — null on form payloads. */
+  channelType: string | null
+  authorKind: "rl_team" | "client"
+  authorName: string
+  authorExternal: string
+  createdAtSrc: string
+  attachments: Array<{ name?: string; url?: string }> | null
+  /** Original parsed payload — stored on the row's `raw` field for debugging. */
+  raw: Record<string, unknown>
+}
+
+function parseFormPayload(body: string): NormalizedPayload | null {
+  const params = new URLSearchParams(body)
+  const get = (k: string) => params.get(k) ?? ""
+  const ticketId = get("ticket_id")
+  const messageId = get("message_id")
+  if (!ticketId || !messageId) return null
+
+  // Trengo's flat events use uppercase verbs (INBOUND / OUTBOUND / NOTE) in
+  // both `type` and `event_type` fields. We canonicalize to uppercase so the
+  // downstream filter doesn't have to match both casings.
+  const eventTypeRaw = (get("event_type") || get("type") || "").toString()
+  const eventType = eventTypeRaw.toUpperCase()
+
+  // Author kind from event direction. INBOUND = the contact wrote it;
+  // OUTBOUND = a team member wrote it; NOTE = team internal note.
+  const authorKind: "rl_team" | "client" =
+    eventType === "INBOUND" ? "client" : "rl_team"
+
+  // contact_name is URL-decoded by URLSearchParams; restore '+' as space
+  // since Trengo sends `Roy+test` (form-encoding for "Roy test").
+  const contactName = get("contact_name").replace(/\+/g, " ") || null
+
+  // Form payload has no created_at — use server time as a best effort.
+  const createdAtSrc = new Date().toISOString()
+
+  const channelIdRaw = get("channel_id")
+  const channelId = channelIdRaw && Number.isFinite(Number(channelIdRaw))
+    ? Number(channelIdRaw)
+    : null
+
+  return {
+    eventType,
+    ticketId,
+    messageId,
+    messageBody: get("message"),
+    contactId: get("contact_id"),
+    contactName,
+    channelId,
+    channelType: null,
+    authorKind,
+    // For INBOUND we know the author IS the contact; for OUTBOUND/NOTE the
+    // form payload doesn't include the user's name, so fall back to "Team".
+    authorName:
+      authorKind === "client" ? (contactName ?? "Unknown") : "Team",
+    authorExternal: authorKind === "client" ? get("contact_id") : "",
+    createdAtSrc,
+    attachments: null,
+    raw: Object.fromEntries(params.entries()),
   }
 }
 
+type LegacyJsonPayload = {
+  event_type?: string
+  type?: string
+  ticket?: {
+    id?: number | string
+    contact?: { id?: number | string; name?: string }
+    channel?: { id?: number | string; name?: string; type?: string }
+    channel_id?: number | string
+  }
+  message?: {
+    id?: number | string
+    body?: string
+    message?: string
+    author_type?: "User" | "Contact" | string
+    author?: { id?: number | string; name?: string }
+    created_at?: string
+    attachments?: Array<{ name?: string; url?: string }>
+  }
+  data?: {
+    ticket?: LegacyJsonPayload["ticket"]
+    message?: LegacyJsonPayload["message"]
+  }
+}
+
+function parseJsonPayload(body: string): NormalizedPayload | null {
+  let p: LegacyJsonPayload
+  try {
+    p = JSON.parse(body) as LegacyJsonPayload
+  } catch {
+    return null
+  }
+
+  const ticket = p.ticket ?? p.data?.ticket
+  const message = p.message ?? p.data?.message
+  if (!ticket || !message) return null
+
+  const ticketId = String(ticket.id ?? "")
+  const messageId = String(message.id ?? "")
+  if (!ticketId || !messageId) return null
+
+  const authorType = message.author_type === "User" ? "User" : "Contact"
+  const authorKind: "rl_team" | "client" =
+    authorType === "User" ? "rl_team" : "client"
+
+  const channelIdRaw = ticket.channel?.id ?? ticket.channel_id
+  const channelId =
+    channelIdRaw != null && Number.isFinite(Number(channelIdRaw))
+      ? Number(channelIdRaw)
+      : null
+
+  const contactId = String(ticket.contact?.id ?? "")
+  const contactName = ticket.contact?.name ?? null
+
+  return {
+    eventType: (p.event_type ?? p.type ?? "").toString().toUpperCase(),
+    ticketId,
+    messageId,
+    messageBody: (message.body ?? message.message ?? "").trim(),
+    contactId,
+    contactName,
+    channelId,
+    channelType: ticket.channel?.type ?? null,
+    authorKind,
+    authorName: message.author?.name ?? contactName ?? "Unknown",
+    authorExternal: String(message.author?.id ?? contactId ?? ""),
+    createdAtSrc: message.created_at ?? new Date().toISOString(),
+    attachments:
+      message.attachments && message.attachments.length > 0 ? message.attachments : null,
+    raw: p as unknown as Record<string, unknown>,
+  }
+}
+
+function parseTrengoPayload(rawBody: string, contentType: string): NormalizedPayload | null {
+  // Auto-detect: a leading `{` means JSON; everything else is form-urlencoded
+  // (Trengo's default). Content-type is consulted as a hint but we don't
+  // trust it blindly — some Trengo plans send a generic content-type while
+  // the body is still form-encoded.
+  const trimmed = rawBody.trimStart()
+  if (trimmed.startsWith("{") || contentType.includes("application/json")) {
+    return parseJsonPayload(rawBody)
+  }
+  return parseFormPayload(rawBody)
+}
+
+// --- Handler -------------------------------------------------------------
+
+/** Event types we treat as "a message arrived" — drives whether we ingest
+ *  a row. Both the modern uppercase flat verbs and the legacy lowercase JSON
+ *  strings are accepted. Anything else is acknowledged with `ignored`. */
+const MESSAGE_EVENT_TYPES = new Set<string>([
+  "INBOUND",
+  "OUTBOUND",
+  "NOTE",
+  "TICKET.MESSAGE.CREATED",
+  "MESSAGE.CREATED",
+  "INBOUND.MESSAGE.CREATED",
+  "OUTBOUND.MESSAGE.CREATED",
+  "INTERNAL.MESSAGE.CREATED",
+  "INBOUND_MESSAGE",
+  "OUTBOUND_MESSAGE",
+  "INTERNAL_MESSAGE",
+])
+
 export async function POST(req: NextRequest) {
-  // Diagnostic logging — temporary while Roy verifies that Trengo is actually
-  // delivering webhooks. We log BEFORE the auth check so a 401 on a Trengo
-  // POST is still visible in Vercel logs (it would otherwise look identical
-  // to "no webhook received at all"). Body is read once as text and re-parsed
-  // below so we keep working with the same payload.
   const rawBody = await req.text()
   const haveSecret = !!req.nextUrl.searchParams.get("secret")
   const haveAuthHeader = !!req.headers.get("authorization")
   const ua = req.headers.get("user-agent") ?? ""
-  // Log keys + a body preview (first ~400 chars) so we can see what Trengo
-  // actually sends. No secrets in the body for Trengo webhooks, so logging
-  // this is safe for diagnostic purposes.
-  console.log(
-    `[trengo-webhook] POST received bodyLen=${rawBody.length} ` +
-      `hasSecretQuery=${haveSecret} hasAuthHeader=${haveAuthHeader} ` +
-      `ua=${ua.slice(0, 80)}`,
-  )
-  console.log(`[trengo-webhook] body preview: ${rawBody.slice(0, 400)}`)
+  const contentType = req.headers.get("content-type") ?? ""
 
-  // Persist a small debug ring buffer in cache_store so we can inspect what
-  // Trengo actually sends without needing live log streaming. Keeps the last
-  // N records; admin endpoint reads them. Best-effort — never fails the
-  // webhook if the debug write throws.
+  // Persistent debug ring buffer (drop after the flow is verified healthy).
   void recordTrengoDebug({
     receivedAt: new Date().toISOString(),
     bodyLen: rawBody.length,
@@ -114,98 +266,39 @@ export async function POST(req: NextRequest) {
   }).catch((e) => console.error("[trengo-webhook] debug record failed", e))
 
   if (!verifyAuth(req)) {
-    console.log("[trengo-webhook] auth FAILED — rejecting with 401")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  let payload: TrengoWebhookPayload
-  try {
-    payload = JSON.parse(rawBody) as TrengoWebhookPayload
-  } catch (e) {
-    console.log(`[trengo-webhook] JSON parse FAILED: ${e instanceof Error ? e.message : String(e)}`)
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
-  }
-  const topKeys = Object.keys(payload as Record<string, unknown>).join(",")
-  console.log(
-    `[trengo-webhook] auth OK event_type="${payload.event_type ?? payload.type ?? "(none)"}" ` +
-      `topKeys=[${topKeys}] ` +
-      `hasTicket=${!!(payload.ticket ?? payload.data?.ticket)} ` +
-      `hasMessage=${!!(payload.message ?? payload.data?.message)}`,
-  )
-
-  // Trengo's webhook UI splits messages into separate event types per direction
-  // (Inbound message / Outbound message / Internal message), each with its own
-  // string. We accept all message-bearing events and let downstream code use
-  // `author_type` to differentiate inbound vs outbound. Anything that doesn't
-  // carry a message body (Ticket created/closed/assigned, Voice call, …) falls
-  // through to the missing-body branch below and is acked without being stored.
-  const eventType = payload.event_type ?? payload.type ?? ""
-  const MESSAGE_EVENT_TYPES = new Set([
-    "ticket.message.created", // legacy/older Trengo plans
-    "message.created",
-    "inbound.message.created",
-    "outbound.message.created",
-    "internal.message.created",
-    "inbound_message",
-    "outbound_message",
-    "internal_message",
-  ])
-  const isLegacyMessageEvent = MESSAGE_EVENT_TYPES.has(eventType)
-  // Permissive fallback: if Trengo's event_type string doesn't match a known
-  // alias but the payload carries a ticket + message, treat it as a message
-  // event. Better to ingest one extra row than to drop real messages because
-  // Trengo renamed an event.
-  const looksLikeMessageEvent =
-    !!(payload.message ?? payload.data?.message) &&
-    !!(payload.ticket ?? payload.data?.ticket)
-  if (!isLegacyMessageEvent && !looksLikeMessageEvent) {
-    console.log(`[trengo-webhook] IGNORED — eventType="${eventType}" not in known message types and no ticket+message`)
-    return NextResponse.json({ ok: true, ignored: eventType })
-  }
-
-  const ticket = payload.ticket ?? payload.data?.ticket
-  const message = payload.message ?? payload.data?.message
-  if (!ticket || !message) {
-    console.log(`[trengo-webhook] REJECTED 400 — missing ticket=${!!ticket} message=${!!message}`)
-    return NextResponse.json(
-      { ok: false, error: "Missing ticket or message in payload" },
-      { status: 400 },
+  const payload = parseTrengoPayload(rawBody, contentType)
+  if (!payload) {
+    console.log(
+      `[trengo-webhook] payload PARSE FAILED contentType="${contentType}" preview="${rawBody.slice(0, 200)}"`,
     )
+    return NextResponse.json({ ok: true, ignored: "unparseable" })
   }
 
-  const ticketId = String(ticket.id ?? "")
-  const messageId = String(message.id ?? "")
-  const contactId = String(ticket.contact?.id ?? "")
-  // Channel id is what powers per-user channel subscriptions. Trengo varies the
-  // payload shape across plans/event types — try the nested object first, then
-  // the flat fallback. Stored as integer; null if Trengo didn't send one.
-  const rawChannelId = ticket.channel?.id ?? ticket.channel_id ?? null
-  const trengoChannelId =
-    rawChannelId != null && Number.isFinite(Number(rawChannelId))
-      ? Number(rawChannelId)
-      : null
-  if (!ticketId || !messageId || !contactId) {
+  // Filter to message-bearing events. Non-message events (ticket assigned,
+  // ticket created, voice call, label add) are acknowledged but not stored.
+  if (!MESSAGE_EVENT_TYPES.has(payload.eventType)) {
+    return NextResponse.json({ ok: true, ignored: payload.eventType })
+  }
+
+  if (!payload.contactId || !payload.messageId || !payload.ticketId) {
     return NextResponse.json(
       { ok: false, error: "Missing ticket id, message id, or contact id" },
       { status: 400 },
     )
   }
 
-  const messageBody = (message.body ?? message.message ?? "").trim()
+  const messageBody = payload.messageBody.trim()
   if (!messageBody) {
     return NextResponse.json({ ok: true, skipped: "empty body" })
   }
 
-  const authorType = message.author_type === "User" ? "User" : "Contact"
-  const authorKind: "rl_team" | "client" = authorType === "User" ? "rl_team" : "client"
-  const authorName = message.author?.name ?? ticket.contact?.name ?? "Unknown"
-  const authorExternal = String(message.author?.id ?? ticket.contact?.id ?? "")
-  const createdAtSrc = message.created_at ?? new Date().toISOString()
-
   const supabase = await createAdminClient()
 
-  // Dedupe: skip if we've already stored this Trengo message id.
-  const sourceMsgId = `trengo:msg:${messageId}`
+  // Dedupe by Trengo message id.
+  const sourceMsgId = `trengo:msg:${payload.messageId}`
   const { data: existing } = await supabase
     .from("inbox_events")
     .select("id")
@@ -216,17 +309,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, deduped: true })
   }
 
-  // Look up the linked client via the Trengo contact id (clients.trengo_contact_ids[]).
+  // Look up the linked client via the Trengo contact id.
   const { data: clientRow } = await supabase
     .from("clients")
     .select("id, monday_item_id, name")
-    .contains("trengo_contact_ids", [contactId])
+    .contains("trengo_contact_ids", [payload.contactId])
     .maybeSingle()
 
-  // System author — webhook ingest doesn't have a Hub user_id. Author attribution
-  // for chat events comes from `author_kind` + `author_name_cached`; the FK
-  // `author_id` is just a placeholder. C.6 (reply mechanism) refines this when
-  // user_platform_tokens map external IDs to Hub users.
+  // System author for the FK — webhook ingest doesn't have a session-bound
+  // user_id. Author attribution for chat events is via author_kind +
+  // author_name_cached; the FK is just a placeholder.
   const { data: hq } = await supabase
     .from("users")
     .select("id")
@@ -240,53 +332,56 @@ export async function POST(req: NextRequest) {
   }
 
   // Route classified tasks/updates to the AM responsible for this client.
-  // Without this, every ingested item sits on the HQ system inbox and never
-  // reaches the AM's "Assigned to me" filter. Falls back to HQ when the
-  // contact isn't linked to a client or the client's AM isn't mapped.
+  // Falls back to HQ when the contact isn't linked or the AM isn't mapped.
   const assigneeId =
     (clientRow?.monday_item_id
       ? await resolveClientAssignee(clientRow.monday_item_id)
       : null) ?? hq.id
 
-  // Classify with AI. Defaults to 'chat' on any uncertainty.
+  // Classify with AI. Defaults to chat on uncertainty.
   const classification = await classifyInboxMessage({
     source: "trengo",
-    authorKind,
+    authorKind: payload.authorKind,
     content: messageBody,
   })
 
   const status =
     classification.kind === "task"
       ? "open"
-      : classification.kind === "update"
-        ? "unread"
-        : "unread" // chat starts unread; mark-read happens when AM views the thread
+      : "unread" // chat + update both start unread
 
   const priority = classification.kind === "task" ? "normal" : null
 
-  const titlePreview = messageBody.length > 100 ? messageBody.slice(0, 100) + "…" : messageBody
+  const titlePreview =
+    messageBody.length > 100 ? messageBody.slice(0, 100) + "…" : messageBody
   const bodyFull = messageBody.length > 100 ? messageBody : null
 
-  // Smart-inbox: when the AI classifies as `task`, also pre-draft a Dutch
-  // reply so the AM can review-and-send straight from the detail dialog
-  // instead of starting from a blank textarea every time. Skip on tasks
-  // where the body is too short to draft against meaningfully (under 10
-  // chars — usually "ok", "👍", etc., where a reply isn't really needed).
-  // Failure is non-fatal: the task lands without a draft.
+  // Smart-inbox: pre-draft a Dutch reply on classified tasks so the AM can
+  // review-and-send straight from the detail dialog. Skipped on short tasks
+  // (under 10 chars) and on team-authored events. Failure is non-fatal.
   let draftMessage: string | null = null
   let draftChannel: "trengo_email" | "trengo_whatsapp" | null = null
   if (
     classification.kind === "task" &&
-    messageBody.trim().length >= 10 &&
-    authorKind === "client"
+    messageBody.length >= 10 &&
+    payload.authorKind === "client"
   ) {
-    const channelType = (ticket.channel?.type ?? "").toLowerCase()
-    const isWhatsapp = channelType.includes("whats") || channelType.includes("wa_")
+    // Channel type isn't always present (form payload omits it), so we look
+    // up the channel id against subscribed-channel metadata when needed.
+    // For now we treat anything that isn't explicitly an email channel as
+    // WhatsApp — that's the dominant case for tasks.
+    const channelType = (payload.channelType ?? "").toLowerCase()
+    const isWhatsapp =
+      channelType.includes("whats") ||
+      channelType.includes("wa_") ||
+      // Heuristic for form payloads with no channel type: contact_identifier
+      // looks like a phone number → WhatsApp.
+      (channelType === "" && /^\+?\d/.test(payload.contactId))
     draftChannel = isWhatsapp ? "trengo_whatsapp" : "trengo_email"
     try {
       draftMessage = await draftTrengoReply({
         clientName: clientRow?.name ?? null,
-        firstName: authorName.split(" ")[0] ?? null,
+        firstName: payload.authorName.split(" ")[0] ?? null,
         inboundMessage: messageBody,
         channel: isWhatsapp ? "whatsapp" : "email",
       })
@@ -295,40 +390,34 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Source ref persists the draft so the detail dialog renders the existing
-  // reply textarea pre-filled with the AI suggestion.
   const sourceRef = draftMessage
     ? { draft_message: draftMessage, draft_channel: draftChannel }
     : null
 
   const { error } = await supabase.from("inbox_events").insert({
     kind: classification.kind,
-    // client_id is `text NOT NULL` — for unlinked Trengo contacts we use empty
-    // string. The chat substrate keys off `thread_key` and `client_id` filtering
-    // simply skips empty-string rows. A future migration may relax this NOT NULL.
     client_id: clientRow?.monday_item_id ?? "",
     author_id: hq.id,
     assignee_id: assigneeId,
-    title: titlePreview || `Message from ${authorName}`,
+    title: titlePreview || `Message from ${payload.authorName}`,
     body: bodyFull,
     status,
     priority,
     source: "trengo",
-    source_thread: `trengo:ticket:${ticketId}`,
+    source_thread: `trengo:ticket:${payload.ticketId}`,
     source_msg_id: sourceMsgId,
-    thread_key: `trengo:contact:${contactId}`,
+    thread_key: `trengo:contact:${payload.contactId}`,
     scope: "external",
-    author_kind: authorKind,
-    author_external: authorExternal,
-    author_name_cached: authorName,
+    author_kind: payload.authorKind,
+    author_external: payload.authorExternal,
+    author_name_cached: payload.authorName,
     classify_conf: classification.confidence,
     classify_method: "ai",
-    created_at_src: createdAtSrc,
-    trengo_channel_id: trengoChannelId,
+    created_at_src: payload.createdAtSrc,
+    trengo_channel_id: payload.channelId,
     source_ref: sourceRef,
-    raw: payload,
-    attachments:
-      message.attachments && message.attachments.length > 0 ? message.attachments : null,
+    raw: payload.raw,
+    attachments: payload.attachments,
   })
 
   if (error) {
