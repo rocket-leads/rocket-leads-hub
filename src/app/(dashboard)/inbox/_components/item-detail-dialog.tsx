@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Trash2, Send, Calendar, AlertCircle, Loader2, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown, Sparkles } from "lucide-react"
+import { Trash2, Send, Calendar, AlertCircle, Loader2, Mail, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown, Sparkles } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -287,7 +288,11 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                   <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
                 )}
                 <DialogTitle className="leading-snug flex-1">{item.title}</DialogTitle>
-                <SourcePill source={item.source} className="shrink-0 mt-1" />
+                <SourcePill
+                  source={item.source}
+                  channelKind={item.channelKind}
+                  className="shrink-0 mt-1"
+                />
               </div>
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground/70 mt-1">
                 {item.isUnlinked ? (
@@ -478,7 +483,8 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               <div className="border-t border-border/40 pt-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 mb-2 inline-flex items-center gap-1.5">
                   <Sparkles className="h-3 w-3" />
-                  AI draft — {channelLabel(draftChannel)}
+                  AI draft — <ChannelMark channel={draftChannel} />
+                  {channelLabel(draftChannel)}
                 </p>
                 {draftNeedsConnect && (
                   <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 mb-2 text-xs">
@@ -745,4 +751,25 @@ function channelLabel(channel: unknown): string {
   if (channel === "trengo_email") return "verstuur als email"
   if (channel === "trengo_whatsapp") return "verstuur als WhatsApp"
   return "verstuur via Trengo"
+}
+
+/** Inline brand mark next to the AI-draft channel label. Keeps the WhatsApp
+ *  green / email blue treatment consistent with the row pills. */
+function ChannelMark({ channel }: { channel: unknown }) {
+  if (channel === "trengo_whatsapp") {
+    return (
+      <Image
+        src="/logos/brands/whatsapp.svg"
+        alt=""
+        width={12}
+        height={12}
+        className="h-3 w-3 shrink-0 object-contain"
+        unoptimized
+      />
+    )
+  }
+  if (channel === "trengo_email") {
+    return <Mail className="h-3 w-3 text-blue-500 shrink-0" />
+  }
+  return null
 }

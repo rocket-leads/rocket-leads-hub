@@ -1,7 +1,7 @@
 import Image from "next/image"
-import { Bot, Eye, Video, type LucideIcon } from "lucide-react"
+import { Bot, Eye, Mail, Video, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { InboxSource } from "@/types/inbox"
+import type { InboxChannelKind, InboxSource } from "@/types/inbox"
 
 type SourceConfig = {
   label: string
@@ -55,12 +55,43 @@ type Props = {
   source: InboxSource
   /** Compact omits the label text and shows just the icon — for tight rows. */
   compact?: boolean
+  /** When the source is Trengo, the channel medium swaps both the icon
+   *  (WhatsApp brand mark / email envelope) and the pill label — so an AM
+   *  can tell at a glance whether a task came in via WA or via email
+   *  without opening the row. Ignored for non-Trengo sources. */
+  channelKind?: InboxChannelKind
   className?: string
 }
 
-export function SourcePill({ source, compact = false, className }: Props) {
-  const cfg = SOURCE_CONFIG[source]
-  if (!cfg) return null
+const CHANNEL_OVERRIDES: Record<
+  Exclude<InboxChannelKind, null | "other">,
+  { label: string; brandLogo?: string; icon?: LucideIcon; cls: string }
+> = {
+  whatsapp: {
+    label: "WhatsApp",
+    brandLogo: "/logos/brands/whatsapp.svg",
+    cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  },
+  email: {
+    label: "Email",
+    icon: Mail,
+    cls: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  },
+}
+
+export function SourcePill({ source, compact = false, channelKind, className }: Props) {
+  const baseCfg = SOURCE_CONFIG[source]
+  if (!baseCfg) return null
+
+  // For Trengo we promote the channel medium to the pill itself — WhatsApp
+  // and email each get their own brand-coloured mark + label so the row
+  // shows what kind of message it actually was, not just "Trengo".
+  const override =
+    source === "trengo" && channelKind && channelKind !== "other"
+      ? CHANNEL_OVERRIDES[channelKind]
+      : null
+  const cfg = override ?? baseCfg
+
   return (
     <span
       title={`Source: ${cfg.label}`}

@@ -7,6 +7,12 @@ export type InboxPriority = "low" | "normal" | "high"
 
 export type InboxSource = "manual" | "watchlist" | "meeting" | "monday" | "trengo" | "slack" | "automation"
 
+/** Channel medium for Trengo events — drives the channel-specific icon
+ *  (WhatsApp brand mark / email envelope) on inbox rows so AMs can tell at
+ *  a glance which medium a task or update came in on. Resolved server-side
+ *  from the row's `trengo_channel_id`. Null for non-Trengo sources. */
+export type InboxChannelKind = "whatsapp" | "email" | "other" | null
+
 export type InboxItem = {
   id: string
   kind: InboxKind
@@ -26,6 +32,8 @@ export type InboxItem = {
   priority: InboxPriority | null
   dueDate: string | null
   source: InboxSource
+  /** Trengo channel medium when source==='trengo'. Null otherwise. */
+  channelKind: InboxChannelKind
   sourceRef: Record<string, unknown> | null
   mondayUpdateId: string | null
   /** True when the event came from an external source (Trengo) but isn't tied

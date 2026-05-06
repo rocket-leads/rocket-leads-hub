@@ -5,6 +5,7 @@ import { fetchTrengoChannels } from "@/lib/integrations/trengo"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 import type {
+  InboxChannelKind,
   InboxItem,
   InboxComment,
   InboxKind,
@@ -122,7 +123,11 @@ async function getMondayClientMap(): Promise<Map<string, MondayClient>> {
   return map
 }
 
-function rowToItem(row: RawInboxRow, clientMap: Map<string, MondayClient>): InboxItem {
+function rowToItem(
+  row: RawInboxRow,
+  clientMap: Map<string, MondayClient>,
+  channelLookup: Map<number, { kind: ChatChannelKind; name: string }>,
+): InboxItem {
   // Prefer author_name_cached when set — webhook ingesters store the real
   // Trengo contact / Monday user / Slack user there because the FK author_id
   // is forced to the system HQ account. Manual creates leave it null and
@@ -140,6 +145,13 @@ function rowToItem(row: RawInboxRow, clientMap: Map<string, MondayClient>): Inbo
   const isUnlinked = row.source === "trengo" && (!row.client_id || row.client_id === "")
   const linkedClientName = clientMap.get(row.client_id)?.name
 
+  // Resolve channel medium for Trengo rows so the row UI can show the
+  // WhatsApp/email-specific brand mark instead of the generic Trengo cyan.
+  let channelKind: InboxChannelKind = null
+  if (row.source === "trengo" && row.trengo_channel_id != null) {
+    channelKind = channelLookup.get(row.trengo_channel_id)?.kind ?? "other"
+  }
+
   return {
     id: row.id,
     kind: row.kind,
@@ -156,6 +168,7 @@ function rowToItem(row: RawInboxRow, clientMap: Map<string, MondayClient>): Inbo
     priority: row.priority,
     dueDate: row.due_date,
     source: row.source,
+    channelKind,
     sourceRef: row.source_ref,
     mondayUpdateId: row.monday_update_id,
     isUnlinked,
@@ -234,8 +247,13 @@ export async function listInboxItems(
   const { data, error } = await query
   if (error) throw new Error(`Failed to list inbox items: ${error.message}`)
 
-  const clientMap = await getMondayClientMap()
-  return ((data ?? []) as unknown as RawInboxRow[]).map((r) => rowToItem(r, clientMap))
+  const [clientMap, channelLookup] = await Promise.all([
+    getMondayClientMap(),
+    getTrengoChannelLookup(),
+  ])
+  return ((data ?? []) as unknown as RawInboxRow[]).map((r) =>
+    rowToItem(r, clientMap, channelLookup),
+  )
 }
 
 export async function getInboxItem(
@@ -271,8 +289,11 @@ export async function getInboxItem(
     }
   }
 
-  const clientMap = await getMondayClientMap()
-  return rowToItem(row, clientMap)
+  const [clientMap, channelLookup] = await Promise.all([
+    getMondayClientMap(),
+    getTrengoChannelLookup(),
+  ])
+  return rowToItem(row, clientMap, channelLookup)
 }
 
 export async function listInboxComments(itemId: string): Promise<InboxComment[]> {
@@ -310,18 +331,54 @@ export async function listInboxComments(itemId: string): Promise<InboxComment[]>
 }
 
 /**
- * Counts for the sidebar badge: unread updates assigned to me + open/in-progress
- * tasks assigned to me. Cheap — two indexed queries.
+ * Counts for the sidebar badge: unread updates + open/in-progress tasks +
+ * unread chat messages the user can see (Client Inbox + Team Inbox).
+ *
+ * Tasks/updates are scoped to assignee_id (mine to do). Chats use the same
+ * visibility set as the Client/Team Inbox (channel subscriptions + client
+ * access + participant fallback) — counting messages, not threads, so the
+ * sidebar number lines up with the per-thread unread counts. Snoozed tasks
+ * are excluded to keep the badge silent while the user has parked them.
  */
 export async function getInboxBadgeCounts(
   userId: string,
-): Promise<{ unreadUpdates: number; openTasks: number }> {
+  role: Role = "member",
+): Promise<{ unreadUpdates: number; openTasks: number; unreadChats: number }> {
   const supabase = await createAdminClient()
 
   // Snoozed tasks shouldn't ping the sidebar — that's the point of snoozing.
   // Active = snoozed_until IS NULL OR has already passed.
   const nowIso = new Date().toISOString()
-  const [updatesRes, tasksRes] = await Promise.all([
+
+  // Build the chat visibility query in the same shape as listChatThreads:
+  // channel-subscription narrowing always applies (admins included), then
+  // role-based access on top for non-admins.
+  let chatQuery = supabase
+    .from("inbox_events")
+    .select("id", { count: "exact", head: true })
+    .not("thread_key", "is", null)
+    .eq("status", "unread")
+
+  const channelIds = await getUserTrengoChannelIds(userId)
+  if (channelIds.length > 0) {
+    chatQuery = chatQuery.or(
+      `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+    )
+  }
+
+  if (role !== "admin") {
+    const allowed = await getAllowedClientIds(userId, role)
+    if (allowed !== "all") {
+      const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+      const channelClause =
+        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+      chatQuery = chatQuery.or(
+        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+      )
+    }
+  }
+
+  const [updatesRes, tasksRes, chatsRes] = await Promise.all([
     supabase
       .from("inbox_events")
       .select("id", { count: "exact", head: true })
@@ -335,11 +392,13 @@ export async function getInboxBadgeCounts(
       .eq("kind", "task")
       .in("status", ["open", "in_progress"])
       .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`),
+    chatQuery,
   ])
 
   return {
     unreadUpdates: updatesRes.count ?? 0,
     openTasks: tasksRes.count ?? 0,
+    unreadChats: chatsRes.count ?? 0,
   }
 }
 
@@ -611,6 +670,65 @@ export async function listChatThreads(
 
   threads.sort((a, b) => b.latestAt.localeCompare(a.latestAt))
   return threads
+}
+
+/**
+ * Mark every unread chat event in a thread as read for the calling user.
+ *
+ * We only flip rows the user is actually allowed to see — the visibility
+ * filter mirrors `getChatThreadMessages` (channel subscription + client
+ * access + participant fallback). Pre-fetching the event ids first keeps the
+ * UPDATE simple and avoids any chance of writing through a broken visibility
+ * filter — same pattern we use on the thread fetch.
+ *
+ * Returns the number of rows updated. Idempotent: calling it again on a
+ * thread with no unread events is a fast no-op.
+ */
+export async function markChatThreadRead(
+  threadKey: string,
+  userId: string,
+  role: Role,
+): Promise<{ updated: number }> {
+  const supabase = await createAdminClient()
+
+  let query = supabase
+    .from("inbox_events")
+    .select("id")
+    .eq("thread_key", threadKey)
+    .eq("status", "unread")
+
+  const channelIds = await getUserTrengoChannelIds(userId)
+  if (channelIds.length > 0) {
+    query = query.or(
+      `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+    )
+  }
+
+  if (role !== "admin") {
+    const allowed = await getAllowedClientIds(userId, role)
+    if (allowed !== "all") {
+      const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+      const channelClause =
+        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+      query = query.or(
+        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+      )
+    }
+  }
+
+  const { data, error } = await query
+  if (error) throw new Error(`Failed to load unread events: ${error.message}`)
+
+  const ids = (data ?? []).map((r) => (r as { id: string }).id)
+  if (ids.length === 0) return { updated: 0 }
+
+  const { error: updErr } = await supabase
+    .from("inbox_events")
+    .update({ status: "read" })
+    .in("id", ids)
+  if (updErr) throw new Error(`Failed to mark thread read: ${updErr.message}`)
+
+  return { updated: ids.length }
 }
 
 export async function getChatThreadMessages(

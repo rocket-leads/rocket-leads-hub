@@ -9,10 +9,12 @@ const ICONS = { Users, Eye, Target, Settings, Inbox, Video, Receipt }
 
 type NavItem = { href: string; label: string; icon: keyof typeof ICONS }
 
-type BadgeCounts = { unreadUpdates: number; openTasks: number }
+type BadgeCounts = { unreadUpdates: number; openTasks: number; unreadChats: number }
 
 function InboxBadge() {
-  // Polled every 60s — cheap (two indexed counts) and good enough for "I have new items".
+  // Polled every 60s — cheap (three indexed counts) and good enough for
+  // "I have new items". Chat unread + open tasks + unread updates all add up
+  // here so the AM sees one combined "stuff waiting on me" number.
   const { data } = useQuery<BadgeCounts>({
     queryKey: ["inbox-badge"],
     queryFn: () => fetch("/api/inbox/badge").then((r) => r.json()),
@@ -20,7 +22,8 @@ function InboxBadge() {
     staleTime: 30 * 1000,
   })
 
-  const total = (data?.unreadUpdates ?? 0) + (data?.openTasks ?? 0)
+  const total =
+    (data?.unreadUpdates ?? 0) + (data?.openTasks ?? 0) + (data?.unreadChats ?? 0)
   if (!total) return null
 
   return (
