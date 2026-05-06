@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk"
 import type { MeetingRow } from "./types"
 import { detectMostActiveTrengoChannel } from "@/lib/inbox/channel-detect"
 import { draftMeetingFollowupMessage } from "@/lib/inbox/reply-drafter"
+import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
 
 /**
  * Phase D.1 (rewrite v2) — Fathom transcript → bundled Hub tasks per role.
@@ -547,21 +548,26 @@ async function upsertMeetingTask(
     return { ...empty, skipped: 1 }
   }
 
-  const { error } = await supabase.from("inbox_events").insert({
-    kind: "task",
-    client_id: input.meeting.client_id ?? "",
-    author_id: input.authorId,
-    assignee_id: input.assigneeId,
-    title: input.title,
-    body: input.body,
-    status,
-    priority: "normal",
-    source: "meeting",
-    source_ref: input.sourceRef,
-    created_at_src: input.meeting.scheduled_at ?? null,
-    completed_at: completedAt,
-  })
+  const { data: inserted, error } = await supabase
+    .from("inbox_events")
+    .insert({
+      kind: "task",
+      client_id: input.meeting.client_id ?? "",
+      author_id: input.authorId,
+      assignee_id: input.assigneeId,
+      title: input.title,
+      body: input.body,
+      status,
+      priority: "normal",
+      source: "meeting",
+      source_ref: input.sourceRef,
+      created_at_src: input.meeting.scheduled_at ?? null,
+      completed_at: completedAt,
+    })
+    .select("id")
+    .single()
   if (error) return empty
+  if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
   return { ...empty, inserted: 1 }
 }
 

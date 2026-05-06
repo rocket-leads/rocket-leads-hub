@@ -4,6 +4,7 @@ import { readCache } from "@/lib/cache"
 import { fetchBillingData } from "@/lib/integrations/stripe"
 import { fetchConversations, fetchMessages } from "@/lib/integrations/trengo"
 import { detectMostActiveTrengoChannel } from "@/lib/inbox/channel-detect"
+import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
 import Anthropic from "@anthropic-ai/sdk"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { InvoiceRow } from "@/lib/integrations/stripe"
@@ -300,35 +301,40 @@ async function ensurePaymentOverdueTask(
 
   const body = bodyParts.join("\n")
 
-  const { error } = await supabase.from("inbox_events").insert({
-    kind: "task",
-    client_id: supabaseClientId,
-    author_id: authorId,
-    assignee_id: assigneeId,
-    title,
-    body,
-    status: "open",
-    priority: "high",
-    due_date: today,
-    source: "automation",
-    source_ref: {
-      rule: "payment_overdue_task",
-      invoiceId: invoice.id,
-      mondayItemId: client.mondayItemId,
-      ...(draftMessage
-        ? {
-            draft_message: draftMessage,
-            draft_channel: draftChannel === "whatsapp" ? "trengo_whatsapp" : "trengo_email",
-          }
-        : {}),
-      ...(testMode ? { testRun: true } : {}),
-    },
-  })
+  const { data: inserted, error } = await supabase
+    .from("inbox_events")
+    .insert({
+      kind: "task",
+      client_id: supabaseClientId,
+      author_id: authorId,
+      assignee_id: assigneeId,
+      title,
+      body,
+      status: "open",
+      priority: "high",
+      due_date: today,
+      source: "automation",
+      source_ref: {
+        rule: "payment_overdue_task",
+        invoiceId: invoice.id,
+        mondayItemId: client.mondayItemId,
+        ...(draftMessage
+          ? {
+              draft_message: draftMessage,
+              draft_channel: draftChannel === "whatsapp" ? "trengo_whatsapp" : "trengo_email",
+            }
+          : {}),
+        ...(testMode ? { testRun: true } : {}),
+      },
+    })
+    .select("id")
+    .single()
 
   if (error) {
     console.error("Payment overdue task insert failed:", error.message)
     return null
   }
+  if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
 
   return {
     rule: "payment_overdue_task",
@@ -992,38 +998,43 @@ async function ensurePositiveCplDropTask(
   )
   const body = bodyParts.join("\n")
 
-  const { error } = await supabase.from("inbox_events").insert({
-    kind: "task",
-    client_id: supabaseClientId,
-    author_id: authorId,
-    assignee_id: assigneeId,
-    title,
-    body,
-    status: "open",
-    priority: "low",
-    due_date: todayStr,
-    source: "automation",
-    source_ref: {
-      rule: "positive_client_signal_cpl_drop",
-      mondayItemId: client.mondayItemId,
-      period: cmp.period.name,
-      dropPct: dropPctRounded,
-      currCpl: cmp.curr.cpl,
-      prevCpl: cmp.prev.cpl,
-      ...(draftMessage
-        ? {
-            draft_message: draftMessage,
-            draft_channel: draftChannel === "whatsapp" ? "trengo_whatsapp" : "trengo_email",
-          }
-        : {}),
-      ...(testMode ? { testRun: true } : {}),
-    },
-  })
+  const { data: inserted, error } = await supabase
+    .from("inbox_events")
+    .insert({
+      kind: "task",
+      client_id: supabaseClientId,
+      author_id: authorId,
+      assignee_id: assigneeId,
+      title,
+      body,
+      status: "open",
+      priority: "low",
+      due_date: todayStr,
+      source: "automation",
+      source_ref: {
+        rule: "positive_client_signal_cpl_drop",
+        mondayItemId: client.mondayItemId,
+        period: cmp.period.name,
+        dropPct: dropPctRounded,
+        currCpl: cmp.curr.cpl,
+        prevCpl: cmp.prev.cpl,
+        ...(draftMessage
+          ? {
+              draft_message: draftMessage,
+              draft_channel: draftChannel === "whatsapp" ? "trengo_whatsapp" : "trengo_email",
+            }
+          : {}),
+        ...(testMode ? { testRun: true } : {}),
+      },
+    })
+    .select("id")
+    .single()
 
   if (error) {
     console.error("Positive signal task insert failed:", error.message)
     return null
   }
+  if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
 
   return {
     rule: "positive_client_signal_cpl_drop",

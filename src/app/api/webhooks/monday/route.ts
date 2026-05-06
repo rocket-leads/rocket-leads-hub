@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { stripHtml } from "@/lib/html"
+import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
 
 export const maxDuration = 60
 
@@ -262,35 +263,40 @@ export async function POST(req: NextRequest) {
   const titlePreview = text.length > 100 ? text.slice(0, 100) + "…" : text
   const bodyFull = text.length > 100 ? text : null
 
-  const { error } = await supabase.from("inbox_events").insert({
-    kind: classification.kind,
-    client_id: pulseId, // Monday item id IS our client_id text key
-    author_id: hq.id,
-    assignee_id: assigneeId,
-    title: titlePreview || `Monday update from ${userName}`,
-    body: bodyFull,
-    status: classification.kind === "task" ? "open" : "unread",
-    priority: classification.kind === "task" ? "normal" : null,
-    source: "monday",
-    source_thread: `monday:item:${pulseId}`,
-    source_msg_id: sourceMsgId,
-    // thread_key intentionally null — Monday updates don't form a chat thread.
-    // scope intentionally null — they live in Tasks/Updates, not in Chat tabs.
-    thread_key: null,
-    scope: null,
-    author_kind: "rl_team",
-    author_external: userId,
-    author_name_cached: userName,
-    classify_conf: classification.confidence,
-    classify_method: "ai",
-    created_at_src: triggerTime,
-    raw: payload as unknown as Record<string, unknown>,
-  })
+  const { data: inserted, error } = await supabase
+    .from("inbox_events")
+    .insert({
+      kind: classification.kind,
+      client_id: pulseId, // Monday item id IS our client_id text key
+      author_id: hq.id,
+      assignee_id: assigneeId,
+      title: titlePreview || `Monday update from ${userName}`,
+      body: bodyFull,
+      status: classification.kind === "task" ? "open" : "unread",
+      priority: classification.kind === "task" ? "normal" : null,
+      source: "monday",
+      source_thread: `monday:item:${pulseId}`,
+      source_msg_id: sourceMsgId,
+      // thread_key intentionally null — Monday updates don't form a chat thread.
+      // scope intentionally null — they live in Tasks/Updates, not in Chat tabs.
+      thread_key: null,
+      scope: null,
+      author_kind: "rl_team",
+      author_external: userId,
+      author_name_cached: userName,
+      classify_conf: classification.confidence,
+      classify_method: "ai",
+      created_at_src: triggerTime,
+      raw: payload as unknown as Record<string, unknown>,
+    })
+    .select("id")
+    .single()
 
   if (error) {
     console.error("Monday webhook insert failed:", error)
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
+  if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
 
   return NextResponse.json({
     ok: true,

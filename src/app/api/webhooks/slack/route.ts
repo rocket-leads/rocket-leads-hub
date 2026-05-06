@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { verifySlackSignature } from "@/lib/integrations/slack-oauth"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
+import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
 
 export const maxDuration = 60
 
@@ -171,33 +172,38 @@ export async function POST(req: NextRequest) {
   const titlePreview = text.length > 100 ? text.slice(0, 100) + "…" : text
   const bodyFull = text.length > 100 ? text : null
 
-  const { error } = await supabase.from("inbox_events").insert({
-    kind: classification.kind,
-    client_id: "", // slack channels aren't auto-linked to clients yet — C.5+ adds that
-    author_id: hq.id,
-    assignee_id: matchedUser?.user_id ?? hq.id,
-    title: titlePreview || `Slack message`,
-    body: bodyFull,
-    status,
-    priority,
-    source: "slack",
-    source_thread: sourceThread,
-    source_msg_id: sourceMsgId,
-    thread_key: threadKey,
-    scope: "internal", // Slack is the team / internal channel for now
-    author_kind: authorKind,
-    author_external: slackUserId,
-    author_name_cached: null, // resolved later via users.info if needed
-    classify_conf: classification.confidence,
-    classify_method: "ai",
-    created_at_src: new Date(parseFloat(ts) * 1000).toISOString(),
-    raw: payload as unknown as Record<string, unknown>,
-  })
+  const { data: inserted, error } = await supabase
+    .from("inbox_events")
+    .insert({
+      kind: classification.kind,
+      client_id: "", // slack channels aren't auto-linked to clients yet — C.5+ adds that
+      author_id: hq.id,
+      assignee_id: matchedUser?.user_id ?? hq.id,
+      title: titlePreview || `Slack message`,
+      body: bodyFull,
+      status,
+      priority,
+      source: "slack",
+      source_thread: sourceThread,
+      source_msg_id: sourceMsgId,
+      thread_key: threadKey,
+      scope: "internal", // Slack is the team / internal channel for now
+      author_kind: authorKind,
+      author_external: slackUserId,
+      author_name_cached: null, // resolved later via users.info if needed
+      classify_conf: classification.confidence,
+      classify_method: "ai",
+      created_at_src: new Date(parseFloat(ts) * 1000).toISOString(),
+      raw: payload as unknown as Record<string, unknown>,
+    })
+    .select("id")
+    .single()
 
   if (error) {
     console.error("Slack webhook insert failed:", error)
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
+  if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
 
   return NextResponse.json({
     ok: true,

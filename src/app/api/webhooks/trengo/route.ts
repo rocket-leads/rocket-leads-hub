@@ -4,6 +4,7 @@ import { readCache, writeCache } from "@/lib/cache"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { draftTrengoReply } from "@/lib/inbox/reply-drafter"
 import { resolveClientAssignee } from "@/lib/inbox/assignee"
+import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
 
 export const maxDuration = 60
 
@@ -394,36 +395,41 @@ export async function POST(req: NextRequest) {
     ? { draft_message: draftMessage, draft_channel: draftChannel }
     : null
 
-  const { error } = await supabase.from("inbox_events").insert({
-    kind: classification.kind,
-    client_id: clientRow?.monday_item_id ?? "",
-    author_id: hq.id,
-    assignee_id: assigneeId,
-    title: titlePreview || `Message from ${payload.authorName}`,
-    body: bodyFull,
-    status,
-    priority,
-    source: "trengo",
-    source_thread: `trengo:ticket:${payload.ticketId}`,
-    source_msg_id: sourceMsgId,
-    thread_key: `trengo:contact:${payload.contactId}`,
-    scope: "external",
-    author_kind: payload.authorKind,
-    author_external: payload.authorExternal,
-    author_name_cached: payload.authorName,
-    classify_conf: classification.confidence,
-    classify_method: "ai",
-    created_at_src: payload.createdAtSrc,
-    trengo_channel_id: payload.channelId,
-    source_ref: sourceRef,
-    raw: payload.raw,
-    attachments: payload.attachments,
-  })
+  const { data: inserted, error } = await supabase
+    .from("inbox_events")
+    .insert({
+      kind: classification.kind,
+      client_id: clientRow?.monday_item_id ?? "",
+      author_id: hq.id,
+      assignee_id: assigneeId,
+      title: titlePreview || `Message from ${payload.authorName}`,
+      body: bodyFull,
+      status,
+      priority,
+      source: "trengo",
+      source_thread: `trengo:ticket:${payload.ticketId}`,
+      source_msg_id: sourceMsgId,
+      thread_key: `trengo:contact:${payload.contactId}`,
+      scope: "external",
+      author_kind: payload.authorKind,
+      author_external: payload.authorExternal,
+      author_name_cached: payload.authorName,
+      classify_conf: classification.confidence,
+      classify_method: "ai",
+      created_at_src: payload.createdAtSrc,
+      trengo_channel_id: payload.channelId,
+      source_ref: sourceRef,
+      raw: payload.raw,
+      attachments: payload.attachments,
+    })
+    .select("id")
+    .single()
 
   if (error) {
     console.error("Trengo webhook insert failed:", error)
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
+  if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
 
   return NextResponse.json({
     ok: true,
