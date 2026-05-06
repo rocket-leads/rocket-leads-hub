@@ -59,16 +59,37 @@ type TrengoWebhookPayload = {
 }
 
 export async function POST(req: NextRequest) {
+  // Diagnostic logging — temporary while Roy verifies that Trengo is actually
+  // delivering webhooks. We log BEFORE the auth check so a 401 on a Trengo
+  // POST is still visible in Vercel logs (it would otherwise look identical
+  // to "no webhook received at all"). Body is read once as text and re-parsed
+  // below so we keep working with the same payload.
+  const rawBody = await req.text()
+  const haveSecret = !!req.nextUrl.searchParams.get("secret")
+  const haveAuthHeader = !!req.headers.get("authorization")
+  const ua = req.headers.get("user-agent") ?? ""
+  console.log(
+    `[trengo-webhook] POST received bodyLen=${rawBody.length} ` +
+      `hasSecretQuery=${haveSecret} hasAuthHeader=${haveAuthHeader} ` +
+      `ua=${ua.slice(0, 80)}`,
+  )
+
   if (!verifyAuth(req)) {
+    console.log("[trengo-webhook] auth FAILED — rejecting with 401")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   let payload: TrengoWebhookPayload
   try {
-    payload = (await req.json()) as TrengoWebhookPayload
+    payload = JSON.parse(rawBody) as TrengoWebhookPayload
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
+  console.log(
+    `[trengo-webhook] auth OK event_type=${payload.event_type ?? payload.type ?? "(none)"} ` +
+      `hasTicket=${!!(payload.ticket ?? payload.data?.ticket)} ` +
+      `hasMessage=${!!(payload.message ?? payload.data?.message)}`,
+  )
 
   // Trengo's webhook UI splits messages into separate event types per direction
   // (Inbound message / Outbound message / Internal message), each with its own
