@@ -1227,6 +1227,8 @@ function SectionHeader({
   tone,
   collapsed,
   onToggle,
+  selectAllState,
+  onToggleSelectAll,
 }: {
   icon: typeof AlertOctagon
   label: string
@@ -1234,16 +1236,56 @@ function SectionHeader({
   tone: SectionTone
   collapsed: boolean
   onToggle: () => void
+  /** Bulk-select state for the rows in this section. Hover-revealed
+   *  checkbox in the header lets the AM tick every row in Today/Overdue/
+   *  Upcoming with one click. Optional — updates don't have bulk-select. */
+  selectAllState?: "none" | "some" | "all"
+  onToggleSelectAll?: () => void
 }) {
   const t = SECTION_TONES[tone]
+  const showSelectAll = !!onToggleSelectAll
   return (
-    <button
-      type="button"
-      onClick={onToggle}
+    <div
       className={`group w-full flex items-stretch gap-3 rounded-lg overflow-hidden transition-colors ${t.bg} mb-2`}
     >
       <span className={`w-1 shrink-0 ${t.bar}`} aria-hidden />
-      <div className="flex items-center gap-3 flex-1 min-w-0 px-3 py-2.5">
+      {showSelectAll && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selectAllState === "all"}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleSelectAll?.()
+          }}
+          className={cn(
+            "self-center h-5 w-5 shrink-0 rounded border-2 inline-flex items-center justify-center transition-all ml-3",
+            // Pinned visible when something in the section is selected so
+            // the AM can see "yes, the whole bucket is queued". Otherwise
+            // hover-revealed to keep the header clean.
+            selectAllState === "none"
+              ? "border-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:border-foreground hover:bg-muted/40"
+              : selectAllState === "all"
+                ? "bg-primary border-primary text-primary-foreground"
+                : "bg-primary/20 border-primary text-primary",
+          )}
+          title={
+            selectAllState === "all"
+              ? "Deselect all in this group"
+              : "Select all in this group"
+          }
+        >
+          {selectAllState === "all" && <Check className="h-3 w-3" strokeWidth={3} />}
+          {selectAllState === "some" && (
+            <span className="block h-0.5 w-2.5 bg-primary rounded-full" aria-hidden />
+          )}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex items-center gap-3 flex-1 min-w-0 px-3 py-2.5 text-left"
+      >
         <span className={`h-7 w-7 rounded-md flex items-center justify-center shrink-0 ${t.iconBg}`}>
           <Icon className="h-4 w-4" />
         </span>
@@ -1254,8 +1296,8 @@ function SectionHeader({
             collapsed ? "-rotate-90" : ""
           }`}
         />
-      </div>
-    </button>
+      </button>
+    </div>
   )
 }
 
@@ -1277,6 +1319,7 @@ function TaskGroupSection({
   onAction,
   selectedIds,
   onToggleSelect,
+  onToggleSelectAll,
   users,
   focusedItemId,
 }: {
@@ -1291,10 +1334,21 @@ function TaskGroupSection({
   onAction: (item: InboxItem, action: TaskAction) => void
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
+  /** Toggle every row in this group (Today / Overdue / Upcoming) on or off
+   *  in one click. Computes "all/some/none" locally to drive the indeterminate
+   *  state on the header checkbox. */
+  onToggleSelectAll: (ids: string[], shouldSelect: boolean) => void
   users?: InboxUser[]
   focusedItemId?: string | null
 }) {
   if (items.length === 0) return null
+  const selectedInGroup = items.filter((it) => selectedIds.has(it.id)).length
+  const selectAllState: "none" | "some" | "all" =
+    selectedInGroup === 0
+      ? "none"
+      : selectedInGroup === items.length
+        ? "all"
+        : "some"
   return (
     <div>
       <SectionHeader
@@ -1304,6 +1358,15 @@ function TaskGroupSection({
         tone={tone}
         collapsed={collapsed}
         onToggle={onToggle}
+        selectAllState={selectAllState}
+        onToggleSelectAll={() =>
+          onToggleSelectAll(
+            items.map((it) => it.id),
+            // If anything is unselected in this group, fill it; if all are
+            // already selected, the click clears them.
+            selectAllState !== "all",
+          )
+        }
       />
       {!collapsed && (
         <div className="space-y-2 mb-1">
@@ -1429,6 +1492,17 @@ function GroupedTasks({
     })
   }
 
+  function toggleSelectMany(ids: string[], shouldSelect: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (shouldSelect) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+
   function clearSelection() {
     setSelectedIds(new Set())
   }
@@ -1472,6 +1546,7 @@ function GroupedTasks({
         onAction={onAction}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
+        onToggleSelectAll={toggleSelectMany}
         users={users}
         focusedItemId={focusedItemId}
       />
@@ -1487,6 +1562,7 @@ function GroupedTasks({
         onAction={onAction}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
+        onToggleSelectAll={toggleSelectMany}
         users={users}
         focusedItemId={focusedItemId}
       />
@@ -1502,6 +1578,7 @@ function GroupedTasks({
         onAction={onAction}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
+        onToggleSelectAll={toggleSelectMany}
         users={users}
         focusedItemId={focusedItemId}
       />
