@@ -26,6 +26,7 @@ import {
   Search,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { InboxListRow, type RowAction } from "./inbox-list-row"
@@ -346,6 +347,12 @@ export function InboxView({
               value={taskFilter}
               onChange={setTaskFilter}
             />
+            <QuickAddTaskBar
+              clients={clients}
+              lockedClient={lockedClient}
+              currentUserId={currentUser.id}
+              onCreated={refreshAll}
+            />
             {tasksQuery.isLoading ? (
               <EmptyState text="Loading tasks…" />
             ) : tasks.length === 0 ? (
@@ -534,6 +541,256 @@ function EmptyState({ text, onCreate }: { text: string; onCreate?: () => void })
           <Plus className="h-4 w-4" />
           Create one
         </Button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Inline quick-add bar for tasks. Sits at the top of the Tasks tab; type a
+ * title, pick a client (or skip if locked-client), Enter creates the task on
+ * the current user with due=today. Aimed at the mid-triage moment when the
+ * AM thinks "I need to do X for klant Y" — full composer dialog is overkill
+ * and breaks flow.
+ *
+ * Behaviour:
+ *  - Title input is the focused affordance — wide and always-visible.
+ *  - Client picker collapses to nothing when lockedClient is set (we already
+ *    know who it's for).
+ *  - Date defaults to today; user can override before submit.
+ *  - Enter on title submits when both title and client are filled. If client
+ *    is missing, focus jumps to the picker instead so the user knows what's
+ *    blocking.
+ *  - After successful submit, the title clears but the client selection
+ *    sticks — so quick-adding multiple tasks for the same client is fast.
+ *  - On error, message shows under the bar; nothing else changes.
+ */
+function QuickAddTaskBar({
+  clients,
+  lockedClient,
+  currentUserId,
+  onCreated,
+}: {
+  clients: InboxClientOption[]
+  lockedClient?: InboxClientOption
+  currentUserId: string
+  onCreated: () => void
+}) {
+  const [title, setTitle] = useState("")
+  const [clientId, setClientId] = useState<string>(lockedClient?.id ?? "")
+  const [dueDate, setDueDate] = useState<string>(() =>
+    new Date().toISOString().slice(0, 10),
+  )
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const titleRef = useRef<HTMLInputElement>(null)
+  const clientWrapRef = useRef<HTMLDivElement>(null)
+
+  // If the locked client changes (per-client tab navigation), reseed.
+  useEffect(() => {
+    if (lockedClient?.id) setClientId(lockedClient.id)
+  }, [lockedClient?.id])
+
+  async function submit() {
+    const trimmed = title.trim()
+    if (!trimmed) {
+      titleRef.current?.focus()
+      return
+    }
+    if (!clientId) {
+      setError("Pick a client first.")
+      // Move focus to the client picker so the user can fill it in.
+      const input = clientWrapRef.current?.querySelector<HTMLInputElement>("input")
+      input?.focus()
+      return
+    }
+    setError(null)
+    setSubmitting(true)
+    try {
+      const res = await fetch("/api/inbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "task",
+          clientId,
+          assigneeId: currentUserId,
+          title: trimmed,
+          dueDate,
+        }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? `Create failed (${res.status})`)
+      }
+      // Keep the client selection so multi-add for the same klant stays fast.
+      setTitle("")
+      titleRef.current?.focus()
+      onCreated()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create task")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const showClient = !lockedClient
+
+  return (
+    <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <Plus className="h-4 w-4 text-muted-foreground/70 shrink-0" />
+        <input
+          ref={titleRef}
+          type="text"
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value)
+            if (error) setError(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              submit()
+            } else if (e.key === "Escape") {
+              setTitle("")
+            }
+          }}
+          placeholder="Add a task — type and Enter"
+          disabled={submitting}
+          className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
+        />
+        {showClient && (
+          <div ref={clientWrapRef} className="w-48 shrink-0">
+            <QuickClientPicker
+              clients={clients}
+              value={clientId}
+              onChange={(id) => {
+                setClientId(id)
+                if (error) setError(null)
+              }}
+            />
+          </div>
+        )}
+        <input
+          type="date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          title="Due date"
+        />
+        <Button
+          size="sm"
+          onClick={submit}
+          disabled={submitting || !title.trim()}
+          className="shrink-0"
+        >
+          Add
+        </Button>
+      </div>
+      {error && (
+        <p className="text-[11px] text-red-400 mt-1.5 ml-6">{error}</p>
+      )}
+    </div>
+  )
+}
+
+/** Compact searchable client picker for the quick-add bar. Same pattern as
+ *  the composer's ClientCombobox but visually denser and live-first sorted.
+ *  Kept private to this file because the composer's picker is shaped for the
+ *  taller dialog layout. */
+function QuickClientPicker({
+  clients,
+  value,
+  onChange,
+}: {
+  clients: InboxClientOption[]
+  value: string
+  onChange: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const ref = useRef<HTMLDivElement>(null)
+  const selected = useMemo(() => clients.find((c) => c.id === value) ?? null, [clients, value])
+
+  useEffect(() => {
+    if (!value) setQuery("")
+    else if (selected) setQuery(selected.name)
+  }, [value, selected])
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open])
+
+  const filtered = useMemo(() => {
+    const sorted = [...clients].sort((a, b) => {
+      if (!!a.isLive !== !!b.isLive) return a.isLive ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    const q = query.trim().toLowerCase()
+    if (!q) return sorted.slice(0, 50)
+    return sorted.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 50)
+  }, [clients, query])
+
+  function pick(c: InboxClientOption) {
+    onChange(c.id)
+    setQuery(c.name)
+    setOpen(false)
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        type="text"
+        value={query}
+        placeholder="Pick client…"
+        onChange={(e) => {
+          setQuery(e.target.value)
+          setOpen(true)
+          if (selected && e.target.value !== selected.name) onChange("")
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && filtered[0]) {
+            e.preventDefault()
+            pick(filtered[0])
+          } else if (e.key === "Escape") {
+            setOpen(false)
+          }
+        }}
+        className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute z-30 mt-1 w-full max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-lg py-1">
+          {filtered.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onMouseDown={(e) => {
+                // mousedown so the click fires before the input's onBlur closes
+                // the popover — otherwise the click would be swallowed.
+                e.preventDefault()
+                pick(c)
+              }}
+              className={cn(
+                "w-full text-left px-2.5 py-1 text-xs hover:bg-muted/60 flex items-center justify-between gap-2",
+                c.id === value && "bg-muted/60",
+              )}
+            >
+              <span className="truncate">{c.name}</span>
+              {c.isLive && (
+                <span className="text-[9px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 shrink-0">
+                  Live
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )
