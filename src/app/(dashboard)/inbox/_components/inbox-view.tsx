@@ -301,6 +301,7 @@ export function InboxView({
               <GroupedTasks
                 tasks={tasks}
                 showClient={!lockedClient}
+                users={users}
                 onItemClick={(item) => setDetailItem(item)}
                 onAction={(item, action) => {
                   if (action === "done") patchItem(item.id, { status: "done" })
@@ -309,6 +310,8 @@ export function InboxView({
                   else if (action === "unsnooze") patchItem(item.id, { snoozedUntil: null })
                   else if (typeof action === "object" && action.type === "snooze") {
                     patchItem(item.id, { snoozedUntil: action.until })
+                  } else if (typeof action === "object" && action.type === "reassign") {
+                    patchItem(item.id, { assigneeId: action.assigneeId })
                   }
                 }}
               />
@@ -539,7 +542,10 @@ function SectionHeader({
   )
 }
 
-type TaskAction = Extract<RowAction, "done" | "cancel" | "reopen" | "unsnooze"> | { type: "snooze"; until: string }
+type TaskAction =
+  | Extract<RowAction, "done" | "cancel" | "reopen" | "unsnooze">
+  | { type: "snooze"; until: string }
+  | { type: "reassign"; assigneeId: string }
 
 function TaskGroupSection({
   icon,
@@ -553,6 +559,7 @@ function TaskGroupSection({
   onAction,
   selectedIds,
   onToggleSelect,
+  users,
 }: {
   icon: typeof AlertOctagon
   label: string
@@ -565,6 +572,7 @@ function TaskGroupSection({
   onAction: (item: InboxItem, action: TaskAction) => void
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
+  users?: InboxUser[]
 }) {
   if (items.length === 0) return null
   return (
@@ -587,13 +595,15 @@ function TaskGroupSection({
               selected={selectedIds.has(item.id)}
               onToggleSelect={() => onToggleSelect(item.id)}
               onClick={() => onItemClick(item)}
+              users={users}
               onAction={(action) => {
                 if (
                   action === "done" ||
                   action === "cancel" ||
                   action === "reopen" ||
                   action === "unsnooze" ||
-                  (typeof action === "object" && action.type === "snooze")
+                  (typeof action === "object" &&
+                    (action.type === "snooze" || action.type === "reassign"))
                 ) {
                   onAction(item, action as TaskAction)
                 }
@@ -649,11 +659,13 @@ function GroupedTasks({
   showClient,
   onItemClick,
   onAction,
+  users,
 }: {
   tasks: InboxItem[]
   showClient: boolean
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: TaskAction) => void
+  users?: InboxUser[]
 }) {
   const groups = useMemo(() => groupTasksByDeadline(tasks), [tasks])
   const { collapsed, toggle } = useTaskCollapse()
@@ -713,6 +725,7 @@ function GroupedTasks({
         onAction={onAction}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
+        users={users}
       />
       <TaskGroupSection
         icon={CalendarDays}
@@ -726,6 +739,7 @@ function GroupedTasks({
         onAction={onAction}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
+        users={users}
       />
       <TaskGroupSection
         icon={CalendarClock}
@@ -739,6 +753,7 @@ function GroupedTasks({
         onAction={onAction}
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
+        users={users}
       />
 
       {selectedIds.size > 0 && (

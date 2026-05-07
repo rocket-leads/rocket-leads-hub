@@ -1,10 +1,12 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw, Link2Off, Clock, BellOff } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw, Link2Off, Clock, BellOff, UserCog } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SourcePill } from "./source-pill"
 import type { InboxItem, TaskStatus } from "@/types/inbox"
+
+export type RowUser = { id: string; name: string | null; email: string }
 
 const TASK_STATUS_LABELS: Record<TaskStatus, { label: string; cls: string }> = {
   open: { label: "Open", cls: "bg-blue-500/10 text-blue-400" },
@@ -42,6 +44,7 @@ export type RowAction =
   | "unread"
   | { type: "snooze"; until: string }
   | "unsnooze"
+  | { type: "reassign"; assigneeId: string }
 
 export function InboxListRow({
   item,
@@ -50,6 +53,7 @@ export function InboxListRow({
   onAction,
   selected,
   onToggleSelect,
+  users,
 }: {
   item: InboxItem
   showClient: boolean
@@ -59,6 +63,11 @@ export function InboxListRow({
    *  Updates use their existing read/unread checkbox path. */
   selected?: boolean
   onToggleSelect?: () => void
+  /** Team members for the inline Reassign popover. Optional — when omitted,
+   *  the Reassign button is hidden and reassignment falls back to the detail
+   *  dialog. Always available in the global inbox; locked-client inbox
+   *  passes them through too. */
+  users?: RowUser[]
 }) {
   const isUpdate = item.kind === "update"
   const isUnread = isUpdate && item.status === "unread"
@@ -198,7 +207,7 @@ export function InboxListRow({
         </div>
 
         {/* Tasks keep right-side actions; update toggles live in the leading checkbox. */}
-        {!isUpdate && onAction && <RowActions item={item} onAction={onAction} />}
+        {!isUpdate && onAction && <RowActions item={item} onAction={onAction} users={users} />}
       </div>
     </div>
   )
@@ -237,9 +246,11 @@ function UpdateCheckbox({
 function RowActions({
   item,
   onAction,
+  users,
 }: {
   item: InboxItem
   onAction: (action: RowAction) => void
+  users?: RowUser[]
 }) {
   const stop = (e: React.MouseEvent) => e.stopPropagation()
   const isActive = item.status === "open" || item.status === "in_progress"
@@ -267,6 +278,13 @@ function RowActions({
           ) : (
             <SnoozeButton onPick={(until) => onAction({ type: "snooze", until })} />
           )}
+          {users && users.length > 0 && (
+            <ReassignButton
+              users={users}
+              currentAssigneeId={item.assigneeId}
+              onPick={(assigneeId) => onAction({ type: "reassign", assigneeId })}
+            />
+          )}
           <ActionButton
             tone="danger"
             label="Cancel"
@@ -281,6 +299,114 @@ function RowActions({
           onClick={() => onAction("reopen")}
           icon={<RotateCcw className="h-4 w-4" />}
         />
+      )}
+    </div>
+  )
+}
+
+/** Inline reassign popover. Same construction pattern as SnoozeButton (custom
+ *  outside-click + Esc closer) so the row stays compact. Search filter on top
+ *  for the few cases where the team grows beyond what fits at a glance, plus
+ *  a checkmark next to the current assignee so re-clicking the same person
+ *  is an obvious no-op. Backend already accepts assigneeId on PATCH /api/inbox/:id
+ *  and fires the assignment push, so the button is purely UI plumbing. */
+function ReassignButton({
+  users,
+  currentAssigneeId,
+  onPick,
+}: {
+  users: RowUser[]
+  currentAssigneeId: string | null
+  onPick: (assigneeId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDoc)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  // Reset the search box every time the popover opens so a stale query from
+  // a prior row doesn't bleed across reassigns.
+  useEffect(() => {
+    if (open) setQuery("")
+  }, [open])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return users
+    return users.filter((u) => {
+      const haystack = `${u.name ?? ""} ${u.email}`.toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [users, query])
+
+  function pick(userId: string) {
+    setOpen(false)
+    onPick(userId)
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <ActionButton
+        tone="muted"
+        label="Reassign"
+        onClick={() => setOpen((s) => !s)}
+        icon={<UserCog className="h-4 w-4" />}
+      />
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 w-60 rounded-md border border-border bg-popover shadow-lg text-xs">
+          <div className="p-1.5 border-b border-border/60">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search team…"
+              autoFocus
+              className="w-full rounded-sm bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            />
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-muted-foreground/70 italic">No matches</div>
+            ) : (
+              filtered.map((u) => {
+                const isCurrent = u.id === currentAssigneeId
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => pick(u.id)}
+                    className="w-full text-left px-3 py-1.5 hover:bg-muted/60 flex items-center justify-between gap-2"
+                  >
+                    <span className="truncate">
+                      <span className="font-medium">{u.name ?? u.email}</span>
+                      {u.name && (
+                        <span className="text-muted-foreground/60 ml-1 text-[10px]">
+                          {u.email}
+                        </span>
+                      )}
+                    </span>
+                    {isCurrent && <Check className="h-3 w-3 text-primary shrink-0" />}
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
