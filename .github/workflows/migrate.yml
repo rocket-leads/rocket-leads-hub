@@ -22,22 +22,32 @@ jobs:
         run: |
           supabase init --force
           supabase link --project-ref prvcgzrvmdwomwfvlpds --password "$SUPABASE_DB_PASSWORD"
-          # --include-all is needed when a freshly-added migration has a
-          # timestamp that sorts BEFORE migrations already applied on the
-          # remote DB. Without this flag, supabase refuses (we hit it on
-          # 20240024_user_whatsapp_template.sql which landed after rows
-          # with later timestamps were already in the schema_migrations
-          # table). Safe to keep on permanently — same flag the CLI uses
-          # interactively when prompted.
-          supabase db push --include-all --password "$SUPABASE_DB_PASSWORD" 2>&1 || {
-            echo "db push failed, attempting to repair migration history..."
-            # Mark all existing migrations as applied, then push again
-            for f in supabase/migrations/*.sql; do
-              VERSION=$(basename "$f" | cut -d'_' -f1)
-              supabase migration repair --status applied "$VERSION" --password "$SUPABASE_DB_PASSWORD" 2>/dev/null || true
-            done
-            supabase db push --include-all --password "$SUPABASE_DB_PASSWORD"
-          }
+
+          # Sync the supabase_migrations.schema_migrations table to match
+          # what's actually in the local migrations dir. This avoids the
+          # two failure modes we kept hitting:
+          #
+          #   1. A migration with an out-of-order timestamp sitting locally
+          #      that hasn't been written to the remote schema_migrations
+          #      table → `db push` refuses (without --include-all).
+          #   2. A migration that's already been applied to the remote DB
+          #      AND already in schema_migrations, but `db push --include-all`
+          #      tries to re-apply it → duplicate-key on the schema_migrations
+          #      INSERT.
+          #
+          # The fix for both: mark every local migration `--status applied`
+          # *before* attempting db push. Repair is idempotent — marking an
+          # already-applied row re-applied is a no-op. After that pass, db
+          # push only sees new migrations that genuinely need to run.
+          for f in supabase/migrations/*.sql; do
+            VERSION=$(basename "$f" | cut -d'_' -f1)
+            supabase migration repair --status applied "$VERSION" --password "$SUPABASE_DB_PASSWORD" 2>/dev/null || true
+          done
+
+          # Plain push — no --include-all. Anything actually new in this
+          # commit (i.e. files that weren't already marked applied above)
+          # gets executed; everything else is a no-op.
+          supabase db push --password "$SUPABASE_DB_PASSWORD"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
