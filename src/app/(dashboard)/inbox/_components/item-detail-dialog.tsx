@@ -344,6 +344,18 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
           </div>
         ) : (
           <>
+            {/* Prominent kind banner. Roy: "ik wil duidelijk onderscheid
+                tussen updates en tasks." A coloured strip + chunky label
+                so the user knows in 0.2s what kind of item they opened.
+                Tasks get a violet accent (action), updates a muted blue
+                (informational). The reclassify control sits directly
+                next to it so a misclassification is one click away. */}
+            <KindBanner
+              kind={item.kind}
+              source={item.source}
+              disabled={reclassifying}
+              onChange={reclassify}
+            />
             <DialogHeader>
               <div className="flex items-start gap-2">
                 {item.priority === "high" && (
@@ -453,15 +465,9 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               )
             )}
 
-            {/* Reclassify — escape hatch when AI put it in the wrong tab.
-                Chat is only offered for thread-bearing sources (Trengo/Slack);
-                Monday/automation/manual items don't have a thread to live in. */}
-            <ReclassifyControl
-              currentKind={item.kind}
-              source={item.source}
-              disabled={reclassifying}
-              onChange={reclassify}
-            />
+            {/* The reclassify control lives in the KindBanner at the top
+                of the panel now — putting it twice is just clutter. Kept
+                the component definition below in case we need it again. */}
 
             {/* Update controls */}
             {isUpdate && (
@@ -775,16 +781,102 @@ function AssigneePicker({
  * item came from a thread-bearing source (Trengo or Slack) — Monday updates
  * and manual items don't have a thread to live in.
  */
+/**
+ * Top-of-panel kind banner. Big colored strip + label so the user can tell
+ * in a glance whether they opened a Task or an Update. The reclassify
+ * dropdown lives on the right side of the banner — one-click fix when the
+ * AI classifier put the item in the wrong tab.
+ *
+ * Tone:
+ *   - task    → violet (action needed, primary brand colour)
+ *   - update  → blue (informational)
+ *   - chat    → muted (we rarely render this — chat lives in Client/Team Inbox)
+ */
+function KindBanner({
+  kind,
+  source,
+  disabled,
+  onChange,
+}: {
+  kind: InboxKind
+  source: InboxSource
+  disabled: boolean
+  onChange: (kind: "task" | "update" | "chat") => void
+}) {
+  const tone =
+    kind === "task"
+      ? {
+          bar: "bg-violet-500",
+          bg: "bg-violet-500/10",
+          text: "text-violet-700 dark:text-violet-300",
+          icon: ListTodo,
+          label: "Task",
+          hint: "Iemand moet hier iets mee doen.",
+        }
+      : kind === "update"
+        ? {
+            bar: "bg-blue-500",
+            bg: "bg-blue-500/10",
+            text: "text-blue-700 dark:text-blue-300",
+            icon: InboxIcon,
+            label: "Update",
+            hint: "Informatie om te weten — geen actie nodig.",
+          }
+        : {
+            bar: "bg-muted-foreground/40",
+            bg: "bg-muted/40",
+            text: "text-foreground/80",
+            icon: MessagesSquare,
+            label: "Chat",
+            hint: "Conversation thread.",
+          }
+  const Icon = tone.icon
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-lg overflow-hidden",
+        tone.bg,
+      )}
+    >
+      <span className={cn("w-1 self-stretch shrink-0", tone.bar)} aria-hidden />
+      <div className="flex-1 min-w-0 py-2.5 pr-3 flex items-center gap-3">
+        <Icon className={cn("h-5 w-5 shrink-0", tone.text)} />
+        <div className="flex-1 min-w-0">
+          <p className={cn("text-sm font-semibold leading-tight", tone.text)}>
+            {tone.label}
+          </p>
+          <p className="text-[11px] text-muted-foreground/80 leading-tight mt-0.5">
+            {tone.hint}
+          </p>
+        </div>
+        <ReclassifyControl
+          currentKind={kind}
+          source={source}
+          disabled={disabled}
+          onChange={onChange}
+          compact
+        />
+      </div>
+    </div>
+  )
+}
+
 function ReclassifyControl({
   currentKind,
   source,
   disabled,
   onChange,
+  compact = false,
 }: {
   currentKind: InboxKind
   source: InboxSource
   disabled: boolean
   onChange: (kind: "task" | "update" | "chat") => void
+  /** Compact = no "Type" label above; renders just the segment control
+   *  inline. Used by the KindBanner where the active kind is already
+   *  written out in the banner itself. */
+  compact?: boolean
 }) {
   const canChat = source === "trengo" || source === "slack"
 
@@ -794,34 +886,40 @@ function ReclassifyControl({
     ...(canChat ? [{ value: "chat" as const, label: "Chat", icon: MessagesSquare }] : []),
   ]
 
+  const segment = (
+    <div className="inline-flex items-center rounded-lg border border-border/60 bg-background/60 p-0.5">
+      {options.map((opt) => {
+        const active = opt.value === currentKind
+        const Icon = opt.icon
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            disabled={disabled || active}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md text-xs font-medium transition-colors",
+              active
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/50",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  if (compact) return segment
+
   return (
     <div>
       <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 mb-1.5">
         Type
       </p>
-      <div className="inline-flex items-center rounded-lg border border-border/60 bg-muted/30 p-0.5">
-        {options.map((opt) => {
-          const active = opt.value === currentKind
-          const Icon = opt.icon
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => onChange(opt.value)}
-              disabled={disabled || active}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-3 h-7 rounded-md text-xs font-medium transition-colors",
-                active
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-background/50",
-              )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {opt.label}
-            </button>
-          )
-        })}
-      </div>
+      {segment}
     </div>
   )
 }

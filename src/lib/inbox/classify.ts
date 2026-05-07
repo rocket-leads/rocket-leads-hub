@@ -17,29 +17,54 @@ export type ClassifyOutput = {
   reason: string
 }
 
-const CONFIDENCE_FLOOR = 0.6
+const CONFIDENCE_FLOOR = 0.85
 
-const SYSTEM_PROMPT = `You classify incoming messages in a workplace inbox into ONE of three categories.
+const SYSTEM_PROMPT = `You classify workplace inbox messages into ONE of: "chat", "task", or "update".
+
+GROUND RULES
+- DEFAULT IS CHAT. Most messages are chat. The bar for "task" or "update" is HIGH — only promote when the case is overwhelming.
+- Messages from CLIENTS are ALWAYS chat. A client asking a question, sharing info, complaining, or making a request is conversation that needs human judgment, not a Hub task. The AM decides whether to commit to action — that decision generates a task only when the AM explicitly states it.
+- Messages from RL_TEAM (the agency's own team) can be task or update IF AND ONLY IF they meet the strict tests below.
+
+CRITICAL DISTINCTION — TASK vs UPDATE
+The same message about the same client can read as either, depending on tense and intent. Use this rule:
+  - TASK = something STILL HAS TO HAPPEN. There is unfinished action, and a specific person is the one who needs to do it. Look for imperative verbs, hand-offs, "to do" markers, future-tense commitments, or questions that demand work ("kun je…?", "wil je even…?", "check je…?").
+  - UPDATE = something HAS ALREADY HAPPENED or is currently in a stable state. Past tense, status reports, FYI announcements. Nobody needs to act on this; the team just needs to know it.
+If the message is an @mention with no clear action verb directed at the mentioned person → UPDATE (they're being kept in the loop, not asked to do something).
+If the message is a hand-off ("@X kun je dit oppakken?", "@X TO DO …", "@X regel jij dat?") → TASK.
+If the message is past-tense status ("@X klant heeft getekend", "@X campagne staat live") → UPDATE.
 
 CATEGORIES
-- "chat": ambient conversational message — greetings, replies, social chitchat, short questions that are just part of a flowing conversation, FYI of no immediate consequence. THIS IS THE DEFAULT. When in any doubt → chat.
-- "task": EXPLICIT or IMPLICIT action requested with a (soft) deadline. Examples:
-    "kun je morgen even bellen met X?"
-    "graag voor vrijdag de creatives uploaden"
-    "review deze ad copy please"
-    "kan jij dit oppakken?"
-- "update": discrete FYI / status share that the recipient should KNOW but doesn't need to ACT on. The thing being shared has informational weight beyond chitchat. Examples:
-    "Net Sinovo gebeld, ze zijn enthousiast — gaan met ons door"
-    "Ad account is back online na de Meta restrictie"
+- "chat": all conversational messages. Greetings, replies, questions, complaints, social chitchat, short notes, ambient communication. The default for everything that isn't unmistakably one of the others.
+- "task": Either (a) an explicit hand-off via @mention with an action verb directed at the mentioned person, OR (b) a first-person commitment by the author to do something concrete ("ik ga X doen", "I'll send Y by Friday"). Examples that DO qualify:
+    "Ik ga vanmiddag de creatives uploaden"
+    "I'll send the proposal by end of day"
+    "Morgen bel ik X om dat te regelen"
+    "@Stefan kun je deze koppeling checken?"
+    "@Roy TO DO contact opnemen met klant X"
+    "@Danny regel jij de campagne setup voor donderdag?"
+  Examples that DO NOT qualify (these are UPDATE or CHAT):
+    Anything from a client → chat
+    Vague intent like "ik kijk er even naar" → chat (no concrete action)
+    "@Stefan klant heeft contract getekend" → update (past tense, FYI)
+    "@Roy campagne staat live sinds 09:00" → update (status report)
+    "@Stefan we hebben hier de uitnodiging ontvangen" → update (status share with no ask)
+    Questions or greetings without commitment → chat
+- "update": a substantive status share from RL_TEAM that the team should KNOW but doesn't need to ACT on. Examples:
     "Klant heeft het contract getekend"
+    "Ad account is back online na de Meta restrictie"
     "Campaign Y staat live sinds 09:00"
+    "@Stefan onboarding deze klant is afgerond"
+    "@Roy de creatives staan klaar in Drive"
 
-DECISION RULES (read in order)
-1. If unclear or borderline → "chat". Prefer chat over false-positive promotion.
-2. A short reply, greeting, or social message → "chat".
-3. A question that just asks for info ("hoe gaat het?", "weet jij of...") → "chat" (it's a conversation, not an action item).
-4. A status share with concrete substance → "update".
-5. An action request, even soft ("zou je..."), with implicit deadline → "task".
+DECISION ORDER
+1. AUTHOR is "client" or "external" → "chat". No exceptions, no matter what they ask. Confidence 1.0.
+2. Past-tense status report or FYI without unfinished action → "update".
+3. @mention with imperative/question/TO-DO directed at the mentioned person → "task".
+4. First-person commitment "ik ga / I'll" with concrete action → "task".
+5. Anything else → "chat" with low confidence.
+
+When in doubt between task and update, prefer UPDATE. False-positive tasks add noise; missed tasks are still visible in updates.
 
 OUTPUT
 Return ONLY JSON, no prose:
@@ -50,10 +75,25 @@ Return ONLY JSON, no prose:
  * uncertainty — false positives in task/update are noisier than missing a
  * borderline case (which still lands in the chat substrate anyway).
  *
- * Confidence below 0.6 also falls back to "chat" — the AI itself signals
- * uncertainty and we trust that signal.
+ * Roy's rule: client messages are ALWAYS chat. Tasks emerge from team
+ * commitment, not from client requests. We hard-branch on `authorKind` and
+ * skip the LLM entirely for client/external — saves cost + latency, and
+ * removes any chance of the model promoting a client question to a task.
+ *
+ * Confidence below CONFIDENCE_FLOOR (0.85) falls back to "chat" — the bar
+ * for promotion is intentionally high.
  */
 export async function classifyInboxMessage(input: ClassifyInput): Promise<ClassifyOutput> {
+  // Hard short-circuit: client/external messages don't generate tasks. The
+  // AM creates a task by committing to action in their own reply or note.
+  if (input.authorKind !== "rl_team") {
+    return {
+      kind: "chat",
+      confidence: 1,
+      reason: "client/external message — chat by default",
+    }
+  }
+
   try {
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
