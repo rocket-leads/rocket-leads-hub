@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { InboxListRow, type RowAction } from "./inbox-list-row"
 import { ComposerDialog } from "./composer-dialog"
 import { ItemDetailDialog } from "./item-detail-dialog"
@@ -136,6 +137,7 @@ export function InboxView({
   const [composerKind, setComposerKind] = useState<"update" | "task">("update")
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null)
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const updateStatuses = useMemo(
@@ -386,6 +388,14 @@ export function InboxView({
         return
       }
 
+      // ? opens the shortcuts overlay (Slack/Linear default). Skip when
+      // typing or when the detail dialog is open — those own keyboard.
+      if (e.key === "?" && !isTypingTarget(e.target) && !detailItem) {
+        e.preventDefault()
+        setShortcutsOpen(true)
+        return
+      }
+
       if (isTypingTarget(e.target)) return
       if (detailItem) return // detail dialog owns the keyboard while open
       if (activeTab !== "tasks" && activeTab !== "updates") return
@@ -520,6 +530,17 @@ export function InboxView({
               <Plus className="h-4 w-4" />
               New {activeTab === "tasks" ? "task" : "update"}
             </Button>
+          )}
+          {!isChatTab && !isClientOnlyTab && (
+            <button
+              type="button"
+              onClick={() => setShortcutsOpen(true)}
+              title="Keyboard shortcuts (?)"
+              aria-label="Keyboard shortcuts"
+              className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-input text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            >
+              ?
+            </button>
           )}
         </div>
       </div>
@@ -749,7 +770,108 @@ export function InboxView({
           onChanged={refreshAll}
         />
       )}
+
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
+  )
+}
+
+/**
+ * Keyboard shortcuts overlay. Triggered by `?` (Slack/Linear default) or
+ * the `?` button in the inbox header. Lists what each key does in a clean
+ * grid so AMs don't have to remember the bindings.
+ *
+ * Built on the same base-ui dialog the detail slide-over uses, but rendered
+ * as a centered modal — small reference card, not a slide-out panel.
+ */
+function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  // Esc closes via base-ui's built-in handler.
+  const groups: Array<{ label: string; rows: Array<{ keys: string[]; desc: string }> }> = [
+    {
+      label: "Navigate",
+      rows: [
+        { keys: ["j", "↓"], desc: "Next row" },
+        { keys: ["k", "↑"], desc: "Previous row" },
+        { keys: ["Enter", "o"], desc: "Open detail" },
+        { keys: ["Esc"], desc: "Close detail" },
+      ],
+    },
+    {
+      label: "Act on focused row",
+      rows: [
+        { keys: ["e"], desc: "Done (task) / toggle read (update)" },
+        { keys: ["x"], desc: "Cancel task" },
+      ],
+    },
+    {
+      label: "Search & help",
+      rows: [
+        { keys: ["/"], desc: "Focus search" },
+        { keys: ["?"], desc: "Show this help" },
+      ],
+    },
+  ]
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Backdrop
+          className={cn(
+            "fixed inset-0 isolate z-50 bg-black/40 backdrop-blur-sm",
+            "duration-100 ease-out",
+            "data-open:animate-in data-open:fade-in-0",
+            "data-closed:animate-out data-closed:fade-out-0",
+          )}
+        />
+        <DialogPrimitive.Popup
+          className={cn(
+            "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50",
+            "w-[90vw] max-w-md rounded-xl border border-border bg-popover shadow-2xl outline-none",
+            "duration-100 ease-out",
+            "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95",
+            "data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          )}
+        >
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border/60">
+            <DialogPrimitive.Title className="text-sm font-semibold">
+              Keyboard shortcuts
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Close
+              className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </DialogPrimitive.Close>
+          </div>
+          <div className="px-5 py-4 space-y-4">
+            {groups.map((g) => (
+              <div key={g.label}>
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60 mb-2">
+                  {g.label}
+                </p>
+                <div className="space-y-1.5">
+                  {g.rows.map((r) => (
+                    <div key={r.desc} className="flex items-center justify-between gap-3">
+                      <span className="text-xs text-foreground/80">{r.desc}</span>
+                      <span className="inline-flex items-center gap-1">
+                        {r.keys.map((k, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-md border border-border bg-background text-[11px] font-mono font-medium text-foreground/80"
+                          >
+                            {k}
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogPrimitive.Popup>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }
 
