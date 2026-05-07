@@ -97,6 +97,24 @@ export async function GET(req: NextRequest) {
     const allClients = [...onboarding, ...current]
     console.log(`[refresh-kpi] loaded ${allClients.length} clients (${onboarding.length} onboarding + ${current.length} current)`)
 
+    // 1b. Run the Rocket Leads campaign matcher across the full RL ad account
+    // BEFORE we read selected campaigns below, so brand-new clients added since
+    // the last cron tick — and any newly-launched ACTIVE campaigns whose name
+    // matches a known client at ≥0.95 confidence — get their `client_campaigns`
+    // rows in place. Without this, the morning's KPI compute would still treat
+    // those clients as "no selection" and leave their numbers at zero.
+    try {
+      const { runRocketLeadsCampaignMatcher } = await import("@/lib/clients/run-campaign-matcher")
+      const matched = await runRocketLeadsCampaignMatcher(supabase)
+      if (matched.assignedCount > 0) {
+        console.log(
+          `[refresh-kpi] matcher assigned ${matched.assignedCount} new RL campaigns to ${matched.affectedMondayItemIds.length} clients`,
+        )
+      }
+    } catch (e) {
+      console.error("[refresh-kpi] matcher failed:", e instanceof Error ? e.message : e)
+    }
+
     // 2. Load each client's selected Meta campaigns from supabase. Used to filter
     // dailyInsights down to campaigns the user actually wants tracked.
     const mondayItemIds = allClients.map((c) => c.mondayItemId)

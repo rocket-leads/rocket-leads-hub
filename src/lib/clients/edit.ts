@@ -3,9 +3,11 @@ import {
   fetchClientById,
   setItemColumnValue,
   setItemColumnValueRaw,
+  type MondayClient,
 } from "@/lib/integrations/monday"
 import { syncClientToSupabase } from "./sync"
 import { deriveInvoiceDate } from "./billing-cycle"
+import { readCache, writeCache } from "@/lib/cache"
 
 const SIMPLE_FIELDS = [
   "company_name",
@@ -99,7 +101,32 @@ export async function updateClientField(
   }
 
   const refreshed = await fetchClientById(mondayItemId)
-  if (refreshed) await syncClientToSupabase(refreshed)
+  if (refreshed) {
+    await syncClientToSupabase(refreshed)
+    // Patch the `monday_boards` cache so the next page render — kicked off by
+    // the caller's router.refresh() — sees the new value instead of the
+    // pre-edit snapshot the cron last wrote. Without this, the optimistic
+    // pill in the edit cell visibly reverts to the old label until the next
+    // cron tick.
+    await patchMondayBoardsCache(refreshed)
+  }
+}
+
+async function patchMondayBoardsCache(refreshed: MondayClient): Promise<void> {
+  try {
+    const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards")
+    if (!cached) return
+    const replace = (list: MondayClient[]) =>
+      list.map((c) => (c.mondayItemId === refreshed.mondayItemId ? refreshed : c))
+    await writeCache("monday_boards", {
+      onboarding: replace(cached.onboarding),
+      current: replace(cached.current),
+    })
+  } catch (e) {
+    // Cache patching is best-effort — a failed write only means the user
+    // sees stale state until the next cron tick or manual refresh.
+    console.error("monday_boards cache patch failed:", e instanceof Error ? e.message : e)
+  }
 }
 
 /**

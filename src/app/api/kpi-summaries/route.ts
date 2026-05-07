@@ -363,6 +363,46 @@ async function fetchSummary(
   }
 }
 
+/**
+ * Build the per-client `selectedCampaignIds` map needed by the live-fetch path.
+ * Used by both the date-range cache fall-through (when individual clients are
+ * missing from `kpi_daily`) and the cold-start live-fetch at the bottom of POST.
+ */
+async function loadSelectedCampaigns(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  mondayItemIds: string[],
+): Promise<Record<string, Set<string>>> {
+  const result: Record<string, Set<string>> = {}
+  if (mondayItemIds.length === 0) return result
+
+  const { data: clientRows } = await supabase
+    .from("clients")
+    .select("id, monday_item_id")
+    .in("monday_item_id", mondayItemIds)
+  const itemToClientId: Record<string, string> = {}
+  for (const row of clientRows ?? []) itemToClientId[row.monday_item_id] = row.id
+
+  const clientIds = Object.values(itemToClientId)
+  if (clientIds.length === 0) return result
+
+  const { data: campaignRows } = await supabase
+    .from("client_campaigns")
+    .select("client_id, meta_campaign_id")
+    .in("client_id", clientIds)
+    .eq("is_selected", true)
+
+  const clientIdToMondayItem = Object.fromEntries(
+    Object.entries(itemToClientId).map(([k, v]) => [v, k]),
+  )
+  for (const row of campaignRows ?? []) {
+    const mondayItemId = clientIdToMondayItem[row.client_id]
+    if (!mondayItemId) continue
+    if (!result[mondayItemId]) result[mondayItemId] = new Set()
+    result[mondayItemId].add(row.meta_campaign_id)
+  }
+  return result
+}
+
 async function batchProcess(
   clients: ClientInput[],
   startDate: string,
@@ -434,11 +474,39 @@ export async function POST(req: NextRequest) {
     if (dailyCache && Object.keys(dailyCache).length > 0) {
       const { startDate: prevStartDate, endDate: prevEndDate } = getPreviousRange(body.startDate!, body.endDate!)
       const summaries: Record<string, KpiSummary> = {}
+      const missing: ClientInput[] = []
       for (const c of body.clients) {
         const daily = dailyCache[c.mondayItemId]
-        if (!daily) continue
+        if (!daily) {
+          missing.push(c)
+          continue
+        }
         summaries[c.mondayItemId] = aggregateDailyToSummary(daily, body.startDate!, body.endDate!, prevStartDate, prevEndDate)
       }
+
+      // Live-fetch any clients missing from the cache. Two paths reach here:
+      //   - Brand-new clients added since the last KPI cron tick.
+      //   - Clients whose cache entry was just invalidated (e.g. campaigns
+      //     auto-matched or manually selected) so the stale 0-numbers from
+      //     the pre-selection cron run don't keep showing in the overview.
+      if (missing.length > 0) {
+        try {
+          const supabase = await createAdminClient()
+          const selectedByMondayItemId = await loadSelectedCampaigns(
+            supabase,
+            missing.map((c) => c.mondayItemId),
+          )
+          const live = await batchProcess(
+            missing,
+            body.startDate!, body.endDate!, prevStartDate, prevEndDate,
+            5, selectedByMondayItemId, supabase,
+          )
+          Object.assign(summaries, live)
+        } catch (e) {
+          console.error("[kpi-summaries] live-fetch for missing clients failed:", e instanceof Error ? e.message : e)
+        }
+      }
+
       return NextResponse.json(summaries, {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
       })
@@ -453,10 +521,35 @@ export async function POST(req: NextRequest) {
     const cached = await readCache<Record<string, KpiSummary>>("kpi_summaries")
     if (cached) {
       const summaries: Record<string, KpiSummary> = {}
+      const missing: ClientInput[] = []
       for (const c of body.clients) {
-        if (cached[c.mondayItemId]) summaries[c.mondayItemId] = cached[c.mondayItemId]
+        if (cached[c.mondayItemId]) {
+          summaries[c.mondayItemId] = cached[c.mondayItemId]
+        } else {
+          missing.push(c)
+        }
       }
-      // Return whatever we have from cache — don't block on live fetches
+      // Live-fetch missing clients so newly-assigned RL campaigns and
+      // brand-new clients aren't blank — same pattern as the date-range path.
+      if (missing.length > 0) {
+        try {
+          const supabase = await createAdminClient()
+          const { startDate, endDate } = getLast7DaysRange()
+          const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
+          const selectedByMondayItemId = await loadSelectedCampaigns(
+            supabase,
+            missing.map((c) => c.mondayItemId),
+          )
+          const live = await batchProcess(
+            missing,
+            startDate, endDate, prevStartDate, prevEndDate,
+            5, selectedByMondayItemId, supabase,
+          )
+          Object.assign(summaries, live)
+        } catch (e) {
+          console.error("[kpi-summaries] 7d live-fetch for missing clients failed:", e instanceof Error ? e.message : e)
+        }
+      }
       if (Object.keys(summaries).length > 0) {
         return NextResponse.json(summaries, {
           headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
@@ -475,36 +568,10 @@ export async function POST(req: NextRequest) {
     : getPrevious7DaysRange()
 
   const supabase = await createAdminClient()
-  const mondayItemIds = body.clients.map((c) => c.mondayItemId)
-
-  const { data: clientRows } = await supabase
-    .from("clients")
-    .select("id, monday_item_id")
-    .in("monday_item_id", mondayItemIds)
-
-  const itemToClientId: Record<string, string> = {}
-  for (const row of clientRows ?? []) {
-    itemToClientId[row.monday_item_id] = row.id
-  }
-
-  const clientIds = Object.values(itemToClientId)
-  const selectedByMondayItemId: Record<string, Set<string>> = {}
-
-  if (clientIds.length > 0) {
-    const { data: campaignRows } = await supabase
-      .from("client_campaigns")
-      .select("client_id, meta_campaign_id")
-      .in("client_id", clientIds)
-      .eq("is_selected", true)
-
-    for (const row of campaignRows ?? []) {
-      const mondayItemId = Object.keys(itemToClientId).find((k) => itemToClientId[k] === row.client_id)
-      if (mondayItemId) {
-        if (!selectedByMondayItemId[mondayItemId]) selectedByMondayItemId[mondayItemId] = new Set()
-        selectedByMondayItemId[mondayItemId].add(row.meta_campaign_id)
-      }
-    }
-  }
+  const selectedByMondayItemId = await loadSelectedCampaigns(
+    supabase,
+    body.clients.map((c) => c.mondayItemId),
+  )
 
   const summaries = await batchProcess(
     body.clients, startDate, endDate, prevStartDate, prevEndDate, 5, selectedByMondayItemId, supabase

@@ -24,7 +24,7 @@ const CampaignAnalysis = dynamic(() => import("./ai-optimization-proposal").then
   ssr: false,
 })
 
-type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
+type CampaignWithSelection = MetaCampaign & { isSelected: boolean; isSuggested?: boolean }
 
 type Props = {
   mondayItemId: string

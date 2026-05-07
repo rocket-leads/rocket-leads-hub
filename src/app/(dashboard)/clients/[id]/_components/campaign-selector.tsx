@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import type { MetaCampaign } from "@/lib/integrations/meta"
 
-type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
+type CampaignWithSelection = MetaCampaign & { isSelected: boolean; isSuggested?: boolean }
 
 type Props = {
   campaigns: CampaignWithSelection[]
@@ -95,7 +95,11 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
   const selectedCount = campaigns.filter((c) => c.isSelected).length
   const allVisibleSelected = visible.length > 0 && visible.every((c) => c.isSelected)
   const selectedVisible = visible.filter((c) => c.isSelected)
-  const unselectedVisible = visible.filter((c) => !c.isSelected)
+  // Suggested rows surface to the top of the "Available" group so the user
+  // sees them first and can confirm with one click.
+  const unselectedVisible = visible
+    .filter((c) => !c.isSelected)
+    .sort((a, b) => Number(b.isSuggested ?? false) - Number(a.isSuggested ?? false))
   const showGroupHeaders = selectedVisible.length > 0 && unselectedVisible.length > 0
 
   const renderRow = (campaign: CampaignWithSelection) => (
@@ -105,6 +109,8 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         "flex items-center gap-3 rounded-md border px-3 py-2 cursor-pointer transition-colors",
         campaign.isSelected
           ? "border-primary/40 bg-primary/10 hover:bg-primary/15"
+          : campaign.isSuggested
+          ? "border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10"
           : "hover:bg-muted/50"
       )}
     >
@@ -117,6 +123,15 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
       <span className={cn("flex-1 text-sm truncate", campaign.isSelected && "font-medium")}>
         {campaign.name}
       </span>
+      {campaign.isSuggested && !campaign.isSelected && (
+        <Badge
+          variant="outline"
+          className="text-xs bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+          title="The matcher thinks this campaign probably belongs to this client. Click to confirm."
+        >
+          Suggested
+        </Badge>
+      )}
       <Badge variant="outline" className={`text-xs ${STATUS_COLORS[campaign.status] ?? ""}`}>
         {campaign.status}
       </Badge>

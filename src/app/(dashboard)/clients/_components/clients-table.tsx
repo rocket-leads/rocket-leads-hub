@@ -25,8 +25,13 @@ import {
   mondayStatusToHub,
   statusLabel,
   type ClientStatus,
+  PHASE_LABELS,
+  PHASE_OPTIONS,
+  mondayLabelToOnboardingPhase,
+  type OnboardingPhase,
 } from "@/lib/clients/status"
 import { StatusEditCell } from "./status-edit-cell"
+import { PhaseEditCell } from "./phase-edit-cell"
 import { PersonEditCell } from "./person-edit-cell"
 
 type PillTone = { dot: string; pill: string }
@@ -72,6 +77,27 @@ function DeltaPill({ pct }: { pct: number }) {
 }
 
 const PAYMENT_STATUSES = ["Complete", "Open", "Overdue"]
+
+const META_NEUTRAL_TONE: PillTone = { dot: "bg-zinc-400", pill: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300" }
+
+/** Heuristic colour mapping for the Meta-connected status pill. The exact set
+ *  of labels on Monday's `dup__of_status` column may evolve, so we recognise
+ *  common signals (connected/yes/done · pending/waiting · no/missing/restricted)
+ *  and fall back to a neutral grey for anything else. */
+function metaConnectedTone(label: string): PillTone {
+  const n = label.trim().toLowerCase()
+  if (!n) return META_NEUTRAL_TONE
+  if (/^(connected|yes|done|live|ok|✓)/.test(n) || n === "rl") {
+    return { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" }
+  }
+  if (/(pending|waiting|in progress)/.test(n)) {
+    return { dot: "bg-amber-400", pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400" }
+  }
+  if (/(no|not|missing|restricted|disabled|denied)/.test(n)) {
+    return { dot: "bg-red-500", pill: "bg-red-500/10 text-red-600 dark:text-red-400" }
+  }
+  return META_NEUTRAL_TONE
+}
 
 // --- Campaign Health ---
 type HealthStatus = "critical" | "warning" | "good" | "no-data"
@@ -171,7 +197,7 @@ function HealthBadge({ health }: { health: HealthResult }) {
   )
 }
 
-type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "appointments" | "cpa" | "cpaDelta" | "paymentStatus" | "outstanding" | "health" | "mrr"
+type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "phase" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "appointments" | "cpa" | "cpaDelta" | "paymentStatus" | "outstanding" | "health" | "mrr" | "nextInvoice"
 type SortDir = "asc" | "desc"
 
 type Props = {
@@ -274,6 +300,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
+  const [phaseFilter, setPhaseFilter] = useState("All")
   const [accountManagerFilter, setAccountManagerFilter] = useState("All")
   const [campaignManagerFilter, setCampaignManagerFilter] = useState("All")
   const [paymentStatusFilter, setPaymentStatusFilter] = useState("All")
@@ -307,6 +334,10 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
       const matchesStatus =
         statusFilter === "All" ||
         mondayStatusToHub(c.campaignStatus, c.boardType) === statusFilter
+      const matchesPhase =
+        phaseFilter === "All" ||
+        boardType !== "onboarding" ||
+        mondayLabelToOnboardingPhase(c.campaignStatus) === phaseFilter
       const matchesAM = accountManagerFilter === "All" || c.accountManager === accountManagerFilter
       const matchesCM = campaignManagerFilter === "All" || c.campaignManager === campaignManagerFilter
       const matchesPayment = paymentStatusFilter === "All" || (() => {
@@ -319,9 +350,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         const health = getCampaignHealth(kpiSummaries?.[c.mondayItemId])
         return health.status.toLowerCase() === healthFilter.toLowerCase()
       })()
-      return matchesSearch && matchesStatus && matchesAM && matchesCM && matchesPayment && matchesHealth
+      return matchesSearch && matchesStatus && matchesPhase && matchesAM && matchesCM && matchesPayment && matchesHealth
     })
-  }, [clients, search, statusFilter, accountManagerFilter, campaignManagerFilter, paymentStatusFilter, healthFilter, boardType, kpiSummaries, getPaymentStatus])
+  }, [clients, search, statusFilter, phaseFilter, accountManagerFilter, campaignManagerFilter, paymentStatusFilter, healthFilter, boardType, kpiSummaries, getPaymentStatus])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -344,6 +375,23 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           valA = statusLabel(mondayStatusToHub(a.campaignStatus, a.boardType)).toLowerCase()
           valB = statusLabel(mondayStatusToHub(b.campaignStatus, b.boardType)).toLowerCase()
           break
+        case "phase": {
+          // Sort by chronological phase order, with unmapped values trailing.
+          const order: Record<OnboardingPhase, number> = {
+            kickoff_scheduled: 0,
+            waiting_on_client: 1,
+            create_campaign: 2,
+            waiting_for_feedback: 3,
+            launch: 4,
+            on_hold: 5,
+            debt_collection: 6,
+          }
+          const pA = mondayLabelToOnboardingPhase(a.campaignStatus)
+          const pB = mondayLabelToOnboardingPhase(b.campaignStatus)
+          valA = pA ? order[pA] : 99
+          valB = pB ? order[pB] : 99
+          break
+        }
         case "kickOff": valA = a.kickOffDate; valB = b.kickOffDate; break
         case "adspend": valA = kpiA?.adSpend ?? 0; valB = kpiB?.adSpend ?? 0; break
         case "leads": valA = kpiA?.leads ?? 0; valB = kpiB?.leads ?? 0; break
@@ -373,6 +421,11 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           valA = agreementSummaries?.[a.mondayItemId]?.mrr ?? 0
           valB = agreementSummaries?.[b.mondayItemId]?.mrr ?? 0
           break
+        case "nextInvoice":
+          // Empty dates sort to the end ascending — strings sort naturally for ISO YYYY-MM-DD.
+          valA = a.nextInvoiceDate || "9999-12-31"
+          valB = b.nextInvoiceDate || "9999-12-31"
+          break
         case "health": {
           const order: Record<string, number> = { critical: 0, warning: 1, good: 2, "no-data": 3 }
           valA = order[getCampaignHealth(kpiA).status] ?? 3
@@ -397,7 +450,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   // Reset visible count when filters/sort change
   useEffect(() => {
     setVisibleCount(PAGE_SIZE)
-  }, [search, statusFilter, accountManagerFilter, campaignManagerFilter, paymentStatusFilter, healthFilter, sortKey, sortDir])
+  }, [search, statusFilter, phaseFilter, accountManagerFilter, campaignManagerFilter, paymentStatusFilter, healthFilter, sortKey, sortDir])
 
   useEffect(() => {
     const el = loaderRef.current
@@ -416,11 +469,11 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 9 : 16
+  const colSpan = boardType === "onboarding" ? 11 : 17
 
   const filters: FilterConfig[] = [
-    // Onboarding-board clients all collapse to "Onboarding" — status filter is
-    // only meaningful on the current board.
+    // Current board → 4-bucket Hub status filter.
+    // Onboarding board → phase filter on top of the same `campaign_status` column.
     ...(boardType === "current"
       ? [{
           key: "status",
@@ -432,7 +485,16 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
             ...STATUS_OPTIONS.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
           ],
         }]
-      : []),
+      : [{
+          key: "phase",
+          label: "Phase",
+          value: phaseFilter,
+          onChange: setPhaseFilter,
+          options: [
+            { value: "All", label: "All Phases" },
+            ...PHASE_OPTIONS.map((p) => ({ value: p, label: PHASE_LABELS[p] })),
+          ],
+        }]),
     {
       key: "am",
       label: "Account Manager",
@@ -529,17 +591,24 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
             <TableRow className="border-b border-border/60 bg-muted/50 hover:bg-muted/50 [&>th]:h-10">
               {/* Client section */}
               <TableHead className="text-[13px] text-foreground/80 font-semibold w-[220px] border-r border-border/60">Client</TableHead>
-              {/* Status section */}
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Status</TableHead>
-              {boardType === "onboarding" && (
-                <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[100px]" />
+              {/* Status section — onboarding shows the granular phase + Meta-connected
+                  column; current board shows the canonical 4-bucket Hub status. */}
+              {boardType === "onboarding" ? (
+                <>
+                  <SortableHead label="Phase" sortKey="phase" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[150px]" />
+                  <TableHead className="text-[13px] text-foreground/80 font-semibold w-[120px]">Meta</TableHead>
+                  <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[100px]" />
+                </>
+              ) : (
+                <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Status</TableHead>
               )}
               {boardType === "current" && (
                 <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold text-center w-[90px]" />
               )}
               <TableHead className="text-[13px] text-foreground/80 font-semibold w-[95px]">Payment</TableHead>
               <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Outstanding</TableHead>
-              <SortableHead label="MRR" sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px] border-r border-border/60" />
+              <SortableHead label="MRR" sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px]" />
+              <SortableHead label="Next" sortKey="nextInvoice" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px] border-r border-border/60" />
               {/* People section */}
               <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">AM</TableHead>
               <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">CM</TableHead>
@@ -635,15 +704,31 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                       )}
                     </TableCell>
                     {/* Status section */}
-                    <TableCell>
-                      <StatusEditCell
-                        mondayItemId={client.mondayItemId}
-                        status={mondayStatusToHub(client.campaignStatus, client.boardType)}
-                        readOnly={client.boardType === "onboarding"}
-                      />
-                    </TableCell>
-                    {boardType === "onboarding" && (
-                      <TableCell className="text-xs text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
+                    {boardType === "onboarding" ? (
+                      <>
+                        <TableCell>
+                          <PhaseEditCell
+                            mondayItemId={client.mondayItemId}
+                            rawLabel={client.campaignStatus}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {client.metaConnected ? (
+                            <StatusPill tone={metaConnectedTone(client.metaConnected)} label={client.metaConnected} />
+                          ) : (
+                            <span className="text-muted-foreground/40 text-xs">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
+                      </>
+                    ) : (
+                      <TableCell>
+                        <StatusEditCell
+                          mondayItemId={client.mondayItemId}
+                          status={mondayStatusToHub(client.campaignStatus, client.boardType)}
+                          readOnly={client.boardType === "onboarding"}
+                        />
+                      </TableCell>
                     )}
                     {boardType === "current" && (
                       <TableCell>
@@ -673,39 +758,38 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <span className="text-muted-foreground/40">...</span>
                       )}
                     </TableCell>
-                    <TableCell className="border-r border-border/40">
+                    <TableCell>
                       {(() => {
                         const a = agreementSummaries?.[client.mondayItemId]
-                        const nextInvoice = client.nextInvoiceDate
                         if (!agreementSummaries) {
                           return <span className="text-muted-foreground/40 text-xs">...</span>
                         }
-                        if ((!a || (a.mrr === 0 && a.adBudget === 0)) && !nextInvoice) {
+                        if (!a || (a.mrr === 0 && a.adBudget === 0)) {
                           return null
                         }
                         return (
                           <div className="leading-tight">
-                            {a && (a.mrr > 0 || a.adBudget > 0) && (
-                              <>
-                                <p className="text-xs tabular-nums font-medium">{fmtEuro(a.mrr)}</p>
-                                <p className="text-[10px] tabular-nums text-muted-foreground/60">
-                                  {fmtEuro(a.adBudget)} budget
-                                </p>
-                              </>
-                            )}
-                            {nextInvoice && (
-                              <p
-                                className={`text-[10px] tabular-nums ${
-                                  nextInvoice <= todayIso() ? "text-amber-500 font-medium" : "text-muted-foreground/60"
-                                }`}
-                                title="Next invoice date"
-                              >
-                                Next: {fmtDate(nextInvoice)}
-                              </p>
-                            )}
+                            <p className="text-xs tabular-nums font-medium">{fmtEuro(a.mrr)}</p>
+                            <p className="text-[10px] tabular-nums text-muted-foreground/60">
+                              {fmtEuro(a.adBudget)} budget
+                            </p>
                           </div>
                         )
                       })()}
+                    </TableCell>
+                    <TableCell className="border-r border-border/40">
+                      {client.nextInvoiceDate ? (
+                        <span
+                          className={`text-xs tabular-nums ${
+                            client.nextInvoiceDate <= todayIso()
+                              ? "text-amber-500 font-medium"
+                              : "text-muted-foreground"
+                          }`}
+                          title="Next invoice date"
+                        >
+                          {fmtDate(client.nextInvoiceDate)}
+                        </span>
+                      ) : null}
                     </TableCell>
                     {/* People section */}
                     <TableCell>

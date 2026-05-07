@@ -19,7 +19,7 @@ import type { ClientAccess } from "@/lib/clients/access"
 import type { MetaCampaign } from "@/lib/integrations/meta"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
 
-type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
+type CampaignWithSelection = MetaCampaign & { isSelected: boolean; isSuggested?: boolean }
 
 type Props = {
   client: MondayClient

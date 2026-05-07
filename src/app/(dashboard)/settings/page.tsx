@@ -102,6 +102,7 @@ export default async function SettingsPage() {
       campaign_manager: "person", first_name: "text7", company_name: "bedrijfsnaam",
       ad_budget: "numeric_mm1vfk40", service_fee: "", contact_direction: "text6",
       contact_channel: "status_11", campaign_status: "status",
+      meta_connected: "dup__of_status",
       follow_up_status: "status__1", follow_up_fee: "numbers0__1",
       cycle_start_date: "date3", next_invoice_date: "date_mm3297df",
     },

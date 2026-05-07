@@ -9,7 +9,7 @@ import { ClientInformationPanel } from "@/components/client-information-panel"
 import type { MetaCampaign } from "@/lib/integrations/meta"
 import type { MondayClient } from "@/lib/integrations/monday"
 
-type CampaignWithSelection = MetaCampaign & { isSelected: boolean }
+type CampaignWithSelection = MetaCampaign & { isSelected: boolean; isSuggested?: boolean }
 
 type Props = {
   client: MondayClient

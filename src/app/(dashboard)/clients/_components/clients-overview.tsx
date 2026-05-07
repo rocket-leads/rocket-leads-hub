@@ -137,8 +137,17 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
 
   async function handleRefresh() {
     setIsRefreshing(true)
+    // Live-fetch Monday and rewrite the `monday_boards` cache BEFORE re-rendering
+    // the server component — otherwise router.refresh() just re-reads the same
+    // stale cache the cron last wrote, and recent Monday edits (renamed status
+    // options, new clients, etc.) stay invisible until the next cron tick.
+    try {
+      await fetch("/api/clients/refresh", { method: "POST" })
+    } catch (e) {
+      console.error("clients refresh failed:", e)
+    }
     router.refresh()
-    await Promise.all([summariesQuery.refetch(), kpiQuery.refetch()])
+    await Promise.all([summariesQuery.refetch(), kpiQuery.refetch(), agreementsQuery.refetch(), mondayActiveQuery.refetch()])
     setIsRefreshing(false)
   }
 

@@ -61,6 +61,11 @@ export type MondayClient = {
   followUpFee: string
   /** Status text from Monday (`status__1`). Used to detect whether RL is doing the lead follow-up. */
   followUpStatus: string
+  /** Raw Monday status label from the onboarding board's "Meta connected" column
+   *  (`dup__of_status`). Empty when not set. Tracks whether the client has hooked
+   *  up their Meta Business Manager — distinct from `metaAdAccountId`, which is
+   *  the actual ID once known. Only meaningful on the onboarding board. */
+  metaConnected: string
   metaAdAccountId: string
   stripeCustomerId: string
   trengoContactId: string
@@ -174,6 +179,7 @@ function mapItem(
     // config can override later if needed.
     followUpFee: cv[columns.follow_up_fee] ?? cv["numbers0__1"] ?? "",
     followUpStatus: cv[columns.follow_up_status] ?? cv["status__1"] ?? "",
+    metaConnected: cv[columns.meta_connected] ?? cv["dup__of_status"] ?? "",
     metaAdAccountId: cv[columns.meta_ad_account_id] ?? "",
     stripeCustomerId: cv[columns.stripe_customer_id] ?? "",
     trengoContactId: cv[columns.trengo_contact_id] ?? "",

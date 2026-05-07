@@ -36,7 +36,8 @@ const ONBOARDING_FIELDS = [
   { key: "next_invoice_date", label: "Invoice date (derived; cycle − 7d)" },
   { key: "contact_direction", label: "Contact direction" },
   { key: "contact_channel", label: "Contact channel" },
-  { key: "campaign_status", label: "Campaign status" },
+  { key: "campaign_status", label: "Campaign status / phase" },
+  { key: "meta_connected", label: "Meta connected" },
 ]
 
 const CURRENT_FIELDS = [

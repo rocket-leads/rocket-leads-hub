@@ -27,8 +27,13 @@ async function ClientsData() {
   const session = await auth()
 
   try {
-    // Try cache first (kept fresh by cron every 30 min), fall back to live API
-    const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards")
+    // Try cache first (kept fresh by cron at 5:00 / 5:30), fall back to live API.
+    // 60-min TTL is a safety net: if the cron silently fails, the page won't keep
+    // showing day-old data — after an hour we re-fetch live (slower but correct).
+    const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+      "monday_boards",
+      60 * 60 * 1000,
+    )
     const data = cached ?? await fetchBothBoards()
 
     if (session?.user?.id && session.user.role) {

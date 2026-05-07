@@ -132,3 +132,77 @@ const HUB_TO_MONDAY_LABEL: Record<ClientStatus, string> = {
 export function hubStatusToMondayLabel(status: ClientStatus): string {
   return HUB_TO_MONDAY_LABEL[status]
 }
+
+// ─── Onboarding phases ────────────────────────────────────────────────────
+// The onboarding board's `campaign_status` column doubles as the phase tracker
+// (replacing the old groups-as-phase model). All phases collapse to the
+// canonical "onboarding" Hub status — phases are an onboarding-tab-only detail.
+
+export type OnboardingPhase =
+  | "kickoff_scheduled"
+  | "waiting_on_client"
+  | "create_campaign"
+  | "waiting_for_feedback"
+  | "launch"
+  | "on_hold"
+  | "debt_collection"
+
+/** Display labels — must match the Monday status column options EXACTLY,
+ *  because these strings are the dropdown options AND the value written back
+ *  to Monday on edit. Renaming an option in Monday means renaming it here too. */
+export const PHASE_LABELS: Record<OnboardingPhase, string> = {
+  kickoff_scheduled: "Kickoff scheduled",
+  waiting_on_client: "Waiting on client",
+  create_campaign: "Create campaign",
+  waiting_for_feedback: "Waiting for feedback",
+  launch: "LAUNCH 🚀",
+  on_hold: "On hold",
+  debt_collection: "Debt collection agency",
+}
+
+/** Display order — mirrors the chronological flow from kick-off to launch,
+ *  with the off-track states (on hold, debt collection) at the bottom. */
+export const PHASE_OPTIONS: OnboardingPhase[] = [
+  "kickoff_scheduled",
+  "waiting_on_client",
+  "create_campaign",
+  "waiting_for_feedback",
+  "launch",
+  "on_hold",
+  "debt_collection",
+]
+
+// Tones tuned to roughly match the colours used on the Monday status column
+// itself (grey · purple · orange · blue · green · amber · brown-red).
+export const PHASE_TONES: Record<OnboardingPhase, { dot: string; pill: string }> = {
+  kickoff_scheduled:    { dot: "bg-zinc-400",    pill: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300" },
+  waiting_on_client:    { dot: "bg-violet-400",  pill: "bg-violet-500/10 text-violet-700 dark:text-violet-300" },
+  create_campaign:      { dot: "bg-orange-400",  pill: "bg-orange-500/10 text-orange-700 dark:text-orange-400" },
+  waiting_for_feedback: { dot: "bg-blue-400",    pill: "bg-blue-500/10 text-blue-700 dark:text-blue-400" },
+  launch:               { dot: "bg-emerald-500", pill: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
+  on_hold:              { dot: "bg-amber-400",   pill: "bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  debt_collection:      { dot: "bg-red-700",     pill: "bg-red-700/10 text-red-700 dark:text-red-400" },
+}
+
+/**
+ * Map a Monday `campaign_status` value (from the onboarding board) to one of
+ * the canonical phases. Returns null when empty or when the label doesn't fit
+ * any known bucket — e.g. legacy "In development" values left over from before
+ * the phase rename. Matching is normalized so trailing emoji and minor casing
+ * differences ("Kick off scheduled" vs "Kickoff scheduled") still resolve.
+ */
+export function mondayLabelToOnboardingPhase(
+  label: string | null | undefined,
+): OnboardingPhase | null {
+  const n = (label ?? "").trim().toLowerCase()
+  if (!n) return null
+
+  if (n === "kickoff scheduled" || n === "kick off scheduled" || n === "kick-off scheduled") return "kickoff_scheduled"
+  if (n === "waiting on client") return "waiting_on_client"
+  if (n === "create campaign") return "create_campaign"
+  if (n === "waiting for feedback" || n === "waiting on feedback") return "waiting_for_feedback"
+  if (n.startsWith("launch")) return "launch"
+  if (n === "on hold") return "on_hold"
+  if (n.startsWith("debt collection")) return "debt_collection"
+  return null
+}
