@@ -433,6 +433,12 @@ export function InboxView({
                       { dueDate: action.dueDate },
                       { mode: "mutate", optimisticPatch: { dueDate: action.dueDate } },
                     )
+                  } else if (typeof action === "object" && action.type === "rename") {
+                    patchItem(
+                      item.id,
+                      { title: action.title },
+                      { mode: "mutate", optimisticPatch: { title: action.title } },
+                    )
                   }
                 }}
               />
@@ -935,6 +941,7 @@ type TaskAction =
   | { type: "snooze"; until: string }
   | { type: "reassign"; assigneeId: string }
   | { type: "reschedule"; dueDate: string }
+  | { type: "rename"; title: string }
 
 function TaskGroupSection({
   icon,
@@ -994,7 +1001,8 @@ function TaskGroupSection({
                   (typeof action === "object" &&
                     (action.type === "snooze" ||
                       action.type === "reassign" ||
-                      action.type === "reschedule"))
+                      action.type === "reschedule" ||
+                      action.type === "rename"))
                 ) {
                   onAction(item, action as TaskAction)
                 }

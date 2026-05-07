@@ -46,6 +46,7 @@ export type RowAction =
   | "unsnooze"
   | { type: "reassign"; assigneeId: string }
   | { type: "reschedule"; dueDate: string }
+  | { type: "rename"; title: string }
 
 export function InboxListRow({
   item,
@@ -135,16 +136,36 @@ export function InboxListRow({
             {isHighPriority && (
               <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
             )}
-            <span
-              className={cn(
-                "text-sm truncate",
-                isUnread ? "font-semibold" : "font-medium",
-                item.status === "done" || item.status === "cancelled" ? "line-through text-muted-foreground" : "",
-                item.status === "read" && "text-muted-foreground",
-              )}
-            >
-              {item.title}
-            </span>
+            {!isUpdate && onAction ? (
+              // Tasks: title is double-click-to-edit. Single click still
+              // opens the detail dialog (default row behaviour); double
+              // click switches to an inline input. Slack-style — keeps the
+              // row dense without adding a separate edit button. Updates
+              // stay read-only since they're signals from elsewhere.
+              <RowTitle
+                title={item.title}
+                statusClass={cn(
+                  "text-sm truncate",
+                  isUnread ? "font-semibold" : "font-medium",
+                  item.status === "done" || item.status === "cancelled"
+                    ? "line-through text-muted-foreground"
+                    : "",
+                  item.status === "read" && "text-muted-foreground",
+                )}
+                onSave={(title) => onAction({ type: "rename", title })}
+              />
+            ) : (
+              <span
+                className={cn(
+                  "text-sm truncate",
+                  isUnread ? "font-semibold" : "font-medium",
+                  item.status === "done" || item.status === "cancelled" ? "line-through text-muted-foreground" : "",
+                  item.status === "read" && "text-muted-foreground",
+                )}
+              >
+                {item.title}
+              </span>
+            )}
             {taskStatus && (
               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${taskStatus.cls}`}>
                 {taskStatus.label}
@@ -222,6 +243,99 @@ export function InboxListRow({
         {!isUpdate && onAction && <RowActions item={item} onAction={onAction} users={users} />}
       </div>
     </div>
+  )
+}
+
+/** Double-click-to-edit task title in the row. Single click does NOT enter
+ *  edit mode — the row container handles that as "open detail dialog" — so
+ *  there's no ambiguity. Hovering hints at the edit affordance with a
+ *  subtle dotted underline; double-click anywhere on the title text
+ *  switches to an inline input. Enter or blur saves; Esc reverts; empty
+ *  title is rejected (revert). Stops propagation everywhere inside the
+ *  input so a stray click doesn't open the dialog mid-edit. */
+function RowTitle({
+  title,
+  statusClass,
+  onSave,
+}: {
+  title: string
+  statusClass: string
+  onSave: (next: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(title)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Sync external changes (optimistic patches landing the new title) when
+  // we're not actively editing.
+  useEffect(() => {
+    if (!editing) setDraft(title)
+  }, [title, editing])
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+  }, [editing])
+
+  function commit() {
+    const next = draft.trim()
+    if (!next) {
+      setDraft(title)
+      setEditing(false)
+      return
+    }
+    setEditing(false)
+    if (next !== title) onSave(next)
+  }
+
+  function cancel() {
+    setDraft(title)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          if (e.key === "Enter") {
+            e.preventDefault()
+            commit()
+          } else if (e.key === "Escape") {
+            e.preventDefault()
+            cancel()
+          }
+        }}
+        className={cn(
+          statusClass,
+          "flex-1 min-w-0 bg-background border border-primary/40 rounded-sm px-1.5 py-0.5 -my-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+        )}
+      />
+    )
+  }
+
+  return (
+    <span
+      onDoubleClick={(e) => {
+        e.stopPropagation()
+        setEditing(true)
+      }}
+      title="Double-click to rename"
+      className={cn(
+        statusClass,
+        "cursor-text hover:decoration-dotted hover:decoration-muted-foreground/40 hover:underline underline-offset-4",
+      )}
+    >
+      {title}
+    </span>
   )
 }
 
