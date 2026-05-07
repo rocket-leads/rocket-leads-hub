@@ -24,6 +24,8 @@ import {
   Check,
   X,
   Search,
+  Trash2,
+  UserCog,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -35,7 +37,7 @@ import { ItemDetailDialog } from "./item-detail-dialog"
 import { ChatPane } from "./chat-pane"
 import { CommunicationTab } from "@/app/(dashboard)/clients/[id]/_components/communication-tab"
 import { MeetingsTab } from "@/app/(dashboard)/clients/[id]/_components/meetings-tab"
-import type { InboxItem, TaskStatus, UpdateStatus } from "@/types/inbox"
+import type { InboxItem, InboxSource, TaskStatus, UpdateStatus } from "@/types/inbox"
 
 export type InboxUser = { id: string; name: string | null; email: string; role: string }
 export type InboxClientOption = {
@@ -76,6 +78,22 @@ type UpdateFilter = "all" | UpdateStatus
  */
 type TaskFilter = "all" | TaskStatus | "snoozed"
 
+/** Secondary filter strip on Tasks: narrow by source. "all" shows everything;
+ *  the chip strip below TASK_FILTERS only renders chips for sources that
+ *  actually have tasks in the current status filter, so the row stays
+ *  uncluttered when (e.g.) the user hasn't connected Slack yet. */
+type TaskSourceFilter = "all" | InboxSource
+
+const TASK_SOURCE_LABELS: Record<InboxSource, string> = {
+  manual: "Manual",
+  watchlist: "Watchlist",
+  meeting: "Meetings",
+  monday: "Monday",
+  trengo: "Trengo",
+  slack: "Slack",
+  automation: "Automation",
+}
+
 const UPDATE_FILTERS: TopTab<UpdateFilter>[] = [
   { id: "all", label: "All updates", icon: LayoutList },
   { id: "unread", label: "Unread", icon: Mail },
@@ -110,6 +128,7 @@ export function InboxView({
   const [assignedToMe, setAssignedToMe] = useState(true)
   const [updateFilter, setUpdateFilter] = useState<UpdateFilter>(DEFAULT_UPDATE_FILTER)
   const [taskFilter, setTaskFilter] = useState<TaskFilter>(DEFAULT_TASK_FILTER)
+  const [taskSourceFilter, setTaskSourceFilter] = useState<TaskSourceFilter>("all")
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerKind, setComposerKind] = useState<"update" | "task">("update")
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null)
@@ -242,6 +261,37 @@ export function InboxView({
     }
   }
 
+  /**
+   * Permanently delete a row. Same optimistic-then-rollback pattern as
+   * patchItem with mode=remove, but hits DELETE /api/inbox/:id instead of
+   * PATCH. Used by the bulk-delete button. The server gates DELETE to
+   * author/admin — auto-ingested rows (Trengo/Monday/Fathom/automation,
+   * authored by the system HQ user) are admin-only delete, which is the
+   * intended behaviour: an AM can Cancel a task they don't want, but only
+   * an admin can wipe the audit trail entirely.
+   */
+  async function deleteItem(itemId: string) {
+    const snapshots = queryClient.getQueriesData<{ items: InboxItem[] }>({
+      queryKey: ["inbox"],
+    })
+    queryClient.setQueriesData<{ items: InboxItem[] }>(
+      { queryKey: ["inbox"] },
+      (data) => {
+        if (!data?.items) return data
+        return { ...data, items: data.items.filter((it) => it.id !== itemId) }
+      },
+    )
+    try {
+      const res = await fetch(`/api/inbox/${itemId}`, { method: "DELETE" })
+      if (!res.ok) throw new Error(`DELETE failed (${res.status})`)
+    } catch (err) {
+      for (const [key, data] of snapshots) queryClient.setQueryData(key, data)
+      console.error("deleteItem failed, rolled back", err)
+    } finally {
+      refreshAll()
+    }
+  }
+
   const allUpdates = updatesQuery.data?.items ?? []
   const allTasks = tasksQuery.data?.items ?? []
 
@@ -255,12 +305,29 @@ export function InboxView({
     () => filterByQuery(allUpdates, searchQuery),
     [allUpdates, searchQuery],
   )
-  const filteredTasks = useMemo(
+  const queryFilteredTasks = useMemo(
     () => filterByQuery(allTasks, searchQuery),
     [allTasks, searchQuery],
   )
+  // Per-source counts feed both the chip strip ("Monday 4") and the auto-
+  // hide rule (sources with 0 items don't render a chip). Counts respect
+  // the current status filter + search query but ignore the source filter
+  // itself, so picking a source doesn't make the other chips disappear.
+  const taskSourceCounts = useMemo(() => {
+    const counts: Partial<Record<InboxSource, number>> = {}
+    for (const t of queryFilteredTasks) {
+      counts[t.source] = (counts[t.source] ?? 0) + 1
+    }
+    return counts
+  }, [queryFilteredTasks])
+  const tasks = useMemo(
+    () =>
+      taskSourceFilter === "all"
+        ? queryFilteredTasks
+        : queryFilteredTasks.filter((t) => t.source === taskSourceFilter),
+    [queryFilteredTasks, taskSourceFilter],
+  )
   const updates = filteredUpdates
-  const tasks = filteredTasks
 
   // Per-client view (locked-client tab on client detail page) surfaces
   // tasks/updates linked to that client plus a Client Inbox (Trengo
@@ -347,6 +414,12 @@ export function InboxView({
               value={taskFilter}
               onChange={setTaskFilter}
             />
+            <TaskSourceChips
+              value={taskSourceFilter}
+              onChange={setTaskSourceFilter}
+              counts={taskSourceCounts}
+              totalCount={queryFilteredTasks.length}
+            />
             <QuickAddTaskBar
               clients={clients}
               lockedClient={lockedClient}
@@ -369,6 +442,14 @@ export function InboxView({
                 tasks={tasks}
                 showClient={!lockedClient}
                 users={users}
+                onBulkDelete={(ids) => {
+                  // Fan out DELETEs through the optimistic-remove path. The
+                  // server gates DELETE to author/admin, so non-admin AMs
+                  // attempting to delete auto-ingested rows will see them
+                  // re-appear after the rollback — which is the correct
+                  // signal that they should Cancel instead of Delete.
+                  for (const id of ids) deleteItem(id)
+                }}
                 onItemClick={(item) => setDetailItem(item)}
                 onAction={(item, action) => {
                   // Optimistic strategy:
@@ -1058,12 +1139,18 @@ function GroupedTasks({
   showClient,
   onItemClick,
   onAction,
+  onBulkDelete,
   users,
 }: {
   tasks: InboxItem[]
   showClient: boolean
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: TaskAction) => void
+  /** Bulk delete handler — gets the selected ids and is responsible for
+   *  fanning out DELETE requests with optimistic cache removal. Optional
+   *  because the per-row UI never deletes (Cancel is the row-level
+   *  equivalent); only the bulk bar offers permanent delete. */
+  onBulkDelete: (ids: string[]) => void
   users?: InboxUser[]
 }) {
   const groups = useMemo(() => groupTasksByDeadline(tasks), [tasks])
@@ -1108,6 +1195,20 @@ function GroupedTasks({
     const items = tasks.filter((t) => selectedIds.has(t.id))
     clearSelection()
     for (const item of items) onAction(item, action)
+  }
+
+  function handleBulkDeleteSelected() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    // Confirm explicitly — delete is destructive and there's no undo path.
+    // Cancel is the soft alternative; if the user wanted that they'd have
+    // hit the X button instead.
+    const ok = window.confirm(
+      `Permanently delete ${ids.length} task${ids.length === 1 ? "" : "s"}? This can't be undone.`,
+    )
+    if (!ok) return
+    clearSelection()
+    onBulkDelete(ids)
   }
 
   return (
@@ -1160,6 +1261,8 @@ function GroupedTasks({
           count={selectedIds.size}
           onClear={clearSelection}
           onBulk={handleBulk}
+          onDelete={handleBulkDeleteSelected}
+          users={users}
         />
       )}
     </div>
@@ -1168,17 +1271,26 @@ function GroupedTasks({
 
 /**
  * Floating bottom bar that appears when 1+ tasks are selected. Lets the AM
- * batch through the inbox: mark a stack of items done, snooze them all to
- * tomorrow, or cancel a row of duplicates without opening each detail.
+ * batch through the inbox: mark Done, Snooze, Reschedule, Reassign, Cancel,
+ * or permanently Delete a stack of tasks without opening each detail.
+ *
+ * Reassign uses a searchable user popover (same pattern as the per-row one,
+ * just anchored above the bar instead of below). Delete confirms first
+ * because it can't be undone — Cancel is the soft alternative for
+ * "this isn't relevant" without losing the audit trail.
  */
 function BulkActionBar({
   count,
   onClear,
   onBulk,
+  onDelete,
+  users,
 }: {
   count: number
   onClear: () => void
   onBulk: (action: TaskAction) => void
+  onDelete: () => void
+  users?: InboxUser[]
 }) {
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-full border border-border bg-popover shadow-lg px-2 py-1.5">
@@ -1198,14 +1310,32 @@ function BulkActionBar({
       <BulkSnoozeButton
         onPick={(until) => onBulk({ type: "snooze", until })}
       />
+      <BulkRescheduleButton
+        onPick={(dueDate) => onBulk({ type: "reschedule", dueDate })}
+      />
+      {users && users.length > 0 && (
+        <BulkReassignButton
+          users={users}
+          onPick={(assigneeId) => onBulk({ type: "reassign", assigneeId })}
+        />
+      )}
       <button
         type="button"
         onClick={() => onBulk("cancel")}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-red-500/10 hover:text-red-500 transition-colors"
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
         title="Annuleer geselecteerde taken"
       >
         <X className="h-3.5 w-3.5" />
         Cancel
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-red-500/15 hover:text-red-500 transition-colors"
+        title="Verwijder geselecteerde taken — dit kan niet ongedaan worden"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Delete
       </button>
       <span className="h-4 w-px bg-border/60" aria-hidden />
       <button
@@ -1216,6 +1346,191 @@ function BulkActionBar({
       >
         Clear
       </button>
+    </div>
+  )
+}
+
+/** Bulk reschedule popover — same Today/Tomorrow/Next-Monday/+1-week chips
+ *  as the per-row date picker, plus a custom date input. Anchored ABOVE
+ *  the bar instead of below since the bar lives at the bottom of the
+ *  viewport. */
+function BulkRescheduleButton({ onPick }: { onPick: (dueDate: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    return () => document.removeEventListener("mousedown", onDoc)
+  }, [open])
+
+  function pickPreset(option: "today" | "tomorrow" | "next_monday" | "in_1_week") {
+    setOpen(false)
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    if (option === "tomorrow") d.setDate(d.getDate() + 1)
+    else if (option === "next_monday") {
+      const daysUntilMon = (1 - d.getDay() + 7) % 7 || 7
+      d.setDate(d.getDate() + daysUntilMon)
+    } else if (option === "in_1_week") d.setDate(d.getDate() + 7)
+    onPick(d.toISOString().slice(0, 10))
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-muted/60 transition-colors"
+        title="Reschedule geselecteerde taken"
+      >
+        <CalendarDays className="h-3.5 w-3.5" />
+        Reschedule
+      </button>
+      {open && (
+        <div className="absolute bottom-full mb-2 left-0 w-48 rounded-md border border-border bg-popover shadow-lg py-1 text-xs">
+          <button
+            type="button"
+            onClick={() => pickPreset("today")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            onClick={() => pickPreset("tomorrow")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            Tomorrow
+          </button>
+          <button
+            type="button"
+            onClick={() => pickPreset("next_monday")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            Next Monday
+          </button>
+          <button
+            type="button"
+            onClick={() => pickPreset("in_1_week")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            In 1 week
+          </button>
+          <div className="border-t border-border/60 mt-1 pt-1.5 px-2 pb-1.5">
+            <label className="block text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">
+              Custom date
+            </label>
+            <input
+              type="date"
+              onChange={(e) => {
+                if (e.target.value) {
+                  setOpen(false)
+                  onPick(e.target.value)
+                }
+              }}
+              className="w-full rounded-sm bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Bulk reassign popover. Searchable user list, anchored above the bar.
+ *  Matches the per-row ReassignButton styling but lives in the bulk bar. */
+function BulkReassignButton({
+  users,
+  onPick,
+}: {
+  users: InboxUser[]
+  onPick: (assigneeId: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDoc)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (open) setQuery("")
+  }, [open])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return users
+    return users.filter((u) => `${u.name ?? ""} ${u.email}`.toLowerCase().includes(q))
+  }, [users, query])
+
+  function pick(userId: string) {
+    setOpen(false)
+    onPick(userId)
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-muted/60 transition-colors"
+        title="Reassign geselecteerde taken"
+      >
+        <UserCog className="h-3.5 w-3.5" />
+        Reassign
+      </button>
+      {open && (
+        <div className="absolute bottom-full mb-2 left-0 w-60 rounded-md border border-border bg-popover shadow-lg text-xs">
+          <div className="p-1.5 border-b border-border/60">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search team…"
+              autoFocus
+              className="w-full rounded-sm bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            />
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-muted-foreground/70 italic">No matches</div>
+            ) : (
+              filtered.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => pick(u.id)}
+                  className="w-full text-left px-3 py-1.5 hover:bg-muted/60 flex items-center gap-2"
+                >
+                  <span className="truncate">
+                    <span className="font-medium">{u.name ?? u.email}</span>
+                    {u.name && (
+                      <span className="text-muted-foreground/60 ml-1 text-[10px]">{u.email}</span>
+                    )}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1460,4 +1775,80 @@ function filterByQuery(items: InboxItem[], query: string): InboxItem[] {
       .toLowerCase()
     return words.every((w) => haystack.includes(w))
   })
+}
+
+/**
+ * Compact chip strip below the Tasks status filter — narrow tasks to a
+ * single source (Trengo / Monday / Automation / Watchlist / etc). Helps
+ * Roy's "tasjes is super onoverzichtelijk" pain when a stack of automation
+ * tasks drowns out a single Monday request he actually needs to action.
+ *
+ * Auto-hides chips for sources with 0 matching items so the strip stays
+ * tight on small workspaces. Always shows the "All" chip with the total
+ * so the user has a fast reset path.
+ */
+function TaskSourceChips({
+  value,
+  onChange,
+  counts,
+  totalCount,
+}: {
+  value: TaskSourceFilter
+  onChange: (v: TaskSourceFilter) => void
+  counts: Partial<Record<InboxSource, number>>
+  totalCount: number
+}) {
+  // Only render the strip if there's more than one source with content —
+  // a single-source workspace doesn't need the affordance.
+  const populatedSources = (Object.keys(counts) as InboxSource[]).filter(
+    (s) => (counts[s] ?? 0) > 0,
+  )
+  if (populatedSources.length < 2) return null
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <SourceChip
+        active={value === "all"}
+        onClick={() => onChange("all")}
+        label="All sources"
+        count={totalCount}
+      />
+      {populatedSources.map((source) => (
+        <SourceChip
+          key={source}
+          active={value === source}
+          onClick={() => onChange(source)}
+          label={TASK_SOURCE_LABELS[source]}
+          count={counts[source] ?? 0}
+        />
+      ))}
+    </div>
+  )
+}
+
+function SourceChip({
+  active,
+  onClick,
+  label,
+  count,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  count: number
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium bg-primary/15 text-primary border border-primary/30"
+          : "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-muted-foreground border border-border/60 hover:bg-muted/40 hover:text-foreground transition-colors"
+      }
+    >
+      {label}
+      <span className="tabular-nums opacity-70">{count}</span>
+    </button>
+  )
 }
