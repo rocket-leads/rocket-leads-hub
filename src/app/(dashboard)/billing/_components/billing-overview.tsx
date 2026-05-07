@@ -22,6 +22,7 @@ import { CreateInvoiceDialog } from "./create-invoice-dialog"
 import { InvoiceReadinessCell } from "./invoice-readiness-cell"
 import { AgreementAmountCell } from "./agreement-amount-cell"
 import { DriftFixButton } from "./drift-fix-button"
+import { combinedClientName } from "@/lib/billing/sibling-name"
 
 /**
  * A billable group — one or more Monday rows that share a Stripe customer.
@@ -35,6 +36,12 @@ import { DriftFixButton } from "./drift-fix-button"
  * Today / This week. With sibling-sync (see `lib/clients/edit.ts`) all
  * siblings should share the same dates, but if drift is detected we surface
  * it via `hasDateDrift` so finance can fix it.
+ *
+ * `readiness` is the AI invoice-readiness verdict to display on the parent
+ * row. For single-sibling groups it's the primary's own. For multi-sibling
+ * groups it's the worst verdict across siblings (hold > check > send) with
+ * each sibling's reason concatenated, so the at-a-glance pill reflects the
+ * full group's invoiceability — not just the primary campaign.
  */
 export type BillingGroup = {
   /** stripeCustomerId, or `unlinked-{mondayItemId}` for ungrouped rows. */
@@ -46,6 +53,7 @@ export type BillingGroup = {
   totalAdBudget: number
   /** True when at least two siblings disagree on `cycleStartDate`. */
   hasDateDrift: boolean
+  readiness: InvoiceReadiness | null
 }
 
 export type UpcomingInvoice = {
@@ -257,7 +265,9 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
   // Collapsed display: trim a shared prefix off the campaign names so the
   // combined label reads as the parent client instead of the longest name.
   // Falls back to the primary's name if no useful prefix is found.
-  const displayName = isMulti ? combinedClientName(group.siblings) : primary.name
+  const displayName = isMulti
+    ? combinedClientName(group.siblings.map((s) => s.name))
+    : primary.name
 
   return (
     <>
@@ -390,7 +400,7 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
           <InvoiceReadinessCell
             mondayItemId={primary.mondayItemId}
             clientName={displayName}
-            initial={primary.readiness}
+            initial={group.readiness}
           />
         </TableCell>
         <TableCell className="py-2.5">
@@ -486,32 +496,6 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
   )
 }
 
-/**
- * Pick a friendly label for a multi-campaign group. Strategy:
- *   1. If all sibling names share a non-trivial common prefix (length ≥ 3),
- *      use that prefix. e.g. "O2 Plus | B2B" + "O2 Plus | B2C" → "O2 Plus".
- *   2. Otherwise fall back to the primary's name.
- *
- * Trims trailing separators ("|", "-", ":", "·" with surrounding whitespace)
- * so the prefix doesn't end on a divider.
- */
-function combinedClientName(siblings: UpcomingInvoice[]): string {
-  if (siblings.length === 0) return ""
-  if (siblings.length === 1) return siblings[0].name
-  const names = siblings.map((s) => s.name)
-  let prefixLen = 0
-  const minLen = Math.min(...names.map((n) => n.length))
-  outer: for (let i = 0; i < minLen; i++) {
-    const ch = names[0][i]
-    for (let j = 1; j < names.length; j++) {
-      if (names[j][i] !== ch) break outer
-    }
-    prefixLen = i + 1
-  }
-  const prefix = names[0].slice(0, prefixLen).replace(/[\s|\-:·]+$/, "").trim()
-  if (prefix.length >= 3) return prefix
-  return siblings[0].name
-}
 
 /**
  * Mirrors the PaymentInline pill from the client header so the same payment

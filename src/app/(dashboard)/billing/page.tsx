@@ -11,6 +11,7 @@ import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import type { BillingGroup, UpcomingInvoice } from "./_components/billing-overview"
 import { BillingTabs, type PastInvoiceRow } from "./_components/billing-tabs"
 import { RefreshBillingButton } from "./_components/refresh-billing-button"
+import { combinedClientName } from "@/lib/billing/sibling-name"
 
 /**
  * Finance overview page — open to anyone signed in. Surfaces every client
@@ -149,20 +150,35 @@ export default async function BillingPage() {
 
   // Past invoices — global Stripe list refreshed hourly + on manual refresh.
   // Join customerId → client name from the Monday cache so the table reads
-  // human (not "cus_…").
+  // human (not "cus_…"). Multiple Monday rows can share one Stripe customer
+  // (multi-campaign clients like O2 Plus | B2B + B2C); we collect ALL siblings
+  // and derive a clean shared name via the same prefix logic the Future tab
+  // uses, so a past invoice for that customer reads as "O2 Plus" rather than
+  // whichever sibling happened to be iterated last.
   const pastInvoicesRaw = (await readCache<PastInvoice[]>("past_invoices")) ?? []
-  const clientByStripeId = new Map<string, { mondayItemId: string; name: string }>()
+  const clientsByStripeId = new Map<string, { mondayItemId: string; name: string }[]>()
   for (const c of allClients) {
     if (c.stripeCustomerId) {
-      clientByStripeId.set(c.stripeCustomerId, { mondayItemId: c.mondayItemId, name: c.name })
+      const list = clientsByStripeId.get(c.stripeCustomerId) ?? []
+      list.push({ mondayItemId: c.mondayItemId, name: c.name })
+      clientsByStripeId.set(c.stripeCustomerId, list)
     }
   }
   const pastInvoices: PastInvoiceRow[] = pastInvoicesRaw.map((inv) => {
-    const linked = clientByStripeId.get(inv.customerId)
+    const linked = clientsByStripeId.get(inv.customerId)
+    if (!linked || linked.length === 0) {
+      return { ...inv, clientName: null, clientMondayItemId: null }
+    }
+    const clientName =
+      linked.length === 1
+        ? linked[0].name
+        : combinedClientName(linked.map((l) => l.name))
+    // Link to the first sibling — they can navigate from there if they want
+    // a different campaign within the same Stripe customer.
     return {
       ...inv,
-      clientName: linked?.name ?? null,
-      clientMondayItemId: linked?.mondayItemId ?? null,
+      clientName,
+      clientMondayItemId: linked[0].mondayItemId,
     }
   })
 
@@ -256,11 +272,89 @@ function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
     )
     const cycleDates = new Set(siblings.map((s) => s.cycleStartDate).filter(Boolean))
     const hasDateDrift = cycleDates.size > 1
-    groups.push({ groupKey, primary, siblings, totalFee, totalAdBudget, hasDateDrift })
+    const readiness = aggregateGroupReadiness(siblings)
+    groups.push({
+      groupKey,
+      primary,
+      siblings,
+      totalFee,
+      totalAdBudget,
+      hasDateDrift,
+      readiness,
+    })
   }
 
   // Sort groups by their primary's invoice date so the surrounding bucketing
   // logic doesn't depend on insertion order.
   groups.sort((a, b) => a.primary.nextInvoiceDate.localeCompare(b.primary.nextInvoiceDate))
   return groups
+}
+
+/**
+ * Combine sibling AI invoice-readiness verdicts into a single group-level
+ * verdict. The at-a-glance pill on the parent row should reflect the WORST
+ * sibling — if "O2 Plus | B2C" is on hold (e.g. quality issues in updates),
+ * the group reads as "Hold" even when "O2 Plus | B2B" looks fine on its own.
+ *
+ * - No siblings have readiness yet → null (cell renders "Run AI check").
+ * - Single sibling with readiness → pass it through unchanged.
+ * - Multi-sibling: pick the worst verdict (hold > check > send) as the group
+ *   verdict. Reasons are concatenated, prefixed with the sibling's
+ *   distinguishing suffix (e.g. "B2B: ..." / "B2C: ...") so the popover shows
+ *   why each campaign got the verdict it did. Updates from all siblings get
+ *   merged for the popover's update list — finance sees the full picture.
+ */
+function aggregateGroupReadiness(siblings: UpcomingInvoice[]): InvoiceReadiness | null {
+  const withReadiness = siblings.filter(
+    (s): s is UpcomingInvoice & { readiness: InvoiceReadiness } => !!s.readiness,
+  )
+  if (withReadiness.length === 0) return null
+  if (withReadiness.length === 1) return withReadiness[0].readiness
+
+  const order = { send: 0, check: 1, hold: 2 } as const
+  // Worst-first sort.
+  withReadiness.sort((a, b) => order[b.readiness.verdict] - order[a.readiness.verdict])
+  const worst = withReadiness[0].readiness
+
+  // Per-sibling reason, prefixed with the campaign's distinguishing suffix
+  // (the unique tail after the common parent name) so the popover reads as a
+  // breakdown rather than a wall of duplicated text.
+  const allNames = withReadiness.map((s) => s.name)
+  const sharedPrefix = combinedClientName(allNames)
+  const reason = withReadiness
+    .map((s) => {
+      const suffix =
+        sharedPrefix.length >= 3 && s.name.startsWith(sharedPrefix)
+          ? s.name.slice(sharedPrefix.length).replace(/^[\s|\-:·]+/, "").trim() || s.name
+          : s.name
+      return `${suffix}: ${s.readiness.reason}`
+    })
+    .join("\n\n")
+
+  // Merge updates across siblings so finance can see everything that fed the
+  // verdicts in one place. Don't dedupe — same sibling shouldn't have dupes
+  // and cross-sibling overlap is rare (different Monday boards).
+  const updates = withReadiness.flatMap((s) => s.readiness.updates)
+
+  // Most-recent computedAt + lastUpdateAt across siblings — the popover shows
+  // the freshest signal we have.
+  const computedAt = withReadiness
+    .map((s) => s.readiness.computedAt)
+    .sort()
+    .reverse()[0]
+  const lastUpdateAt =
+    withReadiness
+      .map((s) => s.readiness.lastUpdateAt)
+      .filter((d): d is string => !!d)
+      .sort()
+      .reverse()[0] ?? null
+
+  return {
+    verdict: worst.verdict,
+    confidence: worst.confidence,
+    reason,
+    updates,
+    lastUpdateAt,
+    computedAt,
+  }
 }
