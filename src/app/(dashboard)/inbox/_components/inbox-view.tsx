@@ -565,6 +565,18 @@ export function InboxView({
                       { status: "unread" },
                       { mode: "mutate", optimisticPatch: { status: "unread" } },
                     )
+                  } else if (action === "make_task") {
+                    // Convert to task: server resets status='open' +
+                    // priority='normal' on kind change; we also default the
+                    // due date to today so the converted task lands in the
+                    // Today section ready to act on. Optimistic remove from
+                    // the Updates list — the row migrates to Tasks.
+                    const today = new Date().toISOString().slice(0, 10)
+                    patchItem(
+                      item.id,
+                      { kind: "task", dueDate: today },
+                      { mode: "remove" },
+                    )
                   }
                 }}
               />
@@ -579,7 +591,7 @@ export function InboxView({
               trengoContactId={lockedClient.trengoContactId ?? null}
             />
           ) : (
-            <ChatPane scope="external" />
+            <ChatPane scope="external" users={users} />
           )
         )}
 
@@ -1605,6 +1617,8 @@ function BulkSnoozeButton({ onPick }: { onPick: (until: string) => void }) {
   )
 }
 
+type UpdateAction = "read" | "unread" | "make_task"
+
 function UpdateGroupSection({
   icon,
   label,
@@ -1624,7 +1638,7 @@ function UpdateGroupSection({
   collapsed: boolean
   onToggle: () => void
   onItemClick: (item: InboxItem) => void
-  onAction: (item: InboxItem, action: "read" | "unread") => void
+  onAction: (item: InboxItem, action: UpdateAction) => void
 }) {
   if (items.length === 0) return null
   return (
@@ -1646,7 +1660,9 @@ function UpdateGroupSection({
               showClient={showClient}
               onClick={() => onItemClick(item)}
               onAction={(action) => {
-                if (action === "read" || action === "unread") onAction(item, action)
+                if (action === "read" || action === "unread" || action === "make_task") {
+                  onAction(item, action)
+                }
               }}
             />
           ))}
@@ -1698,7 +1714,7 @@ function GroupedUpdates({
   updates: InboxItem[]
   showClient: boolean
   onItemClick: (item: InboxItem) => void
-  onAction: (item: InboxItem, action: "read" | "unread") => void
+  onAction: (item: InboxItem, action: UpdateAction) => void
 }) {
   const groups = useMemo(() => groupUpdatesByDate(updates), [updates])
   const { collapsed, toggle } = useUpdateCollapse()
