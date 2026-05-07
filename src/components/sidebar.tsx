@@ -21,6 +21,7 @@ const SHARED_NAV = [
   { href: "/clients", label: "Clients", icon: "Users" as const },
   { href: "/inbox", label: "Inbox", icon: "Inbox" as const },
   { href: "/meetings", label: "Meetings", icon: "Video" as const },
+  { href: "/pedro", label: "Pedro", icon: "Megaphone" as const },
   { href: "/targets", label: "Targets", icon: "Target" as const },
   { href: "/billing", label: "Billing", icon: "Receipt" as const },
 ] as const

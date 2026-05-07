@@ -248,3 +248,114 @@ input[type="number"] {
   font-weight: 600;
   color: var(--primary);
 }
+
+/* ── Pedro (Campaign Manager) — hub-aligned button + form helpers ──
+   Pedro components were originally Mike's standalone Tailwind v3 app. We
+   migrated all custom color tokens to hub utilities (text-foreground,
+   bg-card, etc.) so light/dark mode just works. The pedro-btn-* classes
+   below give shadcn-Button-compatible styling for Mike's <button> tags
+   without having to convert every <button> to <Button>. */
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.pedro-btn-primary,
+.pedro-btn-ghost,
+.pedro-btn-teal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 2.25rem;
+  padding: 0 0.875rem;
+  border-radius: var(--radius-md);
+  font-family: var(--font-inter), "Inter", sans-serif;
+  font-weight: 500;
+  font-size: 0.875rem;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
+  border: 1px solid transparent;
+}
+.pedro-btn-primary:disabled,
+.pedro-btn-ghost:disabled,
+.pedro-btn-teal:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.pedro-btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.pedro-btn-primary:hover { background: color-mix(in srgb, var(--primary) 90%, black); }
+
+.pedro-btn-ghost {
+  background: transparent;
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.pedro-btn-ghost:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.pedro-btn-teal {
+  background: #10b981; /* emerald-500 */
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.pedro-btn-teal:hover { background: #059669; }
+
+/* Form fields scoped to .pedro-root so we don't override the rest of the
+   hub. Matches shadcn Input look (h-9, rounded-md, border, bg-transparent
+   with focus ring). Selector is bare `input` (no [type] filter) so file/
+   hidden/etc inputs in Mike's components also pick up baseline styling. */
+.pedro-root input,
+.pedro-root textarea,
+.pedro-root select {
+  width: 100%;
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--input) !important;
+  background: transparent !important;
+  color: var(--foreground) !important;
+  font-family: var(--font-inter), "Inter", sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.pedro-root input[type="file"],
+.pedro-root input[type="hidden"],
+.pedro-root input[type="checkbox"],
+.pedro-root input[type="radio"] {
+  height: auto;
+  width: auto;
+  padding: 0;
+  border: none !important;
+}
+.pedro-root textarea {
+  height: auto;
+  min-height: 4.5rem;
+  padding: 0.5rem 0.75rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+.pedro-root input:focus,
+.pedro-root textarea:focus,
+.pedro-root select:focus {
+  border-color: var(--ring) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+}
+.pedro-root input::placeholder,
+.pedro-root textarea::placeholder {
+  color: var(--muted-foreground) !important;
+  opacity: 0.7;
+}

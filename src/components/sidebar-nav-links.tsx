@@ -3,9 +3,9 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Users, Eye, Target, Settings, Inbox, Video, Receipt } from "lucide-react"
+import { Users, Eye, Target, Settings, Inbox, Video, Receipt, Megaphone } from "lucide-react"
 
-const ICONS = { Users, Eye, Target, Settings, Inbox, Video, Receipt }
+const ICONS = { Users, Eye, Target, Settings, Inbox, Video, Receipt, Megaphone }
 
 type NavItem = { href: string; label: string; icon: keyof typeof ICONS }
 
