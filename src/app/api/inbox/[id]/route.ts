@@ -44,10 +44,19 @@ export async function PATCH(
 
   const isAuthor = item.authorId === session.user.id
   const isAdmin = session.user.role === "admin"
-  const canEditMeta = isAuthor || isAdmin
+  const isAssignee = item.assigneeId === session.user.id
+  // Tasks: the assignee is the person who's actually going to do the work, so
+  // they get the same edit rights as the author — fixing the title, expanding
+  // the body, or sliding the due date is routine triage on a task that landed
+  // on you, not authorial overreach. The bulk of our tasks are auto-ingested
+  // by the system HQ user (Trengo, Monday, Fathom, automation cron), so
+  // gating edits behind "author === HQ system user" effectively meant "no AM
+  // can ever fix anything." For updates we keep the original gate (author/
+  // admin only) since updates are read-only signals, not actionable items.
+  const canEditMeta = isAuthor || isAdmin || (item.kind === "task" && isAssignee)
 
   // Status transitions: anyone with visibility may flip status; metadata edits
-  // (title, body, assignee, due date, priority) are author/admin only.
+  // (title, body, due date, priority) are author/admin/assignee.
   const update: Record<string, unknown> = {}
 
   // Reclassify (Move to Tasks / Updates / Chat) — open to anyone with

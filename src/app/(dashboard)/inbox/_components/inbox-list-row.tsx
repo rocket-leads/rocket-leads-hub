@@ -45,6 +45,7 @@ export type RowAction =
   | { type: "snooze"; until: string }
   | "unsnooze"
   | { type: "reassign"; assigneeId: string }
+  | { type: "reschedule"; dueDate: string }
 
 export function InboxListRow({
   item,
@@ -175,14 +176,25 @@ export function InboxListRow({
             {item.dueDate && (
               <>
                 <span>·</span>
-                <span
-                  className={`inline-flex items-center gap-1 ${
-                    fmtDueDate(item.dueDate).overdue ? "text-red-400" : ""
-                  }`}
-                >
-                  <Calendar className="h-3 w-3" />
-                  {fmtDueDate(item.dueDate).text}
-                </span>
+                {!isUpdate && onAction ? (
+                  // Click-to-reschedule on tasks. The pill stays inline in the
+                  // metadata row but becomes its own popover trigger so the AM
+                  // can move a deadline without ever opening the detail dialog
+                  // — same speed-of-action principle as Snooze and Reassign.
+                  <DueDateButton
+                    dueDate={item.dueDate}
+                    onPick={(dueDate) => onAction({ type: "reschedule", dueDate })}
+                  />
+                ) : (
+                  <span
+                    className={`inline-flex items-center gap-1 ${
+                      fmtDueDate(item.dueDate).overdue ? "text-red-400" : ""
+                    }`}
+                  >
+                    <Calendar className="h-3 w-3" />
+                    {fmtDueDate(item.dueDate).text}
+                  </span>
+                )}
               </>
             )}
             {item.commentCount > 0 && (
@@ -409,6 +421,128 @@ function ReassignButton({
         </div>
       )}
     </div>
+  )
+}
+
+/** Inline reschedule popover anchored to the row's due-date pill. Quick chips
+ *  cover the common moves (today / tomorrow / next Monday / +1 week) and a
+ *  native date input handles anything else. Same outside-click + Esc closer
+ *  as the other row popovers. Distinct from Snooze: this changes the actual
+ *  due date, so the task moves between Overdue/Today/Upcoming sections — not
+ *  just hidden from the active list. */
+function DueDateButton({
+  dueDate,
+  onPick,
+}: {
+  dueDate: string
+  onPick: (dueDate: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const due = fmtDueDate(dueDate)
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false)
+    }
+    document.addEventListener("mousedown", onDoc)
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("mousedown", onDoc)
+      document.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  function pickPreset(option: "today" | "tomorrow" | "next_monday" | "in_1_week") {
+    setOpen(false)
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    if (option === "today") {
+      // already today
+    } else if (option === "tomorrow") {
+      d.setDate(d.getDate() + 1)
+    } else if (option === "next_monday") {
+      const daysUntilMon = (1 - d.getDay() + 7) % 7 || 7
+      d.setDate(d.getDate() + daysUntilMon)
+    } else {
+      d.setDate(d.getDate() + 7)
+    }
+    onPick(d.toISOString().slice(0, 10))
+  }
+
+  function pickCustom(value: string) {
+    if (!value) return
+    setOpen(false)
+    onPick(value)
+  }
+
+  return (
+    <span className="relative inline-flex" ref={ref}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((s) => !s)
+        }}
+        className={`inline-flex items-center gap-1 rounded-sm px-1 -mx-1 py-0.5 hover:bg-muted/60 transition-colors ${
+          due.overdue ? "text-red-400" : ""
+        }`}
+        title="Reschedule"
+      >
+        <Calendar className="h-3 w-3" />
+        {due.text}
+      </button>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute left-0 top-full mt-1 z-30 w-52 rounded-md border border-border bg-popover shadow-lg py-1 text-xs"
+        >
+          <button
+            type="button"
+            onClick={() => pickPreset("today")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            onClick={() => pickPreset("tomorrow")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            Tomorrow
+          </button>
+          <button
+            type="button"
+            onClick={() => pickPreset("next_monday")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            Next Monday
+          </button>
+          <button
+            type="button"
+            onClick={() => pickPreset("in_1_week")}
+            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
+          >
+            In 1 week
+          </button>
+          <div className="border-t border-border/60 mt-1 pt-1.5 px-2 pb-1.5">
+            <label className="block text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">
+              Custom date
+            </label>
+            <input
+              type="date"
+              defaultValue={dueDate}
+              onChange={(e) => pickCustom(e.target.value)}
+              className="w-full rounded-sm bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+            />
+          </div>
+        </div>
+      )}
+    </span>
   )
 }
 

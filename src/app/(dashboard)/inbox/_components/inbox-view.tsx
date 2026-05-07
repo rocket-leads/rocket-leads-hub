@@ -312,6 +312,8 @@ export function InboxView({
                     patchItem(item.id, { snoozedUntil: action.until })
                   } else if (typeof action === "object" && action.type === "reassign") {
                     patchItem(item.id, { assigneeId: action.assigneeId })
+                  } else if (typeof action === "object" && action.type === "reschedule") {
+                    patchItem(item.id, { dueDate: action.dueDate })
                   }
                 }}
               />
@@ -546,6 +548,7 @@ type TaskAction =
   | Extract<RowAction, "done" | "cancel" | "reopen" | "unsnooze">
   | { type: "snooze"; until: string }
   | { type: "reassign"; assigneeId: string }
+  | { type: "reschedule"; dueDate: string }
 
 function TaskGroupSection({
   icon,
@@ -603,7 +606,9 @@ function TaskGroupSection({
                   action === "reopen" ||
                   action === "unsnooze" ||
                   (typeof action === "object" &&
-                    (action.type === "snooze" || action.type === "reassign"))
+                    (action.type === "snooze" ||
+                      action.type === "reassign" ||
+                      action.type === "reschedule"))
                 ) {
                   onAction(item, action as TaskAction)
                 }
