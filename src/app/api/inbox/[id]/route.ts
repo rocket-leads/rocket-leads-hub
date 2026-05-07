@@ -198,9 +198,17 @@ export async function DELETE(
   const item = await getInboxItem(id, session.user.id, session.user.role)
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-  const canDelete = item.authorId === session.user.id || session.user.role === "admin"
+  // Tasks: the assignee owns the work and can permanently remove it. Same
+  // policy as the meta-edit widening in PATCH — the AM landed on Roy's
+  // critique that auto-ingested rows with the system HQ user as author
+  // were untouchable for non-admins. Updates stay author/admin-only.
+  const isAssignee = item.assigneeId === session.user.id
+  const canDelete =
+    item.authorId === session.user.id ||
+    session.user.role === "admin" ||
+    (item.kind === "task" && isAssignee)
   if (!canDelete) {
-    return NextResponse.json({ error: "Only the author or an admin can delete" }, { status: 403 })
+    return NextResponse.json({ error: "Not authorised to delete this item" }, { status: 403 })
   }
 
   const supabase = await createAdminClient()

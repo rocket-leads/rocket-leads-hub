@@ -443,11 +443,9 @@ export function InboxView({
         return
       }
 
-      if (e.key === "x" && focused.kind === "task") {
-        e.preventDefault()
-        patchItem(focused.id, { status: "cancelled" }, { mode: "remove" })
-        return
-      }
+      // No more cancel shortcut — Cancel was retired in favour of a single
+      // Delete action. Hard delete needs an explicit confirm so we don't
+      // bind it to a key (would be too easy to nuke the focused row).
     }
 
     document.addEventListener("keydown", onKey)
@@ -595,20 +593,15 @@ export function InboxView({
                 onItemClick={(item) => setDetailItem(item)}
                 onAction={(item, action) => {
                   // Optimistic strategy:
-                  //   - Terminal status changes (done/cancel) and snooze leave
-                  //     the active list under default filters — REMOVE so the
+                  //   - Done, Snooze, Delete, and Reassign-away leave the
+                  //     active list under default filters — REMOVE so the
                   //     row disappears immediately.
-                  //   - Reopen and unsnooze keep the row in the list — MUTATE.
-                  //   - Reschedule keeps the row but the date changes (it may
-                  //     jump between Overdue/Today/Upcoming) — MUTATE.
-                  //   - Reassign: when filter is "Assigned to me" and the new
-                  //     assignee isn't me, the row should leave — REMOVE.
-                  //     Otherwise MUTATE in place with the new name resolved
-                  //     from the users list.
+                  //   - Reopen, Unsnooze, Reassign-staying, Rename keep the
+                  //     row in the list — MUTATE.
                   if (action === "done") {
                     patchItem(item.id, { status: "done" }, { mode: "remove" })
-                  } else if (action === "cancel") {
-                    patchItem(item.id, { status: "cancelled" }, { mode: "remove" })
+                  } else if (action === "delete") {
+                    deleteItem(item.id)
                   } else if (action === "reopen") {
                     patchItem(
                       item.id,
@@ -650,12 +643,6 @@ export function InboxView({
                         },
                       )
                     }
-                  } else if (typeof action === "object" && action.type === "reschedule") {
-                    patchItem(
-                      item.id,
-                      { dueDate: action.dueDate },
-                      { mode: "mutate", optimisticPatch: { dueDate: action.dueDate } },
-                    )
                   } else if (typeof action === "object" && action.type === "rename") {
                     patchItem(
                       item.id,
@@ -800,7 +787,6 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
       label: "Act on focused row",
       rows: [
         { keys: ["e"], desc: "Done (task) / toggle read (update)" },
-        { keys: ["x"], desc: "Cancel task" },
       ],
     },
     {
@@ -1274,10 +1260,9 @@ function SectionHeader({
 }
 
 type TaskAction =
-  | Extract<RowAction, "done" | "cancel" | "reopen" | "unsnooze">
+  | Extract<RowAction, "done" | "delete" | "reopen" | "unsnooze">
   | { type: "snooze"; until: string }
   | { type: "reassign"; assigneeId: string }
-  | { type: "reschedule"; dueDate: string }
   | { type: "rename"; title: string }
 
 function TaskGroupSection({
@@ -1335,13 +1320,12 @@ function TaskGroupSection({
               onAction={(action) => {
                 if (
                   action === "done" ||
-                  action === "cancel" ||
+                  action === "delete" ||
                   action === "reopen" ||
                   action === "unsnooze" ||
                   (typeof action === "object" &&
                     (action.type === "snooze" ||
                       action.type === "reassign" ||
-                      action.type === "reschedule" ||
                       action.type === "rename"))
                 ) {
                   onAction(item, action as TaskAction)
@@ -1576,24 +1560,12 @@ function BulkActionBar({
       <BulkSnoozeButton
         onPick={(until) => onBulk({ type: "snooze", until })}
       />
-      <BulkRescheduleButton
-        onPick={(dueDate) => onBulk({ type: "reschedule", dueDate })}
-      />
       {users && users.length > 0 && (
         <BulkReassignButton
           users={users}
           onPick={(assigneeId) => onBulk({ type: "reassign", assigneeId })}
         />
       )}
-      <button
-        type="button"
-        onClick={() => onBulk("cancel")}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-        title="Annuleer geselecteerde taken"
-      >
-        <X className="h-3.5 w-3.5" />
-        Cancel
-      </button>
       <button
         type="button"
         onClick={onDelete}
@@ -1612,97 +1584,6 @@ function BulkActionBar({
       >
         Clear
       </button>
-    </div>
-  )
-}
-
-/** Bulk reschedule popover — same Today/Tomorrow/Next-Monday/+1-week chips
- *  as the per-row date picker, plus a custom date input. Anchored ABOVE
- *  the bar instead of below since the bar lives at the bottom of the
- *  viewport. */
-function BulkRescheduleButton({ onPick }: { onPick: (dueDate: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function onDoc(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onDoc)
-    return () => document.removeEventListener("mousedown", onDoc)
-  }, [open])
-
-  function pickPreset(option: "today" | "tomorrow" | "next_monday" | "in_1_week") {
-    setOpen(false)
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    if (option === "tomorrow") d.setDate(d.getDate() + 1)
-    else if (option === "next_monday") {
-      const daysUntilMon = (1 - d.getDay() + 7) % 7 || 7
-      d.setDate(d.getDate() + daysUntilMon)
-    } else if (option === "in_1_week") d.setDate(d.getDate() + 7)
-    onPick(d.toISOString().slice(0, 10))
-  }
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((s) => !s)}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-muted/60 transition-colors"
-        title="Reschedule geselecteerde taken"
-      >
-        <CalendarDays className="h-3.5 w-3.5" />
-        Reschedule
-      </button>
-      {open && (
-        <div className="absolute bottom-full mb-2 left-0 w-48 rounded-md border border-border bg-popover shadow-lg py-1 text-xs">
-          <button
-            type="button"
-            onClick={() => pickPreset("today")}
-            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            onClick={() => pickPreset("tomorrow")}
-            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
-          >
-            Tomorrow
-          </button>
-          <button
-            type="button"
-            onClick={() => pickPreset("next_monday")}
-            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
-          >
-            Next Monday
-          </button>
-          <button
-            type="button"
-            onClick={() => pickPreset("in_1_week")}
-            className="w-full text-left px-3 py-1.5 hover:bg-muted/60"
-          >
-            In 1 week
-          </button>
-          <div className="border-t border-border/60 mt-1 pt-1.5 px-2 pb-1.5">
-            <label className="block text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-1">
-              Custom date
-            </label>
-            <input
-              type="date"
-              onChange={(e) => {
-                if (e.target.value) {
-                  setOpen(false)
-                  onPick(e.target.value)
-                }
-              }}
-              className="w-full rounded-sm bg-background px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }
