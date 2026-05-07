@@ -12,8 +12,6 @@ import {
   Circle,
   Clock,
   CircleCheck,
-  CircleX,
-  BellOff,
   AlertOctagon,
   CalendarDays,
   CalendarClock,
@@ -71,12 +69,15 @@ type Props = {
 type MainTab = "tasks" | "updates" | "client-inbox" | "meetings"
 type UpdateFilter = "all" | UpdateStatus
 /**
- * Snoozed is treated as a top-level task filter alongside open/in_progress/etc.
- * so users have a single mental model: "what kind of tasks am I looking at?"
- * Picking it forces snoozed=only on the API and shows tasks that are actively
- * hidden from the default list — letting users wake them up early.
+ * Task filters intentionally cover only the active lifecycle: All / Open /
+ * In progress / Done. Snoozed and Cancelled are treated as ARCHIVED state —
+ * they don't get their own tab. Snoozed tasks come back automatically when
+ * their snooze expires; Cancelled tasks are out for good (Cancel is the
+ * "soft delete with audit trail" path; Bulk Delete is the hard remove).
+ * Per Roy's call: "snooze items hoeven geen tab te zijn — die komen vanzelf
+ * weer terug. Cancelled is gearchiveerd."
  */
-type TaskFilter = "all" | TaskStatus | "snoozed"
+type TaskFilter = "all" | "open" | "in_progress" | "done"
 
 /** Secondary filter strip on Tasks: narrow by source. "all" shows everything;
  *  the chip strip below TASK_FILTERS only renders chips for sources that
@@ -101,16 +102,18 @@ const UPDATE_FILTERS: TopTab<UpdateFilter>[] = [
 ]
 
 const TASK_FILTERS: TopTab<TaskFilter>[] = [
-  { id: "all", label: "All tasks", icon: LayoutList },
   { id: "open", label: "Open", icon: Circle },
   { id: "in_progress", label: "In progress", icon: Clock },
-  { id: "snoozed", label: "Snoozed", icon: BellOff },
   { id: "done", label: "Done", icon: CircleCheck },
-  { id: "cancelled", label: "Cancelled", icon: CircleX },
+  { id: "all", label: "All", icon: LayoutList },
 ]
 
 const ALL_UPDATE_STATUSES: UpdateStatus[] = ["unread", "read"]
-const ALL_TASK_STATUSES: TaskStatus[] = ["open", "in_progress", "done", "cancelled"]
+// "All" excludes cancelled tasks — they're archived state and shouldn't
+// clutter the active list. If a user explicitly needs to find a cancelled
+// task, the row still exists in the DB; we'd add a dedicated Archive view
+// when the need actually shows up.
+const VISIBLE_TASK_STATUSES: TaskStatus[] = ["open", "in_progress", "done"]
 
 const DEFAULT_UPDATE_FILTER: UpdateFilter = "unread"
 const DEFAULT_TASK_FILTER: TaskFilter = "open"
@@ -138,21 +141,14 @@ export function InboxView({
     [updateFilter],
   )
   const taskStatuses = useMemo(() => {
-    if (taskFilter === "all") return ALL_TASK_STATUSES
-    // The Snoozed filter shows snoozed tasks regardless of their inner state
-    // (they're still status='open' or 'in_progress' under the hood — snooze is
-    // orthogonal). Pass both so the user sees everything they snoozed.
-    if (taskFilter === "snoozed") return ["open", "in_progress"]
+    if (taskFilter === "all") return VISIBLE_TASK_STATUSES
     return [taskFilter]
   }, [taskFilter])
 
-  // Default behaviour: hide snoozed tasks from active filters; the dedicated
-  // Snoozed filter explicitly opts in. 'done' / 'cancelled' / 'all' include
-  // them too (a task can be snoozed when it's closed — though uncommon).
-  const taskSnoozeMode: "active" | "snoozed" | "all" =
-    taskFilter === "snoozed" ? "snoozed"
-    : taskFilter === "open" || taskFilter === "in_progress" ? "active"
-    : "all"
+  // Snoozed tasks are archived from every visible filter — they wake up
+  // automatically when their snooze expires and pop back into Open. There's
+  // no tab to surface them while they're parked, by design.
+  const taskSnoozeMode: "active" = "active"
 
   const buildUrl = (kind: "update" | "task", statuses: string[]) => {
     const params = new URLSearchParams({ kind })
