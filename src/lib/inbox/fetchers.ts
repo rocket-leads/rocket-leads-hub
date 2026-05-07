@@ -4,6 +4,7 @@ import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { fetchTrengoChannels } from "@/lib/integrations/trengo"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
+import { stripHtml } from "@/lib/html"
 import type {
   InboxChannelKind,
   InboxItem,
@@ -33,6 +34,10 @@ type RawInboxRow = {
   source_ref: Record<string, unknown> | null
   monday_update_id: string | null
   trengo_channel_id: number | null
+  /** Trengo agent currently assigned to the ticket. Null = unassigned and
+   *  eligible for the Hub inbox. Non-null = someone in Trengo is handling
+   *  it; the row is hidden from the Hub. */
+  trengo_assignee_user_id: number | null
   /** Set by webhook ingesters to the *real* author name (the Trengo contact,
    *  Monday user, or Slack user) since the FK `author_id` always points at the
    *  system HQ account for those events. Manual creates leave it null. */
@@ -152,6 +157,17 @@ function rowToItem(
     channelKind = channelLookup.get(row.trengo_channel_id)?.kind ?? "other"
   }
 
+  // Defensive HTML strip on title/body. Webhook ingesters strip at write
+  // time (since 2026-05-05), but historical rows from before that fix —
+  // and any future ingest path we forget to wire — would otherwise dump
+  // raw `<p><a class="user_mention_editor router">…</a></p>` into the row
+  // UI. Cheap to run (regex on a short string) and a no-op when the field
+  // is already plain text. We only invoke it when the field actually looks
+  // HTML-shaped to avoid the regex pass on the 99% of rows that are clean.
+  const cleanTitle = row.title.includes("<") ? stripHtml(row.title) : row.title
+  const cleanBody =
+    row.body && row.body.includes("<") ? stripHtml(row.body) : row.body
+
   return {
     id: row.id,
     kind: row.kind,
@@ -162,8 +178,8 @@ function rowToItem(
     authorExternal: row.author_external,
     assigneeId: row.assignee_id,
     assigneeName: row.assignee?.name ?? row.assignee?.email ?? "Unknown",
-    title: row.title,
-    body: row.body,
+    title: cleanTitle,
+    body: cleanBody,
     status: row.status as UpdateStatus | TaskStatus,
     priority: row.priority,
     dueDate: row.due_date,
@@ -183,6 +199,7 @@ function rowToItem(
 const ITEM_SELECT = `
   id, kind, client_id, author_id, assignee_id, title, body, status, priority,
   due_date, snoozed_until, source, source_ref, monday_update_id, trengo_channel_id,
+  trengo_assignee_user_id,
   author_name_cached, author_external,
   created_at, updated_at, completed_at,
   author:users!inbox_items_author_id_fkey(id, name, email),
@@ -244,6 +261,13 @@ export async function listInboxItems(
     }
   }
 
+  // Unassigned-only Trengo filter — applies to admins and non-admins alike.
+  // Tickets claimed by anyone in Trengo are owned by Trengo's UI, not the
+  // Hub. Non-Trengo events bypass this filter entirely.
+  query = query.or(
+    `trengo_assignee_user_id.is.null,source.neq.trengo`,
+  )
+
   const { data, error } = await query
   if (error) throw new Error(`Failed to list inbox items: ${error.message}`)
 
@@ -270,6 +294,13 @@ export async function getInboxItem(
 
   if (error || !data) return null
   const row = data as unknown as RawInboxRow
+
+  // Unassigned-only Trengo gate — applies to admins and non-admins alike.
+  // Once a teammate claims the ticket in Trengo, it leaves the Hub even if
+  // a user previously had access via channel subscription.
+  if (row.source === "trengo" && row.trengo_assignee_user_id != null) {
+    return null
+  }
 
   // Visibility check
   if (role !== "admin") {
@@ -378,6 +409,12 @@ export async function getInboxBadgeCounts(
     }
   }
 
+  // Unassigned-only Trengo gate — exclude tickets currently claimed in Trengo
+  // from the badge so the count matches what the Client Inbox actually shows.
+  chatQuery = chatQuery.or(
+    `trengo_assignee_user_id.is.null,source.neq.trengo`,
+  )
+
   const [updatesRes, tasksRes, chatsRes] = await Promise.all([
     supabase
       .from("inbox_events")
@@ -462,6 +499,10 @@ export type ChatMessage = {
   at: string
   source: InboxSource
   status: string
+  /** Team-only annotation (Trengo "internal note") — rendered as a yellow
+   *  bubble in the thread so the AM can tell at a glance what's customer-
+   *  visible vs. team chatter. False for all client/external messages. */
+  isInternal: boolean
 }
 
 type RawChatRow = {
@@ -481,6 +522,8 @@ type RawChatRow = {
   created_at: string
   created_at_src: string | null
   trengo_channel_id: number | null
+  trengo_assignee_user_id: number | null
+  is_internal: boolean | null
   author: { id: string; name: string | null; email: string } | null
   assignee: { id: string; name: string | null; email: string } | null
 }
@@ -488,7 +531,7 @@ type RawChatRow = {
 const CHAT_SELECT = `
   id, source, scope, thread_key, client_id, author_id, assignee_id,
   author_kind, author_external, author_name_cached, title, body, status,
-  created_at, created_at_src, trengo_channel_id,
+  created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
 `
@@ -595,6 +638,11 @@ export async function listChatThreads(
     }
   }
 
+  // Unassigned-only Trengo gate. Tickets claimed in Trengo leave the Hub.
+  query = query.or(
+    `trengo_assignee_user_id.is.null,source.neq.trengo`,
+  )
+
   const { data, error } = await query
   if (error) throw new Error(`Failed to list chat threads: ${error.message}`)
 
@@ -611,6 +659,19 @@ export async function listChatThreads(
       byThread.set(key, entry)
     }
     entry.rows.push(row)
+  }
+
+  // Thread-level unassigned-only gate. The row-level filter on the query
+  // already drops claimed events, but historical rows ingested before the
+  // assignee column existed carry NULL — without this pass, those threads
+  // would still surface (with stale NULL rows) once a teammate claims the
+  // ticket. Drop any thread where at least one event has a non-null Trengo
+  // assignee.
+  for (const [key, entry] of byThread) {
+    const claimed = entry.rows.some(
+      (r) => r.source === "trengo" && r.trengo_assignee_user_id != null,
+    )
+    if (claimed) byThread.delete(key)
   }
 
   const clientMap = await getMondayClientMap()
@@ -691,6 +752,18 @@ export async function markChatThreadRead(
 ): Promise<{ updated: number }> {
   const supabase = await createAdminClient()
 
+  // If the thread is currently claimed in Trengo, the user shouldn't be able
+  // to mark it read — they shouldn't even be seeing it. Cheap guard.
+  const { data: claimedRow } = await supabase
+    .from("inbox_events")
+    .select("id")
+    .eq("thread_key", threadKey)
+    .eq("source", "trengo")
+    .not("trengo_assignee_user_id", "is", null)
+    .limit(1)
+    .maybeSingle()
+  if (claimedRow) return { updated: 0 }
+
   let query = supabase
     .from("inbox_events")
     .select("id")
@@ -738,6 +811,18 @@ export async function getChatThreadMessages(
 ): Promise<ChatMessage[]> {
   const supabase = await createAdminClient()
 
+  // Hide message history once the Trengo ticket has been claimed by anyone.
+  // Same reasoning as listChatThreads — the Hub doesn't show owned tickets.
+  const { data: claimedRow } = await supabase
+    .from("inbox_events")
+    .select("id")
+    .eq("thread_key", threadKey)
+    .eq("source", "trengo")
+    .not("trengo_assignee_user_id", "is", null)
+    .limit(1)
+    .maybeSingle()
+  if (claimedRow) return []
+
   let query = supabase
     .from("inbox_events")
     .select(CHAT_SELECT)
@@ -781,6 +866,7 @@ export async function getChatThreadMessages(
       at: rowDisplayAt(r),
       source: r.source,
       status: r.status,
+      isInternal: r.is_internal === true,
     }
   })
 }
