@@ -135,6 +135,8 @@ export function InboxView({
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerKind, setComposerKind] = useState<"update" | "task">("update")
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null)
+  const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const updateStatuses = useMemo(
     () => (updateFilter === "all" ? ALL_UPDATE_STATUSES : [updateFilter]),
@@ -325,6 +327,124 @@ export function InboxView({
   )
   const updates = filteredUpdates
 
+  // Flat ordered list of items as they appear on screen — used by keyboard
+  // navigation (j/k) so Down/Up moves through Overdue → Today → Upcoming
+  // (or Today → Yesterday → This week → Older for updates) the same way the
+  // user reads top-to-bottom. Recomputed on filter/sort/source changes so
+  // the focus index stays in sync with what's actually rendered.
+  const flatVisibleItems = useMemo<InboxItem[]>(() => {
+    if (activeTab === "tasks") {
+      const g = groupTasksByDeadline(tasks)
+      return [...g.overdue, ...g.today, ...g.upcoming]
+    }
+    if (activeTab === "updates") {
+      const g = groupUpdatesByDate(updates)
+      return [...g.today, ...g.yesterday, ...g.thisWeek, ...g.older]
+    }
+    return []
+  }, [activeTab, tasks, updates])
+
+  // Auto-prune the focused id when the row leaves the visible set (filter
+  // change, search refines past it, action removed it). Without this the
+  // ring sticks on a phantom row.
+  useEffect(() => {
+    if (!focusedItemId) return
+    if (!flatVisibleItems.some((it) => it.id === focusedItemId)) {
+      setFocusedItemId(null)
+    }
+  }, [flatVisibleItems, focusedItemId])
+
+  // Scroll the keyboard-focused row into view. Cheap — single querySelector
+  // by data attribute, only fires when focus actually changes.
+  useEffect(() => {
+    if (!focusedItemId) return
+    const el = document.querySelector<HTMLElement>(
+      `[data-inbox-row-id="${CSS.escape(focusedItemId)}"]`,
+    )
+    el?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+  }, [focusedItemId])
+
+  // Global keyboard shortcuts. Slack/Linear-style — j/k navigate, Enter
+  // opens detail, e completes (done for tasks / read for updates), x
+  // cancels a task, / focuses search. Skipped when the user is typing in
+  // an input/textarea/contenteditable so the shortcuts don't hijack normal
+  // edit flows. Detail dialog handles its own Esc.
+  useEffect(() => {
+    function isTypingTarget(t: EventTarget | null): boolean {
+      if (!(t instanceof HTMLElement)) return false
+      if (t.isContentEditable) return true
+      const tag = t.tagName
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT"
+    }
+
+    function onKey(e: KeyboardEvent) {
+      // / focuses search even from outside any input.
+      if (e.key === "/" && !isTypingTarget(e.target) && !detailItem) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+        return
+      }
+
+      if (isTypingTarget(e.target)) return
+      if (detailItem) return // detail dialog owns the keyboard while open
+      if (activeTab !== "tasks" && activeTab !== "updates") return
+      if (flatVisibleItems.length === 0) return
+
+      const currentIdx = focusedItemId
+        ? flatVisibleItems.findIndex((it) => it.id === focusedItemId)
+        : -1
+
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault()
+        const next = currentIdx < 0 ? 0 : Math.min(flatVisibleItems.length - 1, currentIdx + 1)
+        setFocusedItemId(flatVisibleItems[next].id)
+        return
+      }
+      if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault()
+        const next = currentIdx < 0 ? 0 : Math.max(0, currentIdx - 1)
+        setFocusedItemId(flatVisibleItems[next].id)
+        return
+      }
+
+      // Actions below need a focused item.
+      if (currentIdx < 0) return
+      const focused = flatVisibleItems[currentIdx]
+
+      if (e.key === "Enter" || e.key === "o") {
+        e.preventDefault()
+        setDetailItem(focused)
+        return
+      }
+
+      if (e.key === "e") {
+        e.preventDefault()
+        if (focused.kind === "task") {
+          patchItem(focused.id, { status: "done" }, { mode: "remove" })
+        } else if (focused.kind === "update") {
+          // Toggle: if already read, mark unread; otherwise mark read.
+          const next = focused.status === "read" ? "unread" : "read"
+          patchItem(focused.id, { status: next }, {
+            mode: "mutate",
+            optimisticPatch: { status: next },
+          })
+        }
+        return
+      }
+
+      if (e.key === "x" && focused.kind === "task") {
+        e.preventDefault()
+        patchItem(focused.id, { status: "cancelled" }, { mode: "remove" })
+        return
+      }
+    }
+
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatVisibleItems, focusedItemId, activeTab, detailItem])
+
   // Per-client view (locked-client tab on client detail page) surfaces
   // tasks/updates linked to that client plus a Client Inbox (Trengo
   // conversations) and Meetings sub-tab — keeping all per-client activity
@@ -361,13 +481,17 @@ export function InboxView({
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
               <input
+                ref={searchInputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") setSearchQuery("")
+                  if (e.key === "Escape") {
+                    setSearchQuery("")
+                    e.currentTarget.blur()
+                  }
                 }}
-                placeholder="Search inbox…"
+                placeholder="Search inbox…  (/)"
                 className="h-8 w-56 rounded-md border border-input bg-background pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               />
               {searchQuery && (
@@ -438,6 +562,7 @@ export function InboxView({
                 tasks={tasks}
                 showClient={!lockedClient}
                 users={users}
+                focusedItemId={focusedItemId}
                 onBulkDelete={(ids) => {
                   // Fan out DELETEs through the optimistic-remove path. The
                   // server gates DELETE to author/admin, so non-admin AMs
@@ -545,6 +670,7 @@ export function InboxView({
               <GroupedUpdates
                 updates={updates}
                 showClient={!lockedClient}
+                focusedItemId={focusedItemId}
                 onItemClick={(item) => setDetailItem(item)}
                 onAction={(item, action) => {
                   // Updates: Read/Unread is a per-row toggle that should leave
@@ -1045,6 +1171,7 @@ function TaskGroupSection({
   selectedIds,
   onToggleSelect,
   users,
+  focusedItemId,
 }: {
   icon: typeof AlertOctagon
   label: string
@@ -1058,6 +1185,7 @@ function TaskGroupSection({
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
   users?: InboxUser[]
+  focusedItemId?: string | null
 }) {
   if (items.length === 0) return null
   return (
@@ -1081,6 +1209,7 @@ function TaskGroupSection({
               onToggleSelect={() => onToggleSelect(item.id)}
               onClick={() => onItemClick(item)}
               users={users}
+              keyboardFocused={focusedItemId === item.id}
               onAction={(action) => {
                 if (
                   action === "done" ||
@@ -1149,6 +1278,7 @@ function GroupedTasks({
   onAction,
   onBulkDelete,
   users,
+  focusedItemId,
 }: {
   tasks: InboxItem[]
   showClient: boolean
@@ -1160,6 +1290,9 @@ function GroupedTasks({
    *  equivalent); only the bulk bar offers permanent delete. */
   onBulkDelete: (ids: string[]) => void
   users?: InboxUser[]
+  /** Keyboard-navigation target. Highlights the matching row and lets the
+   *  parent's global keydown handler dispatch actions against it. */
+  focusedItemId?: string | null
 }) {
   const groups = useMemo(() => groupTasksByDeadline(tasks), [tasks])
   const { collapsed, toggle } = useTaskCollapse()
@@ -1234,6 +1367,7 @@ function GroupedTasks({
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
         users={users}
+        focusedItemId={focusedItemId}
       />
       <TaskGroupSection
         icon={CalendarDays}
@@ -1248,6 +1382,7 @@ function GroupedTasks({
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
         users={users}
+        focusedItemId={focusedItemId}
       />
       <TaskGroupSection
         icon={CalendarClock}
@@ -1262,6 +1397,7 @@ function GroupedTasks({
         selectedIds={selectedIds}
         onToggleSelect={toggleSelect}
         users={users}
+        focusedItemId={focusedItemId}
       />
 
       {selectedIds.size > 0 && (
@@ -1629,6 +1765,7 @@ function UpdateGroupSection({
   onToggle,
   onItemClick,
   onAction,
+  focusedItemId,
 }: {
   icon: typeof CalendarDays
   label: string
@@ -1639,6 +1776,7 @@ function UpdateGroupSection({
   onToggle: () => void
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: UpdateAction) => void
+  focusedItemId?: string | null
 }) {
   if (items.length === 0) return null
   return (
@@ -1659,6 +1797,7 @@ function UpdateGroupSection({
               item={item}
               showClient={showClient}
               onClick={() => onItemClick(item)}
+              keyboardFocused={focusedItemId === item.id}
               onAction={(action) => {
                 if (action === "read" || action === "unread" || action === "make_task") {
                   onAction(item, action)
@@ -1710,11 +1849,13 @@ function GroupedUpdates({
   showClient,
   onItemClick,
   onAction,
+  focusedItemId,
 }: {
   updates: InboxItem[]
   showClient: boolean
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: UpdateAction) => void
+  focusedItemId?: string | null
 }) {
   const groups = useMemo(() => groupUpdatesByDate(updates), [updates])
   const { collapsed, toggle } = useUpdateCollapse()
@@ -1730,6 +1871,7 @@ function GroupedUpdates({
         onToggle={() => toggle("today")}
         onItemClick={onItemClick}
         onAction={onAction}
+        focusedItemId={focusedItemId}
       />
       <UpdateGroupSection
         icon={CalendarDays}
@@ -1741,6 +1883,7 @@ function GroupedUpdates({
         onToggle={() => toggle("yesterday")}
         onItemClick={onItemClick}
         onAction={onAction}
+        focusedItemId={focusedItemId}
       />
       <UpdateGroupSection
         icon={CalendarClock}
@@ -1752,6 +1895,7 @@ function GroupedUpdates({
         onToggle={() => toggle("thisWeek")}
         onItemClick={onItemClick}
         onAction={onAction}
+        focusedItemId={focusedItemId}
       />
       <UpdateGroupSection
         icon={CalendarX}
@@ -1763,6 +1907,7 @@ function GroupedUpdates({
         onToggle={() => toggle("older")}
         onItemClick={onItemClick}
         onAction={onAction}
+        focusedItemId={focusedItemId}
       />
     </div>
   )

@@ -57,6 +57,7 @@ export function InboxListRow({
   selected,
   onToggleSelect,
   users,
+  keyboardFocused,
 }: {
   item: InboxItem
   showClient: boolean
@@ -71,6 +72,9 @@ export function InboxListRow({
    *  dialog. Always available in the global inbox; locked-client inbox
    *  passes them through too. */
   users?: RowUser[]
+  /** True when this row is the current keyboard-navigation target. Renders
+   *  a subtle ring + auto-scrolls into view (handled by the parent). */
+  keyboardFocused?: boolean
 }) {
   const isUpdate = item.kind === "update"
   const isUnread = isUpdate && item.status === "unread"
@@ -90,10 +94,15 @@ export function InboxListRow({
           onClick()
         }
       }}
+      data-inbox-row-id={item.id}
       className={cn(
         "group w-full text-left rounded-lg border border-border/40 bg-card hover:border-border hover:bg-muted/30 transition-all px-4 py-3 cursor-pointer",
         isUnread && "ring-1 ring-primary/30 bg-primary/[0.02]",
         selected && "ring-2 ring-primary/60 bg-primary/[0.05] border-primary/40",
+        // Keyboard focus ring sits ABOVE the unread/selected rings visually
+        // (last in the cn order). Distinct violet ring so it doesn't collide
+        // with the cyan unread tint.
+        keyboardFocused && "ring-2 ring-violet-500/60 bg-violet-500/[0.04]",
         isCompleted && "opacity-60",
       )}
     >
