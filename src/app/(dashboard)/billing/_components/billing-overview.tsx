@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table"
 import { Panel } from "@/components/ui/panel"
 import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edit-cell"
+import { PersonEditCell } from "@/app/(dashboard)/clients/_components/person-edit-cell"
 import type { ClientStatus } from "@/lib/clients/status"
 import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
 import { NextInvoiceDateCell } from "./next-invoice-date-cell"
@@ -84,6 +85,10 @@ export type UpcomingInvoice = {
    *  invoiced; the column shows live vs onboarding so finance can spot which
    *  ones are still in setup. */
   campaignStatus: ClientStatus
+  /** Account manager name from Monday — drives the editable AM cell on the
+   *  Billing page so finance can see who owns the client at a glance. Same
+   *  source as the AM column on the Clients overview. */
+  accountManager: string
   /** Stripe is the source of truth for payment state. Monday's "Administration"
    *  column is ignored here on purpose — it gets out of sync. Null when the
    *  client has no Stripe customer linked OR the billing summary cache hasn't
@@ -226,6 +231,7 @@ export function BillingOverview({ groups }: { groups: BillingGroup[] }) {
                 <TableHead className="text-[12px] text-foreground/80 font-semibold">Client</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[150px]">Action</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Status</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">AM</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Invoice date</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">New cycle</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Fee</TableHead>
@@ -334,6 +340,13 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
           <StatusEditCell
             mondayItemId={primary.mondayItemId}
             status={primary.campaignStatus}
+          />
+        </TableCell>
+        <TableCell className="py-2.5">
+          <PersonEditCell
+            mondayItemId={primary.mondayItemId}
+            fieldKey="account_manager"
+            value={primary.accountManager}
           />
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums">
@@ -445,6 +458,13 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
               </Link>
             </TableCell>
             <TableCell colSpan={2} className="py-2" />
+            <TableCell className="py-2">
+              <PersonEditCell
+                mondayItemId={sib.mondayItemId}
+                fieldKey="account_manager"
+                value={sib.accountManager}
+              />
+            </TableCell>
             <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground/80">
               {sib.nextInvoiceDate ? fmtDate(sib.nextInvoiceDate) : "—"}
             </TableCell>

@@ -200,6 +200,7 @@ export default async function BillingPage() {
       adBudget: money?.adBudget ?? 0,
       usesRocketLeadsAdAccount: isRocketLeadsAdAccount(c.metaAdAccountId),
       campaignStatus: c._status,
+      accountManager: c.accountManager,
       paymentStatus: summary?.status ?? null,
       outstanding: summary?.outstanding ?? 0,
       readiness: readinessCache[c.mondayItemId] ?? null,
