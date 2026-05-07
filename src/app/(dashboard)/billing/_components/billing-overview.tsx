@@ -21,6 +21,7 @@ import { NextInvoiceDateCell } from "./next-invoice-date-cell"
 import { CreateInvoiceDialog } from "./create-invoice-dialog"
 import { InvoiceReadinessCell } from "./invoice-readiness-cell"
 import { AgreementAmountCell } from "./agreement-amount-cell"
+import { DriftFixButton } from "./drift-fix-button"
 
 /**
  * A billable group — one or more Monday rows that share a Stripe customer.
@@ -288,15 +289,13 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
                 </Link>
               )}
               {isMulti && (
-                <span className="text-[11px] text-muted-foreground/70">
+                <span className="text-[11px] text-muted-foreground/70 inline-flex items-center">
                   {group.siblings.length} campaigns
                   {group.hasDateDrift && (
-                    <span
-                      className="ml-1.5 text-amber-500"
-                      title="Cycle dates differ across campaigns. Edit one to auto-sync the others."
-                    >
-                      · cycles drift
-                    </span>
+                    <DriftFixButton
+                      mondayItemId={primary.mondayItemId}
+                      cycleStartDate={primary.cycleStartDate}
+                    />
                   )}
                 </span>
               )}
