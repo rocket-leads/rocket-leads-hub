@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Trash2, Send, Calendar, AlertCircle, Loader2, Mail, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown, Sparkles, Pencil } from "lucide-react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Trash2, Send, Calendar, AlertCircle, Loader2, Mail, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown, Sparkles, Pencil, X } from "lucide-react"
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+import { DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
@@ -305,8 +306,38 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+    <DialogPrimitive.Root open onOpenChange={(o) => !o && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Backdrop
+          onClick={onClose}
+          className={cn(
+            "fixed inset-0 isolate z-50 bg-black/40 backdrop-blur-sm",
+            "cursor-pointer transition-colors hover:bg-black/55",
+            "duration-100 ease-out",
+            "data-open:animate-in data-open:fade-in-0",
+            "data-closed:animate-out data-closed:fade-out-0",
+          )}
+        />
+        <DialogPrimitive.Popup
+          className={cn(
+            // Right-side slide panel, ~35% wide on desktop. Roy: same
+            // pattern as the Clients slide-over, but narrower because tasks
+            // are denser than full client detail pages.
+            "fixed inset-y-0 right-0 z-50 w-full sm:w-[80%] md:w-[55%] lg:w-[40%] xl:w-[35%] max-w-[640px]",
+            "bg-background shadow-2xl ring-1 ring-foreground/10 outline-none",
+            "flex flex-col",
+            "duration-[120ms] ease-out",
+            "data-open:animate-in data-open:slide-in-from-right",
+            "data-closed:animate-out data-closed:slide-out-to-right",
+          )}
+        >
+          <DialogPrimitive.Close
+            className="absolute top-4 right-4 z-10 h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors outline-none"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </DialogPrimitive.Close>
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
         {detailQuery.isLoading || !item ? (
           <div className="py-12 flex items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -649,8 +680,10 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
             )}
           </>
         )}
-      </DialogContent>
-    </Dialog>
+          </div>
+        </DialogPrimitive.Popup>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }
 

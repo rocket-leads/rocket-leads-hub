@@ -12,6 +12,14 @@ export function stripHtml(html: string | null | undefined): string {
     .replace(/<br\s*\/?>/gi, " ")
     .replace(/<\/p>/gi, " ")
     .replace(/<[^>]+>/g, "")
+    // Truncated input: rows stored before our ingest-time strip got a 100-
+    // char title cap that sometimes lopped off in the middle of an HTML tag
+    // (`<a class="..." href="...26220-st…`). The full-tag regex above won't
+    // touch that — there's no closing `>`. Drop everything from a dangling
+    // `<` to end-of-string so the user sees clean truncated text instead of
+    // broken markup. Matches strictly at end so a stray `<3` in body text
+    // doesn't get clobbered.
+    .replace(/<[^>]*$/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
