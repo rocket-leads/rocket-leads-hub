@@ -30,8 +30,8 @@ const RULES: RuleConfig[] = [
     key: "payment_overdue_task",
     title: "Payment overdue → high-priority task",
     description:
-      "When a Stripe invoice goes overdue for a client, the daily cron creates a high-priority task assigned to that client's Account Manager. The task asks the AM to contact the client about the overdue payment. Idempotent — one task per overdue invoice.",
-    trigger: "Stripe invoice status becomes overdue",
+      "When a Stripe invoice goes overdue for a Live client, the daily cron creates a high-priority task assigned to that client's Account Manager. The task asks the AM to contact the client about the overdue payment. Onboarding, On Hold and Churned clients are skipped — chasing payments on those accounts adds noise without action. Idempotent — one task per overdue invoice.",
+    trigger: "Stripe invoice status becomes overdue (Live clients only)",
     effect: "Task created · assigned to AM · priority high · due today",
     icon: CreditCard,
   },

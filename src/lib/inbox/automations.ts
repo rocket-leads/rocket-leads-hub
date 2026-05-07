@@ -5,6 +5,7 @@ import { fetchBillingData } from "@/lib/integrations/stripe"
 import { fetchConversations, fetchMessages } from "@/lib/integrations/trengo"
 import { detectMostActiveTrengoChannel } from "@/lib/inbox/channel-detect"
 import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
+import { mondayStatusToHub } from "@/lib/clients/status"
 import Anthropic from "@anthropic-ai/sdk"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { InvoiceRow } from "@/lib/integrations/stripe"
@@ -1191,27 +1192,42 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
       : (realAssigneeId as string)
 
     if (rules.payment_overdue_task && client.stripeCustomerId) {
-      try {
-        const billing = await fetchBillingData(client.stripeCustomerId)
-        const overdue = billing.invoices.filter((i) => i.status === "overdue")
-        for (const invoice of overdue) {
-          const result = await ensurePaymentOverdueTask(
-            supabase,
-            client,
-            supabaseClientId,
-            invoice,
-            authorId,
-            assigneeId,
-            testMode,
-          )
-          if (result) created.push(result)
-        }
-      } catch (e) {
+      // Only fire payment-overdue tasks for clients whose campaign is actually
+      // Live. Onboarding clients haven't kicked off yet, On Hold clients
+      // already have a flag in the system, and Churned clients are out the
+      // door — chasing payments on any of those is noise that floods the AM
+      // with reminders for invoices nobody is acting on. Roy's directive after
+      // seeing too many reminders for non-live accounts.
+      const hubStatus = mondayStatusToHub(client.campaignStatus, client.boardType)
+      if (hubStatus !== "live") {
         skipped.push({
-          reason: "stripe_fetch_failed",
+          reason: "client_not_live",
           client: client.name,
-          detail: e instanceof Error ? e.message : String(e),
+          detail: `status=${hubStatus ?? "unknown"}`,
         })
+      } else {
+        try {
+          const billing = await fetchBillingData(client.stripeCustomerId)
+          const overdue = billing.invoices.filter((i) => i.status === "overdue")
+          for (const invoice of overdue) {
+            const result = await ensurePaymentOverdueTask(
+              supabase,
+              client,
+              supabaseClientId,
+              invoice,
+              authorId,
+              assigneeId,
+              testMode,
+            )
+            if (result) created.push(result)
+          }
+        } catch (e) {
+          skipped.push({
+            reason: "stripe_fetch_failed",
+            client: client.name,
+            detail: e instanceof Error ? e.message : String(e),
+          })
+        }
       }
     }
 
