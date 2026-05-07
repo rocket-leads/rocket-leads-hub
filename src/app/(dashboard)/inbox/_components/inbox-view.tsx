@@ -172,13 +172,73 @@ export function InboxView({
     setComposerOpen(true)
   }
 
-  async function patchItem(itemId: string, patch: Record<string, unknown>) {
-    await fetch(`/api/inbox/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
+  /**
+   * PATCH a row optimistically.
+   *
+   * Two modes for how we touch the local cache before the server replies:
+   *
+   *   - "remove": the row disappears from every matching list query. Used
+   *     for actions that take the row out of the current view by definition
+   *     — Done, Cancel, Snooze (default filters hide snoozed), Reassign-away
+   *     (when "Assigned to me" is on and the new assignee isn't the actor).
+   *
+   *   - "mutate": the row stays visible but its fields update. The optional
+   *     `optimisticPatch` mirrors what the server is about to write so the
+   *     UI reflects it immediately (e.g. due date moves Today → Friday and
+   *     the row jumps between groups; assignee name updates in place).
+   *
+   * On error we roll back from a snapshot. On success we invalidate so the
+   * next render reconciles with the server (cheap — the result is identical
+   * to our optimistic guess in 99% of cases).
+   */
+  async function patchItem(
+    itemId: string,
+    patch: Record<string, unknown>,
+    options: {
+      mode: "remove" | "mutate"
+      optimisticPatch?: Partial<InboxItem>
+    } = { mode: "mutate" },
+  ) {
+    const snapshots = queryClient.getQueriesData<{ items: InboxItem[] }>({
+      queryKey: ["inbox"],
     })
-    refreshAll()
+
+    queryClient.setQueriesData<{ items: InboxItem[] }>(
+      { queryKey: ["inbox"] },
+      (data) => {
+        if (!data?.items) return data
+        if (options.mode === "remove") {
+          return { ...data, items: data.items.filter((it) => it.id !== itemId) }
+        }
+        const merge = options.optimisticPatch ?? {}
+        return {
+          ...data,
+          items: data.items.map((it) =>
+            it.id === itemId ? { ...it, ...merge } : it,
+          ),
+        }
+      },
+    )
+
+    try {
+      const res = await fetch(`/api/inbox/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) throw new Error(`PATCH failed (${res.status})`)
+    } catch (err) {
+      // Roll back every snapshot we touched. Cheap — these are tiny lists.
+      for (const [key, data] of snapshots) {
+        queryClient.setQueryData(key, data)
+      }
+      console.error("patchItem failed, rolled back", err)
+    } finally {
+      // Reconcile with server regardless of success/failure. On success this
+      // is a no-op visually; on failure it pulls the server's authoritative
+      // state in case our snapshot drifted.
+      refreshAll()
+    }
   }
 
   const allUpdates = updatesQuery.data?.items ?? []
@@ -304,16 +364,68 @@ export function InboxView({
                 users={users}
                 onItemClick={(item) => setDetailItem(item)}
                 onAction={(item, action) => {
-                  if (action === "done") patchItem(item.id, { status: "done" })
-                  else if (action === "cancel") patchItem(item.id, { status: "cancelled" })
-                  else if (action === "reopen") patchItem(item.id, { status: "open" })
-                  else if (action === "unsnooze") patchItem(item.id, { snoozedUntil: null })
-                  else if (typeof action === "object" && action.type === "snooze") {
-                    patchItem(item.id, { snoozedUntil: action.until })
+                  // Optimistic strategy:
+                  //   - Terminal status changes (done/cancel) and snooze leave
+                  //     the active list under default filters — REMOVE so the
+                  //     row disappears immediately.
+                  //   - Reopen and unsnooze keep the row in the list — MUTATE.
+                  //   - Reschedule keeps the row but the date changes (it may
+                  //     jump between Overdue/Today/Upcoming) — MUTATE.
+                  //   - Reassign: when filter is "Assigned to me" and the new
+                  //     assignee isn't me, the row should leave — REMOVE.
+                  //     Otherwise MUTATE in place with the new name resolved
+                  //     from the users list.
+                  if (action === "done") {
+                    patchItem(item.id, { status: "done" }, { mode: "remove" })
+                  } else if (action === "cancel") {
+                    patchItem(item.id, { status: "cancelled" }, { mode: "remove" })
+                  } else if (action === "reopen") {
+                    patchItem(
+                      item.id,
+                      { status: "open" },
+                      { mode: "mutate", optimisticPatch: { status: "open" } },
+                    )
+                  } else if (action === "unsnooze") {
+                    patchItem(
+                      item.id,
+                      { snoozedUntil: null },
+                      { mode: "mutate", optimisticPatch: { snoozedUntil: null } },
+                    )
+                  } else if (typeof action === "object" && action.type === "snooze") {
+                    patchItem(
+                      item.id,
+                      { snoozedUntil: action.until },
+                      { mode: "remove" },
+                    )
                   } else if (typeof action === "object" && action.type === "reassign") {
-                    patchItem(item.id, { assigneeId: action.assigneeId })
+                    const leavingMyView =
+                      assignedToMe && action.assigneeId !== currentUser.id
+                    if (leavingMyView) {
+                      patchItem(
+                        item.id,
+                        { assigneeId: action.assigneeId },
+                        { mode: "remove" },
+                      )
+                    } else {
+                      const u = users.find((x) => x.id === action.assigneeId)
+                      patchItem(
+                        item.id,
+                        { assigneeId: action.assigneeId },
+                        {
+                          mode: "mutate",
+                          optimisticPatch: {
+                            assigneeId: action.assigneeId,
+                            assigneeName: u?.name ?? u?.email ?? item.assigneeName,
+                          },
+                        },
+                      )
+                    }
                   } else if (typeof action === "object" && action.type === "reschedule") {
-                    patchItem(item.id, { dueDate: action.dueDate })
+                    patchItem(
+                      item.id,
+                      { dueDate: action.dueDate },
+                      { mode: "mutate", optimisticPatch: { dueDate: action.dueDate } },
+                    )
                   }
                 }}
               />
@@ -345,8 +457,25 @@ export function InboxView({
                 showClient={!lockedClient}
                 onItemClick={(item) => setDetailItem(item)}
                 onAction={(item, action) => {
-                  if (action === "read") patchItem(item.id, { status: "read" })
-                  else if (action === "unread") patchItem(item.id, { status: "unread" })
+                  // Updates: Read/Unread is a per-row toggle that should leave
+                  // the row visible regardless of filter — even when the
+                  // current filter is e.g. "Unread", flipping a row is
+                  // already a UX feedback signal. We mutate in place; the
+                  // background invalidate will quietly drop it from the list
+                  // on the next refetch if the filter no longer matches.
+                  if (action === "read") {
+                    patchItem(
+                      item.id,
+                      { status: "read" },
+                      { mode: "mutate", optimisticPatch: { status: "read" } },
+                    )
+                  } else if (action === "unread") {
+                    patchItem(
+                      item.id,
+                      { status: "unread" },
+                      { mode: "mutate", optimisticPatch: { status: "unread" } },
+                    )
+                  }
                 }}
               />
             )}
