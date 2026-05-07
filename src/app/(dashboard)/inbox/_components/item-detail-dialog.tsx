@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Trash2, Send, Calendar, AlertCircle, Loader2, Mail, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown, Sparkles } from "lucide-react"
+import { Trash2, Send, Calendar, AlertCircle, Loader2, Mail, MessageSquare, Hash, ListTodo, Inbox as InboxIcon, MessagesSquare, Link2Off, Link2, Check, ChevronDown, Sparkles, Pencil } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -65,6 +65,37 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
       onChanged()
     } finally {
       setUpdatingStatus(false)
+    }
+  }
+
+  /**
+   * Edit a meta field on the item (title / body / dueDate). Optimistic on
+   * the detail-query cache so the new value sticks the moment the user
+   * blurs out of the input — without that, an Enter-to-save flashes back to
+   * the old text for half a second while the round-trip completes. We
+   * also invalidate the list queries so the row in the inbox view picks
+   * up the fresh title.
+   */
+  async function setMeta(patch: { title?: string; body?: string | null; dueDate?: string }) {
+    if (!item) return
+    const prev = detailQuery.data
+    queryClient.setQueryData<{ item: InboxItem; comments: InboxComment[] }>(
+      ["inbox-item", itemId],
+      (data) => (data ? { ...data, item: { ...data.item, ...patch } } : data),
+    )
+    try {
+      const res = await fetch(`/api/inbox/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) throw new Error(`PATCH failed (${res.status})`)
+      queryClient.invalidateQueries({ queryKey: ["inbox"] })
+      onChanged()
+    } catch (err) {
+      // Roll back the optimistic change on the detail query.
+      if (prev) queryClient.setQueryData(["inbox-item", itemId], prev)
+      console.error("setMeta failed, rolled back", err)
     }
   }
 
@@ -287,7 +318,15 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 {item.priority === "high" && (
                   <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
                 )}
-                <DialogTitle className="leading-snug flex-1">{item.title}</DialogTitle>
+                {item.kind === "task" ? (
+                  <EditableTitle
+                    value={item.title}
+                    onSave={(title) => setMeta({ title })}
+                    className="flex-1"
+                  />
+                ) : (
+                  <DialogTitle className="leading-snug flex-1">{item.title}</DialogTitle>
+                )}
                 <SourcePill
                   source={item.source}
                   channelKind={item.channelKind}
@@ -370,10 +409,17 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               />
             )}
 
-            {item.body && (
-              <div className="text-sm whitespace-pre-wrap text-foreground/90 leading-relaxed">
-                {item.body}
-              </div>
+            {item.kind === "task" ? (
+              <EditableBody
+                value={item.body ?? ""}
+                onSave={(body) => setMeta({ body: body.trim() ? body : null })}
+              />
+            ) : (
+              item.body && (
+                <div className="text-sm whitespace-pre-wrap text-foreground/90 leading-relaxed">
+                  {item.body}
+                </div>
+              )
             )}
 
             {/* Reclassify — escape hatch when AI put it in the wrong tab.
@@ -772,4 +818,176 @@ function ChannelMark({ channel }: { channel: unknown }) {
     return <Mail className="h-3 w-3 text-blue-500 shrink-0" />
   }
   return null
+}
+
+/** Click-to-edit task title. Shows the current text styled as a DialogTitle;
+ *  click switches to a single-line input. Enter or blur saves; Esc reverts.
+ *  Empty title isn't allowed (nothing to label the task by) — we revert to
+ *  the previous value instead of saving. A small pencil glyph fades in on
+ *  hover so the affordance is discoverable without cluttering the header. */
+function EditableTitle({
+  value,
+  onSave,
+  className,
+}: {
+  value: string
+  onSave: (next: string) => void | Promise<void>
+  className?: string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Keep the draft in sync if the parent value changes while we're not
+  // editing (e.g. another action pushed a new title in via optimistic update).
+  useEffect(() => {
+    if (!editing) setDraft(value)
+  }, [value, editing])
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+  }, [editing])
+
+  function commit() {
+    const next = draft.trim()
+    if (!next) {
+      // Don't save an empty title — revert and exit.
+      setDraft(value)
+      setEditing(false)
+      return
+    }
+    setEditing(false)
+    if (next !== value) onSave(next)
+  }
+
+  function cancel() {
+    setDraft(value)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            commit()
+          } else if (e.key === "Escape") {
+            e.preventDefault()
+            cancel()
+          }
+        }}
+        className={cn(
+          "flex-1 text-lg font-semibold leading-snug bg-background border border-primary/40 rounded-md px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+          className,
+        )}
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className={cn(
+        "group/title text-left rounded-md px-2 py-1 -mx-2 -my-1 hover:bg-muted/40 transition-colors flex items-start gap-1.5",
+        className,
+      )}
+      title="Click to edit"
+    >
+      <DialogTitle className="leading-snug flex-1">{value}</DialogTitle>
+      <Pencil className="h-3.5 w-3.5 mt-1 text-muted-foreground/40 opacity-0 group-hover/title:opacity-100 transition-opacity shrink-0" />
+    </button>
+  )
+}
+
+/** Click-to-edit task body. Empty state shows a placeholder so it's clear
+ *  the field is editable even when there's nothing in it. Cmd/Ctrl+Enter or
+ *  blur saves; Esc reverts. Multiline input with auto-grow up to a sensible
+ *  cap so the dialog doesn't explode on long pastes. */
+function EditableBody({
+  value,
+  onSave,
+}: {
+  value: string
+  onSave: (next: string) => void | Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+  const ref = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (!editing) setDraft(value)
+  }, [value, editing])
+
+  useEffect(() => {
+    if (editing) {
+      ref.current?.focus()
+      // Place cursor at end rather than selecting all — body edits are
+      // usually appends/tweaks, not full rewrites.
+      const len = ref.current?.value.length ?? 0
+      ref.current?.setSelectionRange(len, len)
+    }
+  }, [editing])
+
+  function commit() {
+    setEditing(false)
+    if (draft !== value) onSave(draft)
+  }
+
+  function cancel() {
+    setDraft(value)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <textarea
+        ref={ref}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            commit()
+          } else if (e.key === "Escape") {
+            e.preventDefault()
+            cancel()
+          }
+        }}
+        rows={Math.min(Math.max(draft.split("\n").length, 3), 16)}
+        placeholder="Add a description…"
+        className="w-full text-sm bg-background border border-primary/40 rounded-md px-3 py-2 leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 resize-y"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="group/body w-full text-left rounded-md px-3 py-2 -mx-3 hover:bg-muted/40 transition-colors min-h-[2.5rem]"
+      title="Click to edit"
+    >
+      {value ? (
+        <span className="text-sm whitespace-pre-wrap text-foreground/90 leading-relaxed block">
+          {value}
+        </span>
+      ) : (
+        <span className="text-xs text-muted-foreground/50 italic inline-flex items-center gap-1.5">
+          <Pencil className="h-3 w-3" />
+          Add a description…
+        </span>
+      )}
+    </button>
+  )
 }
