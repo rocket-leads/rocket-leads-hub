@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -526,6 +526,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 <CommentThread
                   comments={comments}
                   currentUserId={currentUser.id}
+                  users={users}
                   draft={commentBody}
                   onDraftChange={setCommentBody}
                   onSend={addComment}
@@ -765,6 +766,7 @@ function AssigneePicker({
 function CommentThread({
   comments,
   currentUserId,
+  users,
   draft,
   onDraftChange,
   onSend,
@@ -772,18 +774,95 @@ function CommentThread({
 }: {
   comments: InboxComment[]
   currentUserId: string
+  users: InboxUser[]
   draft: string
   onDraftChange: (value: string) => void
   onSend: () => void
   sending: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Mention picker state. `mentionStart` records the position of the `@`
+  // character that opened the popover so we know where to splice the picked
+  // name back in. `mentionQuery` is the substring after `@` that filters
+  // the user list as the AM keeps typing.
+  const [mentionStart, setMentionStart] = useState<number | null>(null)
+  const [mentionQuery, setMentionQuery] = useState("")
+  const [mentionHighlight, setMentionHighlight] = useState(0)
 
   // Auto-scroll to bottom whenever the comment list grows. Only triggers
   // on count change so reading old comments doesn't yank you back down.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
   }, [comments.length])
+
+  // Filter the team list by the typed query (after `@`). Excludes the
+  // current user — mentioning yourself is not useful. Caps to 8 results
+  // so the popover doesn't dwarf the composer on a big team.
+  const mentionMatches = useMemo(() => {
+    const q = mentionQuery.trim().toLowerCase()
+    return users
+      .filter((u) => u.id !== currentUserId)
+      .filter((u) => {
+        if (!q) return true
+        const haystack = `${u.name ?? ""} ${u.email}`.toLowerCase()
+        return haystack.includes(q)
+      })
+      .slice(0, 8)
+  }, [users, mentionQuery, currentUserId])
+
+  // Keep highlight inside bounds when the filter shrinks the list.
+  useEffect(() => {
+    if (mentionHighlight >= mentionMatches.length) setMentionHighlight(0)
+  }, [mentionMatches.length, mentionHighlight])
+
+  // Detect `@` start, track the query as the user types, close on space
+  // (mention boundaries are word-shaped) or when the user navigates away.
+  function syncMentionState(value: string, caret: number) {
+    // Look back from the caret for a `@` that isn't preceded by a non-space
+    // character (so an email "roy@rocketleads" doesn't pop the picker).
+    let i = caret - 1
+    while (i >= 0 && /[A-Za-zÀ-ÖØ-öø-ÿ.\-' ]/.test(value[i])) i--
+    if (i >= 0 && value[i] === "@") {
+      const prev = i === 0 ? " " : value[i - 1]
+      if (/\s|^/.test(prev) || i === 0) {
+        const q = value.slice(i + 1, caret)
+        // Multi-word query is fine but we cap at one space — beyond that
+        // it's no longer a name.
+        if (q.split(/\s+/).length <= 2) {
+          setMentionStart(i)
+          setMentionQuery(q)
+          return
+        }
+      }
+    }
+    setMentionStart(null)
+    setMentionQuery("")
+  }
+
+  function applyMention(user: InboxUser) {
+    if (mentionStart == null) return
+    const ta = textareaRef.current
+    if (!ta) return
+    // Insert the user's first name (matching what the backend matcher
+    // expects). Append a trailing space so the next keystroke is a fresh
+    // word, not a continuation of the picker.
+    const firstName = (user.name ?? user.email).split(/\s+/)[0]
+    const before = draft.slice(0, mentionStart)
+    const after = draft.slice(ta.selectionStart)
+    const insertion = `@${firstName} `
+    const next = before + insertion + after
+    onDraftChange(next)
+    setMentionStart(null)
+    setMentionQuery("")
+    // Restore focus + caret position right after the inserted name.
+    requestAnimationFrame(() => {
+      const pos = before.length + insertion.length
+      ta.focus()
+      ta.setSelectionRange(pos, pos)
+    })
+  }
 
   return (
     <div className="border-t border-border/40 pt-4 -mx-1 flex flex-col">
@@ -851,14 +930,54 @@ function CommentThread({
         </div>
       )}
 
-      <div className="flex items-end gap-2 px-1">
+      <div className="relative flex items-end gap-2 px-1">
         <textarea
+          ref={textareaRef}
           value={draft}
-          onChange={(e) => onDraftChange(e.target.value)}
-          placeholder="Message the team about this task…"
+          onChange={(e) => {
+            onDraftChange(e.target.value)
+            syncMentionState(e.target.value, e.target.selectionStart ?? 0)
+          }}
+          onKeyUp={(e) => {
+            // Update on caret-only moves too (arrow keys, click) so backing
+            // into a previously-typed @ reopens the picker.
+            const ta = e.currentTarget
+            syncMentionState(ta.value, ta.selectionStart ?? 0)
+          }}
+          onClick={(e) => {
+            const ta = e.currentTarget
+            syncMentionState(ta.value, ta.selectionStart ?? 0)
+          }}
+          placeholder="Message the team about this task…  Use @ to mention"
           rows={1}
           className="flex-1 rounded-lg border border-input bg-transparent px-3 py-2 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none min-h-[36px] max-h-32"
           onKeyDown={(e) => {
+            // Mention popover keyboard handling takes priority — arrow keys
+            // navigate the suggestion list, Enter/Tab pick the highlighted
+            // entry, Esc cancels the picker without sending the message.
+            if (mentionStart != null && mentionMatches.length > 0) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault()
+                setMentionHighlight((h) => Math.min(mentionMatches.length - 1, h + 1))
+                return
+              }
+              if (e.key === "ArrowUp") {
+                e.preventDefault()
+                setMentionHighlight((h) => Math.max(0, h - 1))
+                return
+              }
+              if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault()
+                applyMention(mentionMatches[mentionHighlight])
+                return
+              }
+              if (e.key === "Escape") {
+                e.preventDefault()
+                setMentionStart(null)
+                setMentionQuery("")
+                return
+              }
+            }
             // Slack/Discord behaviour: Enter sends, Shift+Enter inserts a
             // newline. Keep Cmd/Ctrl+Enter as a legacy alias so anyone
             // who learned the previous behaviour doesn't get stuck.
@@ -877,6 +996,45 @@ function CommentThread({
         >
           <Send className="h-3.5 w-3.5" />
         </Button>
+
+        {mentionStart != null && mentionMatches.length > 0 && (
+          <div className="absolute bottom-full mb-1 left-1 right-12 z-10 rounded-md border border-border bg-popover shadow-lg py-1 text-xs">
+            {mentionMatches.map((u, i) => {
+              const active = i === mentionHighlight
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onMouseDown={(e) => {
+                    // mousedown so the click fires before the textarea's
+                    // blur clears the picker.
+                    e.preventDefault()
+                    applyMention(u)
+                  }}
+                  onMouseEnter={() => setMentionHighlight(i)}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 flex items-center gap-2",
+                    active ? "bg-muted/80" : "hover:bg-muted/50",
+                  )}
+                >
+                  <span className="h-5 w-5 shrink-0 rounded-full bg-muted inline-flex items-center justify-center text-[9px] font-semibold text-muted-foreground">
+                    {(u.name?.trim()[0] ?? u.email[0] ?? "?").toUpperCase()}
+                  </span>
+                  <span className="flex-1 truncate">
+                    <span className="font-medium text-foreground/90">
+                      {u.name ?? u.email}
+                    </span>
+                    {u.name && (
+                      <span className="text-muted-foreground/50 ml-1.5 text-[10px]">
+                        {u.email}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )
