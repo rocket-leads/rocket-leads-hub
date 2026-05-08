@@ -14,12 +14,58 @@
 // concerns/actions until the underlying data is reliable.
 //
 // `severityScore` ranks within Action/Watch by potential € impact.
+//
+// Recent-window override: a 7d-only verdict has tunnel vision. We optimise daily, so a
+// 7d CPL spike that has already recovered in the last 1-3 days is no longer urgent.
+// Conversely a fresh spike yesterday is invisible in a 7d average. `getRecentSignal()`
+// extracts the shortest reliable window (1d → 2d → 3d) from `dailyTrend` and we apply
+// two flips on top of the 7d verdict:
+//   - action + recovery   → watch  ("CPL spiked but recovered to baseline — monitor")
+//   - good   + fresh spike → watch  ("CPL spiking last 1-3d while 7d still calm")
 
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { createAdminClient } from "@/lib/supabase/server"
 
 export type WatchCategory = "action" | "watch" | "good" | "no-data"
+
+/**
+ * Recent CPL from the shortest trustworthy window (1d → 2d → 3d). "Trustworthy"
+ * means the window has at least 2 leads and >€0 spend — anything thinner is too
+ * noisy to flip a bucket on.
+ *
+ * Returns `null` when even 3d doesn't clear the bar. Callers should fall back to
+ * the 7d verdict in that case.
+ */
+export type RecentSignal = {
+  recentCpl: number
+  windowDays: 1 | 2 | 3
+  recentSpend: number
+  recentLeads: number
+}
+
+export function getRecentSignal(kpi: KpiSummary): RecentSignal | null {
+  const trend = kpi.dailyTrend
+  if (!trend || trend.length === 0) return null
+
+  for (const windowDays of [1, 2, 3] as const) {
+    if (trend.length < windowDays) continue
+    const slice = trend.slice(-windowDays)
+    const recentSpend = slice.reduce((s, d) => s + d.spend, 0)
+    const recentLeads = slice.reduce((s, d) => s + d.leads, 0)
+    if (recentLeads >= 2 && recentSpend > 0) {
+      return { recentCpl: recentSpend / recentLeads, windowDays, recentSpend, recentLeads }
+    }
+  }
+  return null
+}
+
+/** Recent CPL within 25% of the prev-7d baseline = recovered. */
+const RECOVERY_RATIO = 1.25
+/** Recent CPL ≥1.5× prev-7d baseline while 7d hasn't tripped Watch yet = fresh spike. */
+const FRESH_SPIKE_RATIO = 1.5
+/** Min spend in the recent window before we'll promote good → watch on a fresh spike. */
+const FRESH_SPIKE_MIN_SPEND = 30
 
 /**
  * Tiered Watch/Action thresholds based on actual 7d ad spend. Smaller accounts have
@@ -38,6 +84,11 @@ export function getThresholds(adSpend7d: number): { watchPct: number; actionPct:
  * Bigger spend × bigger CPL spike floats to the top. Zero-leads-with-spend is
  * pure waste, so it gets a 3× multiplier on raw spend.
  *
+ * Recovery dampener: when the recent (1-3d) window shows CPL back at baseline
+ * (≤RECOVERY_RATIO × prevCpl), halve the score so demoted-from-action-to-watch
+ * clients sink toward the bottom of the Watch bucket. Genuinely-still-bad
+ * clients stay at the top.
+ *
  * CPA was previously included in the worst-case calculation but is left out for
  * now — see the file header for context on the appointment-data reliability gap.
  */
@@ -46,7 +97,15 @@ export function severityScore(kpi: KpiSummary): number {
   if (spend > 50 && kpi.leads === 0) return spend * 3
 
   const cplPct = kpi.prevCpl > 0 ? Math.abs((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
-  return spend * Math.max(cplPct / 30, 1)
+  let score = spend * Math.max(cplPct / 30, 1)
+
+  if (kpi.prevCpl > 0) {
+    const recent = getRecentSignal(kpi)
+    if (recent && recent.recentCpl <= kpi.prevCpl * RECOVERY_RATIO) {
+      score *= 0.5
+    }
+  }
+  return score
 }
 
 export function categorize(client: MondayClient, kpi: KpiSummary | undefined): { category: WatchCategory; insight: string } {
@@ -59,42 +118,90 @@ export function categorize(client: MondayClient, kpi: KpiSummary | undefined): {
   }
 
   if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
-    return { category: "no-data", insight: "No spend or leads in the last 7d — campaign paused, ad account issue, or genuinely idle." }
+    return { category: "no-data", insight: "No spend or leads (7d) — campaign paused, ad account issue, or genuinely idle." }
   }
 
+  // Zero-leads-with-spend is unrecoverable by definition (a recent window with leads
+  // would mean leads exist). Always Action — no recovery override applies.
   if (kpi.adSpend > 50 && kpi.leads === 0) {
-    return { category: "action", insight: `€${kpi.adSpend.toFixed(0)} spent, 0 leads in 7d` }
+    return { category: "action", insight: `€${kpi.adSpend.toFixed(0)} spent, 0 leads (7d)` }
   }
 
   // CPL is the only trend driving categorization for now. CPA branches were removed
   // because appointment data is too sparse to be a reliable signal — see file header.
   const hasCplTrend = kpi.cpl > 0 && kpi.prevCpl > 0
   const cplPct = hasCplTrend ? ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
-
   const { watchPct, actionPct } = getThresholds(kpi.adSpend)
 
-  if (hasCplTrend && cplPct >= actionPct) {
-    return { category: "action", insight: `CPL up ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} vs €${kpi.prevCpl.toFixed(2)} prev week` }
-  }
-  if (hasCplTrend && cplPct >= watchPct) {
-    return { category: "watch", insight: `CPL rising ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} from €${kpi.prevCpl.toFixed(2)}` }
-  }
+  // Compute the 7d-only verdict first; the recent-window override flips it afterwards.
+  let category: WatchCategory
+  let insight: string
 
-  if (kpi.leads > 0) {
+  if (hasCplTrend && cplPct >= actionPct) {
+    category = "action"
+    insight = `CPL up ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} (7d) vs €${kpi.prevCpl.toFixed(2)} (prev 7d)`
+  } else if (hasCplTrend && cplPct >= watchPct) {
+    category = "watch"
+    insight = `CPL rising ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} (7d) from €${kpi.prevCpl.toFixed(2)} (prev 7d)`
+  } else if (kpi.leads > 0) {
+    category = "good"
     const parts: string[] = []
     if (hasCplTrend && cplPct < -10) {
-      parts.push(`CPL dropped ${Math.abs(cplPct).toFixed(0)}% to €${kpi.cpl.toFixed(2)}`)
+      parts.push(`CPL dropped ${Math.abs(cplPct).toFixed(0)}% to €${kpi.cpl.toFixed(2)} (7d)`)
     } else if (hasCplTrend && cplPct >= -10 && cplPct < 10) {
-      parts.push(`CPL stable at €${kpi.cpl.toFixed(2)}`)
+      parts.push(`CPL stable at €${kpi.cpl.toFixed(2)} (7d)`)
     } else if (kpi.cpl > 0) {
-      parts.push(`CPL €${kpi.cpl.toFixed(2)}`)
+      parts.push(`CPL €${kpi.cpl.toFixed(2)} (7d)`)
     }
-    parts.push(`${kpi.leads} leads from €${kpi.adSpend.toFixed(0)} spend`)
-    if (kpi.appointments > 0) parts.push(`${kpi.appointments} appts`)
-    return { category: "good", insight: parts.join(" · ") }
+    parts.push(`${kpi.leads} leads from €${kpi.adSpend.toFixed(0)} spend (7d)`)
+    if (kpi.appointments > 0) parts.push(`${kpi.appointments} appts (7d)`)
+    insight = parts.join(" · ")
+  } else {
+    category = "good"
+    insight = "Running — no leads yet (7d)"
   }
 
-  return { category: "good", insight: "Running — no leads yet" }
+  // Recent-window override — the shortest trustworthy window beats the 7d verdict.
+  // We only flip on a recovery (action → watch) or a fresh spike (good → watch);
+  // watch stays watch in both directions because it's already the "monitor" bucket.
+  const recent = getRecentSignal(kpi)
+  if (recent && kpi.prevCpl > 0) {
+    const recentVsPrev = recent.recentCpl / kpi.prevCpl
+    const win = `last ${recent.windowDays}d`
+
+    // Recovery: 7d still flags Action but recent CPL is at/below baseline. The spike
+    // already passed — demote to Watch so the Action bucket only shows live problems.
+    if (category === "action" && recentVsPrev <= RECOVERY_RATIO) {
+      return {
+        category: "watch",
+        insight: `CPL recovered — €${kpi.cpl.toFixed(2)} (7d) but €${recent.recentCpl.toFixed(2)} (${win}) ≈ €${kpi.prevCpl.toFixed(2)} (prev 7d) baseline. Monitor.`,
+      }
+    }
+
+    // Fresh spike: 7d still looks fine but the last 1-3d are running hot. Promote
+    // good → watch so the CM catches it before the 7d average catches up.
+    if (
+      category === "good" &&
+      recentVsPrev >= FRESH_SPIKE_RATIO &&
+      recent.recentSpend >= FRESH_SPIKE_MIN_SPEND
+    ) {
+      return {
+        category: "watch",
+        insight: `Fresh CPL spike — €${recent.recentCpl.toFixed(2)} (${win}) vs €${kpi.prevCpl.toFixed(2)} (prev 7d). 7d avg still €${kpi.cpl.toFixed(2)}.`,
+      }
+    }
+
+    // Watch + recovery: keep in Watch but rewrite the insight so the CM sees the
+    // recovery context instead of the now-stale 7d framing.
+    if (category === "watch" && recentVsPrev <= RECOVERY_RATIO) {
+      return {
+        category: "watch",
+        insight: `CPL recovering — €${kpi.cpl.toFixed(2)} (7d) but €${recent.recentCpl.toFixed(2)} (${win}) back at baseline.`,
+      }
+    }
+  }
+
+  return { category, insight }
 }
 
 /**

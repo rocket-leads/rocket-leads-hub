@@ -30,6 +30,19 @@ type ClientInput = {
   leadsFromMetaFallback?: boolean
   /** True when the client even has a Monday board ID configured */
   hasClientBoardId?: boolean
+  /**
+   * CPL over the shortest trustworthy recent window (1d → 2d → 3d, picked by the same
+   * helper that drives bucket flips in `lib/watchlist/categorize.ts`). null when even
+   * 3d doesn't have ≥2 leads — then the AI must stick to 7d framing.
+   *
+   * Lets the AI Note distinguish:
+   *   - 7d high CPL but recent at baseline → recovery (don't recommend creative refresh)
+   *   - 7d fine but recent spike → fresh problem (act on the recent signal, not 7d avg)
+   */
+  recentCpl?: number | null
+  recentWindowDays?: 1 | 2 | 3 | null
+  recentSpend?: number | null
+  recentLeads?: number | null
 }
 
 export async function POST(req: NextRequest) {
@@ -39,8 +52,9 @@ export async function POST(req: NextRequest) {
   const { clients } = (await req.json()) as { clients: ClientInput[] }
   if (!clients?.length) return NextResponse.json({})
 
-  // Check note cache
-  const cached = await readCache<Record<string, string>>("watchlist_summaries_v7")
+  // Check note cache. Bump the version suffix whenever the prompt or input shape
+  // changes so stale notes regenerate instead of bleeding old framing into new logic.
+  const cached = await readCache<Record<string, string>>("watchlist_summaries_v8")
 
   const needed = clients.filter((c) => !cached?.[c.id])
   if (needed.length === 0 && cached) {
@@ -81,6 +95,24 @@ export async function POST(req: NextRequest) {
       `INSIGHT COLUMN (already visible — DO NOT REPEAT): "${c.issue}"`,
       `KPIs [WINDOW: last 7d]: spend €${c.adSpend.toFixed(0)} | leads ${c.leads} | CPL €${c.cpl.toFixed(2)} (${cplChange}% wow) | ${apptsLine}`,
     ]
+
+    // Recent-window CPL block — the truth on the SHORTEST trustworthy window. Use this
+    // to override 7d framing when the two diverge. See system prompt for rules.
+    if (typeof c.recentCpl === "number" && c.recentWindowDays && typeof c.recentSpend === "number" && typeof c.recentLeads === "number") {
+      const win = `last ${c.recentWindowDays}d`
+      const baseline = c.prevCpl > 0 ? c.prevCpl : null
+      const recoveryHint =
+        baseline && c.recentCpl <= baseline * 1.25
+          ? "RECOVERED — recent CPL at/below prev-7d baseline"
+          : baseline && c.recentCpl >= baseline * 1.5
+            ? "FRESH SPIKE — recent CPL well above prev-7d baseline"
+            : "in line with 7d trend"
+      parts.push(
+        `RECENT WINDOW [${win}]: spend €${c.recentSpend.toFixed(0)} | leads ${c.recentLeads} | CPL €${c.recentCpl.toFixed(2)} → ${recoveryHint}`,
+      )
+    } else {
+      parts.push(`RECENT WINDOW: insufficient leads in last 1-3d to compute a recent CPL — stick to 7d framing.`)
+    }
 
     const ctx = contextCache[c.id]
     if (crmConnected && ctx?.mondayUpdates) {
@@ -152,9 +184,20 @@ Each client comes with a "DATA AVAILABILITY" line. Read it first. It tells you w
 
 If you write a claim that depends on data flagged UNKNOWN, that's a hard failure — the campaign manager will lose trust in every note.
 
+## CRITICAL — RECENT WINDOW BEATS 7D WHEN THEY DIVERGE
+We optimise daily, so a 7d CPL spike that has already recovered in the last 1-3 days is no longer urgent — and a fresh spike yesterday is invisible in a 7d average. The data block contains a "RECENT WINDOW" line with CPL from the shortest trustworthy window (1d → 2d → 3d, requires ≥2 leads).
+
+Apply these rules:
+- **RECOVERED** (recent CPL ≤1.25× prev-7d baseline while 7d still shows a spike) → Treat as "monitoring", NOT urgent. Do NOT recommend creative refresh / new angles / pause specific ads as if the campaign is broken. The right note is something like "CPL recovered to €X (last Nd) — keep watching, no refresh needed yet" or focus on locking in the recovery (e.g. "iterate on whichever creative carried last 2d").
+- **FRESH SPIKE** (recent CPL ≥1.5× prev-7d baseline while 7d avg still calm) → The 7d number is misleading; act on the recent signal. Note should reference the recent CPL not the 7d.
+- **In line with 7d trend** → Use the 7d framing as before.
+
+If "RECENT WINDOW: insufficient leads…" is shown, you have no recent signal — stick to 7d framing without speculation.
+
 ## CRITICAL — TIME WINDOW LABELS ARE MANDATORY ON EVERY NUMBER
 The KPI columns the user sees on screen (spend, leads, CPL) are LAST 7 DAYS. The qualitative inputs you receive cover different windows:
 - **KPIs block** = last 7d (and 7d-vs-prev-7d % deltas)
+- **RECENT WINDOW block** = last 1d / 2d / 3d (whichever was shown) — label numbers from this block accordingly
 - **MONDAY CRM block** = lead status counts are ALL-TIME (lifetime board totals); recent update texts are from the last 14d
 - **TRENGO CONVERSATIONS block** = last 14d
 
@@ -208,7 +251,7 @@ Output JSON only: {"client_id": "note", ...}`,
 
     // Merge with existing cache (bump cache key when prompt changes so stale notes regenerate)
     const merged = { ...(cached ?? {}), ...result }
-    void writeCache("watchlist_summaries_v7", merged)
+    void writeCache("watchlist_summaries_v8", merged)
 
     const response: Record<string, string> = {}
     for (const c of clients) {

@@ -13,7 +13,7 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { WatchlistStateResponse } from "@/app/api/watchlist/state/route"
 import type { WatchlistNarrativeResponse, WatchlistInsight } from "@/app/api/watchlist/narrative/route"
 import type { WatchlistScoreHistoryResponse } from "@/app/api/watchlist/score-history/route"
-import { categorize as sharedCategorize, severityScore as sharedSeverityScore, type WatchCategory as SharedWatchCategory } from "@/lib/watchlist/categorize"
+import { categorize as sharedCategorize, severityScore as sharedSeverityScore, getRecentSignal, type WatchCategory as SharedWatchCategory } from "@/lib/watchlist/categorize"
 import { ClientSlideOver } from "@/app/(dashboard)/clients/_components/client-slide-over"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 
@@ -800,25 +800,35 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
 
     const clientsForAi = allCategorized
       .filter((c) => c.kpi && (c.kpi.adSpend > 0 || c.kpi.leads > 0))
-      .map((c) => ({
-        id: c.client.mondayItemId,
-        name: c.client.name,
-        category: c.category as "action" | "watch" | "good",
-        issue: c.insight,
-        adSpend: c.kpi?.adSpend ?? 0,
-        leads: c.kpi?.leads ?? 0,
-        cpl: c.kpi?.cpl ?? 0,
-        prevCpl: c.kpi?.prevCpl ?? 0,
-        appointments: c.kpi?.appointments ?? 0,
-        costPerAppointment: c.kpi?.costPerAppointment ?? 0,
-        prevCostPerAppointment: c.kpi?.prevCostPerAppointment ?? 0,
-        // Suppresses "vs prev" claims for newly-launched clients in AI notes.
-        prevPeriodReliable: c.kpi?.prevPeriodReliable,
-        // Tells the AI whether appointment data is real-zero vs unknown-because-CRM-missing
-        mondayCrmConnected: c.kpi?.mondayCrmConnected ?? false,
-        leadsFromMetaFallback: c.kpi?.metaFallback ?? false,
-        hasClientBoardId: !!c.client.clientBoardId,
-      }))
+      .map((c) => {
+        const recent = c.kpi ? getRecentSignal(c.kpi) : null
+        return {
+          id: c.client.mondayItemId,
+          name: c.client.name,
+          category: c.category as "action" | "watch" | "good",
+          issue: c.insight,
+          adSpend: c.kpi?.adSpend ?? 0,
+          leads: c.kpi?.leads ?? 0,
+          cpl: c.kpi?.cpl ?? 0,
+          prevCpl: c.kpi?.prevCpl ?? 0,
+          appointments: c.kpi?.appointments ?? 0,
+          costPerAppointment: c.kpi?.costPerAppointment ?? 0,
+          prevCostPerAppointment: c.kpi?.prevCostPerAppointment ?? 0,
+          // Suppresses "vs prev" claims for newly-launched clients in AI notes.
+          prevPeriodReliable: c.kpi?.prevPeriodReliable,
+          // Tells the AI whether appointment data is real-zero vs unknown-because-CRM-missing
+          mondayCrmConnected: c.kpi?.mondayCrmConnected ?? false,
+          leadsFromMetaFallback: c.kpi?.metaFallback ?? false,
+          hasClientBoardId: !!c.client.clientBoardId,
+          // Shortest-trustworthy window CPL — lets the AI Note frame recovery / fresh spike
+          // instead of doubling down on a stale 7d verdict. null when 1d/2d/3d all lack
+          // ≥2 leads (then stick to 7d framing).
+          recentCpl: recent?.recentCpl ?? null,
+          recentWindowDays: recent?.windowDays ?? null,
+          recentSpend: recent?.recentSpend ?? null,
+          recentLeads: recent?.recentLeads ?? null,
+        }
+      })
 
     if (clientsForAi.length === 0) return
 
