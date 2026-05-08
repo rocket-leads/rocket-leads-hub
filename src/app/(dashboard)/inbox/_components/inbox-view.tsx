@@ -446,6 +446,18 @@ export function InboxView({
 
       if (isTypingTarget(e.target)) return
       if (detailItem) return // detail dialog owns the keyboard while open
+
+      // c opens the composer for whichever pane the user is on. Tasks/
+      // Updates → composer in matching kind. Skipped on chat/meetings
+      // tabs (those have their own create flows). Same trigger Slack
+      // and Linear use, fast path to "new task" without reaching for
+      // the New button.
+      if (e.key === "c" && (activeTab === "tasks" || activeTab === "updates")) {
+        e.preventDefault()
+        openComposer(activeTab === "tasks" ? "task" : "update")
+        return
+      }
+
       if (activeTab !== "tasks" && activeTab !== "updates") return
       if (flatVisibleItems.length === 0) return
 
@@ -878,6 +890,12 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
       label: "Act on focused row",
       rows: [
         { keys: ["e"], desc: "Done (task) / toggle read (update)" },
+      ],
+    },
+    {
+      label: "Create",
+      rows: [
+        { keys: ["c"], desc: "New task / update (matches active tab)" },
       ],
     },
     {
