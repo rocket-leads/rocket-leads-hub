@@ -30,6 +30,65 @@ const TASK_STATUS_OPTIONS: Array<{ value: TaskStatus; label: string; cls: string
   { value: "cancelled", label: "Cancelled", cls: "bg-muted text-muted-foreground border-border" },
 ]
 
+/**
+ * Render a comment body with `@FirstName` patterns highlighted as inline
+ * chips. Names that match a Hub user (case-insensitive first-name OR full-
+ * name) get a violet tint; everything else (e.g. `@example.com` slipping
+ * through, or names that don't match anyone) renders as plain text so we
+ * never falsely promote a non-mention to a mention.
+ *
+ * Self-mentions get an extra `bg-primary/30` so the AM can immediately
+ * spot when they're the one being tagged.
+ */
+function renderMentions(
+  body: string,
+  users: InboxUser[],
+  currentUserId: string,
+): React.ReactNode {
+  // Same regex as the backend mention resolver — keep them in sync so
+  // visual styling matches what the server actually fans out to.
+  const re = /@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g
+  const out: React.ReactNode[] = []
+  let lastIdx = 0
+  let key = 0
+  for (const match of body.matchAll(re)) {
+    const idx = match.index ?? 0
+    if (idx > lastIdx) out.push(body.slice(lastIdx, idx))
+    const captured = match[1].trim()
+    const needle = captured.toLowerCase()
+    const matchedUser = users.find((u) => {
+      const name = (u.name ?? "").toLowerCase()
+      if (!name) return false
+      const firstName = name.split(/\s+/)[0]
+      return firstName === needle || name === needle
+    })
+    if (matchedUser) {
+      const isMe = matchedUser.id === currentUserId
+      out.push(
+        <span
+          key={`m-${key++}`}
+          className={cn(
+            "inline-flex items-center rounded-md px-1 py-0.5 font-medium text-[0.92em]",
+            isMe
+              ? "bg-violet-500/30 text-violet-700 dark:text-violet-200"
+              : "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+          )}
+          title={matchedUser.email}
+        >
+          @{captured}
+        </span>,
+      )
+    } else {
+      // No Hub-user match — leave as plain text so a stray `@example.com`
+      // or unknown name doesn't get falsely styled like a real mention.
+      out.push(`@${captured}`)
+    }
+    lastIdx = idx + match[0].length
+  }
+  if (lastIdx < body.length) out.push(body.slice(lastIdx))
+  return out
+}
+
 function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", {
     day: "numeric",
@@ -921,7 +980,7 @@ function CommentThread({
                         : "bg-muted/50 text-foreground/90",
                     )}
                   >
-                    {c.body}
+                    {renderMentions(c.body, users, currentUserId)}
                   </div>
                 </div>
               </div>
