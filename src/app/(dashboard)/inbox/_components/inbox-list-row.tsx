@@ -150,12 +150,13 @@ export function InboxListRow({
             {isHighPriority && (
               <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
             )}
-            {!isUpdate && onAction ? (
-              // Tasks: title is double-click-to-edit. Single click still
-              // opens the detail dialog (default row behaviour); double
-              // click switches to an inline input. Slack-style — keeps the
-              // row dense without adding a separate edit button. Updates
-              // stay read-only since they're signals from elsewhere.
+            {onAction ? (
+              // Title is double-click-to-edit on both Tasks and Updates.
+              // Single click still opens the detail dialog (default row
+              // behaviour); double click switches to an inline input.
+              // Server gates non-task updates to author/admin so an
+              // assignee on an Update sees their edit revert via the
+              // optimistic rollback — acceptable noise.
               <RowTitle
                 title={item.title}
                 statusClass={cn(

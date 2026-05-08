@@ -663,6 +663,13 @@ export function InboxView({
               value={updateFilter}
               onChange={setUpdateFilter}
             />
+            <QuickAddUpdateBar
+              clients={clients}
+              users={users}
+              lockedClient={lockedClient}
+              currentUserId={currentUser.id}
+              onCreated={refreshAll}
+            />
             {updatesQuery.isLoading ? (
               <EmptyState text="Loading updates…" />
             ) : updates.length === 0 ? (
@@ -716,6 +723,12 @@ export function InboxView({
                     )
                   } else if (action === "delete") {
                     deleteItem(item.id)
+                  } else if (typeof action === "object" && action.type === "rename") {
+                    patchItem(
+                      item.id,
+                      { title: action.title },
+                      { mode: "mutate", optimisticPatch: { title: action.title } },
+                    )
                   }
                 }}
               />
@@ -1013,6 +1026,162 @@ function QuickAddTaskBar({
           className="h-8 rounded-md border border-input bg-background px-2 text-xs"
           title="Due date"
         />
+        <Button
+          size="sm"
+          onClick={submit}
+          disabled={submitting || !title.trim()}
+          className="shrink-0"
+        >
+          Add
+        </Button>
+      </div>
+      {error && (
+        <p className="text-[11px] text-red-400 mt-1.5 ml-6">{error}</p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Quick-add bar for Updates — same speed-of-action principle as the Tasks
+ * quick-add: title input, client picker, assignee picker (since updates
+ * are addressed to someone specific), Enter creates. No due date, no
+ * priority — those are task concepts. Submit POST is kind=update,
+ * status=unread by default per the create endpoint.
+ */
+function QuickAddUpdateBar({
+  clients,
+  users,
+  lockedClient,
+  currentUserId,
+  onCreated,
+}: {
+  clients: InboxClientOption[]
+  users: InboxUser[]
+  lockedClient?: InboxClientOption
+  currentUserId: string
+  onCreated: () => void
+}) {
+  const [title, setTitle] = useState("")
+  const [clientId, setClientId] = useState<string>(lockedClient?.id ?? "")
+  // Default the recipient to the first teammate that isn't the current user
+  // — updates need an audience and "to myself" is rarely useful. Falls back
+  // to the current user when there's only one Hub user (dev environment).
+  const defaultAssigneeId = useMemo(() => {
+    const other = users.find((u) => u.id !== currentUserId)
+    return other?.id ?? currentUserId
+  }, [users, currentUserId])
+  const [assigneeId, setAssigneeId] = useState<string>(defaultAssigneeId)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const titleRef = useRef<HTMLInputElement>(null)
+  const clientWrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (lockedClient?.id) setClientId(lockedClient.id)
+  }, [lockedClient?.id])
+
+  useEffect(() => {
+    setAssigneeId(defaultAssigneeId)
+  }, [defaultAssigneeId])
+
+  async function submit() {
+    const trimmed = title.trim()
+    if (!trimmed) {
+      titleRef.current?.focus()
+      return
+    }
+    if (!clientId) {
+      setError("Pick a client first.")
+      const input = clientWrapRef.current?.querySelector<HTMLInputElement>("input")
+      input?.focus()
+      return
+    }
+    if (!assigneeId) {
+      setError("Pick a recipient.")
+      return
+    }
+    setError(null)
+    setSubmitting(true)
+    try {
+      const res = await fetch("/api/inbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "update",
+          clientId,
+          assigneeId,
+          title: trimmed,
+        }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? `Create failed (${res.status})`)
+      }
+      setTitle("")
+      titleRef.current?.focus()
+      onCreated()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create update")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const showClient = !lockedClient
+
+  return (
+    <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <Plus className="h-4 w-4 text-muted-foreground/70 shrink-0" />
+        <input
+          ref={titleRef}
+          type="text"
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value)
+            if (error) setError(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              submit()
+            } else if (e.key === "Escape") {
+              setTitle("")
+            }
+          }}
+          placeholder="Add an update — type and Enter"
+          disabled={submitting}
+          className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
+        />
+        {showClient && (
+          <div ref={clientWrapRef} className="w-44 shrink-0">
+            <QuickClientPicker
+              clients={clients}
+              value={clientId}
+              onChange={(id) => {
+                setClientId(id)
+                if (error) setError(null)
+              }}
+            />
+          </div>
+        )}
+        <select
+          value={assigneeId}
+          onChange={(e) => {
+            setAssigneeId(e.target.value)
+            if (error) setError(null)
+          }}
+          className="h-8 rounded-md border border-input bg-background px-2 text-xs max-w-[140px]"
+          title="Recipient"
+        >
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name ?? u.email}
+            </option>
+          ))}
+        </select>
         <Button
           size="sm"
           onClick={submit}
@@ -1838,7 +2007,12 @@ function BulkSnoozeButton({ onPick }: { onPick: (until: string) => void }) {
   )
 }
 
-type UpdateAction = "read" | "unread" | "make_task" | "delete"
+type UpdateAction =
+  | "read"
+  | "unread"
+  | "make_task"
+  | "delete"
+  | { type: "rename"; title: string }
 
 function UpdateGroupSection({
   icon,
@@ -1910,7 +2084,8 @@ function UpdateGroupSection({
                   action === "read" ||
                   action === "unread" ||
                   action === "make_task" ||
-                  action === "delete"
+                  action === "delete" ||
+                  (typeof action === "object" && action.type === "rename")
                 ) {
                   onAction(item, action)
                 }

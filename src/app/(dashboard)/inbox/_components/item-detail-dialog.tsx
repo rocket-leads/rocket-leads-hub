@@ -361,7 +361,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 {item.priority === "high" && (
                   <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
                 )}
-                {item.kind === "task" ? (
+                {item.kind !== "chat" ? (
                   <EditableTitle
                     value={item.title}
                     onSave={(title) => setMeta({ title })}
@@ -452,7 +452,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               />
             )}
 
-            {item.kind === "task" ? (
+            {item.kind !== "chat" ? (
               <EditableBody
                 value={item.body ?? ""}
                 onSave={(body) => setMeta({ body: body.trim() ? body : null })}
