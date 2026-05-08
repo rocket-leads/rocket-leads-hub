@@ -183,6 +183,21 @@ export function InboxView({
     staleTime: 30 * 1000,
   })
 
+  // Tab-bar counts. The user's "what needs my attention" baseline number,
+  // independent of the in-tab status/source filter — flipping to the Done
+  // filter shouldn't make the Tasks tab badge claim "you have 240 things
+  // to do!" The sidebar already polls /api/inbox/badge every 60s for its
+  // own count; we share that cache here. Only used in global mode; the
+  // locked-client (per-client tab) view keeps its existing local-derived
+  // counts because the badge endpoint isn't client-scoped.
+  const badgeQuery = useQuery<{ unreadUpdates: number; openTasks: number; unreadChats: number }>({
+    queryKey: ["inbox-badge"],
+    queryFn: () => fetch("/api/inbox/badge").then((r) => r.json()),
+    refetchInterval: 60 * 1000,
+    staleTime: 30 * 1000,
+    enabled: !lockedClient,
+  })
+
   function refreshAll() {
     queryClient.invalidateQueries({ queryKey: ["inbox"] })
     queryClient.invalidateQueries({ queryKey: ["inbox-badge"] })
@@ -474,6 +489,7 @@ export function InboxView({
   // Team Inbox (Slack DMs) is intentionally not shown — Slack's API can't
   // expose human-to-human DMs, so we replace that workflow in Phase E
   // (Hub-native team chat) instead of half-syncing it.
+  const tabBadge = badgeQuery.data
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
         { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
@@ -484,9 +500,27 @@ export function InboxView({
         { id: "meetings", label: "Meetings", icon: Video },
       ]
     : [
-        { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
-        { id: "updates", label: "Updates", icon: InboxIcon, count: updates.length },
-        { id: "client-inbox", label: "Client Inbox", icon: MessageCircle },
+        {
+          id: "tasks",
+          label: "Tasks",
+          icon: ListTodo,
+          // Open + in_progress assigned to me, regardless of current
+          // status/source filter. Falls back to the local filtered count
+          // before the badge query resolves.
+          count: tabBadge?.openTasks ?? tasks.length,
+        },
+        {
+          id: "updates",
+          label: "Updates",
+          icon: InboxIcon,
+          count: tabBadge?.unreadUpdates ?? updates.length,
+        },
+        {
+          id: "client-inbox",
+          label: "Client Inbox",
+          icon: MessageCircle,
+          count: tabBadge?.unreadChats ?? 0,
+        },
       ]
 
   const isChatTab = activeTab === "client-inbox"
