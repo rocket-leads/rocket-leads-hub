@@ -188,32 +188,48 @@ export function InboxView({
   const tasksUsesDefaults =
     !lockedClient && assignedToMe && taskFilter === DEFAULT_TASK_FILTER
 
+  // Polling cadence: the inbox is the AM's primary surface, so new items
+  // (Trengo messages, Monday updates, automation tasks) should appear
+  // without a manual refresh. 15s feels live enough that the AM can keep
+  // the tab open while doing other work and trust that anything new
+  // surfaces on its own — and it's cheap (one query per pane). Slack-y
+  // realtime via Supabase channels would be cleaner but RLS blocks the
+  // anon-key browser path; polling is the pragmatic choice until we
+  // wire authenticated realtime.
+  const LIST_REFETCH_MS = 15 * 1000
+
   const updatesQuery = useQuery<{ items: InboxItem[] }>({
     queryKey: ["inbox", "update", { assignedToMe, clientId: lockedClient?.id, filter: updateFilter }],
     queryFn: () => fetch(buildUrl("update", updateStatuses)).then((r) => r.json()),
     initialData: updatesUsesDefaults ? { items: initialUpdates } : undefined,
-    staleTime: 30 * 1000,
+    staleTime: 10 * 1000,
+    refetchInterval: LIST_REFETCH_MS,
+    refetchIntervalInBackground: false,
   })
 
   const tasksQuery = useQuery<{ items: InboxItem[] }>({
     queryKey: ["inbox", "task", { assignedToMe, clientId: lockedClient?.id, filter: taskFilter, snooze: taskSnoozeMode }],
     queryFn: () => fetch(buildUrl("task", taskStatuses)).then((r) => r.json()),
     initialData: tasksUsesDefaults ? { items: initialTasks } : undefined,
-    staleTime: 30 * 1000,
+    staleTime: 10 * 1000,
+    refetchInterval: LIST_REFETCH_MS,
+    refetchIntervalInBackground: false,
   })
 
   // Tab-bar counts. The user's "what needs my attention" baseline number,
   // independent of the in-tab status/source filter — flipping to the Done
   // filter shouldn't make the Tasks tab badge claim "you have 240 things
-  // to do!" The sidebar already polls /api/inbox/badge every 60s for its
-  // own count; we share that cache here. Only used in global mode; the
-  // locked-client (per-client tab) view keeps its existing local-derived
-  // counts because the badge endpoint isn't client-scoped.
+  // to do!" The sidebar already polls /api/inbox/badge for its own count;
+  // we share that cache here at the same 15s cadence as the lists so they
+  // stay in sync. Only used in global mode; the locked-client view keeps
+  // its existing local-derived counts because the badge endpoint isn't
+  // client-scoped.
   const badgeQuery = useQuery<{ unreadUpdates: number; openTasks: number; unreadChats: number }>({
     queryKey: ["inbox-badge"],
     queryFn: () => fetch("/api/inbox/badge").then((r) => r.json()),
-    refetchInterval: 60 * 1000,
-    staleTime: 30 * 1000,
+    refetchInterval: LIST_REFETCH_MS,
+    staleTime: 10 * 1000,
+    refetchIntervalInBackground: false,
     enabled: !lockedClient,
   })
 
