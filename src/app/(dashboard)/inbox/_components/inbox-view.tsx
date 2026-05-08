@@ -128,12 +128,31 @@ export function InboxView({
   lockedClient,
 }: Props) {
   const queryClient = useQueryClient()
+  // activeTab intentionally NOT persisted — opening the inbox should land
+  // on Tasks ("what do I need to do") regardless of where the user was
+  // last time. Everything else is sticky so a reload doesn't blow away
+  // the filter context the AM was working from.
   const [activeTab, setActiveTab] = useState<MainTab>("tasks")
-  const [assignedToMe, setAssignedToMe] = useState(true)
-  const [updateFilter, setUpdateFilter] = useState<UpdateFilter>(DEFAULT_UPDATE_FILTER)
-  const [taskFilter, setTaskFilter] = useState<TaskFilter>(DEFAULT_TASK_FILTER)
-  const [taskSourceFilter, setTaskSourceFilter] = useState<TaskSourceFilter>("all")
-  const [updateSourceFilter, setUpdateSourceFilter] = useState<TaskSourceFilter>("all")
+  const [assignedToMe, setAssignedToMe] = usePersistedState(
+    "inbox.assignedToMe",
+    true,
+  )
+  const [updateFilter, setUpdateFilter] = usePersistedState<UpdateFilter>(
+    "inbox.updateFilter",
+    DEFAULT_UPDATE_FILTER,
+  )
+  const [taskFilter, setTaskFilter] = usePersistedState<TaskFilter>(
+    "inbox.taskFilter",
+    DEFAULT_TASK_FILTER,
+  )
+  const [taskSourceFilter, setTaskSourceFilter] = usePersistedState<TaskSourceFilter>(
+    "inbox.taskSourceFilter",
+    "all",
+  )
+  const [updateSourceFilter, setUpdateSourceFilter] = usePersistedState<TaskSourceFilter>(
+    "inbox.updateSourceFilter",
+    "all",
+  )
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerKind, setComposerKind] = useState<"update" | "task">("update")
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null)
@@ -931,6 +950,48 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
   )
+}
+
+/**
+ * useState backed by localStorage. Reads the persisted value on mount
+ * (after hydration so SSR doesn't mismatch) and writes through on every
+ * setState call. The key is namespaced by the caller; values must be
+ * JSON-serialisable. Falls back to the initial value silently if storage
+ * is full, blocked, or the persisted JSON is corrupt.
+ */
+function usePersistedState<T>(key: string, initial: T): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(initial)
+  const hydratedRef = useRef(false)
+
+  // Hydrate from localStorage on mount. Only writes back to state when the
+  // persisted value actually exists, so the initial-default branch above
+  // stays authoritative for fresh users.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(key)
+      if (raw !== null) {
+        setValue(JSON.parse(raw) as T)
+      }
+    } catch {
+      // Bad JSON or storage unavailable — stick with the initial value.
+    }
+    hydratedRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Mirror state changes back to storage. Skips the first render so we
+  // don't overwrite a real persisted value with the initial default
+  // before hydration runs.
+  useEffect(() => {
+    if (!hydratedRef.current) return
+    try {
+      localStorage.setItem(key, JSON.stringify(value))
+    } catch {
+      // ignore — full storage shouldn't break the UI
+    }
+  }, [key, value])
+
+  return [value, setValue]
 }
 
 function EmptyState({ text, onCreate }: { text: string; onCreate?: () => void }) {
