@@ -115,6 +115,33 @@ export async function GET(req: NextRequest) {
       console.error("[refresh-kpi] matcher failed:", e instanceof Error ? e.message : e)
     }
 
+    // 1c. Mirror what `/api/clients/[id]/campaigns` GET does for non-RL accounts:
+    // any ACTIVE Meta campaign that has no row in `client_campaigns` for the
+    // owning client gets auto-upserted as is_selected=true. Without this step the
+    // KPI filter below ignores newly-launched campaigns and the watchlist shows
+    // "No spend or leads (7d)" for clients whose only selected rows are stale
+    // paused campaigns. RL accounts are skipped — handled by the matcher above.
+    try {
+      const { autoSelectActiveCampaignsForNonRlClients } = await import("@/lib/clients/auto-select-non-rl-campaigns")
+      const { data: nonRlRows } = await supabase
+        .from("clients")
+        .select("id, monday_item_id, meta_ad_account_id")
+        .not("meta_ad_account_id", "is", null)
+      const candidates = (nonRlRows ?? [])
+        .filter((r): r is { id: string; monday_item_id: string; meta_ad_account_id: string } =>
+          Boolean(r.id && r.monday_item_id && r.meta_ad_account_id),
+        )
+        .map((r) => ({ clientId: r.id, mondayItemId: r.monday_item_id, metaAdAccountId: r.meta_ad_account_id }))
+      const autoMatched = await autoSelectActiveCampaignsForNonRlClients(supabase, candidates)
+      if (autoMatched.assignedCount > 0) {
+        console.log(
+          `[refresh-kpi] auto-selected ${autoMatched.assignedCount} new ACTIVE non-RL campaigns across ${autoMatched.affectedMondayItemIds.length} clients`,
+        )
+      }
+    } catch (e) {
+      console.error("[refresh-kpi] non-RL auto-select failed:", e instanceof Error ? e.message : e)
+    }
+
     // 2. Load each client's selected Meta campaigns from supabase. Used to filter
     // dailyInsights down to campaigns the user actually wants tracked.
     const mondayItemIds = allClients.map((c) => c.mondayItemId)

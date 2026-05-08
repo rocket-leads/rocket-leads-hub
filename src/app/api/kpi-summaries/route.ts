@@ -367,6 +367,13 @@ async function fetchSummary(
  * Build the per-client `selectedCampaignIds` map needed by the live-fetch path.
  * Used by both the date-range cache fall-through (when individual clients are
  * missing from `kpi_daily`) and the cold-start live-fetch at the bottom of POST.
+ *
+ * Before reading the table, runs the same auto-select pass that
+ * `/api/clients/[id]/campaigns` GET does — any ACTIVE non-RL Meta campaign that has
+ * no row yet gets upserted with is_selected=true. Without this, the watchlist's
+ * live-fetch (force-refresh, cache miss, brand-new client) keeps filtering by
+ * stale selections and reports "No spend or leads (7d)" while the client page
+ * shows real data.
  */
 async function loadSelectedCampaigns(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
@@ -377,8 +384,30 @@ async function loadSelectedCampaigns(
 
   const { data: clientRows } = await supabase
     .from("clients")
-    .select("id, monday_item_id")
+    .select("id, monday_item_id, meta_ad_account_id")
     .in("monday_item_id", mondayItemIds)
+
+  // Auto-select pass — best-effort; failures here just mean the existing selections
+  // get used as-is, same as if this step didn't exist.
+  try {
+    const { autoSelectActiveCampaignsForNonRlClients } = await import("@/lib/clients/auto-select-non-rl-campaigns")
+    const candidates = (clientRows ?? [])
+      .filter((r): r is { id: string; monday_item_id: string; meta_ad_account_id: string } =>
+        Boolean(r.id && r.monday_item_id && r.meta_ad_account_id),
+      )
+      .map((r) => ({ clientId: r.id, mondayItemId: r.monday_item_id, metaAdAccountId: r.meta_ad_account_id }))
+    if (candidates.length > 0) {
+      const matched = await autoSelectActiveCampaignsForNonRlClients(supabase, candidates)
+      if (matched.assignedCount > 0) {
+        console.log(
+          `[kpi-summaries] auto-selected ${matched.assignedCount} new ACTIVE non-RL campaigns across ${matched.affectedMondayItemIds.length} clients before live-fetch`,
+        )
+      }
+    }
+  } catch (e) {
+    console.error("[kpi-summaries] non-RL auto-select failed:", e instanceof Error ? e.message : e)
+  }
+
   const itemToClientId: Record<string, string> = {}
   for (const row of clientRows ?? []) itemToClientId[row.monday_item_id] = row.id
 
