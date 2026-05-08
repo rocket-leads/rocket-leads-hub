@@ -37,9 +37,12 @@ jobs:
           # schema_migrations table is the only thing that reliably wipes
           # 20240024's corrupt entry. Idempotent: when the row is already
           # gone, the DELETE affects 0 rows.
-          PGHOST="aws-0-eu-central-1.pooler.supabase.com"
-          PGUSER="postgres.prvcgzrvmdwomwfvlpds"
-          psql "host=$PGHOST port=6543 user=$PGUSER dbname=postgres sslmode=require" \
+          # Direct DB connection — pooler hosts and tenant routing are
+          # region-specific and we hit "Tenant or user not found" on the
+          # eu-central-1 pooler. The direct host pattern
+          # db.PROJECT_REF.supabase.co works regardless of region.
+          PGHOST="db.prvcgzrvmdwomwfvlpds.supabase.co"
+          psql "host=$PGHOST port=5432 user=postgres dbname=postgres sslmode=require" \
             -c "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20240024000000';"
 
           # Push with --include-all so 20240024 (out-of-order timestamp)
