@@ -133,6 +133,7 @@ export function InboxView({
   const [updateFilter, setUpdateFilter] = useState<UpdateFilter>(DEFAULT_UPDATE_FILTER)
   const [taskFilter, setTaskFilter] = useState<TaskFilter>(DEFAULT_TASK_FILTER)
   const [taskSourceFilter, setTaskSourceFilter] = useState<TaskSourceFilter>("all")
+  const [updateSourceFilter, setUpdateSourceFilter] = useState<TaskSourceFilter>("all")
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerKind, setComposerKind] = useState<"update" | "task">("update")
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null)
@@ -301,7 +302,7 @@ export function InboxView({
   // author, so an AM can find "that thing about Vlex" via either the client
   // or a quoted phrase from the body.
   const [searchQuery, setSearchQuery] = useState("")
-  const filteredUpdates = useMemo(
+  const queryFilteredUpdates = useMemo(
     () => filterByQuery(allUpdates, searchQuery),
     [allUpdates, searchQuery],
   )
@@ -320,6 +321,13 @@ export function InboxView({
     }
     return counts
   }, [queryFilteredTasks])
+  const updateSourceCounts = useMemo(() => {
+    const counts: Partial<Record<InboxSource, number>> = {}
+    for (const u of queryFilteredUpdates) {
+      counts[u.source] = (counts[u.source] ?? 0) + 1
+    }
+    return counts
+  }, [queryFilteredUpdates])
   const tasks = useMemo(
     () =>
       taskSourceFilter === "all"
@@ -327,7 +335,13 @@ export function InboxView({
         : queryFilteredTasks.filter((t) => t.source === taskSourceFilter),
     [queryFilteredTasks, taskSourceFilter],
   )
-  const updates = filteredUpdates
+  const updates = useMemo(
+    () =>
+      updateSourceFilter === "all"
+        ? queryFilteredUpdates
+        : queryFilteredUpdates.filter((u) => u.source === updateSourceFilter),
+    [queryFilteredUpdates, updateSourceFilter],
+  )
 
   // Flat ordered list of items as they appear on screen — used by keyboard
   // navigation (j/k) so Down/Up moves through Overdue → Today → Upcoming
@@ -662,6 +676,12 @@ export function InboxView({
               tabs={UPDATE_FILTERS}
               value={updateFilter}
               onChange={setUpdateFilter}
+            />
+            <TaskSourceChips
+              value={updateSourceFilter}
+              onChange={setUpdateSourceFilter}
+              counts={updateSourceCounts}
+              totalCount={queryFilteredUpdates.length}
             />
             <QuickAddUpdateBar
               clients={clients}
