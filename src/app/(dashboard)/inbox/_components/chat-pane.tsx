@@ -28,7 +28,7 @@ type Props = {
  * we pass the thread's latest event id; the helper derives source +
  * thread metadata from there.
  */
-export function ChatPane({ scope }: Props) {
+export function ChatPane({ scope, users }: Props) {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<ChatThreadSummary | null>(null)
 
@@ -120,7 +120,7 @@ export function ChatPane({ scope }: Props) {
         onSelect={selectAndMarkRead}
         scope={scope}
       />
-      <ThreadView thread={selected} onReplied={refresh} />
+      <ThreadView thread={selected} onReplied={refresh} users={users} />
     </div>
   )
 }
@@ -217,9 +217,11 @@ function ThreadList({
 function ThreadView({
   thread,
   onReplied,
+  users,
 }: {
   thread: ChatThreadSummary | null
   onReplied: () => void
+  users?: InboxUser[]
 }) {
   if (!thread) {
     return (
@@ -229,22 +231,32 @@ function ThreadView({
     )
   }
 
-  return <ThreadMessages thread={thread} onReplied={onReplied} />
+  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} />
 }
+
+type ComposerMode = "reply" | "internal"
 
 function ThreadMessages({
   thread,
   onReplied,
+  users,
 }: {
   thread: ChatThreadSummary
   onReplied: () => void
+  users?: InboxUser[]
 }) {
   const queryClient = useQueryClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [reply, setReply] = useState("")
+  const [composerMode, setComposerMode] = useState<ComposerMode>("reply")
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [needsConnect, setNeedsConnect] = useState<"trengo" | "slack" | null>(null)
+  // @-mention picker state (only active in internal-note mode).
+  const [mentionStart, setMentionStart] = useState<number | null>(null)
+  const [mentionQuery, setMentionQuery] = useState("")
+  const [mentionHighlight, setMentionHighlight] = useState(0)
 
   const messagesQuery = useQuery<{ messages: ChatMessage[] }>({
     queryKey: ["inbox-thread", thread.threadKey],
@@ -268,11 +280,83 @@ function ThreadMessages({
   // Reset reply state when switching threads.
   useEffect(() => {
     setReply("")
+    setComposerMode("reply")
     setSendError(null)
     setNeedsConnect(null)
+    setMentionStart(null)
+    setMentionQuery("")
   }, [thread.threadKey])
 
+  // Internal-note mode is Trengo-only (Slack has no native internal-note
+  // concept). Switching to a Slack thread auto-flips the composer back
+  // to Reply so we don't show a disabled mode switch.
+  useEffect(() => {
+    if (thread.source !== "trengo" && composerMode !== "reply") {
+      setComposerMode("reply")
+    }
+  }, [thread.source, composerMode])
+
   const replyable = thread.source === "trengo" || thread.source === "slack"
+  const supportsInternalNote = thread.source === "trengo"
+  const isInternal = composerMode === "internal"
+
+  // Filter the team list by the current @-mention query, excluding nobody
+  // by default (the chat-pane doesn't know who the actor is in this scope).
+  const mentionMatches = (() => {
+    if (!users || mentionStart == null) return []
+    const q = mentionQuery.trim().toLowerCase()
+    return users
+      .filter((u) => {
+        if (!q) return true
+        const haystack = `${u.name ?? ""} ${u.email}`.toLowerCase()
+        return haystack.includes(q)
+      })
+      .slice(0, 8)
+  })()
+
+  function syncMentionState(value: string, caret: number) {
+    if (!isInternal) {
+      // Mention picker only fires inside internal notes — a stray @-mention
+      // in a client-visible reply would just confuse them.
+      setMentionStart(null)
+      setMentionQuery("")
+      return
+    }
+    let i = caret - 1
+    while (i >= 0 && /[A-Za-zÀ-ÖØ-öø-ÿ.\-' ]/.test(value[i])) i--
+    if (i >= 0 && value[i] === "@") {
+      const prev = i === 0 ? " " : value[i - 1]
+      if (/\s|^/.test(prev) || i === 0) {
+        const q = value.slice(i + 1, caret)
+        if (q.split(/\s+/).length <= 2) {
+          setMentionStart(i)
+          setMentionQuery(q)
+          return
+        }
+      }
+    }
+    setMentionStart(null)
+    setMentionQuery("")
+  }
+
+  function applyMention(user: InboxUser) {
+    if (mentionStart == null) return
+    const ta = textareaRef.current
+    if (!ta) return
+    const firstName = (user.name ?? user.email).split(/\s+/)[0]
+    const before = reply.slice(0, mentionStart)
+    const after = reply.slice(ta.selectionStart)
+    const insertion = `@${firstName} `
+    const next = before + insertion + after
+    setReply(next)
+    setMentionStart(null)
+    setMentionQuery("")
+    requestAnimationFrame(() => {
+      const pos = before.length + insertion.length
+      ta.focus()
+      ta.setSelectionRange(pos, pos)
+    })
+  }
 
   async function sendReply() {
     if (!reply.trim()) return
@@ -283,7 +367,10 @@ function ThreadMessages({
       const res = await fetch(`/api/inbox/${thread.latestEventId}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: reply.trim() }),
+        body: JSON.stringify({
+          message: reply.trim(),
+          internalNote: isInternal,
+        }),
       })
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean
@@ -296,6 +383,8 @@ function ThreadMessages({
         return
       }
       setReply("")
+      setMentionStart(null)
+      setMentionQuery("")
       await queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
       onReplied()
     } catch (e) {
@@ -348,7 +437,45 @@ function ThreadMessages({
 
       {/* Reply box */}
       {replyable && (
-        <div className="border-t border-border/40 p-3 bg-background">
+        <div
+          className={cn(
+            "border-t border-border/40 p-3 transition-colors",
+            isInternal ? "bg-amber-500/5" : "bg-background",
+          )}
+        >
+          {/* Reply / Internal note toggle. Internal note posts as a Trengo
+              `internal_note: true` (team-only bubble) AND fans out @-mention
+              notifications to tagged teammates. Slack threads hide the
+              toggle entirely — Slack has no native internal-note concept. */}
+          {supportsInternalNote && (
+            <div className="inline-flex items-center rounded-md border border-border/60 bg-muted/30 p-0.5 mb-2">
+              <button
+                type="button"
+                onClick={() => setComposerMode("reply")}
+                className={cn(
+                  "px-2.5 h-6 rounded text-[11px] font-medium transition-colors",
+                  composerMode === "reply"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Reply
+              </button>
+              <button
+                type="button"
+                onClick={() => setComposerMode("internal")}
+                className={cn(
+                  "px-2.5 h-6 rounded text-[11px] font-medium transition-colors",
+                  composerMode === "internal"
+                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                title="Team-only note — invisible to the client; @-mention to ping a teammate"
+              >
+                Internal note
+              </button>
+            </div>
+          )}
           {needsConnect && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 mb-2 text-xs">
               Connect your {needsConnect} account first.{" "}
@@ -362,28 +489,114 @@ function ThreadMessages({
               {sendError}
             </div>
           )}
-          <div className="flex items-end gap-2">
+          <div className="relative flex items-end gap-2">
             <textarea
+              ref={textareaRef}
               value={reply}
-              onChange={(e) => setReply(e.target.value)}
-              placeholder={`Reply via ${thread.source} as you`}
+              onChange={(e) => {
+                setReply(e.target.value)
+                syncMentionState(e.target.value, e.target.selectionStart ?? 0)
+              }}
+              onKeyUp={(e) => {
+                const ta = e.currentTarget
+                syncMentionState(ta.value, ta.selectionStart ?? 0)
+              }}
+              onClick={(e) => {
+                const ta = e.currentTarget
+                syncMentionState(ta.value, ta.selectionStart ?? 0)
+              }}
+              placeholder={
+                isInternal
+                  ? "Internal note — team only. Use @ to mention a teammate."
+                  : `Reply via ${thread.source} as you`
+              }
               rows={2}
               disabled={sending}
-              className="flex-1 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none"
+              className={cn(
+                "flex-1 rounded-lg border bg-transparent px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 resize-none",
+                isInternal
+                  ? "border-amber-500/40 bg-amber-500/5 dark:bg-amber-500/10 focus-visible:border-amber-500/60"
+                  : "border-input dark:bg-input/30 focus-visible:border-ring",
+              )}
               onKeyDown={(e) => {
+                if (mentionStart != null && mentionMatches.length > 0) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault()
+                    setMentionHighlight((h) => Math.min(mentionMatches.length - 1, h + 1))
+                    return
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault()
+                    setMentionHighlight((h) => Math.max(0, h - 1))
+                    return
+                  }
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault()
+                    applyMention(mentionMatches[mentionHighlight])
+                    return
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault()
+                    setMentionStart(null)
+                    setMentionQuery("")
+                    return
+                  }
+                }
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault()
                   sendReply()
                 }
               }}
             />
-            <Button size="sm" onClick={sendReply} disabled={!reply.trim() || sending}>
+            <Button
+              size="sm"
+              onClick={sendReply}
+              disabled={!reply.trim() || sending}
+              className={isInternal ? "bg-amber-500 hover:bg-amber-600 text-amber-950" : undefined}
+            >
               {sending ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Send className="h-3.5 w-3.5" />
               )}
             </Button>
+
+            {mentionStart != null && mentionMatches.length > 0 && (
+              <div className="absolute bottom-full mb-1 left-0 right-12 z-10 rounded-md border border-border bg-popover shadow-lg py-1 text-xs">
+                {mentionMatches.map((u, i) => {
+                  const active = i === mentionHighlight
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        applyMention(u)
+                      }}
+                      onMouseEnter={() => setMentionHighlight(i)}
+                      className={cn(
+                        "w-full text-left px-3 py-1.5 flex items-center gap-2",
+                        active ? "bg-muted/80" : "hover:bg-muted/50",
+                      )}
+                    >
+                      <span className="h-5 w-5 shrink-0 rounded-full bg-muted inline-flex items-center justify-center text-[9px] font-semibold text-muted-foreground">
+                        {(u.name?.trim()[0] ?? u.email[0] ?? "?").toUpperCase()}
+                      </span>
+                      <span className="flex-1 truncate">
+                        <span className="font-medium text-foreground/90">
+                          {u.name ?? u.email}
+                        </span>
+                        {u.name && (
+                          <span className="text-muted-foreground/50 ml-1.5 text-[10px]">
+                            {u.email}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -395,22 +608,39 @@ function ThreadMessages({
 
 function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isUs = msg.authorKind === "rl_team"
+  const isInternal = msg.isInternal === true
+  // Internal notes get a distinct yellow tint regardless of author —
+  // signals "team-only annotation, not part of the customer-visible
+  // conversation." Same convention Trengo uses on their own UI.
   return (
     <div className={cn("flex gap-2", isUs ? "justify-end" : "justify-start")}>
       <div
         className={cn(
           "max-w-[75%] rounded-2xl px-3 py-2",
-          isUs
-            ? "bg-primary text-primary-foreground"
-            : "bg-card border border-border/40",
+          isInternal
+            ? "bg-amber-500/15 border border-amber-500/30 text-foreground"
+            : isUs
+              ? "bg-primary text-primary-foreground"
+              : "bg-card border border-border/40",
         )}
       >
         <div className="flex items-baseline gap-2 mb-0.5">
           <span className="text-[11px] font-semibold">{msg.authorName}</span>
-          <span className={cn(
-            "text-[10px] tabular-nums",
-            isUs ? "text-primary-foreground/70" : "text-muted-foreground/70",
-          )}>
+          {isInternal && (
+            <span className="text-[10px] uppercase tracking-wide font-semibold text-amber-700 dark:text-amber-400">
+              Internal
+            </span>
+          )}
+          <span
+            className={cn(
+              "text-[10px] tabular-nums",
+              isInternal
+                ? "text-muted-foreground/70"
+                : isUs
+                  ? "text-primary-foreground/70"
+                  : "text-muted-foreground/70",
+            )}
+          >
             {fmtTime(msg.at)}
           </span>
         </div>

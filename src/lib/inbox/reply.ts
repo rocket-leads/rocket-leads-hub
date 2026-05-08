@@ -1,5 +1,6 @@
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { createAdminClient } from "@/lib/supabase/server"
+import { sendPushToUser } from "@/lib/notifications/push"
 
 /**
  * Outbound reply path — sends a Hub reply back to the source platform AS the
@@ -58,6 +59,7 @@ async function sendTrengoReplyAsUser(
   userId: string,
   ticketId: string,
   message: string,
+  internalNote: boolean,
 ): Promise<{ message_id: string }> {
   const token = await getUserPlatformToken(userId, "trengo")
   if (!token) throw new NeedsConnectError("trengo")
@@ -69,7 +71,7 @@ async function sendTrengoReplyAsUser(
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ message, internal_note: false }),
+    body: JSON.stringify({ message, internal_note: internalNote }),
   })
 
   if (!res.ok) {
@@ -144,14 +146,23 @@ export type ReplyResult = {
  * Send a reply to whichever platform produced this inbox event. Currently
  * supports Trengo and Slack — Monday "updates" are CRM-side notes, not chat
  * messages, and we don't surface a reply affordance for them.
+ *
+ * `internalNote=true` posts as a Trengo internal note (team-only bubble in
+ * the conversation, invisible to the client). The Hub mirrors it with
+ * is_internal=true so it renders with a distinct bubble in chat-pane, and
+ * any `@FirstName` in the body fans out Updates to the tagged teammates
+ * with a push notification. Slack doesn't have a native internal-note
+ * concept, so internalNote is silently ignored on Slack threads.
  */
 export async function replyToInboxEvent(
   userId: string,
   eventId: string,
   message: string,
+  options: { internalNote?: boolean } = {},
 ): Promise<ReplyResult> {
   const trimmed = message.trim()
   if (!trimmed) throw new Error("Empty reply")
+  const internalNote = options.internalNote === true
 
   const event = await loadEvent(eventId)
   if (!event) throw new Error("Event not found")
@@ -182,7 +193,7 @@ export async function replyToInboxEvent(
     // source_thread is `trengo:ticket:<id>`
     const ticketId = (event.source_thread ?? "").replace(/^trengo:ticket:/, "")
     if (!ticketId) throw new Error("Missing Trengo ticket id on event")
-    const r = await sendTrengoReplyAsUser(userId, ticketId, trimmed)
+    const r = await sendTrengoReplyAsUser(userId, ticketId, trimmed, internalNote)
     outboundId = r.message_id
     sourceMsgId = `trengo:msg:${outboundId}`
   } else {
@@ -240,6 +251,9 @@ export async function replyToInboxEvent(
       // the per-user channel-subscription filter (Trengo only — Slack uses
       // different routing and channel_id stays null for it).
       trengo_channel_id: event.source === "trengo" ? event.trengo_channel_id : null,
+      // Internal-note flag drives the team-only yellow bubble in chat-pane
+      // and gates the @-mention fan-out below.
+      is_internal: internalNote,
     })
     .select("id")
     .single()
@@ -251,9 +265,128 @@ export async function replyToInboxEvent(
     throw new Error("Reply sent, but failed to store in Hub history")
   }
 
+  // Internal-note @-mention fan-out: when the AM tags a teammate inside a
+  // team-only note (`@Stefan kun je dit even checken?`), each tagged user
+  // gets an Update in their inbox + a push notification — same shape as
+  // the task-comment mention pipeline. Skipped for client-visible replies
+  // (a stray @-mention there is just a typo and shouldn't ping anyone).
+  if (internalNote) {
+    fanOutMentionsForInternalNote(supabase, {
+      sourceEventId: event.id,
+      noteEventId: inserted.id,
+      noteBody: trimmed,
+      clientId: event.client_id,
+      authorUserId: userId,
+      authorName: hubUser.name ?? hubUser.email ?? "Iemand",
+    }).catch((e) => console.error("Internal-note mention fan-out failed:", e))
+  }
+
   return {
     source: event.source,
     outboundMsgId: outboundId,
     inboxEventId: inserted.id,
+  }
+}
+
+/**
+ * Parse `@FirstName` patterns out of an internal-note body, resolve them
+ * to Hub user ids, and emit one Update event + one push notification per
+ * mentioned user. Mirror of the task-comment mention path so the
+ * notification feel is consistent across the inbox.
+ *
+ * Skips the author (no point pinging yourself) and dedupes when the same
+ * user is @'d twice in one note. Uses fire-and-forget semantics on the
+ * caller side — a flake here shouldn't roll back the reply.
+ */
+async function fanOutMentionsForInternalNote(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  args: {
+    sourceEventId: string
+    noteEventId: string
+    noteBody: string
+    clientId: string
+    authorUserId: string
+    authorName: string
+  },
+): Promise<void> {
+  // Same regex as the task-comments mention resolver — keep them aligned
+  // so the picker UI and the server-side resolver agree on what counts.
+  const matches = Array.from(
+    args.noteBody.matchAll(
+      /@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g,
+    ),
+  )
+  if (matches.length === 0) return
+  const names = Array.from(new Set(matches.map((m) => m[1].trim()))).filter(Boolean)
+  if (names.length === 0) return
+
+  const { data: rows } = await supabase
+    .from("users")
+    .select("id, name")
+    .not("name", "is", null)
+  if (!rows) return
+
+  const ids = new Set<string>()
+  for (const name of names) {
+    const needle = name.toLowerCase()
+    for (const row of rows) {
+      const userName = (row.name as string | null)?.toLowerCase() ?? ""
+      if (!userName) continue
+      const firstName = userName.split(/\s+/)[0]
+      if (firstName === needle || userName === needle) {
+        if (row.id !== args.authorUserId) ids.add(row.id as string)
+      }
+    }
+  }
+  if (ids.size === 0) return
+
+  // Resolve a client name for the notification title — falls back to the
+  // raw client_id if the client isn't in the cache (rare, but tolerable).
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("name")
+    .eq("monday_item_id", args.clientId)
+    .maybeSingle()
+  const clientName =
+    (clientRow?.name as string | undefined) ?? args.clientId ?? "client"
+
+  const titlePreview = `${args.authorName} mentioned you in ${clientName}`
+  const bodyPreview =
+    args.noteBody.length > 240 ? args.noteBody.slice(0, 237) + "…" : args.noteBody
+
+  for (const mentionedId of ids) {
+    const { data: notif, error: notifErr } = await supabase
+      .from("inbox_events")
+      .insert({
+        kind: "update",
+        client_id: args.clientId,
+        author_id: args.authorUserId,
+        assignee_id: mentionedId,
+        title: titlePreview,
+        body: bodyPreview,
+        status: "unread",
+        source: "manual",
+        source_ref: {
+          mention_in_event_id: args.sourceEventId,
+          mention_in_note_id: args.noteEventId,
+          mention_origin: "internal_note",
+        },
+        author_kind: "rl_team",
+        classify_method: "manual",
+      })
+      .select("id")
+      .single()
+    if (notifErr) {
+      console.error("Mention notification insert failed:", notifErr.message)
+      continue
+    }
+    if (notif?.id) {
+      sendPushToUser(mentionedId, {
+        title: titlePreview,
+        body: bodyPreview,
+        url: "/inbox",
+        tag: `mention-${notif.id}`,
+      }).catch((e) => console.error("Mention push failed:", e))
+    }
   }
 }
