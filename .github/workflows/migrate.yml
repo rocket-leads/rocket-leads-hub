@@ -37,13 +37,23 @@ jobs:
           # schema_migrations table is the only thing that reliably wipes
           # 20240024's corrupt entry. Idempotent: when the row is already
           # gone, the DELETE affects 0 rows.
-          # Direct DB connection — pooler hosts and tenant routing are
-          # region-specific and we hit "Tenant or user not found" on the
-          # eu-central-1 pooler. The direct host pattern
-          # db.PROJECT_REF.supabase.co works regardless of region.
-          PGHOST="db.prvcgzrvmdwomwfvlpds.supabase.co"
-          psql "host=$PGHOST port=5432 user=postgres dbname=postgres sslmode=require" \
-            -c "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20240024000000';"
+          # GitHub Actions runners are IPv4-only and Supabase's direct DB
+          # host (db.PROJECT.supabase.co) is IPv6-only. We must go through
+          # the regional pooler. Try a few likely European regions; the
+          # one that authenticates wins.
+          PGUSER="postgres.prvcgzrvmdwomwfvlpds"
+          for REGION in eu-west-1 eu-central-1 eu-central-2 eu-west-2 eu-north-1 us-east-1 us-west-1; do
+            PGHOST="aws-0-${REGION}.pooler.supabase.com"
+            echo "Trying $PGHOST..."
+            if psql "host=$PGHOST port=6543 user=$PGUSER dbname=postgres sslmode=require connect_timeout=5" \
+                 -c "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20240024000000';" 2>&1 | tee /tmp/psql.out
+            then
+              if ! grep -q "Tenant or user not found\|connection to server" /tmp/psql.out; then
+                echo "Connected via $REGION"
+                break
+              fi
+            fi
+          done
 
           # Push with --include-all so 20240024 (out-of-order timestamp)
           # gets re-applied. Its SQL is ADD COLUMN IF NOT EXISTS so a
