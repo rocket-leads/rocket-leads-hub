@@ -16,6 +16,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 // pulled out below for the finance role (they don't action campaigns).
 // Billing is in the shared section so everyone — finance, members, admins —
 // can see invoice scheduling.
+const HOME = { href: "/home", label: "Home", icon: "LayoutDashboard" as const }
 const WATCH_LIST = { href: "/watchlist", label: "Watch List", icon: "Eye" as const }
 const SHARED_NAV = [
   { href: "/clients", label: "Clients", icon: "Users" as const },
@@ -32,6 +33,7 @@ export async function Sidebar() {
   const isFinance = !!session?.user.isFinance
 
   const allItems = [
+    HOME,
     // Finance gets a tailored stack without the Watch List; everyone else
     // keeps the full list.
     ...(isFinance ? [] : [WATCH_LIST]),
