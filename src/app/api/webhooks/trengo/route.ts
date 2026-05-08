@@ -5,8 +5,6 @@ import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { draftTrengoReply } from "@/lib/inbox/reply-drafter"
 import { resolveClientAssignee } from "@/lib/inbox/assignee"
 import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
-import { fetchTicket } from "@/lib/integrations/trengo"
-import { summarizeInboxTitle } from "@/lib/inbox/summarize"
 
 export const maxDuration = 60
 
@@ -341,34 +339,6 @@ export async function POST(req: NextRequest) {
       ? await resolveClientAssignee(clientRow.monday_item_id)
       : null) ?? hq.id
 
-  // Pull the Trengo ticket to discover the current Trengo-side assignee.
-  // We store it on the row so the Hub inbox filter can hide events that are
-  // already claimed by someone in Trengo (Roy's "unassigned-only" rule).
-  // Best-effort: failure here shouldn't block ingest.
-  let trengoAssigneeUserId: number | null = null
-  try {
-    const ticket = await fetchTicket(payload.ticketId)
-    trengoAssigneeUserId = ticket?.assignee?.id ?? null
-  } catch (e) {
-    console.warn("[trengo-webhook] fetchTicket failed; treating as unassigned", e)
-  }
-
-  // Auto-clear after team reply: when an OUTBOUND lands, every other event
-  // in the same Trengo contact thread is implicitly "handled" — flip them
-  // to read so the AM doesn't keep seeing them in the unread list. Same
-  // semantics Trengo's own UI applies. Notes (NOTE) are team chatter; they
-  // shouldn't auto-clear inbound questions.
-  if (payload.eventType === "OUTBOUND") {
-    void supabase
-      .from("inbox_events")
-      .update({ status: "read" })
-      .eq("thread_key", `trengo:contact:${payload.contactId}`)
-      .eq("status", "unread")
-      .then(({ error: clearErr }) => {
-        if (clearErr) console.warn("[trengo-webhook] auto-clear failed", clearErr)
-      })
-  }
-
   // Classify with AI. Defaults to chat on uncertainty.
   const classification = await classifyInboxMessage({
     source: "trengo",
@@ -376,51 +346,16 @@ export async function POST(req: NextRequest) {
     content: messageBody,
   })
 
-  // Collapse rule: at most one open/in-progress task per (client, source).
-  // If the classifier wants to create a task but there's already a live
-  // Trengo task on this client, downgrade the new event to "chat" — it
-  // still lands in the Client Inbox thread, but we don't double-up the
-  // Tasks tab. We attach a comment to the existing task afterwards so the
-  // AM still sees the new commitment as a thread of activity on the task.
-  let effectiveKind = classification.kind
-  let collapseToTaskId: string | null = null
-  if (classification.kind === "task" && clientRow?.monday_item_id) {
-    const { data: existingTask } = await supabase
-      .from("inbox_events")
-      .select("id")
-      .eq("source", "trengo")
-      .eq("kind", "task")
-      .eq("client_id", clientRow.monday_item_id)
-      .in("status", ["open", "in_progress"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (existingTask?.id) {
-      effectiveKind = "chat"
-      collapseToTaskId = existingTask.id
-    }
-  }
-
-  // Status: tasks always start "open" (someone needs to act, even on team
-  // replies that turn out to be commitments). Chat/update from a CLIENT
-  // starts "unread". Chat/update from RL_TEAM (OUTBOUND/NOTE) starts "read"
-  // — the team member just sent it, there's no "unread" state for your own
-  // outbound — pairs with the auto-clear-on-reply logic above.
   const status =
-    effectiveKind === "task"
+    classification.kind === "task"
       ? "open"
-      : payload.authorKind === "rl_team"
-        ? "read"
-        : "unread"
+      : "unread" // chat + update both start unread
 
-  const priority = effectiveKind === "task" ? "normal" : null
+  const priority = classification.kind === "task" ? "normal" : null
 
-  // Title: AI-generated one-liner so the inbox row shows a human summary
-  // instead of the raw message blob. Body keeps the full message so the
-  // detail view + chat thread still have the original text. Cached per
-  // content-hash so identical inbound messages don't hit Haiku twice.
-  const titleSummary = await summarizeInboxTitle(messageBody, "trengo")
-  const bodyFull = messageBody
+  const titlePreview =
+    messageBody.length > 100 ? messageBody.slice(0, 100) + "…" : messageBody
+  const bodyFull = messageBody.length > 100 ? messageBody : null
 
   // Smart-inbox: pre-draft a Dutch reply on classified tasks so the AM can
   // review-and-send straight from the detail dialog. Skipped on short tasks
@@ -463,11 +398,11 @@ export async function POST(req: NextRequest) {
   const { data: inserted, error } = await supabase
     .from("inbox_events")
     .insert({
-      kind: effectiveKind,
+      kind: classification.kind,
       client_id: clientRow?.monday_item_id ?? "",
       author_id: hq.id,
       assignee_id: assigneeId,
-      title: titleSummary || `Bericht van ${payload.authorName}`,
+      title: titlePreview || `Message from ${payload.authorName}`,
       body: bodyFull,
       status,
       priority,
@@ -483,13 +418,6 @@ export async function POST(req: NextRequest) {
       classify_method: "ai",
       created_at_src: payload.createdAtSrc,
       trengo_channel_id: payload.channelId,
-      trengo_assignee_user_id: trengoAssigneeUserId,
-      // Trengo fires `event_type=NOTE` for team-only annotations — mirror
-      // those in as `is_internal=true` so the chat UI renders them as a
-      // yellow bubble instead of a regular outbound message. Hub-originated
-      // notes already carry the flag via the reply mirror; this catches
-      // notes posted directly from the Trengo UI by other team members.
-      is_internal: payload.eventType === "NOTE",
       source_ref: sourceRef,
       raw: payload.raw,
       attachments: payload.attachments,
@@ -503,26 +431,9 @@ export async function POST(req: NextRequest) {
   }
   if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
 
-  // If this event collapsed into an existing open task, attach the message
-  // body as a comment so the task carries a running log of subsequent
-  // activity from the same client. Best-effort — the chat row already
-  // captured the message, so a failed comment isn't fatal.
-  if (collapseToTaskId) {
-    const { error: commentErr } = await supabase.from("inbox_comments").insert({
-      item_id: collapseToTaskId,
-      author_id: hq.id,
-      body: messageBody,
-    })
-    if (commentErr) {
-      console.warn("[trengo-webhook] collapse-comment insert failed", commentErr)
-    }
-  }
-
   return NextResponse.json({
     ok: true,
     classified: classification.kind,
-    effectiveKind,
-    collapsed: !!collapseToTaskId,
     confidence: classification.confidence,
     reason: classification.reason,
     clientLinked: !!clientRow,

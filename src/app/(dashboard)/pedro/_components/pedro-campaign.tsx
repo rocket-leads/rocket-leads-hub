@@ -59,23 +59,11 @@ interface MetaAd {
 }
 
 // ── Helpers ──
-async function callClaude(
-  prompt: string,
-  maxTokens = 1000,
-  ctx?: { clientId?: string | null; stage?: string },
-): Promise<string> {
+async function callClaude(prompt: string, maxTokens = 1000): Promise<string> {
   const res = await fetch("/api/pedro/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      prompt,
-      maxTokens,
-      // When clientId+stage are present the server enriches the system
-      // prompt with prior Pedro outputs for that stage — past angles,
-      // past scripts, past copy, etc. — so Pedro doesn't repeat itself.
-      clientId: ctx?.clientId ?? undefined,
-      stage: ctx?.stage ?? undefined,
-    }),
+    body: JSON.stringify({ prompt, maxTokens }),
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error);
@@ -561,9 +549,7 @@ Gebruik dit als visuele basis voor de creatives.`;
     const extra = brief.hooksExtra ? `\nExtra hooks campaign manager (prioriteit): ${brief.hooksExtra}` : "";
     try {
       const res = sanitizeOutput(await callClaude(
-        `Jij bent Pedro, senior campaign manager bij Rocket Leads NL. B2C lead gen campagnes voor Meta.\n\nClient:\n- Bedrijf: ${brief.bedrijf} (${brief.sector})\n- Doelgroep: ${brief.doel}\n- Pijnpunt: ${brief.pijn}\n- Aanbod: ${brief.aanbod}\n- USP's: ${brief.usps}\n- Hooks kick-off: ${brief.hooksAM}${extra}\n\nGenereer precies 5 marketing angles. Varieer in psychologische trigger (urgentie, angst, autoriteit, social proof, nieuwsgierigheid, etc.).\nALLEEN JSON:\n[{"nummer":1,"titel":"naam","beschrijving":"2 zinnen uitleg"},{"nummer":2,"titel":"...","beschrijving":"..."},{"nummer":3,"titel":"...","beschrijving":"..."},{"nummer":4,"titel":"...","beschrijving":"..."},{"nummer":5,"titel":"...","beschrijving":"..."}]${GENERATION_RULES}${styleRef()}${huisstijlContext()}`,
-        1500,
-        { clientId: selectedClientId, stage: "angles" }
+        `Jij bent Pedro, senior campaign manager bij Rocket Leads NL. B2C lead gen campagnes voor Meta.\n\nClient:\n- Bedrijf: ${brief.bedrijf} (${brief.sector})\n- Doelgroep: ${brief.doel}\n- Pijnpunt: ${brief.pijn}\n- Aanbod: ${brief.aanbod}\n- USP's: ${brief.usps}\n- Hooks kick-off: ${brief.hooksAM}${extra}\n\nGenereer precies 5 marketing angles. Varieer in psychologische trigger (urgentie, angst, autoriteit, social proof, nieuwsgierigheid, etc.).\nALLEEN JSON:\n[{"nummer":1,"titel":"naam","beschrijving":"2 zinnen uitleg"},{"nummer":2,"titel":"...","beschrijving":"..."},{"nummer":3,"titel":"...","beschrijving":"..."},{"nummer":4,"titel":"...","beschrijving":"..."},{"nummer":5,"titel":"...","beschrijving":"..."}]${GENERATION_RULES}${styleRef()}${huisstijlContext()}`
       ));
       try {
         setAngles(parseJSON<Angle[]>(res));
@@ -646,8 +632,7 @@ CTA:
 [Passend bij video 2]
 
 ---${GENERATION_RULES}${styleRef()}${huisstijlContext()}`,
-        1500,
-        { clientId: selectedClientId, stage: "script" }
+        1500
       ));
       setScript(res);
       setScriptVideos(parseScriptText(res));
@@ -888,8 +873,7 @@ Per creative EXACT dit format:
 **Sfeer:** [1 zin]
 
 Start direct met ### CREATIVE 1. Geen intro, geen samenvatting.${previousManusRef()}${GENERATION_RULES}`,
-        2500,
-        { clientId: selectedClientId, stage: "creatives" }
+        2500
       ));
 
       // Pre-validate: check for common issues before showing
@@ -954,8 +938,7 @@ BELANGRIJK: De landingspagina moet een ALGEMENE, overkoepelende benadering hebbe
 
 Specificeer hero sectie (breed ingestoken), pijnpunten, aanbod+USP's${lengte !== "Short - hero + CTA" ? ", social proof, leadformulier" : ""}${lengte === "Long - + FAQ + bezwaren" ? ", FAQ, bezwaren" : ""}.
 Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on submit. Form POST naar ${webhook} met velden + UTM params uit URL.${GENERATION_RULES}`,
-        1200,
-        { clientId: selectedClientId, stage: "lp" }
+        1200
       ));
       setLpPrompt(res);
     } catch {
@@ -975,8 +958,7 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
     try {
       const res = sanitizeOutput(await callClaude(
         `Jij bent Pedro, senior campaign manager bij Rocket Leads. Schrijf Meta advertentieteksten.\n\nClient: ${brief.bedrijf} (${brief.sector})\nDoelgroep: ${brief.doel}\nAanbod: ${brief.aanbod}\nUSP's: ${brief.usps}\nGeselecteerde angles:\n${anglesStr()}\nExtra hooks CM: ${brief.hooksExtra || "geen"}${scriptPart}${lpContext}\n\nBELANGRIJK: De ad copy moet EXACT aansluiten op de landingspagina. Gebruik dezelfde kernboodschap, voordelen en CTA zodat de bezoeker na het klikken op de ad precies vindt wat beloofd werd.\n\nSchrijf copy die alle geselecteerde angles dekt - wissel per variant van invalshoek:\n1. Primaire tekst variant A (120-150 woorden, angle 1 als leidraad, conversational, CTA)\n2. Primaire tekst variant B (100-130 woorden, andere angle als leidraad, andere toon)\n3. 5 headlines max 40 tekens - mix de verschillende angles\n4. 2 beschrijvingen max 25 woorden\n\nALLEEN JSON: {"variantA":"...","variantB":"...","headlines":"h1\\nh2\\nh3\\nh4\\nh5","beschrijving":"v1\\nv2"}${GENERATION_RULES}${styleRef()}${huisstijlContext()}`,
-        1200,
-        { clientId: selectedClientId, stage: "ad-copy" }
+        1200
       ));
       setAdCopy(parseJSON<AdCopy>(res));
     } catch {

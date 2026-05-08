@@ -18,11 +18,29 @@ jobs:
         with:
           version: latest
 
-      - name: Link and push migrations
+      - name: Reset stuck migration row + push
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           supabase init --force
           supabase link --project-ref prvcgzrvmdwomwfvlpds --password "$SUPABASE_DB_PASSWORD"
-          supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+          # 20240024 is in a corrupt half-state: supabase reports it as
+          # missing without --include-all and as duplicate WITH it. We hit
+          # this twice: `repair --status reverted` silently no-ops, and the
+          # direct-psql route fails because GH runners are IPv4-only while
+          # Supabase's direct DB endpoint is IPv6-only.
+          #
+          # `supabase db query --linked` goes through the Management API
+          # (HTTPS, no IPv4/IPv6 issue, no region guessing). We use it to
+          # DELETE the stuck row. Idempotent — a no-op when the row is
+          # already gone. Once 20240024 is cleared, db push --include-all
+          # re-applies its (idempotent) SQL and writes a clean row.
+          supabase db query --linked \
+            "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20240024000000';"
+
+          # Push with --include-all so 20240024 (out-of-order timestamp)
+          # gets re-applied. Its SQL is ADD COLUMN IF NOT EXISTS so the
+          # re-apply is a no-op when the column already exists.
+          supabase db push --include-all --password "$SUPABASE_DB_PASSWORD"
