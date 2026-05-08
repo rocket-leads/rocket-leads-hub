@@ -403,6 +403,34 @@ async function loadSelectedCampaigns(
   return result
 }
 
+/**
+ * Detect cached `rlAccountNoCampaign: true` entries that are now stale — i.e. the client
+ * has selected campaigns in `client_campaigns` but the flag persists in cache.
+ *
+ * Why this happens: the campaigns POST endpoint runs `invalidateKpiCachesForClients` as
+ * fire-and-forget (`void invalidateKpiCachesForClients(...)`) so it doesn't block the
+ * response. On Vercel the function execution is killed once the response is sent, and
+ * the cache write to `cache_store` can be cut off mid-flight. Result: the user picks
+ * campaigns, the page says "saved", but the watchlist keeps showing "RL ad account —
+ * no campaigns selected" until the next 30-min cron rewrites the cache.
+ *
+ * This helper is the self-heal: cheap Supabase lookup against `client_campaigns`,
+ * returns the IDs that are truly stale. Caller treats them as cache-misses and routes
+ * to live-fetch, which produces a fresh, flag-free entry.
+ */
+async function findStaleRlNoCampaign(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  candidateIds: string[],
+): Promise<Set<string>> {
+  if (candidateIds.length === 0) return new Set()
+  const selected = await loadSelectedCampaigns(supabase, candidateIds)
+  const stale = new Set<string>()
+  for (const id of candidateIds) {
+    if ((selected[id]?.size ?? 0) > 0) stale.add(id)
+  }
+  return stale
+}
+
 async function batchProcess(
   clients: ClientInput[],
   startDate: string,
@@ -475,9 +503,38 @@ export async function POST(req: NextRequest) {
       const { startDate: prevStartDate, endDate: prevEndDate } = getPreviousRange(body.startDate!, body.endDate!)
       const summaries: Record<string, KpiSummary> = {}
       const missing: ClientInput[] = []
+
+      // Self-heal: same stale-flag fix as in the 7d path. A cached daily entry with
+      // `rlAccountNoCampaign: true` whose client now has selected campaigns is bogus
+      // (the cron skipped the Meta fetch because no campaigns were selected, leaving
+      // a zeros-only entry). Route those to live-fetch so the date-range view doesn't
+      // serve stale "no campaigns selected" data.
+      const flaggedIds = body.clients
+        .filter((c) => dailyCache[c.mondayItemId]?.rlAccountNoCampaign === true)
+        .map((c) => c.mondayItemId)
+      let staleSet = new Set<string>()
+      let supabaseShared: Awaited<ReturnType<typeof createAdminClient>> | null = null
+      if (flaggedIds.length > 0) {
+        try {
+          supabaseShared = await createAdminClient()
+          staleSet = await findStaleRlNoCampaign(supabaseShared, flaggedIds)
+          if (staleSet.size > 0) {
+            console.log(
+              `[kpi-summaries] self-heal (date-range): ${staleSet.size} stale rlAccountNoCampaign entries — routing to live-fetch:`,
+              [...staleSet],
+            )
+          }
+        } catch (e) {
+          console.error(
+            "[kpi-summaries] self-heal lookup (date-range) failed:",
+            e instanceof Error ? e.message : e,
+          )
+        }
+      }
+
       for (const c of body.clients) {
         const daily = dailyCache[c.mondayItemId]
-        if (!daily) {
+        if (!daily || staleSet.has(c.mondayItemId)) {
           missing.push(c)
           continue
         }
@@ -489,9 +546,10 @@ export async function POST(req: NextRequest) {
       //   - Clients whose cache entry was just invalidated (e.g. campaigns
       //     auto-matched or manually selected) so the stale 0-numbers from
       //     the pre-selection cron run don't keep showing in the overview.
+      //   - Self-healed clients whose `rlAccountNoCampaign` flag was stale.
       if (missing.length > 0) {
         try {
-          const supabase = await createAdminClient()
+          const supabase = supabaseShared ?? (await createAdminClient())
           const selectedByMondayItemId = await loadSelectedCampaigns(
             supabase,
             missing.map((c) => c.mondayItemId),
@@ -522,8 +580,36 @@ export async function POST(req: NextRequest) {
     if (cached) {
       const summaries: Record<string, KpiSummary> = {}
       const missing: ClientInput[] = []
+
+      // Self-heal: any cached entry with `rlAccountNoCampaign: true` whose client now has
+      // selected campaigns is stale (cache invalidation never landed — see helper for the
+      // backstory). Validate against `client_campaigns` and route stale clients to the
+      // live-fetch path below so they get a fresh, flag-free entry.
+      const flaggedIds = body.clients
+        .filter((c) => cached[c.mondayItemId]?.rlAccountNoCampaign === true)
+        .map((c) => c.mondayItemId)
+      let staleSet = new Set<string>()
+      let supabaseShared: Awaited<ReturnType<typeof createAdminClient>> | null = null
+      if (flaggedIds.length > 0) {
+        try {
+          supabaseShared = await createAdminClient()
+          staleSet = await findStaleRlNoCampaign(supabaseShared, flaggedIds)
+          if (staleSet.size > 0) {
+            console.log(
+              `[kpi-summaries] self-heal: ${staleSet.size} stale rlAccountNoCampaign entries — routing to live-fetch:`,
+              [...staleSet],
+            )
+          }
+        } catch (e) {
+          console.error(
+            "[kpi-summaries] self-heal lookup failed (treating all as cache hits):",
+            e instanceof Error ? e.message : e,
+          )
+        }
+      }
+
       for (const c of body.clients) {
-        if (cached[c.mondayItemId]) {
+        if (cached[c.mondayItemId] && !staleSet.has(c.mondayItemId)) {
           summaries[c.mondayItemId] = cached[c.mondayItemId]
         } else {
           missing.push(c)
@@ -533,7 +619,7 @@ export async function POST(req: NextRequest) {
       // brand-new clients aren't blank — same pattern as the date-range path.
       if (missing.length > 0) {
         try {
-          const supabase = await createAdminClient()
+          const supabase = supabaseShared ?? (await createAdminClient())
           const { startDate, endDate } = getLast7DaysRange()
           const { startDate: prevStartDate, endDate: prevEndDate } = getPrevious7DaysRange()
           const selectedByMondayItemId = await loadSelectedCampaigns(
@@ -546,6 +632,20 @@ export async function POST(req: NextRequest) {
             5, selectedByMondayItemId, supabase,
           )
           Object.assign(summaries, live)
+
+          // Patch self-healed entries back into the kpi_summaries cache so subsequent
+          // requests don't re-detect the stale flag and re-live-fetch on every load.
+          // Re-read the cache before merging in case another request just wrote (best-effort).
+          if (staleSet.size > 0) {
+            const healed: Record<string, KpiSummary> = {}
+            for (const id of staleSet) {
+              if (live[id]) healed[id] = live[id]
+            }
+            if (Object.keys(healed).length > 0) {
+              const latest = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? cached
+              void writeCache("kpi_summaries", { ...latest, ...healed })
+            }
+          }
         } catch (e) {
           console.error("[kpi-summaries] 7d live-fetch for missing clients failed:", e instanceof Error ? e.message : e)
         }

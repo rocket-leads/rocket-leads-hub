@@ -145,6 +145,20 @@ De Rocket Leads Hub heeft een **Watch List** die alle Live klanten automatisch c
 - **Watch** — klanten met CPL/CPA stijging 10-25% (nog geen actie nodig, wel monitoren)
 - **Good Performance** — klanten met stabiele of dalende CPL/CPA
 
+#### Recent-window override (kortste tijdsperiode wint)
+
+Een 7d-only verdict heeft tunnelvisie. Wij optimaliseren dagelijks, dus een 7d CPL spike die in de laatste 1-3 dagen alweer hersteld is, is geen actie meer. Andersom: een verse spike op 1 dag is onzichtbaar in een 7d gemiddelde.
+
+De Watch List trekt daarom de **kortste betrouwbare tijdsperiode** (1d → 2d → 3d, met minimaal 2 leads en >€0 spend) uit de daily trend en past het volgende toe op het 7d verdict:
+
+- **Action + recovery** (recent CPL ≤1.25× prev-7d baseline) → demote naar **Watch**, met insight zoals "CPL recovered — €X (7d) but €Y (last Nd) ≈ €Z (prev 7d) baseline. Monitor."
+- **Good + fresh spike** (recent CPL ≥1.5× prev-7d baseline én ≥€30 spend in dat venster) → promote naar **Watch**, met insight zoals "Fresh CPL spike — €X (last Nd) vs €Y (prev 7d). 7d avg still €Z."
+- **Watch blijft Watch** in beide richtingen — Watch is al de monitor-bucket; we updaten alleen de insight tekst om het recente herstel/verergering te reflecteren.
+
+Voorbeeld: een klant met 7d CPL €38.87 vs prev 7d €13.15 (Action) maar last 2d CPL €10 → demote naar Watch ("CPL recovered — €38.87 (7d) but €10.00 (last 2d) ≈ €13.15 (prev 7d) baseline. Monitor."). Geen actie nodig, alleen monitoren of het laag blijft.
+
+Severity binnen de Watch bucket wordt gehalveerd voor recovered clients zodat genuinely-still-bad cases bovenaan blijven.
+
 De Watch List wordt verrijkt met:
 1. **Monday CRM updates** — lead feedback van setters/AM's (primaire kwaliteitssignaal)
 2. **Trengo conversaties** — recente klantcommunicatie (tevredenheid, klachten)
