@@ -2,6 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import { fetchMetaAdDetails } from "@/lib/integrations/meta"
 import { cachedFetch } from "@/lib/cache"
 import { computeAccountStats, scoreAd } from "@/lib/pedro/performance"
+import {
+  normaliseVertical,
+  readVerticalPattern,
+  renderVerticalPatternBlock,
+} from "@/lib/pedro/vertical-patterns"
 
 /**
  * Cross-client examples — when Pedro generates angles / scripts / copy
@@ -212,8 +217,15 @@ ${lines.join("\n\n")}
 }
 
 /**
- * Convenience: load + render in one call, with sane defaults. Server-side
- * use only.
+ * Convenience: load + render in one call, with sane defaults.
+ *
+ * Cache-first: tries the pre-computed `pedro_vertical_patterns` table
+ * (refreshed nightly by cron) for instant lookup with synthesised
+ * angle/hook patterns layered on top of winners. Falls back to a live
+ * Meta query when the patterns table isn't populated for this vertical
+ * (e.g. fresh vertical, cron hasn't run yet, or pattern is stale).
+ *
+ * Server-side use only.
  */
 export async function crossClientExamplesBlock(
   supabase: SupabaseClient,
@@ -221,6 +233,29 @@ export async function crossClientExamplesBlock(
   currentSector: string,
   limit = 5,
 ): Promise<string> {
+  // ── Path 1: pre-computed pattern (preferred) ──
+  const verticalKey = normaliseVertical(currentSector)
+  if (verticalKey) {
+    const pattern = await readVerticalPattern(supabase, verticalKey).catch(() => null)
+    if (pattern && pattern.top_winners.length > 0) {
+      // Filter out the current client's own ads from the cached winners
+      // (cron is global; per-request we exclude self).
+      const ownClient = await supabase
+        .from("clients")
+        .select("name")
+        .eq("monday_item_id", currentClientId)
+        .maybeSingle<{ name: string }>()
+      const ownName = ownClient.data?.name ?? null
+      if (ownName) {
+        pattern.top_winners = pattern.top_winners.filter((w) => w.sourceClientName !== ownName)
+      }
+      if (pattern.top_winners.length > 0) {
+        return renderVerticalPatternBlock(pattern)
+      }
+    }
+  }
+
+  // ── Path 2: live fallback ──
   const winners = await loadCrossClientExamples(supabase, currentClientId, currentSector, limit)
   return renderCrossClientExamples(winners)
 }

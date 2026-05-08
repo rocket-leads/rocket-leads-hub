@@ -33,6 +33,10 @@
       "schedule": "0 */2 * * *"
     },
     {
+      "path": "/api/cron/refresh-pedro-patterns",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/cron/slack-daily-watchlist",
       "schedule": "0 * * * *"
     },
