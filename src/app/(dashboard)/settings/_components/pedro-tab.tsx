@@ -24,6 +24,12 @@ type HealthResponse = {
     kickoffsUnlinked: number
     pedroFires: number
     kickoffsWithoutFire: number
+    evalsIngested: number
+    evalsLinked: number
+    evalDigestsFired: number
+    evalDigestsHigh: number
+    evalDigestsMedium: number
+    evalDigestsLow: number
   }
   fires: Array<{
     id: string
@@ -34,6 +40,18 @@ type HealthResponse = {
     status: string | null
     meetingId: string | null
     fathomRecordingId: string | null
+    createdAt: string
+  }>
+  evalDigests: Array<{
+    id: string
+    clientId: string | null
+    clientName: string
+    title: string | null
+    severity: "high" | "medium" | "low"
+    suggestedAction: string
+    assignee: string | null
+    status: string | null
+    meetingId: string | null
     createdAt: string
   }>
   missed: Array<{
@@ -182,10 +200,78 @@ export function PedroSettingsTab() {
         </CardContent>
       </Card>
 
+      {/* Eval digest funnel — separate card so it's clear that low conversion is normal */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            Eval digest pipeline (last 7d)
+          </CardTitle>
+          <CardDescription>
+            Pedro leest elke evaluatie en flagt alleen wanneer Claude iets actionable detecteert.
+            Lage conversion is normaal — routine evals produceren geen task.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatTile label="Evals ingested" value={s.evalsIngested} hint={`${s.evalsLinked} linked`} />
+            <StatTile
+              label="Digests fired"
+              value={s.evalDigestsFired}
+              hint={
+                s.evalsLinked > 0
+                  ? `${Math.round((s.evalDigestsFired / s.evalsLinked) * 100)}% actionable`
+                  : "no evals in window"
+              }
+            />
+            <StatTile
+              label="High severity"
+              value={s.evalDigestsHigh}
+              tone={s.evalDigestsHigh > 0 ? "bad" : "default"}
+              hint="needs CM attention"
+            />
+            <StatTile
+              label="Medium / low"
+              value={`${s.evalDigestsMedium} / ${s.evalDigestsLow}`}
+            />
+          </div>
+
+          {data.evalDigests.length > 0 && (
+            <div className="mt-4 divide-y divide-border/60">
+              {data.evalDigests.map((d) => {
+                const sevColor =
+                  d.severity === "high"
+                    ? "text-red-600 dark:text-red-400"
+                    : d.severity === "medium"
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground"
+                return (
+                  <div key={d.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`text-[10px] uppercase tracking-[0.1em] font-semibold ${sevColor}`}>
+                          {d.severity}
+                        </span>
+                        <span className="font-medium text-sm truncate">{d.clientName}</span>
+                        <span className="text-[10px] text-muted-foreground/60">
+                          → {d.suggestedAction.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{d.title}</div>
+                    </div>
+                    <div className="text-xs text-muted-foreground/70 shrink-0">{fmtDateTime(d.createdAt)}</div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Recent fires */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Recent fires ({data.fires.length})</CardTitle>
+          <CardTitle className="text-base">Recent kick-off fires ({data.fires.length})</CardTitle>
           <CardDescription>Pedro auto-trigger taken die naar de CM zijn gestuurd.</CardDescription>
         </CardHeader>
         <CardContent>

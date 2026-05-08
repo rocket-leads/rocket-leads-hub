@@ -7,7 +7,7 @@ import {
 } from "@/lib/integrations/fathom"
 import { matchSingleMeeting } from "@/lib/meetings/matcher"
 import { ingestMeetingActionItems } from "@/lib/meetings/action-items"
-import { triggerKickoffBriefIfEligible } from "@/lib/pedro/auto-trigger"
+import { triggerKickoffBriefIfEligible, triggerEvalDigestIfEligible } from "@/lib/pedro/auto-trigger"
 
 export type IngestResult =
   | { ok: true; status: "inserted"; recording_id: string; meeting_type: string; link_status: string; matched?: { clientId: string; strategy: string } }
@@ -147,6 +147,19 @@ export async function ingestFathomMeeting(
       await triggerKickoffBriefIfEligible(supabase, inserted.id)
     } catch (e) {
       console.error("Pedro auto-trigger failed for meeting", inserted.id, e)
+    }
+  }
+
+  // Phase 4 (Pedro) — evaluation meetings get a digest. Pedro reads the
+  // transcript against the existing brief + latest refresh and ONLY
+  // creates an inbox task if Claude marks it actionable. Routine evals
+  // produce nothing — keeps the CM's inbox signal-rich. Dedupe via
+  // inbox_events source_ref so re-ingest is safe.
+  if (meetingType === "evaluation" && matched?.clientId) {
+    try {
+      await triggerEvalDigestIfEligible(supabase, inserted.id)
+    } catch (e) {
+      console.error("Pedro eval-trigger failed for meeting", inserted.id, e)
     }
   }
 

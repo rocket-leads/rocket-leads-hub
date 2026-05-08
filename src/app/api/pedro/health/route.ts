@@ -43,26 +43,51 @@ export async function GET() {
   const kickoffsLinked = kickoffs.filter((m) => !!m.client_id)
   const kickoffsUnlinked = kickoffs.filter((m) => !m.client_id)
 
-  // ── Pedro auto-fires (inbox_events tasks created by the trigger) ──
+  // ── Evaluation meetings ingested in last 7d (denominator for the
+  // eval-digest funnel — only linked evals are eligible to fire) ──
+  const { data: evalsRaw } = await supabase
+    .from("meetings")
+    .select("id, client_id, scheduled_at, title")
+    .eq("meeting_type", "evaluation")
+    .gte("scheduled_at", sevenDaysAgo)
+    .order("scheduled_at", { ascending: false })
+    .limit(100)
+  const evals = evalsRaw ?? []
+  const evalsLinked = evals.filter((m) => !!m.client_id)
+
+  // ── Pedro auto-fires for BOTH kick-off briefs and eval digests ──
+  // Pull both kinds in one query, partition in code so we can compute
+  // each funnel independently while sharing the assignee/client name
+  // resolution at the bottom.
   const { data: firesRaw } = await supabase
     .from("inbox_events")
     .select("id, client_id, title, body, source_ref, created_at, assignee_id, status")
     .eq("source", "automation")
-    .filter("source_ref->>kind", "eq", "pedro_kickoff_brief")
+    .in("source_ref->>kind", ["pedro_kickoff_brief", "pedro_eval_digest"])
     .gte("created_at", sevenDaysAgo)
     .order("created_at", { ascending: false })
-    .limit(50)
+    .limit(100)
 
-  const fires = (firesRaw ?? []) as Array<{
+  const allFires = (firesRaw ?? []) as Array<{
     id: string
     client_id: string | null
     title: string | null
     body: string | null
-    source_ref: { kind?: string; meetingId?: string; fathomRecordingId?: string | null; clientId?: string } | null
+    source_ref: {
+      kind?: string
+      meetingId?: string
+      fathomRecordingId?: string | null
+      clientId?: string
+      severity?: "high" | "medium" | "low"
+      suggestedAction?: string
+    } | null
     created_at: string
     assignee_id: string | null
     status: string | null
   }>
+
+  const fires = allFires.filter((f) => f.source_ref?.kind === "pedro_kickoff_brief")
+  const evalDigests = allFires.filter((f) => f.source_ref?.kind === "pedro_eval_digest")
 
   // ── Map fires back to kick-offs to compute "missed" set ──
   const firedClientIds = new Set(fires.map((f) => f.client_id).filter(Boolean))
@@ -70,7 +95,7 @@ export async function GET() {
 
   // ── Resolve assignee names so the UI can show who's holding each task ──
   const assigneeIds = Array.from(
-    new Set(fires.map((f) => f.assignee_id).filter((id): id is string => !!id)),
+    new Set(allFires.map((f) => f.assignee_id).filter((id): id is string => !!id)),
   )
   const userNames = new Map<string, { name: string | null; email: string }>()
   if (assigneeIds.length > 0) {
@@ -86,8 +111,9 @@ export async function GET() {
   // ── Resolve client names ──
   const clientIds = Array.from(
     new Set([
-      ...fires.map((f) => f.client_id).filter((id): id is string => !!id),
+      ...allFires.map((f) => f.client_id).filter((id): id is string => !!id),
       ...kickoffsLinked.map((k) => k.client_id).filter((id): id is string => !!id),
+      ...evalsLinked.map((m) => m.client_id).filter((id): id is string => !!id),
     ]),
   )
   const clientNames = new Map<string, string>()
@@ -112,6 +138,15 @@ export async function GET() {
       // an existing pedro_client_state row (CM already started) or a
       // legitimate skip; the surface count flags it for inspection.
       kickoffsWithoutFire: missed.length,
+      // Eval digest funnel — only linked evals can fire, and even then
+      // Claude can mark as routine (actionable: false). Low conversion
+      // is normal — many evals are routine "all good" check-ins.
+      evalsIngested: evals.length,
+      evalsLinked: evalsLinked.length,
+      evalDigestsFired: evalDigests.length,
+      evalDigestsHigh: evalDigests.filter((f) => f.source_ref?.severity === "high").length,
+      evalDigestsMedium: evalDigests.filter((f) => f.source_ref?.severity === "medium").length,
+      evalDigestsLow: evalDigests.filter((f) => f.source_ref?.severity === "low").length,
     },
     fires: fires.map((f) => ({
       id: f.id,
@@ -124,6 +159,20 @@ export async function GET() {
       status: f.status,
       meetingId: f.source_ref?.meetingId ?? null,
       fathomRecordingId: f.source_ref?.fathomRecordingId ?? null,
+      createdAt: f.created_at,
+    })),
+    evalDigests: evalDigests.map((f) => ({
+      id: f.id,
+      clientId: f.client_id,
+      clientName: f.client_id ? clientNames.get(f.client_id) ?? "?" : "—",
+      title: f.title,
+      severity: f.source_ref?.severity ?? "low",
+      suggestedAction: f.source_ref?.suggestedAction ?? "no_action",
+      assignee: f.assignee_id
+        ? userNames.get(f.assignee_id)?.name ?? userNames.get(f.assignee_id)?.email ?? "?"
+        : null,
+      status: f.status,
+      meetingId: f.source_ref?.meetingId ?? null,
       createdAt: f.created_at,
     })),
     missed: missed.map((k) => ({
