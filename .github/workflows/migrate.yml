@@ -23,31 +23,22 @@ jobs:
           supabase init --force
           supabase link --project-ref prvcgzrvmdwomwfvlpds --password "$SUPABASE_DB_PASSWORD"
 
-          # Sync the supabase_migrations.schema_migrations table to match
-          # what's actually in the local migrations dir. This avoids the
-          # two failure modes we kept hitting:
-          #
-          #   1. A migration with an out-of-order timestamp sitting locally
-          #      that hasn't been written to the remote schema_migrations
-          #      table → `db push` refuses (without --include-all).
-          #   2. A migration that's already been applied to the remote DB
-          #      AND already in schema_migrations, but `db push --include-all`
-          #      tries to re-apply it → duplicate-key on the schema_migrations
-          #      INSERT.
-          #
-          # The fix for both: mark every local migration `--status applied`
-          # *before* attempting db push. Repair is idempotent — marking an
-          # already-applied row re-applied is a no-op. After that pass, db
-          # push only sees new migrations that genuinely need to run.
-          for f in supabase/migrations/*.sql; do
-            VERSION=$(basename "$f" | cut -d'_' -f1)
-            supabase migration repair --status applied "$VERSION" --password "$SUPABASE_DB_PASSWORD" 2>/dev/null || true
-          done
+          # 20240024 is in a corrupt half-state on the remote DB: supabase
+          # reports it as missing without --include-all and as duplicate
+          # WITH --include-all. Surgical reset: mark just that version as
+          # REVERTED (deletes the half-row from schema_migrations), then
+          # push --include-all to re-apply its idempotent SQL
+          # (ADD COLUMN IF NOT EXISTS users.whatsapp_template_name) and
+          # write a clean row.
+          supabase migration repair --status reverted 20240024000000 --password "$SUPABASE_DB_PASSWORD" 2>/dev/null || true
 
-          # Plain push — no --include-all. Anything actually new in this
-          # commit (i.e. files that weren't already marked applied above)
-          # gets executed; everything else is a no-op.
-          supabase db push --password "$SUPABASE_DB_PASSWORD"
+          # --include-all is required because 20240024 has an out-of-order
+          # timestamp (it was committed locally after later migrations had
+          # already landed on remote). Once 20240024 is back in
+          # schema_migrations, this flag becomes a no-op for future runs —
+          # supabase only "includes all" migrations not yet recorded, and
+          # everything else is a skip.
+          supabase db push --include-all --password "$SUPABASE_DB_PASSWORD"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
