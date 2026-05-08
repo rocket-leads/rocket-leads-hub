@@ -8,9 +8,13 @@ import { Loader2, Send, MessageSquare, Hash, LayoutGrid, Inbox, Mail } from "luc
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { ChatScope, ChatThreadSummary, ChatMessage } from "@/lib/inbox/fetchers"
+import type { InboxUser } from "./inbox-view"
 
 type Props = {
   scope: ChatScope
+  /** Reserved for future features (assignee labels, @-mention autocomplete).
+   *  Accepted now so callers can wire it pre-emptively. */
+  users?: InboxUser[]
 }
 
 /**
