@@ -6,6 +6,7 @@ import { filterClientsByUser } from "@/lib/clients/filter"
 import { categorize, severityScore } from "@/lib/watchlist/categorize"
 import { listInboxItems } from "@/lib/inbox/fetchers"
 import { createAdminClient } from "@/lib/supabase/server"
+import { agreementMonthly, normalizeAgreement } from "@/lib/clients/agreement"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { WatchlistClientState } from "@/app/api/watchlist/state/route"
@@ -59,6 +60,7 @@ async function HomeData() {
     notesCache,
     stateRows,
     billingCache,
+    agreementsByMondayId,
     myInboxItems,
     pedroProposals,
   ] = await Promise.all([
@@ -69,6 +71,7 @@ async function HomeData() {
     readCache<Record<string, string>>("watchlist_summaries_v8").then((c) => c ?? {}),
     fetchWatchlistState(),
     readCache<Record<string, BillingSummary>>("billing_summaries").then((c) => c ?? {}),
+    fetchAgreementsByMondayId(),
     fetchMyInbox(userId, role),
     isAdmin ? fetchPendingPedroProposals() : Promise.resolve<PedroProposal[]>([]),
   ])
@@ -93,6 +96,25 @@ async function HomeData() {
   const action = categorized.filter((c) => c.category === "action")
   const watch = categorized.filter((c) => c.category === "watch")
   const good = categorized.filter((c) => c.category === "good")
+
+  // Health score = good / (action + watch + good). Same formula as the Watch
+  // List header. Excludes no-data so a setup gap doesn't water down the score.
+  const healthDenominator = action.length + watch.length + good.length
+  const healthScore =
+    healthDenominator > 0 ? Math.round((good.length / healthDenominator) * 100) : null
+
+  // Team MRR — sum agreementMonthly across the user's visible clients (any
+  // status). Drives the "what is this team currently running" KPI. Admins
+  // see the org-wide total since filterClientsByUser returns everything for
+  // them. CMs/AMs see only their own team.
+  const teamMrr = visibleClients.reduce((sum, c) => {
+    const mrr = agreementsByMondayId[c.mondayItemId] ?? 0
+    return sum + mrr
+  }, 0)
+  const teamMrrClientCount = visibleClients.reduce((n, c) => {
+    const mrr = agreementsByMondayId[c.mondayItemId] ?? 0
+    return mrr > 0 ? n + 1 : n
+  }, 0)
 
   // Yesterday counts so the KPI strip can show day-over-day deltas. The cron
   // updates `watchlist_client_state` once per day, so for a client that
@@ -145,13 +167,10 @@ async function HomeData() {
       <KpiStrip
         actionCount={action.length}
         actionDelta={action.length - yesterdayActionCount}
-        watchCount={watch.length}
-        goodCount={good.length}
         unreadInboxCount={unreadInboxCount}
-        overdueAmount={totalOutstanding}
-        overdueCount={overdueClients.length}
-        pedroCount={pedroProposals.length}
-        showPedro={isAdmin}
+        healthScore={healthScore}
+        teamMrr={teamMrr}
+        teamMrrClientCount={teamMrrClientCount}
       />
 
       {/* 2x2 grid */}
@@ -233,6 +252,39 @@ async function fetchMyInbox(userId: string, role: string): Promise<InboxItem[]> 
     )
   } catch {
     return []
+  }
+}
+
+/**
+ * Per-client MRR keyed by monday_item_id. Same data the Clients overview
+ * pulls via `/api/clients/agreements-summary` — we read the table directly
+ * here so the home page renders in one server pass.
+ */
+async function fetchAgreementsByMondayId(): Promise<Record<string, number>> {
+  try {
+    const supabase = await createAdminClient()
+    const { data } = await supabase
+      .from("client_agreements")
+      .select(
+        "ad_budget, platforms, platform_fees, follow_up, follow_up_fee, clients!inner(monday_item_id)",
+      )
+
+    const out: Record<string, number> = {}
+    for (const row of data ?? []) {
+      const joined = row.clients as
+        | { monday_item_id: string }
+        | { monday_item_id: string }[]
+        | null
+      const mondayItemId = Array.isArray(joined)
+        ? joined[0]?.monday_item_id
+        : joined?.monday_item_id
+      if (!mondayItemId) continue
+      const agreement = normalizeAgreement(row)
+      out[mondayItemId] = agreementMonthly(agreement)
+    }
+    return out
+  } catch {
+    return {}
   }
 }
 

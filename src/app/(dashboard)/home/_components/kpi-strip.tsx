@@ -39,32 +39,32 @@ function Card({
   )
 }
 
+function fmtMrr(v: number): string {
+  if (v >= 1000) return `€${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k`
+  return `€${v.toFixed(0)}`
+}
+
 export function KpiStrip({
   actionCount,
   actionDelta,
-  watchCount,
-  goodCount,
   unreadInboxCount,
-  overdueAmount,
-  overdueCount,
-  pedroCount,
-  showPedro,
+  healthScore,
+  teamMrr,
+  teamMrrClientCount,
 }: {
   actionCount: number
   /** Today minus yesterday — positive means more action clients today (bad). */
   actionDelta: number
-  watchCount: number
-  goodCount: number
   unreadInboxCount: number
-  overdueAmount: number
-  overdueCount: number
-  pedroCount: number
-  showPedro: boolean
+  /** 0–100, or null when there are no live clients in scope. */
+  healthScore: number | null
+  /** Sum of agreement-monthly across visible clients. */
+  teamMrr: number
+  /** Number of visible clients with a non-zero agreement MRR. */
+  teamMrrClientCount: number
 }) {
-  const totalLive = actionCount + watchCount + goodCount
-
-  // Action card — the most important number on the page. Color = bad when >0,
-  // neutral at zero. Trend up = more action than yesterday (red); down = less.
+  // Action — bad whenever > 0. Trend up = more action than yesterday (red);
+  // trend down = fewer (green).
   const actionStatus: Status = actionCount === 0 ? "neutral" : "bad"
   const actionTrend: "up" | "down" | "flat" =
     actionDelta > 0 ? "up" : actionDelta < 0 ? "down" : "flat"
@@ -73,21 +73,22 @@ export function KpiStrip({
 
   const inboxStatus: Status = unreadInboxCount > 0 ? "bad" : "neutral"
 
-  const overdueStatus: Status = overdueAmount > 0 ? "bad" : "neutral"
-  const overdueValue = overdueAmount > 0
-    ? `€${(overdueAmount / 1000).toFixed(overdueAmount >= 10000 ? 0 : 1)}k`
-    : "€0"
-
-  const pedroStatus: Status = pedroCount > 0 ? "bad" : "neutral"
-
-  const cols = showPedro ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2 lg:grid-cols-3"
+  // Health zones mirror the Watch List header: <50 bad, 50-74 neutral, ≥75 good.
+  const healthStatus: Status =
+    healthScore == null
+      ? "neutral"
+      : healthScore < 50
+        ? "bad"
+        : healthScore < 75
+          ? "neutral"
+          : "good"
 
   return (
-    <div className={cn("grid gap-3", cols)}>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <Card
         label="Action needed"
         value={`${actionCount}`}
-        subtitle={totalLive === 0 ? "No live clients in scope" : actionDeltaText}
+        subtitle={actionDeltaText}
         status={actionStatus}
         trend={actionTrend}
       />
@@ -98,23 +99,21 @@ export function KpiStrip({
         status={inboxStatus}
       />
       <Card
-        label="Open invoices"
-        value={overdueValue}
-        subtitle={
-          overdueCount === 0
-            ? "All paid"
-            : `${overdueCount} ${overdueCount === 1 ? "client" : "clients"}`
-        }
-        status={overdueStatus}
+        label="Health score"
+        value={healthScore == null ? "—" : `${healthScore}%`}
+        subtitle={healthScore == null ? "No live clients in scope" : "target ≥ 75%"}
+        status={healthStatus}
       />
-      {showPedro && (
-        <Card
-          label="Pedro proposals"
-          value={`${pedroCount}`}
-          subtitle={pedroCount === 0 ? "Niks te reviewen" : "knowledge ideas pending"}
-          status={pedroStatus}
-        />
-      )}
+      <Card
+        label="Team MRR"
+        value={fmtMrr(teamMrr)}
+        subtitle={
+          teamMrrClientCount === 0
+            ? "Geen actieve agreements"
+            : `${teamMrrClientCount} ${teamMrrClientCount === 1 ? "client" : "clients"} live`
+        }
+        status="neutral"
+      />
     </div>
   )
 }
