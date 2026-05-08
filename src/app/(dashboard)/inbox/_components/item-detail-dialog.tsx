@@ -441,6 +441,19 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                     <Link2Off className="h-3 w-3" />
                     Unlinked Trengo contact
                   </span>
+                ) : item.clientId && item.clientName ? (
+                  // Click-through to the client detail page. The page's
+                  // Inbox tab shows every task / update / chat for this
+                  // client in one view, so this is the fastest path from
+                  // "I'm looking at this one task" to "show me everything
+                  // about this client right now."
+                  <Link
+                    href={`/clients/${item.clientId}`}
+                    className="font-medium hover:text-foreground hover:underline underline-offset-4 transition-colors"
+                    title="Open client detail page"
+                  >
+                    {item.clientName}
+                  </Link>
                 ) : (
                   <span className="font-medium">{item.clientName}</span>
                 )}
