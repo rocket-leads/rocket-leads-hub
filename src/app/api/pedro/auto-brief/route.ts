@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById, fetchItemUpdates } from "@/lib/integrations/monday"
 import { fetchConversations, fetchMessages } from "@/lib/integrations/trengo"
 import { loadPedroSystemPrompt } from "@/lib/pedro/knowledge"
+import { pastContextForStage } from "@/lib/pedro/past-campaigns"
 
 const anthropic = new Anthropic()
 
@@ -175,6 +176,9 @@ export async function POST(req: NextRequest) {
     sections.push(`\n[RECENTE TRENGO BERICHTEN]\n${trim(trengoSnippet, 2500)}`)
   }
 
+  // Past Pedro campaigns for this client — brief context. Empty for first campaign.
+  const pastBrief = await pastContextForStage(clientId, "brief", 2)
+
   const prompt = `Op basis van onderstaande klantcontext, vul een complete campagne-brief in voor deze klant. Pedro gebruikt deze brief als basis voor angles, scripts en creatives — wees zo specifiek en bruikbaar mogelijk.
 
 BELANGRIJKE PRIORITEITSREGELS:
@@ -184,7 +188,7 @@ BELANGRIJKE PRIORITEITSREGELS:
 4. Kick-off blijft de baseline voor sector, USP's en aanbod-structuur als er géén recentere eval is.
 
 ${sections.join("\n")}
-
+${pastBrief}
 Geef alleen JSON terug (geen markdown, geen code fences), exact in dit format:
 
 {

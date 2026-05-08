@@ -137,7 +137,7 @@ Make every stage of onboarding produce world-class output by feeding Pedro bette
 
 - [ ] **Per-stage prompt library** — angles/script/creatives/LP/adcopy each have their own Claude prompts in `src/lib/pedro/prompts/` (currently inline strings in components). Easier to iterate.
 - [ ] **Video script library as in-context examples** — feed `knowledge/campaigns.md`'s 14+ video script bodies as few-shot examples in the script generator stage. Pedro learns RL's exact tone from real examples.
-- [ ] **Past-campaign context** — when Pedro generates angles for client X, include the angles/scripts/copy from client X's previous campaign(s) so Pedro doesn't repeat itself or contradict prior strategy.
+- [x] **Past-campaign context** — server-side enrichment of `/api/pedro/claude` and `/api/pedro/auto-brief` with prior Pedro output for the same client. Stage-aware: angles get past angles, scripts get past scripts, etc. Lives in [src/lib/pedro/past-campaigns.ts](src/lib/pedro/past-campaigns.ts).
 - [ ] **Cross-client examples by vertical** — when generating for a "renovatie - badkamers" client, pull 3-5 winning ads from other RL renovatie clients (via Meta API + per-vertical tagging) and use them as in-context examples.
 - [ ] **Brief explainability** — under each auto-filled field, show which source(s) Pedro used (`Bron: kick-off 2026-04-12 + laatste eval`). Single-source claims build trust; AM knows what to verify.
 - [ ] **Brief diffing** — when re-running auto-brief on an existing client, show what Pedro would change vs. the saved brief, with a per-field "accept/reject."
@@ -151,7 +151,7 @@ Make every stage of onboarding produce world-class output by feeding Pedro bette
 
 Pedro stops being onboarding-only and starts running monthly creative refreshes for every Live client.
 
-- [ ] **Meta performance ingest** — `/api/pedro/client-performance?clientId=X` aggregates last 30d Meta data: per-ad spend / leads / CPL / CTR / frequency. Reuses hub's existing `lib/integrations/meta.ts`.
+- [x] **Meta performance ingest** — `/api/pedro/client-performance?clientId=X&days=30` aggregates window Meta data: per-ad spend/leads/CPL/CTR/frequency, account stats, prior-window trend deltas, and per-ad winner/loser/neutral verdicts via [src/lib/pedro/performance.ts](src/lib/pedro/performance.ts). Cached 5min via `cachedFetch`. Ready for the creative-refresh stage to consume.
 - [ ] **Lead-quality per UTM** — query Monday lead board for the client; group leads by UTM; surface qualification rate, conversion rate, and free-text feedback patterns ("3/5 leads zeggen 'geen budget' → ad sucks regardless of CPL").
 - [ ] **Pedro stage: "Creative refresh"** — new top-tab. Inputs: client + month window. Outputs: 3-5 new creative variations of last month's winners, in same hook/angle/format. Stored in `pedro_client_state.creatives.refreshes[]`.
 - [ ] **Pedro stage: "New angle test"** — when current angle is fatigued (Pedro detects: same angle, multiple creatives, all CPL > 1.4× account avg, 14d). Outputs: 2 new angles from the framework + 3 scripts each.
@@ -232,12 +232,13 @@ These need a decision before the corresponding feature ships:
 
 If I had to pick the **next four things** to build in priority order, given Phase 1 just shipped:
 
-1. **Past-campaign context** in the brief stage (Phase 2). Cheap, high-impact: every re-onboarding gets dramatically better.
-2. **Performance ingest** (`/api/pedro/client-performance`) (Phase 3 prereq). Unlocks all of optimisation mode.
-3. **Watch List → "Generate Pedro fix" button** (Phase 3). The first end-to-end optimisation flow. Proves the loop works.
-4. **New-client trigger via webhook** (Phase 4). The "wow" moment for the team — they paste a Monday item, Pedro has a brief 30 seconds later.
+1. ~~**Past-campaign context** in the brief stage (Phase 2). Cheap, high-impact: every re-onboarding gets dramatically better.~~ ✓ shipped 2026-05-08
+2. ~~**Performance ingest** (`/api/pedro/client-performance`) (Phase 3 prereq). Unlocks all of optimisation mode.~~ ✓ shipped 2026-05-08
+3. **Creative-refresh stage** that consumes the performance endpoint — first concrete optimisation feature. Adds a Pedro stage where the CM picks a Live client + month, Pedro reads the scored ads, proposes 3-5 iterations on the winners. End-to-end loop proven.
+4. **Watch List → "Generate Pedro fix" button** (Phase 3). Wires the same loop to the existing watchlist UI so high-severity clients get one-click fix proposals.
+5. **New-client trigger via webhook** (Phase 4). The "wow" moment for the team — they paste a Monday item, Pedro has a brief 30 seconds later.
 
-After those four, evaluate. The roadmap will look different.
+After those, evaluate. The roadmap will look different.
 
 ---
 
