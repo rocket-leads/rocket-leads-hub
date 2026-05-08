@@ -48,7 +48,30 @@ Rocket Leads draait campagnes op Meta (primair), Google en TikTok. De standaard 
 
 ---
 
+## Huidige Hub data state — CPL als primary driver (2026-Q2)
+
+> **Status note voor AI agents (Pedro + Watch List + alles wat aanbevelingen genereert):**
+>
+> Tot Q3 2026 draait de Hub primair op **cost per lead (CPL)** als hoofdsignaal voor wat winnaars en verliezers zijn. Niet omdat dat strategisch het juiste antwoord is — de tekst hieronder over Monday-update lead-feedback blijft de inhoudelijke standaard — maar omdat de **data daar nog niet is**:
+>
+> - Monday lead-board structuur is per klant ad-hoc; niet elke klant heeft consistent UTM-tagging op leads
+> - Setter/AM-feedback in updates is niet gestandaardiseerd genoeg om betrouwbaar machine-leesbaar per UTM te aggregeren
+> - Cost per appointment (CPA) en cost per deal (CPD) komen pas betrouwbaar binnen als (a) Monday lead-board mappings overal kloppen, (b) deal-data via `date3`-kolom op alle boards consistent is, (c) appointment-conversion gestructureerd doorvloeit
+>
+> Tot dat is opgelost, gelden voor Pedro / Watch List / alle agent-output **deze tijdelijke regels**:
+>
+> 1. Pedro mag CPL als primary winner/loser-signaal gebruiken, met het bekende voorbehoud: "winnaars zijn goedkoop, niet automatisch goed". Dit voorbehoud moet expliciet in elke proposal/refresh staan.
+> 2. Cross-client examples (Pedro Phase 2) gebruiken óók CPL als basis — winners van same-vertical RL klanten worden geselecteerd op CPL-ratio t.o.v. hun account-avg, niet op leadkwaliteit.
+> 3. Wanneer een AI agent een lead-quality observatie tóch wil maken (bv. een agent leest individuele Monday updates voor één klant in real-time), moet het expliciet als signaal naast CPL worden aangeboden — niet de plek vervangen van CPL als gating metric.
+> 4. **De tekst hieronder ("Lead Feedback uit Monday Updates") beschrijft de strategische eindstaat, niet de huidige operatie.** Wanneer Monday + appointment-data klopt, schalen we Pedro op naar CPA/CPD-driven decisions. Tot dan: CPL is wat we hebben, dus CPL is wat we gebruiken.
+>
+> Roy + Pedro maintainer-team werkt parallel aan dataquality (Monday lead-board normalisatie + per-UTM update-structuur) zodat Pedro v.a. Q3 op leadkwaliteit kan draaien.
+
+---
+
 ## Lead Feedback uit Monday Updates — primaire kwaliteitssignaal
+
+> *(Strategische standaard — zie status note hierboven voor huidige operatie.)*
 
 De Monday updates op individuele lead-items (geschreven door account managers en appointment setters) zijn de **belangrijkste bron van waarheid** over leadkwaliteit. CPL en CTR zeggen niets als de leads zelf onbruikbaar zijn.
 

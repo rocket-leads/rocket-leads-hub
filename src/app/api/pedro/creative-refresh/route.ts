@@ -13,6 +13,7 @@ import {
 } from "@/lib/pedro/performance"
 import { loadPedroSystemPrompt } from "@/lib/pedro/knowledge"
 import { pastContextForStage } from "@/lib/pedro/past-campaigns"
+import { crossClientExamplesBlock } from "@/lib/pedro/cross-client-examples"
 
 /**
  * POST /api/pedro/creative-refresh
@@ -174,10 +175,26 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
   }
 
   // ── 4. Compose the iterate-on-winners prompt ──
-  // Pull past creatives for anti-repeat context + the brief for tone.
-  const [pastCreatives, pastBrief] = await Promise.all([
+  // Pull past creatives for anti-repeat context + the brief for tone +
+  // cross-client examples (same-vertical RL winners) so Pedro's
+  // proposals are grounded in what already works in this niche.
+  // Sector for cross-client lookup comes from the latest saved brief —
+  // empty string if none, in which case we skip cross-client.
+  const { data: stateRow } = await supabase
+    .from("pedro_client_state")
+    .select("brief")
+    .eq("client_id", clientId)
+    .order("campaign_number", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ brief: { sector?: string } | null }>()
+  const currentSector = stateRow?.brief?.sector ?? ""
+
+  const [pastCreatives, pastBrief, crossClient] = await Promise.all([
     pastContextForStage(clientId, "creatives", 2).catch(() => ""),
     pastContextForStage(clientId, "brief", 1).catch(() => ""),
+    currentSector
+      ? crossClientExamplesBlock(supabase, clientId, currentSector, 4).catch(() => "")
+      : Promise.resolve(""),
   ])
 
   // Compact the winners + a few losers (so Claude sees what NOT to copy).
@@ -215,7 +232,7 @@ ALLE ADS (top 10 by spend):
 ${allAdsBlock}
 ${pastCreatives}
 ${pastBrief}
-
+${crossClient}
 OPDRACHT:
 Voor ELKE winner uit de WINNERS lijst (max 3 winners om scope behapbaar te houden):
 - Identificeer de DNA: wat is de hook-stijl, de marketing angle, het format.

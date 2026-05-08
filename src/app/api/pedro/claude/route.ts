@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { auth } from "@/lib/auth"
+import { createAdminClient } from "@/lib/supabase/server"
 import { loadPedroSystemPrompt } from "@/lib/pedro/knowledge"
 import { pastContextForStage, type PedroStage } from "@/lib/pedro/past-campaigns"
+import { crossClientExamplesBlock } from "@/lib/pedro/cross-client-examples"
 
 // SDK reads ANTHROPIC_API_KEY from env automatically — same key the rest of
 // the hub (watchlist, refresh-cache) uses.
 const anthropic = new Anthropic()
 
 const VALID_STAGES: PedroStage[] = ["brief", "angles", "script", "creatives", "lp", "ad-copy"]
+
+// Stages where same-vertical RL winners help most. Brief is omitted —
+// briefs come from the client's OWN data, cross-client examples would
+// contaminate. LP / creatives have less direct copy reuse value. Angles
+// + script + ad-copy are where Pedro most benefits from "what already
+// works in this niche".
+const CROSS_CLIENT_ELIGIBLE_STAGES = new Set<PedroStage>(["angles", "script", "ad-copy"])
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -44,6 +53,12 @@ export async function POST(req: NextRequest) {
     // Stage-aware past-campaign context — when caller passes clientId+stage,
     // server enriches system prompt with prior Pedro outputs for that stage
     // so Claude doesn't repeat itself across campaigns.
+    //
+    // For angles / script / ad-copy stages we ALSO inject cross-client
+    // winning examples from same-vertical RL clients (Phase 2). Per
+    // knowledge/campaigns.md status note: selection is CPL-driven, not
+    // lead-quality-driven (data debt). Inspiration only — never letterlijke
+    // kopie, never name-drop andere klanten in output.
     let system = await loadPedroSystemPrompt()
     if (
       typeof clientId === "string" &&
@@ -51,8 +66,29 @@ export async function POST(req: NextRequest) {
       typeof stage === "string" &&
       (VALID_STAGES as string[]).includes(stage)
     ) {
-      const past = await pastContextForStage(clientId, stage as PedroStage, 2).catch(() => "")
+      const stageTyped = stage as PedroStage
+      const supabase = await createAdminClient()
+      const past = await pastContextForStage(clientId, stageTyped, 2).catch(() => "")
       if (past) system = `${system}\n${past}`
+
+      if (CROSS_CLIENT_ELIGIBLE_STAGES.has(stageTyped)) {
+        try {
+          const { data: stateRow } = await supabase
+            .from("pedro_client_state")
+            .select("brief")
+            .eq("client_id", clientId)
+            .order("campaign_number", { ascending: false })
+            .limit(1)
+            .maybeSingle<{ brief: { sector?: string } | null }>()
+          const sector = stateRow?.brief?.sector ?? ""
+          if (sector) {
+            const xBlock = await crossClientExamplesBlock(supabase, clientId, sector, 5).catch(() => "")
+            if (xBlock) system = `${system}\n${xBlock}`
+          }
+        } catch (e) {
+          console.error("Pedro claude: cross-client examples failed", e)
+        }
+      }
     }
 
     const message = await anthropic.messages.create({
