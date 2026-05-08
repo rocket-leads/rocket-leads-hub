@@ -7,6 +7,7 @@ import {
 } from "@/lib/integrations/fathom"
 import { matchSingleMeeting } from "@/lib/meetings/matcher"
 import { ingestMeetingActionItems } from "@/lib/meetings/action-items"
+import { triggerKickoffBriefIfEligible } from "@/lib/pedro/auto-trigger"
 
 export type IngestResult =
   | { ok: true; status: "inserted"; recording_id: string; meeting_type: string; link_status: string; matched?: { clientId: string; strategy: string } }
@@ -133,6 +134,20 @@ export async function ingestFathomMeeting(
     await ingestMeetingActionItems(supabase, inserted.id)
   } catch (e) {
     console.error("Action item ingest failed for meeting", inserted.id, e)
+  }
+
+  // Phase 4 (Pedro) — when this is a freshly-ingested kick-off and the
+  // matcher linked it to a client, fire Pedro's auto-trigger so the CM
+  // walks out of the kick-off meeting with a draft brief already waiting
+  // in their inbox. Best-effort + dedupe internally — a re-ingested
+  // kick-off won't double-fire because the trigger checks for an existing
+  // pedro_client_state row before doing anything.
+  if (meetingType === "kick_off" && matched?.clientId) {
+    try {
+      await triggerKickoffBriefIfEligible(supabase, inserted.id)
+    } catch (e) {
+      console.error("Pedro auto-trigger failed for meeting", inserted.id, e)
+    }
   }
 
   return {

@@ -165,7 +165,7 @@ Pedro stops being onboarding-only and starts running monthly creative refreshes 
 
 Pedro stops waiting to be asked. He notices, proposes, alerts.
 
-- [ ] **New-client trigger** — when a client is added to the onboarding board (Monday webhook → hub already has this), Pedro auto-runs `/api/pedro/auto-brief` and creates a Hub inbox task: "Pedro heeft de brief klaar voor [Klant] — review en start campagne." First touch within 30 min of CRM entry.
+- [x] **Kick-off auto-trigger** — when a Fathom kick-off is ingested + matched to a client, Pedro fires `generateAutoBrief` and saves the result as a draft on `pedro_client_state` (campaign #1). An inbox task lands on the campaign manager (resolved via `user_column_mappings`): "Pedro brief klaar voor [Klant] — review en start campagne", with a deep-link to `/pedro?tab=brief&clientId=X`. Dedupe: skipped if any `pedro_client_state` row already exists for the client (CM has already started). Silent on failure. Lives in [src/lib/pedro/auto-trigger.ts](src/lib/pedro/auto-trigger.ts), hooked into [src/lib/meetings/ingest.ts](src/lib/meetings/ingest.ts).
 - [ ] **Eval meeting digestion** — when a Fathom eval meeting is ingested, Pedro reads it and proposes a campaign update if the conversation surfaced new pain points / ICP shifts / pricing changes. Output: "Pedro suggereert: nieuwe angle 'subsidie 2027' op basis van eval [link]."
 - [ ] **Performance anomaly alerts** — daily cron: if any Live client has CPL > 25% degraded vs 14d baseline, Pedro auto-generates a fix proposal and tasks the CM. (Currently the Watch List flags these; Pedro should make the next move.)
 - [ ] **Churn-risk reactive content** — when sentiment in Trengo turns negative (cron sentiment scan), Pedro produces "AM check-in talking points" for the next call. Helps the AM walk in armed.
@@ -237,8 +237,9 @@ If I had to pick the **next four things** to build in priority order, given Phas
 3. ~~**Creative-refresh stage** that consumes the performance endpoint — first concrete optimisation feature.~~ ✓ shipped 2026-05-08
 4. ~~**Save refresh proposals to `pedro_client_state.creatives.refreshes[]`**.~~ ✓ shipped 2026-05-08
 5. ~~**Watch List → "Ask Pedro" chip** on every Action/Watch row.~~ ✓ shipped 2026-05-08
-6. **New-client trigger via webhook** (Phase 4). The "wow" moment for the team — they paste a Monday item, Pedro has a brief 30 seconds later.
+6. ~~**New-client trigger via webhook** (Phase 4).~~ ✓ shipped 2026-05-08 as kick-off auto-trigger (Fathom-based, not Monday-row-based, per Roy's call)
 7. **Surface refresh history on client detail page** — render `pedro_client_state.creatives.refreshes[]` as a timeline so the AM can see "Pedro proposed X on date Y, was it shipped?".
+8. **Auto-trigger observability** — admin dashboard tile: "last 7d Pedro auto-triggers — fired/skipped/failed" so Roy can see if the loop is healthy without grepping logs.
 
 After those, evaluate. The roadmap will look different.
 
