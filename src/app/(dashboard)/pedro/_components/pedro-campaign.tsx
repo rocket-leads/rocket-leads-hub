@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { parseScriptText, generateScriptDocx, type ScriptVideo } from "@/lib/pedro/generate-script-docx";
 import { clientSlug, buildClientMD, parseClientMD, type ClientData, type ClientCampaign } from "@/lib/pedro/client-database";
-import { ClientPicker } from "./client-picker";
 import type { PedroClient } from "../page";
 
 // ── Types ──
@@ -159,10 +158,19 @@ export function Campaign({
   section,
   setSection,
   clients,
+  selectedClientId,
+  selectedClientName,
+  onSelectClient,
 }: {
   section: SectionName
   setSection: (s: SectionName) => void
   clients: PedroClient[]
+  /** Driven by the global Pedro picker at the top of the page. */
+  selectedClientId: string | null
+  selectedClientName: string
+  /** When the user picks a different client from inside the brief, propagate
+   *  to the global picker (still rendered up top). */
+  onSelectClient: (clientId: string, clientName: string) => void
 }) {
   const step = SECTION_TO_STEP[section] || 1;
   const setStep = (n: number) => setSection(STEP_TO_SECTION[n] || "brief");
@@ -173,9 +181,7 @@ export function Campaign({
   });
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
-  // Hub client coupling — selected client drives the AI auto-brief.
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
-  const [selectedClientName, setSelectedClientName] = useState<string>("");
+  // Auto-brief state — clientId comes from the parent now (global picker).
   const [autoFilling, setAutoFilling] = useState(false);
   const [autoBriefSource, setAutoBriefSource] = useState<string | null>(null);
 
@@ -369,9 +375,9 @@ Gebruik dit als visuele basis voor de creatives.`;
   // brief/angles/script/etc and DON'T auto-run AI (user can re-trigger via
   // the AI auto-fill button). If no saved state, kick off auto-brief so the
   // AM never starts from a blank canvas.
-  async function handleClientSelect(clientId: string, clientName: string) {
-    setSelectedClientId(clientId);
-    setSelectedClientName(clientName);
+  // Load any saved state for the active client. Called automatically
+  // whenever selectedClientId changes (driven by the global picker).
+  const loadClientState = useCallback(async function loadClientState(clientId: string, clientName: string) {
     setAutoBriefSource(null);
     setImportStatus(null);
 
@@ -419,7 +425,18 @@ Gebruik dit als visuele basis voor de creatives.`;
       // Fresh client — Pedro auto-fills the brief from hub context.
       void runAutoBrief(clientId, clientName);
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Watch the prop-driven client and reload Campaign state on change.
+  // Track the last-loaded id to avoid re-loading on every render.
+  const lastLoadedClientRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedClientId) return;
+    if (selectedClientId === lastLoadedClientRef.current) return;
+    lastLoadedClientRef.current = selectedClientId;
+    void loadClientState(selectedClientId, selectedClientName);
+  }, [selectedClientId, selectedClientName, loadClientState]);
 
   // ── Auto-save: debounced 800ms write of every Pedro deliverable to
   // pedro_client_state. Triggered when any of the 6 stages' output changes.
@@ -988,7 +1005,8 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
   // ── Reset ──
   function resetAll() {
     setBrief({ bedrijf: "", sector: "", doel: "", pijn: "", aanbod: "", usps: "", hooksAM: "", hooksExtra: "" });
-    setSelectedClientId(null); setSelectedClientName(""); setAutoFilling(false); setAutoBriefSource(null); setImportStatus(null);
+    // Note: clientId is owned by PedroApp; resetting Campaign doesn't clear it.
+    setAutoFilling(false); setAutoBriefSource(null); setImportStatus(null);
     setWebsiteUrl(""); setBrandStyle(null); setWebsiteAnalyzing(false); setHuisstijlOverride(false);
     setAngles([]); setSelectedAngles([]);
     setScript(""); setScriptVideos([]); setScriptSkipped(false);
@@ -1195,15 +1213,23 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
             </div>
           </div>
 
-          {/* Hub client picker — replaces Mike's monday search.
-              Selecting a client auto-triggers Pedro's AI auto-brief. */}
-          <ClientPicker
-            clients={clients}
-            selectedId={selectedClientId}
-            onSelect={handleClientSelect}
-            onAutoFill={() => runAutoBrief()}
-            loading={autoFilling}
-          />
+          {/* Client selection lives at PedroApp level (sticky picker
+              above all tabs). Brief tab just exposes the AI auto-fill
+              affordance + status. Client switching is done up top. */}
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+            <div className="text-sm">
+              <span className="text-muted-foreground">Actieve klant:</span>{" "}
+              <span className="font-medium text-foreground">{selectedClientName || "—"}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => runAutoBrief()}
+              disabled={!selectedClientId || autoFilling}
+              className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
+            >
+              {autoFilling ? "Pedro denkt na..." : "AI auto-fill brief"}
+            </button>
+          </div>
 
           {autoFilling && (
             <div className="flex items-center gap-2 mt-3 px-1">

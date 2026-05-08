@@ -68,12 +68,27 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function Research() {
+type ResearchProps = {
+  /** Active client from the global Pedro picker. When set, all research
+   *  saved in this session is bound to that client. When null, research
+   *  saves to the agency-wide library (legacy behaviour). */
+  clientId: string | null
+  /** Display name of the active client — used to default the klantnaam
+   *  field and label saved entries. */
+  clientName: string
+}
+
+export function Research({ clientId, clientName }: ResearchProps) {
   const [branche, setBranche] = useState("");
-  const [klantnaam, setKlantnaam] = useState("");
+  const [klantnaam, setKlantnaam] = useState(clientName);
   const [doelgroep, setDoelgroep] = useState("");
   const [propositie, setPropositie] = useState("");
   const [extraContext, setExtraContext] = useState("");
+
+  // Sync klantnaam to the global picker when the active client changes.
+  useEffect(() => {
+    setKlantnaam(clientName);
+  }, [clientName]);
 
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState("");
@@ -102,12 +117,25 @@ export function Research() {
   async function loadLibrary() {
     setLibraryLoading(true);
     try {
-      const res = await fetch("/api/pedro/research/library");
+      // When a client is active, scope the library list to that client
+      // first — Roy's directive: per-client environment. Empty fallback
+      // to agency-wide is documented in the API.
+      const url = clientId
+        ? `/api/pedro/research/library?clientId=${encodeURIComponent(clientId)}`
+        : "/api/pedro/research/library";
+      const res = await fetch(url);
       const data = await res.json();
       if (res.ok) setLibrary(data.items || []);
     } catch { /* silent */ }
     setLibraryLoading(false);
   }
+
+  // Re-load library when active client changes — keeps the visible
+  // saved-research list in sync with the current client.
+  useEffect(() => {
+    loadLibrary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
 
   async function runResearch() {
     if (!branche.trim()) {
@@ -151,8 +179,17 @@ export function Research() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          branche, klantnaam, label: klantnaam || branche,
-          doelgroep, propositie, extraContext, research: result,
+          branche,
+          klantnaam,
+          label: klantnaam || branche,
+          doelgroep,
+          propositie,
+          extraContext,
+          research: result,
+          // When a client is active, bind the saved entry to them so the
+          // research lives in that client's environment alongside brief
+          // / angles / scripts / etc.
+          clientId: clientId ?? undefined,
         }),
       });
       const data = await res.json();
@@ -160,7 +197,11 @@ export function Research() {
         showToast(data.error || "Opslaan mislukt");
       } else {
         setSavedId(data.id);
-        showToast("Opgeslagen in bibliotheek");
+        showToast(
+          clientId
+            ? `Opgeslagen bij ${clientName || "klant"}`
+            : "Opgeslagen in bibliotheek",
+        );
         loadLibrary();
       }
     } catch (e) {

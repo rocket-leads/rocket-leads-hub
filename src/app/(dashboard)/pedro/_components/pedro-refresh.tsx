@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { Sparkles, RefreshCw, TrendingUp, TrendingDown, Minus, AlertTriangle, Copy, Check } from "lucide-react"
-import { ClientPicker } from "./client-picker"
 import type { PedroClient } from "../page"
 
 /**
@@ -135,39 +134,36 @@ function CopyButton({ text }: { text: string }) {
 
 type Props = {
   clients: PedroClient[]
-  /** Pre-select a client via URL param (e.g. from Watch List "Ask Pedro"). */
-  initialClientId?: string | null
+  /** Driven by the global Pedro picker at the top of the page. */
+  selectedClientId: string | null
+  selectedClientName: string
   /** When true, fire generate() automatically once the client is set. */
   autoStart?: boolean
 }
 
-export function PedroRefresh({ clients, initialClientId, autoStart }: Props) {
-  // Only Live clients are relevant for refresh — onboarding clients have no
-  // performance data yet.
-  const liveClients = useMemo(
+export function PedroRefresh({ clients, selectedClientId, selectedClientName, autoStart }: Props) {
+  // Refresh only makes sense for Live or already-onboarded clients.
+  // Other onboarding-board clients have no performance data yet.
+  // We keep this filter for the data fetch — if the global picker has
+  // a non-Live client, the empty/error states on the API will surface.
+  // (Picker filtering is now PedroApp's concern.)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _liveClients = useMemo(
     () => clients.filter((c) => c.boardType === "current" || c.hasSavedCampaign),
     [clients],
   )
 
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(
-    initialClientId ?? null,
-  )
-  const [selectedClientName, setSelectedClientName] = useState<string>(
-    initialClientId
-      ? clients.find((c) => c.id === initialClientId)?.name ?? ""
-      : "",
-  )
   const [days, setDays] = useState<number>(30)
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<RefreshResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const handleClientSelect = useCallback((clientId: string, clientName: string) => {
-    setSelectedClientId(clientId)
-    setSelectedClientName(clientName)
+  // Reset output state whenever the active client changes externally
+  // (global picker swap → start fresh).
+  useEffect(() => {
     setData(null)
     setError(null)
-  }, [])
+  }, [selectedClientId])
 
   const generate = useCallback(async () => {
     if (!selectedClientId) return
@@ -217,13 +213,20 @@ export function PedroRefresh({ clients, initialClientId, autoStart }: Props) {
           </div>
         </div>
 
-        <ClientPicker
-          clients={liveClients}
-          selectedId={selectedClientId}
-          onSelect={handleClientSelect}
-          onAutoFill={generate}
-          loading={loading}
-        />
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 mb-3">
+          <div className="text-sm">
+            <span className="text-muted-foreground">Actieve klant:</span>{" "}
+            <span className="font-medium text-foreground">{selectedClientName || "—"}</span>
+          </div>
+          <button
+            type="button"
+            onClick={generate}
+            disabled={!selectedClientId || loading}
+            className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
+          >
+            {loading ? "Pedro denkt na..." : "Genereer refresh"}
+          </button>
+        </div>
 
         <div className="flex items-center gap-3 mt-3">
           <div className="text-xs text-muted-foreground">Window:</div>
@@ -243,18 +246,6 @@ export function PedroRefresh({ clients, initialClientId, autoStart }: Props) {
           ))}
         </div>
 
-        {selectedClientId && !data && !loading && !error && (
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={generate}
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Genereer refresh-proposals
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Loading */}

@@ -18,17 +18,27 @@ function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").substring(0, 60)
 }
 
-// GET /api/pedro/research/library — list all saved research entries
-export async function GET() {
+// GET /api/pedro/research/library?clientId=X
+//   When clientId is passed, returns research bound to that client only.
+//   Otherwise returns the agency-wide library (legacy + null-clientId rows).
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  const clientId = req.nextUrl.searchParams.get("clientId")
+
   try {
     const supabase = await createAdminClient()
-    const { data, error } = await supabase
+    let query = supabase
       .from("pedro_research")
       .select("*")
       .order("saved_at", { ascending: false })
+
+    if (clientId) {
+      query = query.eq("client_id", clientId)
+    }
+
+    const { data, error } = await query
     if (error) throw error
 
     const items: SavedResearch[] = (data ?? []).map((r) => ({
@@ -57,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const { branche, klantnaam, label, doelgroep, propositie, extraContext, research } = body
+    const { branche, klantnaam, label, doelgroep, propositie, extraContext, research, clientId } = body
 
     if (!research || !branche) {
       return NextResponse.json({ error: "Branche en research zijn verplicht" }, { status: 400 })
@@ -80,6 +90,9 @@ export async function POST(req: NextRequest) {
       extra_context: extraContext || "",
       research,
       saved_at: savedAt,
+      // Bind to a specific client when one is active. Null means
+      // agency-wide library (legacy / library-only research).
+      client_id: typeof clientId === "string" && clientId ? clientId : null,
     })
     if (error) throw error
 

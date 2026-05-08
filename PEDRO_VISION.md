@@ -117,6 +117,14 @@ Combined with Meta performance data for those past creatives, Pedro can self-cor
 
 Phased so each phase ships value independently. Don't chain too tightly — the agency's needs will shift Pedro's priorities.
 
+### Phase 1.5 — Per-client environment (2026-05-08)
+
+Roy's directive: alle acties in Pedro horen bij een specifieke klant. Geen tab-by-tab pickers meer; één sticky picker bovenin Pedro die alle tabs aanstuurt. Research is nu ook per-klant ipv globale library.
+
+- [x] **Single global client picker** — sticky bovenin Pedro, persists naar localStorage, URL-param overrides. Brief / Angles / Script / Creatives / LP / Ad-copy / Refresh / Research lezen + schrijven allemaal scoped op deze klant. Insights blijft agency-wide.
+- [x] **Empty state** — tabs die een klant nodig hebben tonen "Selecteer een klant om te starten" als er nog niets gekozen is.
+- [x] **Per-client research** — `pedro_research` heeft nu `client_id` FK; Library list filtert op klant wanneer een actief is; saves binden naar de actieve klant. Migration [20240035000000_pedro_research_per_client.sql](supabase/migrations/20240035000000_pedro_research_per_client.sql).
+
 ### Phase 1 — Onboarding MVP ✓ (largely done, this commit)
 
 - [x] Pedro section in Hub sidebar

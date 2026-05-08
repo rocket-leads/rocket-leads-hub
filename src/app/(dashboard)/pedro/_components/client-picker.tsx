@@ -11,6 +11,10 @@ type Props = {
   /** Triggered after a client is picked — Pedro should run AI auto-fill. */
   onAutoFill: () => void
   loading?: boolean
+  /** When true the AI auto-fill button is hidden — used by the global
+   *  Pedro picker at the top of the page where the brief tab handles
+   *  auto-fill on its own. */
+  hideAutoFill?: boolean
 }
 
 /**
@@ -19,7 +23,7 @@ type Props = {
  * fields from Monday updates + Fathom transcripts + Trengo). The user can
  * still re-trigger via "AI auto-fill" button.
  */
-export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loading }: Props) {
+export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loading, hideAutoFill }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const ref = useRef<HTMLDivElement>(null)
@@ -138,15 +142,17 @@ export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loadin
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={onAutoFill}
-        disabled={!selectedId || loading}
-        className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        {loading ? "Pedro denkt na..." : "AI auto-fill"}
-      </button>
+      {!hideAutoFill && (
+        <button
+          type="button"
+          onClick={onAutoFill}
+          disabled={!selectedId || loading}
+          className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {loading ? "Pedro denkt na..." : "AI auto-fill"}
+        </button>
+      )}
     </div>
   )
 }
