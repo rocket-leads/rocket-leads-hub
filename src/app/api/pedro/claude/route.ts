@@ -2,17 +2,21 @@ import { NextRequest, NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { auth } from "@/lib/auth"
 import { loadPedroSystemPrompt } from "@/lib/pedro/knowledge"
+import { pastContextForStage, type PedroStage } from "@/lib/pedro/past-campaigns"
 
 // SDK reads ANTHROPIC_API_KEY from env automatically — same key the rest of
 // the hub (watchlist, refresh-cache) uses.
 const anthropic = new Anthropic()
+
+const VALID_STAGES: PedroStage[] = ["brief", "angles", "script", "creatives", "lp", "ad-copy"]
 
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   try {
-    const { prompt, maxTokens = 1000, images } = await req.json()
+    const body = await req.json()
+    const { prompt, maxTokens = 1000, images, clientId, stage } = body
 
     if (!prompt) {
       return NextResponse.json({ error: "Prompt is required" }, { status: 400 })
@@ -37,7 +41,20 @@ export async function POST(req: NextRequest) {
 
     content.push({ type: "text", text: prompt })
 
-    const system = await loadPedroSystemPrompt()
+    // Stage-aware past-campaign context — when the caller passes a clientId
+    // + stage, the system prompt is decorated with prior Pedro outputs for
+    // that stage so Claude doesn't repeat itself across campaigns.
+    let system = await loadPedroSystemPrompt()
+    if (
+      typeof clientId === "string" &&
+      clientId &&
+      typeof stage === "string" &&
+      (VALID_STAGES as string[]).includes(stage)
+    ) {
+      const past = await pastContextForStage(clientId, stage as PedroStage, 2).catch(() => "")
+      if (past) system = `${system}\n${past}`
+    }
+
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: maxTokens,

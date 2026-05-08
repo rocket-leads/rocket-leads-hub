@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { stripHtml } from "@/lib/html"
 import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
+import { summarizeInboxTitle } from "@/lib/inbox/summarize"
 
 export const maxDuration = 60
 
@@ -260,8 +261,12 @@ export async function POST(req: NextRequest) {
 
   const assigneeId = mentionedUserId
 
-  const titlePreview = text.length > 100 ? text.slice(0, 100) + "…" : text
-  const bodyFull = text.length > 100 ? text : null
+  // Title: AI-generated summary so the row shows "Vraag over leadkwaliteit
+  // Kobe" instead of the raw `<p><a class="user_mention…` HTML blob Monday
+  // ships in its updates. Body keeps the full original text. Cached per
+  // content-hash so reposting the same update doesn't hit Haiku twice.
+  const titleSummary = await summarizeInboxTitle(text, "monday")
+  const bodyFull = text
 
   const { data: inserted, error } = await supabase
     .from("inbox_events")
@@ -270,7 +275,7 @@ export async function POST(req: NextRequest) {
       client_id: pulseId, // Monday item id IS our client_id text key
       author_id: hq.id,
       assignee_id: assigneeId,
-      title: titlePreview || `Monday update from ${userName}`,
+      title: titleSummary || `Monday-update van ${userName}`,
       body: bodyFull,
       status: classification.kind === "task" ? "open" : "unread",
       priority: classification.kind === "task" ? "normal" : null,

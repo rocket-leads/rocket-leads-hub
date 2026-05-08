@@ -1,5 +1,6 @@
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { createAdminClient } from "@/lib/supabase/server"
+import { fetchTicket } from "@/lib/integrations/trengo"
 
 /**
  * Outbound reply path — sends a Hub reply back to the source platform AS the
@@ -58,6 +59,7 @@ async function sendTrengoReplyAsUser(
   userId: string,
   ticketId: string,
   message: string,
+  internalNote: boolean,
 ): Promise<{ message_id: string }> {
   const token = await getUserPlatformToken(userId, "trengo")
   if (!token) throw new NeedsConnectError("trengo")
@@ -69,7 +71,7 @@ async function sendTrengoReplyAsUser(
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ message, internal_note: false }),
+    body: JSON.stringify({ message, internal_note: internalNote }),
   })
 
   if (!res.ok) {
@@ -144,14 +146,24 @@ export type ReplyResult = {
  * Send a reply to whichever platform produced this inbox event. Currently
  * supports Trengo and Slack — Monday "updates" are CRM-side notes, not chat
  * messages, and we don't surface a reply affordance for them.
+ *
+ * `internalNote=true` posts as a Trengo team-only annotation rather than a
+ * customer-visible message — used by the Comment tab in the chat composer
+ * so AM and CM can chat about the client inline in the same thread without
+ * the client ever seeing it. Slack has no equivalent (no team-only sub-thread
+ * mode for DMs/channels), so internal notes there fall back to a Hub-only
+ * mirror (no outbound Slack post).
  */
 export async function replyToInboxEvent(
   userId: string,
   eventId: string,
   message: string,
+  options: { internalNote?: boolean; mentionedUserIds?: string[] } = {},
 ): Promise<ReplyResult> {
   const trimmed = message.trim()
   if (!trimmed) throw new Error("Empty reply")
+
+  const internalNote = options.internalNote === true
 
   const event = await loadEvent(eventId)
   if (!event) throw new Error("Event not found")
@@ -161,6 +173,12 @@ export async function replyToInboxEvent(
   }
   if (event.source !== "trengo" && event.source !== "slack") {
     throw new Error(`Reply not supported for source: ${event.source}`)
+  }
+  // Slack doesn't have a team-only annotation; reject internal notes there
+  // so the caller sees a clear error rather than a silent customer-visible
+  // post. Once Phase E (Hub-native team chat) ships, this branch goes away.
+  if (event.source === "slack" && internalNote) {
+    throw new Error("Internal notes aren't supported on Slack threads yet")
   }
 
   const supabase = await createAdminClient()
@@ -178,13 +196,29 @@ export async function replyToInboxEvent(
   let sourceMsgId = ""
   let createdAtSrc = new Date().toISOString()
 
+  // Captured from Trengo post-send when applicable, so the outbound mirror
+  // row reflects the assignee Trengo auto-applied to the ticket once a
+  // teammate replied. Without this, Hub-originated replies leave the row
+  // unassigned, which means the thread stays in the Hub's "unassigned-only"
+  // inbox even though the user just claimed it.
+  let trengoAssigneeUserId: number | null = null
+
   if (event.source === "trengo") {
     // source_thread is `trengo:ticket:<id>`
     const ticketId = (event.source_thread ?? "").replace(/^trengo:ticket:/, "")
     if (!ticketId) throw new Error("Missing Trengo ticket id on event")
-    const r = await sendTrengoReplyAsUser(userId, ticketId, trimmed)
+    const r = await sendTrengoReplyAsUser(userId, ticketId, trimmed, internalNote)
     outboundId = r.message_id
     sourceMsgId = `trengo:msg:${outboundId}`
+    // Re-read the ticket so the mirror row carries the now-current assignee.
+    // Best-effort: failure here doesn't block the user — they sent the reply
+    // already, and the next webhook will fix the value if the API is flaky.
+    try {
+      const ticket = await fetchTicket(ticketId)
+      trengoAssigneeUserId = ticket?.assignee?.id ?? null
+    } catch (e) {
+      console.warn("[reply] post-send fetchTicket failed", e)
+    }
   } else {
     // Slack — source_thread is either `slack:thread:<channel>:<thread_ts>` or
     // `slack:channel:<channel>`. Channel ID is also the second segment of
@@ -236,10 +270,12 @@ export async function replyToInboxEvent(
       author_name_cached: hubUser.name ?? hubUser.email,
       classify_method: "manual",
       created_at_src: createdAtSrc,
+      is_internal: internalNote,
       // Propagate the original event's channel id so the outbound row passes
       // the per-user channel-subscription filter (Trengo only — Slack uses
       // different routing and channel_id stays null for it).
       trengo_channel_id: event.source === "trengo" ? event.trengo_channel_id : null,
+      trengo_assignee_user_id: trengoAssigneeUserId,
     })
     .select("id")
     .single()
@@ -249,6 +285,68 @@ export async function replyToInboxEvent(
     // don't let it look like the reply itself failed.
     console.error("Reply mirror insert failed:", error)
     throw new Error("Reply sent, but failed to store in Hub history")
+  }
+
+  // @-mention fan-out (internal notes only). For each colleague tagged in the
+  // composer, we drop a `kind=update` row on their inbox so the mention
+  // surfaces in their Updates tab + sidebar badge + push notification (the
+  // existing inbox_events insert trigger handles push). Note rows live on the
+  // chat substrate (thread_key set), but mention updates intentionally do
+  // NOT — they're standalone notifications that point back at the source.
+  if (internalNote && options.mentionedUserIds?.length) {
+    const uniqueIds = Array.from(new Set(options.mentionedUserIds)).filter(
+      (id) => id !== userId, // never mention yourself
+    )
+    if (uniqueIds.length > 0) {
+      // Validate that the IDs actually exist as Hub users (don't trust the
+      // client) and resolve a client name for the title.
+      const [{ data: validUsers }, { data: clientForTitle }] = await Promise.all([
+        supabase.from("users").select("id").in("id", uniqueIds),
+        event.client_id
+          ? supabase
+              .from("clients")
+              .select("name")
+              .eq("monday_item_id", event.client_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
+      ])
+      const allowedIds = (validUsers ?? []).map((u) => (u as { id: string }).id)
+      if (allowedIds.length > 0) {
+        const authorName = hubUser.name ?? hubUser.email
+        const clientName = (clientForTitle as { name?: string } | null)?.name ?? null
+        const titleSuffix = clientName ? ` op ${clientName}` : ""
+        const previewBody = trimmed.length > 500 ? trimmed.slice(0, 500) + "…" : trimmed
+
+        const mentionRows = allowedIds.map((mentionedId) => ({
+          kind: "update" as const,
+          client_id: event.client_id,
+          author_id: userId,
+          assignee_id: mentionedId,
+          title: `${authorName} noemde je in een note${titleSuffix}`,
+          body: previewBody,
+          status: "unread",
+          source: "manual" as const,
+          // Point back at the original event so the recipient can navigate
+          // there from their update — the existing detail dialog + chat pane
+          // can hydrate from this id.
+          source_ref: {
+            mention: true,
+            note_event_id: inserted.id,
+            thread_key: event.thread_key,
+          },
+          author_name_cached: authorName,
+          classify_method: "manual",
+        }))
+
+        const { error: mentionErr } = await supabase
+          .from("inbox_events")
+          .insert(mentionRows)
+        if (mentionErr) {
+          // Non-fatal — the note itself already saved. Log and move on.
+          console.warn("[reply] @-mention fan-out failed", mentionErr)
+        }
+      }
+    }
   }
 
   return {

@@ -82,7 +82,10 @@ export type TrengoConversation = {
   latest_message: { id: number; message: string; type: string; created_at: string } | null
   created_at: string
   closed_at: string | null
-  assignee: { name: string } | null
+  /** Trengo agent currently assigned to the ticket. `null` when unassigned.
+   *  We only need `id` for the Hub's unassigned-only filter; the rest is for
+   *  display in case we surface assignee info anywhere. */
+  assignee: { id: number; name: string } | null
 }
 
 export type TrengoMessage = {
@@ -134,6 +137,27 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
 export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
   const data = await trengoFetch<{ data: TrengoChannel[] }>(`/channels`)
   return [...data.data].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
+}
+
+/**
+ * Fetch a single ticket fresh — bypasses the 5-minute fetch cache because
+ * the webhook ingest path needs the *current* assignee, not a 5-minute-old
+ * view. Used to drive the Hub's "unassigned-only" inbox filter at ingest.
+ */
+export async function fetchTicket(ticketId: string | number): Promise<TrengoConversation | null> {
+  const token = (await getTrengoToken()).trim()
+  const res = await fetch(`https://app.trengo.com/api/v2/tickets/${ticketId}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    cache: "no-store",
+  })
+  if (!res.ok) return null
+  // Trengo returns either { ticket: {...} } or the bare ticket; handle both.
+  const json = (await res.json().catch(() => null)) as
+    | TrengoConversation
+    | { ticket: TrengoConversation }
+    | null
+  if (!json) return null
+  return "ticket" in json ? json.ticket : json
 }
 
 export async function fetchMessages(ticketId: number): Promise<TrengoMessage[]> {
