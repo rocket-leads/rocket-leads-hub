@@ -80,7 +80,12 @@ export function InboxListRow({
   const taskStatus = !isUpdate ? TASK_STATUS_LABELS[item.status as TaskStatus] : null
   const isHighPriority = item.priority === "high"
   const isCompleted = ["done", "cancelled", "read"].includes(item.status)
-  const showSelectCheckbox = !isUpdate && onToggleSelect !== undefined
+  // Bulk-select checkbox shown on tasks AND updates when the parent
+  // hooks it up. Updates also keep their leading read/unread bubble
+  // (which has a different role: per-row read toggle, not bulk select);
+  // the two coexist visually because the bulk one is hover-revealed and
+  // sits before the read bubble.
+  const showSelectCheckbox = onToggleSelect !== undefined
 
   return (
     <div

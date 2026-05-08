@@ -680,6 +680,9 @@ export function InboxView({
                 showClient={!lockedClient}
                 focusedItemId={focusedItemId}
                 onItemClick={(item) => setDetailItem(item)}
+                onBulkDelete={(ids) => {
+                  for (const id of ids) deleteItem(id)
+                }}
                 onAction={(item, action) => {
                   // Updates: Read/Unread is a per-row toggle that should leave
                   // the row visible regardless of filter — even when the
@@ -711,6 +714,8 @@ export function InboxView({
                       { kind: "task", dueDate: today },
                       { mode: "remove" },
                     )
+                  } else if (action === "delete") {
+                    deleteItem(item.id)
                   }
                 }}
               />
@@ -1833,7 +1838,7 @@ function BulkSnoozeButton({ onPick }: { onPick: (until: string) => void }) {
   )
 }
 
-type UpdateAction = "read" | "unread" | "make_task"
+type UpdateAction = "read" | "unread" | "make_task" | "delete"
 
 function UpdateGroupSection({
   icon,
@@ -1845,6 +1850,9 @@ function UpdateGroupSection({
   onToggle,
   onItemClick,
   onAction,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
   focusedItemId,
 }: {
   icon: typeof CalendarDays
@@ -1856,9 +1864,19 @@ function UpdateGroupSection({
   onToggle: () => void
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: UpdateAction) => void
+  selectedIds: Set<string>
+  onToggleSelect: (id: string) => void
+  onToggleSelectAll: (ids: string[], shouldSelect: boolean) => void
   focusedItemId?: string | null
 }) {
   if (items.length === 0) return null
+  const selectedInGroup = items.filter((it) => selectedIds.has(it.id)).length
+  const selectAllState: "none" | "some" | "all" =
+    selectedInGroup === 0
+      ? "none"
+      : selectedInGroup === items.length
+        ? "all"
+        : "some"
   return (
     <div>
       <SectionHeader
@@ -1868,6 +1886,13 @@ function UpdateGroupSection({
         tone={tone}
         collapsed={collapsed}
         onToggle={onToggle}
+        selectAllState={selectAllState}
+        onToggleSelectAll={() =>
+          onToggleSelectAll(
+            items.map((it) => it.id),
+            selectAllState !== "all",
+          )
+        }
       />
       {!collapsed && (
         <div className="space-y-2 mb-1">
@@ -1876,10 +1901,17 @@ function UpdateGroupSection({
               key={item.id}
               item={item}
               showClient={showClient}
+              selected={selectedIds.has(item.id)}
+              onToggleSelect={() => onToggleSelect(item.id)}
               onClick={() => onItemClick(item)}
               keyboardFocused={focusedItemId === item.id}
               onAction={(action) => {
-                if (action === "read" || action === "unread" || action === "make_task") {
+                if (
+                  action === "read" ||
+                  action === "unread" ||
+                  action === "make_task" ||
+                  action === "delete"
+                ) {
                   onAction(item, action)
                 }
               }}
@@ -1929,18 +1961,82 @@ function GroupedUpdates({
   showClient,
   onItemClick,
   onAction,
+  onBulkDelete,
   focusedItemId,
 }: {
   updates: InboxItem[]
   showClient: boolean
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: UpdateAction) => void
+  /** Bulk delete handler — fans out DELETE requests with optimistic
+   *  cache removal in the parent. Same shape as GroupedTasks. */
+  onBulkDelete: (ids: string[]) => void
   focusedItemId?: string | null
 }) {
   const groups = useMemo(() => groupUpdatesByDate(updates), [updates])
   const { collapsed, toggle } = useUpdateCollapse()
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  // Auto-prune selection when items leave the visible set (filter switch,
+  // an action removed it). Mirrors GroupedTasks behaviour.
+  useEffect(() => {
+    const visible = new Set(updates.map((u) => u.id))
+    setSelectedIds((prev) => {
+      let dirty = false
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (visible.has(id)) next.add(id)
+        else dirty = true
+      }
+      return dirty ? next : prev
+    })
+  }, [updates])
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectMany(ids: string[], shouldSelect: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) {
+        if (shouldSelect) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  function handleBulk(action: UpdateAction) {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    const items = updates.filter((u) => selectedIds.has(u.id))
+    clearSelection()
+    for (const item of items) onAction(item, action)
+  }
+
+  function handleBulkDeleteSelected() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    const ok = window.confirm(
+      `Permanently delete ${ids.length} update${ids.length === 1 ? "" : "s"}? This can't be undone.`,
+    )
+    if (!ok) return
+    clearSelection()
+    onBulkDelete(ids)
+  }
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 pb-20">
       <UpdateGroupSection
         icon={CalendarDays}
         label="Today"
@@ -1951,6 +2047,9 @@ function GroupedUpdates({
         onToggle={() => toggle("today")}
         onItemClick={onItemClick}
         onAction={onAction}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
+        onToggleSelectAll={toggleSelectMany}
         focusedItemId={focusedItemId}
       />
       <UpdateGroupSection
@@ -1963,6 +2062,9 @@ function GroupedUpdates({
         onToggle={() => toggle("yesterday")}
         onItemClick={onItemClick}
         onAction={onAction}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
+        onToggleSelectAll={toggleSelectMany}
         focusedItemId={focusedItemId}
       />
       <UpdateGroupSection
@@ -1975,6 +2077,9 @@ function GroupedUpdates({
         onToggle={() => toggle("thisWeek")}
         onItemClick={onItemClick}
         onAction={onAction}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
+        onToggleSelectAll={toggleSelectMany}
         focusedItemId={focusedItemId}
       />
       <UpdateGroupSection
@@ -1987,8 +2092,83 @@ function GroupedUpdates({
         onToggle={() => toggle("older")}
         onItemClick={onItemClick}
         onAction={onAction}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
+        onToggleSelectAll={toggleSelectMany}
         focusedItemId={focusedItemId}
       />
+
+      {selectedIds.size > 0 && (
+        <UpdateBulkActionBar
+          count={selectedIds.size}
+          onClear={clearSelection}
+          onBulk={handleBulk}
+          onDelete={handleBulkDeleteSelected}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Floating bottom bar that appears when 1+ updates are selected. Mirrors
+ * the Tasks bulk bar shape but with the actions that make sense for
+ * informational items: Mark as read, Make task (bulk-promote to Tasks),
+ * and permanent Delete.
+ */
+function UpdateBulkActionBar({
+  count,
+  onClear,
+  onBulk,
+  onDelete,
+}: {
+  count: number
+  onClear: () => void
+  onBulk: (action: UpdateAction) => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-full border border-border bg-popover shadow-lg px-2 py-1.5">
+      <span className="text-xs font-medium px-2 tabular-nums">
+        {count} {count === 1 ? "geselecteerd" : "geselecteerd"}
+      </span>
+      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <button
+        type="button"
+        onClick={() => onBulk("read")}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+        title="Markeer geselecteerde updates als gelezen"
+      >
+        <Check className="h-3.5 w-3.5" />
+        Mark read
+      </button>
+      <button
+        type="button"
+        onClick={() => onBulk("make_task")}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+        title="Promoot geselecteerde updates naar tasks"
+      >
+        <ListTodo className="h-3.5 w-3.5" />
+        Make task
+      </button>
+      <button
+        type="button"
+        onClick={onDelete}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-red-500/15 hover:text-red-500 transition-colors"
+        title="Verwijder geselecteerde updates — dit kan niet ongedaan worden"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Delete
+      </button>
+      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <button
+        type="button"
+        onClick={onClear}
+        className="text-[11px] text-muted-foreground hover:text-foreground px-2"
+        title="Selectie wissen"
+      >
+        Clear
+      </button>
     </div>
   )
 }
