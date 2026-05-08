@@ -1,4 +1,11 @@
-export type InboxKind = "update" | "task"
+/**
+ * Inbox event kind. "chat" was added to the canonical union to match the
+ * already-existing reclassify path (`UpdateInboxItemInput.kind`) and the
+ * detail-dialog renderer that branches on `item.kind === "chat"`. The
+ * three-way taxonomy is the direction the inbox is moving — Roy's
+ * in-progress chat work flows through here.
+ */
+export type InboxKind = "update" | "task" | "chat"
 
 export type UpdateStatus = "unread" | "read"
 export type TaskStatus = "open" | "in_progress" | "done" | "cancelled"

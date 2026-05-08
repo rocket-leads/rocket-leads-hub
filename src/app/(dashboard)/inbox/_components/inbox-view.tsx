@@ -585,7 +585,7 @@ export function InboxView({
             <Button
               variant={assignedToMe ? "default" : "outline"}
               size="sm"
-              onClick={() => setAssignedToMe((v) => !v)}
+              onClick={() => setAssignedToMe(!assignedToMe)}
             >
               {assignedToMe ? "Assigned to me" : "All"}
             </Button>
