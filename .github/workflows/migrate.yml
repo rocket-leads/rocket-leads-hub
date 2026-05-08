@@ -18,27 +18,31 @@ jobs:
         with:
           version: latest
 
-      - name: Link and push migrations
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Reset stuck migration row + push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           supabase init --force
           supabase link --project-ref prvcgzrvmdwomwfvlpds --password "$SUPABASE_DB_PASSWORD"
 
-          # 20240024 is in a corrupt half-state on the remote DB: supabase
-          # reports it as missing without --include-all and as duplicate
-          # WITH --include-all. Surgical reset: mark just that version as
-          # REVERTED (deletes the half-row from schema_migrations), then
-          # push --include-all to re-apply its idempotent SQL
-          # (ADD COLUMN IF NOT EXISTS users.whatsapp_template_name) and
-          # write a clean row.
-          supabase migration repair --status reverted 20240024000000 --password "$SUPABASE_DB_PASSWORD" 2>/dev/null || true
+          # Direct SQL via psql to clear the stuck row. The Supabase CLI's
+          # `migration repair --status reverted` silently no-ops when the
+          # row doesn't match its internal expectations — that's how we
+          # ended up cycling between two errors. A targeted DELETE on the
+          # schema_migrations table is the only thing that reliably wipes
+          # 20240024's corrupt entry. Idempotent: when the row is already
+          # gone, the DELETE affects 0 rows.
+          PGHOST="aws-0-eu-central-1.pooler.supabase.com"
+          PGUSER="postgres.prvcgzrvmdwomwfvlpds"
+          psql "host=$PGHOST port=6543 user=$PGUSER dbname=postgres sslmode=require" \
+            -c "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20240024000000';"
 
-          # --include-all is required because 20240024 has an out-of-order
-          # timestamp (it was committed locally after later migrations had
-          # already landed on remote). Once 20240024 is back in
-          # schema_migrations, this flag becomes a no-op for future runs —
-          # supabase only "includes all" migrations not yet recorded, and
-          # everything else is a skip.
+          # Push with --include-all so 20240024 (out-of-order timestamp)
+          # gets re-applied. Its SQL is ADD COLUMN IF NOT EXISTS so a
+          # re-apply is a no-op if the column is already there.
           supabase db push --include-all --password "$SUPABASE_DB_PASSWORD"
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
