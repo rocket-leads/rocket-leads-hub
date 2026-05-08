@@ -117,6 +117,22 @@ Combined with Meta performance data for those past creatives, Pedro can self-cor
 
 Phased so each phase ships value independently. Don't chain too tightly — the agency's needs will shift Pedro's priorities.
 
+### Phase 1.6 — Two-layer storage: drafts + saved versions (2026-05-08)
+
+Roy's UX rule: auto-save mag niet leiden tot data-vervuiling op de klant. Als de CM aan het experimenteren is met angles voor een concurrent-analyse moet dat NIET in de officiële client-record komen.
+
+Oplossing: twee lagen storage.
+
+- **Layer 1 — Draft** (existing `pedro_client_state`): auto-saved every 800ms. Survives reloads. Privé werkstaat. Niet zichtbaar voor client-detail page, niet gebruikt door cross-client examples, telt niet mee als "data van de klant".
+- **Layer 2 — Saved versions** (new `pedro_stage_versions`): expliciet "Save naar klant" per stage. Elke save = nieuwe immutable rij met version_number bumped. Wat de rest van de hub leest (cross-client examples, future client detail Pedro tab, knowledge proposals).
+
+Implementation:
+- [x] Migration: `pedro_stage_versions` table — (client_id, campaign_number, stage, version_number) unique. Stages: brief / angles / script / creatives / lp / ad-copy / research.
+- [x] API [/api/pedro/saved-versions](src/app/api/pedro/saved-versions/route.ts) — GET list + POST create with auto-incremented version_number per (client, campaign, stage).
+- [x] [StageActionBar component](src/app/(dashboard)/pedro/_components/stage-action-bar.tsx) — sticky bar at top of every Pedro stage showing "Last saved: vN — date" + "Save naar klant" button + draft-mode warning when nothing saved yet. Wired into all 6 Campaign stages.
+- [x] [past-campaigns.ts](src/lib/pedro/past-campaigns.ts) — now prefers latest saved version per stage, falls back to draft. Cross-client examples + auto-brief context now read canonical data, not in-progress experiments.
+- [ ] Client detail Pedro tab — currently shows refresh history; saved-version timeline (cross-stage) is the next iteration.
+
 ### Phase 1.5 — Per-client environment (2026-05-08)
 
 Roy's directive: alle acties in Pedro horen bij een specifieke klant. Geen tab-by-tab pickers meer; één sticky picker bovenin Pedro die alle tabs aanstuurt. Research is nu ook per-klant ipv globale library.

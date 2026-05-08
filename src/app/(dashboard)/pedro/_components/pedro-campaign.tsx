@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { parseScriptText, generateScriptDocx, type ScriptVideo } from "@/lib/pedro/generate-script-docx";
 import { clientSlug, buildClientMD, parseClientMD, type ClientData, type ClientCampaign } from "@/lib/pedro/client-database";
 import type { PedroClient } from "../page";
+import { StageActionBar } from "./stage-action-bar";
 
 // ── Types ──
 interface BriefData {
@@ -1205,6 +1206,13 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
     <div className="max-w-[1060px]">
       {/* ── STEP 1: Brief ── */}
       {step === 1 && (
+        <>
+        <StageActionBar
+          clientId={selectedClientId}
+          stage="brief"
+          getCurrentData={() => brief}
+          busy={autoFilling}
+        />
         <Card active>
           <div className="flex items-start justify-between mb-5">
             <div>
@@ -1416,10 +1424,18 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
             <button className="pedro-btn-primary" onClick={doAngles}>Pedro, genereer angles →</button>
           </div>
         </Card>
+        </>
       )}
 
       {/* ── STEP 2: Angles ── */}
       {step === 2 && (
+        <>
+        <StageActionBar
+          clientId={selectedClientId}
+          stage="angles"
+          getCurrentData={() => selectedAngles}
+          busy={anglesLoading}
+        />
         <Card active>
           <div className="flex items-start justify-between mb-5">
             <div>
@@ -1485,10 +1501,18 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
             </>
           )}
         </Card>
+        </>
       )}
 
       {/* ── STEP 3: Script (optional) ── */}
       {step === 3 && (
+        <>
+        <StageActionBar
+          clientId={selectedClientId}
+          stage="script"
+          getCurrentData={() => ({ script_text: script, script_videos: scriptVideos })}
+          busy={scriptLoading}
+        />
         <Card active>
           <div className="flex items-start justify-between mb-5">
             <div>
@@ -1583,11 +1607,18 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
             </div>
           )}
         </Card>
+        </>
       )}
 
       {/* ── STEP 4: Creatives ── */}
       {step === 4 && (
         <>
+          <StageActionBar
+            clientId={selectedClientId}
+            stage="creatives"
+            getCurrentData={() => ({ qty, formats, driveLink, brandbookName, huisstijl, manusPrompt })}
+            busy={manusLoading}
+          />
           <Card active>
             <div className="flex items-start justify-between mb-5">
               <div>
@@ -1804,6 +1835,12 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
       {/* ── STEP 5: LP ── */}
       {step === 5 && (
         <>
+          <StageActionBar
+            clientId={selectedClientId}
+            stage="lp"
+            getCurrentData={() => ({ stijl, lengte, pixelId, webhookUrl, utmStr, lpPrompt })}
+            busy={lpLoading}
+          />
           <Card active>
             <div className="flex items-start justify-between mb-5">
               <div>
@@ -1895,6 +1932,13 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
 
       {/* ── STEP 6: Ad copy (last - uses LP context) ── */}
       {step === 6 && (
+        <>
+        <StageActionBar
+          clientId={selectedClientId}
+          stage="ad-copy"
+          getCurrentData={() => adCopy}
+          busy={adCopyLoading}
+        />
         <Card active>
           <div className="flex items-start justify-between mb-5">
             <div>
@@ -1948,6 +1992,7 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
             </>
           ) : null}
         </Card>
+        </>
       )}
 
       {/* Toast */}
