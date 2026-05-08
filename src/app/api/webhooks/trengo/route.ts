@@ -346,12 +346,14 @@ export async function POST(req: NextRequest) {
     content: messageBody,
   })
 
-  const status =
-    classification.kind === "task"
-      ? "open"
-      : "unread" // chat + update both start unread
-
-  const priority = classification.kind === "task" ? "normal" : null
+  // Trengo messages always live in the chat substrate — the row's `kind`
+  // is locked to "chat" so the dual-inbox dedup keeps them out of Tasks
+  // and Updates (those tabs are reserved for discrete @mention / Fathom /
+  // automation / manual rows). The classifier output is still computed
+  // because it drives the auto-draft trigger below, but it no longer
+  // determines where the row appears.
+  const status = "unread"
+  const priority = null
 
   const titlePreview =
     messageBody.length > 100 ? messageBody.slice(0, 100) + "…" : messageBody
@@ -398,7 +400,7 @@ export async function POST(req: NextRequest) {
   const { data: inserted, error } = await supabase
     .from("inbox_events")
     .insert({
-      kind: classification.kind,
+      kind: "chat",
       client_id: clientRow?.monday_item_id ?? "",
       author_id: hq.id,
       assignee_id: assigneeId,

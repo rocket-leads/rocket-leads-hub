@@ -162,12 +162,13 @@ export async function POST(req: NextRequest) {
     content: text,
   })
 
-  const status =
-    classification.kind === "task"
-      ? "open"
-      : "unread" // chat + update both start unread
-
-  const priority = classification.kind === "task" ? "normal" : null
+  // Slack messages always live in the chat substrate (Team Inbox future,
+  // currently DMs aren't visible due to API constraints). Classifier output
+  // is still recorded for auditability and can drive auto-actions later,
+  // but the row's `kind` is locked to "chat" — the dual-inbox dedup
+  // depends on chat-substrate rows never showing up in Tasks/Updates.
+  const status = "unread"
+  const priority = null
 
   const titlePreview = text.length > 100 ? text.slice(0, 100) + "…" : text
   const bodyFull = text.length > 100 ? text : null
@@ -175,7 +176,7 @@ export async function POST(req: NextRequest) {
   const { data: inserted, error } = await supabase
     .from("inbox_events")
     .insert({
-      kind: classification.kind,
+      kind: "chat",
       client_id: "", // slack channels aren't auto-linked to clients yet — C.5+ adds that
       author_id: hq.id,
       assignee_id: matchedUser?.user_id ?? hq.id,
