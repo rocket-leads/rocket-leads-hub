@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
-import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw } from "lucide-react"
+import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw, Layers } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { Campaign } from "./pedro-campaign"
 import { Research } from "./pedro-research"
 import { PedroRefresh } from "./pedro-refresh"
+import { PedroInsights } from "./pedro-insights"
 import type { PedroClient } from "../page"
 
 type Section =
@@ -19,8 +20,9 @@ type Section =
   | "lp"
   | "ad-copy"
   | "refresh"
+  | "insights"
 
-type CampaignSection = Exclude<Section, "research" | "refresh">
+type CampaignSection = Exclude<Section, "research" | "refresh" | "insights">
 
 const TABS: TopTab<Section>[] = [
   { id: "brief", label: "Brief", icon: Sparkles },
@@ -31,6 +33,7 @@ const TABS: TopTab<Section>[] = [
   { id: "lp", label: "LP prompts", icon: FileCode },
   { id: "ad-copy", label: "Ad copy", icon: Megaphone },
   { id: "refresh", label: "Refresh", icon: RefreshCw },
+  { id: "insights", label: "Insights", icon: Layers },
 ]
 
 const VALID_SECTIONS = new Set<Section>([
@@ -101,6 +104,8 @@ export function PedroApp({ clients }: Props) {
             initialClientId={requestedClientId}
             autoStart={requestedAuto}
           />
+        ) : section === "insights" ? (
+          <PedroInsights />
         ) : (
           <Campaign
             section={section as CampaignSection}

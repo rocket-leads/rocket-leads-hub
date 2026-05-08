@@ -25,6 +25,7 @@ const SERVICES = [
   { id: "google_drive", label: "Google (Drive + Sheets)", description: "Full service account JSON — used for knowledge folder + targets cost sheet" },
   { id: "slack", label: "Slack", description: "Bot User OAuth Token (starts with xoxb-) from your Slack App" },
   { id: "fathom", label: "Fathom", description: "API key from Fathom → Settings → API Access. Webhook secret goes in FATHOM_WEBHOOK_SECRET env var." },
+  { id: "heygen", label: "Heygen", description: "API key from Heygen → Settings → API. Used by Pedro's avatar pipeline (provider-pluggable). Optional — leave blank until avatar actuation is wired." },
 ]
 
 function StatusDot({ status }: { status: ServiceStatus | undefined }) {
