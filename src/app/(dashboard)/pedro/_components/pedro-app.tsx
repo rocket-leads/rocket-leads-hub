@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
@@ -32,10 +33,45 @@ const TABS: TopTab<Section>[] = [
   { id: "refresh", label: "Refresh", icon: RefreshCw },
 ]
 
+const VALID_SECTIONS = new Set<Section>([
+  "brief",
+  "research",
+  "angles",
+  "script",
+  "creatives",
+  "lp",
+  "ad-copy",
+  "refresh",
+])
+
 type Props = { clients: PedroClient[] }
 
 export function PedroApp({ clients }: Props) {
-  const [section, setSection] = useState<Section>("brief")
+  const searchParams = useSearchParams()
+  // Open Pedro on a specific tab + pre-selected client via URL: e.g. the
+  // Watch List "Ask Pedro" button links to /pedro?tab=refresh&clientId=X
+  // and Pedro lands ready to go. Defaults to brief when nothing is passed.
+  const initialSection: Section = (() => {
+    const t = searchParams.get("tab")
+    if (t && VALID_SECTIONS.has(t as Section)) return t as Section
+    if (searchParams.get("clientId")) return "refresh" // shorthand for Watch List
+    return "brief"
+  })()
+
+  const [section, setSection] = useState<Section>(initialSection)
+
+  // If the URL tab param changes (e.g. navigation from another page), follow
+  // it. We only sync URL → state, not state → URL — keeps the URL stable
+  // when the user clicks tabs internally.
+  useEffect(() => {
+    const t = searchParams.get("tab")
+    if (t && VALID_SECTIONS.has(t as Section)) {
+      setSection(t as Section)
+    }
+  }, [searchParams])
+
+  const requestedClientId = searchParams.get("clientId")
+  const requestedAuto = searchParams.get("auto") === "1"
 
   return (
     <div className="pedro-root">
@@ -60,7 +96,11 @@ export function PedroApp({ clients }: Props) {
         {section === "research" ? (
           <Research />
         ) : section === "refresh" ? (
-          <PedroRefresh clients={clients} />
+          <PedroRefresh
+            clients={clients}
+            initialClientId={requestedClientId}
+            autoStart={requestedAuto}
+          />
         ) : (
           <Campaign
             section={section as CampaignSection}

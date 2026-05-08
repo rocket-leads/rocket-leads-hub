@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect, useRef } from "react"
 import { Sparkles, RefreshCw, TrendingUp, TrendingDown, Minus, AlertTriangle, Copy, Check } from "lucide-react"
 import { ClientPicker } from "./client-picker"
 import type { PedroClient } from "../page"
@@ -133,7 +133,15 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-export function PedroRefresh({ clients }: { clients: PedroClient[] }) {
+type Props = {
+  clients: PedroClient[]
+  /** Pre-select a client via URL param (e.g. from Watch List "Ask Pedro"). */
+  initialClientId?: string | null
+  /** When true, fire generate() automatically once the client is set. */
+  autoStart?: boolean
+}
+
+export function PedroRefresh({ clients, initialClientId, autoStart }: Props) {
   // Only Live clients are relevant for refresh — onboarding clients have no
   // performance data yet.
   const liveClients = useMemo(
@@ -141,8 +149,14 @@ export function PedroRefresh({ clients }: { clients: PedroClient[] }) {
     [clients],
   )
 
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
-  const [selectedClientName, setSelectedClientName] = useState<string>("")
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(
+    initialClientId ?? null,
+  )
+  const [selectedClientName, setSelectedClientName] = useState<string>(
+    initialClientId
+      ? clients.find((c) => c.id === initialClientId)?.name ?? ""
+      : "",
+  )
   const [days, setDays] = useState<number>(30)
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<RefreshResponse | null>(null)
@@ -177,6 +191,18 @@ export function PedroRefresh({ clients }: { clients: PedroClient[] }) {
     }
     setLoading(false)
   }, [selectedClientId, days])
+
+  // Auto-fire when arriving via URL (?clientId=X&auto=1 — e.g. the Watch
+  // List "Ask Pedro" button). Only once per mount, only when explicitly
+  // requested. Otherwise the CM has to click "Genereer" themselves.
+  const autoFiredRef = useRef(false)
+  useEffect(() => {
+    if (autoFiredRef.current) return
+    if (!autoStart) return
+    if (!selectedClientId) return
+    autoFiredRef.current = true
+    void generate()
+  }, [autoStart, selectedClientId, generate])
 
   return (
     <div className="max-w-[1060px] space-y-5">

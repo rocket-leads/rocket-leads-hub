@@ -289,6 +289,63 @@ Genereer 1-3 proposals (1 per winner, max 3). Per proposal: 3 varianten. Alle te
     )
   }
 
+  const responseProposals = Array.isArray(parsed.proposals) ? parsed.proposals : []
+  const responseSummary = parsed.summary ?? ""
+
+  // ── 5. Save the refresh into the latest pedro_client_state row's
+  // creatives.refreshes[] array. Read-merge-write so we don't clobber the
+  // existing creatives blob (qty/formats/manusPrompt etc. from onboarding
+  // stage). Tolerant: any read/write failure is silently ignored — the
+  // proposals are still returned to the UI, just not persisted. ──
+  try {
+    const { data: existing } = await supabase
+      .from("pedro_client_state")
+      .select("campaign_number, creatives")
+      .eq("client_id", clientId)
+      .order("campaign_number", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const campaignNumber = existing?.campaign_number ?? 1
+    const existingCreatives = (existing?.creatives ?? {}) as Record<string, unknown>
+    const existingRefreshes = Array.isArray(existingCreatives.refreshes)
+      ? (existingCreatives.refreshes as unknown[])
+      : []
+
+    const newRefresh = {
+      generatedAt: new Date().toISOString(),
+      window: { ...cur, days },
+      stats: {
+        totalSpend: stats.totalSpend,
+        totalLeads: stats.totalLeads,
+        avgCpl: stats.avgCpl,
+        avgCtr: stats.avgCtr,
+        winnerCount: winners.length,
+        loserCount: losers.length,
+      },
+      trend,
+      summary: responseSummary,
+      proposals: responseProposals,
+    }
+
+    // Cap at 20 historical refreshes so the jsonb doesn't grow unbounded.
+    const merged = [newRefresh, ...existingRefreshes].slice(0, 20)
+
+    await supabase
+      .from("pedro_client_state")
+      .upsert(
+        {
+          client_id: clientId,
+          campaign_number: campaignNumber,
+          creatives: { ...existingCreatives, refreshes: merged },
+        },
+        { onConflict: "client_id,campaign_number" },
+      )
+  } catch (e) {
+    // Persistence is best-effort; the user still gets the proposals.
+    console.error("Pedro creative-refresh persist error:", e)
+  }
+
   return NextResponse.json({
     mode: "iterate-winners",
     clientId,
@@ -303,8 +360,8 @@ Genereer 1-3 proposals (1 per winner, max 3). Per proposal: 3 varianten. Alle te
       loserCount: losers.length,
     },
     trend,
-    proposals: Array.isArray(parsed.proposals) ? parsed.proposals : [],
-    summary: parsed.summary ?? "",
+    proposals: responseProposals,
+    summary: responseSummary,
     warnings,
   })
 }

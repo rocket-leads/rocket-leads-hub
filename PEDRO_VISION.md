@@ -153,11 +153,11 @@ Pedro stops being onboarding-only and starts running monthly creative refreshes 
 
 - [x] **Meta performance ingest** — `/api/pedro/client-performance?clientId=X&days=30` aggregates window Meta data: per-ad spend/leads/CPL/CTR/frequency, account stats, prior-window trend deltas, and per-ad winner/loser/neutral verdicts via [src/lib/pedro/performance.ts](src/lib/pedro/performance.ts). Cached 5min via `cachedFetch`. Ready for the creative-refresh stage to consume.
 - [ ] **Lead-quality per UTM** — query Monday lead board for the client; group leads by UTM; surface qualification rate, conversion rate, and free-text feedback patterns ("3/5 leads zeggen 'geen budget' → ad sucks regardless of CPL").
-- [x] **Pedro stage: "Creative refresh"** — new top-tab. Inputs: client + window (7/14/30/60d). Outputs: 1-3 proposals (one per winner), each with 3 variants (hook + script outline + primary copy + why). Powered by [/api/pedro/creative-refresh](src/app/api/pedro/creative-refresh/route.ts) + [PedroRefresh](src/app/(dashboard)/pedro/_components/pedro-refresh.tsx). No-winners path falls through with explicit "this is a new-angle moment, not a refresh moment" message. Save to `pedro_client_state.creatives.refreshes[]` is TODO.
+- [x] **Pedro stage: "Creative refresh"** — new top-tab. Inputs: client + window (7/14/30/60d). Outputs: 1-3 proposals (one per winner), each with 3 variants (hook + script outline + primary copy + why). Powered by [/api/pedro/creative-refresh](src/app/api/pedro/creative-refresh/route.ts) + [PedroRefresh](src/app/(dashboard)/pedro/_components/pedro-refresh.tsx). No-winners path falls through with explicit "this is a new-angle moment, not a refresh moment" message. Auto-saves to `pedro_client_state.creatives.refreshes[]` (capped at 20 historical entries).
 - [ ] **Pedro stage: "New angle test"** — when current angle is fatigued (Pedro detects: same angle, multiple creatives, all CPL > 1.4× account avg, 14d). Outputs: 2 new angles from the framework + 3 scripts each.
 - [ ] **Pedro stage: "Copy refresh"** — when CTR on variant A drops > 25% over 14d. Outputs: 3 new variant A's in same tone.
 - [ ] **Pedro stage: "Lead-quality fix"** — when Monday updates per UTM show consistent "no budget" / "wrong audience" patterns. Outputs: leadform changes (add qualification question), targeting tweaks, or angle pivot.
-- [ ] **Watch List integration** — every "Action Needed" client gets a "Generate fix proposal with Pedro" button in the watchlist UI. One click → Pedro produces the matching stage's output.
+- [x] **Watch List integration** — every Action / Watch row in the watchlist now has an "Ask Pedro" chip in the AI Note cell. One click → opens Pedro at `?tab=refresh&clientId=X&auto=1`, auto-fires the refresh flow. Pedro page is URL-param-aware (`tab` + `clientId` + `auto`). Future: per-category routing (Action → refresh vs Watch → angle-test) once those modes ship.
 - [ ] **Per-client monthly digest** — automated cron: 1st of each month, Pedro produces "what worked / what didn't / what to test" for every Live client. Output as Hub inbox task assigned to CM.
 - [ ] **Watch List score → Pedro priority queue** — high-severity clients are surfaced in a "Pedro to-do" feed at the top of the Pedro page. CM clicks through them in priority order each morning.
 
@@ -235,9 +235,10 @@ If I had to pick the **next four things** to build in priority order, given Phas
 1. ~~**Past-campaign context** in the brief stage (Phase 2). Cheap, high-impact: every re-onboarding gets dramatically better.~~ ✓ shipped 2026-05-08
 2. ~~**Performance ingest** (`/api/pedro/client-performance`) (Phase 3 prereq). Unlocks all of optimisation mode.~~ ✓ shipped 2026-05-08
 3. ~~**Creative-refresh stage** that consumes the performance endpoint — first concrete optimisation feature.~~ ✓ shipped 2026-05-08
-4. **Save refresh proposals to `pedro_client_state.creatives.refreshes[]`** so they show up in client detail history + can be reviewed later. Small follow-up to step 3.
-5. **Watch List → "Generate Pedro fix" button** (Phase 3). Wires the same loop to the existing watchlist UI so high-severity clients get one-click fix proposals.
+4. ~~**Save refresh proposals to `pedro_client_state.creatives.refreshes[]`**.~~ ✓ shipped 2026-05-08
+5. ~~**Watch List → "Ask Pedro" chip** on every Action/Watch row.~~ ✓ shipped 2026-05-08
 6. **New-client trigger via webhook** (Phase 4). The "wow" moment for the team — they paste a Monday item, Pedro has a brief 30 seconds later.
+7. **Surface refresh history on client detail page** — render `pedro_client_state.creatives.refreshes[]` as a timeline so the AM can see "Pedro proposed X on date Y, was it shipped?".
 
 After those, evaluate. The roadmap will look different.
 

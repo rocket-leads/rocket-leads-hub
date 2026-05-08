@@ -399,14 +399,31 @@ function WatchSection({
                     {insight}
                   </p>
 
-                  {/* AI Note */}
-                  <div className="min-w-0">
-                    {note ? (
-                      <p className="text-[11px] text-muted-foreground leading-snug" title={note}>
-                        {note}
-                      </p>
-                    ) : (
-                      <span className="text-[11px] text-muted-foreground/25 italic">Generating...</span>
+                  {/* AI Note + Ask Pedro chip — only Action/Watch rows get
+                      the chip; "Good" doesn't need a fix proposal. Chip
+                      stops propagation so the row stays clickable to open
+                      the slide-over for the rest of the cell area. */}
+                  <div className="min-w-0 flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      {note ? (
+                        <p className="text-[11px] text-muted-foreground leading-snug" title={note}>
+                          {note}
+                        </p>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground/25 italic">Generating...</span>
+                      )}
+                    </div>
+                    {(category === "action" || category === "watch") && (
+                      <Link
+                        href={`/pedro?tab=refresh&clientId=${id}&auto=1`}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        title="Pedro stelt een creative refresh voor op basis van laatste 30d performance"
+                        className="shrink-0 inline-flex items-center gap-1 h-5 px-1.5 text-[10px] font-medium rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors"
+                      >
+                        <Sparkles className="h-2.5 w-2.5" />
+                        Ask Pedro
+                      </Link>
                     )}
                   </div>
 
