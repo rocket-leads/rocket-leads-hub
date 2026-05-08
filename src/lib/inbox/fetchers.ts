@@ -223,6 +223,22 @@ export async function listInboxItems(
   if (filters.clientId) query = query.eq("client_id", filters.clientId)
   if (filters.assignedToMe) query = query.eq("assignee_id", userId)
 
+  // De-dup the dual-inbox: Trengo and Slack ingest set `thread_key` on
+  // every row so the chat substrate (Client Inbox / future Team Inbox) can
+  // group them. When the classifier promotes one of those messages to
+  // kind=update or kind=task it would otherwise show up BOTH in the
+  // Tasks/Updates tab AND in the Client Inbox thread, which is what Roy
+  // flagged as "te veel dubbele berichten."
+  //
+  // Rule: discrete tabs (Tasks / Updates) only show events that are NOT
+  // part of a chat thread. Trengo/Slack rows live in the chat substrate
+  // exclusively. Promotions still happen — they're just promotions
+  // INSIDE the substrate (Make-task on a chat row creates a fresh
+  // thread-less task; the original chat event stays in the thread).
+  if (filters.kind === "task" || filters.kind === "update") {
+    query = query.is("thread_key", null)
+  }
+
   if (filters.statuses) {
     if (filters.statuses.length === 0) return []
     query = query.in("status", filters.statuses)
@@ -421,14 +437,18 @@ export async function getInboxBadgeCounts(
       .select("id", { count: "exact", head: true })
       .eq("assignee_id", userId)
       .eq("kind", "update")
-      .eq("status", "unread"),
+      .eq("status", "unread")
+      // Same de-dup as listInboxItems — chat-substrate events are counted
+      // by the chats query below, never by tasks/updates badges.
+      .is("thread_key", null),
     supabase
       .from("inbox_events")
       .select("id", { count: "exact", head: true })
       .eq("assignee_id", userId)
       .eq("kind", "task")
       .in("status", ["open", "in_progress"])
-      .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`),
+      .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`)
+      .is("thread_key", null),
     chatQuery,
   ])
 
