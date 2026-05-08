@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { KeyRound, Database, Users, Bell, Building2, Inbox as InboxIcon } from "lucide-react"
+import { KeyRound, Database, Users, Bell, Building2, Inbox as InboxIcon, Sparkles } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { ApiTokensTab } from "./api-tokens-tab"
@@ -10,10 +10,11 @@ import { UsersTab } from "./users-tab"
 import { NotificationsTab } from "./notifications-tab"
 import { ClientsTab } from "./clients-tab"
 import { InboxAutomationTab } from "./inbox-tab"
+import { PedroSettingsTab } from "./pedro-tab"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { InboxAutomationRules } from "../types"
 
-type SettingsTabId = "clients" | "tokens" | "board" | "users" | "notifications" | "inbox"
+type SettingsTabId = "clients" | "tokens" | "board" | "users" | "notifications" | "inbox" | "pedro"
 
 const TABS: TopTab<SettingsTabId>[] = [
   { id: "clients", label: "Clients", icon: Building2 },
@@ -22,6 +23,7 @@ const TABS: TopTab<SettingsTabId>[] = [
   { id: "users", label: "Users", icon: Users },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "inbox", label: "Inbox", icon: InboxIcon },
+  { id: "pedro", label: "Pedro", icon: Sparkles },
 ]
 
 type Props = {
@@ -82,6 +84,7 @@ export function SettingsTabs({
         />
       )}
       {activeTab === "inbox" && <InboxAutomationTab rules={inboxAutomationRules} />}
+      {activeTab === "pedro" && <PedroSettingsTab />}
     </div>
   )
 }

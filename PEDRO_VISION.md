@@ -238,8 +238,8 @@ If I had to pick the **next four things** to build in priority order, given Phas
 4. ~~**Save refresh proposals to `pedro_client_state.creatives.refreshes[]`**.~~ ✓ shipped 2026-05-08
 5. ~~**Watch List → "Ask Pedro" chip** on every Action/Watch row.~~ ✓ shipped 2026-05-08
 6. ~~**New-client trigger via webhook** (Phase 4).~~ ✓ shipped 2026-05-08 as kick-off auto-trigger (Fathom-based, not Monday-row-based, per Roy's call)
-7. **Surface refresh history on client detail page** — render `pedro_client_state.creatives.refreshes[]` as a timeline so the AM can see "Pedro proposed X on date Y, was it shipped?".
-8. **Auto-trigger observability** — admin dashboard tile: "last 7d Pedro auto-triggers — fired/skipped/failed" so Roy can see if the loop is healthy without grepping logs.
+7. ~~**Surface refresh history on client detail page**.~~ ✓ shipped 2026-05-08 — new "Pedro" tab on every client detail page renders brief status (auto-draft / edited / not started), brief snapshot, and full refresh history timeline with stats + trends + proposals teaser per round. Lives in [src/app/(dashboard)/clients/[id]/_components/pedro-tab.tsx](src/app/(dashboard)/clients/[id]/_components/pedro-tab.tsx).
+8. ~~**Auto-trigger observability**.~~ ✓ shipped 2026-05-08 — admin Settings → Pedro tab. Polls `/api/pedro/health` every 60s. Surfaces 7d funnel (kick-offs ingested → linked → Pedro fires + conversion %), recent fires list with assignee/status/deep-links, and a "Kick-offs zonder fire" inspection list. Health verdict (healthy / degraded) up top.
 
 After those, evaluate. The roadmap will look different.
 

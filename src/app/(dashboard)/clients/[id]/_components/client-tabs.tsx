@@ -3,13 +3,14 @@
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { RefreshCw, BarChart3, CreditCard, Settings2, LayoutDashboard, Inbox as InboxIcon, Activity } from "lucide-react"
+import { RefreshCw, BarChart3, CreditCard, Settings2, LayoutDashboard, Inbox as InboxIcon, Activity, Sparkles } from "lucide-react"
 import { CampaignsTab } from "./campaigns-tab"
 import { BillingTab } from "./billing-tab"
 import { ClientSettingsTab } from "./client-settings-tab"
 import { InboxTab } from "./inbox-tab"
 import { HomeTab } from "./home-tab"
 import { TimelineTab } from "./timeline-tab"
+import { PedroTab } from "./pedro-tab"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
@@ -67,6 +68,7 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
     ...(access.canViewCampaigns ? [{ id: "campaigns", label: "Campaigns", icon: BarChart3 }] : []),
     { id: "inbox", label: "Inbox", icon: InboxIcon },
     { id: "timeline", label: "Timeline", icon: Activity },
+    { id: "pedro", label: "Pedro", icon: Sparkles },
     ...(access.canViewBilling ? [{ id: "billing", label: "Billing", icon: CreditCard, ...(hasOverdueInvoice ? { dot: "red" as const } : {}) }] : []),
     { id: "settings", label: "Settings", icon: Settings2 },
   ]
@@ -158,6 +160,10 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
 
       {activeTab === "timeline" && (
         <TimelineTab mondayItemId={client.mondayItemId} />
+      )}
+
+      {activeTab === "pedro" && (
+        <PedroTab mondayItemId={client.mondayItemId} clientName={client.name} />
       )}
 
       {activeTab === "billing" && (
