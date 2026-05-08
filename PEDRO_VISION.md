@@ -153,7 +153,7 @@ Pedro stops being onboarding-only and starts running monthly creative refreshes 
 
 - [x] **Meta performance ingest** — `/api/pedro/client-performance?clientId=X&days=30` aggregates window Meta data: per-ad spend/leads/CPL/CTR/frequency, account stats, prior-window trend deltas, and per-ad winner/loser/neutral verdicts via [src/lib/pedro/performance.ts](src/lib/pedro/performance.ts). Cached 5min via `cachedFetch`. Ready for the creative-refresh stage to consume.
 - [ ] **Lead-quality per UTM** — query Monday lead board for the client; group leads by UTM; surface qualification rate, conversion rate, and free-text feedback patterns ("3/5 leads zeggen 'geen budget' → ad sucks regardless of CPL").
-- [ ] **Pedro stage: "Creative refresh"** — new top-tab. Inputs: client + month window. Outputs: 3-5 new creative variations of last month's winners, in same hook/angle/format. Stored in `pedro_client_state.creatives.refreshes[]`.
+- [x] **Pedro stage: "Creative refresh"** — new top-tab. Inputs: client + window (7/14/30/60d). Outputs: 1-3 proposals (one per winner), each with 3 variants (hook + script outline + primary copy + why). Powered by [/api/pedro/creative-refresh](src/app/api/pedro/creative-refresh/route.ts) + [PedroRefresh](src/app/(dashboard)/pedro/_components/pedro-refresh.tsx). No-winners path falls through with explicit "this is a new-angle moment, not a refresh moment" message. Save to `pedro_client_state.creatives.refreshes[]` is TODO.
 - [ ] **Pedro stage: "New angle test"** — when current angle is fatigued (Pedro detects: same angle, multiple creatives, all CPL > 1.4× account avg, 14d). Outputs: 2 new angles from the framework + 3 scripts each.
 - [ ] **Pedro stage: "Copy refresh"** — when CTR on variant A drops > 25% over 14d. Outputs: 3 new variant A's in same tone.
 - [ ] **Pedro stage: "Lead-quality fix"** — when Monday updates per UTM show consistent "no budget" / "wrong audience" patterns. Outputs: leadform changes (add qualification question), targeting tweaks, or angle pivot.
@@ -234,9 +234,10 @@ If I had to pick the **next four things** to build in priority order, given Phas
 
 1. ~~**Past-campaign context** in the brief stage (Phase 2). Cheap, high-impact: every re-onboarding gets dramatically better.~~ ✓ shipped 2026-05-08
 2. ~~**Performance ingest** (`/api/pedro/client-performance`) (Phase 3 prereq). Unlocks all of optimisation mode.~~ ✓ shipped 2026-05-08
-3. **Creative-refresh stage** that consumes the performance endpoint — first concrete optimisation feature. Adds a Pedro stage where the CM picks a Live client + month, Pedro reads the scored ads, proposes 3-5 iterations on the winners. End-to-end loop proven.
-4. **Watch List → "Generate Pedro fix" button** (Phase 3). Wires the same loop to the existing watchlist UI so high-severity clients get one-click fix proposals.
-5. **New-client trigger via webhook** (Phase 4). The "wow" moment for the team — they paste a Monday item, Pedro has a brief 30 seconds later.
+3. ~~**Creative-refresh stage** that consumes the performance endpoint — first concrete optimisation feature.~~ ✓ shipped 2026-05-08
+4. **Save refresh proposals to `pedro_client_state.creatives.refreshes[]`** so they show up in client detail history + can be reviewed later. Small follow-up to step 3.
+5. **Watch List → "Generate Pedro fix" button** (Phase 3). Wires the same loop to the existing watchlist UI so high-severity clients get one-click fix proposals.
+6. **New-client trigger via webhook** (Phase 4). The "wow" moment for the team — they paste a Monday item, Pedro has a brief 30 seconds later.
 
 After those, evaluate. The roadmap will look different.
 

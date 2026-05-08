@@ -1,15 +1,25 @@
 "use client"
 
 import { useState } from "react"
-import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone } from "lucide-react"
+import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { Campaign } from "./pedro-campaign"
 import { Research } from "./pedro-research"
+import { PedroRefresh } from "./pedro-refresh"
 import type { PedroClient } from "../page"
 
-type Section = "brief" | "research" | "angles" | "script" | "creatives" | "lp" | "ad-copy"
-type CampaignSection = Exclude<Section, "research">
+type Section =
+  | "brief"
+  | "research"
+  | "angles"
+  | "script"
+  | "creatives"
+  | "lp"
+  | "ad-copy"
+  | "refresh"
+
+type CampaignSection = Exclude<Section, "research" | "refresh">
 
 const TABS: TopTab<Section>[] = [
   { id: "brief", label: "Brief", icon: Sparkles },
@@ -19,6 +29,7 @@ const TABS: TopTab<Section>[] = [
   { id: "creatives", label: "Creatives", icon: ImageIcon },
   { id: "lp", label: "LP prompts", icon: FileCode },
   { id: "ad-copy", label: "Ad copy", icon: Megaphone },
+  { id: "refresh", label: "Refresh", icon: RefreshCw },
 ]
 
 type Props = { clients: PedroClient[] }
@@ -34,7 +45,7 @@ export function PedroApp({ clients }: Props) {
             Pedro
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Campaign manager AI — research, angles, scripts, creatives en ad copy.
+            Campaign manager AI — onboarding deliverables + creative refresh op live performance.
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
@@ -48,6 +59,8 @@ export function PedroApp({ clients }: Props) {
       <div>
         {section === "research" ? (
           <Research />
+        ) : section === "refresh" ? (
+          <PedroRefresh clients={clients} />
         ) : (
           <Campaign
             section={section as CampaignSection}
