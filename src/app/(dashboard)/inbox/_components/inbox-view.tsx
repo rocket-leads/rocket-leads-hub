@@ -764,6 +764,18 @@ export function InboxView({
               counts={updateSourceCounts}
               totalCount={queryFilteredUpdates.length}
             />
+            <MarkAllReadBanner
+              updates={updates}
+              onMarkAll={(ids) => {
+                for (const id of ids) {
+                  patchItem(
+                    id,
+                    { status: "read" },
+                    { mode: "mutate", optimisticPatch: { status: "read" } },
+                  )
+                }
+              }}
+            />
             <QuickAddUpdateBar
               clients={clients}
               users={users}
@@ -983,6 +995,41 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+  )
+}
+
+/**
+ * Inbox-zero affordance for the Updates tab. Renders only when there
+ * are unread updates currently visible — tapping it marks all of them
+ * read in one shot (one PATCH per row through the optimistic path).
+ * Hidden when nothing is unread, so a clean tab stays clean.
+ */
+function MarkAllReadBanner({
+  updates,
+  onMarkAll,
+}: {
+  updates: InboxItem[]
+  onMarkAll: (ids: string[]) => void
+}) {
+  const unreadIds = updates
+    .filter((u) => u.status === "unread")
+    .map((u) => u.id)
+  if (unreadIds.length === 0) return null
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/30 px-3 py-2">
+      <span className="text-xs text-muted-foreground">
+        {unreadIds.length} unread update
+        {unreadIds.length === 1 ? "" : "s"} in this view
+      </span>
+      <button
+        type="button"
+        onClick={() => onMarkAll(unreadIds)}
+        className="text-xs font-medium text-foreground hover:bg-muted/60 px-2.5 h-7 rounded-md transition-colors"
+        title="Mark every visible unread update as read"
+      >
+        Mark all read
+      </button>
+    </div>
   )
 }
 
