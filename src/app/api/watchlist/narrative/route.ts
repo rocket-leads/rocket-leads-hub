@@ -1,10 +1,33 @@
 import { auth } from "@/lib/auth"
-import { readCache, writeCache } from "@/lib/cache"
+import { createAdminClient } from "@/lib/supabase/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest, NextResponse } from "next/server"
+import { AI_GUARDRAILS_PROMPT, validateAiOutput } from "@/lib/ai/guardrails"
+
+/**
+ * Watch List portfolio narrative — the "Key Insights" + "Optimisation
+ * Proposal" cards at the top of the Watch List, scoped per CM filter.
+ *
+ * Pre-Pedro-unification: stored in the cache_store under
+ * `watchlist_narrative_v3:{scope}:{date}`. Now lives in pedro_insights as
+ * a row keyed by:
+ *   - monday_item_id = `_portfolio:{scope}` (sentinel — portfolio-level
+ *     rows ride alongside per-client rows in the same table; the prefix
+ *     keeps them filterable and avoids a schema extension)
+ *   - insight_type   = "watchlist_narrative"
+ *
+ * The body is JSON-stringified `{insights, proposals}`. 1h freshness gate
+ * matches the original cache TTL — well-trafficked scopes (All / each
+ * CM) regenerate on demand when the row stales out.
+ *
+ * Splices AI_GUARDRAILS_PROMPT and post-validates output (logs only —
+ * structured-JSON output predates the conventions, hard ban would block
+ * legitimate output mid-migration).
+ */
 
 const anthropic = new Anthropic()
-const NARRATIVE_TTL_MS = 60 * 60 * 1000 // 1h cache per (scope, day)
+const NARRATIVE_TTL_MS = 60 * 60 * 1000
+const PORTFOLIO_INSIGHT_TYPE = "watchlist_narrative"
 
 type ClientLite = {
   id: string
@@ -35,22 +58,46 @@ export type WatchlistNarrativeResponse = {
 
 const EMPTY: WatchlistNarrativeResponse = { insights: [], proposals: [] }
 
+/** Sentinel ID for portfolio-level pedro_insights rows. Keeps them out of
+ *  per-client lookups (which never match a `_portfolio:` prefix). */
+function portfolioId(scope: string): string {
+  return `_portfolio:${scope}`
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const body = (await req.json()) as NarrativeRequest
+  const supabase = await createAdminClient()
+  const subjectId = portfolioId(body.scope)
 
-  const today = new Date().toISOString().slice(0, 10)
-  // v3: shape changed to structured insights+proposals — bump so old prose narratives don't get returned.
-  const cacheKey = `watchlist_narrative_v3:${body.scope}:${today}`
-  const cached = await readCache<WatchlistNarrativeResponse>(cacheKey, NARRATIVE_TTL_MS)
-  if (cached) return NextResponse.json(cached)
+  // Cache hit path — pedro_insights row younger than 1h.
+  const { data: cachedRow } = await supabase
+    .from("pedro_insights")
+    .select("body, generated_at")
+    .eq("monday_item_id", subjectId)
+    .eq("insight_type", PORTFOLIO_INSIGHT_TYPE)
+    .maybeSingle()
 
-  // No clients in scope → no work to do.
+  if (cachedRow?.body) {
+    const ageMs = Date.now() - new Date(cachedRow.generated_at).getTime()
+    if (ageMs < NARRATIVE_TTL_MS) {
+      try {
+        const parsed = JSON.parse(cachedRow.body) as WatchlistNarrativeResponse
+        return NextResponse.json(parsed)
+      } catch {
+        // Corrupt row → fall through to regen.
+      }
+    }
+  }
+
+  // No clients in scope → no Anthropic call. Persist the empty shape so
+  // subsequent requests for this scope don't re-flap until something
+  // changes.
   const totalActive = body.totals.action + body.totals.watch + body.totals.good
   if (totalActive === 0) {
-    void writeCache(cacheKey, EMPTY)
+    await persistNarrative(supabase, subjectId, EMPTY, [])
     return NextResponse.json(EMPTY)
   }
 
@@ -59,10 +106,9 @@ export async function POST(req: NextRequest) {
     .filter((c) => c.category === "action" && (c.daysInBucket ?? 0) >= 5)
     .sort((a, b) => (b.daysInBucket ?? 0) - (a.daysInBucket ?? 0))
   const movedToGood = body.clients.filter(
-    (c) => c.category === "good" && c.isNewToday && c.prevCategory && c.prevCategory !== "good"
+    (c) => c.category === "good" && c.isNewToday && c.prevCategory && c.prevCategory !== "good",
   )
 
-  // Compact data block for the LLM. Insights truncated to keep prompt size sensible.
   const factsBlock = [
     `Filter scope: ${body.scope}`,
     `Today: ${body.totals.action} Action, ${body.totals.watch} Watch, ${body.totals.good} Good (no-data: ${body.totals.noData})`,
@@ -81,6 +127,7 @@ export async function POST(req: NextRequest) {
   ].join("\n")
 
   let result: WatchlistNarrativeResponse = EMPTY
+  let rawText = ""
   try {
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
@@ -113,7 +160,7 @@ So your output MUST NOT contain:
 ## Insights — what to surface
 3 to 5 entries. Each is one sentence (≤22 words) tagged by severity.
 - **critical**: an urgent pattern requiring this-week action. Examples: 5+ clients with CPL spiking >40% sharing a common cause; 3+ clients stuck in Action 5+ days with the same insight pattern; rising no-leads count.
-- **warning**: noticeable trend that may become critical if untreated. Examples: rising avg CPL across the book, multiple clients showing CPA drift, recurring "no budget" feedback themes.
+- **warning**: noticeable trend that may become critical if untreated. Examples: rising avg CPL across the book, multiple clients showing "no budget" feedback themes.
 - **positive**: meaningful improvers with names and what changed. Examples: client recovering into Good after a specific action.
 
 Tag prefix the most-important pattern as "critical", reserve "positive" for genuine wins.
@@ -124,11 +171,11 @@ Tag prefix the most-important pattern as "critical", reserve "positive" for genu
 - Suggest a SINGLE next step per proposal — not a checklist within a checklist.
 - Bias toward creative/angle changes, audience refinements, follow-up audits — not "talk to the team" filler.
 
-## Hard rules
-- Every numeric claim gets an inline window label: (today), (5d), (14d), (all-time).
-- Insights and proposals must reference patterns or names visible in the data block. Never invent.
-- No emoji. No markdown formatting inside the strings (no asterisks, no backticks).
-- Output VALID JSON. No trailing commas. No code fences.`,
+## Output rules
+- No emoji. No markdown inside the strings (no asterisks, no backticks).
+- Output VALID JSON. No trailing commas. No code fences.
+
+${AI_GUARDRAILS_PROMPT}`,
       messages: [
         {
           role: "user",
@@ -136,8 +183,8 @@ Tag prefix the most-important pattern as "critical", reserve "positive" for genu
         },
       ],
     })
-    const text = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : ""
-    const match = text.match(/\{[\s\S]*\}/)
+    rawText = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : ""
+    const match = rawText.match(/\{[\s\S]*\}/)
     if (match) {
       const parsed = JSON.parse(match[0]) as Partial<WatchlistNarrativeResponse>
       const insights = Array.isArray(parsed.insights)
@@ -145,7 +192,7 @@ Tag prefix the most-important pattern as "critical", reserve "positive" for genu
             (i): i is WatchlistInsight =>
               i != null &&
               typeof i.text === "string" &&
-              ["positive", "warning", "critical"].includes(i.type as string)
+              ["positive", "warning", "critical"].includes(i.type as string),
           )
         : []
       const proposals = Array.isArray(parsed.proposals)
@@ -157,6 +204,48 @@ Tag prefix the most-important pattern as "critical", reserve "positive" for genu
     console.error("Watchlist narrative failed:", e instanceof Error ? e.message : e)
   }
 
-  void writeCache(cacheKey, result)
+  // Run guardrails over the raw text (not the parsed JSON, which has the
+  // numbers nested) — soft-fail, log only.
+  const violations = rawText
+    ? validateAiOutput(rawText, { mondayCrmConnected: true })
+    : []
+  if (violations.length > 0) {
+    console.warn(
+      `[watchlist-narrative] ${violations.length} guardrail violations for scope ${body.scope}:`,
+      violations.map((v) => v.rule).join(", "),
+    )
+  }
+
+  await persistNarrative(supabase, subjectId, result, violations)
   return NextResponse.json(result)
+}
+
+async function persistNarrative(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  subjectId: string,
+  result: WatchlistNarrativeResponse,
+  violations: ReturnType<typeof validateAiOutput>,
+): Promise<void> {
+  try {
+    await supabase.from("pedro_insights").upsert(
+      {
+        monday_item_id: subjectId,
+        insight_type: PORTFOLIO_INSIGHT_TYPE,
+        body: JSON.stringify(result),
+        severity: null,
+        sources_used: { watchlistNarrative: true },
+        guardrail_violations: violations as unknown as Record<string, unknown>[],
+        prompt_version: 4, // bumped on the unification migration; old cache_store entries are ignored
+        model: "claude-haiku-4-5-20251001",
+        generated_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + NARRATIVE_TTL_MS).toISOString(),
+      },
+      { onConflict: "monday_item_id,insight_type" },
+    )
+  } catch (e) {
+    console.error(
+      "[watchlist-narrative] pedro_insights upsert failed:",
+      e instanceof Error ? e.message : e,
+    )
+  }
 }

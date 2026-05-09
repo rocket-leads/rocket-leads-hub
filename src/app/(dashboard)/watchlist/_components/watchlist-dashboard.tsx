@@ -60,6 +60,8 @@ function fmtCurrency(v: number): string {
 function CplSparkline({ trend }: { trend: KpiSummary["dailyTrend"] }) {
   if (!trend || trend.length < 2) return <span className="text-muted-foreground/20 text-xs">—</span>
 
+  // Carry-forward through leadless days so the line doesn't crash to €0
+  // visually — a missing day is "no signal", not "free leads".
   const series: number[] = []
   let last = 0
   for (const d of trend) {
@@ -87,8 +89,37 @@ function CplSparkline({ trend }: { trend: KpiSummary["dailyTrend"] }) {
   const ratio = prevAvg > 0 ? currAvg / prevAvg : 1
   const stroke = ratio >= 1.1 ? "rgb(248 113 113)" : ratio <= 0.9 ? "rgb(74 222 128)" : "rgb(148 163 184)"
 
+  // Native title tooltip: per-day CPL list — gives the CM the actual
+  // numbers behind the line on hover, no extra portal/component cost.
+  // Carry-forward days (where leads=0) are shown with their inherited
+  // CPL but flagged so the tooltip is honest about what's interpolated.
+  const tooltip = trend
+    .map((d, i) => {
+      const cpl = series[i]
+      const dateLabel = d.date.slice(5) // MM-DD
+      if (d.leads === 0) {
+        return cpl > 0 ? `${dateLabel}: no leads (carry €${cpl.toFixed(0)})` : `${dateLabel}: no spend`
+      }
+      return `${dateLabel}: €${cpl.toFixed(2)} CPL · ${d.leads} leads · €${d.spend.toFixed(0)} spend`
+    })
+    .join("\n")
+
+  const directionLabel =
+    ratio >= 1.1
+      ? `CPL trending up (${Math.round((ratio - 1) * 100)}% over the window)`
+      : ratio <= 0.9
+        ? `CPL trending down (${Math.round((1 - ratio) * 100)}% over the window)`
+        : "CPL stable over the window"
+
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="inline-block align-middle" aria-hidden>
+    <svg
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      className="inline-block align-middle"
+      aria-label={directionLabel}
+    >
+      <title>{`${directionLabel}\n\n${tooltip}`}</title>
       <polyline points={points} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
     </svg>
   )

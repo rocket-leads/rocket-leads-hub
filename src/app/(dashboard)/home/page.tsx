@@ -63,6 +63,7 @@ async function HomeData() {
     agreementsByMondayId,
     myInboxItems,
     pedroProposals,
+    lastKpiRefreshAt,
   ] = await Promise.all([
     readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards").then(
       (c) => c ?? fetchBothBoards().catch(() => ({ onboarding: [], current: [] })),
@@ -74,6 +75,7 @@ async function HomeData() {
     fetchAgreementsByMondayId(),
     fetchMyInbox(userId, role),
     isAdmin ? fetchPendingPedroProposals() : Promise.resolve<PedroProposal[]>([]),
+    fetchLastKpiRefreshAt(),
   ])
 
   const allCurrent = boards?.current ?? []
@@ -154,13 +156,23 @@ async function HomeData() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">
-          Goedemorgen, {firstName}
-        </h1>
-        <p className="text-xs text-muted-foreground/60 mt-1">
-          {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">
+            Goedemorgen, {firstName}
+          </h1>
+          <p className="text-xs text-muted-foreground/60 mt-1">
+            {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+          </p>
+        </div>
+        {lastKpiRefreshAt && (
+          <span
+            className="text-[11px] text-muted-foreground/40 mt-2 tabular-nums shrink-0"
+            title={`KPI cache refreshed at ${new Date(lastKpiRefreshAt).toLocaleString("en-GB")}`}
+          >
+            Updated {timeAgoCompact(lastKpiRefreshAt)}
+          </span>
+        )}
       </div>
 
       {/* KPI strip */}
@@ -308,6 +320,41 @@ async function fetchActionNotes(): Promise<Record<string, string>> {
   } catch {
     return {}
   }
+}
+
+/**
+ * Last successful refresh-kpi cron run — drives the "Updated Xm ago" stamp
+ * in the page header. Falls back to null on any failure (no row, schema
+ * miss, Supabase blip) so the header gracefully omits the stamp instead of
+ * crashing the page render.
+ */
+async function fetchLastKpiRefreshAt(): Promise<string | null> {
+  try {
+    const supabase = await createAdminClient()
+    const { data } = await supabase
+      .from("cron_runs")
+      .select("started_at")
+      .eq("cron_name", "refresh-kpi")
+      .eq("status", "ok")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    return data?.started_at ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Compact "X ago" — sized for the header stamp. */
+function timeAgoCompact(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  if (ms < 60_000) return "just now"
+  const m = Math.round(ms / 60_000)
+  if (m < 60) return `${m}m ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.round(h / 24)
+  return `${d}d ago`
 }
 
 async function fetchPendingPedroProposals(): Promise<PedroProposal[]> {
