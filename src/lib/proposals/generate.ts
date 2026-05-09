@@ -2,7 +2,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { readFile } from "fs/promises"
 import { join } from "path"
-import { AI_GUARDRAILS_PROMPT, validateAiOutput } from "@/lib/ai/guardrails"
+import { AI_GUARDRAILS_PROMPT, aiLanguageDirective, validateAiOutput } from "@/lib/ai/guardrails"
+import { getAiLocale } from "@/lib/i18n/server"
 
 // AI proposals are cached for 24h. The first viewer of the day for a given
 // client (or the daily cron) populates the cache; everyone else hits it.
@@ -235,7 +236,10 @@ export async function generateProposalForClient(
     }
   }
 
-  // Cache miss / forced regen — load knowledge, build prompt, call Anthropic
+  // Cache miss / forced regen — load knowledge, build prompt, call Anthropic.
+  // Resolve the workspace AI locale once so the splice into the system
+  // prompt below switches Sonnet's output language with no other change.
+  const aiLocale = await getAiLocale()
   let knowledgeContext = ""
 
   if (client) {
@@ -390,7 +394,7 @@ ${campaignsKnowledge.slice(0, 3000)}
 ## Rocket Leads Process
 ${processKnowledge.slice(0, 2000)}
 
-${AI_GUARDRAILS_PROMPT}`
+${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(aiLocale)}`
 
   const userPrompt = `## Client: ${input.clientName}
 Board type: ${input.boardType}

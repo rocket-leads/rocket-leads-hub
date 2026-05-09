@@ -12,6 +12,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/i18n/client"
 
 type ClientDetailResponse = {
   client: MondayClient
@@ -138,11 +139,12 @@ function SlideOverContent({
   access: ClientAccess
   currentUser: CurrentUser
 }) {
+  const locale = useLocale()
   return (
     <>
       <ClientHeader client={client} canViewBilling={access.canViewBilling} />
       <div className="mt-4 mb-6">
-        <PedroInsightCard mondayItemId={client.mondayItemId} />
+        <PedroInsightCard mondayItemId={client.mondayItemId} locale={locale} />
       </div>
       <ClientTabs
         client={client}

@@ -118,9 +118,19 @@ describe("INSIGHT_REGISTRY — shape invariants", () => {
     // would drift back to the pre-unification status quo.
     const ctx = makeRichContext()
     for (const type of INSIGHT_TYPES) {
-      const sys = INSIGHT_REGISTRY[type].systemPrompt(ctx)
+      const sys = INSIGHT_REGISTRY[type].systemPrompt(ctx, "nl")
       expect(sys).toMatch(/TIME WINDOW LABELS/)
       expect(sys).toMatch(/KNOW WHAT DATA YOU HAVE/)
+    }
+  })
+
+  it("every systemPrompt embeds the language directive matching the locale", () => {
+    const ctx = makeRichContext()
+    for (const type of INSIGHT_TYPES) {
+      const nl = INSIGHT_REGISTRY[type].systemPrompt(ctx, "nl")
+      const en = INSIGHT_REGISTRY[type].systemPrompt(ctx, "en")
+      expect(nl).toMatch(/Dutch \(Nederlands\)/)
+      expect(en).toMatch(/Write the entire output in English/)
     }
   })
 
@@ -130,7 +140,7 @@ describe("INSIGHT_REGISTRY — shape invariants", () => {
     // context kills the entire batch — defend against that here.
     const ctx = makeMinimalContext()
     for (const type of INSIGHT_TYPES) {
-      expect(() => INSIGHT_REGISTRY[type].systemPrompt(ctx)).not.toThrow()
+      expect(() => INSIGHT_REGISTRY[type].systemPrompt(ctx, "nl")).not.toThrow()
       expect(() => INSIGHT_REGISTRY[type].userPrompt(ctx)).not.toThrow()
     }
   })

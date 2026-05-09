@@ -7,6 +7,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import { collectClientAiContext } from "@/lib/pedro/insights/context"
 import { generateAndPersistInsight } from "@/lib/pedro/insights/generate"
 import { ALL_INSIGHT_TYPES } from "@/lib/pedro/insights/registry"
+import { getAiLocale } from "@/lib/i18n/server"
 
 /**
  * Pedro insights refresh — the unified AI hub for the Hub.
@@ -47,6 +48,11 @@ export async function GET(req: NextRequest) {
   const deadline = startedAt + TIME_BUDGET_MS
 
   try {
+    // Resolve the workspace AI locale once for the whole run. All clients
+    // get insights in the same language regardless of who reads — AI cache
+    // is workspace-wide.
+    const aiLocale = await getAiLocale()
+
     // Load Live clients from the cron-warmed cache. Live-only — no point
     // generating insights for churned/onboarding clients (no AM uses them).
     const cached = await readCache<{ current: MondayClient[] }>("monday_boards")
@@ -90,7 +96,7 @@ export async function GET(req: NextRequest) {
         const task = tasks[idx]
         try {
           const ctx = await getCtx(task.client)
-          const result = await generateAndPersistInsight(task.type, ctx)
+          const result = await generateAndPersistInsight(task.type, ctx, aiLocale)
           processed++
           if (result.ok) generated++
           else if (result.skippedReason?.startsWith("registry shouldGenerate")) skipped++

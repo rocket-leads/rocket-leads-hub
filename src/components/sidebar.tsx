@@ -4,43 +4,45 @@ import Image from "next/image"
 import { LogOut } from "lucide-react"
 import { SidebarNavLinks } from "./sidebar-nav-links"
 import { ThemeToggle } from "./theme-toggle"
+import { LocaleToggle } from "./locale-toggle"
 import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-platform-tokens"
 import { readCache } from "@/lib/cache"
 import type { MondayClient } from "@/lib/integrations/monday"
 import { mondayStatusToHub } from "@/lib/clients/status"
 import { fetchHealthSummary, HEALTHY_SUMMARY, type HealthSummary } from "@/lib/observability/health-summary"
+import { getUserLocale } from "@/lib/i18n/server"
+import { t } from "@/lib/i18n/t"
 
 const REQUIRED_PLATFORMS: Platform[] = ["slack", "trengo", "monday"]
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
-
-// Default nav for members, admins and finance users alike. Watch List is
-// pulled out below for the finance role (they don't action campaigns).
-// Billing is in the shared section so everyone — finance, members, admins —
-// can see invoice scheduling.
-const HOME = { href: "/home", label: "Home", icon: "LayoutDashboard" as const }
-const WATCH_LIST = { href: "/watchlist", label: "Watch List", icon: "Eye" as const }
-const SHARED_NAV = [
-  { href: "/clients", label: "Clients", icon: "Users" as const },
-  { href: "/inbox", label: "Inbox", icon: "Inbox" as const },
-  { href: "/meetings", label: "Meetings", icon: "Video" as const },
-  { href: "/pedro", label: "Pedro", icon: "Megaphone" as const },
-  { href: "/targets", label: "Targets", icon: "Target" as const },
-  { href: "/billing", label: "Billing", icon: "Receipt" as const },
-] as const
 
 export async function Sidebar() {
   const session = await auth()
   const isAdmin = session?.user.role === "admin"
   const isFinance = !!session?.user.isFinance
+  const locale = await getUserLocale(session?.user?.id)
+
+  // Nav labels resolved through the dictionary so the language switch
+  // flips them. Watch List is pulled out below for finance (they don't
+  // action campaigns); Billing stays in the shared section so finance,
+  // members and admins all see invoice scheduling.
+  const HOME = { href: "/home", label: t("nav.home", locale), icon: "LayoutDashboard" as const }
+  const WATCH_LIST = { href: "/watchlist", label: t("nav.watch_list", locale), icon: "Eye" as const }
+  const SHARED_NAV = [
+    { href: "/clients", label: t("nav.clients", locale), icon: "Users" as const },
+    { href: "/inbox", label: t("nav.inbox", locale), icon: "Inbox" as const },
+    { href: "/meetings", label: t("nav.meetings", locale), icon: "Video" as const },
+    { href: "/pedro", label: t("nav.pedro", locale), icon: "Megaphone" as const },
+    { href: "/targets", label: t("nav.targets", locale), icon: "Target" as const },
+    { href: "/billing", label: t("nav.billing", locale), icon: "Receipt" as const },
+  ] as const
 
   const allItems = [
     HOME,
-    // Finance gets a tailored stack without the Watch List; everyone else
-    // keeps the full list.
     ...(isFinance ? [] : [WATCH_LIST]),
     ...SHARED_NAV,
     ...(isAdmin
-      ? [{ href: "/settings", label: "Settings", icon: "Settings" as const }]
+      ? [{ href: "/settings", label: t("nav.settings", locale), icon: "Settings" as const }]
       : []),
   ]
 
@@ -151,6 +153,9 @@ export async function Sidebar() {
       {/* User section */}
       <div className="mt-auto border-t border-sidebar-border p-3">
         <div className="mb-1">
+          <LocaleToggle initialLocale={locale} />
+        </div>
+        <div className="mb-1">
           <ThemeToggle />
         </div>
         <Link
@@ -170,7 +175,7 @@ export async function Sidebar() {
             )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium leading-tight truncate group-hover:text-foreground transition-colors">{session?.user.name ?? "User"}</p>
+            <p className="text-[13px] font-medium leading-tight truncate group-hover:text-foreground transition-colors">{session?.user.name ?? t("account.user_fallback", locale)}</p>
             <p className="text-[11px] text-muted-foreground/70 truncate">{session?.user.email}</p>
           </div>
         </Link>
@@ -185,7 +190,7 @@ export async function Sidebar() {
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/60 transition-colors"
           >
             <LogOut className="h-3.5 w-3.5" />
-            Sign out
+            {t("account.sign_out", locale)}
           </button>
         </form>
       </div>

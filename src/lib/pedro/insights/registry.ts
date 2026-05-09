@@ -1,7 +1,8 @@
 import type { ClientAiContext } from "./context"
 import type { InsightType } from "./types"
 import { categorize } from "@/lib/watchlist/categorize"
-import { AI_GUARDRAILS_PROMPT } from "@/lib/ai/guardrails"
+import { AI_GUARDRAILS_PROMPT, aiLanguageDirective } from "@/lib/ai/guardrails"
+import type { Locale } from "@/lib/i18n/types"
 
 /**
  * Per-insight-type prompt + model + version. Adding a new insight surface
@@ -25,7 +26,10 @@ import { AI_GUARDRAILS_PROMPT } from "@/lib/ai/guardrails"
  */
 
 export type InsightRegistryEntry = {
-  systemPrompt: (ctx: ClientAiContext) => string
+  /** systemPrompt receives the AI workspace locale so it can splice the
+   *  matching language directive. Caller (the cron) resolves the locale
+   *  once via `getAiLocale()` and passes it to every entry on the run. */
+  systemPrompt: (ctx: ClientAiContext, locale: Locale) => string
   userPrompt: (ctx: ClientAiContext) => string
   model: string
   maxTokens: number
@@ -157,7 +161,7 @@ export const INSIGHT_REGISTRY: Record<InsightType, InsightRegistryEntry> = {
     maxTokens: 200,
     promptVersion: 1,
     shouldGenerate: hasMeaningfulSignal,
-    systemPrompt: () =>
+    systemPrompt: (_ctx, locale) =>
       `You are a senior campaign manager at Rocket Leads. Generate ONE 1-line AI Note for the Watch List row this client occupies.
 
 The note appears NEXT to an "Insight" column the user has already read. The user reads Insight FIRST, then your note. Your note must ADD to the Insight, never repeat it. Answer "OK I see the Insight, but what SPECIFICALLY should I do?"
@@ -166,7 +170,7 @@ Be concrete: name specific ads/UTMs/funnel elements when present in MONDAY CRM /
 
 Keep under 30 words. Direct, no fluff. Output the line as plain text — no JSON, no leading dashes.
 
-${AI_GUARDRAILS_PROMPT}`,
+${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(locale)}`,
     userPrompt: (ctx) => {
       const { category, insight } = categorize(ctx.client, ctx.kpi ?? undefined)
       return [
@@ -187,7 +191,7 @@ ${AI_GUARDRAILS_PROMPT}`,
     promptVersion: 1,
     // Generate even for no-data clients — a "client paused, no recent
     // activity" overview is still informative on the client detail header.
-    systemPrompt: () =>
+    systemPrompt: (_ctx, locale) =>
       `You are Pedro, the Rocket Leads campaign-manager AI. Generate a 2-3 sentence "current state of the union" overview for this client — the kind of whisper a senior CM gives to a colleague about to step into the relationship.
 
 Surface what's actually happening NOW: are they performing, where's the friction, what's the next thing to watch. Bias toward concrete signals from Monday updates / Trengo / Fathom meetings / inbox events when present, fall back to KPI shape when those are missing.
@@ -196,7 +200,7 @@ Tone: factual, slightly conversational, no sales-deck adjectives. Don't pad with
 
 Output as 2-3 sentences of plain prose, no bullets, no preamble. Under 90 words total.
 
-${AI_GUARDRAILS_PROMPT}`,
+${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(locale)}`,
     userPrompt: (ctx) => {
       const { category, insight } = categorize(ctx.client, ctx.kpi ?? undefined)
       return [
@@ -216,7 +220,7 @@ ${AI_GUARDRAILS_PROMPT}`,
     maxTokens: 250,
     promptVersion: 1,
     shouldGenerate: hasMeaningfulSignal,
-    systemPrompt: () =>
+    systemPrompt: (_ctx, locale) =>
       `You are Pedro, the Rocket Leads optimisation AI. Output a 1-2 sentence concrete optimisation suggestion for this client — the SHORT version that lives in side-rails (Watch List preview, Home dashboard quick-view).
 
 The full structured proposal lives elsewhere — your job is the elevator pitch. Pick the single highest-leverage move from the data: pause a specific ad, iterate on a winning hook, refresh creative on a stale ad set, or test a new angle. Reference ad names / UTMs when present.
@@ -225,7 +229,7 @@ If the client has no actionable signal (no spend, no leads, no Monday updates), 
 
 Plain prose, no bullets, no JSON, no preamble. Under 60 words.
 
-${AI_GUARDRAILS_PROMPT}`,
+${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(locale)}`,
     userPrompt: (ctx) => {
       const { category, insight } = categorize(ctx.client, ctx.kpi ?? undefined)
       return [
@@ -249,7 +253,7 @@ ${AI_GUARDRAILS_PROMPT}`,
       // otherwise we'd be guessing. Skip without CRM.
       return ctx.sources.mondayUpdates
     },
-    systemPrompt: () =>
+    systemPrompt: (_ctx, locale) =>
       `You are Pedro, the Rocket Leads lead-quality AI. Output a 1-2 sentence verdict on the leads currently coming in for this client — based on Monday CRM updates and (when present) Trengo conversations.
 
 Two angles to weigh:
@@ -260,7 +264,7 @@ Lead with the dominant pattern. Cite a specific UTM/ad when one stands out. If t
 
 Plain prose, no bullets, no JSON. Under 60 words.
 
-${AI_GUARDRAILS_PROMPT}`,
+${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(locale)}`,
     userPrompt: (ctx) => {
       const { category, insight } = categorize(ctx.client, ctx.kpi ?? undefined)
       return [

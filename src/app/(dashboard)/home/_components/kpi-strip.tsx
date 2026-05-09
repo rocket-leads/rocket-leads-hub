@@ -1,5 +1,8 @@
 import { cn } from "@/lib/utils"
 import { ArrowDown, ArrowUp, Minus } from "lucide-react"
+import { t } from "@/lib/i18n/t"
+import { formatCurrency } from "@/lib/i18n/format"
+import type { Locale } from "@/lib/i18n/types"
 
 type Status = "good" | "warn" | "bad" | "neutral"
 
@@ -47,9 +50,12 @@ function Card({
   )
 }
 
-function fmtMrr(v: number): string {
+function fmtMrrCompact(v: number, locale: Locale): string {
+  // Compact card-friendly form ("€61k" / "€2.5k") — falls back to the
+  // full Intl-formatted amount for sub-1000 totals so we don't show
+  // confusing "€600" rounded values.
   if (v >= 1000) return `€${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k`
-  return `€${v.toFixed(0)}`
+  return formatCurrency(v, locale)
 }
 
 export function KpiStrip({
@@ -59,6 +65,7 @@ export function KpiStrip({
   healthScore,
   teamMrr,
   teamMrrClientCount,
+  locale,
 }: {
   actionCount: number
   /** Today minus yesterday — positive means more action clients today (bad). */
@@ -70,6 +77,7 @@ export function KpiStrip({
   teamMrr: number
   /** Number of visible clients with a non-zero agreement MRR. */
   teamMrrClientCount: number
+  locale: Locale
 }) {
   // Action — bad whenever > 0. Trend up = more action than yesterday (red);
   // trend down = fewer (green).
@@ -77,7 +85,11 @@ export function KpiStrip({
   const actionTrend: "up" | "down" | "flat" =
     actionDelta > 0 ? "up" : actionDelta < 0 ? "down" : "flat"
   const actionDeltaText =
-    actionDelta === 0 ? "= yesterday" : actionDelta > 0 ? `+${actionDelta} vs yesterday` : `${actionDelta} vs yesterday`
+    actionDelta === 0
+      ? t("home.kpi.action.eq_yesterday", locale)
+      : actionDelta > 0
+        ? t("home.kpi.action.delta_pos", locale, { n: actionDelta })
+        : t("home.kpi.action.delta_neg", locale, { n: actionDelta })
 
   // Inbox zero is a win — colour it green when achieved, red when there's
   // still stuff on the user's plate.
@@ -96,31 +108,43 @@ export function KpiStrip({
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <Card
-        label="Action needed"
+        label={t("home.kpi.action.label", locale)}
         value={`${actionCount}`}
         subtitle={actionDeltaText}
         status={actionStatus}
         trend={actionTrend}
       />
       <Card
-        label="Inbox voor jou"
+        label={t("home.kpi.inbox.label", locale)}
         value={`${unreadInboxCount}`}
-        subtitle={unreadInboxCount === 0 ? "Inbox zero" : "tasks + unread updates"}
+        subtitle={
+          unreadInboxCount === 0
+            ? t("home.kpi.inbox.zero", locale)
+            : t("home.kpi.inbox.subtitle", locale)
+        }
         status={inboxStatus}
       />
       <Card
-        label="Health score"
+        label={t("home.kpi.health.label", locale)}
         value={healthScore == null ? "—" : `${healthScore}%`}
-        subtitle={healthScore == null ? "No live clients in scope" : "target ≥ 75%"}
+        subtitle={
+          healthScore == null
+            ? t("home.kpi.health.no_scope", locale)
+            : t("home.kpi.health.target", locale)
+        }
         status={healthStatus}
       />
       <Card
-        label="Team MRR"
-        value={fmtMrr(teamMrr)}
+        label={t("home.kpi.mrr.label", locale)}
+        value={fmtMrrCompact(teamMrr, locale)}
         subtitle={
           teamMrrClientCount === 0
-            ? "Geen actieve agreements"
-            : `${teamMrrClientCount} ${teamMrrClientCount === 1 ? "client" : "clients"} live`
+            ? t("home.kpi.mrr.no_agreements", locale)
+            : t(
+                teamMrrClientCount === 1 ? "home.kpi.mrr.live_one" : "home.kpi.mrr.live_many",
+                locale,
+                { n: teamMrrClientCount },
+              )
         }
         status="neutral"
       />

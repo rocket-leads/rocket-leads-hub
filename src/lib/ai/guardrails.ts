@@ -95,7 +95,24 @@ Recommend instead: iterate on winning creatives (3-5 new variants same hook), pa
 - Be specific: name ads/UTMs/funnel elements where possible.
 - Every number gets a window label in parentheses: (7d), (14d), (30d), (all-time), (last 2d), (prev 7d).
 - Direct, no fluff.
-- Write in English.`
+- Output language is set per-call via the LANGUAGE directive in the request — respect it strictly.`
+
+/**
+ * Append-on instruction the registry uses to enforce the workspace
+ * AI locale on every Pedro generation. Spliced after the canonical
+ * AI_GUARDRAILS_PROMPT so the language directive is the LAST thing the
+ * system prompt says — models tend to weight late instructions higher
+ * for output formatting.
+ *
+ * Defaults to Dutch (the team's working language) when called without
+ * an explicit locale.
+ */
+export function aiLanguageDirective(locale: "nl" | "en"): string {
+  if (locale === "nl") {
+    return `\n\n## LANGUAGE\nWrite the entire output in Dutch (Nederlands). All sentences, all labels you generate, all words — Dutch. Window labels stay as-is ((7d), (14d), (last 2d), etc) since they are abbreviations, not English words. Brand terms (Watch List, KPI, CPL, CPA, ROAS, MRR) stay as-is. Don't translate ad names, UTM strings, client names, or quoted text from CRM updates.`
+  }
+  return `\n\n## LANGUAGE\nWrite the entire output in English. Brand terms and abbreviations stay as-is. Don't translate ad names, UTM strings, client names, or quoted text from CRM updates.`
+}
 
 // ─── Programmatic post-validation ────────────────────────────────────────
 

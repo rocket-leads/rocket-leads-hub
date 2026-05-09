@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { Megaphone, ArrowRight } from "lucide-react"
 import { BlockShell } from "./block-shell"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 
 export type PedroProposal = {
   id: string
@@ -23,19 +25,21 @@ function timeAgo(iso: string): string {
 export function PedroBlock({
   items,
   totalCount,
+  locale,
 }: {
   items: PedroProposal[]
   totalCount: number
+  locale: Locale
 }) {
   return (
     <BlockShell
-      title="Pedro proposals"
+      title={t("home.block.pedro.title", locale)}
       icon={<Megaphone className="h-4 w-4 text-violet-400" />}
       count={totalCount}
       footerHref="/pedro?tab=knowledge"
-      footerLabel="Open Pedro"
+      footerLabel={t("home.block.pedro.cta", locale)}
       empty={items.length === 0}
-      emptyMessage="Niks te reviewen."
+      emptyMessage={t("home.block.pedro.empty", locale)}
     >
       <ul className="divide-y divide-border/30">
         {items.map((item) => (

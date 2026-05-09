@@ -7,6 +7,9 @@ import { categorize, severityScore } from "@/lib/watchlist/categorize"
 import { listInboxItems } from "@/lib/inbox/fetchers"
 import { createAdminClient } from "@/lib/supabase/server"
 import { agreementMonthly, normalizeAgreement } from "@/lib/clients/agreement"
+import { getUserLocale } from "@/lib/i18n/server"
+import { t } from "@/lib/i18n/t"
+import { formatDate, formatTimeAgo } from "@/lib/i18n/format"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { WatchlistClientState } from "@/app/api/watchlist/state/route"
@@ -51,6 +54,7 @@ async function HomeData() {
   const isAdmin = role === "admin"
   const userName = session.user.name ?? session.user.email ?? "there"
   const firstName = userName.split(" ")[0] ?? userName
+  const locale = await getUserLocale(userId)
 
   // Pull everything in parallel — every block has its own bail-out so a
   // single source going down doesn't take the dashboard with it.
@@ -159,18 +163,18 @@ async function HomeData() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">
-            Goedemorgen, {firstName}
+            {t("home.greeting.morning", locale, { name: firstName })}
           </h1>
           <p className="text-xs text-muted-foreground/60 mt-1">
-            {new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
+            {formatDate(new Date().toISOString(), locale)}
           </p>
         </div>
         {lastKpiRefreshAt && (
           <span
             className="text-[11px] text-muted-foreground/40 mt-2 tabular-nums shrink-0"
-            title={`KPI cache refreshed at ${new Date(lastKpiRefreshAt).toLocaleString("en-GB")}`}
+            title={new Date(lastKpiRefreshAt).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB")}
           >
-            Updated {timeAgoCompact(lastKpiRefreshAt)}
+            {t("home.updated_prefix", locale, { ago: formatTimeAgo(lastKpiRefreshAt, locale) })}
           </span>
         )}
       </div>
@@ -183,6 +187,7 @@ async function HomeData() {
         healthScore={healthScore}
         teamMrr={teamMrr}
         teamMrrClientCount={teamMrrClientCount}
+        locale={locale}
       />
 
       {/* 2x2 grid */}
@@ -199,11 +204,13 @@ async function HomeData() {
             cpl: c.kpi?.cpl ?? 0,
           }))}
           totalCount={action.length}
+          locale={locale}
         />
 
         <InboxBlock
           items={topInbox}
           totalCount={unreadInboxCount}
+          locale={locale}
         />
 
         <BillingBlock
@@ -215,12 +222,14 @@ async function HomeData() {
           }))}
           totalCount={overdueClients.length}
           totalOutstanding={totalOutstanding}
+          locale={locale}
         />
 
         {isAdmin && (
           <PedroBlock
             items={pedroProposals.slice(0, 3)}
             totalCount={pedroProposals.length}
+            locale={locale}
           />
         )}
       </div>
@@ -343,18 +352,6 @@ async function fetchLastKpiRefreshAt(): Promise<string | null> {
   } catch {
     return null
   }
-}
-
-/** Compact "X ago" — sized for the header stamp. */
-function timeAgoCompact(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime()
-  if (ms < 60_000) return "just now"
-  const m = Math.round(ms / 60_000)
-  if (m < 60) return `${m}m ago`
-  const h = Math.round(m / 60)
-  if (h < 24) return `${h}h ago`
-  const d = Math.round(h / 24)
-  return `${d}d ago`
 }
 
 async function fetchPendingPedroProposals(): Promise<PedroProposal[]> {

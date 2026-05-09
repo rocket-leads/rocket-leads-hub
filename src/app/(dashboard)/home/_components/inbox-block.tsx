@@ -3,6 +3,8 @@ import { Inbox, ArrowRight, MessageSquare, ListChecks, Bell, Sparkles } from "lu
 import { BlockShell } from "./block-shell"
 import type { InboxItem } from "@/types/inbox"
 import { pickInboxZeroMessage } from "@/lib/inbox/inbox-zero-messages"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
@@ -47,14 +49,22 @@ function InboxZeroState() {
   )
 }
 
-export function InboxBlock({ items, totalCount }: { items: InboxItem[]; totalCount: number }) {
+export function InboxBlock({
+  items,
+  totalCount,
+  locale,
+}: {
+  items: InboxItem[]
+  totalCount: number
+  locale: Locale
+}) {
   return (
     <BlockShell
-      title="Inbox voor jou"
+      title={t("home.block.inbox.title", locale)}
       icon={<Inbox className="h-4 w-4 text-violet-400" />}
       count={totalCount}
       footerHref="/inbox"
-      footerLabel="Open Inbox"
+      footerLabel={t("home.block.inbox.cta", locale)}
       empty={items.length === 0}
       emptyContent={<InboxZeroState />}
     >

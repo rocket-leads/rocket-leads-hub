@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { AlertCircle, ArrowRight, Sparkles } from "lucide-react"
 import { BlockShell } from "./block-shell"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 
 type ActionItem = {
   mondayItemId: string
@@ -19,16 +21,24 @@ function fmtSpend(v: number): string {
   return `€${v.toFixed(0)}`
 }
 
-export function ActionBlock({ items, totalCount }: { items: ActionItem[]; totalCount: number }) {
+export function ActionBlock({
+  items,
+  totalCount,
+  locale,
+}: {
+  items: ActionItem[]
+  totalCount: number
+  locale: Locale
+}) {
   return (
     <BlockShell
-      title="Action Needed"
+      title={t("home.block.action.title", locale)}
       icon={<AlertCircle className="h-4 w-4 text-red-500" />}
       count={totalCount}
       footerHref="/watchlist"
-      footerLabel="Open Watch List"
+      footerLabel={t("home.block.action.cta", locale)}
       empty={items.length === 0}
-      emptyMessage="Niks urgents — top of watch list ↓"
+      emptyMessage={t("home.block.action.empty", locale)}
     >
       <ul className="divide-y divide-border/30">
         {items.map((item) => (

@@ -4,6 +4,7 @@ import { validateAiOutput } from "@/lib/ai/guardrails"
 import type { ClientAiContext } from "./context"
 import type { InsightType, InsightSeverity } from "./types"
 import { INSIGHT_REGISTRY } from "./registry"
+import type { Locale } from "@/lib/i18n/types"
 
 const anthropic = new Anthropic()
 
@@ -42,6 +43,7 @@ export type GenerateInsightResult = {
 export async function generateAndPersistInsight(
   type: InsightType,
   ctx: ClientAiContext,
+  locale: Locale,
 ): Promise<GenerateInsightResult> {
   const entry = INSIGHT_REGISTRY[type]
   if (entry.shouldGenerate && !entry.shouldGenerate(ctx)) {
@@ -54,7 +56,7 @@ export async function generateAndPersistInsight(
     }
   }
 
-  const systemPrompt = entry.systemPrompt(ctx)
+  const systemPrompt = entry.systemPrompt(ctx, locale)
   const userPrompt = entry.userPrompt(ctx)
 
   let text = ""

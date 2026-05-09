@@ -1,6 +1,9 @@
 import Link from "next/link"
 import { Receipt, ArrowRight } from "lucide-react"
 import { BlockShell } from "./block-shell"
+import { t } from "@/lib/i18n/t"
+import { formatCurrency } from "@/lib/i18n/format"
+import type { Locale } from "@/lib/i18n/types"
 
 type BillingRow = {
   mondayItemId: string
@@ -9,37 +12,30 @@ type BillingRow = {
   status: "complete" | "open" | "overdue"
 }
 
-function fmtEuro(v: number): string {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(v)
-}
-
 export function BillingBlock({
   items,
   totalCount,
   totalOutstanding,
+  locale,
 }: {
   items: BillingRow[]
   totalCount: number
   totalOutstanding: number
+  locale: Locale
 }) {
   return (
     <BlockShell
-      title="Open invoices"
+      title={t("home.block.billing.title", locale)}
       icon={<Receipt className="h-4 w-4 text-amber-400" />}
       count={totalCount}
       footerHref="/billing"
-      footerLabel="Open Billing"
+      footerLabel={t("home.block.billing.cta", locale)}
       empty={items.length === 0}
-      emptyMessage="Geen openstaande facturen."
+      emptyMessage={t("home.block.billing.empty", locale)}
     >
       <div className="px-4 py-2.5 border-b border-border/30 flex items-center justify-between">
-        <span className="text-[11px] text-muted-foreground/60 uppercase tracking-wider">Total open</span>
-        <span className="text-sm font-mono tabular-nums text-amber-400">{fmtEuro(totalOutstanding)}</span>
+        <span className="text-[11px] text-muted-foreground/60 uppercase tracking-wider">{t("home.block.billing.total_open", locale)}</span>
+        <span className="text-sm font-mono tabular-nums text-amber-400">{formatCurrency(totalOutstanding, locale)}</span>
       </div>
       <ul className="divide-y divide-border/30">
         {items.map((item) => (
@@ -61,7 +57,7 @@ export function BillingBlock({
                   (item.status === "overdue" ? "text-red-400" : "text-muted-foreground")
                 }
               >
-                {fmtEuro(item.outstanding)}
+                {formatCurrency(item.outstanding, locale)}
               </span>
               <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors" />
             </Link>

@@ -4,9 +4,12 @@ import { useQuery } from "@tanstack/react-query"
 import { Sparkles, Target, MessageCircle } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { PedroClientInsightsResponse } from "@/app/api/clients/[id]/pedro-insights/route"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 
 type Props = {
   mondayItemId: string
+  locale: Locale
 }
 
 /**
@@ -19,7 +22,7 @@ type Props = {
  * unification VISIBLE — the same Pedro voice the user sees on the Watch
  * List action note also lives here on the client page, no contradictions.
  */
-export function PedroInsightCard({ mondayItemId }: Props) {
+export function PedroInsightCard({ mondayItemId, locale }: Props) {
   const { data, isLoading } = useQuery<PedroClientInsightsResponse>({
     queryKey: ["pedro-insights", mondayItemId],
     queryFn: () =>
@@ -61,7 +64,7 @@ export function PedroInsightCard({ mondayItemId }: Props) {
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-violet-400" />
           <span className="text-[10px] uppercase tracking-wider text-violet-400 font-semibold">
-            Pedro
+            {t("pedro.label", locale)}
           </span>
         </div>
         {freshestAt && (
@@ -83,14 +86,14 @@ export function PedroInsightCard({ mondayItemId }: Props) {
           {optimisation && (
             <InsightTile
               icon={<Target className="h-3 w-3 text-violet-400" />}
-              label="Next move"
+              label={t("pedro.tile.next_move", locale)}
               body={optimisation.body}
             />
           )}
           {leadQuality && (
             <InsightTile
               icon={<MessageCircle className="h-3 w-3 text-violet-400" />}
-              label="Lead quality"
+              label={t("pedro.tile.lead_quality", locale)}
               body={leadQuality.body}
             />
           )}

@@ -2,7 +2,8 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest, NextResponse } from "next/server"
-import { AI_GUARDRAILS_PROMPT, validateAiOutput } from "@/lib/ai/guardrails"
+import { AI_GUARDRAILS_PROMPT, aiLanguageDirective, validateAiOutput } from "@/lib/ai/guardrails"
+import { getAiLocale } from "@/lib/i18n/server"
 
 /**
  * Watch List portfolio narrative — the "Key Insights" + "Optimisation
@@ -126,6 +127,8 @@ export async function POST(req: NextRequest) {
     `Moved into Good today (${movedToGood.length}): ${movedToGood.map((c) => `${c.name} (was ${c.prevCategory})`).join(", ") || "none"}`,
   ].join("\n")
 
+  const aiLocale = await getAiLocale()
+
   let result: WatchlistNarrativeResponse = EMPTY
   let rawText = ""
   try {
@@ -175,7 +178,7 @@ Tag prefix the most-important pattern as "critical", reserve "positive" for genu
 - No emoji. No markdown inside the strings (no asterisks, no backticks).
 - Output VALID JSON. No trailing commas. No code fences.
 
-${AI_GUARDRAILS_PROMPT}`,
+${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(aiLocale)}`,
       messages: [
         {
           role: "user",
