@@ -569,20 +569,51 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
             </div>
           )}
 
-          {/* Continue to Angles — wired by PedroApp. The user has reviewed
-              the research; clicking continues to the Angles stage where
-              the AI call will pull this research as additional context. */}
+          {/* Save & continue to Angles — wired by PedroApp. Single click
+              commits this research as a new version on the active client
+              AND navigates. Tab-nav bovenin slaat niet op (escape hatch
+              for "just go" without commit). */}
           {onContinue && (
             <div className="flex items-center justify-between pt-4 border-t border-border/60 mt-2">
-              <p className="text-xs text-muted-foreground italic max-w-md">
-                Tip: sla de research op (knop bovenin) zodat Angles die als context kan gebruiken.
+              <p className="text-xs text-muted-foreground/60 italic max-w-md">
+                Tab-nav bovenin slaat niet op
               </p>
               <button
                 type="button"
-                onClick={onContinue}
+                onClick={async () => {
+                  if (clientId && result) {
+                    try {
+                      const res = await fetch("/api/pedro/saved-versions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          clientId,
+                          stage: "research",
+                          data: {
+                            branche,
+                            klantnaam,
+                            doelgroep,
+                            propositie,
+                            extraContext,
+                            research: result,
+                          },
+                        }),
+                      });
+                      if (res.ok) {
+                        const json = await res.json();
+                        showToast(`✓ Opgeslagen als v${json.version?.version_number ?? "?"}`);
+                      }
+                    } catch {
+                      /* silent — navigation still happens */
+                    }
+                  }
+                  onContinue();
+                }}
+                disabled={!result}
                 className="pedro-btn-primary"
+                title={!result ? "Genereer eerst research" : undefined}
               >
-                Naar angles →
+                {clientId && result ? "Opslaan & naar angles →" : "Naar angles →"}
               </button>
             </div>
           )}

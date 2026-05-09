@@ -513,6 +513,38 @@ Gebruik dit als visuele basis voor de creatives.`;
     autoBriefSource,
   ]);
 
+  // Save current stage data as a new explicit version, then navigate to
+  // the next section. Combines the two-layer-storage commit (POST to
+  // /api/pedro/saved-versions) with section navigation in a single click.
+  // Tab navigation up top stays as the "navigate without saving" escape
+  // hatch — Roy's directive 2026-05-09.
+  async function saveStageAndContinue(args: {
+    stage: "brief" | "angles" | "script" | "creatives" | "lp" | "ad-copy";
+    data: unknown;
+    nextSection: SectionName | "research";
+  }) {
+    if (selectedClientId) {
+      try {
+        const res = await fetch("/api/pedro/saved-versions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId: selectedClientId,
+            stage: args.stage,
+            data: args.data,
+          }),
+        });
+        if (res.ok) {
+          const json = await res.json();
+          showToast(`✓ Opgeslagen als v${json.version?.version_number ?? "?"}`);
+        }
+      } catch {
+        // silent — navigation still happens so the user isn't blocked
+      }
+    }
+    setSection(args.nextSection);
+  }
+
   async function runAutoBrief(clientId?: string, clientName?: string) {
     const id = clientId ?? selectedClientId;
     const name = clientName ?? selectedClientName;
@@ -1252,24 +1284,10 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
             </div>
           </div>
 
-          {/* Client selection lives at PedroApp level (sticky picker
-              above all tabs). Brief tab just exposes the AI auto-fill
-              affordance + status. Client switching is done up top. */}
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
-            <div className="text-sm">
-              <span className="text-muted-foreground">Actieve klant:</span>{" "}
-              <span className="font-medium text-foreground">{selectedClientName || "—"}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => runAutoBrief()}
-              disabled={!selectedClientId || autoFilling}
-              className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
-            >
-              {autoFilling ? "Pedro denkt na..." : "AI auto-fill brief"}
-            </button>
-          </div>
-
+          {/* Auto-fill draait automatisch bij client-select (zie
+              loadClientState). Manual button is dus weggevallen — sticky
+              picker is bovenin Pedro, brief vult zichzelf in. Loading
+              state hieronder geeft progress. */}
           {autoFilling && (
             <div className="flex items-center gap-2 mt-3 px-1">
               <div className="w-4 h-4 border-2 border-border border-t-primary rounded-full animate-[spin_0.7s_linear_infinite]" />
@@ -1451,14 +1469,19 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
           </div>
 
           <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-            <div className="text-[11px] text-muted-foreground/60">Stap 1 van 6</div>
+            <div className="text-[11px] text-muted-foreground/60">
+              Stap 1 van 6{" "}
+              <span className="text-muted-foreground/40">· tab-nav bovenin slaat niet op</span>
+            </div>
             <button
               className="pedro-btn-primary"
-              onClick={() => setSection("research")}
+              onClick={() =>
+                saveStageAndContinue({ stage: "brief", data: brief, nextSection: "research" })
+              }
               disabled={!brief.bedrijf || !brief.aanbod}
               title={!brief.bedrijf || !brief.aanbod ? "Vul minimaal bedrijfsnaam en aanbod in" : undefined}
             >
-              Naar research →
+              Opslaan &amp; naar research →
             </button>
           </div>
         </Card>
