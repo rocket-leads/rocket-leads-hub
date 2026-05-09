@@ -68,7 +68,7 @@ async function HomeData() {
       (c) => c ?? fetchBothBoards().catch(() => ({ onboarding: [], current: [] })),
     ),
     readCache<Record<string, KpiSummary>>("kpi_summaries").then((c) => c ?? {}),
-    readCache<Record<string, string>>("watchlist_summaries_v8").then((c) => c ?? {}),
+    fetchActionNotes(),
     fetchWatchlistState(),
     readCache<Record<string, BillingSummary>>("billing_summaries").then((c) => c ?? {}),
     fetchAgreementsByMondayId(),
@@ -281,6 +281,28 @@ async function fetchAgreementsByMondayId(): Promise<Record<string, number>> {
       if (!mondayItemId) continue
       const agreement = normalizeAgreement(row)
       out[mondayItemId] = agreementMonthly(agreement)
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Pre-Pedro-unification this read the watchlist_summaries_v8 cache key.
+ * Now the unified pedro_insights table is the single source — keyed by
+ * monday_item_id with insight_type = 'watchlist_action_note'.
+ */
+async function fetchActionNotes(): Promise<Record<string, string>> {
+  try {
+    const supabase = await createAdminClient()
+    const { data } = await supabase
+      .from("pedro_insights")
+      .select("monday_item_id, body")
+      .eq("insight_type", "watchlist_action_note")
+    const out: Record<string, string> = {}
+    for (const row of data ?? []) {
+      if (row.body) out[row.monday_item_id] = row.body
     }
     return out
   } catch {

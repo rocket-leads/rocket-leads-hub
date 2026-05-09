@@ -33,6 +33,10 @@
       "schedule": "0 */2 * * *"
     },
     {
+      "path": "/api/cron/refresh-pedro-insights",
+      "schedule": "30 * * * *"
+    },
+    {
       "path": "/api/cron/refresh-pedro-patterns",
       "schedule": "0 4 * * *"
     },

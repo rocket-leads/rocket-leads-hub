@@ -38,6 +38,7 @@ const EXPECTED_CRONS: ReadonlyArray<{ name: string; description: string; cadence
   { name: "refresh-proposals", description: "Per-client AI optimisation proposals", cadence: "daily" },
   { name: "refresh-watchlist-context", description: "Monday updates + Trengo summaries for watchlist AI", cadence: "daily" },
   { name: "refresh-pedro-patterns", description: "Pedro vertical-pattern synthesis", cadence: "nightly" },
+  { name: "refresh-pedro-insights", description: "Unified Pedro insights cache (replaces watchlist-summaries + per-client AI calls)", cadence: "hourly" },
   { name: "pedro-knowledge-proposals", description: "Pedro knowledge-base scan", cadence: "weekly" },
   { name: "sync-campaign-status", description: "Live ↔ On Hold flip + onboarding → LAUNCH", cadence: "daily" },
   { name: "inbox-automations", description: "Inbox snooze / auto-resolve rules", cadence: "hourly" },
