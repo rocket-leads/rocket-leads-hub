@@ -18,6 +18,23 @@ import { pastContextForStage } from "@/lib/pedro/past-campaigns"
 
 const anthropic = new Anthropic()
 
+/** Per-field provenance — which input(s) Pedro used for each value.
+ *  Surfaced in the Brief UI as a small "Bron: kick-off" tag below
+ *  each auto-filled field so the AM can verify without re-reading the
+ *  full transcript. */
+export type FieldSource =
+  | "kickoff_meeting"
+  | "kickoff_update"
+  | "evaluation"
+  | "monday_updates"
+  | "trengo"
+  | "client_metadata"
+  | "past_campaign"
+  | "inferred"
+  | "unknown"
+
+export type BriefFieldSources = Partial<Record<keyof Omit<GeneratedBrief, "source" | "_sources">, FieldSource[]>>
+
 export type GeneratedBrief = {
   bedrijf: string
   sector: string
@@ -30,6 +47,10 @@ export type GeneratedBrief = {
   driveLink: string
   /** Short, plain-text rationale ("based on kick-off + last eval"). */
   source: string
+  /** Per-field source breakdown — Claude reports which input(s) it
+   *  pulled each value from. Used by the Brief UI to render source
+   *  tags. Empty/missing means Pedro inferred or didn't track it. */
+  _sources?: BriefFieldSources
 }
 
 export type GenerateBriefMeta = {
@@ -55,6 +76,45 @@ const EMPTY: GeneratedBrief = {
   websiteUrl: "",
   driveLink: "",
   source: "",
+  _sources: {},
+}
+
+// Allowed FieldSource values — used to validate Claude's output before
+// surfacing it. Anything outside this list collapses to "unknown".
+const VALID_SOURCES: ReadonlySet<FieldSource> = new Set<FieldSource>([
+  "kickoff_meeting",
+  "kickoff_update",
+  "evaluation",
+  "monday_updates",
+  "trengo",
+  "client_metadata",
+  "past_campaign",
+  "inferred",
+  "unknown",
+])
+
+function sanitiseFieldSources(raw: unknown): BriefFieldSources {
+  if (!raw || typeof raw !== "object") return {}
+  const out: BriefFieldSources = {}
+  const fields: Array<keyof BriefFieldSources> = [
+    "bedrijf",
+    "sector",
+    "doelgroep",
+    "pijnpunten",
+    "aanbod",
+    "usps",
+    "marketingHooks",
+    "websiteUrl",
+    "driveLink",
+  ]
+  for (const f of fields) {
+    const v = (raw as Record<string, unknown>)[f]
+    if (Array.isArray(v)) {
+      const filtered = v.filter((s): s is FieldSource => typeof s === "string" && VALID_SOURCES.has(s as FieldSource))
+      if (filtered.length > 0) out[f] = filtered
+    }
+  }
+  return out
 }
 
 function trim(s: string, max: number): string {
@@ -202,8 +262,32 @@ Geef alleen JSON terug (geen markdown, geen code fences), exact in dit format:
   "marketingHooks": "Bestaande hooks die in de kick-off / evaluatie zijn benoemd door account manager (niet jij verzinnen, alleen extracten als ze er zijn). Lege string als er geen hooks zijn benoemd.",
   "websiteUrl": "Website URL van klant (bv. www.bedrijfsnaam.nl) — alleen als deze in de context voorkomt, anders lege string",
   "driveLink": "Google Drive folder link — alleen als die in de context voorkomt, anders lege string",
-  "source": "1 zin in NL die kort uitlegt waar je deze brief op hebt gebaseerd, bv. 'Op basis van laatste evaluatie 2026-04-12 + kick-off + 8 recente Monday updates.'"
+  "source": "1 zin in NL die kort uitlegt waar je deze brief op hebt gebaseerd, bv. 'Op basis van laatste evaluatie 2026-04-12 + kick-off + 8 recente Monday updates.'",
+  "_sources": {
+    "bedrijf": ["client_metadata"],
+    "sector": ["..."],
+    "doelgroep": ["..."],
+    "pijnpunten": ["..."],
+    "aanbod": ["..."],
+    "usps": ["..."],
+    "marketingHooks": ["..."],
+    "websiteUrl": ["..."],
+    "driveLink": ["..."]
+  }
 }
+
+Voor _sources: per veld een array met de input-bronnen waar je de waarde uit hebt gehaald. Toegestane waarden:
+- "kickoff_meeting" : uit Fathom kick-off transcript / samenvatting
+- "kickoff_update"  : uit de KICK-OFF Monday update (bovenaan de KLANT context)
+- "evaluation"      : uit een evaluatie meeting transcript / samenvatting
+- "monday_updates"  : uit recente Monday updates (de "RECENTE MONDAY UPDATES" sectie)
+- "trengo"          : uit Trengo klant-berichten
+- "client_metadata" : uit het klant-record (naam, AM/CM/status)
+- "past_campaign"   : uit een eerder opgeslagen Pedro brief / campagne
+- "inferred"        : Pedro heeft het afgeleid uit aanbod/sector/etc., niet expliciet gevonden
+- "unknown"         : Pedro weet de bron niet zeker
+
+Wees eerlijk in _sources. Als je een veld puur uit de naam afleidt → ["inferred"]. Als zowel kick-off als eval het noemen → beide listen. Lege array of veld weglaten als het veld zelf leeg is.
 
 Belangrijk:
 - Alle tekst in het Nederlands
@@ -234,6 +318,7 @@ Belangrijk:
     ...EMPTY,
     ...parsed,
     bedrijf: (parsed.bedrijf || client.companyName || client.name || "").trim(),
+    _sources: sanitiseFieldSources((parsed as { _sources?: unknown })._sources),
   }
 
   return {

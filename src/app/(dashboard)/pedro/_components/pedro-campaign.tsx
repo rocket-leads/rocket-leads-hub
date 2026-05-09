@@ -141,6 +141,49 @@ function Card({ active, children }: { active?: boolean; children: React.ReactNod
   );
 }
 
+// ── Brief explainability — types + UI helper ──
+// When the auto-brief endpoint fills the form, Pedro tags each field
+// with the input it pulled from (kick-off / eval / Trengo / etc.). The
+// tag below each field surfaces this so the AM can verify provenance
+// without re-reading transcripts.
+type FieldSource =
+  | "kickoff_meeting"
+  | "kickoff_update"
+  | "evaluation"
+  | "monday_updates"
+  | "trengo"
+  | "client_metadata"
+  | "past_campaign"
+  | "inferred"
+  | "unknown";
+
+type BriefSources = Partial<Record<keyof BriefData, FieldSource[]>>;
+
+const SOURCE_LABELS: Record<FieldSource, string> = {
+  kickoff_meeting: "kick-off meeting",
+  kickoff_update: "kick-off update",
+  evaluation: "evaluatie",
+  monday_updates: "Monday updates",
+  trengo: "Trengo berichten",
+  client_metadata: "klantgegevens",
+  past_campaign: "vorige campagne",
+  inferred: "Pedro afgeleid",
+  unknown: "?",
+};
+
+function SourceTag({ sources }: { sources: FieldSource[] | undefined }) {
+  if (!sources || sources.length === 0) return null;
+  const label = sources.map((s) => SOURCE_LABELS[s] ?? s).join(" + ");
+  return (
+    <div
+      className="text-[10px] text-muted-foreground/60 mt-1 italic"
+      title={`Pedro vulde dit veld op basis van: ${label}`}
+    >
+      Bron: {label}
+    </div>
+  );
+}
+
 // Shared rules injected into every generation prompt
 const GENERATION_RULES = `\n\nALGEMENE REGELS (altijd opvolgen):
 - Gebruik NOOIT datums, deadlines, vervaldata, actiedata of tijdelijke aanbiedingen (bv. "nog maar tot vrijdag", "actie geldig t/m", "alleen deze week") TENZIJ de klant expliciet een specifieke datum heeft opgegeven in de briefing.
@@ -188,6 +231,9 @@ export function Campaign({
   // Auto-brief state — clientId comes from the parent now (global picker).
   const [autoFilling, setAutoFilling] = useState(false);
   const [autoBriefSource, setAutoBriefSource] = useState<string | null>(null);
+  // Per-field provenance from auto-brief — populated when Pedro fills the
+  // brief; surfaces as small "Bron: X" tags below each input field.
+  const [briefSources, setBriefSources] = useState<BriefSources>({});
 
   // Website analysis
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -254,6 +300,13 @@ export function Campaign({
 
   const updateBrief = (field: keyof BriefData, value: string) => {
     setBrief((prev) => ({ ...prev, [field]: value }));
+    // Manual edit invalidates the AI source provenance for this field.
+    setBriefSources((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
   };
 
   // Helper: build angles string for prompts
@@ -395,6 +448,7 @@ Gebruik dit als visuele basis voor de creatives.`;
   const loadClientState = useCallback(async function loadClientState(clientId: string, clientName: string) {
     setAutoBriefSource(null);
     setImportStatus(null);
+    setBriefSources({});
 
     // Fetch draft + saved versions in parallel
     let draftState: Record<string, unknown> | null = null;
@@ -637,6 +691,7 @@ Gebruik dit als visuele basis voor de creatives.`;
         websiteUrl: string
         driveLink: string
         source: string
+        _sources?: Record<string, string[]>
       };
       setBrief((prev) => ({
         ...prev,
@@ -648,6 +703,19 @@ Gebruik dit als visuele basis voor de creatives.`;
         usps: b.usps || prev.usps,
         hooksAM: b.marketingHooks || prev.hooksAM,
       }));
+      // Map API source-keys → form field-keys, then store. Brief UI
+      // renders a small "Bron: X" tag below each field that has sources.
+      if (b._sources) {
+        const next: BriefSources = {};
+        if (b._sources.bedrijf) next.bedrijf = b._sources.bedrijf as FieldSource[];
+        if (b._sources.sector) next.sector = b._sources.sector as FieldSource[];
+        if (b._sources.doelgroep) next.doel = b._sources.doelgroep as FieldSource[];
+        if (b._sources.pijnpunten) next.pijn = b._sources.pijnpunten as FieldSource[];
+        if (b._sources.aanbod) next.aanbod = b._sources.aanbod as FieldSource[];
+        if (b._sources.usps) next.usps = b._sources.usps as FieldSource[];
+        if (b._sources.marketingHooks) next.hooksAM = b._sources.marketingHooks as FieldSource[];
+        setBriefSources(next);
+      }
       if (b.websiteUrl) setWebsiteUrl(b.websiteUrl);
       if (b.driveLink) setDriveLink(b.driveLink);
       setAutoBriefSource(b.source || "");
@@ -1506,30 +1574,37 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
             <div className="flex flex-col gap-[5px]">
               <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Bedrijfsnaam</label>
               <input type="text" placeholder="bv. GJJ Riooltechniek BV" value={brief.bedrijf} onChange={(e) => updateBrief("bedrijf", e.target.value)} />
+              <SourceTag sources={briefSources.bedrijf} />
             </div>
             <div className="flex flex-col gap-[5px]">
               <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Sector</label>
               <input type="text" placeholder="bv. Loodgieter / riool" value={brief.sector} onChange={(e) => updateBrief("sector", e.target.value)} />
+              <SourceTag sources={briefSources.sector} />
             </div>
             <div className="flex flex-col gap-[5px]">
               <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Doelgroep</label>
               <textarea style={{ minHeight: 80 }} placeholder="bv. B2C huiseigenaren NL, 30+, spaargeld" value={brief.doel} onChange={(e) => updateBrief("doel", e.target.value)} />
+              <SourceTag sources={briefSources.doel} />
             </div>
             <div className="flex flex-col gap-[5px]">
               <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Pijnpunt</label>
               <textarea style={{ minHeight: 80 }} placeholder="bv. Verstopte afvoer, dure loodgieter" value={brief.pijn} onChange={(e) => updateBrief("pijn", e.target.value)} />
+              <SourceTag sources={briefSources.pijn} />
             </div>
             <div className="flex flex-col gap-[5px] col-span-2">
               <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Aanbod / dienst</label>
               <textarea placeholder="Beschrijf het aanbod, tarieven en werkwijze..." value={brief.aanbod} onChange={(e) => updateBrief("aanbod", e.target.value)} />
+              <SourceTag sources={briefSources.aanbod} />
             </div>
             <div className="flex flex-col gap-[5px]">
               <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">USP&apos;s</label>
               <textarea style={{ minHeight: 100 }} placeholder={"- Binnen 60 min op locatie\n- 24/7 bereikbaar\n- Vaste prijzen"} value={brief.usps} onChange={(e) => updateBrief("usps", e.target.value)} />
+              <SourceTag sources={briefSources.usps} />
             </div>
             <div className="flex flex-col gap-[5px]">
               <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Marketing hooks (account manager)</label>
               <textarea style={{ minHeight: 100 }} placeholder="Hooks vanuit kick-off update..." value={brief.hooksAM} onChange={(e) => updateBrief("hooksAM", e.target.value)} />
+              <SourceTag sources={briefSources.hooksAM} />
             </div>
             <div className="flex flex-col gap-[5px] col-span-2">
               <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Extra hooks - campaign manager</label>
