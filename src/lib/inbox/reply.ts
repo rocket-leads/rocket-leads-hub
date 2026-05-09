@@ -1,6 +1,7 @@
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { createAdminClient } from "@/lib/supabase/server"
 import { sendPushToUser } from "@/lib/notifications/push"
+import { updateTrengoContactName } from "@/lib/integrations/trengo"
 
 /**
  * Outbound reply path — sends a Hub reply back to the source platform AS the
@@ -458,6 +459,27 @@ export async function replyToInboxEvent(
     }).catch((e) => console.error("Internal-note mention fan-out failed:", e))
   }
 
+  // Smart contact-name extraction: when the AM types something like
+  // "Hi Evelyn" / "Ha Marian" in a free-text reply to a contact whose
+  // current name is weak (Unknown, raw phone number, email username), pull
+  // the greeting target as the new contact name and propagate to Trengo.
+  // Templates and internal notes are skipped (templates are formulaic and
+  // their first variable is usually the name already; internal notes are
+  // team-to-team and their @mentions point at staff, not the contact).
+  if (
+    !template &&
+    !internalNote &&
+    event.source === "trengo" &&
+    event.thread_key?.startsWith("trengo:contact:") &&
+    trimmed.length > 0
+  ) {
+    smartUpdateContactNameFromGreeting({
+      supabase,
+      threadKey: event.thread_key,
+      messageBody: trimmed,
+    }).catch((e) => console.error("Smart name extraction failed:", e))
+  }
+
   return {
     source: event.source,
     outboundMsgId: outboundId,
@@ -582,4 +604,98 @@ function renderTemplatePreview(template: TemplateSendOption): string {
     const i = parseInt(idx, 10) - 1
     return template.params[i] ?? ""
   })
+}
+
+// --- Smart contact-name extraction --------------------------------------
+
+/**
+ * Pull a likely first-name out of an outbound greeting like "Hi Evelyn,",
+ * "Ha Marian", "Hey Pieter!". Returns null when no greeting is found OR
+ * the captured token is in a stoplist of false positives (Team, Support,
+ * Allemaal, etc.). Case-insensitive on the greeting word; the captured
+ * name must start with a capital letter to avoid grabbing "hi friends" or
+ * "hello there" type phrases.
+ */
+function extractGreetingName(message: string): string | null {
+  if (!message) return null
+  const re =
+    /\b(?:hi|hey|hello|hallo|ha|beste|dag|goedemorgen|goedemiddag|goedenavond)\s+([A-ZÀ-Þ][A-Za-zÀ-ÖØ-öø-ÿ'-]{1,29})(?=\s*[,.!?\n]|$)/i
+  const m = message.match(re)
+  if (!m) return null
+  const candidate = m[1].trim()
+  const STOPLIST = new Set([
+    "Team", "Support", "Admin", "All", "Allemaal", "Everyone", "Iedereen",
+    "Sir", "Madam", "Mevrouw", "Meneer", "Daar", "There",
+    "Friends", "Vrienden", "Folks", "Mensen", "People", "Lieve",
+  ])
+  if (STOPLIST.has(candidate)) return null
+  return candidate
+}
+
+/** Heuristic: is the contact's current cached name a "weak" placeholder we
+ *  should overwrite? Phone numbers (+31…), email addresses/usernames, and
+ *  the literal "Unknown" all count as weak. A real human name (Capital
+ *  start, no digits, doesn't match the external id) is treated as strong
+ *  and left alone — manual edits via the editable header always win. */
+function isCurrentNameWeak(currentName: string | null, authorExternal: string | null): boolean {
+  const t = (currentName ?? "").trim()
+  if (!t) return true
+  if (t === "Unknown") return true
+  if (/^\+?\d/.test(t)) return true // starts with phone digit
+  if (/^[\(\d\s\-\+]+$/.test(t)) return true // pure phone-ish chars
+  if (/@/.test(t)) return true // email-as-name
+  if (authorExternal) {
+    const ext = authorExternal.toLowerCase().trim()
+    if (t.toLowerCase() === ext) return true
+    const emailUser = ext.split("@")[0]
+    if (emailUser && t.toLowerCase() === emailUser) return true
+  }
+  return false
+}
+
+/** Best-effort: when the AM types a greeting in a free-text reply, pull the
+ *  name and propagate it to the Trengo contact (and Hub-side mirror) — but
+ *  only when the existing name is a weak placeholder. Fire-and-forget; never
+ *  throws because send already succeeded. */
+async function smartUpdateContactNameFromGreeting(args: {
+  supabase: Awaited<ReturnType<typeof createAdminClient>>
+  threadKey: string
+  messageBody: string
+}): Promise<void> {
+  const extracted = extractGreetingName(args.messageBody)
+  if (!extracted) return
+
+  const contactId = args.threadKey.replace(/^trengo:contact:/, "")
+  if (!contactId) return
+
+  // Check the latest contact-authored event for the cached display name +
+  // raw author_external (phone / email). Outbound mirrors are skipped.
+  const { data } = await args.supabase
+    .from("inbox_events")
+    .select("author_name_cached, author_external")
+    .eq("thread_key", args.threadKey)
+    .neq("author_kind", "rl_team")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ author_name_cached: string | null; author_external: string | null }>()
+  if (!data) return
+
+  if (!isCurrentNameWeak(data.author_name_cached, data.author_external)) return
+  // Don't update if the extracted name already appears in the current name
+  // (e.g. "Evelyn van Dijk" — we'd just be re-setting a more specific name
+  // to the first token).
+  if (data.author_name_cached?.toLowerCase().includes(extracted.toLowerCase())) return
+
+  try {
+    await updateTrengoContactName(contactId, extracted)
+    // Mirror the new name into Hub-side rows so the thread list picks it
+    // up immediately (without waiting for the next inbound webhook).
+    await args.supabase
+      .from("inbox_events")
+      .update({ author_name_cached: extracted })
+      .eq("thread_key", args.threadKey)
+      .neq("author_kind", "rl_team")
+  } catch (e) {
+    console.error("smartUpdateContactNameFromGreeting: Trengo write failed", e)
+  }
 }

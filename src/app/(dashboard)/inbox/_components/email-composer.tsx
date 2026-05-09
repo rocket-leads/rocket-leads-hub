@@ -1,11 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useEditor, EditorContent, type Editor } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Underline from "@tiptap/extension-underline"
 import Link from "@tiptap/extension-link"
+import Image from "@tiptap/extension-image"
 import {
   Bold,
   Italic,
@@ -37,6 +38,10 @@ type Props = {
   /** Trengo channel id for the email channel this thread belongs to. Drives
    *  the signature lookup (cached server-side for 5 min). */
   channelId: number | null
+  /** Thread key — used to fetch the latest ticket subject for prefill so
+   *  the composer behaves like a normal mail client (Re: <original> with
+   *  inline edit). */
+  threadKey: string
   /** Display "To" label — usually the contact's name + email from the
    *  thread header. Read-only on reply (Trengo binds it to the ticket). */
   toDisplay: string
@@ -70,6 +75,7 @@ type Props = {
  */
 export function EmailComposer({
   channelId,
+  threadKey,
   toDisplay,
   subject,
   onSubjectChange,
@@ -96,6 +102,32 @@ export function EmailComposer({
 
   const channel = channelQuery.data ?? null
 
+  // Fetch the latest ticket subject so we can prefill `Re: <original>` —
+  // matches normal mail client UX. AM can edit inline before sending.
+  const subjectQuery = useQuery<{ subject: string | null }>({
+    queryKey: ["thread-subject", threadKey],
+    queryFn: () =>
+      fetch(`/api/inbox/threads/${encodeURIComponent(threadKey)}/subject`).then((r) => r.json()),
+    enabled: !!threadKey,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Prefill the subject input ONCE per thread (when the AM hasn't typed
+  // anything yet). Don't stomp manual edits — once subject is non-empty we
+  // back off forever for this mount.
+  const subjectPrefilledRef = useRef(false)
+  useEffect(() => {
+    if (subjectPrefilledRef.current) return
+    if (subject.trim().length > 0) {
+      subjectPrefilledRef.current = true
+      return
+    }
+    const fetched = subjectQuery.data?.subject
+    if (!fetched) return
+    onSubjectChange(buildReplySubject(fetched))
+    subjectPrefilledRef.current = true
+  }, [subject, subjectQuery.data?.subject, onSubjectChange])
+
   // TipTap editor instance. StarterKit gives bold/italic/strike/headings/
   // lists/blockquote/codeblock/history; Underline + Link added on top
   // because they're table-stakes for email (and not in StarterKit).
@@ -108,6 +140,15 @@ export function EmailComposer({
         openOnClick: false,
         autolink: true,
         HTMLAttributes: { class: "underline text-primary" },
+      }),
+      // Inline images. Required for the auto-injected channel signature to
+      // render — Trengo signatures embed brand graphics as <img src="...">.
+      // Without this extension TipTap silently drops the <img> nodes on
+      // setContent and the AM sees text-only signatures.
+      Image.configure({
+        inline: true,
+        allowBase64: true,
+        HTMLAttributes: { class: "inline-block max-w-full h-auto" },
       }),
     ],
     content: htmlBody,
@@ -396,5 +437,14 @@ function formatFrom(c: ChannelInfo): string {
   const name = c.senderNamePersonal ?? c.senderName ?? c.title
   if (c.senderEmail) return `${name} <${c.senderEmail}>`
   return name
+}
+
+/** Build a reply subject by prepending `Re: ` unless the source already
+ *  starts with one (case-insensitive, also tolerates `RE:`, `re:`, `re :`).
+ *  Strips outer whitespace. */
+function buildReplySubject(source: string): string {
+  const s = source.trim()
+  if (/^re\s*:/i.test(s)) return s
+  return `Re: ${s}`
 }
 

@@ -1185,6 +1185,19 @@ function ThreadMessages({
                 : `via ${thread.channelName}`}
             </p>
           )}
+          {/* Unlinked threads (Trengo contact has no matching Hub client)
+              get an inline "Link to client" picker so the AM can attach
+              the conversation without leaving the inbox. Hidden once a
+              link exists or for non-Trengo sources. */}
+          {!thread.clientName && thread.source === "trengo" && (
+            <LinkToClientPicker
+              threadKey={thread.threadKey}
+              onLinked={() => {
+                queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
+                queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
+              }}
+            />
+          )}
         </div>
         <span className="text-[11px] text-muted-foreground/60 tabular-nums shrink-0">
           {thread.totalCount} {thread.totalCount === 1 ? "message" : "messages"}
@@ -1355,6 +1368,7 @@ function ThreadMessages({
                 // the editor's internal state (TipTap is uncontrolled).
                 key={thread.threadKey}
                 channelId={thread.trengoChannelId}
+                threadKey={thread.threadKey}
                 toDisplay={thread.primaryName}
                 subject={emailSubject}
                 onSubjectChange={setEmailSubject}
@@ -1856,6 +1870,127 @@ function renderTemplate(message: string, params: string[]): string {
 }
 
 // --- Pieces --------------------------------------------------------------
+
+/** Inline picker for assigning an unlinked Trengo thread to a Hub client.
+ *  Renders as a small "Link to client …" affordance under the conversation
+ *  header; expands to a search-as-you-type list of clients on click. The
+ *  link is appended (not replaces) — `clients.trengo_contact_ids` is a
+ *  TEXT[] so a single client can be reachable on multiple Trengo contacts.
+ *
+ *  Conflict handling: if the contact is already linked to a different
+ *  client, the API returns 409 with the existing client's name; the picker
+ *  surfaces that as an inline error. */
+function LinkToClientPicker({
+  threadKey,
+  onLinked,
+}: {
+  threadKey: string
+  onLinked: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  const clientsQuery = useQuery<Array<{ monday_item_id: string; name: string }>>({
+    queryKey: ["inbox-link-clients"],
+    queryFn: () => fetch("/api/clients/search").then((r) => r.json()),
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Close on outside click.
+  useEffect(() => {
+    if (!open) return
+    function onClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", onClick)
+    return () => document.removeEventListener("mousedown", onClick)
+  }, [open])
+
+  const filtered = (clientsQuery.data ?? []).filter((c) =>
+    c.name.toLowerCase().includes(query.trim().toLowerCase()),
+  )
+
+  async function link(clientId: string) {
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/inbox/threads/${encodeURIComponent(threadKey)}/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+        existingClientName?: string
+      }
+      if (!res.ok) {
+        setError(data.error ?? `Link failed (${res.status})`)
+        return
+      }
+      setOpen(false)
+      setQuery("")
+      onLinked()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Link failed")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div ref={containerRef} className="relative mt-1.5">
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium hover:bg-amber-500/10"
+        >
+          Link to client…
+        </button>
+      ) : (
+        <div className="rounded-md border border-border bg-popover shadow-md p-2 w-[280px] max-w-full">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search clients…"
+            autoFocus
+            className="w-full h-7 px-2 mb-1.5 rounded border border-input bg-background text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          />
+          {error && (
+            <p className="text-[11px] text-destructive mb-1.5 px-1">{error}</p>
+          )}
+          <div className="max-h-[260px] overflow-y-auto space-y-0.5">
+            {clientsQuery.isLoading ? (
+              <p className="text-[11px] text-muted-foreground px-1.5 py-1">Loading…</p>
+            ) : filtered.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground px-1.5 py-1">No matches</p>
+            ) : (
+              filtered.slice(0, 50).map((c) => (
+                <button
+                  key={c.monday_item_id}
+                  type="button"
+                  onClick={() => link(c.monday_item_id)}
+                  disabled={submitting}
+                  className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-muted disabled:opacity-50 truncate"
+                >
+                  {c.name}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 /** Inline-editable contact name for the conversation header. Click the
  *  bold name to switch to an input; Enter or blur saves; Escape cancels.
