@@ -5,6 +5,7 @@ import { parseScriptText, generateScriptDocx, type ScriptVideo } from "@/lib/ped
 import { clientSlug, buildClientMD, parseClientMD, type ClientData, type ClientCampaign } from "@/lib/pedro/client-database";
 import type { PedroClient } from "../page";
 import { StageActionBar } from "./stage-action-bar";
+import { saveIfChanged } from "@/lib/pedro/save-if-changed";
 
 // ── Types ──
 interface BriefData {
@@ -581,33 +582,24 @@ Gebruik dit als visuele basis voor de creatives.`;
   ]);
 
   // Save current stage data as a new explicit version, then navigate to
-  // the next section. Combines the two-layer-storage commit (POST to
-  // /api/pedro/saved-versions) with section navigation in a single click.
+  // the next section. Skips the POST when nothing has changed since the
+  // latest existing version (Roy 2026-05-09 — "geen onnodige versies").
   // Tab navigation up top stays as the "navigate without saving" escape
-  // hatch — Roy's directive 2026-05-09.
+  // hatch.
   async function saveStageAndContinue(args: {
     stage: "brief" | "angles" | "script" | "creatives" | "lp" | "ad-copy";
     data: unknown;
     nextSection: SectionName | "research";
   }) {
-    if (selectedClientId) {
-      try {
-        const res = await fetch("/api/pedro/saved-versions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            clientId: selectedClientId,
-            stage: args.stage,
-            data: args.data,
-          }),
-        });
-        if (res.ok) {
-          const json = await res.json();
-          showToast(`✓ Opgeslagen als v${json.version?.version_number ?? "?"}`);
-        }
-      } catch {
-        // silent — navigation still happens so the user isn't blocked
-      }
+    const result = await saveIfChanged({
+      clientId: selectedClientId,
+      stage: args.stage,
+      data: args.data,
+    });
+    if (result.saved) {
+      showToast(`✓ Opgeslagen als v${result.versionNumber}`);
+    } else if (result.reason === "unchanged") {
+      showToast(`v${result.versionNumber} ongewijzigd — geen nieuwe versie`);
     }
     setSection(args.nextSection);
   }
@@ -1114,27 +1106,17 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
 
   // ── Step 6: Ad copy (uses brief + angle + script + LP headline/CTA) ──
   async function doAdCopy() {
-    // Save the LP draft as a new version on the way to ad-copy. Same
-    // pattern as the other stage transitions — primary CTA does both
-    // commit + navigate. Tab-nav up top remains the no-save escape.
+    // Save the LP draft as a new version on the way to ad-copy — only
+    // when the LP changed since the last save. Skip-when-unchanged is
+    // shared with every other Pedro save (saveIfChanged helper).
     if (selectedClientId && lpPrompt) {
-      try {
-        const saveRes = await fetch("/api/pedro/saved-versions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            clientId: selectedClientId,
-            stage: "lp",
-            data: { stijl, lengte, pixelId, webhookUrl, utmStr, lpPrompt },
-          }),
-        });
-        if (saveRes.ok) {
-          const json = await saveRes.json();
-          showToast(`✓ LP opgeslagen als v${json.version?.version_number ?? "?"}`);
-        }
-      } catch {
-        /* silent — ad-copy generation continues regardless */
-      }
+      const r = await saveIfChanged({
+        clientId: selectedClientId,
+        stage: "lp",
+        data: { stijl, lengte, pixelId, webhookUrl, utmStr, lpPrompt },
+      });
+      if (r.saved) showToast(`✓ LP opgeslagen als v${r.versionNumber}`);
+      else if (r.reason === "unchanged") showToast(`LP v${r.versionNumber} ongewijzigd`);
     }
 
     goTo(6);

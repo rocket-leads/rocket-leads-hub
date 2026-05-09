@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { StageActionBar } from "./stage-action-bar";
+import { saveIfChanged } from "@/lib/pedro/save-if-changed";
 
 interface AdResult {
   title: string;
@@ -582,30 +583,13 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
                 type="button"
                 onClick={async () => {
                   if (clientId && result) {
-                    try {
-                      const res = await fetch("/api/pedro/saved-versions", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          clientId,
-                          stage: "research",
-                          data: {
-                            branche,
-                            klantnaam,
-                            doelgroep,
-                            propositie,
-                            extraContext,
-                            research: result,
-                          },
-                        }),
-                      });
-                      if (res.ok) {
-                        const json = await res.json();
-                        showToast(`✓ Opgeslagen als v${json.version?.version_number ?? "?"}`);
-                      }
-                    } catch {
-                      /* silent — navigation still happens */
-                    }
+                    const r = await saveIfChanged({
+                      clientId,
+                      stage: "research",
+                      data: { branche, klantnaam, doelgroep, propositie, extraContext, research: result },
+                    });
+                    if (r.saved) showToast(`✓ Opgeslagen als v${r.versionNumber}`);
+                    else if (r.reason === "unchanged") showToast(`v${r.versionNumber} ongewijzigd — geen nieuwe versie`);
                   }
                   onContinue();
                 }}

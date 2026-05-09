@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Save, History, AlertCircle, Check } from "lucide-react"
+import { saveIfChanged } from "@/lib/pedro/save-if-changed"
 
 /**
  * Per-stage action bar for Pedro Campaign tabs.
@@ -83,33 +84,24 @@ export function StageActionBar({ clientId, stage, getCurrentData, busy }: Props)
     if (!clientId) return
     setSaving(true)
     setFeedback(null)
-    try {
-      const res = await fetch("/api/pedro/saved-versions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId,
-          stage,
-          data: getCurrentData(),
-        }),
+    const r = await saveIfChanged({
+      clientId,
+      stage,
+      data: getCurrentData(),
+    })
+    if (r.saved) {
+      setLatest({
+        version_number: r.versionNumber,
+        saved_at: new Date().toISOString(),
+        label: null,
       })
-      const data = await res.json()
-      if (!res.ok || data.error) {
-        setFeedback({ kind: "err", msg: data.error || `HTTP ${res.status}` })
-      } else {
-        setLatest({
-          version_number: data.version?.version_number ?? (latest?.version_number ?? 0) + 1,
-          saved_at: data.version?.saved_at ?? new Date().toISOString(),
-          label: null,
-        })
-        setFeedback({
-          kind: "ok",
-          msg: `Opgeslagen als v${data.version?.version_number ?? "?"}`,
-        })
-        setTimeout(() => setFeedback(null), 3500)
-      }
-    } catch (e) {
-      setFeedback({ kind: "err", msg: e instanceof Error ? e.message : "Opslaan mislukt" })
+      setFeedback({ kind: "ok", msg: `Opgeslagen als v${r.versionNumber}` })
+      setTimeout(() => setFeedback(null), 3500)
+    } else if (r.reason === "unchanged") {
+      setFeedback({ kind: "ok", msg: `v${r.versionNumber} ongewijzigd — geen nieuwe versie` })
+      setTimeout(() => setFeedback(null), 3500)
+    } else {
+      setFeedback({ kind: "err", msg: r.message || "Opslaan mislukt" })
     }
     setSaving(false)
   }
