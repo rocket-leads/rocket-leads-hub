@@ -141,20 +141,22 @@ function buildContextBlock(ctx: ClientAiContext): string {
 
 // ─── Registry ────────────────────────────────────────────────────────────
 
+/**
+ * Skip-generate gate shared by every insight type that needs at least
+ * minimal signal to be worth a Claude call. Same gate currently used by
+ * `watchlist_action_note`.
+ */
+function hasMeaningfulSignal(ctx: ClientAiContext): boolean {
+  const { category } = categorize(ctx.client, ctx.kpi ?? undefined)
+  return category !== "no-data"
+}
+
 export const INSIGHT_REGISTRY: Record<InsightType, InsightRegistryEntry> = {
   watchlist_action_note: {
     model: "claude-haiku-4-5-20251001",
     maxTokens: 200,
-    // Bump when the system prompt below changes meaningfully so old rows
-    // regenerate. Currently v1 = first Pedro-unified version.
     promptVersion: 1,
-    shouldGenerate: (ctx) => {
-      // Only generate for clients that actually have signal. categorize()
-      // returning "no-data" means the row will show a static reason — no
-      // point asking Claude.
-      const { category } = categorize(ctx.client, ctx.kpi ?? undefined)
-      return category !== "no-data"
-    },
+    shouldGenerate: hasMeaningfulSignal,
     systemPrompt: () =>
       `You are a senior campaign manager at Rocket Leads. Generate ONE 1-line AI Note for the Watch List row this client occupies.
 
@@ -175,6 +177,100 @@ ${AI_GUARDRAILS_PROMPT}`,
         buildContextBlock(ctx),
         ``,
         `Generate the AI Note line now. One sentence, plain text, no preamble.`,
+      ].join("\n")
+    },
+  },
+
+  client_overview: {
+    model: "claude-haiku-4-5-20251001",
+    maxTokens: 350,
+    promptVersion: 1,
+    // Generate even for no-data clients — a "client paused, no recent
+    // activity" overview is still informative on the client detail header.
+    systemPrompt: () =>
+      `You are Pedro, the Rocket Leads campaign-manager AI. Generate a 2-3 sentence "current state of the union" overview for this client — the kind of whisper a senior CM gives to a colleague about to step into the relationship.
+
+Surface what's actually happening NOW: are they performing, where's the friction, what's the next thing to watch. Bias toward concrete signals from Monday updates / Trengo / Fathom meetings / inbox events when present, fall back to KPI shape when those are missing.
+
+Tone: factual, slightly conversational, no sales-deck adjectives. Don't pad with platitudes. If the client is genuinely unremarkable, say so concisely.
+
+Output as 2-3 sentences of plain prose, no bullets, no preamble. Under 90 words total.
+
+${AI_GUARDRAILS_PROMPT}`,
+    userPrompt: (ctx) => {
+      const { category, insight } = categorize(ctx.client, ctx.kpi ?? undefined)
+      return [
+        `CLIENT: ${ctx.client.name} (${ctx.client.mondayItemId})`,
+        `WATCHLIST CATEGORY: ${category}`,
+        `WATCHLIST INSIGHT: "${insight}"`,
+        ``,
+        buildContextBlock(ctx),
+        ``,
+        `Write the 2-3 sentence overview now. Plain prose, no bullets.`,
+      ].join("\n")
+    },
+  },
+
+  client_optimisation_summary: {
+    model: "claude-haiku-4-5-20251001",
+    maxTokens: 250,
+    promptVersion: 1,
+    shouldGenerate: hasMeaningfulSignal,
+    systemPrompt: () =>
+      `You are Pedro, the Rocket Leads optimisation AI. Output a 1-2 sentence concrete optimisation suggestion for this client — the SHORT version that lives in side-rails (Watch List preview, Home dashboard quick-view).
+
+The full structured proposal lives elsewhere — your job is the elevator pitch. Pick the single highest-leverage move from the data: pause a specific ad, iterate on a winning hook, refresh creative on a stale ad set, or test a new angle. Reference ad names / UTMs when present.
+
+If the client has no actionable signal (no spend, no leads, no Monday updates), output exactly: "Insufficient signal — no concrete optimisation yet."
+
+Plain prose, no bullets, no JSON, no preamble. Under 60 words.
+
+${AI_GUARDRAILS_PROMPT}`,
+    userPrompt: (ctx) => {
+      const { category, insight } = categorize(ctx.client, ctx.kpi ?? undefined)
+      return [
+        `CLIENT: ${ctx.client.name} (${ctx.client.mondayItemId})`,
+        `WATCHLIST CATEGORY: ${category}`,
+        `WATCHLIST INSIGHT: "${insight}"`,
+        ``,
+        buildContextBlock(ctx),
+        ``,
+        `Write the 1-2 sentence optimisation now.`,
+      ].join("\n")
+    },
+  },
+
+  client_lead_quality_summary: {
+    model: "claude-haiku-4-5-20251001",
+    maxTokens: 250,
+    promptVersion: 1,
+    shouldGenerate: (ctx) => {
+      // Lead quality only makes sense when Monday CRM is connected —
+      // otherwise we'd be guessing. Skip without CRM.
+      return ctx.sources.mondayUpdates
+    },
+    systemPrompt: () =>
+      `You are Pedro, the Rocket Leads lead-quality AI. Output a 1-2 sentence verdict on the leads currently coming in for this client — based on Monday CRM updates and (when present) Trengo conversations.
+
+Two angles to weigh:
+- Quantity efficiency = is CPL / CPA in line with their typical baseline? (KPI block)
+- Quality = what do the AM/setter Monday updates actually say? Look for repeated patterns: "geen budget", "niet bereikbaar", "niet geinteresseerd", "afspraak ingepland", "deal closed", etc.
+
+Lead with the dominant pattern. Cite a specific UTM/ad when one stands out. If the lead-quality signal is mixed (good quantity but bad quality, or vice versa), say so plainly.
+
+Plain prose, no bullets, no JSON. Under 60 words.
+
+${AI_GUARDRAILS_PROMPT}`,
+    userPrompt: (ctx) => {
+      const { category, insight } = categorize(ctx.client, ctx.kpi ?? undefined)
+      return [
+        `CLIENT: ${ctx.client.name} (${ctx.client.mondayItemId})`,
+        `WATCHLIST CATEGORY: ${category}`,
+        `WATCHLIST INSIGHT: "${insight}"`,
+        ``,
+        buildContextBlock(ctx),
+        ``,
+        `Write the 1-2 sentence lead-quality verdict now.`,
       ].join("\n")
     },
   },

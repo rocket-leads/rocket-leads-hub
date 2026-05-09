@@ -3,6 +3,7 @@ import { readCache, writeCache } from "@/lib/cache"
 import Anthropic from "@anthropic-ai/sdk"
 import { readFile } from "fs/promises"
 import { join } from "path"
+import { AI_GUARDRAILS_PROMPT, validateAiOutput } from "@/lib/ai/guardrails"
 
 // AI proposals are cached for 24h. The first viewer of the day for a given
 // client (or the daily cron) populates the cache; everyone else hits it.
@@ -198,10 +199,10 @@ Return a SINGLE JSON OBJECT with this exact shape:
 **Quantity = COST EFFICIENCY, not volume.**
 - NEVER reference raw lead counts or volume changes — those are a function of ad budget.
 - **The ONLY cost signal right now is CPL (cost per lead).**
-- CPA (cost per appointment) is intentionally OFF-LIMITS as a signal — appointment data is too sparse to be reliable. Do not write CPA-based week-over-week comparisons or CPA-driven verdicts. Appointment counts may appear descriptively but never as cost ratios.
 - Compare current CPL (7d) against 14d and 30d baselines.
 - ±25% change is normal Meta noise. Only flag changes ≥25%.
-- quantity.headline must lead with CPL numbers, not lead counts and not CPA.
+- quantity.headline must lead with CPL numbers, not lead counts.
+(CPA off-limits as cost driver — see canonical guardrails below.)
 
 **Quality = Monday update sentiment + conversion data.**
 - quality.verdict is primarily based on Monday update sentiment per UTM.
@@ -260,18 +261,7 @@ This is non-negotiable. A CM glancing at the title must immediately see the numb
 
 Return 2-4 proposals max (NEVER more than 4). Each one must be executable without further research.
 
-## CRITICAL — Data awareness: never assert from missing data
-The user prompt includes \`Has CRM data: true|false\`. When **false**, the client has no Monday CRM linked (or it returned no usable data), so:
-- \`appointments\`, \`bookedCalls\`, \`takenCalls\`, \`deals\`, \`revenue\`, \`roi\`, \`crPercent\`, \`suPercent\`, and \`qrPercent\` in the KPI blocks are NOT real zeros — they're missing data masquerading as zero. Treat them as UNKNOWN.
-- The Lead Feedback block will be empty for the same reason.
-- NEVER claim "0 appointments", "no appts", "audience mismatch — no appts", "leads aren't converting", "no qualified leads", "low show-up rate", or any conversion-rate / appointment-based observation. The data simply isn't there.
-- Lead-quality / Monday-update sentiment claims are also off-limits — there are no updates to read.
-- Restrict your analysis and proposals to Meta-trackable signals: CPL trend (7d/14d/30d), ad-fatigue (CTR decay), creative variation depth, frequency, hook iteration, angle exhaustion based on CPL plateaus.
-- You may surface the absence itself as one proposal: \`category: "other"\`, "Verify offline with client whether appointments are being booked — no Monday CRM linked, conversion data unavailable" — but only when it's the most useful insight.
-
-When **Has CRM data: true**, all metrics are reliable; use them freely (with hard numbers + window labels).
-
-A confidently-written claim that depends on missing data is the worst possible failure mode — it makes the campaign manager distrust every other note. Better to write a shorter, narrower analysis that's correct than a complete one that's partly fictional.
+(Data-awareness rules — never assert from missing data, including the Has CRM data: false branch — are in the canonical guardrails below.)
 
 ## CRITICAL — Time awareness for client context
 Client knowledge base entries and Monday updates may contain information from months ago. Apply these time rules:
@@ -291,16 +281,13 @@ Scan updates for patterns per UTM:
 - Positive: "goede lead", "afspraak ingeplant", "interesse", "deal"
 - Match UTM → ad name → performance to identify which specific ad brings good/bad leads
 
-## Rocket Leads budget reality
-- Fixed budgets: €1,000–€3,000/month. NEVER recommend more spend.
-- Lever is ALWAYS: better creatives, new angles, funnel changes — NOT more budget.
-- Budget can only be REALLOCATED within the same total.
-
 ## Rocket Leads Campaign Framework
 ${campaignsKnowledge.slice(0, 3000)}
 
 ## Rocket Leads Process
-${processKnowledge.slice(0, 2000)}`
+${processKnowledge.slice(0, 2000)}
+
+${AI_GUARDRAILS_PROMPT}`
 
   const userPrompt = `## Client: ${input.clientName}
 Board type: ${input.boardType}
@@ -355,6 +342,19 @@ Generate the analysis and proposals. Return ONLY the JSON object (with leadAnaly
   })
 
   const text = message.content[0].type === "text" ? message.content[0].text : ""
+
+  // Run the canonical guardrails on the raw output. Violations are LOGGED
+  // not fatal — the structured-JSON output of this generator predates the
+  // guardrail conventions, so a strict ban would block legitimate proposals
+  // mid-migration. Once the AI consistently respects the rules across this
+  // surface we can promote violations to hard failures.
+  const guardrailViolations = validateAiOutput(text, { mondayCrmConnected: input.hasCrm })
+  if (guardrailViolations.length > 0) {
+    console.warn(
+      `[proposals/generate] ${guardrailViolations.length} guardrail violations for ${input.mondayItemId}:`,
+      guardrailViolations.map((v) => v.rule).join(", "),
+    )
+  }
 
   // The AI returns a JSON object: { leadAnalysis: {...}, insights: [...] }
   const jsonMatch = text.match(/\{[\s\S]*\}/)
