@@ -228,6 +228,43 @@ export async function fetchWaTemplates(channelId: number): Promise<TrengoWaTempl
   return all.sort((a, b) => a.title.localeCompare(b.title))
 }
 
+/**
+ * Update a Trengo contact's name. Used by the inbox composer's editable
+ * conversation header — the AM types a real name over an "Unknown"/phone-
+ * number contact and we propagate it back to Trengo so every workspace
+ * surface picks it up. System token (workspace-wide write); contact updates
+ * aren't per-agent attributed in Trengo.
+ *
+ * Trengo's documented verb for contact updates is PATCH; falls back to PUT
+ * if PATCH 405's (some accounts have older API versions exposed). Throws on
+ * non-2xx so callers can surface the error inline.
+ */
+export async function updateTrengoContactName(
+  contactId: number | string,
+  name: string,
+): Promise<{ id: number; name: string }> {
+  const token = (await getTrengoToken()).trim()
+  const url = `https://app.trengo.com/api/v2/contacts/${contactId}`
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  }
+  const body = JSON.stringify({ name })
+
+  let res = await fetch(url, { method: "PATCH", headers, body })
+  if (res.status === 405) {
+    res = await fetch(url, { method: "PUT", headers, body })
+  }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "")
+    throw new Error(`Trengo contact update failed (${res.status}): ${txt.slice(0, 200)}`)
+  }
+  const data = (await res.json()) as { id?: number | string; name?: string; data?: { id?: number; name?: string } }
+  const id = Number(data.id ?? data.data?.id ?? contactId)
+  return { id, name: (data.name ?? data.data?.name ?? name) as string }
+}
+
 export async function fetchMessages(ticketId: number): Promise<TrengoMessage[]> {
   const all: TrengoMessage[] = []
   let page = 1

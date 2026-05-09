@@ -678,9 +678,12 @@ function ThreadMessages({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   // WhatsApp composer state: only active when channelKind === "whatsapp".
-  // Default mode is "default" (free text); flips to "template" automatically
-  // when the 24h window is closed.
-  const [waMode, setWaMode] = useState<WaMode>("default")
+  // Stored as user PREFERENCE — initial default is "default" (free text).
+  // Window-closed → render-time override forces Template (Meta requirement);
+  // never written back into state, so opening the window again snaps back
+  // to whatever the user actually picked. Per Roy: "Als het Conversation
+  // Window open is, moet die altijd standaard op default staan."
+  const [userWaMode, setUserWaMode] = useState<WaMode>("default")
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   const [templateParams, setTemplateParams] = useState<string[]>([])
   // Email composer state — only active when channelKind === "email". Lifted
@@ -727,7 +730,7 @@ function ThreadMessages({
       {
         reply: string
         composerMode: ComposerMode
-        waMode: WaMode
+        userWaMode: WaMode
         selectedTemplateId: number | null
         templateParams: string[]
         emailSubject: string
@@ -745,7 +748,7 @@ function ThreadMessages({
   const stateSnapshotRef = useRef({
     reply,
     composerMode,
-    waMode,
+    userWaMode,
     selectedTemplateId,
     templateParams,
     emailSubject,
@@ -756,7 +759,7 @@ function ThreadMessages({
   stateSnapshotRef.current = {
     reply,
     composerMode,
-    waMode,
+    userWaMode,
     selectedTemplateId,
     templateParams,
     emailSubject,
@@ -778,7 +781,7 @@ function ThreadMessages({
     const draft = draftsRef.current.get(newKey)
     setReply(draft?.reply ?? "")
     setComposerMode(draft?.composerMode ?? "reply")
-    setWaMode(draft?.waMode ?? "default")
+    setUserWaMode(draft?.userWaMode ?? "default")
     setSelectedTemplateId(draft?.selectedTemplateId ?? null)
     setTemplateParams(draft?.templateParams ?? [])
     setEmailSubject(draft?.emailSubject ?? "")
@@ -903,22 +906,13 @@ function ThreadMessages({
     return Math.max(0, Math.ceil(ms / (60 * 60 * 1000)))
   }, [isWhatsApp, windowOpen, latestInboundIso])
 
-  // When the window is closed, Default mode is impossible — force Template.
-  // Doing this in an effect (rather than overriding waMode at read-time)
-  // keeps the radio buttons single-source-of-truth and lets the user see
-  // the locked state.
-  useEffect(() => {
-    if (isWhatsApp && !windowOpen && waMode !== "template") {
-      setWaMode("template")
-    }
-  }, [isWhatsApp, windowOpen, waMode])
-
-  // Internal-note + Template are mutually exclusive (templates can't be
-  // internal notes — Trengo template send doesn't carry the flag). When the
-  // user flips to Internal note, snap WhatsApp mode back to Default.
-  useEffect(() => {
-    if (isInternal && waMode !== "default") setWaMode("default")
-  }, [isInternal, waMode])
+  // Effective WhatsApp mode: render-time override that forces Template when
+  // the window is closed (Meta requirement) but preserves the user's
+  // preference in `userWaMode` so reopening the window snaps back to their
+  // last choice (Default by default). Internal-note mode also forces
+  // Default — Trengo templates can't be sent as internal notes.
+  const waMode: WaMode =
+    isInternal ? "default" : isWhatsApp && !windowOpen ? "template" : userWaMode
 
   // Templates list: lazy-loaded the moment the user arrives on a WA thread
   // (cheap — server-side cached for 5 min). Always-fetch is simpler than
@@ -1154,10 +1148,32 @@ function ThreadMessages({
     <div className="rounded-xl border border-border bg-card shadow-sm flex flex-col overflow-hidden">
       {/* Header */}
       <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-3 bg-muted/20 shrink-0">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <SourceIcon thread={thread} />
-            <p className="text-sm font-semibold truncate">{thread.primaryName}</p>
+            <EditableContactName
+              key={thread.threadKey}
+              displayName={thread.primaryName}
+              editable={thread.source === "trengo"}
+              onSave={async (next) => {
+                const res = await fetch(
+                  `/api/inbox/threads/${encodeURIComponent(thread.threadKey)}/contact`,
+                  {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: next }),
+                  },
+                )
+                if (!res.ok) {
+                  const data = (await res.json().catch(() => ({}))) as { error?: string }
+                  throw new Error(data.error ?? `Update failed (${res.status})`)
+                }
+                // Refetch threads + thread messages so the new name surfaces
+                // in the list and the bubble author labels.
+                queryClient.invalidateQueries({ queryKey: ["inbox-threads"] })
+                queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
+              }}
+            />
             <ChannelBadge thread={thread} />
           </div>
           {(thread.clientName || thread.channelName) && (
@@ -1229,15 +1245,15 @@ function ThreadMessages({
               notifications to tagged teammates. Slack threads hide the
               toggle entirely — Slack has no native internal-note concept. */}
           {supportsInternalNote && (
-            <div className="inline-flex items-center rounded-md border border-border/60 bg-muted/30 p-0.5 mb-2">
+            <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5 mb-3 shadow-sm">
               <button
                 type="button"
                 onClick={() => setComposerMode("reply")}
                 className={cn(
-                  "px-2.5 h-6 rounded text-[11px] font-medium transition-colors",
+                  "px-4 h-8 rounded-md text-xs font-medium transition-colors",
                   composerMode === "reply"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
                 )}
               >
                 Reply
@@ -1246,10 +1262,10 @@ function ThreadMessages({
                 type="button"
                 onClick={() => setComposerMode("internal")}
                 className={cn(
-                  "px-2.5 h-6 rounded text-[11px] font-medium transition-colors",
+                  "px-4 h-8 rounded-md text-xs font-medium transition-colors",
                   composerMode === "internal"
-                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "bg-amber-500 text-amber-950 shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
                 )}
                 title="Team-only note — invisible to the client; @-mention to ping a teammate"
               >
@@ -1273,7 +1289,7 @@ function ThreadMessages({
               windowOpen={windowOpen}
               hoursRemaining={hoursRemaining}
               mode={waMode}
-              onModeChange={setWaMode}
+              onModeChange={setUserWaMode}
             />
           )}
           {isWhatsApp && waMode === "template" && !isInternal && (
@@ -1370,22 +1386,22 @@ function ThreadMessages({
                       disabled={sending}
                       title="Attach files"
                       aria-label="Attach files"
-                      className="h-9 w-9 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+                      className="h-10 w-10 inline-flex items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50 shadow-sm"
                     >
                       <Paperclip className="h-4 w-4" />
                     </button>
                   </>
                 )}
                 <Button
-                  size="sm"
                   onClick={sendReply}
                   disabled={!emailHtmlReady || sending || uploadingCount > 0}
+                  className="h-10 px-5 text-sm font-medium gap-2"
                 >
                   {sending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <>
-                      <Send className="h-3.5 w-3.5" />
+                      <Send className="h-4 w-4" />
                       Send email
                     </>
                   )}
@@ -1399,15 +1415,15 @@ function ThreadMessages({
           {!isEmailMode && isWhatsApp && waMode === "template" && !isInternal ? (
             <div className="flex items-center justify-end gap-2">
               <Button
-                size="sm"
                 onClick={sendReply}
                 disabled={!templateReady || sending}
+                className="h-10 px-5 text-sm font-medium gap-2"
               >
                 {sending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <>
-                    <Send className="h-3.5 w-3.5" />
+                    <Send className="h-4 w-4" />
                     Send template
                   </>
                 )}
@@ -1435,7 +1451,7 @@ function ThreadMessages({
                   ? "Internal note — team only. Use @ to mention a teammate."
                   : `Reply via ${thread.source} as you`
               }
-              rows={2}
+              rows={6}
               disabled={sending}
               className={cn(
                 "flex-1 rounded-lg border bg-transparent px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 resize-none",
@@ -1502,19 +1518,24 @@ function ThreadMessages({
               </>
             )}
             <Button
-              size="sm"
               onClick={sendReply}
               disabled={
                 (!reply.trim() && attachments.length === 0) ||
                 sending ||
                 uploadingCount > 0
               }
-              className={isInternal ? "bg-amber-500 hover:bg-amber-600 text-amber-950" : undefined}
+              className={cn(
+                "h-10 px-5 text-sm font-medium gap-2",
+                isInternal && "bg-amber-500 hover:bg-amber-600 text-amber-950",
+              )}
             >
               {sending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Send className="h-3.5 w-3.5" />
+                <>
+                  <Send className="h-4 w-4" />
+                  Send
+                </>
               )}
             </Button>
 
@@ -1584,39 +1605,39 @@ function WhatsAppWindowBanner({
   return (
     <div
       className={cn(
-        "rounded-md border px-2.5 py-1.5 mb-2 flex items-center justify-between gap-2 text-[11px]",
+        "rounded-lg border px-3.5 py-2.5 mb-3 flex items-center justify-between gap-3 text-xs",
         windowOpen
           ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
           : "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300",
       )}
     >
-      <span className="inline-flex items-center gap-1.5 min-w-0">
+      <span className="inline-flex items-center gap-2 min-w-0">
         {windowOpen ? (
           <>
-            <Clock3 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">
+            <Clock3 className="h-4 w-4 shrink-0" />
+            <span className="truncate font-medium">
               Conversation window open · closes in {hoursRemaining}h
             </span>
           </>
         ) : (
           <>
-            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">
+            <ShieldAlert className="h-4 w-4 shrink-0" />
+            <span className="truncate font-medium">
               Window closed · only WhatsApp templates can be sent
             </span>
           </>
         )}
       </span>
-      <span className="inline-flex items-center rounded-md border border-border/60 bg-background p-0.5 shrink-0">
+      <span className="inline-flex items-center rounded-md border border-border bg-card p-0.5 shrink-0 shadow-sm">
         <button
           type="button"
           onClick={() => windowOpen && onModeChange("default")}
           disabled={!windowOpen}
           className={cn(
-            "px-2 h-5 rounded text-[10px] font-medium transition-colors",
+            "px-3 h-7 rounded text-xs font-medium transition-colors",
             mode === "default"
-              ? "bg-foreground/10 text-foreground"
-              : "text-muted-foreground hover:text-foreground",
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted",
             !windowOpen && "opacity-40 cursor-not-allowed",
           )}
           title={!windowOpen ? "Free-text disabled outside the 24h window" : "Default message"}
@@ -1627,10 +1648,10 @@ function WhatsAppWindowBanner({
           type="button"
           onClick={() => onModeChange("template")}
           className={cn(
-            "px-2 h-5 rounded text-[10px] font-medium transition-colors",
+            "px-3 h-7 rounded text-xs font-medium transition-colors",
             mode === "template"
-              ? "bg-foreground/10 text-foreground"
-              : "text-muted-foreground hover:text-foreground",
+              ? "bg-primary text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted",
           )}
           title="Send a pre-approved WhatsApp Business template"
         >
@@ -1835,6 +1856,117 @@ function renderTemplate(message: string, params: string[]): string {
 }
 
 // --- Pieces --------------------------------------------------------------
+
+/** Inline-editable contact name for the conversation header. Click the
+ *  bold name to switch to an input; Enter or blur saves; Escape cancels.
+ *  Used to give a real name to "Unknown"/phone-number contacts so the
+ *  thread list and message bubbles label them properly going forward.
+ *
+ *  Save is propagated to Trengo via PATCH /contacts/{id} so the change
+ *  sticks across surfaces (Trengo web UI, future inbound webhooks). The
+ *  optimistic local override hides the prop value until the parent's
+ *  refetch comes back with the new name; on failure the override clears
+ *  and an inline error is shown briefly. */
+function EditableContactName({
+  displayName,
+  editable,
+  onSave,
+}: {
+  displayName: string
+  editable: boolean
+  onSave: (next: string) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(displayName)
+  const [optimistic, setOptimistic] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Sync optimistic name back to underlying prop once the refetch confirms
+  // the change (prop matches optimistic override).
+  useEffect(() => {
+    if (optimistic && optimistic === displayName) setOptimistic(null)
+  }, [optimistic, displayName])
+
+  // Reset draft when entering edit mode so we always start from the latest.
+  useEffect(() => {
+    if (editing) {
+      setDraft(optimistic ?? displayName)
+      requestAnimationFrame(() => {
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      })
+    }
+  }, [editing, optimistic, displayName])
+
+  async function commit() {
+    const next = draft.trim()
+    if (!next || next === (optimistic ?? displayName)) {
+      setEditing(false)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    setOptimistic(next)
+    try {
+      await onSave(next)
+      setEditing(false)
+    } catch (e) {
+      setOptimistic(null)
+      setError(e instanceof Error ? e.message : "Save failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const shown = optimistic ?? displayName
+
+  if (!editable) {
+    return <p className="text-sm font-semibold truncate">{shown}</p>
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            commit()
+          } else if (e.key === "Escape") {
+            e.preventDefault()
+            setEditing(false)
+            setError(null)
+          }
+        }}
+        onBlur={commit}
+        disabled={saving}
+        className="text-sm font-semibold bg-background border border-input rounded-md px-2 py-0.5 min-w-0 max-w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setError(null)
+        setEditing(true)
+      }}
+      title={error ?? "Click to edit contact name"}
+      className={cn(
+        "text-sm font-semibold truncate text-left rounded px-1 -mx-1 hover:bg-muted transition-colors max-w-full",
+        error && "ring-1 ring-destructive/40",
+      )}
+    >
+      {shown}
+    </button>
+  )
+}
 
 /** Compact preview chip for an attachment that's been uploaded but not sent
  *  yet. Image attachments get a tiny thumbnail (the Trengo presigned S3 URL

@@ -121,7 +121,7 @@ export function EmailComposer({
     editorProps: {
       attributes: {
         class:
-          "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[140px] px-3 py-2",
+          "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[260px] px-3 py-2",
       },
       // Intercept clipboard image data and route to the parent's file
       // upload pipeline (📎 attachment flow). Non-image clipboard contents
@@ -223,7 +223,7 @@ export function EmailComposer({
       <RichTextToolbar editor={editor} disabled={disabled} />
 
       {/* Editor body */}
-      <div className="bg-background min-h-[160px] max-h-[400px] overflow-y-auto">
+      <div className="bg-background min-h-[280px] max-h-[520px] overflow-y-auto">
         <EditorContent editor={editor} />
       </div>
     </div>
