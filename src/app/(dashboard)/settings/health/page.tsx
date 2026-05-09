@@ -39,6 +39,7 @@ const EXPECTED_CRONS: ReadonlyArray<{ name: string; description: string; cadence
   { name: "refresh-watchlist-context", description: "Monday updates + Trengo summaries for watchlist AI", cadence: "daily" },
   { name: "refresh-pedro-patterns", description: "Pedro vertical-pattern synthesis", cadence: "nightly" },
   { name: "refresh-pedro-insights", description: "Unified Pedro insights cache (replaces watchlist-summaries + per-client AI calls)", cadence: "hourly" },
+  { name: "pedro-auto-tasks", description: "Pedro background co-pilot — auto-creates inbox tasks for stuck-in-Action clients (with anti-spam guardrails)", cadence: "daily 7:00 UTC" },
   { name: "pedro-knowledge-proposals", description: "Pedro knowledge-base scan", cadence: "weekly" },
   { name: "sync-campaign-status", description: "Live ↔ On Hold flip + onboarding → LAUNCH", cadence: "daily" },
   { name: "inbox-automations", description: "Inbox snooze / auto-resolve rules", cadence: "hourly" },

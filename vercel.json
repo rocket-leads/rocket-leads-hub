@@ -37,6 +37,10 @@
       "schedule": "30 * * * *"
     },
     {
+      "path": "/api/cron/pedro-auto-tasks",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/cron/refresh-pedro-patterns",
       "schedule": "0 4 * * *"
     },
