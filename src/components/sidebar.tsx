@@ -8,6 +8,7 @@ import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-pla
 import { readCache } from "@/lib/cache"
 import type { MondayClient } from "@/lib/integrations/monday"
 import { mondayStatusToHub } from "@/lib/clients/status"
+import { fetchHealthSummary, HEALTHY_SUMMARY, type HealthSummary } from "@/lib/observability/health-summary"
 
 const REQUIRED_PLATFORMS: Platform[] = ["slack", "trengo", "monday"]
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -108,6 +109,14 @@ export async function Sidebar() {
     ? `My Account — ${missingPlatforms} platform${missingPlatforms === 1 ? "" : "s"} not connected (Slack, Trengo, Monday)`
     : "My Account — connect Slack, Trengo, Monday"
 
+  // Admin-only health dot on the Settings nav. Lit when any cron has errored
+  // in the last 24h or any integration token is invalid. Cheap two-query
+  // probe — best-effort, never blocks the sidebar render.
+  let healthSummary: HealthSummary = HEALTHY_SUMMARY
+  if (isAdmin) {
+    healthSummary = await fetchHealthSummary()
+  }
+
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-sidebar-border bg-sidebar flex flex-col">
       {/* Logo */}
@@ -133,7 +142,11 @@ export async function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <SidebarNavLinks items={allItems} invoicesToSendCount={invoicesToSendCount} />
+      <SidebarNavLinks
+        items={allItems}
+        invoicesToSendCount={invoicesToSendCount}
+        healthSummary={isAdmin ? healthSummary : null}
+      />
 
       {/* User section */}
       <div className="mt-auto border-t border-sidebar-border p-3">

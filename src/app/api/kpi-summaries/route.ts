@@ -110,34 +110,11 @@ function getPreviousRange(startDate: string, endDate: string): { startDate: stri
   return { startDate: fmtDate(prevStart), endDate: fmtDate(prevEnd) }
 }
 
-/** Threshold for "prev period had substantial activity" — see KpiSummary.prevPeriodReliable. */
-export const PREV_PERIOD_COVERAGE_THRESHOLD = 0.8
-
-function daysBetween(startDate: string, endDate: string): number {
-  const start = new Date(startDate + "T00:00:00Z").getTime()
-  const end = new Date(endDate + "T00:00:00Z").getTime()
-  return Math.round((end - start) / 86400000) + 1
-}
-
-/**
- * Returns true when the prev period was live for ≥80% of its days AND had
- * total spend > 0. Both conditions matter — a single high-spend day in an
- * otherwise-dead window passes "spend > 0" but fails the coverage check.
- *
- * Exported so the cron writes the same flag the live path returns — keeping
- * a single source of truth for the threshold.
- */
-export function isPrevPeriodReliable(
-  prevStartDate: string,
-  prevEndDate: string,
-  prevDaysWithActivity: number,
-  prevAdSpend: number,
-): boolean {
-  const totalDays = daysBetween(prevStartDate, prevEndDate)
-  if (totalDays <= 0) return false
-  if (prevAdSpend <= 0) return false
-  return prevDaysWithActivity / totalDays >= PREV_PERIOD_COVERAGE_THRESHOLD
-}
+// Pure helpers moved to lib/clients/kpi-window so they can be unit-tested
+// without pulling in NextRequest / Supabase. Re-exported here so existing
+// import paths (`@/app/api/kpi-summaries/route`) keep working.
+export { isPrevPeriodReliable, PREV_PERIOD_COVERAGE_THRESHOLD } from "@/lib/clients/kpi-window"
+import { isPrevPeriodReliable } from "@/lib/clients/kpi-window"
 
 /**
  * Aggregate per-day rollups for one client into a KpiSummary for the given window.

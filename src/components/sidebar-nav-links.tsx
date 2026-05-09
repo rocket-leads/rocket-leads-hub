@@ -33,15 +33,40 @@ function InboxBadge() {
   )
 }
 
+type HealthDotSummary = {
+  needsAttention: boolean
+  recentErrors: number
+  invalidIntegrations: number
+}
+
 type Props = {
   items: NavItem[]
   /** Clients with an invoice due this week (overdue + today + through Sunday)
    *  — same "Due this week" window the Billing page uses. Drives the numeric
    *  badge next to Billing. Finance-only; non-finance users always see 0. */
   invoicesToSendCount?: number
+  /** Admin-only health probe. Lights up the Settings dot when crons errored
+   *  or integration tokens went invalid. Null = non-admin (no dot rendered). */
+  healthSummary?: HealthDotSummary | null
 }
 
-export function SidebarNavLinks({ items, invoicesToSendCount = 0 }: Props) {
+function buildHealthDotTitle(summary: HealthDotSummary | null): string {
+  if (!summary) return ""
+  const parts: string[] = []
+  if (summary.recentErrors > 0) {
+    parts.push(`${summary.recentErrors} cron error${summary.recentErrors === 1 ? "" : "s"} in last 24h`)
+  }
+  if (summary.invalidIntegrations > 0) {
+    parts.push(
+      `${summary.invalidIntegrations} integration${summary.invalidIntegrations === 1 ? "" : "s"} invalid`,
+    )
+  }
+  return parts.length > 0
+    ? `${parts.join(" · ")} — open Settings → Health`
+    : "Settings → Health"
+}
+
+export function SidebarNavLinks({ items, invoicesToSendCount = 0, healthSummary = null }: Props) {
   const pathname = usePathname()
 
   return (
@@ -54,6 +79,11 @@ export function SidebarNavLinks({ items, invoicesToSendCount = 0 }: Props) {
         const active = pathname.startsWith(href)
         const isInbox = href === "/inbox"
         const isBilling = href === "/billing"
+        const isSettings = href === "/settings"
+        const showHealthDot = isSettings && healthSummary?.needsAttention === true
+        const healthDotTitle = showHealthDot
+          ? buildHealthDotTitle(healthSummary)
+          : undefined
         return (
           <Link
             key={href}
@@ -75,6 +105,13 @@ export function SidebarNavLinks({ items, invoicesToSendCount = 0 }: Props) {
               >
                 {invoicesToSendCount > 99 ? "99+" : invoicesToSendCount}
               </span>
+            )}
+            {showHealthDot && (
+              <span
+                className="ml-auto h-2 w-2 rounded-full bg-red-500 animate-pulse"
+                title={healthDotTitle}
+                aria-label={healthDotTitle}
+              />
             )}
           </Link>
         )
