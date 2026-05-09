@@ -164,7 +164,9 @@ export function Campaign({
   onSelectClient,
 }: {
   section: SectionName
-  setSection: (s: SectionName) => void
+  /** Widened to allow Campaign to navigate out to the Research tab, which
+   *  sits between Brief and Angles in the canonical flow. */
+  setSection: (s: SectionName | "research") => void
   clients: PedroClient[]
   /** Driven by the global Pedro picker at the top of the page. */
   selectedClientId: string | null
@@ -577,9 +579,38 @@ Gebruik dit als visuele basis voor de creatives.`;
     setAngles([]);
     setSelectedAngles([]);
     const extra = brief.hooksExtra ? `\nExtra hooks campaign manager (prioriteit): ${brief.hooksExtra}` : "";
+
+    // Pull the latest research for this client (saved version preferred,
+    // falls back to library entry). Adds branche-specific winning patterns
+    // as Claude context — Roy's directive: research feeds angles, niet
+    // skippen.
+    let researchContext = "";
+    if (selectedClientId) {
+      try {
+        const verRes = await fetch(
+          `/api/pedro/saved-versions?clientId=${encodeURIComponent(selectedClientId)}&stage=research`,
+        );
+        if (verRes.ok) {
+          const verData = await verRes.json();
+          const latest = (verData.versions ?? [])[0];
+          const r = latest?.data?.research;
+          if (r) {
+            const angles = (r?.insights?.winningAngles ?? []).slice(0, 5);
+            const hooks = (r?.insights?.commonHooks ?? []).slice(0, 5);
+            researchContext = `\n\nRESEARCH (laatst opgeslagen voor deze klant):\n` +
+              (angles.length ? `Winnende angles in deze branche:\n${angles.map((a: string) => `- ${a}`).join("\n")}\n` : "") +
+              (hooks.length ? `Hook-patronen die werken:\n${hooks.map((h: string) => `- ${h}`).join("\n")}\n` : "") +
+              `\nGebruik deze research als inspiratie — varieer er bovenop, kopieer niet.`;
+          }
+        }
+      } catch {
+        /* silent — research is optional context */
+      }
+    }
+
     try {
       const res = sanitizeOutput(await callClaude(
-        `Jij bent Pedro, senior campaign manager bij Rocket Leads NL. B2C lead gen campagnes voor Meta.\n\nClient:\n- Bedrijf: ${brief.bedrijf} (${brief.sector})\n- Doelgroep: ${brief.doel}\n- Pijnpunt: ${brief.pijn}\n- Aanbod: ${brief.aanbod}\n- USP's: ${brief.usps}\n- Hooks kick-off: ${brief.hooksAM}${extra}\n\nGenereer precies 5 marketing angles. Varieer in psychologische trigger (urgentie, angst, autoriteit, social proof, nieuwsgierigheid, etc.).\nALLEEN JSON:\n[{"nummer":1,"titel":"naam","beschrijving":"2 zinnen uitleg"},{"nummer":2,"titel":"...","beschrijving":"..."},{"nummer":3,"titel":"...","beschrijving":"..."},{"nummer":4,"titel":"...","beschrijving":"..."},{"nummer":5,"titel":"...","beschrijving":"..."}]${GENERATION_RULES}${styleRef()}${huisstijlContext()}`,
+        `Jij bent Pedro, senior campaign manager bij Rocket Leads NL. B2C lead gen campagnes voor Meta.\n\nClient:\n- Bedrijf: ${brief.bedrijf} (${brief.sector})\n- Doelgroep: ${brief.doel}\n- Pijnpunt: ${brief.pijn}\n- Aanbod: ${brief.aanbod}\n- USP's: ${brief.usps}\n- Hooks kick-off: ${brief.hooksAM}${extra}${researchContext}\n\nGenereer precies 5 marketing angles. Varieer in psychologische trigger (urgentie, angst, autoriteit, social proof, nieuwsgierigheid, etc.).\nALLEEN JSON:\n[{"nummer":1,"titel":"naam","beschrijving":"2 zinnen uitleg"},{"nummer":2,"titel":"...","beschrijving":"..."},{"nummer":3,"titel":"...","beschrijving":"..."},{"nummer":4,"titel":"...","beschrijving":"..."},{"nummer":5,"titel":"...","beschrijving":"..."}]${GENERATION_RULES}${styleRef()}${huisstijlContext()}`,
         1500,
         { clientId: selectedClientId, stage: "angles" }
       ));
@@ -1421,7 +1452,14 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
 
           <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
             <div className="text-[11px] text-muted-foreground/60">Stap 1 van 6</div>
-            <button className="pedro-btn-primary" onClick={doAngles}>Pedro, genereer angles →</button>
+            <button
+              className="pedro-btn-primary"
+              onClick={() => setSection("research")}
+              disabled={!brief.bedrijf || !brief.aanbod}
+              title={!brief.bedrijf || !brief.aanbod ? "Vul minimaal bedrijfsnaam en aanbod in" : undefined}
+            >
+              Naar research →
+            </button>
           </div>
         </Card>
         </>
@@ -1446,7 +1484,20 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
           </div>
 
           {anglesLoading ? (
-            <Spinner text="Pedro analyseert de brief..." sub="Marketing angles worden gegenereerd" />
+            <Spinner text="Pedro analyseert brief + research..." sub="Marketing angles worden gegenereerd" />
+          ) : angles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+              <p className="text-sm text-muted-foreground max-w-md">
+                Pedro genereert 5 marketing angles op basis van de brief en (indien beschikbaar) de meest recente research voor deze klant.
+              </p>
+              <button
+                className="pedro-btn-primary"
+                onClick={doAngles}
+                disabled={!brief.bedrijf || !brief.aanbod}
+              >
+                Pedro, genereer angles →
+              </button>
+            </div>
           ) : (
             <>
               <div className="text-[11px] text-muted-foreground mb-2">

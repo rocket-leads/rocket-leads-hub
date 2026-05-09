@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { StageActionBar } from "./stage-action-bar";
 
 interface AdResult {
   title: string;
@@ -76,11 +77,50 @@ type ResearchProps = {
   /** Display name of the active client — used to default the klantnaam
    *  field and label saved entries. */
   clientName: string
+  /** Optional sector pre-fill when the user arrives from Brief — saves
+   *  re-typing what's already in the brief. */
+  defaultBranche?: string
+  /** Continue to the next stage (Angles) — wired by PedroApp. */
+  onContinue?: () => void
 }
 
-export function Research({ clientId, clientName }: ResearchProps) {
-  const [branche, setBranche] = useState("");
+export function Research({ clientId, clientName, defaultBranche, onContinue }: ResearchProps) {
+  const [branche, setBranche] = useState(defaultBranche ?? "");
   const [klantnaam, setKlantnaam] = useState(clientName);
+
+  // Sync branche from the active client's brief when arriving from Brief.
+  // Only updates while the field is empty so we don't overwrite user input.
+  useEffect(() => {
+    if (defaultBranche && !branche.trim()) setBranche(defaultBranche);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultBranche]);
+
+  // Auto-pre-fill branche from the active client's saved brief sector,
+  // so arriving from Brief feels seamless. Only fires while the field
+  // is empty — never overwrites what the user typed.
+  useEffect(() => {
+    if (!clientId) return;
+    if (branche.trim()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/pedro/client-state?clientId=${encodeURIComponent(clientId)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const sector = data?.state?.brief?.sector ?? "";
+        if (!cancelled && sector && !branche.trim()) setBranche(sector);
+        // Also pull doelgroep + propositie if Research's fields are empty
+        const doel = data?.state?.brief?.doel ?? "";
+        if (!cancelled && doel && !doelgroep.trim()) setDoelgroep(doel);
+        const aanbod = data?.state?.brief?.aanbod ?? "";
+        if (!cancelled && aanbod && !propositie.trim()) setPropositie(aanbod);
+      } catch {
+        /* silent */
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
   const [doelgroep, setDoelgroep] = useState("");
   const [propositie, setPropositie] = useState("");
   const [extraContext, setExtraContext] = useState("");
@@ -273,6 +313,24 @@ export function Research({ clientId, clientName }: ResearchProps) {
           {toast}
         </div>
       )}
+
+      {/* Save bar — same pattern as Brief / Angles / Script / etc. so the
+          version-tracking story is consistent across stages. Hidden when
+          no client is selected (the agency-wide research library still
+          works via the legacy "Opslaan in bibliotheek" button below). */}
+      <StageActionBar
+        clientId={clientId}
+        stage="research"
+        getCurrentData={() => ({
+          branche,
+          klantnaam,
+          doelgroep,
+          propositie,
+          extraContext,
+          research: result,
+        })}
+        busy={loading || saving}
+      />
 
       {/* Library card */}
       <div className="bg-card border border-border/60 rounded-xl mb-5 overflow-hidden">
@@ -508,6 +566,24 @@ export function Research({ clientId, clientName }: ResearchProps) {
                   <li key={i}>{rec}</li>
                 ))}
               </ol>
+            </div>
+          )}
+
+          {/* Continue to Angles — wired by PedroApp. The user has reviewed
+              the research; clicking continues to the Angles stage where
+              the AI call will pull this research as additional context. */}
+          {onContinue && (
+            <div className="flex items-center justify-between pt-4 border-t border-border/60 mt-2">
+              <p className="text-xs text-muted-foreground italic max-w-md">
+                Tip: sla de research op (knop bovenin) zodat Angles die als context kan gebruiken.
+              </p>
+              <button
+                type="button"
+                onClick={onContinue}
+                className="pedro-btn-primary"
+              >
+                Naar angles →
+              </button>
             </div>
           )}
         </>

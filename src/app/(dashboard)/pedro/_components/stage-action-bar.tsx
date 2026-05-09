@@ -19,7 +19,7 @@ import { Save, History, AlertCircle, Check } from "lucide-react"
  *  - one click to commit the current draft as a new version
  */
 
-export type SaveStage = "brief" | "angles" | "script" | "creatives" | "lp" | "ad-copy"
+export type SaveStage = "brief" | "angles" | "script" | "creatives" | "lp" | "ad-copy" | "research"
 
 type LatestVersion = {
   version_number: number

@@ -172,7 +172,11 @@ export function PedroApp({ clients }: Props) {
         {needsClient && !selectedClientId ? (
           <NoClientSelected />
         ) : section === "research" ? (
-          <Research clientId={selectedClientId} clientName={selectedClient?.name ?? ""} />
+          <Research
+            clientId={selectedClientId}
+            clientName={selectedClient?.name ?? ""}
+            onContinue={() => setSection("angles")}
+          />
         ) : section === "refresh" ? (
           <PedroRefresh
             clients={clients}
