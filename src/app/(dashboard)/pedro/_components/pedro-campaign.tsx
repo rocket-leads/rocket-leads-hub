@@ -1047,6 +1047,29 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
 
   // ── Step 6: Ad copy (uses brief + angle + script + LP headline/CTA) ──
   async function doAdCopy() {
+    // Save the LP draft as a new version on the way to ad-copy. Same
+    // pattern as the other stage transitions — primary CTA does both
+    // commit + navigate. Tab-nav up top remains the no-save escape.
+    if (selectedClientId && lpPrompt) {
+      try {
+        const saveRes = await fetch("/api/pedro/saved-versions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId: selectedClientId,
+            stage: "lp",
+            data: { stijl, lengte, pixelId, webhookUrl, utmStr, lpPrompt },
+          }),
+        });
+        if (saveRes.ok) {
+          const json = await saveRes.json();
+          showToast(`✓ LP opgeslagen als v${json.version?.version_number ?? "?"}`);
+        }
+      } catch {
+        /* silent — ad-copy generation continues regardless */
+      }
+    }
+
     goTo(6);
     setAdCopyLoading(true);
     setAdCopy(null);
@@ -1566,9 +1589,15 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
                   <button
                     className="pedro-btn-primary"
                     disabled={selectedAngles.length < 1}
-                    onClick={() => goTo(3)}
+                    onClick={() =>
+                      saveStageAndContinue({
+                        stage: "angles",
+                        data: selectedAngles,
+                        nextSection: "script",
+                      })
+                    }
                   >
-                    Ga verder met {selectedAngles.length} angle{selectedAngles.length !== 1 ? "s" : ""} →
+                    Opslaan &amp; naar script ({selectedAngles.length} angle{selectedAngles.length !== 1 ? "s" : ""}) →
                   </button>
                 </div>
               )}
@@ -1662,7 +1691,18 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
                   <button className="pedro-btn-ghost text-[11px]" onClick={doScript}>↻ Opnieuw</button>
                   <button className="pedro-btn-ghost text-[11px]" onClick={downloadScriptDocx}>↓ Download .docx</button>
                 </div>
-                <button className="pedro-btn-primary" onClick={() => goTo(4)}>Naar creatives →</button>
+                <button
+                  className="pedro-btn-primary"
+                  onClick={() =>
+                    saveStageAndContinue({
+                      stage: "script",
+                      data: { script_text: script, script_videos: scriptVideos },
+                      nextSection: "creatives",
+                    })
+                  }
+                >
+                  Opslaan &amp; naar creatives →
+                </button>
               </div>
             </>
           ) : (
@@ -1897,7 +1937,18 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
                       <button className="pedro-btn-ghost text-[11px]" onClick={doCreative}>Opnieuw genereren</button>
                       <button className="pedro-btn-ghost text-[11px]" onClick={downloadBrandMD}>Brand MD</button>
                     </div>
-                    <button className="pedro-btn-primary" onClick={() => goTo(5)}>Naar landingspagina</button>
+                    <button
+                      className="pedro-btn-primary"
+                      onClick={() =>
+                        saveStageAndContinue({
+                          stage: "creatives",
+                          data: { qty, formats, driveLink, brandbookName, huisstijl, manusPrompt },
+                          nextSection: "lp",
+                        })
+                      }
+                    >
+                      Opslaan &amp; naar landingspagina →
+                    </button>
                   </div>
                 </>
               ) : null}
@@ -1995,7 +2046,7 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
                   <OutputBlock content={lpPrompt} />
                   <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                     <button className="pedro-btn-ghost text-[11px]" onClick={doLP}>↻ Opnieuw</button>
-                    <button className="pedro-btn-primary" onClick={doAdCopy}>Naar ad copy →</button>
+                    <button className="pedro-btn-primary" onClick={doAdCopy}>Opslaan &amp; naar ad copy →</button>
                   </div>
                 </>
               ) : null}
