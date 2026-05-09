@@ -1,18 +1,24 @@
 import { auth } from "@/lib/auth"
-import { readCache } from "@/lib/cache"
+import { createAdminClient } from "@/lib/supabase/server"
 import {
   generateProposalForClient,
-  proposalCacheKey,
   PROPOSAL_TTL_MS,
+  type CachedProposal,
   type ProposalInput,
 } from "@/lib/proposals/generate"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
- * GET — fast cached read. Returns the most recent cached proposal for
- * this client (within TTL). Returns { cached: false } if there's no
- * cache yet — the UI then falls back to a full POST.
+ * Pre-Pedro-unification this read from a separate `client_proposal_v3:{id}`
+ * cache_store entry. Now the structured proposal lives in pedro_insights as
+ * a row with insight_type = "client_optimisation_full" — the same table
+ * that backs all per-client AI surfaces.
+ *
+ * GET = fast path. Reads pedro_insights and returns the parsed body. No
+ * Anthropic call. UI falls back to POST when this returns { cached: false }.
  */
+const PROPOSAL_INSIGHT_TYPE = "client_optimisation_full"
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -21,20 +27,42 @@ export async function GET(
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id: mondayItemId } = await params
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cached = await readCache<any>(proposalCacheKey(mondayItemId), PROPOSAL_TTL_MS)
-  if (!cached) return NextResponse.json({ cached: false })
 
-  // Backward compat: old cache entries have "insights" instead of "proposals"
-  const proposals = cached.proposals ?? cached.insights ?? []
+  try {
+    const supabase = await createAdminClient()
+    const { data } = await supabase
+      .from("pedro_insights")
+      .select("body, generated_at")
+      .eq("monday_item_id", mondayItemId)
+      .eq("insight_type", PROPOSAL_INSIGHT_TYPE)
+      .maybeSingle()
 
-  return NextResponse.json({
-    cached: true,
-    proposals,
-    leadAnalysis: cached.leadAnalysis ?? null,
-    hasKnowledge: cached.hasKnowledge ?? false,
-    generatedAt: cached.generatedAt,
-  })
+    if (!data?.body) return NextResponse.json({ cached: false })
+    const ageMs = Date.now() - new Date(data.generated_at).getTime()
+    if (ageMs > PROPOSAL_TTL_MS) return NextResponse.json({ cached: false })
+
+    let parsed: Partial<CachedProposal>
+    try {
+      parsed = JSON.parse(data.body) as Partial<CachedProposal>
+    } catch {
+      // Corrupt row — surface as cache-miss so the UI re-runs POST.
+      return NextResponse.json({ cached: false })
+    }
+
+    return NextResponse.json({
+      cached: true,
+      proposals: parsed.proposals ?? [],
+      leadAnalysis: parsed.leadAnalysis ?? null,
+      hasKnowledge: parsed.hasKnowledge ?? false,
+      generatedAt: parsed.generatedAt ?? data.generated_at,
+    })
+  } catch (e) {
+    console.error(
+      "[optimization-proposal] read failed:",
+      e instanceof Error ? e.message : e,
+    )
+    return NextResponse.json({ cached: false })
+  }
 }
 
 export async function POST(

@@ -1,5 +1,4 @@
 import { createAdminClient } from "@/lib/supabase/server"
-import { readCache, writeCache } from "@/lib/cache"
 import Anthropic from "@anthropic-ai/sdk"
 import { readFile } from "fs/promises"
 import { join } from "path"
@@ -8,6 +7,14 @@ import { AI_GUARDRAILS_PROMPT, validateAiOutput } from "@/lib/ai/guardrails"
 // AI proposals are cached for 24h. The first viewer of the day for a given
 // client (or the daily cron) populates the cache; everyone else hits it.
 export const PROPOSAL_TTL_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Insight type stored in pedro_insights for this generator's structured
+ * output. Lives outside `INSIGHT_TYPES` (the registry-driven pipeline) on
+ * purpose — this generator owns its own prompt and writes to the same
+ * pedro_insights table without going through the unified cron's fan-out.
+ */
+const PROPOSAL_INSIGHT_TYPE = "client_optimisation_full"
 
 const anthropic = new Anthropic()
 
@@ -79,10 +86,88 @@ export type ProposalResult = {
   fromCache: boolean
 }
 
-// Bump the version suffix when the prompt changes so every client regenerates
-// once instead of serving notes built under the old rules.
-export function proposalCacheKey(mondayItemId: string) {
-  return `client_proposal_v3:${mondayItemId}`
+// proposalCacheKey() removed — the structured proposal lives in
+// pedro_insights as a row with insight_type = "client_optimisation_full".
+// External consumers should read pedro_insights directly (see
+// /api/clients/[id]/optimization-proposal GET for the pattern) instead of
+// computing a cache_store key.
+
+type Supabase = Awaited<ReturnType<typeof createAdminClient>>
+
+/**
+ * Read the structured proposal from pedro_insights. Returns null when no row
+ * exists or the row is older than the 24h TTL.
+ *
+ * `body` in pedro_insights is TEXT for this insight type — the structured
+ * shape is JSON-stringified on write and parsed here. JSON parse failure
+ * returns null rather than throwing, so a corrupt row triggers regeneration
+ * instead of breaking the surface.
+ */
+async function readProposalFromPedro(
+  supabase: Supabase,
+  mondayItemId: string,
+): Promise<CachedProposal | null> {
+  const { data } = await supabase
+    .from("pedro_insights")
+    .select("body, generated_at")
+    .eq("monday_item_id", mondayItemId)
+    .eq("insight_type", PROPOSAL_INSIGHT_TYPE)
+    .maybeSingle()
+
+  if (!data?.body) return null
+  const ageMs = Date.now() - new Date(data.generated_at).getTime()
+  if (ageMs > PROPOSAL_TTL_MS) return null
+
+  try {
+    const parsed = JSON.parse(data.body) as Partial<CachedProposal>
+    if (!Array.isArray(parsed.proposals)) return null
+    return {
+      proposals: parsed.proposals,
+      leadAnalysis: parsed.leadAnalysis ?? null,
+      hasKnowledge: parsed.hasKnowledge ?? false,
+      generatedAt: parsed.generatedAt ?? data.generated_at,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Persist the structured proposal to pedro_insights. Upserts on
+ * (monday_item_id, insight_type) so re-runs replace the row rather than
+ * piling up.
+ *
+ * Failure is logged but not thrown — losing one cache write doesn't
+ * justify failing the whole generation. The next run repairs it.
+ */
+async function writeProposalToPedro(
+  supabase: Supabase,
+  mondayItemId: string,
+  payload: CachedProposal,
+  guardrailViolations: ReturnType<typeof validateAiOutput>,
+): Promise<void> {
+  try {
+    await supabase.from("pedro_insights").upsert(
+      {
+        monday_item_id: mondayItemId,
+        insight_type: PROPOSAL_INSIGHT_TYPE,
+        body: JSON.stringify(payload),
+        severity: null,
+        sources_used: { proposalsGenerator: true },
+        guardrail_violations: guardrailViolations as unknown as Record<string, unknown>[],
+        prompt_version: 3, // mirrors the old proposalCacheKey "v3" suffix
+        model: "claude-sonnet-4-20250514",
+        generated_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + PROPOSAL_TTL_MS).toISOString(),
+      },
+      { onConflict: "monday_item_id,insight_type" },
+    )
+  } catch (e) {
+    console.error(
+      "[proposals/generate] pedro_insights upsert failed:",
+      e instanceof Error ? e.message : e,
+    )
+  }
 }
 
 async function loadKnowledgeFile(filename: string): Promise<string> {
@@ -118,9 +203,11 @@ export async function generateProposalForClient(
     .eq("monday_item_id", mondayItemId)
     .single()
 
-  // Cache hit path
+  // Cache hit path — pedro_insights is the canonical store as of the unification
+  // migration. Old `client_proposal_v3:{id}` cache_store entries are no longer
+  // read; existing entries simply expire after their 24h TTL.
   if (!force) {
-    const cached = await readCache<CachedProposal>(proposalCacheKey(mondayItemId), PROPOSAL_TTL_MS)
+    const cached = await readProposalFromPedro(supabase, mondayItemId)
     if (cached) {
       return {
         proposals: cached.proposals,
@@ -391,7 +478,9 @@ Generate the analysis and proposals. Return ONLY the JSON object (with leadAnaly
     hasKnowledge: !!knowledgeContext,
     generatedAt,
   }
-  void writeCache(proposalCacheKey(mondayItemId), cachePayload)
+  // Persist to the unified pedro_insights table. Fire-and-forget: a
+  // failed write surfaces in logs but doesn't block the response.
+  void writeProposalToPedro(supabase, mondayItemId, cachePayload, guardrailViolations)
 
   return {
     proposals,
