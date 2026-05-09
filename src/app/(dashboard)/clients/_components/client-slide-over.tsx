@@ -7,6 +7,7 @@ import { X } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ClientHeader } from "@/app/(dashboard)/clients/[id]/_components/client-header"
 import { ClientTabs } from "@/app/(dashboard)/clients/[id]/_components/client-tabs"
+import { PedroInsightCard } from "@/app/(dashboard)/clients/[id]/_components/pedro-insight-card"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
@@ -140,6 +141,9 @@ function SlideOverContent({
   return (
     <>
       <ClientHeader client={client} canViewBilling={access.canViewBilling} />
+      <div className="mt-4 mb-6">
+        <PedroInsightCard mondayItemId={client.mondayItemId} />
+      </div>
       <ClientTabs
         client={client}
         supabaseClientId={supabaseClientId}
