@@ -38,26 +38,44 @@ export function PedroInsightCard({ mondayItemId }: Props) {
     )
   }
 
-  const overview = data?.insights?.client_overview?.body
-  const optimisation = data?.insights?.client_optimisation_summary?.body
-  const leadQuality = data?.insights?.client_lead_quality_summary?.body
+  const overview = data?.insights?.client_overview
+  const optimisation = data?.insights?.client_optimisation_summary
+  const leadQuality = data?.insights?.client_lead_quality_summary
 
   // Nothing to show — hide the card entirely rather than render an
   // empty shell. The unification value is "Pedro speaks consistently
   // across surfaces", not "Pedro shows you a placeholder".
   if (!overview && !optimisation && !leadQuality) return null
 
+  // Show the freshest stamp out of the three — gives the user a single
+  // "as of X" anchor without surfacing per-tile timestamps that compete
+  // visually with the actual content.
+  const freshestAt = [overview?.generatedAt, optimisation?.generatedAt, leadQuality?.generatedAt]
+    .filter((t): t is string => !!t)
+    .sort()
+    .reverse()[0]
+
   return (
     <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.03] p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-3.5 w-3.5 text-violet-400" />
-        <span className="text-[10px] uppercase tracking-wider text-violet-400 font-semibold">
-          Pedro
-        </span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+          <span className="text-[10px] uppercase tracking-wider text-violet-400 font-semibold">
+            Pedro
+          </span>
+        </div>
+        {freshestAt && (
+          <span
+            className="text-[10px] text-muted-foreground/50 tabular-nums"
+            title={`Generated ${new Date(freshestAt).toLocaleString("en-GB")}`}
+          >
+            {timeAgo(freshestAt)}
+          </span>
+        )}
       </div>
 
       {overview && (
-        <p className="text-sm text-foreground/85 leading-relaxed">{overview}</p>
+        <p className="text-sm text-foreground/85 leading-relaxed">{overview.body}</p>
       )}
 
       {(optimisation || leadQuality) && (
@@ -66,20 +84,32 @@ export function PedroInsightCard({ mondayItemId }: Props) {
             <InsightTile
               icon={<Target className="h-3 w-3 text-violet-400" />}
               label="Next move"
-              body={optimisation}
+              body={optimisation.body}
             />
           )}
           {leadQuality && (
             <InsightTile
               icon={<MessageCircle className="h-3 w-3 text-violet-400" />}
               label="Lead quality"
-              body={leadQuality}
+              body={leadQuality.body}
             />
           )}
         </div>
       )}
     </div>
   )
+}
+
+/** Compact "X ago" rendering — same buckets the inbox uses elsewhere. */
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  if (ms < 60_000) return "just now"
+  const m = Math.round(ms / 60000)
+  if (m < 60) return `${m}m ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.round(h / 24)
+  return `${d}d ago`
 }
 
 function InsightTile({

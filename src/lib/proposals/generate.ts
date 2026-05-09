@@ -95,6 +95,37 @@ export type ProposalResult = {
 type Supabase = Awaited<ReturnType<typeof createAdminClient>>
 
 /**
+ * Pure parse helper — extracted so the freshness gate + JSON-parse + shape
+ * validation logic is testable without a Supabase mock. Returns null when
+ * the row is stale, missing, or corrupt.
+ *
+ * Row shape: { body, generated_at } as returned by the pedro_insights
+ * select. Caller passes `now` so tests can pin time.
+ */
+export function parseProposalRow(
+  row: { body: string | null; generated_at: string } | null | undefined,
+  now: number,
+  ttlMs: number = PROPOSAL_TTL_MS,
+): CachedProposal | null {
+  if (!row?.body) return null
+  const ageMs = now - new Date(row.generated_at).getTime()
+  if (ageMs > ttlMs) return null
+
+  try {
+    const parsed = JSON.parse(row.body) as Partial<CachedProposal>
+    if (!Array.isArray(parsed.proposals)) return null
+    return {
+      proposals: parsed.proposals,
+      leadAnalysis: parsed.leadAnalysis ?? null,
+      hasKnowledge: parsed.hasKnowledge ?? false,
+      generatedAt: parsed.generatedAt ?? row.generated_at,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Read the structured proposal from pedro_insights. Returns null when no row
  * exists or the row is older than the 24h TTL.
  *
@@ -114,22 +145,7 @@ async function readProposalFromPedro(
     .eq("insight_type", PROPOSAL_INSIGHT_TYPE)
     .maybeSingle()
 
-  if (!data?.body) return null
-  const ageMs = Date.now() - new Date(data.generated_at).getTime()
-  if (ageMs > PROPOSAL_TTL_MS) return null
-
-  try {
-    const parsed = JSON.parse(data.body) as Partial<CachedProposal>
-    if (!Array.isArray(parsed.proposals)) return null
-    return {
-      proposals: parsed.proposals,
-      leadAnalysis: parsed.leadAnalysis ?? null,
-      hasKnowledge: parsed.hasKnowledge ?? false,
-      generatedAt: parsed.generatedAt ?? data.generated_at,
-    }
-  } catch {
-    return null
-  }
+  return parseProposalRow(data, Date.now())
 }
 
 /**
