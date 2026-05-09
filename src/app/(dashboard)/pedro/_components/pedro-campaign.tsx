@@ -6,6 +6,20 @@ import { clientSlug, buildClientMD, parseClientMD, type ClientData, type ClientC
 import type { PedroClient } from "../page";
 import { StageActionBar } from "./stage-action-bar";
 import { saveIfChanged } from "@/lib/pedro/save-if-changed";
+import {
+  anglesString,
+  scriptContext as buildScriptContext,
+  styleReference,
+  huisstijlContext as buildHuisstijlContext,
+  huisstijlForLp as buildHuisstijlForLp,
+  previousManusReference,
+  buildAnglesPrompt,
+  buildScriptPrompt,
+  buildCreativesMasterPrompt,
+  buildCreativesDescriptionsPrompt,
+  buildLpPrompt,
+  buildAdCopyPrompt,
+} from "@/lib/pedro/prompts";
 
 // ── Types ──
 interface BriefData {
@@ -184,10 +198,8 @@ function SourceTag({ sources }: { sources: FieldSource[] | undefined }) {
   );
 }
 
-// Shared rules injected into every generation prompt
-const GENERATION_RULES = `\n\nALGEMENE REGELS (altijd opvolgen):
-- Gebruik NOOIT datums, deadlines, vervaldata, actiedata of tijdelijke aanbiedingen (bv. "nog maar tot vrijdag", "actie geldig t/m", "alleen deze week") TENZIJ de klant expliciet een specifieke datum heeft opgegeven in de briefing.
-- Genereer alle output in DEZELFDE TAAL als de input van de klant. Als de briefing in het Nederlands is, schrijf dan in het Nederlands. Als de briefing in het Engels is, schrijf dan in het Engels.`;
+// Shared generation rules + per-stage prompts now live in
+// `@/lib/pedro/prompts` — kept here only as a comment-marker for greppers.
 
 // ── Main Component ──
 // Sections map to steps internally for backwards compatibility
@@ -309,54 +321,15 @@ export function Campaign({
     });
   };
 
-  // Helper: build angles string for prompts
-  const anglesStr = () => selectedAngles.map((a) => `- "${a.titel}": ${a.beschrijving}`).join("\n");
-
-  // Helper: build script context for prompts (empty if skipped)
-  const scriptContext = () => scriptSkipped || !script ? "" : `\nVideo script context:\n${script.substring(0, 800)}`;
-
-  // Helper: build style reference from Meta ads (silent, background)
-  const styleRef = () => metaStyleRef ? `\n\nAltijd baseer nieuwe creatives op de stijl en structuur van deze bestaande Rocket Leads campagnes (toon, hook-formaat, visuele compositie):\n${metaStyleRef}\n\nVoeg creatieve variatie en frisse ideeën toe bovenop deze basis.` : "";
-
-  // Helper: build huisstijl context for prompts
-  const huisstijlContext = () => {
-    if (huisstijlOverride && huisstijl) {
-      return `\nHuisstijl klant: ${huisstijl}`;
-    }
-    if (!brandStyle) return huisstijl ? `\nHuisstijl klant: ${huisstijl}` : "";
-    return `\nClient brand style (geëxtraheerd van hun website):
-- Primaire kleur: ${brandStyle.primaryColor}
-- Secundaire kleur: ${brandStyle.secondaryColor}
-- Toon: ${brandStyle.tone}
-- Visuele stijl: ${brandStyle.visualStyle}
-- Brand keywords: ${brandStyle.brandKeywords}`;
-  };
-
-  // Helper: structured huisstijl for Manus prompt
-  const huisstijlForManus = () => {
-    if (huisstijlOverride && huisstijl) {
-      return `\nHuisstijl klant: ${huisstijl}\nGebruik dit als visuele basis voor de creatives.`;
-    }
-    if (!brandStyle) return huisstijl ? `\nHuisstijl klant: ${huisstijl}\nGebruik dit als visuele basis voor de creatives.` : "";
-    return `\nClient brand style (geëxtraheerd van hun website):
-- Primaire kleur: ${brandStyle.primaryColor}
-- Toon: ${brandStyle.tone}
-- Visuele stijl: ${brandStyle.visualStyle}
-- Brand keywords: ${brandStyle.brandKeywords}
-Gebruik dit als visuele basis voor de creatives.`;
-  };
-
-  // Helper: structured huisstijl for Lovable prompt
-  const huisstijlForLP = () => {
-    if (huisstijlOverride && huisstijl) {
-      return `\nHuisstijl klant: ${huisstijl}`;
-    }
-    if (!brandStyle) return huisstijl ? `\nHuisstijl klant: ${huisstijl}` : "";
-    return `\nMatch de bestaande merkidentiteit van de klant:
-- Primaire kleur: ${brandStyle.primaryColor}, secundair: ${brandStyle.secondaryColor}
-- Toon: ${brandStyle.tone}
-- Visuele stijl: ${brandStyle.visualStyle}`;
-  };
+  // Per-call context helpers — every prompt builder takes its context
+  // as plain strings, so we close over current state here and pass the
+  // result in. The builders themselves live in `@/lib/pedro/prompts`.
+  const anglesStr = () => anglesString(selectedAngles);
+  const scriptCtx = () => buildScriptContext({ script, scriptSkipped });
+  const styleRef = () => styleReference(metaStyleRef);
+  const huisstijlOpts = () => ({ brandStyle, huisstijl, huisstijlOverride });
+  const huisstijlCtx = () => buildHuisstijlContext(huisstijlOpts());
+  const huisstijlLpCtx = () => buildHuisstijlForLp(huisstijlOpts());
 
   // ── Website analysis ──
   async function analyzeWebsite() {
@@ -737,7 +710,6 @@ Gebruik dit als visuele basis voor de creatives.`;
     setAnglesLoading(true);
     setAngles([]);
     setSelectedAngles([]);
-    const extra = brief.hooksExtra ? `\nExtra hooks campaign manager (prioriteit): ${brief.hooksExtra}` : "";
 
     // Pull the latest research for this client (saved version preferred,
     // falls back to library entry). Adds branche-specific winning patterns
@@ -769,7 +741,12 @@ Gebruik dit als visuele basis voor de creatives.`;
 
     try {
       const res = sanitizeOutput(await callClaude(
-        `Jij bent Pedro, senior campaign manager bij Rocket Leads NL. B2C lead gen campagnes voor Meta.\n\nClient:\n- Bedrijf: ${brief.bedrijf} (${brief.sector})\n- Doelgroep: ${brief.doel}\n- Pijnpunt: ${brief.pijn}\n- Aanbod: ${brief.aanbod}\n- USP's: ${brief.usps}\n- Hooks kick-off: ${brief.hooksAM}${extra}${researchContext}\n\nGenereer precies 5 marketing angles. Varieer in psychologische trigger (urgentie, angst, autoriteit, social proof, nieuwsgierigheid, etc.).\nALLEEN JSON:\n[{"nummer":1,"titel":"naam","beschrijving":"2 zinnen uitleg"},{"nummer":2,"titel":"...","beschrijving":"..."},{"nummer":3,"titel":"...","beschrijving":"..."},{"nummer":4,"titel":"...","beschrijving":"..."},{"nummer":5,"titel":"...","beschrijving":"..."}]${GENERATION_RULES}${styleRef()}${huisstijlContext()}`,
+        buildAnglesPrompt({
+          brief,
+          researchContext,
+          styleRef: styleRef(),
+          huisstijl: huisstijlCtx(),
+        }),
         1500,
         { clientId: selectedClientId, stage: "angles" }
       ));
@@ -804,56 +781,12 @@ Gebruik dit als visuele basis voor de creatives.`;
     setScriptSkipped(false);
     try {
       const res = sanitizeOutput(await callClaude(
-        `Jij bent Pedro, senior campaign manager bij Rocket Leads. Schrijf 2 UGC-stijl video ad scripts.
-
-Client: ${brief.bedrijf} (${brief.sector})
-Doelgroep: ${brief.doel}
-Aanbod: ${brief.aanbod}
-USP's: ${brief.usps}
-Geselecteerde angles:
-${anglesStr()}
-Extra hooks CM: ${brief.hooksExtra || "geen"}
-
-REGELS:
-- Video 1 en Video 2 moeten STERK VERSCHILLENDE psychologische triggers gebruiken (bv. urgentie vs. social proof, pijn vs. ambitie, angst vs. nieuwsgierigheid)
-- Hooks moeten provocerend, confronterend of verrassend zijn - NIET generiek
-- Body max 5 zinnen - geen informatiedump, net genoeg om te klikken
-- Social proof in body moet specifiek en realistisch voelen, gebruik sectorspecifieke cijfers
-- Schrijf in dezelfde taal als de input van de klant
-
-OUTPUT EXACT DIT FORMAAT (geen markdown, geen extra uitleg):
-
----
-VIDEO 1 - [Angle naam]
-
-Hook 1: "..."
-Hook 2: "..."
-Hook 3: "..."
-Hook 4: "..."
-Hook 5: "..."
-
-Body:
-[Gesproken tekst van de video, 3-5 zinnen. Pakkend, geen informatiedump. Doel is klikken, niet informeren. Eindig met social proof: "Terwijl [concurrent] nog [probleem], haalt [klant X] al [resultaat] binnen. Elke maand. Automatisch."]
-
-CTA:
-[1 zin. Laagdrempelig.]
-
----
-VIDEO 2 - [Andere angle, andere invalshoek]
-
-Hook 1: "..."
-Hook 2: "..."
-Hook 3: "..."
-Hook 4: "..."
-Hook 5: "..."
-
-Body:
-[Zelfde structuur, andere invalshoek]
-
-CTA:
-[Passend bij video 2]
-
----${GENERATION_RULES}${styleRef()}${huisstijlContext()}`,
+        buildScriptPrompt({
+          brief,
+          anglesStr: anglesStr(),
+          styleRef: styleRef(),
+          huisstijl: huisstijlCtx(),
+        }),
         1500,
         { clientId: selectedClientId, stage: "script" }
       ));
@@ -902,200 +835,37 @@ CTA:
   }
 
   // ── Step 4: Creatives (uses brief + angle + script if not skipped) ──
-  const FORMAT_DIMS: Record<string, string> = {
-    "Static 1:1 (1080×1080)": "1080 x 1080 px",
-    "Static 4:5 (1080×1350)": "1080 x 1350 px",
-    "Story 9:16 (1080×1920)": "1080 x 1920 px",
-    "Carousel eerste slide": "1080 x 1080 px (carousel)",
-  };
-
-  function buildFilledMasterPrompt(): string {
-    const fmtList = formats.length > 0 ? formats : ["Static 1:1 (1080x1080)"];
-    const fmtStr = fmtList.map((f) => `${f} (${FORMAT_DIMS[f] || "1080x1080"})`).join(", ");
-    const drive = driveLink || "geen";
-    const bs = brandStyle;
-    const brandColors = bs
-      ? `${bs.primaryColor}, ${bs.secondaryColor}`
-      : huisstijl || "niet opgegeven";
-    const toneValue = bs?.tone || "urgentie";
-
-    const primaryHex = bs?.primaryColor || "#8967F3";
-    const secondaryHex = bs?.secondaryColor || "#1A1A2E";
-
-    return `# MANUS MASTER PROMPT -- ROCKET LEADS AD CREATIVES
-
-Je bent een senior Meta advertising creative director. Je maakt high-converting Nederlandstalige statische ad creatives voor B2C en B2B lead generation campagnes. Je creatives stoppen de scroll, communiceren één duidelijke boodschap en zorgen voor een klik.
-
----
-
-## CLIENT CONTEXT
-Klant: ${brief.bedrijf}
-Sector: ${brief.sector}
-Doelgroep: ${brief.doel}
-Angle:
-${anglesStr()}
-Hooks: ${brief.hooksExtra || brief.hooksAM || "niet opgegeven"}
-USPs: ${brief.usps || "niet opgegeven"}
-Brand kleuren: ${brandColors} (primary: ${primaryHex}, secondary: ${secondaryHex})
-Content (Drive): ${drive}
-Aantal creatives: ${qty}
-Formaten: ${fmtStr}
-Toon: ${toneValue}
-
----
-
-## BEELDMATERIAAL
-
-- Gebruik client-afbeeldingen als die beschikbaar zijn (max 1 per creative)
-- Voor de rest: gebruik de Manus AI image generator
-- Geen stockfoto's
-- Achtergrondafbeeldingen mogen GEEN tekst, letters of cijfers bevatten -- dit clasht met de overlay-tekst
-- Eindig elke AI image prompt met: "no text, no letters, no words, no numbers, no signs"
-
----
-
-## BASISREGELS
-
-- Alle tekst in het Nederlands
-- Valuta altijd in € (euro)
-- Geen datums of seizoensverwijzingen tenzij in de brief
-- Geen overlappende tekstelementen
-- Logo alleen als het bestand beschikbaar is
-
----
-
-## DESIGN SYSTEEM
-
-### Layout
-- Formaat: ${fmtStr} (1:1=1080x1080 / 4:5=1080x1350 / 9:16=1080x1920)
-- Full-bleed achtergrondafbeelding
-- Donker gradient overlay onderste 40% voor leesbaarheid
-- 48px veilige marge aan alle kanten
-- Links uitgelijnd standaard, gecentreerd bij aspirational
-
-### Headline
-- Font: bold geometric sans-serif (Clash Display, Neue Haas Grotesk of vergelijkbaar)
-- Groot en dominant -- vult 40-60% van de breedte
-- Wit (#FFFFFF) met 1-2 kernwoorden in ${primaryHex}
-- Max 8 woorden per regel, max 3 regels
-
-### Subheadline
-- Zelfde font, regular weight, 35-40% van headline grootte
-- Wit of #E0E0E0
-
-### USP checkmarks (optioneel, max 3)
-- Checkmark in ${primaryHex} of wit
-- Max 5 woorden per USP
-
-### CTA button
-- Pill shape (border-radius 50px), 60-75% breedte, gecentreerd
-- Achtergrond: ${primaryHex}, wit bold tekst
-- Positie: onderste 15-20%
-- Max 5 woorden, nooit "Klik hier" of "Lees meer"
-
-### Social proof (optioneel)
-- Alleen met echte data -- nooit verzinnen
-- Klein badge, rechtsboven
-
----
-
-## CREATIVE VARIATIES
-
-Genereer ${qty} creatives met VERSCHILLENDE aanpakken.
-
-### A -- Statement (tekst-dominant)
-Bold headline vult het meeste van het frame. Minimale of verdonkerde achtergrond.
-
-### B -- Product Hero
-Full-bleed product/dienst foto met gradient. Headline overlay. CTA prominent.
-
-### C -- Social Proof
-Echt resultaat of geloofwaardigheidselement als headline anker.
-
-### D -- Problem/Solution
-Directe confronterende vraag of pijnpunt. Checkmark USPs eronder.
-
-### E -- Aspirational
-Mooie lifestyle of eindresultaat beelden. Zachtere headline, droom-toon.
-
-### F -- Pattern Interrupt (altijd min. 1 per batch)
-Breekt bewust met sectornormen. Provocerend of verrassend.
-
----
-
-## CREATIEVE RICHTING
-
-Wees een echte creative director. Vraag bij elke batch: "Wat zou MIJN scroll stoppen?"
-
-Varieer automatisch de toon per batch:
-- 1x urgentie (FOMO-gevoel zonder datum)
-- 1x aspiratie (droom, verlangen, status)
-- 1x logica (cijfers, ROI, rationeel)
-- 1x pattern interrupt (onverwacht, scroll-stoppend)
-
----
-
-## OUTPUT FORMAT
-
-Per creative:
-
-### CREATIVE [N] -- Variatie [Letter] ([Naam])
-**Headline:** "[Nederlandse tekst]"
-**Subheadline:** "[tekst of GEEN]"
-**USPs:** [max 3 of GEEN]
-**CTA:** "[Nederlandse tekst]"
-**Background:** [client afbeelding OF gedetailleerde AI image prompt eindigend met "no text, no letters, no words, no numbers, no signs"]
-**Highlight kleur:** ${primaryHex} op [welke woorden]
-**CTA achtergrond:** ${primaryHex}
-**Logo:** [LINKSBOVEN / GEEN]
-**Social proof:** [exacte tekst of GEEN]
-**Sfeer:** [1 zin]
-**Waarom dit werkt:** [1 zin strategische keuze]${previousManusRef()}`;
-  }
+  // Master prompt + per-creative description prompt live in
+  // `@/lib/pedro/prompts/build-creatives`.
 
   async function doCreative() {
     setManusLoading(true);
     setManusPrompt("");
     try {
       // Section 1: The filled master prompt (static, no AI needed)
-      const masterPrompt = buildFilledMasterPrompt();
+      const masterPrompt = buildCreativesMasterPrompt({
+        brief,
+        anglesStr: anglesStr(),
+        qty,
+        formats,
+        driveLink,
+        brandStyle,
+        huisstijl,
+        previousManusRef: previousManusReference(clientDB),
+      });
 
       // Section 2: Ask Claude to generate only the creative descriptions
-      const bs = brandStyle;
-      const pHex = bs?.primaryColor || "#8967F3";
-      const sHex = bs?.secondaryColor || "#1A1A2E";
-
       const creativeDescriptions = sanitizeOutput(await callClaude(
-        `Genereer ${qty} creative specs voor Manus. ALLE tekst in het Nederlands. Valuta in €.
-
-Klant: ${brief.bedrijf} (${brief.sector})
-Doelgroep: ${brief.doel}
-Angles:
-${anglesStr()}
-Hooks: ${brief.hooksExtra || brief.hooksAM || "niet opgegeven"}
-USPs: ${brief.usps || "niet opgegeven"}
-Primary kleur: ${pHex} / Secondary: ${sHex}
-Drive: ${driveLink || "geen"}
-Formaten: ${(formats.length > 0 ? formats : ["Static 1:1 (1080x1080)"]).join(", ")}
-${scriptContext() ? `Script context:\n${scriptContext()}` : ""}
-
-Kies ${qty} variaties (A-F), min. 1x F "Pattern Interrupt". Varieer toon: urgentie, aspiratie, logica, pattern interrupt.
-
-Per creative EXACT dit format:
-
-### CREATIVE [N] -- Variatie [Letter] ([Naam])
-**Headline:** "[Nederlands, max 3 regels x 8 woorden]"
-**Subheadline:** "[tekst of GEEN]"
-**USPs:** [max 3 of GEEN]
-**CTA:** "[Nederlands, max 5 woorden]"
-**Background:** [gedetailleerde AI image prompt: onderwerp, compositie, belichting, perspectief, kleurenpalet, sfeer. Eindig met "no text, no letters, no words, no numbers, no signs". OF "gebruik [bestandsnaam]" bij client content]
-**Highlight kleur:** ${pHex} op [welke woorden]
-**CTA achtergrond:** ${pHex}
-**Logo:** [LINKSBOVEN / GEEN]
-**Social proof:** [tekst of GEEN -- nooit verzinnen]
-**Sfeer:** [1 zin]
-
-Start direct met ### CREATIVE 1. Geen intro, geen samenvatting.${previousManusRef()}${GENERATION_RULES}`,
+        buildCreativesDescriptionsPrompt({
+          brief,
+          anglesStr: anglesStr(),
+          qty,
+          formats,
+          driveLink,
+          brandStyle,
+          scriptContext: scriptCtx(),
+          previousManusRef: previousManusReference(clientDB),
+        }),
         2500,
         { clientId: selectedClientId, stage: "creatives" }
       ));
@@ -1131,37 +901,24 @@ ${creativeDescriptions}`;
 
   // ── Step 5: LP (uses brief + angle + script if not skipped) ──
   async function doLP() {
-    const pixel = pixelId || "niet opgegeven";
-    const webhook = webhookUrl || "niet opgegeven";
-    const utm = utmStr || "utm_source=meta&utm_medium=paid";
     setShowLpCard(true);
     setLpLoading(true);
     setLpPrompt("");
     try {
-      const scriptPart = scriptContext();
       const res = sanitizeOutput(await callClaude(
-        `Jij bent Pedro bij Rocket Leads. Genereer een volledige Lovable prompt.${styleRef()}
-${huisstijlForLP()}
-
-Client: ${brief.bedrijf} (${brief.sector})
-Doelgroep: ${brief.doel}
-Aanbod: ${brief.aanbod}
-USP's: ${brief.usps}
-Geselecteerde angles:
-${anglesStr()}
-Hooks: ${brief.hooksExtra || brief.hooksAM}${scriptPart}
-
-LP config:
-- Stijl: ${stijl}
-- Lengte: ${lengte}
-- Meta Pixel ID: ${pixel}
-- Zapier Webhook: ${webhook}
-- UTM: ${utm}
-
-BELANGRIJK: De landingspagina moet een ALGEMENE, overkoepelende benadering hebben die aansluit op ALLE geselecteerde angles. Niet focussen op één angle maar de kernboodschap zo formuleren dat bezoekers vanuit elke invalshoek (${selectedAngles.map((a) => a.titel).join(", ")}) zich herkennen in de pagina.
-
-Specificeer hero sectie (breed ingestoken), pijnpunten, aanbod+USP's${lengte !== "Short - hero + CTA" ? ", social proof, leadformulier" : ""}${lengte === "Long - + FAQ + bezwaren" ? ", FAQ, bezwaren" : ""}.
-Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on submit. Form POST naar ${webhook} met velden + UTM params uit URL.${GENERATION_RULES}`,
+        buildLpPrompt({
+          brief,
+          selectedAngles,
+          anglesStr: anglesStr(),
+          scriptContext: scriptCtx(),
+          styleRef: styleRef(),
+          huisstijl: huisstijlLpCtx(),
+          stijl,
+          lengte,
+          pixelId,
+          webhookUrl,
+          utmStr,
+        }),
         1200,
         { clientId: selectedClientId, stage: "lp" }
       ));
@@ -1191,11 +948,16 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
     setAdCopyLoading(true);
     setAdCopy(null);
     setCopyTab("primary");
-    const scriptPart = scriptContext();
-    const lpContext = lpPrompt ? `\nLandingspagina context (match hierop!):\n${lpPrompt.substring(0, 600)}` : "";
     try {
       const res = sanitizeOutput(await callClaude(
-        `Jij bent Pedro, senior campaign manager bij Rocket Leads. Schrijf Meta advertentieteksten.\n\nClient: ${brief.bedrijf} (${brief.sector})\nDoelgroep: ${brief.doel}\nAanbod: ${brief.aanbod}\nUSP's: ${brief.usps}\nGeselecteerde angles:\n${anglesStr()}\nExtra hooks CM: ${brief.hooksExtra || "geen"}${scriptPart}${lpContext}\n\nBELANGRIJK: De ad copy moet EXACT aansluiten op de landingspagina. Gebruik dezelfde kernboodschap, voordelen en CTA zodat de bezoeker na het klikken op de ad precies vindt wat beloofd werd.\n\nSchrijf copy die alle geselecteerde angles dekt - wissel per variant van invalshoek:\n1. Primaire tekst variant A (120-150 woorden, angle 1 als leidraad, conversational, CTA)\n2. Primaire tekst variant B (100-130 woorden, andere angle als leidraad, andere toon)\n3. 5 headlines max 40 tekens - mix de verschillende angles\n4. 2 beschrijvingen max 25 woorden\n\nALLEEN JSON: {"variantA":"...","variantB":"...","headlines":"h1\\nh2\\nh3\\nh4\\nh5","beschrijving":"v1\\nv2"}${GENERATION_RULES}${styleRef()}${huisstijlContext()}`,
+        buildAdCopyPrompt({
+          brief,
+          anglesStr: anglesStr(),
+          scriptContext: scriptCtx(),
+          lpPrompt,
+          styleRef: styleRef(),
+          huisstijl: huisstijlCtx(),
+        }),
         1200,
         { clientId: selectedClientId, stage: "ad-copy" }
       ));
@@ -1345,16 +1107,6 @@ Technisch: Pixel fbq('init') + fbq('track','PageView') + fbq('track','Lead') on 
     URL.revokeObjectURL(url);
     setClientDB(data);
     showToast(`Client database bijgewerkt -- ${brief.bedrijf}.md`);
-  }
-
-  // ── Get previous manus prompt from client DB for style reference ──
-  function previousManusRef(): string {
-    if (!clientDB || clientDB.campaigns.length === 0) return "";
-    const lastPrompt = [...clientDB.campaigns].reverse().find((c) => c.manusPrompt && c.manusPrompt !== "-")?.manusPrompt;
-    if (!lastPrompt) return "";
-    // Truncate to last 1500 chars to avoid token overflow
-    const truncated = lastPrompt.length > 1500 ? lastPrompt.substring(lastPrompt.length - 1500) : lastPrompt;
-    return `\n\nPrevious creative direction for this client (maintain visual consistency):\n${truncated}`;
   }
 
   // ── Brand MD generation ──
