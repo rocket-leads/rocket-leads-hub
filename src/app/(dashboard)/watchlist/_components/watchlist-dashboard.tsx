@@ -189,7 +189,7 @@ function BucketAge({
 // `targets/_components/hero-pillars.tsx` and `targets/_components/marketing-insights.tsx`
 // so the watchlist feels like a first-class part of the same dashboard family.
 
-type WatchlistKpiStatus = "good" | "bad" | "neutral"
+type WatchlistKpiStatus = "good" | "warn" | "bad" | "neutral"
 
 function WatchlistKpiCard({
   label,
@@ -204,7 +204,17 @@ function WatchlistKpiCard({
   status: WatchlistKpiStatus
   trendIcon?: "up" | "down" | "flat"
 }) {
-  const valueColor = status === "good" ? "text-green-500" : status === "bad" ? "text-red-500" : "text-foreground"
+  // Health-style traffic light: red (<50) / amber (50-74) / green (≥75).
+  // Neutral falls through to the default text color so cards without a
+  // verdict (e.g. "no clients in scope") don't get coloured at all.
+  const valueColor =
+    status === "good"
+      ? "text-green-500"
+      : status === "warn"
+        ? "text-amber-400"
+        : status === "bad"
+          ? "text-red-500"
+          : "text-foreground"
   const Trend = trendIcon === "up" ? ArrowUp : trendIcon === "down" ? ArrowDown : Minus
   const trendColor = trendIcon === "up" ? "text-green-500" : trendIcon === "down" ? "text-red-500" : "text-muted-foreground/40"
   return (
@@ -943,10 +953,17 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         (() => {
           const total = categorized.action.length + categorized.watch.length + categorized.good.length
 
-          // Card 1 — health score (today). Color-coded by zone so 43% reads as "below
-          // target" without needing a label.
+          // Card 1 — health score (today). Traffic-light coloured by zone so the
+          // number reads as "below target / on the line / on track" at a glance:
+          //   <50 red, 50-74 amber, ≥75 green.
           const scoreStatus: WatchlistKpiStatus =
-            total === 0 ? "neutral" : healthScore < 50 ? "bad" : healthScore < 75 ? "neutral" : "good"
+            total === 0
+              ? "neutral"
+              : healthScore < 50
+                ? "bad"
+                : healthScore < 75
+                  ? "warn"
+                  : "good"
 
           // Card 2 — vs 7d avg. Cron-fed, so it stays "—" on the very first day after
           // deploy and starts being meaningful from day 3 or 4 onwards.

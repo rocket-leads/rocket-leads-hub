@@ -16,6 +16,7 @@ export function BlockShell({
   footerLabel,
   empty,
   emptyMessage,
+  emptyContent,
   children,
 }: {
   title: string
@@ -24,7 +25,11 @@ export function BlockShell({
   footerHref: string
   footerLabel: string
   empty?: boolean
+  /** Plain text empty state — used when no `emptyContent` slot is provided. */
   emptyMessage?: string
+  /** Override the entire empty body when a block wants something richer than a
+   *  one-liner (e.g. an icon + rotating motivational line on Inbox Zero). */
+  emptyContent?: ReactNode
   children: ReactNode
 }) {
   return (
@@ -47,9 +52,11 @@ export function BlockShell({
       </div>
       <div className="flex-1 min-h-[180px]">
         {empty ? (
-          <div className="flex items-center justify-center h-full px-4 py-8">
-            <p className="text-xs text-muted-foreground/40 italic">{emptyMessage ?? "Niks om te tonen."}</p>
-          </div>
+          emptyContent ?? (
+            <div className="flex items-center justify-center h-full px-4 py-8">
+              <p className="text-xs text-muted-foreground/40 italic">{emptyMessage ?? "Niks om te tonen."}</p>
+            </div>
+          )
         ) : (
           children
         )}

@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 import { ArrowDown, ArrowUp, Minus } from "lucide-react"
 
-type Status = "good" | "bad" | "neutral"
+type Status = "good" | "warn" | "bad" | "neutral"
 
 function Card({
   label,
@@ -16,8 +16,16 @@ function Card({
   status: Status
   trend?: "up" | "down" | "flat"
 }) {
+  // Traffic-light: bad red, warn amber, good green. Neutral keeps the default
+  // text color so cards without a verdict don't fight for attention.
   const valueColor =
-    status === "good" ? "text-green-500" : status === "bad" ? "text-red-500" : "text-foreground"
+    status === "good"
+      ? "text-green-500"
+      : status === "warn"
+        ? "text-amber-400"
+        : status === "bad"
+          ? "text-red-500"
+          : "text-foreground"
   const TrendIcon = trend === "up" ? ArrowUp : trend === "down" ? ArrowDown : Minus
   const trendColor =
     trend === "up"
@@ -71,16 +79,18 @@ export function KpiStrip({
   const actionDeltaText =
     actionDelta === 0 ? "= yesterday" : actionDelta > 0 ? `+${actionDelta} vs yesterday` : `${actionDelta} vs yesterday`
 
-  const inboxStatus: Status = unreadInboxCount > 0 ? "bad" : "neutral"
+  // Inbox zero is a win — colour it green when achieved, red when there's
+  // still stuff on the user's plate.
+  const inboxStatus: Status = unreadInboxCount > 0 ? "bad" : "good"
 
-  // Health zones mirror the Watch List header: <50 bad, 50-74 neutral, ≥75 good.
+  // Health zones — full traffic light: <50 red, 50-74 amber, ≥75 green.
   const healthStatus: Status =
     healthScore == null
       ? "neutral"
       : healthScore < 50
         ? "bad"
         : healthScore < 75
-          ? "neutral"
+          ? "warn"
           : "good"
 
   return (

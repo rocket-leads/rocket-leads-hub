@@ -1,7 +1,8 @@
 import Link from "next/link"
-import { Inbox, ArrowRight, MessageSquare, ListChecks, Bell } from "lucide-react"
+import { Inbox, ArrowRight, MessageSquare, ListChecks, Bell, Sparkles } from "lucide-react"
 import { BlockShell } from "./block-shell"
 import type { InboxItem } from "@/types/inbox"
+import { pickInboxZeroMessage } from "@/lib/inbox/inbox-zero-messages"
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
@@ -20,6 +21,32 @@ function kindIcon(kind: InboxItem["kind"]) {
   return <MessageSquare className="h-3 w-3 text-muted-foreground/60" />
 }
 
+/**
+ * Inbox Zero celebration state. Picks a rotating motivational line — same
+ * for everyone for the whole UTC day, changes at midnight UTC. The point is
+ * to make Inbox Zero feel like a tiny win you want to keep, not a dead empty
+ * state. Server-rendered (deterministic), so no client JS / no flicker.
+ */
+function InboxZeroState() {
+  const message = pickInboxZeroMessage()
+  return (
+    <div className="flex flex-col items-center justify-center h-full px-6 py-8 gap-3 text-center">
+      <div className="relative">
+        <div className="h-10 w-10 rounded-full bg-violet-500/10 flex items-center justify-center">
+          <Sparkles className="h-5 w-5 text-violet-400" strokeWidth={2} />
+        </div>
+        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+      </div>
+      <p className="text-[10px] uppercase tracking-wider text-violet-400 font-semibold">
+        Inbox zero
+      </p>
+      <p className="text-sm text-foreground/80 leading-snug max-w-[280px]">
+        {message}
+      </p>
+    </div>
+  )
+}
+
 export function InboxBlock({ items, totalCount }: { items: InboxItem[]; totalCount: number }) {
   return (
     <BlockShell
@@ -29,7 +56,7 @@ export function InboxBlock({ items, totalCount }: { items: InboxItem[]; totalCou
       footerHref="/inbox"
       footerLabel="Open Inbox"
       empty={items.length === 0}
-      emptyMessage="Inbox zero — niks toegewezen."
+      emptyContent={<InboxZeroState />}
     >
       <ul className="divide-y divide-border/30">
         {items.map((item) => (
