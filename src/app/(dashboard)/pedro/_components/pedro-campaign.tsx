@@ -380,51 +380,118 @@ Gebruik dit als visuele basis voor de creatives.`;
   // AM never starts from a blank canvas.
   // Load any saved state for the active client. Called automatically
   // whenever selectedClientId changes (driven by the global picker).
+  //
+  // Loading priority (Roy's directive 2026-05-09):
+  //   1. Latest SAVED VERSION per stage (pedro_stage_versions) — canonical
+  //   2. DRAFT slot (pedro_client_state) — fallback for stages without v1+
+  //   3. Auto-brief — only when neither exists for this client
+  //
+  // Why saved-versions first: a returning AM expects "I saved v1, now
+  // I want to continue editing v1". Drafts can be stale, partial, or
+  // wiped by experiments — saved versions are the explicit canonical
+  // record. Editing then auto-saves to draft until the user explicitly
+  // commits a new version (v2, v3, ...).
   const loadClientState = useCallback(async function loadClientState(clientId: string, clientName: string) {
     setAutoBriefSource(null);
     setImportStatus(null);
 
-    // Try to load existing state for this client
-    let hasExistingState = false;
+    // Fetch draft + saved versions in parallel
+    let draftState: Record<string, unknown> | null = null;
+    let savedByStage = new Map<string, { version_number: number; data: unknown }>();
+    let highestVersion = 0;
+
     try {
-      const res = await fetch(`/api/pedro/client-state?clientId=${encodeURIComponent(clientId)}`);
-      if (res.ok) {
-        const data = await res.json();
-        const s = data.state;
-        if (s) {
-          hasExistingState = true;
-          if (s.brief) setBrief(s.brief);
-          if (Array.isArray(s.selected_angles)) setSelectedAngles(s.selected_angles);
-          if (typeof s.script_text === "string") setScript(s.script_text);
-          if (Array.isArray(s.script_videos)) setScriptVideos(s.script_videos);
-          if (s.creatives) {
-            if (typeof s.creatives.qty === "number") setQty(s.creatives.qty);
-            if (Array.isArray(s.creatives.formats)) setFormats(s.creatives.formats);
-            if (typeof s.creatives.driveLink === "string") setDriveLink(s.creatives.driveLink);
-            if (typeof s.creatives.brandbookName === "string") setBrandbookName(s.creatives.brandbookName);
-            if (typeof s.creatives.huisstijl === "string") setHuisstijl(s.creatives.huisstijl);
-            if (typeof s.creatives.manusPrompt === "string") setManusPrompt(s.creatives.manusPrompt);
-          }
-          if (s.lp) {
-            if (typeof s.lp.stijl === "string") setStijl(s.lp.stijl);
-            if (typeof s.lp.lengte === "string") setLengte(s.lp.lengte);
-            if (typeof s.lp.pixelId === "string") setPixelId(s.lp.pixelId);
-            if (typeof s.lp.webhookUrl === "string") setWebhookUrl(s.lp.webhookUrl);
-            if (typeof s.lp.utmStr === "string") setUtmStr(s.lp.utmStr);
-            if (typeof s.lp.lpPrompt === "string") setLpPrompt(s.lp.lpPrompt);
-          }
-          if (s.ad_copy) setAdCopy(s.ad_copy);
-          if (s.brand_style) setBrandStyle(s.brand_style);
-          if (s.auto_brief_meta?.source) setAutoBriefSource(s.auto_brief_meta.source);
-          setImportStatus(`Vorige campagne van "${clientName}" geladen — bewerk of start opnieuw`);
-          showToast(`Eerdere campagne geladen ✓`);
+      const [stateRes, versionsRes] = await Promise.all([
+        fetch(`/api/pedro/client-state?clientId=${encodeURIComponent(clientId)}`),
+        fetch(`/api/pedro/saved-versions?clientId=${encodeURIComponent(clientId)}`),
+      ]);
+      if (stateRes.ok) {
+        const sd = await stateRes.json();
+        draftState = sd.state ?? null;
+      }
+      if (versionsRes.ok) {
+        const vd = await versionsRes.json();
+        const versions: Array<{ stage: string; version_number: number; data: unknown }> = vd.versions ?? [];
+        // Saved-versions API returns ordered by saved_at desc — take first per stage.
+        for (const v of versions) {
+          if (!savedByStage.has(v.stage)) savedByStage.set(v.stage, { version_number: v.version_number, data: v.data });
+          if (v.version_number > highestVersion) highestVersion = v.version_number;
         }
       }
     } catch {
       /* silent — fall through to auto-brief */
     }
 
-    if (!hasExistingState) {
+    const hasAnything = !!draftState || savedByStage.size > 0;
+
+    if (hasAnything) {
+      // Helper: prefer saved-version data, fall back to draft slot.
+      const sv = (stage: string) => savedByStage.get(stage)?.data;
+
+      // Brief
+      const brief = (sv("brief") ?? draftState?.brief) as Partial<BriefData> | undefined;
+      if (brief && typeof brief === "object") {
+        setBrief((prev) => ({ ...prev, ...brief }));
+      }
+
+      // Angles
+      const angles = sv("angles") ?? draftState?.selected_angles;
+      if (Array.isArray(angles)) setSelectedAngles(angles as Angle[]);
+
+      // Script — saved version stores { script_text, script_videos }; draft has them as separate columns
+      const scriptSaved = sv("script") as { script_text?: string; script_videos?: ScriptVideo[] } | undefined;
+      if (scriptSaved) {
+        if (typeof scriptSaved.script_text === "string") setScript(scriptSaved.script_text);
+        if (Array.isArray(scriptSaved.script_videos)) setScriptVideos(scriptSaved.script_videos);
+      } else if (draftState) {
+        if (typeof draftState.script_text === "string") setScript(draftState.script_text);
+        if (Array.isArray(draftState.script_videos)) setScriptVideos(draftState.script_videos as ScriptVideo[]);
+      }
+
+      // Creatives
+      const cr = (sv("creatives") as Record<string, unknown> | undefined) ?? (draftState?.creatives as Record<string, unknown> | undefined);
+      if (cr) {
+        if (typeof cr.qty === "number") setQty(cr.qty);
+        if (Array.isArray(cr.formats)) setFormats(cr.formats as string[]);
+        if (typeof cr.driveLink === "string") setDriveLink(cr.driveLink);
+        if (typeof cr.brandbookName === "string") setBrandbookName(cr.brandbookName);
+        if (typeof cr.huisstijl === "string") setHuisstijl(cr.huisstijl);
+        if (typeof cr.manusPrompt === "string") setManusPrompt(cr.manusPrompt);
+      }
+
+      // LP
+      const lp = (sv("lp") as Record<string, unknown> | undefined) ?? (draftState?.lp as Record<string, unknown> | undefined);
+      if (lp) {
+        if (typeof lp.stijl === "string") setStijl(lp.stijl);
+        if (typeof lp.lengte === "string") setLengte(lp.lengte);
+        if (typeof lp.pixelId === "string") setPixelId(lp.pixelId);
+        if (typeof lp.webhookUrl === "string") setWebhookUrl(lp.webhookUrl);
+        if (typeof lp.utmStr === "string") setUtmStr(lp.utmStr);
+        if (typeof lp.lpPrompt === "string") setLpPrompt(lp.lpPrompt);
+      }
+
+      // Ad copy
+      const ac = (sv("ad-copy") as AdCopy | undefined) ?? (draftState?.ad_copy as AdCopy | undefined);
+      if (ac) setAdCopy(ac);
+
+      // Brand style — only stored in draft
+      if (draftState?.brand_style) setBrandStyle(draftState.brand_style as BrandStyle);
+      const meta = draftState?.auto_brief_meta as { source?: string } | undefined;
+      if (meta?.source) setAutoBriefSource(meta.source);
+
+      // Status message — different copy depending on whether saved versions
+      // exist (canonical) or only a draft (in-progress).
+      if (savedByStage.size > 0) {
+        const stages = Array.from(savedByStage.keys()).sort();
+        setImportStatus(
+          `Geladen vanuit opgeslagen versie${highestVersion > 1 ? `s (laatst: v${highestVersion})` : " (v1)"} — bewerk en sla op als nieuwe versie. Stages: ${stages.join(", ")}.`,
+        );
+        showToast(`Versie ${highestVersion > 1 ? `tot v${highestVersion}` : "v1"} geladen ✓`);
+      } else {
+        setImportStatus(`Draft van "${clientName}" geladen — sla op als versie zodra je tevreden bent.`);
+        showToast(`Draft geladen ✓`);
+      }
+    } else {
       // Fresh client — Pedro auto-fills the brief from hub context.
       void runAutoBrief(clientId, clientName);
     }
