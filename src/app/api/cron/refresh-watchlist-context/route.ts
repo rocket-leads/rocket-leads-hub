@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { readCache, writeCache } from "@/lib/cache"
 import { collectClientContext, type ClientContext } from "@/lib/watchlist/collect-context"
 import type { MondayClient } from "@/lib/integrations/monday"
+import { startCronRun } from "@/lib/observability/cron-runs"
 
 export const maxDuration = 300 // 5 minutes max
 
@@ -15,9 +16,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const tracker = startCronRun("refresh-watchlist-context")
+
   // Get Live clients from cached boards
   const boards = await readCache<{ current: MondayClient[] }>("monday_boards")
   if (!boards?.current) {
+    await tracker.fail(new Error("No board cache available"))
     return NextResponse.json({ error: "No board cache available" }, { status: 503 })
   }
 
@@ -65,11 +69,20 @@ export async function GET(req: NextRequest) {
   await writeCache("watchlist_context", results)
 
   const duration = ((Date.now() - startTime) / 1000).toFixed(1)
-  return NextResponse.json({
-    ok: true,
-    duration: `${duration}s`,
+  const metrics = {
+    durationSec: Number(duration),
     liveClients: liveClients.length,
     enriched: processed,
     errors,
+  }
+  if (errors > 0) {
+    await tracker.partial(`${errors} clients failed`, metrics)
+  } else {
+    await tracker.ok(metrics)
+  }
+  return NextResponse.json({
+    ok: true,
+    duration: `${duration}s`,
+    ...metrics,
   })
 }

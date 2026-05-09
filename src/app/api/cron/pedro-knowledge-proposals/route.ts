@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { runKnowledgeProposalScan } from "@/lib/pedro/knowledge-proposals"
+import { startCronRun } from "@/lib/observability/cron-runs"
 
 /**
  * GET /api/cron/pedro-knowledge-proposals
@@ -25,11 +26,14 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = await createAdminClient()
+  const tracker = startCronRun("pedro-knowledge-proposals")
   try {
     const result = await runKnowledgeProposalScan(supabase)
+    await tracker.ok(result as Record<string, unknown>)
     return NextResponse.json({ ok: true, ...result })
   } catch (e) {
     console.error("Pedro knowledge proposal cron failed:", e)
+    await tracker.fail(e)
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "unknown error" },
       { status: 500 },

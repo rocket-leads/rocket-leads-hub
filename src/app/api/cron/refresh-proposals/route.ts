@@ -7,6 +7,7 @@ import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { generateProposalForClient, type LeadFeedbackEntry, type AdDetailEntry } from "@/lib/proposals/generate"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { UtmFeedback } from "@/app/api/clients/[id]/lead-feedback/route"
+import { startCronRun } from "@/lib/observability/cron-runs"
 
 // Daily eager regeneration of per-client AI proposals so the team finds
 // fresh analyses ready when they start the day. Triggered by Vercel cron.
@@ -155,6 +156,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const tracker = startCronRun("refresh-proposals")
   const startTime = Date.now()
   const supabase = await createAdminClient()
 
@@ -238,19 +240,29 @@ export async function GET(req: NextRequest) {
     }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1)
-    return NextResponse.json({
-      ok: true,
-      duration: `${duration}s`,
+    const metrics = {
+      durationSec: Number(duration),
       totalClients,
       processed,
       succeeded,
       skipped: processed - succeeded - failed,
       failed,
+    }
+    if (failed > 0) {
+      await tracker.partial(`${failed} clients failed`, metrics)
+    } else {
+      await tracker.ok(metrics)
+    }
+    return NextResponse.json({
+      ok: true,
+      duration: `${duration}s`,
+      ...metrics,
       errors: errors.slice(0, 20),
     })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     console.error("[refresh-proposals] fatal:", message)
+    await tracker.fail(e, { processed, succeeded, failed })
     return NextResponse.json({ ok: false, error: message, processed, succeeded, failed }, { status: 500 })
   }
 }

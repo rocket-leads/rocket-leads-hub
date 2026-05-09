@@ -19,6 +19,7 @@ import {
   shouldRunNow,
 } from "@/lib/slack/notification-config"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
+import { startCronRun } from "@/lib/observability/cron-runs"
 import type { TargetsConfig } from "@/types/targets"
 
 export const maxDuration = 60
@@ -55,12 +56,15 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const force = authz.forcedByAdmin || url.searchParams.get("force") === "1"
 
+  const tracker = startCronRun("slack-team-sales")
+
   const config = await getNotificationConfig("team_sales")
   const guard = shouldRunNow(config, force)
   if (!guard.ok) {
     // Hour mismatches are normal (the cron fires hourly, only one hour matches).
     // Disabled-in-settings is also normal. Both are info-level skips, not errors.
     console.log(TAG, "skipped:", guard.reason, "config:", JSON.stringify(config))
+    await tracker.ok({ skipped: guard.reason })
     return NextResponse.json({ ok: true, skipped: guard.reason, config })
   }
   console.log(TAG, "proceeding — config:", JSON.stringify(config))
@@ -71,6 +75,7 @@ export async function GET(req: NextRequest) {
     const reason = "Sales channel ID not configured. Set it in Settings → Notifications."
     console.error(TAG, reason)
     void alertAdmins(reason)
+    await tracker.fail(new Error(reason))
     return NextResponse.json({ ok: false, error: reason }, { status: 500 })
   }
   console.log(TAG, "sales channel resolved:", SALES_CHANNEL_ID)
@@ -92,6 +97,7 @@ export async function GET(req: NextRequest) {
     const reason = `Failed to load Monday items: ${e instanceof Error ? e.message : String(e)}`
     console.error(TAG, reason)
     void alertAdmins(reason)
+    await tracker.fail(e)
     return NextResponse.json({ ok: false, error: reason }, { status: 500 })
   }
 
@@ -113,11 +119,13 @@ export async function GET(req: NextRequest) {
   try {
     await sendSlackChannelMessage(SALES_CHANNEL_ID, message)
     console.log(TAG, `posted to ${SALES_CHANNEL_ID} for ${perCloser.length} closers`)
+    await tracker.ok({ channel: SALES_CHANNEL_ID, closers: perCloser.length })
     return NextResponse.json({ ok: true, channel: SALES_CHANNEL_ID, closers: perCloser.length })
   } catch (e) {
     const reason = `Slack post failed (channel ${SALES_CHANNEL_ID}): ${e instanceof Error ? e.message : String(e)}. Common cause: bot isn't a member — invite it via /invite @Rocket Leads Hub.`
     console.error(TAG, reason)
     void alertAdmins(reason)
+    await tracker.fail(e)
     return NextResponse.json({ ok: false, error: reason }, { status: 500 })
   }
 }

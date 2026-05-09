@@ -4,32 +4,54 @@ import { useState, useMemo } from "react"
 import { ChevronDown, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ClientInformationPanel } from "@/components/client-information-panel"
-import { mondayStatusToHub, statusLabel, statusTone } from "@/lib/clients/status"
+import { mondayStatusToHub, statusLabel, statusTone, type ClientStatus } from "@/lib/clients/status"
 import type { MondayClient } from "@/lib/integrations/monday"
+import { cn } from "@/lib/utils"
 
 type Props = {
   clients: MondayClient[]
 }
 
+/** Tabs shown above the clients list. Onboarding lives on the dedicated
+ *  Onboarding view, so we only surface the three "operational" statuses
+ *  here — Live is the default because that's what 95% of edits target. */
+const STATUS_TABS: ClientStatus[] = ["live", "on_hold", "churned"]
+
 export function ClientsTab({ clients }: Props) {
+  const [statusFilter, setStatusFilter] = useState<ClientStatus>("live")
   const [search, setSearch] = useState("")
   const [openId, setOpenId] = useState<string | null>(null)
 
+  // Pre-compute Hub status per client once so the tab counts and the list
+  // share the same classification — no chance of a count saying "5 churned"
+  // while the list shows 6 due to a re-classification mismatch.
+  const withStatus = useMemo(
+    () => clients.map((c) => ({ client: c, hubStatus: mondayStatusToHub(c.campaignStatus, c.boardType) })),
+    [clients],
+  )
+
+  const counts = useMemo(() => {
+    const out: Record<ClientStatus, number> = { onboarding: 0, live: 0, on_hold: 0, churned: 0 }
+    for (const { hubStatus } of withStatus) {
+      if (hubStatus) out[hubStatus]++
+    }
+    return out
+  }, [withStatus])
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return clients
-    return clients.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.firstName.toLowerCase().includes(q) ||
-        c.companyName.toLowerCase().includes(q),
-    )
-  }, [clients, search])
-
-  const sorted = useMemo(
-    () => [...filtered].sort((a, b) => a.name.localeCompare(b.name)),
-    [filtered],
-  )
+    return withStatus
+      .filter(({ hubStatus }) => hubStatus === statusFilter)
+      .filter(({ client }) => {
+        if (!q) return true
+        return (
+          client.name.toLowerCase().includes(q) ||
+          client.firstName.toLowerCase().includes(q) ||
+          client.companyName.toLowerCase().includes(q)
+        )
+      })
+      .sort((a, b) => a.client.name.localeCompare(b.client.name))
+  }, [withStatus, statusFilter, search])
 
   return (
     <div className="space-y-4">
@@ -38,6 +60,40 @@ export function ClientsTab({ clients }: Props) {
         <p className="text-xs text-muted-foreground/60 mb-4">
           Edit any client&apos;s details — name, IDs, financials, team. Changes write back to Monday and sync to the Hub.
         </p>
+      </div>
+
+      {/* Status tabs — default Live so the rolodex of churned clients
+          isn't the first thing the admin sees. */}
+      <div className="flex items-center gap-1 border-b border-border/40">
+        {STATUS_TABS.map((status) => {
+          const active = statusFilter === status
+          const tone = statusTone(status)
+          return (
+            <button
+              key={status}
+              type="button"
+              onClick={() => {
+                setStatusFilter(status)
+                setOpenId(null)
+              }}
+              className={cn(
+                "relative inline-flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors",
+                active
+                  ? "text-foreground"
+                  : "text-muted-foreground/70 hover:text-foreground",
+              )}
+            >
+              <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
+              {statusLabel(status)}
+              <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                {counts[status]}
+              </span>
+              {active && (
+                <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-primary" />
+              )}
+            </button>
+          )
+        })}
       </div>
 
       <div className="relative max-w-sm">
@@ -51,9 +107,8 @@ export function ClientsTab({ clients }: Props) {
       </div>
 
       <div className="space-y-2">
-        {sorted.map((client) => {
+        {filtered.map(({ client, hubStatus }) => {
           const isOpen = openId === client.mondayItemId
-          const hubStatus = mondayStatusToHub(client.campaignStatus, client.boardType)
           const tone = statusTone(hubStatus)
 
           return (
@@ -90,8 +145,10 @@ export function ClientsTab({ clients }: Props) {
             </div>
           )
         })}
-        {sorted.length === 0 && (
-          <p className="text-sm text-muted-foreground py-8 text-center">No clients found</p>
+        {filtered.length === 0 && (
+          <p className="text-sm text-muted-foreground py-8 text-center">
+            No {statusLabel(statusFilter).toLowerCase()} clients{search ? " matching your search" : ""}.
+          </p>
         )}
       </div>
     </div>

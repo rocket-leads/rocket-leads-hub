@@ -19,6 +19,7 @@ import {
   shouldRunNow,
 } from "@/lib/slack/notification-config"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
+import { startCronRun } from "@/lib/observability/cron-runs"
 import type { TargetsConfig } from "@/types/targets"
 
 export const maxDuration = 60
@@ -32,9 +33,12 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const force = authz.forcedByAdmin || url.searchParams.get("force") === "1"
 
+  const tracker = startCronRun("slack-personal-sales")
+
   const config = await getNotificationConfig("personal_sales")
   const guard = shouldRunNow(config, force)
   if (!guard.ok) {
+    await tracker.ok({ skipped: guard.reason })
     return NextResponse.json({ ok: true, skipped: guard.reason })
   }
 
@@ -44,6 +48,7 @@ export async function GET(req: NextRequest) {
     .from("closer_slack_mappings")
     .select("monday_person_name, slack_user_id")
   if (mappingErr) {
+    await tracker.fail(new Error(mappingErr.message))
     return NextResponse.json({ ok: false, error: mappingErr.message }, { status: 500 })
   }
 
@@ -58,6 +63,7 @@ export async function GET(req: NextRequest) {
   try {
     items = await fetchRawTargetsItems()
   } catch (e) {
+    await tracker.fail(e)
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "Failed to load Monday items" },
       { status: 500 },
@@ -96,13 +102,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({
-    ok: true,
+  const summary = {
     today,
     closersTotal: closerNames.size,
     mapped: mappingByName.size,
     dmsSent,
     dmsFailed,
+  }
+  if (dmsFailed > 0) {
+    await tracker.partial(`${dmsFailed} DMs failed`, summary)
+  } else {
+    await tracker.ok(summary)
+  }
+  return NextResponse.json({
+    ok: true,
+    ...summary,
     errors: errors.slice(0, 10),
   })
 }

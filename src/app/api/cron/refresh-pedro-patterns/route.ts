@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
+import { startCronRun } from "@/lib/observability/cron-runs"
 import { createAdminClient } from "@/lib/supabase/server"
 import { refreshAllVerticalPatterns } from "@/lib/pedro/vertical-patterns"
 
@@ -29,28 +30,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const tracker = startCronRun("refresh-pedro-patterns")
   const startTime = Date.now()
   const supabase = await createAdminClient()
 
   try {
     const results = await refreshAllVerticalPatterns(supabase)
     const duration = Date.now() - startTime
-
-    return NextResponse.json({
-      ok: true,
+    const metrics = {
       verticals: results.length,
       synthesised: results.filter((r) => r.hadSynthesis).length,
       total_winners: results.reduce((s, r) => s + r.sample_size, 0),
+      durationMs: duration,
+    }
+    await tracker.ok(metrics)
+
+    return NextResponse.json({
+      ok: true,
+      ...metrics,
       breakdown: results.map((r) => ({
         vertical: r.vertical,
         sampleSize: r.sample_size,
         clientCount: r.client_count,
         synthesised: r.hadSynthesis,
       })),
-      durationMs: duration,
     })
   } catch (e) {
     console.error("Pedro patterns cron failed:", e)
+    await tracker.fail(e)
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "unknown error" },
       { status: 500 },

@@ -11,6 +11,7 @@ import {
   type ClientStatus,
 } from "@/lib/clients/status"
 import { updateClientField } from "@/lib/clients/edit"
+import { startCronRun } from "@/lib/observability/cron-runs"
 
 // Onboarding phases that should auto-advance to "LAUNCH 🚀" once an active
 // Meta campaign appears. Off-track phases (`on_hold`, `debt_collection`) are
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const tracker = startCronRun("sync-campaign-status")
   const startTime = Date.now()
 
   try {
@@ -192,16 +194,27 @@ export async function GET(req: NextRequest) {
     }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1)
+    const metrics = {
+      durationSec: Number(duration),
+      checked: candidates.length,
+      flipped: flipped.length,
+      unchangedCount: unchanged.length,
+      errorCount: errors.length,
+    }
+    if (errors.length > 0) {
+      await tracker.partial(`${errors.length} flips failed`, metrics)
+    } else {
+      await tracker.ok(metrics)
+    }
     return NextResponse.json({
       ok: true,
       duration: `${duration}s`,
-      checked: candidates.length,
+      ...metrics,
       flipped,
-      unchangedCount: unchanged.length,
-      errorCount: errors.length,
       errors: errors.slice(0, 10),
     })
   } catch (error) {
+    await tracker.fail(error)
     return NextResponse.json(
       { ok: false, error: error instanceof Error ? error.message : String(error) },
       { status: 500 },

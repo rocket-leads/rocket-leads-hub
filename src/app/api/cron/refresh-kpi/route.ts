@@ -5,6 +5,7 @@ import { fetchMetaInsightsDaily } from "@/lib/integrations/meta"
 import { writeCache } from "@/lib/cache"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
+import { startCronRun } from "@/lib/observability/cron-runs"
 import { isPrevPeriodReliable } from "@/app/api/kpi-summaries/route"
 import type { KpiSummary, KpiDailyCache, KpiDailyClientData, DailyRollup } from "@/app/api/kpi-summaries/route"
 
@@ -88,6 +89,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const tracker = startCronRun("refresh-kpi")
   const startTime = Date.now()
   const supabase = await createAdminClient()
 
@@ -304,6 +306,19 @@ export async function GET(req: NextRequest) {
     })
 
     const totalSec = ((Date.now() - startTime) / 1000).toFixed(0)
+    const writeFailures = writeResults.filter((r) => r.status === "rejected").length
+    const metrics = {
+      elapsedSec: Number(totalSec),
+      clients: kpiClients.length,
+      kpiSummaries: Object.keys(kpiSummaries).length,
+      kpiDaily: Object.keys(kpiDaily).length,
+      writeFailures,
+    }
+    if (writeFailures > 0) {
+      await tracker.partial(`${writeFailures}/${writeResults.length} cache writes failed`, metrics)
+    } else {
+      await tracker.ok(metrics)
+    }
     return NextResponse.json({
       ok: true,
       elapsedSec: Number(totalSec),
@@ -314,6 +329,7 @@ export async function GET(req: NextRequest) {
     })
   } catch (err) {
     console.error("[refresh-kpi] crashed:", err instanceof Error ? err.message : err)
+    await tracker.fail(err)
     return NextResponse.json({ error: err instanceof Error ? err.message : "unknown" }, { status: 500 })
   }
 }

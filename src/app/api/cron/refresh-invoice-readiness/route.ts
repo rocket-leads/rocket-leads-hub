@@ -3,6 +3,7 @@ import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { mondayStatusToHub } from "@/lib/clients/status"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
+import { startCronRun } from "@/lib/observability/cron-runs"
 import {
   computeReadinessForClient,
   HARD_TTL_MS,
@@ -61,6 +62,7 @@ async function handler(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const tracker = startCronRun("refresh-invoice-readiness")
   const startedAt = Date.now()
   const deadline = startedAt + TIME_BUDGET_MS
   const force = req.nextUrl.searchParams.get("force") === "1"
@@ -118,15 +120,23 @@ async function handler(req: NextRequest) {
   }
 
   const remaining = targets.length - computed - failed
-  return NextResponse.json({
-    ok: true,
-    durationMs: Date.now() - startedAt,
+  const metrics = {
     eligible: eligible.length,
     targets: targets.length,
     computed,
     failed,
     remaining,
     deadlineHit: Date.now() >= deadline,
+  }
+  if (failed > 0) {
+    await tracker.partial(`${failed} writes failed`, metrics)
+  } else {
+    await tracker.ok(metrics)
+  }
+  return NextResponse.json({
+    ok: true,
+    durationMs: Date.now() - startedAt,
+    ...metrics,
   })
 }
 

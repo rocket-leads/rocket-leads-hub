@@ -130,9 +130,17 @@ export default async function SettingsPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Settings</h1>
-        <p className="text-[13px] text-muted-foreground mt-1">API tokens, board config, users and notifications.</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Settings</h1>
+          <p className="text-[13px] text-muted-foreground mt-1">API tokens, board config, users and notifications.</p>
+        </div>
+        <a
+          href="/settings/health"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
+        >
+          Health →
+        </a>
       </div>
 
       <ApiHealthBar />

@@ -9,6 +9,7 @@ import { categorize, updateWatchlistClientState } from "@/lib/watchlist/categori
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { readCache, writeCache } from "@/lib/cache"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
+import { startCronRun } from "@/lib/observability/cron-runs"
 import { computeActionCategory } from "@/lib/clients/action-category"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import {
@@ -106,6 +107,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const tracker = startCronRun("refresh-cache")
   const startTime = Date.now()
   const supabase = await createAdminClient()
 
@@ -512,16 +514,22 @@ Output JSON only: { "monday_item_id": { "type": "critical"|"warning"|"action", "
     await writeCache("overview_proposals", overviewProposals)
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(1)
-    return NextResponse.json({
-      ok: true,
-      duration: `${duration}s`,
+    const metrics = {
+      durationSec: Number(duration),
       totalClients: allClients.length,
       kpiClients: Object.keys(kpiSummaries).length,
       billingClients: Object.keys(billingSummaries).length,
       aiProposals: Object.keys(overviewProposals).length,
+    }
+    await tracker.ok(metrics)
+    return NextResponse.json({
+      ok: true,
+      duration: `${duration}s`,
+      ...metrics,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
+    await tracker.fail(error)
     return NextResponse.json({ ok: false, error: message }, { status: 500 })
   }
 }

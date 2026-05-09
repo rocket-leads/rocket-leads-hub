@@ -12,6 +12,7 @@ import {
   shouldRunNow,
 } from "@/lib/slack/notification-config"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
+import { startCronRun } from "@/lib/observability/cron-runs"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { DeliveryOverview } from "@/types/targets"
 
@@ -28,19 +29,21 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const force = authz.forcedByAdmin || url.searchParams.get("force") === "1"
 
+  const tracker = startCronRun("slack-team-watchlist")
+
   const config = await getNotificationConfig("team_watchlist")
   const guard = shouldRunNow(config, force)
   if (!guard.ok) {
+    await tracker.ok({ skipped: guard.reason })
     return NextResponse.json({ ok: true, skipped: guard.reason })
   }
 
   const channels = await getSlackChannels()
   const TEAM_CHANNEL_ID = channels.team_watchlist
   if (!TEAM_CHANNEL_ID) {
-    return NextResponse.json(
-      { ok: false, error: "Team watchlist channel ID not configured. Set it in Settings → Notifications." },
-      { status: 500 },
-    )
+    const reason = "Team watchlist channel ID not configured. Set it in Settings → Notifications."
+    await tracker.fail(new Error(reason))
+    return NextResponse.json({ ok: false, error: reason }, { status: 500 })
   }
 
   const supabase = await createAdminClient()
@@ -51,6 +54,7 @@ export async function GET(req: NextRequest) {
     const data = cached ?? (await fetchBothBoards())
     liveClients = data.current.filter((c) => c.campaignStatus === "Live")
   } catch (e) {
+    await tracker.fail(e)
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "Failed to load clients" },
       { status: 500 },
@@ -93,12 +97,14 @@ export async function GET(req: NextRequest) {
 
   try {
     await sendSlackChannelMessage(TEAM_CHANNEL_ID, message)
+    await tracker.ok({ channel: TEAM_CHANNEL_ID, clientCount: liveClients.length })
     return NextResponse.json({
       ok: true,
       channel: TEAM_CHANNEL_ID,
       clientCount: liveClients.length,
     })
   } catch (e) {
+    await tracker.fail(e)
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "Failed to send" },
       { status: 500 },

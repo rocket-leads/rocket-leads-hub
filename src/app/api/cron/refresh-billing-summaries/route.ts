@@ -7,6 +7,7 @@ import {
   type BillingSummary,
 } from "@/lib/integrations/stripe"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
+import { startCronRun } from "@/lib/observability/cron-runs"
 
 /** How many days of past invoices to keep cached. Wider window = more data
  *  for the past-invoices tab, more API quota per refresh. 180d covers
@@ -34,57 +35,64 @@ async function handler(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  const tracker = startCronRun("refresh-billing-summaries")
   const startedAt = Date.now()
 
-  const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
-    "monday_boards",
-  )
-  const boards = cached ?? (await fetchBothBoards().catch(() => ({ onboarding: [], current: [] })))
-  const allClients = [...boards.onboarding, ...boards.current]
+  try {
+    const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+      "monday_boards",
+    )
+    const boards = cached ?? (await fetchBothBoards().catch(() => ({ onboarding: [], current: [] })))
+    const allClients = [...boards.onboarding, ...boards.current]
 
-  const customerIds = Array.from(
-    new Set(allClients.map((c) => c.stripeCustomerId).filter((id): id is string => !!id)),
-  )
+    const customerIds = Array.from(
+      new Set(allClients.map((c) => c.stripeCustomerId).filter((id): id is string => !!id)),
+    )
 
-  if (customerIds.length === 0) {
-    return NextResponse.json({ ok: true, durationMs: Date.now() - startedAt, refreshed: 0, failed: 0 })
+    if (customerIds.length === 0) {
+      await tracker.ok({ refreshed: 0, failed: 0, customers: 0 })
+      return NextResponse.json({ ok: true, durationMs: Date.now() - startedAt, refreshed: 0, failed: 0 })
+    }
+
+    const [summaryRes, pastInvoices] = await Promise.all([
+      refreshBillingSummaries(customerIds),
+      fetchAllRecentInvoices(PAST_INVOICES_DAYS).catch((e) => {
+        console.error("[refresh-billing] past invoices fetch failed:", e instanceof Error ? e.message : e)
+        return null
+      }),
+    ])
+
+    const existing = (await readCache<Record<string, BillingSummary>>("billing_summaries")) ?? {}
+    const merged = { ...existing, ...summaryRes.summaries }
+    await writeCache("billing_summaries", merged)
+
+    if (pastInvoices) {
+      await writeCache("past_invoices", pastInvoices)
+    }
+
+    await writeCache("billing_refreshed_at", new Date().toISOString())
+
+    const metrics = {
+      customers: customerIds.length,
+      refreshed: Object.keys(summaryRes.summaries).length,
+      failed: summaryRes.failed,
+      pastInvoices: pastInvoices?.length ?? null,
+    }
+    if (summaryRes.failed > 0) {
+      await tracker.partial(`${summaryRes.failed} customer summaries failed`, metrics)
+    } else {
+      await tracker.ok(metrics)
+    }
+
+    return NextResponse.json({
+      ok: true,
+      durationMs: Date.now() - startedAt,
+      ...metrics,
+    })
+  } catch (e) {
+    await tracker.fail(e)
+    throw e
   }
-
-  // Run the per-customer summary refresh and the global past-invoices fetch
-  // in parallel — they're independent Stripe calls and the past-invoices
-  // pagination dominates the wall-clock when both are sequential.
-  const [summaryRes, pastInvoices] = await Promise.all([
-    refreshBillingSummaries(customerIds),
-    fetchAllRecentInvoices(PAST_INVOICES_DAYS).catch((e) => {
-      console.error("[refresh-billing] past invoices fetch failed:", e instanceof Error ? e.message : e)
-      return null
-    }),
-  ])
-
-  // Merge summaries with existing cache so Stripe blips on one customer
-  // don't drop their previous summary entirely.
-  const existing = (await readCache<Record<string, BillingSummary>>("billing_summaries")) ?? {}
-  const merged = { ...existing, ...summaryRes.summaries }
-  await writeCache("billing_summaries", merged)
-
-  // Past-invoices cache is a full replacement (we just queried the whole
-  // 180-day window) so blow it away and write fresh.
-  if (pastInvoices) {
-    await writeCache("past_invoices", pastInvoices)
-  }
-
-  // Track when this last ran so the /billing page can render a "Last updated"
-  // hint for finance.
-  await writeCache("billing_refreshed_at", new Date().toISOString())
-
-  return NextResponse.json({
-    ok: true,
-    durationMs: Date.now() - startedAt,
-    customers: customerIds.length,
-    refreshed: Object.keys(summaryRes.summaries).length,
-    failed: summaryRes.failed,
-    pastInvoices: pastInvoices?.length ?? null,
-  })
 }
 
 export const GET = handler

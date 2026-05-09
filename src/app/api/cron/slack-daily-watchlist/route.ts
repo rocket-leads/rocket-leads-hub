@@ -5,6 +5,7 @@ import { filterClientsByUser } from "@/lib/clients/filter"
 import { readCache } from "@/lib/cache"
 import { sendDmToHubUser } from "@/lib/slack"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
+import { startCronRun } from "@/lib/observability/cron-runs"
 import {
   computeSevenDayAvgScore,
   computeWatchlistVars,
@@ -34,11 +35,14 @@ export async function GET(req: NextRequest) {
   // the hour-of-day guard. Cron callers still need ?force=1 to override.
   const force = authz.forcedByAdmin || url.searchParams.get("force") === "1"
 
+  const tracker = startCronRun("slack-daily-watchlist")
+
   // Vercel cron is UTC-only and fires hourly; the user-configured hour in
   // Settings → Notifications gates which fire actually does work.
   const config = await getNotificationConfig("personal_watchlist")
   const guard = shouldRunNow(config, force)
   if (!guard.ok) {
+    await tracker.ok({ skipped: guard.reason })
     return NextResponse.json({ ok: true, skipped: guard.reason })
   }
 
@@ -49,9 +53,11 @@ export async function GET(req: NextRequest) {
     .select("id, name, role, slack_user_id")
     .not("slack_user_id", "is", null)
   if (usersErr) {
+    await tracker.fail(new Error(usersErr.message))
     return NextResponse.json({ ok: false, error: usersErr.message }, { status: 500 })
   }
   if (!users || users.length === 0) {
+    await tracker.ok({ sent: 0, skipped: "no users with slack_user_id configured" })
     return NextResponse.json({ ok: true, sent: 0, skipped: "no users with slack_user_id configured" })
   }
 
@@ -61,6 +67,7 @@ export async function GET(req: NextRequest) {
     const data = cached ?? (await fetchBothBoards())
     liveClients = data.current.filter((c) => c.campaignStatus === "Live")
   } catch (e) {
+    await tracker.fail(e)
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : "Failed to load clients" },
       { status: 500 },
@@ -124,11 +131,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const metrics = { sent, failed, totalUsers: users.length }
+  if (failed > 0) {
+    await tracker.partial(`${failed} DMs failed`, metrics)
+  } else {
+    await tracker.ok(metrics)
+  }
   return NextResponse.json({
     ok: true,
-    sent,
-    failed,
-    totalUsers: users.length,
+    ...metrics,
     errors: errors.slice(0, 10),
   })
 }
