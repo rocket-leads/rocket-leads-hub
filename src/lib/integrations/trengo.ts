@@ -136,6 +136,98 @@ export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
   return [...data.data].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
 }
 
+/** Email-specific channel metadata exposed by `GET /channels`. We surface
+ *  the signature + sender info to the email composer so the AM gets the same
+ *  signature Trengo's web UI uses, without us having to maintain a Hub-side
+ *  copy. Placeholders like `[agent.first_name]` are NOT substituted here —
+ *  Trengo replaces them at send time, so the composer should preview them
+ *  literally. */
+export type TrengoEmailChannelInfo = {
+  channelId: number
+  title: string
+  senderEmail: string | null
+  senderName: string | null
+  /** "[agent.first_name] | Rocket Leads" — Trengo substitutes per-agent. */
+  senderNamePersonal: string | null
+  /** HTML signature block. May contain Trengo placeholders. */
+  signature: string | null
+}
+
+/**
+ * Look up an email channel's send-side metadata (signature, sender labels)
+ * by channel id. Backed by the cached `/channels` fetch — calling this on
+ * every composer open is cheap.
+ *
+ * Returns null if the channel doesn't exist OR isn't an email channel
+ * (signature lookup on a WhatsApp channel is meaningless).
+ */
+export async function fetchEmailChannelInfo(
+  channelId: number,
+): Promise<TrengoEmailChannelInfo | null> {
+  const channels = await fetchTrengoChannels()
+  const ch = channels.find((c) => c.id === channelId)
+  if (!ch) return null
+  const ec = (ch as { emailChannel?: Record<string, unknown> | null }).emailChannel
+  if (!ec || typeof ec !== "object") return null
+  return {
+    channelId: ch.id,
+    title: ch.title ?? ch.display_name ?? `Channel ${ch.id}`,
+    senderEmail: typeof ec.sender_email === "string" ? ec.sender_email : null,
+    senderName: typeof ec.sender_name === "string" ? ec.sender_name : null,
+    senderNamePersonal:
+      typeof ec.sender_name_personal === "string" ? ec.sender_name_personal : null,
+    signature: typeof ec.signature === "string" ? ec.signature : null,
+  }
+}
+
+/** A WhatsApp Business HSM template registered in Trengo. The fields we
+ *  consume in the composer: `title` for the picker label, `message` for the
+ *  preview + variable extraction (`{{1}}{{2}}…`), `language` for the send
+ *  payload, `channel_id` for filtering. `components` carries header/button
+ *  hints we surface as preview-only (we don't customize them). */
+export type TrengoWaTemplate = {
+  id: number
+  title: string
+  slug: string
+  message: string
+  channel_id: number
+  language: string
+  status: string
+  category: string | null
+  components: Array<{
+    id: number
+    type: string
+    sub_type: string | null
+    value: string | null
+  }>
+}
+
+/**
+ * List approved WhatsApp templates for a specific channel. Server-side
+ * filtering on `status` + `channel_id` is supported by Trengo (verified via
+ * web-UI sniff during Phase 0 audit); without it we'd need to walk all 25
+ * pages of the workspace template pool to find the ~50-70 that match each
+ * channel — too expensive even with the 5-minute cache.
+ *
+ * Returns the FULL filtered list (paginated server-side, but we collect all
+ * pages here so the UI gets one array). Cached for 5 minutes by trengoFetch.
+ */
+export async function fetchWaTemplates(channelId: number): Promise<TrengoWaTemplate[]> {
+  const all: TrengoWaTemplate[] = []
+  let page = 1
+  while (page <= MAX_PAGES) {
+    const data = await trengoFetch<{
+      data: TrengoWaTemplate[]
+      meta?: { current_page: number; last_page: number }
+    }>(`/wa_templates?status=ACCEPTED&channel_id=${channelId}&page=${page}`)
+    all.push(...data.data)
+    if (!data.meta || page >= data.meta.last_page) break
+    page++
+  }
+  // Stable, alphabetic order so the picker isn't reshuffled on every refresh.
+  return all.sort((a, b) => a.title.localeCompare(b.title))
+}
+
 export async function fetchMessages(ticketId: number): Promise<TrengoMessage[]> {
   const all: TrengoMessage[] = []
   let page = 1

@@ -499,6 +499,10 @@ export type ChatThreadSummary = {
    *  for the WA line). Useful in the thread header so the user can see
    *  exactly which inbox the message came in on. */
   channelName: string | null
+  /** Trengo channel id (numeric). Surfaced so the WhatsApp composer can
+   *  fetch the templates approved for this channel without an extra
+   *  thread-detail round-trip. Null for non-Trengo sources. */
+  trengoChannelId: number | null
   /** Most recent message preview (truncated). */
   latestPreview: string
   /** Most recent message timestamp (uses created_at_src when available). */
@@ -720,15 +724,17 @@ export async function listChatThreads(
     // might be an outbound mirror without a channel id (legacy rows).
     let channelKind: ChatChannelKind = null
     let channelName: string | null = null
+    let trengoChannelId: number | null = null
     if (latest.source === "trengo") {
       for (const r of threadRows) {
         if (r.trengo_channel_id != null) {
+          trengoChannelId = r.trengo_channel_id
           const info = channelLookup.get(r.trengo_channel_id)
           if (info) {
             channelKind = info.kind
             channelName = info.name
-            break
           }
+          break
         }
       }
     }
@@ -741,6 +747,7 @@ export async function listChatThreads(
       clientName,
       channelKind,
       channelName,
+      trengoChannelId,
       latestPreview,
       latestAt: rowDisplayAt(latest),
       latestEventId: latest.id,
@@ -822,6 +829,80 @@ export async function markChatThreadRead(
   if (updErr) throw new Error(`Failed to mark thread read: ${updErr.message}`)
 
   return { updated: ids.length }
+}
+
+/**
+ * Mark a chat thread "unread" — flip the most recent visible event back to
+ * status='unread' so the thread shows up as unread in the list and bumps the
+ * sidebar badge by one. We only touch the latest event (not every read row in
+ * the thread) because "unread" is a presentation signal, not a per-message
+ * archival state — bringing one event back is enough for the thread to surface
+ * with a badge, and avoids quietly resurrecting old reads that were already
+ * triaged.
+ *
+ * Visibility filter mirrors markChatThreadRead so users can only flip threads
+ * they can actually see. Idempotent: if the latest event is already unread,
+ * this is a no-op.
+ */
+export async function markChatThreadUnread(
+  threadKey: string,
+  userId: string,
+  role: Role,
+): Promise<{ updated: number }> {
+  const supabase = await createAdminClient()
+
+  // Same claimed-ticket gate as markChatThreadRead — a Trengo-claimed thread
+  // shouldn't be mutable from the Hub.
+  const { data: claimedRow } = await supabase
+    .from("inbox_events")
+    .select("id")
+    .eq("thread_key", threadKey)
+    .eq("source", "trengo")
+    .not("trengo_assignee_user_id", "is", null)
+    .limit(1)
+    .maybeSingle()
+  if (claimedRow) return { updated: 0 }
+
+  let query = supabase
+    .from("inbox_events")
+    .select("id, status")
+    .eq("thread_key", threadKey)
+    .order("created_at", { ascending: false })
+    .limit(1)
+
+  const channelIds = await getUserTrengoChannelIds(userId)
+  if (channelIds.length > 0) {
+    query = query.or(
+      `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+    )
+  }
+
+  if (role !== "admin") {
+    const allowed = await getAllowedClientIds(userId, role)
+    if (allowed !== "all") {
+      const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+      const channelClause =
+        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+      query = query.or(
+        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+      )
+    }
+  }
+
+  const { data, error } = await query
+  if (error) throw new Error(`Failed to load latest event: ${error.message}`)
+
+  const row = (data ?? [])[0] as { id: string; status: string } | undefined
+  if (!row) return { updated: 0 }
+  if (row.status === "unread") return { updated: 0 }
+
+  const { error: updErr } = await supabase
+    .from("inbox_events")
+    .update({ status: "unread" })
+    .eq("id", row.id)
+  if (updErr) throw new Error(`Failed to mark thread unread: ${updErr.message}`)
+
+  return { updated: 1 }
 }
 
 export async function getChatThreadMessages(

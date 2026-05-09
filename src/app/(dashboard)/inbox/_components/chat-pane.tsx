@@ -1,14 +1,38 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Send, MessageSquare, Hash, LayoutGrid, Inbox, Mail } from "lucide-react"
+import {
+  Loader2,
+  Send,
+  MessageSquare,
+  Hash,
+  LayoutGrid,
+  LayoutList,
+  Inbox,
+  Mail,
+  Check,
+  CheckCheck,
+  MailOpen,
+  X,
+  Paperclip,
+  FileText,
+  Image as ImageIcon,
+  Bold,
+  Italic,
+  Strikethrough,
+  Clock3,
+  ShieldAlert,
+  ChevronDown,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import type { ChatScope, ChatThreadSummary, ChatMessage } from "@/lib/inbox/fetchers"
 import type { InboxUser } from "./inbox-view"
+import { EmailComposer } from "./email-composer"
 
 type Props = {
   scope: ChatScope
@@ -16,6 +40,9 @@ type Props = {
    *  Accepted now so callers can wire it pre-emptively. */
   users?: InboxUser[]
 }
+
+type MarkAction = "mark_read" | "mark_unread"
+type ChatFilter = "all" | "unread" | "read"
 
 /**
  * Two-pane chat view for the Team Inbox / Client Inbox tabs.
@@ -27,10 +54,22 @@ type Props = {
  * at the bottom. Reply uses the existing /api/inbox/[id]/reply endpoint —
  * we pass the thread's latest event id; the helper derives source +
  * thread metadata from there.
+ *
+ * Multi-select + bulk mark read/unread mirror the Updates tab UX so an AM
+ * doesn't have to learn two patterns. Per-row hover actions cover the common
+ * "save for later" case (mark a single thread back to unread without
+ * selecting). The fixed-height grid is sized to fill the viewport so the
+ * thread list scrolls independently of the page chrome — fixes the prior
+ * h-[640px] which left half the page empty.
  */
 export function ChatPane({ scope, users }: Props) {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<ChatThreadSummary | null>(null)
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
+  // Filter strip state — All / Unread / Read. Persisted per scope so the
+  // Client Inbox and Team Inbox keep their own preferences (an AM might
+  // want Unread by default for client chat but All for team chat).
+  const [filter, setFilter] = usePersistedChatFilter(scope)
 
   const threadsQuery = useQuery<{ threads: ChatThreadSummary[] }>({
     queryKey: ["inbox-threads", scope],
@@ -43,49 +82,107 @@ export function ChatPane({ scope, users }: Props) {
     refetchInterval: 5 * 1000,
   })
 
-  const threads = threadsQuery.data?.threads ?? []
+  const threads = useMemo(
+    () => threadsQuery.data?.threads ?? [],
+    [threadsQuery.data?.threads],
+  )
 
-  /**
-   * Mark a thread as read. Slack-default: fires the moment the user picks the
-   * thread (no delay). We optimistically zero the row's `unreadCount` so the
-   * left-pane badge clears immediately, then PATCH the server, then refresh
-   * the sidebar inbox badge so the global count drops too. Failures revert.
-   */
-  function selectAndMarkRead(thread: ChatThreadSummary) {
-    setSelected(thread)
-    if (thread.unreadCount === 0) return
+  // Tab counts come off the unfiltered set — flipping to "Read" shouldn't
+  // make the Unread tab claim "0 unread" when there are still unread items
+  // hiding behind the filter.
+  const tabCounts = useMemo(() => {
+    let unread = 0
+    for (const t of threads) if (t.unreadCount > 0) unread += 1
+    return { all: threads.length, unread, read: threads.length - unread }
+  }, [threads])
 
-    // Optimistic local update on the threads list.
+  const filteredThreads = useMemo(() => {
+    if (filter === "all") return threads
+    if (filter === "unread") return threads.filter((t) => t.unreadCount > 0)
+    return threads.filter((t) => t.unreadCount === 0)
+  }, [threads, filter])
+
+  // Drop selections for threads that are no longer in the visible list (filter
+  // change, claimed in Trengo, etc.) so the bulk bar count stays honest.
+  useEffect(() => {
+    if (selectedKeys.size === 0) return
+    const visible = new Set(filteredThreads.map((t) => t.threadKey))
+    setSelectedKeys((prev) => {
+      let dirty = false
+      const next = new Set<string>()
+      for (const k of prev) {
+        if (visible.has(k)) next.add(k)
+        else dirty = true
+      }
+      return dirty ? next : prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredThreads])
+
+  function toggleSelect(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function selectAll() {
+    setSelectedKeys(new Set(filteredThreads.map((t) => t.threadKey)))
+  }
+
+  function clearSelection() {
+    setSelectedKeys(new Set())
+  }
+
+  /** Optimistically flip a thread's unread state and PATCH the server.
+   *  On failure we invalidate so the server's authoritative state wins. */
+  function markThread(thread: ChatThreadSummary, action: MarkAction) {
+    const optimisticUnread = action === "mark_read" ? 0 : Math.max(thread.unreadCount, 1)
     queryClient.setQueryData<{ threads: ChatThreadSummary[] }>(
       ["inbox-threads", scope],
       (prev) => {
         if (!prev) return prev
         return {
           threads: prev.threads.map((t) =>
-            t.threadKey === thread.threadKey ? { ...t, unreadCount: 0 } : t,
+            t.threadKey === thread.threadKey ? { ...t, unreadCount: optimisticUnread } : t,
           ),
         }
       },
     )
-
     fetch(`/api/inbox/threads/${encodeURIComponent(thread.threadKey)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "mark_read" }),
+      body: JSON.stringify({ action }),
     })
       .then((res) => {
-        if (!res.ok) throw new Error(`mark_read failed (${res.status})`)
-        // Refresh sidebar inbox badge — chats are part of the combined total.
+        if (!res.ok) throw new Error(`${action} failed (${res.status})`)
         queryClient.invalidateQueries({ queryKey: ["inbox-badge"] })
-        // Refresh the thread message list so the per-message status reflects
-        // the new state (used by future internal-note rendering).
         queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
       })
       .catch((e) => {
-        console.error("Failed to mark thread read", e)
-        // Revert optimistic update.
+        console.error("Failed to update thread read state", e)
         queryClient.invalidateQueries({ queryKey: ["inbox-threads", scope] })
       })
+  }
+
+  function bulkMark(action: MarkAction) {
+    const items = filteredThreads.filter((t) => selectedKeys.has(t.threadKey))
+    clearSelection()
+    for (const t of items) markThread(t, action)
+  }
+
+  /**
+   * Mark a thread as read AND select it. Slack-default: opening a thread
+   * clears its badge. We optimistically zero the row's `unreadCount` so the
+   * left-pane badge clears immediately, then PATCH the server, then refresh
+   * the sidebar inbox badge so the global count drops too. Failures revert.
+   */
+  function selectAndMarkRead(thread: ChatThreadSummary) {
+    setSelected(thread)
+    if (thread.unreadCount === 0) return
+    markThread(thread, "mark_read")
   }
 
   // Auto-select the first thread when the list loads, so the empty right pane
@@ -111,16 +208,45 @@ export function ChatPane({ scope, users }: Props) {
     }
   }
 
+  const filterTabs: TopTab<ChatFilter>[] = [
+    { id: "all", label: "All conversations", icon: LayoutList, count: tabCounts.all },
+    { id: "unread", label: "Unread", icon: Mail, count: tabCounts.unread },
+    { id: "read", label: "Read", icon: MailOpen, count: tabCounts.read },
+  ]
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-3 h-[640px]">
-      <ThreadList
-        threads={threads}
-        loading={threadsQuery.isLoading}
-        selectedKey={selected?.threadKey ?? null}
-        onSelect={selectAndMarkRead}
-        scope={scope}
-      />
-      <ThreadView thread={selected} onReplied={refresh} users={users} />
+    <div className="space-y-4">
+      <TopTabs<ChatFilter> tabs={filterTabs} value={filter} onChange={setFilter} />
+
+      {/* Sized to fill the viewport below the page chrome instead of being
+          locked to 640px — keeps the thread list and chat pane equal in
+          height regardless of screen size, and prevents the prior "sidebar
+          stops halfway down the page" UX bug. The 280px subtraction covers
+          page header + main tabs + filter tabs + spacing. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 h-[calc(100vh-280px)] min-h-[500px]">
+        <ThreadList
+          threads={filteredThreads}
+          loading={threadsQuery.isLoading}
+          selectedKey={selected?.threadKey ?? null}
+          selectedKeys={selectedKeys}
+          filter={filter}
+          onSelect={selectAndMarkRead}
+          onToggleSelect={toggleSelect}
+          onSelectAll={selectAll}
+          onClearSelection={clearSelection}
+          onMarkThread={markThread}
+          scope={scope}
+        />
+        <ThreadView thread={selected} onReplied={refresh} users={users} />
+      </div>
+
+      {selectedKeys.size > 0 && (
+        <ChatBulkActionBar
+          count={selectedKeys.size}
+          onClear={clearSelection}
+          onMark={bulkMark}
+        />
+      )}
     </div>
   )
 }
@@ -131,83 +257,342 @@ function ThreadList({
   threads,
   loading,
   selectedKey,
+  selectedKeys,
+  filter,
   onSelect,
+  onToggleSelect,
+  onSelectAll,
+  onClearSelection,
+  onMarkThread,
   scope,
 }: {
   threads: ChatThreadSummary[]
   loading: boolean
   selectedKey: string | null
+  selectedKeys: Set<string>
+  filter: ChatFilter
   onSelect: (thread: ChatThreadSummary) => void
+  onToggleSelect: (key: string) => void
+  onSelectAll: () => void
+  onClearSelection: () => void
+  onMarkThread: (thread: ChatThreadSummary, action: MarkAction) => void
   scope: ChatScope
 }) {
   if (loading) {
     return (
-      <div className="rounded-lg border border-border/40 flex items-center justify-center py-12">
+      <div className="rounded-xl border border-border bg-card shadow-sm flex items-center justify-center py-12">
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   if (threads.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border/40 flex flex-col items-center justify-center py-12 px-4 text-center">
-        <Inbox className="h-6 w-6 text-muted-foreground/40 mb-2" />
-        <p className="text-sm text-muted-foreground">
-          {scope === "external"
+    // Filtered-empty messaging shifts based on which tab the user is on so
+    // "0 read" doesn't look like a sync failure when they're on Read mode.
+    const baseCopy =
+      scope === "external" ? "client conversations" : "team conversations"
+    const empty =
+      filter === "unread"
+        ? `No unread ${baseCopy}.`
+        : filter === "read"
+          ? `No read ${baseCopy}.`
+          : scope === "external"
             ? "No client conversations yet."
-            : "No team conversations yet."}
-        </p>
-        <p className="text-[11px] text-muted-foreground/60 mt-1">
-          {scope === "external"
-            ? "Trengo messages will appear here once webhooks fire."
-            : "Slack messages will appear here once webhooks fire."}
-        </p>
+            : "No team conversations yet."
+    const sub =
+      filter === "all"
+        ? scope === "external"
+          ? "Trengo messages will appear here once webhooks fire."
+          : "Slack messages will appear here once webhooks fire."
+        : "Try switching tabs to see other conversations."
+    return (
+      <div className="rounded-xl border border-dashed border-border bg-card/40 flex flex-col items-center justify-center py-12 px-4 text-center">
+        <Inbox className="h-6 w-6 text-muted-foreground/40 mb-2" />
+        <p className="text-sm text-muted-foreground">{empty}</p>
+        <p className="text-[11px] text-muted-foreground/60 mt-1">{sub}</p>
       </div>
     )
   }
 
+  const allSelected = selectedKeys.size > 0 && selectedKeys.size === threads.length
+  const anySelected = selectedKeys.size > 0
+  const selectAllState: "none" | "some" | "all" = allSelected
+    ? "all"
+    : anySelected
+      ? "some"
+      : "none"
+
   return (
-    <div className="rounded-lg border border-border/40 overflow-y-auto">
-      {threads.map((thread) => {
-        const isSelected = thread.threadKey === selectedKey
-        return (
+    <div className="rounded-xl border border-border bg-card shadow-sm flex flex-col overflow-hidden">
+      {/* Sticky header: shows total + a select-all checkbox. When 1+ threads
+          are selected the header shifts to a "X selected · Clear" strip so
+          the bulk affordance is discoverable without scrolling to the
+          floating bar. */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border bg-muted/30 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <SelectAllCheckbox
+            state={selectAllState}
+            onClick={() => {
+              if (selectAllState === "all") onClearSelection()
+              else onSelectAll()
+            }}
+          />
+          {anySelected ? (
+            <span className="text-xs font-medium tabular-nums">
+              {selectedKeys.size} selected
+            </span>
+          ) : (
+            <span className="text-xs font-medium text-muted-foreground">
+              {threads.length} {threads.length === 1 ? "conversation" : "conversations"}
+            </span>
+          )}
+        </div>
+        {anySelected && (
           <button
-            key={thread.threadKey}
             type="button"
-            onClick={() => onSelect(thread)}
-            className={cn(
-              "w-full text-left border-b border-border/40 last:border-b-0 px-3.5 py-3 transition-colors",
-              isSelected
-                ? "bg-muted/60"
-                : "hover:bg-muted/30",
-            )}
+            onClick={onClearSelection}
+            className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors px-1.5 py-0.5 rounded hover:bg-muted"
           >
-            <div className="flex items-start justify-between gap-2 mb-0.5">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <SourceIcon thread={thread} />
-                <span className="text-sm font-medium truncate">{thread.primaryName}</span>
-                <ChannelBadge thread={thread} />
-              </div>
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto divide-y divide-border/60">
+        {threads.map((thread) => {
+          const isSelected = thread.threadKey === selectedKey
+          const isChecked = selectedKeys.has(thread.threadKey)
+          const isUnread = thread.unreadCount > 0
+          return (
+            <ThreadRow
+              key={thread.threadKey}
+              thread={thread}
+              isActive={isSelected}
+              isChecked={isChecked}
+              isUnread={isUnread}
+              onSelect={() => onSelect(thread)}
+              onToggleCheck={() => onToggleSelect(thread.threadKey)}
+              onMark={(action) => onMarkThread(thread, action)}
+            />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ThreadRow({
+  thread,
+  isActive,
+  isChecked,
+  isUnread,
+  onSelect,
+  onToggleCheck,
+  onMark,
+}: {
+  thread: ChatThreadSummary
+  isActive: boolean
+  isChecked: boolean
+  isUnread: boolean
+  onSelect: () => void
+  onToggleCheck: () => void
+  onMark: (action: MarkAction) => void
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
+      className={cn(
+        "group relative w-full text-left px-3.5 py-3 transition-colors cursor-pointer",
+        "hover:bg-muted/40",
+        isActive && "bg-primary/5 hover:bg-primary/10",
+        isChecked && "bg-primary/[0.07]",
+      )}
+    >
+      {/* Left edge unread bar — same convention email clients use. Doesn't
+          shift the row content; sits flush against the divider. */}
+      {isUnread && (
+        <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-primary" />
+      )}
+      <div className="flex items-start gap-2.5">
+        {/* Bulk-select checkbox. Hover-revealed when nothing is selected,
+            pinned visible while there's an active selection so the AM can
+            see the rest of the column at a glance. */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={isChecked}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleCheck()
+          }}
+          className={cn(
+            "h-4 w-4 shrink-0 rounded border-2 inline-flex items-center justify-center mt-0.5 transition-all",
+            isChecked
+              ? "bg-primary border-primary text-primary-foreground"
+              : "border-muted-foreground/30 hover:border-foreground hover:bg-muted/60",
+            isChecked ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+          )}
+          title={isChecked ? "Deselect" : "Select for bulk action"}
+        >
+          {isChecked && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+        </button>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 mb-0.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <SourceIcon thread={thread} />
+              <span
+                className={cn(
+                  "text-sm truncate",
+                  isUnread ? "font-semibold text-foreground" : "font-medium text-foreground/90",
+                )}
+              >
+                {thread.primaryName}
+              </span>
+              <ChannelBadge thread={thread} />
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Hover-revealed mark read/unread toggle. Stops propagation so
+                  clicking it doesn't switch the active thread. */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onMark(isUnread ? "mark_read" : "mark_unread")
+                }}
+                title={isUnread ? "Mark as read" : "Mark as unread"}
+                aria-label={isUnread ? "Mark as read" : "Mark as unread"}
+                className="opacity-0 group-hover:opacity-100 h-6 w-6 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+              >
+                {isUnread ? (
+                  <CheckCheck className="h-3.5 w-3.5" />
+                ) : (
+                  <Mail className="h-3.5 w-3.5" />
+                )}
+              </button>
               {thread.unreadCount > 0 && (
-                <span className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums">
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums">
                   {thread.unreadCount}
                 </span>
               )}
             </div>
-            {(thread.clientName || thread.channelName) && (
-              <p className="text-[10px] text-muted-foreground/70 truncate mb-1">
-                {thread.clientName ?? thread.channelName}
-              </p>
+          </div>
+          {(thread.clientName || thread.channelName) && (
+            <p className="text-[10px] text-muted-foreground/70 truncate mb-1">
+              {thread.clientName ?? thread.channelName}
+            </p>
+          )}
+          <p
+            className={cn(
+              "text-[11px] truncate leading-snug",
+              isUnread ? "text-foreground/80" : "text-muted-foreground/80",
             )}
-            <p className="text-[11px] text-muted-foreground/80 truncate leading-snug">
-              {thread.latestPreview || <span className="italic">No preview</span>}
-            </p>
-            <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-              {fmtRelative(thread.latestAt)}
-            </p>
-          </button>
-        )
-      })}
+          >
+            {thread.latestPreview || <span className="italic">No preview</span>}
+          </p>
+          <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+            {fmtRelative(thread.latestAt)}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Tri-state header checkbox. "some" shows a half-fill so the user knows
+ *  not every visible thread is selected, mirroring the Updates pattern. */
+function SelectAllCheckbox({
+  state,
+  onClick,
+}: {
+  state: "none" | "some" | "all"
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={state === "all" ? true : state === "some" ? "mixed" : false}
+      onClick={onClick}
+      className={cn(
+        "h-4 w-4 shrink-0 rounded border-2 inline-flex items-center justify-center transition-all",
+        state === "all"
+          ? "bg-primary border-primary text-primary-foreground"
+          : state === "some"
+            ? "bg-primary/30 border-primary"
+            : "border-muted-foreground/40 hover:border-foreground",
+      )}
+      title={
+        state === "all"
+          ? "Deselect all"
+          : state === "some"
+            ? "Select all"
+            : "Select all"
+      }
+    >
+      {state === "all" && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+      {state === "some" && (
+        <span className="block h-0.5 w-2 bg-primary-foreground rounded-sm" />
+      )}
+    </button>
+  )
+}
+
+/**
+ * Floating bulk action bar — appears when 1+ threads are selected. Same
+ * shape as the Updates BulkActionBar so the inbox-wide pattern stays
+ * consistent: pill-shaped, fixed bottom-center, single-purpose buttons with
+ * tinted hover states.
+ */
+function ChatBulkActionBar({
+  count,
+  onClear,
+  onMark,
+}: {
+  count: number
+  onClear: () => void
+  onMark: (action: MarkAction) => void
+}) {
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-full border border-border bg-popover shadow-lg px-2 py-1.5">
+      <span className="text-xs font-medium px-2 tabular-nums">
+        {count} selected
+      </span>
+      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <button
+        type="button"
+        onClick={() => onMark("mark_read")}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+        title="Mark selected conversations as read"
+      >
+        <CheckCheck className="h-3.5 w-3.5" />
+        Mark read
+      </button>
+      <button
+        type="button"
+        onClick={() => onMark("mark_unread")}
+        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-primary/10 hover:text-primary transition-colors"
+        title="Mark selected conversations as unread"
+      >
+        <MailOpen className="h-3.5 w-3.5" />
+        Mark unread
+      </button>
+      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <button
+        type="button"
+        onClick={onClear}
+        className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        title="Clear selection"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }
@@ -225,7 +610,7 @@ function ThreadView({
 }) {
   if (!thread) {
     return (
-      <div className="rounded-lg border border-border/40 flex items-center justify-center text-sm text-muted-foreground/60">
+      <div className="rounded-xl border border-border bg-card shadow-sm flex items-center justify-center text-sm text-muted-foreground/60">
         Select a conversation
       </div>
     )
@@ -235,6 +620,37 @@ function ThreadView({
 }
 
 type ComposerMode = "reply" | "internal"
+
+/** WhatsApp Business template surfaced in the picker. Mirrors the subset of
+ *  Trengo's `/wa_templates` response we care about. `message` carries the
+ *  source body with `{{1}}{{2}}…` placeholders the AM fills in. */
+type WaTemplate = {
+  id: number
+  title: string
+  slug: string
+  message: string
+  language: string
+  channel_id: number
+  status: string
+  components: Array<{ id: number; type: string; sub_type: string | null; value: string | null }>
+}
+
+/** WhatsApp composer mode. Inside the 24h window the AM picks; outside the
+ *  window we force "template" because Meta forbids free-text outbound. */
+type WaMode = "default" | "template"
+
+/** Attachment that's been uploaded to Trengo's draft store but not yet sent.
+ *  Lifecycle: file picked → uploaded → chip shown → included in send →
+ *  cleared on success. Mirrors the subset of Trengo's response we actually
+ *  need in the UI (id for sending, full_url + is_image for preview, names
+ *  for display). */
+type PendingAttachment = {
+  id: number
+  clientName: string
+  fullUrl: string
+  mimeType: string | null
+  isImage: boolean
+}
 
 function ThreadMessages({
   thread,
@@ -248,11 +664,32 @@ function ThreadMessages({
   const queryClient = useQueryClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [reply, setReply] = useState("")
   const [composerMode, setComposerMode] = useState<ComposerMode>("reply")
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [needsConnect, setNeedsConnect] = useState<"trengo" | "slack" | null>(null)
+  // Attachments uploaded for this draft. Each entry holds the Trengo
+  // attachment id needed at send-time plus the metadata needed to render a
+  // preview chip. Cleared on send success and on thread switch.
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([])
+  const [uploadingCount, setUploadingCount] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+  // WhatsApp composer state: only active when channelKind === "whatsapp".
+  // Default mode is "default" (free text); flips to "template" automatically
+  // when the 24h window is closed.
+  const [waMode, setWaMode] = useState<WaMode>("default")
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
+  const [templateParams, setTemplateParams] = useState<string[]>([])
+  // Email composer state — only active when channelKind === "email". Lifted
+  // here (rather than inside EmailComposer) so sendReply can grab everything
+  // on submit without an editor ref dance.
+  const [emailSubject, setEmailSubject] = useState("")
+  const [emailCc, setEmailCc] = useState<string[]>([])
+  const [emailBcc, setEmailBcc] = useState<string[]>([])
+  const [emailHtml, setEmailHtml] = useState("")
   // @-mention picker state (only active in internal-note mode).
   const [mentionStart, setMentionStart] = useState<number | null>(null)
   const [mentionQuery, setMentionQuery] = useState("")
@@ -277,14 +714,85 @@ function ThreadMessages({
     messagesEndRef.current?.scrollIntoView({ behavior: "auto" })
   }, [thread.threadKey, messages.length])
 
-  // Reset reply state when switching threads.
+  // In-memory per-thread draft cache. Keyed by threadKey, holds the slice
+  // of composer state that should survive switching back and forth between
+  // threads. Lives in a ref so updates don't re-render; this isn't
+  // displayed state, just a stash. Cleared per-entry on send success.
+  // Attachments are NOT persisted — the underlying Trengo draft attachment
+  // ids are session-bound and we'd risk sending stale references; pasting
+  // / re-attaching when returning to a thread is the right tradeoff.
+  const draftsRef = useRef(
+    new Map<
+      string,
+      {
+        reply: string
+        composerMode: ComposerMode
+        waMode: WaMode
+        selectedTemplateId: number | null
+        templateParams: string[]
+        emailSubject: string
+        emailCc: string[]
+        emailBcc: string[]
+        emailHtml: string
+      }
+    >(),
+  )
+  const prevThreadKeyRef = useRef<string>(thread.threadKey)
+
+  // Mirror current state into a ref so the thread-switch effect can save
+  // the OLD thread's draft without depending on every state value (which
+  // would cause the effect to fire on every keystroke).
+  const stateSnapshotRef = useRef({
+    reply,
+    composerMode,
+    waMode,
+    selectedTemplateId,
+    templateParams,
+    emailSubject,
+    emailCc,
+    emailBcc,
+    emailHtml,
+  })
+  stateSnapshotRef.current = {
+    reply,
+    composerMode,
+    waMode,
+    selectedTemplateId,
+    templateParams,
+    emailSubject,
+    emailCc,
+    emailBcc,
+    emailHtml,
+  }
+
+  // Switch threads: save the previous thread's draft, restore the new one
+  // (defaults if no entry). Transient state (errors, mentions, attachments,
+  // upload progress) is always reset — those don't make sense to carry
+  // across threads.
   useEffect(() => {
-    setReply("")
-    setComposerMode("reply")
+    const oldKey = prevThreadKeyRef.current
+    const newKey = thread.threadKey
+    if (oldKey !== newKey) {
+      draftsRef.current.set(oldKey, { ...stateSnapshotRef.current })
+    }
+    const draft = draftsRef.current.get(newKey)
+    setReply(draft?.reply ?? "")
+    setComposerMode(draft?.composerMode ?? "reply")
+    setWaMode(draft?.waMode ?? "default")
+    setSelectedTemplateId(draft?.selectedTemplateId ?? null)
+    setTemplateParams(draft?.templateParams ?? [])
+    setEmailSubject(draft?.emailSubject ?? "")
+    setEmailCc(draft?.emailCc ?? [])
+    setEmailBcc(draft?.emailBcc ?? [])
+    setEmailHtml(draft?.emailHtml ?? "")
     setSendError(null)
     setNeedsConnect(null)
     setMentionStart(null)
     setMentionQuery("")
+    setAttachments([])
+    setUploadError(null)
+    setIsDragOver(false)
+    prevThreadKeyRef.current = newKey
   }, [thread.threadKey])
 
   // Internal-note mode is Trengo-only (Slack has no native internal-note
@@ -358,19 +866,257 @@ function ThreadMessages({
     })
   }
 
+  // Trengo is the only source where attachments work — Slack outbound here
+  // doesn't have an upload endpoint wired (different platform contract; we
+  // can add it in a later phase if needed).
+  const supportsAttachments = thread.source === "trengo"
+
+  // Channel-kind shortcuts so the JSX below stays readable.
+  const isEmail = thread.source === "trengo" && thread.channelKind === "email"
+
+  // --- WhatsApp-specific composer state -----------------------------------
+  // The 24h Meta session window opens whenever the contact sends us a message
+  // and stays open for 24h. Outside the window, we can only send pre-approved
+  // templates. We derive open/closed from the latest non-team message in the
+  // thread (mirrors the existing automation path in send-trengo-message).
+  const isWhatsApp = thread.source === "trengo" && thread.channelKind === "whatsapp"
+
+  const latestInboundIso = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]
+      if (m.authorKind && m.authorKind !== "rl_team") return m.at
+    }
+    return null
+  }, [messages])
+
+  const windowOpen = useMemo(() => {
+    if (!isWhatsApp) return true // non-WA threads have no window concept
+    if (!latestInboundIso) return false
+    const ms = Date.now() - new Date(latestInboundIso).getTime()
+    return ms < 24 * 60 * 60 * 1000
+  }, [isWhatsApp, latestInboundIso])
+
+  const hoursRemaining = useMemo(() => {
+    if (!isWhatsApp || !windowOpen || !latestInboundIso) return 0
+    const closesAt = new Date(latestInboundIso).getTime() + 24 * 60 * 60 * 1000
+    const ms = closesAt - Date.now()
+    return Math.max(0, Math.ceil(ms / (60 * 60 * 1000)))
+  }, [isWhatsApp, windowOpen, latestInboundIso])
+
+  // When the window is closed, Default mode is impossible — force Template.
+  // Doing this in an effect (rather than overriding waMode at read-time)
+  // keeps the radio buttons single-source-of-truth and lets the user see
+  // the locked state.
+  useEffect(() => {
+    if (isWhatsApp && !windowOpen && waMode !== "template") {
+      setWaMode("template")
+    }
+  }, [isWhatsApp, windowOpen, waMode])
+
+  // Internal-note + Template are mutually exclusive (templates can't be
+  // internal notes — Trengo template send doesn't carry the flag). When the
+  // user flips to Internal note, snap WhatsApp mode back to Default.
+  useEffect(() => {
+    if (isInternal && waMode !== "default") setWaMode("default")
+  }, [isInternal, waMode])
+
+  // Templates list: lazy-loaded the moment the user arrives on a WA thread
+  // (cheap — server-side cached for 5 min). Always-fetch is simpler than
+  // gating on waMode === "template" and avoids a flash-of-empty when the
+  // user toggles modes. Disabled for non-WA threads.
+  const templatesQuery = useQuery<{ templates: WaTemplate[] }>({
+    queryKey: ["wa-templates", thread.trengoChannelId],
+    queryFn: () =>
+      fetch(`/api/inbox/wa-templates?channelId=${thread.trengoChannelId}`).then((r) => r.json()),
+    enabled: isWhatsApp && !!thread.trengoChannelId,
+    staleTime: 5 * 60 * 1000,
+  })
+  const templates = useMemo(
+    () => templatesQuery.data?.templates ?? [],
+    [templatesQuery.data?.templates],
+  )
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === selectedTemplateId) ?? null,
+    [templates, selectedTemplateId],
+  )
+
+  // Pick template handler — recomputes the variable input array sized to the
+  // template's `{{N}}` count so the UI surfaces the right number of fields.
+  function pickTemplate(t: WaTemplate | null) {
+    setSelectedTemplateId(t?.id ?? null)
+    if (!t) {
+      setTemplateParams([])
+      return
+    }
+    const count = countTemplateVariables(t.message)
+    setTemplateParams(new Array(count).fill(""))
+  }
+
+  function setTemplateParam(idx: number, value: string) {
+    setTemplateParams((prev) => {
+      const next = [...prev]
+      next[idx] = value
+      return next
+    })
+  }
+
+  // --- end WhatsApp -------------------------------------------------------
+
+  /**
+   * Upload one or more files to the Trengo draft store via our proxy. Each
+   * file uploads independently so a slow large file doesn't block the small
+   * ones; failures don't abort the rest. The resulting Trengo attachment ids
+   * are appended to local state and become part of the next send payload.
+   */
+  async function uploadFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList)
+    if (files.length === 0) return
+    setUploadError(null)
+    // Track concurrent uploads so the Send button stays disabled until every
+    // attachment has resolved (otherwise a fast typist could send before the
+    // upload finishes and the message would go without the file).
+    setUploadingCount((c) => c + files.length)
+    await Promise.all(
+      files.map(async (file) => {
+        try {
+          const fd = new FormData()
+          fd.append("file", file, file.name)
+          const res = await fetch(`/api/inbox/${thread.latestEventId}/attachments`, {
+            method: "POST",
+            body: fd,
+          })
+          const data = (await res.json().catch(() => ({}))) as {
+            id?: number
+            client_name?: string
+            full_url?: string
+            mime_type?: string
+            is_image?: boolean
+            needsConnect?: "trengo" | "slack"
+            error?: string
+          }
+          if (!res.ok || typeof data.id !== "number") {
+            if (data.needsConnect) setNeedsConnect(data.needsConnect)
+            setUploadError(data.error ?? `Upload failed (${res.status})`)
+            return
+          }
+          setAttachments((prev) => [
+            ...prev,
+            {
+              id: data.id!,
+              clientName: data.client_name ?? file.name,
+              fullUrl: data.full_url ?? "",
+              mimeType: data.mime_type ?? file.type ?? null,
+              isImage: data.is_image === true || file.type.startsWith("image/"),
+            },
+          ])
+        } catch (e) {
+          setUploadError(e instanceof Error ? e.message : "Upload failed")
+        } finally {
+          setUploadingCount((c) => Math.max(0, c - 1))
+        }
+      }),
+    )
+  }
+
+  function removeAttachment(id: number) {
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
+  }
+
+  function onPickFile() {
+    fileInputRef.current?.click()
+  }
+
+  /** Pull image files out of a paste event and pipe them into the upload
+   *  flow. Returns true if at least one image was found, so callers can
+   *  preventDefault to suppress the noisy "image as data URL" paste fallback
+   *  the browser would otherwise insert. Non-image clipboard contents (text)
+   *  fall through unchanged. */
+  function tryPasteImages(items: DataTransferItemList | null | undefined): boolean {
+    if (!supportsAttachments) return false
+    if (!items) return false
+    const files: File[] = []
+    for (const item of Array.from(items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const f = item.getAsFile()
+        if (f) files.push(f)
+      }
+    }
+    if (files.length === 0) return false
+    uploadFiles(files)
+    return true
+  }
+
+  // True when the WhatsApp template mode is active AND ready to send (template
+  // picked, every variable filled). Used both to disable Send and to drive
+  // the send branch.
+  const templateReady =
+    isWhatsApp &&
+    waMode === "template" &&
+    selectedTemplate != null &&
+    templateParams.every((p) => p.trim().length > 0)
+
+  // Email composer is active for email channels when not in internal-note
+  // mode. Internal notes fall back to the basic textarea (Trengo internal
+  // notes don't carry email fields).
+  const isEmailMode = isEmail && !isInternal
+  const emailHtmlEmpty = useMemo(
+    () => isHtmlEffectivelyEmpty(emailHtml),
+    [emailHtml],
+  )
+  const emailHtmlReady = !emailHtmlEmpty || attachments.length > 0
+
   async function sendReply() {
-    if (!reply.trim()) return
+    const trimmed = reply.trim()
+    const sendingTemplate = isWhatsApp && waMode === "template"
+    const sendingEmail = isEmailMode
+
+    if (sendingTemplate) {
+      if (!templateReady) return
+    } else if (sendingEmail) {
+      if (!emailHtmlReady) return
+    } else {
+      // Attachments-only sends are allowed (e.g. dropping a PDF without a
+      // caption). Empty + no attachments → no-op.
+      if (!trimmed && attachments.length === 0) return
+    }
+    if (uploadingCount > 0) return // wait for in-flight uploads
     setSending(true)
     setSendError(null)
     setNeedsConnect(null)
     try {
+      const payload: Record<string, unknown> = {
+        internalNote: isInternal,
+      }
+      if (sendingTemplate && selectedTemplate) {
+        payload.template = {
+          name: selectedTemplate.slug || selectedTemplate.title,
+          language: selectedTemplate.language,
+          params: templateParams,
+          body: selectedTemplate.message,
+        }
+        // Templates can't carry text or attachments — Trengo / Meta limit.
+      } else if (sendingEmail) {
+        // Plain-text fallback derived from the HTML so email clients that
+        // strip HTML still see something readable. Trengo also generates
+        // its own plain text but having a hand-derived one in `message`
+        // costs nothing.
+        const plain = htmlToPlain(emailHtml)
+        payload.message = plain
+        payload.attachmentIds = attachments.map((a) => a.id)
+        payload.email = {
+          subject: emailSubject || undefined,
+          cc: emailCc,
+          bcc: emailBcc,
+          html: emailHtml,
+        }
+      } else {
+        payload.message = trimmed
+        payload.attachmentIds = attachments.map((a) => a.id)
+      }
       const res = await fetch(`/api/inbox/${thread.latestEventId}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: reply.trim(),
-          internalNote: isInternal,
-        }),
+        body: JSON.stringify(payload),
       })
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean
@@ -383,8 +1129,18 @@ function ThreadMessages({
         return
       }
       setReply("")
+      setAttachments([])
       setMentionStart(null)
       setMentionQuery("")
+      setSelectedTemplateId(null)
+      setTemplateParams([])
+      setEmailSubject("")
+      setEmailCc([])
+      setEmailBcc([])
+      setEmailHtml("")
+      // Drop the saved draft for this thread — the message is sent, no
+      // reason to restore it next time the user navigates back.
+      draftsRef.current.delete(thread.threadKey)
       await queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
       onReplied()
     } catch (e) {
@@ -395,9 +1151,9 @@ function ThreadMessages({
   }
 
   return (
-    <div className="rounded-lg border border-border/40 flex flex-col overflow-hidden">
+    <div className="rounded-xl border border-border bg-card shadow-sm flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border/40 px-4 py-3 flex items-center justify-between gap-3">
+      <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-3 bg-muted/20 shrink-0">
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <SourceIcon thread={thread} />
@@ -420,7 +1176,7 @@ function ThreadMessages({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-muted/20">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-background/40">
         {messagesQuery.isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -435,13 +1191,38 @@ function ThreadMessages({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Reply box */}
+      {/* Reply box. Drag-drop handlers moved up here from the textarea row
+          so dropping ANYWHERE in the composer area uploads the file —
+          particularly useful for email mode (no visible textarea) and
+          template mode (textarea hidden). */}
       {replyable && (
         <div
           className={cn(
-            "border-t border-border/40 p-3 transition-colors",
-            isInternal ? "bg-amber-500/5" : "bg-background",
+            "border-t border-border p-3 transition-colors shrink-0 relative",
+            isInternal ? "bg-amber-500/5" : "bg-muted/20",
+            isDragOver &&
+              supportsAttachments &&
+              "ring-2 ring-inset ring-primary/40 bg-primary/[0.04]",
           )}
+          onDragOver={(e) => {
+            if (!supportsAttachments) return
+            if (!e.dataTransfer?.types?.includes("Files")) return
+            e.preventDefault()
+            setIsDragOver(true)
+          }}
+          onDragLeave={(e) => {
+            // Only clear when leaving the actual wrapper (not when dragging
+            // between children — those bubble dragenter/leave constantly).
+            if (e.currentTarget === e.target) setIsDragOver(false)
+          }}
+          onDrop={(e) => {
+            if (!supportsAttachments) return
+            const files = e.dataTransfer?.files
+            if (!files || files.length === 0) return
+            e.preventDefault()
+            setIsDragOver(false)
+            uploadFiles(files)
+          }}
         >
           {/* Reply / Internal note toggle. Internal note posts as a Trengo
               `internal_note: true` (team-only bubble) AND fans out @-mention
@@ -484,11 +1265,155 @@ function ThreadMessages({
               </Link>
             </div>
           )}
+          {/* WhatsApp 24h window banner + Default/Template mode selector.
+              Banner is informational only; mode selector is hidden when
+              Internal note is active (templates can't be internal notes). */}
+          {isWhatsApp && !isInternal && (
+            <WhatsAppWindowBanner
+              windowOpen={windowOpen}
+              hoursRemaining={hoursRemaining}
+              mode={waMode}
+              onModeChange={setWaMode}
+            />
+          )}
+          {isWhatsApp && waMode === "template" && !isInternal && (
+            <WhatsAppTemplateControls
+              templates={templates}
+              loading={templatesQuery.isLoading}
+              error={templatesQuery.error instanceof Error ? templatesQuery.error.message : null}
+              selectedTemplate={selectedTemplate}
+              params={templateParams}
+              onPick={pickTemplate}
+              onParamChange={setTemplateParam}
+            />
+          )}
           {sendError && (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 mb-2 text-xs text-destructive">
               {sendError}
             </div>
           )}
+          {uploadError && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 mb-2 text-xs text-destructive">
+              {uploadError}
+            </div>
+          )}
+          {/* Attachment chips strip — sits above the textarea so the user can
+              see exactly what they're about to send. Each chip shows an icon
+              (image preview thumbnail or generic file icon), filename, and
+              an × to remove before sending. */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {attachments.map((a) => (
+                <AttachmentChip key={a.id} attachment={a} onRemove={() => removeAttachment(a.id)} />
+              ))}
+            </div>
+          )}
+          {uploadingCount > 0 && (
+            <div className="mb-2 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Uploading {uploadingCount} file{uploadingCount === 1 ? "" : "s"}…
+            </div>
+          )}
+          {/* Light markdown toolbar — WhatsApp default-mode only. WA supports
+              bold (*x*), italic (_x_), strikethrough (~x~). Email gets full
+              rich text in Fase 3. */}
+          {isWhatsApp && waMode === "default" && !isInternal && (
+            <WhatsAppMarkdownToolbar
+              textareaRef={textareaRef}
+              value={reply}
+              onChange={setReply}
+            />
+          )}
+          {/* Email composer block: rich-text editor with header (From/To/
+              Subject/CC/BCC) and signature auto-injection. Replaces the
+              textarea+paperclip row entirely on email channels (paperclip
+              is rendered inline below the editor). Internal note mode falls
+              back to the basic textarea even on email — Trengo internal
+              notes don't carry email_message fields anyway. */}
+          {isEmailMode && (
+            <>
+              <EmailComposer
+                // Remount on thread switch so the TipTap editor picks up the
+                // newly-restored draft body. Without this, parent setting
+                // `emailHtml` from the draft cache wouldn't propagate into
+                // the editor's internal state (TipTap is uncontrolled).
+                key={thread.threadKey}
+                channelId={thread.trengoChannelId}
+                toDisplay={thread.primaryName}
+                subject={emailSubject}
+                onSubjectChange={setEmailSubject}
+                cc={emailCc}
+                onCcChange={setEmailCc}
+                bcc={emailBcc}
+                onBccChange={setEmailBcc}
+                htmlBody={emailHtml}
+                onHtmlBodyChange={setEmailHtml}
+                onPasteFiles={(files) => uploadFiles(files)}
+                disabled={sending || uploadingCount > 0}
+              />
+              <div className="mt-2 flex items-center justify-end gap-2">
+                {supportsAttachments && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        if (e.target.files) uploadFiles(e.target.files)
+                        e.target.value = ""
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={onPickFile}
+                      disabled={sending}
+                      title="Attach files"
+                      aria-label="Attach files"
+                      className="h-9 w-9 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  onClick={sendReply}
+                  disabled={!emailHtmlReady || sending || uploadingCount > 0}
+                >
+                  {sending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <>
+                      <Send className="h-3.5 w-3.5" />
+                      Send email
+                    </>
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+          {/* Template-mode replaces the textarea with a Send-only bar — the
+              composer's "input" is the variable list above. Default mode
+              keeps the existing textarea + paperclip + Send row. */}
+          {!isEmailMode && isWhatsApp && waMode === "template" && !isInternal ? (
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                size="sm"
+                onClick={sendReply}
+                disabled={!templateReady || sending}
+              >
+                {sending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <>
+                    <Send className="h-3.5 w-3.5" />
+                    Send template
+                  </>
+                )}
+              </Button>
+            </div>
+          ) : !isEmailMode ? (
           <div className="relative flex items-end gap-2">
             <textarea
               ref={textareaRef}
@@ -516,7 +1441,7 @@ function ThreadMessages({
                 "flex-1 rounded-lg border bg-transparent px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 resize-none",
                 isInternal
                   ? "border-amber-500/40 bg-amber-500/5 dark:bg-amber-500/10 focus-visible:border-amber-500/60"
-                  : "border-input dark:bg-input/30 focus-visible:border-ring",
+                  : "border-input bg-background focus-visible:border-ring",
               )}
               onKeyDown={(e) => {
                 if (mentionStart != null && mentionMatches.length > 0) {
@@ -547,11 +1472,43 @@ function ThreadMessages({
                   sendReply()
                 }
               }}
+              onPaste={(e) => {
+                if (tryPasteImages(e.clipboardData?.items)) e.preventDefault()
+              }}
             />
+            {supportsAttachments && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files) uploadFiles(e.target.files)
+                    // Allow re-picking the same file later by resetting value.
+                    e.target.value = ""
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={onPickFile}
+                  disabled={sending}
+                  title="Attach files"
+                  aria-label="Attach files"
+                  className="h-9 w-9 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+              </>
+            )}
             <Button
               size="sm"
               onClick={sendReply}
-              disabled={!reply.trim() || sending}
+              disabled={
+                (!reply.trim() && attachments.length === 0) ||
+                sending ||
+                uploadingCount > 0
+              }
               className={isInternal ? "bg-amber-500 hover:bg-amber-600 text-amber-950" : undefined}
             >
               {sending ? (
@@ -598,13 +1555,333 @@ function ThreadMessages({
               </div>
             )}
           </div>
+          ) : null}
         </div>
       )}
     </div>
   )
 }
 
+// --- WhatsApp composer pieces -------------------------------------------
+
+/** Top-of-composer banner that shows the current 24h Meta session window
+ *  state plus the Default/Template mode selector. Inside the window the AM
+ *  picks freely; outside the window the selector is locked to Template
+ *  (Meta forbids free text). The locked state is conveyed by greying out
+ *  the Default option + a tooltip rather than hiding the toggle entirely
+ *  — keeps the AM aware that the choice exists and why it's unavailable. */
+function WhatsAppWindowBanner({
+  windowOpen,
+  hoursRemaining,
+  mode,
+  onModeChange,
+}: {
+  windowOpen: boolean
+  hoursRemaining: number
+  mode: WaMode
+  onModeChange: (mode: WaMode) => void
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border px-2.5 py-1.5 mb-2 flex items-center justify-between gap-2 text-[11px]",
+        windowOpen
+          ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+          : "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-300",
+      )}
+    >
+      <span className="inline-flex items-center gap-1.5 min-w-0">
+        {windowOpen ? (
+          <>
+            <Clock3 className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              Conversation window open · closes in {hoursRemaining}h
+            </span>
+          </>
+        ) : (
+          <>
+            <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              Window closed · only WhatsApp templates can be sent
+            </span>
+          </>
+        )}
+      </span>
+      <span className="inline-flex items-center rounded-md border border-border/60 bg-background p-0.5 shrink-0">
+        <button
+          type="button"
+          onClick={() => windowOpen && onModeChange("default")}
+          disabled={!windowOpen}
+          className={cn(
+            "px-2 h-5 rounded text-[10px] font-medium transition-colors",
+            mode === "default"
+              ? "bg-foreground/10 text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+            !windowOpen && "opacity-40 cursor-not-allowed",
+          )}
+          title={!windowOpen ? "Free-text disabled outside the 24h window" : "Default message"}
+        >
+          Default
+        </button>
+        <button
+          type="button"
+          onClick={() => onModeChange("template")}
+          className={cn(
+            "px-2 h-5 rounded text-[10px] font-medium transition-colors",
+            mode === "template"
+              ? "bg-foreground/10 text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+          title="Send a pre-approved WhatsApp Business template"
+        >
+          Template
+        </button>
+      </span>
+    </div>
+  )
+}
+
+/** Template picker dropdown + variable input fields. Shown only in Template
+ *  mode. The picker lists every approved template for this channel
+ *  alphabetically; selecting one renders text inputs sized to the template's
+ *  `{{N}}` variable count, plus a live preview of the rendered message
+ *  underneath. The Send button (rendered separately by the parent) only
+ *  enables once every variable is filled. */
+function WhatsAppTemplateControls({
+  templates,
+  loading,
+  error,
+  selectedTemplate,
+  params,
+  onPick,
+  onParamChange,
+}: {
+  templates: WaTemplate[]
+  loading: boolean
+  error: string | null
+  selectedTemplate: WaTemplate | null
+  params: string[]
+  onPick: (t: WaTemplate | null) => void
+  onParamChange: (idx: number, value: string) => void
+}) {
+  return (
+    <div className="rounded-md border border-border/60 bg-background p-2.5 mb-2 space-y-2">
+      <label className="block text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold">
+        WhatsApp template
+      </label>
+      <div className="relative">
+        <select
+          value={selectedTemplate?.id ?? ""}
+          onChange={(e) => {
+            const id = parseInt(e.target.value, 10)
+            const t = templates.find((x) => x.id === id) ?? null
+            onPick(t)
+          }}
+          disabled={loading || templates.length === 0}
+          className="w-full h-8 pl-2.5 pr-7 rounded-md border border-input bg-background text-xs appearance-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-60"
+        >
+          <option value="">
+            {loading
+              ? "Loading templates…"
+              : templates.length === 0
+                ? "No approved templates for this channel"
+                : "Select a template…"}
+          </option>
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.title}
+              {t.language ? ` (${t.language})` : ""}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+      </div>
+      {error && (
+        <p className="text-[11px] text-destructive">Failed to load templates: {error}</p>
+      )}
+      {selectedTemplate && (
+        <>
+          {params.length > 0 && (
+            <div className="space-y-1.5">
+              {params.map((value, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <span className="w-12 text-[10px] font-mono text-muted-foreground shrink-0">
+                    {`{{${idx + 1}}}`}
+                  </span>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) => onParamChange(idx, e.target.value)}
+                    placeholder={`Variable ${idx + 1}`}
+                    className="flex-1 h-7 px-2 rounded-md border border-input bg-background text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="rounded-md border border-border/40 bg-muted/30 px-2.5 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-semibold mb-1">
+              Preview
+            </p>
+            <p className="text-xs whitespace-pre-wrap leading-relaxed">
+              {renderTemplate(selectedTemplate.message, params)}
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Lightweight markdown toolbar — three buttons that wrap the textarea's
+ *  current selection in WhatsApp's supported markup. Bold (*x*), italic
+ *  (_x_), strikethrough (~x~). When no selection, inserts paired markers at
+ *  the caret so the user types between them. */
+function WhatsAppMarkdownToolbar({
+  textareaRef,
+  value,
+  onChange,
+}: {
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>
+  value: string
+  onChange: (next: string) => void
+}) {
+  function wrap(marker: string) {
+    const ta = textareaRef.current
+    if (!ta) return
+    const start = ta.selectionStart ?? 0
+    const end = ta.selectionEnd ?? 0
+    const before = value.slice(0, start)
+    const sel = value.slice(start, end)
+    const after = value.slice(end)
+    const next = `${before}${marker}${sel}${marker}${after}`
+    onChange(next)
+    requestAnimationFrame(() => {
+      ta.focus()
+      const cursor = sel.length > 0 ? end + marker.length * 2 : start + marker.length
+      ta.setSelectionRange(cursor, cursor)
+    })
+  }
+  const btnCls =
+    "h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+  return (
+    <div className="inline-flex items-center gap-0.5 mb-1.5">
+      <button type="button" onClick={() => wrap("*")} title="Bold (*x*)" className={btnCls}>
+        <Bold className="h-3.5 w-3.5" />
+      </button>
+      <button type="button" onClick={() => wrap("_")} title="Italic (_x_)" className={btnCls}>
+        <Italic className="h-3.5 w-3.5" />
+      </button>
+      <button type="button" onClick={() => wrap("~")} title="Strikethrough (~x~)" className={btnCls}>
+        <Strikethrough className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
+/** Strip HTML to plain text for the email-message fallback field. Cheap
+ *  best-effort approach: parse via DOMParser and pull `textContent`,
+ *  collapsing whitespace. Trengo derives its own plain-text rendering at
+ *  send time too, so this is purely a defensive fallback for clients that
+ *  ignore the HTML payload. */
+function htmlToPlain(html: string): string {
+  if (typeof window === "undefined") return html
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html")
+    // Replace block-ish elements with newlines so paragraphs don't collapse
+    // into one wall of text.
+    doc.querySelectorAll("br").forEach((br) => br.replaceWith("\n"))
+    doc.querySelectorAll("p, div, li").forEach((el) => {
+      el.append(document.createTextNode("\n"))
+    })
+    const text = doc.body?.textContent ?? ""
+    return text.replace(/\n{3,}/g, "\n\n").trim()
+  } catch {
+    return html.replace(/<[^>]+>/g, "")
+  }
+}
+
+/** Empty-html check that ignores TipTap's "empty doc" representations
+ *  (`<p></p>`, `<p><br></p>`) and pure-whitespace bodies. Used to gate the
+ *  email Send button so an "empty" reply with just signature whitespace
+ *  doesn't fire. */
+function isHtmlEffectivelyEmpty(html: string): boolean {
+  if (!html) return true
+  const stripped = html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim()
+  return stripped.length === 0
+}
+
+/** Count distinct `{{N}}` placeholders in a template's source body. Returns
+ *  the maximum N found (so a template using `{{1}}` and `{{3}}` reports 3
+ *  variables, the convention Trengo and Meta both follow). */
+function countTemplateVariables(message: string): number {
+  let max = 0
+  const re = /\{\{(\d+)\}\}/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(message)) !== null) {
+    const n = parseInt(m[1], 10)
+    if (Number.isFinite(n) && n > max) max = n
+  }
+  return max
+}
+
+/** Substitute the template's `{{N}}` placeholders with the user-supplied
+ *  values for the live preview underneath the variable inputs. */
+function renderTemplate(message: string, params: string[]): string {
+  return message.replace(/\{\{(\d+)\}\}/g, (_, idx) => {
+    const i = parseInt(idx, 10) - 1
+    return params[i]?.trim().length ? params[i] : `{{${idx}}}`
+  })
+}
+
 // --- Pieces --------------------------------------------------------------
+
+/** Compact preview chip for an attachment that's been uploaded but not sent
+ *  yet. Image attachments get a tiny thumbnail (the Trengo presigned S3 URL
+ *  is loaded directly — no Hub-side proxy needed since it's already
+ *  authenticated via signature). Non-images get a generic file icon.
+ *  The remove button drops the chip locally; the underlying Trengo draft
+ *  attachment record stays (orphan cleanup is out of scope for Phase 1). */
+function AttachmentChip({
+  attachment,
+  onRemove,
+}: {
+  attachment: PendingAttachment
+  onRemove: () => void
+}) {
+  return (
+    <div className="group inline-flex items-center gap-1.5 rounded-md border border-border bg-background pl-1 pr-1.5 py-1 max-w-[220px]">
+      {attachment.isImage && attachment.fullUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={attachment.fullUrl}
+          alt=""
+          className="h-6 w-6 shrink-0 rounded object-cover"
+        />
+      ) : (
+        <span className="h-6 w-6 shrink-0 inline-flex items-center justify-center rounded bg-muted text-muted-foreground">
+          {attachment.mimeType?.startsWith("image/") ? (
+            <ImageIcon className="h-3.5 w-3.5" />
+          ) : (
+            <FileText className="h-3.5 w-3.5" />
+          )}
+        </span>
+      )}
+      <span className="text-[11px] text-foreground/80 truncate flex-1 min-w-0">
+        {attachment.clientName}
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        title="Remove"
+        aria-label="Remove attachment"
+        className="h-4 w-4 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
 
 function MessageBubble({ msg }: { msg: ChatMessage }) {
   const isUs = msg.authorKind === "rl_team"
@@ -722,4 +1999,44 @@ function fmtTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+/** Per-scope localStorage-backed filter state. Mirrors the `usePersistedState`
+ *  pattern used in inbox-view.tsx (kept inline here so chat-pane stays
+ *  self-contained — when there's a third caller this should become a shared
+ *  hook in src/lib). Falls back to "all" if storage is blocked or the
+ *  persisted JSON is corrupt. */
+function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) => void] {
+  const key = `inbox.chatFilter.${scope}`
+  // Default to "unread" so opening the Client Inbox lands on the action
+  // surface — matches the Updates tab default. AMs almost always want
+  // "what needs my attention" first, not "everything ever".
+  const [value, setValue] = useState<ChatFilter>("unread")
+  const hydratedRef = useRef(false)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(key)
+      if (raw !== null) {
+        const parsed = JSON.parse(raw) as ChatFilter
+        if (parsed === "all" || parsed === "unread" || parsed === "read") {
+          setValue(parsed)
+        }
+      }
+    } catch {
+      // bad JSON or storage unavailable — stick with the default
+    }
+    hydratedRef.current = true
+  }, [key])
+
+  useEffect(() => {
+    if (!hydratedRef.current) return
+    try {
+      localStorage.setItem(key, JSON.stringify(value))
+    } catch {
+      // ignore — full storage shouldn't break the UI
+    }
+  }, [key, value])
+
+  return [value, setValue]
 }

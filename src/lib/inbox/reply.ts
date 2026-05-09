@@ -55,11 +55,27 @@ async function loadEvent(eventId: string): Promise<InboxEventRow | null> {
 
 // --- Trengo --------------------------------------------------------------
 
-async function sendTrengoReplyAsUser(
+/**
+ * Send a WhatsApp Business template message via Trengo. Used when the 24h
+ * conversation window is closed (Meta requires templates for any outbound
+ * outside the window) AND when the AM explicitly opts in to a template
+ * inside the window.
+ *
+ * The Trengo payload shape (`type: "TEMPLATE", template_name, language,
+ * params`) is the same as the existing automation path in
+ * [send-trengo-message/route.ts](../../app/api/inbox/[id]/send-trengo-message/route.ts) —
+ * we just lift it into the user-driven reply path here.
+ *
+ * `params` order maps to `{{1}}`, `{{2}}`, … placeholders in the template
+ * message, in order. Trengo validates the count server-side; mismatches
+ * surface as 422.
+ */
+async function sendTrengoTemplateAsUser(
   userId: string,
   ticketId: string,
-  message: string,
-  internalNote: boolean,
+  templateName: string,
+  language: string,
+  params: string[],
 ): Promise<{ message_id: string }> {
   const token = await getUserPlatformToken(userId, "trengo")
   if (!token) throw new NeedsConnectError("trengo")
@@ -71,7 +87,82 @@ async function sendTrengoReplyAsUser(
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ message, internal_note: internalNote }),
+    body: JSON.stringify({
+      type: "TEMPLATE",
+      template_name: templateName,
+      language,
+      params,
+      internal_note: false,
+    }),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "")
+    throw new Error(`Trengo template send failed (${res.status}): ${errText.slice(0, 200)}`)
+  }
+
+  const json = (await res.json()) as {
+    id?: number | string
+    message_id?: number | string
+    data?: { id?: number | string }
+    message?: { id?: number | string }
+  }
+  const id = json.message?.id ?? json.id ?? json.data?.id ?? json.message_id
+  if (id == null) {
+    throw new Error(
+      `Trengo template send returned no message id — keys: ${Object.keys(json).join(",")}`,
+    )
+  }
+  return { message_id: String(id) }
+}
+
+/** Email-only send fields that piggyback on the same message endpoint.
+ *  Subject overrides the ticket's auto `Re: ` default (most replies don't
+ *  set this); cc / bcc are comma-separated strings (Trengo's array shape
+ *  500's per Phase 3 probe); html is the rendered rich-text body, with the
+ *  plain-text `message` carried as fallback for clients that strip HTML. */
+type EmailExtras = {
+  subject?: string
+  cc?: string[]
+  bcc?: string[]
+  html?: string
+}
+
+async function sendTrengoReplyAsUser(
+  userId: string,
+  ticketId: string,
+  message: string,
+  internalNote: boolean,
+  attachmentIds: number[] = [],
+  email?: EmailExtras,
+): Promise<{ message_id: string }> {
+  const token = await getUserPlatformToken(userId, "trengo")
+  if (!token) throw new NeedsConnectError("trengo")
+
+  const payload: Record<string, unknown> = { message, internal_note: internalNote }
+  if (attachmentIds.length > 0) payload.attachment_ids = attachmentIds
+
+  if (email) {
+    if (email.subject?.trim()) payload.subject = email.subject.trim()
+    if (email.html?.trim()) payload.html = email.html
+    // Trengo's v2 message endpoint 500'd on cc/bcc-as-array during the
+    // Phase 3 probe but accepted cc-as-string. Receive-side `email_message.cc`
+    // is also a single value — treating it as a comma-separated string keeps
+    // both sides consistent. Empty arrays produce no header (correct).
+    const ccStr = (email.cc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
+    const bccStr = (email.bcc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
+    if (ccStr) payload.cc = ccStr
+    if (bccStr) payload.bcc = bccStr
+  }
+
+  const res = await fetch(`https://app.trengo.com/api/v2/tickets/${ticketId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
   })
 
   if (!res.ok) {
@@ -154,15 +245,62 @@ export type ReplyResult = {
  * with a push notification. Slack doesn't have a native internal-note
  * concept, so internalNote is silently ignored on Slack threads.
  */
+export type TemplateSendOption = {
+  /** Trengo template name (slug, e.g. "rl_universal_roel"). */
+  name: string
+  /** Template language code (`nl`, `en`, etc.). Comes from the template
+   *  record itself — composer never asks the AM. */
+  language: string
+  /** Ordered values for `{{1}}`, `{{2}}`, … placeholders. */
+  params: string[]
+  /** The template's source body (with `{{N}}` placeholders intact). The
+   *  composer already has it from the template-list fetch, so passing it
+   *  through lets the Hub mirror render the actual sent text without a
+   *  second Trengo round-trip. */
+  body?: string
+}
+
 export async function replyToInboxEvent(
   userId: string,
   eventId: string,
   message: string,
-  options: { internalNote?: boolean } = {},
+  options: {
+    internalNote?: boolean
+    attachmentIds?: number[]
+    /** When set, sends a WhatsApp Business template instead of free text.
+     *  Required for outbound outside the 24h conversation window (Meta
+     *  rule); also valid inside the window when the AM picks Template
+     *  mode. Mutually exclusive with `attachmentIds` and `internalNote`
+     *  (Trengo's template endpoint doesn't support either). */
+    template?: TemplateSendOption
+    /** Email-only extras: subject override, CC/BCC, HTML body. Ignored
+     *  on non-email Trengo channels (WhatsApp etc. ignore them at the
+     *  Trengo end too) but we still gate at the route layer. `message`
+     *  remains the plain-text fallback when `email.html` is set. */
+    email?: EmailExtras
+  } = {},
 ): Promise<ReplyResult> {
   const trimmed = message.trim()
-  if (!trimmed) throw new Error("Empty reply")
+  const template = options.template
+  const emailHasHtml = !!options.email?.html?.trim()
+  // Allow empty plain `message` when there's at least one of: attachment,
+  // template, or rich-text HTML body (email composer sends `message` as a
+  // plain-text fallback derived from the HTML; if HTML is set, message can
+  // legitimately be empty for the same call).
+  const attachmentIds = (options.attachmentIds ?? []).filter((n) => Number.isFinite(n))
+  if (!trimmed && attachmentIds.length === 0 && !template && !emailHasHtml) {
+    throw new Error("Empty reply")
+  }
   const internalNote = options.internalNote === true
+
+  if (template) {
+    if (internalNote) throw new Error("Templates can't be sent as internal notes")
+    if (attachmentIds.length > 0) {
+      throw new Error("Templates can't be combined with attachments — Meta limitation")
+    }
+    if (!template.name?.trim()) throw new Error("Template name required")
+    if (!template.language?.trim()) throw new Error("Template language required")
+  }
 
   const event = await loadEvent(eventId)
   if (!event) throw new Error("Event not found")
@@ -172,6 +310,9 @@ export async function replyToInboxEvent(
   }
   if (event.source !== "trengo" && event.source !== "slack") {
     throw new Error(`Reply not supported for source: ${event.source}`)
+  }
+  if (template && event.source !== "trengo") {
+    throw new Error("Templates only supported on Trengo (WhatsApp) threads")
   }
 
   const supabase = await createAdminClient()
@@ -188,19 +329,51 @@ export async function replyToInboxEvent(
   let outboundId = ""
   let sourceMsgId = ""
   let createdAtSrc = new Date().toISOString()
+  // Body we mirror into inbox_events. For free text it's the user input; for
+  // templates we render the rendered text by substituting {{n}} so the Hub
+  // history shows what the customer actually saw, not just "[template:foo]".
+  let mirrorBody = trimmed
 
   if (event.source === "trengo") {
     // source_thread is `trengo:ticket:<id>`
     const ticketId = (event.source_thread ?? "").replace(/^trengo:ticket:/, "")
     if (!ticketId) throw new Error("Missing Trengo ticket id on event")
-    const r = await sendTrengoReplyAsUser(userId, ticketId, trimmed, internalNote)
-    outboundId = r.message_id
-    sourceMsgId = `trengo:msg:${outboundId}`
+    if (template) {
+      const r = await sendTrengoTemplateAsUser(
+        userId,
+        ticketId,
+        template.name,
+        template.language,
+        template.params,
+      )
+      outboundId = r.message_id
+      sourceMsgId = `trengo:msg:${outboundId}`
+      // Render placeholders for the mirror so Hub history matches what the
+      // customer received. Trengo also renders this on its side, but we
+      // can't fetch the rendered version cheaply here.
+      mirrorBody = renderTemplatePreview(template) || `[Template: ${template.name}]`
+    } else {
+      const r = await sendTrengoReplyAsUser(
+        userId,
+        ticketId,
+        trimmed,
+        internalNote,
+        attachmentIds,
+        options.email,
+      )
+      outboundId = r.message_id
+      sourceMsgId = `trengo:msg:${outboundId}`
+    }
   } else {
     // Slack — source_thread is either `slack:thread:<channel>:<thread_ts>` or
     // `slack:channel:<channel>`. Channel ID is also the second segment of
     // thread_key for DMs (slack:dm:<user_id> doesn't carry channel, so we
     // pull it from the source_msg_id parts: slack:msg:<channel>:<ts>).
+    if (!trimmed) {
+      // Slack rejects empty text and we don't pipe attachments to Slack
+      // (no upload endpoint), so refuse early with a clear message.
+      throw new Error("Slack replies require a text body — attachments aren't supported here")
+    }
     let channel = ""
     let threadTs: string | undefined
 
@@ -223,9 +396,13 @@ export async function replyToInboxEvent(
   }
 
   // Mirror the outbound reply back into inbox_events so the chat thread in
-  // the Hub stays a complete picture.
-  const titlePreview = trimmed.length > 100 ? trimmed.slice(0, 100) + "…" : trimmed
-  const bodyFull = trimmed.length > 100 ? trimmed : null
+  // the Hub stays a complete picture. For templates, mirrorBody holds the
+  // rendered text (with {{n}} substituted) — Hub history matches what the
+  // customer received, not just "[template:foo]".
+  const previewSource = mirrorBody.length > 0 ? mirrorBody : trimmed
+  const titlePreview =
+    previewSource.length > 100 ? previewSource.slice(0, 100) + "…" : previewSource
+  const bodyFull = previewSource.length > 100 ? previewSource : null
 
   const { data: inserted, error } = await supabase
     .from("inbox_events")
@@ -389,4 +566,20 @@ async function fanOutMentionsForInternalNote(
       }).catch((e) => console.error("Mention push failed:", e))
     }
   }
+}
+
+/** Substitute `{{1}}`, `{{2}}`, … in a template's source body with the
+ *  user-supplied params, in order. Returns the rendered text we mirror into
+ *  inbox_events so Hub history shows what the customer actually received.
+ *  Falls back to `[Template: name]` if the composer didn't pass the body
+ *  through (defensive — shouldn't happen on the happy path). */
+function renderTemplatePreview(template: TemplateSendOption): string {
+  if (!template.body) {
+    if (template.params.length === 0) return `[Template: ${template.name}]`
+    return `[Template: ${template.name}] ${template.params.join(" · ")}`
+  }
+  return template.body.replace(/\{\{(\d+)\}\}/g, (_, idx) => {
+    const i = parseInt(idx, 10) - 1
+    return template.params[i] ?? ""
+  })
 }

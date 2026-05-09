@@ -1,6 +1,10 @@
 import { auth } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
-import { getChatThreadMessages, markChatThreadRead } from "@/lib/inbox/fetchers"
+import {
+  getChatThreadMessages,
+  markChatThreadRead,
+  markChatThreadUnread,
+} from "@/lib/inbox/fetchers"
 
 /**
  * GET /api/inbox/threads/{threadKey}
@@ -44,10 +48,16 @@ export async function GET(
 /**
  * PATCH /api/inbox/threads/{threadKey}
  *
- * Body: `{ action: 'mark_read' }`. Flips every unread chat event in this
- * thread (that the caller can see) to status='read'. Idempotent — calling
- * it on an already-read thread is a no-op. Used by the chat pane to clear
- * the thread's unread badge as soon as the user opens it (Slack default).
+ * Body: `{ action: 'mark_read' | 'mark_unread' }`.
+ *
+ *  - `mark_read`: flips every unread chat event in this thread (that the
+ *    caller can see) to status='read'. Used by the chat pane to clear the
+ *    badge as soon as the user opens a thread (Slack default).
+ *  - `mark_unread`: flips the most recent visible event back to unread so
+ *    the thread surfaces as unread again. Lets the user "save for later"
+ *    from the inbox row or via bulk select.
+ *
+ * Both are idempotent.
  */
 export async function PATCH(
   req: NextRequest,
@@ -65,20 +75,32 @@ export async function PATCH(
   }
 
   const body = (await req.json().catch(() => ({}))) as { action?: string }
-  if (body.action !== "mark_read") {
+  if (body.action !== "mark_read" && body.action !== "mark_unread") {
     return NextResponse.json({ error: "Unknown action" }, { status: 400 })
   }
 
   try {
-    const result = await markChatThreadRead(
-      threadKey,
-      session.user.id,
-      session.user.role ?? "member",
-    )
+    const result =
+      body.action === "mark_read"
+        ? await markChatThreadRead(
+            threadKey,
+            session.user.id,
+            session.user.role ?? "member",
+          )
+        : await markChatThreadUnread(
+            threadKey,
+            session.user.id,
+            session.user.role ?? "member",
+          )
     return NextResponse.json({ ok: true, ...result })
   } catch (e) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Failed to mark thread read" },
+      {
+        error:
+          e instanceof Error
+            ? e.message
+            : `Failed to ${body.action === "mark_read" ? "mark thread read" : "mark thread unread"}`,
+      },
       { status: 500 },
     )
   }
