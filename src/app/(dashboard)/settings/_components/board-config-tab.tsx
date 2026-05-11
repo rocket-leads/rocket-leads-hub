@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import { saveBoardConfig } from "../actions"
 
 type BoardConfig = {
@@ -107,6 +109,7 @@ function FieldGroup({
 }
 
 export function BoardConfigTab({ config: initial, defaults }: Props) {
+  const locale = useLocale()
   const [config, setConfig] = useState<BoardConfig>(initial)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -135,11 +138,11 @@ export function BoardConfigTab({ config: initial, defaults }: Props) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Monday.com Board IDs</CardTitle>
+          <CardTitle className="text-base">{t("settings.board.boards.title", locale)}</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label>Onboarding Board ID</Label>
+            <Label>{t("settings.board.boards.onboarding", locale)}</Label>
             <Input
               className="font-mono"
               value={config.onboarding_board_id}
@@ -147,7 +150,7 @@ export function BoardConfigTab({ config: initial, defaults }: Props) {
             />
           </div>
           <div className="space-y-1.5">
-            <Label>Current Clients Board ID</Label>
+            <Label>{t("settings.board.boards.current", locale)}</Label>
             <Input
               className="font-mono"
               value={config.current_board_id}
@@ -159,11 +162,11 @@ export function BoardConfigTab({ config: initial, defaults }: Props) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Column Mappings</CardTitle>
+          <CardTitle className="text-base">{t("settings.board.columns.title", locale)}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <FieldGroup
-            title="Onboarding Board Columns"
+            title={t("settings.board.group.onboarding", locale)}
             fields={ONBOARDING_FIELDS}
             values={config.onboarding_columns}
             defaults={defaults.onboarding_columns}
@@ -171,7 +174,7 @@ export function BoardConfigTab({ config: initial, defaults }: Props) {
           />
           <Separator />
           <FieldGroup
-            title="Current Clients Board Columns"
+            title={t("settings.board.group.current", locale)}
             fields={CURRENT_FIELDS}
             values={config.current_columns}
             defaults={defaults.current_columns}
@@ -179,7 +182,7 @@ export function BoardConfigTab({ config: initial, defaults }: Props) {
           />
           <Separator />
           <FieldGroup
-            title="Client Board Columns (default for all clients)"
+            title={t("settings.board.group.client", locale)}
             fields={CLIENT_BOARD_FIELDS}
             values={config.client_board_columns}
             defaults={defaults.client_board_columns}
@@ -189,7 +192,7 @@ export function BoardConfigTab({ config: initial, defaults }: Props) {
       </Card>
 
       <Button onClick={handleSave} disabled={saving}>
-        {saving ? "Saving..." : saved ? "Saved!" : "Save configuration"}
+        {saving ? t("settings.board.action.saving", locale) : saved ? t("settings.board.action.saved", locale) : t("settings.board.action.save", locale)}
       </Button>
     </div>
   )

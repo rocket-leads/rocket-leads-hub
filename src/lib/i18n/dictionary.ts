@@ -727,6 +727,42 @@ export const DICTIONARY = {
   "client.pedro.stage.creatives": { nl: "Creatives", en: "Creatives" },
   "client.pedro.stage.lp": { nl: "LP prompts", en: "LP prompts" },
   "client.pedro.stage.ad_copy": { nl: "Ad copy", en: "Ad copy" },
+
+  // ─── Settings — API Tokens tab ────────────────────────────────────────
+  // Service descriptions kept English in both locales — they're admin
+  // setup-instruction copy (referring to vendor screens) that the team
+  // reads alongside the vendor docs themselves.
+  "settings.tokens.dot.not_tested": { nl: "Niet getest", en: "Not tested" },
+  "settings.tokens.dot.connected": { nl: "Verbonden", en: "Connected" },
+  "settings.tokens.dot.failed": { nl: "Verbinding mislukt", en: "Connection failed" },
+  "settings.tokens.last_tested": { nl: "Laatst getest: {time}", en: "Last tested: {time}" },
+  "settings.tokens.input.new_label": { nl: "Nieuw token", en: "New token" },
+  "settings.tokens.input.placeholder": { nl: "Plak nieuw token om bij te werken...", en: "Paste new token to update..." },
+  "settings.tokens.action.save": { nl: "Token opslaan", en: "Save token" },
+  "settings.tokens.action.saving": { nl: "Opslaan...", en: "Saving..." },
+  "settings.tokens.action.test": { nl: "Verbinding testen", en: "Test connection" },
+  "settings.tokens.action.testing": { nl: "Testen...", en: "Testing..." },
+  "settings.tokens.saved_success": { nl: "Token succesvol opgeslagen.", en: "Token saved successfully." },
+  "settings.tokens.request_failed": { nl: "Verzoek mislukt", en: "Request failed" },
+  "settings.tokens.slack.live_hint_before": { nl: "Verbinding staat. Stel notificaties in en draai previews in de ", en: "Connection is live. Set up notifications and run previews in the " },
+  "settings.tokens.slack.live_hint_tab": { nl: "Notificaties", en: "Notifications" },
+  "settings.tokens.slack.live_hint_after": { nl: " tab.", en: " tab." },
+
+  // ─── Settings — Board Config tab ──────────────────────────────────────
+  // Field labels (Monday column mappings) stay English in both locales —
+  // they describe the English schema of Monday boards. Only the chrome
+  // (card titles, group titles, top-level board ID fields, save button)
+  // flips with the locale toggle.
+  "settings.board.boards.title": { nl: "Monday.com Board IDs", en: "Monday.com Board IDs" },
+  "settings.board.boards.onboarding": { nl: "Onboarding Board ID", en: "Onboarding Board ID" },
+  "settings.board.boards.current": { nl: "Huidige klanten Board ID", en: "Current Clients Board ID" },
+  "settings.board.columns.title": { nl: "Kolom mappings", en: "Column Mappings" },
+  "settings.board.group.onboarding": { nl: "Onboarding board kolommen", en: "Onboarding Board Columns" },
+  "settings.board.group.current": { nl: "Huidige klanten board kolommen", en: "Current Clients Board Columns" },
+  "settings.board.group.client": { nl: "Klant-board kolommen (default voor alle klanten)", en: "Client Board Columns (default for all clients)" },
+  "settings.board.action.save": { nl: "Configuratie opslaan", en: "Save configuration" },
+  "settings.board.action.saving": { nl: "Opslaan...", en: "Saving..." },
+  "settings.board.action.saved": { nl: "Opgeslagen!", en: "Saved!" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

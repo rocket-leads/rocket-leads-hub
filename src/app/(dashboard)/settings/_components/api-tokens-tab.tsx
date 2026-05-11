@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 import { saveApiToken } from "../actions"
 
 type ServiceStatus = {
@@ -28,19 +31,20 @@ const SERVICES = [
   { id: "heygen", label: "Heygen", description: "API key from Heygen → Settings → API. Used by Pedro's avatar pipeline (provider-pluggable). Optional — leave blank until avatar actuation is wired." },
 ]
 
-function StatusDot({ status }: { status: ServiceStatus | undefined }) {
+function StatusDot({ status, locale }: { status: ServiceStatus | undefined; locale: Locale }) {
   if (!status || status.last_verified === null) {
-    return <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground" title="Not tested" />
+    return <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground" title={t("settings.tokens.dot.not_tested", locale)} />
   }
   return (
     <span
       className={`inline-block h-2 w-2 rounded-full ${status.is_valid ? "bg-green-500" : "bg-red-500"}`}
-      title={status.is_valid ? "Connected" : "Connection failed"}
+      title={status.is_valid ? t("settings.tokens.dot.connected", locale) : t("settings.tokens.dot.failed", locale)}
     />
   )
 }
 
 export function ApiTokensTab({ statuses: initialStatuses }: Props) {
+  const locale = useLocale()
   const router = useRouter()
   // Local mirror of statuses — updated optimistically on save & after test results
   // so the dot reflects the latest state without a full page reload.
@@ -57,7 +61,7 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
     setSaving((s) => ({ ...s, [service]: true }))
     try {
       await saveApiToken(service, token)
-      setTokens((t) => ({ ...t, [service]: "" }))
+      setTokens((prev) => ({ ...prev, [service]: "" }))
       setSaved((s) => ({ ...s, [service]: true }))
       setTimeout(() => setSaved((s) => ({ ...s, [service]: false })), 3000)
       // After save the token is fresh but unverified — reset dot to "Not tested" grey
@@ -77,7 +81,7 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
   }
 
   async function handleTest(service: string) {
-    setTesting((t) => ({ ...t, [service]: true }))
+    setTesting((prev) => ({ ...prev, [service]: true }))
     try {
       const res = await fetch("/api/settings/test-token", {
         method: "POST",
@@ -92,13 +96,13 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
         [service]: { is_valid: !!data.ok, last_verified: new Date().toISOString() },
       }))
     } catch {
-      setTestResults((r) => ({ ...r, [service]: { ok: false, message: "Request failed" } }))
+      setTestResults((r) => ({ ...r, [service]: { ok: false, message: t("settings.tokens.request_failed", locale) } }))
       setStatuses((prev) => ({
         ...prev,
         [service]: { is_valid: false, last_verified: new Date().toISOString() },
       }))
     } finally {
-      setTesting((t) => ({ ...t, [service]: false }))
+      setTesting((prev) => ({ ...prev, [service]: false }))
     }
   }
 
@@ -109,25 +113,25 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
         <Card key={svc.id}>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
-              <StatusDot status={statuses[svc.id]} />
+              <StatusDot status={statuses[svc.id]} locale={locale} />
               <CardTitle className="text-base">{svc.label}</CardTitle>
             </div>
             <CardDescription>{svc.description}</CardDescription>
             {statuses[svc.id]?.last_verified && (
               <p className="text-xs text-muted-foreground">
-                Last tested: {new Date(statuses[svc.id].last_verified!).toLocaleString("en-GB")}
+                {t("settings.tokens.last_tested", locale, { time: new Date(statuses[svc.id].last_verified!).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB") })}
               </p>
             )}
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor={svc.id}>New token</Label>
+              <Label htmlFor={svc.id}>{t("settings.tokens.input.new_label", locale)}</Label>
               <Input
                 id={svc.id}
                 type="password"
-                placeholder="Paste new token to update..."
+                placeholder={t("settings.tokens.input.placeholder", locale)}
                 value={tokens[svc.id] ?? ""}
-                onChange={(e) => setTokens((t) => ({ ...t, [svc.id]: e.target.value }))}
+                onChange={(e) => setTokens((tt) => ({ ...tt, [svc.id]: e.target.value }))}
               />
             </div>
             <div className="flex gap-2">
@@ -136,7 +140,7 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
                 onClick={() => handleSave(svc.id)}
                 disabled={!tokens[svc.id]?.trim() || saving[svc.id]}
               >
-                {saving[svc.id] ? "Saving..." : "Save token"}
+                {saving[svc.id] ? t("settings.tokens.action.saving", locale) : t("settings.tokens.action.save", locale)}
               </Button>
               <Button
                 size="sm"
@@ -144,11 +148,11 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
                 onClick={() => handleTest(svc.id)}
                 disabled={testing[svc.id]}
               >
-                {testing[svc.id] ? "Testing..." : "Test connection"}
+                {testing[svc.id] ? t("settings.tokens.action.testing", locale) : t("settings.tokens.action.test", locale)}
               </Button>
             </div>
             {saved[svc.id] && (
-              <p className="text-sm text-green-500">Token saved successfully.</p>
+              <p className="text-sm text-green-500">{t("settings.tokens.saved_success", locale)}</p>
             )}
             {testResults[svc.id] && (
               <p className={`text-sm ${testResults[svc.id].ok ? "text-green-500" : "text-red-500"}`}>
@@ -158,8 +162,9 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
             {svc.id === "slack" && statuses.slack?.is_valid && (
               <div className="pt-2 border-t border-border/40">
                 <p className="text-xs text-muted-foreground">
-                  Connection is live. Set up notifications and run previews in the{" "}
-                  <span className="font-medium text-foreground">Notifications</span> tab.
+                  {t("settings.tokens.slack.live_hint_before", locale)}
+                  <span className="font-medium text-foreground">{t("settings.tokens.slack.live_hint_tab", locale)}</span>
+                  {t("settings.tokens.slack.live_hint_after", locale)}
                 </p>
               </div>
             )}
