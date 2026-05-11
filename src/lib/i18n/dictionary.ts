@@ -1025,6 +1025,29 @@ export const DICTIONARY = {
   "inbox.composer.error.no_due": { nl: "Einddatum is verplicht voor taken.", en: "Due date is required for tasks." },
   "inbox.composer.error.create_failed": { nl: "Item aanmaken mislukt", en: "Failed to create item" },
   "inbox.composer.combobox.no_match": { nl: "Geen klant gevonden voor \"{query}\".", en: "No client found for \"{query}\"." },
+
+  // ─── Pedro client picker ──────────────────────────────────────────────
+  "pedro.picker.placeholder": { nl: "Selecteer klant uit hub...", en: "Pick a client from the hub..." },
+  "pedro.picker.search": { nl: "Zoek klant...", en: "Search clients..." },
+  "pedro.picker.empty": { nl: "Geen klanten gevonden", en: "No clients found" },
+  "pedro.picker.signal.saved": { nl: "Campagne opgeslagen", en: "Campaign saved" },
+  "pedro.picker.signal.eval": { nl: "Evaluatie", en: "Evaluation" },
+  "pedro.picker.signal.kickoff": { nl: "Kick-off", en: "Kick-off" },
+  "pedro.picker.signal.meetings": { nl: "{n} mtg", en: "{n} mtg" },
+  "pedro.picker.autofill": { nl: "AI auto-fill", en: "AI auto-fill" },
+  "pedro.picker.autofill.loading": { nl: "Pedro denkt na...", en: "Pedro is thinking..." },
+
+  // ─── Pedro stage action bar (Save final version per stage) ────────────
+  "pedro.stage.last_saved_prefix": { nl: "Laatst opgeslagen:", en: "Last saved:" },
+  "pedro.stage.unsaved_lead": { nl: "Nog niet opgeslagen — werkt in", en: "Not yet saved — working in" },
+  "pedro.stage.draft_mode": { nl: "draft mode", en: "draft mode" },
+  "pedro.stage.draft_hint": { nl: "(auto-save aan, niet zichtbaar voor klant-record)", en: "(auto-save on, not visible to client record)" },
+  "pedro.stage.saving": { nl: "Opslaan...", en: "Saving..." },
+  "pedro.stage.save_as_next": { nl: "Save als v{n}", en: "Save as v{n}" },
+  "pedro.stage.save_initial": { nl: "Save naar klant", en: "Save to client" },
+  "pedro.stage.saved_as": { nl: "Opgeslagen als v{n}", en: "Saved as v{n}" },
+  "pedro.stage.unchanged": { nl: "v{n} ongewijzigd — geen nieuwe versie", en: "v{n} unchanged — no new version" },
+  "pedro.stage.save_failed": { nl: "Opslaan mislukt", en: "Save failed" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

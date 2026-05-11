@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useRef, useEffect } from "react"
 import { ChevronDown, Search, Sparkles, Check } from "lucide-react"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { PedroClient } from "../page"
 
 type Props = {
@@ -24,6 +26,7 @@ type Props = {
  * still re-trigger via "AI auto-fill" button.
  */
 export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loading, hideAutoFill }: Props) {
+  const locale = useLocale()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const ref = useRef<HTMLDivElement>(null)
@@ -57,7 +60,7 @@ export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loadin
           className="w-full inline-flex items-center justify-between gap-2 h-9 px-3 text-sm font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent transition-colors"
         >
           <span className={selected ? "text-foreground" : "text-muted-foreground"}>
-            {selected ? selected.name : "Selecteer klant uit hub..."}
+            {selected ? selected.name : t("pedro.picker.placeholder", locale)}
           </span>
           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
         </button>
@@ -71,7 +74,7 @@ export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loadin
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Zoek klant..."
+                placeholder={t("pedro.picker.search", locale)}
                 className="flex-1 bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground"
                 style={{
                   border: "none",
@@ -84,7 +87,7 @@ export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loadin
             <div className="max-h-72 overflow-y-auto py-1">
               {filtered.length === 0 ? (
                 <div className="px-3 py-3 text-sm text-muted-foreground">
-                  Geen klanten gevonden
+                  {t("pedro.picker.empty", locale)}
                 </div>
               ) : (
                 filtered.map((c) => {
@@ -93,11 +96,11 @@ export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loadin
                   // client rows apart (e.g. two "Financieel Verder"s — one
                   // with a kick-off transcript, one empty).
                   const signals: { label: string; tone: "primary" | "emerald" | "muted" }[] = []
-                  if (c.hasSavedCampaign) signals.push({ label: "Campagne opgeslagen", tone: "primary" })
-                  if (c.hasEval) signals.push({ label: "Evaluatie", tone: "emerald" })
-                  if (c.hasKickoff) signals.push({ label: "Kick-off", tone: "emerald" })
+                  if (c.hasSavedCampaign) signals.push({ label: t("pedro.picker.signal.saved", locale), tone: "primary" })
+                  if (c.hasEval) signals.push({ label: t("pedro.picker.signal.eval", locale), tone: "emerald" })
+                  if (c.hasKickoff) signals.push({ label: t("pedro.picker.signal.kickoff", locale), tone: "emerald" })
                   if (c.meetingCount > 0 && !c.hasEval && !c.hasKickoff) {
-                    signals.push({ label: `${c.meetingCount} mtg`, tone: "muted" })
+                    signals.push({ label: t("pedro.picker.signal.meetings", locale, { n: String(c.meetingCount) }), tone: "muted" })
                   }
                   return (
                     <button
@@ -113,7 +116,7 @@ export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loadin
                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         <span className="text-foreground truncate">{c.name}</span>
                         <span className="text-[10px] uppercase tracking-wider text-muted-foreground/50 shrink-0">
-                          {c.boardType === "onboarding" ? "Onboarding" : "Live"}
+                          {c.boardType === "onboarding" ? t("pedro.picker.onboarding", locale) : t("pedro.picker.live", locale)}
                         </span>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
@@ -150,7 +153,7 @@ export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loadin
           className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
         >
           <Sparkles className="h-3.5 w-3.5" />
-          {loading ? "Pedro denkt na..." : "AI auto-fill"}
+          {loading ? t("pedro.picker.autofill.loading", locale) : t("pedro.picker.autofill", locale)}
         </button>
       )}
     </div>

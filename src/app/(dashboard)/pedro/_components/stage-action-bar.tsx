@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react"
 import { Save, History, AlertCircle, Check } from "lucide-react"
 import { saveIfChanged } from "@/lib/pedro/save-if-changed"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 
 /**
  * Per-stage action bar for Pedro Campaign tabs.
@@ -38,8 +41,8 @@ type Props = {
   busy?: boolean
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
+function fmtDate(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleDateString(locale === "nl" ? "nl-NL" : "en-GB", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -48,6 +51,7 @@ function fmtDate(iso: string): string {
 }
 
 export function StageActionBar({ clientId, stage, getCurrentData, busy }: Props) {
+  const locale = useLocale()
   const [latest, setLatest] = useState<LatestVersion>(null)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; msg: string } | null>(null)
@@ -95,13 +99,13 @@ export function StageActionBar({ clientId, stage, getCurrentData, busy }: Props)
         saved_at: new Date().toISOString(),
         label: null,
       })
-      setFeedback({ kind: "ok", msg: `Opgeslagen als v${r.versionNumber}` })
+      setFeedback({ kind: "ok", msg: t("pedro.stage.saved_as", locale, { n: String(r.versionNumber) }) })
       setTimeout(() => setFeedback(null), 3500)
     } else if (r.reason === "unchanged") {
-      setFeedback({ kind: "ok", msg: `v${r.versionNumber} ongewijzigd — geen nieuwe versie` })
+      setFeedback({ kind: "ok", msg: t("pedro.stage.unchanged", locale, { n: String(r.versionNumber) }) })
       setTimeout(() => setFeedback(null), 3500)
     } else {
-      setFeedback({ kind: "err", msg: r.message || "Opslaan mislukt" })
+      setFeedback({ kind: "err", msg: r.message || t("pedro.stage.save_failed", locale) })
     }
     setSaving(false)
   }
@@ -115,17 +119,17 @@ export function StageActionBar({ clientId, stage, getCurrentData, busy }: Props)
           <>
             <History className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
             <span className="text-muted-foreground">
-              Laatst opgeslagen:{" "}
+              {t("pedro.stage.last_saved_prefix", locale)}{" "}
               <span className="text-foreground font-medium">v{latest.version_number}</span>{" "}
-              <span className="text-muted-foreground/70">· {fmtDate(latest.saved_at)}</span>
+              <span className="text-muted-foreground/70">· {fmtDate(latest.saved_at, locale)}</span>
             </span>
           </>
         ) : (
           <>
             <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
             <span className="text-muted-foreground">
-              Nog niet opgeslagen — werkt in <span className="font-medium text-foreground">draft mode</span>{" "}
-              <span className="text-muted-foreground/60">(auto-save aan, niet zichtbaar voor klant-record)</span>
+              {t("pedro.stage.unsaved_lead", locale)} <span className="font-medium text-foreground">{t("pedro.stage.draft_mode", locale)}</span>{" "}
+              <span className="text-muted-foreground/60">{t("pedro.stage.draft_hint", locale)}</span>
             </span>
           </>
         )}
@@ -148,12 +152,12 @@ export function StageActionBar({ clientId, stage, getCurrentData, busy }: Props)
           {saving ? (
             <>
               <span className="h-3 w-3 border-2 border-primary-foreground/40 border-t-primary-foreground rounded-full animate-spin" />
-              Opslaan...
+              {t("pedro.stage.saving", locale)}
             </>
           ) : (
             <>
               <Save className="h-3 w-3" />
-              {latest ? `Save als v${latest.version_number + 1}` : "Save naar klant"}
+              {latest ? t("pedro.stage.save_as_next", locale, { n: String(latest.version_number + 1) }) : t("pedro.stage.save_initial", locale)}
             </>
           )}
         </button>
