@@ -1,3 +1,5 @@
+"use client"
+
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -10,6 +12,9 @@ import {
   TrendingUp,
   type LucideIcon,
 } from "lucide-react"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { KpiResult } from "@/lib/clients/kpis"
 
 function fmt(n: number, type: "currency" | "percent" | "integer" | "multiplier"): string {
@@ -48,14 +53,17 @@ export type KpiVisibility = {
 }
 
 type KpiGroup = {
-  title: string
+  titleKey: DictionaryKey
   cards: KpiCardDef[]
   section: keyof KpiVisibility
 }
 
+// KPI card labels stay English in both locales — these are agreed RL jargon
+// shared with Slack, the Targets settings panel, and the campaigns framework.
+// Only the group titles (Leads / Afspraken / Deals) flip with the locale.
 const KPI_GROUPS: KpiGroup[] = [
   {
-    title: "Leads",
+    titleKey: "kpi.group.leads",
     section: "leads",
     cards: [
       { key: "adSpend", label: "Adspend", type: "currency", icon: Euro, direction: "neutral" },
@@ -65,7 +73,7 @@ const KPI_GROUPS: KpiGroup[] = [
     ],
   },
   {
-    title: "Appointments",
+    titleKey: "kpi.group.appointments",
     section: "appointments",
     cards: [
       { key: "bookedCalls", label: "Booked Appointments", type: "integer", icon: CalendarCheck, direction: "rate" },
@@ -76,7 +84,7 @@ const KPI_GROUPS: KpiGroup[] = [
     ],
   },
   {
-    title: "Deals",
+    titleKey: "kpi.group.deals",
     section: "deals",
     cards: [
       { key: "deals", label: "Deals", type: "integer", icon: Handshake, direction: "rate" },
@@ -140,6 +148,7 @@ type Props = {
 }
 
 export function KpiCards({ data, previousData, isLoading, visibility = { leads: true, appointments: true, deals: true } }: Props) {
+  const locale = useLocale()
   return (
     <div className="space-y-4">
       {KPI_GROUPS.map((group) => {
@@ -169,10 +178,10 @@ export function KpiCards({ data, previousData, isLoading, visibility = { leads: 
           : "grid grid-cols-2 gap-3 sm:grid-cols-5"
 
         return (
-          <Card key={group.title} className="overflow-hidden">
+          <Card key={group.titleKey} className="overflow-hidden">
             <div className="px-4 pt-3.5 pb-3">
               <h3 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                {group.title}
+                {t(group.titleKey, locale)}
               </h3>
             </div>
             <CardContent className="px-4 pb-4 pt-0">

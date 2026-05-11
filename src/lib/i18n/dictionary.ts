@@ -584,6 +584,61 @@ export const DICTIONARY = {
   "client.home.due.tomorrow": { nl: "Morgen", en: "Due tomorrow" },
   "client.home.due.in_days": { nl: "Over {n}d", en: "Due in {n}d" },
   "client.home.due.on_date": { nl: "Voor {date}", en: "Due {date}" },
+
+  // ─── KPI Cards (Campaigns tab) ─────────────────────────────────────────
+  // Group titles — KPI labels themselves stay English (RL jargon).
+  "kpi.group.leads": { nl: "Leads", en: "Leads" },
+  "kpi.group.appointments": { nl: "Afspraken", en: "Appointments" },
+  "kpi.group.deals": { nl: "Deals", en: "Deals" },
+
+  // ─── Client detail — Campaigns tab ────────────────────────────────────
+  "client.campaigns.empty.no_link": { nl: "Geen Meta-advertentieaccount of klantbord gekoppeld in Monday.com voor deze klant.", en: "No Meta Ad Account or Client Board linked in Monday.com for this client." },
+  "client.campaigns.empty.no_selection": { nl: "Nog geen campagnes geselecteerd. Kies welke campagnes worden bijgehouden in Instellingen.", en: "No campaigns selected yet. Select which campaigns to track in Settings." },
+  "client.campaigns.empty.go_settings": { nl: "Ga naar instellingen", en: "Go to Settings" },
+  "client.campaigns.error.kpi": { nl: "KPI-data kon niet geladen worden. Controleer je API-tokens.", en: "Failed to load KPI data. Check your API tokens." },
+  "client.campaigns.utm.title": { nl: "UTM / Ad performance breakdown", en: "UTM / Ad Performance Breakdown" },
+
+  // ─── Client detail — Billing tab ──────────────────────────────────────
+  // Invoice status pills
+  "client.billing.status.paid": { nl: "Betaald", en: "Paid" },
+  "client.billing.status.open": { nl: "Open", en: "Open" },
+  "client.billing.status.overdue": { nl: "Achterstallig", en: "Overdue" },
+  "client.billing.status.void": { nl: "Vervallen", en: "Void" },
+  "client.billing.status.draft": { nl: "Concept", en: "Draft" },
+
+  // Next invoice date section
+  "client.billing.next_invoice.title": { nl: "Volgende factuur", en: "Next invoice" },
+  "client.billing.next_invoice.subtitle": { nl: "Wanneer de volgende factuur de deur uit moet. Op deze datum verschijnt automatisch een taak in de inbox van finance.", en: "When the next invoice should go out. A task lands in finance's inbox automatically on this date." },
+  "client.billing.action.save": { nl: "Opslaan", en: "Save" },
+  "client.billing.action.clear": { nl: "Wissen", en: "Clear" },
+  "client.billing.action.clear_title": { nl: "Datum volgende factuur wissen", en: "Clear next invoice date" },
+  "client.billing.action.saved": { nl: "Opgeslagen", en: "Saved" },
+  "client.billing.error.save_failed": { nl: "Opslaan mislukt", en: "Failed to save" },
+
+  // Invoices section
+  "client.billing.invoices.title": { nl: "Facturen", en: "Invoices" },
+  "client.billing.invoices.subtitle_fallback": { nl: "Wat er daadwerkelijk via Stripe gefactureerd is voor deze klant.", en: "What this client has actually been billed via Stripe." },
+  "client.billing.invoices.no_stripe_id": { nl: "Geen Stripe Customer ID gekoppeld in Monday.com voor deze klant.", en: "No Stripe Customer ID linked in Monday.com for this client." },
+  "client.billing.invoices.load_failed": { nl: "Facturatie-data kon niet geladen worden.", en: "Failed to load billing data." },
+
+  // Summary cards (4 across the top)
+  "client.billing.summary.invoiced": { nl: "Totaal gefactureerd", en: "Total invoiced" },
+  "client.billing.summary.paid": { nl: "Totaal betaald", en: "Total paid" },
+  "client.billing.summary.outstanding": { nl: "Openstaand", en: "Outstanding" },
+  "client.billing.summary.outstanding.sub": { nl: "Actie vereist", en: "Action required" },
+  "client.billing.summary.avg_days": { nl: "Gem. betaaltijd", en: "Avg. payment time" },
+  "client.billing.summary.avg_days.sub": { nl: "Van factuur naar betaling", en: "From invoice to payment" },
+  "client.billing.summary.days": { nl: "{n} dagen", en: "{n} days" },
+
+  // Table columns + empty + view links
+  "client.billing.col.invoice": { nl: "Factuur", en: "Invoice" },
+  "client.billing.col.date": { nl: "Datum", en: "Date" },
+  "client.billing.col.due_date": { nl: "Vervaldatum", en: "Due date" },
+  "client.billing.col.amount": { nl: "Bedrag", en: "Amount" },
+  "client.billing.col.status": { nl: "Status", en: "Status" },
+  "client.billing.col.pdf": { nl: "PDF", en: "PDF" },
+  "client.billing.empty.no_invoices": { nl: "Geen facturen gevonden", en: "No invoices found" },
+  "client.billing.link.view": { nl: "Bekijk", en: "View" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

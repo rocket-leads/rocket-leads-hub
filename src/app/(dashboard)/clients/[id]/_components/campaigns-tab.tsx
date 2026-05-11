@@ -14,6 +14,8 @@ import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import { Skeleton } from "@/components/ui/skeleton"
 
 import { Settings2 } from "lucide-react"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { KpiResult } from "@/lib/clients/kpis"
 import type { MetaCampaign } from "@/lib/integrations/meta"
 
@@ -38,6 +40,7 @@ type Props = {
 }
 
 export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, clientName, boardType, onNavigateToSettings, regenerateSignal }: Props) {
+  const locale = useLocale()
   const { range, setRange, presets, applyPreset, formatDate } = useDateRange()
   const startDateStr = formatDate(range.startDate)
   const endDateStr = formatDate(range.endDate)
@@ -74,7 +77,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
     return (
       <Card>
         <CardContent className="py-8 text-center text-sm text-muted-foreground">
-          No Meta Ad Account or Client Board linked in Monday.com for this client.
+          {t("client.campaigns.empty.no_link", locale)}
         </CardContent>
       </Card>
     )
@@ -98,7 +101,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
       <Card>
         <CardContent className="py-12 text-center">
           <p className="text-sm text-muted-foreground mb-3">
-            No campaigns selected yet. Select which campaigns to track in Settings.
+            {t("client.campaigns.empty.no_selection", locale)}
           </p>
           {onNavigateToSettings && (
             <button
@@ -106,7 +109,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
               className="inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors"
             >
               <Settings2 className="h-3.5 w-3.5" />
-              Go to Settings
+              {t("client.campaigns.empty.go_settings", locale)}
             </button>
           )}
         </CardContent>
@@ -140,7 +143,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
       <Separator />
 
       {kpisQuery.isError && (
-        <p className="text-sm text-destructive">Failed to load KPI data. Check your API tokens.</p>
+        <p className="text-sm text-destructive">{t("client.campaigns.error.kpi", locale)}</p>
       )}
 
       <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
@@ -160,7 +163,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
       {/* UTM breakdown */}
       {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (
         <div>
-          <h3 className="text-base font-semibold mb-3">UTM / Ad Performance Breakdown</h3>
+          <h3 className="text-base font-semibold mb-3">{t("client.campaigns.utm.title", locale)}</h3>
           <UtmTable rows={kpisQuery.data?.utmBreakdown ?? []} isLoading={kpisQuery.isLoading} />
         </div>
       ) : null}

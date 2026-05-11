@@ -10,6 +10,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
 import { AgreementSection } from "./agreement-section"
 import { BillingSectionShell } from "./billing-section-shell"
@@ -20,15 +23,17 @@ type Props = {
   initialNextInvoiceDate?: string | null
 }
 
+/** Invoice status pill — label flips via dictionary, class + icon stay
+ *  constant since the visual treatment is independent of language. */
 const STATUS_CONFIG: Record<
   InvoiceRow["status"],
-  { label: string; className: string; icon: string }
+  { labelKey: DictionaryKey; className: string; icon: string }
 > = {
-  paid: { label: "Paid", className: "bg-green-500/20 text-green-400 border-green-500/30", icon: "✓" },
-  open: { label: "Open", className: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", icon: "○" },
-  overdue: { label: "Overdue", className: "bg-red-500/20 text-red-400 border-red-500/30", icon: "!" },
-  void: { label: "Void", className: "bg-muted text-muted-foreground", icon: "—" },
-  draft: { label: "Draft", className: "bg-muted text-muted-foreground", icon: "~" },
+  paid: { labelKey: "client.billing.status.paid", className: "bg-green-500/20 text-green-400 border-green-500/30", icon: "✓" },
+  open: { labelKey: "client.billing.status.open", className: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", icon: "○" },
+  overdue: { labelKey: "client.billing.status.overdue", className: "bg-red-500/20 text-red-400 border-red-500/30", icon: "!" },
+  void: { labelKey: "client.billing.status.void", className: "bg-muted text-muted-foreground", icon: "—" },
+  draft: { labelKey: "client.billing.status.draft", className: "bg-muted text-muted-foreground", icon: "~" },
 }
 
 function fmt(amount: number): string {
@@ -97,6 +102,7 @@ function NextInvoiceDateSection({
   mondayItemId: string
   initialDate: string | null
 }) {
+  const locale = useLocale()
   const [date, setDate] = useState<string>(initialDate ?? "")
   const [savedDate, setSavedDate] = useState<string>(initialDate ?? "")
   const [saving, setSaving] = useState(false)
@@ -115,10 +121,10 @@ function NextInvoiceDateSection({
         body: JSON.stringify({ fieldKey: "next_invoice_date", value }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? "Failed to save")
+      if (!res.ok) throw new Error(json.error ?? t("client.billing.error.save_failed", locale))
       setSavedDate(value)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save")
+      setError(e instanceof Error ? e.message : t("client.billing.error.save_failed", locale))
       // Roll the input back to the last known-good value so we don't pretend
       // the change landed.
       setDate(savedDate)
@@ -130,8 +136,8 @@ function NextInvoiceDateSection({
   return (
     <BillingSectionShell
       icon={CalendarClock}
-      title="Next invoice"
-      subtitle="When the next invoice should go out. A task lands in finance's inbox automatically on this date."
+      title={t("client.billing.next_invoice.title", locale)}
+      subtitle={t("client.billing.next_invoice.subtitle", locale)}
     >
       <div className="flex items-center gap-2 flex-wrap">
         <input
@@ -149,7 +155,7 @@ function NextInvoiceDateSection({
             className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-            Save
+            {t("client.billing.action.save", locale)}
           </button>
         )}
         {savedDate && (
@@ -161,16 +167,16 @@ function NextInvoiceDateSection({
             }}
             disabled={saving}
             className={cn(buttonVariants({ size: "sm", variant: "ghost" }), "gap-1.5 text-muted-foreground")}
-            title="Clear next invoice date"
+            title={t("client.billing.action.clear_title", locale)}
           >
             <X className="h-3.5 w-3.5" />
-            Clear
+            {t("client.billing.action.clear", locale)}
           </button>
         )}
         {showSaved && !saving && (
           <span className="inline-flex items-center gap-1 text-[11px] text-emerald-500">
             <Check className="h-3 w-3" />
-            Saved
+            {t("client.billing.action.saved", locale)}
           </span>
         )}
       </div>
@@ -180,6 +186,7 @@ function NextInvoiceDateSection({
 }
 
 function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
+  const locale = useLocale()
   const query = useQuery<BillingData>({
     queryKey: ["billing", mondayItemId],
     queryFn: async () => {
@@ -187,24 +194,27 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
       if (stripeCustomerId) p.set("stripeCustomerId", stripeCustomerId)
       const r = await fetch(`/api/clients/${mondayItemId}/billing?${p}`)
       const data = await r.json()
-      if (!r.ok) throw new Error(data.error ?? "Failed to load billing data")
+      if (!r.ok) throw new Error(data.error ?? t("client.billing.invoices.load_failed", locale))
       return data
     },
     enabled: !!stripeCustomerId,
   })
 
   const data = query.data
+  // Customer name + email (when available) acts as the subtitle. Fallback to
+  // the generic "what this client got billed" line — no need to translate the
+  // identity string itself.
   const subtitle = data?.customerName
     ? `${data.customerName}${data.customerEmail ? ` · ${data.customerEmail}` : ""}`
-    : "What this client has actually been billed via Stripe."
+    : t("client.billing.invoices.subtitle_fallback", locale)
 
   const actions = stripeCustomerId ? <StripeLinkButton stripeCustomerId={stripeCustomerId} /> : null
 
   if (!stripeCustomerId) {
     return (
-      <BillingSectionShell icon={Receipt} title="Invoices" subtitle="What this client has actually been billed via Stripe.">
+      <BillingSectionShell icon={Receipt} title={t("client.billing.invoices.title", locale)} subtitle={t("client.billing.invoices.subtitle_fallback", locale)}>
         <div className="rounded-md border border-dashed border-border/50 p-6 text-center text-sm text-muted-foreground">
-          No Stripe Customer ID linked in Monday.com for this client.
+          {t("client.billing.invoices.no_stripe_id", locale)}
         </div>
       </BillingSectionShell>
     )
@@ -212,7 +222,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
 
   if (query.isLoading) {
     return (
-      <BillingSectionShell icon={Receipt} title="Invoices" subtitle={subtitle} actions={actions}>
+      <BillingSectionShell icon={Receipt} title={t("client.billing.invoices.title", locale)} subtitle={subtitle} actions={actions}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24" />)}
         </div>
@@ -223,31 +233,32 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
 
   if (query.isError || !data) {
     return (
-      <BillingSectionShell icon={Receipt} title="Invoices" subtitle={subtitle} actions={actions}>
+      <BillingSectionShell icon={Receipt} title={t("client.billing.invoices.title", locale)} subtitle={subtitle} actions={actions}>
         <div className="py-6 text-center text-sm text-destructive">
-          {query.error instanceof Error ? query.error.message : "Failed to load billing data."}
+          {query.error instanceof Error ? query.error.message : t("client.billing.invoices.load_failed", locale)}
         </div>
       </BillingSectionShell>
     )
   }
 
   const { invoices, totalInvoiced, totalPaid, totalOutstanding, avgPaymentDays } = data
+  const dateLocale = locale === "nl" ? "nl-NL" : "en-GB"
 
   return (
-    <BillingSectionShell icon={Receipt} title="Invoices" subtitle={subtitle} actions={actions}>
+    <BillingSectionShell icon={Receipt} title={t("client.billing.invoices.title", locale)} subtitle={subtitle} actions={actions}>
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <SummaryCard title="Total invoiced" value={fmt(totalInvoiced)} />
-        <SummaryCard title="Total paid" value={fmt(totalPaid)} />
+        <SummaryCard title={t("client.billing.summary.invoiced", locale)} value={fmt(totalInvoiced)} />
+        <SummaryCard title={t("client.billing.summary.paid", locale)} value={fmt(totalPaid)} />
         <SummaryCard
-          title="Outstanding"
+          title={t("client.billing.summary.outstanding", locale)}
           value={fmt(totalOutstanding)}
-          sub={totalOutstanding > 0 ? "Action required" : undefined}
+          sub={totalOutstanding > 0 ? t("client.billing.summary.outstanding.sub", locale) : undefined}
         />
         <SummaryCard
-          title="Avg. payment time"
-          value={avgPaymentDays !== null ? `${avgPaymentDays} days` : "—"}
-          sub="From invoice to payment"
+          title={t("client.billing.summary.avg_days", locale)}
+          value={avgPaymentDays !== null ? t("client.billing.summary.days", locale, { n: String(avgPaymentDays) }) : "—"}
+          sub={t("client.billing.summary.avg_days.sub", locale)}
         />
       </div>
 
@@ -256,19 +267,19 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Invoice</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Due date</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-[80px]">PDF</TableHead>
+              <TableHead>{t("client.billing.col.invoice", locale)}</TableHead>
+              <TableHead>{t("client.billing.col.date", locale)}</TableHead>
+              <TableHead>{t("client.billing.col.due_date", locale)}</TableHead>
+              <TableHead>{t("client.billing.col.amount", locale)}</TableHead>
+              <TableHead>{t("client.billing.col.status", locale)}</TableHead>
+              <TableHead className="w-[80px]">{t("client.billing.col.pdf", locale)}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {invoices.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                  No invoices found
+                  {t("client.billing.empty.no_invoices", locale)}
                 </TableCell>
               </TableRow>
             ) : (
@@ -278,17 +289,17 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
                   <TableRow key={inv.id}>
                     <TableCell className="font-mono text-sm">{inv.number ?? inv.id}</TableCell>
                     <TableCell className="text-sm">
-                      {new Date(inv.created * 1000).toLocaleDateString("en-GB")}
+                      {new Date(inv.created * 1000).toLocaleDateString(dateLocale)}
                     </TableCell>
                     <TableCell className="text-sm">
                       {inv.dueDate
-                        ? new Date(inv.dueDate * 1000).toLocaleDateString("en-GB")
+                        ? new Date(inv.dueDate * 1000).toLocaleDateString(dateLocale)
                         : "—"}
                     </TableCell>
                     <TableCell className="text-sm font-medium">{fmt(inv.amountDue)}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={cfg.className}>
-                        {cfg.icon} {cfg.label}
+                        {cfg.icon} {t(cfg.labelKey, locale)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -310,7 +321,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
                           className="text-sm text-primary hover:underline"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          View
+                          {t("client.billing.link.view", locale)}
                         </a>
                       ) : (
                         <span className="text-muted-foreground">—</span>
