@@ -13,6 +13,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Bell, MessageSquare, Send, Users, Check, Loader2, Zap } from "lucide-react"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 import { saveSlackChannelId, updateCloserSlackId } from "../actions"
 
 type Recipient = {
@@ -62,6 +65,7 @@ export function NotificationsTab({
   salesChannelId,
   closers,
 }: Props) {
+  const locale = useLocale()
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({})
 
@@ -73,7 +77,7 @@ export function NotificationsTab({
       const data = await res.json()
       setResults((r) => ({ ...r, [id]: data }))
     } catch {
-      setResults((r) => ({ ...r, [id]: { ok: false, message: "Request failed" } }))
+      setResults((r) => ({ ...r, [id]: { ok: false, message: t("settings.notifications.request_failed", locale) } }))
     } finally {
       setBusy((b) => ({ ...b, [id]: false }))
     }
@@ -100,11 +104,11 @@ export function NotificationsTab({
       const message = ok
         ? data?.skipped
           ? `Skipped: ${data.skipped}`
-          : "Sent to recipients."
+          : t("settings.notifications.sent_to_recipients", locale)
         : data?.error || `Failed (HTTP ${res.status})`
       setResults((r) => ({ ...r, [id]: { ok, message } }))
     } catch {
-      setResults((r) => ({ ...r, [id]: { ok: false, message: "Request failed" } }))
+      setResults((r) => ({ ...r, [id]: { ok: false, message: t("settings.notifications.request_failed", locale) } }))
     } finally {
       setBusy((b) => ({ ...b, [id]: false }))
     }
@@ -254,8 +258,7 @@ Open Targets`,
     <div className="space-y-6">
       <div>
         <p className="text-sm text-muted-foreground">
-          Manage automated notifications sent from the Hub. Each notification has a preview button
-          that posts to your own Slack DM — safe to test without spamming the team.
+          {t("settings.notifications.intro", locale)}
         </p>
       </div>
 
@@ -263,15 +266,18 @@ Open Targets`,
       <div className="space-y-4">
         <div className="flex items-center gap-2 pb-2 border-b border-border/40">
           <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Slack</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{t("settings.notifications.slack_section", locale)}</h3>
         </div>
 
         {!slackConnected && (
           <div className="rounded-md border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm">
-            <p className="text-yellow-500 font-medium">Slack token not connected</p>
+            <p className="text-yellow-500 font-medium">{t("settings.notifications.slack_not_connected.title", locale)}</p>
             <p className="text-muted-foreground text-xs mt-1">
-              Connect a Slack Bot Token in <span className="font-medium">API Tokens</span> first,
-              then map Hub users to Slack user IDs in <span className="font-medium">Column Mapping</span>.
+              {t("settings.notifications.slack_not_connected.body_before", locale)}
+              <span className="font-medium">{t("settings.notifications.slack_not_connected.tokens_tab", locale)}</span>
+              {t("settings.notifications.slack_not_connected.body_middle", locale)}
+              <span className="font-medium">{t("settings.notifications.slack_not_connected.mapping_tab", locale)}</span>
+              {t("settings.notifications.slack_not_connected.body_after", locale)}
             </p>
           </div>
         )}
@@ -293,7 +299,7 @@ Open Targets`,
               disabled={busy[testDmNotification.id] || !slackConnected}
             >
               <Send className="h-3.5 w-3.5 mr-1.5" />
-              {busy[testDmNotification.id] ? "Sending..." : "Send test DM to me"}
+              {busy[testDmNotification.id] ? t("settings.notifications.action.sending", locale) : t("settings.notifications.action.send_test_dm", locale)}
             </Button>
             {results[testDmNotification.id]?.message && (
               <p
@@ -332,6 +338,7 @@ Open Targets`,
               onSendNow={() => runSendNow(n.id, n)}
               recipientsWithSlack={audienceWith}
               recipientsMissing={audienceMissing}
+              locale={locale}
             />
           )
         })}
@@ -351,6 +358,7 @@ function NotificationCard({
   onSendNow,
   recipientsWithSlack,
   recipientsMissing,
+  locale,
 }: {
   def: NotificationDef
   slackConnected: boolean
@@ -360,6 +368,7 @@ function NotificationCard({
   onSendNow: () => void
   recipientsWithSlack: Recipient[]
   recipientsMissing: Recipient[]
+  locale: Locale
 }) {
   const [showExample, setShowExample] = useState(false)
   return (
@@ -380,13 +389,13 @@ function NotificationCard({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
           <div className="rounded-md bg-muted/30 px-3 py-2">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-0.5">
-              Schedule
+              {t("settings.notifications.metadata.schedule", locale)}
             </div>
             <div className="font-medium text-foreground">{def.schedule}</div>
           </div>
           <div className="rounded-md bg-muted/30 px-3 py-2">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-0.5">
-              Destination
+              {t("settings.notifications.metadata.destination", locale)}
             </div>
             {def.channelKey ? (
               <ChannelIdEditor channelKey={def.channelKey} initial={def.channelId ?? ""} />
@@ -401,11 +410,11 @@ function NotificationCard({
           <div className="rounded-md bg-muted/30 px-3 py-2 text-xs">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1.5">
               <Users className="h-3 w-3" />
-              Recipients
+              {t("settings.notifications.metadata.recipients", locale)}
             </div>
             {recipientsWithSlack.length === 0 ? (
               <p className="text-muted-foreground italic">
-                No users have a Slack ID configured yet — add one in Column Mapping.
+                {t("settings.notifications.recipients.empty", locale)}
               </p>
             ) : (
               <div className="flex flex-wrap gap-1">
@@ -421,9 +430,9 @@ function NotificationCard({
                   <span
                     key={r.email}
                     className="inline-block px-2 py-0.5 rounded bg-muted text-muted-foreground/60 text-[11px]"
-                    title="No Slack ID set — won't receive notifications"
+                    title={t("settings.notifications.recipients.no_slack_title", locale)}
                   >
-                    {r.name ?? r.email} (no Slack ID)
+                    {r.name ?? r.email} {t("settings.notifications.recipients.no_slack", locale)}
                   </span>
                 ))}
               </div>
@@ -438,7 +447,7 @@ function NotificationCard({
             className="text-xs text-muted-foreground hover:text-foreground underline"
             onClick={() => setShowExample((s) => !s)}
           >
-            {showExample ? "Hide example" : "Show example format"}
+            {showExample ? t("settings.notifications.example.hide", locale) : t("settings.notifications.example.show", locale)}
           </button>
           {showExample && (
             <pre className="mt-2 rounded-md border border-border/40 bg-muted/20 px-3 py-2 text-xs whitespace-pre-wrap font-mono leading-relaxed text-foreground/90">
@@ -451,25 +460,25 @@ function NotificationCard({
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={onPreview} disabled={busy || !slackConnected}>
             <Send className="h-3.5 w-3.5 mr-1.5" />
-            {busy ? "Working..." : "Preview to me"}
+            {busy ? t("settings.notifications.action.working", locale) : t("settings.notifications.action.preview_to_me", locale)}
           </Button>
           <Button size="sm" onClick={onSendNow} disabled={busy || !slackConnected}>
             <Zap className="h-3.5 w-3.5 mr-1.5" />
-            {busy ? "Sending..." : "Send to recipients now"}
+            {busy ? t("settings.notifications.action.sending", locale) : t("settings.notifications.action.send_now", locale)}
           </Button>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          <span className="font-medium">Preview to me</span>:{" "}
+          <span className="font-medium">{t("settings.notifications.footer.preview_label", locale)}</span>:{" "}
           {def.destination === "channel"
-            ? "posts to your own DM (not the channel) for safe testing."
-            : "sends only to your own Slack with live data."}{" "}
+            ? t("settings.notifications.footer.preview_channel", locale)
+            : t("settings.notifications.footer.preview_dm", locale)}{" "}
           ·{" "}
-          <span className="font-medium">Send to recipients now</span>:{" "}
+          <span className="font-medium">{t("settings.notifications.footer.send_label", locale)}</span>:{" "}
           {def.destination === "channel"
-            ? "posts the real message to the configured channel."
-            : `sends the real DM to ${
-                def.audience === "closers" ? "all mapped closers/setters" : "all mapped Hub users"
-              }.`}
+            ? t("settings.notifications.footer.send_channel", locale)
+            : def.audience === "closers"
+              ? t("settings.notifications.footer.send_dm_closers", locale)
+              : t("settings.notifications.footer.send_dm_users", locale)}
         </p>
         {result?.message && (
           <p className={`text-sm ${result.ok ? "text-green-500" : "text-red-500"}`}>{result.message}</p>
@@ -486,6 +495,7 @@ function ChannelIdEditor({
   channelKey: ChannelKey
   initial: string
 }) {
+  const locale = useLocale()
   const [value, setValue] = useState(initial)
   const [savedValue, setSavedValue] = useState(initial)
   const [error, setError] = useState<string | null>(null)
@@ -499,7 +509,7 @@ function ChannelIdEditor({
         setSavedValue(value.trim())
         setError(null)
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to save")
+        setError(e instanceof Error ? e.message : t("settings.notifications.save_failed", locale))
       }
     })
   }
@@ -532,6 +542,7 @@ function ChannelIdEditor({
 }
 
 function CloserSlackMappingCard({ closers }: { closers: Closer[] }) {
+  const locale = useLocale()
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [savedMap, setSavedMap] = useState<Record<string, string>>(() => {
@@ -571,7 +582,7 @@ function CloserSlackMappingCard({ closers }: { closers: Closer[] }) {
         <div className="flex items-start gap-2">
           <Bell className="h-4 w-4 text-muted-foreground mt-1 shrink-0" />
           <div>
-            <CardTitle className="text-base">Closer / Setter Slack Mapping</CardTitle>
+            <CardTitle className="text-base">{t("settings.notifications.closers.title", locale)}</CardTitle>
             <CardDescription className="mt-1">
               Map each closer/setter (from the targets board <code className="font-mono text-xs">wie_</code> column,
               filtered to anyone with leads in the last 60 days) to a Slack user ID so they receive
@@ -585,15 +596,15 @@ function CloserSlackMappingCard({ closers }: { closers: Closer[] }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Closer / Setter</TableHead>
-                <TableHead className="w-[260px]">Slack user ID</TableHead>
+                <TableHead>{t("settings.notifications.closers.col_name", locale)}</TableHead>
+                <TableHead className="w-[260px]">{t("settings.notifications.closers.col_slack", locale)}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {closers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={2} className="text-sm text-muted-foreground italic py-4">
-                    No active closers found in the targets board (no leads in the last 60 days).
+                    {t("settings.notifications.closers.empty", locale)}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -629,10 +640,10 @@ function CloserSlackMappingCard({ closers }: { closers: Closer[] }) {
                               <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                             )}
                             {!isSaving && isDirty && trimmed.length > 0 && (
-                              <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title="Unsaved" />
+                              <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title={t("settings.notifications.closers.row.unsaved", locale)} />
                             )}
                             {!isSaving && isSaved && (
-                              <Check className="h-3.5 w-3.5 text-green-500" aria-label="Saved" />
+                              <Check className="h-3.5 w-3.5 text-green-500" aria-label={t("settings.notifications.closers.row.saved", locale)} />
                             )}
                           </div>
                         </div>

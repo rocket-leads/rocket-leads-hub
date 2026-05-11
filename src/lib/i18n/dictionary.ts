@@ -763,6 +763,179 @@ export const DICTIONARY = {
   "settings.board.action.save": { nl: "Configuratie opslaan", en: "Save configuration" },
   "settings.board.action.saving": { nl: "Opslaan...", en: "Saving..." },
   "settings.board.action.saved": { nl: "Opgeslagen!", en: "Saved!" },
+
+  // ─── Settings — Users tab ─────────────────────────────────────────────
+  // Invite form
+  "settings.users.invite.first_name": { nl: "Voornaam", en: "First name" },
+  "settings.users.invite.last_name": { nl: "Achternaam", en: "Last name" },
+  "settings.users.invite.email": { nl: "E-mail", en: "Email" },
+  "settings.users.invite.hub_role": { nl: "Hub rol", en: "Hub role" },
+  "settings.users.invite.monday_role": { nl: "Monday rol", en: "Monday role" },
+  "settings.users.invite.monday_name": { nl: "Monday naam", en: "Monday name" },
+  "settings.users.invite.slack_id": { nl: "Slack ID", en: "Slack ID" },
+  "settings.users.invite.helper": { nl: "Monday rol + naam bepalen welke klanten deze gebruiker ziet (niet-admins). Slack ID schakelt DM-notificaties in. Allemaal optioneel bij uitnodigen.", en: "Monday role + name controls which clients this user sees (non-admins). Slack ID enables DM notifications. All optional at invite time." },
+  "settings.users.invite.action.add": { nl: "Gebruiker toevoegen", en: "Add user" },
+  "settings.users.invite.action.adding": { nl: "Toevoegen...", en: "Adding..." },
+  "settings.users.invite.error.failed": { nl: "Gebruiker toevoegen mislukt", en: "Failed to add user" },
+
+  // Roles
+  "settings.users.role.admin": { nl: "Admin", en: "Admin" },
+  "settings.users.role.member": { nl: "Member", en: "Member" },
+  "settings.users.role.guest": { nl: "Guest", en: "Guest" },
+
+  // Select placeholders / fallbacks
+  "settings.users.select.not_applicable": { nl: "Niet van toepassing", en: "Not applicable" },
+  "settings.users.select.pick_person": { nl: "Kies een persoon", en: "Pick a person" },
+  "settings.users.select.connect_fathom": { nl: "Verbind Fathom eerst", en: "Connect Fathom first" },
+  "settings.users.select.pick_fathom": { nl: "Kies Fathom-gebruiker", en: "Pick Fathom user" },
+
+  // Per-row indicators
+  "settings.users.row.unsaved": { nl: "Niet opgeslagen", en: "Unsaved" },
+  "settings.users.row.saved": { nl: "Opgeslagen", en: "Saved" },
+
+  // Table headers
+  "settings.users.col.user": { nl: "Gebruiker", en: "User" },
+  "settings.users.col.hub_role": { nl: "Hub rol", en: "Hub role" },
+  "settings.users.col.monday_role": { nl: "Monday rol", en: "Monday role" },
+  "settings.users.col.monday_name": { nl: "Monday naam", en: "Monday name" },
+  "settings.users.col.slack_id": { nl: "Slack user ID", en: "Slack user ID" },
+  "settings.users.col.wa_template": { nl: "WhatsApp template", en: "WhatsApp template" },
+  "settings.users.col.fathom_email": { nl: "Fathom e-mail", en: "Fathom email" },
+  "settings.users.col.joined": { nl: "Lid sinds", en: "Joined" },
+
+  // Row inputs / actions
+  "settings.users.row.name_placeholder": { nl: "Voornaam Achternaam", en: "First Last" },
+  "settings.users.row.remove_title": { nl: "Gebruiker verwijderen", en: "Remove user" },
+  "settings.users.row.remove_confirm": { nl: "{email} verwijderen? Verliest direct toegang.", en: "Remove {email}? They will lose access immediately." },
+  "settings.users.row.remove_failed": { nl: "Gebruiker verwijderen mislukt", en: "Failed to remove user" },
+  "settings.users.row.wa_tooltip": { nl: "Trengo WhatsApp template-naam (bv. rl_universal_roel) — gebruikt voor outbound buiten 24u session window", en: "Trengo WhatsApp template name (e.g. rl_universal_roel) — used for outbound buiten 24u session window" },
+
+  // Footer
+  "settings.users.footer": { nl: "Hub rol bepaalt toegang. Monday rol bepaalt wat deze gebruiker doet — voor AM/CM/Setter pikt de Monday naam welke klanten ze zien (admins zien altijd alles). Finance is org-breed en heeft geen Monday naam nodig; triggert factuur-taken via de inbox automation. Slack ID wordt gebruikt voor DM-notificaties. Fathom e-mail koppelt deze Hub-gebruiker aan hun Fathom-account zodat de meeting matcher weet wie er in een opgenomen call zat. Alle velden auto-saven.", en: "Hub role controls access. Monday role decides what this user does — for AM/CM/Setter, the Monday name picks which clients they see (admins always see all). Finance is org-level and doesn't need a Monday name; it triggers invoice tasks via the inbox automation. Slack ID is used for DM notifications. Fathom email maps this Hub user to their Fathom account so the meeting matcher knows who was in a recorded call. All fields autosave." },
+
+  // ─── Settings — Inbox Automations tab ─────────────────────────────────
+  // Per-rule descriptions (title/description/trigger/effect) intentionally
+  // stay English — admin operator docs full of code-flow terminology
+  // (cron, idempotent, source_ref, etc.) that maps to the implementation.
+  // Translating would break the mental model with code/UI.
+  "settings.inbox.title": { nl: "Inbox automatiseringen", en: "Inbox Automations" },
+  "settings.inbox.subtitle": { nl: "Regels die automatisch inbox-taken of updates aanmaken op basis van data-signalen uit de Hub. Elke regel draait dagelijks via cron en is volledig idempotent — opnieuw draaien levert geen duplicaten.", en: "Rules that automatically create inbox tasks or updates based on data signals across the Hub. Each rule runs once daily via cron and is fully idempotent — re-running won't create duplicates." },
+  "settings.inbox.trigger": { nl: "Trigger", en: "Trigger" },
+  "settings.inbox.effect": { nl: "Effect", en: "Effect" },
+  "settings.inbox.footer_more": { nl: "Meer regels landen hier zodra we signalen uit Monday updates, Trengo conversaties en Watch List events verbinden met geautomatiseerde taken.", en: "More rules will land here as we wire signals from Monday updates, Trengo conversations and Watch List events into automated tasks." },
+
+  // Run-as-test panel
+  "settings.inbox.run.title": { nl: "Test draaien (toegewezen aan jou)", en: "Run as test (assigned to you)" },
+  "settings.inbox.run.subtitle_before": { nl: "Zelfde code-pad als de dagelijkse cron, maar taken worden toegewezen aan ", en: "Same code path as the daily cron, but tasks are assigned to " },
+  "settings.inbox.run.subtitle_you": { nl: "jou", en: "you" },
+  "settings.inbox.run.subtitle_with": { nl: " met een ", en: " with a " },
+  "settings.inbox.run.subtitle_after": { nl: " prefix — zodat je AI-output en regel-logica kunt valideren zonder het team te spammen. Idempotency check is uit, dus opnieuw draaien levert altijd verse items.", en: " prefix — so you can validate AI output and rule logic without spamming the team. Idempotency check is skipped, so re-running always produces fresh items." },
+  "settings.inbox.run.action.run": { nl: "Test draaien", en: "Run test" },
+  "settings.inbox.run.action.running": { nl: "Draait...", en: "Running..." },
+  "settings.inbox.run.error.failed": { nl: "Draaien mislukt", en: "Run failed" },
+
+  // Result summary
+  "settings.inbox.result.last_run": { nl: "Laatste run · {duration}", en: "Last run · {duration}" },
+  "settings.inbox.result.created": { nl: "aangemaakt", en: "created" },
+  "settings.inbox.result.skipped": { nl: "overgeslagen", en: "skipped" },
+  "settings.inbox.result.section_created": { nl: "Aangemaakt ({n})", en: "Created ({n})" },
+  "settings.inbox.result.section_skipped": { nl: "Overgeslagen ({n})", en: "Skipped ({n})" },
+  "settings.inbox.result.empty": { nl: "Geen acties ondernomen — niks paste vandaag bij een regel.", en: "No actions taken — nothing matched any rule today." },
+  "settings.inbox.result.truncated": { nl: "+{n} meer (afgekapt)", en: "+{n} more (truncated)" },
+
+  // Created-row labels
+  "settings.inbox.row.payment_overdue": { nl: "Betaling achterstallig", en: "Payment overdue" },
+  "settings.inbox.row.auto_completed": { nl: "Auto-completed factuurtaak", en: "Auto-completed invoice task" },
+  "settings.inbox.row.deduped": { nl: "Taken gededupliceerd", en: "Deduped tasks" },
+  "settings.inbox.row.cpl_drop": { nl: "CPL daling {period}", en: "CPL drop {period}" },
+  "settings.inbox.row.invoice_short": { nl: "factuur {id}…", en: "invoice {id}…" },
+
+  // ─── Settings — Pedro tab (admin pipeline observability) ──────────────
+  "settings.pedro.error.title": { nl: "Pedro health niet beschikbaar — {message}", en: "Pedro health unavailable — {message}" },
+  "settings.pedro.error.unknown": { nl: "onbekende fout", en: "unknown error" },
+
+  "settings.pedro.kickoff.title": { nl: "Pedro pipeline (laatste 7d)", en: "Pedro pipeline (last 7d)" },
+  "settings.pedro.kickoff.description": { nl: "Kick-off auto-trigger health. Admin-only. Polled elke 60s.", en: "Kick-off auto-trigger health. Admin-only. Polled every 60s." },
+  "settings.pedro.stat.kickoffs_ingested": { nl: "Kick-offs ingested", en: "Kick-offs ingested" },
+  "settings.pedro.stat.kickoffs_ingested.unlinked": { nl: "{n} ongekoppeld", en: "{n} unlinked" },
+  "settings.pedro.stat.kickoffs_ingested.all_linked": { nl: "alle gekoppeld", en: "all linked" },
+  "settings.pedro.stat.linked_to_client": { nl: "Gekoppeld aan klant", en: "Linked to client" },
+  "settings.pedro.stat.linked_to_client.hint": { nl: "trigger-eligible", en: "trigger-eligible" },
+  "settings.pedro.stat.pedro_fires": { nl: "Pedro auto-fires", en: "Pedro auto-fires" },
+  "settings.pedro.stat.pedro_fires.conv": { nl: "{pct}% conversion", en: "{pct}% conversion" },
+  "settings.pedro.stat.pedro_fires.conv_with_missed": { nl: "{pct}% conversion · {n} niet gefired", en: "{pct}% conversion · {n} not fired" },
+  "settings.pedro.stat.pedro_fires.none": { nl: "geen kick-offs in window", en: "no kick-offs in window" },
+  "settings.pedro.stat.status": { nl: "Status", en: "Status" },
+  "settings.pedro.status.healthy": { nl: "Healthy", en: "Healthy" },
+  "settings.pedro.status.degraded": { nl: "Degraded", en: "Degraded" },
+  "settings.pedro.status.ok": { nl: "OK", en: "OK" },
+
+  "settings.pedro.degraded.title": { nl: "Pedro fired niet voor de afgelopen 7 dagen aan kick-offs", en: "Pedro didn't fire for the last 7 days of kick-offs" },
+  "settings.pedro.degraded.body": { nl: "Mogelijk hebben de klanten al een eerdere `pedro_client_state` row (geen rerun-rule), of er is een bug. Check de server logs of inspecteer de \"missed\" lijst hieronder.", en: "Clients might already have a prior `pedro_client_state` row (no rerun rule), or there's a bug. Check the server logs or inspect the \"missed\" list below." },
+
+  "settings.pedro.evals.title": { nl: "Eval digest pipeline (laatste 7d)", en: "Eval digest pipeline (last 7d)" },
+  "settings.pedro.evals.description": { nl: "Pedro leest elke evaluatie en flagt alleen wanneer Claude iets actionable detecteert. Lage conversion is normaal — routine evals produceren geen task.", en: "Pedro reads every evaluation and only flags when Claude detects something actionable. Low conversion is normal — routine evals produce no task." },
+  "settings.pedro.stat.evals_ingested": { nl: "Evals ingested", en: "Evals ingested" },
+  "settings.pedro.stat.evals_ingested.hint": { nl: "{n} gekoppeld", en: "{n} linked" },
+  "settings.pedro.stat.digests_fired": { nl: "Digests fired", en: "Digests fired" },
+  "settings.pedro.stat.digests_fired.actionable": { nl: "{pct}% actionable", en: "{pct}% actionable" },
+  "settings.pedro.stat.digests_fired.none": { nl: "geen evals in window", en: "no evals in window" },
+  "settings.pedro.stat.high_severity": { nl: "High severity", en: "High severity" },
+  "settings.pedro.stat.high_severity.hint": { nl: "vraagt CM aandacht", en: "needs CM attention" },
+  "settings.pedro.stat.medium_low": { nl: "Medium / low", en: "Medium / low" },
+
+  "settings.pedro.fires.title": { nl: "Recente kick-off fires ({n})", en: "Recent kick-off fires ({n})" },
+  "settings.pedro.fires.description": { nl: "Pedro auto-trigger taken die naar de CM zijn gestuurd.", en: "Pedro auto-trigger tasks sent to the CM." },
+  "settings.pedro.fires.empty": { nl: "Geen Pedro auto-fires in dit window.", en: "No Pedro auto-fires in this window." },
+  "settings.pedro.fires.open": { nl: "Openen", en: "Open" },
+
+  "settings.pedro.missed.title": { nl: "Kick-offs zonder Pedro fire ({n})", en: "Kick-offs without Pedro fire ({n})" },
+  "settings.pedro.missed.description": { nl: "Gekoppelde kick-offs uit de afgelopen 7d die geen auto-fire hebben getriggerd. Vaak legit (CM had Pedro al gestart vóór de kick-off), maar inspecteer als de aantallen hoog zijn.", en: "Linked kick-offs from the last 7d that didn't trigger an auto-fire. Often legit (CM had already started Pedro before the kick-off), but inspect if the counts are high." },
+  "settings.pedro.missed.client_link": { nl: "Klant", en: "Client" },
+
+  // ─── Settings — Notifications tab ─────────────────────────────────────
+  // Per-notification descriptions + example bodies stay in their authored
+  // mix of EN/NL — they're admin-docs about a multilingual product.
+  "settings.notifications.intro": { nl: "Beheer geautomatiseerde notificaties die de Hub verstuurt. Elke notificatie heeft een preview-knop die naar je eigen Slack DM stuurt — veilig om te testen zonder het team te spammen.", en: "Manage automated notifications sent from the Hub. Each notification has a preview button that posts to your own Slack DM — safe to test without spamming the team." },
+  "settings.notifications.slack_section": { nl: "Slack", en: "Slack" },
+  "settings.notifications.slack_not_connected.title": { nl: "Slack token niet verbonden", en: "Slack token not connected" },
+  "settings.notifications.slack_not_connected.body_before": { nl: "Verbind eerst een Slack Bot Token in ", en: "Connect a Slack Bot Token in " },
+  "settings.notifications.slack_not_connected.tokens_tab": { nl: "API Tokens", en: "API Tokens" },
+  "settings.notifications.slack_not_connected.body_middle": { nl: ", koppel daarna Hub-gebruikers aan Slack user IDs in ", en: ", then map Hub users to Slack user IDs in " },
+  "settings.notifications.slack_not_connected.mapping_tab": { nl: "Kolom mapping", en: "Column Mapping" },
+  "settings.notifications.slack_not_connected.body_after": { nl: ".", en: "." },
+
+  "settings.notifications.action.send_test_dm": { nl: "Test-DM naar mij sturen", en: "Send test DM to me" },
+  "settings.notifications.action.sending": { nl: "Versturen...", en: "Sending..." },
+  "settings.notifications.action.working": { nl: "Bezig...", en: "Working..." },
+  "settings.notifications.action.preview_to_me": { nl: "Preview naar mij", en: "Preview to me" },
+  "settings.notifications.action.send_now": { nl: "Nu naar ontvangers sturen", en: "Send to recipients now" },
+  "settings.notifications.example.show": { nl: "Voorbeeldformaat tonen", en: "Show example format" },
+  "settings.notifications.example.hide": { nl: "Voorbeeld verbergen", en: "Hide example" },
+  "settings.notifications.metadata.schedule": { nl: "Schema", en: "Schedule" },
+  "settings.notifications.metadata.destination": { nl: "Bestemming", en: "Destination" },
+  "settings.notifications.metadata.recipients": { nl: "Ontvangers", en: "Recipients" },
+  "settings.notifications.recipients.empty": { nl: "Nog geen gebruikers hebben een Slack ID — voeg er één toe in Kolom mapping.", en: "No users have a Slack ID configured yet — add one in Column Mapping." },
+  "settings.notifications.recipients.no_slack": { nl: "(geen Slack ID)", en: "(no Slack ID)" },
+  "settings.notifications.recipients.no_slack_title": { nl: "Geen Slack ID ingesteld — ontvangt geen notificaties", en: "No Slack ID set — won't receive notifications" },
+  "settings.notifications.footer.preview_label": { nl: "Preview naar mij", en: "Preview to me" },
+  "settings.notifications.footer.preview_channel": { nl: "post naar je eigen DM (niet het kanaal) zodat je veilig kunt testen.", en: "posts to your own DM (not the channel) for safe testing." },
+  "settings.notifications.footer.preview_dm": { nl: "stuurt alleen naar je eigen Slack met live data.", en: "sends only to your own Slack with live data." },
+  "settings.notifications.footer.send_label": { nl: "Nu naar ontvangers sturen", en: "Send to recipients now" },
+  "settings.notifications.footer.send_channel": { nl: "post het echte bericht naar het ingestelde kanaal.", en: "posts the real message to the configured channel." },
+  "settings.notifications.footer.send_dm_closers": { nl: "stuurt de echte DM naar alle gemapte closers/setters.", en: "sends the real DM to all mapped closers/setters." },
+  "settings.notifications.footer.send_dm_users": { nl: "stuurt de echte DM naar alle gemapte Hub-gebruikers.", en: "sends the real DM to all mapped Hub users." },
+  "settings.notifications.request_failed": { nl: "Verzoek mislukt", en: "Request failed" },
+  "settings.notifications.sent_to_recipients": { nl: "Naar ontvangers verstuurd.", en: "Sent to recipients." },
+  "settings.notifications.save_failed": { nl: "Opslaan mislukt", en: "Failed to save" },
+
+  // Closer/Setter Slack mapping card
+  "settings.notifications.closers.title": { nl: "Closer / Setter Slack mapping", en: "Closer / Setter Slack Mapping" },
+  "settings.notifications.closers.col_name": { nl: "Closer / Setter", en: "Closer / Setter" },
+  "settings.notifications.closers.col_slack": { nl: "Slack user ID", en: "Slack user ID" },
+  "settings.notifications.closers.empty": { nl: "Geen actieve closers gevonden in het targets board (geen leads in de laatste 60 dagen).", en: "No active closers found in the targets board (no leads in the last 60 days)." },
+  "settings.notifications.closers.row.unsaved": { nl: "Niet opgeslagen", en: "Unsaved" },
+  "settings.notifications.closers.row.saved": { nl: "Opgeslagen", en: "Saved" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

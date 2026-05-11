@@ -12,6 +12,9 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 import { setInboxAutomationRule, triggerInboxAutomationsNow } from "../actions"
 import type { InboxAutomationRules } from "../types"
 import type { AutomationRunResult, CreatedItem } from "@/lib/inbox/automations"
@@ -69,6 +72,7 @@ type Props = {
 }
 
 export function InboxAutomationTab({ rules }: Props) {
+  const locale = useLocale()
   const [local, setLocal] = useState<InboxAutomationRules>(rules)
   const [pending, setPending] = useState<keyof InboxAutomationRules | null>(null)
   const [, startTransition] = useTransition()
@@ -95,10 +99,10 @@ export function InboxAutomationTab({ rules }: Props) {
       <div>
         <h3 className="text-sm font-medium mb-1 inline-flex items-center gap-2">
           <Zap className="h-3.5 w-3.5 text-amber-500" />
-          Inbox Automations
+          {t("settings.inbox.title", locale)}
         </h3>
         <p className="text-xs text-muted-foreground/60 mb-4">
-          Rules that automatically create inbox tasks or updates based on data signals across the Hub. Each rule runs once daily via cron and is fully idempotent — re-running won&apos;t create duplicates.
+          {t("settings.inbox.subtitle", locale)}
         </p>
       </div>
 
@@ -142,11 +146,11 @@ export function InboxAutomationTab({ rules }: Props) {
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
                     <div>
-                      <span className="text-muted-foreground/40 uppercase tracking-wider">Trigger</span>
+                      <span className="text-muted-foreground/40 uppercase tracking-wider">{t("settings.inbox.trigger", locale)}</span>
                       <p className="text-foreground/80 mt-0.5">{r.trigger}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground/40 uppercase tracking-wider">Effect</span>
+                      <span className="text-muted-foreground/40 uppercase tracking-wider">{t("settings.inbox.effect", locale)}</span>
                       <p className="text-foreground/80 mt-0.5">{r.effect}</p>
                     </div>
                   </div>
@@ -158,7 +162,7 @@ export function InboxAutomationTab({ rules }: Props) {
       </div>
 
       <div className="text-[11px] text-muted-foreground/50 italic">
-        More rules will land here as we wire signals from Monday updates, Trengo conversations and Watch List events into automated tasks.
+        {t("settings.inbox.footer_more", locale)}
       </div>
     </div>
   )
@@ -167,6 +171,7 @@ export function InboxAutomationTab({ rules }: Props) {
 // --- Test trigger -------------------------------------------------------
 
 function RunNowPanel() {
+  const locale = useLocale()
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<AutomationRunResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -182,7 +187,7 @@ function RunNowPanel() {
       setShowCreated(true)
       setShowSkipped(false)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Run failed")
+      setError(e instanceof Error ? e.message : t("settings.inbox.run.error.failed", locale))
     } finally {
       setRunning(false)
     }
@@ -194,10 +199,14 @@ function RunNowPanel() {
         <div>
           <p className="text-sm font-semibold inline-flex items-center gap-2">
             <Play className="h-3.5 w-3.5 text-foreground/70" />
-            Run as test (assigned to you)
+            {t("settings.inbox.run.title", locale)}
           </p>
           <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-            Same code path as the daily cron, but tasks are assigned to <span className="font-medium text-foreground/80">you</span> with a <span className="font-mono">[TEST]</span> prefix — so you can validate AI output and rule logic without spamming the team. Idempotency check is skipped, so re-running always produces fresh items.
+            {t("settings.inbox.run.subtitle_before", locale)}
+            <span className="font-medium text-foreground/80">{t("settings.inbox.run.subtitle_you", locale)}</span>
+            {t("settings.inbox.run.subtitle_with", locale)}
+            <span className="font-mono">[TEST]</span>
+            {t("settings.inbox.run.subtitle_after", locale)}
           </p>
         </div>
         <button
@@ -209,12 +218,12 @@ function RunNowPanel() {
           {running ? (
             <>
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Running...
+              {t("settings.inbox.run.action.running", locale)}
             </>
           ) : (
             <>
               <Play className="h-3.5 w-3.5" />
-              Run test
+              {t("settings.inbox.run.action.run", locale)}
             </>
           )}
         </button>
@@ -229,35 +238,33 @@ function RunNowPanel() {
       {result && (
         <div className="space-y-2 pt-1 border-t border-border/40">
           <div className="text-[11px] text-muted-foreground/80 flex items-center gap-2 flex-wrap">
+            <span>{t("settings.inbox.result.last_run", locale, { duration: result.duration })}</span>
+            <span>·</span>
             <span>
-              Last run · <span className="tabular-nums">{result.duration}</span>
+              <span className="text-emerald-500 font-medium">{result.created.length}</span> {t("settings.inbox.result.created", locale)}
             </span>
             <span>·</span>
             <span>
-              <span className="text-emerald-500 font-medium">{result.created.length}</span> created
-            </span>
-            <span>·</span>
-            <span>
-              <span className="text-amber-500 font-medium">{result.skippedTotal}</span> skipped
+              <span className="text-amber-500 font-medium">{result.skippedTotal}</span> {t("settings.inbox.result.skipped", locale)}
             </span>
             {result.reason && <span className="italic">— {result.reason}</span>}
           </div>
 
           {result.created.length > 0 && (
             <ResultSection
-              title={`Created (${result.created.length})`}
+              title={t("settings.inbox.result.section_created", locale, { n: String(result.created.length) })}
               open={showCreated}
               onToggle={() => setShowCreated((s) => !s)}
             >
               {result.created.map((item, i) => (
-                <CreatedRow key={i} item={item} />
+                <CreatedRow key={i} item={item} locale={locale} />
               ))}
             </ResultSection>
           )}
 
           {result.skippedTotal > 0 && (
             <ResultSection
-              title={`Skipped (${result.skippedTotal})`}
+              title={t("settings.inbox.result.section_skipped", locale, { n: String(result.skippedTotal) })}
               open={showSkipped}
               onToggle={() => setShowSkipped((s) => !s)}
             >
@@ -272,7 +279,7 @@ function RunNowPanel() {
               ))}
               {result.skippedTotal > result.skipped.length && (
                 <p className="text-[10px] text-muted-foreground/40 italic mt-1">
-                  +{result.skippedTotal - result.skipped.length} more (truncated)
+                  {t("settings.inbox.result.truncated", locale, { n: String(result.skippedTotal - result.skipped.length) })}
                 </p>
               )}
             </ResultSection>
@@ -280,7 +287,7 @@ function RunNowPanel() {
 
           {result.created.length === 0 && result.skippedTotal === 0 && !result.reason && (
             <p className="text-[11px] text-muted-foreground italic">
-              No actions taken — nothing matched any rule today.
+              {t("settings.inbox.result.empty", locale)}
             </p>
           )}
         </div>
@@ -315,15 +322,15 @@ function ResultSection({
   )
 }
 
-function CreatedRow({ item }: { item: CreatedItem }) {
+function CreatedRow({ item, locale }: { item: CreatedItem; locale: Locale }) {
   if (item.rule === "payment_overdue_task") {
     return (
       <div className="text-[11px] py-0.5 flex items-baseline gap-2">
-        <span className="text-amber-500 font-medium">Payment overdue</span>
+        <span className="text-amber-500 font-medium">{t("settings.inbox.row.payment_overdue", locale)}</span>
         <span className="text-foreground/80">{item.clientName}</span>
         <span className="text-muted-foreground/60">→ {item.assigneeName}</span>
         <span className="text-muted-foreground/60 tabular-nums">
-          €{item.amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          €{item.amount.toLocaleString(locale === "nl" ? "nl-NL" : "en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </span>
       </div>
     )
@@ -331,10 +338,10 @@ function CreatedRow({ item }: { item: CreatedItem }) {
   if (item.rule === "auto_complete_invoice_tasks") {
     return (
       <div className="text-[11px] py-0.5 flex items-baseline gap-2">
-        <span className="text-emerald-500 font-medium">Auto-completed invoice task</span>
+        <span className="text-emerald-500 font-medium">{t("settings.inbox.row.auto_completed", locale)}</span>
         <span className="text-foreground/80">{item.clientName}</span>
         <span className="text-muted-foreground/60 tabular-nums">
-          invoice {item.invoiceId.slice(0, 12)}…
+          {t("settings.inbox.row.invoice_short", locale, { id: item.invoiceId.slice(0, 12) })}
         </span>
       </div>
     )
@@ -342,7 +349,7 @@ function CreatedRow({ item }: { item: CreatedItem }) {
   if (item.rule === "dedup_overlapping_tasks") {
     return (
       <div className="text-[11px] py-0.5 flex items-baseline gap-2">
-        <span className="text-violet-500 font-medium">Deduped tasks</span>
+        <span className="text-violet-500 font-medium">{t("settings.inbox.row.deduped", locale)}</span>
         <span className="text-foreground/80">{item.clientName}</span>
         <span className="text-muted-foreground/80 truncate">{item.keptTaskTitle}</span>
         <span className="text-muted-foreground/60 tabular-nums">
@@ -353,7 +360,7 @@ function CreatedRow({ item }: { item: CreatedItem }) {
   }
   return (
     <div className="text-[11px] py-0.5 flex items-baseline gap-2">
-      <span className="text-emerald-500 font-medium">CPL drop {item.period}</span>
+      <span className="text-emerald-500 font-medium">{t("settings.inbox.row.cpl_drop", locale, { period: item.period })}</span>
       <span className="text-foreground/80">{item.clientName}</span>
       <span className="text-muted-foreground/60">→ {item.assigneeName}</span>
       <span className="text-muted-foreground/60 tabular-nums">

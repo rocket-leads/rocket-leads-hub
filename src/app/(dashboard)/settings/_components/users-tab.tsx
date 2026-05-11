@@ -12,6 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import {
   inviteUser,
   removeUser,
@@ -59,6 +61,7 @@ const NONE = "__none__"
 const UNSET_LABEL = "—"
 
 export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTeamMembers }: Props) {
+  const locale = useLocale()
   const [users, setUsers] = useState(initial)
   const [error, setError] = useState<string | null>(null)
 
@@ -259,21 +262,21 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
       setInviteMondayName(null)
       setInviteSlackId("")
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add user")
+      setError(e instanceof Error ? e.message : t("settings.users.invite.error.failed", locale))
     } finally {
       setInviting(false)
     }
   }
 
   async function handleRemove(userId: string, email: string) {
-    if (!confirm(`Remove ${email}? They will lose access immediately.`)) return
+    if (!confirm(t("settings.users.row.remove_confirm", locale, { email }))) return
     const previous = users
     setUsers((u) => u.filter((user) => user.id !== userId))
     try {
       await removeUser(userId)
     } catch (e) {
       setUsers(previous)
-      setError(e instanceof Error ? e.message : "Failed to remove user")
+      setError(e instanceof Error ? e.message : t("settings.users.row.remove_failed", locale))
     }
   }
 
@@ -287,7 +290,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
         className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 rounded-md border p-4"
       >
         <div className="lg:col-span-3">
-          <label className="mb-1.5 block text-sm font-medium">First name</label>
+          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.first_name", locale)}</label>
           <Input
             placeholder="Roy"
             value={inviteFirstName}
@@ -295,7 +298,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           />
         </div>
         <div className="lg:col-span-3">
-          <label className="mb-1.5 block text-sm font-medium">Last name</label>
+          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.last_name", locale)}</label>
           <Input
             placeholder="Vosters"
             value={inviteLastName}
@@ -303,7 +306,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           />
         </div>
         <div className="lg:col-span-2">
-          <label className="mb-1.5 block text-sm font-medium">Email</label>
+          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.email", locale)}</label>
           <Input
             type="email"
             required
@@ -313,20 +316,20 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-sm font-medium">Hub role</label>
+          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.hub_role", locale)}</label>
           <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="member">Member</SelectItem>
-              <SelectItem value="guest">Guest</SelectItem>
+              <SelectItem value="admin">{t("settings.users.role.admin", locale)}</SelectItem>
+              <SelectItem value="member">{t("settings.users.role.member", locale)}</SelectItem>
+              <SelectItem value="guest">{t("settings.users.role.guest", locale)}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div>
-          <label className="mb-1.5 block text-sm font-medium">Monday role</label>
+          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.monday_role", locale)}</label>
           <Select
             value={inviteMondayRole ?? NONE}
             onValueChange={(v) => {
@@ -349,7 +352,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           </Select>
         </div>
         <div>
-          <label className="mb-1.5 block text-sm font-medium">Monday name</label>
+          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.monday_name", locale)}</label>
           <Select
             value={inviteMondayName ?? NONE}
             onValueChange={(v) => setInviteMondayName(v === NONE ? null : v)}
@@ -361,8 +364,8 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                   !inviteMondayRole
                     ? UNSET_LABEL
                     : !ROLES_NEEDING_MONDAY_NAME.has(inviteMondayRole)
-                    ? "Not applicable"
-                    : "Pick a person"
+                    ? t("settings.users.select.not_applicable", locale)
+                    : t("settings.users.select.pick_person", locale)
                 }
               />
             </SelectTrigger>
@@ -377,7 +380,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           </Select>
         </div>
         <div>
-          <label className="mb-1.5 block text-sm font-medium">Slack ID</label>
+          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.slack_id", locale)}</label>
           <Input
             placeholder="U01ABC234XY"
             className="font-mono"
@@ -387,11 +390,10 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
         </div>
         <div className="lg:col-span-6 flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            Monday role + name controls which clients this user sees (non-admins).
-            Slack ID enables DM notifications. All optional at invite time.
+            {t("settings.users.invite.helper", locale)}
           </p>
           <Button type="submit" disabled={inviting}>
-            {inviting ? "Adding..." : "Add user"}
+            {inviting ? t("settings.users.invite.action.adding", locale) : t("settings.users.invite.action.add", locale)}
           </Button>
         </div>
         {error && <p className="lg:col-span-6 text-sm text-destructive">{error}</p>}
@@ -401,16 +403,16 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead className="w-[130px]">Hub role</TableHead>
-              <TableHead className="w-[180px]">Monday role</TableHead>
-              <TableHead className="w-[200px]">Monday name</TableHead>
-              <TableHead className="w-[200px]">Slack user ID</TableHead>
-              <TableHead className="w-[200px]" title="Trengo WhatsApp template name (e.g. rl_universal_roel) — used for outbound buiten 24u session window">
-                WhatsApp template
+              <TableHead>{t("settings.users.col.user", locale)}</TableHead>
+              <TableHead className="w-[130px]">{t("settings.users.col.hub_role", locale)}</TableHead>
+              <TableHead className="w-[180px]">{t("settings.users.col.monday_role", locale)}</TableHead>
+              <TableHead className="w-[200px]">{t("settings.users.col.monday_name", locale)}</TableHead>
+              <TableHead className="w-[200px]">{t("settings.users.col.slack_id", locale)}</TableHead>
+              <TableHead className="w-[200px]" title={t("settings.users.row.wa_tooltip", locale)}>
+                {t("settings.users.col.wa_template", locale)}
               </TableHead>
-              <TableHead className="w-[220px]">Fathom email</TableHead>
-              <TableHead className="w-[100px]">Joined</TableHead>
+              <TableHead className="w-[220px]">{t("settings.users.col.fathom_email", locale)}</TableHead>
+              <TableHead className="w-[100px]">{t("settings.users.col.joined", locale)}</TableHead>
               <TableHead className="w-[60px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -435,7 +437,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                     <div className="space-y-1">
                       <div className="flex items-center gap-1.5">
                         <Input
-                          placeholder="First Last"
+                          placeholder={t("settings.users.row.name_placeholder", locale)}
                           className="h-8 max-w-[200px] font-medium"
                           value={nameDraft}
                           onChange={(e) =>
@@ -454,10 +456,10 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                           )}
                           {!nameIsSaving && nameIsDirty && nameTrimmed.length > 0 && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title="Unsaved" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title={t("settings.users.row.unsaved", locale)} />
                           )}
                           {!nameIsSaving && nameIsSaved && (
-                            <Check className="h-3.5 w-3.5 text-green-500" aria-label="Saved" />
+                            <Check className="h-3.5 w-3.5 text-green-500" aria-label={t("settings.users.row.saved", locale)} />
                           )}
                         </div>
                       </div>
@@ -478,9 +480,9 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="member">Member</SelectItem>
-                          <SelectItem value="guest">Guest</SelectItem>
+                          <SelectItem value="admin">{t("settings.users.role.admin", locale)}</SelectItem>
+                          <SelectItem value="member">{t("settings.users.role.member", locale)}</SelectItem>
+                          <SelectItem value="guest">{t("settings.users.role.guest", locale)}</SelectItem>
                         </SelectContent>
                       </Select>
                       {roleSaving[user.id] && (
@@ -521,8 +523,8 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                               !user.monday_role
                                 ? UNSET_LABEL
                                 : !ROLES_NEEDING_MONDAY_NAME.has(user.monday_role)
-                                ? "Not applicable"
-                                : "Pick a person"
+                                ? t("settings.users.select.not_applicable", locale)
+                                : t("settings.users.select.pick_person", locale)
                             }
                           />
                         </SelectTrigger>
@@ -563,10 +565,10 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                           <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                         )}
                         {!slackIsSaving && slackIsDirty && slackTrimmed.length > 0 && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title="Unsaved" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title={t("settings.users.row.unsaved", locale)} />
                         )}
                         {!slackIsSaving && slackIsSaved && (
-                          <Check className="h-3.5 w-3.5 text-green-500" aria-label="Saved" />
+                          <Check className="h-3.5 w-3.5 text-green-500" aria-label={t("settings.users.row.saved", locale)} />
                         )}
                       </div>
                     </div>
@@ -607,7 +609,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                         <SelectTrigger className="h-8 w-[210px]">
                           <SelectValue
                             placeholder={
-                              fathomTeamMembers.length === 0 ? "Connect Fathom first" : "Pick Fathom user"
+                              fathomTeamMembers.length === 0 ? t("settings.users.select.connect_fathom", locale) : t("settings.users.select.pick_fathom", locale)
                             }
                           />
                         </SelectTrigger>
@@ -627,7 +629,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                   </TableCell>
 
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(user.created_at).toLocaleDateString()}
+                    {new Date(user.created_at).toLocaleDateString(locale === "nl" ? "nl-NL" : "en-GB")}
                   </TableCell>
 
                   <TableCell>
@@ -637,7 +639,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                         size="icon"
                         className="h-8 w-8 text-muted-foreground hover:text-destructive"
                         onClick={() => handleRemove(user.id, user.email)}
-                        title="Remove user"
+                        title={t("settings.users.row.remove_title", locale)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -651,13 +653,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Hub role controls access. Monday role decides what this user does — for
-        AM/CM/Setter, the Monday name picks which clients they see (admins
-        always see all). Finance is org-level and doesn&apos;t need a Monday
-        name; it triggers invoice tasks via the inbox automation. Slack ID is
-        used for DM notifications. Fathom email maps this Hub user to their
-        Fathom account so the meeting matcher knows who was in a recorded
-        call. All fields autosave.
+        {t("settings.users.footer", locale)}
       </p>
     </div>
   )

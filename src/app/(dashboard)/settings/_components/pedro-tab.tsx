@@ -5,6 +5,9 @@ import Link from "next/link"
 import { CheckCircle2, AlertCircle, Sparkles, Clock, ExternalLink, AlertTriangle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 
 /**
  * Settings → Pedro tab. Admin-only observability for the kick-off
@@ -64,9 +67,9 @@ type HealthResponse = {
   error?: string
 }
 
-function fmtDateTime(iso: string | null): string {
+function fmtDateTime(iso: string | null, locale: Locale): string {
   if (!iso) return "—"
-  return new Date(iso).toLocaleString("en-GB", {
+  return new Date(iso).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -105,6 +108,7 @@ function StatTile({
 }
 
 export function PedroSettingsTab() {
+  const locale = useLocale()
   const { data, isLoading, error } = useQuery<HealthResponse>({
     queryKey: ["pedro-health"],
     queryFn: () => fetch("/api/pedro/health").then((r) => r.json()),
@@ -122,11 +126,12 @@ export function PedroSettingsTab() {
   }
 
   if (error || !data || data.error) {
+    const message = data?.error || (error instanceof Error ? error.message : t("settings.pedro.error.unknown", locale))
     return (
       <Card>
         <CardContent className="py-6 flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
           <AlertCircle className="h-4 w-4" />
-          Pedro health niet beschikbaar — {data?.error || (error instanceof Error ? error.message : "onbekende fout")}
+          {t("settings.pedro.error.title", locale, { message })}
         </CardContent>
       </Card>
     )
@@ -148,37 +153,39 @@ export function PedroSettingsTab() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            Pedro pipeline (last 7d)
+            {t("settings.pedro.kickoff.title", locale)}
           </CardTitle>
           <CardDescription>
-            Kick-off auto-trigger health. Admin-only. Polled every 60s.
+            {t("settings.pedro.kickoff.description", locale)}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatTile
-              label="Kick-offs ingested"
+              label={t("settings.pedro.stat.kickoffs_ingested", locale)}
               value={s.kickoffsIngested}
-              hint={s.kickoffsUnlinked > 0 ? `${s.kickoffsUnlinked} unlinked` : "all linked"}
+              hint={s.kickoffsUnlinked > 0 ? t("settings.pedro.stat.kickoffs_ingested.unlinked", locale, { n: String(s.kickoffsUnlinked) }) : t("settings.pedro.stat.kickoffs_ingested.all_linked", locale)}
             />
             <StatTile
-              label="Linked to client"
+              label={t("settings.pedro.stat.linked_to_client", locale)}
               value={s.kickoffsLinked}
-              hint="trigger-eligible"
+              hint={t("settings.pedro.stat.linked_to_client.hint", locale)}
             />
             <StatTile
-              label="Pedro auto-fires"
+              label={t("settings.pedro.stat.pedro_fires", locale)}
               value={s.pedroFires}
               tone={isHealthy ? "good" : isDegraded ? "bad" : "default"}
               hint={
                 conversionPct != null
-                  ? `${conversionPct}% conversion${s.kickoffsWithoutFire > 0 ? ` · ${s.kickoffsWithoutFire} not fired` : ""}`
-                  : "no kick-offs in window"
+                  ? s.kickoffsWithoutFire > 0
+                    ? t("settings.pedro.stat.pedro_fires.conv_with_missed", locale, { pct: String(conversionPct), n: String(s.kickoffsWithoutFire) })
+                    : t("settings.pedro.stat.pedro_fires.conv", locale, { pct: String(conversionPct) })
+                  : t("settings.pedro.stat.pedro_fires.none", locale)
               }
             />
             <StatTile
-              label="Status"
-              value={isHealthy ? "Healthy" : isDegraded ? "Degraded" : "OK"}
+              label={t("settings.pedro.stat.status", locale)}
+              value={isHealthy ? t("settings.pedro.status.healthy", locale) : isDegraded ? t("settings.pedro.status.degraded", locale) : t("settings.pedro.status.ok", locale)}
               tone={isHealthy ? "good" : isDegraded ? "bad" : "warn"}
             />
           </div>
@@ -188,11 +195,10 @@ export function PedroSettingsTab() {
               <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
               <div className="text-sm">
                 <div className="font-medium text-red-600 dark:text-red-400">
-                  Pedro fired niet voor de afgelopen 7 dagen aan kick-offs
+                  {t("settings.pedro.degraded.title", locale)}
                 </div>
                 <div className="text-muted-foreground mt-0.5">
-                  Mogelijk hebben de klanten al een eerdere `pedro_client_state` row (geen rerun-rule),
-                  of er is een bug. Check de server logs of inspecteer de "missed" lijst hieronder.
+                  {t("settings.pedro.degraded.body", locale)}
                 </div>
               </div>
             </div>
@@ -205,33 +211,36 @@ export function PedroSettingsTab() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            Eval digest pipeline (last 7d)
+            {t("settings.pedro.evals.title", locale)}
           </CardTitle>
           <CardDescription>
-            Pedro leest elke evaluatie en flagt alleen wanneer Claude iets actionable detecteert.
-            Lage conversion is normaal — routine evals produceren geen task.
+            {t("settings.pedro.evals.description", locale)}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatTile label="Evals ingested" value={s.evalsIngested} hint={`${s.evalsLinked} linked`} />
             <StatTile
-              label="Digests fired"
+              label={t("settings.pedro.stat.evals_ingested", locale)}
+              value={s.evalsIngested}
+              hint={t("settings.pedro.stat.evals_ingested.hint", locale, { n: String(s.evalsLinked) })}
+            />
+            <StatTile
+              label={t("settings.pedro.stat.digests_fired", locale)}
               value={s.evalDigestsFired}
               hint={
                 s.evalsLinked > 0
-                  ? `${Math.round((s.evalDigestsFired / s.evalsLinked) * 100)}% actionable`
-                  : "no evals in window"
+                  ? t("settings.pedro.stat.digests_fired.actionable", locale, { pct: String(Math.round((s.evalDigestsFired / s.evalsLinked) * 100)) })
+                  : t("settings.pedro.stat.digests_fired.none", locale)
               }
             />
             <StatTile
-              label="High severity"
+              label={t("settings.pedro.stat.high_severity", locale)}
               value={s.evalDigestsHigh}
               tone={s.evalDigestsHigh > 0 ? "bad" : "default"}
-              hint="needs CM attention"
+              hint={t("settings.pedro.stat.high_severity.hint", locale)}
             />
             <StatTile
-              label="Medium / low"
+              label={t("settings.pedro.stat.medium_low", locale)}
               value={`${s.evalDigestsMedium} / ${s.evalDigestsLow}`}
             />
           </div>
@@ -259,7 +268,7 @@ export function PedroSettingsTab() {
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{d.title}</div>
                     </div>
-                    <div className="text-xs text-muted-foreground/70 shrink-0">{fmtDateTime(d.createdAt)}</div>
+                    <div className="text-xs text-muted-foreground/70 shrink-0">{fmtDateTime(d.createdAt, locale)}</div>
                   </div>
                 )
               })}
@@ -271,13 +280,13 @@ export function PedroSettingsTab() {
       {/* Recent fires */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Recent kick-off fires ({data.fires.length})</CardTitle>
-          <CardDescription>Pedro auto-trigger taken die naar de CM zijn gestuurd.</CardDescription>
+          <CardTitle className="text-base">{t("settings.pedro.fires.title", locale, { n: String(data.fires.length) })}</CardTitle>
+          <CardDescription>{t("settings.pedro.fires.description", locale)}</CardDescription>
         </CardHeader>
         <CardContent>
           {data.fires.length === 0 ? (
             <div className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
-              Geen Pedro auto-fires in dit window.
+              {t("settings.pedro.fires.empty", locale)}
             </div>
           ) : (
             <div className="divide-y divide-border/60">
@@ -293,7 +302,7 @@ export function PedroSettingsTab() {
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
                       <Clock className="h-3 w-3" />
-                      {fmtDateTime(f.createdAt)}
+                      {fmtDateTime(f.createdAt, locale)}
                       {f.assignee && (
                         <>
                           <span className="text-muted-foreground/40">·</span>
@@ -307,7 +316,7 @@ export function PedroSettingsTab() {
                       href={`/pedro?tab=brief&clientId=${f.clientId}`}
                       className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
                     >
-                      Open <ExternalLink className="h-3 w-3" />
+                      {t("settings.pedro.fires.open", locale)} <ExternalLink className="h-3 w-3" />
                     </Link>
                   )}
                 </div>
@@ -323,10 +332,10 @@ export function PedroSettingsTab() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-amber-500" />
-              Kick-offs zonder Pedro fire ({data.missed.length})
+              {t("settings.pedro.missed.title", locale, { n: String(data.missed.length) })}
             </CardTitle>
             <CardDescription>
-              Gekoppelde kick-offs uit de afgelopen 7d die geen auto-fire hebben getriggerd. Vaak legit (CM had Pedro al gestart vóór de kick-off), maar inspecteer als de aantallen hoog zijn.
+              {t("settings.pedro.missed.description", locale)}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -338,7 +347,7 @@ export function PedroSettingsTab() {
                       <span className="font-medium text-sm truncate">{m.clientName}</span>
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      {fmtDateTime(m.scheduledAt)} · {m.title ?? "—"}
+                      {fmtDateTime(m.scheduledAt, locale)} · {m.title ?? "—"}
                     </div>
                   </div>
                   {m.clientId && (
@@ -346,7 +355,7 @@ export function PedroSettingsTab() {
                       href={`/clients/${m.clientId}`}
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground shrink-0"
                     >
-                      Klant <ExternalLink className="h-3 w-3" />
+                      {t("settings.pedro.missed.client_link", locale)} <ExternalLink className="h-3 w-3" />
                     </Link>
                   )}
                 </div>
