@@ -16,6 +16,10 @@ import type { WatchlistScoreHistoryResponse } from "@/app/api/watchlist/score-hi
 import { categorize as sharedCategorize, severityScore as sharedSeverityScore, getRecentSignal, type WatchCategory as SharedWatchCategory } from "@/lib/watchlist/categorize"
 import { ClientSlideOver } from "@/app/(dashboard)/clients/_components/client-slide-over"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import { formatCurrency } from "@/lib/i18n/format"
+import type { Locale } from "@/lib/i18n/types"
 
 // --- Categorization ---
 //
@@ -143,31 +147,36 @@ function getSetupGaps(client: MondayClient): string[] {
 }
 
 // --- Section config ---
+//
+// Styling (icon, colours) stays here as a const so the visual treatment of
+// each bucket lives in one place. The section LABEL is resolved through the
+// dictionary on render so the language switch flips "Action Needed" ↔
+// "Actie nodig" without the styling having to change.
 
 const CATEGORY_CONFIG = {
   action: {
-    label: "Action Needed",
     icon: AlertCircle,
     iconColor: "text-red-500",
     headerBg: "bg-red-500/5 border-red-500/20",
     rowBorder: "border-l-red-500/60",
     insightColor: "text-red-400",
+    labelKey: "watchlist.section.action" as const,
   },
   watch: {
-    label: "Watch List",
     icon: TrendingUp,
     iconColor: "text-amber-500",
     headerBg: "bg-amber-500/5 border-amber-500/20",
     rowBorder: "border-l-amber-500/60",
     insightColor: "text-amber-400",
+    labelKey: "watchlist.section.watch" as const,
   },
   good: {
-    label: "Good Performance",
     icon: CheckCircle2,
     iconColor: "text-green-500",
     headerBg: "bg-green-500/5 border-green-500/20",
     rowBorder: "border-l-green-500/60",
     insightColor: "text-green-500",
+    labelKey: "watchlist.section.good" as const,
   },
 } as const
 
@@ -186,15 +195,17 @@ function BucketAge({
   category,
   daysInBucket,
   isNewToday,
+  locale,
 }: {
   category: WatchCategory
   daysInBucket: number | null
   isNewToday: boolean
+  locale: Locale
 }) {
   if (isNewToday) {
     return (
       <span className="inline-flex items-center rounded-sm px-1 py-px text-[9px] font-bold uppercase tracking-wider bg-red-500/15 text-red-400">
-        NEW
+        {t("watchlist.row.new_pill", locale)}
       </span>
     )
   }
@@ -284,10 +295,12 @@ function WatchlistInsightsAndProposals({
   insights,
   proposals,
   isLoading,
+  locale,
 }: {
   insights: WatchlistInsight[]
   proposals: string[]
   isLoading: boolean
+  locale: Locale
 }) {
   if (isLoading) {
     return (
@@ -310,11 +323,11 @@ function WatchlistInsightsAndProposals({
       <div className="bg-card rounded-lg p-5 border border-border/40">
         <div className="flex items-center gap-2 mb-4">
           <Lightbulb className="h-3.5 w-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Key Insights</h3>
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t("watchlist.insights.title", locale)}</h3>
         </div>
         <div className="space-y-3">
           {insights.length === 0 ? (
-            <p className="text-sm text-muted-foreground leading-relaxed">No notable patterns yet — wait for the next sync.</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">{t("watchlist.insights.empty", locale)}</p>
           ) : (
             insights.map((insight, i) => {
               const { icon: Icon, color } = INSIGHT_ICON[insight.type]
@@ -333,11 +346,11 @@ function WatchlistInsightsAndProposals({
       <div className="bg-card rounded-lg p-5 border border-border/40">
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Optimisation Proposal</h3>
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t("watchlist.proposals.title", locale)}</h3>
         </div>
         <div className="space-y-3">
           {proposals.length === 0 ? (
-            <p className="text-sm text-muted-foreground leading-relaxed">No proposals yet — wait for the next sync.</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">{t("watchlist.proposals.empty", locale)}</p>
           ) : (
             proposals.map((proposal, i) => (
               <div key={i} className="flex items-start gap-2.5">
@@ -362,12 +375,14 @@ function WatchSection({
   aiNotes,
   defaultOpen,
   onSelectClient,
+  locale,
 }: {
   category: "action" | "watch" | "good"
   items: CategorizedClient[]
   aiNotes: Record<string, string>
   defaultOpen: boolean
   onSelectClient: (mondayItemId: string) => void
+  locale: Locale
 }) {
   const [open, setOpen] = useState(defaultOpen)
   const config = CATEGORY_CONFIG[category]
@@ -384,7 +399,7 @@ function WatchSection({
       >
         {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/50" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />}
         <Icon className={`h-4 w-4 ${config.iconColor}`} />
-        <span className="text-sm font-medium">{config.label}</span>
+        <span className="text-sm font-medium">{t(config.labelKey, locale)}</span>
         <span className="text-xs text-muted-foreground/50 tabular-nums">{items.length}</span>
       </button>
 
@@ -392,17 +407,17 @@ function WatchSection({
         <div className="rounded-xl border border-border/30 overflow-hidden">
           {/* Column headers */}
           <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_70px_32px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
-            <span className="text-[13px] text-foreground/80 font-semibold">Client</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">Insight</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.client", locale)}</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.insight", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold flex items-center gap-1.5">
               <Sparkles className="h-3 w-3 text-violet-400" />
-              AI Note
+              {t("watchlist.col.ai_note", locale)}
             </span>
-            <span className="text-[13px] text-foreground/80 font-semibold">Spend</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">Leads</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">CPL</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">Appts</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">14d CPL</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.spend", locale)}</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.leads", locale)}</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.cpl", locale)}</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.appts", locale)}</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.cpl_14d", locale)}</span>
           </div>
 
           {/* Rows */}
@@ -428,7 +443,7 @@ function WatchSection({
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium truncate">{client.name}</p>
-                      <BucketAge category={category} daysInBucket={daysInBucket} isNewToday={isNewToday} />
+                      <BucketAge category={category} daysInBucket={daysInBucket} isNewToday={isNewToday} locale={locale} />
                     </div>
                     <p className="text-[10px] text-muted-foreground/40 truncate">
                       {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
@@ -451,7 +466,7 @@ function WatchSection({
                           {note}
                         </p>
                       ) : (
-                        <span className="text-[11px] text-muted-foreground/25 italic">Generating...</span>
+                        <span className="text-[11px] text-muted-foreground/25 italic">{t("watchlist.row.generating", locale)}</span>
                       )}
                     </div>
                     {(category === "action" || category === "watch") && (
@@ -459,11 +474,11 @@ function WatchSection({
                         href={`/pedro?tab=refresh&clientId=${id}&auto=1`}
                         onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => e.stopPropagation()}
-                        title="Pedro stelt een creative refresh voor op basis van laatste 30d performance"
+                        title={t("watchlist.row.ask_pedro_tooltip", locale)}
                         className="shrink-0 inline-flex items-center gap-1 h-5 px-1.5 text-[10px] font-medium rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors"
                       >
                         <Sparkles className="h-2.5 w-2.5" />
-                        Ask Pedro
+                        {t("watchlist.row.ask_pedro", locale)}
                       </Link>
                     )}
                   </div>
@@ -480,7 +495,7 @@ function WatchSection({
 
                   {/* CPL */}
                   <span className="text-xs tabular-nums text-muted-foreground">
-                    {kpi && kpi.cpl > 0 ? `€${kpi.cpl.toFixed(2)}` : "—"}
+                    {kpi && kpi.cpl > 0 ? formatCurrency(kpi.cpl, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                   </span>
 
                   {/* Appointments */}
@@ -510,9 +525,11 @@ function WatchSection({
 function NoDataSection({
   items,
   defaultOpen,
+  locale,
 }: {
   items: CategorizedClient[]
   defaultOpen: boolean
+  locale: Locale
 }) {
   const [open, setOpen] = useState(defaultOpen)
 
@@ -526,16 +543,16 @@ function NoDataSection({
       >
         {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/50" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />}
         <CircleDashed className="h-4 w-4 text-muted-foreground/60" />
-        <span className="text-sm font-medium text-muted-foreground">No data</span>
+        <span className="text-sm font-medium text-muted-foreground">{t("watchlist.no_data.title", locale)}</span>
         <span className="text-xs text-muted-foreground/50 tabular-nums">{items.length}</span>
-        <span className="text-[11px] text-muted-foreground/40 ml-1">live in Monday but no usable Meta data this week</span>
+        <span className="text-[11px] text-muted-foreground/40 ml-1">{t("watchlist.no_data.subtitle", locale)}</span>
       </button>
 
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
           <div className="grid grid-cols-[minmax(180px,1.2fr)_1fr_32px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
-            <span className="text-[13px] text-foreground/80 font-semibold">Client</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">Reason</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.client", locale)}</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.no_data.col_reason", locale)}</span>
             <span />
           </div>
 
@@ -579,6 +596,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
   const searchParams = useSearchParams()
   const queryClient = useQueryClient()
   const selectedClientId = searchParams.get("client")
+  const locale = useLocale()
 
   const handleSelectClient = useCallback(
     (mondayItemId: string) => {
@@ -642,7 +660,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
   })
 
   const lastUpdated = kpiQuery.dataUpdatedAt
-    ? new Date(kpiQuery.dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    ? new Date(kpiQuery.dataUpdatedAt).toLocaleTimeString(locale === "nl" ? "nl-NL" : "en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
   // Watch List bucket state — written by the cron, read here to render Days indicator,
@@ -685,9 +703,17 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
 
     for (const client of filteredClients) {
       const kpi = kpiQuery.data?.[client.mondayItemId]
-      const { category, insight } = categorize(client, kpi)
+      const { category, insight } = categorize(client, kpi, locale)
       const severity = kpi ? severityScore(kpi) : 0
       const gaps = getSetupGaps(client)
+
+      // "missing — admin setup incomplete" suffix stays a UI-side build (not
+      // produced inside categorize) so the locale-aware Dutch/English split
+      // for the gap label lives next to the rest of the watchlist surface.
+      const missingLabel = locale === "nl" ? "ontbreekt" : "missing"
+      const adminIncompleteLabel = locale === "nl"
+        ? "ontbreekt — admin setup onvolledig"
+        : "missing — admin setup incomplete"
 
       if (category === "action") action.push(buildItem(client, category, insight, kpi, severity))
       else if (category === "watch") watch.push(buildItem(client, category, insight, kpi, severity))
@@ -695,7 +721,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
       else if (category === "no-data") {
         // Already a no-data client — append any Stripe/Trengo gap to the existing reason
         // so the CM sees both "no spend this week" + "Stripe missing" in one row.
-        const augmented = gaps.length > 0 ? `${insight} · ${gaps.join(" + ")} missing` : insight
+        const augmented = gaps.length > 0 ? `${insight} · ${gaps.join(" + ")} ${missingLabel}` : insight
         noData.push(buildItem(client, category, augmented, kpi, severity))
       }
 
@@ -703,7 +729,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
       // in BOTH the performance bucket (Action/Watch/Good) and in No Data — Roy explicitly
       // wants admin gaps prominently visible regardless of campaign performance.
       if (category !== "no-data" && gaps.length > 0) {
-        noData.push(buildItem(client, "no-data", `${gaps.join(" + ")} missing — admin setup incomplete`, kpi, 0))
+        noData.push(buildItem(client, "no-data", `${gaps.join(" + ")} ${adminIncompleteLabel}`, kpi, 0))
       }
     }
 
@@ -720,7 +746,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     noData.sort((a, b) => a.client.name.localeCompare(b.client.name))
 
     return { action, watch, good, noData }
-  }, [filteredClients, kpiQuery.data, stateQuery.data, today])
+  }, [filteredClients, kpiQuery.data, stateQuery.data, today, locale])
 
   // Health score for the summary header. Excludes no-data so setup gaps don't water down
   // the percentage (Roy: "die wil ik niet dat die de data beïnvloed").
@@ -918,10 +944,10 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
       {/* Header */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Watch List</h1>
+          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">{t("watchlist.title", locale)}</h1>
           <div className="flex items-center gap-3">
             {lastUpdated && (
-              <span className="text-[11px] text-muted-foreground/40">Updated {lastUpdated}</span>
+              <span className="text-[11px] text-muted-foreground/40">{t("watchlist.updated", locale, { time: lastUpdated })}</span>
             )}
             <button
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
@@ -939,22 +965,22 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         <div className="flex items-center gap-1.5">
           <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-red-500/10 text-red-400">
             <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-            Action
+            {t("watchlist.pill.action", locale)}
             <span className="tabular-nums">{categorized.action.length}</span>
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-amber-500/10 text-amber-400">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-            Watch
+            {t("watchlist.pill.watch", locale)}
             <span className="tabular-nums">{categorized.watch.length}</span>
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-green-500/10 text-green-500">
             <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-            Good
+            {t("watchlist.pill.good", locale)}
             <span className="tabular-nums">{categorized.good.length}</span>
           </div>
           <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-muted/40 text-muted-foreground">
             <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-            No data
+            {t("watchlist.pill.no_data", locale)}
             <span className="tabular-nums">{categorized.noData.length}</span>
           </div>
         </div>
@@ -964,11 +990,11 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           filters={[
             {
               key: "cm",
-              label: "Campaign Manager",
+              label: t("watchlist.filter.cm_label", locale),
               value: cmFilter,
               onChange: setCmFilter,
               options: [
-                { value: "All", label: "All Campaign Managers" },
+                { value: "All", label: t("watchlist.filter.all_cms", locale) },
                 ...campaignManagers.map((cm) => ({ value: cm, label: cm })),
               ],
             } satisfies FilterConfig,
@@ -1010,45 +1036,51 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
               ? "0pp"
               : `${delta7d > 0 ? "+" : ""}${delta7d}pp`
           const subtitle7d = avg7d == null
-            ? "Building 7-day baseline…"
-            : `7-day average: ${avg7d}%`
+            ? t("watchlist.kpi.vs_avg.building", locale)
+            : t("watchlist.kpi.vs_avg.subtitle", locale, { avg: avg7d })
 
           // Card 3 — Healthy clients ratio. Always neutral status (it's a fact, not a verdict).
           const valueHealthy = total === 0 ? "—" : `${categorized.good.length}/${total}`
-          const subtitleHealthy = total === 0 ? "No clients in scope" : "in good performance"
+          const subtitleHealthy = total === 0
+            ? t("watchlist.kpi.healthy.no_scope", locale)
+            : t("watchlist.kpi.healthy.subtitle", locale)
 
           // Card 4 — Average CPL across live clients (weighted by spend).
           const valueCpl = avgCpl == null
             ? "—"
-            : `€${avgCpl.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : formatCurrency(avgCpl, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
           const liveCount = categorized.action.length + categorized.watch.length + categorized.good.length
           const subtitleCpl = avgCpl == null
-            ? "No spend with leads in 7d"
-            : `across ${liveCount} live ${liveCount === 1 ? "client" : "clients"} (7d)`
+            ? t("watchlist.kpi.avg_cpl.empty", locale)
+            : t(
+                liveCount === 1 ? "watchlist.kpi.avg_cpl.subtitle_one" : "watchlist.kpi.avg_cpl.subtitle_many",
+                locale,
+                { n: liveCount },
+              )
 
           return (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <WatchlistKpiCard
-                label="Health score"
+                label={t("watchlist.kpi.health.label", locale)}
                 value={total === 0 ? "—" : `${healthScore}%`}
-                subtitle={total === 0 ? "No clients in scope" : "target ≥ 75%"}
+                subtitle={total === 0 ? t("watchlist.kpi.health.no_scope", locale) : t("watchlist.kpi.health.target", locale)}
                 status={scoreStatus}
               />
               <WatchlistKpiCard
-                label="Vs 7-day avg"
+                label={t("watchlist.kpi.vs_avg.label", locale)}
                 value={value7d}
                 subtitle={subtitle7d}
                 status={status7d}
                 trendIcon={trend7d}
               />
               <WatchlistKpiCard
-                label="Healthy clients"
+                label={t("watchlist.kpi.healthy.label", locale)}
                 value={valueHealthy}
                 subtitle={subtitleHealthy}
                 status="neutral"
               />
               <WatchlistKpiCard
-                label="Avg CPL"
+                label={t("watchlist.kpi.avg_cpl.label", locale)}
                 value={valueCpl}
                 subtitle={subtitleCpl}
                 status="neutral"
@@ -1064,6 +1096,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         insights={narrativeQuery.data?.insights ?? []}
         proposals={narrativeQuery.data?.proposals ?? []}
         isLoading={narrativeQuery.isLoading || narrativeQuery.isFetching}
+        locale={locale}
       />
 
       {/* Sections */}
@@ -1074,6 +1107,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           aiNotes={aiNotes}
           defaultOpen={true}
           onSelectClient={handleSelectClient}
+          locale={locale}
         />
         <WatchSection
           category="watch"
@@ -1081,10 +1115,12 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           aiNotes={aiNotes}
           defaultOpen={true}
           onSelectClient={handleSelectClient}
+          locale={locale}
         />
         <NoDataSection
           items={categorized.noData}
           defaultOpen={false}
+          locale={locale}
         />
         <WatchSection
           category="good"
@@ -1092,6 +1128,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           aiNotes={aiNotes}
           defaultOpen={false}
           onSelectClient={handleSelectClient}
+          locale={locale}
         />
       </div>
 

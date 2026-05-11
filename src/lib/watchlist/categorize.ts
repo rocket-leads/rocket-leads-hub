@@ -29,6 +29,89 @@ import type { createAdminClient } from "@/lib/supabase/server"
 
 export type WatchCategory = "action" | "watch" | "good" | "no-data"
 
+/** Locale-bound insight strings for categorize(). Inlined here rather than
+ *  routed through the global dictionary so this foundational module stays
+ *  free of the UI-layer i18n dependency. Currently English + Dutch only —
+ *  match LOCALES in lib/i18n/types if we ever add a third. */
+type CategorizeLocale = "nl" | "en"
+
+const INSIGHT_STRINGS = {
+  rl_no_campaign: {
+    en: "RL ad account — no campaigns selected. Pick campaigns in client settings to start tracking.",
+    nl: "RL ad account — geen campagnes geselecteerd. Kies campagnes in client-instellingen om tracking te starten.",
+  },
+  no_meta_account: {
+    en: "No Meta ad account configured for this client.",
+    nl: "Geen Meta ad account geconfigureerd voor deze klant.",
+  },
+  no_spend_or_leads: {
+    en: "No spend or leads (7d) — campaign paused, ad account issue, or genuinely idle.",
+    nl: "Geen spend of leads (7d) — campagne gepauzeerd, ad account probleem, of echt inactief.",
+  },
+  no_leads_with_spend: {
+    en: (spend: string) => `€${spend} spent, 0 leads (7d)`,
+    nl: (spend: string) => `€${spend} uitgegeven, 0 leads (7d)`,
+  },
+  cpl_up: {
+    en: (pct: string, cpl: string, prev: string) =>
+      `CPL up ${pct}% — €${cpl} (7d) vs €${prev} (prev 7d)`,
+    nl: (pct: string, cpl: string, prev: string) =>
+      `CPL omhoog ${pct}% — €${cpl} (7d) vs €${prev} (vorige 7d)`,
+  },
+  cpl_rising: {
+    en: (pct: string, cpl: string, prev: string) =>
+      `CPL rising ${pct}% — €${cpl} (7d) from €${prev} (prev 7d)`,
+    nl: (pct: string, cpl: string, prev: string) =>
+      `CPL stijgt ${pct}% — €${cpl} (7d) van €${prev} (vorige 7d)`,
+  },
+  cpl_dropped: {
+    en: (pct: string, cpl: string) => `CPL dropped ${pct}% to €${cpl} (7d)`,
+    nl: (pct: string, cpl: string) => `CPL daalde ${pct}% naar €${cpl} (7d)`,
+  },
+  cpl_stable: {
+    en: (cpl: string) => `CPL stable at €${cpl} (7d)`,
+    nl: (cpl: string) => `CPL stabiel op €${cpl} (7d)`,
+  },
+  cpl_plain: {
+    en: (cpl: string) => `CPL €${cpl} (7d)`,
+    nl: (cpl: string) => `CPL €${cpl} (7d)`,
+  },
+  leads_from_spend: {
+    en: (leads: number, spend: string) => `${leads} leads from €${spend} spend (7d)`,
+    nl: (leads: number, spend: string) => `${leads} leads uit €${spend} spend (7d)`,
+  },
+  appts_count: {
+    en: (n: number) => `${n} appts (7d)`,
+    nl: (n: number) => `${n} appts (7d)`,
+  },
+  running_no_leads: {
+    en: "Running — no leads yet (7d)",
+    nl: "Loopt — nog geen leads (7d)",
+  },
+  cpl_recovered: {
+    en: (cpl7d: string, recent: string, win: string, baseline: string) =>
+      `CPL recovered — €${cpl7d} (7d) but €${recent} (${win}) ≈ €${baseline} (prev 7d) baseline. Monitor.`,
+    nl: (cpl7d: string, recent: string, win: string, baseline: string) =>
+      `CPL hersteld — €${cpl7d} (7d) maar €${recent} (${win}) ≈ €${baseline} (vorige 7d) baseline. Monitoren.`,
+  },
+  fresh_spike: {
+    en: (recent: string, win: string, baseline: string, cpl7d: string) =>
+      `Fresh CPL spike — €${recent} (${win}) vs €${baseline} (prev 7d). 7d avg still €${cpl7d}.`,
+    nl: (recent: string, win: string, baseline: string, cpl7d: string) =>
+      `Verse CPL spike — €${recent} (${win}) vs €${baseline} (vorige 7d). 7d gemiddelde nog €${cpl7d}.`,
+  },
+  cpl_recovering: {
+    en: (cpl7d: string, recent: string, win: string) =>
+      `CPL recovering — €${cpl7d} (7d) but €${recent} (${win}) back at baseline.`,
+    nl: (cpl7d: string, recent: string, win: string) =>
+      `CPL herstelt — €${cpl7d} (7d) maar €${recent} (${win}) terug op baseline.`,
+  },
+  recent_window_label: {
+    en: (n: 1 | 2 | 3) => `last ${n}d`,
+    nl: (n: 1 | 2 | 3) => `laatste ${n}d`,
+  },
+} as const
+
 /**
  * Recent CPL from the shortest trustworthy window (1d → 2d → 3d). "Trustworthy"
  * means the window has at least 2 leads and >€0 spend — anything thinner is too
@@ -108,23 +191,36 @@ export function severityScore(kpi: KpiSummary): number {
   return score
 }
 
-export function categorize(client: MondayClient, kpi: KpiSummary | undefined): { category: WatchCategory; insight: string } {
+/**
+ * `categorize` defaults locale to 'en' so existing AI-prompt call sites
+ * (registry user prompts, watchlist narrative facts block, etc) keep
+ * receiving English without needing to thread locale through. The Watch
+ * List UI passes the user's locale explicitly to localise insight cells.
+ */
+export function categorize(
+  client: MondayClient,
+  kpi: KpiSummary | undefined,
+  locale: CategorizeLocale = "en",
+): { category: WatchCategory; insight: string } {
   if (kpi?.rlAccountNoCampaign) {
-    return { category: "no-data", insight: "RL ad account — no campaigns selected. Pick campaigns in client settings to start tracking." }
+    return { category: "no-data", insight: INSIGHT_STRINGS.rl_no_campaign[locale] }
   }
 
   if (!client.metaAdAccountId) {
-    return { category: "no-data", insight: "No Meta ad account configured for this client." }
+    return { category: "no-data", insight: INSIGHT_STRINGS.no_meta_account[locale] }
   }
 
   if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
-    return { category: "no-data", insight: "No spend or leads (7d) — campaign paused, ad account issue, or genuinely idle." }
+    return { category: "no-data", insight: INSIGHT_STRINGS.no_spend_or_leads[locale] }
   }
 
   // Zero-leads-with-spend is unrecoverable by definition (a recent window with leads
   // would mean leads exist). Always Action — no recovery override applies.
   if (kpi.adSpend > 50 && kpi.leads === 0) {
-    return { category: "action", insight: `€${kpi.adSpend.toFixed(0)} spent, 0 leads (7d)` }
+    return {
+      category: "action",
+      insight: INSIGHT_STRINGS.no_leads_with_spend[locale](kpi.adSpend.toFixed(0)),
+    }
   }
 
   // CPL is the only trend driving categorization for now. CPA branches were removed
@@ -133,32 +229,37 @@ export function categorize(client: MondayClient, kpi: KpiSummary | undefined): {
   const cplPct = hasCplTrend ? ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
   const { watchPct, actionPct } = getThresholds(kpi.adSpend)
 
+  const cpl2 = kpi.cpl.toFixed(2)
+  const prevCpl2 = kpi.prevCpl.toFixed(2)
+  const cplPctAbs = Math.abs(cplPct).toFixed(0)
+  const cplPctSigned = cplPct.toFixed(0)
+
   // Compute the 7d-only verdict first; the recent-window override flips it afterwards.
   let category: WatchCategory
   let insight: string
 
   if (hasCplTrend && cplPct >= actionPct) {
     category = "action"
-    insight = `CPL up ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} (7d) vs €${kpi.prevCpl.toFixed(2)} (prev 7d)`
+    insight = INSIGHT_STRINGS.cpl_up[locale](cplPctSigned, cpl2, prevCpl2)
   } else if (hasCplTrend && cplPct >= watchPct) {
     category = "watch"
-    insight = `CPL rising ${cplPct.toFixed(0)}% — €${kpi.cpl.toFixed(2)} (7d) from €${kpi.prevCpl.toFixed(2)} (prev 7d)`
+    insight = INSIGHT_STRINGS.cpl_rising[locale](cplPctSigned, cpl2, prevCpl2)
   } else if (kpi.leads > 0) {
     category = "good"
     const parts: string[] = []
     if (hasCplTrend && cplPct < -10) {
-      parts.push(`CPL dropped ${Math.abs(cplPct).toFixed(0)}% to €${kpi.cpl.toFixed(2)} (7d)`)
+      parts.push(INSIGHT_STRINGS.cpl_dropped[locale](cplPctAbs, cpl2))
     } else if (hasCplTrend && cplPct >= -10 && cplPct < 10) {
-      parts.push(`CPL stable at €${kpi.cpl.toFixed(2)} (7d)`)
+      parts.push(INSIGHT_STRINGS.cpl_stable[locale](cpl2))
     } else if (kpi.cpl > 0) {
-      parts.push(`CPL €${kpi.cpl.toFixed(2)} (7d)`)
+      parts.push(INSIGHT_STRINGS.cpl_plain[locale](cpl2))
     }
-    parts.push(`${kpi.leads} leads from €${kpi.adSpend.toFixed(0)} spend (7d)`)
-    if (kpi.appointments > 0) parts.push(`${kpi.appointments} appts (7d)`)
+    parts.push(INSIGHT_STRINGS.leads_from_spend[locale](kpi.leads, kpi.adSpend.toFixed(0)))
+    if (kpi.appointments > 0) parts.push(INSIGHT_STRINGS.appts_count[locale](kpi.appointments))
     insight = parts.join(" · ")
   } else {
     category = "good"
-    insight = "Running — no leads yet (7d)"
+    insight = INSIGHT_STRINGS.running_no_leads[locale]
   }
 
   // Recent-window override — the shortest trustworthy window beats the 7d verdict.
@@ -167,19 +268,16 @@ export function categorize(client: MondayClient, kpi: KpiSummary | undefined): {
   const recent = getRecentSignal(kpi)
   if (recent && kpi.prevCpl > 0) {
     const recentVsPrev = recent.recentCpl / kpi.prevCpl
-    const win = `last ${recent.windowDays}d`
+    const win = INSIGHT_STRINGS.recent_window_label[locale](recent.windowDays)
+    const recentCpl2 = recent.recentCpl.toFixed(2)
 
-    // Recovery: 7d still flags Action but recent CPL is at/below baseline. The spike
-    // already passed — demote to Watch so the Action bucket only shows live problems.
     if (category === "action" && recentVsPrev <= RECOVERY_RATIO) {
       return {
         category: "watch",
-        insight: `CPL recovered — €${kpi.cpl.toFixed(2)} (7d) but €${recent.recentCpl.toFixed(2)} (${win}) ≈ €${kpi.prevCpl.toFixed(2)} (prev 7d) baseline. Monitor.`,
+        insight: INSIGHT_STRINGS.cpl_recovered[locale](cpl2, recentCpl2, win, prevCpl2),
       }
     }
 
-    // Fresh spike: 7d still looks fine but the last 1-3d are running hot. Promote
-    // good → watch so the CM catches it before the 7d average catches up.
     if (
       category === "good" &&
       recentVsPrev >= FRESH_SPIKE_RATIO &&
@@ -187,16 +285,14 @@ export function categorize(client: MondayClient, kpi: KpiSummary | undefined): {
     ) {
       return {
         category: "watch",
-        insight: `Fresh CPL spike — €${recent.recentCpl.toFixed(2)} (${win}) vs €${kpi.prevCpl.toFixed(2)} (prev 7d). 7d avg still €${kpi.cpl.toFixed(2)}.`,
+        insight: INSIGHT_STRINGS.fresh_spike[locale](recentCpl2, win, prevCpl2, cpl2),
       }
     }
 
-    // Watch + recovery: keep in Watch but rewrite the insight so the CM sees the
-    // recovery context instead of the now-stale 7d framing.
     if (category === "watch" && recentVsPrev <= RECOVERY_RATIO) {
       return {
         category: "watch",
-        insight: `CPL recovering — €${kpi.cpl.toFixed(2)} (7d) but €${recent.recentCpl.toFixed(2)} (${win}) back at baseline.`,
+        insight: INSIGHT_STRINGS.cpl_recovering[locale](cpl2, recentCpl2, win),
       }
     }
   }

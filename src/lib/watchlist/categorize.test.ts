@@ -229,6 +229,82 @@ describe("categorize — recent-window override (good → watch on fresh spike)"
   })
 })
 
+// ─── Locale-aware insight strings ────────────────────────────────────────
+
+describe("categorize — locale-aware insight strings", () => {
+  it("defaults to English when no locale is passed (back-compat for AI prompts)", () => {
+    const result = categorize(makeClient(), makeKpi({ adSpend: 100, leads: 0, cpl: 0, prevCpl: 0 }))
+    expect(result.insight).toContain("spent")
+    expect(result.insight).toContain("0 leads")
+  })
+
+  it("returns Dutch insight when locale='nl'", () => {
+    const result = categorize(
+      makeClient(),
+      makeKpi({ adSpend: 100, leads: 0, cpl: 0, prevCpl: 0 }),
+      "nl",
+    )
+    expect(result.insight).toContain("uitgegeven")
+    expect(result.insight).toContain("0 leads")
+  })
+
+  it("Dutch CPL up phrasing", () => {
+    const result = categorize(
+      makeClient(),
+      makeKpi({ adSpend: 700, leads: 14, cpl: 50, prevCpl: 30 }),
+      "nl",
+    )
+    expect(result.category).toBe("action")
+    expect(result.insight).toMatch(/CPL omhoog/i)
+    expect(result.insight).toContain("vorige 7d")
+  })
+
+  it("Dutch CPL stable phrasing — within +/-10% band", () => {
+    const result = categorize(
+      makeClient(),
+      makeKpi({ adSpend: 700, leads: 20, cpl: 35, prevCpl: 35 }),
+      "nl",
+    )
+    expect(result.category).toBe("good")
+    expect(result.insight).toMatch(/CPL stabiel op €35\.00/i)
+  })
+
+  it("Dutch RL no-campaign reason", () => {
+    const result = categorize(makeClient(), makeKpi({ rlAccountNoCampaign: true }), "nl")
+    expect(result.category).toBe("no-data")
+    expect(result.insight).toMatch(/geen campagnes geselecteerd/i)
+  })
+
+  it("Dutch 'no Meta ad account configured' reason", () => {
+    const result = categorize(makeClient({ metaAdAccountId: "" }), makeKpi(), "nl")
+    expect(result.insight).toMatch(/Geen Meta ad account/i)
+  })
+
+  it("Dutch 'running — no leads yet' phrasing", () => {
+    const result = categorize(
+      makeClient(),
+      makeKpi({ adSpend: 30, leads: 0, cpl: 0, prevCpl: 0 }),
+      "nl",
+    )
+    expect(result.insight).toMatch(/Loopt — nog geen leads/i)
+  })
+
+  it("Dutch recent-window recovery phrasing", () => {
+    const dailyTrend = [
+      ...constantTrend(11, 50, 1),
+      ...constantTrend(3, 30, 3),
+    ]
+    const result = categorize(
+      makeClient(),
+      makeKpi({ adSpend: 700, leads: 14, cpl: 50, prevCpl: 30, dailyTrend }),
+      "nl",
+    )
+    expect(result.category).toBe("watch")
+    expect(result.insight).toMatch(/CPL hersteld/i)
+    expect(result.insight).toMatch(/Monitoren\./i)
+  })
+})
+
 // ─── Tiered thresholds ───────────────────────────────────────────────────
 
 describe("getThresholds — tiered by 7d ad spend", () => {
