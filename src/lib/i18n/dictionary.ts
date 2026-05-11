@@ -395,6 +395,44 @@ export const DICTIONARY = {
   "client.header.payment.paid": { nl: "Betaald", en: "Paid up" },
   "client.header.payment.open": { nl: "{count} openstaand · {amount}", en: "{count} open · {amount}" },
   "client.header.payment.overdue": { nl: "{count} achterstallig · {amount}", en: "{count} overdue · {amount}" },
+
+  // ─── Watch List sparkline tooltip ─────────────────────────────────────
+  // The rest of the Watch List is already wired through t() — these are
+  // the leftover hardcoded English strings inside the CPL trend tooltip.
+  "watchlist.sparkline.trending_up": { nl: "CPL stijgt ({pct}% over de periode)", en: "CPL trending up ({pct}% over the window)" },
+  "watchlist.sparkline.trending_down": { nl: "CPL daalt ({pct}% over de periode)", en: "CPL trending down ({pct}% over the window)" },
+  "watchlist.sparkline.stable": { nl: "CPL stabiel over de periode", en: "CPL stable over the window" },
+  "watchlist.sparkline.no_leads": { nl: "{date}: geen leads (carry €{cpl})", en: "{date}: no leads (carry €{cpl})" },
+  "watchlist.sparkline.no_spend": { nl: "{date}: geen spend", en: "{date}: no spend" },
+  "watchlist.sparkline.day_summary": { nl: "{date}: €{cpl} CPL · {leads} leads · €{spend} spend", en: "{date}: €{cpl} CPL · {leads} leads · €{spend} spend" },
+
+  // ─── Meetings page ────────────────────────────────────────────────────
+  "meetings.title": { nl: "Meetings", en: "Meetings" },
+  "meetings.subtitle": { nl: "Fathom-opnames van de Rocket Leads teams. Gekoppelde meetings verschijnen ook op de klantpagina.", en: "Fathom recordings from the Rocket Leads teams. Linked meetings also appear on the client's page." },
+
+  // Tabs
+  "meetings.tab.unlinked": { nl: "Ongekoppeld", en: "Unlinked" },
+  "meetings.tab.recent": { nl: "Recent", en: "Recent" },
+  "meetings.tab.internal": { nl: "Intern", en: "Internal" },
+  "meetings.tab.archived": { nl: "Gearchiveerd", en: "Archived" },
+
+  // Action buttons
+  "meetings.action.backfill": { nl: "Backfill 90d", en: "Backfill 90d" },
+  "meetings.action.backfill_tooltip": { nl: "Haal laatste 90 dagen op uit Fathom + matcher draaien", en: "Pull last 90 days from Fathom + run matcher" },
+  "meetings.action.run_matcher": { nl: "Matcher draaien", en: "Run matcher" },
+  "meetings.confirm.backfill": { nl: "Laatste 90 dagen uit Fathom ophalen + matcher draaien? Kan 30-60 seconden duren.", en: "Pull last 90 days from Fathom + run matcher? Can take 30-60 seconds." },
+
+  // Tab subtitle (count + helper)
+  "meetings.subtitle.unlinked": { nl: "{n} meeting(s) nog niet gekoppeld aan een klant. Koppel handmatig hieronder of archiveer als koppelen niet nodig is.", en: "{n} meeting(s) not yet matched to a client. Link manually below or archive if no link is needed." },
+  "meetings.subtitle.recent": { nl: "{n} gekoppelde meeting(s) in de laatste 60 dagen.", en: "{n} linked meeting(s) in the last 60 days." },
+  "meetings.subtitle.internal": { nl: "{n} interne RL-team meeting(s) in de laatste 60 dagen.", en: "{n} internal RL-team meeting(s) in the last 60 days." },
+  "meetings.subtitle.archived": { nl: "{n} gearchiveerde meeting(s). Gebruik Dearchiveren om terug te zetten in triage.", en: "{n} archived meeting(s). Use Unarchive to restore to triage." },
+
+  // Empty states
+  "meetings.empty.unlinked": { nl: "Niks te triagen — alle recente meetings zijn gekoppeld.", en: "Nothing to triage — all recent meetings are matched." },
+  "meetings.empty.recent": { nl: "Nog geen gekoppelde meetings.", en: "No linked meetings yet." },
+  "meetings.empty.internal": { nl: "Geen interne team meetings opgenomen in de laatste 60 dagen.", en: "No internal team meetings recorded in the last 60 days." },
+  "meetings.empty.archived": { nl: "Niks gearchiveerd.", en: "Nothing archived." },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

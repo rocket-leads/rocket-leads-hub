@@ -7,6 +7,8 @@ import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { MeetingCard, type ClientOption } from "./meeting-card"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { MeetingRow } from "@/lib/meetings/types"
 
 type TabId = "unlinked" | "recent" | "internal" | "archived"
@@ -24,6 +26,7 @@ function isUnlinked(m: MeetingRow): boolean {
 
 export function MeetingsView({ meetings, clientNameById, clients, isAdmin = false }: Props) {
   const router = useRouter()
+  const locale = useLocale()
   const [activeTab, setActiveTab] = useState<TabId>("unlinked")
   const [matching, startMatch] = useTransition()
   const [backfilling, startBackfill] = useTransition()
@@ -50,7 +53,7 @@ export function MeetingsView({ meetings, clientNameById, clients, isAdmin = fals
   }
 
   function runBackfill() {
-    if (!confirm("Pull last 90 days from Fathom + run matcher? Can take 30-60 seconds.")) return
+    if (!confirm(t("meetings.confirm.backfill", locale))) return
     setMatchSummary(null)
     startBackfill(async () => {
       try {
@@ -84,13 +87,13 @@ export function MeetingsView({ meetings, clientNameById, clients, isAdmin = fals
   const tabs: TopTab<TabId>[] = [
     {
       id: "unlinked",
-      label: "Unlinked",
+      label: t("meetings.tab.unlinked", locale),
       icon: InboxIcon,
       ...(buckets.unlinked.length > 0 ? { dot: "red" as const } : {}),
     },
-    { id: "recent", label: "Recent", icon: History },
-    { id: "internal", label: "Internal", icon: Users },
-    { id: "archived", label: "Archived", icon: Archive },
+    { id: "recent", label: t("meetings.tab.recent", locale), icon: History },
+    { id: "internal", label: t("meetings.tab.internal", locale), icon: Users },
+    { id: "archived", label: t("meetings.tab.archived", locale), icon: Archive },
   ]
 
   const visible =
@@ -112,11 +115,11 @@ export function MeetingsView({ meetings, clientNameById, clients, isAdmin = fals
               type="button"
               onClick={runBackfill}
               disabled={backfilling || matching}
-              title="Pull last 90 days from Fathom + run matcher"
+              title={t("meetings.action.backfill_tooltip", locale)}
               className="inline-flex items-center gap-1.5 h-8 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
             >
               {backfilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-              Backfill 90d
+              {t("meetings.action.backfill", locale)}
             </button>
           )}
           {activeTab === "unlinked" && buckets.unlinked.length > 0 && (
@@ -127,7 +130,7 @@ export function MeetingsView({ meetings, clientNameById, clients, isAdmin = fals
               className="inline-flex items-center gap-1.5 h-8 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
             >
               {matching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              Run matcher
+              {t("meetings.action.run_matcher", locale)}
             </button>
           )}
         </div>
@@ -138,23 +141,19 @@ export function MeetingsView({ meetings, clientNameById, clients, isAdmin = fals
       )}
 
       <p className="text-[11px] text-muted-foreground">
-        {activeTab === "unlinked" &&
-          `${buckets.unlinked.length} meeting${buckets.unlinked.length === 1 ? "" : "s"} not yet matched to a client. Link manually below or archive if no link is needed.`}
-        {activeTab === "recent" &&
-          `${buckets.recent.length} linked meeting${buckets.recent.length === 1 ? "" : "s"} in the last 60 days.`}
-        {activeTab === "internal" &&
-          `${buckets.internal.length} internal RL-team meeting${buckets.internal.length === 1 ? "" : "s"} in the last 60 days.`}
-        {activeTab === "archived" &&
-          `${buckets.archived.length} archived meeting${buckets.archived.length === 1 ? "" : "s"}. Use Unarchive to restore to triage.`}
+        {activeTab === "unlinked" && t("meetings.subtitle.unlinked", locale, { n: String(buckets.unlinked.length) })}
+        {activeTab === "recent" && t("meetings.subtitle.recent", locale, { n: String(buckets.recent.length) })}
+        {activeTab === "internal" && t("meetings.subtitle.internal", locale, { n: String(buckets.internal.length) })}
+        {activeTab === "archived" && t("meetings.subtitle.archived", locale, { n: String(buckets.archived.length) })}
       </p>
 
       {visible.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            {activeTab === "unlinked" && "Nothing to triage — all recent meetings are matched."}
-            {activeTab === "recent" && "No linked meetings yet."}
-            {activeTab === "internal" && "No internal team meetings recorded in the last 60 days."}
-            {activeTab === "archived" && "Nothing archived."}
+            {activeTab === "unlinked" && t("meetings.empty.unlinked", locale)}
+            {activeTab === "recent" && t("meetings.empty.recent", locale)}
+            {activeTab === "internal" && t("meetings.empty.internal", locale)}
+            {activeTab === "archived" && t("meetings.empty.archived", locale)}
           </CardContent>
         </Card>
       ) : (

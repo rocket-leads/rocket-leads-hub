@@ -3,6 +3,8 @@ import { redirect } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/server"
 import { MEETING_ROW_COLUMNS, type MeetingRow } from "@/lib/meetings/types"
 import { MeetingsView } from "./_components/meetings-view"
+import { getUserLocale } from "@/lib/i18n/server"
+import { t } from "@/lib/i18n/t"
 
 export const dynamic = "force-dynamic"
 
@@ -11,6 +13,7 @@ export default async function MeetingsPage() {
   if (!session?.user?.id) redirect("/auth/signin")
 
   const supabase = await createAdminClient()
+  const locale = await getUserLocale(session.user.id)
 
   // Pull a generous window — last 60 days, max 300 rows. The view splits this
   // into Unlinked / Recent / Internal tabs client-side. We don't care about
@@ -42,11 +45,10 @@ export default async function MeetingsPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">
-          Meetings
+          {t("meetings.title", locale)}
         </h1>
         <p className="text-[13px] text-muted-foreground mt-1">
-          Fathom recordings from the Rocket Leads teams. Linked meetings also
-          appear on the client&apos;s page.
+          {t("meetings.subtitle", locale)}
         </p>
       </div>
 

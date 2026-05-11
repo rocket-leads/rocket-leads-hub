@@ -61,7 +61,7 @@ function fmtCurrency(v: number): string {
  * - Color: red when CPL is meaningfully rising (last 7d vs prior 7d), green when
  *   falling, muted slate otherwise. Rising CPL = bad, so red = "look at me".
  */
-function CplSparkline({ trend }: { trend: KpiSummary["dailyTrend"] }) {
+function CplSparkline({ trend, locale }: { trend: KpiSummary["dailyTrend"]; locale: Locale }) {
   if (!trend || trend.length < 2) return <span className="text-muted-foreground/20 text-xs">—</span>
 
   // Carry-forward through leadless days so the line doesn't crash to €0
@@ -102,18 +102,25 @@ function CplSparkline({ trend }: { trend: KpiSummary["dailyTrend"] }) {
       const cpl = series[i]
       const dateLabel = d.date.slice(5) // MM-DD
       if (d.leads === 0) {
-        return cpl > 0 ? `${dateLabel}: no leads (carry €${cpl.toFixed(0)})` : `${dateLabel}: no spend`
+        return cpl > 0
+          ? t("watchlist.sparkline.no_leads", locale, { date: dateLabel, cpl: cpl.toFixed(0) })
+          : t("watchlist.sparkline.no_spend", locale, { date: dateLabel })
       }
-      return `${dateLabel}: €${cpl.toFixed(2)} CPL · ${d.leads} leads · €${d.spend.toFixed(0)} spend`
+      return t("watchlist.sparkline.day_summary", locale, {
+        date: dateLabel,
+        cpl: cpl.toFixed(2),
+        leads: String(d.leads),
+        spend: d.spend.toFixed(0),
+      })
     })
     .join("\n")
 
   const directionLabel =
     ratio >= 1.1
-      ? `CPL trending up (${Math.round((ratio - 1) * 100)}% over the window)`
+      ? t("watchlist.sparkline.trending_up", locale, { pct: String(Math.round((ratio - 1) * 100)) })
       : ratio <= 0.9
-        ? `CPL trending down (${Math.round((1 - ratio) * 100)}% over the window)`
-        : "CPL stable over the window"
+        ? t("watchlist.sparkline.trending_down", locale, { pct: String(Math.round((1 - ratio) * 100)) })
+        : t("watchlist.sparkline.stable", locale)
 
   return (
     <svg
@@ -505,7 +512,7 @@ function WatchSection({
 
                   {/* 14d CPL sparkline */}
                   <span className="flex items-center">
-                    <CplSparkline trend={kpi?.dailyTrend} />
+                    <CplSparkline trend={kpi?.dailyTrend} locale={locale} />
                   </span>
                 </div>
               </div>

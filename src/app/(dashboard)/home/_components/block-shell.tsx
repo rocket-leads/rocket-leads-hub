@@ -54,7 +54,7 @@ export function BlockShell({
         {empty ? (
           emptyContent ?? (
             <div className="flex items-center justify-center h-full px-4 py-8">
-              <p className="text-xs text-muted-foreground/40 italic">{emptyMessage ?? "Niks om te tonen."}</p>
+              <p className="text-xs text-muted-foreground/40 italic">{emptyMessage ?? "—"}</p>
             </div>
           )
         ) : (
