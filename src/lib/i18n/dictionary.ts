@@ -936,6 +936,63 @@ export const DICTIONARY = {
   "settings.notifications.closers.empty": { nl: "Geen actieve closers gevonden in het targets board (geen leads in de laatste 60 dagen).", en: "No active closers found in the targets board (no leads in the last 60 days)." },
   "settings.notifications.closers.row.unsaved": { nl: "Niet opgeslagen", en: "Unsaved" },
   "settings.notifications.closers.row.saved": { nl: "Opgeslagen", en: "Saved" },
+
+  // ─── Targets — Delivery tab ───────────────────────────────────────────
+  // Section headers (the KPI metric labels themselves stay English — RL jargon)
+  "targets.delivery.section.revenue": { nl: "Omzet", en: "Revenue" },
+  "targets.delivery.section.retention": { nl: "Retentie", en: "Retention" },
+  "targets.delivery.section.revenue_by_team": { nl: "Omzet per team", en: "Revenue by Team" },
+  "targets.delivery.section.unassigned": { nl: "Niet-toegewezen omzet", en: "Unassigned Revenue" },
+
+  // Retention card labels
+  "targets.delivery.retention.previous": { nl: "Vorige periode", en: "Previous Period" },
+  "targets.delivery.retention.new": { nl: "Nieuwe klanten", en: "New Clients" },
+  "targets.delivery.retention.churned": { nl: "Verloren", en: "Churned" },
+  "targets.delivery.retention.net": { nl: "Netto verandering", en: "Net Change" },
+  "targets.delivery.retention.current": { nl: "Huidige periode", en: "Current Period" },
+
+  // Customer count text
+  "targets.delivery.customers_one": { nl: "{n} klant", en: "{n} customer" },
+  "targets.delivery.customers_many": { nl: "{n} klanten", en: "{n} customers" },
+  "targets.delivery.needs_fix_one": { nl: "{n} klant heeft een fix nodig", en: "{n} customer needs a fix" },
+  "targets.delivery.needs_fix_many": { nl: "{n} klanten hebben een fix nodig", en: "{n} customers need a fix" },
+
+  // Unassigned bucket header
+  "targets.delivery.unassigned.label": { nl: "Niet-toegewezen", en: "Unassigned" },
+
+  // Unassigned row reasons + actions
+  "targets.delivery.no_monday_match": { nl: "Geen Monday item gekoppeld aan deze Stripe-klant.", en: "No Monday item links this Stripe customer." },
+  "targets.delivery.am_empty.before": { nl: "Monday item bestaat, maar Account Manager is leeg. ", en: "Linked Monday item exists but Account Manager is empty. " },
+  "targets.delivery.open_client": { nl: "Open klant →", en: "Open client →" },
+  "targets.delivery.fee_ad": { nl: "fee {fee} · ad {ad}", en: "fee {fee} · ad {ad}" },
+  "targets.delivery.suggested": { nl: "Voorgesteld:", en: "Suggested:" },
+  "targets.delivery.pick_another": { nl: "Kies een ander item…", en: "Pick another item…" },
+  "targets.delivery.pick_monday": { nl: "Kies een Monday item…", en: "Pick a Monday item…" },
+  "targets.delivery.search_placeholder": { nl: "Zoek Monday items...", en: "Search Monday items..." },
+  "targets.delivery.cancel": { nl: "Annuleren", en: "Cancel" },
+  "targets.delivery.no_unlinked": { nl: "Geen ongekoppelde Monday items beschikbaar.", en: "No unlinked Monday items available." },
+  "targets.delivery.no_match": { nl: "Geen items komen overeen met deze zoekopdracht.", en: "No items match this search." },
+  "targets.delivery.more_results": { nl: "+ {n} meer — verfijn je zoekopdracht.", en: "+ {n} more — refine your search to narrow down." },
+  "targets.delivery.assigning": { nl: "Toewijzen…", en: "Assigning…" },
+  "targets.delivery.assign_failed": { nl: "Toewijzen mislukt", en: "Failed to assign" },
+
+  // ─── Targets — Finance tab ────────────────────────────────────────────
+  // Section headers — KPI labels stay English (RL jargon).
+  "targets.finance.section.revenue_service_fee": { nl: "Omzet — Service Fee", en: "Revenue — Service Fee" },
+  "targets.finance.section.revenue_ad_budget": { nl: "Omzet — Ad Budget", en: "Revenue — Ad Budget" },
+  "targets.finance.section.costs": { nl: "Kosten (volledige maand)", en: "Costs (Full Month)" },
+  "targets.finance.section.profit": { nl: "Winst", en: "Profit" },
+
+  // ─── Targets — Settings tab (per-month targets config) ────────────────
+  // Field labels (Deals/Revenue/Max CBC/etc.) stay English (RL jargon).
+  "targets.settings.title": { nl: "Maandelijkse targets", en: "Monthly Targets" },
+  "targets.settings.subtitle": { nl: "Stel targets in per tab. Waardes worden pro-rata vergeleken met de huidige periode. 0 = target uit.", en: "Set targets for each tab. Values are compared pro-rata against the current period. Set to 0 to disable a target." },
+  "targets.settings.action.save": { nl: "Targets opslaan", en: "Save Targets" },
+  "targets.settings.action.saving": { nl: "Opslaan...", en: "Saving..." },
+  "targets.settings.action.saved": { nl: "Opgeslagen", en: "Saved" },
+  "targets.settings.unsaved": { nl: "Niet-opgeslagen wijzigingen", en: "Unsaved changes" },
+  "targets.settings.derived.label": { nl: "Afgeleid", en: "Derived" },
+  "targets.settings.derived.hint": { nl: "auto-berekend · alleen-lezen", en: "auto-calculated · read only" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

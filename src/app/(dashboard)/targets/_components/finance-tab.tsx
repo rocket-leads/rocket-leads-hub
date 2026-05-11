@@ -11,6 +11,8 @@ import { RevenueProgressBar } from "./revenue-progress-bar"
 import { InvoiceDetailModal } from "./invoice-detail-modal"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { InvoiceDetail } from "@/types/targets"
 
 function SubCard({ label, value, loading, onClick }: { label: string; value: string; loading: boolean; onClick?: (e: React.MouseEvent) => void }) {
@@ -35,6 +37,7 @@ function SubCard({ label, value, loading, onClick }: { label: string; value: str
 }
 
 export function FinanceTab() {
+  const locale = useLocale()
   const { range, setRange, presets, applyPreset } = useDateRange()
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
   const startDate = format(range.startDate, "yyyy-MM-dd")
@@ -47,7 +50,8 @@ export function FinanceTab() {
   const month = range.startDate.getMonth() + 1
   const { finance, costs, loading } = useFinanceData(startDate, endDate, year, month)
   const { data: targets } = useTargetsConfig()
-  const t = targets ?? null
+  // Renamed from `t` to `tgt` so the imported i18n `t()` lookup works.
+  const tgt = targets ?? null
 
   // Drill-down modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -92,7 +96,7 @@ export function FinanceTab() {
   const anyEstimated = teamEst || mktEst
 
   // ── Target progress bar ──
-  const totalRevenueTarget = t?.serviceFeeRevenue ?? 0
+  const totalRevenueTarget = tgt?.serviceFeeRevenue ?? 0
   const totalRevenueExpected = totalRevenueTarget * proRataFactor
 
   // ── Derived finance targets ──
@@ -100,10 +104,10 @@ export function FinanceTab() {
   // so that "costs on track" ⟺ "profit on track" ⟺ "margin on track" — these three
   // can never disagree. The numbers move with revenue: at higher revenue we can spend
   // proportionally more while still hitting the same margin %.
-  const profitMargin = t?.profitMargin ?? 0
+  const profitMargin = tgt?.profitMargin ?? 0
   const netProfitTarget = projectedServiceFee > 0 && profitMargin > 0 ? projectedServiceFee * profitMargin : 0
   const maxTotalCostsTarget = projectedServiceFee > 0 && profitMargin > 0 ? projectedServiceFee * (1 - profitMargin) : 0
-  const teamCostsTarget = t?.teamCosts ?? 0
+  const teamCostsTarget = tgt?.teamCosts ?? 0
 
   // ── Team costs: when no actuals yet, show the target as the expected value ──
   const teamCosts = teamEst && teamCostsTarget > 0 ? teamCostsTarget : teamCostsActual
@@ -145,7 +149,7 @@ export function FinanceTab() {
 
       {/* ── REVENUE — SERVICE FEE ── */}
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue — Service Fee</h2>
+        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.revenue_service_fee", locale)}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee — Invoiced", (d) => d.category === "service_fee")}>
             <KpiCard label="Invoiced" value={sf?.invoiced ?? null} formatted={formatCurrency(sf?.invoiced ?? 0)} variant="neutral" isLoading={loading} />
@@ -188,7 +192,7 @@ export function FinanceTab() {
 
       {/* ── REVENUE — AD BUDGET ── */}
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Revenue — Ad Budget</h2>
+        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.revenue_ad_budget", locale)}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="cursor-pointer" onClick={() => openDetail("Ad Budget — Invoiced", (d) => d.category === "ad_budget")}>
             <KpiCard label="Invoiced" value={finance?.adBudget?.invoiced ?? null} formatted={formatCurrency(finance?.adBudget?.invoiced ?? 0)} variant="neutral" isLoading={loading} />
@@ -207,14 +211,14 @@ export function FinanceTab() {
 
       {/* ── COSTS (full-month: actual from sheet or 3-month average) ── */}
       <div className="space-y-3">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Costs (Full Month)</h2>
+        <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.costs", locale)}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <KpiCard
             label="Total Costs"
             value={totalCosts}
             formatted={formatCurrency(totalCosts)}
             target={maxTotalCostsTarget || undefined}
-            targetFormatted={maxTotalCostsTarget ? `${formatCurrency(totalCosts)} of ${formatCurrency(maxTotalCostsTarget)}` : undefined}
+            targetFormatted={maxTotalCostsTarget ? t("targets.kpi.target_of", locale, { value: formatCurrency(totalCosts), target: formatCurrency(maxTotalCostsTarget) }) : undefined}
             isEstimated={anyEstimated}
             variant={maxTotalCostsTarget ? "cost" : "neutral"}
             isLoading={loading}
@@ -240,7 +244,7 @@ export function FinanceTab() {
 
         return (
           <div className="space-y-3">
-            <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">Profit</h2>
+            <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.profit", locale)}</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <KpiCard label="Revenue" value={revenueForProfit} formatted={formatCurrency(revenueForProfit)} isEstimated={isCurrentRange} variant="neutral" isLoading={loading} />
               <KpiCard
@@ -248,7 +252,7 @@ export function FinanceTab() {
                 value={totalCosts}
                 formatted={formatCurrency(totalCosts)}
                 target={maxTotalCostsTarget || undefined}
-                targetFormatted={maxTotalCostsTarget ? `${formatCurrency(totalCosts)} of ${formatCurrency(maxTotalCostsTarget)}` : undefined}
+                targetFormatted={maxTotalCostsTarget ? t("targets.kpi.target_of", locale, { value: formatCurrency(totalCosts), target: formatCurrency(maxTotalCostsTarget) }) : undefined}
                 isEstimated={anyEstimated}
                 variant={maxTotalCostsTarget ? "cost" : "neutral"}
                 isLoading={loading}
@@ -258,7 +262,7 @@ export function FinanceTab() {
                 value={netProfit}
                 formatted={formatCurrency(netProfit)}
                 target={netProfitTarget || undefined}
-                targetFormatted={netProfitTarget ? `${formatCurrency(netProfit)} of ${formatCurrency(netProfitTarget)}` : undefined}
+                targetFormatted={netProfitTarget ? t("targets.kpi.target_of", locale, { value: formatCurrency(netProfit), target: formatCurrency(netProfitTarget) }) : undefined}
                 isEstimated={isCurrentRange || anyEstimated}
                 variant="volume"
                 isLoading={loading}
@@ -268,7 +272,7 @@ export function FinanceTab() {
                 value={margin}
                 formatted={formatPercent(margin)}
                 target={profitMargin || undefined}
-                targetFormatted={profitMargin ? `${formatPercent(margin)} of ${formatPercent(profitMargin)}` : undefined}
+                targetFormatted={profitMargin ? t("targets.kpi.target_of", locale, { value: formatPercent(margin), target: formatPercent(profitMargin) }) : undefined}
                 isEstimated={isCurrentRange || anyEstimated}
                 variant="volume"
                 isLoading={loading}

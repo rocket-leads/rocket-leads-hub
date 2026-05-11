@@ -7,6 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Check, Loader2 } from "lucide-react"
 import { deriveTargets } from "@/lib/targets/calculations"
 import { formatCurrency, formatPercent } from "@/lib/targets/formatters"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { TargetsConfig } from "@/types/targets"
 
 type Field = { key: keyof TargetsConfig; label: string; prefix?: string; suffix?: string; step?: string }
@@ -48,6 +50,7 @@ const EMPTY_CONFIG: TargetsConfig = {
 }
 
 export function SettingsTab() {
+  const locale = useLocale()
   const { data: config, isLoading } = useTargetsConfig()
   const queryClient = useQueryClient()
   const [values, setValues] = useState<TargetsConfig | null>(null)
@@ -98,9 +101,9 @@ export function SettingsTab() {
   return (
     <div className="max-w-2xl space-y-8">
       <div>
-        <h2 className="text-sm font-medium">Monthly Targets</h2>
+        <h2 className="text-sm font-medium">{t("targets.settings.title", locale)}</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Set targets for each tab. Values are compared pro-rata against the current period. Set to 0 to disable a target.
+          {t("targets.settings.subtitle", locale)}
         </p>
       </div>
 
@@ -137,10 +140,10 @@ export function SettingsTab() {
           className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-40 flex items-center gap-2"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : saved ? <Check className="h-3.5 w-3.5" /> : null}
-          {saving ? "Saving..." : saved ? "Saved" : "Save Targets"}
+          {saving ? t("targets.settings.action.saving", locale) : saved ? t("targets.settings.action.saved", locale) : t("targets.settings.action.save", locale)}
         </button>
         {hasChanges && !saving && (
-          <span className="text-[11px] text-muted-foreground">Unsaved changes</span>
+          <span className="text-[11px] text-muted-foreground">{t("targets.settings.unsaved", locale)}</span>
         )}
       </div>
     </div>
@@ -148,6 +151,7 @@ export function SettingsTab() {
 }
 
 function DerivedMarketingTargets({ values }: { values: TargetsConfig }) {
+  const locale = useLocale()
   const derived = deriveTargets(values)
   const rows: Array<{ label: string; formula: string; value: string; available: boolean }> = [
     {
@@ -179,8 +183,8 @@ function DerivedMarketingTargets({ values }: { values: TargetsConfig }) {
   return (
     <div className="mt-4 pt-4 border-t border-dashed border-border/40">
       <div className="flex items-baseline gap-2 mb-2">
-        <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground/80 font-medium">Derived</h4>
-        <span className="text-[10px] text-muted-foreground/50">auto-calculated · read only</span>
+        <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground/80 font-medium">{t("targets.settings.derived.label", locale)}</h4>
+        <span className="text-[10px] text-muted-foreground/50">{t("targets.settings.derived.hint", locale)}</span>
       </div>
       <div className="rounded-md border border-border/40 bg-muted/20 divide-y divide-border/30">
         {rows.map((row) => (
