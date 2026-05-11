@@ -433,6 +433,35 @@ export const DICTIONARY = {
   "meetings.empty.recent": { nl: "Nog geen gekoppelde meetings.", en: "No linked meetings yet." },
   "meetings.empty.internal": { nl: "Geen interne team meetings opgenomen in de laatste 60 dagen.", en: "No internal team meetings recorded in the last 60 days." },
   "meetings.empty.archived": { nl: "Niks gearchiveerd.", en: "Nothing archived." },
+
+  // ─── Clients overview page ────────────────────────────────────────────
+  "clients.title": { nl: "Klanten", en: "Clients" },
+  "clients.error.failed_to_load": { nl: "Klanten konden niet geladen worden", en: "Failed to load clients" },
+  "clients.error.go_to_settings": { nl: "Ga naar Instellingen", en: "Go to Settings" },
+
+  // ─── Pedro page ───────────────────────────────────────────────────────
+  "pedro.title": { nl: "Pedro", en: "Pedro" },
+  "pedro.subtitle": { nl: "Alle deliverables (brief, research, angles, scripts, creatives, LP, ad copy, refreshes) horen bij de geselecteerde klant.", en: "All deliverables (brief, research, angles, scripts, creatives, LP, ad copy, refreshes) belong to the selected client." },
+  "pedro.status.online": { nl: "Online", en: "Online" },
+  "pedro.picker.active_client": { nl: "Actieve klant", en: "Active client" },
+  "pedro.picker.onboarding": { nl: "Onboarding", en: "Onboarding" },
+  "pedro.picker.live": { nl: "Live", en: "Live" },
+  "pedro.picker.saved": { nl: " · campagne opgeslagen", en: " · campaign saved" },
+
+  // Tabs
+  "pedro.tab.brief": { nl: "Brief", en: "Brief" },
+  "pedro.tab.research": { nl: "Research", en: "Research" },
+  "pedro.tab.angles": { nl: "Angles", en: "Angles" },
+  "pedro.tab.script": { nl: "Video scripts", en: "Video scripts" },
+  "pedro.tab.creatives": { nl: "Creatives", en: "Creatives" },
+  "pedro.tab.lp": { nl: "LP prompts", en: "LP prompts" },
+  "pedro.tab.ad_copy": { nl: "Ad copy", en: "Ad copy" },
+  "pedro.tab.refresh": { nl: "Refresh", en: "Refresh" },
+  "pedro.tab.insights": { nl: "Insights", en: "Insights" },
+
+  // No-client-selected state
+  "pedro.no_client.title": { nl: "Selecteer een klant om te starten", en: "Select a client to start" },
+  "pedro.no_client.body": { nl: "Pedro's output — brief, research, angles, scripts, creatives, LP, ad copy, refreshes — wordt allemaal opgeslagen bij de actieve klant. Kies hierboven een klant zodat Pedro weet voor wie hij werkt.", en: "Pedro's output — brief, research, angles, scripts, creatives, LP, ad copy, refreshes — is all stored on the active client. Pick a client above so Pedro knows who he's working for." },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

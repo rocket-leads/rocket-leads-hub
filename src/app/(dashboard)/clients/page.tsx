@@ -6,6 +6,8 @@ import { filterClientsByUser } from "@/lib/clients/filter"
 import { auth } from "@/lib/auth"
 import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
+import { getUserLocale } from "@/lib/i18n/server"
+import { t } from "@/lib/i18n/t"
 import type { MondayClient } from "@/lib/integrations/monday"
 
 function ClientsLoading() {
@@ -25,6 +27,7 @@ async function ClientsData() {
   let error: string | null = null
 
   const session = await auth()
+  const locale = await getUserLocale(session?.user?.id)
 
   try {
     // Try cache first (kept fresh by cron at 5:00 / 5:30), fall back to live API.
@@ -44,7 +47,7 @@ async function ClientsData() {
       current = data.current
     }
   } catch (e) {
-    error = e instanceof Error ? e.message : "Failed to load clients"
+    error = e instanceof Error ? e.message : t("clients.error.failed_to_load", locale)
   }
 
   if (error) {
@@ -53,7 +56,7 @@ async function ClientsData() {
         {error}{" "}
         {error.includes("token") && (
           <Link href="/settings" className="underline font-medium">
-            Go to Settings
+            {t("clients.error.go_to_settings", locale)}
           </Link>
         )}
       </div>
@@ -77,11 +80,13 @@ async function ClientsData() {
   )
 }
 
-export default function ClientsPage() {
+export default async function ClientsPage() {
+  const session = await auth()
+  const locale = await getUserLocale(session?.user?.id)
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Clients</h1>
+        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">{t("clients.title", locale)}</h1>
       </div>
 
       <Suspense fallback={<ClientsLoading />}>

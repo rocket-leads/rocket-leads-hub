@@ -11,6 +11,8 @@ import { Campaign } from "./pedro-campaign"
 import { Research } from "./pedro-research"
 import { PedroRefresh } from "./pedro-refresh"
 import { PedroInsights } from "./pedro-insights"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { PedroClient } from "../page"
 
 type Section =
@@ -26,16 +28,18 @@ type Section =
 
 type CampaignSection = Exclude<Section, "research" | "refresh" | "insights">
 
-const TABS: TopTab<Section>[] = [
-  { id: "brief", label: "Brief", icon: Sparkles },
-  { id: "research", label: "Research", icon: Lightbulb },
-  { id: "angles", label: "Angles", icon: Compass },
-  { id: "script", label: "Video scripts", icon: Video },
-  { id: "creatives", label: "Creatives", icon: ImageIcon },
-  { id: "lp", label: "LP prompts", icon: FileCode },
-  { id: "ad-copy", label: "Ad copy", icon: Megaphone },
-  { id: "refresh", label: "Refresh", icon: RefreshCw },
-  { id: "insights", label: "Insights", icon: Layers },
+/** Tab shape lives at module scope (icons + ids never change); the label
+ *  flips with the locale toggle so it's built per render via useMemo. */
+const TAB_SHAPE = [
+  { id: "brief" as const, labelKey: "pedro.tab.brief" as const, icon: Sparkles },
+  { id: "research" as const, labelKey: "pedro.tab.research" as const, icon: Lightbulb },
+  { id: "angles" as const, labelKey: "pedro.tab.angles" as const, icon: Compass },
+  { id: "script" as const, labelKey: "pedro.tab.script" as const, icon: Video },
+  { id: "creatives" as const, labelKey: "pedro.tab.creatives" as const, icon: ImageIcon },
+  { id: "lp" as const, labelKey: "pedro.tab.lp" as const, icon: FileCode },
+  { id: "ad-copy" as const, labelKey: "pedro.tab.ad_copy" as const, icon: Megaphone },
+  { id: "refresh" as const, labelKey: "pedro.tab.refresh" as const, icon: RefreshCw },
+  { id: "insights" as const, labelKey: "pedro.tab.insights" as const, icon: Layers },
 ]
 
 const VALID_SECTIONS = new Set<Section>([
@@ -68,10 +72,16 @@ type Props = { clients: PedroClient[] }
 
 export function PedroApp({ clients }: Props) {
   const searchParams = useSearchParams()
+  const locale = useLocale()
+
+  const TABS: TopTab<Section>[] = useMemo(
+    () => TAB_SHAPE.map((tab) => ({ id: tab.id, label: t(tab.labelKey, locale), icon: tab.icon })),
+    [locale],
+  )
 
   const initialSection: Section = (() => {
-    const t = searchParams.get("tab")
-    if (t && VALID_SECTIONS.has(t as Section)) return t as Section
+    const tab = searchParams.get("tab")
+    if (tab && VALID_SECTIONS.has(tab as Section)) return tab as Section
     if (searchParams.get("clientId")) return "refresh" // shorthand for Watch List
     return "brief"
   })()
@@ -79,9 +89,9 @@ export function PedroApp({ clients }: Props) {
   const [section, setSection] = useState<Section>(initialSection)
 
   useEffect(() => {
-    const t = searchParams.get("tab")
-    if (t && VALID_SECTIONS.has(t as Section)) {
-      setSection(t as Section)
+    const tab = searchParams.get("tab")
+    if (tab && VALID_SECTIONS.has(tab as Section)) {
+      setSection(tab as Section)
     }
   }, [searchParams])
 
@@ -127,15 +137,15 @@ export function PedroApp({ clients }: Props) {
       <div className="mb-5 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">
-            Pedro
+            {t("pedro.title", locale)}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Alle deliverables (brief, research, angles, scripts, creatives, LP, ad copy, refreshes) horen bij de geselecteerde klant.
+            {t("pedro.subtitle", locale)}
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-[blink_2s_infinite]" />
-          Online
+          {t("pedro.status.online", locale)}
         </span>
       </div>
 
@@ -144,7 +154,7 @@ export function PedroApp({ clients }: Props) {
         <div className="flex items-center gap-3">
           <div className="shrink-0 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
             <Users className="h-3 w-3" />
-            Actieve klant
+            {t("pedro.picker.active_client", locale)}
           </div>
           <div className="flex-1">
             <ClientPicker
@@ -159,8 +169,8 @@ export function PedroApp({ clients }: Props) {
           </div>
           {selectedClient && (
             <span className="shrink-0 text-xs text-muted-foreground hidden md:inline">
-              {selectedClient.boardType === "onboarding" ? "Onboarding" : "Live"}
-              {selectedClient.hasSavedCampaign ? " · campagne opgeslagen" : ""}
+              {selectedClient.boardType === "onboarding" ? t("pedro.picker.onboarding", locale) : t("pedro.picker.live", locale)}
+              {selectedClient.hasSavedCampaign ? t("pedro.picker.saved", locale) : ""}
             </span>
           )}
         </div>
@@ -202,14 +212,15 @@ export function PedroApp({ clients }: Props) {
 }
 
 function NoClientSelected() {
+  const locale = useLocale()
   return (
     <Card>
       <CardContent className="py-12 flex flex-col items-center justify-center text-center gap-3">
         <Users className="h-8 w-8 text-muted-foreground/30" />
         <div className="space-y-1">
-          <div className="font-heading font-semibold text-base">Selecteer een klant om te starten</div>
+          <div className="font-heading font-semibold text-base">{t("pedro.no_client.title", locale)}</div>
           <p className="text-sm text-muted-foreground max-w-md">
-            Pedro&apos;s output — brief, research, angles, scripts, creatives, LP, ad copy, refreshes — wordt allemaal opgeslagen bij de actieve klant. Kies hierboven een klant zodat Pedro weet voor wie hij werkt.
+            {t("pedro.no_client.body", locale)}
           </p>
         </div>
       </CardContent>
