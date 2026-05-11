@@ -143,6 +143,77 @@ export const DICTIONARY = {
   "watchlist.no_data.title": { nl: "Geen data", en: "No data" },
   "watchlist.no_data.subtitle": { nl: "live in Monday maar deze week geen bruikbare Meta data", en: "live in Monday but no usable Meta data this week" },
   "watchlist.no_data.col_reason": { nl: "Reden", en: "Reason" },
+
+  // ─── Clients overview ─────────────────────────────────────────────────
+  "clients.updated": { nl: "Bijgewerkt {time}", en: "Updated {time}" },
+  "clients.tab.current": { nl: "Huidige klanten", en: "Current Clients" },
+  "clients.tab.onboarding": { nl: "Onboarding", en: "Onboarding" },
+
+  // Toolbar
+  "clients.search_placeholder": { nl: "Zoek klanten…", en: "Search clients..." },
+  "clients.show_active_only": { nl: "Alleen actieve tonen", en: "Show active only" },
+  "clients.show_all": { nl: "Alles tonen", en: "Show all" },
+  "clients.count_of": { nl: "{shown} van {total} klanten", en: "{shown} of {total} clients" },
+  "clients.count_total_one": { nl: "{n} klant", en: "{n} client" },
+  "clients.count_total_many": { nl: "{n} klanten", en: "{n} clients" },
+  "clients.empty": { nl: "Geen klanten gevonden", en: "No clients found" },
+  "clients.loading_more": { nl: "Meer laden…", en: "Loading more..." },
+
+  // Filter labels + "All ..." options
+  "clients.filter.status": { nl: "Status", en: "Status" },
+  "clients.filter.status_all": { nl: "Alle statussen", en: "All Statuses" },
+  "clients.filter.phase": { nl: "Fase", en: "Phase" },
+  "clients.filter.phase_all": { nl: "Alle fases", en: "All Phases" },
+  "clients.filter.am": { nl: "Account Manager", en: "Account Manager" },
+  "clients.filter.am_all": { nl: "Alle Account Managers", en: "All Account Managers" },
+  "clients.filter.cm": { nl: "Campaign Manager", en: "Campaign Manager" },
+  "clients.filter.cm_all": { nl: "Alle Campaign Managers", en: "All Campaign Managers" },
+  "clients.filter.payment": { nl: "Betaling", en: "Payment" },
+  "clients.filter.payment_all": { nl: "Alle betaalstatussen", en: "All Payment Statuses" },
+  "clients.filter.health": { nl: "Gezondheid", en: "Health" },
+  "clients.filter.health_all": { nl: "Alle gezondheidsstatussen", en: "All Health Statuses" },
+
+  // Column headers
+  "clients.col.client": { nl: "Klant", en: "Client" },
+  "clients.col.status": { nl: "Status", en: "Status" },
+  "clients.col.phase": { nl: "Fase", en: "Phase" },
+  "clients.col.meta": { nl: "Meta", en: "Meta" },
+  "clients.col.kick_off": { nl: "Kick-off", en: "Kick-off" },
+  "clients.col.health": { nl: "Gezondheid", en: "Health" },
+  "clients.col.payment": { nl: "Betaling", en: "Payment" },
+  "clients.col.outstanding": { nl: "Openstaand", en: "Outstanding" },
+  "clients.col.mrr": { nl: "MRR", en: "MRR" },
+  "clients.col.next": { nl: "Volgend", en: "Next" },
+  "clients.col.am": { nl: "AM", en: "AM" },
+  "clients.col.cm": { nl: "CM", en: "CM" },
+  "clients.col.as": { nl: "AS", en: "AS" },
+  "clients.col.adspend": { nl: "Adspend", en: "Adspend" },
+  "clients.col.leads": { nl: "Leads", en: "Leads" },
+  "clients.col.cpl": { nl: "CPL", en: "CPL" },
+  "clients.col.appts": { nl: "Appts", en: "Appts" },
+  "clients.col.cpa": { nl: "CPA", en: "CPA" },
+
+  // Health / payment status labels
+  "clients.health.good": { nl: "Goed", en: "Good" },
+  "clients.health.warning": { nl: "Let op", en: "Warning" },
+  "clients.health.critical": { nl: "Kritiek", en: "Critical" },
+  "clients.payment.complete": { nl: "Voldaan", en: "Complete" },
+  "clients.payment.open": { nl: "Open", en: "Open" },
+  "clients.payment.overdue": { nl: "Te laat", en: "Overdue" },
+
+  // Health reasons + MRR/budget label suffix
+  "clients.health.reason.no_campaign": { nl: "Geen campagne geselecteerd", en: "No campaign selected" },
+  "clients.health.reason.no_data": { nl: "Geen campagne data beschikbaar", en: "No campaign data available" },
+  "clients.health.reason.running_normally": { nl: "Campagne loopt normaal", en: "Campaign running normally" },
+  "clients.budget_suffix": { nl: "budget", en: "budget" },
+
+  // Tooltips + cell hints
+  "clients.tooltip.next_invoice": { nl: "Volgende factuurdatum", en: "Next invoice date" },
+  "clients.tooltip.no_prev_period": { nl: "Geen vergelijkbare voorgaande periode — deze klant was niet live in het grootste deel van het vorige venster.", en: "No comparable prior period — this client wasn't live for most of the previous window." },
+  "clients.cell.click_to_assign": { nl: "Klik om toe te wijzen", en: "Click to assign" },
+  "clients.cell.loading_users": { nl: "Gebruikers laden…", en: "Loading users..." },
+  "clients.cell.load_users_failed": { nl: "Gebruikers laden mislukt", en: "Failed to load users" },
+  "clients.cell.clear": { nl: "Wissen", en: "Clear" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

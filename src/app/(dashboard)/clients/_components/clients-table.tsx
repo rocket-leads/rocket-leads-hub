@@ -33,6 +33,11 @@ import {
 import { StatusEditCell } from "./status-edit-cell"
 import { PhaseEditCell } from "./phase-edit-cell"
 import { PersonEditCell } from "./person-edit-cell"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import { formatCurrency as formatCurrencyLocale } from "@/lib/i18n/format"
+import type { Locale } from "@/lib/i18n/types"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 
 type PillTone = { dot: string; pill: string }
 
@@ -76,7 +81,16 @@ function DeltaPill({ pct }: { pct: number }) {
   )
 }
 
-const PAYMENT_STATUSES = ["Complete", "Open", "Overdue"]
+/** Canonical payment-status filter values — match the BillingSummary.status
+ *  enum (after capitalisation). Display labels are looked up via the
+ *  dictionary at render time. */
+const PAYMENT_STATUSES = ["Complete", "Open", "Overdue"] as const
+
+const PAYMENT_LABEL_KEYS: Record<string, DictionaryKey> = {
+  Complete: "clients.payment.complete",
+  Open: "clients.payment.open",
+  Overdue: "clients.payment.overdue",
+}
 
 const META_NEUTRAL_TONE: PillTone = { dot: "bg-zinc-400", pill: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300" }
 
@@ -107,12 +121,12 @@ type HealthResult = {
   reasons: string[]
 }
 
-function getCampaignHealth(kpi: KpiSummary | undefined): HealthResult {
+function getCampaignHealth(kpi: KpiSummary | undefined, locale: Locale = "en"): HealthResult {
   if (kpi?.rlAccountNoCampaign) {
-    return { status: "no-data", reasons: ["No campaign selected"] }
+    return { status: "no-data", reasons: [t("clients.health.reason.no_campaign", locale)] }
   }
   if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
-    return { status: "no-data", reasons: ["No campaign data available"] }
+    return { status: "no-data", reasons: [t("clients.health.reason.no_data", locale)] }
   }
 
   const reasons: string[] = []
@@ -154,23 +168,26 @@ function getCampaignHealth(kpi: KpiSummary | undefined): HealthResult {
     if (kpi.leads > 0) {
       reasons.push(`CPL €${kpi.cpl.toFixed(2)} — ${kpi.leads} leads`)
     } else {
-      reasons.push("Campaign running normally")
+      reasons.push(t("clients.health.reason.running_normally", locale))
     }
   }
 
   return { status, reasons }
 }
 
-const HEALTH_STYLES: Record<HealthStatus, { dot: string; bg: string; text: string; label: string }> = {
-  critical: { dot: "bg-red-500", bg: "bg-red-500/10", text: "text-red-600 dark:text-red-400", label: "Critical" },
-  warning: { dot: "bg-amber-500", bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", label: "Warning" },
-  good: { dot: "bg-emerald-500", bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", label: "Good" },
-  "no-data": { dot: "bg-zinc-400", bg: "bg-zinc-500/10", text: "text-muted-foreground", label: "—" },
+const HEALTH_STYLES: Record<HealthStatus, { dot: string; bg: string; text: string; labelKey: DictionaryKey | null }> = {
+  critical: { dot: "bg-red-500", bg: "bg-red-500/10", text: "text-red-600 dark:text-red-400", labelKey: "clients.health.critical" },
+  warning: { dot: "bg-amber-500", bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", labelKey: "clients.health.warning" },
+  good: { dot: "bg-emerald-500", bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", labelKey: "clients.health.good" },
+  "no-data": { dot: "bg-zinc-400", bg: "bg-zinc-500/10", text: "text-muted-foreground", labelKey: null },
 }
 
-const HEALTH_FILTER_OPTIONS = ["Good", "Warning", "Critical"]
+/** Health filter values are the canonical English status names — they map to
+ *  the HealthStatus enum at filter-evaluation time. The DISPLAY label is
+ *  translated via the dictionary on each filter option. */
+const HEALTH_FILTER_VALUES = ["Good", "Warning", "Critical"] as const
 
-function HealthBadge({ health }: { health: HealthResult }) {
+function HealthBadge({ health, locale }: { health: HealthResult; locale: Locale }) {
   const style = HEALTH_STYLES[health.status]
   if (health.status === "no-data") {
     return <span className="text-muted-foreground text-sm">—</span>
@@ -179,7 +196,7 @@ function HealthBadge({ health }: { health: HealthResult }) {
     <div className="relative group">
       <div className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium ${style.bg} ${style.text}`}>
         <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
-        {style.label}
+        {style.labelKey ? t(style.labelKey, locale) : "—"}
       </div>
       {health.reasons.length > 0 && (
         <div className="absolute z-50 hidden group-hover:block bottom-full left-0 mb-1.5 w-64 rounded-lg border bg-popover p-2.5 text-xs text-popover-foreground shadow-lg">
@@ -246,12 +263,6 @@ function fmt(amount: number): string {
   return `€${amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-/** Whole-euro formatter — used for monthly figures (MRR, ad budget) where
- *  cents would just be visual noise on a packed overview row. */
-function fmtEuro(amount: number): string {
-  return `€${amount.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
-}
-
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
@@ -298,6 +309,7 @@ function SortableHead({ label, sortKey, currentKey, currentDir, onSort, classNam
 
 export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, agreementSummaries, mondayActiveMap, defaultSortKey, defaultSortDir, showAllToggle, dateRangeControl, onSelectClient }: Props) {
   const router = useRouter()
+  const locale = useLocale()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
   const [phaseFilter, setPhaseFilter] = useState("All")
@@ -438,7 +450,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
       if (valA > valB) return 1 * dir
       return 0
     })
-  }, [filtered, sortKey, sortDir, kpiSummaries, getPaymentStatus])
+  }, [filtered, sortKey, sortDir, kpiSummaries, agreementSummaries, getPaymentStatus])
 
   const PAGE_SIZE = 25
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
@@ -471,58 +483,79 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
 
   const colSpan = boardType === "onboarding" ? 11 : 17
 
+  // Status / phase value labels stay as their Monday-canonical English form for
+  // now — they're the wire format the dropdown writes back to Monday, and the
+  // four buckets ("Live", "On Hold", "Churned") read fine in Dutch business
+  // context. The filter LABELS and "All ..." options route through the
+  // dictionary so the surrounding chrome flips.
   const filters: FilterConfig[] = [
-    // Current board → 4-bucket Hub status filter.
-    // Onboarding board → phase filter on top of the same `campaign_status` column.
     ...(boardType === "current"
       ? [{
           key: "status",
-          label: "Status",
+          label: t("clients.filter.status", locale),
           value: statusFilter,
           onChange: setStatusFilter,
           options: [
-            { value: "All", label: "All Statuses" },
+            { value: "All", label: t("clients.filter.status_all", locale) },
             ...STATUS_OPTIONS.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
           ],
         }]
       : [{
           key: "phase",
-          label: "Phase",
+          label: t("clients.filter.phase", locale),
           value: phaseFilter,
           onChange: setPhaseFilter,
           options: [
-            { value: "All", label: "All Phases" },
+            { value: "All", label: t("clients.filter.phase_all", locale) },
             ...PHASE_OPTIONS.map((p) => ({ value: p, label: PHASE_LABELS[p] })),
           ],
         }]),
     {
       key: "am",
-      label: "Account Manager",
+      label: t("clients.filter.am", locale),
       value: accountManagerFilter,
       onChange: setAccountManagerFilter,
-      options: [{ value: "All", label: "All Account Managers" }, ...accountManagers.map((s) => ({ value: s, label: s }))],
+      options: [
+        { value: "All", label: t("clients.filter.am_all", locale) },
+        ...accountManagers.map((s) => ({ value: s, label: s })),
+      ],
     },
     {
       key: "cm",
-      label: "Campaign Manager",
+      label: t("clients.filter.cm", locale),
       value: campaignManagerFilter,
       onChange: setCampaignManagerFilter,
-      options: [{ value: "All", label: "All Campaign Managers" }, ...campaignManagers.map((s) => ({ value: s, label: s }))],
+      options: [
+        { value: "All", label: t("clients.filter.cm_all", locale) },
+        ...campaignManagers.map((s) => ({ value: s, label: s })),
+      ],
     },
     {
       key: "payment",
-      label: "Payment",
+      label: t("clients.filter.payment", locale),
       value: paymentStatusFilter,
       onChange: setPaymentStatusFilter,
-      options: [{ value: "All", label: "All Payment Statuses" }, ...PAYMENT_STATUSES.map((s) => ({ value: s, label: s }))],
+      options: [
+        { value: "All", label: t("clients.filter.payment_all", locale) },
+        ...PAYMENT_STATUSES.map((s) => ({ value: s, label: t(PAYMENT_LABEL_KEYS[s], locale) })),
+      ],
     },
     ...(boardType === "current"
       ? [{
           key: "health",
-          label: "Health",
+          label: t("clients.filter.health", locale),
           value: healthFilter,
           onChange: setHealthFilter,
-          options: [{ value: "All", label: "All Health Statuses" }, ...HEALTH_FILTER_OPTIONS.map((s) => ({ value: s, label: s }))],
+          options: [
+            { value: "All", label: t("clients.filter.health_all", locale) },
+            ...HEALTH_FILTER_VALUES.map((s) => ({
+              value: s,
+              label:
+                s === "Good" ? t("clients.health.good", locale)
+                : s === "Warning" ? t("clients.health.warning", locale)
+                : t("clients.health.critical", locale),
+            })),
+          ],
         }]
       : []),
   ]
@@ -532,7 +565,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
       {/* Search + filters */}
       <div className="flex items-center gap-2 flex-wrap">
         <input
-          placeholder="Search clients..."
+          placeholder={t("clients.search_placeholder", locale)}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-56 h-8 border border-border bg-background rounded-lg text-xs text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 px-3"
@@ -564,8 +597,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           <div className="ml-auto flex items-center gap-2 text-[11px] tabular-nums">
             <span className="text-muted-foreground/70">
               {showAllToggle.showAll
-                ? `${clients.length} clients`
-                : `${clients.length} of ${showAllToggle.totalCount} clients`}
+                ? t(clients.length === 1 ? "clients.count_total_one" : "clients.count_total_many", locale, { n: clients.length })
+                : t("clients.count_of", locale, { shown: clients.length, total: showAllToggle.totalCount })}
             </span>
             {clients.length !== showAllToggle.totalCount || showAllToggle.showAll ? (
               <button
@@ -573,13 +606,13 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                 onClick={() => showAllToggle.setShowAll(!showAllToggle.showAll)}
                 className="text-primary hover:underline"
               >
-                {showAllToggle.showAll ? "Show active only" : "Show all"}
+                {showAllToggle.showAll ? t("clients.show_active_only", locale) : t("clients.show_all", locale)}
               </button>
             ) : null}
           </div>
         ) : (
           <span className="text-[11px] text-muted-foreground/60 ml-auto tabular-nums">
-            {sorted.length} client{sorted.length !== 1 ? "s" : ""}
+            {t(sorted.length === 1 ? "clients.count_total_one" : "clients.count_total_many", locale, { n: sorted.length })}
           </span>
         )}
       </div>
@@ -590,44 +623,44 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           <TableHeader>
             <TableRow className="border-b border-border/60 bg-muted/50 hover:bg-muted/50 [&>th]:h-10">
               {/* Client section */}
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[220px] border-r border-border/60">Client</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[220px] border-r border-border/60">{t("clients.col.client", locale)}</TableHead>
               {/* Status section — onboarding shows the granular phase + Meta-connected
                   column; current board shows the canonical 4-bucket Hub status. */}
               {boardType === "onboarding" ? (
                 <>
-                  <SortableHead label="Phase" sortKey="phase" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[150px]" />
-                  <TableHead className="text-[13px] text-foreground/80 font-semibold w-[120px]">Meta</TableHead>
-                  <SortableHead label="Kick-off" sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[100px]" />
+                  <SortableHead label={t("clients.col.phase", locale)} sortKey="phase" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[150px]" />
+                  <TableHead className="text-[13px] text-foreground/80 font-semibold w-[120px]">{t("clients.col.meta", locale)}</TableHead>
+                  <SortableHead label={t("clients.col.kick_off", locale)} sortKey="kickOff" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[100px]" />
                 </>
               ) : (
-                <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Status</TableHead>
+                <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">{t("clients.col.status", locale)}</TableHead>
               )}
               {boardType === "current" && (
-                <SortableHead label="Health" sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold text-center w-[90px]" />
+                <SortableHead label={t("clients.col.health", locale)} sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold text-center w-[90px]" />
               )}
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[95px]">Payment</TableHead>
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">Outstanding</TableHead>
-              <SortableHead label="MRR" sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px]" />
-              <SortableHead label="Next" sortKey="nextInvoice" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px] border-r border-border/60" />
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[95px]">{t("clients.col.payment", locale)}</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">{t("clients.col.outstanding", locale)}</TableHead>
+              <SortableHead label={t("clients.col.mrr", locale)} sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px]" />
+              <SortableHead label={t("clients.col.next", locale)} sortKey="nextInvoice" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px] border-r border-border/60" />
               {/* People section */}
-              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">AM</TableHead>
-              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">CM</TableHead>
-              <TableHead className={`text-[13px] text-foreground/80 font-semibold text-center w-[50px] ${boardType === "current" ? "border-r border-border/60" : ""}`}>AS</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">{t("clients.col.am", locale)}</TableHead>
+              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">{t("clients.col.cm", locale)}</TableHead>
+              <TableHead className={`text-[13px] text-foreground/80 font-semibold text-center w-[50px] ${boardType === "current" ? "border-r border-border/60" : ""}`}>{t("clients.col.as", locale)}</TableHead>
               {/* KPI section (current only) */}
               {boardType === "current" && (
                 <>
-                  <SortableHead label="Adspend" sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[90px]" />
-                  <SortableHead label="Leads" sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
-                  <SortableHead label="CPL" sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
+                  <SortableHead label={t("clients.col.adspend", locale)} sortKey="adspend" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[90px]" />
+                  <SortableHead label={t("clients.col.leads", locale)} sortKey="leads" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
+                  <SortableHead label={t("clients.col.cpl", locale)} sortKey="cpl" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
                   <SortableHead
-                    label={<span className="inline-flex items-center gap-1.5">CPL <TrendingUpDown className="h-3.5 w-3.5 text-muted-foreground/70" /></span>}
+                    label={<span className="inline-flex items-center gap-1.5">{t("clients.col.cpl", locale)} <TrendingUpDown className="h-3.5 w-3.5 text-muted-foreground/70" /></span>}
                     sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort}
                     className="text-[13px] text-foreground/80 font-semibold w-[90px]"
                   />
-                  <SortableHead label="Appts" sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
-                  <SortableHead label="CPA" sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
+                  <SortableHead label={t("clients.col.appts", locale)} sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
+                  <SortableHead label={t("clients.col.cpa", locale)} sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
                   <SortableHead
-                    label={<span className="inline-flex items-center gap-1.5">CPA <TrendingUpDown className="h-3.5 w-3.5 text-muted-foreground/70" /></span>}
+                    label={<span className="inline-flex items-center gap-1.5">{t("clients.col.cpa", locale)} <TrendingUpDown className="h-3.5 w-3.5 text-muted-foreground/70" /></span>}
                     sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort}
                     className="text-[13px] text-foreground/80 font-semibold w-[90px]"
                   />
@@ -639,7 +672,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
             {sorted.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={colSpan} className="text-center py-12 text-muted-foreground">
-                  No clients found
+                  {t("clients.empty", locale)}
                 </TableCell>
               </TableRow>
             ) : (
@@ -653,7 +686,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     key={client.mondayItemId}
                     className={`cursor-pointer row-hover border-b border-border/40 ${
                       boardType === "current" ? (() => {
-                        const h = getCampaignHealth(kpi)
+                        const h = getCampaignHealth(kpi, locale)
                         if (h.status === "critical") return "border-l-2 border-l-red-500/60"
                         if (h.status === "warning") return "border-l-2 border-l-amber-500/60"
                         return ""
@@ -735,7 +768,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         {kpiLoading ? (
                           <span className="text-muted-foreground/40 text-xs">...</span>
                         ) : (
-                          <HealthBadge health={getCampaignHealth(kpi)} />
+                          <HealthBadge health={getCampaignHealth(kpi, locale)} locale={locale} />
                         )}
                       </TableCell>
                     )}
@@ -743,7 +776,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                       {billingSummaries && summary && PAYMENT_TONES[summary.status] && (
                         <StatusPill
                           tone={PAYMENT_TONES[summary.status]}
-                          label={summary.status.charAt(0).toUpperCase() + summary.status.slice(1)}
+                          label={t(PAYMENT_LABEL_KEYS[summary.status.charAt(0).toUpperCase() + summary.status.slice(1)], locale)}
                         />
                       )}
                       {!billingSummaries && client.stripeCustomerId && (
@@ -769,9 +802,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         }
                         return (
                           <div className="leading-tight">
-                            <p className="text-xs tabular-nums font-medium">{fmtEuro(a.mrr)}</p>
+                            <p className="text-xs tabular-nums font-medium">{formatCurrencyLocale(a.mrr, locale)}</p>
                             <p className="text-[10px] tabular-nums text-muted-foreground/60">
-                              {fmtEuro(a.adBudget)} budget
+                              {formatCurrencyLocale(a.adBudget, locale)} {t("clients.budget_suffix", locale)}
                             </p>
                           </div>
                         )
@@ -785,7 +818,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                               ? "text-amber-500 font-medium"
                               : "text-muted-foreground"
                           }`}
-                          title="Next invoice date"
+                          title={t("clients.tooltip.next_invoice", locale)}
                         >
                           {fmtDate(client.nextInvoiceDate)}
                         </span>
@@ -840,7 +873,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           ) : kpi && kpi.cpl > 0 && kpi.prevPeriodReliable === false ? (
                             <span
                               className="text-muted-foreground/40"
-                              title="No comparable prior period — this client wasn't live for most of the previous window."
+                              title={t("clients.tooltip.no_prev_period", locale)}
                             >
                               —
                             </span>
@@ -860,7 +893,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           ) : kpi && kpi.costPerAppointment > 0 && kpi.prevPeriodReliable === false ? (
                             <span
                               className="text-muted-foreground/40"
-                              title="No comparable prior period — this client wasn't live for most of the previous window."
+                              title={t("clients.tooltip.no_prev_period", locale)}
                             >
                               —
                             </span>
@@ -878,7 +911,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
 
       {hasMore && (
         <div ref={loaderRef} className="flex justify-center py-4">
-          <span className="text-xs text-muted-foreground">Loading more...</span>
+          <span className="text-xs text-muted-foreground">{t("clients.loading_more", locale)}</span>
         </div>
       )}
     </div>

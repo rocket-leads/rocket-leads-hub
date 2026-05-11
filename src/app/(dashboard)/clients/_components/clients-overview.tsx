@@ -17,6 +17,8 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { AgreementSummary } from "@/app/api/clients/agreements-summary/route"
 import { mondayStatusToHub, type ClientStatus } from "@/lib/clients/status"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 const ACTIVE_HUB_STATUSES: ClientStatus[] = ["live", "on_hold"]
 
@@ -31,6 +33,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const selectedClientId = searchParams.get("client")
+  const locale = useLocale()
 
   const handleSelectClient = useCallback(
     (mondayItemId: string) => {
@@ -153,12 +156,12 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
 
   const lastUpdated = Math.max(summariesQuery.dataUpdatedAt || 0, kpiQuery.dataUpdatedAt || 0)
   const lastUpdatedLabel = lastUpdated
-    ? new Date(lastUpdated).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    ? new Date(lastUpdated).toLocaleTimeString(locale === "nl" ? "nl-NL" : "en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
   const tabItems: TopTab<"current" | "onboarding">[] = [
-    { id: "current", label: "Current Clients", icon: Users, count: visibleCurrent.length },
-    { id: "onboarding", label: "Onboarding", icon: Sparkles, count: onboarding.length },
+    { id: "current", label: t("clients.tab.current", locale), icon: Users, count: visibleCurrent.length },
+    { id: "onboarding", label: t("clients.tab.onboarding", locale), icon: Sparkles, count: onboarding.length },
   ]
 
   return (
@@ -170,7 +173,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
         rightContent={
           <>
             {lastUpdatedLabel && (
-              <span className="text-[11px] text-muted-foreground/40">Updated {lastUpdatedLabel}</span>
+              <span className="text-[11px] text-muted-foreground/40">{t("clients.updated", locale, { time: lastUpdatedLabel })}</span>
             )}
             <button
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"

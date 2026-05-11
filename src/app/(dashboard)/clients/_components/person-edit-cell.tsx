@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Check } from "lucide-react"
 import type { MondayUser } from "@/lib/integrations/monday"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 const SKIP_PARTS = new Set(["van", "de", "der", "den", "het", "ten", "ter"])
 
@@ -46,6 +48,7 @@ type Props = {
 
 export function PersonEditCell({ mondayItemId, fieldKey, value, multi = false }: Props) {
   const router = useRouter()
+  const locale = useLocale()
   const [open, setOpen] = useState(false)
   const [optimisticValue, setOptimisticValue] = useState(value)
 
@@ -117,7 +120,7 @@ export function PersonEditCell({ mondayItemId, fieldKey, value, multi = false }:
       <PopoverTrigger
         onClick={(e) => e.stopPropagation()}
         className="flex justify-center w-full hover:opacity-80 transition-opacity outline-none"
-        title={display || "Click to assign"}
+        title={display || t("clients.cell.click_to_assign", locale)}
       >
         {primaryName ? (
           <span
@@ -136,10 +139,10 @@ export function PersonEditCell({ mondayItemId, fieldKey, value, multi = false }:
         onClick={(e) => e.stopPropagation()}
       >
         {usersQuery.isLoading && (
-          <div className="px-2.5 py-2 text-[12px] text-muted-foreground">Loading users...</div>
+          <div className="px-2.5 py-2 text-[12px] text-muted-foreground">{t("clients.cell.loading_users", locale)}</div>
         )}
         {usersQuery.error && (
-          <div className="px-2.5 py-2 text-[12px] text-destructive">Failed to load users</div>
+          <div className="px-2.5 py-2 text-[12px] text-destructive">{t("clients.cell.load_users_failed", locale)}</div>
         )}
         {usersQuery.data?.users && (
           <>
@@ -149,7 +152,7 @@ export function PersonEditCell({ mondayItemId, fieldKey, value, multi = false }:
               onClick={handleClear}
               className="w-full text-left rounded-md px-2.5 py-1.5 text-[12px] text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
             >
-              Clear
+              {t("clients.cell.clear", locale)}
             </button>
             <div className="my-1 border-t border-border/50" />
             {usersQuery.data.users.map((user) => (
