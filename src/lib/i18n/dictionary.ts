@@ -374,6 +374,27 @@ export const DICTIONARY = {
   "targets.pillar.showup.no_target": { nl: "{taken}/{qualified} opgekomen", en: "{taken}/{qualified} showed up" },
   "targets.pillar.conv.with_target": { nl: "target {target} · {deals}/{taken}", en: "target {target} · {deals}/{taken}" },
   "targets.pillar.conv.no_target": { nl: "{deals}/{taken} gesloten", en: "{deals}/{taken} closed" },
+
+  // ─── Client detail page ───────────────────────────────────────────────
+  // Tab strip
+  "client.tab.home": { nl: "Home", en: "Home" },
+  "client.tab.campaigns": { nl: "Campagnes", en: "Campaigns" },
+  "client.tab.inbox": { nl: "Inbox", en: "Inbox" },
+  "client.tab.timeline": { nl: "Timeline", en: "Timeline" },
+  "client.tab.pedro": { nl: "Pedro", en: "Pedro" },
+  "client.tab.billing": { nl: "Facturatie", en: "Billing" },
+  "client.tab.settings": { nl: "Instellingen", en: "Settings" },
+  "client.tab.refresh_title": { nl: "Data verversen en analyse opnieuw genereren", en: "Refresh data and regenerate analysis" },
+  "client.no_access": { nl: "Je hebt geen toegang tot deze sectie.", en: "You do not have access to this section." },
+
+  // Header — meta row labels + payment summary
+  "client.header.am": { nl: "AM", en: "AM" },
+  "client.header.cm": { nl: "CM", en: "CM" },
+  "client.header.budget": { nl: "Budget", en: "Budget" },
+  "client.header.payment": { nl: "Betaling", en: "Payment" },
+  "client.header.payment.paid": { nl: "Betaald", en: "Paid up" },
+  "client.header.payment.open": { nl: "{count} openstaand · {amount}", en: "{count} open · {amount}" },
+  "client.header.payment.overdue": { nl: "{count} achterstallig · {amount}", en: "{count} overdue · {amount}" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

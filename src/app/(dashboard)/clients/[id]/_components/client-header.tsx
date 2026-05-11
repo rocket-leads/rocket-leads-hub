@@ -15,6 +15,9 @@ import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edi
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { mondayStatusToHub } from "@/lib/clients/status"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
 
@@ -66,13 +69,13 @@ function summarize(invoices: InvoiceRow[] | undefined): PaymentSummary | null {
   return { kind: "complete" }
 }
 
-function PaymentInline({ summary }: { summary: PaymentSummary | null }) {
+function PaymentInline({ summary, locale }: { summary: PaymentSummary | null; locale: Locale }) {
   if (!summary) return <span className="text-muted-foreground/40">—</span>
   if (summary.kind === "complete") {
     return (
       <span className="inline-flex items-center gap-1.5 text-emerald-500 font-medium">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-        Paid up
+        {t("client.header.payment.paid", locale)}
       </span>
     )
   }
@@ -80,14 +83,14 @@ function PaymentInline({ summary }: { summary: PaymentSummary | null }) {
     return (
       <span className="inline-flex items-center gap-1.5 text-amber-500 font-medium">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-        {summary.count} open · {fmtEuro(summary.amount)}
+        {t("client.header.payment.open", locale, { count: String(summary.count), amount: fmtEuro(summary.amount) })}
       </span>
     )
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-red-500 font-medium">
       <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-      {summary.count} overdue · {fmtEuro(summary.amount)}
+      {t("client.header.payment.overdue", locale, { count: String(summary.count), amount: fmtEuro(summary.amount) })}
     </span>
   )
 }
@@ -98,6 +101,7 @@ type Props = {
 }
 
 export function ClientHeader({ client, canViewBilling }: Props) {
+  const locale = useLocale()
   const hubStatus = mondayStatusToHub(client.campaignStatus, client.boardType)
 
   // Same queryKey as the tab notification dot uses — React Query dedupes the fetch.
@@ -180,6 +184,7 @@ export function ClientHeader({ client, canViewBilling }: Props) {
                 adBudget={client.adBudget}
                 showPayment={!!client.stripeCustomerId && canViewBilling}
                 paymentSummary={paymentSummary}
+                locale={locale}
               />
             </div>
           </div>
@@ -223,6 +228,7 @@ function MetaRow({
   adBudget,
   showPayment,
   paymentSummary,
+  locale,
 }: {
   firstName: string
   accountManager: string
@@ -230,6 +236,7 @@ function MetaRow({
   adBudget: string
   showPayment: boolean
   paymentSummary: PaymentSummary | null
+  locale: Locale
 }) {
   // Build the visible items first so we know where to drop separators.
   const items: React.ReactNode[] = []
@@ -245,7 +252,7 @@ function MetaRow({
     items.push(
       <span key="am" className="inline-flex items-center gap-1.5">
         <User className="h-3.5 w-3.5 text-muted-foreground/40" />
-        <span className="text-muted-foreground/40">AM</span>
+        <span className="text-muted-foreground/40">{t("client.header.am", locale)}</span>
         <span className="text-foreground/80 font-medium">{accountManager}</span>
       </span>,
     )
@@ -254,7 +261,7 @@ function MetaRow({
     items.push(
       <span key="cm" className="inline-flex items-center gap-1.5">
         <Briefcase className="h-3.5 w-3.5 text-muted-foreground/40" />
-        <span className="text-muted-foreground/40">CM</span>
+        <span className="text-muted-foreground/40">{t("client.header.cm", locale)}</span>
         <span className="text-foreground/80 font-medium">{campaignManager}</span>
       </span>,
     )
@@ -263,7 +270,7 @@ function MetaRow({
     items.push(
       <span key="budget" className="inline-flex items-center gap-1.5">
         <Wallet className="h-3.5 w-3.5 text-muted-foreground/40" />
-        <span className="text-muted-foreground/40">Budget</span>
+        <span className="text-muted-foreground/40">{t("client.header.budget", locale)}</span>
         <span className="text-foreground/80 font-medium tabular-nums">{fmtBudget(adBudget)}</span>
       </span>,
     )
@@ -272,8 +279,8 @@ function MetaRow({
     items.push(
       <span key="payment" className="inline-flex items-center gap-1.5">
         <CreditCard className="h-3.5 w-3.5 text-muted-foreground/40" />
-        <span className="text-muted-foreground/40">Payment</span>
-        <PaymentInline summary={paymentSummary} />
+        <span className="text-muted-foreground/40">{t("client.header.payment", locale)}</span>
+        <PaymentInline summary={paymentSummary} locale={locale} />
       </span>,
     )
   }

@@ -15,6 +15,8 @@ import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 import { Card, CardContent } from "@/components/ui/card"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
 import type { MetaCampaign } from "@/lib/integrations/meta"
@@ -30,10 +32,11 @@ type Props = {
 }
 
 function NoAccess() {
+  const locale = useLocale()
   return (
     <Card>
       <CardContent className="py-8 text-center text-sm text-muted-foreground">
-        You do not have access to this section.
+        {t("client.no_access", locale)}
       </CardContent>
     </Card>
   )
@@ -46,6 +49,7 @@ function hasOverdue(invoices: InvoiceRow[] | undefined): boolean {
 export function ClientTabs({ client, supabaseClientId, access, currentUser }: Props) {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const locale = useLocale()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [regenerateSignal, setRegenerateSignal] = useState(0)
 
@@ -64,13 +68,13 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
   const hasOverdueInvoice = hasOverdue(billingQuery.data?.invoices)
 
   const tabs: TopTab<string>[] = [
-    { id: "home", label: "Home", icon: LayoutDashboard },
-    ...(access.canViewCampaigns ? [{ id: "campaigns", label: "Campaigns", icon: BarChart3 }] : []),
-    { id: "inbox", label: "Inbox", icon: InboxIcon },
-    { id: "timeline", label: "Timeline", icon: Activity },
-    { id: "pedro", label: "Pedro", icon: Sparkles },
-    ...(access.canViewBilling ? [{ id: "billing", label: "Billing", icon: CreditCard, ...(hasOverdueInvoice ? { dot: "red" as const } : {}) }] : []),
-    { id: "settings", label: "Settings", icon: Settings2 },
+    { id: "home", label: t("client.tab.home", locale), icon: LayoutDashboard },
+    ...(access.canViewCampaigns ? [{ id: "campaigns", label: t("client.tab.campaigns", locale), icon: BarChart3 }] : []),
+    { id: "inbox", label: t("client.tab.inbox", locale), icon: InboxIcon },
+    { id: "timeline", label: t("client.tab.timeline", locale), icon: Activity },
+    { id: "pedro", label: t("client.tab.pedro", locale), icon: Sparkles },
+    ...(access.canViewBilling ? [{ id: "billing", label: t("client.tab.billing", locale), icon: CreditCard, ...(hasOverdueInvoice ? { dot: "red" as const } : {}) }] : []),
+    { id: "settings", label: t("client.tab.settings", locale), icon: Settings2 },
   ]
 
   const [activeTab, setActiveTab] = useState<string>("home")
@@ -115,7 +119,7 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
             className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            title="Refresh data and regenerate analysis"
+            title={t("client.tab.refresh_title", locale)}
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
           </button>
