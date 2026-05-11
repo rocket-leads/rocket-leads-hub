@@ -533,6 +533,57 @@ export const DICTIONARY = {
   "targets.stripe.col.amount": { nl: "Bedrag", en: "Amount" },
   "targets.stripe.count.total": { nl: "{n} totaal", en: "{n} total" },
   "targets.stripe.count.split": { nl: "{unmatched} unmatched · {matched} matched", en: "{unmatched} unmatched · {matched} matched" },
+
+  // ─── Client detail — Home tab ─────────────────────────────────────────
+  // Health card (top-right)
+  "client.home.health.label": { nl: "Health", en: "Health" },
+  "client.home.health.action": { nl: "Action", en: "Action" },
+  "client.home.health.watch": { nl: "Watch", en: "Watch" },
+  "client.home.health.good": { nl: "Healthy", en: "Healthy" },
+  "client.home.health.no_data": { nl: "Geen data", en: "No data" },
+
+  // Lead Analysis card
+  "client.home.lead_analysis.title": { nl: "Lead Analysis · Quantity", en: "Lead Analysis · Quantity" },
+  "client.home.lead_analysis.verdict.good": { nl: "good", en: "good" },
+  "client.home.lead_analysis.verdict.neutral": { nl: "neutral", en: "neutral" },
+  "client.home.lead_analysis.verdict.concerning": { nl: "concerning", en: "concerning" },
+  "client.home.lead_analysis.empty": { nl: "Nog geen lead-analyse beschikbaar — open Campagnes om te genereren.", en: "No lead analysis available yet — open Campaigns to generate." },
+  "client.home.lead_analysis.see_full": { nl: "Bekijk volledige proposal", en: "See full proposal" },
+
+  // Top ads card
+  "client.home.top_ads.title": { nl: "Top performing ads", en: "Top Performing Ads" },
+  "client.home.top_ads.subtitle": { nl: "Op spend (30d) · kleur = t.o.v. account-gemiddelde CPL", en: "By spend (30d) · color = vs account avg CPL" },
+  "client.home.top_ads.empty": { nl: "Geen ads met noemenswaardige spend in de laatste 30d.", en: "No ads with meaningful spend in the last 30d." },
+
+  // Activity summary card
+  "client.home.activity.title": { nl: "Activiteit-samenvatting", en: "Activity Summary" },
+  "client.home.activity.subtitle": { nl: "Monday CRM · Current Clients · Trengo (14d)", en: "Monday CRM · Current Clients · Trengo (14d)" },
+  "client.home.activity.empty": { nl: "Geen klantcommunicatie of CRM-activiteit in de laatste 14d.", en: "No client communication or CRM activity in the last 14d." },
+
+  // Payment banner
+  "client.home.payment.label": { nl: "Betaling", en: "Payment" },
+  "client.home.payment.no_stripe": { nl: "Geen Stripe-klant gekoppeld.", en: "No Stripe customer linked." },
+  "client.home.payment.paid": { nl: "Betaald — geen open of achterstallige facturen", en: "Paid up — no open or overdue invoices" },
+  "client.home.payment.open_one": { nl: "{count} open factuur · {amount} openstaand", en: "{count} open invoice · {amount} outstanding" },
+  "client.home.payment.open_many": { nl: "{count} open facturen · {amount} openstaand", en: "{count} open invoices · {amount} outstanding" },
+  "client.home.payment.overdue_one": { nl: "{count} achterstallige factuur · {amount} openstaand", en: "{count} overdue invoice · {amount} outstanding" },
+  "client.home.payment.overdue_many": { nl: "{count} achterstallige facturen · {amount} openstaand", en: "{count} overdue invoices · {amount} outstanding" },
+  "client.home.payment.open_billing": { nl: "Open facturatie", en: "Open billing" },
+
+  // Tasks list
+  "client.home.tasks.title": { nl: "Open taken", en: "Open Tasks" },
+  "client.home.tasks.open_inbox": { nl: "Open inbox", en: "Open inbox" },
+  "client.home.tasks.empty": { nl: "Geen open taken voor deze klant.", en: "No open tasks for this client." },
+  "client.home.tasks.assigned_to": { nl: "Toegewezen aan {name}", en: "Assigned to {name}" },
+  "client.home.tasks.more": { nl: "+{n} meer", en: "+{n} more" },
+
+  // Due-date pills
+  "client.home.due.none": { nl: "Geen einddatum", en: "No due date" },
+  "client.home.due.overdue": { nl: "{n}d te laat", en: "{n}d overdue" },
+  "client.home.due.today": { nl: "Vandaag", en: "Due today" },
+  "client.home.due.tomorrow": { nl: "Morgen", en: "Due tomorrow" },
+  "client.home.due.in_days": { nl: "Over {n}d", en: "Due in {n}d" },
+  "client.home.due.on_date": { nl: "Voor {date}", en: "Due {date}" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

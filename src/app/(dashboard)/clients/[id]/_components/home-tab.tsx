@@ -22,6 +22,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import { categorize, type WatchCategory } from "@/lib/watchlist/categorize"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { KpiResult } from "@/lib/clients/kpis"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { MondayClient } from "@/lib/integrations/monday"
@@ -53,34 +57,37 @@ type ProposalResponse = {
   leadAnalysis?: { quantity: LeadAnalysisSection; quality: LeadAnalysisSection } | null
 }
 
-const HEALTH_TONES: Record<WatchCategory, { bg: string; border: string; text: string; dot: string; label: string }> = {
+/** Health tone classes (color) + dictionary label key per category. Label is
+ *  resolved through t() so the language switch flips "Action ↔ Actie" without
+ *  the visual treatment having to change. */
+const HEALTH_TONES: Record<WatchCategory, { bg: string; border: string; text: string; dot: string; labelKey: DictionaryKey }> = {
   action: {
     bg: "bg-red-500/10",
     border: "border-red-500/40",
     text: "text-red-500 dark:text-red-400",
     dot: "bg-red-500",
-    label: "Action",
+    labelKey: "client.home.health.action",
   },
   watch: {
     bg: "bg-amber-500/10",
     border: "border-amber-500/40",
     text: "text-amber-600 dark:text-amber-400",
     dot: "bg-amber-500",
-    label: "Watch",
+    labelKey: "client.home.health.watch",
   },
   good: {
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/40",
     text: "text-emerald-600 dark:text-emerald-400",
     dot: "bg-emerald-500",
-    label: "Healthy",
+    labelKey: "client.home.health.good",
   },
   "no-data": {
     bg: "bg-muted/30",
     border: "border-border/60",
     text: "text-muted-foreground",
     dot: "bg-muted-foreground/40",
-    label: "No data",
+    labelKey: "client.home.health.no_data",
   },
 }
 
@@ -157,10 +164,12 @@ function HealthCard({
   category,
   insight,
   loading,
+  locale,
 }: {
   category: WatchCategory
   insight: string
   loading?: boolean
+  locale: Locale
 }) {
   const tone = HEALTH_TONES[category]
 
@@ -181,11 +190,11 @@ function HealthCard({
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-2">
           <Activity className={`h-3.5 w-3.5 ${tone.text}`} />
-          <span className={`text-[11px] uppercase tracking-wider font-medium ${tone.text}`}>Health</span>
+          <span className={`text-[11px] uppercase tracking-wider font-medium ${tone.text}`}>{t("client.home.health.label", locale)}</span>
         </div>
         <div className="flex items-center gap-2 mb-1.5">
           <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
-          <p className={`text-2xl font-heading font-bold tracking-tight ${tone.text}`}>{tone.label}</p>
+          <p className={`text-2xl font-heading font-bold tracking-tight ${tone.text}`}>{t(tone.labelKey, locale)}</p>
         </div>
         <p className={`text-[11px] leading-snug ${tone.text} opacity-80`}>{insight}</p>
       </CardContent>
@@ -197,10 +206,12 @@ function LeadAnalysisCard({
   section,
   loading,
   onSeeFull,
+  locale,
 }: {
   section: LeadAnalysisSection | null
   loading: boolean
   onSeeFull: () => void
+  locale: Locale
 }) {
   if (loading) {
     return (
@@ -224,10 +235,10 @@ function LeadAnalysisCard({
       >
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-muted-foreground/70">
-            No lead analysis available yet — open Campaigns to generate.
+            {t("client.home.lead_analysis.empty", locale)}
           </p>
           <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors shrink-0">
-            See full proposal
+            {t("client.home.lead_analysis.see_full", locale)}
             <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
           </span>
         </div>
@@ -236,6 +247,9 @@ function LeadAnalysisCard({
   }
 
   const tone = VERDICT_TONES[section.verdict]
+  // Verdict pill label — looks up `client.home.lead_analysis.verdict.{verdict}`
+  // so each verdict (good/neutral/concerning) flips via the dictionary.
+  const verdictLabel = t(`client.home.lead_analysis.verdict.${section.verdict}` as DictionaryKey, locale)
 
   return (
     <button
@@ -247,10 +261,10 @@ function LeadAnalysisCard({
         <div className="flex items-center gap-2 flex-wrap">
           <Sparkles className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-            Lead Analysis · Quantity
+            {t("client.home.lead_analysis.title", locale)}
           </span>
           <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tone.pill}`}>
-            {section.verdict}
+            {verdictLabel}
           </span>
         </div>
       </div>
@@ -258,7 +272,7 @@ function LeadAnalysisCard({
       <p className="text-xs text-muted-foreground/80 leading-relaxed mb-3">{section.detail}</p>
       <div className="flex items-center justify-end">
         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors">
-          See full proposal
+          {t("client.home.lead_analysis.see_full", locale)}
           <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
         </span>
       </div>
@@ -269,9 +283,11 @@ function LeadAnalysisCard({
 function TopAdsCard({
   ads,
   loading,
+  locale,
 }: {
   ads: WatchlistExpandResponse["topAds"] | undefined
   loading: boolean
+  locale: Locale
 }) {
   if (loading) {
     return (
@@ -291,15 +307,15 @@ function TopAdsCard({
           <div className="flex items-center gap-2">
             <Trophy className="h-3.5 w-3.5 text-muted-foreground/60" />
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-              Top Performing Ads
+              {t("client.home.top_ads.title", locale)}
             </span>
           </div>
-          <span className="text-[10px] text-muted-foreground/40">By spend (30d) · color = vs account avg CPL</span>
+          <span className="text-[10px] text-muted-foreground/40">{t("client.home.top_ads.subtitle", locale)}</span>
         </div>
 
         {!ads || ads.length === 0 ? (
           <p className="text-[12px] text-muted-foreground/60 italic py-2">
-            No ads with meaningful spend in the last 30d.
+            {t("client.home.top_ads.empty", locale)}
           </p>
         ) : (
           <ul className="space-y-1.5">
@@ -333,9 +349,11 @@ function TopAdsCard({
 function ActivitySummaryCard({
   summary,
   loading,
+  locale,
 }: {
   summary: string | null | undefined
   loading: boolean
+  locale: Locale
 }) {
   if (loading) {
     return (
@@ -356,11 +374,11 @@ function ActivitySummaryCard({
           <div className="flex items-center gap-2">
             <Radio className="h-3.5 w-3.5 text-muted-foreground/60" />
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-              Activity Summary
+              {t("client.home.activity.title", locale)}
             </span>
           </div>
           <span className="text-[10px] text-muted-foreground/40">
-            Monday CRM · Current Clients · Trengo (14d)
+            {t("client.home.activity.subtitle", locale)}
           </span>
         </div>
 
@@ -370,7 +388,7 @@ function ActivitySummaryCard({
           </p>
         ) : (
           <p className="text-[12px] text-muted-foreground/60 italic py-2">
-            No client communication or CRM activity in the last 14d.
+            {t("client.home.activity.empty", locale)}
           </p>
         )}
       </CardContent>
@@ -382,10 +400,12 @@ function PaymentBanner({
   summary,
   loading,
   onClick,
+  locale,
 }: {
   summary: ReturnType<typeof summarizePayments> | null
   loading: boolean
   onClick: () => void
+  locale: Locale
 }) {
   if (loading) {
     return (
@@ -400,7 +420,7 @@ function PaymentBanner({
   if (!summary) {
     return (
       <Card>
-        <CardContent className="p-4 text-sm text-muted-foreground/60">No Stripe customer linked.</CardContent>
+        <CardContent className="p-4 text-sm text-muted-foreground/60">{t("client.home.payment.no_stripe", locale)}</CardContent>
       </Card>
     )
   }
@@ -412,9 +432,13 @@ function PaymentBanner({
   })()
 
   const label = (() => {
-    if (summary.kind === "complete") return "Paid up — no open or overdue invoices"
-    if (summary.kind === "open") return `${summary.count} open ${summary.count === 1 ? "invoice" : "invoices"} · ${fmtCurrencyShort(summary.amount)} outstanding`
-    return `${summary.count} overdue ${summary.count === 1 ? "invoice" : "invoices"} · ${fmtCurrencyShort(summary.amount)} outstanding`
+    if (summary.kind === "complete") return t("client.home.payment.paid", locale)
+    const amount = fmtCurrencyShort(summary.amount)
+    const count = String(summary.count)
+    if (summary.kind === "open") {
+      return t(summary.count === 1 ? "client.home.payment.open_one" : "client.home.payment.open_many", locale, { count, amount })
+    }
+    return t(summary.count === 1 ? "client.home.payment.overdue_one" : "client.home.payment.overdue_many", locale, { count, amount })
   })()
 
   return (
@@ -429,12 +453,12 @@ function PaymentBanner({
             <CreditCard className={`h-4 w-4 ${tone.text}`} />
           </div>
           <div>
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-0.5">Payment</p>
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-0.5">{t("client.home.payment.label", locale)}</p>
             <p className={`text-sm font-semibold ${tone.text}`}>{label}</p>
           </div>
         </div>
         <span className={`inline-flex items-center gap-1 text-[11px] ${tone.text} opacity-60 group-hover:opacity-100 transition-opacity shrink-0`}>
-          Open billing
+          {t("client.home.payment.open_billing", locale)}
           <ChevronRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
         </span>
       </div>
@@ -442,26 +466,28 @@ function PaymentBanner({
   )
 }
 
-function relativeDue(due: string | null): { label: string; tone: string } {
-  if (!due) return { label: "No due date", tone: "text-muted-foreground/60" }
+function relativeDue(due: string | null, locale: Locale): { label: string; tone: string } {
+  if (!due) return { label: t("client.home.due.none", locale), tone: "text-muted-foreground/60" }
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const target = new Date(due); target.setHours(0, 0, 0, 0)
   const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays < 0) return { label: `${Math.abs(diffDays)}d overdue`, tone: "text-red-500" }
-  if (diffDays === 0) return { label: "Due today", tone: "text-amber-500" }
-  if (diffDays === 1) return { label: "Due tomorrow", tone: "text-amber-500" }
-  if (diffDays <= 7) return { label: `Due in ${diffDays}d`, tone: "text-foreground/70" }
-  return { label: `Due ${due}`, tone: "text-muted-foreground/60" }
+  if (diffDays < 0) return { label: t("client.home.due.overdue", locale, { n: String(Math.abs(diffDays)) }), tone: "text-red-500" }
+  if (diffDays === 0) return { label: t("client.home.due.today", locale), tone: "text-amber-500" }
+  if (diffDays === 1) return { label: t("client.home.due.tomorrow", locale), tone: "text-amber-500" }
+  if (diffDays <= 7) return { label: t("client.home.due.in_days", locale, { n: String(diffDays) }), tone: "text-foreground/70" }
+  return { label: t("client.home.due.on_date", locale, { date: due }), tone: "text-muted-foreground/60" }
 }
 
 function TasksList({
   tasks,
   loading,
   onSeeAll,
+  locale,
 }: {
   tasks: InboxItem[]
   loading: boolean
   onSeeAll: () => void
+  locale: Locale
 }) {
   if (loading) {
     return (
@@ -490,7 +516,7 @@ function TasksList({
         <div className="flex items-center gap-2">
           <ListTodo className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-            Open Tasks
+            {t("client.home.tasks.title", locale)}
           </span>
           {tasks.length > 0 && (
             <span className="inline-flex items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-foreground/70">
@@ -499,17 +525,17 @@ function TasksList({
           )}
         </div>
         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors">
-          Open inbox
+          {t("client.home.tasks.open_inbox", locale)}
           <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
         </span>
       </div>
 
       {tasks.length === 0 ? (
-        <p className="text-sm text-muted-foreground/60 py-4 text-center">No open tasks for this client.</p>
+        <p className="text-sm text-muted-foreground/60 py-4 text-center">{t("client.home.tasks.empty", locale)}</p>
       ) : (
         <div className="space-y-1.5">
           {tasks.slice(0, 5).map((task) => {
-            const due = relativeDue(task.dueDate)
+            const due = relativeDue(task.dueDate, locale)
             return (
               <div
                 key={task.id}
@@ -518,7 +544,7 @@ function TasksList({
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{task.title}</p>
                   <p className="text-[11px] text-muted-foreground/60">
-                    Assigned to {task.assigneeName}
+                    {t("client.home.tasks.assigned_to", locale, { name: task.assigneeName ?? "" })}
                   </p>
                 </div>
                 <span className={`inline-flex items-center gap-1 text-[11px] shrink-0 ${due.tone}`}>
@@ -530,7 +556,7 @@ function TasksList({
           })}
           {tasks.length > 5 && (
             <p className="w-full text-center text-[11px] text-muted-foreground py-1.5">
-              +{tasks.length - 5} more
+              {t("client.home.tasks.more", locale, { n: String(tasks.length - 5) })}
             </p>
           )}
         </div>
@@ -548,6 +574,7 @@ export function HomeTab({
   onNavigateToInbox,
   onNavigateToBilling,
 }: Props) {
+  const locale = useLocale()
   const { range, setRange, presets, applyPreset, formatDate } = useDateRange()
   const startDateStr = formatDate(range.startDate)
   const endDateStr = formatDate(range.endDate)
@@ -676,6 +703,7 @@ export function HomeTab({
           category={health.category}
           insight={health.insight}
           loading={summaryQuery.isLoading && !kpiSummary}
+          locale={locale}
         />
       </div>
 
@@ -683,12 +711,13 @@ export function HomeTab({
         section={proposalQuery.data?.leadAnalysis?.quantity ?? null}
         loading={proposalQuery.isLoading}
         onSeeFull={onNavigateToCampaigns}
+        locale={locale}
       />
 
       {canViewCampaigns && client.metaAdAccountId && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <TopAdsCard ads={expandQuery.data?.topAds} loading={expandQuery.isLoading} />
-          <ActivitySummaryCard summary={expandQuery.data?.aiSummary} loading={expandQuery.isLoading} />
+          <TopAdsCard ads={expandQuery.data?.topAds} loading={expandQuery.isLoading} locale={locale} />
+          <ActivitySummaryCard summary={expandQuery.data?.aiSummary} loading={expandQuery.isLoading} locale={locale} />
         </div>
       )}
 
@@ -697,6 +726,7 @@ export function HomeTab({
           summary={paymentSummary}
           loading={billingQuery.isLoading}
           onClick={onNavigateToBilling}
+          locale={locale}
         />
       )}
 
@@ -704,6 +734,7 @@ export function HomeTab({
         tasks={tasksQuery.data?.items ?? []}
         loading={tasksQuery.isLoading}
         onSeeAll={onNavigateToInbox}
+        locale={locale}
       />
     </div>
   )
