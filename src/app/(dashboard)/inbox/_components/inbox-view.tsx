@@ -36,6 +36,8 @@ import { ItemDetailDialog } from "./item-detail-dialog"
 import { ChatPane } from "./chat-pane"
 import { CommunicationTab } from "@/app/(dashboard)/clients/[id]/_components/communication-tab"
 import { MeetingsTab } from "@/app/(dashboard)/clients/[id]/_components/meetings-tab"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { InboxItem, InboxSource, TaskStatus, UpdateStatus } from "@/types/inbox"
 
 export type InboxUser = { id: string; name: string | null; email: string; role: string }
@@ -96,17 +98,20 @@ const TASK_SOURCE_LABELS: Record<InboxSource, string> = {
   automation: "Automation",
 }
 
-const UPDATE_FILTERS: TopTab<UpdateFilter>[] = [
-  { id: "all", label: "All updates", icon: LayoutList },
-  { id: "unread", label: "Unread", icon: Mail },
-  { id: "read", label: "Read", icon: MailOpen },
+/** Tab/filter labels are dictionary-keyed; icons + ids stay static so a
+ *  per-render useMemo can rebuild the array when the locale flips without
+ *  re-allocating icons on every state change. */
+const UPDATE_FILTER_SHAPE = [
+  { id: "all" as const, labelKey: "inbox.update.filter.all" as const, icon: LayoutList },
+  { id: "unread" as const, labelKey: "inbox.update.filter.unread" as const, icon: Mail },
+  { id: "read" as const, labelKey: "inbox.update.filter.read" as const, icon: MailOpen },
 ]
 
-const TASK_FILTERS: TopTab<TaskFilter>[] = [
-  { id: "open", label: "Open", icon: Circle },
-  { id: "in_progress", label: "In progress", icon: Clock },
-  { id: "done", label: "Done", icon: CircleCheck },
-  { id: "all", label: "All", icon: LayoutList },
+const TASK_FILTER_SHAPE = [
+  { id: "open" as const, labelKey: "inbox.task.filter.open" as const, icon: Circle },
+  { id: "in_progress" as const, labelKey: "inbox.task.filter.in_progress" as const, icon: Clock },
+  { id: "done" as const, labelKey: "inbox.task.filter.done" as const, icon: CircleCheck },
+  { id: "all" as const, labelKey: "inbox.task.filter.all" as const, icon: LayoutList },
 ]
 
 const ALL_UPDATE_STATUSES: UpdateStatus[] = ["unread", "read"]
@@ -128,6 +133,19 @@ export function InboxView({
   lockedClient,
 }: Props) {
   const queryClient = useQueryClient()
+  const locale = useLocale()
+
+  // Build locale-aware filter tab arrays per render — the underlying
+  // shape is static; only labels flip with the language toggle.
+  const TASK_FILTERS: TopTab<TaskFilter>[] = useMemo(
+    () => TASK_FILTER_SHAPE.map((f) => ({ id: f.id, label: t(f.labelKey, locale), icon: f.icon })),
+    [locale],
+  )
+  const UPDATE_FILTERS: TopTab<UpdateFilter>[] = useMemo(
+    () => UPDATE_FILTER_SHAPE.map((f) => ({ id: f.id, label: t(f.labelKey, locale), icon: f.icon })),
+    [locale],
+  )
+
   // activeTab intentionally NOT persisted — opening the inbox should land
   // on Tasks ("what do I need to do") regardless of where the user was
   // last time. Everything else is sticky so a reload doesn't blow away
@@ -539,17 +557,17 @@ export function InboxView({
   const tabBadge = badgeQuery.data
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
-        { id: "tasks", label: "Tasks", icon: ListTodo, count: tasks.length },
-        { id: "updates", label: "Updates", icon: InboxIcon, count: updates.length },
+        { id: "tasks", label: t("inbox.tab.tasks", locale), icon: ListTodo, count: tasks.length },
+        { id: "updates", label: t("inbox.tab.updates", locale), icon: InboxIcon, count: updates.length },
         ...(lockedClient.canViewCommunication
-          ? [{ id: "client-inbox" as const, label: "Client Inbox", icon: MessageCircle }]
+          ? [{ id: "client-inbox" as const, label: t("inbox.tab.client_inbox", locale), icon: MessageCircle }]
           : []),
-        { id: "meetings", label: "Meetings", icon: Video },
+        { id: "meetings", label: t("inbox.tab.meetings", locale), icon: Video },
       ]
     : [
         {
           id: "tasks",
-          label: "Tasks",
+          label: t("inbox.tab.tasks", locale),
           icon: ListTodo,
           // Open + in_progress assigned to me, regardless of current
           // status/source filter. Falls back to the local filtered count
@@ -558,13 +576,13 @@ export function InboxView({
         },
         {
           id: "updates",
-          label: "Updates",
+          label: t("inbox.tab.updates", locale),
           icon: InboxIcon,
           count: tabBadge?.unreadUpdates ?? updates.length,
         },
         {
           id: "client-inbox",
-          label: "Client Inbox",
+          label: t("inbox.tab.client_inbox", locale),
           icon: MessageCircle,
           count: tabBadge?.unreadChats ?? 0,
         },
@@ -577,7 +595,7 @@ export function InboxView({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Inbox</h1>
+          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">{t("inbox.title", locale)}</h1>
         </div>
         <div className="flex items-center gap-2">
           {!isChatTab && !isClientOnlyTab && (
@@ -594,7 +612,7 @@ export function InboxView({
                     e.currentTarget.blur()
                   }
                 }}
-                placeholder="Search inbox…  (/)"
+                placeholder={t("inbox.search.placeholder", locale)}
                 className="h-8 w-56 rounded-md border border-input bg-background pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               />
               {searchQuery && (
@@ -602,7 +620,7 @@ export function InboxView({
                   type="button"
                   onClick={() => setSearchQuery("")}
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 inline-flex items-center justify-center"
-                  aria-label="Clear search"
+                  aria-label={t("inbox.search.clear", locale)}
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -615,21 +633,21 @@ export function InboxView({
               size="sm"
               onClick={() => setAssignedToMe(!assignedToMe)}
             >
-              {assignedToMe ? "Assigned to me" : "All"}
+              {assignedToMe ? t("inbox.filter.assigned_to_me", locale) : t("inbox.filter.all", locale)}
             </Button>
           )}
           {!isChatTab && !isClientOnlyTab && (
             <Button size="sm" onClick={() => openComposer(activeTab === "tasks" ? "task" : "update")}>
               <Plus className="h-4 w-4" />
-              New {activeTab === "tasks" ? "task" : "update"}
+              {activeTab === "tasks" ? t("inbox.action.new_task", locale) : t("inbox.action.new_update", locale)}
             </Button>
           )}
           {!isChatTab && !isClientOnlyTab && (
             <button
               type="button"
               onClick={() => setShortcutsOpen(true)}
-              title="Keyboard shortcuts (?)"
-              aria-label="Keyboard shortcuts"
+              title={t("inbox.action.shortcuts", locale)}
+              aria-label={t("inbox.action.shortcuts", locale)}
               className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-input text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
             >
               ?
@@ -661,13 +679,16 @@ export function InboxView({
               onCreated={refreshAll}
             />
             {tasksQuery.isLoading ? (
-              <EmptyState text="Loading tasks…" />
+              <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
             ) : tasks.length === 0 ? (
               <EmptyState
                 text={
                   taskFilter === "all"
-                    ? "No tasks yet."
-                    : `No ${TASK_FILTERS.find((f) => f.id === taskFilter)?.label.toLowerCase()} tasks${assignedToMe ? " assigned to you" : ""}.`
+                    ? t("inbox.empty.tasks_none", locale)
+                    : t("inbox.empty.tasks_filtered", locale, {
+                        filter: (TASK_FILTERS.find((f) => f.id === taskFilter)?.label ?? "").toLowerCase(),
+                        assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
+                      })
                 }
                 onCreate={() => openComposer("task")}
               />
@@ -784,13 +805,19 @@ export function InboxView({
               onCreated={refreshAll}
             />
             {updatesQuery.isLoading ? (
-              <EmptyState text="Loading updates…" />
+              <EmptyState text={t("inbox.empty.updates_loading", locale)} />
             ) : updates.length === 0 ? (
               <EmptyState
                 text={
                   updateFilter === "all"
-                    ? "No updates yet."
-                    : `No ${updateFilter} updates${assignedToMe ? " assigned to you" : ""}.`
+                    ? t("inbox.empty.updates_none", locale)
+                    : t("inbox.empty.updates_filtered", locale, {
+                        filter:
+                          updateFilter === "unread"
+                            ? t("inbox.update.filter.unread_lower", locale)
+                            : t("inbox.update.filter.read_lower", locale),
+                        assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
+                      })
                 }
                 onCreate={() => openComposer("update")}
               />

@@ -293,6 +293,56 @@ export const DICTIONARY = {
   "settings.health.cadence.weekly": { nl: "wekelijks", en: "weekly" },
   "settings.health.cadence.hourly_gated": { nl: "elk uur (gated)", en: "hourly (gated)" },
   "settings.health.cadence.daily_7utc": { nl: "dagelijks 07:00 UTC", en: "daily 7:00 UTC" },
+
+  // ─── Inbox ────────────────────────────────────────────────────────────
+  "inbox.title": { nl: "Inbox", en: "Inbox" },
+
+  // Top action bar
+  "inbox.search.placeholder": { nl: "Zoek in inbox…  (/)", en: "Search inbox…  (/)" },
+  "inbox.search.clear": { nl: "Zoekopdracht wissen", en: "Clear search" },
+  "inbox.filter.assigned_to_me": { nl: "Aan mij toegewezen", en: "Assigned to me" },
+  "inbox.filter.all": { nl: "Alles", en: "All" },
+  "inbox.action.new_task": { nl: "Nieuwe taak", en: "New task" },
+  "inbox.action.new_update": { nl: "Nieuwe update", en: "New update" },
+  "inbox.action.shortcuts": { nl: "Toetsenbord shortcuts (?)", en: "Keyboard shortcuts (?)" },
+
+  // Main tabs
+  "inbox.tab.tasks": { nl: "Taken", en: "Tasks" },
+  "inbox.tab.updates": { nl: "Updates", en: "Updates" },
+  "inbox.tab.client_inbox": { nl: "Klanten Inbox", en: "Client Inbox" },
+  "inbox.tab.meetings": { nl: "Meetings", en: "Meetings" },
+
+  // Task status filters
+  "inbox.task.filter.open": { nl: "Open", en: "Open" },
+  "inbox.task.filter.in_progress": { nl: "Bezig", en: "In progress" },
+  "inbox.task.filter.done": { nl: "Klaar", en: "Done" },
+  "inbox.task.filter.all": { nl: "Alles", en: "All" },
+
+  // Update status filters
+  "inbox.update.filter.all": { nl: "Alle updates", en: "All updates" },
+  "inbox.update.filter.unread": { nl: "Ongelezen", en: "Unread" },
+  "inbox.update.filter.read": { nl: "Gelezen", en: "Read" },
+
+  // Empty states
+  "inbox.empty.tasks_loading": { nl: "Taken laden…", en: "Loading tasks…" },
+  "inbox.empty.tasks_none": { nl: "Nog geen taken.", en: "No tasks yet." },
+  "inbox.empty.tasks_filtered": { nl: "Geen {filter} taken{assigned}.", en: "No {filter} tasks{assigned}." },
+  "inbox.empty.tasks_assigned_suffix": { nl: " aan jou toegewezen", en: " assigned to you" },
+  "inbox.empty.updates_loading": { nl: "Updates laden…", en: "Loading updates…" },
+  "inbox.empty.updates_none": { nl: "Nog geen updates.", en: "No updates yet." },
+  "inbox.empty.updates_filtered": { nl: "Geen {filter} updates{assigned}.", en: "No {filter} updates{assigned}." },
+
+  // Update filter labels used inside empty-state strings (lowercase)
+  "inbox.update.filter.unread_lower": { nl: "ongelezen", en: "unread" },
+  "inbox.update.filter.read_lower": { nl: "gelezen", en: "read" },
+
+  // Source pill labels (brand names stay as plain strings — these are
+  // the ones that actually translate)
+  "inbox.source.automation": { nl: "Automatisering", en: "Automation" },
+  "inbox.source.watchlist": { nl: "Watch List", en: "Watch list" },
+  "inbox.source.meeting": { nl: "Meeting", en: "Meeting" },
+  "inbox.source.email": { nl: "Email", en: "Email" },
+  "inbox.source.tooltip_prefix": { nl: "Bron:", en: "Source:" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY
