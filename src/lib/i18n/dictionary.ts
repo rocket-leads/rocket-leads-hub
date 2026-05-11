@@ -343,6 +343,37 @@ export const DICTIONARY = {
   "inbox.source.meeting": { nl: "Meeting", en: "Meeting" },
   "inbox.source.email": { nl: "Email", en: "Email" },
   "inbox.source.tooltip_prefix": { nl: "Bron:", en: "Source:" },
+
+  // ─── Targets ──────────────────────────────────────────────────────────
+  "targets.title": { nl: "Targets", en: "Targets" },
+  "targets.subtitle": { nl: "Bedrijfsbrede performance tegenover maandelijkse targets.", en: "Company-wide performance against monthly targets." },
+
+  // Main tabs
+  "targets.tab.marketing": { nl: "Marketing / Sales", en: "Marketing / Sales" },
+  "targets.tab.delivery": { nl: "Delivery", en: "Delivery" },
+  "targets.tab.finance": { nl: "Finance", en: "Finance" },
+  "targets.tab.settings": { nl: "Instellingen", en: "Settings" },
+
+  // Tab strip right-side buttons
+  "targets.action.refresh": { nl: "Alle tabs verversen", en: "Refresh all tabs" },
+  "targets.action.settings": { nl: "Instellingen", en: "Settings" },
+
+  // Hero pillars (4 KPI cards always visible above Marketing tab)
+  "targets.pillar.cbc": { nl: "Cost per Booked Call", en: "Cost per Booked Call" },
+  "targets.pillar.qual": { nl: "Qualification Rate", en: "Qualification Rate" },
+  "targets.pillar.showup": { nl: "Show-up Rate", en: "Show-up Rate" },
+  "targets.pillar.conv": { nl: "Conversion Rate", en: "Conversion Rate" },
+
+  // Pillar subtitle fragments
+  "targets.pillar.cbc.with_target": { nl: "target {target} · {calls} booked", en: "target {target} · {calls} booked" },
+  "targets.pillar.cbc.no_target": { nl: "{calls} booked · stel CBC target in", en: "{calls} booked · set CBC target" },
+  "targets.pillar.cbc.none_yet": { nl: "Nog geen booked calls", en: "No booked calls yet" },
+  "targets.pillar.qual.with_target": { nl: "target {target} · {qualified}/{calls}", en: "target {target} · {qualified}/{calls}" },
+  "targets.pillar.qual.no_target": { nl: "{qualified}/{calls} leads gekwalificeerd", en: "{qualified}/{calls} leads qualified" },
+  "targets.pillar.showup.with_target": { nl: "target {target} · {taken}/{qualified}", en: "target {target} · {taken}/{qualified}" },
+  "targets.pillar.showup.no_target": { nl: "{taken}/{qualified} opgekomen", en: "{taken}/{qualified} showed up" },
+  "targets.pillar.conv.with_target": { nl: "target {target} · {deals}/{taken}", en: "target {target} · {deals}/{taken}" },
+  "targets.pillar.conv.no_target": { nl: "{deals}/{taken} gesloten", en: "{deals}/{taken} closed" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

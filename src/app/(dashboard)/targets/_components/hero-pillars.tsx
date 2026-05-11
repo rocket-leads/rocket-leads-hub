@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrencyDecimal, formatPercent, safeDivide } from "@/lib/targets/formatters"
 import { deriveTargets } from "@/lib/targets/calculations"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { MondayTargetsData, MetaTargetsData, TargetsConfig } from "@/types/targets"
 
 type Status = "good" | "bad" | "neutral"
@@ -42,6 +44,7 @@ interface Props {
 }
 
 export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, isLoading }: Props) {
+  const locale = useLocale()
   if (isLoading || !monday || !meta) {
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -79,10 +82,10 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
     ? "flat"
     : cbc <= cbcTarget * 0.95 ? "up" : cbc > cbcTarget * 1.05 ? "down" : "flat"
   const cbcSubtitle = cbcTarget > 0
-    ? `target ${formatCurrencyDecimal(cbcTarget)} · ${calls} booked`
+    ? t("targets.pillar.cbc.with_target", locale, { target: formatCurrencyDecimal(cbcTarget), calls: String(calls) })
     : calls > 0
-    ? `${calls} booked · set CBC target`
-    : "No booked calls yet"
+    ? t("targets.pillar.cbc.no_target", locale, { calls: String(calls) })
+    : t("targets.pillar.cbc.none_yet", locale)
 
   // ── 2. Qualification Rate — audience match ──
   const qualStatus: Status = (qualRateTarget === 0 || calls < 4) ? "neutral" : qualRate >= qualRateTarget ? "good" : "bad"
@@ -90,9 +93,9 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
     ? "flat"
     : qualRate >= qualRateTarget * 1.05 ? "up" : qualRate < qualRateTarget * 0.95 ? "down" : "flat"
   const qualSubtitle = qualRateTarget > 0
-    ? `target ${formatPercent(qualRateTarget)} · ${qualified}/${calls}`
+    ? t("targets.pillar.qual.with_target", locale, { target: formatPercent(qualRateTarget), qualified: String(qualified), calls: String(calls) })
     : calls > 0
-    ? `${qualified}/${calls} leads qualified`
+    ? t("targets.pillar.qual.no_target", locale, { qualified: String(qualified), calls: String(calls) })
     : "—"
 
   // ── 3. Show-up Rate — lead warmth & reminders ──
@@ -101,9 +104,9 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
     ? "flat"
     : showUpRate >= showUpRateTarget * 1.05 ? "up" : showUpRate < showUpRateTarget * 0.95 ? "down" : "flat"
   const showUpSubtitle = showUpRateTarget > 0
-    ? `target ${formatPercent(showUpRateTarget)} · ${taken}/${qualified}`
+    ? t("targets.pillar.showup.with_target", locale, { target: formatPercent(showUpRateTarget), taken: String(taken), qualified: String(qualified) })
     : qualified > 0
-    ? `${taken}/${qualified} showed up`
+    ? t("targets.pillar.showup.no_target", locale, { taken: String(taken), qualified: String(qualified) })
     : "—"
 
   // ── 4. Conversion Rate — sales team ──
@@ -112,36 +115,36 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
     ? "flat"
     : convRate >= convRateTarget * 1.05 ? "up" : convRate < convRateTarget * 0.95 ? "down" : "flat"
   const convSubtitle = convRateTarget > 0
-    ? `target ${formatPercent(convRateTarget)} · ${deals}/${taken}`
+    ? t("targets.pillar.conv.with_target", locale, { target: formatPercent(convRateTarget), deals: String(deals), taken: String(taken) })
     : taken > 0
-    ? `${deals}/${taken} closed`
+    ? t("targets.pillar.conv.no_target", locale, { deals: String(deals), taken: String(taken) })
     : "—"
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       <PillarCard
-        label="Cost per Booked Call"
+        label={t("targets.pillar.cbc", locale)}
         value={calls > 0 ? formatCurrencyDecimal(cbc) : "—"}
         subtitle={cbcSubtitle}
         status={cbcStatus}
         trendIcon={cbcTrend}
       />
       <PillarCard
-        label="Qualification Rate"
+        label={t("targets.pillar.qual", locale)}
         value={calls > 0 ? formatPercent(qualRate) : "—"}
         subtitle={qualSubtitle}
         status={qualStatus}
         trendIcon={qualTrend}
       />
       <PillarCard
-        label="Show-up Rate"
+        label={t("targets.pillar.showup", locale)}
         value={qualified > 0 ? formatPercent(showUpRate) : "—"}
         subtitle={showUpSubtitle}
         status={showUpStatus}
         trendIcon={showUpTrend}
       />
       <PillarCard
-        label="Conversion Rate"
+        label={t("targets.pillar.conv", locale)}
         value={taken > 0 ? formatPercent(convRate) : "—"}
         subtitle={convSubtitle}
         status={convStatus}

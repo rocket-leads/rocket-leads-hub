@@ -13,25 +13,30 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { getCachedDateRangeSnapshot } from "../_hooks/use-date-range"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 type TargetsTabId = "marketing" | "finance" | "delivery" | "settings"
 
 /** Query key prefixes belonging to the targets dashboard — used by the refresh button to scope invalidation. */
 const TARGETS_QUERY_PREFIXES = ["targets-monday", "targets-meta", "targets-finance", "targets-costs", "targets-delivery", "targets-config"] as const
 
-const ALL_MAIN_TABS: TopTab<TargetsTabId>[] = [
-  { id: "marketing", label: "Marketing / Sales", icon: BarChart3 },
-  { id: "delivery", label: "Delivery", icon: Users },
-  { id: "finance", label: "Finance", icon: CreditCard },
-]
-
 function TargetsTabsInner({ isAdmin }: { isAdmin: boolean }) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const queryClient = useQueryClient()
+  const locale = useLocale()
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const mainTabs = ALL_MAIN_TABS.filter((t) => isAdmin || t.id !== "finance")
-  const validIds = new Set<string>([...mainTabs.map((t) => t.id), ...(isAdmin ? ["settings"] : [])])
+
+  // Build tabs per render so labels flip with the locale toggle. The
+  // icon + id pair stay static.
+  const ALL_MAIN_TABS: TopTab<TargetsTabId>[] = [
+    { id: "marketing", label: t("targets.tab.marketing", locale), icon: BarChart3 },
+    { id: "delivery", label: t("targets.tab.delivery", locale), icon: Users },
+    { id: "finance", label: t("targets.tab.finance", locale), icon: CreditCard },
+  ]
+  const mainTabs = ALL_MAIN_TABS.filter((tab) => isAdmin || tab.id !== "finance")
+  const validIds = new Set<string>([...mainTabs.map((tab) => tab.id), ...(isAdmin ? ["settings"] : [])])
   const tabParam = searchParams.get("tab") ?? ""
   const activeTab: TargetsTabId = (validIds.has(tabParam) ? tabParam : "marketing") as TargetsTabId
 
@@ -90,7 +95,7 @@ function TargetsTabsInner({ isAdmin }: { isAdmin: boolean }) {
               type="button"
               onClick={handleRefresh}
               disabled={isFetching}
-              title="Refresh all tabs"
+              title={t("targets.action.refresh", locale)}
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all disabled:opacity-50"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
@@ -99,7 +104,7 @@ function TargetsTabsInner({ isAdmin }: { isAdmin: boolean }) {
               <button
                 type="button"
                 onClick={() => setTab("settings")}
-                title="Settings"
+                title={t("targets.action.settings", locale)}
                 className={`h-8 w-8 rounded-lg flex items-center justify-center transition-all ${
                   activeTab === "settings"
                     ? "text-foreground bg-muted/50"
