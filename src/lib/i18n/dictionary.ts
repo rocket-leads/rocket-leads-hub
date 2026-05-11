@@ -214,6 +214,85 @@ export const DICTIONARY = {
   "clients.cell.loading_users": { nl: "Gebruikers laden…", en: "Loading users..." },
   "clients.cell.load_users_failed": { nl: "Gebruikers laden mislukt", en: "Failed to load users" },
   "clients.cell.clear": { nl: "Wissen", en: "Clear" },
+
+  // ─── Settings — top-level + tab strip ─────────────────────────────────
+  "settings.title": { nl: "Instellingen", en: "Settings" },
+  "settings.subtitle": { nl: "API tokens, board config, gebruikers en notificaties.", en: "API tokens, board config, users and notifications." },
+  "settings.health_link": { nl: "Health →", en: "Health →" },
+
+  "settings.tab.clients": { nl: "Klanten", en: "Clients" },
+  "settings.tab.tokens": { nl: "API Tokens", en: "API Tokens" },
+  "settings.tab.board": { nl: "Board Config", en: "Board Config" },
+  "settings.tab.users": { nl: "Gebruikers", en: "Users" },
+  "settings.tab.notifications": { nl: "Notificaties", en: "Notifications" },
+  "settings.tab.inbox": { nl: "Inbox", en: "Inbox" },
+  "settings.tab.pedro": { nl: "Pedro", en: "Pedro" },
+
+  // ApiHealthBar
+  "settings.api_status.title": { nl: "API Status", en: "API Status" },
+  "settings.api_status.checked": { nl: "Gecheckt {time}", en: "Checked {time}" },
+
+  // Settings → Clients tab
+  "settings.clients.title": { nl: "Klanten", en: "Clients" },
+  "settings.clients.subtitle": { nl: "Wijzig elke klantdetail — naam, IDs, financiën, team. Wijzigingen schrijven terug naar Monday en syncen naar de Hub.", en: "Edit any client's details — name, IDs, financials, team. Changes write back to Monday and sync to the Hub." },
+  "settings.clients.search": { nl: "Zoek klanten…", en: "Search clients..." },
+  "settings.clients.empty": { nl: "Geen {status} klanten{searchSuffix}.", en: "No {status} clients{searchSuffix}." },
+  "settings.clients.empty_search_suffix": { nl: " met deze zoekopdracht", en: " matching your search" },
+
+  // ─── Settings → Health page ───────────────────────────────────────────
+  "settings.health.back": { nl: "Terug naar Instellingen", en: "Back to Settings" },
+  "settings.health.title": { nl: "Health", en: "Health" },
+  "settings.health.subtitle": { nl: "Cron + integratie heartbeat. Surface voor “is de data die we tonen daadwerkelijk vers?”", en: "Cron + integration heartbeat. Surface for “is the data we're showing actually fresh?”" },
+
+  // Summary KPI cards
+  "settings.health.kpi.crons_ok": { nl: "Crons OK", en: "Crons OK" },
+  "settings.health.kpi.crons_clear": { nl: "Alles in orde", en: "All clear" },
+  "settings.health.kpi.crons_errored_one": { nl: "{n} gefaald", en: "{n} errored" },
+  "settings.health.kpi.crons_partial_one": { nl: "{n} gedeeltelijk", en: "{n} partial" },
+  "settings.health.kpi.crons_never_one": { nl: "{n} nooit gedraaid", en: "{n} never ran" },
+  "settings.health.kpi.integrations_valid": { nl: "Geldige integraties", en: "Integrations valid" },
+  "settings.health.kpi.integrations_all_valid": { nl: "Alle tokens geldig", en: "All tokens valid" },
+  "settings.health.kpi.integrations_need_attention": { nl: "{n} vereisen aandacht", en: "{n} need attention" },
+  "settings.health.kpi.errors_24h": { nl: "Fouten (24u)", en: "Errors (24h)" },
+  "settings.health.kpi.errors_clean": { nl: "Schone run", en: "Clean run" },
+  "settings.health.kpi.errors_subtitle": { nl: "Cron-fouten in laatste 24u", en: "Cron failures in last 24h" },
+  "settings.health.kpi.last_kpi": { nl: "Laatste refresh-kpi", en: "Last refresh-kpi" },
+  "settings.health.kpi.last_kpi_subtitle": { nl: "Drijft de Watch List getallen", en: "Drives Watch List numbers" },
+
+  // Section headers + table columns
+  "settings.health.section.crons": { nl: "Crons", en: "Crons" },
+  "settings.health.section.integrations": { nl: "Integraties", en: "Integrations" },
+  "settings.health.section.recent_errors": { nl: "Recente fouten (24u)", en: "Recent errors (24h)" },
+  "settings.health.col.cron": { nl: "Cron", en: "Cron" },
+  "settings.health.col.description": { nl: "Beschrijving", en: "Description" },
+  "settings.health.col.status": { nl: "Status", en: "Status" },
+  "settings.health.col.last_run": { nl: "Laatste run", en: "Last run" },
+  "settings.health.col.duration": { nl: "Duur", en: "Duration" },
+  "settings.health.col.notes": { nl: "Notities", en: "Notes" },
+  "settings.health.col.service": { nl: "Service", en: "Service" },
+  "settings.health.col.last_verified": { nl: "Laatst gecontroleerd", en: "Last verified" },
+
+  // Status pills
+  "settings.health.status.ok": { nl: "OK", en: "OK" },
+  "settings.health.status.error": { nl: "Fout", en: "Error" },
+  "settings.health.status.partial": { nl: "Gedeeltelijk", en: "Partial" },
+  "settings.health.status.never_ran": { nl: "Nooit gedraaid", en: "Never ran" },
+  "settings.health.integration.valid": { nl: "Geldig", en: "Valid" },
+  "settings.health.integration.invalid": { nl: "Ongeldig", en: "Invalid" },
+  "settings.health.integration.no_token": { nl: "Geen token", en: "No token" },
+  "settings.health.integration.never": { nl: "Nooit", en: "Never" },
+  "settings.health.recent_errors.no_message": { nl: "(geen bericht)", en: "(no message)" },
+
+  // Cadence labels — short, used in the crons table second-row sub-line
+  "settings.health.cadence.daily_5utc": { nl: "dagelijks 05:00 UTC", en: "daily 5:00 UTC" },
+  "settings.health.cadence.daily_530utc": { nl: "dagelijks 05:30 UTC", en: "daily 5:30 UTC" },
+  "settings.health.cadence.hourly": { nl: "elk uur", en: "hourly" },
+  "settings.health.cadence.every_6h": { nl: "elke 6u", en: "every 6h" },
+  "settings.health.cadence.daily": { nl: "dagelijks", en: "daily" },
+  "settings.health.cadence.nightly": { nl: "nachtelijk", en: "nightly" },
+  "settings.health.cadence.weekly": { nl: "wekelijks", en: "weekly" },
+  "settings.health.cadence.hourly_gated": { nl: "elk uur (gated)", en: "hourly (gated)" },
+  "settings.health.cadence.daily_7utc": { nl: "dagelijks 07:00 UTC", en: "daily 7:00 UTC" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

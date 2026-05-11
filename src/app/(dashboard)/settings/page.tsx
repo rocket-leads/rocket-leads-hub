@@ -11,12 +11,15 @@ import { ApiHealthBar } from "./_components/api-health-bar"
 import { fetchAllItems, fetchBothBoards, getToken as getMondayToken } from "@/lib/integrations/monday"
 import { getSlackChannels } from "@/lib/slack"
 import { fetchFathomTeamMembers, type FathomTeamMember } from "@/lib/integrations/fathom"
+import { getUserLocale } from "@/lib/i18n/server"
+import { t } from "@/lib/i18n/t"
 
 export default async function SettingsPage() {
   const session = await auth()
   if (!session || session.user.role !== "admin") redirect("/watchlist")
 
   const supabase = await createAdminClient()
+  const locale = await getUserLocale(session.user.id)
 
   const [
     { data: tokens },
@@ -132,14 +135,14 @@ export default async function SettingsPage() {
     <div>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">Settings</h1>
-          <p className="text-[13px] text-muted-foreground mt-1">API tokens, board config, users and notifications.</p>
+          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">{t("settings.title", locale)}</h1>
+          <p className="text-[13px] text-muted-foreground mt-1">{t("settings.subtitle", locale)}</p>
         </div>
         <a
           href="/settings/health"
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border/60 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
         >
-          Health →
+          {t("settings.health_link", locale)}
         </a>
       </div>
 

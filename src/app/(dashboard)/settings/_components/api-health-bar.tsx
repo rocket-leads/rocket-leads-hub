@@ -3,6 +3,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 type ServiceResult = { ok: boolean; message: string; checkedAt: string }
 type HealthData = Record<string, ServiceResult>
@@ -47,6 +49,7 @@ function StatusPill({ service, data }: { service: { id: string; label: string };
 }
 
 export function ApiHealthBar() {
+  const locale = useLocale()
   const { data, isFetching, dataUpdatedAt, refetch } = useQuery<HealthData>({
     queryKey: ["api-health"],
     queryFn: fetchHealth,
@@ -56,18 +59,18 @@ export function ApiHealthBar() {
   })
 
   const lastChecked = dataUpdatedAt
-    ? new Date(dataUpdatedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    ? new Date(dataUpdatedAt).toLocaleTimeString(locale === "nl" ? "nl-NL" : "en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-4 py-3">
-      <span className="text-xs font-medium text-muted-foreground mr-1">API Status</span>
+      <span className="text-xs font-medium text-muted-foreground mr-1">{t("settings.api_status.title", locale)}</span>
       {SERVICES.map((svc) => (
         <StatusPill key={svc.id} service={svc} data={data?.[svc.id]} />
       ))}
       <div className="ml-auto flex items-center gap-2">
         {lastChecked && (
-          <span className="text-xs text-muted-foreground">Checked {lastChecked}</span>
+          <span className="text-xs text-muted-foreground">{t("settings.api_status.checked", locale, { time: lastChecked })}</span>
         )}
         <Button
           size="sm"

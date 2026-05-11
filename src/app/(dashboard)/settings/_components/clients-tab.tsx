@@ -7,6 +7,8 @@ import { ClientInformationPanel } from "@/components/client-information-panel"
 import { mondayStatusToHub, statusLabel, statusTone, type ClientStatus } from "@/lib/clients/status"
 import type { MondayClient } from "@/lib/integrations/monday"
 import { cn } from "@/lib/utils"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 type Props = {
   clients: MondayClient[]
@@ -18,6 +20,7 @@ type Props = {
 const STATUS_TABS: ClientStatus[] = ["live", "on_hold", "churned"]
 
 export function ClientsTab({ clients }: Props) {
+  const locale = useLocale()
   const [statusFilter, setStatusFilter] = useState<ClientStatus>("live")
   const [search, setSearch] = useState("")
   const [openId, setOpenId] = useState<string | null>(null)
@@ -56,9 +59,9 @@ export function ClientsTab({ clients }: Props) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-medium mb-1">Clients</h3>
+        <h3 className="text-sm font-medium mb-1">{t("settings.clients.title", locale)}</h3>
         <p className="text-xs text-muted-foreground/60 mb-4">
-          Edit any client&apos;s details — name, IDs, financials, team. Changes write back to Monday and sync to the Hub.
+          {t("settings.clients.subtitle", locale)}
         </p>
       </div>
 
@@ -99,7 +102,7 @@ export function ClientsTab({ clients }: Props) {
       <div className="relative max-w-sm">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
         <Input
-          placeholder="Search clients..."
+          placeholder={t("settings.clients.search", locale)}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-8 h-8 text-sm"
@@ -147,7 +150,10 @@ export function ClientsTab({ clients }: Props) {
         })}
         {filtered.length === 0 && (
           <p className="text-sm text-muted-foreground py-8 text-center">
-            No {statusLabel(statusFilter).toLowerCase()} clients{search ? " matching your search" : ""}.
+            {t("settings.clients.empty", locale, {
+              status: statusLabel(statusFilter).toLowerCase(),
+              searchSuffix: search ? t("settings.clients.empty_search_suffix", locale) : "",
+            })}
           </p>
         )}
       </div>
