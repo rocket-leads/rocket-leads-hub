@@ -22,13 +22,18 @@ import { deriveTargets } from "@/lib/targets/calculations"
 import type { CountryKey, DateRange, StripeNewBusinessInvoice, ClosedDeal } from "@/types/targets"
 import { formatCurrency } from "@/lib/targets/formatters"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 
-const COUNTRY_OPTIONS: Array<{ key: CountryKey; label: string }> = [
-  { key: "all", label: "All" },
-  { key: "nl", label: "NL" },
-  { key: "be", label: "BE" },
-  { key: "de", label: "DE" },
-  { key: "other", label: "Other" },
+/** Country segmented control. NL/BE/DE are country codes — no translation —
+ *  but "All" / "Other" flip with locale. */
+const COUNTRY_SHAPE: Array<{ key: CountryKey; labelKey: DictionaryKey | null; label: string }> = [
+  { key: "all", labelKey: "targets.country.all", label: "All" },
+  { key: "nl", labelKey: null, label: "NL" },
+  { key: "be", labelKey: null, label: "BE" },
+  { key: "de", labelKey: null, label: "DE" },
+  { key: "other", labelKey: "targets.country.other", label: "Other" },
 ]
 
 /** Pro-rata a monthly target to where we should be in the current range */
@@ -42,6 +47,7 @@ function proRata(monthlyTarget: number, range: DateRange): number {
 }
 
 export function MarketingTab() {
+  const locale = useLocale()
   const [country, setCountry] = useState<CountryKey>("all")
   const [closer, setCloser] = useState<string>("All")
   const [stripeGapOpen, setStripeGapOpen] = useState(false)
@@ -58,7 +64,9 @@ export function MarketingTab() {
 
   const m = data.monday
   const meta = data.meta
-  const t = targets ?? null
+  // Renamed from `t` to `tgt` to free the `t` identifier for the i18n
+  // `t(key, locale)` lookup imported above.
+  const tgt = targets ?? null
   const spend = meta?.spend ?? 0
   const calls = m?.calls ?? 0
   const qualified = m?.qualifiedCalls ?? 0
@@ -79,11 +87,11 @@ export function MarketingTab() {
 
   // Volume targets (calls/qualified/taken) are derived from ad-spend (= deals × cpd)
   // divided by the relevant cost ceiling. Only deals & revenue come straight from Settings.
-  const derivedT = deriveTargets(t)
+  const derivedT = deriveTargets(tgt)
   const prCalls = derivedT.calls > 0 ? Math.round(proRata(derivedT.calls, range)) : undefined
   const prQualified = derivedT.qualifiedCalls > 0 ? Math.round(proRata(derivedT.qualifiedCalls, range)) : undefined
   const prTaken = derivedT.takenCalls > 0 ? Math.round(proRata(derivedT.takenCalls, range)) : undefined
-  const prDeals = t?.deals ? Math.round(proRata(t.deals, range)) : undefined
+  const prDeals = tgt?.deals ? Math.round(proRata(tgt.deals, range)) : undefined
 
   // Ad spend target = pro-rata of (deals × cpd)
   const prSpend = derivedT.adSpend > 0 ? Math.round(proRata(derivedT.adSpend, range)) : undefined
@@ -102,16 +110,16 @@ export function MarketingTab() {
       .sort((a, b) => a.localeCompare(b))
     const hasUnassigned = (m?.closers ?? []).some((c) => c.closer === "Unassigned")
     return [
-      { value: "All", label: "All Closers" },
+      { value: "All", label: t("targets.filter.all_closers", locale) },
       ...names.map((n) => ({ value: n, label: n })),
-      ...(hasUnassigned ? [{ value: "Unassigned", label: "Unassigned" }] : []),
+      ...(hasUnassigned ? [{ value: "Unassigned", label: t("targets.filter.unassigned", locale) }] : []),
     ]
-  }, [m?.closers])
+  }, [m?.closers, locale])
 
   const filters: FilterConfig[] = [
     {
       key: "closer",
-      label: "Closer",
+      label: t("targets.filter.closer", locale),
       value: closer,
       onChange: setCloser,
       options: closerOptions,
@@ -129,17 +137,23 @@ export function MarketingTab() {
           maxDate={maxPickerDate}
         />
         <FiltersPopover filters={filters} />
-        {closerActive && (
-          <button
-            type="button"
-            onClick={() => setCloser("All")}
-            className="inline-flex items-center gap-1.5 h-8 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/15 transition-colors"
-            title="Click to clear the closer filter"
-          >
-            <span>Filtering by closer: <span className="font-semibold">{closer}</span></span>
-            <span className="text-primary/70">×</span>
-          </button>
-        )}
+        {closerActive && (() => {
+          // Bold the closer name inside the pill text — sentinel split keeps
+          // the dictionary entry natural ("Filteren op closer: {name}").
+          const pillText = t("targets.filter.active_closer", locale, { name: "__CLOSER__" })
+          const [before, after] = pillText.split("__CLOSER__")
+          return (
+            <button
+              type="button"
+              onClick={() => setCloser("All")}
+              className="inline-flex items-center gap-1.5 h-8 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary hover:bg-primary/15 transition-colors"
+              title={t("targets.filter.clear_closer", locale)}
+            >
+              <span>{before}<span className="font-semibold">{closer}</span>{after}</span>
+              <span className="text-primary/70">×</span>
+            </button>
+          )
+        })()}
         <div className="flex gap-1 flex-wrap">
           {presets.map((preset) => (
             <button
@@ -152,7 +166,7 @@ export function MarketingTab() {
           ))}
         </div>
         <div className="flex gap-0.5 ml-auto bg-muted rounded-md p-0.5">
-          {COUNTRY_OPTIONS.map(({ key, label }) => (
+          {COUNTRY_SHAPE.map(({ key, labelKey, label }) => (
             <button
               key={key}
               onClick={() => setCountry(key)}
@@ -163,7 +177,7 @@ export function MarketingTab() {
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {label}
+              {labelKey ? t(labelKey, locale) : label}
             </button>
           ))}
         </div>
@@ -171,9 +185,9 @@ export function MarketingTab() {
 
       {/* ── SECTION 1 — SUMMARY ── */}
       <section className="space-y-3">
-        <SectionHeader title="Summary" subtitle="One-second status & insights" />
-        <PulseBanner monday={m} meta={meta} targets={t} range={range} isLoading={loading} />
-        <HeroPillars monday={m} meta={meta} targets={t} isLoading={loading} />
+        <SectionHeader title={t("targets.section.summary.title", locale)} subtitle={t("targets.section.summary.subtitle", locale)} />
+        <PulseBanner monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
+        <HeroPillars monday={m} meta={meta} targets={tgt} isLoading={loading} />
         <RevenueProgressBar
           current={revenueProgress.current}
           proRata={revenueProgress.proRata}
@@ -185,7 +199,7 @@ export function MarketingTab() {
         <MarketingInsights
           monday={m}
           meta={meta}
-          targets={t}
+          targets={tgt}
           range={range}
           isLoading={loading}
         />
@@ -193,10 +207,10 @@ export function MarketingTab() {
 
       {/* ── SECTION 2 — METRICS ── */}
       <section className="space-y-3">
-        <SectionHeader title="Metrics" subtitle="Volume, costs & ratios" />
+        <SectionHeader title={t("targets.section.metrics.title", locale)} subtitle={t("targets.section.metrics.subtitle", locale)} />
 
         <div className="space-y-2">
-          <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 px-1">Volume & Costs</h3>
+          <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 px-1">{t("targets.section.volume_costs", locale)}</h3>
 
           {/* Ad Spend — full width with target */}
           <div>
@@ -205,7 +219,7 @@ export function MarketingTab() {
               value={spend}
               formatted={formatCurrencyDecimal(spend)}
               target={prSpend}
-              targetFormatted={prSpend != null ? `${formatCurrencyDecimal(spend)} of ${formatCurrencyDecimal(prSpend)}` : undefined}
+              targetFormatted={prSpend != null ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(spend), target: formatCurrencyDecimal(prSpend) }) : undefined}
               variant="volume"
               isLoading={data.metaLoading}
             />
@@ -216,27 +230,27 @@ export function MarketingTab() {
             <KpiCard
               label="Booked Calls" value={calls} formatted={String(calls)}
               target={prCalls}
-              targetFormatted={prCalls != null ? `${calls} of ${prCalls}` : undefined}
+              targetFormatted={prCalls != null ? t("targets.kpi.target_of", locale, { value: String(calls), target: String(prCalls) }) : undefined}
               variant="volume" isLoading={data.mondayLoading}
             />
             <KpiCard
               label="Qualified Calls" value={qualified} formatted={String(qualified)}
               target={prQualified}
-              targetFormatted={prQualified != null ? `${qualified} of ${prQualified}` : undefined}
+              targetFormatted={prQualified != null ? t("targets.kpi.target_of", locale, { value: String(qualified), target: String(prQualified) }) : undefined}
               variant="volume" isLoading={data.mondayLoading}
             />
             <KpiCard
               label="Taken Calls" value={taken} formatted={String(taken)}
               target={prTaken}
-              targetFormatted={prTaken != null ? `${taken} of ${prTaken}` : undefined}
-              notice={notUpdatedTotal > 0 ? `${notUpdatedTotal} not updated` : undefined}
-              noticeTitle={notUpdatedTotal > 0 ? `${notUpdatedTotal} of these past appointments are still in Qualified / Gepland status. Counted as taken so the conversion rate isn't gamed, but flagged so closers update their statuses.` : undefined}
+              targetFormatted={prTaken != null ? t("targets.kpi.target_of", locale, { value: String(taken), target: String(prTaken) }) : undefined}
+              notice={notUpdatedTotal > 0 ? t("targets.kpi.not_updated", locale, { n: String(notUpdatedTotal) }) : undefined}
+              noticeTitle={notUpdatedTotal > 0 ? t("targets.kpi.not_updated_title", locale, { n: String(notUpdatedTotal) }) : undefined}
               variant="volume" isLoading={data.mondayLoading}
             />
             <KpiCard
               label="Deals" value={deals} formatted={String(deals)}
               target={prDeals}
-              targetFormatted={prDeals != null ? `${deals} of ${prDeals}` : undefined}
+              targetFormatted={prDeals != null ? t("targets.kpi.target_of", locale, { value: String(deals), target: String(prDeals) }) : undefined}
               variant="volume" isLoading={data.mondayLoading}
             />
           </div>
@@ -246,29 +260,29 @@ export function MarketingTab() {
             <KpiCard
               label="CBC" value={safeDivide(spend, calls)}
               formatted={formatCurrencyDecimal(safeDivide(spend, calls))}
-              target={t?.cbc || undefined}
-              targetFormatted={t?.cbc ? `${formatCurrencyDecimal(safeDivide(spend, calls))} of ${formatCurrencyDecimal(t.cbc)}` : undefined}
+              target={tgt?.cbc || undefined}
+              targetFormatted={tgt?.cbc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, calls)), target: formatCurrencyDecimal(tgt.cbc) }) : undefined}
               variant="cost" isLoading={loading}
             />
             <KpiCard
               label="CQC" value={safeDivide(spend, qualified)}
               formatted={formatCurrencyDecimal(safeDivide(spend, qualified))}
-              target={t?.cqc || undefined}
-              targetFormatted={t?.cqc ? `${formatCurrencyDecimal(safeDivide(spend, qualified))} of ${formatCurrencyDecimal(t.cqc)}` : undefined}
+              target={tgt?.cqc || undefined}
+              targetFormatted={tgt?.cqc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, qualified)), target: formatCurrencyDecimal(tgt.cqc) }) : undefined}
               variant="cost" isLoading={loading}
             />
             <KpiCard
               label="CTC" value={safeDivide(spend, taken)}
               formatted={formatCurrencyDecimal(safeDivide(spend, taken))}
-              target={t?.ctc || undefined}
-              targetFormatted={t?.ctc ? `${formatCurrencyDecimal(safeDivide(spend, taken))} of ${formatCurrencyDecimal(t.ctc)}` : undefined}
+              target={tgt?.ctc || undefined}
+              targetFormatted={tgt?.ctc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, taken)), target: formatCurrencyDecimal(tgt.ctc) }) : undefined}
               variant="cost" isLoading={loading}
             />
             <KpiCard
               label="CPD" value={safeDivide(spend, deals)}
               formatted={formatCurrencyDecimal(safeDivide(spend, deals))}
-              target={t?.cpd || undefined}
-              targetFormatted={t?.cpd ? `${formatCurrencyDecimal(safeDivide(spend, deals))} of ${formatCurrencyDecimal(t.cpd)}` : undefined}
+              target={tgt?.cpd || undefined}
+              targetFormatted={tgt?.cpd ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, deals)), target: formatCurrencyDecimal(tgt.cpd) }) : undefined}
               variant="cost" isLoading={loading}
             />
           </div>
@@ -288,7 +302,7 @@ export function MarketingTab() {
 
       {/* ── SECTION 3 — BREAKDOWN ── */}
       <section className="space-y-3">
-        <SectionHeader title="Breakdown" subtitle="Trends, industries & team performance" />
+        <SectionHeader title={t("targets.section.breakdown.title", locale)} subtitle={t("targets.section.breakdown.subtitle", locale)} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <WeeklyOverview data={m?.weekly ?? []} isLoading={data.mondayLoading} />
@@ -328,6 +342,7 @@ function StripeGapModal({
   mondayRevenue: number
   stripeRevenue: number
 }) {
+  const locale = useLocale()
   const [showAll, setShowAll] = useState(false)
   if (!open) return null
   const gap = stripeRevenue - mondayRevenue
@@ -338,8 +353,12 @@ function StripeGapModal({
   const visibleDeals = showAll ? deals : deals.filter((d) => !d.matched)
   const visibleInvoices = showAll ? invoices : invoices.filter((i) => !i.matched)
   const matchedCount = deals.filter((d) => d.matched).length
-  const dealsTotalLabel = showAll ? `${deals.length} total` : `${visibleDeals.length} unmatched · ${matchedCount} matched`
-  const invoicesTotalLabel = showAll ? `${invoices.length} total` : `${visibleInvoices.length} unmatched · ${matchedCount} matched`
+  const dealsTotalLabel = showAll
+    ? t("targets.stripe.count.total", locale, { n: String(deals.length) })
+    : t("targets.stripe.count.split", locale, { unmatched: String(visibleDeals.length), matched: String(matchedCount) })
+  const invoicesTotalLabel = showAll
+    ? t("targets.stripe.count.total", locale, { n: String(invoices.length) })
+    : t("targets.stripe.count.split", locale, { unmatched: String(visibleInvoices.length), matched: String(matchedCount) })
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -350,24 +369,24 @@ function StripeGapModal({
         <div className="px-5 py-4 border-b border-border/40">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold">Monday vs Stripe — Revenue cross-check</h3>
+              <h3 className="text-sm font-semibold">{t("targets.stripe.title", locale)}</h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Showing only items without a counterpart on the other side. Matched pairs are hidden by default — toggle below to see everything.
+                {t("targets.stripe.subtitle", locale)}
               </p>
             </div>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none shrink-0">×</button>
           </div>
           <div className="grid grid-cols-3 gap-3 mt-4 text-xs">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Monday closed deals</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{t("targets.stripe.monday_closed_deals", locale)}</p>
               <p className="font-mono font-medium mt-0.5">{formatCurrency(mondayRevenue)} <span className="text-muted-foreground/60 font-normal">· {deals.length}</span></p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Stripe new business</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{t("targets.stripe.stripe_new_business", locale)}</p>
               <p className="font-mono font-medium mt-0.5">{formatCurrency(stripeRevenue)} <span className="text-muted-foreground/60 font-normal">· {invoices.length}</span></p>
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-yellow-500/80">Gap (Stripe − Monday)</p>
+              <p className="text-[10px] uppercase tracking-wider text-yellow-500/80">{t("targets.stripe.gap", locale)}</p>
               <p className={cn("font-mono font-semibold mt-0.5", gap > 0 ? "text-yellow-500" : "text-foreground")}>{formatCurrency(gap)}</p>
             </div>
           </div>
@@ -377,7 +396,7 @@ function StripeGapModal({
               onClick={() => setShowAll((v) => !v)}
               className="text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
             >
-              {showAll ? "Show only unmatched" : "Show all (incl. matched)"}
+              {showAll ? t("targets.stripe.show_unmatched", locale) : t("targets.stripe.show_all", locale)}
             </button>
           </div>
         </div>
@@ -385,19 +404,19 @@ function StripeGapModal({
           {/* Monday side */}
           <div className="flex flex-col overflow-hidden">
             <div className="px-4 py-2 border-b border-border/40 bg-muted/20 flex items-center justify-between">
-              <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Monday closed deals</h4>
+              <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">{t("targets.stripe.monday_closed_deals", locale)}</h4>
               <span className="text-[10px] text-muted-foreground/70">{dealsTotalLabel}</span>
             </div>
             <div className="flex-1 overflow-y-auto">
               {visibleDeals.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-muted-foreground text-center">{deals.length === 0 ? "No closed deals in this period." : "Every deal has a Stripe match. Nothing to fix."}</p>
+                <p className="px-4 py-6 text-xs text-muted-foreground text-center">{deals.length === 0 ? t("targets.stripe.empty.deals_none", locale) : t("targets.stripe.empty.deals_all_matched", locale)}</p>
               ) : (
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card border-b border-border/40">
                     <tr>
-                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Date</th>
-                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Lead · Company · Closer</th>
-                      <th className="text-right py-2 px-4 font-medium text-muted-foreground">Value</th>
+                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.date", locale)}</th>
+                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.lead_company_closer", locale)}</th>
+                      <th className="text-right py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.value", locale)}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -421,19 +440,19 @@ function StripeGapModal({
           {/* Stripe side */}
           <div className="flex flex-col overflow-hidden">
             <div className="px-4 py-2 border-b border-border/40 bg-muted/20 flex items-center justify-between">
-              <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">Stripe new-business invoices</h4>
+              <h4 className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">{t("targets.stripe.stripe_invoices_title", locale)}</h4>
               <span className="text-[10px] text-muted-foreground/70">{invoicesTotalLabel}</span>
             </div>
             <div className="flex-1 overflow-y-auto">
               {visibleInvoices.length === 0 ? (
-                <p className="px-4 py-6 text-xs text-muted-foreground text-center">{invoices.length === 0 ? "No Stripe new-business invoices in this period." : "Every invoice has a Monday match. Nothing to fix."}</p>
+                <p className="px-4 py-6 text-xs text-muted-foreground text-center">{invoices.length === 0 ? t("targets.stripe.empty.invoices_none", locale) : t("targets.stripe.empty.invoices_all_matched", locale)}</p>
               ) : (
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-card border-b border-border/40">
                     <tr>
-                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Date</th>
-                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">Customer / Invoice</th>
-                      <th className="text-right py-2 px-4 font-medium text-muted-foreground">Amount</th>
+                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.date", locale)}</th>
+                      <th className="text-left py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.customer_invoice", locale)}</th>
+                      <th className="text-right py-2 px-4 font-medium text-muted-foreground">{t("targets.stripe.col.amount", locale)}</th>
                     </tr>
                   </thead>
                   <tbody>

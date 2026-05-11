@@ -488,6 +488,51 @@ export const DICTIONARY = {
   "client.date.preset.this_quarter": { nl: "Dit kwartaal", en: "This quarter" },
   "client.date.from": { nl: "Vanaf", en: "From" },
   "client.date.to": { nl: "Tot", en: "To" },
+
+  // ─── Targets — Marketing tab chrome ───────────────────────────────────
+  // KPI metric labels (Ad Spend, Booked Calls, CBC, CQC, etc.) stay English
+  // in both locales — they're agreed RL jargon used in Slack + Settings.
+  "targets.country.all": { nl: "Alles", en: "All" },
+  "targets.country.other": { nl: "Overig", en: "Other" },
+  "targets.filter.closer": { nl: "Closer", en: "Closer" },
+  "targets.filter.all_closers": { nl: "Alle closers", en: "All Closers" },
+  "targets.filter.unassigned": { nl: "Niet toegewezen", en: "Unassigned" },
+  "targets.filter.active_closer": { nl: "Filteren op closer: {name}", en: "Filtering by closer: {name}" },
+  "targets.filter.clear_closer": { nl: "Klik om het closer filter te wissen", en: "Click to clear the closer filter" },
+
+  "targets.section.summary.title": { nl: "Samenvatting", en: "Summary" },
+  "targets.section.summary.subtitle": { nl: "Status & insights in één oogopslag", en: "One-second status & insights" },
+  "targets.section.metrics.title": { nl: "Metrics", en: "Metrics" },
+  "targets.section.metrics.subtitle": { nl: "Volume, kosten & ratio's", en: "Volume, costs & ratios" },
+  "targets.section.breakdown.title": { nl: "Breakdown", en: "Breakdown" },
+  "targets.section.breakdown.subtitle": { nl: "Trends, branches & team performance", en: "Trends, industries & team performance" },
+  "targets.section.volume_costs": { nl: "Volume & Kosten", en: "Volume & Costs" },
+
+  // KpiCard helpers
+  "targets.kpi.not_updated": { nl: "{n} niet bijgewerkt", en: "{n} not updated" },
+  "targets.kpi.not_updated_title": { nl: "{n} van deze afgelopen afspraken staan nog op Qualified / Gepland status. Geteld als taken zodat de conversion rate niet gespeeld wordt, maar gemarkeerd zodat closers hun statussen bijwerken.", en: "{n} of these past appointments are still in Qualified / Gepland status. Counted as taken so the conversion rate isn't gamed, but flagged so closers update their statuses." },
+  "targets.kpi.target_of": { nl: "{value} van {target}", en: "{value} of {target}" },
+
+  // Stripe gap modal (admin drilldown)
+  "targets.stripe.title": { nl: "Monday vs Stripe — Revenue cross-check", en: "Monday vs Stripe — Revenue cross-check" },
+  "targets.stripe.subtitle": { nl: "Toont alleen items zonder tegenhanger aan de andere kant. Gematchte paren zijn standaard verborgen — gebruik de toggle om alles te zien.", en: "Showing only items without a counterpart on the other side. Matched pairs are hidden by default — toggle below to see everything." },
+  "targets.stripe.monday_closed_deals": { nl: "Monday closed deals", en: "Monday closed deals" },
+  "targets.stripe.stripe_new_business": { nl: "Stripe new business", en: "Stripe new business" },
+  "targets.stripe.gap": { nl: "Gap (Stripe − Monday)", en: "Gap (Stripe − Monday)" },
+  "targets.stripe.show_unmatched": { nl: "Toon alleen unmatched", en: "Show only unmatched" },
+  "targets.stripe.show_all": { nl: "Toon alles (incl. matched)", en: "Show all (incl. matched)" },
+  "targets.stripe.stripe_invoices_title": { nl: "Stripe new-business facturen", en: "Stripe new-business invoices" },
+  "targets.stripe.empty.deals_none": { nl: "Geen closed deals in deze periode.", en: "No closed deals in this period." },
+  "targets.stripe.empty.deals_all_matched": { nl: "Elke deal heeft een Stripe match. Niks om te fixen.", en: "Every deal has a Stripe match. Nothing to fix." },
+  "targets.stripe.empty.invoices_none": { nl: "Geen Stripe new-business facturen in deze periode.", en: "No Stripe new-business invoices in this period." },
+  "targets.stripe.empty.invoices_all_matched": { nl: "Elke factuur heeft een Monday match. Niks om te fixen.", en: "Every invoice has a Monday match. Nothing to fix." },
+  "targets.stripe.col.date": { nl: "Datum", en: "Date" },
+  "targets.stripe.col.lead_company_closer": { nl: "Lead · Bedrijf · Closer", en: "Lead · Company · Closer" },
+  "targets.stripe.col.value": { nl: "Waarde", en: "Value" },
+  "targets.stripe.col.customer_invoice": { nl: "Klant / Factuur", en: "Customer / Invoice" },
+  "targets.stripe.col.amount": { nl: "Bedrag", en: "Amount" },
+  "targets.stripe.count.total": { nl: "{n} totaal", en: "{n} total" },
+  "targets.stripe.count.split": { nl: "{unmatched} unmatched · {matched} matched", en: "{unmatched} unmatched · {matched} matched" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY
