@@ -6,6 +6,10 @@ import Link from "next/link"
 import { Sparkles, RefreshCw, ExternalLink, AlertCircle, Calendar, TrendingDown, TrendingUp, Minus, History, RotateCcw, Check } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
+import type { Locale } from "@/lib/i18n/types"
 
 /**
  * Pedro tab on the client detail page. Shows what Pedro has done for this
@@ -61,24 +65,24 @@ type ClientStateResponse = {
   }
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
+function fmtDate(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleDateString(locale === "nl" ? "nl-NL" : "en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   })
 }
 
-function fmtEuro(n: number): string {
-  return `€${n.toLocaleString("nl-NL", { maximumFractionDigits: 0 })}`
+function fmtEuro(n: number, locale: Locale): string {
+  return `€${n.toLocaleString(locale === "nl" ? "nl-NL" : "en-GB", { maximumFractionDigits: 0 })}`
 }
 
-function TrendCell({ pct, goodIs }: { pct: number | null; goodIs: "up" | "down" }) {
+function TrendCell({ pct, goodIs, locale }: { pct: number | null; goodIs: "up" | "down"; locale: Locale }) {
   if (pct == null || Math.abs(pct) < 5) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60">
         <Minus className="h-3 w-3" />
-        flat
+        {t("client.pedro.refresh.trend.flat", locale)}
       </span>
     )
   }
@@ -96,14 +100,16 @@ function TrendCell({ pct, goodIs }: { pct: number | null; goodIs: "up" | "down" 
 
 function StatusPill({
   state,
+  locale,
 }: {
   state: NonNullable<ClientStateResponse["state"]> | null
+  locale: Locale
 }) {
   if (!state) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
         <AlertCircle className="h-3 w-3" />
-        Pedro nog niet gestart
+        {t("client.pedro.status.not_started", locale)}
       </span>
     )
   }
@@ -116,19 +122,20 @@ function StatusPill({
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
         <Sparkles className="h-3 w-3" />
-        Auto-draft (nog niet bewerkt)
+        {t("client.pedro.status.auto_draft", locale)}
       </span>
     )
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
       <Sparkles className="h-3 w-3" />
-      Pedro actief — campagne #{state.campaign_number}
+      {t("client.pedro.status.active", locale, { n: String(state.campaign_number) })}
     </span>
   )
 }
 
 export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; clientName: string }) {
+  const locale = useLocale()
   const { data, isLoading } = useQuery<ClientStateResponse>({
     queryKey: ["pedro-client-state", mondayItemId],
     queryFn: () =>
@@ -159,12 +166,18 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <h3 className="font-heading font-semibold text-base">Pedro</h3>
-              <StatusPill state={state} />
+              <StatusPill state={state} locale={locale} />
             </div>
             <p className="text-sm text-muted-foreground">
               {state
-                ? `Laatst bewerkt ${fmtDate(state.updated_at)} · ${refreshes.length} refresh${refreshes.length === 1 ? "" : "es"}`
-                : "Nog geen brief, angles of refreshes voor deze klant gegenereerd."}
+                ? t(
+                    refreshes.length === 1
+                      ? "client.pedro.header.last_edited_one"
+                      : "client.pedro.header.last_edited_many",
+                    locale,
+                    { date: fmtDate(state.updated_at, locale), n: String(refreshes.length) },
+                  )
+                : t("client.pedro.header.empty", locale)}
             </p>
             {state?.auto_brief_meta?.source && (
               <p className="text-xs text-muted-foreground/70 italic">
@@ -178,15 +191,15 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
               className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              Open in Pedro
+              {t("client.pedro.action.open", locale)}
             </Link>
             <Link
               href={`/pedro?tab=refresh&clientId=${mondayItemId}&auto=1`}
               className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md border border-border text-foreground hover:bg-accent transition-colors"
-              title="Vraag Pedro een nieuwe creative refresh"
+              title={t("client.pedro.action.refresh_title", locale)}
             >
               <RefreshCw className="h-3.5 w-3.5" />
-              Refresh
+              {t("client.pedro.action.refresh", locale)}
             </Link>
           </div>
         </CardContent>
@@ -197,27 +210,27 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
         <Card>
           <CardContent className="py-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="font-heading font-semibold text-sm">Brief snapshot</h4>
+              <h4 className="font-heading font-semibold text-sm">{t("client.pedro.brief.title", locale)}</h4>
               <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/60 font-semibold">
-                Campagne #{state.campaign_number}
+                {t("client.pedro.brief.campaign", locale, { n: String(state.campaign_number) })}
               </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               {(["sector", "doel", "pijn", "aanbod", "usps", "hooksAM"] as const).map((field) => {
-                const labels: Record<string, string> = {
-                  sector: "Sector",
-                  doel: "Doelgroep",
-                  pijn: "Pijnpunten",
-                  aanbod: "Aanbod",
-                  usps: "USPs",
-                  hooksAM: "Marketing hooks",
+                const labelKeys: Record<string, DictionaryKey> = {
+                  sector: "client.pedro.brief.field.sector",
+                  doel: "client.pedro.brief.field.doel",
+                  pijn: "client.pedro.brief.field.pijn",
+                  aanbod: "client.pedro.brief.field.aanbod",
+                  usps: "client.pedro.brief.field.usps",
+                  hooksAM: "client.pedro.brief.field.hooksAM",
                 }
                 const value = state.brief?.[field] ?? ""
                 if (!value) return null
                 return (
                   <div key={field} className="space-y-1">
                     <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-                      {labels[field]}
+                      {t(labelKeys[field], locale)}
                     </div>
                     <div className="text-sm text-foreground whitespace-pre-line line-clamp-3">
                       {value}
@@ -237,18 +250,18 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
       <Card>
         <CardContent className="py-5">
           <div className="flex items-center justify-between mb-4">
-            <h4 className="font-heading font-semibold text-sm">Refresh history</h4>
-            <span className="text-xs text-muted-foreground/60">{refreshes.length} totaal</span>
+            <h4 className="font-heading font-semibold text-sm">{t("client.pedro.refresh.title", locale)}</h4>
+            <span className="text-xs text-muted-foreground/60">{t("client.pedro.refresh.total", locale, { n: String(refreshes.length) })}</span>
           </div>
 
           {sortedRefreshes.length === 0 ? (
             <div className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
-              Nog geen refresh-rondes gedraaid.{" "}
+              {t("client.pedro.refresh.empty_lead", locale)}{" "}
               <Link
                 href={`/pedro?tab=refresh&clientId=${mondayItemId}&auto=1`}
                 className="text-primary hover:underline"
               >
-                Genereer er nu één →
+                {t("client.pedro.refresh.empty_cta", locale)}
               </Link>
             </div>
           ) : (
@@ -261,13 +274,13 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Calendar className="h-3 w-3" />
-                      {fmtDate(r.generatedAt)}
+                      {fmtDate(r.generatedAt, locale)}
                       <span className="text-muted-foreground/40">·</span>
-                      <span>{r.window.days}d window ({r.window.start} → {r.window.end})</span>
+                      <span>{t("client.pedro.refresh.window", locale, { days: String(r.window.days), start: r.window.start, end: r.window.end })}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
                       <span className="text-muted-foreground">
-                        {r.stats.winnerCount} winners / {r.stats.loserCount} losers
+                        {t("client.pedro.refresh.winners_losers", locale, { w: String(r.stats.winnerCount), l: String(r.stats.loserCount) })}
                       </span>
                     </div>
                   </div>
@@ -280,26 +293,26 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
                   <div className="grid grid-cols-3 gap-3 text-xs">
                     <div className="space-y-0.5">
                       <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-                        Spend
+                        {t("client.pedro.refresh.stat.spend", locale)}
                       </div>
-                      <div className="font-medium tabular-nums">{fmtEuro(r.stats.totalSpend)}</div>
-                      <TrendCell pct={r.trend.spendDeltaPct} goodIs="up" />
+                      <div className="font-medium tabular-nums">{fmtEuro(r.stats.totalSpend, locale)}</div>
+                      <TrendCell pct={r.trend.spendDeltaPct} goodIs="up" locale={locale} />
                     </div>
                     <div className="space-y-0.5">
                       <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-                        Leads
+                        {t("client.pedro.refresh.stat.leads", locale)}
                       </div>
                       <div className="font-medium tabular-nums">{r.stats.totalLeads}</div>
-                      <TrendCell pct={r.trend.leadsDeltaPct} goodIs="up" />
+                      <TrendCell pct={r.trend.leadsDeltaPct} goodIs="up" locale={locale} />
                     </div>
                     <div className="space-y-0.5">
                       <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-                        Avg CPL
+                        {t("client.pedro.refresh.stat.avg_cpl", locale)}
                       </div>
                       <div className="font-medium tabular-nums">
                         {r.stats.avgCpl != null ? `€${r.stats.avgCpl.toFixed(2)}` : "—"}
                       </div>
-                      <TrendCell pct={r.trend.cplDeltaPct} goodIs="down" />
+                      <TrendCell pct={r.trend.cplDeltaPct} goodIs="down" locale={locale} />
                     </div>
                   </div>
 
@@ -307,7 +320,11 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
                   {r.proposals.length > 0 && (
                     <div className="pt-2 border-t border-border/40">
                       <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-2">
-                        {r.proposals.length} proposal{r.proposals.length === 1 ? "" : "s"} — itereren op:
+                        {t(
+                          r.proposals.length === 1 ? "client.pedro.refresh.proposals_one" : "client.pedro.refresh.proposals_many",
+                          locale,
+                          { n: String(r.proposals.length) },
+                        )}
                       </div>
                       <ul className="space-y-1.5 text-sm">
                         {r.proposals.map((p, j) => (
@@ -318,7 +335,7 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
                               {p.basedOnAd.cpl != null && (
                                 <span className="text-muted-foreground"> · CPL €{p.basedOnAd.cpl.toFixed(2)}</span>
                               )}
-                              <span className="text-muted-foreground"> — {p.variants.length} varianten</span>
+                              <span className="text-muted-foreground"> — {t("client.pedro.refresh.variants", locale, { n: String(p.variants.length) })}</span>
                             </span>
                           </li>
                         ))}
@@ -335,14 +352,14 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
               href={`/pedro?tab=refresh&clientId=${mondayItemId}`}
               className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
-              Open de volledige refresh-stage in Pedro <ExternalLink className="h-3 w-3" />
+              {t("client.pedro.refresh.open_full", locale)} <ExternalLink className="h-3 w-3" />
             </Link>
           </div>
         </CardContent>
       </Card>
 
       <p className="text-[11px] text-muted-foreground/60 text-center pt-2">
-        {clientName} · alle Pedro deliverables worden per campagne opgeslagen op deze klant
+        {t("client.pedro.footer", locale, { client: clientName })}
       </p>
     </div>
   )
@@ -358,14 +375,16 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
 
 type StageId = "brief" | "angles" | "script" | "creatives" | "lp" | "ad-copy" | "research"
 
-const STAGE_LABELS: Record<StageId, string> = {
-  brief: "Brief",
-  research: "Research",
-  angles: "Angles",
-  script: "Script",
-  creatives: "Creatives",
-  lp: "LP prompts",
-  "ad-copy": "Ad copy",
+/** Dictionary key per stage. Used for both filter chips and per-row stage
+ *  labels in the saved-version timeline. */
+const STAGE_LABEL_KEY: Record<StageId, DictionaryKey> = {
+  brief: "client.pedro.stage.brief",
+  research: "client.pedro.stage.research",
+  angles: "client.pedro.stage.angles",
+  script: "client.pedro.stage.script",
+  creatives: "client.pedro.stage.creatives",
+  lp: "client.pedro.stage.lp",
+  "ad-copy": "client.pedro.stage.ad_copy",
 }
 
 type SavedVersionRow = {
@@ -380,8 +399,8 @@ type SavedVersionRow = {
   saved_at: string
 }
 
-function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", {
+function fmtDateTime(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB", {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
@@ -405,6 +424,8 @@ function previewForStage(stage: StageId, data: unknown): string {
   }
   if (stage === "creatives") {
     const c = data as { qty?: number; formats?: string[] }
+    // "X creatives" / "X formats" left as a compact data preview — the labels
+    // here are part of the data shape, not chrome.
     return `${c.qty ?? "?"} creatives · ${(c.formats ?? []).join(", ") || "—"}`
   }
   if (stage === "lp") {
@@ -423,6 +444,7 @@ function previewForStage(stage: StageId, data: unknown): string {
 }
 
 function SavedVersionTimeline({ mondayItemId }: { mondayItemId: string }) {
+  const locale = useLocale()
   const queryClient = useQueryClient()
   const [stageFilter, setStageFilter] = useState<StageId | "all">("all")
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -500,18 +522,22 @@ function SavedVersionTimeline({ mondayItemId }: { mondayItemId: string }) {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-muted-foreground" />
-            <h4 className="font-heading font-semibold text-sm">Versie geschiedenis</h4>
+            <h4 className="font-heading font-semibold text-sm">{t("client.pedro.versions.title", locale)}</h4>
           </div>
           <span className="text-xs text-muted-foreground/60">
-            {versions.length} versie{versions.length === 1 ? "" : "s"}
+            {t(
+              versions.length === 1 ? "client.pedro.versions.count_one" : "client.pedro.versions.count_many",
+              locale,
+              { n: String(versions.length) },
+            )}
           </span>
         </div>
 
         {versions.length === 0 ? (
           <div className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
-            Nog geen versies opgeslagen.{" "}
+            {t("client.pedro.versions.empty_lead", locale)}{" "}
             <Link href={`/pedro?tab=brief&clientId=${mondayItemId}`} className="text-primary hover:underline">
-              Open Pedro →
+              {t("client.pedro.versions.empty_cta", locale)}
             </Link>
           </div>
         ) : (
@@ -527,7 +553,7 @@ function SavedVersionTimeline({ mondayItemId }: { mondayItemId: string }) {
                     : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:bg-accent"
                 }`}
               >
-                Alle ({versions.length})
+                {t("client.pedro.versions.filter.all", locale, { n: String(versions.length) })}
               </button>
               {stagesPresent.map((s) => {
                 const count = versions.filter((v) => v.stage === s).length
@@ -542,7 +568,7 @@ function SavedVersionTimeline({ mondayItemId }: { mondayItemId: string }) {
                         : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:bg-accent"
                     }`}
                   >
-                    {STAGE_LABELS[s]} ({count})
+                    {t("client.pedro.versions.stage_filter_count", locale, { stage: t(STAGE_LABEL_KEY[s], locale), n: String(count) })}
                   </button>
                 )
               })}
@@ -572,14 +598,14 @@ function SavedVersionTimeline({ mondayItemId }: { mondayItemId: string }) {
                           v{v.version_number}
                         </span>
                         <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold shrink-0">
-                          {STAGE_LABELS[v.stage]}
+                          {t(STAGE_LABEL_KEY[v.stage], locale)}
                         </span>
                         <span className="text-xs text-muted-foreground truncate">
                           {previewForStage(v.stage, v.data)}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-[11px] text-muted-foreground/70">{fmtDateTime(v.saved_at)}</span>
+                        <span className="text-[11px] text-muted-foreground/70">{fmtDateTime(v.saved_at, locale)}</span>
                         <button
                           type="button"
                           onClick={(e) => {
@@ -594,16 +620,16 @@ function SavedVersionTimeline({ mondayItemId }: { mondayItemId: string }) {
                                 ? "text-red-600 dark:text-red-400 border-red-500/40"
                                 : "text-muted-foreground hover:text-foreground hover:bg-accent border-border"
                           }`}
-                          title="Restore deze versie als draft (overschrijft de huidige draft)"
+                          title={t("client.pedro.versions.action.title", locale)}
                         >
                           {rState === "ok" ? <Check className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
                           {rState === "saving"
                             ? "..."
                             : rState === "ok"
-                              ? "Restored"
+                              ? t("client.pedro.versions.action.restored", locale)
                               : rState === "err"
-                                ? "Fout"
-                                : "Restore"}
+                                ? t("client.pedro.versions.action.error", locale)
+                                : t("client.pedro.versions.action.restore", locale)}
                         </button>
                       </div>
                     </div>
@@ -621,7 +647,7 @@ function SavedVersionTimeline({ mondayItemId }: { mondayItemId: string }) {
 
             {filtered.length === 0 && (
               <div className="text-xs text-muted-foreground italic mt-3 text-center">
-                Geen versies in deze stage.
+                {t("client.pedro.versions.empty_filtered", locale)}
               </div>
             )}
           </>

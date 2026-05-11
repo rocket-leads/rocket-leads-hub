@@ -14,20 +14,27 @@ import {
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
+import type { Locale } from "@/lib/i18n/types"
 import type { TimelineEntry } from "@/app/api/clients/[id]/timeline/route"
 
 type Props = { mondayItemId: string }
 
 type SourceFilter = "all" | "monday" | "trengo" | "slack" | "meeting" | "manual"
 
-const SOURCE_LABEL: Record<TimelineEntry["source"], string> = {
-  monday: "Monday",
-  trengo: "Trengo",
-  slack: "Slack",
-  meeting: "Fathom",
-  manual: "Manual",
-  watchlist: "Watch List",
-  automation: "Automation",
+/** Dictionary key per source. Brand names (Monday/Trengo/Slack/Fathom)
+ *  resolve to the same string in NL + EN; only "Manual", "Watch List",
+ *  "Automation" actually translate. */
+const SOURCE_LABEL_KEY: Record<TimelineEntry["source"], DictionaryKey> = {
+  monday: "client.timeline.source.monday",
+  trengo: "client.timeline.source.trengo",
+  slack: "client.timeline.source.slack",
+  meeting: "client.timeline.source.meeting",
+  manual: "client.timeline.source.manual",
+  watchlist: "client.timeline.source.watchlist",
+  automation: "client.timeline.source.automation",
 }
 
 const SOURCE_BADGE_CLASS: Record<TimelineEntry["source"], string> = {
@@ -55,10 +62,10 @@ function iconFor(entry: TimelineEntry) {
   }
 }
 
-function formatDateTime(iso: string): string {
+function formatDateTime(iso: string, locale: Locale): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return "—"
-  return d.toLocaleString("en-GB", {
+  return d.toLocaleString(locale === "nl" ? "nl-NL" : "en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -67,7 +74,7 @@ function formatDateTime(iso: string): string {
   })
 }
 
-function formatDay(iso: string): string {
+function formatDay(iso: string, locale: Locale): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return "—"
   const today = new Date()
@@ -77,12 +84,13 @@ function formatDay(iso: string): string {
   const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
 
-  if (isSameDay(d, today)) return "Today"
-  if (isSameDay(d, yesterday)) return "Yesterday"
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+  if (isSameDay(d, today)) return t("client.timeline.day.today", locale)
+  if (isSameDay(d, yesterday)) return t("client.timeline.day.yesterday", locale)
+  return d.toLocaleDateString(locale === "nl" ? "nl-NL" : "en-GB", { day: "numeric", month: "short", year: "numeric" })
 }
 
 export function TimelineTab({ mondayItemId }: Props) {
+  const locale = useLocale()
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all")
 
   const { data, isLoading, error } = useQuery<{ entries: TimelineEntry[] }>({
@@ -102,13 +110,13 @@ export function TimelineTab({ mondayItemId }: Props) {
   const grouped = useMemo(() => {
     const groups = new Map<string, TimelineEntry[]>()
     for (const e of filtered) {
-      const key = formatDay(e.occurred_at)
+      const key = formatDay(e.occurred_at, locale)
       const arr = groups.get(key) ?? []
       arr.push(e)
       groups.set(key, arr)
     }
     return Array.from(groups.entries())
-  }, [filtered])
+  }, [filtered, locale])
 
   const sourceCounts = useMemo(() => {
     const counts: Record<string, number> = { all: entries.length }
@@ -131,7 +139,7 @@ export function TimelineTab({ mondayItemId }: Props) {
     return (
       <Card>
         <CardContent className="py-8 text-center text-sm text-destructive">
-          Failed to load timeline.
+          {t("client.timeline.error", locale)}
         </CardContent>
       </Card>
     )
@@ -141,9 +149,9 @@ export function TimelineTab({ mondayItemId }: Props) {
     return (
       <Card>
         <CardContent className="py-10 text-center space-y-1">
-          <p className="text-sm font-medium">Nothing has happened with this client yet.</p>
+          <p className="text-sm font-medium">{t("client.timeline.empty.title", locale)}</p>
           <p className="text-xs text-muted-foreground">
-            Trengo messages, Monday updates, Slack mentions and Fathom meetings show up here.
+            {t("client.timeline.empty.body", locale)}
           </p>
         </CardContent>
       </Card>
@@ -151,11 +159,11 @@ export function TimelineTab({ mondayItemId }: Props) {
   }
 
   const filterChips: { id: SourceFilter; label: string }[] = [
-    { id: "all", label: "All" },
-    { id: "monday", label: SOURCE_LABEL.monday },
-    { id: "trengo", label: SOURCE_LABEL.trengo },
-    { id: "slack", label: SOURCE_LABEL.slack },
-    { id: "meeting", label: SOURCE_LABEL.meeting },
+    { id: "all", label: t("client.timeline.filter.all", locale) },
+    { id: "monday", label: t(SOURCE_LABEL_KEY.monday, locale) },
+    { id: "trengo", label: t(SOURCE_LABEL_KEY.trengo, locale) },
+    { id: "slack", label: t(SOURCE_LABEL_KEY.slack, locale) },
+    { id: "meeting", label: t(SOURCE_LABEL_KEY.meeting, locale) },
   ]
 
   return (
@@ -190,7 +198,11 @@ export function TimelineTab({ mondayItemId }: Props) {
       {grouped.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            No {SOURCE_LABEL[sourceFilter as TimelineEntry["source"]]?.toLowerCase() ?? sourceFilter} entries.
+            {t("client.timeline.empty.filtered", locale, {
+              source: SOURCE_LABEL_KEY[sourceFilter as TimelineEntry["source"]]
+                ? t(SOURCE_LABEL_KEY[sourceFilter as TimelineEntry["source"]], locale).toLowerCase()
+                : sourceFilter,
+            })}
           </CardContent>
         </Card>
       ) : (
@@ -213,17 +225,17 @@ export function TimelineTab({ mondayItemId }: Props) {
                           <span
                             className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ring-1 ring-inset ${SOURCE_BADGE_CLASS[entry.source]}`}
                           >
-                            {SOURCE_LABEL[entry.source]}
+                            {t(SOURCE_LABEL_KEY[entry.source], locale)}
                           </span>
                           {entry.scope === "internal" && (
-                            <span className="text-[10px] text-muted-foreground/70">internal</span>
+                            <span className="text-[10px] text-muted-foreground/70">{t("client.timeline.scope.internal", locale)}</span>
                           )}
                           {entry.author && (
                             <span className="text-[11px] text-muted-foreground truncate">{entry.author}</span>
                           )}
                           <span className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-muted-foreground/70 shrink-0">
                             <Clock className="h-3 w-3" />
-                            {formatDateTime(entry.occurred_at)}
+                            {formatDateTime(entry.occurred_at, locale)}
                           </span>
                         </div>
                         <p className="text-sm font-medium leading-snug truncate">{entry.title}</p>
@@ -240,7 +252,7 @@ export function TimelineTab({ mondayItemId }: Props) {
                             className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                           >
                             <ExternalLink className="h-3 w-3" />
-                            Open
+                            {t("client.timeline.open_link", locale)}
                           </a>
                         )}
                       </div>

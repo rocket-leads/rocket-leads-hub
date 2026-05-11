@@ -639,6 +639,94 @@ export const DICTIONARY = {
   "client.billing.col.pdf": { nl: "PDF", en: "PDF" },
   "client.billing.empty.no_invoices": { nl: "Geen facturen gevonden", en: "No invoices found" },
   "client.billing.link.view": { nl: "Bekijk", en: "View" },
+
+  // ─── Client detail — Timeline tab ─────────────────────────────────────
+  // Source labels: Monday/Trengo/Slack/Fathom stay as brand names; only the
+  // generic "Manual" and "Watch List" labels translate. The badge classes
+  // (color tokens) stay independent of the labels.
+  "client.timeline.source.monday": { nl: "Monday", en: "Monday" },
+  "client.timeline.source.trengo": { nl: "Trengo", en: "Trengo" },
+  "client.timeline.source.slack": { nl: "Slack", en: "Slack" },
+  "client.timeline.source.meeting": { nl: "Fathom", en: "Fathom" },
+  "client.timeline.source.manual": { nl: "Handmatig", en: "Manual" },
+  "client.timeline.source.watchlist": { nl: "Watch List", en: "Watch List" },
+  "client.timeline.source.automation": { nl: "Automatisering", en: "Automation" },
+
+  "client.timeline.filter.all": { nl: "Alles", en: "All" },
+  "client.timeline.error": { nl: "Timeline kon niet geladen worden.", en: "Failed to load timeline." },
+  "client.timeline.empty.title": { nl: "Er is nog niks gebeurd met deze klant.", en: "Nothing has happened with this client yet." },
+  "client.timeline.empty.body": { nl: "Trengo-berichten, Monday updates, Slack mentions en Fathom meetings verschijnen hier.", en: "Trengo messages, Monday updates, Slack mentions and Fathom meetings show up here." },
+  "client.timeline.empty.filtered": { nl: "Geen {source} items.", en: "No {source} entries." },
+  "client.timeline.scope.internal": { nl: "intern", en: "internal" },
+  "client.timeline.open_link": { nl: "Openen", en: "Open" },
+  "client.timeline.day.today": { nl: "Vandaag", en: "Today" },
+  "client.timeline.day.yesterday": { nl: "Gisteren", en: "Yesterday" },
+
+  // ─── Client detail — Pedro tab (per-client) ───────────────────────────
+  // Status pills
+  "client.pedro.status.not_started": { nl: "Pedro nog niet gestart", en: "Pedro not started yet" },
+  "client.pedro.status.auto_draft": { nl: "Auto-draft (nog niet bewerkt)", en: "Auto-draft (not edited yet)" },
+  "client.pedro.status.active": { nl: "Pedro actief — campagne #{n}", en: "Pedro active — campaign #{n}" },
+
+  // Header card
+  "client.pedro.header.last_edited_one": { nl: "Laatst bewerkt {date} · {n} refresh", en: "Last edited {date} · {n} refresh" },
+  "client.pedro.header.last_edited_many": { nl: "Laatst bewerkt {date} · {n} refreshes", en: "Last edited {date} · {n} refreshes" },
+  "client.pedro.header.empty": { nl: "Nog geen brief, angles of refreshes voor deze klant gegenereerd.", en: "No brief, angles or refreshes generated for this client yet." },
+  "client.pedro.action.open": { nl: "Open in Pedro", en: "Open in Pedro" },
+  "client.pedro.action.refresh": { nl: "Refresh", en: "Refresh" },
+  "client.pedro.action.refresh_title": { nl: "Vraag Pedro een nieuwe creative refresh", en: "Ask Pedro for a new creative refresh" },
+
+  // Brief snapshot card
+  "client.pedro.brief.title": { nl: "Brief snapshot", en: "Brief snapshot" },
+  "client.pedro.brief.campaign": { nl: "Campagne #{n}", en: "Campaign #{n}" },
+  "client.pedro.brief.field.sector": { nl: "Sector", en: "Sector" },
+  "client.pedro.brief.field.doel": { nl: "Doelgroep", en: "Target audience" },
+  "client.pedro.brief.field.pijn": { nl: "Pijnpunten", en: "Pain points" },
+  "client.pedro.brief.field.aanbod": { nl: "Aanbod", en: "Offer" },
+  "client.pedro.brief.field.usps": { nl: "USPs", en: "USPs" },
+  "client.pedro.brief.field.hooksAM": { nl: "Marketing hooks", en: "Marketing hooks" },
+
+  // Refresh history card
+  "client.pedro.refresh.title": { nl: "Refresh history", en: "Refresh history" },
+  "client.pedro.refresh.total": { nl: "{n} totaal", en: "{n} total" },
+  "client.pedro.refresh.empty_lead": { nl: "Nog geen refresh-rondes gedraaid.", en: "No refresh rounds run yet." },
+  "client.pedro.refresh.empty_cta": { nl: "Genereer er nu één →", en: "Generate one now →" },
+  "client.pedro.refresh.window": { nl: "{days}d window ({start} → {end})", en: "{days}d window ({start} → {end})" },
+  "client.pedro.refresh.winners_losers": { nl: "{w} winners / {l} losers", en: "{w} winners / {l} losers" },
+  "client.pedro.refresh.stat.spend": { nl: "Spend", en: "Spend" },
+  "client.pedro.refresh.stat.leads": { nl: "Leads", en: "Leads" },
+  "client.pedro.refresh.stat.avg_cpl": { nl: "Avg CPL", en: "Avg CPL" },
+  "client.pedro.refresh.trend.flat": { nl: "stabiel", en: "flat" },
+  "client.pedro.refresh.proposals_one": { nl: "{n} proposal — itereren op:", en: "{n} proposal — iterate on:" },
+  "client.pedro.refresh.proposals_many": { nl: "{n} proposals — itereren op:", en: "{n} proposals — iterate on:" },
+  "client.pedro.refresh.variants": { nl: "{n} varianten", en: "{n} variants" },
+  "client.pedro.refresh.open_full": { nl: "Open de volledige refresh-stage in Pedro", en: "Open the full refresh stage in Pedro" },
+
+  // Footer
+  "client.pedro.footer": { nl: "{client} · alle Pedro deliverables worden per campagne opgeslagen op deze klant", en: "{client} · all Pedro deliverables are stored per campaign on this client" },
+
+  // Saved-version timeline
+  "client.pedro.versions.title": { nl: "Versie geschiedenis", en: "Version history" },
+  "client.pedro.versions.count_one": { nl: "{n} versie", en: "{n} version" },
+  "client.pedro.versions.count_many": { nl: "{n} versies", en: "{n} versions" },
+  "client.pedro.versions.empty_lead": { nl: "Nog geen versies opgeslagen.", en: "No versions saved yet." },
+  "client.pedro.versions.empty_cta": { nl: "Open Pedro →", en: "Open Pedro →" },
+  "client.pedro.versions.filter.all": { nl: "Alle ({n})", en: "All ({n})" },
+  "client.pedro.versions.stage_filter_count": { nl: "{stage} ({n})", en: "{stage} ({n})" },
+  "client.pedro.versions.action.restore": { nl: "Restore", en: "Restore" },
+  "client.pedro.versions.action.restored": { nl: "Hersteld", en: "Restored" },
+  "client.pedro.versions.action.error": { nl: "Fout", en: "Error" },
+  "client.pedro.versions.action.title": { nl: "Restore deze versie als draft (overschrijft de huidige draft)", en: "Restore this version as the draft (overwrites the current draft)" },
+  "client.pedro.versions.empty_filtered": { nl: "Geen versies in deze stage.", en: "No versions in this stage." },
+
+  // Stage labels (used in saved-version filter chips + row labels)
+  "client.pedro.stage.brief": { nl: "Brief", en: "Brief" },
+  "client.pedro.stage.research": { nl: "Research", en: "Research" },
+  "client.pedro.stage.angles": { nl: "Angles", en: "Angles" },
+  "client.pedro.stage.script": { nl: "Script", en: "Script" },
+  "client.pedro.stage.creatives": { nl: "Creatives", en: "Creatives" },
+  "client.pedro.stage.lp": { nl: "LP prompts", en: "LP prompts" },
+  "client.pedro.stage.ad_copy": { nl: "Ad copy", en: "Ad copy" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY
