@@ -462,6 +462,32 @@ export const DICTIONARY = {
   // No-client-selected state
   "pedro.no_client.title": { nl: "Selecteer een klant om te starten", en: "Select a client to start" },
   "pedro.no_client.body": { nl: "Pedro's output — brief, research, angles, scripts, creatives, LP, ad copy, refreshes — wordt allemaal opgeslagen bij de actieve klant. Kies hierboven een klant zodat Pedro weet voor wie hij werkt.", en: "Pedro's output — brief, research, angles, scripts, creatives, LP, ad copy, refreshes — is all stored on the active client. Pick a client above so Pedro knows who he's working for." },
+
+  // ─── Client detail — Settings tab sections ────────────────────────────
+  "client.settings.info.title": { nl: "Klantgegevens", en: "Client Information" },
+  "client.settings.info.description": { nl: "Bewerk de klantgegevens. Wijzigingen worden teruggeschreven naar Monday en gesynchroniseerd met de Hub.", en: "Edit the client's details. Changes write back to Monday and sync to the Hub." },
+  "client.settings.kpi.title": { nl: "KPI-secties", en: "KPI Sections" },
+  "client.settings.kpi.description": { nl: "Kies welke KPI-secties zichtbaar zijn voor deze klant. Leads staat altijd aan. Zet Afspraken en Deals aan zodra Monday CRM-data beschikbaar is.", en: "Choose which KPI sections are visible for this client. Leads is always on. Enable Afspraken and Deals when Monday CRM data is available." },
+  "client.settings.campaigns.title": { nl: "Campagne selectie", en: "Campaign Selection" },
+  "client.settings.campaigns.description": { nl: "Kies welke campagnes meetellen in de KPI-berekeningen. Alleen geselecteerde campagnes worden gebruikt voor de Campagnes tab.", en: "Select which campaigns to include in KPI calculations. Only selected campaigns are used for the Campaigns tab." },
+  "client.settings.columns.title": { nl: "Board kolom-IDs", en: "Board Column IDs" },
+  "client.settings.columns.description": { nl: "Overschrijf de standaard Monday kolom-IDs voor deze klant. Laat leeg om de globale defaults uit Instellingen te gebruiken.", en: "Override default Monday column IDs for this client. Leave empty to use the global defaults from Settings." },
+
+  // ─── Client detail — Meetings tab (per-client view) ───────────────────
+  "client.meetings.error": { nl: "Meetings konden niet geladen worden.", en: "Failed to load meetings." },
+  "client.meetings.empty.title": { nl: "Nog geen meetings aan deze klant gekoppeld.", en: "No meetings linked to this client yet." },
+  "client.meetings.empty.body": { nl: "Fathom-opnames worden automatisch gekoppeld via e-mailadres van de deelnemer. Check de globale {meetings} pagina om handmatig te koppelen.", en: "Fathom recordings auto-link via attendee email. Check the global {meetings} page to link manually." },
+  "client.meetings.empty.body.meetings_word": { nl: "Meetings", en: "Meetings" },
+
+  // ─── Date filter (Campaigns + Billing tabs) ───────────────────────────
+  "client.date.preset.today": { nl: "Vandaag", en: "Today" },
+  "client.date.preset.yesterday": { nl: "Gisteren", en: "Yesterday" },
+  "client.date.preset.last7": { nl: "Laatste 7 dagen", en: "Last 7 days" },
+  "client.date.preset.this_month": { nl: "Deze maand", en: "This month" },
+  "client.date.preset.last_month": { nl: "Vorige maand", en: "Last month" },
+  "client.date.preset.this_quarter": { nl: "Dit kwartaal", en: "This quarter" },
+  "client.date.from": { nl: "Vanaf", en: "From" },
+  "client.date.to": { nl: "Tot", en: "To" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

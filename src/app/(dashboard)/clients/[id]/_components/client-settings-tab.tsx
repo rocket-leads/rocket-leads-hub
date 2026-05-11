@@ -6,6 +6,8 @@ import { ColumnOverrides } from "./column-overrides"
 import { KpiVisibilityToggle } from "./kpi-visibility-toggle"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ClientInformationPanel } from "@/components/client-information-panel"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 import type { MetaCampaign } from "@/lib/integrations/meta"
 import type { MondayClient } from "@/lib/integrations/monday"
 
@@ -16,6 +18,7 @@ type Props = {
 }
 
 export function ClientSettingsTab({ client }: Props) {
+  const locale = useLocale()
   const mondayItemId = client.mondayItemId
   const metaAdAccountId = client.metaAdAccountId || null
 
@@ -31,18 +34,18 @@ export function ClientSettingsTab({ client }: Props) {
     <div className="space-y-8">
       {/* Client Information — name, IDs, financials, team. Edits write back to Monday. */}
       <div>
-        <h3 className="text-sm font-medium mb-1">Client Information</h3>
+        <h3 className="text-sm font-medium mb-1">{t("client.settings.info.title", locale)}</h3>
         <p className="text-xs text-muted-foreground/60 mb-4">
-          Edit the client&apos;s details. Changes write back to Monday and sync to the Hub.
+          {t("client.settings.info.description", locale)}
         </p>
         <ClientInformationPanel client={client} />
       </div>
 
       {/* KPI Visibility */}
       <div>
-        <h3 className="text-sm font-medium mb-1">KPI Sections</h3>
+        <h3 className="text-sm font-medium mb-1">{t("client.settings.kpi.title", locale)}</h3>
         <p className="text-xs text-muted-foreground/60 mb-4">
-          Choose which KPI sections are visible for this client. Leads is always on. Enable Afspraken and Deals when Monday CRM data is available.
+          {t("client.settings.kpi.description", locale)}
         </p>
         <KpiVisibilityToggle mondayItemId={mondayItemId} />
       </div>
@@ -50,9 +53,9 @@ export function ClientSettingsTab({ client }: Props) {
       {/* Campaign Selection */}
       {metaAdAccountId && (
         <div>
-          <h3 className="text-sm font-medium mb-1">Campaign Selection</h3>
+          <h3 className="text-sm font-medium mb-1">{t("client.settings.campaigns.title", locale)}</h3>
           <p className="text-xs text-muted-foreground/60 mb-4">
-            Select which campaigns to include in KPI calculations. Only selected campaigns are used for the Campaigns tab.
+            {t("client.settings.campaigns.description", locale)}
           </p>
           {campaignsQuery.isLoading ? (
             <div className="space-y-2">
@@ -71,9 +74,9 @@ export function ClientSettingsTab({ client }: Props) {
 
       {/* Board Column IDs */}
       <div>
-        <h3 className="text-sm font-medium mb-1">Board Column IDs</h3>
+        <h3 className="text-sm font-medium mb-1">{t("client.settings.columns.title", locale)}</h3>
         <p className="text-xs text-muted-foreground/60 mb-4">
-          Override default Monday column IDs for this client. Leave empty to use the global defaults from Settings.
+          {t("client.settings.columns.description", locale)}
         </p>
         <ColumnOverrides mondayItemId={mondayItemId} />
       </div>

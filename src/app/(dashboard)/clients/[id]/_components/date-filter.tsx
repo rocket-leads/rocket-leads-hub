@@ -1,21 +1,27 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 
 export type DateRange = { startDate: string; endDate: string }
 
 type Preset = { label: string; key: string }
 
-const PRESETS: Preset[] = [
-  { label: "Today", key: "today" },
-  { label: "Yesterday", key: "yesterday" },
-  { label: "Last 7 days", key: "last7" },
-  { label: "This month", key: "thisMonth" },
-  { label: "Last month", key: "lastMonth" },
-  { label: "This quarter", key: "thisQuarter" },
+/** Preset keys + dictionary lookups. Built into Preset[] per render so the
+ *  language switch flips the labels without changing the keys (which feed
+ *  into getRange below). */
+const PRESET_SHAPE: { key: string; labelKey: DictionaryKey }[] = [
+  { key: "today", labelKey: "client.date.preset.today" },
+  { key: "yesterday", labelKey: "client.date.preset.yesterday" },
+  { key: "last7", labelKey: "client.date.preset.last7" },
+  { key: "thisMonth", labelKey: "client.date.preset.this_month" },
+  { key: "lastMonth", labelKey: "client.date.preset.last_month" },
+  { key: "thisQuarter", labelKey: "client.date.preset.this_quarter" },
 ]
 
 function toISO(d: Date): string {
@@ -63,7 +69,13 @@ type Props = {
 }
 
 export function DateFilter({ value, onChange }: Props) {
+  const locale = useLocale()
   const [activePreset, setActivePreset] = useState("last7")
+
+  const PRESETS: Preset[] = useMemo(
+    () => PRESET_SHAPE.map((p) => ({ key: p.key, label: t(p.labelKey, locale) })),
+    [locale],
+  )
 
   function handlePreset(key: string) {
     setActivePreset(key)
@@ -91,7 +103,7 @@ export function DateFilter({ value, onChange }: Props) {
       </div>
       <div className="flex items-end gap-2">
         <div className="space-y-1">
-          <Label className="text-xs">From</Label>
+          <Label className="text-xs">{t("client.date.from", locale)}</Label>
           <Input
             type="date"
             className="h-8 w-[140px] text-sm"
@@ -100,7 +112,7 @@ export function DateFilter({ value, onChange }: Props) {
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">To</Label>
+          <Label className="text-xs">{t("client.date.to", locale)}</Label>
           <Input
             type="date"
             className="h-8 w-[140px] text-sm"
