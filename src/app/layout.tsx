@@ -37,13 +37,18 @@ export default async function RootLayout({
   const themeCookie = (await cookies()).get("theme")?.value
   const isDark = themeCookie === "dark"
 
+  // html intentionally has no fixed height — pinning it to `h-full` locks it
+  // at exactly viewport height, which causes intermittent page-scroll bugs
+  // when the body content overflows (browser falls back to body-scroll, which
+  // is flaky after route changes + on touch). `min-h-screen` on body keeps
+  // the background filling the viewport on short pages without capping html.
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${clashGrotesk.variable} h-full antialiased${isDark ? " dark" : ""}`}
+      className={`${inter.variable} ${clashGrotesk.variable} antialiased${isDark ? " dark" : ""}`}
       suppressHydrationWarning
     >
-      <body className="min-h-full bg-background text-foreground">{children}</body>
+      <body className="min-h-screen bg-background text-foreground">{children}</body>
     </html>
   )
 }
