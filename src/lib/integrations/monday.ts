@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
+import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 
 const MONDAY_API_URL = "https://api.monday.com/v2"
 
@@ -572,13 +573,35 @@ export async function setItemColumnValueRaw(
  * and tasks created in the Hub still surface on the client item's Monday
  * timeline. Returns the new update's ID, or null when the call fails — we
  * don't want a Monday outage to block the Supabase write.
+ *
+ * Author attribution: when `actorUserId` is provided AND that user has
+ * connected their personal Monday API token (via Account → Connected
+ * accounts), the call uses their token so Monday shows them as the
+ * poster. Otherwise we fall back to the shared service token, which
+ * means the update will appear as whoever owns that token (currently
+ * Roy). Falling back instead of erroring keeps automation paths
+ * (Pedro / webhooks / system tasks) working even when no human is the
+ * actor.
  */
 export async function postItemUpdate(
   itemId: string,
   body: string,
-  parentUpdateId?: string,
+  parentUpdateIdOrOptions?: string | { parentUpdateId?: string; actorUserId?: string },
 ): Promise<string | null> {
-  const token = await getToken()
+  // Back-compat: original positional `parentUpdateId: string` arg.
+  const opts =
+    typeof parentUpdateIdOrOptions === "string"
+      ? { parentUpdateId: parentUpdateIdOrOptions }
+      : parentUpdateIdOrOptions ?? {}
+  const parentUpdateId = opts.parentUpdateId
+  const actorUserId = opts.actorUserId
+
+  let token: string | null = null
+  if (actorUserId) {
+    token = await getUserPlatformToken(actorUserId, "monday")
+  }
+  if (!token) token = await getToken()
+
   const mutation = parentUpdateId
     ? `mutation Reply($itemId: ID!, $parentId: ID!, $body: String!) {
          create_update(item_id: $itemId, parent_id: $parentId, body: $body) { id }

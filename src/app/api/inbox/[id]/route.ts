@@ -181,6 +181,7 @@ export async function PATCH(
       parentTitle: item.title,
       newStatus: patch.status,
       actorName: session.user.name ?? session.user.email,
+      actorUserId: session.user.id,
     }).catch((e) => console.error("Inbox status-change mirror failed:", e))
   }
 

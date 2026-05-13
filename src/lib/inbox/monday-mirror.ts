@@ -2,6 +2,12 @@ import { postItemUpdate } from "@/lib/integrations/monday"
 import type { InboxItem, InboxComment, InboxKind } from "@/types/inbox"
 
 /**
+ * Mirror helpers forward `actorUserId` through to `postItemUpdate` so that
+ * — when that user has connected their personal Monday API token in Account
+ * → Connected accounts — Monday shows them as the poster instead of the
+ * service-token owner (currently Roy). When the actor hasn't connected,
+ * we fall back to the shared service token so automation paths still log.
+ *
  * Mirror an inbox item to Monday as an update on the client item.
  *
  * Format:
@@ -20,6 +26,9 @@ export async function mirrorItemToMonday(item: {
   body: string | null
   authorName: string
   assigneeName: string
+  /** Hub user id of the actor — looked up against user_platform_tokens
+   *  to post as them when their personal Monday token is connected. */
+  actorUserId?: string
 }): Promise<string | null> {
   const tag = item.kind === "task" ? "TASK" : "UPDATE"
   const lines = [
@@ -27,7 +36,9 @@ export async function mirrorItemToMonday(item: {
     item.body?.trim() ? `\n${item.body.trim()}` : "",
     `\n— From ${item.authorName} to ${item.assigneeName}`,
   ].filter(Boolean)
-  return postItemUpdate(item.clientId, lines.join("\n"))
+  return postItemUpdate(item.clientId, lines.join("\n"), {
+    actorUserId: item.actorUserId,
+  })
 }
 
 /**
@@ -41,19 +52,20 @@ export async function mirrorCommentToMonday(args: {
   parentTitle: string
   authorName: string
   body: string
+  actorUserId?: string
 }): Promise<string | null> {
   const trimmed = args.body.trim()
   if (args.parentMondayUpdateId) {
-    return postItemUpdate(
-      args.clientId,
-      `${args.authorName}: ${trimmed}`,
-      args.parentMondayUpdateId,
-    )
+    return postItemUpdate(args.clientId, `${args.authorName}: ${trimmed}`, {
+      parentUpdateId: args.parentMondayUpdateId,
+      actorUserId: args.actorUserId,
+    })
   }
   // Fallback when the original mirror failed — still log to the item timeline.
   return postItemUpdate(
     args.clientId,
     `[Hub: COMMENT on "${args.parentTitle}"]\n${trimmed}\n\n— ${args.authorName}`,
+    { actorUserId: args.actorUserId },
   )
 }
 
@@ -69,6 +81,7 @@ export async function mirrorStatusChangeToMonday(item: {
   parentTitle: string
   newStatus: string
   actorName: string
+  actorUserId?: string
 }): Promise<void> {
   if (item.kind !== "task") return
   if (!["done", "cancelled"].includes(item.newStatus)) return
@@ -77,9 +90,16 @@ export async function mirrorStatusChangeToMonday(item: {
   const body = `${item.actorName} ${verb} task: "${item.parentTitle}"`
 
   if (item.parentMondayUpdateId) {
-    await postItemUpdate(item.clientId, body, item.parentMondayUpdateId)
+    await postItemUpdate(item.clientId, body, {
+      parentUpdateId: item.parentMondayUpdateId,
+      actorUserId: item.actorUserId,
+    })
   } else {
-    await postItemUpdate(item.clientId, `[Hub: TASK ${item.newStatus.toUpperCase()}] ${body}`)
+    await postItemUpdate(
+      item.clientId,
+      `[Hub: TASK ${item.newStatus.toUpperCase()}] ${body}`,
+      { actorUserId: item.actorUserId },
+    )
   }
 }
 

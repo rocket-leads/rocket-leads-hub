@@ -121,6 +121,7 @@ export async function POST(
     parentTitle: item.title,
     authorName: session.user.name ?? session.user.email,
     body: text,
+    actorUserId: session.user.id,
   })
     .then(async (mondayUpdateId) => {
       if (mondayUpdateId) {

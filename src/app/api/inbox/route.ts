@@ -134,6 +134,7 @@ export async function POST(req: NextRequest) {
     body: row.body,
     authorName,
     assigneeName,
+    actorUserId: session.user.id,
   })
     .then(async (mondayUpdateId) => {
       if (mondayUpdateId) {
