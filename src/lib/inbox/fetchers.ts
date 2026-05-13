@@ -221,7 +221,21 @@ export async function listInboxItems(
 
   if (filters.kind) query = query.eq("kind", filters.kind)
   if (filters.clientId) query = query.eq("client_id", filters.clientId)
-  if (filters.assignedToMe) query = query.eq("assignee_id", userId)
+
+  // Tasks/Updates are strictly "for me" — assignee-driven regardless of
+  // the assignedToMe toggle. Without this, an AM saw items they merely
+  // authored for someone else (e.g. Roel writing an update on Mike's
+  // client → showing up in Roel's own Updates tab) or items they had
+  // generic client-access to. That's noise: Tasks/Updates panes are a
+  // to-do list, not a "everything happening on my clients" feed. Mention
+  // routing already lands on assignee_id via the Monday webhook ingest
+  // (lib/webhooks/monday/route.ts:261) so @-mentions still reach the
+  // right person through this same filter.
+  if (filters.kind === "task" || filters.kind === "update") {
+    query = query.eq("assignee_id", userId)
+  } else if (filters.assignedToMe) {
+    query = query.eq("assignee_id", userId)
+  }
 
   // De-dup the dual-inbox: Trengo and Slack ingest set `thread_key` on
   // every row so the chat substrate (Client Inbox / future Team Inbox) can
@@ -258,9 +272,15 @@ export async function listInboxItems(
     query = query.gt("snoozed_until", nowIso)
   }
 
-  // Visibility: skip when scoped to a specific client (the API caller has
-  // already verified access to that client) or when caller is admin.
-  if (!filters.clientId) {
+  // Visibility for non-Tasks/Updates queries (chat substrate, mixed views,
+  // /api/inbox without a kind param). Skip when scoped to a specific client
+  // — the API caller already verified that access — or when caller is admin.
+  //
+  // Tasks/Updates already enforce the strict assignee filter above and don't
+  // need this broader OR clause. Keeping it would silently re-open the
+  // self-authored / "anything on my clients" leak we just closed.
+  const isTaskOrUpdate = filters.kind === "task" || filters.kind === "update"
+  if (!filters.clientId && !isTaskOrUpdate) {
     const allowed = await getAllowedClientIds(userId, role)
     if (allowed !== "all") {
       const ids = allowed

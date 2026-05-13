@@ -710,7 +710,10 @@ function ThreadMessages({
     refetchInterval: 5 * 1000,
   })
 
-  const messages = messagesQuery.data?.messages ?? []
+  const messages = useMemo(
+    () => messagesQuery.data?.messages ?? [],
+    [messagesQuery.data?.messages],
+  )
 
   // Scroll to bottom on load + on new message arrivals.
   useEffect(() => {
@@ -825,6 +828,33 @@ function ThreadMessages({
       .slice(0, 8)
   })()
 
+  // Resolved mentions in the current reply — exactly the set of users that
+  // will receive an Update + push notification when the AM hits Send. Mirror
+  // of the server-side fanOutMentionsForInternalNote regex + lookup so what
+  // the AM sees here matches what actually gets fanned out. Live-updates as
+  // they type so they get instant visual confirmation that the right people
+  // are tagged. Author-self is excluded (the server skips them too).
+  const resolvedMentions = useMemo(() => {
+    if (!isInternal || !users || users.length === 0 || !reply) return []
+    const matches = Array.from(
+      reply.matchAll(/@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g),
+    )
+    if (matches.length === 0) return []
+    const tokens = Array.from(new Set(matches.map((m) => m[1].trim().toLowerCase())))
+    const hits = new Map<string, InboxUser>()
+    for (const t of tokens) {
+      for (const u of users) {
+        const name = (u.name ?? "").toLowerCase()
+        if (!name) continue
+        const first = name.split(/\s+/)[0]
+        if (name === t || first === t) {
+          hits.set(u.id, u)
+        }
+      }
+    }
+    return Array.from(hits.values())
+  }, [reply, users, isInternal])
+
   function syncMentionState(value: string, caret: number) {
     if (!isInternal) {
       // Mention picker only fires inside internal notes — a stray @-mention
@@ -854,10 +884,15 @@ function ThreadMessages({
     if (mentionStart == null) return
     const ta = textareaRef.current
     if (!ta) return
-    const firstName = (user.name ?? user.email).split(/\s+/)[0]
+    // Full name when the user has one — unique identifies them when the
+    // team has duplicate first names (e.g. two Roys), and matches what
+    // shows up in the resolved-mentions chip strip so the AM can visually
+    // confirm the right person was tagged. Falls back to the email-local
+    // part if no name is set.
+    const fullName = (user.name ?? user.email.split("@")[0]).trim()
     const before = reply.slice(0, mentionStart)
     const after = reply.slice(ta.selectionStart)
-    const insertion = `@${firstName} `
+    const insertion = `@${fullName} `
     const next = before + insertion + after
     setReply(next)
     setMentionStart(null)
@@ -1342,6 +1377,15 @@ function ThreadMessages({
               <Loader2 className="h-3 w-3 animate-spin" />
               Uploading {uploadingCount} file{uploadingCount === 1 ? "" : "s"}…
             </div>
+          )}
+          {/* Resolved-mentions strip — only in internal-note mode. Shows
+              every teammate the @-mention parser will fan out to when the
+              AM hits Send. Mirrors the server-side regex + lookup so what
+              you see here is exactly who'll get a notification. Empty
+              strip when no resolved mentions, but a hint stays visible
+              while in internal mode so the AM knows the affordance exists. */}
+          {isInternal && (
+            <MentionPreviewStrip resolved={resolvedMentions} hasUnresolved={hasUnresolvedMention(reply, resolvedMentions)} />
           )}
           {/* Light markdown toolbar — WhatsApp default-mode only. WA supports
               bold (*x*), italic (_x_), strikethrough (~x~). Email gets full
@@ -1870,6 +1914,84 @@ function renderTemplate(message: string, params: string[]): string {
 }
 
 // --- Pieces --------------------------------------------------------------
+
+/** Resolved-mentions strip rendered above the textarea in internal-note
+ *  mode. Each chip = one teammate who WILL receive an inbox Update + push
+ *  notification when the AM hits Send. Mirrors the server-side fan-out
+ *  resolution exactly — the visual is the contract.
+ *
+ *  States:
+ *    - 0 resolved + has-unresolved typing → amber "no match" hint so the
+ *      AM knows their @typing isn't matching anyone yet
+ *    - 0 resolved + no @ typed → muted "Type @ to mention a teammate" hint
+ *    - 1+ resolved → primary-tinted pills with full names */
+function MentionPreviewStrip({
+  resolved,
+  hasUnresolved,
+}: {
+  resolved: InboxUser[]
+  hasUnresolved: boolean
+}) {
+  if (resolved.length === 0 && !hasUnresolved) {
+    return (
+      <p className="text-[11px] text-muted-foreground/70 mb-2 inline-flex items-center gap-1">
+        <span className="opacity-70">Type</span>
+        <span className="font-mono px-1 py-0.5 rounded bg-muted text-foreground/80">@</span>
+        <span className="opacity-70">to mention a teammate. They&apos;ll get an Update + push notification.</span>
+      </p>
+    )
+  }
+  return (
+    <div className="mb-2 flex items-center flex-wrap gap-1.5">
+      <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider mr-1">
+        Will notify
+      </span>
+      {resolved.map((u) => (
+        <span
+          key={u.id}
+          className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 text-primary dark:text-primary px-2 py-0.5 text-[11px] font-semibold"
+          title={u.email}
+        >
+          <span className="h-4 w-4 inline-flex items-center justify-center rounded-full bg-primary/20 text-[9px] font-bold">
+            {(u.name?.trim()[0] ?? u.email[0] ?? "?").toUpperCase()}
+          </span>
+          @{u.name ?? u.email.split("@")[0]}
+        </span>
+      ))}
+      {hasUnresolved && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[11px] font-medium"
+          title="Couldn't match this @-mention to a teammate. Try typing the full name or pick from the suggestions."
+        >
+          ⚠ unmatched mention
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** Returns true when the body contains an `@token` that didn't resolve to
+ *  any teammate — used to surface the "unmatched" warning chip so the AM
+ *  doesn't accidentally ship an internal note thinking they tagged someone
+ *  who's actually not in the system. */
+function hasUnresolvedMention(body: string, resolved: InboxUser[]): boolean {
+  if (!body) return false
+  const matches = Array.from(
+    body.matchAll(/@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g),
+  )
+  if (matches.length === 0) return false
+  const tokens = Array.from(new Set(matches.map((m) => m[1].trim().toLowerCase())))
+  // For every @token, check it's covered by SOME resolved user (full name or
+  // first name). If any token isn't covered, that's an unresolved mention.
+  for (const t of tokens) {
+    const hit = resolved.some((u) => {
+      const name = (u.name ?? "").toLowerCase()
+      return name === t || name.split(/\s+/)[0] === t
+    })
+    if (!hit) return true
+  }
+  return false
+}
 
 /** Inline picker for assigning an unlinked Trengo thread to a Hub client.
  *  Renders as a small "Link to client …" affordance under the conversation
