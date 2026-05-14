@@ -836,23 +836,7 @@ function ThreadMessages({
   // are tagged. Author-self is excluded (the server skips them too).
   const resolvedMentions = useMemo(() => {
     if (!isInternal || !users || users.length === 0 || !reply) return []
-    const matches = Array.from(
-      reply.matchAll(/@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g),
-    )
-    if (matches.length === 0) return []
-    const tokens = Array.from(new Set(matches.map((m) => m[1].trim().toLowerCase())))
-    const hits = new Map<string, InboxUser>()
-    for (const t of tokens) {
-      for (const u of users) {
-        const name = (u.name ?? "").toLowerCase()
-        if (!name) continue
-        const first = name.split(/\s+/)[0]
-        if (name === t || first === t) {
-          hits.set(u.id, u)
-        }
-      }
-    }
-    return Array.from(hits.values())
+    return resolveMentionsAgainstUsers(reply, users)
   }, [reply, users, isInternal])
 
   function syncMentionState(value: string, caret: number) {
@@ -1385,7 +1369,10 @@ function ThreadMessages({
               strip when no resolved mentions, but a hint stays visible
               while in internal mode so the AM knows the affordance exists. */}
           {isInternal && (
-            <MentionPreviewStrip resolved={resolvedMentions} hasUnresolved={hasUnresolvedMention(reply, resolvedMentions)} />
+            <MentionPreviewStrip
+              resolved={resolvedMentions}
+              hasUnresolved={hasUnresolvedMention(reply, users ?? [])}
+            />
           )}
           {/* Light markdown toolbar — WhatsApp default-mode only. WA supports
               bold (*x*), italic (_x_), strikethrough (~x~). Email gets full
@@ -1970,27 +1957,68 @@ function MentionPreviewStrip({
   )
 }
 
-/** Returns true when the body contains an `@token` that didn't resolve to
- *  any teammate — used to surface the "unmatched" warning chip so the AM
- *  doesn't accidentally ship an internal note thinking they tagged someone
- *  who's actually not in the system. */
-function hasUnresolvedMention(body: string, resolved: InboxUser[]): boolean {
-  if (!body) return false
-  const matches = Array.from(
-    body.matchAll(/@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g),
-  )
-  if (matches.length === 0) return false
-  const tokens = Array.from(new Set(matches.map((m) => m[1].trim().toLowerCase())))
-  // For every @token, check it's covered by SOME resolved user (full name or
-  // first name). If any token isn't covered, that's an unresolved mention.
-  for (const t of tokens) {
-    const hit = resolved.some((u) => {
-      const name = (u.name ?? "").toLowerCase()
-      return name === t || name.split(/\s+/)[0] === t
-    })
-    if (!hit) return true
+/** Returns true when the body contains an `@<name>` that didn't resolve
+ *  to any teammate — used to surface the "unmatched" warning chip so the
+ *  AM doesn't accidentally ship an internal note thinking they tagged
+ *  someone who's actually not in the system. */
+function hasUnresolvedMention(body: string, users: InboxUser[]): boolean {
+  if (!body || users.length === 0) return false
+  const captures = extractMentionCaptures(body)
+  if (captures.length === 0) return false
+  for (const cap of captures) {
+    if (!matchUserByPrefix(cap, users)) return true
   }
   return false
+}
+
+/** Greedy capture of every `@<word>(\s+<word>)*` token in the body.
+ *  Stops on punctuation, newline, or end. Returns the captured names
+ *  (without the leading `@`). Allows lowercase secondary words to support
+ *  Dutch tussenvoegsel ("Roel van der Harst"). */
+function extractMentionCaptures(body: string): string[] {
+  return Array.from(
+    body.matchAll(/@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+){0,5})/g),
+  ).map((m) => m[1].trim())
+}
+
+/** Try to match a captured mention text against the users list using the
+ *  longest-prefix strategy: try the full capture first, then drop one
+ *  trailing word at a time, then finally try first-name-only as a last
+ *  resort. Returns the matched user or null. Case-insensitive. */
+function matchUserByPrefix(capture: string, users: InboxUser[]): InboxUser | null {
+  const tokens = capture.split(/\s+/).filter(Boolean)
+  if (tokens.length === 0) return null
+  for (let i = tokens.length; i >= 1; i--) {
+    const candidate = tokens.slice(0, i).join(" ").toLowerCase()
+    const user = users.find((u) => (u.name ?? "").toLowerCase() === candidate)
+    if (user) return user
+  }
+  // Last resort: first-name-only match (supports `@Roel` when the user's
+  // full name is "Roel van der Harst" — same UX as the picker's quick
+  // pick). Only when capture is a single word; multi-word captures should
+  // hit a full-name match above.
+  if (tokens.length === 1) {
+    const single = tokens[0].toLowerCase()
+    const user = users.find((u) => {
+      const name = (u.name ?? "").toLowerCase()
+      return name.split(/\s+/)[0] === single
+    })
+    if (user) return user
+  }
+  return null
+}
+
+/** Resolve every @-capture in the body to a user, deduped. Used by the
+ *  preview chip strip so what the AM sees matches what the server's
+ *  fanOutMentionsForInternalNote will fan out to. */
+function resolveMentionsAgainstUsers(body: string, users: InboxUser[]): InboxUser[] {
+  const captures = extractMentionCaptures(body)
+  const hits = new Map<string, InboxUser>()
+  for (const cap of captures) {
+    const u = matchUserByPrefix(cap, users)
+    if (u) hits.set(u.id, u)
+  }
+  return Array.from(hits.values())
 }
 
 /** Inline picker for assigning an unlinked Trengo thread to a Hub client.

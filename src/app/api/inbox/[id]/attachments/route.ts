@@ -125,6 +125,15 @@ export async function POST(
   } catch {
     trengoBody = trengoText.slice(0, 300)
   }
+  if (trengoRes.status === 401 || trengoRes.status === 403) {
+    // Same needs-connect bubble as the reply path: stored token rejected,
+    // surface the existing reconnect prompt rather than a raw 401.
+    const err = new NeedsConnectError("trengo")
+    return NextResponse.json(
+      { ok: false, needsConnect: err.platform, error: err.message },
+      { status: 409 },
+    )
+  }
   if (!trengoRes.ok) {
     return NextResponse.json(
       { error: `Trengo upload failed (${trengoRes.status})`, trengo: trengoBody },

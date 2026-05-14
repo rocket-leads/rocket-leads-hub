@@ -97,6 +97,12 @@ async function sendTrengoTemplateAsUser(
     }),
   })
 
+  if (res.status === 401 || res.status === 403) {
+    // The user's stored Trengo token is no longer valid (revoked, expired,
+    // wrong workspace). Surface as a needs-connect so the UI can prompt
+    // them to reconnect via /account instead of showing a raw 401.
+    throw new NeedsConnectError("trengo")
+  }
   if (!res.ok) {
     const errText = await res.text().catch(() => "")
     throw new Error(`Trengo template send failed (${res.status}): ${errText.slice(0, 200)}`)
@@ -166,6 +172,12 @@ async function sendTrengoReplyAsUser(
     body: JSON.stringify(payload),
   })
 
+  if (res.status === 401 || res.status === 403) {
+    // Stored token rejected by Trengo (revoked / wrong workspace). Bubble
+    // up as needs-connect so the UI surfaces the existing reconnect prompt
+    // instead of the raw error.
+    throw new NeedsConnectError("trengo")
+  }
   if (!res.ok) {
     const errText = await res.text().catch(() => "")
     throw new Error(`Trengo send failed (${res.status}): ${errText.slice(0, 200)}`)
@@ -508,16 +520,19 @@ async function fanOutMentionsForInternalNote(
     authorName: string
   },
 ): Promise<void> {
-  // Same regex as the task-comments mention resolver — keep them aligned
-  // so the picker UI and the server-side resolver agree on what counts.
-  const matches = Array.from(
+  // Greedy capture: an @-mention is `@` followed by 1-N name tokens. The
+  // up-to-5 secondary tokens allow Dutch tussenvoegsel + multi-word
+  // surnames ("Roel van der Harst" = 4 words). Resolution then walks
+  // longest-prefix-first so "@Roel van der Harst kun je" still matches
+  // the 4-word user name (the trailing "kun je" gets dropped).
+  const captures = Array.from(
     args.noteBody.matchAll(
-      /@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g,
+      /@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+){0,5})/g,
     ),
   )
-  if (matches.length === 0) return
-  const names = Array.from(new Set(matches.map((m) => m[1].trim()))).filter(Boolean)
-  if (names.length === 0) return
+    .map((m) => m[1].trim())
+    .filter(Boolean)
+  if (captures.length === 0) return
 
   const { data: rows } = await supabase
     .from("users")
@@ -526,15 +541,35 @@ async function fanOutMentionsForInternalNote(
   if (!rows) return
 
   const ids = new Set<string>()
-  for (const name of names) {
-    const needle = name.toLowerCase()
-    for (const row of rows) {
-      const userName = (row.name as string | null)?.toLowerCase() ?? ""
-      if (!userName) continue
-      const firstName = userName.split(/\s+/)[0]
-      if (firstName === needle || userName === needle) {
-        if (row.id !== args.authorUserId) ids.add(row.id as string)
+  for (const cap of captures) {
+    const tokens = cap.split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) continue
+    let matchedRow: { id: string; name: string } | null = null
+    // Try full-name longest-prefix first.
+    for (let i = tokens.length; i >= 1 && !matchedRow; i--) {
+      const candidate = tokens.slice(0, i).join(" ").toLowerCase()
+      for (const row of rows as Array<{ id: string; name: string | null }>) {
+        const name = (row.name ?? "").toLowerCase().trim()
+        if (name && name === candidate) {
+          matchedRow = { id: row.id, name }
+          break
+        }
       }
+    }
+    // Last resort: first-name-only (single-word capture, matches the
+    // first token of any user's full name — same UX as the picker).
+    if (!matchedRow && tokens.length === 1) {
+      const single = tokens[0].toLowerCase()
+      for (const row of rows as Array<{ id: string; name: string | null }>) {
+        const name = (row.name ?? "").toLowerCase().trim()
+        if (name && name.split(/\s+/)[0] === single) {
+          matchedRow = { id: row.id, name }
+          break
+        }
+      }
+    }
+    if (matchedRow && matchedRow.id !== args.authorUserId) {
+      ids.add(matchedRow.id)
     }
   }
   if (ids.size === 0) return
