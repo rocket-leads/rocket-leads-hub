@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useMemo, useEffect, useRef, useCallback } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
-import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, ChevronDown, ChevronRight, ExternalLink, Sparkles, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb } from "lucide-react"
+import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb, ListTodo, Loader2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import type { MondayClient } from "@/lib/integrations/monday"
@@ -13,7 +13,7 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { WatchlistStateResponse } from "@/app/api/watchlist/state/route"
 import type { WatchlistNarrativeResponse, WatchlistInsight } from "@/app/api/watchlist/narrative/route"
 import type { WatchlistScoreHistoryResponse } from "@/app/api/watchlist/score-history/route"
-import { categorize as sharedCategorize, severityScore as sharedSeverityScore, getRecentSignal, type WatchCategory as SharedWatchCategory } from "@/lib/watchlist/categorize"
+import { categorize as sharedCategorize, severityScore as sharedSeverityScore, type WatchCategory as SharedWatchCategory } from "@/lib/watchlist/categorize"
 import { ClientSlideOver } from "@/app/(dashboard)/clients/_components/client-slide-over"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 import { useLocale } from "@/lib/i18n/client"
@@ -53,86 +53,118 @@ function fmtCurrency(v: number): string {
 }
 
 /**
- * 14-day CPL sparkline. Lives in its own column on the Watch List so the trend
- * is scannable at a glance without competing with the cell numbers.
+ * Quick "Create task" button that lives on every Watch List row. One-click
+ * creates an inbox task assigned to that client's Campaign Manager — Roy's
+ * canonical loop on the Watch List home (vs. opening the full composer).
  *
- * - Series: spend / leads per day, with carry-forward on leadless days so the
- *   line doesn't crash to €0 when no leads come in (visually misleading).
- * - Color: red when CPL is meaningfully rising (last 7d vs prior 7d), green when
- *   falling, muted slate otherwise. Rising CPL = bad, so red = "look at me".
+ * Three visual states beyond idle:
+ *   - saving: spinner + "Creating…"
+ *   - done:   ✓ + "Assigned to {cm}", auto-clears after 3.5s
+ *   - error:  red ✗ + short reason (sticky until next click)
+ *
+ * Disabled when the client has no campaignManager set — there's nobody to
+ * assign to. Tooltip explains why so the CM doesn't think the button is
+ * broken.
  */
-function CplSparkline({ trend, locale }: { trend: KpiSummary["dailyTrend"]; locale: Locale }) {
-  if (!trend || trend.length < 2) return <span className="text-muted-foreground/20 text-xs">—</span>
+function CreateTaskButton({
+  mondayItemId,
+  clientName,
+  campaignManager,
+  locale,
+}: {
+  mondayItemId: string
+  clientName: string
+  campaignManager: string | null
+  locale: Locale
+}) {
+  const [state, setState] = useState<"idle" | "saving" | "done" | "error">("idle")
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const hasCm = !!campaignManager?.trim()
 
-  // Carry-forward through leadless days so the line doesn't crash to €0
-  // visually — a missing day is "no signal", not "free leads".
-  const series: number[] = []
-  let last = 0
-  for (const d of trend) {
-    if (d.leads > 0) last = d.spend / d.leads
-    series.push(last)
-  }
-  if (series.every((v) => v === 0)) return <span className="text-muted-foreground/20 text-xs">—</span>
+  async function handleClick(e: React.MouseEvent | React.KeyboardEvent) {
+    // Don't open the row's slide-over — this button has its own action.
+    e.stopPropagation()
+    e.preventDefault()
+    if (!hasCm || state === "saving") return
 
-  const max = Math.max(...series)
-  const min = Math.min(...series)
-  const range = max - min || 1
-  const w = 56
-  const h = 18
-  const points = series
-    .map((v, i) => {
-      const x = (i / (series.length - 1)) * w
-      const y = h - ((v - min) / range) * (h - 2) - 1
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(" ")
-
-  const half = Math.floor(series.length / 2)
-  const prevAvg = series.slice(0, half).reduce((a, b) => a + b, 0) / Math.max(half, 1)
-  const currAvg = series.slice(half).reduce((a, b) => a + b, 0) / Math.max(series.length - half, 1)
-  const ratio = prevAvg > 0 ? currAvg / prevAvg : 1
-  const stroke = ratio >= 1.1 ? "rgb(248 113 113)" : ratio <= 0.9 ? "rgb(74 222 128)" : "rgb(148 163 184)"
-
-  // Native title tooltip: per-day CPL list — gives the CM the actual
-  // numbers behind the line on hover, no extra portal/component cost.
-  // Carry-forward days (where leads=0) are shown with their inherited
-  // CPL but flagged so the tooltip is honest about what's interpolated.
-  const tooltip = trend
-    .map((d, i) => {
-      const cpl = series[i]
-      const dateLabel = d.date.slice(5) // MM-DD
-      if (d.leads === 0) {
-        return cpl > 0
-          ? t("watchlist.sparkline.no_leads", locale, { date: dateLabel, cpl: cpl.toFixed(0) })
-          : t("watchlist.sparkline.no_spend", locale, { date: dateLabel })
-      }
-      return t("watchlist.sparkline.day_summary", locale, {
-        date: dateLabel,
-        cpl: cpl.toFixed(2),
-        leads: String(d.leads),
-        spend: d.spend.toFixed(0),
+    setState("saving")
+    setErrorMsg(null)
+    try {
+      const title = t("watchlist.row.create_task_title", locale, { client: clientName })
+      const res = await fetch("/api/watchlist/quick-cm-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mondayItemId, campaignManager, title }),
       })
-    })
-    .join("\n")
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        if (res.status === 404) {
+          setErrorMsg(t("watchlist.row.create_task_no_mapping", locale, { cm: campaignManager ?? "" }))
+        } else {
+          setErrorMsg(data?.message ?? data?.error ?? t("watchlist.row.create_task_failed", locale))
+        }
+        setState("error")
+        return
+      }
+      setState("done")
+      setTimeout(() => {
+        setState("idle")
+        setErrorMsg(null)
+      }, 3500)
+    } catch {
+      setErrorMsg(t("watchlist.row.create_task_failed", locale))
+      setState("error")
+    }
+  }
 
-  const directionLabel =
-    ratio >= 1.1
-      ? t("watchlist.sparkline.trending_up", locale, { pct: String(Math.round((ratio - 1) * 100)) })
-      : ratio <= 0.9
-        ? t("watchlist.sparkline.trending_down", locale, { pct: String(Math.round((1 - ratio) * 100)) })
-        : t("watchlist.sparkline.stable", locale)
+  const tooltip = !hasCm
+    ? t("watchlist.row.create_task_no_cm_tooltip", locale)
+    : state === "done"
+      ? t("watchlist.row.create_task_done", locale, { cm: campaignManager ?? "" })
+      : state === "error"
+        ? errorMsg ?? t("watchlist.row.create_task_failed", locale)
+        : t("watchlist.row.create_task_tooltip", locale, { cm: campaignManager ?? "" })
+
+  const baseCls =
+    "shrink-0 inline-flex items-center gap-1 h-7 px-2 text-[11px] font-medium rounded-md border transition-colors disabled:cursor-not-allowed"
+  const stateCls =
+    state === "done"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+      : state === "error"
+        ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"
+        : hasCm
+          ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/15"
+          : "border-border/40 bg-muted/30 text-muted-foreground/40"
 
   return (
-    <svg
-      width={w}
-      height={h}
-      viewBox={`0 0 ${w} ${h}`}
-      className="inline-block align-middle"
-      aria-label={directionLabel}
+    <button
+      type="button"
+      onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") handleClick(e)
+        else e.stopPropagation()
+      }}
+      disabled={!hasCm || state === "saving"}
+      title={tooltip}
+      className={cn(baseCls, stateCls)}
     >
-      <title>{`${directionLabel}\n\n${tooltip}`}</title>
-      <polyline points={points} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
-    </svg>
+      {state === "saving" ? (
+        <>
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {t("watchlist.row.create_task_saving", locale)}
+        </>
+      ) : state === "done" ? (
+        <>
+          <Check className="h-3 w-3" />
+          {t("watchlist.row.create_task", locale)}
+        </>
+      ) : (
+        <>
+          <ListTodo className="h-3 w-3" />
+          {t("watchlist.row.create_task", locale)}
+        </>
+      )}
+    </button>
   )
 }
 
@@ -379,14 +411,12 @@ function WatchlistInsightsAndProposals({
 function WatchSection({
   category,
   items,
-  aiNotes,
   defaultOpen,
   onSelectClient,
   locale,
 }: {
   category: "action" | "watch" | "good"
   items: CategorizedClient[]
-  aiNotes: Record<string, string>
   defaultOpen: boolean
   onSelectClient: (mondayItemId: string) => void
   locale: Locale
@@ -412,24 +442,21 @@ function WatchSection({
 
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
-          {/* Column headers */}
-          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_70px_32px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
+          {/* Column headers — kept tight per Roy's instruction: Client,
+              Insight, Spend, Leads, CPL, and one Create-task quick action.
+              AI Note / Appts / 14d CPL sparkline / Ask Pedro all removed
+              (rolled into the slide-over which opens on row click). */}
+          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.client", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.insight", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold flex items-center gap-1.5">
-              <Sparkles className="h-3 w-3 text-violet-400" />
-              {t("watchlist.col.ai_note", locale)}
-            </span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.spend", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.leads", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.cpl", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.appts", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.cpl_14d", locale)}</span>
+            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.create_task", locale)}</span>
           </div>
 
           {/* Rows */}
           {items.map(({ client, insight, kpi, daysInBucket, isNewToday }) => {
-            const note = aiNotes[client.mondayItemId]
             const id = client.mondayItemId
 
             return (
@@ -444,7 +471,7 @@ function WatchSection({
                       onSelectClient(id)
                     }
                   }}
-                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(200px,2fr)_minmax(200px,2.5fr)_80px_60px_70px_60px_70px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
+                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
                 >
                   {/* Client */}
                   <div className="min-w-0">
@@ -462,34 +489,6 @@ function WatchSection({
                     {insight}
                   </p>
 
-                  {/* AI Note + Ask Pedro chip — only Action/Watch rows get
-                      the chip; "Good" doesn't need a fix proposal. Chip
-                      stops propagation so the row stays clickable to open
-                      the slide-over for the rest of the cell area. */}
-                  <div className="min-w-0 flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      {note ? (
-                        <p className="text-[11px] text-muted-foreground leading-snug" title={note}>
-                          {note}
-                        </p>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground/25 italic">{t("watchlist.row.generating", locale)}</span>
-                      )}
-                    </div>
-                    {(category === "action" || category === "watch") && (
-                      <Link
-                        href={`/pedro?tab=refresh&clientId=${id}&auto=1`}
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        title={t("watchlist.row.ask_pedro_tooltip", locale)}
-                        className="shrink-0 inline-flex items-center gap-1 h-5 px-1.5 text-[10px] font-medium rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/15 transition-colors"
-                      >
-                        <Sparkles className="h-2.5 w-2.5" />
-                        {t("watchlist.row.ask_pedro", locale)}
-                      </Link>
-                    )}
-                  </div>
-
                   {/* Spend */}
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {kpi && kpi.adSpend > 0 ? fmtCurrency(kpi.adSpend) : "—"}
@@ -505,15 +504,13 @@ function WatchSection({
                     {kpi && kpi.cpl > 0 ? formatCurrency(kpi.cpl, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                   </span>
 
-                  {/* Appointments */}
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {kpi && kpi.appointments > 0 ? kpi.appointments : "—"}
-                  </span>
-
-                  {/* 14d CPL sparkline */}
-                  <span className="flex items-center">
-                    <CplSparkline trend={kpi?.dailyTrend} locale={locale} />
-                  </span>
+                  {/* Create task — one-click task to the client's CM */}
+                  <CreateTaskButton
+                    mondayItemId={id}
+                    clientName={client.name}
+                    campaignManager={client.campaignManager}
+                    locale={locale}
+                  />
                 </div>
               </div>
             )
@@ -631,8 +628,6 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
 
   const [cmFilter, setCmFilter] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [aiNotes, setAiNotes] = useState<Record<string, string>>({})
-  const aiGenerating = useRef(false)
 
   const campaignManagers = useMemo(() => uniqueSorted(clients.map((c) => c.campaignManager)), [clients])
 
@@ -863,68 +858,13 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     refetchOnWindowFocus: false,
   })
 
-  // Auto-generate AI notes
-  const allCategorized = useMemo(
-    () => [...categorized.action, ...categorized.watch, ...categorized.good],
-    [categorized]
-  )
-
-  useEffect(() => {
-    if (allCategorized.length === 0 || aiGenerating.current || !kpiQuery.data) return
-
-    const clientsForAi = allCategorized
-      .filter((c) => c.kpi && (c.kpi.adSpend > 0 || c.kpi.leads > 0))
-      .map((c) => {
-        const recent = c.kpi ? getRecentSignal(c.kpi) : null
-        return {
-          id: c.client.mondayItemId,
-          name: c.client.name,
-          category: c.category as "action" | "watch" | "good",
-          issue: c.insight,
-          adSpend: c.kpi?.adSpend ?? 0,
-          leads: c.kpi?.leads ?? 0,
-          cpl: c.kpi?.cpl ?? 0,
-          prevCpl: c.kpi?.prevCpl ?? 0,
-          appointments: c.kpi?.appointments ?? 0,
-          costPerAppointment: c.kpi?.costPerAppointment ?? 0,
-          prevCostPerAppointment: c.kpi?.prevCostPerAppointment ?? 0,
-          // Suppresses "vs prev" claims for newly-launched clients in AI notes.
-          prevPeriodReliable: c.kpi?.prevPeriodReliable,
-          // Tells the AI whether appointment data is real-zero vs unknown-because-CRM-missing
-          mondayCrmConnected: c.kpi?.mondayCrmConnected ?? false,
-          leadsFromMetaFallback: c.kpi?.metaFallback ?? false,
-          hasClientBoardId: !!c.client.clientBoardId,
-          // Shortest-trustworthy window CPL — lets the AI Note frame recovery / fresh spike
-          // instead of doubling down on a stale 7d verdict. null when 1d/2d/3d all lack
-          // ≥2 leads (then stick to 7d framing).
-          recentCpl: recent?.recentCpl ?? null,
-          recentWindowDays: recent?.windowDays ?? null,
-          recentSpend: recent?.recentSpend ?? null,
-          recentLeads: recent?.recentLeads ?? null,
-        }
-      })
-
-    if (clientsForAi.length === 0) return
-
-    aiGenerating.current = true
-
-    fetch("/api/watchlist-summaries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clients: clientsForAi }),
-    })
-      .then((r) => r.ok ? r.json() : {})
-      .then((notes: Record<string, string>) => {
-        if (Object.keys(notes).length > 0) setAiNotes(notes)
-      })
-      .catch(() => {})
-      .finally(() => { aiGenerating.current = false })
-  }, [allCategorized, kpiQuery.data]) // eslint-disable-line react-hooks/exhaustive-deps
+  // AI Note column was removed per Roy's directive (Watch List home →
+  // Watch List 2026-05-14). The /api/watchlist-summaries call and the
+  // per-row note state went with it — the slide-over opened on row click
+  // is where AI commentary still lives.
 
   async function handleRefresh() {
     setIsRefreshing(true)
-    aiGenerating.current = false
-    setAiNotes({})
     router.refresh()
     // Bypass the kpi_summaries cache (Meta/Monday live fetch). The endpoint
     // re-writes the cache on success so other consumers see the fresh data too.
@@ -1111,7 +1051,6 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         <WatchSection
           category="action"
           items={categorized.action}
-          aiNotes={aiNotes}
           defaultOpen={true}
           onSelectClient={handleSelectClient}
           locale={locale}
@@ -1119,7 +1058,6 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         <WatchSection
           category="watch"
           items={categorized.watch}
-          aiNotes={aiNotes}
           defaultOpen={true}
           onSelectClient={handleSelectClient}
           locale={locale}
@@ -1132,7 +1070,6 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         <WatchSection
           category="good"
           items={categorized.good}
-          aiNotes={aiNotes}
           defaultOpen={false}
           onSelectClient={handleSelectClient}
           locale={locale}

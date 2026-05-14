@@ -132,12 +132,23 @@ export const DICTIONARY = {
   "watchlist.col.cpl": { nl: "CPL", en: "CPL" },
   "watchlist.col.appts": { nl: "Appts", en: "Appts" },
   "watchlist.col.cpl_14d": { nl: "14d CPL", en: "14d CPL" },
+  "watchlist.col.create_task": { nl: "Taak", en: "Task" },
 
   // Row UI bits
   "watchlist.row.new_pill": { nl: "NIEUW", en: "NEW" },
   "watchlist.row.generating": { nl: "Genereren…", en: "Generating..." },
   "watchlist.row.ask_pedro": { nl: "Vraag Pedro", en: "Ask Pedro" },
   "watchlist.row.ask_pedro_tooltip": { nl: "Pedro stelt een creative refresh voor op basis van laatste 30d performance", en: "Pedro proposes a creative refresh based on last 30d performance" },
+
+  // Create-task quick action (replaces AI Note column on Watch List home)
+  "watchlist.row.create_task": { nl: "Taak aanmaken", en: "Create task" },
+  "watchlist.row.create_task_tooltip": { nl: "Maak direct een taak aan voor {cm} (de campaign manager van deze klant)", en: "Create a task assigned to {cm} (this client's campaign manager) in one click" },
+  "watchlist.row.create_task_no_cm_tooltip": { nl: "Geen campaign manager ingesteld voor deze klant", en: "No campaign manager set for this client" },
+  "watchlist.row.create_task_title": { nl: "Watch List: {client} — actie nodig", en: "Watch List: {client} — action needed" },
+  "watchlist.row.create_task_saving": { nl: "Aanmaken…", en: "Creating…" },
+  "watchlist.row.create_task_done": { nl: "Toegewezen aan {cm}", en: "Assigned to {cm}" },
+  "watchlist.row.create_task_failed": { nl: "Mislukt", en: "Failed" },
+  "watchlist.row.create_task_no_mapping": { nl: "Geen Hub-gebruiker gekoppeld aan {cm}", en: "No Hub user mapped to {cm}" },
 
   // No Data section
   "watchlist.no_data.title": { nl: "Geen data", en: "No data" },
