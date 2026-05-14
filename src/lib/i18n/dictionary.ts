@@ -150,6 +150,24 @@ export const DICTIONARY = {
   "watchlist.row.create_task_failed": { nl: "Mislukt", en: "Failed" },
   "watchlist.row.create_task_no_mapping": { nl: "Geen Hub-gebruiker gekoppeld aan {cm}", en: "No Hub user mapped to {cm}" },
 
+  // Create-task edit dialog (opens when Roy clicks the row's Taak chip)
+  "watchlist.task_dialog.title": { nl: "Taak aanmaken", en: "Create task" },
+  "watchlist.task_dialog.subtitle_with_cm": { nl: "Wordt toegewezen aan {cm}", en: "Will be assigned to {cm}" },
+  "watchlist.task_dialog.subtitle_no_cm": { nl: "Geen campaign manager — taak kan nog niet aangemaakt worden", en: "No campaign manager — task can't be created yet" },
+  "watchlist.task_dialog.ai_drafting": { nl: "Pedro stelt een concept op…", en: "Pedro is drafting…" },
+  "watchlist.task_dialog.ai_label": { nl: "AI-concept · pas aan zoals nodig", en: "AI draft · edit as needed" },
+  "watchlist.task_dialog.manual_label": { nl: "Concept · pas aan zoals nodig", en: "Draft · edit as needed" },
+  "watchlist.task_dialog.field.title": { nl: "Titel", en: "Title" },
+  "watchlist.task_dialog.field.body": { nl: "Context / details", en: "Context / details" },
+  "watchlist.task_dialog.field.body_placeholder": { nl: "Wat is de reden, wat moet er gebeuren?", en: "What's the reason, what needs to happen?" },
+  "watchlist.task_dialog.field.due": { nl: "Einddatum", en: "Due date" },
+  "watchlist.task_dialog.field.regenerate": { nl: "Opnieuw genereren", en: "Regenerate" },
+  "watchlist.task_dialog.field.regenerating": { nl: "Bezig…", en: "Working…" },
+  "watchlist.task_dialog.cancel": { nl: "Annuleren", en: "Cancel" },
+  "watchlist.task_dialog.submit": { nl: "Taak aanmaken", en: "Create task" },
+  "watchlist.task_dialog.submitting": { nl: "Aanmaken…", en: "Creating…" },
+  "watchlist.task_dialog.error_no_title": { nl: "Titel is verplicht.", en: "Title is required." },
+
   // No Data section
   "watchlist.no_data.title": { nl: "Geen data", en: "No data" },
   "watchlist.no_data.subtitle": { nl: "live in Monday maar deze week geen bruikbare Meta data", en: "live in Monday but no usable Meta data this week" },

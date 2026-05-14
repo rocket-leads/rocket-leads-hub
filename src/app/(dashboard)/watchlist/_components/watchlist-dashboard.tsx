@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb, ListTodo, Loader2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
@@ -53,118 +55,369 @@ function fmtCurrency(v: number): string {
 }
 
 /**
- * Quick "Create task" button that lives on every Watch List row. One-click
- * creates an inbox task assigned to that client's Campaign Manager — Roy's
- * canonical loop on the Watch List home (vs. opening the full composer).
+ * "Create task" chip that opens a small editable pop-up on every Watch
+ * List row. Click → AI pre-fills a title + body draft based on the
+ * insight + 7d KPI snapshot, Roy edits anything (title, body, due
+ * date), submits. The actual inbox row is assigned to the client's
+ * Campaign Manager.
  *
- * Three visual states beyond idle:
- *   - saving: spinner + "Creating…"
- *   - done:   ✓ + "Assigned to {cm}", auto-clears after 3.5s
- *   - error:  red ✗ + short reason (sticky until next click)
+ * Button states are now just:
+ *   - idle:   primary chip, ready
+ *   - done:   ✓ green chip for 3.5s after a successful create
+ *   - error:  red chip with last error tooltip
+ *   - disabled: muted, when the client has no campaignManager set
  *
- * Disabled when the client has no campaignManager set — there's nobody to
- * assign to. Tooltip explains why so the CM doesn't think the button is
- * broken.
+ * The dialog handles its own saving/loading state — the trigger button
+ * doesn't gate on a network round-trip anymore.
  */
 function CreateTaskButton({
   mondayItemId,
   clientName,
   campaignManager,
+  category,
+  insight,
+  kpi,
   locale,
 }: {
   mondayItemId: string
   clientName: string
   campaignManager: string | null
+  category: "action" | "watch" | "good"
+  insight: string
+  kpi: KpiSummary | undefined
   locale: Locale
 }) {
-  const [state, setState] = useState<"idle" | "saving" | "done" | "error">("idle")
+  const [open, setOpen] = useState(false)
+  const [lastResult, setLastResult] = useState<"done" | "error" | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const hasCm = !!campaignManager?.trim()
 
-  async function handleClick(e: React.MouseEvent | React.KeyboardEvent) {
+  function handleClick(e: React.MouseEvent | React.KeyboardEvent) {
     // Don't open the row's slide-over — this button has its own action.
     e.stopPropagation()
     e.preventDefault()
-    if (!hasCm || state === "saving") return
+    if (!hasCm) return
+    setOpen(true)
+  }
 
-    setState("saving")
-    setErrorMsg(null)
-    try {
-      const title = t("watchlist.row.create_task_title", locale, { client: clientName })
-      const res = await fetch("/api/watchlist/quick-cm-task", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mondayItemId, campaignManager, title }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        if (res.status === 404) {
-          setErrorMsg(t("watchlist.row.create_task_no_mapping", locale, { cm: campaignManager ?? "" }))
-        } else {
-          setErrorMsg(data?.message ?? data?.error ?? t("watchlist.row.create_task_failed", locale))
-        }
-        setState("error")
-        return
-      }
-      setState("done")
-      setTimeout(() => {
-        setState("idle")
-        setErrorMsg(null)
-      }, 3500)
-    } catch {
-      setErrorMsg(t("watchlist.row.create_task_failed", locale))
-      setState("error")
-    }
+  function handleCreated() {
+    setLastResult("done")
+    setOpen(false)
+    setTimeout(() => setLastResult(null), 3500)
+  }
+
+  function handleFailed(message: string) {
+    setLastResult("error")
+    setErrorMsg(message)
+    setOpen(false)
+    setTimeout(() => {
+      setLastResult(null)
+      setErrorMsg(null)
+    }, 5000)
   }
 
   const tooltip = !hasCm
     ? t("watchlist.row.create_task_no_cm_tooltip", locale)
-    : state === "done"
+    : lastResult === "done"
       ? t("watchlist.row.create_task_done", locale, { cm: campaignManager ?? "" })
-      : state === "error"
+      : lastResult === "error"
         ? errorMsg ?? t("watchlist.row.create_task_failed", locale)
         : t("watchlist.row.create_task_tooltip", locale, { cm: campaignManager ?? "" })
 
   const baseCls =
     "shrink-0 inline-flex items-center gap-1 h-7 px-2 text-[11px] font-medium rounded-md border transition-colors disabled:cursor-not-allowed"
   const stateCls =
-    state === "done"
+    lastResult === "done"
       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-      : state === "error"
+      : lastResult === "error"
         ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"
         : hasCm
           ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/15"
           : "border-border/40 bg-muted/30 text-muted-foreground/40"
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") handleClick(e)
-        else e.stopPropagation()
-      }}
-      disabled={!hasCm || state === "saving"}
-      title={tooltip}
-      className={cn(baseCls, stateCls)}
-    >
-      {state === "saving" ? (
-        <>
-          <Loader2 className="h-3 w-3 animate-spin" />
-          {t("watchlist.row.create_task_saving", locale)}
-        </>
-      ) : state === "done" ? (
-        <>
-          <Check className="h-3 w-3" />
-          {t("watchlist.row.create_task", locale)}
-        </>
-      ) : (
-        <>
-          <ListTodo className="h-3 w-3" />
-          {t("watchlist.row.create_task", locale)}
-        </>
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") handleClick(e)
+          else e.stopPropagation()
+        }}
+        disabled={!hasCm}
+        title={tooltip}
+        className={cn(baseCls, stateCls)}
+      >
+        {lastResult === "done" ? (
+          <>
+            <Check className="h-3 w-3" />
+            {t("watchlist.row.create_task", locale)}
+          </>
+        ) : (
+          <>
+            <ListTodo className="h-3 w-3" />
+            {t("watchlist.row.create_task", locale)}
+          </>
+        )}
+      </button>
+      {open && (
+        <CreateTaskDialog
+          open={open}
+          onOpenChange={setOpen}
+          mondayItemId={mondayItemId}
+          clientName={clientName}
+          campaignManager={campaignManager}
+          category={category}
+          insight={insight}
+          kpi={kpi}
+          locale={locale}
+          onCreated={handleCreated}
+          onFailed={handleFailed}
+        />
       )}
-    </button>
+    </>
+  )
+}
+
+/** Small edit dialog for the Watch List "Create task" flow. Fires the
+ *  prefill request on open, then lets the AM tweak everything before
+ *  the actual task lands in the CM's inbox. */
+function CreateTaskDialog({
+  open,
+  onOpenChange,
+  mondayItemId,
+  clientName,
+  campaignManager,
+  category,
+  insight,
+  kpi,
+  locale,
+  onCreated,
+  onFailed,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  mondayItemId: string
+  clientName: string
+  campaignManager: string | null
+  category: "action" | "watch" | "good"
+  insight: string
+  kpi: KpiSummary | undefined
+  locale: Locale
+  onCreated: () => void
+  onFailed: (message: string) => void
+}) {
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), [])
+  const [title, setTitle] = useState("")
+  const [body, setBody] = useState("")
+  const [dueDate, setDueDate] = useState(todayIso)
+  const [prefilling, setPrefilling] = useState(true)
+  const [aiGenerated, setAiGenerated] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const prefillFiredRef = useRef(false)
+
+  const fetchPrefill = useCallback(async () => {
+    setPrefilling(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/watchlist/task-prefill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName,
+          campaignManager,
+          category,
+          insight,
+          kpi: kpi
+            ? {
+                adSpend: kpi.adSpend,
+                leads: kpi.leads,
+                cpl: kpi.cpl,
+                prevCpl: kpi.prevCpl,
+                appointments: kpi.appointments,
+              }
+            : undefined,
+        }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        title?: string
+        body?: string
+        aiGenerated?: boolean
+      }
+      setTitle(data.title ?? "")
+      setBody(data.body ?? "")
+      setAiGenerated(!!data.aiGenerated)
+    } catch {
+      // Fall back to a minimal title — Roy can edit + submit anyway.
+      setTitle(t("watchlist.row.create_task_title", locale, { client: clientName }))
+      setBody("")
+      setAiGenerated(false)
+    } finally {
+      setPrefilling(false)
+    }
+  }, [clientName, campaignManager, category, insight, kpi, locale])
+
+  // Fire prefill on first open. The ref guards against React 18+ Strict
+  // Mode double-invoke and against re-firing if the parent re-renders.
+  useEffect(() => {
+    if (!open || prefillFiredRef.current) return
+    prefillFiredRef.current = true
+    void fetchPrefill()
+  }, [open, fetchPrefill])
+
+  async function handleSubmit() {
+    if (!title.trim()) {
+      setError(t("watchlist.task_dialog.error_no_title", locale))
+      return
+    }
+    setError(null)
+    setSubmitting(true)
+    try {
+      const res = await fetch("/api/watchlist/quick-cm-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mondayItemId,
+          campaignManager,
+          title: title.trim(),
+          taskBody: body.trim() || null,
+          dueDate,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        if (res.status === 404) {
+          onFailed(t("watchlist.row.create_task_no_mapping", locale, { cm: campaignManager ?? "" }))
+        } else {
+          onFailed(data?.message ?? data?.error ?? t("watchlist.row.create_task_failed", locale))
+        }
+        return
+      }
+      onCreated()
+    } catch {
+      onFailed(t("watchlist.row.create_task_failed", locale))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-lg"
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+        onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
+      >
+        <DialogHeader>
+          <DialogTitle>{t("watchlist.task_dialog.title", locale)}</DialogTitle>
+          <DialogDescription>
+            {campaignManager?.trim()
+              ? t("watchlist.task_dialog.subtitle_with_cm", locale, { cm: campaignManager })
+              : t("watchlist.task_dialog.subtitle_no_cm", locale)}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          {/* AI-draft state indicator + regenerate */}
+          <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              {prefilling ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                  {t("watchlist.task_dialog.ai_drafting", locale)}
+                </>
+              ) : aiGenerated ? (
+                <>
+                  <Lightbulb className="h-3 w-3 text-violet-400" />
+                  {t("watchlist.task_dialog.ai_label", locale)}
+                </>
+              ) : (
+                <>
+                  <Lightbulb className="h-3 w-3 text-muted-foreground/40" />
+                  {t("watchlist.task_dialog.manual_label", locale)}
+                </>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                void fetchPrefill()
+              }}
+              disabled={prefilling || submitting}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={cn("h-3 w-3", prefilling && "animate-spin")} />
+              {prefilling ? t("watchlist.task_dialog.field.regenerating", locale) : t("watchlist.task_dialog.field.regenerate", locale)}
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="task-title" className="text-xs font-medium text-foreground/80">
+              {t("watchlist.task_dialog.field.title", locale)}
+            </label>
+            <input
+              id="task-title"
+              type="text"
+              value={title}
+              disabled={prefilling || submitting}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full h-9 rounded-lg border border-input bg-transparent px-3 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="task-body" className="text-xs font-medium text-foreground/80">
+              {t("watchlist.task_dialog.field.body", locale)}
+            </label>
+            <textarea
+              id="task-body"
+              value={body}
+              disabled={prefilling || submitting}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder={t("watchlist.task_dialog.field.body_placeholder", locale)}
+              rows={6}
+              className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-y disabled:opacity-60"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label htmlFor="task-due" className="text-xs font-medium text-foreground/80">
+              {t("watchlist.task_dialog.field.due", locale)}
+            </label>
+            <input
+              id="task-due"
+              type="date"
+              value={dueDate}
+              disabled={submitting}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="h-9 rounded-lg border border-input bg-transparent px-3 text-sm tabular-nums dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-60"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+            type="button"
+          >
+            {t("watchlist.task_dialog.cancel", locale)}
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={submitting || prefilling || !campaignManager?.trim()}
+            type="button"
+          >
+            {submitting ? t("watchlist.task_dialog.submitting", locale) : t("watchlist.task_dialog.submit", locale)}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -504,11 +757,15 @@ function WatchSection({
                     {kpi && kpi.cpl > 0 ? formatCurrency(kpi.cpl, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
                   </span>
 
-                  {/* Create task — one-click task to the client's CM */}
+                  {/* Create task — opens edit dialog pre-filled with an
+                      AI draft, assigned to the client's CM. */}
                   <CreateTaskButton
                     mondayItemId={id}
                     clientName={client.name}
                     campaignManager={client.campaignManager}
+                    category={category}
+                    insight={insight}
+                    kpi={kpi}
                     locale={locale}
                   />
                 </div>

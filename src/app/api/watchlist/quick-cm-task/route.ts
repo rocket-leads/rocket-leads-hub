@@ -24,6 +24,13 @@ type Body = {
   /** Pre-rendered title from the client (so this endpoint doesn't need to
    *  know about i18n). */
   title: string
+  /** Optional body — when the caller used the edit dialog, this is the
+   *  AI-prefilled + possibly user-edited context. Empty/null means the
+   *  task lands with no body (title-only). */
+  taskBody?: string | null
+  /** ISO date string (YYYY-MM-DD). Defaults to today if absent — that's
+   *  the historical behaviour from the instant-create button. */
+  dueDate?: string | null
 }
 
 export async function POST(req: NextRequest) {
@@ -68,7 +75,19 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Default due date = today (the original instant-create UX). When the
+  // caller passes a YYYY-MM-DD it overrides; anything malformed falls
+  // back to today rather than rejecting — the dialog already validates
+  // the picker so an invalid value here is a programming error, not
+  // user input.
   const today = new Date().toISOString().slice(0, 10)
+  const isIsoDay = (s: unknown): s is string =>
+    typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s)
+  const dueDate = isIsoDay(body.dueDate) ? body.dueDate : today
+
+  const taskBody = typeof body.taskBody === "string" && body.taskBody.trim()
+    ? body.taskBody.trim().slice(0, 4000)
+    : null
 
   const { data, error } = await supabase
     .from("inbox_events")
@@ -78,10 +97,10 @@ export async function POST(req: NextRequest) {
       author_id: session.user.id,
       assignee_id: mapping.user_id,
       title: body.title.trim(),
-      body: null,
+      body: taskBody,
       status: "open",
       priority: "normal",
-      due_date: today,
+      due_date: dueDate,
       source: "manual",
       source_ref: { from: "watchlist_quick_task" },
     })
