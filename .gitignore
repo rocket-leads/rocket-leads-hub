@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Claude Code local runtime artefacts (scheduled task locks, etc.)
 .claude/
+
+# Local debug helpers
+/scripts/print-meta-token.mjs
