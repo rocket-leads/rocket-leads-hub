@@ -96,8 +96,16 @@ export async function generateAndPersistInsight(
   // and run the AI-tell sanitiser to convert any em-dashes / en-dashes the model
   // leaked through into plain commas. The sanitiser is idempotent and a no-op
   // for clean output, so applying it unconditionally is safe.
+  //
+  // We also strip leading markdown code fences (```json ... ```) and the
+  // leftover `json\n` language tag — Haiku wraps JSON output in fences even
+  // when the prompt forbids it, and without this the stored body becomes a
+  // literal "json\n{...}" string that fails JSON.parse downstream.
   const cleaned = stripAiTells(
     text
+      .replace(/^```[a-zA-Z]*\s*\n?/, "")
+      .replace(/\n?```\s*$/, "")
+      .replace(/^(?:json|JSON)\s*\n+/, "")
       .replace(/^["'`]+|["'`]+$/g, "")
       .replace(/^[-•]\s*/, "")
       .trim(),

@@ -240,6 +240,87 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
     expect(parts.actions).toEqual(PEDRO.actions)
   })
 
+  it("email mode: opener uses full salutation, signOff + subject get populated", () => {
+    const { parts } = composeInitialParts({
+      firstName: "Bram",
+      clientName: "SiteJob",
+      amFirstName: "danny",
+      channel: "email",
+      clientId: "12345",
+      kpi: KPI,
+      pedro: PEDRO,
+      now: MONDAY_WEEK_20,
+    })
+    // Full salutation, ending in a comma (not "!")
+    expect(parts.opener).toBe("Hé Bram,")
+    // Subject reads like a real email
+    expect(parts.subject).toBe("Wekelijkse update SiteJob")
+    // Sign-off uses the AM's first name, capitalised
+    expect(parts.signOff).toContain("Groetjes,")
+    expect(parts.signOff).toContain("Danny")
+  })
+
+  it("email mode: renderFromParts appends the signOff at the end of the body", () => {
+    const { parts } = composeInitialParts({
+      firstName: "Bram",
+      clientName: "SiteJob",
+      amFirstName: "danny",
+      channel: "email",
+      clientId: "12345",
+      kpi: KPI,
+      pedro: PEDRO,
+      now: MONDAY_WEEK_20,
+    })
+    const out = renderFromParts(parts)
+    expect(out).toMatch(/^Hé Bram,/)
+    expect(out).toMatch(/Groetjes,\nDanny$/)
+    // Subject is NOT in the body
+    expect(out).not.toContain("Wekelijkse update SiteJob")
+  })
+
+  it("whatsapp mode is unchanged: no subject, no signOff, opener is just name+!", () => {
+    const { parts } = composeInitialParts({
+      firstName: "Bram",
+      clientName: "SiteJob",
+      amFirstName: "danny",
+      channel: "whatsapp",
+      clientId: "12345",
+      kpi: KPI,
+      pedro: PEDRO,
+      now: MONDAY_WEEK_20,
+    })
+    expect(parts.opener).toBe("Bram!")
+    expect(parts.subject).toBe("")
+    expect(parts.signOff).toBe("")
+    const out = renderFromParts(parts)
+    expect(out).not.toMatch(/Groetjes/i)
+    expect(out).not.toContain("Hé Bram")
+  })
+
+  it("note: empty by default, lands between trend and conclusion when filled", () => {
+    const { parts } = composeInitialParts({
+      firstName: "Bram",
+      clientId: "12345",
+      kpi: KPI,
+      pedro: PEDRO,
+      now: MONDAY_WEEK_20,
+    })
+    expect(parts.note).toBe("")
+
+    // When the AM dictates context, it appears between trend + conclusion.
+    const out = renderFromParts({
+      ...parts,
+      note: "We hebben de drempel verhoogd, daarom is CPL gestegen.",
+    })
+    expect(out).toContain("We hebben de drempel verhoogd")
+    // Note paragraph appears AFTER the trend block
+    const trendIdx = out.indexOf(parts.trendSentence)
+    const noteIdx = out.indexOf("We hebben de drempel")
+    const conclusionIdx = out.indexOf(parts.conclusion)
+    expect(trendIdx).toBeLessThan(noteIdx)
+    expect(noteIdx).toBeLessThan(conclusionIdx)
+  })
+
   it("rotates the default actions across weeks so the trio differs", () => {
     const inputs = [0, 1, 2, 3].map((wOffset) => {
       const d = new Date(MONDAY_WEEK_20)

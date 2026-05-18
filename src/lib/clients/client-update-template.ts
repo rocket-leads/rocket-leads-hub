@@ -94,26 +94,44 @@ function defaultActions(seed: number): string[] {
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
-/** Every field the AM sees in the dialog is editable. No `LockedSections`
- *  anymore — the only fixed strings live in the Trengo template wrapper
- *  ("Hey ..." prefix + "Groetjes ..." suffix) which we never render here. */
+/** Delivery channel. Drives the message shape:
+ *   - whatsapp / unknown → short body, opener is just "{name}!", no signOff
+ *     (the Trengo HSM template wraps with "Hey " + "Groetjes …" itself).
+ *   - email → real email shape: subject line, "Hé {name}," greeting in the
+ *     body, full conclusion paragraph, our own "Groetjes,\n{am}" sign-off.
+ *     No template wrapper — we send free-text via Trengo's email channel. */
+export type Channel = "whatsapp" | "email" | "unknown"
+
+/** Every field the AM sees in the dialog is editable. */
 export type EditableParts = {
-  /** First-name line, e.g. "Bram!". Lands directly after the template's
-   *  fixed "Hey " prefix, so a leading "Hé" here would double the greeting. */
+  /** First-name line. WhatsApp: `Bram!` (template adds "Hey "). Email:
+   *  `Hé Bram,` (full salutation since email has no template wrapper). */
   opener: string
   intro: string
-  /** Pre-rendered KPI block as a multi-line editable string. Includes the 📊
-   *  header, bullets, and the week-vs-week delta line. AM can edit any of it. */
+  /** Pre-rendered KPI block as a multi-line editable string. */
   kpiBlock: string
   /** Qualitative trend sentence (empty when there's no notable move). */
   trendSentence: string
+  /** Free-form AM context — dictated above the bubble. Gets inserted into
+   *  the body between the trend sentence and Pedro's conclusion so the AM
+   *  can override the AI framing with their own ("we hebben de drempel
+   *  verhoogd, daarom is CPL gestegen"). Empty by default. */
+  note: string
   /** Pedro's conclusion sentence (or the empty-state fallback). */
   conclusion: string
-  /** Header above the action list. Editable so the AM can swap "deze week"
-   *  for "komende dagen" or similar phrasing. */
+  /** Header above the action list. */
   actionsHeader: string
   /** Pedro's action bullets (empty array allowed). */
   actions: string[]
+  /** Email-only: subject line. Empty string for WhatsApp. Sent as message
+   *  metadata, not body content — `renderFromParts` does NOT include it in
+   *  the rendered string. */
+  subject: string
+  /** Email-only: closing line. The AM's name is NEVER pre-filled — the
+   *  message is already sent FROM the AM's account, so adding their name
+   *  again is redundant. Defaults to `Groetjes,` (or empty) and the AM can
+   *  customise. Empty for WhatsApp (template handles sign-off). */
+  signOff: string
 }
 
 export type ComposedUpdate = {
@@ -194,6 +212,17 @@ function buildKpiBlock(kpi: KpiSummary | null): string {
 export type ComposeInput = {
   firstName: string
   clientId: string
+  /** Drives opener / subject / signOff defaults. Defaults to "whatsapp"
+   *  when omitted so older callers keep their behaviour. */
+  channel?: Channel
+  /** Client's company name (or display name) — only used to seed the
+   *  email subject ("Wekelijkse update {name}"). Optional; falls back to
+   *  the firstName when missing. */
+  clientName?: string
+  /** AM's first name — only used to seed the email sign-off ("Groetjes,
+   *  {amFirstName}"). Capitalised on render. Falls back to "Roel" when
+   *  missing so the placeholder still reads naturally. */
+  amFirstName?: string
   kpi: KpiSummary | null
   pedro: PedroInsightBody | null
   /** Render date — pass `new Date()` in production, fixed dates in tests. */
@@ -208,8 +237,30 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
   const seed = seedHash(`${input.clientId}:${now.getUTCFullYear()}:${isoWeek(now)}`)
   const intro = pick(INTROS, seed >> 3)
   const firstName = (input.firstName ?? "").trim()
-  // No greeting word here — Trengo template's "Hey " prefix already covers it.
-  const opener = firstName ? `${firstName}!` : ""
+  const channel: Channel = input.channel ?? "whatsapp"
+  const isEmail = channel === "email"
+
+  // Opener differs per channel: email gets a full salutation in the body
+  // ("Hé Bram,") because there's no template wrapper; WhatsApp gets just
+  // "Bram!" since the Trengo HSM template prepends "Hey ".
+  const opener = firstName
+    ? isEmail
+      ? `Hé ${firstName},`
+      : `${firstName}!`
+    : isEmail
+      ? "Hé,"
+      : ""
+
+  // Email-only metadata. Subject reads like a real weekly-update email; the
+  // sign-off uses the AM's first name so the recipient gets a recognisable
+  // sender even when their mail client truncates the From header.
+  const subject = isEmail
+    ? `Wekelijkse update ${(input.clientName ?? firstName ?? "campagne").trim()}`.trim()
+    : ""
+  const amName = (input.amFirstName ?? "").trim() || "Roel"
+  const signOff = isEmail
+    ? `Groetjes,\n${amName.charAt(0).toUpperCase()}${amName.slice(1)}`
+    : ""
 
   // Empty-state for paused / pre-launch clients. Lives in the conclusion
   // field so the AM still gets a starter sentence to flesh out, while the
@@ -240,9 +291,12 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
       intro: noSignal ? "" : intro,
       kpiBlock: buildKpiBlock(input.kpi),
       trendSentence: trendSentenceFor(input.kpi),
+      note: "",
       conclusion,
       actionsHeader: noSignal ? "" : "✅ Wat we deze week gaan doen:",
       actions,
+      subject,
+      signOff,
     },
   }
 }
@@ -250,13 +304,21 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
 // ─── Render to final string ──────────────────────────────────────────────
 
 /** Pure stringification of the editable parts. Skips empty fields so a
- *  cleared-out section doesn't leave a stray blank line behind. */
+ *  cleared-out section doesn't leave a stray blank line behind.
+ *
+ *  Subject is NOT emitted — it's metadata sent alongside the body when the
+ *  channel is email. The sign-off IS emitted (at the end) when set; it's
+ *  only set in email mode by `composeInitialParts`. */
 export function renderFromParts(parts: EditableParts): string {
   const blocks: string[] = []
   if (parts.opener?.trim()) blocks.push(parts.opener.trim())
   if (parts.intro?.trim()) blocks.push(parts.intro.trim())
   if (parts.kpiBlock?.trim()) blocks.push(parts.kpiBlock.trim())
   if (parts.trendSentence?.trim()) blocks.push(parts.trendSentence.trim())
+  // AM's dictated context lands BEFORE Pedro's conclusion so the human voice
+  // anchors the framing ("we hebben dit gedaan, daarom is X gestegen") and
+  // Pedro's conclusion plays a supporting role rather than competing.
+  if (parts.note?.trim()) blocks.push(parts.note.trim())
   if (parts.conclusion?.trim()) blocks.push(parts.conclusion.trim())
 
   const validActions = parts.actions.map((a) => a.trim()).filter(Boolean)
@@ -266,6 +328,8 @@ export function renderFromParts(parts: EditableParts): string {
     for (const a of validActions) actionLines.push(`• ${a}`)
     blocks.push(actionLines.join("\n"))
   }
+
+  if (parts.signOff?.trim()) blocks.push(parts.signOff.trim())
 
   return blocks.join("\n\n").trim()
 }

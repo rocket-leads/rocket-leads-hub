@@ -26,8 +26,24 @@
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { createAdminClient } from "@/lib/supabase/server"
+import type { ClientStatus } from "@/lib/clients/status"
 
 export type WatchCategory = "action" | "watch" | "good" | "no-data"
+
+/** Optional context that lets categorize/severityScore detect the
+ *  "Live but no spend yesterday" trigger. Pass when callers know the
+ *  Hub-canonical status — without it the live-but-dark path is silently
+ *  skipped (existing call sites keep working unchanged). */
+export type CategorizeExtras = {
+  clientStatus?: ClientStatus | null
+  /** Override "today" for deterministic tests. */
+  now?: Date
+}
+
+/** Severity floor applied when the live-but-dark trigger fires, so these
+ *  clients always sort above CPL-spike severity in Action Needed. The
+ *  number is intentionally well above realistic spend × CPL-delta scores. */
+export const LIVE_BUT_DARK_SEVERITY_FLOOR = 10_000
 
 /** Locale-bound insight strings for categorize(). Inlined here rather than
  *  routed through the global dictionary so this foundational module stays
@@ -110,6 +126,10 @@ const INSIGHT_STRINGS = {
     en: (n: 1 | 2 | 3) => `last ${n}d`,
     nl: (n: 1 | 2 | 3) => `laatste ${n}d`,
   },
+  live_but_dark: {
+    en: "Live but no spend yesterday — campaign likely paused in Meta.",
+    nl: "Live maar geen spend gisteren — campagne staat waarschijnlijk uit in Meta.",
+  },
 } as const
 
 /**
@@ -125,6 +145,31 @@ export type RecentSignal = {
   windowDays: 1 | 2 | 3
   recentSpend: number
   recentLeads: number
+}
+
+/**
+ * "Live but dark" — Hub status = Live but no spend on the most recent
+ * complete day (yesterday UTC). Likely a campaign paused in Meta while
+ * the Hub status still says Live. Binary signal, no thresholds.
+ *
+ * Returns `false` when:
+ *  - status is not Live (onboarding / on_hold / churned / null skip cleanly)
+ *  - dailyTrend is missing (kpi cache absent — can't tell)
+ *  - the last dailyTrend entry isn't actually yesterday (stale data — don't false-alarm)
+ *  - the last entry has spend > 0
+ */
+export function detectLiveButDark(
+  kpi: KpiSummary | undefined,
+  extras: CategorizeExtras | undefined,
+): boolean {
+  if (!extras || extras.clientStatus !== "live") return false
+  const trend = kpi?.dailyTrend
+  if (!trend || trend.length === 0) return false
+  const last = trend[trend.length - 1]
+  const now = extras.now ?? new Date()
+  const yesterdayUtc = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10)
+  if (last.date !== yesterdayUtc) return false
+  return last.spend === 0
 }
 
 export function getRecentSignal(kpi: KpiSummary): RecentSignal | null {
@@ -175,7 +220,13 @@ export function getThresholds(adSpend7d: number): { watchPct: number; actionPct:
  * CPA was previously included in the worst-case calculation but is left out for
  * now — see the file header for context on the appointment-data reliability gap.
  */
-export function severityScore(kpi: KpiSummary): number {
+export function severityScore(kpi: KpiSummary, extras?: CategorizeExtras): number {
+  // Live-but-dark gets a fixed floor so it sorts above CPL-spike severity in
+  // Action Needed. The CPL math below would otherwise score 0 (no spend
+  // yesterday means tiny spend on the day that matters), pushing these
+  // clients to the bottom of the bucket — the opposite of what we want.
+  if (detectLiveButDark(kpi, extras)) return LIVE_BUT_DARK_SEVERITY_FLOOR
+
   const spend = kpi.adSpend
   if (spend > 50 && kpi.leads === 0) return spend * 3
 
@@ -201,6 +252,7 @@ export function categorize(
   client: MondayClient,
   kpi: KpiSummary | undefined,
   locale: CategorizeLocale = "en",
+  extras?: CategorizeExtras,
 ): { category: WatchCategory; insight: string } {
   if (kpi?.rlAccountNoCampaign) {
     return { category: "no-data", insight: INSIGHT_STRINGS.rl_no_campaign[locale] }
@@ -208,6 +260,14 @@ export function categorize(
 
   if (!client.metaAdAccountId) {
     return { category: "no-data", insight: INSIGHT_STRINGS.no_meta_account[locale] }
+  }
+
+  // Live-but-dark fires BEFORE the no-spend-no-leads no-data check, because a
+  // client that's been completely off for a week would otherwise sink into
+  // no-data instead of surfacing as the urgent "campaign paused while Hub
+  // still says Live" signal we want.
+  if (detectLiveButDark(kpi, extras)) {
+    return { category: "action", insight: INSIGHT_STRINGS.live_but_dark[locale] }
   }
 
   if (!kpi || (kpi.adSpend === 0 && kpi.leads === 0)) {
@@ -324,6 +384,10 @@ export async function updateWatchlistClientState(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   clients: StateWritableClient[],
   kpiSummaries: Record<string, KpiSummary>,
+  /** Per-client Hub status map. When provided, enables the live-but-dark
+   *  override in categorize(). When absent, behaviour matches the previous
+   *  implementation exactly (no live-but-dark flag, no false alarms). */
+  statusByClient?: Map<string, ClientStatus | null>,
 ): Promise<{ written: number }> {
   if (clients.length === 0) return { written: 0 }
 
@@ -345,9 +409,15 @@ export async function updateWatchlistClientState(
 
   for (const client of clients) {
     const kpi = kpiSummaries[client.mondayItemId]
+    const clientStatus = statusByClient?.get(client.mondayItemId) ?? null
     // categorize() takes a full MondayClient; only `metaAdAccountId` and `mondayItemId`
     // are read, so a minimal cast is safe here.
-    const { category } = categorize(client as MondayClient, kpi)
+    const { category } = categorize(
+      client as MondayClient,
+      kpi,
+      "en",
+      statusByClient ? { clientStatus } : undefined,
+    )
     const prev = existing.get(client.mondayItemId)
 
     if (!prev) {

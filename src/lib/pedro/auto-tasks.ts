@@ -61,6 +61,18 @@ export const RECENT_CLOSED_DEDUP_DAYS = 7
  *  (existing inbox_automations cron, watchlist alerts, etc). */
 export const PEDRO_TASK_MARKER = "pedro_auto_tasks_v1"
 
+/** Separate marker for the "Live but no spend" trigger. Kept distinct
+ *  from PEDRO_TASK_MARKER so dedup queries can target it independently
+ *  — a single client can legitimately have an open CPL-spike task AND
+ *  an open live-but-dark task at the same time (different signals,
+ *  different actions). */
+export const PEDRO_LIVE_BUT_DARK_MARKER = "pedro_live_but_dark_v1"
+
+/** Minimum consecutive zero-spend days (ending yesterday UTC) before
+ *  the live-but-dark trigger fires. Two days filters out single-day
+ *  account-disable / billing blips that resolve on their own. */
+export const LIVE_BUT_DARK_MIN_DAYS = 2
+
 // ─── Decision input shape ────────────────────────────────────────────────
 
 export type SkipReason =
@@ -201,4 +213,113 @@ function humanizeCategory(c: WatchCategory): string {
   if (c === "watch") return "Watch"
   if (c === "good") return "Good"
   return "no-data"
+}
+
+// ─── Live-but-dark decision (AM-routed) ──────────────────────────────────
+
+/**
+ * Hub status = Live but no spend for ≥2 consecutive days (ending
+ * yesterday UTC) → campaign almost certainly paused in Meta while the
+ * Hub status still says Live. Different signal from CPL-spike, different
+ * action, different recipient: the Account Manager handles the client
+ * conversation, not the Campaign Manager.
+ *
+ * Gates (intentionally fewer than `decideForClient`):
+ *   1. Consecutive zero-spend days ≥ LIVE_BUT_DARK_MIN_DAYS
+ *   2. AM assignee resolved (skip if no mapping — Pedro doesn't guess)
+ *   3. Dedup: no open task with this marker, none closed in last 7d
+ *   4. Per-assignee cap (shared with CPL-spike tasks via openTasksForAssignee)
+ *
+ * No severity gate — the signal is binary, not noisy.
+ */
+export type LiveButDarkSkipReason =
+  | "not_enough_dark_days"
+  | "no_am_assignee"
+  | "open_task_exists"
+  | "recently_closed"
+  | "assignee_at_cap"
+
+export type LiveButDarkInput = {
+  client: MondayClient
+  /** Number of consecutive zero-spend days ending on yesterday UTC. The
+   *  cron computes this from kpi.dailyTrend before calling. */
+  consecutiveDarkDays: number
+  /** Hub user_id of the Account Manager — null when no AM mapping. */
+  assigneeUserId: string | null
+  /** Most recent live-but-dark task for this client (any status). */
+  existingTask: ExistingPedroTask | null
+  /** Current open Pedro tasks for the assignee (across both markers). */
+  openTasksForAssignee: number
+  /** ISO timestamp the cron snapshot was taken. */
+  now: string
+}
+
+export type LiveButDarkDecision =
+  | {
+      action: "create"
+      title: string
+      body: string
+      assigneeUserId: string
+      sourceRef: {
+        marker: string
+        trigger: string
+        consecutiveDarkDays: number
+      }
+    }
+  | { action: "skip"; reason: LiveButDarkSkipReason }
+
+export function decideLiveButDarkTask(input: LiveButDarkInput): LiveButDarkDecision {
+  if (input.consecutiveDarkDays < LIVE_BUT_DARK_MIN_DAYS) {
+    return { action: "skip", reason: "not_enough_dark_days" }
+  }
+
+  if (!input.assigneeUserId) {
+    return { action: "skip", reason: "no_am_assignee" }
+  }
+
+  if (input.existingTask) {
+    const status = input.existingTask.status
+    if (status === "open" || status === "in_progress") {
+      return { action: "skip", reason: "open_task_exists" }
+    }
+    if (status === "done" && input.existingTask.completedAt) {
+      const closedMs = new Date(input.existingTask.completedAt).getTime()
+      const nowMs = new Date(input.now).getTime()
+      const daysSinceClose = (nowMs - closedMs) / 86_400_000
+      if (daysSinceClose < RECENT_CLOSED_DEDUP_DAYS) {
+        return { action: "skip", reason: "recently_closed" }
+      }
+    }
+  }
+
+  if (input.openTasksForAssignee >= MAX_OPEN_PEDRO_TASKS_PER_USER) {
+    return { action: "skip", reason: "assignee_at_cap" }
+  }
+
+  const title = `Pedro: ${input.client.name} — live but no spend for ${input.consecutiveDarkDays} days`
+  const body = `${input.client.name} has Hub status "Live" but no ad spend was recorded for the last ${input.consecutiveDarkDays} days. The campaign is most likely paused in Meta — but the Hub status still says Live.\n\nCheck Meta: if the campaign was paused intentionally, flip the Hub status to "On Hold". If it was paused by mistake (billing issue, ad-account restriction, accidental pause), restart it. Either way, the client expects to be live.`
+
+  return {
+    action: "create",
+    title,
+    body,
+    assigneeUserId: input.assigneeUserId,
+    sourceRef: {
+      marker: PEDRO_LIVE_BUT_DARK_MARKER,
+      trigger: "live_but_dark_2d_v1",
+      consecutiveDarkDays: input.consecutiveDarkDays,
+    },
+  }
+}
+
+/**
+ * Auto-close for live-but-dark tasks: close when spend returns
+ * (consecutiveDarkDays = 0). Keeps the inbox clean once the AM has
+ * resolved the underlying issue.
+ */
+export function decideAutoCloseLiveButDark(consecutiveDarkDays: number): AutoCloseDecision {
+  if (consecutiveDarkDays === 0) {
+    return { close: true, reason: "Pedro auto-resolved — ad spend resumed." }
+  }
+  return { close: false }
 }

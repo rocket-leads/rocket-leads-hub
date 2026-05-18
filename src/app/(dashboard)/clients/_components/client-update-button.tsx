@@ -188,6 +188,324 @@ function InlineTextarea({
   )
 }
 
+// ─── Preview shapes (channel-specific) ───────────────────────────────────
+
+type PreviewProps = {
+  parts: EditableParts
+  setParts: (next: EditableParts) => void
+  inputsDisabled: boolean
+}
+
+/** Free-form context input above the bubble. The AM dictates context here
+ *  ("we hebben de drempel verhoogd, daarom is CPL gestegen") and it flows
+ *  into the rendered body BEFORE Pedro's conclusion, anchoring the framing
+ *  with the AM's first-hand knowledge. White card so it's visually distinct
+ *  from the message bubble itself. */
+function ContextNoteCard({ parts, setParts, inputsDisabled }: PreviewProps) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = "0px"
+    el.style.height = `${Math.max(el.scrollHeight, 48)}px`
+  }, [parts.note])
+
+  return (
+    <div className="px-6 pt-4">
+      <div className="rounded-md border border-border/60 bg-background shadow-sm">
+        <div className="px-4 py-2 border-b border-border/40 flex items-center gap-2">
+          <Sparkles className="h-3 w-3 text-muted-foreground/60" />
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">
+            Extra context (optioneel)
+          </span>
+          <span className="text-[10px] text-muted-foreground/40 italic ml-auto">
+            verschijnt in het bericht
+          </span>
+        </div>
+        <textarea
+          ref={ref}
+          value={parts.note}
+          onChange={(e) => setParts({ ...parts, note: e.target.value })}
+          placeholder="bv. 'we hebben deze week een extra vraag toegevoegd, daarom is CPL gestegen…'"
+          disabled={inputsDisabled}
+          rows={1}
+          className={cn(
+            "w-full px-4 py-2.5 bg-transparent border-0 outline-none resize-none",
+            "text-sm leading-relaxed text-foreground/90 font-sans",
+            "placeholder:text-foreground/30",
+            "overflow-hidden",
+          )}
+        />
+      </div>
+    </div>
+  )
+}
+
+function ActionsBlock({ parts, setParts, inputsDisabled }: PreviewProps) {
+  return (
+    <div>
+      <InlineInput
+        value={parts.actionsHeader}
+        onChange={(v) => setParts({ ...parts, actionsHeader: v })}
+        placeholder="✅ Actie-header…"
+        disabled={inputsDisabled}
+        ariaLabel="Actie-header"
+      />
+      <ul className="space-y-0.5 mt-0.5">
+        {parts.actions.map((a, i) => (
+          <li key={i} className="group flex items-start gap-2">
+            <span className="text-foreground/70 text-[13px] leading-relaxed select-none pt-0">
+              •
+            </span>
+            <div className="flex-1 min-w-0">
+              <InlineTextarea
+                value={a}
+                onChange={(v) => {
+                  const next = [...parts.actions]
+                  next[i] = v
+                  setParts({ ...parts, actions: next })
+                }}
+                disabled={inputsDisabled}
+                ariaLabel={`Actie ${i + 1}`}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setParts({
+                  ...parts,
+                  actions: parts.actions.filter((_, idx) => idx !== i),
+                })
+              }
+              disabled={inputsDisabled}
+              title="Verwijder"
+              className="opacity-0 group-hover:opacity-100 text-muted-foreground/50 hover:text-red-500 transition-all p-0.5 disabled:opacity-30 shrink-0"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </li>
+        ))}
+      </ul>
+      {parts.actions.length < 5 && !inputsDisabled && (
+        <button
+          type="button"
+          onClick={() => setParts({ ...parts, actions: [...parts.actions, ""] })}
+          className="mt-1 ml-4 inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
+        >
+          <Plus className="h-3 w-3" />
+          Actie toevoegen
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** WhatsApp chat-bubble preview: beige wallpaper, single white bubble on the
+ *  right, locked "Hey" prefix + "Groetjes <am>" suffix (from the Trengo HSM
+ *  template), all the middle content editable. Short paragraphs, compact
+ *  spacing — reads like a real WhatsApp message. */
+function WhatsAppPreview({
+  parts,
+  setParts,
+  inputsDisabled,
+  amSignOffName,
+  timestamp,
+}: PreviewProps & { amSignOffName: string; timestamp: string }) {
+  return (
+    <div
+      className="px-6 py-6 bg-[#ece5dd] dark:bg-[#1f2733]"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at 1px 1px, rgba(0,0,0,0.04) 1px, transparent 0)",
+        backgroundSize: "16px 16px",
+      }}
+    >
+      <div className="ml-auto max-w-[88%] rounded-2xl rounded-tr-md bg-white dark:bg-zinc-900 shadow-sm px-4 py-3 space-y-2 ring-1 ring-black/[0.04]">
+        <div className="flex items-baseline gap-1.5">
+          <span
+            className="text-[13px] leading-relaxed text-foreground/50 select-none shrink-0"
+            title="Komt automatisch uit de Trengo template"
+          >
+            Hey
+          </span>
+          <div className="flex-1 min-w-0">
+            <InlineInput
+              value={parts.opener}
+              onChange={(v) => setParts({ ...parts, opener: v })}
+              placeholder="Voornaam!"
+              disabled={inputsDisabled}
+              ariaLabel="Voornaam-regel"
+            />
+          </div>
+        </div>
+
+        <InlineTextarea
+          value={parts.intro}
+          onChange={(v) => setParts({ ...parts, intro: v })}
+          placeholder="Korte intro…"
+          disabled={inputsDisabled}
+          ariaLabel="Intro"
+        />
+
+        <InlineTextarea
+          value={parts.kpiBlock}
+          onChange={(v) => setParts({ ...parts, kpiBlock: v })}
+          placeholder="📊 KPI block…"
+          disabled={inputsDisabled}
+          ariaLabel="KPI block"
+        />
+
+        <InlineTextarea
+          value={parts.trendSentence}
+          onChange={(v) => setParts({ ...parts, trendSentence: v })}
+          placeholder="(geen trend zin)"
+          disabled={inputsDisabled}
+          ariaLabel="Trend"
+        />
+
+        {/* AM's dictated context — only renders in the bubble when non-empty
+            (the input itself lives in the Card above the bubble). Same field,
+            two views: edit there, preview here. */}
+        {parts.note?.trim() && (
+          <p className="text-[13px] leading-relaxed text-foreground/90 px-1 -mx-1 whitespace-pre-wrap">
+            {parts.note}
+          </p>
+        )}
+
+        <InlineTextarea
+          value={parts.conclusion}
+          onChange={(v) => setParts({ ...parts, conclusion: v })}
+          placeholder="Conclusie…"
+          disabled={inputsDisabled}
+          ariaLabel="Conclusie"
+        />
+
+        <div className="pt-1">
+          <ActionsBlock parts={parts} setParts={setParts} inputsDisabled={inputsDisabled} />
+        </div>
+
+        <p
+          className="text-[13px] leading-relaxed text-foreground/50 select-none pt-1"
+          title="Komt automatisch uit de Trengo template"
+        >
+          Groetjes {amSignOffName}
+        </p>
+
+        <div className="flex justify-end pt-1">
+          <span className="text-[10px] text-foreground/40 tabular-nums">{timestamp}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Email composer preview: looks like a real email client, not a chat bubble.
+ *  Subject field at the top, white body area with generous paragraph spacing,
+ *  full greeting + sign-off baked into the body (email has no template wrapper).
+ *  All fields editable. */
+function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) {
+  return (
+    <div className="px-6 py-4 bg-muted/20 dark:bg-zinc-900/40">
+      <div className="rounded-lg border border-border/60 bg-background shadow-sm overflow-hidden">
+        {/* Subject row — sticks at top, separated by a thin border like a
+            real email composer. */}
+        <div className="border-b border-border/40 px-4 py-2.5 flex items-baseline gap-2">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium shrink-0 w-16">
+            Onderwerp
+          </span>
+          <div className="flex-1 min-w-0">
+            <input
+              type="text"
+              value={parts.subject}
+              onChange={(e) => setParts({ ...parts, subject: e.target.value })}
+              placeholder="Wekelijkse update…"
+              disabled={inputsDisabled}
+              aria-label="Onderwerp"
+              className="w-full bg-transparent border-0 outline-none p-0 text-sm font-medium text-foreground leading-snug placeholder:text-foreground/30"
+            />
+          </div>
+        </div>
+
+        {/* Body area with email-style spacing (space-y-4 instead of 2) so
+            paragraphs breathe like an email, not a chat. */}
+        <div className="px-5 py-4 space-y-4">
+          <InlineInput
+            value={parts.opener}
+            onChange={(v) => setParts({ ...parts, opener: v })}
+            placeholder="Hé Voornaam,"
+            disabled={inputsDisabled}
+            ariaLabel="Begroeting"
+          />
+
+          <InlineTextarea
+            value={parts.intro}
+            onChange={(v) => setParts({ ...parts, intro: v })}
+            placeholder="Korte intro…"
+            disabled={inputsDisabled}
+            ariaLabel="Intro"
+          />
+
+          <InlineTextarea
+            value={parts.kpiBlock}
+            onChange={(v) => setParts({ ...parts, kpiBlock: v })}
+            placeholder="📊 KPI block…"
+            disabled={inputsDisabled}
+            ariaLabel="KPI block"
+          />
+
+          {parts.trendSentence?.trim() ? (
+            <InlineTextarea
+              value={parts.trendSentence}
+              onChange={(v) => setParts({ ...parts, trendSentence: v })}
+              placeholder="(geen trend zin)"
+              disabled={inputsDisabled}
+              ariaLabel="Trend"
+            />
+          ) : (
+            // Hide the trend slot when empty in email mode — emails read
+            // better without a 1-line stub between paragraphs.
+            <button
+              type="button"
+              onClick={() => setParts({ ...parts, trendSentence: " " })}
+              disabled={inputsDisabled}
+              className="text-[11px] text-muted-foreground/40 hover:text-muted-foreground italic"
+            >
+              + Trend zin toevoegen
+            </button>
+          )}
+
+          {/* AM-dictated context paragraph. Editing happens in the Card above
+              the bubble; here it just renders in place so the email preview
+              shows the full body including the context. */}
+          {parts.note?.trim() && (
+            <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap">
+              {parts.note}
+            </p>
+          )}
+
+          <InlineTextarea
+            value={parts.conclusion}
+            onChange={(v) => setParts({ ...parts, conclusion: v })}
+            placeholder="Conclusie…"
+            disabled={inputsDisabled}
+            ariaLabel="Conclusie"
+          />
+
+          <ActionsBlock parts={parts} setParts={setParts} inputsDisabled={inputsDisabled} />
+
+          <InlineTextarea
+            value={parts.signOff}
+            onChange={(v) => setParts({ ...parts, signOff: v })}
+            placeholder="Groetjes,&#10;…"
+            disabled={inputsDisabled}
+            ariaLabel="Afsluiter"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Dialog ───────────────────────────────────────────────────────────────
 
 type DialogProps = Props & {
@@ -232,12 +550,12 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
   })
 
   const send = useMutation({
-    mutationFn: async (message: string) => {
+    mutationFn: async (payload: { message: string; subject?: string }) => {
       setSendError(null)
       const res = await fetch(`/api/clients/${mondayItemId}/send-client-update`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string; message?: string }
@@ -268,10 +586,27 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
   }, [open])
 
+  // The Trengo template's sign-off uses the AM's first name (e.g. "Groetjes
+  // Roel"). We derive it from the slug `rl_universal_<voornaam>` so the
+  // preview matches what the customer actually receives without needing an
+  // extra Trengo round-trip. Capitalised for readability; falls back to "…"
+  // when no template is resolved yet so the muted line still has shape.
+  const amSignOffName = useMemo(() => {
+    if (!waTemplateName) return "…"
+    const slug = waTemplateName.replace(/^rl_universal_/i, "").trim()
+    if (!slug) return "…"
+    return slug.charAt(0).toUpperCase() + slug.slice(1)
+  }, [waTemplateName])
+
   const isLoading = generate.isPending
   const isSending = send.isPending
   const inputsDisabled = isSending || sent
-  const canSend = !!previewText.trim() && !inputsDisabled && trengoLinked && !!waTemplateName
+  const isEmail = channel === "email"
+  // For WhatsApp the AM's HSM template is required (Meta won't accept free
+  // text outside the 24h window, and we route ALL outbound via template).
+  // For email no template is needed — Trengo handles the email channel
+  // server-side once we have a Trengo contact.
+  const canSend = !!previewText.trim() && !inputsDisabled && trengoLinked && (isEmail || !!waTemplateName)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -299,128 +634,33 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
           </div>
         ) : parts ? (
           <>
-            {/* WhatsApp wallpaper + bubble. Every field is editable. */}
-            <div
-              className="px-6 py-6 bg-[#ece5dd] dark:bg-[#1f2733]"
-              style={{
-                backgroundImage:
-                  "radial-gradient(circle at 1px 1px, rgba(0,0,0,0.04) 1px, transparent 0)",
-                backgroundSize: "16px 16px",
-              }}
-            >
-              <div className="ml-auto max-w-[88%] rounded-2xl rounded-tr-md bg-white dark:bg-zinc-900 shadow-sm px-4 py-3 space-y-2 ring-1 ring-black/[0.04]">
-                <InlineInput
-                  value={parts.opener}
-                  onChange={(v) => setParts({ ...parts, opener: v })}
-                  placeholder="Voornaam!"
-                  disabled={inputsDisabled}
-                  ariaLabel="Voornaam-regel"
-                />
-
-                <InlineTextarea
-                  value={parts.intro}
-                  onChange={(v) => setParts({ ...parts, intro: v })}
-                  placeholder="Korte intro…"
-                  disabled={inputsDisabled}
-                  ariaLabel="Intro"
-                />
-
-                <InlineTextarea
-                  value={parts.kpiBlock}
-                  onChange={(v) => setParts({ ...parts, kpiBlock: v })}
-                  placeholder="📊 KPI block…"
-                  disabled={inputsDisabled}
-                  ariaLabel="KPI block"
-                />
-
-                <InlineTextarea
-                  value={parts.trendSentence}
-                  onChange={(v) => setParts({ ...parts, trendSentence: v })}
-                  placeholder="(geen trend zin)"
-                  disabled={inputsDisabled}
-                  ariaLabel="Trend"
-                />
-
-                <InlineTextarea
-                  value={parts.conclusion}
-                  onChange={(v) => setParts({ ...parts, conclusion: v })}
-                  placeholder="Conclusie…"
-                  disabled={inputsDisabled}
-                  ariaLabel="Conclusie"
-                />
-
-                {/* Action header + bullets grouped together. */}
-                <div className="pt-1">
-                  <InlineInput
-                    value={parts.actionsHeader}
-                    onChange={(v) => setParts({ ...parts, actionsHeader: v })}
-                    placeholder="✅ Actie-header…"
-                    disabled={inputsDisabled}
-                    ariaLabel="Actie-header"
-                  />
-                  <ul className="space-y-0.5 mt-0.5">
-                    {parts.actions.map((a, i) => (
-                      <li key={i} className="group flex items-start gap-2">
-                        <span className="text-foreground/70 text-[13px] leading-relaxed select-none pt-0">
-                          •
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <InlineTextarea
-                            value={a}
-                            onChange={(v) => {
-                              const next = [...parts.actions]
-                              next[i] = v
-                              setParts({ ...parts, actions: next })
-                            }}
-                            disabled={inputsDisabled}
-                            ariaLabel={`Actie ${i + 1}`}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setParts({
-                              ...parts,
-                              actions: parts.actions.filter((_, idx) => idx !== i),
-                            })
-                          }
-                          disabled={inputsDisabled}
-                          title="Verwijder"
-                          className="opacity-0 group-hover:opacity-100 text-muted-foreground/50 hover:text-red-500 transition-all p-0.5 disabled:opacity-30 shrink-0"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  {parts.actions.length < 5 && !inputsDisabled && (
-                    <button
-                      type="button"
-                      onClick={() => setParts({ ...parts, actions: [...parts.actions, ""] })}
-                      className="mt-1 ml-4 inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-foreground transition-colors"
-                    >
-                      <Plus className="h-3 w-3" />
-                      Actie toevoegen
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex justify-end pt-1">
-                  <span className="text-[10px] text-foreground/40 tabular-nums">{timestamp}</span>
-                </div>
-              </div>
-
-              {/* Single subtle hint OUTSIDE the bubble: explains what the
-                  Trengo template wraps so the AM knows greeting + sign-off
-                  aren't part of what they edit. Sits below the bubble, no
-                  visual conflict with the message preview itself. */}
-              <p className="ml-auto max-w-[88%] mt-2 text-[10px] text-foreground/50 italic">
-                Trengo template plakt automatisch <code className="not-italic font-mono text-foreground/60">Hey&nbsp;…</code> ervoor en <code className="not-italic font-mono text-foreground/60">Groetjes&nbsp;{waTemplateName?.replace(/^rl_universal_/, "") || "…"}</code> eronder.
-              </p>
-            </div>
+            <ContextNoteCard
+              parts={parts}
+              setParts={setParts}
+              inputsDisabled={inputsDisabled}
+            />
+            {isEmail ? (
+              <EmailPreview
+                parts={parts}
+                setParts={setParts}
+                inputsDisabled={inputsDisabled}
+              />
+            ) : (
+              <WhatsAppPreview
+                parts={parts}
+                setParts={setParts}
+                inputsDisabled={inputsDisabled}
+                amSignOffName={amSignOffName}
+                timestamp={timestamp}
+              />
+            )}
 
             <div className="px-6 pb-2 space-y-1.5">
-              {waTemplateName ? (
+              {isEmail ? (
+                <p className="text-[11px] text-muted-foreground/70">
+                  Verzonden als email via Trengo, met onderwerp en sign-off zoals hierboven.
+                </p>
+              ) : waTemplateName ? (
                 <p className="text-[11px] text-muted-foreground/70">
                   Verzonden via WhatsApp template{" "}
                   <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[10px]">
@@ -454,7 +694,16 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSending}>
             Annuleren
           </Button>
-          <Button onClick={() => send.mutate(previewText)} disabled={!canSend} className="gap-1.5">
+          <Button
+            onClick={() =>
+              send.mutate({
+                message: previewText,
+                subject: isEmail ? parts?.subject?.trim() || undefined : undefined,
+              })
+            }
+            disabled={!canSend}
+            className="gap-1.5"
+          >
             {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
             Verstuur
             {channel === "whatsapp" && " via WhatsApp"}

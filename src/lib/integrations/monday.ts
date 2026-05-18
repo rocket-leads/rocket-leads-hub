@@ -87,7 +87,12 @@ export type MondayClient = {
   boardType: "onboarding" | "current"
 }
 
-async function gql(query: string, variables: Record<string, unknown>, token: string) {
+async function gql(
+  query: string,
+  variables: Record<string, unknown>,
+  token: string,
+  options: { bypassCache?: boolean } = {},
+) {
   const res = await fetch(MONDAY_API_URL, {
     method: "POST",
     headers: {
@@ -95,7 +100,11 @@ async function gql(query: string, variables: Record<string, unknown>, token: str
       Authorization: token,
     },
     body: JSON.stringify({ query, variables }),
-    next: { revalidate: 60 }, // cache 60s
+    // `bypassCache` is set by the user-facing Refresh path. Without it Next.js
+    // would happily serve the same Monday response for 60s even when the
+    // outer `cache_store` cache was explicitly bypassed — making Refresh feel
+    // like it does nothing for up to a minute.
+    ...(options.bypassCache ? { cache: "no-store" as const } : { next: { revalidate: 60 } }),
   })
   if (!res.ok) throw new Error(`Monday API error: ${res.status}`)
   const json = await res.json()
@@ -103,7 +112,12 @@ async function gql(query: string, variables: Record<string, unknown>, token: str
   return json.data
 }
 
-export async function fetchAllItems(boardId: string, token: string, maxRetries = 2) {
+export async function fetchAllItems(
+  boardId: string,
+  token: string,
+  maxRetries = 2,
+  options: { bypassCache?: boolean } = {},
+) {
   const query = `
     query GetItems($boardId: ID!, $cursor: String) {
       boards(ids: [$boardId]) {
@@ -129,7 +143,7 @@ export async function fetchAllItems(boardId: string, token: string, maxRetries =
 
       let firstPage = true
       do {
-        const data = await gql(query, { boardId, cursor }, token)
+        const data = await gql(query, { boardId, cursor }, token, { bypassCache: options.bypassCache })
         const board = data.boards?.[0]
         // Monday returns an empty `boards` array (or a null entry) when the API token
         // has no access to the requested board, instead of throwing. Surface that as
@@ -298,12 +312,16 @@ export type MondayLeadItem = {
   dateDeal: string
 }
 
-export async function fetchClientBoardItems(boardId: string, columnOverrides?: Record<string, string>): Promise<MondayLeadItem[]> {
+export async function fetchClientBoardItems(
+  boardId: string,
+  columnOverrides?: Record<string, string>,
+  options: { bypassCache?: boolean } = {},
+): Promise<MondayLeadItem[]> {
   const [token, config] = await Promise.all([getToken(), getBoardConfig()])
   if (!config) throw new Error("Board config not found.")
 
   const cols = { ...config.client_board_columns, ...columnOverrides }
-  const items = await fetchAllItems(boardId, token)
+  const items = await fetchAllItems(boardId, token, undefined, { bypassCache: options.bypassCache })
 
   return items.map((item) => {
     const cv: Record<string, string> = {}

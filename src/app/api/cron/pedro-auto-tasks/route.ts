@@ -10,9 +10,13 @@ import { categorize, severityScore, type WatchCategory } from "@/lib/watchlist/c
 import {
   decideForClient,
   decideAutoClose,
+  decideLiveButDarkTask,
+  decideAutoCloseLiveButDark,
   PEDRO_TASK_MARKER,
+  PEDRO_LIVE_BUT_DARK_MARKER,
   type DecideInput,
   type SkipReason,
+  type LiveButDarkSkipReason,
 } from "@/lib/pedro/auto-tasks"
 
 /**
@@ -80,12 +84,28 @@ export async function GET(req: NextRequest) {
     // for the recently-closed window. Filter by source='automation' AND
     // the marker on source_ref so we don't collide with the existing
     // inbox_automations cron (which also writes source='automation').
-    const { data: pedroTaskRows } = await supabase
-      .from("inbox_events")
-      .select("id, client_id, assignee_id, status, completed_at, source_ref")
-      .eq("source", "automation")
-      .eq("kind", "task")
-      .contains("source_ref", { marker: PEDRO_TASK_MARKER })
+    //
+    // Two markers live under this cron: PEDRO_TASK_MARKER (CPL-spike
+    // tasks, CM-routed) and PEDRO_LIVE_BUT_DARK_MARKER (live-but-no-
+    // spend tasks, AM-routed). The dedup map is keyed per-marker so a
+    // single client can carry one of each. The per-assignee cap counts
+    // BOTH so an individual user isn't bombarded.
+    const [pedroTaskFetch, darkTaskFetch] = await Promise.all([
+      supabase
+        .from("inbox_events")
+        .select("id, client_id, assignee_id, status, completed_at, source_ref")
+        .eq("source", "automation")
+        .eq("kind", "task")
+        .contains("source_ref", { marker: PEDRO_TASK_MARKER }),
+      supabase
+        .from("inbox_events")
+        .select("id, client_id, assignee_id, status, completed_at, source_ref")
+        .eq("source", "automation")
+        .eq("kind", "task")
+        .contains("source_ref", { marker: PEDRO_LIVE_BUT_DARK_MARKER }),
+    ])
+    const pedroTaskRows = pedroTaskFetch.data
+    const darkTaskRows = darkTaskFetch.data
 
     type PedroTaskRow = {
       id: string
@@ -116,9 +136,29 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Count of OPEN Pedro tasks per assignee — feeds the per-CM cap.
+    const darkTasks = (darkTaskRows ?? []) as PedroTaskRow[]
+
+    // Latest live-but-dark task per client — same shape as latestPedroTaskByClient
+    // but tracks the dark marker separately. Both can be open for the same client.
+    const latestDarkTaskByClient = new Map<string, PedroTaskRow>()
+    for (const t of darkTasks) {
+      const existing = latestDarkTaskByClient.get(t.client_id)
+      if (!existing) {
+        latestDarkTaskByClient.set(t.client_id, t)
+        continue
+      }
+      const existingActive = existing.status === "open" || existing.status === "in_progress"
+      const candidateActive = t.status === "open" || t.status === "in_progress"
+      if (candidateActive && !existingActive) {
+        latestDarkTaskByClient.set(t.client_id, t)
+      }
+    }
+
+    // Count of OPEN Pedro tasks per assignee — feeds the per-user cap.
+    // Sums BOTH markers so a single user isn't slammed when both signals
+    // happen to fire at once.
     const openCountByAssignee = new Map<string, number>()
-    for (const t of pedroTasks) {
+    for (const t of [...pedroTasks, ...darkTasks]) {
       if (t.status === "open" || t.status === "in_progress") {
         openCountByAssignee.set(t.assignee_id, (openCountByAssignee.get(t.assignee_id) ?? 0) + 1)
       }
@@ -226,6 +266,84 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ─── 2b. Live-but-dark decision pass — AM-routed ──────────────────
+    //
+    // Independent from the CPL-spike loop above: different signal
+    // (no spend, not noisy CPL), different recipient (AM, not CM),
+    // different marker (so dedup doesn't collide). Per-user cap still
+    // applies (openCountByAssignee is summed across both markers).
+
+    const darkCreated: Array<{ client: string; assignee: string; days: number }> = []
+    const darkSkipped: Record<LiveButDarkSkipReason, number> = {
+      not_enough_dark_days: 0,
+      no_am_assignee: 0,
+      open_task_exists: 0,
+      recently_closed: 0,
+      assignee_at_cap: 0,
+    }
+    const nowDate = new Date(startedAt)
+
+    for (const client of liveClients) {
+      const kpi = kpiCache[client.mondayItemId]
+      const consecutiveDarkDays = countConsecutiveDarkDays(kpi, nowDate)
+      if (consecutiveDarkDays === 0) {
+        // No trailing dark days at all — skip silently, not even a "not_enough"
+        // count. We only tally skips that actually got past the data-availability
+        // floor, otherwise the metric is dominated by the 95% of healthy clients.
+        continue
+      }
+
+      const amUserId = amByName.get(client.accountManager) ?? null
+      const existingTask = latestDarkTaskByClient.get(client.mondayItemId)
+
+      const decision = decideLiveButDarkTask({
+        client,
+        consecutiveDarkDays,
+        assigneeUserId: amUserId,
+        existingTask: existingTask
+          ? { status: existingTask.status, completedAt: existingTask.completed_at }
+          : null,
+        openTasksForAssignee: amUserId
+          ? openCountByAssignee.get(amUserId) ?? 0
+          : 0,
+        now: nowIso,
+      })
+
+      if (decision.action === "skip") {
+        darkSkipped[decision.reason]++
+        continue
+      }
+
+      try {
+        await supabase.from("inbox_events").insert({
+          kind: "task",
+          client_id: client.mondayItemId,
+          author_id: decision.assigneeUserId,
+          assignee_id: decision.assigneeUserId,
+          title: decision.title,
+          body: decision.body,
+          status: "open",
+          priority: "high",
+          source: "automation",
+          source_ref: decision.sourceRef,
+        })
+        darkCreated.push({
+          client: client.name,
+          assignee: decision.assigneeUserId,
+          days: consecutiveDarkDays,
+        })
+        openCountByAssignee.set(
+          decision.assigneeUserId,
+          (openCountByAssignee.get(decision.assigneeUserId) ?? 0) + 1,
+        )
+      } catch (e) {
+        console.error(
+          `[pedro-auto-tasks] dark insert failed for ${client.name}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
     // ─── 3. Auto-close pass — close tasks whose client left Action ─────
 
     const liveClientById = new Map(liveClients.map((c) => [c.mondayItemId, c]))
@@ -261,11 +379,44 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ─── 3b. Auto-close dark tasks when spend returns ─────────────────
+
+    let darkAutoClosed = 0
+    for (const t of darkTasks) {
+      if (t.status !== "open" && t.status !== "in_progress") continue
+      const client = liveClientById.get(t.client_id)
+      // Client no longer Live → treat as resolved (manual status change is
+      // the AM's signal that the situation is handled).
+      const days = client ? countConsecutiveDarkDays(kpiCache[t.client_id], nowDate) : 0
+      const decision = decideAutoCloseLiveButDark(days)
+      if (!decision.close) continue
+
+      try {
+        await supabase
+          .from("inbox_events")
+          .update({
+            status: "done",
+            completed_at: nowIso,
+            body: appendAutoCloseNote(t, decision.reason),
+          })
+          .eq("id", t.id)
+        darkAutoClosed++
+      } catch (e) {
+        console.error(
+          `[pedro-auto-tasks] dark auto-close failed for task ${t.id}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
     const metrics = {
       durationMs: Date.now() - startedAt,
       liveClients: liveClients.length,
       created: created.length,
       autoClosed,
+      darkCreated: darkCreated.length,
+      darkAutoClosed,
+      darkSkipped,
       ...skipped,
     }
     await tracker.ok(metrics)
@@ -274,6 +425,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       ...metrics,
       created: created.slice(0, 10),
+      darkCreatedSample: darkCreated.slice(0, 10),
     })
   } catch (e) {
     console.error("[pedro-auto-tasks] fatal:", e instanceof Error ? e.message : e)
@@ -283,6 +435,29 @@ export async function GET(req: NextRequest) {
       { status: 500 },
     )
   }
+}
+
+/**
+ * Trailing consecutive zero-spend days from kpi.dailyTrend, ending on
+ * yesterday UTC. Returns 0 if:
+ *   - the dailyTrend is missing
+ *   - the last entry isn't actually yesterday (stale cron → can't trust)
+ *   - the last day had spend > 0
+ */
+function countConsecutiveDarkDays(
+  kpi: KpiSummary | undefined,
+  now: Date,
+): number {
+  const trend = kpi?.dailyTrend
+  if (!trend || trend.length === 0) return 0
+  const yesterdayUtc = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10)
+  if (trend[trend.length - 1].date !== yesterdayUtc) return 0
+  let count = 0
+  for (let i = trend.length - 1; i >= 0; i--) {
+    if (trend[i].spend === 0) count++
+    else break
+  }
+  return count
 }
 
 function daysBetween(fromDate: string, toDate: string): number {

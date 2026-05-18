@@ -72,6 +72,18 @@ async function loadPedroBody(mondayItemId: string) {
   return parsePedroBody(data?.body ?? null)
 }
 
+/** Resolve the AM's display name from the users table — used as fallback for
+ *  email sign-off when no WhatsApp template slug is available. */
+async function loadHubUserName(userId: string): Promise<{ name: string | null } | null> {
+  const supabase = await createAdminClient()
+  const { data } = await supabase
+    .from("users")
+    .select("name")
+    .eq("id", userId)
+    .maybeSingle<{ name: string | null }>()
+  return data
+}
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -85,15 +97,34 @@ export async function POST(
     const client = await fetchClientById(mondayItemId)
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 })
 
-    const [kpi, pedro, waTemplate] = await Promise.all([
+    const channel = detectChannel(client.contactChannel)
+
+    // Template resolution is only meaningful for WhatsApp sends. For email
+    // we send free-text via Trengo and bake greeting + sign-off into the
+    // body ourselves, so the HSM slug is irrelevant.
+    const [kpi, pedro, waTemplate, hubUser] = await Promise.all([
       loadKpi(mondayItemId),
       loadPedroBody(mondayItemId),
-      resolveWaTemplate({ userId: session.user.id, mondayItemId }),
+      channel === "email"
+        ? Promise.resolve({ name: null as string | null, source: "none" as const })
+        : resolveWaTemplate({ userId: session.user.id, mondayItemId }),
+      loadHubUserName(session.user.id),
     ])
+
+    // AM first name: prefer the template slug ("rl_universal_<voornaam>") so
+    // the sign-off matches the WA template's branded name; fall back to the
+    // user record's display name (first token) when no template is resolved.
+    const amFirstName =
+      (waTemplate.name?.replace(/^rl_universal_/i, "").trim() ||
+        hubUser?.name?.split(/\s+/)[0] ||
+        "Roel").toString()
 
     const composed = composeInitialParts({
       firstName: client.firstName,
       clientId: client.mondayItemId,
+      clientName: client.companyName || client.name,
+      amFirstName,
+      channel,
       kpi,
       pedro,
     })
@@ -101,7 +132,7 @@ export async function POST(
     return NextResponse.json<ClientUpdateResponse>({
       parts: composed.parts,
       preview: renderFromParts(composed.parts),
-      channel: detectChannel(client.contactChannel),
+      channel,
       channelLabel: client.contactChannel,
       trengoContactLinked: !!client.trengoContactId,
       whatsappTemplateName: waTemplate.name,

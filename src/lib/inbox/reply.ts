@@ -71,7 +71,13 @@ async function loadEvent(eventId: string): Promise<InboxEventRow | null> {
  * message, in order. Trengo validates the count server-side; mismatches
  * surface as 422.
  */
-async function sendTrengoTemplateAsUser(
+/**
+ * Send a Trengo WhatsApp Business HSM template into an existing ticket.
+ * Exported so the Client Update send path can call it directly when there's
+ * no Hub-side inbox_event anchor to thread through (template messages don't
+ * need the anchor's metadata — they only need a ticket id + the AM's token).
+ */
+export async function sendTrengoTemplateAsUser(
   userId: string,
   ticketId: string,
   templateName: string,
@@ -135,7 +141,12 @@ type EmailExtras = {
   html?: string
 }
 
-async function sendTrengoReplyAsUser(
+/**
+ * Send free-text into a Trengo ticket. Exported so the Client Update email
+ * path can bypass the inbox-event anchor when there's no Hub-side history
+ * yet (same shape as `sendTrengoTemplateAsUser`).
+ */
+export async function sendTrengoReplyAsUser(
   userId: string,
   ticketId: string,
   message: string,

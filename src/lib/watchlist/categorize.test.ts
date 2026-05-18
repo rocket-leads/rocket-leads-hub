@@ -4,6 +4,8 @@ import {
   severityScore,
   getRecentSignal,
   getThresholds,
+  detectLiveButDark,
+  LIVE_BUT_DARK_SEVERITY_FLOOR,
 } from "./categorize"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
@@ -400,5 +402,158 @@ describe("severityScore — ranks Action/Watch by € impact", () => {
     )
     // Without recovery: 1000 × max(60/30, 1) = 2000. Halved: 1000.
     expect(score).toBe(1000)
+  })
+})
+
+// ─── Live-but-dark trigger ───────────────────────────────────────────────
+
+/** Build a dailyTrend whose last entry sits at `yesterdayDate` and the rest
+ *  walk backwards from there. Lets tests construct deterministic "yesterday
+ *  was €0 spend" fixtures without leaning on Date.now(). */
+function trendEndingOn(yesterdayDate: string, days: Array<{ spend: number; leads: number }>) {
+  const end = new Date(yesterdayDate + "T00:00:00Z").getTime()
+  return days.map((d, i) => ({
+    date: new Date(end - (days.length - 1 - i) * 86_400_000).toISOString().slice(0, 10),
+    spend: d.spend,
+    leads: d.leads,
+  }))
+}
+
+describe("detectLiveButDark", () => {
+  const now = new Date("2026-05-18T07:00:00Z") // yesterday = 2026-05-17
+  const yesterday = "2026-05-17"
+
+  it("fires when status=Live and yesterday's spend is exactly 0", () => {
+    const kpi = makeKpi({
+      adSpend: 700,
+      dailyTrend: trendEndingOn(yesterday, [
+        { spend: 100, leads: 5 },
+        { spend: 100, leads: 5 },
+        { spend: 0, leads: 0 },
+      ]),
+    })
+    expect(detectLiveButDark(kpi, { clientStatus: "live", now })).toBe(true)
+  })
+
+  it("does NOT fire when status is on_hold (manually paused — expected)", () => {
+    const kpi = makeKpi({
+      dailyTrend: trendEndingOn(yesterday, [{ spend: 0, leads: 0 }]),
+    })
+    expect(detectLiveButDark(kpi, { clientStatus: "on_hold", now })).toBe(false)
+  })
+
+  it("does NOT fire when status is onboarding", () => {
+    const kpi = makeKpi({
+      dailyTrend: trendEndingOn(yesterday, [{ spend: 0, leads: 0 }]),
+    })
+    expect(detectLiveButDark(kpi, { clientStatus: "onboarding", now })).toBe(false)
+  })
+
+  it("does NOT fire when extras is omitted (back-compat)", () => {
+    const kpi = makeKpi({
+      dailyTrend: trendEndingOn(yesterday, [{ spend: 0, leads: 0 }]),
+    })
+    expect(detectLiveButDark(kpi, undefined)).toBe(false)
+  })
+
+  it("does NOT fire when yesterday's spend is >0", () => {
+    const kpi = makeKpi({
+      dailyTrend: trendEndingOn(yesterday, [{ spend: 5, leads: 0 }]),
+    })
+    expect(detectLiveButDark(kpi, { clientStatus: "live", now })).toBe(false)
+  })
+
+  it("does NOT fire when dailyTrend is missing (kpi cache absent — can't tell)", () => {
+    expect(detectLiveButDark(undefined, { clientStatus: "live", now })).toBe(false)
+    expect(detectLiveButDark(makeKpi({ dailyTrend: undefined }), { clientStatus: "live", now })).toBe(false)
+  })
+
+  it("does NOT fire when last dailyTrend entry isn't actually yesterday (stale cron)", () => {
+    // Last entry is two days ago — cron didn't run yesterday, so we don't trust it.
+    const twoDaysAgo = "2026-05-16"
+    const kpi = makeKpi({
+      dailyTrend: trendEndingOn(twoDaysAgo, [{ spend: 0, leads: 0 }]),
+    })
+    expect(detectLiveButDark(kpi, { clientStatus: "live", now })).toBe(false)
+  })
+})
+
+describe("categorize — live-but-dark override", () => {
+  const now = new Date("2026-05-18T07:00:00Z")
+  const yesterday = "2026-05-17"
+
+  it("forces action with the live-but-dark insight when the trigger fires", () => {
+    const kpi = makeKpi({
+      adSpend: 700,
+      leads: 20,
+      dailyTrend: trendEndingOn(yesterday, [
+        { spend: 100, leads: 5 },
+        { spend: 100, leads: 5 },
+        { spend: 0, leads: 0 },
+      ]),
+    })
+    const result = categorize(makeClient(), kpi, "en", { clientStatus: "live", now })
+    expect(result.category).toBe("action")
+    expect(result.insight).toMatch(/campaign likely paused/i)
+  })
+
+  it("returns the Dutch insight when locale='nl'", () => {
+    const kpi = makeKpi({
+      dailyTrend: trendEndingOn(yesterday, [{ spend: 0, leads: 0 }]),
+    })
+    const result = categorize(makeClient(), kpi, "nl", { clientStatus: "live", now })
+    expect(result.category).toBe("action")
+    expect(result.insight).toMatch(/staat waarschijnlijk uit/i)
+  })
+
+  it("beats the no-data branch — fires even when 7d spend AND leads are zero", () => {
+    // A client that's been completely off for a week would normally sink into
+    // no-data; live-but-dark surfaces it as urgent instead.
+    const kpi = makeKpi({
+      adSpend: 0,
+      leads: 0,
+      dailyTrend: trendEndingOn(yesterday, [{ spend: 0, leads: 0 }]),
+    })
+    const result = categorize(makeClient(), kpi, "en", { clientStatus: "live", now })
+    expect(result.category).toBe("action")
+    expect(result.insight).toMatch(/campaign likely paused/i)
+  })
+
+  it("does NOT override no-data when the client has no Meta ad account", () => {
+    const kpi = makeKpi({
+      dailyTrend: trendEndingOn(yesterday, [{ spend: 0, leads: 0 }]),
+    })
+    const result = categorize(
+      makeClient({ metaAdAccountId: "" }),
+      kpi,
+      "en",
+      { clientStatus: "live", now },
+    )
+    expect(result.category).toBe("no-data")
+  })
+})
+
+describe("severityScore — live-but-dark floor", () => {
+  const now = new Date("2026-05-18T07:00:00Z")
+  const yesterday = "2026-05-17"
+
+  it("applies the floor when the trigger fires (sorts above CPL-spike severity)", () => {
+    const kpi = makeKpi({
+      adSpend: 700,
+      leads: 20,
+      cpl: 35,
+      prevCpl: 30,
+      dailyTrend: trendEndingOn(yesterday, [
+        { spend: 100, leads: 5 },
+        { spend: 0, leads: 0 },
+      ]),
+    })
+    expect(severityScore(kpi, { clientStatus: "live", now })).toBe(LIVE_BUT_DARK_SEVERITY_FLOOR)
+  })
+
+  it("keeps the existing CPL-spike score when not live-but-dark", () => {
+    const kpi = makeKpi({ adSpend: 1000, leads: 10, cpl: 80, prevCpl: 50 })
+    // Extras absent → original logic: 1000 × max(60/30, 1) = 2000.
+    expect(severityScore(kpi)).toBe(2000)
   })
 })

@@ -144,29 +144,69 @@ function hasMeaningfulSignal(ctx: ClientAiContext): boolean {
 export const INSIGHT_REGISTRY: Record<InsightType, InsightRegistryEntry> = {
   client_pedro: {
     model: "claude-haiku-4-5-20251001",
-    maxTokens: 500,
-    promptVersion: 1,
+    // Token budget tightened — long output IS the bug. 500 gave Haiku room
+    // to ramble; 220 forces brevity. Conclusion ≤30 words + 0-3 short
+    // bullets fits comfortably under this cap.
+    maxTokens: 220,
+    // Bumped to 3 → forces every existing client_pedro row to regenerate
+    // on the next cron tick with the much tighter client-voice rules below.
+    promptVersion: 3,
     shouldGenerate: hasMeaningfulSignal,
     systemPrompt: (_ctx, locale) =>
-      `You are Pedro, the Rocket Leads campaign-manager AI. Generate ONE consolidated update for this client that surfaces:
-1. A short factual conclusion of what's happening now (1-2 sentences) — anchored to the last-7-day KPI window and the dominant Monday/Trengo signal.
-2. Concrete next-step actions as bullets (3-5 max). Each action must name a specific ad / UTM / funnel element when present, with hard numbers (CPL, spend, leads) and the time window label.
+      `You are writing ONE WhatsApp / email message AS the account manager, TO THE CLIENT. The AM hits send unmodified, so this needs to read like a human AM texting their client, NOT like a CM dashboard analysis.
 
-You speak with the same voice everywhere this insight is shown (client detail page, watchlist row, home action note). Be honest about ambiguity — if the data is mixed (good quantity, bad quality, etc.), say so. If there's nothing actionable, return zero actions rather than padding.
-
-Output STRICTLY as JSON with this shape, nothing else:
+OUTPUT SHAPE — STRICTLY JSON, nothing else (no code fences, no preamble):
 {
-  "conclusion": "1-2 sentence factual update",
-  "actions": ["action 1", "action 2", "action 3"]
+  "conclusion": "1-2 short sentences. Plain Dutch. ≤30 words total.",
+  "actions": ["bullet 1", "bullet 2"]
 }
 
-When there is genuinely no actionable signal (no spend, no leads, no Monday updates), output:
+When there is no actionable signal:
 {
   "conclusion": "Insufficient signal — keep monitoring.",
   "actions": []
 }
 
-Do NOT wrap the JSON in markdown code fences. Do NOT add prose before or after.
+## HARD CONSTRAINTS — VIOLATIONS GET DROPPED POST-FACTO
+1. Each action MUST be ≤12 words. One sentence. No colons. No nested clauses.
+2. MAXIMUM 3 actions. Returning 1 or 2 is preferred when nothing concrete fits in 12 words.
+3. Conclusion ≤2 sentences, ≤30 words total.
+4. FIRST PERSON ONLY: "ik" / "we" / "wij". Never the AM or any team member by name. Never "stem af met", "bespreek met", "vraag aan", "neem contact op met", "Roy zegt", "Stefan vermeldt".
+5. NEVER use these jargon words/phrases (they get auto-dropped):
+   ad-set · adset · fatigue · vermoeidheid · frequency · CTR · relevance score · audience overlap · saturation · verzadig · Meta-campagne · spend-aanpassing · kosteneﬃciëntie · volumeproblemen · lead-quality signaal · cyclus · interne inbox · interne notitie · TO DO · @Mention · ad-set segmentatie · demografie/interesse · CPL-trend
+6. NEVER include window labels in client output: "(7d)", "(prev 7d)", "(30d)" are FOR YOU, not for the client.
+7. NEVER paraphrase the Monday update word-for-word, especially TO-DOs between team members ("@Stefan TO DO") — that's a CM-to-CM signal, not something the client should see.
+
+## VOICE — HOW THE CLIENT TALKS WITH HIS AGENCY
+Imagine the AM texting their client over WhatsApp. Casual Dutch, direct, no agency-speak. Bullets are short concrete things "we" do this week. The client doesn't know what an ad set is, what CTR means, what frequency does.
+
+CONCLUSION — examples of the right tone:
+- "De kost per lead is iets hoger deze week omdat we een extra vraag hebben toegevoegd voor betere leads. Volgende week zien we of dat zich vertaalt in kwaliteit."
+- "Mooie verbetering deze week, lead-prijs is bijna gehalveerd. Lekker bezig."
+- "Volume is stabiel deze week, lead-prijs ligt iets hoger. Niks om je zorgen over te maken."
+
+ACTIONS — good vs bad:
+✘ "Analyseer ad-set fatigue: controleer frequency en CTR decay in de Meta-campagnes (laatste 30d) om te bepalen of creatieve vermoeidheid of audience overlap de CPL-stijging veroorzaakt."
+✔ "Nieuwe varianten van de winnende creative testen."
+
+✘ "Onderzoek ad-set segmentatie: splits publiek op basis van demografie/interesse om te voorkomen dat frequency verzadigd raakt."
+✔ "Doelgroep iets verfijnen op leeftijd."
+
+✘ "Herzie lead-quality signalen in interne inbox: Roy vermeldt 'kwaliteit' afhankelijk van volgende week gesprek (14 mei)."
+✔ "Volgende week samen door de leadkwaliteit lopen."
+
+✘ "Stem af met Roy Vosters over leadkwaliteit-signalen."
+✔ "Volgende week kijken naar leadkwaliteit."
+
+✘ "Test 3-5 nieuwe creative varianten met dezelfde hook als huidige winnaar, gericht op frisheid binnen vaste budget van €950/maand."
+✔ "3-5 nieuwe varianten van de winnaar testen."
+
+## CONCLUSION — MONDAY UPDATES ARE THE "WHY"
+The MONDAY CRM block tells you WHY KPIs moved. READ IT BEFORE WRITING. When recent Monday updates show a deliberate change (extra qualifying question, raised threshold, paused creative, new audience, new landing page), name THAT as the cause:
+- "CPL is gestegen omdat we een extra vraag hebben toegevoegd. Volgende week zien we of dat ook betere leads oplevert."
+- "We hebben de drempel verhoogd, daardoor wat minder maar wel kwalitatievere leads."
+
+If Monday is empty / nothing structural changed, describe the data plainly without speculating on cause. Default explanations like "creative fatigue" or "audience saturation" are BANNED — if you don't know the cause, don't invent one.
 
 ${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(locale)}`,
     userPrompt: (ctx) => {

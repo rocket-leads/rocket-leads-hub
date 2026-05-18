@@ -6,6 +6,7 @@ import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import type { DailyRollup, KpiDailyCache, KpiDailyClientData } from "@/app/api/kpi-summaries/route"
 import { isPrevPeriodReliable } from "@/app/api/kpi-summaries/route"
 import { categorize, updateWatchlistClientState } from "@/lib/watchlist/categorize"
+import { mondayStatusToHub, type ClientStatus } from "@/lib/clients/status"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { readCache, writeCache } from "@/lib/cache"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
@@ -378,6 +379,17 @@ export async function GET(req: NextRequest) {
     // 5a-pre. Daily score snapshot per CM. Used for the "vs 7d avg" KPI card on the
     // watchlist header — kept in cache_store under a single rolling map so we don't need
     // a dedicated table. Pruned to the trailing 14 days.
+    // Hub-status map keyed by Monday item id — feeds the live-but-dark
+    // override in categorize() / severityScore(). Built once and reused for
+    // both the score snapshot below and the state-table update in step 5a.
+    const statusByClient = new Map<string, ClientStatus | null>()
+    for (const client of allClients) {
+      statusByClient.set(
+        client.mondayItemId,
+        mondayStatusToHub(client.campaignStatus, client.boardType),
+      )
+    }
+
     try {
       const today = new Date().toISOString().slice(0, 10)
       type BucketTotals = { action: number; watch: number; good: number }
@@ -386,7 +398,9 @@ export async function GET(req: NextRequest) {
 
       for (const client of allClients) {
         const kpi = kpiSummaries[client.mondayItemId]
-        const { category } = categorize(client, kpi)
+        const { category } = categorize(client, kpi, "en", {
+          clientStatus: statusByClient.get(client.mondayItemId) ?? null,
+        })
         if (category !== "action" && category !== "watch" && category !== "good") continue
         const cmKey = client.campaignManager || "_unassigned"
         if (!snapshot[cmKey]) snapshot[cmKey] = { action: 0, watch: 0, good: 0 }
@@ -413,7 +427,7 @@ export async function GET(req: NextRequest) {
     // transition date — the same helper is used by the kpi-summaries `?force=1` path so
     // a manual refresh from the UI also populates state without waiting for cron.
     try {
-      await updateWatchlistClientState(supabase, allClients, kpiSummaries)
+      await updateWatchlistClientState(supabase, allClients, kpiSummaries, statusByClient)
     } catch (e) {
       console.error("Watchlist state update failed:", e instanceof Error ? e.message : e)
     }

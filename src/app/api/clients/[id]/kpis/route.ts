@@ -81,7 +81,7 @@ export async function GET(
     adAccountId
       ? cachedFetch(
           `meta_insights:${adAccountId}:${startDate}:${endDate}`,
-          () => fetchMetaInsights(adAccountId, startDate, endDate),
+          () => fetchMetaInsights(adAccountId, startDate, endDate, { bypassCache: forceRefresh }),
           undefined,
           { bypass: forceRefresh },
         ).catch((e) => { console.error("Meta insights error:", e); return [] as Awaited<ReturnType<typeof fetchMetaInsights>> })
@@ -89,7 +89,7 @@ export async function GET(
     clientBoardId
       ? cachedFetch(
           `monday_board_items:${clientBoardId}`,
-          () => fetchClientBoardItems(clientBoardId, client?.column_mapping_override ?? undefined),
+          () => fetchClientBoardItems(clientBoardId, client?.column_mapping_override ?? undefined, { bypassCache: forceRefresh }),
           undefined,
           { bypass: forceRefresh },
         )

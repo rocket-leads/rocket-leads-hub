@@ -50,12 +50,21 @@ function countLeads(actions: Array<{ action_type: string; value: string }> | und
   )
 }
 
-async function fetchAllPages<T>(url: string): Promise<T[]> {
+async function fetchAllPages<T>(
+  url: string,
+  options: { bypassCache?: boolean } = {},
+): Promise<T[]> {
   const results: T[] = []
   let nextUrl: string | null = url
 
   while (nextUrl) {
-    const res: Response = await fetch(nextUrl, { next: { revalidate: 300 } })
+    // Same reasoning as the Monday `gql` helper: when the user explicitly
+    // clicked Refresh, Next.js' 5-minute fetch cache must not silently
+    // re-serve a stale Meta response.
+    const fetchOpts = options.bypassCache
+      ? ({ cache: "no-store" } as const)
+      : ({ next: { revalidate: 300 } } as const)
+    const res: Response = await fetch(nextUrl, fetchOpts)
     if (!res.ok) {
       const status = res.status
       const err = await res.json()
@@ -80,7 +89,8 @@ export async function fetchMetaCampaigns(adAccountId: string): Promise<MetaCampa
 export async function fetchMetaInsights(
   adAccountId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  options: { bypassCache?: boolean } = {},
 ): Promise<MetaInsight[]> {
   const token = await getToken()
   const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
@@ -92,7 +102,7 @@ export async function fetchMetaInsights(
     campaign_name: string
     spend: string
     actions?: Array<{ action_type: string; value: string }>
-  }>(url)
+  }>(url, { bypassCache: options.bypassCache })
   return data.map((d) => ({
     campaignId: d.campaign_id,
     campaignName: d.campaign_name,
