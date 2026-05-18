@@ -77,7 +77,7 @@ export function ClientUpdateButton({ mondayItemId, clientName }: Props) {
 
 // ─── Channel pill ────────────────────────────────────────────────────────
 
-function ChannelPill({
+export function ChannelPill({
   channel,
   channelLabel,
 }: {
@@ -201,7 +201,7 @@ type PreviewProps = {
  *  into the rendered body BEFORE Pedro's conclusion, anchoring the framing
  *  with the AM's first-hand knowledge. White card so it's visually distinct
  *  from the message bubble itself. */
-function ContextNoteCard({ parts, setParts, inputsDisabled }: PreviewProps) {
+export function ContextNoteCard({ parts, setParts, inputsDisabled }: PreviewProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
   useLayoutEffect(() => {
     const el = ref.current
@@ -241,7 +241,7 @@ function ContextNoteCard({ parts, setParts, inputsDisabled }: PreviewProps) {
   )
 }
 
-function ActionsBlock({
+export function ActionsBlock({
   parts,
   setParts,
   inputsDisabled,
@@ -333,7 +333,7 @@ function ActionsBlock({
  *     because the approved template body provides them verbatim. Sign-off
  *     renders as two lines ("Groetjes," + "<Naam>") to match the multi-line
  *     sign-off baked into the template body. */
-function WhatsAppPreview({
+export function WhatsAppPreview({
   parts,
   setParts,
   inputsDisabled,
@@ -487,7 +487,7 @@ function WhatsAppPreview({
  *  Subject field at the top, white body area with generous paragraph spacing,
  *  full greeting + sign-off baked into the body (email has no template wrapper).
  *  All fields editable. */
-function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) {
+export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) {
   return (
     <div className="px-6 py-4 bg-muted/20 dark:bg-zinc-900/40">
       <div className="rounded-lg border border-border/60 bg-background shadow-sm overflow-hidden">
@@ -629,7 +629,7 @@ type DialogProps = Props & {
  *   - actionsHeader: blank it. Template fixes the actions header. The
  *     dialog hides the editable input when V2 anyway.
  */
-function reshapeForV2(parts: EditableParts): EditableParts {
+export function reshapeForV2(parts: EditableParts): EditableParts {
   const lines = (parts.kpiBlock ?? "").split("\n")
   const firstBulletIdx = lines.findIndex((l) => /^\s*[•\-*]/.test(l))
   const kpiBulletsOnly =
@@ -874,16 +874,13 @@ export function ClientUpdateDialog({
                     <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[10px]">
                       {waTemplateName}
                     </code>
-                    <span
-                      className={cn(
-                        "ml-1.5 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium",
-                        isV2
-                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                          : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                      )}
-                    >
-                      {isV2 ? "V2" : "V1"}
-                    </span>
+                    {/* V2 is the default — only flag the fallback case with
+                        an amber "V1" pill so the AM knows something's off. */}
+                    {!isV2 && (
+                      <span className="ml-1.5 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                        V1 fallback
+                      </span>
+                    )}
                     {waTemplateSource === "trengo_auto" && (
                       <span className="ml-1 text-muted-foreground/50">(uit Trengo)</span>
                     )}

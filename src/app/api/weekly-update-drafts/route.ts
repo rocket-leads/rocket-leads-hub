@@ -27,7 +27,15 @@ export type WeeklyUpdateDraftListItem = {
   id: string
   clientId: string
   mondayItemId: string
+  /** Display name preferred for headers — uses Monday `companyName` when
+   *  set (most common), falls back to `name`, finally to the Monday item id. */
   clientName: string
+  /** First name of the contact at the client side (e.g. "Rick" from the
+   *  draft body). Used in the queue list for quick scanning. */
+  contactFirstName: string
+  /** Account manager assigned to this client on Monday — shown in the
+   *  list so a Roy-as-admin can see whose draft is whose at a glance. */
+  accountManager: string
   weekOf: string
   parts: EditableParts
   templateVersion: 1 | 2
@@ -54,9 +62,6 @@ type DraftRow = {
   channel: string
   status: "pending" | "sent" | "dismissed"
   created_at: string
-  // Supabase typed FK join: returns `clients` as an array even for 1-to-1
-  // relations. We just need `name`; collapse to the first row in the map.
-  clients: Array<{ name: string | null }> | null
 }
 
 export async function GET() {
@@ -65,13 +70,10 @@ export async function GET() {
 
   const supabase = await createAdminClient()
 
-  // Pull pending drafts with the client's display name in one round-trip.
-  // We always cap at 500 here — the banner only needs a count and a small
-  // list to render the queue; if the cron ever produces more we'll page.
   const { data, error } = await supabase
     .from("weekly_update_drafts")
     .select(
-      "id, client_id, monday_item_id, week_of, parts, template_version, template_name, channel, status, created_at, clients ( name )",
+      "id, client_id, monday_item_id, week_of, parts, template_version, template_name, channel, status, created_at",
     )
     .eq("status", "pending")
     .order("created_at", { ascending: false })
@@ -81,11 +83,19 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Filter by user visibility. We do this client-side (in the route, not
-  // SQL) because the access rules live in filterClientsByUser and join
-  // against the Monday board cache — not the supabase clients table.
-  const cached = await readCache<{ current: MondayClient[] }>("monday_boards")
+  // Pull the Monday board cache once. It's already the authoritative
+  // source for client display name, company name, and AM on every other
+  // page — using it here keeps the queue's labels consistent with what
+  // the AM sees in /clients (vs. the stale clients.name in Supabase,
+  // which often lags the Monday rename until the next refresh).
+  const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+    "monday_boards",
+  )
   const boards = cached ?? (await fetchBothBoards())
+  const allBoardClients = [...boards.onboarding, ...boards.current]
+  const clientByMondayId = new Map<string, MondayClient>()
+  for (const c of allBoardClients) clientByMondayId.set(c.mondayItemId, c)
+
   const role = (session.user.role as string | undefined) ?? "user"
   const visible = await filterClientsByUser(boards.current, session.user.id, role)
   const visibleIds = new Set(visible.map((c) => c.mondayItemId))
@@ -93,19 +103,26 @@ export async function GET() {
   const rows = (data ?? []) as DraftRow[]
   const drafts: WeeklyUpdateDraftListItem[] = rows
     .filter((r) => visibleIds.has(r.monday_item_id))
-    .map((r) => ({
-      id: r.id,
-      clientId: r.client_id,
-      mondayItemId: r.monday_item_id,
-      clientName: r.clients?.[0]?.name ?? r.monday_item_id,
-      weekOf: r.week_of,
-      parts: r.parts,
-      templateVersion: (r.template_version === 2 ? 2 : 1) as 1 | 2,
-      templateName: r.template_name,
-      channel: (r.channel as "whatsapp" | "email" | "unknown") ?? "unknown",
-      status: r.status,
-      createdAt: r.created_at,
-    }))
+    .map((r) => {
+      const mc = clientByMondayId.get(r.monday_item_id)
+      const displayName =
+        mc?.companyName?.trim() || mc?.name?.trim() || r.monday_item_id
+      return {
+        id: r.id,
+        clientId: r.client_id,
+        mondayItemId: r.monday_item_id,
+        clientName: displayName,
+        contactFirstName: (mc?.firstName ?? "").trim(),
+        accountManager: (mc?.accountManager ?? "").trim(),
+        weekOf: r.week_of,
+        parts: r.parts,
+        templateVersion: (r.template_version === 2 ? 2 : 1) as 1 | 2,
+        templateName: r.template_name,
+        channel: (r.channel as "whatsapp" | "email" | "unknown") ?? "unknown",
+        status: r.status,
+        createdAt: r.created_at,
+      }
+    })
 
   return NextResponse.json<WeeklyUpdateDraftListResponse>({
     drafts,

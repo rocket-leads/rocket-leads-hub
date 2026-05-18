@@ -20,6 +20,7 @@ import { InboxBlock } from "./_components/inbox-block"
 import { BillingBlock } from "./_components/billing-block"
 import { PedroBlock, type PedroProposal } from "./_components/pedro-block"
 import { KpiStrip } from "./_components/kpi-strip"
+import { WeeklyUpdateDraftsBanner } from "@/app/(dashboard)/clients/_components/weekly-update-drafts-banner"
 
 function HomeLoading() {
   return (
@@ -178,6 +179,11 @@ async function HomeData() {
           </span>
         )}
       </div>
+
+      {/* Weekly update drafts banner — self-hides when count is zero, so on
+          most days this is invisible. Mondays after 06:00 UTC it shows
+          everyone's pending drafts and opens the split-pane queue sheet. */}
+      <WeeklyUpdateDraftsBanner />
 
       {/* KPI strip */}
       <KpiStrip
