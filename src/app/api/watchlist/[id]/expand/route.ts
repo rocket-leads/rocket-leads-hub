@@ -9,6 +9,7 @@ import { fetchItemUpdates } from "@/lib/integrations/monday"
 import { readCache, writeCache } from "@/lib/cache"
 import type { ClientContext } from "@/lib/watchlist/collect-context"
 import Anthropic from "@anthropic-ai/sdk"
+import { stripAiTells } from "@/lib/ai/guardrails"
 import { NextRequest, NextResponse } from "next/server"
 
 export type AdVerdict = "winner" | "neutral" | "loser"
@@ -148,7 +149,7 @@ If nothing meets this bar: output exactly one line — \`- No notable activity i
       ],
     })
     const text = msg.content[0]?.type === "text" ? msg.content[0].text.trim() : ""
-    return text || null
+    return text ? stripAiTells(text) : null
   } catch (e) {
     console.error("Watchlist expand: AI summary failed", e instanceof Error ? e.message : e)
     return null

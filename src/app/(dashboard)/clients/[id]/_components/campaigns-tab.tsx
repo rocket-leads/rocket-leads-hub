@@ -7,6 +7,7 @@ import { subDays } from "date-fns"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { KpiCards } from "./kpi-cards"
+import { PedroInsightCard } from "./pedro-insight-card"
 import { UtmTable } from "./utm-table"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
@@ -116,6 +117,8 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, onN
 
   return (
     <div className="space-y-6">
+      <PedroInsightCard mondayItemId={mondayItemId} locale={locale} />
+
       {/* Date filter + KPIs at the top — what the CM looks at first */}
       <div className="flex items-center gap-3 flex-wrap">
         <DateRangePicker
@@ -144,10 +147,6 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, onN
       )}
 
       <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
-
-      {/* Pedro lives once, at the top of the client detail — no AI proposal
-          or lead analysis here anymore. Keeps the campaigns tab focused on
-          the numbers + UTM breakdown. */}
 
       {/* UTM breakdown */}
       {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (

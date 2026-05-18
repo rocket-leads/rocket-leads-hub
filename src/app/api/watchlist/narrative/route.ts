@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest, NextResponse } from "next/server"
-import { AI_GUARDRAILS_PROMPT, aiLanguageDirective, validateAiOutput } from "@/lib/ai/guardrails"
+import { AI_GUARDRAILS_PROMPT, aiLanguageDirective, validateAiOutput, stripAiTells } from "@/lib/ai/guardrails"
 import { getAiLocale } from "@/lib/i18n/server"
 
 /**
@@ -190,16 +190,23 @@ ${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(aiLocale)}`,
     const match = rawText.match(/\{[\s\S]*\}/)
     if (match) {
       const parsed = JSON.parse(match[0]) as Partial<WatchlistNarrativeResponse>
+      // Strip AI-tell em-dashes from each rendered string before we persist
+      // or return — the prompt rule is the first line of defence, this is
+      // the backstop in case the model still emits one through.
       const insights = Array.isArray(parsed.insights)
-        ? parsed.insights.filter(
-            (i): i is WatchlistInsight =>
-              i != null &&
-              typeof i.text === "string" &&
-              ["positive", "warning", "critical"].includes(i.type as string),
-          )
+        ? parsed.insights
+            .filter(
+              (i): i is WatchlistInsight =>
+                i != null &&
+                typeof i.text === "string" &&
+                ["positive", "warning", "critical"].includes(i.type as string),
+            )
+            .map((i) => ({ ...i, text: stripAiTells(i.text) }))
         : []
       const proposals = Array.isArray(parsed.proposals)
-        ? parsed.proposals.filter((p): p is string => typeof p === "string")
+        ? parsed.proposals
+            .filter((p): p is string => typeof p === "string")
+            .map((p) => stripAiTells(p))
         : []
       result = { insights, proposals }
     }

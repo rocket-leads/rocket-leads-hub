@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { createAdminClient } from "@/lib/supabase/server"
-import { validateAiOutput } from "@/lib/ai/guardrails"
+import { validateAiOutput, stripAiTells } from "@/lib/ai/guardrails"
 import type { ClientAiContext } from "./context"
 import type { InsightType, InsightSeverity } from "./types"
 import { INSIGHT_REGISTRY } from "./registry"
@@ -92,11 +92,16 @@ export async function generateAndPersistInsight(
     }
   }
 
-  // Strip stray quotes / dash prefixes some prompts produce despite instruction.
-  const cleaned = text
-    .replace(/^["'`]+|["'`]+$/g, "")
-    .replace(/^[-•]\s*/, "")
-    .trim()
+  // Strip stray quotes / dash prefixes some prompts produce despite instruction,
+  // and run the AI-tell sanitiser to convert any em-dashes / en-dashes the model
+  // leaked through into plain commas. The sanitiser is idempotent and a no-op
+  // for clean output, so applying it unconditionally is safe.
+  const cleaned = stripAiTells(
+    text
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .replace(/^[-•]\s*/, "")
+      .trim(),
+  )
 
   const violations = validateAiOutput(cleaned, {
     mondayCrmConnected: ctx.sources.mondayUpdates,

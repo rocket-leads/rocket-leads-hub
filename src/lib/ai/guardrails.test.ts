@@ -3,6 +3,7 @@ import {
   validateAiOutput,
   assertAiOutputClean,
   AI_GUARDRAILS_PROMPT,
+  stripAiTells,
 } from "./guardrails"
 
 /**
@@ -136,7 +137,7 @@ describe("assertAiOutputClean", () => {
   it("returns silently when clean", () => {
     expect(() =>
       assertAiOutputClean(
-        "Iterate on Photo 2 — €25 CPL (7d), 14 leads (30d). 3 new variants same hook.",
+        "Iterate on Photo 2, €25 CPL (7d), 14 leads (30d). 3 new variants same hook.",
         CRM_OK,
       ),
     ).not.toThrow()
@@ -168,5 +169,78 @@ describe("AI_GUARDRAILS_PROMPT", () => {
   it("forbids budget-increase recommendations", () => {
     expect(AI_GUARDRAILS_PROMPT).toMatch(/budget/i)
     expect(AI_GUARDRAILS_PROMPT).toMatch(/fixed/i)
+  })
+
+  it("includes the em-dash / en-dash ban", () => {
+    expect(AI_GUARDRAILS_PROMPT).toMatch(/NEVER USE EM-DASHES/)
+    expect(AI_GUARDRAILS_PROMPT).toMatch(/COMMA/)
+  })
+})
+
+describe("stripAiTells", () => {
+  it("replaces em-dash with comma", () => {
+    expect(stripAiTells("CPL stable, geen actie nodig — alleen monitoren."))
+      .toBe("CPL stable, geen actie nodig, alleen monitoren.")
+  })
+
+  it("replaces en-dash with comma", () => {
+    expect(stripAiTells("Lead quality goed – maar volume zakt."))
+      .toBe("Lead quality goed, maar volume zakt.")
+  })
+
+  it("replaces space-hyphen-space with comma", () => {
+    expect(stripAiTells("Pauzeer ad - test nieuwe angle."))
+      .toBe("Pauzeer ad, test nieuwe angle.")
+  })
+
+  it("replaces double-hyphen splitter with comma", () => {
+    expect(stripAiTells("Iteratie hier -- nieuwe varianten daar."))
+      .toBe("Iteratie hier, nieuwe varianten daar.")
+  })
+
+  it("preserves hyphens inside compound words", () => {
+    const txt = "Test op no-budget en high-ticket prospects voor de B2B-funnel."
+    expect(stripAiTells(txt)).toBe(txt)
+  })
+
+  it("preserves leading bullet dashes", () => {
+    const txt = "- eerste actie\n- tweede actie"
+    expect(stripAiTells(txt)).toBe(txt)
+  })
+
+  it("is idempotent on already-clean text", () => {
+    const clean = "CPL stabiel deze week. Volgende stap: nieuwe creatives."
+    expect(stripAiTells(clean)).toBe(clean)
+    expect(stripAiTells(stripAiTells(clean))).toBe(clean)
+  })
+
+  it("collapses double commas it creates", () => {
+    expect(stripAiTells("CPL stijgt, — focus op creatives.")).toBe("CPL stijgt, focus op creatives.")
+  })
+
+  it("handles empty/null-ish input safely", () => {
+    expect(stripAiTells("")).toBe("")
+  })
+})
+
+describe("validateAiOutput — em-dash detection", () => {
+  it("flags an em-dash between words", () => {
+    const v = validateAiOutput("CPL up 80% (7d) — pauzeer ad.", { mondayCrmConnected: true })
+    expect(v.some((x) => x.rule === "em_dash_used")).toBe(true)
+  })
+
+  it("flags an en-dash between words", () => {
+    const v = validateAiOutput("CPL up 80% (7d) – pauzeer ad.", { mondayCrmConnected: true })
+    expect(v.some((x) => x.rule === "em_dash_used")).toBe(true)
+  })
+
+  it("does not flag a leading bullet dash", () => {
+    const v = validateAiOutput("- CPL up 80% (7d).\n- Pause ad.", { mondayCrmConnected: true })
+    expect(v.some((x) => x.rule === "em_dash_used")).toBe(false)
+  })
+
+  it("does not flag a compound word hyphen", () => {
+    const v = validateAiOutput("5/8 leads said 'no-budget' (14d).", { mondayCrmConnected: true })
+    expect(v.some((x) => x.rule === "em_dash_used")).toBe(false)
   })
 })

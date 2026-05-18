@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { subDays } from "date-fns"
 import {
   Euro,
@@ -37,6 +37,12 @@ type Props = {
   supabaseClientId: string
   canViewBilling: boolean
   canViewCampaigns: boolean
+  /** Bumped by the page-level Refresh button. When > 0, kpisQuery includes
+   *  it in the queryKey (forces a refetch) and passes `?forceRefresh=1` so
+   *  the API bypasses its server-side `cache_store` entries for Monday +
+   *  Meta. Without this, Refresh appears to do nothing because the 10-min
+   *  cache keeps serving stale numbers. */
+  refreshNonce: number
   onNavigateToCampaigns: () => void
   onNavigateToInbox: () => void
   onNavigateToBilling: () => void
@@ -220,7 +226,7 @@ function TopAdsCard({
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {ads.map((ad) => {
+            {ads.map((ad, i) => {
               const cplLabel = ad.leads > 0 && ad.cpl > 0 ? `€${ad.cpl.toFixed(2)}` : "—"
               const cplColor =
                 ad.verdict === "winner"
@@ -229,7 +235,7 @@ function TopAdsCard({
                     ? "text-red-500"
                     : "text-muted-foreground"
               return (
-                <li key={ad.adName} className="flex items-baseline justify-between gap-3 text-[12px]">
+                <li key={`${ad.adName}-${i}`} className="flex items-baseline justify-between gap-3 text-[12px]">
                   <span className="text-foreground/85 truncate flex-1 min-w-0" title={ad.adName}>
                     {ad.adName}
                   </span>
@@ -421,25 +427,32 @@ export function HomeTab({
   supabaseClientId,
   canViewBilling,
   canViewCampaigns,
+  refreshNonce,
   onNavigateToCampaigns: _onNavigateToCampaigns,
   onNavigateToInbox,
   onNavigateToBilling,
 }: Props) {
   const locale = useLocale()
+  const queryClient = useQueryClient()
   const { range, setRange, presets, applyPreset, formatDate } = useDateRange()
   const startDateStr = formatDate(range.startDate)
   const endDateStr = formatDate(range.endDate)
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
 
   // Period KPIs (AdSpend, Leads, CPL) — driven by the period selector.
+  // `refreshNonce` is part of the queryKey so the Refresh button reliably
+  // triggers a refetch, and we forward `forceRefresh=1` whenever the user
+  // explicitly asked for fresh data (nonce > 0) so the API bypasses its
+  // server-side cache_store entries.
   const kpisQuery = useQuery<KpiResult>({
-    queryKey: ["kpis", client.mondayItemId, startDateStr, endDateStr],
+    queryKey: ["kpis", client.mondayItemId, startDateStr, endDateStr, refreshNonce],
     queryFn: () => {
       const p = new URLSearchParams({
         startDate: startDateStr,
         endDate: endDateStr,
         ...(client.metaAdAccountId ? { adAccountId: client.metaAdAccountId } : {}),
         ...(client.clientBoardId ? { clientBoardId: client.clientBoardId } : {}),
+        ...(refreshNonce > 0 ? { forceRefresh: "1" } : {}),
       })
       return fetch(`/api/clients/${client.mondayItemId}/kpis?${p}`).then((r) => r.json())
     },
@@ -467,6 +480,23 @@ export function HomeTab({
       }).then((r) => r.json()),
     enabled: canViewCampaigns && (!!client.metaAdAccountId || !!client.clientBoardId),
     staleTime: 5 * 60 * 1000,
+    // Reuse the All Clients page's batched `kpi-summaries` cache as placeholder
+    // so the Health card renders instantly when the user opens the slide-over
+    // from the table — same client, same shape, already in memory. The single-
+    // client refetch still runs in the background to refine the entry (parent's
+    // batch may have used a different date range, server defaults to a 7d
+    // window for the slide-over). Without this, opening the panel triggers a
+    // second Meta API call for data the parent already has.
+    placeholderData: () => {
+      const matches = queryClient.getQueriesData<Record<string, KpiSummary>>({
+        queryKey: ["kpi-summaries"],
+      })
+      for (const [, data] of matches) {
+        const entry = data?.[client.mondayItemId]
+        if (entry) return { [client.mondayItemId]: entry }
+      }
+      return undefined
+    },
   })
 
   const kpiSummary = summaryQuery.data?.[client.mondayItemId]

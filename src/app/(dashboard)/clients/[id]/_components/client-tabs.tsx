@@ -51,6 +51,12 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
   const queryClient = useQueryClient()
   const locale = useLocale()
   const [isRefreshing, setIsRefreshing] = useState(false)
+  // Incremented by the Refresh button. Passed to tabs so their queries can
+  // include it in the queryKey (forces React Query to refetch) AND propagate
+  // `?forceRefresh=1` so the API bypasses the 10-minute `cache_store` entries
+  // for Monday board items + Meta insights. Without this, Refresh only
+  // invalidates browser-side caches while the server keeps serving stale data.
+  const [refreshNonce, setRefreshNonce] = useState(0)
 
   // Drives the tab notification dot — same queryKey as the header so React
   // Query dedupes the network call.
@@ -96,6 +102,7 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
 
   async function handleRefresh() {
     setIsRefreshing(true)
+    setRefreshNonce((n) => n + 1)
     router.refresh()
     await queryClient.invalidateQueries({
       predicate: (query) => {
@@ -130,6 +137,7 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
           supabaseClientId={supabaseClientId}
           canViewBilling={access.canViewBilling}
           canViewCampaigns={access.canViewCampaigns}
+          refreshNonce={refreshNonce}
           onNavigateToCampaigns={() => setActiveTab("campaigns")}
           onNavigateToInbox={() => setActiveTab("inbox")}
           onNavigateToBilling={() => setActiveTab("billing")}

@@ -15,6 +15,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { AgreementSummary } from "@/app/api/clients/agreements-summary/route"
+import type { LastClientUpdatesResponse } from "@/app/api/clients/last-client-updates/route"
 import { mondayStatusToHub, type ClientStatus } from "@/lib/clients/status"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 import { useLocale } from "@/lib/i18n/client"
@@ -134,6 +135,16 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
+  // Last "Client update" send timestamp per Monday item — backs the
+  // green "Geüpdatet vandaag" state + grey caption on the Client update column.
+  // 30s stale time so a fresh send by the same user reflects in the table
+  // almost immediately when the dialog calls invalidateQueries below.
+  const lastClientUpdatesQuery = useQuery<LastClientUpdatesResponse>({
+    queryKey: ["last-client-updates"],
+    queryFn: () => fetch("/api/clients/last-client-updates").then((r) => r.json()),
+    staleTime: 30 * 1000,
+  })
+
   const kpiQuery = useQuery<Record<string, KpiSummary>>({
     queryKey: ["kpi-summaries", kpiClients.map((c) => c.mondayItemId), startDateStr, endDateStr],
     queryFn: () =>
@@ -207,6 +218,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
             kpiSummaries={kpiQuery.data}
             agreementSummaries={agreementsQuery.data}
             mondayActiveMap={mondayActiveQuery.data}
+            lastClientUpdates={lastClientUpdatesQuery.data?.lastUpdates}
             onSelectClient={handleSelectClient}
             showAllToggle={{
               showAll,

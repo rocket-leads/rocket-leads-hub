@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useQueryClient } from "@tanstack/react-query"
 import Link from "next/link"
 import {
   Table,
@@ -215,7 +216,7 @@ function HealthBadge({ health, locale }: { health: HealthResult; locale: Locale 
   )
 }
 
-type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "phase" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "appointments" | "cpa" | "cpaDelta" | "paymentStatus" | "outstanding" | "health" | "mrr" | "nextInvoice"
+type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "phase" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "appointments" | "cpa" | "cpaDelta" | "paymentStatus" | "outstanding" | "health" | "mrr" | "nextInvoice" | "clientUpdate"
 type SortDir = "asc" | "desc"
 
 type Props = {
@@ -225,6 +226,10 @@ type Props = {
   kpiSummaries?: Record<string, KpiSummary>
   agreementSummaries?: Record<string, AgreementSummary>
   mondayActiveMap?: Record<string, boolean>
+  /** Most recent "Client update" send timestamp per Monday item, ISO string.
+   *  Drives the green "Geüpdatet vandaag" state + grey caption below the
+   *  Update button. Missing entry = never sent yet. */
+  lastClientUpdates?: Record<string, string>
   defaultSortKey?: SortKey
   defaultSortDir?: SortDir
   /** When provided, renders a "X of Y clients" indicator + show all/active toggle in the search row. */
@@ -280,6 +285,72 @@ function fmtKpi(value: number, type: "currency" | "integer"): string {
   return value.toLocaleString("en-GB")
 }
 
+/** YYYY-MM-DD of "today" so two timestamps on the same calendar day compare
+ *  equal regardless of how many hours apart they were. We compare ISO date
+ *  prefixes rather than ms-deltas because "24h ago" and "today" aren't the
+ *  same concept — Roy wants the button to come back at the start of the
+ *  next calendar day, not 24h after the last send. */
+function isSameLocalDay(iso: string | undefined): boolean {
+  if (!iso) return false
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return false
+  return d.toLocaleDateString("en-CA") === new Date().toLocaleDateString("en-CA")
+}
+
+/** "Laatste update: 15 mei" — short caption matching the MRR/budget style. */
+function fmtLastUpdateLabel(iso: string | undefined, locale: Locale): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString(locale === "nl" ? "nl-NL" : "en-GB", {
+    day: "numeric",
+    month: "short",
+  })
+}
+
+/**
+ * Combined cell for the Client update column.
+ *
+ * Renders one of two states:
+ *   - Updated today  → green "Geüpdatet vandaag ✓" pill, blocks accidental
+ *     re-send within the same calendar day.
+ *   - Otherwise      → the Update button. Beneath either state we add a
+ *     small grey "Laatste update: <date>" caption when there's a prior send,
+ *     same visual treatment as the MRR / budget caption.
+ */
+function ClientUpdateCell({
+  mondayItemId,
+  clientName,
+  lastUpdateAt,
+  locale,
+}: {
+  mondayItemId: string
+  clientName: string
+  lastUpdateAt: string | undefined
+  locale: Locale
+}) {
+  const updatedToday = isSameLocalDay(lastUpdateAt)
+  const caption = lastUpdateAt ? fmtLastUpdateLabel(lastUpdateAt, locale) : ""
+
+  return (
+    <div className="leading-tight inline-flex flex-col items-center gap-0.5">
+      {updatedToday ? (
+        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          {t("clients.client_update.updated_today", locale)}
+        </span>
+      ) : (
+        <ClientUpdateButton mondayItemId={mondayItemId} clientName={clientName} />
+      )}
+      {caption && (
+        <span className="text-[10px] tabular-nums text-muted-foreground/60">
+          {t("clients.client_update.last", locale, { date: caption })}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function SortableHead({ label, sortKey, currentKey, currentDir, onSort, className }: {
   label: React.ReactNode
   sortKey: SortKey
@@ -308,9 +379,50 @@ function SortableHead({ label, sortKey, currentKey, currentDir, onSort, classNam
   )
 }
 
-export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, agreementSummaries, mondayActiveMap, defaultSortKey, defaultSortDir, showAllToggle, dateRangeControl, onSelectClient }: Props) {
+export function ClientsTable({ clients, boardType, billingSummaries, kpiSummaries, agreementSummaries, mondayActiveMap, lastClientUpdates, defaultSortKey, defaultSortDir, showAllToggle, dateRangeControl, onSelectClient }: Props) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const locale = useLocale()
+
+  // Hover-prefetch for the slide-over: when the user dwells on a row for >80ms
+  // we kick off /api/clients/[id] in the background under the same React Query
+  // key the slide-over reads (["client-detail", id]). By the time they click,
+  // the Monday round-trip (typically 500-2000ms) is in flight or already cached,
+  // so the panel's content fills in much faster. The 80ms debounce keeps mouse
+  // wiggles across many rows from firing one Monday call per row.
+  const hoverTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+
+  const prefetchClient = useCallback(
+    (clientId: string) => {
+      if (hoverTimersRef.current.has(clientId)) return
+      const t = setTimeout(() => {
+        hoverTimersRef.current.delete(clientId)
+        queryClient.prefetchQuery({
+          queryKey: ["client-detail", clientId],
+          queryFn: () => fetch(`/api/clients/${clientId}`).then((r) => r.json()),
+          staleTime: 60 * 1000,
+        })
+      }, 80)
+      hoverTimersRef.current.set(clientId, t)
+    },
+    [queryClient],
+  )
+
+  const cancelPrefetch = useCallback((clientId: string) => {
+    const t = hoverTimersRef.current.get(clientId)
+    if (t) {
+      clearTimeout(t)
+      hoverTimersRef.current.delete(clientId)
+    }
+  }, [])
+
+  useEffect(() => {
+    const timers = hoverTimersRef.current
+    return () => {
+      for (const t of timers.values()) clearTimeout(t)
+      timers.clear()
+    }
+  }, [])
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
   const [phaseFilter, setPhaseFilter] = useState("All")
@@ -445,13 +557,26 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           valB = order[getCampaignHealth(kpiB).status] ?? 3
           break
         }
+        case "clientUpdate": {
+          // Most-recently-updated wins on desc — clients never updated sort
+          // to the BOTTOM in both directions so they're never confused with
+          // "oldest" entries that have a real (just very old) timestamp.
+          const a0 = lastClientUpdates?.[a.mondayItemId]
+          const b0 = lastClientUpdates?.[b.mondayItemId]
+          if (!a0 && !b0) return 0
+          if (!a0) return 1
+          if (!b0) return -1
+          valA = Date.parse(a0)
+          valB = Date.parse(b0)
+          break
+        }
       }
 
       if (valA < valB) return -1 * dir
       if (valA > valB) return 1 * dir
       return 0
     })
-  }, [filtered, sortKey, sortDir, kpiSummaries, agreementSummaries, getPaymentStatus])
+  }, [filtered, sortKey, sortDir, kpiSummaries, agreementSummaries, lastClientUpdates, getPaymentStatus])
 
   const PAGE_SIZE = 25
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
@@ -665,9 +790,14 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort}
                     className="text-[13px] text-foreground/80 font-semibold w-[90px]"
                   />
-                  <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[110px] border-l border-border/40">
-                    {t("clients.col.client_update", locale)}
-                  </TableHead>
+                  <SortableHead
+                    label={t("clients.col.client_update", locale)}
+                    sortKey="clientUpdate"
+                    currentKey={sortKey}
+                    currentDir={sortDir}
+                    onSort={handleSort}
+                    className="text-[13px] text-foreground/80 font-semibold text-center w-[140px] border-l border-border/40"
+                  />
                 </>
               )}
             </TableRow>
@@ -705,6 +835,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         router.push(href)
                       }
                     }}
+                    onMouseEnter={onSelectClient ? () => prefetchClient(client.mondayItemId) : undefined}
+                    onMouseLeave={onSelectClient ? () => cancelPrefetch(client.mondayItemId) : undefined}
                     onAuxClick={(e) => {
                       // Middle-click opens in new tab — keep this even with the slide-over
                       // pattern so power users can still pop a full page in another window.
@@ -904,9 +1036,11 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           ) : ""}
                         </TableCell>
                         <TableCell className="text-center border-l border-border/40" onClick={(e) => e.stopPropagation()}>
-                          <ClientUpdateButton
+                          <ClientUpdateCell
                             mondayItemId={client.mondayItemId}
                             clientName={client.companyName || client.name}
+                            lastUpdateAt={lastClientUpdates?.[client.mondayItemId]}
+                            locale={locale}
                           />
                         </TableCell>
                       </>

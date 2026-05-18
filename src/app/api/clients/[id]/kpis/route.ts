@@ -21,6 +21,11 @@ export async function GET(
   const adAccountIdParam = searchParams.get("adAccountId") ?? ""
   const clientBoardIdParam = searchParams.get("clientBoardId") ?? ""
   const selectedCampaignIdsParam = searchParams.get("selectedCampaignIds") ?? ""
+  // Set by the page-level Refresh button to bypass the 10-minute cache_store
+  // entries for Monday board items + Meta insights. Without this, clicking
+  // Refresh only invalidates browser-side caches while the server keeps
+  // returning whatever was cached on the first load.
+  const forceRefresh = searchParams.get("forceRefresh") === "1"
 
   if (!startDate || !endDate) {
     return NextResponse.json({ error: "startDate and endDate are required" }, { status: 400 })
@@ -77,12 +82,16 @@ export async function GET(
       ? cachedFetch(
           `meta_insights:${adAccountId}:${startDate}:${endDate}`,
           () => fetchMetaInsights(adAccountId, startDate, endDate),
+          undefined,
+          { bypass: forceRefresh },
         ).catch((e) => { console.error("Meta insights error:", e); return [] as Awaited<ReturnType<typeof fetchMetaInsights>> })
       : Promise.resolve([]),
     clientBoardId
       ? cachedFetch(
           `monday_board_items:${clientBoardId}`,
           () => fetchClientBoardItems(clientBoardId, client?.column_mapping_override ?? undefined),
+          undefined,
+          { bypass: forceRefresh },
         )
           .then((items): MondayResult => ({ ok: true, items }))
           .catch((e): MondayResult => {
@@ -135,6 +144,10 @@ export async function GET(
       })),
     },
   }, {
-    headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+    headers: {
+      "Cache-Control": forceRefresh
+        ? "no-store"
+        : "private, s-maxage=60, stale-while-revalidate=300",
+    },
   })
 }

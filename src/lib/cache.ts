@@ -45,14 +45,21 @@ export async function writeCache(key: string, value: unknown): Promise<void> {
  * propagates and nothing is cached — callers should handle errors *outside*
  * cachedFetch so a transient failure never poisons the cache with an empty
  * result.
+ *
+ * Pass `bypass: true` to skip the read and force a live fetch + cache rewrite.
+ * Used by the page-level Refresh button so users have an escape hatch when
+ * the 10-minute cache is hiding a Monday/Meta change they just made.
  */
 export async function cachedFetch<T>(
   key: string,
   fetcher: () => Promise<T>,
   ttlMs: number = DEFAULT_CACHED_FETCH_TTL_MS,
+  options: { bypass?: boolean } = {},
 ): Promise<T> {
-  const cached = await readCache<T>(key, ttlMs)
-  if (cached !== null) return cached
+  if (!options.bypass) {
+    const cached = await readCache<T>(key, ttlMs)
+    if (cached !== null) return cached
+  }
 
   const fresh = await fetcher()
   void writeCache(key, fresh)
