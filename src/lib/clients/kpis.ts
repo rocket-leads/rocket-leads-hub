@@ -27,9 +27,16 @@ export type UtmRow = {
   revenue: number
 }
 
+// Monday's GraphQL `text` for date columns can include a time component
+// ("2026-05-17 06:50:00") when the column is configured as date+time. A pure
+// lexicographic `dateStr <= end` then fails for items on the end date — the
+// trailing " 06:50:00" sorts *after* "2026-05-17" and the item drops out of
+// the window. Normalize to the YYYY-MM-DD prefix before comparing.
 function inRange(dateStr: string, start: string, end: string): boolean {
   if (!dateStr) return false
-  return dateStr >= start && dateStr <= end
+  const day = dateStr.match(/(\d{4}-\d{2}-\d{2})/)?.[1]
+  if (!day) return false
+  return day >= start && day <= end
 }
 
 function safe(n: number, d: number): number {
