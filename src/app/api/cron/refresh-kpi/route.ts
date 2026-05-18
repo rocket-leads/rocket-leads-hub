@@ -180,6 +180,12 @@ export async function GET(req: NextRequest) {
     const kpiClients = allClients.filter((c) => c.metaAdAccountId || c.clientBoardId)
     const kpiSummaries: Record<string, KpiSummary> = {}
     const kpiDaily: KpiDailyCache = {}
+    // Per-client cache pre-warm. The slide-over's /api/clients/[id]/kpis
+    // route reads from these exact keys; without this every first-open in a
+    // 10-minute window had to live-fetch Monday (1-3s) + Meta (500-1500ms).
+    // Now the cron has the data anyway, so we mirror it into the keys that
+    // endpoint reads from — opens go from ~2-3s cold to ~200ms warm.
+    const perClientCacheJobs: Array<{ key: string; data: unknown }> = []
 
     const kpiStartedAt = Date.now()
     for (let i = 0; i < kpiClients.length; i += KPI_BATCH) {
@@ -212,6 +218,42 @@ export async function GET(req: NextRequest) {
                   })
               : Promise.resolve<MondayResult>({ ok: false, items: [] }),
           ])
+
+          // Mirror the freshly-fetched data into the per-client cache keys
+          // that /api/clients/[id]/kpis reads from. Without this, every
+          // first-open of a client in a 10-minute window had to live-fetch
+          // these all over again. Push happens inside the concurrent map —
+          // JS arrays are safe under single-threaded async push.
+          if (monday.ok) {
+            perClientCacheJobs.push({
+              key: `monday_board_items:${client.clientBoardId}`,
+              data: monday.items,
+            })
+          }
+          if (shouldFetchMeta && client.metaAdAccountId) {
+            const last7d = dailyInsights.filter(
+              (d) => d.date >= startDate && d.date <= endDate,
+            )
+            const byCampaign = new Map<
+              string,
+              { campaignId: string; campaignName: string; spend: number; leads: number }
+            >()
+            for (const d of last7d) {
+              const entry = byCampaign.get(d.campaignId) ?? {
+                campaignId: d.campaignId,
+                campaignName: d.campaignName,
+                spend: 0,
+                leads: 0,
+              }
+              entry.spend += d.spend
+              entry.leads += d.leads
+              byCampaign.set(d.campaignId, entry)
+            }
+            perClientCacheJobs.push({
+              key: `meta_insights:${client.metaAdAccountId}:${startDate}:${endDate}`,
+              data: Array.from(byCampaign.values()),
+            })
+          }
 
           const dailyFiltered = selectedCampaignIds.size > 0
             ? dailyInsights.filter((d) => selectedCampaignIds.has(d.campaignId))
@@ -291,13 +333,25 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 4. Write all three caches. allSettled so a single failure doesn't drop the others.
+    // 4. Write all caches. allSettled so a single failure doesn't drop the others.
     const writeJobs = [
       { key: "monday_boards", bytes: JSON.stringify({ onboarding, current }).length, run: () => writeCache("monday_boards", { onboarding, current }) },
       { key: "kpi_summaries", bytes: JSON.stringify(kpiSummaries).length, run: () => writeCache("kpi_summaries", kpiSummaries) },
       { key: "kpi_daily", bytes: JSON.stringify(kpiDaily).length, run: () => writeCache("kpi_daily", kpiDaily) },
+      // Per-client pre-warm writes — typically 100+ keys, one per client board
+      // and one per ad account. Logged in aggregate to avoid spamming.
+      ...perClientCacheJobs.map((j) => ({
+        key: j.key,
+        bytes: JSON.stringify(j.data).length,
+        run: () => writeCache(j.key, j.data),
+      })),
     ]
-    for (const j of writeJobs) console.log(`[refresh-kpi] writing ${j.key} — ${(j.bytes / 1024).toFixed(0)}KB`)
+    console.log(
+      `[refresh-kpi] pre-warming ${perClientCacheJobs.length} per-client cache entries (monday_board_items + meta_insights)`,
+    )
+    // Only log the three big aggregate writes individually; per-client entries
+    // would bury everything else in noise.
+    for (const j of writeJobs.slice(0, 3)) console.log(`[refresh-kpi] writing ${j.key} — ${(j.bytes / 1024).toFixed(0)}KB`)
     const writeResults = await Promise.allSettled(writeJobs.map((j) => j.run()))
     writeResults.forEach((r, idx) => {
       if (r.status === "rejected") {

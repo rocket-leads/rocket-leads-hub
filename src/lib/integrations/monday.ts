@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
+import { cachedFetch } from "@/lib/cache"
 
 const MONDAY_API_URL = "https://api.monday.com/v2"
 
@@ -342,7 +343,27 @@ export async function fetchClientBoardItems(
   })
 }
 
+/** Cache key for a single Monday client item. Burst via `deleteCache` after
+ *  any PATCH that updates a column on this item (see /api/clients/[id]
+ *  PATCH handler). */
+export const clientItemCacheKey = (itemId: string) => `monday_client_item:${itemId}`
+
+/**
+ * Cached single-client fetch. Backs the slide-over's primary network call —
+ * every slide-over open used to spend 300-800ms (sometimes 2s) waiting on
+ * Monday GraphQL before the panel even rendered tabs. A 5-minute TTL keeps
+ * the call instant in normal workflow; PATCH bursts the entry so client edits
+ * never serve stale data.
+ */
 export async function fetchClientById(itemId: string): Promise<MondayClient | null> {
+  return cachedFetch(
+    clientItemCacheKey(itemId),
+    () => fetchClientByIdLive(itemId),
+    5 * 60 * 1000,
+  )
+}
+
+async function fetchClientByIdLive(itemId: string): Promise<MondayClient | null> {
   const [token, config] = await Promise.all([getToken(), getBoardConfig()])
   if (!config) throw new Error("Board config not found.")
 

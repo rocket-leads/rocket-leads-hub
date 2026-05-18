@@ -534,9 +534,31 @@ export function HomeTab({
 
   const paymentSummary = summarizePayments(billingQuery.data?.invoices)
 
-  const adSpendValue = kpisQuery.data?.adSpend ?? 0
-  const leadsValue = kpisQuery.data?.leads ?? 0
-  const cplValue = kpisQuery.data?.costPerLead ?? 0
+  // When the date range matches the cron's canonical last-7d window (yesterday
+  // back 6 days), reuse the precomputed `kpi_summaries` numbers from
+  // summaryQuery as a placeholder. summaryQuery typically resolves in ~50ms
+  // (single Supabase read) versus kpisQuery's 100-2000ms (Monday + Meta even
+  // with our pre-warm cron), so users see real numbers immediately instead of
+  // a skeleton flash.
+  const isCronSevenDayWindow = useMemo(() => {
+    const end = subDays(new Date(), 1)
+    const start = subDays(end, 6)
+    return formatDate(start) === startDateStr && formatDate(end) === endDateStr
+  }, [startDateStr, endDateStr, formatDate])
+
+  const kpisPlaceholder = useMemo(() => {
+    if (!isCronSevenDayWindow || !kpiSummary) return null
+    return {
+      adSpend: kpiSummary.adSpend,
+      leads: kpiSummary.leads,
+      costPerLead: kpiSummary.cpl,
+    }
+  }, [isCronSevenDayWindow, kpiSummary])
+
+  const adSpendValue = kpisQuery.data?.adSpend ?? kpisPlaceholder?.adSpend ?? 0
+  const leadsValue = kpisQuery.data?.leads ?? kpisPlaceholder?.leads ?? 0
+  const cplValue = kpisQuery.data?.costPerLead ?? kpisPlaceholder?.costPerLead ?? 0
+  const kpisLoading = kpisQuery.isLoading && !kpisPlaceholder
 
   return (
     <div className="space-y-5">
@@ -562,13 +584,13 @@ export function HomeTab({
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Ad Spend" icon={Euro} value={fmtCurrency(adSpendValue)} loading={kpisQuery.isLoading} />
-        <KpiCard label="Leads" icon={Users} value={fmtInt(leadsValue)} loading={kpisQuery.isLoading} />
+        <KpiCard label="Ad Spend" icon={Euro} value={fmtCurrency(adSpendValue)} loading={kpisLoading} />
+        <KpiCard label="Leads" icon={Users} value={fmtInt(leadsValue)} loading={kpisLoading} />
         <KpiCard
           label="CPL"
           icon={cplValue > 0 ? TrendingDown : TrendingUp}
           value={fmtCurrency(cplValue)}
-          loading={kpisQuery.isLoading}
+          loading={kpisLoading}
         />
         <HealthCard
           category={health.category}

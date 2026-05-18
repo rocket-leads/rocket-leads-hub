@@ -1,8 +1,9 @@
 import { auth } from "@/lib/auth"
 import { updateClientField, type ClientFieldUpdate } from "@/lib/clients/edit"
-import { fetchClientById } from "@/lib/integrations/monday"
+import { fetchClientById, clientItemCacheKey } from "@/lib/integrations/monday"
 import { syncClientToSupabase, ensureClientId } from "@/lib/clients/sync"
 import { getClientAccess } from "@/lib/clients/access"
+import { deleteCache } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
@@ -78,6 +79,10 @@ export async function PATCH(
 
   try {
     await updateClientField(mondayItemId, body)
+    // Burst the 5-minute slide-over cache so the next open reflects this edit
+    // immediately. Fire-and-forget — the PATCH already succeeded on Monday;
+    // a failed cache delete just means a brief stale-read window.
+    void deleteCache(clientItemCacheKey(mondayItemId))
     return NextResponse.json({ ok: true })
   } catch (e) {
     return NextResponse.json(

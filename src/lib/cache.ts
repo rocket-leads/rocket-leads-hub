@@ -40,6 +40,18 @@ export async function writeCache(key: string, value: unknown): Promise<void> {
 }
 
 /**
+ * Drop a single cache entry. Fire-and-forget by callers in most cases; the
+ * primary use is bursting a cached read after a write so the next read sees
+ * the fresh value (e.g. after PATCHing a Monday item we kill the matching
+ * `monday_client_item:*` entry).
+ */
+export async function deleteCache(key: string): Promise<void> {
+  const supabase = await createAdminClient()
+  const { error } = await supabase.from("cache_store").delete().eq("key", key)
+  if (error) console.error(`[deleteCache] failed to delete "${key}":`, error.message)
+}
+
+/**
  * Read cache first, fall back to live fetch when missing or older than ttlMs.
  * Cache writes are fire-and-forget. If the fetcher throws, the error
  * propagates and nothing is cached — callers should handle errors *outside*

@@ -77,12 +77,19 @@ export async function GET(
   type MondayItems = Awaited<ReturnType<typeof fetchClientBoardItems>>
   type MondayResult = { ok: boolean; items: MondayItems }
 
+  // 24h TTL so the daily refresh-kpi cron's pre-warmed entries stay valid
+  // for the full day between cron runs. Without this the default 10min TTL
+  // would expire 10 minutes after the cron — defeating the whole pre-warm
+  // (Roy, May 2026). Stale data is at most ~24h old; the Refresh button
+  // bypasses this entirely for ad-hoc freshness.
+  const PER_CLIENT_TTL_MS = 24 * 60 * 60 * 1000
+
   const [insights, monday] = await Promise.all([
     adAccountId
       ? cachedFetch(
           `meta_insights:${adAccountId}:${startDate}:${endDate}`,
           () => fetchMetaInsights(adAccountId, startDate, endDate, { bypassCache: forceRefresh }),
-          undefined,
+          PER_CLIENT_TTL_MS,
           { bypass: forceRefresh },
         ).catch((e) => { console.error("Meta insights error:", e); return [] as Awaited<ReturnType<typeof fetchMetaInsights>> })
       : Promise.resolve([]),
@@ -90,7 +97,7 @@ export async function GET(
       ? cachedFetch(
           `monday_board_items:${clientBoardId}`,
           () => fetchClientBoardItems(clientBoardId, client?.column_mapping_override ?? undefined, { bypassCache: forceRefresh }),
-          undefined,
+          PER_CLIENT_TTL_MS,
           { bypass: forceRefresh },
         )
           .then((items): MondayResult => ({ ok: true, items }))
