@@ -160,21 +160,25 @@ function CreateTaskButton({
           </>
         )}
       </button>
-      {open && (
-        <CreateTaskDialog
-          open={open}
-          onOpenChange={setOpen}
-          mondayItemId={mondayItemId}
-          clientName={clientName}
-          campaignManager={campaignManager}
-          category={category}
-          insight={insight}
-          kpi={kpi}
-          locale={locale}
-          onCreated={handleCreated}
-          onFailed={handleFailed}
-        />
-      )}
+      {/* Dialog stays mounted so Base UI's body-scroll-lock cleanup
+          can run when `open` flips to false. Unmounting via
+          `{open && <Dialog>}` skips the cleanup and leaves
+          `body.style.overflow = "hidden"`, which kills page scroll
+          (see 2026-05-18 incident). The popup itself is only portaled
+          to the DOM while open, so always-mounting is cheap. */}
+      <CreateTaskDialog
+        open={open}
+        onOpenChange={setOpen}
+        mondayItemId={mondayItemId}
+        clientName={clientName}
+        campaignManager={campaignManager}
+        category={category}
+        insight={insight}
+        kpi={kpi}
+        locale={locale}
+        onCreated={handleCreated}
+        onFailed={handleFailed}
+      />
     </>
   )
 }
@@ -258,10 +262,17 @@ function CreateTaskDialog({
     }
   }, [clientName, campaignManager, category, insight, kpi, locale])
 
-  // Fire prefill on first open. The ref guards against React 18+ Strict
-  // Mode double-invoke and against re-firing if the parent re-renders.
+  // Fire prefill each time the dialog opens (not just first mount —
+  // the dialog stays mounted now to keep Base UI's body-scroll-lock
+  // cleanup intact). Reset the ref on close so the next open gets a
+  // fresh Haiku draft against the latest insight/KPI snapshot. The
+  // ref still guards against React 18 Strict Mode double-invoke.
   useEffect(() => {
-    if (!open || prefillFiredRef.current) return
+    if (!open) {
+      prefillFiredRef.current = false
+      return
+    }
+    if (prefillFiredRef.current) return
     prefillFiredRef.current = true
     void fetchPrefill()
   }, [open, fetchPrefill])
