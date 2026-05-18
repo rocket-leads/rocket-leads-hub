@@ -1,5 +1,6 @@
 import { fetchMetaCampaigns } from "@/lib/integrations/meta"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
+import { hasRlPrefix } from "@/lib/clients/campaign-matcher"
 
 type Supabase = Awaited<ReturnType<typeof import("@/lib/supabase/server").createAdminClient>>
 
@@ -86,6 +87,9 @@ export async function autoSelectActiveCampaignsForNonRlClients(
       for (const camp of campaigns) {
         if (camp.status !== "ACTIVE") continue
         if (known.has(camp.id)) continue
+        // RL-only filter: don't auto-track campaigns the client built themselves.
+        // We only ever auto-track our own ads (the "RL | ..." convention).
+        if (!hasRlPrefix(camp.name)) continue
         newRows.push({
           client_id: c.clientId,
           meta_campaign_id: camp.id,

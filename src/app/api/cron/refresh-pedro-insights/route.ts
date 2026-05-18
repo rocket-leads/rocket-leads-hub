@@ -16,11 +16,11 @@ import { getAiLocale } from "@/lib/i18n/server"
  * generate every insight type registered in INSIGHT_REGISTRY. Each
  * insight upserts into pedro_insights; the next cron tick replaces it.
  *
- * One cron, one Claude pipeline, one cache. Replaces the watchlist-
- * summaries / narrative / per-client optimisation paths over time —
- * v1 ships the foundation + watchlist_action_note migration. Other
- * insight types port in subsequent commits without touching the cron
- * (they just get added to INSIGHT_REGISTRY).
+ * One cron, one Claude pipeline, one cache. v2 collapses the per-client
+ * AI surface to a single `client_pedro` insight (JSON body with conclusion
+ * + action bullets) consumed by the client detail page, the watchlist row
+ * 1-liner, and the home page action notes — no more contradictions between
+ * separately-generated voices.
  *
  * Schedule: hourly. KPI freshness only changes daily, but Monday/Trengo/
  * inbox events shift through the day, so an hourly refresh keeps notes

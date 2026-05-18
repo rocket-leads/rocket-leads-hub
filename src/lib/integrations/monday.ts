@@ -67,6 +67,11 @@ export type MondayClient = {
    *  up their Meta Business Manager — distinct from `metaAdAccountId`, which is
    *  the actual ID once known. Only meaningful on the onboarding board. */
   metaConnected: string
+  /** Preferred client contact channel — Monday status label from `contact_channel`
+   *  column. Typically "WhatsApp" / "Email" / "Phone" / "" (unset). Drives the
+   *  Client Update composer so AMs see which channel a generated update will land
+   *  on without having to flip to Trengo. */
+  contactChannel: string
   metaAdAccountId: string
   stripeCustomerId: string
   trengoContactId: string
@@ -181,6 +186,10 @@ function mapItem(
     followUpFee: cv[columns.follow_up_fee] ?? cv["numbers0__1"] ?? "",
     followUpStatus: cv[columns.follow_up_status] ?? cv["status__1"] ?? "",
     metaConnected: cv[columns.meta_connected] ?? cv["dup__of_status"] ?? "",
+    // Defaults reflect the status column IDs configured for both boards
+    // (status_11 on onboarding, status_17 on current — see settings/page.tsx).
+    contactChannel:
+      cv[columns.contact_channel] ?? cv["status_11"] ?? cv["status_17"] ?? "",
     metaAdAccountId: cv[columns.meta_ad_account_id] ?? "",
     stripeCustomerId: cv[columns.stripe_customer_id] ?? "",
     trengoContactId: cv[columns.trengo_contact_id] ?? "",

@@ -32,25 +32,8 @@ export function ClientSettingsTab({ client }: Props) {
 
   return (
     <div className="space-y-8">
-      {/* Client Information — name, IDs, financials, team. Edits write back to Monday. */}
-      <div>
-        <h3 className="text-sm font-medium mb-1">{t("client.settings.info.title", locale)}</h3>
-        <p className="text-xs text-muted-foreground/60 mb-4">
-          {t("client.settings.info.description", locale)}
-        </p>
-        <ClientInformationPanel client={client} />
-      </div>
-
-      {/* KPI Visibility */}
-      <div>
-        <h3 className="text-sm font-medium mb-1">{t("client.settings.kpi.title", locale)}</h3>
-        <p className="text-xs text-muted-foreground/60 mb-4">
-          {t("client.settings.kpi.description", locale)}
-        </p>
-        <KpiVisibilityToggle mondayItemId={mondayItemId} />
-      </div>
-
-      {/* Campaign Selection */}
+      {/* Campaign Selection — surfaced first because this is the section CMs adjust
+          most often. Client info / KPI / columns rarely change after setup. */}
       {metaAdAccountId && (
         <div>
           <h3 className="text-sm font-medium mb-1">{t("client.settings.campaigns.title", locale)}</h3>
@@ -71,6 +54,24 @@ export function ClientSettingsTab({ client }: Props) {
           )}
         </div>
       )}
+
+      {/* Client Information — name, IDs, financials, team. Edits write back to Monday. */}
+      <div>
+        <h3 className="text-sm font-medium mb-1">{t("client.settings.info.title", locale)}</h3>
+        <p className="text-xs text-muted-foreground/60 mb-4">
+          {t("client.settings.info.description", locale)}
+        </p>
+        <ClientInformationPanel client={client} />
+      </div>
+
+      {/* KPI Visibility */}
+      <div>
+        <h3 className="text-sm font-medium mb-1">{t("client.settings.kpi.title", locale)}</h3>
+        <p className="text-xs text-muted-foreground/60 mb-4">
+          {t("client.settings.kpi.description", locale)}
+        </p>
+        <KpiVisibilityToggle mondayItemId={mondayItemId} />
+      </div>
 
       {/* Board Column IDs */}
       <div>

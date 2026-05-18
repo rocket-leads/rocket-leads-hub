@@ -33,6 +33,7 @@ import {
 import { StatusEditCell } from "./status-edit-cell"
 import { PhaseEditCell } from "./phase-edit-cell"
 import { PersonEditCell } from "./person-edit-cell"
+import { ClientUpdateButton } from "./client-update-button"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { formatCurrency as formatCurrencyLocale } from "@/lib/i18n/format"
@@ -481,7 +482,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 11 : 17
+  const colSpan = boardType === "onboarding" ? 11 : 18
 
   // Status / phase value labels stay as their Monday-canonical English form for
   // now — they're the wire format the dropdown writes back to Monday, and the
@@ -664,6 +665,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort}
                     className="text-[13px] text-foreground/80 font-semibold w-[90px]"
                   />
+                  <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[110px] border-l border-border/40">
+                    {t("clients.col.client_update", locale)}
+                  </TableHead>
                 </>
               )}
             </TableRow>
@@ -898,6 +902,12 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                               —
                             </span>
                           ) : ""}
+                        </TableCell>
+                        <TableCell className="text-center border-l border-border/40" onClick={(e) => e.stopPropagation()}>
+                          <ClientUpdateButton
+                            mondayItemId={client.mondayItemId}
+                            clientName={client.companyName || client.name}
+                          />
                         </TableCell>
                       </>
                     )}

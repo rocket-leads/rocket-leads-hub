@@ -14,6 +14,20 @@
 export type MatcherClient = { id: string; name: string }
 export type MatchResult = { clientId: string; confidence: number }
 
+/**
+ * Rocket Leads-built campaigns always carry "RL" in the name — the standard is
+ * `RL | NL | RV | Acme | LP` but field tolerance allows variants like `RL|NL|...`,
+ * `RL_NL_...`, or just a leading `RL ` prefix. We match RL as a whole-word token,
+ * case-insensitively, so a campaign called "Rolex" doesn't accidentally qualify
+ * but "rl | nl | dv | client | lf" does.
+ *
+ * Used by the campaigns endpoint to gate auto-select: only campaigns we built
+ * get auto-tracked, client-built campaigns stay unselected.
+ */
+export function hasRlPrefix(campaignName: string): boolean {
+  return /\bRL\b/i.test(campaignName)
+}
+
 const COMPANY_SUFFIXES = /\b(b\.?v\.?|n\.?v\.?|ltd\.?|inc\.?|gmbh|s\.?a\.?|llc|holding|group)\b/g
 
 function normalize(s: string): string {

@@ -2,6 +2,44 @@ import { createAdminClient } from "@/lib/supabase/server"
 import type { MondayClient } from "@/lib/integrations/monday"
 import { seedDefaultAgreementIfMissing } from "./agreement"
 
+/**
+ * Fast variant of `syncClientToSupabase` — only ensures a `clients` row
+ * exists for this Monday item and returns its Supabase UUID. Used by
+ * latency-sensitive paths (client slide-over) where we just need the
+ * id to power downstream queries; the full sync of all Monday fields
+ * can happen in the background via `syncClientToSupabase` itself.
+ *
+ * 1 round-trip in the common case (SELECT id). Falls back to 2 round
+ * trips for first-time-seen clients (SELECT, then INSERT). Idempotent
+ * and safe to call concurrently with the full sync.
+ */
+export async function ensureClientId(client: MondayClient): Promise<string> {
+  const supabase = await createAdminClient()
+  const { data: existing } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("monday_item_id", client.mondayItemId)
+    .single()
+  if (existing) return existing.id
+
+  // Brand-new client. Insert just enough to get an id back; the full
+  // sync (column values, agreement seed) is the caller's responsibility
+  // to fire afterwards via `syncClientToSupabase`.
+  const { data, error } = await supabase
+    .from("clients")
+    .insert({
+      monday_item_id: client.mondayItemId,
+      monday_board_type: client.boardType,
+      name: client.name,
+    })
+    .select("id")
+    .single()
+  if (error || !data) {
+    throw new Error(`ensureClientId failed: ${error?.message ?? "unknown"}`)
+  }
+  return data.id
+}
+
 export async function syncClientToSupabase(client: MondayClient): Promise<string> {
   const supabase = await createAdminClient()
 

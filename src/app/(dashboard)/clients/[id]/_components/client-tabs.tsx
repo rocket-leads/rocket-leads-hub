@@ -51,7 +51,6 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
   const queryClient = useQueryClient()
   const locale = useLocale()
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [regenerateSignal, setRegenerateSignal] = useState(0)
 
   // Drives the tab notification dot — same queryKey as the header so React
   // Query dedupes the network call.
@@ -104,7 +103,6 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
         return Array.isArray(key) && key.length >= 2 && key[1] === client.mondayItemId
       },
     })
-    setRegenerateSignal((n) => n + 1)
     setIsRefreshing(false)
   }
 
@@ -147,7 +145,6 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
             clientName={client.name}
             boardType={client.boardType}
             onNavigateToSettings={() => setActiveTab("settings")}
-            regenerateSignal={regenerateSignal}
           />
         ) : <NoAccess />
       )}

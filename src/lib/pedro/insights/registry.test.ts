@@ -156,43 +156,21 @@ describe("INSIGHT_REGISTRY — shape invariants", () => {
 })
 
 describe("INSIGHT_REGISTRY — shouldGenerate gates", () => {
-  it("watchlist_action_note skips no-data clients", () => {
+  it("client_pedro skips no-data clients", () => {
     const ctx = makeMinimalContext()
-    expect(INSIGHT_REGISTRY.watchlist_action_note.shouldGenerate?.(ctx)).toBe(false)
+    expect(INSIGHT_REGISTRY.client_pedro.shouldGenerate?.(ctx)).toBe(false)
   })
 
-  it("watchlist_action_note generates when KPI signal exists", () => {
+  it("client_pedro generates when KPI signal exists", () => {
     const ctx = makeRichContext()
-    expect(INSIGHT_REGISTRY.watchlist_action_note.shouldGenerate?.(ctx)).toBe(true)
-  })
-
-  it("client_overview generates even on no-data — overview should always render", () => {
-    const ctx = makeMinimalContext()
-    // No shouldGenerate gate means it generates for every Live client.
-    const gate = INSIGHT_REGISTRY.client_overview.shouldGenerate
-    expect(gate === undefined || gate(ctx) === true).toBe(true)
-  })
-
-  it("client_lead_quality_summary skips when Monday CRM not connected", () => {
-    const ctx = makeMinimalContext() // sources.mondayUpdates = false
-    expect(INSIGHT_REGISTRY.client_lead_quality_summary.shouldGenerate?.(ctx)).toBe(false)
-  })
-
-  it("client_lead_quality_summary generates when Monday CRM is connected", () => {
-    const ctx = makeRichContext() // sources.mondayUpdates = true
-    expect(INSIGHT_REGISTRY.client_lead_quality_summary.shouldGenerate?.(ctx)).toBe(true)
-  })
-
-  it("client_optimisation_summary skips no-data clients", () => {
-    const ctx = makeMinimalContext()
-    expect(INSIGHT_REGISTRY.client_optimisation_summary.shouldGenerate?.(ctx)).toBe(false)
+    expect(INSIGHT_REGISTRY.client_pedro.shouldGenerate?.(ctx)).toBe(true)
   })
 })
 
 describe("INSIGHT_REGISTRY — context-awareness in prompts", () => {
   it("user prompt includes the appropriate UNKNOWN signal when CRM is missing", () => {
     const ctx = makeMinimalContext()
-    const user = INSIGHT_REGISTRY.watchlist_action_note.userPrompt(ctx)
+    const user = INSIGHT_REGISTRY.client_pedro.userPrompt(ctx)
     // Without Monday CRM, the data-availability block must communicate
     // appointments are UNKNOWN — guards against the "0 appointments"
     // hallucination the guardrail validates against.
@@ -202,17 +180,15 @@ describe("INSIGHT_REGISTRY — context-awareness in prompts", () => {
 
   it("user prompt includes Monday updates when present", () => {
     const ctx = makeRichContext()
-    const user = INSIGHT_REGISTRY.watchlist_action_note.userPrompt(ctx)
+    const user = INSIGHT_REGISTRY.client_pedro.userPrompt(ctx)
     expect(user).toContain("MONDAY CRM")
     expect(user).toContain("Lead statuses")
   })
 
-  it("user prompt includes the watchlist insight to anchor the AI Note", () => {
+  it("system prompt asks for JSON shape with conclusion + actions", () => {
     const ctx = makeRichContext()
-    const user = INSIGHT_REGISTRY.watchlist_action_note.userPrompt(ctx)
-    // The AI Note is supposed to ADD to the Insight column — so the
-    // Insight must be in the prompt so the model knows what NOT to repeat.
-    expect(user).toMatch(/INSIGHT COLUMN/)
-    expect(user).toMatch(/DO NOT REPEAT/)
+    const sys = INSIGHT_REGISTRY.client_pedro.systemPrompt(ctx, "en")
+    expect(sys).toMatch(/conclusion/)
+    expect(sys).toMatch(/actions/)
   })
 })

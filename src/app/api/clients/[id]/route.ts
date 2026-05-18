@@ -1,15 +1,23 @@
 import { auth } from "@/lib/auth"
 import { updateClientField, type ClientFieldUpdate } from "@/lib/clients/edit"
 import { fetchClientById } from "@/lib/integrations/monday"
-import { syncClientToSupabase } from "@/lib/clients/sync"
+import { syncClientToSupabase, ensureClientId } from "@/lib/clients/sync"
 import { getClientAccess } from "@/lib/clients/access"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
- * Single-client detail fetch — backs the slide-over panel on /clients. Returns
- * the same data the old `/clients/[id]` page route assembled server-side
- * (Monday item + Supabase ID + access flags) so the client-side panel can
- * render without a full page navigation.
+ * Single-client detail fetch — backs the slide-over panel on /clients
+ * and the Watch List. Latency-sensitive: every ms here is a delay
+ * before the panel renders the client tabs.
+ *
+ * Three round-trips run in parallel:
+ *   1. Monday fetchClientById (the slow one, 500-2000ms typically)
+ *   2. Supabase getClientAccess (indexed lookup, ~50ms)
+ *   3. Supabase ensureClientId (SELECT id by monday_item_id, ~50ms)
+ *
+ * The full Supabase sync (column updates, agreement seed) runs as a
+ * fire-and-forget after we already have the response queued — it's
+ * not in the critical path of rendering the panel.
  */
 export async function GET(
   _req: NextRequest,
@@ -21,21 +29,33 @@ export async function GET(
   const { id: mondayItemId } = await params
 
   try {
-    const client = await fetchClientById(mondayItemId)
+    const [client, access] = await Promise.all([
+      fetchClientById(mondayItemId),
+      getClientAccess(
+        session.user.id,
+        session.user.role ?? "member",
+        mondayItemId,
+      ),
+    ])
     if (!client) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
+    // Need the Supabase id for HomeTab's inbox query. The fast path
+    // is a single SELECT (or one extra INSERT for brand-new clients);
+    // the full column sync is deferred.
     let supabaseClientId = ""
     try {
-      supabaseClientId = await syncClientToSupabase(client)
+      supabaseClientId = await ensureClientId(client)
     } catch (e) {
-      console.error("Supabase sync failed:", e)
+      console.error("ensureClientId failed:", e)
     }
 
-    const access = await getClientAccess(
-      session.user.id,
-      session.user.role ?? "member",
-      client.mondayItemId,
-    )
+    // Fire-and-forget the full sync — it writes the latest Monday
+    // column values + seeds an agreement row if missing. Not awaited
+    // because the panel doesn't need any of that to render. Errors
+    // are logged but never block the response.
+    void syncClientToSupabase(client).catch((e) => {
+      console.error("Background Supabase sync failed:", e)
+    })
 
     return NextResponse.json({ client, supabaseClientId, access })
   } catch (e) {

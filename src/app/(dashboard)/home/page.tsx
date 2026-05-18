@@ -310,9 +310,9 @@ async function fetchAgreementsByMondayId(): Promise<Record<string, number>> {
 }
 
 /**
- * Pre-Pedro-unification this read the watchlist_summaries_v8 cache key.
- * Now the unified pedro_insights table is the single source — keyed by
- * monday_item_id with insight_type = 'watchlist_action_note'.
+ * Per-client action notes — reads the `client_pedro` JSON insight and returns
+ * just the conclusion sentence as the 1-liner. Same source the client detail
+ * page renders, so the home preview and the deep dive can't disagree.
  */
 async function fetchActionNotes(): Promise<Record<string, string>> {
   try {
@@ -320,10 +320,12 @@ async function fetchActionNotes(): Promise<Record<string, string>> {
     const { data } = await supabase
       .from("pedro_insights")
       .select("monday_item_id, body")
-      .eq("insight_type", "watchlist_action_note")
+      .eq("insight_type", "client_pedro")
+    const { parsePedroBody } = await import("@/lib/pedro/insights/types")
     const out: Record<string, string> = {}
     for (const row of data ?? []) {
-      if (row.body) out[row.monday_item_id] = row.body
+      const parsed = parsePedroBody(row.body)
+      if (parsed?.conclusion) out[row.monday_item_id] = parsed.conclusion
     }
     return out
   } catch {

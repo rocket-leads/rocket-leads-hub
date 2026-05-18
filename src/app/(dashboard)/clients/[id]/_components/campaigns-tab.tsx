@@ -22,9 +22,6 @@ import type { MetaCampaign } from "@/lib/integrations/meta"
 const AdPerformance = dynamic(() => import("./ad-performance").then((m) => m.AdPerformance), {
   ssr: false,
 })
-const CampaignAnalysis = dynamic(() => import("./ai-optimization-proposal").then((m) => m.CampaignAnalysis), {
-  ssr: false,
-})
 
 type CampaignWithSelection = MetaCampaign & { isSelected: boolean; isSuggested?: boolean }
 
@@ -32,14 +29,14 @@ type Props = {
   mondayItemId: string
   metaAdAccountId: string | null
   clientBoardId: string | null
-  clientName: string
-  boardType: "onboarding" | "current"
+  /** Kept for call-site parity with the previous AI-proposal shape, currently unused. */
+  clientName?: string
+  /** Kept for call-site parity with the previous AI-proposal shape, currently unused. */
+  boardType?: "onboarding" | "current"
   onNavigateToSettings?: () => void
-  /** Bumped by the page-level refresh button to force AI proposal regeneration */
-  regenerateSignal?: number
 }
 
-export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, clientName, boardType, onNavigateToSettings, regenerateSignal }: Props) {
+export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, onNavigateToSettings }: Props) {
   const locale = useLocale()
   const { range, setRange, presets, applyPreset, formatDate } = useDateRange()
   const startDateStr = formatDate(range.startDate)
@@ -148,17 +145,9 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, cli
 
       <KpiCards data={kpisQuery.data ?? null} isLoading={kpisQuery.isLoading} />
 
-      {/* AI Optimization Proposal — moved below KPIs since the numbers are
-          what the user looks at first; the AI commentary is supporting context. */}
-      <CampaignAnalysis
-        mondayItemId={mondayItemId}
-        metaAdAccountId={metaAdAccountId}
-        clientBoardId={clientBoardId}
-        selectedCampaignIds={selectedIds}
-        clientName={clientName}
-        boardType={boardType}
-        regenerateSignal={regenerateSignal}
-      />
+      {/* Pedro lives once, at the top of the client detail — no AI proposal
+          or lead analysis here anymore. Keeps the campaigns tab focused on
+          the numbers + UTM breakdown. */}
 
       {/* UTM breakdown */}
       {(kpisQuery.data?.utmBreakdown?.length ?? 0) > 0 || kpisQuery.isLoading ? (

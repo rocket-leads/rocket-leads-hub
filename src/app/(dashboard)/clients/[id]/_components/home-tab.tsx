@@ -12,16 +12,15 @@ import {
   ListTodo,
   TrendingUp,
   TrendingDown,
-  Sparkles,
   CalendarClock,
   Trophy,
-  Radio,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import { categorize, type WatchCategory } from "@/lib/watchlist/categorize"
+import { PedroInsightCard } from "./pedro-insight-card"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
@@ -41,20 +40,6 @@ type Props = {
   onNavigateToCampaigns: () => void
   onNavigateToInbox: () => void
   onNavigateToBilling: () => void
-}
-
-type LeadAnalysisVerdict = "good" | "neutral" | "concerning"
-
-type LeadAnalysisSection = {
-  verdict: LeadAnalysisVerdict
-  headline: string
-  detail: string
-  patterns?: string[]
-}
-
-type ProposalResponse = {
-  cached?: boolean
-  leadAnalysis?: { quantity: LeadAnalysisSection; quality: LeadAnalysisSection } | null
 }
 
 /** Health tone classes (color) + dictionary label key per category. Label is
@@ -89,12 +74,6 @@ const HEALTH_TONES: Record<WatchCategory, { bg: string; border: string; text: st
     dot: "bg-muted-foreground/40",
     labelKey: "client.home.health.no_data",
   },
-}
-
-const VERDICT_TONES: Record<LeadAnalysisVerdict, { pill: string; bg: string; border: string }> = {
-  good: { pill: "bg-emerald-500/10 text-emerald-500", bg: "bg-emerald-500/5", border: "border-emerald-500/20" },
-  neutral: { pill: "bg-amber-500/10 text-amber-500", bg: "bg-amber-500/5", border: "border-amber-500/20" },
-  concerning: { pill: "bg-red-500/10 text-red-500", bg: "bg-red-500/5", border: "border-red-500/20" },
 }
 
 function fmtCurrency(n: number): string {
@@ -202,84 +181,6 @@ function HealthCard({
   )
 }
 
-function LeadAnalysisCard({
-  section,
-  loading,
-  onSeeFull,
-  locale,
-}: {
-  section: LeadAnalysisSection | null
-  loading: boolean
-  onSeeFull: () => void
-  locale: Locale
-}) {
-  if (loading) {
-    return (
-      <Card>
-        <CardContent className="p-4 space-y-2">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-5 w-3/4" />
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-2/3" />
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (!section) {
-    return (
-      <button
-        type="button"
-        onClick={onSeeFull}
-        className="block w-full text-left rounded-xl border border-border/60 bg-card hover:bg-muted/40 hover:border-border hover:shadow-sm transition-all duration-150 cursor-pointer group p-4"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground/70">
-            {t("client.home.lead_analysis.empty", locale)}
-          </p>
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors shrink-0">
-            {t("client.home.lead_analysis.see_full", locale)}
-            <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-          </span>
-        </div>
-      </button>
-    )
-  }
-
-  const tone = VERDICT_TONES[section.verdict]
-  // Verdict pill label — looks up `client.home.lead_analysis.verdict.{verdict}`
-  // so each verdict (good/neutral/concerning) flips via the dictionary.
-  const verdictLabel = t(`client.home.lead_analysis.verdict.${section.verdict}` as DictionaryKey, locale)
-
-  return (
-    <button
-      type="button"
-      onClick={onSeeFull}
-      className={`block w-full text-left rounded-xl border ${tone.bg} ${tone.border} hover:brightness-110 hover:shadow-sm transition-all duration-150 cursor-pointer group p-4`}
-    >
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Sparkles className="h-3.5 w-3.5 text-muted-foreground/60" />
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-            {t("client.home.lead_analysis.title", locale)}
-          </span>
-          <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tone.pill}`}>
-            {verdictLabel}
-          </span>
-        </div>
-      </div>
-      <p className="text-sm font-medium mb-1.5">{section.headline}</p>
-      <p className="text-xs text-muted-foreground/80 leading-relaxed mb-3">{section.detail}</p>
-      <div className="flex items-center justify-end">
-        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors">
-          {t("client.home.lead_analysis.see_full", locale)}
-          <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-        </span>
-      </div>
-    </button>
-  )
-}
-
 function TopAdsCard({
   ads,
   loading,
@@ -340,56 +241,6 @@ function TopAdsCard({
               )
             })}
           </ul>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function ActivitySummaryCard({
-  summary,
-  loading,
-  locale,
-}: {
-  summary: string | null | undefined
-  loading: boolean
-  locale: Locale
-}) {
-  if (loading) {
-    return (
-      <Card>
-        <CardContent className="p-4 space-y-2">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-3 w-full" />
-          <Skeleton className="h-3 w-3/4" />
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Radio className="h-3.5 w-3.5 text-muted-foreground/60" />
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-              {t("client.home.activity.title", locale)}
-            </span>
-          </div>
-          <span className="text-[10px] text-muted-foreground/40">
-            {t("client.home.activity.subtitle", locale)}
-          </span>
-        </div>
-
-        {summary ? (
-          <p className="text-[12px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
-            {summary}
-          </p>
-        ) : (
-          <p className="text-[12px] text-muted-foreground/60 italic py-2">
-            {t("client.home.activity.empty", locale)}
-          </p>
         )}
       </CardContent>
     </Card>
@@ -570,7 +421,7 @@ export function HomeTab({
   supabaseClientId,
   canViewBilling,
   canViewCampaigns,
-  onNavigateToCampaigns,
+  onNavigateToCampaigns: _onNavigateToCampaigns,
   onNavigateToInbox,
   onNavigateToBilling,
 }: Props) {
@@ -621,19 +472,9 @@ export function HomeTab({
   const kpiSummary = summaryQuery.data?.[client.mondayItemId]
   const health = useMemo(() => categorize(client, kpiSummary), [client, kpiSummary])
 
-  // Lead Analysis (Quantity) — pulled from the cached AI proposal. Same source
-  // as the Campaigns tab uses; the full Quality + action items live there.
-  const proposalQuery = useQuery<ProposalResponse>({
-    queryKey: ["optimization-proposal", client.mondayItemId],
-    queryFn: () =>
-      fetch(`/api/clients/${client.mondayItemId}/optimization-proposal`).then((r) => r.json()),
-    enabled: canViewCampaigns,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  // Top ads (30d) + AI activity summary (Monday updates + Trengo, 14d). Reuses
-  // the watchlist expand endpoint — same data, different surface. Empty `insight`
-  // because we're not de-duping against a watchlist insight here.
+  // Top ads (30d) — surfaced under the Pedro card so the user can verify which
+  // specific ads are driving Pedro's verdict. The AI activity summary that used
+  // to live alongside this has been absorbed into the unified Pedro insight.
   const expandQuery = useQuery<WatchlistExpandResponse>({
     queryKey: ["client-expand", client.mondayItemId],
     queryFn: () =>
@@ -707,18 +548,12 @@ export function HomeTab({
         />
       </div>
 
-      <LeadAnalysisCard
-        section={proposalQuery.data?.leadAnalysis?.quantity ?? null}
-        loading={proposalQuery.isLoading}
-        onSeeFull={onNavigateToCampaigns}
-        locale={locale}
-      />
+      {/* Single Pedro insight — replaces the old LeadAnalysisCard / Activity
+          Summary / Optimization Proposal stack. One AI voice across the platform. */}
+      <PedroInsightCard mondayItemId={client.mondayItemId} locale={locale} />
 
       {canViewCampaigns && client.metaAdAccountId && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          <TopAdsCard ads={expandQuery.data?.topAds} loading={expandQuery.isLoading} locale={locale} />
-          <ActivitySummaryCard summary={expandQuery.data?.aiSummary} loading={expandQuery.isLoading} locale={locale} />
-        </div>
+        <TopAdsCard ads={expandQuery.data?.topAds} loading={expandQuery.isLoading} locale={locale} />
       )}
 
       {client.stripeCustomerId && canViewBilling && (

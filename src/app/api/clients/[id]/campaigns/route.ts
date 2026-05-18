@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchMetaCampaigns } from "@/lib/integrations/meta"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
-import { matchRocketLeadsCampaign } from "@/lib/clients/campaign-matcher"
+import { matchRocketLeadsCampaign, hasRlPrefix } from "@/lib/clients/campaign-matcher"
 import { invalidateKpiCachesForClients } from "@/lib/clients/run-campaign-matcher"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -48,17 +48,18 @@ export async function GET(
       : Promise.resolve([]),
   ])
 
-  // Auto-assign new ACTIVE campaigns. Two paths:
+  // Auto-assign new ACTIVE campaigns. Two paths, but BOTH gated by the same
+  // explicit "RL" name filter — campaigns the Rocket Leads team built always
+  // start with `RL` in the name. Anything else on the account belongs to the
+  // client (their own ads / agency leftovers) and shouldn't get auto-tracked.
   //
-  //   - Single-tenant ad account: any active campaign without a row for this client
-  //     is "track by default" (brand-new clients, freshly-launched campaigns).
+  //   - Single-tenant ad account: any RL-prefixed active campaign without a row
+  //     for this client gets auto-tracked (brand-new clients, freshly-launched
+  //     campaigns).
   //
-  //   - Rocket Leads shared ad account: many unrelated clients share one account,
-  //     so blanket auto-select would mix everyone's spend. Instead, run the
-  //     name-matcher across all RL clients and only assign campaigns where we
-  //     hit ≥0.95 confidence — the company name in `RL | NL | RV | Acme | LP`
-  //     matches a known client. Lower-confidence campaigns stay unassigned for
-  //     the user to pick manually.
+  //   - Rocket Leads shared ad account: many unrelated clients share one
+  //     account, so we additionally name-match the company part of the
+  //     campaign name to a known RL client and only assign at ≥0.95 confidence.
   //
   // User-deselected campaigns already have a DB row with is_selected=false, so
   // their choice persists across status changes either way.
@@ -96,6 +97,10 @@ export async function GET(
     for (const c of campaigns) {
       if (c.status !== "ACTIVE") continue
       if (globallyAssigned.has(c.id)) continue
+      // RL-only filter: campaigns we built always carry "RL" in the name (the
+      // `RL | NL | ...` convention). Skip everything else — client-built ads
+      // shouldn't get auto-tracked.
+      if (!hasRlPrefix(c.name)) continue
       const match = matchRocketLeadsCampaign(c.name, candidates)
       if (!match) continue
       if (match.confidence >= 0.95) {
@@ -131,7 +136,11 @@ export async function GET(
       void invalidateKpiCachesForClients(affectedItemIds)
     }
   } else if (clientId) {
-    const newActive = campaigns.filter((c) => c.status === "ACTIVE" && !knownIdsForCurrentClient.has(c.id))
+    // Same RL-only filter as the shared-account path above — RL-built campaigns
+    // get tracked, client's own ads don't (they'd just pollute KPI averages).
+    const newActive = campaigns.filter(
+      (c) => c.status === "ACTIVE" && !knownIdsForCurrentClient.has(c.id) && hasRlPrefix(c.name),
+    )
     if (newActive.length > 0) {
       void supabase.from("client_campaigns").upsert(
         newActive.map((c) => ({

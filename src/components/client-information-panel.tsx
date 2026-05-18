@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input"
@@ -130,6 +130,7 @@ type SimpleFieldProps = {
 
 function SimpleField({ mondayItemId, fieldKey, value, label, type = "text" }: SimpleFieldProps) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [draft, setDraft] = useState(value)
   const [savedFlash, setSavedFlash] = useState(false)
 
@@ -151,6 +152,12 @@ function SimpleField({ mondayItemId, fieldKey, value, label, type = "text" }: Si
     onSuccess: () => {
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 1500)
+      // The slide-over and clients-table both read this client through React
+      // Query. router.refresh() alone only re-runs server components — it
+      // doesn't touch the React Query cache, so the panel keeps showing the
+      // pre-edit value until staleTime expires (60s). Force a refetch.
+      void queryClient.invalidateQueries({ queryKey: ["client-detail", mondayItemId] })
+      void queryClient.invalidateQueries({ queryKey: ["clients-overview"] })
       router.refresh()
     },
   })
@@ -225,6 +232,7 @@ function avatarColor(name: string): string {
 
 function PersonField({ mondayItemId, fieldKey, value, label, multi = false }: PersonFieldProps) {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [optimisticValue, setOptimisticValue] = useState(value)
 
@@ -250,7 +258,15 @@ function PersonField({ mondayItemId, fieldKey, value, label, multi = false }: Pe
       }
     },
     onError: () => setOptimisticValue(value),
-    onSuccess: () => router.refresh(),
+    onSuccess: () => {
+      // Same as SimpleField — the slide-over caches client data via React
+      // Query, so router.refresh() alone won't flip the panel to the new
+      // value. Invalidate the cached detail + overview so the next render
+      // reads fresh data from Monday.
+      void queryClient.invalidateQueries({ queryKey: ["client-detail", mondayItemId] })
+      void queryClient.invalidateQueries({ queryKey: ["clients-overview"] })
+      router.refresh()
+    },
   })
 
   const currentNames = useMemo(

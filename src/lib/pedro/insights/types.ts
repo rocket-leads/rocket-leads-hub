@@ -12,27 +12,53 @@
  * regenerate everywhere.
  */
 export const INSIGHT_TYPES = [
-  /** 1-line note rendered next to the Insight column on each watchlist row. */
-  "watchlist_action_note",
-  /** 2-3 sentence "what's the current state of this client" summary. Used on
-   *  the client detail header, Home action block hover/preview, and as
-   *  context-injection for other AI surfaces. Should read like a senior CM's
-   *  whisper to an incoming colleague: where the client is, what's working,
-   *  what's not. */
-  "client_overview",
-  /** 1-2 sentence pedro-flavoured optimisation summary. Doesn't replace the
-   *  full structured proposals on the client page — that lives in
-   *  lib/proposals/generate.ts and stays there. This is the short version,
-   *  consumable from the watchlist row, Home, and other surfaces that don't
-   *  need the full proposals[] array. */
-  "client_optimisation_summary",
-  /** 1-2 sentence Pedro verdict on lead quality based on Monday updates +
-   *  Trengo conversations. NOT the structured leadAnalysis (that stays in
-   *  lib/proposals/generate.ts). This is the short version. */
-  "client_lead_quality_summary",
+  /** The one Pedro insight per client. Body is JSON: `{ conclusion, actions[] }`.
+   *  Rendered everywhere AI text used to appear (client detail header, watchlist
+   *  row 1-liners, home page action notes) so the user sees a single, consistent
+   *  Pedro voice — no contradictions between surfaces. */
+  "client_pedro",
 ] as const
 
 export type InsightType = (typeof INSIGHT_TYPES)[number]
 
 /** Severity hint for ordering / colour-coding by consumers. */
 export type InsightSeverity = "high" | "med" | "low" | "info"
+
+/**
+ * Parsed shape of `client_pedro.body`. Stored as JSON text in the
+ * `pedro_insights.body` column — consumers parse it on read.
+ */
+export type PedroInsightBody = {
+  /** 1-2 sentence factual update of the current campaign state. */
+  conclusion: string
+  /** Concrete next-step bullets (3-5 max). Empty array = no actionable
+   *  signal right now (e.g. paused campaigns, no recent spend). */
+  actions: string[]
+}
+
+/**
+ * Robust parser for `client_pedro` body. Falls back to a plain-text
+ * conclusion if the model returned non-JSON — keeps the UI working
+ * while a malformed prompt is being fixed.
+ */
+export function parsePedroBody(body: string | null | undefined): PedroInsightBody | null {
+  if (!body) return null
+  const trimmed = body.trim()
+  if (!trimmed) return null
+  // Try strict JSON first
+  try {
+    const parsed = JSON.parse(trimmed) as Partial<PedroInsightBody>
+    if (typeof parsed.conclusion === "string") {
+      return {
+        conclusion: parsed.conclusion.trim(),
+        actions: Array.isArray(parsed.actions)
+          ? parsed.actions.filter((a): a is string => typeof a === "string" && a.trim().length > 0).map((a) => a.trim())
+          : [],
+      }
+    }
+  } catch {
+    // Fall through to plain-text fallback
+  }
+  // Plain text fallback: first line/paragraph = conclusion, no actions
+  return { conclusion: trimmed, actions: [] }
+}

@@ -1,21 +1,18 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
+import { parsePedroBody } from "@/lib/pedro/insights/types"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
  * Watchlist AI Notes — facade over pedro_insights.
  *
- * Pre-Pedro-unification this endpoint had its own Anthropic call, its own
- * cache key (watchlist_summaries_v8), its own copy of the guardrail rules.
- * Post-unification it's a thin read: the cron at /api/cron/refresh-pedro-
- * insights is the single Claude pipeline, persisting insight_type =
- * "watchlist_action_note" rows; this endpoint just looks them up by
- * monday_item_id.
+ * Post Pedro-v2 unification we read `client_pedro` (JSON body with conclusion +
+ * actions) and return just the conclusion sentence as the 1-line note. This
+ * guarantees the Watch List 1-liner is aligned with the full Pedro card on the
+ * client detail page — they're literally the same generation.
  *
- * The request shape stays the same so callers (watchlist-dashboard.tsx)
- * don't have to change. Internally we ignore most of the rich context
- * the caller used to send — that data is now collected server-side by
- * the cron's collectClientAiContext().
+ * The request shape is unchanged so callers (watchlist-dashboard.tsx) don't
+ * have to change.
  */
 
 type ClientInput = {
@@ -44,7 +41,7 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase
       .from("pedro_insights")
       .select("monday_item_id, body")
-      .eq("insight_type", "watchlist_action_note")
+      .eq("insight_type", "client_pedro")
       .in("monday_item_id", ids)
 
     if (error) {
@@ -54,7 +51,8 @@ export async function POST(req: NextRequest) {
 
     const result: Record<string, string> = {}
     for (const row of data ?? []) {
-      if (row.body) result[row.monday_item_id] = row.body
+      const parsed = parsePedroBody(row.body)
+      if (parsed?.conclusion) result[row.monday_item_id] = parsed.conclusion
     }
     return NextResponse.json(result, {
       headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },

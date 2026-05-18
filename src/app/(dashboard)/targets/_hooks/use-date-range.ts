@@ -10,14 +10,28 @@ import type { DateRange, QuickPreset } from "@/types/targets"
  *     when re-mounting the hook because state is read synchronously from this var.
  *  2. `localStorage` — survives full page refreshes. Loaded into module cache on the
  *     first mount of the hook, then kept in sync on every change.
+ *
+ * Default is **Last 7 Days** across the platform so KPI cards, Pedro insights, and
+ * Watch List signals all read the same window — no more "Pedro says stable, dashboard
+ * says spike" because two surfaces drift apart. Targets users who want MTD can flip
+ * via the preset; this only changes the cold-start default.
+ *
+ * Storage key is versioned (`-v2`) so the L7D default takes effect for users who had
+ * an old MTD range persisted from before this change.
  */
 let cachedRange: { start: Date; end: Date } | null = null
 
-const STORAGE_KEY = "rl-hub-date-range"
+const STORAGE_KEY = "rl-hub-date-range-v2"
 
 /** All ranges end at yesterday: source data (Meta + Monday) is only complete up to yesterday. */
 function yesterday(): Date {
   return subDays(new Date(), 1)
+}
+
+/** Default range across the Hub: last 7 days, ending yesterday. Anchored to the
+ *  same window the Pedro insight + Watch List categorizer use. */
+function defaultStart(): Date {
+  return subDays(new Date(), 7)
 }
 
 function readPersistedRange(): { start: Date; end: Date } | null {
@@ -57,11 +71,11 @@ export function getCachedDateRangeSnapshot(): { startDate: Date; endDate: Date }
     cachedRange = persisted
     return { startDate: persisted.start, endDate: persisted.end }
   }
-  return { startDate: startOfMonth(new Date()), endDate: yesterday() }
+  return { startDate: defaultStart(), endDate: yesterday() }
 }
 
 export function useDateRange() {
-  const [startDate, setStartDate] = useState<Date>(() => cachedRange?.start ?? startOfMonth(new Date()))
+  const [startDate, setStartDate] = useState<Date>(() => cachedRange?.start ?? defaultStart())
   const [endDate, setEndDate] = useState<Date>(() => cachedRange?.end ?? yesterday())
 
   // First-mount hydration: SSR and the client's first render both use the MTD default

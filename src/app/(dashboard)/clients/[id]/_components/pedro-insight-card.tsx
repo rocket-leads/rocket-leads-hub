@@ -1,9 +1,10 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { Sparkles, Target, MessageCircle } from "lucide-react"
+import { Sparkles } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { PedroClientInsightsResponse } from "@/app/api/clients/[id]/pedro-insights/route"
+import { parsePedroBody } from "@/lib/pedro/insights/types"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
 
@@ -13,14 +14,16 @@ type Props = {
 }
 
 /**
- * Pedro insight card — surfaces the unified per-client AI insights from
- * pedro_insights. Renders client_overview as the headline paragraph and
- * client_optimisation_summary + client_lead_quality_summary as side panels.
+ * The single Pedro insight card — rendered everywhere AI text used to appear
+ * (client detail header, replacing the old 3-tile overview/optimisation/quality
+ * split plus the campaigns-tab lead analysis and proposals).
  *
- * Hidden entirely when no insights exist yet (cron hasn't reached this
- * client, or client is in no-data bucket). The point is to make the
- * unification VISIBLE — the same Pedro voice the user sees on the Watch
- * List action note also lives here on the client page, no contradictions.
+ * Reads `client_pedro` from pedro_insights (JSON body) and renders:
+ *   - 1-2 sentence conclusion
+ *   - 3-5 action bullets
+ *
+ * Hidden entirely when no insight exists yet (cron hasn't reached this client
+ * or client is in the no-data bucket).
  */
 export function PedroInsightCard({ mondayItemId, locale }: Props) {
   const { data, isLoading } = useQuery<PedroClientInsightsResponse>({
@@ -41,22 +44,16 @@ export function PedroInsightCard({ mondayItemId, locale }: Props) {
     )
   }
 
-  const overview = data?.insights?.client_overview
-  const optimisation = data?.insights?.client_optimisation_summary
-  const leadQuality = data?.insights?.client_lead_quality_summary
+  const record = data?.insights?.client_pedro
+  const parsed = parsePedroBody(record?.body)
 
-  // Nothing to show — hide the card entirely rather than render an
-  // empty shell. The unification value is "Pedro speaks consistently
-  // across surfaces", not "Pedro shows you a placeholder".
-  if (!overview && !optimisation && !leadQuality) return null
+  if (!parsed) return null
 
-  // Show the freshest stamp out of the three — gives the user a single
-  // "as of X" anchor without surfacing per-tile timestamps that compete
-  // visually with the actual content.
-  const freshestAt = [overview?.generatedAt, optimisation?.generatedAt, leadQuality?.generatedAt]
-    .filter((t): t is string => !!t)
-    .sort()
-    .reverse()[0]
+  // Hide insufficient-signal placeholders — render nothing rather than a card
+  // that says "nothing to see here". Lets the rest of the page breathe.
+  if (parsed.actions.length === 0 && /insufficient signal/i.test(parsed.conclusion)) {
+    return null
+  }
 
   return (
     <div className="rounded-lg border border-violet-500/20 bg-violet-500/[0.03] p-4 space-y-3">
@@ -67,37 +64,27 @@ export function PedroInsightCard({ mondayItemId, locale }: Props) {
             {t("pedro.label", locale)}
           </span>
         </div>
-        {freshestAt && (
+        {record?.generatedAt && (
           <span
             className="text-[10px] text-muted-foreground/50 tabular-nums"
-            title={`Generated ${new Date(freshestAt).toLocaleString("en-GB")}`}
+            title={`Generated ${new Date(record.generatedAt).toLocaleString("en-GB")}`}
           >
-            {timeAgo(freshestAt)}
+            {timeAgo(record.generatedAt)}
           </span>
         )}
       </div>
 
-      {overview && (
-        <p className="text-sm text-foreground/85 leading-relaxed">{overview.body}</p>
-      )}
+      <p className="text-sm text-foreground/85 leading-relaxed">{parsed.conclusion}</p>
 
-      {(optimisation || leadQuality) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 pt-2 border-t border-violet-500/10">
-          {optimisation && (
-            <InsightTile
-              icon={<Target className="h-3 w-3 text-violet-400" />}
-              label={t("pedro.tile.next_move", locale)}
-              body={optimisation.body}
-            />
-          )}
-          {leadQuality && (
-            <InsightTile
-              icon={<MessageCircle className="h-3 w-3 text-violet-400" />}
-              label={t("pedro.tile.lead_quality", locale)}
-              body={leadQuality.body}
-            />
-          )}
-        </div>
+      {parsed.actions.length > 0 && (
+        <ul className="space-y-1.5 pt-2 border-t border-violet-500/10">
+          {parsed.actions.map((action, i) => (
+            <li key={i} className="text-xs text-foreground/75 leading-relaxed flex gap-2">
+              <span className="text-violet-400/70 shrink-0">•</span>
+              <span>{action}</span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
@@ -113,26 +100,4 @@ function timeAgo(iso: string): string {
   if (h < 24) return `${h}h ago`
   const d = Math.round(h / 24)
   return `${d}d ago`
-}
-
-function InsightTile({
-  icon,
-  label,
-  body,
-}: {
-  icon: React.ReactNode
-  label: string
-  body: string
-}) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5">
-        {icon}
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">
-          {label}
-        </span>
-      </div>
-      <p className="text-xs text-foreground/75 leading-snug">{body}</p>
-    </div>
-  )
 }

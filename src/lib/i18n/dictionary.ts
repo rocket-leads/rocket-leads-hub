@@ -221,6 +221,7 @@ export const DICTIONARY = {
   "clients.col.cpl": { nl: "CPL", en: "CPL" },
   "clients.col.appts": { nl: "Appts", en: "Appts" },
   "clients.col.cpa": { nl: "CPA", en: "CPA" },
+  "clients.col.client_update": { nl: "Client update", en: "Client update" },
 
   // Health / payment status labels
   "clients.health.good": { nl: "Goed", en: "Good" },
