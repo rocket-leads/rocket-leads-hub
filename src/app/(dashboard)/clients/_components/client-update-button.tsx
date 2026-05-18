@@ -634,6 +634,10 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
    *  Drives the WhatsApp preview layout (locked headers + multi-line
    *  sign-off when V2). Null when channel is email. */
   const [templateVersion, setTemplateVersion] = useState<1 | 2 | null>(null)
+  /** Server-side explanation of why V1 fallback is active (or no template
+   *  at all). Shown as an inline diagnostic so the AM can self-fix without
+   *  digging through Vercel logs. */
+  const [templateVersionReason, setTemplateVersionReason] = useState<string | null>(null)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
@@ -668,6 +672,7 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
       setWaTemplateName(data.whatsappTemplateName)
       setWaTemplateSource(data.whatsappTemplateSource)
       setTemplateVersion(data.templateVersion)
+      setTemplateVersionReason(data.templateVersionReason)
     },
     onError: (e: Error) => setGenerateError(e.message),
   })
@@ -794,15 +799,32 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
                   Verzonden als email via Trengo, met onderwerp en sign-off zoals hierboven.
                 </p>
               ) : waTemplateName ? (
-                <p className="text-[11px] text-muted-foreground/70">
-                  Verzonden via WhatsApp template{" "}
-                  <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[10px]">
-                    {waTemplateName}
-                  </code>
-                  {waTemplateSource === "trengo_auto" && (
-                    <span className="ml-1 text-muted-foreground/50">(uit Trengo)</span>
+                <>
+                  <p className="text-[11px] text-muted-foreground/70">
+                    Verzonden via WhatsApp template{" "}
+                    <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[10px]">
+                      {waTemplateName}
+                    </code>
+                    <span
+                      className={cn(
+                        "ml-1.5 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium",
+                        isV2
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                      )}
+                    >
+                      {isV2 ? "V2" : "V1"}
+                    </span>
+                    {waTemplateSource === "trengo_auto" && (
+                      <span className="ml-1 text-muted-foreground/50">(uit Trengo)</span>
+                    )}
+                  </p>
+                  {templateVersionReason && (
+                    <p className="text-[11px] text-amber-500/90 italic leading-relaxed">
+                      Waarom V1? {templateVersionReason}
+                    </p>
                   )}
-                </p>
+                </>
               ) : (
                 <p className="text-xs text-amber-500">
                   Geen WhatsApp template gevonden in Trengo voor jouw account. Verifieer dat{" "}

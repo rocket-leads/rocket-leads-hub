@@ -53,6 +53,12 @@ export type ClientUpdateResponse = {
    *  doen:") and reformat the sign-off to match the approved template body.
    *  Null when channel is email (no template involved). */
   templateVersion: 1 | 2 | null
+  /** Human-readable explanation of why we fell back to V1 (or have no
+   *  template at all). Null when V2 is active OR channel is email. The
+   *  dialog renders this as a small italic note so the AM can self-diagnose
+   *  ("env flag uit", "geen prior Trengo gesprek", "approved template
+   *  ontbreekt") without checking server logs. */
+  templateVersionReason: string | null
 }
 
 function detectChannel(label: string): ClientUpdateChannel {
@@ -129,6 +135,21 @@ export async function POST(
 
     const waTemplate = useV2 ? v2Template : v1Template
 
+    // Why V1 (or nothing)? Walk the preconditions in order so the AM sees
+    // the FIRST thing they need to fix. Null when V2 is active OR email.
+    let templateVersionReason: string | null = null
+    if (!isEmail && !useV2) {
+      if (!v2Enabled) {
+        templateVersionReason =
+          "WEEKLY_UPDATE_TEMPLATE_V2 env-flag staat uit in Vercel (zet 'm op true en redeploy)."
+      } else if (!v2Template.name) {
+        const amSlug = hubUser?.name?.split(/\s+/)[0]?.toLowerCase() ?? "<voornaam>"
+        templateVersionReason = v1Template.name
+          ? `rl_weekly_update_${amSlug} niet gevonden in Trengo (status APPROVED?). V1-fallback actief.`
+          : `Geen WhatsApp template gevonden — verifieer dat rl_weekly_update_${amSlug} approved is én dat deze klant minimaal 1 eerder Trengo-gesprek heeft (resolver heeft channel_id nodig).`
+      }
+    }
+
     // AM first name: derive from whichever template slug won, stripping the
     // prefix. Falls back to the user record's display name when no template
     // is resolved (e.g. cold-start, missing approval, email channel).
@@ -158,6 +179,7 @@ export async function POST(
       whatsappTemplateName: waTemplate.name,
       whatsappTemplateSource: waTemplate.source,
       templateVersion: isEmail ? null : useV2 ? 2 : 1,
+      templateVersionReason,
     })
   } catch (e) {
     console.error(
