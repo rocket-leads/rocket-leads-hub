@@ -160,7 +160,8 @@ tr[data-slot="table-row"].row-hover:hover {
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
-/* Smooth scrollbar */
+/* Smooth scrollbar — defaults for nested scroll containers (lists,
+ * modals, tables). Stays thin so it doesn't clutter inside-card UX. */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -174,6 +175,37 @@ tr[data-slot="table-row"].row-hover:hover {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--muted-foreground);
+}
+
+/* Page-level scrollbar — Roy wants a clearly visible, grabbable
+ * scrollbar on the right of every Hub page so manual scroll-down
+ * is obvious. Wider thumb + always-visible track. The inner scroll
+ * containers above stay thin via the generic rule. */
+html::-webkit-scrollbar {
+  width: 12px;
+}
+html::-webkit-scrollbar-track {
+  background: var(--background);
+}
+html::-webkit-scrollbar-thumb {
+  background: var(--border);
+  /* 3px border same color as the track creates an inset padding
+   * effect so the thumb visually sits inside its gutter. */
+  border: 3px solid var(--background);
+  border-radius: 6px;
+  background-clip: padding-box;
+  min-height: 40px;
+}
+html::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);
+  background-clip: padding-box;
+}
+/* Firefox: there's no per-element override for nested vs page scroll
+ * the same way, so we just enable a normal-width scrollbar on the
+ * html root. Nested overflow:auto containers inherit "auto" too. */
+html {
+  scrollbar-width: auto;
+  scrollbar-color: var(--border) var(--background);
 }
 
 /* Number input: hide spinners */
