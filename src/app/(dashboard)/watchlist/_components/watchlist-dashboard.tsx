@@ -897,6 +897,16 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
   const [cmFilter, setCmFilter] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)
 
+  // Lookup so the slide-over can render instantly with the client
+  // object we already have, instead of waiting for /api/clients/[id]
+  // to hit Monday again (~500-2000ms).
+  const clientById = useMemo(() => {
+    const map = new Map<string, MondayClient>()
+    for (const c of clients) map.set(c.mondayItemId, c)
+    return map
+  }, [clients])
+  const selectedClientPreview = selectedClientId ? clientById.get(selectedClientId) ?? null : null
+
   const campaignManagers = useMemo(() => uniqueSorted(clients.map((c) => c.campaignManager)), [clients])
 
   const filteredClients = useMemo(
@@ -1349,6 +1359,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           clientId={selectedClientId}
           onClose={handleClosePanel}
           currentUser={currentUser}
+          clientPreview={selectedClientPreview}
         />
       )}
     </div>

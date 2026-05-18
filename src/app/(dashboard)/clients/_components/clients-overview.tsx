@@ -35,6 +35,17 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   const selectedClientId = searchParams.get("client")
   const locale = useLocale()
 
+  // Lookup table from Monday item id → full client object. Lets us
+  // hand the slide-over a placeholder so it can render without
+  // waiting for the Monday fetch round-trip (typically 500-2000ms).
+  const clientById = useMemo(() => {
+    const map = new Map<string, MondayClient>()
+    for (const c of onboarding) map.set(c.mondayItemId, c)
+    for (const c of current) map.set(c.mondayItemId, c)
+    return map
+  }, [onboarding, current])
+  const selectedClientPreview = selectedClientId ? clientById.get(selectedClientId) ?? null : null
+
   const handleSelectClient = useCallback(
     (mondayItemId: string) => {
       const params = new URLSearchParams(searchParams.toString())
@@ -233,6 +244,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
           clientId={selectedClientId}
           onClose={handleClosePanel}
           currentUser={currentUser}
+          clientPreview={selectedClientPreview}
         />
       )}
     </div>

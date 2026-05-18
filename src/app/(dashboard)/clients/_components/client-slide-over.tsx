@@ -25,9 +25,31 @@ type Props = {
   clientId: string | null
   onClose: () => void
   currentUser: CurrentUser
+  /** Client object already cached by the parent (clients overview or
+   *  Watch List) — pulled from the same boards-list that drives the
+   *  row the user just clicked. When provided, the slide-over uses it
+   *  as React Query placeholder data so the panel renders instantly
+   *  (with permissive access flags + empty supabaseClientId) while the
+   *  network call refines those two fields in the background.
+   *
+   *  Without this prop the panel waits for the Monday fetch (~500-
+   *  2000ms) before showing anything — that's the "traag" complaint
+   *  Roy filed on 2026-05-18. */
+  clientPreview?: MondayClient | null
 }
 
-export function ClientSlideOver({ clientId, onClose, currentUser }: Props) {
+// Permissive defaults used while the real access query is still in
+// flight. Matches the experience an admin would have — anything more
+// restrictive risks hiding tabs the user actually has access to and
+// then flashing them in 500ms later. The real values overwrite this
+// as soon as the network response lands.
+const OPTIMISTIC_ACCESS: ClientAccess = {
+  canViewCampaigns: true,
+  canViewBilling: true,
+  canViewCommunication: true,
+}
+
+export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview }: Props) {
   const open = !!clientId
 
   const detailQuery = useQuery<ClientDetailResponse>({
@@ -35,6 +57,18 @@ export function ClientSlideOver({ clientId, onClose, currentUser }: Props) {
     queryFn: () => fetch(`/api/clients/${clientId}`).then((r) => r.json()),
     enabled: !!clientId,
     staleTime: 60 * 1000,
+    // Placeholder data renders the panel immediately with whatever the
+    // parent already had cached. Once the fetch resolves the data is
+    // replaced — `isPlaceholderData` lets the UI tell the two apart if
+    // we want to differentiate (currently we don't, it just works).
+    placeholderData:
+      clientPreview && clientId === clientPreview.mondayItemId
+        ? {
+            client: clientPreview,
+            supabaseClientId: "",
+            access: OPTIMISTIC_ACCESS,
+          }
+        : undefined,
   })
 
   // ESC closes — base-ui handles this, but we want the URL state to clear too.
