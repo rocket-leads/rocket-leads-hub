@@ -9,7 +9,7 @@ import {
   renderFromParts,
   type EditableParts,
 } from "@/lib/clients/client-update-template"
-import { resolveWaTemplate } from "@/lib/clients/resolve-wa-template"
+import { resolveWaTemplate, resolveWeeklyUpdateTemplate } from "@/lib/clients/resolve-wa-template"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
@@ -36,17 +36,23 @@ export type ClientUpdateResponse = {
   channel: ClientUpdateChannel
   channelLabel: string
   trengoContactLinked: boolean
-  /** The current AM's registered WhatsApp HSM template name (e.g.
-   *  `rl_universal_roy`). Resolved via `resolveWaTemplate`: prefers
-   *  `users.whatsapp_template_name` when set, falls back to auto-discovering
-   *  the AM's template from Trengo by matching `rl_universal_<firstname>`.
-   *  The send endpoint posts the rendered update as `{{1}}` of this template
-   *  so it works inside AND outside the 24h WhatsApp session window. */
+  /** The resolved WhatsApp HSM template name for the active path:
+   *   - V2 active → `rl_weekly_update_<voornaam>` (5-variable structured)
+   *   - V2 not active → `rl_universal_<voornaam>` (single-variable fallback)
+   *  The send endpoint uses this same template — dialog reads the prefix
+   *  to know whether to render in V1 or V2 layout (locked headers + comma
+   *  greeting + multi-line sign-off for V2). */
   whatsappTemplateName: string | null
   /** Where the resolved template came from. The dialog renders a small
    *  "(uit Trengo)" hint on `trengo_auto` so the AM knows it was discovered
    *  rather than configured by an admin. */
   whatsappTemplateSource: "user_config" | "trengo_auto" | "none"
+  /** 1 = V1 universal single-var path (legacy + fallback when V2 template
+   *  not approved). 2 = V2 multi-var weekly-update path. Dialog uses this
+   *  to lock headers ("📊 Cijfers deze week:", "✅ Wat we deze week gaan
+   *  doen:") and reformat the sign-off to match the approved template body.
+   *  Null when channel is email (no template involved). */
+  templateVersion: 1 | 2 | null
 }
 
 function detectChannel(label: string): ClientUpdateChannel {
@@ -98,24 +104,38 @@ export async function POST(
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 })
 
     const channel = detectChannel(client.contactChannel)
+    const isEmail = channel === "email"
 
-    // Template resolution is only meaningful for WhatsApp sends. For email
-    // we send free-text via Trengo and bake greeting + sign-off into the
-    // body ourselves, so the HSM slug is irrelevant.
-    const [kpi, pedro, waTemplate, hubUser] = await Promise.all([
+    // Template resolution: prefer V2 weekly-update when feature flag on AND
+    // Meta has approved `rl_weekly_update_<voornaam>` for this AM. Falls
+    // back to V1 universal otherwise so the dialog always has SOMETHING to
+    // render. Email path skips entirely (no HSM template needed).
+    const v2Enabled = !isEmail && process.env.WEEKLY_UPDATE_TEMPLATE_V2 === "true"
+
+    const [kpi, pedro, v2Template, hubUser] = await Promise.all([
       loadKpi(mondayItemId),
       loadPedroBody(mondayItemId),
-      channel === "email"
-        ? Promise.resolve({ name: null as string | null, source: "none" as const })
-        : resolveWaTemplate({ userId: session.user.id, mondayItemId }),
+      v2Enabled
+        ? resolveWeeklyUpdateTemplate({ userId: session.user.id, mondayItemId })
+        : Promise.resolve({ name: null as string | null, source: "none" as const }),
       loadHubUserName(session.user.id),
     ])
 
-    // AM first name: prefer the template slug ("rl_universal_<voornaam>") so
-    // the sign-off matches the WA template's branded name; fall back to the
-    // user record's display name (first token) when no template is resolved.
+    const useV2 = !!v2Template.name
+    const v1Template =
+      isEmail || useV2
+        ? { name: null as string | null, source: "none" as const }
+        : await resolveWaTemplate({ userId: session.user.id, mondayItemId })
+
+    const waTemplate = useV2 ? v2Template : v1Template
+
+    // AM first name: derive from whichever template slug won, stripping the
+    // prefix. Falls back to the user record's display name when no template
+    // is resolved (e.g. cold-start, missing approval, email channel).
     const amFirstName =
-      (waTemplate.name?.replace(/^rl_universal_/i, "").trim() ||
+      (waTemplate.name
+        ?.replace(/^rl_(weekly_update|universal)_/i, "")
+        .trim() ||
         hubUser?.name?.split(/\s+/)[0] ||
         "Roel").toString()
 
@@ -137,6 +157,7 @@ export async function POST(
       trengoContactLinked: !!client.trengoContactId,
       whatsappTemplateName: waTemplate.name,
       whatsappTemplateSource: waTemplate.source,
+      templateVersion: isEmail ? null : useV2 ? 2 : 1,
     })
   } catch (e) {
     console.error(
