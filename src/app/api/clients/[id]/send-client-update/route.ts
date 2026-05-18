@@ -6,6 +6,7 @@ import {
   replyToInboxEvent,
   sendTrengoTemplateAsUser,
   sendTrengoReplyAsUser,
+  sanitizeWaTemplateParam,
   NeedsConnectError,
 } from "@/lib/inbox/reply"
 import { resolveWaTemplate } from "@/lib/clients/resolve-wa-template"
@@ -141,7 +142,7 @@ export async function POST(
       .eq("source", "trengo")
       .order("created_at_src", { ascending: false })
       .limit(1)
-    let anchorId = anchorRows?.[0]?.id as string | undefined
+    const anchorId = anchorRows?.[0]?.id as string | undefined
 
     let result: {
       source: "trengo" | "slack"
@@ -225,7 +226,11 @@ export async function POST(
         .eq("id", session.user.id)
         .maybeSingle<{ id: string; name: string | null; email: string | null }>()
 
-      const previewSource = message
+      // WhatsApp sends were flattened by sanitizeWaTemplateParam at the API
+      // boundary — mirror what the customer actually received (single-line
+      // with " • " bullets). Email keeps the original multi-line body since
+      // email accepts newlines natively.
+      const previewSource = sendAsEmail ? message : sanitizeWaTemplateParam(message)
       const titlePreview =
         previewSource.length > 100 ? previewSource.slice(0, 100) + "…" : previewSource
       const bodyFull = previewSource.length > 100 ? previewSource : null
@@ -269,7 +274,11 @@ export async function POST(
     // list query cheap (no aggregate, no extra join). Both writes are
     // best-effort: a Supabase outage shouldn't undo the WhatsApp send.
     const sentAt = new Date().toISOString()
-    const previewSnippet = message.length > 240 ? message.slice(0, 237) + "…" : message
+    // Same flattening rule as the inbox mirror: WhatsApp snippet matches the
+    // sanitised body the customer received; email snippet keeps newlines.
+    const snippetSource = sendAsEmail ? message : sanitizeWaTemplateParam(message)
+    const previewSnippet =
+      snippetSource.length > 240 ? snippetSource.slice(0, 237) + "…" : snippetSource
     try {
       await Promise.all([
         supabase.from("client_updates").insert({

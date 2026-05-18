@@ -26,6 +26,35 @@ export class NeedsConnectError extends Error {
   }
 }
 
+/**
+ * Make a string valid as a WhatsApp Business HSM template parameter.
+ *
+ * Meta's Cloud API rejects (HTTP 422 via Trengo) any body variable that
+ * contains a newline, tab, or 4+ consecutive whitespace characters. Our
+ * composed Client Update body is multi-paragraph with bullet lists, so a
+ * raw send always fails. We flatten paragraphs to spaces and inline bullets
+ * with " • " so the message still reads as a recognisable list, then
+ * collapse runs of spaces.
+ *
+ * Idempotent: running it twice changes nothing on the second pass. Email
+ * sends do NOT need this — Trengo's email endpoint accepts the original
+ * multi-line body as-is.
+ */
+export function sanitizeWaTemplateParam(s: string): string {
+  if (!s) return s
+  return s
+    // Inline bullets first so "\n• Actie" survives as " • Actie" instead of
+    // "  Actie" after the generic newline-strip below.
+    .replace(/\n\s*[•\-*]\s+/g, " • ")
+    // Any remaining newlines/tabs (paragraph breaks, carriage returns) → space.
+    // Paragraphs already end in punctuation (".", ":"), so flattening reads OK.
+    .replace(/[\r\n\t]+/g, " ")
+    // Meta caps at 4 consecutive whitespace, but we go further: collapse any
+    // double space to single for a cleaner read.
+    .replace(/ {2,}/g, " ")
+    .trim()
+}
+
 type InboxEventRow = {
   id: string
   source: "manual" | "automation" | "trengo" | "slack" | "monday" | "watchlist" | "meeting"
@@ -87,6 +116,11 @@ export async function sendTrengoTemplateAsUser(
   const token = await getUserPlatformToken(userId, "trengo")
   if (!token) throw new NeedsConnectError("trengo")
 
+  // Hard guarantee at the API boundary: any caller passing multi-line params
+  // (Client Update composer, future template flows) gets a Meta-valid send
+  // automatically — no 422 from forgotten sanitisation upstream.
+  const safeParams = params.map(sanitizeWaTemplateParam)
+
   const res = await fetch(`https://app.trengo.com/api/v2/tickets/${ticketId}/messages`, {
     method: "POST",
     headers: {
@@ -98,7 +132,7 @@ export async function sendTrengoTemplateAsUser(
       type: "TEMPLATE",
       template_name: templateName,
       language,
-      params,
+      params: safeParams,
       internal_note: false,
     }),
   })
@@ -373,9 +407,16 @@ export async function replyToInboxEvent(
       outboundId = r.message_id
       sourceMsgId = `trengo:msg:${outboundId}`
       // Render placeholders for the mirror so Hub history matches what the
-      // customer received. Trengo also renders this on its side, but we
-      // can't fetch the rendered version cheaply here.
-      mirrorBody = renderTemplatePreview(template) || `[Template: ${template.name}]`
+      // customer actually received — that's the sanitised single-line
+      // version, not the multi-line composer draft. We re-apply the
+      // sanitiser here (idempotent) instead of plumbing it through the
+      // send function's return value.
+      const sanitisedForMirror: TemplateSendOption = {
+        ...template,
+        params: template.params.map(sanitizeWaTemplateParam),
+      }
+      mirrorBody =
+        renderTemplatePreview(sanitisedForMirror) || `[Template: ${template.name}]`
     } else {
       const r = await sendTrengoReplyAsUser(
         userId,
