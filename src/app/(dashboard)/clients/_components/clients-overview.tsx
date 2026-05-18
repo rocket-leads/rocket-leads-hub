@@ -10,6 +10,7 @@ import type { TopTab } from "@/components/ui/top-tabs"
 import { Panel } from "@/components/ui/panel"
 import { ClientsTable } from "./clients-table"
 import { ClientSlideOver } from "./client-slide-over"
+import { WeeklyUpdateDraftsBanner } from "./weekly-update-drafts-banner"
 import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
@@ -188,6 +189,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
 
   return (
     <div className="space-y-6">
+      <WeeklyUpdateDraftsBanner />
       <TopTabs<"current" | "onboarding">
         tabs={tabItems}
         value={activeTab}

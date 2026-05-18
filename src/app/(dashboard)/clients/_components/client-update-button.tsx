@@ -592,9 +592,29 @@ function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) {
 
 // ─── Dialog ───────────────────────────────────────────────────────────────
 
+/** Subset of WeeklyUpdateDraftListItem the dialog actually needs to skip
+ *  the generate fetch. Kept inline here (not imported from the route) so
+ *  the dialog stays decoupled from the list endpoint's response shape and
+ *  can be hydrated by any caller — queue overlay, mass-send tool, etc. */
+export type ClientUpdateDraftSeed = {
+  draftId: string
+  parts: EditableParts
+  channel: "whatsapp" | "email" | "unknown"
+  templateVersion: 1 | 2
+  templateName: string | null
+}
+
 type DialogProps = Props & {
   open: boolean
   onOpenChange: (next: boolean) => void
+  /** Pre-generated draft (from the Monday cron) — when present, the dialog
+   *  skips its own /client-update POST and renders from this seed
+   *  immediately. On successful send, also PATCHes the draft to
+   *  status='sent' so it disappears from the queue. */
+  draftSeed?: ClientUpdateDraftSeed
+  /** Optional callback fired after a draft-backed send completes (sent
+   *  OR dismissed) so the parent can refresh its queue list. */
+  onDraftResolved?: () => void
 }
 
 /** Reshape the server-generated parts so they line up with what the V2
@@ -622,7 +642,14 @@ function reshapeForV2(parts: EditableParts): EditableParts {
   }
 }
 
-function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: DialogProps) {
+export function ClientUpdateDialog({
+  mondayItemId,
+  clientName,
+  open,
+  onOpenChange,
+  draftSeed,
+  onDraftResolved,
+}: DialogProps) {
   const queryClient = useQueryClient()
   const [parts, setParts] = useState<EditableParts | null>(null)
   const [channel, setChannel] = useState<ClientUpdateResponse["channel"]>("unknown")
@@ -698,16 +725,58 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
       }
       return res.json()
     },
-    onSuccess: () => {
+    onSuccess: async (data) => {
       setSent(true)
       void queryClient.invalidateQueries({ queryKey: ["last-client-updates"] })
+      // Draft-backed send → mark the draft consumed so it leaves the queue.
+      // Fire-and-forget: a flake here shouldn't roll back the visible
+      // "Sent" state, the cron is idempotent so worst case the draft
+      // reappears next Monday.
+      if (draftSeed?.draftId) {
+        try {
+          await fetch(`/api/weekly-update-drafts/${draftSeed.draftId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              status: "sent",
+              sentMessageId: (data as { outboundMsgId?: string })?.outboundMsgId,
+            }),
+          })
+        } catch {
+          // swallowed — see fire-and-forget comment above
+        }
+        void queryClient.invalidateQueries({ queryKey: ["weekly-update-drafts"] })
+        onDraftResolved?.()
+      }
       setTimeout(() => onOpenChange(false), 1200)
     },
     onError: (e: Error) => setSendError(e.message),
   })
 
   useEffect(() => {
-    if (open && !generate.data && !generate.isPending) generate.mutate()
+    if (!open) return
+    // Draft-backed open: hydrate state from the seed and skip the fetch.
+    // The seed comes from the Monday cron's pre-composed parts, which were
+    // generated using the SAME pipeline as /client-update would run now,
+    // so re-fetching would just produce identical data (assuming same
+    // KPI/Pedro cache state). The reshape was already applied at cron time
+    // when templateVersion === 2, so we use parts verbatim here.
+    if (draftSeed && !parts) {
+      setParts(draftSeed.parts)
+      setChannel(draftSeed.channel)
+      setChannelLabel(draftSeed.channel === "email" ? "Email" : "WhatsApp")
+      // Cron only generates drafts for Live + Trengo-linked clients, so
+      // by construction the contact is always linked when seeded.
+      setTrengoLinked(true)
+      setWaTemplateName(draftSeed.templateName)
+      // Draft templates always come from Trengo auto-discovery (the cron
+      // doesn't read users.whatsapp_template_name overrides).
+      setWaTemplateSource("trengo_auto")
+      setTemplateVersion(draftSeed.templateVersion)
+      setTemplateVersionReason(null)
+      return
+    }
+    if (!draftSeed && !generate.data && !generate.isPending) generate.mutate()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
