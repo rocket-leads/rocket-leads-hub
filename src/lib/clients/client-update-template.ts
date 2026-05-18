@@ -345,7 +345,7 @@ export function renderWeeklyUpdate(input: ComposeInput): string {
 
 /**
  * Map the AM-edited parts into the five ordered params for the V2 Weekly
- * Update HSM template (`rl_weekly_update_<voornaam>`). The template body
+ * Update HSM template (`rl_weekly_<voornaam>`). The template body
  * already contains the structural pieces — paragraph breaks, the "📊 Cijfers
  * deze week:" header, the "✅ Wat we deze week gaan doen:" header, and the
  * per-AM sign-off — so the variables hold ONLY the bare content.

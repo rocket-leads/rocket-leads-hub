@@ -682,7 +682,7 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
       message: string
       subject?: string
       /** Full editable parts — the server uses these for V2 multi-variable
-       *  template sends (`rl_weekly_update_<voornaam>`) when the feature
+       *  template sends (`rl_weekly_<voornaam>`) when the feature
        *  flag is on. Ignored on V1 path. */
       parts?: EditableParts
     }) => {
@@ -723,13 +723,13 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
 
   // The Trengo template's sign-off uses the AM's first name (e.g. "Groetjes
   // Roel"). We derive it from the slug `rl_universal_<voornaam>` OR
-  // `rl_weekly_update_<voornaam>` so the preview matches what the customer
+  // `rl_weekly_<voornaam>` so the preview matches what the customer
   // actually receives without an extra Trengo round-trip. Capitalised for
   // readability; falls back to "…" when no template is resolved yet so the
   // muted line still has shape.
   const amSignOffName = useMemo(() => {
     if (!waTemplateName) return "…"
-    const slug = waTemplateName.replace(/^rl_(weekly_update|universal)_/i, "").trim()
+    const slug = waTemplateName.replace(/^rl_(weekly|universal)_/i, "").trim()
     if (!slug) return "…"
     return slug.charAt(0).toUpperCase() + slug.slice(1)
   }, [waTemplateName])

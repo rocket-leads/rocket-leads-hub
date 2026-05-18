@@ -37,7 +37,7 @@ export type ClientUpdateResponse = {
   channelLabel: string
   trengoContactLinked: boolean
   /** The resolved WhatsApp HSM template name for the active path:
-   *   - V2 active → `rl_weekly_update_<voornaam>` (5-variable structured)
+   *   - V2 active → `rl_weekly_<voornaam>` (5-variable structured)
    *   - V2 not active → `rl_universal_<voornaam>` (single-variable fallback)
    *  The send endpoint uses this same template — dialog reads the prefix
    *  to know whether to render in V1 or V2 layout (locked headers + comma
@@ -113,7 +113,7 @@ export async function POST(
     const isEmail = channel === "email"
 
     // Template resolution: prefer V2 weekly-update when feature flag on AND
-    // Meta has approved `rl_weekly_update_<voornaam>` for this AM. Falls
+    // Meta has approved `rl_weekly_<voornaam>` for this AM. Falls
     // back to V1 universal otherwise so the dialog always has SOMETHING to
     // render. Email path skips entirely (no HSM template needed).
     const v2Enabled = !isEmail && process.env.WEEKLY_UPDATE_TEMPLATE_V2 === "true"
@@ -145,8 +145,8 @@ export async function POST(
       } else if (!v2Template.name) {
         const amSlug = hubUser?.name?.split(/\s+/)[0]?.toLowerCase() ?? "<voornaam>"
         templateVersionReason = v1Template.name
-          ? `rl_weekly_update_${amSlug} niet gevonden in Trengo (status APPROVED?). V1-fallback actief.`
-          : `Geen WhatsApp template gevonden — verifieer dat rl_weekly_update_${amSlug} approved is én dat deze klant minimaal 1 eerder Trengo-gesprek heeft (resolver heeft channel_id nodig).`
+          ? `rl_weekly_${amSlug} niet gevonden in Trengo (status APPROVED?). V1-fallback actief.`
+          : `Geen WhatsApp template gevonden — verifieer dat rl_weekly_${amSlug} approved is én dat deze klant minimaal 1 eerder Trengo-gesprek heeft (resolver heeft channel_id nodig).`
       }
     }
 
@@ -155,7 +155,7 @@ export async function POST(
     // is resolved (e.g. cold-start, missing approval, email channel).
     const amFirstName =
       (waTemplate.name
-        ?.replace(/^rl_(weekly_update|universal)_/i, "")
+        ?.replace(/^rl_(weekly|universal)_/i, "")
         .trim() ||
         hubUser?.name?.split(/\s+/)[0] ||
         "Roel").toString()

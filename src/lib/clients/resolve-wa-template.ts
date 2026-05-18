@@ -94,7 +94,7 @@ export type ResolveWaTemplateArgs = {
   mondayItemId: string
   /** Template-slug prefix to search for in Trengo. Defaults to `"rl_universal_"`
    *  for backwards-compat with the inbox composer + Client Update V1.
-   *  Weekly Update V2 passes `"rl_weekly_update_"`. */
+   *  Weekly Update V2 passes `"rl_weekly_"`. */
   prefix?: string
   /** When true (default), prefer the AM's `users.whatsapp_template_name`
    *  override before falling back to Trengo auto-discovery. The Weekly
@@ -151,7 +151,7 @@ export async function resolveWaTemplate(args: ResolveWaTemplateArgs): Promise<Wa
 }
 
 /**
- * Resolve the per-AM weekly-update HSM template (`rl_weekly_update_<voornaam>`)
+ * Resolve the per-AM weekly-update HSM template (`rl_weekly_<voornaam>`)
  * for the logged-in user. Skips the `users.whatsapp_template_name` override
  * because that field is wired to the universal template only — weekly update
  * relies on auto-discovery from Trengo against the convention slug.
@@ -166,7 +166,7 @@ export function resolveWeeklyUpdateTemplate(args: {
 }): Promise<WaTemplateResolution> {
   return resolveWaTemplate({
     ...args,
-    prefix: "rl_weekly_update_",
+    prefix: "rl_weekly_",
     useUserConfig: false,
   })
 }

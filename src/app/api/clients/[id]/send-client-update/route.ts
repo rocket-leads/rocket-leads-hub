@@ -116,7 +116,7 @@ export async function POST(
 
     // V2 weekly-update template path is opt-in via env flag. When all three
     // preconditions hold (flag on + WhatsApp + dialog shipped the editable
-    // parts + Meta has approved `rl_weekly_update_<voornaam>` for this AM),
+    // parts + Meta has approved `rl_weekly_<voornaam>` for this AM),
     // we send a multi-variable template so the customer gets a properly
     // structured message instead of a flattened single-paragraph blob.
     // Any failure falls back to V1 (universal + sanitised single-var) so a
@@ -133,7 +133,7 @@ export async function POST(
       // Flag on but no approved weekly template for this AM yet — fall back
       // to V1 instead of erroring. Log loud so we notice during rollout.
       console.warn(
-        `[send-client-update] V2 flag on but rl_weekly_update_* not resolved for user ${session.user.id}; falling back to V1 universal template.`,
+        `[send-client-update] V2 flag on but rl_weekly_* not resolved for user ${session.user.id}; falling back to V1 universal template.`,
       )
     }
 
