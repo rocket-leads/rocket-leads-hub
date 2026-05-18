@@ -550,7 +550,14 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
   })
 
   const send = useMutation({
-    mutationFn: async (payload: { message: string; subject?: string }) => {
+    mutationFn: async (payload: {
+      message: string
+      subject?: string
+      /** Full editable parts — the server uses these for V2 multi-variable
+       *  template sends (`rl_weekly_update_<voornaam>`) when the feature
+       *  flag is on. Ignored on V1 path. */
+      parts?: EditableParts
+    }) => {
       setSendError(null)
       const res = await fetch(`/api/clients/${mondayItemId}/send-client-update`, {
         method: "POST",
@@ -699,6 +706,10 @@ function ClientUpdateDialog({ mondayItemId, clientName, open, onOpenChange }: Di
               send.mutate({
                 message: previewText,
                 subject: isEmail ? parts?.subject?.trim() || undefined : undefined,
+                // Ship the editable parts too so the server can derive V2
+                // template variables. Server ignores this when V2 flag is
+                // off or when channel is email.
+                parts: parts ?? undefined,
               })
             }
             disabled={!canSend}

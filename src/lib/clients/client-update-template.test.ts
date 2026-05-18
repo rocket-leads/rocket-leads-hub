@@ -3,7 +3,9 @@ import {
   renderWeeklyUpdate,
   composeInitialParts,
   renderFromParts,
+  partsToWeeklyUpdateParams,
   INTROS,
+  type EditableParts,
 } from "./client-update-template"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { PedroInsightBody } from "@/lib/pedro/insights/types"
@@ -336,5 +338,75 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
     // At least one of the offset weeks should produce a different action trio.
     const allSame = inputs.every((trio) => trio.join("|") === inputs[0].join("|"))
     expect(allSame).toBe(false)
+  })
+})
+
+describe("partsToWeeklyUpdateParams — V2 multi-variable template mapping", () => {
+  const baseParts: EditableParts = {
+    opener: "Bram!",
+    intro: "Korte update over deze week.",
+    kpiBlock: "📊 KPI deze week:\n• CPL: €11.42\n• Spend: €450\n• Leads: 39",
+    trendSentence: "Lichte stijging deze week.",
+    note: "We hebben de drempel verhoogd.",
+    conclusion: "Volgende week zien we of dit zich vertaalt.",
+    actionsHeader: "✅ Wat we deze week gaan doen:",
+    actions: ["Nieuwe varianten testen", "Doelgroep verfijnen"],
+    subject: "",
+    signOff: "",
+  }
+
+  it("returns exactly 5 params in slot order", () => {
+    const out = partsToWeeklyUpdateParams(baseParts)
+    expect(out).toHaveLength(5)
+  })
+
+  it("strips trailing '!' from the opener for {{1}}", () => {
+    const out = partsToWeeklyUpdateParams(baseParts)
+    expect(out[0]).toBe("Bram")
+  })
+
+  it("flattens the KPI block to inline bullets and drops the header line", () => {
+    const out = partsToWeeklyUpdateParams(baseParts)
+    expect(out[2]).toBe("• CPL: €11.42 • Spend: €450 • Leads: 39")
+    expect(out[2]).not.toContain("KPI deze week")
+  })
+
+  it("merges trend + note + conclusion into one inline body block", () => {
+    const out = partsToWeeklyUpdateParams(baseParts)
+    expect(out[3]).toContain("Lichte stijging deze week.")
+    expect(out[3]).toContain("We hebben de drempel verhoogd.")
+    expect(out[3]).toContain("Volgende week zien we")
+  })
+
+  it("renders actions inline with ' • ' separators", () => {
+    const out = partsToWeeklyUpdateParams(baseParts)
+    expect(out[4]).toBe("• Nieuwe varianten testen • Doelgroep verfijnen")
+  })
+
+  it("never produces newlines, tabs, or double spaces in any param", () => {
+    const out = partsToWeeklyUpdateParams(baseParts)
+    for (const p of out) {
+      expect(p).not.toMatch(/[\n\r\t]/)
+      expect(p).not.toMatch(/ {2,}/)
+    }
+  })
+
+  it("handles empty intro / trend / note gracefully (still 5 params)", () => {
+    const sparse: EditableParts = {
+      ...baseParts,
+      intro: "",
+      trendSentence: "",
+      note: "",
+    }
+    const out = partsToWeeklyUpdateParams(sparse)
+    expect(out).toHaveLength(5)
+    expect(out[1]).toBe("")
+    // Body collapses to just the conclusion
+    expect(out[3]).toBe("Volgende week zien we of dit zich vertaalt.")
+  })
+
+  it("handles empty actions list (returns empty string for {{5}})", () => {
+    const out = partsToWeeklyUpdateParams({ ...baseParts, actions: [] })
+    expect(out[4]).toBe("")
   })
 })

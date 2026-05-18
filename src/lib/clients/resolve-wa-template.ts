@@ -60,49 +60,66 @@ async function findChannelIdForClient(
 /**
  * Pick a template for the AM from the workspace template list. Preference
  * order:
- *   1. Template slug/name `rl_universal_<firstname>` (case-insensitive,
+ *   1. Template slug/name `{prefix}<firstname>` (case-insensitive,
  *      handles compound names by checking start-of-suffix).
- *   2. Any template with slug starting `rl_universal_`.
+ *   2. Any template with slug starting `{prefix}`.
  *   3. null when neither matches.
  */
 function pickByConvention(
   templates: Array<{ name?: string; slug?: string }>,
   userFirstName: string,
+  prefix: string,
 ): string | null {
   const first = userFirstName.toLowerCase().split(/\s+/)[0] ?? ""
+  const lowerPrefix = prefix.toLowerCase()
   const candidates = templates
     .map((t) => ({
       name: (t.slug || t.name || "").toLowerCase(),
       raw: t.slug || t.name || "",
     }))
-    .filter((t) => t.name.startsWith("rl_universal_"))
+    .filter((t) => t.name.startsWith(lowerPrefix))
 
   if (first) {
-    const exact = candidates.find((t) => t.name === `rl_universal_${first}`)
+    const exact = candidates.find((t) => t.name === `${lowerPrefix}${first}`)
     if (exact) return exact.raw
     // Compound-name guard: "rl_universal_roy_v2" still matches "roy".
-    const prefix = candidates.find((t) => t.name.startsWith(`rl_universal_${first}`))
-    if (prefix) return prefix.raw
+    const prefixMatch = candidates.find((t) => t.name.startsWith(`${lowerPrefix}${first}`))
+    if (prefixMatch) return prefixMatch.raw
   }
   return candidates[0]?.raw ?? null
 }
 
-export async function resolveWaTemplate(args: {
+export type ResolveWaTemplateArgs = {
   userId: string
   mondayItemId: string
-}): Promise<WaTemplateResolution> {
+  /** Template-slug prefix to search for in Trengo. Defaults to `"rl_universal_"`
+   *  for backwards-compat with the inbox composer + Client Update V1.
+   *  Weekly Update V2 passes `"rl_weekly_update_"`. */
+  prefix?: string
+  /** When true (default), prefer the AM's `users.whatsapp_template_name`
+   *  override before falling back to Trengo auto-discovery. The Weekly
+   *  Update path passes `false` because that DB column is universal-only
+   *  — there's no per-AM override slot for the weekly template (yet). */
+  useUserConfig?: boolean
+}
+
+export async function resolveWaTemplate(args: ResolveWaTemplateArgs): Promise<WaTemplateResolution> {
+  const prefix = args.prefix ?? "rl_universal_"
+  const useUserConfig = args.useUserConfig ?? true
   const supabase = await createAdminClient()
 
-  // Step 1 — user-configured field wins.
+  // Step 1 — user-configured field wins (only for the default universal flow).
   const { data: user } = await supabase
     .from("users")
     .select("name, whatsapp_template_name")
     .eq("id", args.userId)
     .maybeSingle<{ name: string | null; whatsapp_template_name: string | null }>()
 
-  const configured = user?.whatsapp_template_name?.trim()
-  if (configured) {
-    return { name: configured, source: "user_config" }
+  if (useUserConfig) {
+    const configured = user?.whatsapp_template_name?.trim()
+    if (configured) {
+      return { name: configured, source: "user_config" }
+    }
   }
 
   // Step 2 — Trengo auto-discovery, needs a channel-id we can target.
@@ -120,6 +137,7 @@ export async function resolveWaTemplate(args: {
     const picked = pickByConvention(
       templates.map((t) => ({ slug: t.slug, name: t.title })),
       user?.name ?? "",
+      prefix,
     )
     if (!picked) return { name: null, source: "none" }
     return { name: picked, source: "trengo_auto" }
@@ -130,4 +148,25 @@ export async function resolveWaTemplate(args: {
     )
     return { name: null, source: "none" }
   }
+}
+
+/**
+ * Resolve the per-AM weekly-update HSM template (`rl_weekly_update_<voornaam>`)
+ * for the logged-in user. Skips the `users.whatsapp_template_name` override
+ * because that field is wired to the universal template only — weekly update
+ * relies on auto-discovery from Trengo against the convention slug.
+ *
+ * Returns `{ name: null }` when no matching template exists yet (Meta hasn't
+ * approved one for this AM). Callers should fall back to V1 (single-var
+ * universal + sanitise) so a send never hard-fails on missing approval.
+ */
+export function resolveWeeklyUpdateTemplate(args: {
+  userId: string
+  mondayItemId: string
+}): Promise<WaTemplateResolution> {
+  return resolveWaTemplate({
+    ...args,
+    prefix: "rl_weekly_update_",
+    useUserConfig: false,
+  })
 }

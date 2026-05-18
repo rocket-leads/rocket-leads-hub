@@ -9,7 +9,11 @@ import {
   sanitizeWaTemplateParam,
   NeedsConnectError,
 } from "@/lib/inbox/reply"
-import { resolveWaTemplate } from "@/lib/clients/resolve-wa-template"
+import { resolveWaTemplate, resolveWeeklyUpdateTemplate } from "@/lib/clients/resolve-wa-template"
+import {
+  partsToWeeklyUpdateParams,
+  type EditableParts,
+} from "@/lib/clients/client-update-template"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
@@ -77,9 +81,19 @@ export async function POST(
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id: mondayItemId } = await params
-  const body = (await req.json().catch(() => ({}))) as { message?: string; subject?: string }
+  const body = (await req.json().catch(() => ({}))) as {
+    message?: string
+    subject?: string
+    /** V2 multi-variable template path: the dialog ships the full editable
+     *  parts alongside the rendered `message`. When present + feature flag
+     *  on + weekly template approved, we derive 5 vars from this instead of
+     *  shipping the whole rendered body as `{{1}}`. Optional — V1 path
+     *  ignores it entirely. */
+    parts?: EditableParts
+  }
   const message = (body.message ?? "").trim()
   const subjectOverride = (body.subject ?? "").trim()
+  const editableParts = body.parts ?? null
   if (!message) {
     return NextResponse.json({ error: "Empty message" }, { status: 400 })
   }
@@ -97,15 +111,41 @@ export async function POST(
 
     // Channel routes the send: email goes as free-text with a subject (no HSM
     // template needed — Meta's template-only rule is WhatsApp-specific),
-    // WhatsApp goes through the `rl_universal_<voornaam>` template wrapper.
+    // WhatsApp goes through one of two HSM templates.
     const sendAsEmail = preferEmail(client.contactChannel)
 
-    // WhatsApp template resolution is only needed for the WhatsApp send path.
-    // For email we skip it entirely — having no template configured is fine
-    // when the channel is email.
-    const waTemplate = sendAsEmail
-      ? { name: null as string | null, source: "none" as const }
-      : await resolveWaTemplate({ userId: session.user.id, mondayItemId })
+    // V2 weekly-update template path is opt-in via env flag. When all three
+    // preconditions hold (flag on + WhatsApp + dialog shipped the editable
+    // parts + Meta has approved `rl_weekly_update_<voornaam>` for this AM),
+    // we send a multi-variable template so the customer gets a properly
+    // structured message instead of a flattened single-paragraph blob.
+    // Any failure falls back to V1 (universal + sanitised single-var) so a
+    // missing approval / cold-start never hard-fails a send.
+    const v2Enabled =
+      !sendAsEmail && !!editableParts && process.env.WEEKLY_UPDATE_TEMPLATE_V2 === "true"
+
+    const v2Template = v2Enabled
+      ? await resolveWeeklyUpdateTemplate({ userId: session.user.id, mondayItemId })
+      : { name: null as string | null, source: "none" as const }
+
+    const useV2 = v2Enabled && !!v2Template.name
+    if (v2Enabled && !useV2) {
+      // Flag on but no approved weekly template for this AM yet — fall back
+      // to V1 instead of erroring. Log loud so we notice during rollout.
+      console.warn(
+        `[send-client-update] V2 flag on but rl_weekly_update_* not resolved for user ${session.user.id}; falling back to V1 universal template.`,
+      )
+    }
+
+    // V1 universal template — used as the default path AND as fallback when
+    // V2 is unavailable. Skipped entirely for email (no template needed).
+    const v1Template =
+      sendAsEmail || useV2
+        ? { name: null as string | null, source: "none" as const }
+        : await resolveWaTemplate({ userId: session.user.id, mondayItemId })
+
+    const waTemplate = useV2 ? v2Template : v1Template
+
     if (!sendAsEmail && !waTemplate.name) {
       return NextResponse.json(
         {
@@ -117,6 +157,13 @@ export async function POST(
       )
     }
     const templateName = waTemplate.name ?? ""
+
+    // Template params: V2 = 5 derived vars matching the approved body;
+    // V1 = entire rendered body as `{{1}}` (sanitiser flattens it to a
+    // single Meta-valid line at the API boundary).
+    const templateParams: string[] = useV2
+      ? partsToWeeklyUpdateParams(editableParts!)
+      : [message]
 
     // Strategy: look for an existing Trengo-sourced inbox_event we can reuse
     // as the threading anchor. The reply pipeline propagates source_thread +
@@ -161,7 +208,7 @@ export async function POST(
           : {
               name: templateName,
               language: "nl",
-              params: [message],
+              params: templateParams,
             },
         email: sendAsEmail && subjectOverride ? { subject: subjectOverride } : undefined,
       })
@@ -209,7 +256,7 @@ export async function POST(
             ticketId,
             templateName,
             "nl",
-            [message],
+            templateParams,
           )
           outboundId = sent.message_id
         }
@@ -306,9 +353,14 @@ export async function POST(
       source: result.source,
       outboundMsgId: result.outboundMsgId,
       inboxEventId: result.inboxEventId,
-      sentVia: sendAsEmail ? "trengo_email" : "trengo_whatsapp_template",
+      sentVia: sendAsEmail
+        ? "trengo_email"
+        : useV2
+          ? "trengo_whatsapp_template_v2"
+          : "trengo_whatsapp_template",
       templateName: sendAsEmail ? null : templateName,
       templateSource: sendAsEmail ? "none" : waTemplate.source,
+      templateVersion: sendAsEmail ? null : useV2 ? 2 : 1,
       sentAt,
     })
   } catch (e) {

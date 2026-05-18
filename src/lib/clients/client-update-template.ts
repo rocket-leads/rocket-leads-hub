@@ -340,3 +340,79 @@ export function renderFromParts(parts: EditableParts): string {
 export function renderWeeklyUpdate(input: ComposeInput): string {
   return renderFromParts(composeInitialParts(input).parts)
 }
+
+// ─── Multi-variable template params (V2) ─────────────────────────────────
+
+/**
+ * Map the AM-edited parts into the five ordered params for the V2 Weekly
+ * Update HSM template (`rl_weekly_update_<voornaam>`). The template body
+ * already contains the structural pieces — paragraph breaks, the "📊 Cijfers
+ * deze week:" header, the "✅ Wat we deze week gaan doen:" header, and the
+ * per-AM sign-off — so the variables hold ONLY the bare content.
+ *
+ * Slot mapping:
+ *   [0] → {{1}}  first name (no trailing "!")
+ *   [1] → {{2}}  intro sentence
+ *   [2] → {{3}}  KPI bullets inline ("• CPL: €X • Spend: €Y • Leads: Z")
+ *   [3] → {{4}}  trend + AM note + conclusion combined into one flat block
+ *   [4] → {{5}}  action bullets inline ("• Actie 1 • Actie 2")
+ *
+ * Every value is fed through `sanitizeWaTemplateParam` as the final safety
+ * net — Meta rejects newlines / tabs / 4+ consecutive whitespace in body
+ * variables, and this is the boundary where we guarantee compliance.
+ *
+ * The AM's `kpiBlock` typically starts with "📊 KPI deze week:" + bullets;
+ * we strip that leading header line because the template body already
+ * provides "📊 Cijfers deze week:". Same for `actionsHeader` — dropped
+ * because the template fixes "✅ Wat we deze week gaan doen:".
+ */
+export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
+  const firstName = parts.opener.replace(/[!?.,;:]+$/, "").trim()
+
+  const intro = sanitizeForWaParam(parts.intro)
+
+  const kpiInline = sanitizeForWaParam(stripLeadingHeaderLine(parts.kpiBlock))
+
+  // Trend, AM note, and Pedro's conclusion all describe "what's happening"
+  // and slot into the same paragraph between KPIs and the action list.
+  const bodyInline = sanitizeForWaParam(
+    [parts.trendSentence, parts.note, parts.conclusion]
+      .map((s) => (s ?? "").trim())
+      .filter(Boolean)
+      .join(" "),
+  )
+
+  const actionsInline = sanitizeForWaParam(
+    parts.actions
+      .map((a) => a.trim())
+      .filter(Boolean)
+      .map((a) => `• ${a.replace(/^[•\-*]\s*/, "")}`)
+      .join(" "),
+  )
+
+  return [firstName, intro, kpiInline, bodyInline, actionsInline]
+}
+
+/** Strip everything before the first bullet line. Turns
+ *  "📊 KPI block:\n• CPL: …\n• Spend: …" into "• CPL: …\n• Spend: …" so
+ *  the template's own "📊 Cijfers deze week:" header doesn't double up. */
+function stripLeadingHeaderLine(s: string): string {
+  const lines = s.split("\n")
+  const firstBulletIdx = lines.findIndex((l) => /^\s*[•\-*]/.test(l))
+  if (firstBulletIdx === -1) return s
+  return lines.slice(firstBulletIdx).join("\n")
+}
+
+/** Inline `sanitizeWaTemplateParam` so this module doesn't take a runtime
+ *  dep on `src/lib/inbox/reply.ts` (template-rendering shouldn't pull in
+ *  the inbox send pipeline). Kept identical so behaviour matches the API
+ *  boundary's defensive sanitiser. Tested directly in this file's test
+ *  suite + indirectly via reply.test.ts. */
+function sanitizeForWaParam(s: string): string {
+  if (!s) return s
+  return s
+    .replace(/\n\s*[•\-*]\s+/g, " • ")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/ {2,}/g, " ")
+    .trim()
+}
