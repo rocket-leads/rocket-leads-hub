@@ -38,6 +38,11 @@ type MondayEventPayload = {
     type?: string
     boardId?: number | string
     pulseId?: number | string
+    /** Stable Monday update id when present on the payload (newer event
+     *  versions). Anchors `source_msg_id` so the webhook key matches what the
+     *  backfill builds, preventing duplicates when both paths touch the same
+     *  update. */
+    updateId?: number | string
     userId?: number | string
     userName?: string
     body?: string
@@ -188,24 +193,18 @@ export async function POST(req: NextRequest) {
   const text = stripHtml(rawText)
   if (!text) return NextResponse.json({ ok: true, skipped: "empty body" })
 
-  // Strict mention-only routing (per Roy's call): a Monday update lands in
-  // the Hub inbox ONLY if a Hub user is @-mentioned in the body. Updates
-  // without mentions, or with mentions of people who don't have a Hub
-  // user_column_mappings row, are dropped without classification — no AI
-  // spend, no AM-fallback noise, no "everything on every client lands on
-  // the AM regardless of who needs to act."
-  const mentions = parseMondayMentions(rawHtml)
-  if (mentions.length === 0) {
-    return NextResponse.json({ ok: true, skipped: "no_mention" })
-  }
-
   const userId = String(event.userId ?? "")
   const userName = event.userName ?? "Monday user"
 
-  // Synthetic dedupe id — Monday update payloads vary by version, so we key on
-  // (board, pulse, user, trigger time) which is unique enough in practice.
+  // Synthetic dedupe id. Prefer the new pulse+updateId shape when Monday
+  // surfaces an updateId on the payload (newer event versions) so this key
+  // matches what the backfill builds. Falls back to the older
+  // (board, pulse, user, trigger time) shape for legacy payload variants.
   const triggerTime = event.triggerTime ?? new Date().toISOString()
-  const sourceMsgId = `monday:update:${eventBoardId}:${pulseId}:${userId}:${triggerTime}`
+  const updateId = String(event.updateId ?? "")
+  const sourceMsgId = updateId
+    ? `monday:update:${pulseId}:${updateId}`
+    : `monday:update:${eventBoardId}:${pulseId}:${userId}:${triggerTime}`
 
   const { data: existing } = await supabase
     .from("inbox_events")
@@ -215,40 +214,11 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (existing) return NextResponse.json({ ok: true, deduped: true })
 
-  // Classify. Author is internal (RL team writes Monday updates).
-  const classification = await classifyInboxMessage({
-    source: "monday",
-    authorKind: "rl_team",
-    content: text,
-  })
-
-  // Per design: Monday is NOT in the chat substrate. Only emit when the AI
-  // classifies as task or update — chat-grade Monday notes get dropped.
-  if (classification.kind === "chat") {
-    return NextResponse.json({
-      ok: true,
-      skipped: "chat-classified Monday update is not surfaced",
-      confidence: classification.confidence,
-    })
-  }
-
-  // Resolve the first @-mention to a Hub user. If nobody mentioned has a
-  // user_column_mappings row, drop the event — we can't deliver to a name
-  // that doesn't map to a Hub account. (Returning a 200 OK with `skipped`
-  // keeps Monday from retrying.)
-  const mentionedUserId = await resolveFirstMentionToHubUser(supabase, mentions)
-  if (!mentionedUserId) {
-    return NextResponse.json({
-      ok: true,
-      skipped: "mention_not_in_user_column_mappings",
-      mentions: mentions.map((m) => m.displayName),
-    })
-  }
-
   // System author for the FK — Monday webhook ingest doesn't have a
   // session-bound user_id and we don't try to map the *poster* to a Hub
   // account (that's a different problem; the body credits them by name via
-  // author_name_cached).
+  // author_name_cached). Also satisfies the NOT NULL assignee_id for
+  // timeline-only rows where no Hub user owns the row.
   const { data: hq } = await supabase
     .from("users")
     .select("id")
@@ -258,34 +228,80 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "no system author" }, { status: 500 })
   }
 
-  const assigneeId = mentionedUserId
+  // Two-track ingest (per the per-client timeline requirement):
+  //
+  // 1. PROMOTE → an actionable row in the Tasks/Updates tabs, assigned to a
+  //    Hub user, with active status that drives the sidebar badge. Requires
+  //    BOTH a routable @-mention AND a non-chat classification.
+  //
+  // 2. TIMELINE-ONLY → a passive row that's invisible to the Inbox tabs and
+  //    badges but DOES surface in the per-client timeline. Used for every
+  //    other Monday update (no mention / unmapped mention / chat-classified)
+  //    so finance + AMs can audit the full activity log on a client without
+  //    bouncing back to Monday.
+  //
+  // Track 2 invisibility math:
+  //   - kind="chat" → escapes the kind="task"|"update" filter on Tasks/Updates
+  //     tabs and on the unreadUpdates/openTasks badges.
+  //   - thread_key=null → escapes the chat substrate (Client/Team Inbox tabs
+  //     and the unreadChats badge), which all filter `thread_key IS NOT NULL`.
+  //   - assignee_id=hq (system) → no real Hub user is the assignee, so even
+  //     a hypothetical "everything assigned to me" query stays clean.
+  //   - status="read" → no unread state to ping anywhere.
+  //   The per-client timeline (api/clients/[id]/timeline) only filters by
+  //   `client_id`, so these still show up there — which is the whole point.
+  const mentions = parseMondayMentions(rawHtml)
+  const mentionedUserId = mentions.length > 0
+    ? await resolveFirstMentionToHubUser(supabase, mentions)
+    : null
+
+  // Only spend Anthropic budget when there's a routable mention — otherwise
+  // we already know we'll write timeline-only and the classification doesn't
+  // change anything downstream.
+  const classification = mentionedUserId
+    ? await classifyInboxMessage({ source: "monday", authorKind: "rl_team", content: text })
+    : null
+
+  const promote = !!mentionedUserId && classification && classification.kind !== "chat"
 
   const titlePreview = text.length > 100 ? text.slice(0, 100) + "…" : text
   const bodyFull = text.length > 100 ? text : null
 
+  const insertRow = promote
+    ? {
+        kind: classification!.kind,
+        assignee_id: mentionedUserId!,
+        status: classification!.kind === "task" ? "open" : "unread",
+        priority: classification!.kind === "task" ? "normal" : null,
+      }
+    : {
+        kind: "chat" as const,
+        assignee_id: hq.id, // system user — keeps row out of every "assigned to me" query
+        status: "read",
+        priority: null,
+      }
+
   const { data: inserted, error } = await supabase
     .from("inbox_events")
     .insert({
-      kind: classification.kind,
+      ...insertRow,
       client_id: pulseId, // Monday item id IS our client_id text key
       author_id: hq.id,
-      assignee_id: assigneeId,
       title: titlePreview || `Monday update from ${userName}`,
       body: bodyFull,
-      status: classification.kind === "task" ? "open" : "unread",
-      priority: classification.kind === "task" ? "normal" : null,
       source: "monday",
       source_thread: `monday:item:${pulseId}`,
       source_msg_id: sourceMsgId,
       // thread_key intentionally null — Monday updates don't form a chat thread.
-      // scope intentionally null — they live in Tasks/Updates, not in Chat tabs.
+      // scope intentionally null — they live in Tasks/Updates (when promoted)
+      // or in the per-client timeline (when not), never in Chat tabs.
       thread_key: null,
       scope: null,
       author_kind: "rl_team",
       author_external: userId,
       author_name_cached: userName,
-      classify_conf: classification.confidence,
-      classify_method: "ai",
+      classify_conf: classification?.confidence ?? null,
+      classify_method: classification ? "ai" : null,
       created_at_src: triggerTime,
       raw: payload as unknown as Record<string, unknown>,
     })
@@ -296,12 +312,15 @@ export async function POST(req: NextRequest) {
     console.error("Monday webhook insert failed:", error)
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
-  if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
+  // Push notifications only for promoted rows — the timeline-only path is
+  // passive history, not someone's TODO.
+  if (promote && inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
 
   return NextResponse.json({
     ok: true,
-    classified: classification.kind,
-    confidence: classification.confidence,
+    promoted: promote,
+    classified: classification?.kind ?? "skipped",
+    confidence: classification?.confidence ?? null,
     pulseId,
     boardId: eventBoardId,
   })
