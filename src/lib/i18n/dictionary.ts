@@ -438,7 +438,9 @@ export const DICTIONARY = {
   "client.phase.debt_collection": { nl: "Incassobureau", en: "Debt collection agency" },
 
   // ─── Client detail page ───────────────────────────────────────────────
-  // Tab strip
+  // Legacy per-section labels — used by sub-toggles inside the 4 top
+  // groups (Performance → Overview vs Campaigns, Admin → Billing vs
+  // Settings, etc). The flat 7-tab strip these once labelled is gone.
   "client.tab.home": { nl: "Home", en: "Home" },
   "client.tab.campaigns": { nl: "Campagnes", en: "Campaigns" },
   "client.tab.inbox": { nl: "Inbox", en: "Inbox" },
@@ -446,6 +448,20 @@ export const DICTIONARY = {
   "client.tab.pedro": { nl: "Pedro", en: "Pedro" },
   "client.tab.billing": { nl: "Facturatie", en: "Billing" },
   "client.tab.settings": { nl: "Instellingen", en: "Settings" },
+
+  // 4 top-level tab groups
+  "client.tab.group.performance": { nl: "Performance", en: "Performance" },
+  "client.tab.group.conversations": { nl: "Communicatie", en: "Conversations" },
+  "client.tab.group.pedro": { nl: "Pedro", en: "Pedro" },
+  "client.tab.group.admin": { nl: "Beheer", en: "Admin" },
+
+  // Sub-view labels inside each group (segmented control)
+  "client.tab.sub.overview": { nl: "Overzicht", en: "Overview" },
+  "client.tab.sub.campaigns": { nl: "Campagnes", en: "Campaigns" },
+  "client.tab.sub.inbox": { nl: "Inbox", en: "Inbox" },
+  "client.tab.sub.timeline": { nl: "Tijdlijn", en: "Timeline" },
+  "client.tab.sub.billing": { nl: "Facturatie", en: "Billing" },
+  "client.tab.sub.settings": { nl: "Instellingen", en: "Settings" },
   "client.tab.refresh_title": { nl: "Data verversen en analyse opnieuw genereren", en: "Refresh data and regenerate analysis" },
   "client.no_access": { nl: "Je hebt geen toegang tot deze sectie.", en: "You do not have access to this section." },
 

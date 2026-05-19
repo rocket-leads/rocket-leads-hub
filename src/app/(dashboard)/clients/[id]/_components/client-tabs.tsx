@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { RefreshCw, BarChart3, CreditCard, Settings2, LayoutDashboard, Inbox as InboxIcon, Activity, Sparkles } from "lucide-react"
+import { RefreshCw, BarChart3, MessageSquare, Settings2, Sparkles } from "lucide-react"
 import { CampaignsTab } from "./campaigns-tab"
 import { BillingTab } from "./billing-tab"
 import { ClientSettingsTab } from "./client-settings-tab"
@@ -13,6 +13,7 @@ import { TimelineTab } from "./timeline-tab"
 import { PedroTab } from "./pedro-tab"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
+import { SegmentedTabs } from "@/components/ui/segmented-tabs"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 import { Card, CardContent } from "@/components/ui/card"
 import { useLocale } from "@/lib/i18n/client"
@@ -27,6 +28,24 @@ type Props = {
   access: ClientAccess
   currentUser: CurrentUser
 }
+
+/**
+ * Top-level groups. Reduced from 7 flat tabs (Home / Campaigns / Inbox /
+ * Timeline / Pedro / Billing / Settings) to 4 groups:
+ *
+ *   performance   — KPI summary + campaign drill-down (Overview / Campaigns)
+ *   conversations — interactive Inbox + read-only Timeline of touchpoints
+ *   pedro         — AI insights for this client (single view)
+ *   admin         — Billing + per-client Settings
+ *
+ * Each group with multiple inner views renders a SegmentedTabs pill switcher
+ * at the top of its body so the user can flip between them. Single-view
+ * groups (Pedro) skip the switcher entirely.
+ */
+type TopGroup = "performance" | "conversations" | "pedro" | "admin"
+type PerformanceView = "overview" | "campaigns"
+type ConversationsView = "inbox" | "timeline"
+type AdminView = "billing" | "settings"
 
 function NoAccess() {
   const locale = useLocale()
@@ -69,23 +88,37 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
 
   const hasOverdueInvoice = hasOverdue(billingQuery.data?.invoices)
 
-  const tabs: TopTab<string>[] = [
-    { id: "home", label: t("client.tab.home", locale), icon: LayoutDashboard },
-    ...(access.canViewCampaigns ? [{ id: "campaigns", label: t("client.tab.campaigns", locale), icon: BarChart3 }] : []),
-    { id: "inbox", label: t("client.tab.inbox", locale), icon: InboxIcon },
-    { id: "timeline", label: t("client.tab.timeline", locale), icon: Activity },
-    { id: "pedro", label: t("client.tab.pedro", locale), icon: Sparkles },
-    ...(access.canViewBilling ? [{ id: "billing", label: t("client.tab.billing", locale), icon: CreditCard, ...(hasOverdueInvoice ? { dot: "red" as const } : {}) }] : []),
-    { id: "settings", label: t("client.tab.settings", locale), icon: Settings2 },
+  // Tab state — `activeGroup` drives the top strip; the three view states
+  // remember which inner view is active inside each group so jumping away
+  // and coming back lands on the same sub-tab.
+  const [activeGroup, setActiveGroup] = useState<TopGroup>("performance")
+  const [performanceView, setPerformanceView] = useState<PerformanceView>("overview")
+  const [conversationsView, setConversationsView] = useState<ConversationsView>("inbox")
+  // Default to Billing when the user has billing access (the more frequently
+  // touched view); fall back to Settings when they don't.
+  const [adminView, setAdminView] = useState<AdminView>(
+    access.canViewBilling ? "billing" : "settings",
+  )
+
+  // If the user's billing access changes (eg. role promotion mid-session),
+  // re-seed adminView so we don't try to render Billing without access.
+  useEffect(() => {
+    if (!access.canViewBilling && adminView === "billing") setAdminView("settings")
+  }, [access.canViewBilling, adminView])
+
+  const groups: TopTab<TopGroup>[] = [
+    { id: "performance", label: t("client.tab.group.performance", locale), icon: BarChart3 },
+    { id: "conversations", label: t("client.tab.group.conversations", locale), icon: MessageSquare },
+    { id: "pedro", label: t("client.tab.group.pedro", locale), icon: Sparkles },
+    {
+      id: "admin",
+      label: t("client.tab.group.admin", locale),
+      icon: Settings2,
+      // Bubble the overdue-invoice dot up to the Admin top tab so the user
+      // sees the affordance without opening the group.
+      ...(hasOverdueInvoice ? { dot: "red" as const } : {}),
+    },
   ]
-
-  const [activeTab, setActiveTab] = useState<string>("home")
-
-  // Campaigns query lives in CampaignsTab itself — the previous prefetch here
-  // was dead (its result wasn't read at this layer) and cost a 1-3s Meta call
-  // on every slide-over open. CampaignsTab fetches on mount when the user
-  // actually opens it; the Refresh button still invalidates by mondayItemId
-  // prefix and catches it.
 
   async function handleRefresh() {
     setIsRefreshing(true)
@@ -100,12 +133,32 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
     setIsRefreshing(false)
   }
 
+  // Callbacks fired by inner panels that want to jump to another group. The
+  // HomeTab uses these for "open billing" / "open inbox" affordances on the
+  // payment banner + tasks card — we map them to the new top+sub state pair.
+  const goToCampaigns = () => {
+    setActiveGroup("performance")
+    setPerformanceView("campaigns")
+  }
+  const goToInbox = () => {
+    setActiveGroup("conversations")
+    setConversationsView("inbox")
+  }
+  const goToBilling = () => {
+    setActiveGroup("admin")
+    if (access.canViewBilling) setAdminView("billing")
+  }
+  const goToSettings = () => {
+    setActiveGroup("admin")
+    setAdminView("settings")
+  }
+
   return (
     <div className="space-y-6">
-      <TopTabs<string>
-        tabs={tabs}
-        value={activeTab}
-        onChange={setActiveTab}
+      <TopTabs<TopGroup>
+        tabs={groups}
+        value={activeGroup}
+        onChange={setActiveGroup}
         rightContent={
           <button
             className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
@@ -118,62 +171,113 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
         }
       />
 
-      {activeTab === "home" && (
-        <HomeTab
-          client={client}
-          supabaseClientId={supabaseClientId}
-          canViewBilling={access.canViewBilling}
-          canViewCampaigns={access.canViewCampaigns}
-          refreshNonce={refreshNonce}
-          onNavigateToCampaigns={() => setActiveTab("campaigns")}
-          onNavigateToInbox={() => setActiveTab("inbox")}
-          onNavigateToBilling={() => setActiveTab("billing")}
-        />
+      {/* PERFORMANCE — Overview (Home) + Campaigns drill-down */}
+      {activeGroup === "performance" && (
+        <div className="space-y-4">
+          {access.canViewCampaigns && (
+            <SegmentedTabs<PerformanceView>
+              items={[
+                { id: "overview", label: t("client.tab.sub.overview", locale) },
+                { id: "campaigns", label: t("client.tab.sub.campaigns", locale) },
+              ]}
+              value={performanceView}
+              onChange={setPerformanceView}
+            />
+          )}
+
+          {performanceView === "overview" && (
+            <HomeTab
+              client={client}
+              supabaseClientId={supabaseClientId}
+              canViewBilling={access.canViewBilling}
+              canViewCampaigns={access.canViewCampaigns}
+              refreshNonce={refreshNonce}
+              onNavigateToCampaigns={goToCampaigns}
+              onNavigateToInbox={goToInbox}
+              onNavigateToBilling={goToBilling}
+            />
+          )}
+
+          {performanceView === "campaigns" && (
+            access.canViewCampaigns ? (
+              <CampaignsTab
+                mondayItemId={client.mondayItemId}
+                metaAdAccountId={client.metaAdAccountId || null}
+                clientBoardId={client.clientBoardId || null}
+                clientName={client.name}
+                boardType={client.boardType}
+                onNavigateToSettings={goToSettings}
+              />
+            ) : <NoAccess />
+          )}
+        </div>
       )}
 
-      {activeTab === "campaigns" && (
-        access.canViewCampaigns ? (
-          <CampaignsTab
-            mondayItemId={client.mondayItemId}
-            metaAdAccountId={client.metaAdAccountId || null}
-            clientBoardId={client.clientBoardId || null}
-            clientName={client.name}
-            boardType={client.boardType}
-            onNavigateToSettings={() => setActiveTab("settings")}
+      {/* CONVERSATIONS — interactive Inbox + read-only Timeline */}
+      {activeGroup === "conversations" && (
+        <div className="space-y-4">
+          <SegmentedTabs<ConversationsView>
+            items={[
+              { id: "inbox", label: t("client.tab.sub.inbox", locale) },
+              { id: "timeline", label: t("client.tab.sub.timeline", locale) },
+            ]}
+            value={conversationsView}
+            onChange={setConversationsView}
           />
-        ) : <NoAccess />
+
+          {conversationsView === "inbox" && (
+            <InboxTab
+              mondayItemId={client.mondayItemId}
+              clientName={client.name}
+              currentUser={currentUser}
+              trengoContactId={client.trengoContactId || null}
+              canViewCommunication={access.canViewCommunication}
+            />
+          )}
+
+          {conversationsView === "timeline" && (
+            <TimelineTab mondayItemId={client.mondayItemId} />
+          )}
+        </div>
       )}
 
-      {activeTab === "inbox" && (
-        <InboxTab
-          mondayItemId={client.mondayItemId}
-          clientName={client.name}
-          currentUser={currentUser}
-          trengoContactId={client.trengoContactId || null}
-          canViewCommunication={access.canViewCommunication}
-        />
-      )}
-
-      {activeTab === "timeline" && (
-        <TimelineTab mondayItemId={client.mondayItemId} />
-      )}
-
-      {activeTab === "pedro" && (
+      {/* PEDRO — single view, no sub-toggle */}
+      {activeGroup === "pedro" && (
         <PedroTab mondayItemId={client.mondayItemId} clientName={client.name} />
       )}
 
-      {activeTab === "billing" && (
-        access.canViewBilling ? (
-          <BillingTab
-            mondayItemId={client.mondayItemId}
-            stripeCustomerId={client.stripeCustomerId || null}
-            initialNextInvoiceDate={client.nextInvoiceDate || null}
+      {/* ADMIN — Billing + per-client Settings */}
+      {activeGroup === "admin" && (
+        <div className="space-y-4">
+          <SegmentedTabs<AdminView>
+            items={[
+              ...(access.canViewBilling
+                ? [{
+                    id: "billing" as const,
+                    label: t("client.tab.sub.billing", locale),
+                    ...(hasOverdueInvoice ? { dot: "red" as const } : {}),
+                  }]
+                : []),
+              { id: "settings" as const, label: t("client.tab.sub.settings", locale) },
+            ]}
+            value={adminView}
+            onChange={setAdminView}
           />
-        ) : <NoAccess />
-      )}
 
-      {activeTab === "settings" && (
-        <ClientSettingsTab client={client} />
+          {adminView === "billing" && (
+            access.canViewBilling ? (
+              <BillingTab
+                mondayItemId={client.mondayItemId}
+                stripeCustomerId={client.stripeCustomerId || null}
+                initialNextInvoiceDate={client.nextInvoiceDate || null}
+              />
+            ) : <NoAccess />
+          )}
+
+          {adminView === "settings" && (
+            <ClientSettingsTab client={client} />
+          )}
+        </div>
       )}
     </div>
   )
