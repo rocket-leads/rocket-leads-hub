@@ -6,6 +6,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { PageHeader } from "@/components/ui/page-header"
+import { StatusPill } from "@/components/ui/status-pill"
 import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb, ListTodo, Loader2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
@@ -1185,29 +1186,23 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         }
       />
 
-      {/* Summary pills + CM filter */}
+      {/* Summary pills + CM filter — uses the shared StatusPill primitive
+          so the same chrome is used everywhere the Hub displays a status
+          tone (table rows, slide-over headers, etc.). */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-red-500/10 text-red-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-            {t("watchlist.pill.action", locale)}
-            <span className="tabular-nums">{categorized.action.length}</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-amber-500/10 text-amber-400">
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-            {t("watchlist.pill.watch", locale)}
-            <span className="tabular-nums">{categorized.watch.length}</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-green-500/10 text-green-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-            {t("watchlist.pill.good", locale)}
-            <span className="tabular-nums">{categorized.good.length}</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium bg-muted/40 text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-            {t("watchlist.pill.no_data", locale)}
-            <span className="tabular-nums">{categorized.noData.length}</span>
-          </div>
+          <StatusPill tone="danger">
+            {t("watchlist.pill.action", locale)} <span className="tabular-nums">{categorized.action.length}</span>
+          </StatusPill>
+          <StatusPill tone="warning">
+            {t("watchlist.pill.watch", locale)} <span className="tabular-nums">{categorized.watch.length}</span>
+          </StatusPill>
+          <StatusPill tone="success">
+            {t("watchlist.pill.good", locale)} <span className="tabular-nums">{categorized.good.length}</span>
+          </StatusPill>
+          <StatusPill tone="neutral">
+            {t("watchlist.pill.no_data", locale)} <span className="tabular-nums">{categorized.noData.length}</span>
+          </StatusPill>
         </div>
 
         <FiltersPopover

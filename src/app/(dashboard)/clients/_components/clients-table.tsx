@@ -686,7 +686,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           placeholder={t("clients.search_placeholder", locale)}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-56 h-8 border border-border bg-background rounded-lg text-xs text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 px-3"
+          className="w-60 h-9 border border-border bg-card rounded-xl text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 px-3.5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
         />
         <FiltersPopover filters={filters} />
         {dateRangeControl && (
@@ -703,7 +703,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   key={preset.label}
                   type="button"
                   onClick={() => dateRangeControl.applyPreset(preset)}
-                  className="h-8 px-2.5 text-[11px] rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors"
+                  className="h-8 px-2.5 text-[11px] rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors font-medium"
                 >
                   {preset.label}
                 </button>

@@ -122,11 +122,11 @@ export function ClientSearch() {
           setOpen(true)
           fetchClients()
         }}
-        className="flex items-center gap-2 h-8 w-64 rounded-lg border border-border/40 bg-muted/30 px-3 text-sm text-muted-foreground hover:bg-muted/50 hover:border-border/60 transition-colors"
+        className="flex items-center gap-2 h-9 w-72 rounded-xl border border-border bg-card px-3 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
       >
         <Search className="h-3.5 w-3.5 shrink-0" />
         <span className="flex-1 text-left">{t("search.trigger.placeholder", locale)}</span>
-        <kbd className="hidden sm:inline-flex h-5 items-center gap-0.5 rounded border border-border/50 bg-muted/50 px-1.5 text-[10px] font-medium text-muted-foreground/70">
+        <kbd className="hidden sm:inline-flex h-5 items-center gap-0.5 rounded-md border border-border/60 bg-muted/60 px-1.5 text-[10px] font-medium text-muted-foreground/70">
           <span className="text-xs">⌘</span>K
         </kbd>
       </button>

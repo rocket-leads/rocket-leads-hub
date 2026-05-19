@@ -168,25 +168,25 @@ function KpiCard({
   windowLabel?: string
   loading?: boolean
 }) {
+  // Chrome aligned to the KpiTile primitive: rounded-2xl border-border/60 +
+  // px-5 py-4 + 11px uppercase label + 26px hero number with tabular-nums.
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-            {label}
-            {windowLabel && (
-              <span className="text-muted-foreground/40 font-normal"> · {windowLabel}</span>
-            )}
-          </span>
-        </div>
-        {loading ? (
-          <Skeleton className="h-7 w-24" />
-        ) : (
-          <p className="text-2xl font-heading font-bold tracking-tight tabular-nums">{value}</p>
-        )}
-      </CardContent>
-    </Card>
+    <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
+      <div className="flex items-center gap-2 mb-3">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground/70 font-medium">
+          {label}
+          {windowLabel && (
+            <span className="text-muted-foreground/40 font-normal"> · {windowLabel}</span>
+          )}
+        </span>
+      </div>
+      {loading ? (
+        <Skeleton className="h-7 w-24" />
+      ) : (
+        <p className="font-heading text-[26px] font-bold tracking-tight tabular-nums leading-none">{value}</p>
+      )}
+    </div>
   )
 }
 
@@ -205,30 +205,28 @@ function HealthCard({
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="p-4 space-y-2">
-          <Skeleton className="h-4 w-16" />
-          <Skeleton className="h-7 w-20" />
-          <Skeleton className="h-3 w-32" />
-        </CardContent>
-      </Card>
+      <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] space-y-2">
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="h-7 w-20" />
+        <Skeleton className="h-3 w-32" />
+      </div>
     )
   }
 
+  // Same chrome shell as KpiCard so the four-up grid lines up cleanly; the
+  // tone classes layer color on top of the shared border + radius.
   return (
-    <Card className={`overflow-hidden ${tone.bg} ${tone.border} border`}>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <Activity className={`h-3.5 w-3.5 ${tone.text}`} />
-          <span className={`text-[11px] uppercase tracking-wider font-medium ${tone.text}`}>{t("client.home.health.label", locale)}</span>
-        </div>
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
-          <p className={`text-2xl font-heading font-bold tracking-tight ${tone.text}`}>{t(tone.labelKey, locale)}</p>
-        </div>
-        <p className={`text-[11px] leading-snug ${tone.text} opacity-80`}>{insight}</p>
-      </CardContent>
-    </Card>
+    <div className={`rounded-2xl px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] border ${tone.bg} ${tone.border}`}>
+      <div className="flex items-center gap-2 mb-3">
+        <Activity className={`h-3.5 w-3.5 ${tone.text}`} />
+        <span className={`text-[11px] uppercase tracking-wider font-medium ${tone.text}`}>{t("client.home.health.label", locale)}</span>
+      </div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+        <p className={`font-heading text-[22px] font-bold tracking-tight leading-none ${tone.text}`}>{t(tone.labelKey, locale)}</p>
+      </div>
+      <p className={`text-[11px] leading-snug ${tone.text} opacity-80`}>{insight}</p>
+    </div>
   )
 }
 

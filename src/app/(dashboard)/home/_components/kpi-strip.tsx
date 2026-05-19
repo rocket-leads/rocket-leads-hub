@@ -23,9 +23,9 @@ function Card({
   // text color so cards without a verdict don't fight for attention.
   const valueColor =
     status === "good"
-      ? "text-green-500"
+      ? "text-emerald-500"
       : status === "warn"
-        ? "text-amber-400"
+        ? "text-amber-500"
         : status === "bad"
           ? "text-red-500"
           : "text-foreground"
@@ -34,18 +34,21 @@ function Card({
     trend === "up"
       ? "text-red-500"
       : trend === "down"
-        ? "text-green-500"
+        ? "text-emerald-500"
         : "text-muted-foreground/40"
+  // Visual chrome aligned to the KpiTile primitive: rounded-2xl, border-border/60,
+  // 11px uppercase label, font-heading hero number with tabular-nums for column
+  // alignment when stacked in a strip.
   return (
-    <div className="bg-card rounded-lg p-5 border border-border/40 flex flex-col gap-2 h-full">
+    <div className="bg-card rounded-2xl px-5 py-4 border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] flex flex-col gap-3 h-full">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{label}</span>
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground/70 font-medium">{label}</span>
         {trend && <TrendIcon className={cn("h-3.5 w-3.5", trendColor)} strokeWidth={2.5} />}
       </div>
-      <span className={cn("text-3xl font-bold font-mono leading-none tracking-tight", valueColor)}>
+      <span className={cn("font-heading text-[26px] font-bold leading-none tracking-tight tabular-nums", valueColor)}>
         {value}
       </span>
-      <span className="text-xs text-muted-foreground leading-relaxed">{subtitle}</span>
+      <span className="text-[11px] text-muted-foreground/70 leading-snug">{subtitle}</span>
     </div>
   )
 }
