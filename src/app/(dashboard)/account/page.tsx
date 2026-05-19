@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { listUserPlatformConnections } from "@/lib/inbox/user-platform-tokens"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 import { MyAccount } from "./_components/my-account"
+import { PageHeader } from "@/components/ui/page-header"
 
 export default async function AccountPage({
   searchParams,
@@ -23,14 +24,10 @@ export default async function AccountPage({
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">
-          My Account
-        </h1>
-        <p className="text-[13px] text-muted-foreground mt-1">
-          Connect your personal Slack, Trengo and Monday accounts so replies sent through the Hub appear from you, not from a system bot.
-        </p>
-      </div>
+      <PageHeader
+        title="My Account"
+        subtitle="Connect your personal Slack, Trengo and Monday accounts so replies sent through the Hub appear from you, not from a system bot."
+      />
 
       <MyAccount
         userName={session.user.name ?? session.user.email}

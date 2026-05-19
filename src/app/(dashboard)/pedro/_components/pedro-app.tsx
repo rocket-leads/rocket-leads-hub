@@ -6,6 +6,7 @@ import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, Re
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/page-header"
 import { ClientPicker } from "./client-picker"
 import { Campaign } from "./pedro-campaign"
 import { Research } from "./pedro-research"
@@ -134,20 +135,16 @@ export function PedroApp({ clients }: Props) {
 
   return (
     <div className="pedro-root">
-      <div className="mb-5 flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">
-            {t("pedro.title", locale)}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t("pedro.subtitle", locale)}
-          </p>
-        </div>
-        <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-[blink_2s_infinite]" />
-          {t("pedro.status.online", locale)}
-        </span>
-      </div>
+      <PageHeader
+        title={t("pedro.title", locale)}
+        subtitle={t("pedro.subtitle", locale)}
+        actions={
+          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-[blink_2s_infinite]" />
+            {t("pedro.status.online", locale)}
+          </span>
+        }
+      />
 
       {/* Sticky client picker — single source of truth across all tabs */}
       <div className="mb-5 rounded-2xl border border-border/60 bg-card p-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">

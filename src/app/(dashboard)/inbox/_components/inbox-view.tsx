@@ -596,10 +596,8 @@ export function InboxView({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">{t("inbox.title", locale)}</h1>
-        </div>
+      <div className="flex items-end justify-between gap-4">
+        <h1 className="font-heading text-[24px] font-semibold tracking-tight leading-tight text-foreground">{t("inbox.title", locale)}</h1>
         <div className="flex items-center gap-2">
           {!isChatTab && !isClientOnlyTab && (
             <div className="relative">

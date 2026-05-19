@@ -5,6 +5,7 @@ import { ClientsOverview } from "./_components/clients-overview"
 import { loadUserMappingsContext, filterClientsByContext } from "@/lib/clients/filter"
 import { auth } from "@/lib/auth"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeader } from "@/components/ui/page-header"
 import Link from "next/link"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
@@ -89,10 +90,7 @@ export default async function ClientsPage() {
   const locale = await getUserLocale(session?.user?.id)
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">{t("clients.title", locale)}</h1>
-      </div>
-
+      <PageHeader title={t("clients.title", locale)} />
       <Suspense fallback={<ClientsLoading />}>
         <ClientsData session={session} locale={locale} />
       </Suspense>

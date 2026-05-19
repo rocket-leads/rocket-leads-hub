@@ -56,45 +56,53 @@
   --color-brand-line: #DADEE7;
 }
 
-/* Light mode (off-white background per brand) */
+/* Light mode — Flow-inspired warm cream background so cards float as
+ * distinct surfaces (cool grey reads as cold + cards blend in). Sidebar
+ * stays one shade lighter than the page so the rail visually separates
+ * without a heavy border. */
 :root {
-  --background: #F5F5F7;
-  --foreground: #222427;
+  --background: #F8F4EE;
+  --foreground: #1F2024;
   --card: #FFFFFF;
-  --card-foreground: #222427;
+  --card-foreground: #1F2024;
   --popover: #FFFFFF;
-  --popover-foreground: #222427;
+  --popover-foreground: #1F2024;
   --primary: #8967F3;
   --primary-foreground: #FFFFFF;
-  --secondary: #F0EDFA;
-  --secondary-foreground: #222427;
-  --muted: #F1F1F4;
-  --muted-foreground: #797D85;
-  --accent: #F0EDFA;
-  --accent-foreground: #222427;
+  --secondary: #EFE8FB;
+  --secondary-foreground: #1F2024;
+  --muted: #EFEBE3;
+  --muted-foreground: #6B6E76;
+  --accent: #EFE8FB;
+  --accent-foreground: #1F2024;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: #E4E4E7;
-  --input: #E4E4E7;
+  --border: #E6E0D4;
+  --input: #E6E0D4;
   --ring: #8967F3;
   --chart-1: #8967F3;
   --chart-2: #7AF5D0;
   --chart-3: #54575C;
   --chart-4: #959AA4;
-  --chart-5: #222427;
-  --radius: 0.625rem;
+  --chart-5: #1F2024;
+  /* Radius bumped from 0.625rem (10px) to 0.75rem (12px) so Card defaults
+   * to ~14px corners (Flow/Linear range) and Buttons hit 10-12px instead
+   * of 8px — softer, more premium feel. Existing rounded-* classes still
+   * work; only the token-driven radii grow. */
+  --radius: 0.75rem;
   --sidebar: #FFFFFF;
-  --sidebar-foreground: #222427;
+  --sidebar-foreground: #1F2024;
   --sidebar-primary: #8967F3;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #F0EDFA;
-  --sidebar-accent-foreground: #222427;
-  --sidebar-border: #E4E4E7;
+  --sidebar-accent: #EFE8FB;
+  --sidebar-accent-foreground: #1F2024;
+  --sidebar-border: #E6E0D4;
   --sidebar-ring: #8967F3;
 }
 
-/* Dark mode (brand dark background #222427) */
+/* Dark mode — brand `#222427` family. Background a hair darker than card
+ * so the same "cards float on canvas" hierarchy survives the inversion. */
 .dark {
-  --background: #1A1B1E;
+  --background: #18191C;
   --foreground: #FAFAFA;
   --card: #222427;
   --card-foreground: #FAFAFA;
@@ -102,28 +110,28 @@
   --popover-foreground: #FAFAFA;
   --primary: #8967F3;
   --primary-foreground: #FFFFFF;
-  --secondary: #303030;
+  --secondary: #2D2E32;
   --secondary-foreground: #FAFAFA;
-  --muted: #303030;
-  --muted-foreground: #959AA4;
-  --accent: #303030;
+  --muted: #2A2B2F;
+  --muted-foreground: #9CA0AA;
+  --accent: #2D2E32;
   --accent-foreground: #FAFAFA;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: #3A3B3F;
-  --input: #3A3B3F;
+  --border: #34363B;
+  --input: #34363B;
   --ring: #8967F3;
   --chart-1: #8967F3;
   --chart-2: #7AF5D0;
-  --chart-3: #959AA4;
+  --chart-3: #9CA0AA;
   --chart-4: #797D85;
   --chart-5: #54575C;
-  --sidebar: #222427;
+  --sidebar: #1F2023;
   --sidebar-foreground: #FAFAFA;
   --sidebar-primary: #8967F3;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #303030;
+  --sidebar-accent: #2D2E32;
   --sidebar-accent-foreground: #FAFAFA;
-  --sidebar-border: #3A3B3F;
+  --sidebar-border: #2E2F33;
   --sidebar-ring: #8967F3;
 }
 

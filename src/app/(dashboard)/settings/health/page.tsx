@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, CheckCircle2, AlertCircle, AlertTriangle, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { PageHeader } from "@/components/ui/page-header"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
 import { formatTimeAgo } from "@/lib/i18n/format"
@@ -135,12 +136,10 @@ export default async function HealthPage() {
         {t("settings.health.back", locale)}
       </Link>
 
-      <div className="mb-6">
-        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">{t("settings.health.title", locale)}</h1>
-        <p className="text-[13px] text-muted-foreground mt-1">
-          {t("settings.health.subtitle", locale)}
-        </p>
-      </div>
+      <PageHeader
+        title={t("settings.health.title", locale)}
+        subtitle={t("settings.health.subtitle", locale)}
+      />
 
       {/* Top-line summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">

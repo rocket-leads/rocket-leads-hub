@@ -2,9 +2,11 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
-import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
+import { PageHeader } from "@/components/ui/page-header"
+import { fetchBothBoards, getBoardConfig, mondayItemUrl, type MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary, PastInvoice } from "@/lib/integrations/stripe"
 import type { InvoiceReadiness } from "@/app/api/billing/invoice-readiness/[id]/route"
+import { readReadinessMap } from "@/lib/billing/invoice-readiness"
 import { agreementMonthly, normalizeAgreement } from "@/lib/clients/agreement"
 import { mondayStatusToHub } from "@/lib/clients/status"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
@@ -185,7 +187,15 @@ export default async function BillingPage() {
   // AI invoice-readiness verdicts — pre-computed by /api/billing/invoice-readiness.
   // Cache miss = the row renders a "Run AI check" affordance and the inline
   // cell fetches on demand, populating the cache for subsequent loads.
-  const readinessCache = (await readCache<Record<string, InvoiceReadiness>>("invoice_readiness")) ?? {}
+  // Uses `readReadinessMap` (not raw readCache) so legacy "AI failed" entries
+  // — which were stored as verdict="check"+confidence=30 before the error
+  // verdict existed — get upgraded to verdict="error" at read time.
+  const readinessCache = await readReadinessMap()
+
+  // Board config feeds Monday item URL construction. Null means we couldn't
+  // load it (Supabase miss / missing key); the URLs will be null and the
+  // "Open in Monday" link is hidden rather than rendered broken.
+  const boardConfig = await getBoardConfig()
 
   const rows: UpcomingInvoice[] = scheduled.map((c) => {
     const money = moneyByMondayId.get(c.mondayItemId)
@@ -204,6 +214,7 @@ export default async function BillingPage() {
       paymentStatus: summary?.status ?? null,
       outstanding: summary?.outstanding ?? 0,
       readiness: readinessCache[c.mondayItemId] ?? null,
+      mondayItemUrl: mondayItemUrl(c.mondayItemId, c.boardType, boardConfig),
     }
   })
 
@@ -216,19 +227,11 @@ export default async function BillingPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">
-            Billing
-          </h1>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            Upcoming invoices grouped by when they need to go out. The invoice
-            date is always 7 days before the new cycle starts — edit a
-            client&apos;s cycle to move both dates in lockstep.
-          </p>
-        </div>
-        <RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />
-      </div>
+      <PageHeader
+        title="Billing"
+        subtitle="Upcoming invoices grouped by when they need to go out. The invoice date is always 7 days before the new cycle starts — edit a client's cycle to move both dates in lockstep."
+        actions={<RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />}
+      />
       <BillingTabs futureGroups={groups} pastInvoices={pastInvoices} />
     </div>
   )
@@ -237,23 +240,21 @@ export default async function BillingPage() {
 /**
  * Build BillingGroups from the flat scheduled-row list.
  *
- * - Rows with the same `stripeCustomerId` collapse into one group.
- * - Rows without a Stripe customer each become their own group (synthetic
- *   `unlinked-{mondayItemId}` key) so the table still renders them.
+ * Bundling rule: rows bundle into one group only when they share BOTH a
+ * Stripe customer AND the same `nextInvoiceDate`. Same customer + different
+ * dates = separate groups (e.g. HeroLeads has 3 campaigns on the same Stripe
+ * customer but each with its own start date — finance bills them as 3
+ * separate invoices). The invoice date is therefore the de-facto bundling
+ * signal: align dates to bundle, diverge dates to split.
  *
- * Within a multi-sibling group, the "primary" is the row with the earliest
- * `nextInvoiceDate` so the group lands in the bucket the most-urgent sibling
- * belongs to (after sibling-sync this rarely matters — siblings agree on
- * dates — but it gracefully handles drift while the user is fixing things).
- *
- * `hasDateDrift` flags groups where siblings disagree on `cycleStartDate`,
- * which surfaces a warning in the UI so finance can correct it.
+ * Rows without a Stripe customer each become their own group (synthetic
+ * `unlinked-{mondayItemId}` key) so the table still renders them.
  */
 function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
   const byCustomer = new Map<string, UpcomingInvoice[]>()
   for (const row of rows) {
     const key = row.stripeCustomerId
-      ? `stripe:${row.stripeCustomerId}`
+      ? `stripe:${row.stripeCustomerId}:${row.nextInvoiceDate}`
       : `unlinked:${row.mondayItemId}`
     const list = byCustomer.get(key) ?? []
     list.push(row)
@@ -271,8 +272,6 @@ function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
       (s, r) => s + (r.usesRocketLeadsAdAccount ? r.adBudget : 0),
       0,
     )
-    const cycleDates = new Set(siblings.map((s) => s.cycleStartDate).filter(Boolean))
-    const hasDateDrift = cycleDates.size > 1
     const readiness = aggregateGroupReadiness(siblings)
     groups.push({
       groupKey,
@@ -280,7 +279,6 @@ function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
       siblings,
       totalFee,
       totalAdBudget,
-      hasDateDrift,
       readiness,
     })
   }
@@ -312,8 +310,9 @@ function aggregateGroupReadiness(siblings: UpcomingInvoice[]): InvoiceReadiness 
   if (withReadiness.length === 0) return null
   if (withReadiness.length === 1) return withReadiness[0].readiness
 
-  const order = { send: 0, check: 1, hold: 2 } as const
-  // Worst-first sort.
+  // Worst-first sort. "error" ranks below "send" so any real verdict from a
+  // sibling trumps an errored one — error only surfaces if all siblings failed.
+  const order = { error: -1, send: 0, check: 1, hold: 2 } as const
   withReadiness.sort((a, b) => order[b.readiness.verdict] - order[a.readiness.verdict])
   const worst = withReadiness[0].readiness
 

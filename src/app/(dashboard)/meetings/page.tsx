@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/server"
 import { MEETING_ROW_COLUMNS, type MeetingRow } from "@/lib/meetings/types"
 import { MeetingsView } from "./_components/meetings-view"
+import { PageHeader } from "@/components/ui/page-header"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
 
@@ -43,14 +44,10 @@ export default async function MeetingsPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">
-          {t("meetings.title", locale)}
-        </h1>
-        <p className="text-[13px] text-muted-foreground mt-1">
-          {t("meetings.subtitle", locale)}
-        </p>
-      </div>
+      <PageHeader
+        title={t("meetings.title", locale)}
+        subtitle={t("meetings.subtitle", locale)}
+      />
 
       <MeetingsView
         meetings={meetings}

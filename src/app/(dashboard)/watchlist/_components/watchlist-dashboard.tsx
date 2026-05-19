@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
+import { PageHeader } from "@/components/ui/page-header"
 import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb, ListTodo, Loader2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
@@ -1165,24 +1166,24 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <h1 className="text-[22px] font-heading font-semibold tracking-tight leading-tight">{t("watchlist.title", locale)}</h1>
-          <div className="flex items-center gap-3">
+      <PageHeader
+        title={t("watchlist.title", locale)}
+        actions={
+          <>
             {lastUpdated && (
               <span className="text-[11px] text-muted-foreground/40">{t("watchlist.updated", locale, { time: lastUpdated })}</span>
             )}
             <button
+              type="button"
               className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
               onClick={handleRefresh}
               disabled={isFetching}
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
             </button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* Summary pills + CM filter */}
       <div className="flex items-center justify-between">

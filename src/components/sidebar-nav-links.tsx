@@ -94,7 +94,7 @@ export function SidebarNavLinks({ items, invoicesToSendCount = 0, healthSummary 
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
             }`}
           >
-            <Icon className={`h-[17px] w-[17px] transition-colors ${active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"}`} />
+            <Icon className={`h-4 w-4 transition-colors ${active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"}`} />
             {label}
             {isInbox && <InboxBadge />}
             {isBilling && invoicesToSendCount > 0 && (
