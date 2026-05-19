@@ -92,7 +92,13 @@ export async function GET(req: NextRequest) {
     type Skip = { mondayItemId: string; name: string; reason: string }
     const skipped: Skip[] = []
     let created = 0
-    let alreadyExists = 0
+    // Re-running the same week: drafts the AM hasn't acted on yet get
+    // overwritten with fresh content. Counted separately from
+    // `keptResolved` so the response makes it obvious whether the rerun
+    // actually re-wrote anything.
+    let updatedPending = 0
+    // Sent / dismissed drafts are never touched — counted for visibility.
+    let keptResolved = 0
     let failed = 0
 
     for (const client of candidates) {
@@ -181,10 +187,10 @@ export async function GET(req: NextRequest) {
             })
             continue
           }
-          alreadyExists += 1
+          updatedPending += 1
         } else {
           // sent / dismissed — never touch.
-          alreadyExists += 1
+          keptResolved += 1
         }
       } catch (e) {
         failed += 1
@@ -201,7 +207,8 @@ export async function GET(req: NextRequest) {
       weekOf,
       candidates: candidates.length,
       created,
-      alreadyExists,
+      updatedPending,
+      keptResolved,
       failed,
       skipped: skipped.length,
       durationMs,
