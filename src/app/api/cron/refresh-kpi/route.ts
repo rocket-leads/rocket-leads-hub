@@ -57,14 +57,14 @@ function getDailyHistoryRange() {
 
 function buildDailyRollups(
   metaDaily: Array<{ date: string; spend: number; leads: number; campaignId: string }>,
-  mondayItems: Array<{ dateCreated: string; dateAppointment: string }>,
+  mondayItems: Array<{ dateCreated: string }>,
   rangeStart: string,
 ): DailyRollup[] {
   const byDate = new Map<string, DailyRollup>()
   const cursor = new Date(rangeStart + "T00:00:00Z")
   for (let i = 0; i < DAILY_HISTORY_DAYS; i++) {
     const d = fmtDate(cursor)
-    byDate.set(d, { date: d, spend: 0, metaLeads: 0, mondayLeads: 0, mondayAppts: 0 })
+    byDate.set(d, { date: d, spend: 0, metaLeads: 0, mondayLeads: 0 })
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
   for (const m of metaDaily) {
@@ -77,8 +77,6 @@ function buildDailyRollups(
   for (const it of mondayItems) {
     const lead = byDate.get(it.dateCreated)
     if (lead) lead.mondayLeads += 1
-    const appt = byDate.get(it.dateAppointment)
-    if (appt) appt.mondayAppts += 1
   }
   return Array.from(byDate.values())
 }
@@ -275,13 +273,8 @@ export async function GET(req: NextRequest) {
           const leads = metaFallback ? metaLeadsTotal : mondayLeadsTotal
           const prevLeads = mondayPrevLeadsTotal === 0 && metaPrevLeadsTotal > 0 ? metaPrevLeadsTotal : mondayPrevLeadsTotal
 
-          const appointments = monday.ok ? window7d.reduce((s, d) => s + d.mondayAppts, 0) : 0
-          const prevAppointments = monday.ok ? windowPrev.reduce((s, d) => s + d.mondayAppts, 0) : 0
-
           const cpl = leads > 0 ? adSpend / leads : 0
           const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
-          const costPerAppointment = appointments > 0 ? adSpend / appointments : 0
-          const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
           const prevDaysWithActivity = windowPrev.filter(
             (d) => d.spend > 0 || (monday.ok && d.mondayLeads > 0),
@@ -310,10 +303,7 @@ export async function GET(req: NextRequest) {
               adSpend,
               leads,
               cpl,
-              appointments,
-              costPerAppointment,
               prevCpl,
-              prevCostPerAppointment,
               prevPeriodReliable,
               ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
               ...(metaFallback ? { metaFallback: true } : {}),

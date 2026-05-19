@@ -305,9 +305,7 @@ export type MondayLeadItem = {
   id: string
   name: string
   dateCreated: string
-  dateAppointment: string
   leadStatus: string
-  leadStatus2: string
   dealValue: number
   utm: string
   dateDeal: string
@@ -333,9 +331,7 @@ export async function fetchClientBoardItems(
       id: item.id,
       name: item.name,
       dateCreated: cv[cols.date_created] ?? "",
-      dateAppointment: cv[cols.date_appointment] ?? "",
       leadStatus: cv[cols.lead_status] ?? "",
-      leadStatus2: cv[cols.lead_status_2] ?? "",
       dealValue: parseFloat(cv[cols.deal_value] ?? "0") || 0,
       utm: cv[cols.utm] ?? "",
       dateDeal: cv[cols.date_deal] ?? "",

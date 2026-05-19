@@ -3,18 +3,15 @@
  * AI prompt has to follow. Today the rules live duplicated across 5+
  * system prompts (watchlist-summaries, narrative, optimization-proposal,
  * ai-optimization-proposal, lead-feedback, Pedro chains) and drift over
- * time. When that drift produces a hallucinated "0 appointments" or a
- * bare number with no time-window label, we add another bullet to one of
- * the prompts and hope the others catch up.
+ * time.
  *
  * This module gives every AI caller two things:
  *   1. `AI_GUARDRAILS_PROMPT`,the canonical rules block to splice into
  *      a system prompt. Includes the Roy-flagged rules: time-window labels
  *      mandatory, data-availability awareness, Signal Bar (no padding /
- *      duplicates / vague references), CPA off-limits as cost driver.
+ *      duplicates / vague references).
  *   2. `validateAiOutput()`,programmatic post-validation. Detects bare
- *      numbers without window labels, prohibited "0 appointments" claims
- *      when CRM is missing, and CPA-as-cost-driver phrasing. Returns
+ *      numbers without window labels and other rule violations. Returns
  *      a list of violations so callers can either reject the output and
  *      regenerate, or log + soften the violation in production.
  *
@@ -22,10 +19,9 @@
  * keep the prompt rules but ALSO check the output for compliance, so a
  * regression in the model can't silently leak through.
  *
- * Wave 2 of the foundation pass. Pre-Pedro-unification, this module is
- * the place every NEW AI surface should plug into. Once Pedro becomes
- * the single AI hub (Sessie 3), this file is its prompt-and-validation
- * core.
+ * 2026-05: Appointment / CPA rules were removed when the Hub stopped
+ * tracking per-client appointments (see knowledge/vision-rocketleads-hub.md).
+ * Add them back when appointment tracking returns.
  */
 
 // ─── Canonical prompt block ──────────────────────────────────────────────
@@ -46,25 +42,11 @@ If you can't tell which window a number came from, do not use that number,pick a
 Each client comes with a "DATA AVAILABILITY" line. Read it first.
 
 When Monday CRM = NOT CONNECTED:
-- The KPI block will show \`appts UNKNOWN\`. Never write any of these:
-  - "0 appointments" / "no appointments" / "zero appts"
-  - "leads aren't converting to appointments"
-  - any conversion-rate claim that uses appointments
-- Also do NOT write claims about lead quality / lead sentiment,that lives in Monday updates which you don't have.
+- Do NOT write claims about lead quality / lead sentiment,that lives in Monday updates which you don't have.
 - Focus on Meta-trackable angles only: CPL trend, ad-set fatigue, creative variation depth, CTR decay, frequency.
 
 When Monday CRM = CONNECTED:
-- You can use leads and Monday update sentiment (with window labels per above).
-- Appointment counts may be referenced descriptively but never as a CPA cost driver.
-
-## CRITICAL,CPA / COST-PER-APPOINTMENT IS NOT A SIGNAL DRIVER RIGHT NOW
-Appointment data is too sparse to support reliable cost-per-appointment conclusions. You MUST NOT write any of:
-- "CPA up X%" / "CPA rising" / "CPA dropped"
-- "high cost per appointment" / "appointment cost spiking"
-- Any week-over-week comparison of appointment cost
-- Any prescriptive logic that uses CPA as the driver
-
-Appointment counts are still informational context. Reference them descriptively only ("10 appts (7d)").
+- You can use leads, deals, and Monday update sentiment (with window labels per above).
 
 ## CRITICAL,RECENT WINDOW BEATS 7D WHEN THEY DIVERGE
 We optimise daily. A 7d CPL spike that has already recovered in the last 1-3 days is no longer urgent,and a fresh spike yesterday is invisible in a 7d average. The data block contains a "RECENT WINDOW" line with CPL from the shortest trustworthy window (1d → 2d → 3d, requires ≥2 leads).
@@ -166,8 +148,6 @@ export type GuardrailViolation = {
   /** Stable identifier so callers can filter / log specific rule classes. */
   rule:
     | "missing_window_label"
-    | "claims_zero_appts_when_crm_missing"
-    | "cpa_as_cost_driver"
     | "budget_increase_recommended"
     | "winner_keep_running"
     | "em_dash_used"
@@ -179,7 +159,7 @@ export type GuardrailViolation = {
 
 export type ValidationContext = {
   /** True when Monday CRM is connected for this subject (client / window).
-   *  When false, claims about appointments or lead quality are forbidden. */
+   *  When false, claims about lead quality are forbidden. */
   mondayCrmConnected: boolean
 }
 
@@ -202,10 +182,10 @@ function findBareNumbers(text: string): Array<{ excerpt: string; index: number }
   const currency = /€\s?[\d.,]+(?:[kKmM])?/g
   // Pattern 2,percentages: 60%, +60%, 60.5%
   const percent = /[+-]?\d+(?:\.\d+)?%/g
-  // Pattern 3,counts before keyword: "8 leads", "11 replies", "5 calls",
-  // "3 appts". Tight set so prose like "we have 5 minutes" doesn't trip.
+  // Pattern 3,counts before keyword: "8 leads", "11 replies", "3 deals".
+  // Tight set so prose like "we have 5 minutes" doesn't trip.
   const counts =
-    /\b\d+(?:\.\d+)?\s+(?:leads?|replies?|calls?|appts?|appointments?|deals?|conversions?|tickets?)\b/gi
+    /\b\d+(?:\.\d+)?\s+(?:leads?|replies?|deals?|conversions?|tickets?)\b/gi
 
   for (const re of [currency, percent, counts]) {
     re.lastIndex = 0
@@ -234,7 +214,7 @@ function findBareNumbers(text: string): Array<{ excerpt: string; index: number }
  */
 export function validateAiOutput(
   text: string,
-  ctx: ValidationContext,
+  _ctx: ValidationContext,
 ): GuardrailViolation[] {
   const violations: GuardrailViolation[] = []
 
@@ -244,34 +224,6 @@ export function validateAiOutput(
       rule: "missing_window_label",
       excerpt: hit.excerpt,
       message: `Number "${hit.excerpt}" has no time-window label nearby (e.g. (7d), (14d), (all-time)).`,
-    })
-  }
-
-  // ─ Zero-appts claim when CRM is missing ─
-  if (!ctx.mondayCrmConnected) {
-    const zeroAppts =
-      /\b(?:0|no|zero)\s+(?:appointments?|appts?|booked\s+calls?)\b/gi
-    let m: RegExpExecArray | null
-    while ((m = zeroAppts.exec(text)) !== null) {
-      violations.push({
-        rule: "claims_zero_appts_when_crm_missing",
-        excerpt: m[0],
-        message: `Claims "${m[0]}" but Monday CRM is not connected,appointments are UNKNOWN, not zero.`,
-      })
-    }
-  }
-
-  // ─ CPA used as cost driver ─
-  // Match prescriptive CPA phrasing: "CPA up", "high cost per appointment",
-  // "appointment cost spiking", "CPA rising/dropped/elevated", etc.
-  const cpaDriver =
-    /\b(?:CPA\s+(?:up|down|rising|dropped|elevated|high|low|spik|surge)|(?:high|low|elevated|rising)\s+(?:cost\s+per\s+appointment|CPA)|appointment\s+cost\s+(?:spik|surge|rising|elevated))/gi
-  let cpaMatch: RegExpExecArray | null
-  while ((cpaMatch = cpaDriver.exec(text)) !== null) {
-    violations.push({
-      rule: "cpa_as_cost_driver",
-      excerpt: cpaMatch[0],
-      message: `Uses CPA as a cost-trend driver,appointment data is too sparse, see guardrail.`,
     })
   }
 

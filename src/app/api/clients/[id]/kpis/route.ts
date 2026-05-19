@@ -49,14 +49,13 @@ export async function GET(
     supabase.from("settings").select("value").eq("key", "board_config").single(),
   ])
   const client = clientResult.data as { id: string; meta_ad_account_id: string | null; monday_client_board_id?: string | null; column_mapping_override?: Record<string, string> | null } | null
+  // settingsRow used elsewhere historically — kept around so the destructure
+  // above stays stable, but no field is currently read from it.
+  void settingsRow
 
   // Fall back to query params if Supabase record not yet synced
   const adAccountId = client?.meta_ad_account_id ?? adAccountIdParam
   const clientBoardId = client?.monday_client_board_id ?? clientBoardIdParam
-
-  const takenCallStatusValue =
-    (settingsRow?.value as { client_board_columns?: { taken_call_status_value?: string } })
-      ?.client_board_columns?.taken_call_status_value ?? "Afspraak"
 
   // Prefer campaign IDs passed directly from the client (avoids race conditions with Supabase sync)
   // Fall back to querying Supabase if not provided
@@ -114,11 +113,11 @@ export async function GET(
     : insights
   const adSpend = relevantInsights.reduce((sum, i) => sum + i.spend, 0)
 
-  const kpis = calculateKpis(adSpend, leadItems, startDate, endDate, takenCallStatusValue)
+  const kpis = calculateKpis(adSpend, leadItems, startDate, endDate)
 
   // Fall back to Meta-reported leads whenever Monday returns zero in this window but Meta
   // reports leads — covers no board, access denied, broken Zapier sync, wrong column mapping.
-  // Booked/taken/deals stay as-is since Meta can't track those.
+  // Deals stay as-is since Meta can't track those.
   const metaLeadsReported = relevantInsights.reduce((sum, i) => sum + i.leads, 0)
   if (kpis.leads === 0 && metaLeadsReported > 0) {
     kpis.leads = metaLeadsReported
@@ -141,13 +140,12 @@ export async function GET(
       clientBoardId: clientBoardId || null,
       leadItemsCount: leadItems.length,
       insightsCount: insights.length,
-      takenCallStatusValue,
       columnOverrides: client?.column_mapping_override ?? null,
-      leadStatus2Sample: leadItems.slice(0, 10).map((i) => ({
+      leadSample: leadItems.slice(0, 10).map((i) => ({
         name: i.name,
         leadStatus: i.leadStatus,
-        leadStatus2: i.leadStatus2,
-        dateAppointment: i.dateAppointment,
+        dateCreated: i.dateCreated,
+        dateDeal: i.dateDeal,
       })),
     },
   }, {

@@ -219,8 +219,6 @@ export const DICTIONARY = {
   "clients.col.adspend": { nl: "Adspend", en: "Adspend" },
   "clients.col.leads": { nl: "Leads", en: "Leads" },
   "clients.col.cpl": { nl: "CPL", en: "CPL" },
-  "clients.col.appts": { nl: "Appts", en: "Appts" },
-  "clients.col.cpa": { nl: "CPA", en: "CPA" },
   "clients.col.client_update": { nl: "Client update", en: "Client update" },
   "clients.client_update.updated_today": { nl: "Vandaag verstuurd", en: "Sent today" },
   "clients.client_update.last": { nl: "Laatste: {date}", en: "Last: {date}" },
@@ -620,7 +618,6 @@ export const DICTIONARY = {
   // ─── KPI Cards (Campaigns tab) ─────────────────────────────────────────
   // Group titles — KPI labels themselves stay English (RL jargon).
   "kpi.group.leads": { nl: "Leads", en: "Leads" },
-  "kpi.group.appointments": { nl: "Afspraken", en: "Appointments" },
   "kpi.group.deals": { nl: "Deals", en: "Deals" },
 
   // ─── Client detail — Campaigns tab ────────────────────────────────────

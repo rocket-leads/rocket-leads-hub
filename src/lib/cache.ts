@@ -40,6 +40,30 @@ export async function writeCache(key: string, value: unknown): Promise<void> {
 }
 
 /**
+ * Bulk variant — one Supabase round-trip for many keys. Used by the cron to
+ * write per-client cache entries (`kpi_daily:<id>`, `client_top_ads:<id>`,
+ * etc.) without paying one HTTP per client. Same conflict policy as the
+ * single-key writer.
+ *
+ * `now` defaults to the call moment so all entries written by one batch share
+ * an updated_at timestamp — makes "how stale is the per-client cache?" simple
+ * to reason about (read any entry, they're all the same age).
+ */
+export async function writeCacheBatch(
+  entries: Array<{ key: string; value: unknown }>,
+  now: string = new Date().toISOString(),
+): Promise<void> {
+  if (entries.length === 0) return
+  const supabase = await createAdminClient()
+  const rows = entries.map((e) => ({ key: e.key, data: e.value, updated_at: now }))
+  const { error } = await supabase.from("cache_store").upsert(rows, { onConflict: "key" })
+  if (error) {
+    console.error(`[writeCacheBatch] failed to write ${entries.length} keys:`, error.message)
+    throw new Error(`writeCacheBatch(${entries.length}): ${error.message}`)
+  }
+}
+
+/**
  * Drop a single cache entry. Fire-and-forget by callers in most cases; the
  * primary use is bursting a cached read after a write so the next read sees
  * the fresh value (e.g. after PATCHing a Monday item we kill the matching

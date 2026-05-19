@@ -14,10 +14,7 @@ const KPI: KpiSummary = {
   adSpend: 1834,
   leads: 42,
   cpl: 43.67,
-  appointments: 6,
-  costPerAppointment: 305.67,
   prevCpl: 38.5,
-  prevCostPerAppointment: 290,
   prevPeriodReliable: true,
 }
 

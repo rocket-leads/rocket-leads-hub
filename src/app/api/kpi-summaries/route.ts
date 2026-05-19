@@ -12,14 +12,11 @@ export type KpiSummary = {
   adSpend: number
   leads: number
   cpl: number
-  appointments: number
-  costPerAppointment: number
   prevCpl: number
-  prevCostPerAppointment: number
   /**
    * True when the prior comparison window was substantially live (≥80% of its
    * days had ad spend or Monday leads, and total spend > 0). When false, the UI
-   * MUST hide CPL / CPA change indicators — a freshly-launched client compared
+   * MUST hide CPL change indicators — a freshly-launched client compared
    * against a window where they weren't live yet would otherwise read as a wild
    * +/-100% swing that's purely an artefact of the launch date. Optional for
    * backwards-compat with older cached entries; missing → treat as reliable so
@@ -32,8 +29,8 @@ export type KpiSummary = {
   metaFallback?: boolean
   /**
    * True only when we successfully read items from a linked Monday board for this fetch.
-   * When false, `appointments` is NOT a real "zero" — the CRM source is missing entirely
-   * and the AI/UI should treat appointment-based metrics as UNKNOWN, not as zero.
+   * Useful for downstream code that wants to differentiate "Monday CRM not connected"
+   * from "Monday CRM connected but empty".
    */
   mondayCrmConnected?: boolean
   /**
@@ -56,7 +53,6 @@ export type DailyRollup = {
   spend: number        // Meta ad spend (post campaign filter)
   metaLeads: number    // Meta-reported leads from `actions`
   mondayLeads: number  // Monday lead count (items where dateCreated == this day)
-  mondayAppts: number  // Monday appointment count (items where dateAppointment == this day)
 }
 
 export type KpiDailyClientData = {
@@ -144,13 +140,8 @@ function aggregateDailyToSummary(
   const leads = metaFallback ? metaLeadsTotal : mondayLeadsTotal
   const prevLeads = mondayPrevLeadsTotal === 0 && metaPrevLeadsTotal > 0 ? metaPrevLeadsTotal : mondayPrevLeadsTotal
 
-  const appointments = daily.mondayCrmConnected ? window.reduce((s, d) => s + d.mondayAppts, 0) : 0
-  const prevAppointments = daily.mondayCrmConnected ? prev.reduce((s, d) => s + d.mondayAppts, 0) : 0
-
   const cpl = leads > 0 ? adSpend / leads : 0
   const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
-  const costPerAppointment = appointments > 0 ? adSpend / appointments : 0
-  const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
   // Coverage = days in prev window that had any spend or (when CRM is connected) any
   // Monday lead. dense rollups means `prev.length` is the full window length.
@@ -163,10 +154,7 @@ function aggregateDailyToSummary(
     adSpend,
     leads,
     cpl,
-    appointments,
-    costPerAppointment,
     prevCpl,
-    prevCostPerAppointment,
     prevPeriodReliable,
     ...(daily.rlAccountNoCampaign ? { rlAccountNoCampaign: true } : {}),
     ...(metaFallback ? { metaFallback: true } : {}),
@@ -276,16 +264,8 @@ async function fetchSummary(
   const leads = metaFallback ? metaLeadsReported : mondayLeads
   const prevLeads = mondayPrevLeads === 0 && metaPrevLeadsReported > 0 ? metaPrevLeadsReported : mondayPrevLeads
 
-  const appointments = monday.ok
-    ? items.filter((i) => i.dateAppointment >= startDate && i.dateAppointment <= endDate).length
-    : 0
-  const prevAppointments = monday.ok
-    ? items.filter((i) => i.dateAppointment >= prevStartDate && i.dateAppointment <= prevEndDate).length
-    : 0
-
   const cpl = leads > 0 ? adSpend / leads : 0
   const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
-  const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
   // Coverage check on the prev window — Meta data is sparse (no row for zero-spend
   // days), so we collect distinct dates that had spend and union them with Monday
@@ -325,10 +305,7 @@ async function fetchSummary(
       adSpend,
       leads,
       cpl,
-      appointments,
-      costPerAppointment: appointments > 0 ? adSpend / appointments : 0,
       prevCpl,
-      prevCostPerAppointment,
       prevPeriodReliable,
       ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
       ...(metaFallback ? { metaFallback: true } : {}),
@@ -506,13 +483,55 @@ export async function POST(req: NextRequest) {
   }
   if (!body.clients?.length) return NextResponse.json({})
 
+  const hasRequestedRange = !!(body.startDate && body.endDate)
+
+  // Single-client fast path: the slide-over Home tab calls this with exactly one
+  // client. Reading the entire monolithic `kpi_daily` blob (1-2MB, all clients)
+  // just to extract one entry is the dominant cost of opening a panel. The cron
+  // also writes per-client `kpi_daily:<id>` keys — one Supabase select returns
+  // ~25KB and the panel renders within ~50ms instead of waiting for the bulk read
+  // and parse. Stays disabled on `?force=1` so the Refresh button still rewarms
+  // the canonical 7d cache via live-fetch.
+  if (!force && body.clients.length === 1) {
+    const only = body.clients[0]
+    const perClient = await readCache<KpiDailyClientData>(`kpi_daily:${only.mondayItemId}`)
+    if (perClient && perClient.days.length > 0) {
+      // Self-heal: if the cached entry is flagged rlAccountNoCampaign but the
+      // client now has selected campaigns, skip the fast path and let the
+      // existing logic below route it to live-fetch.
+      let stale = false
+      if (perClient.rlAccountNoCampaign) {
+        try {
+          const supabase = await createAdminClient()
+          stale = (await findStaleRlNoCampaign(supabase, [only.mondayItemId])).has(only.mondayItemId)
+        } catch (e) {
+          console.error("[kpi-summaries] single-client self-heal check failed:", e instanceof Error ? e.message : e)
+        }
+      }
+      if (!stale) {
+        const { startDate, endDate } = hasRequestedRange
+          ? { startDate: body.startDate!, endDate: body.endDate! }
+          : getLast7DaysRange()
+        const { startDate: prevStartDate, endDate: prevEndDate } = hasRequestedRange
+          ? getPreviousRange(startDate, endDate)
+          : getPrevious7DaysRange()
+        const summary = aggregateDailyToSummary(perClient, startDate, endDate, prevStartDate, prevEndDate)
+        return NextResponse.json(
+          { [only.mondayItemId]: summary },
+          { headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" } },
+        )
+      }
+    }
+    // Fall through — per-client cache miss or stale flag. Existing logic below
+    // covers it (will read the monolithic blob next, or live-fetch).
+  }
+
   // Date-range path: when the caller specifies a window, aggregate from the daily
   // rollup cache. Range is exclusive of today (cache only contains up to yesterday).
   // If the daily cache is empty we fall straight through to a LIVE fetch with the
   // REQUESTED dates — never to the 7d cache. The old fall-through quietly served
   // 7d numbers for any custom range, which looked indistinguishable from a working
   // filter and was the source of "data doesn't change when I change the range".
-  const hasRequestedRange = !!(body.startDate && body.endDate)
   if (hasRequestedRange) {
     const dailyCache = await readCache<KpiDailyCache>("kpi_daily")
     if (dailyCache && Object.keys(dailyCache).length > 0) {

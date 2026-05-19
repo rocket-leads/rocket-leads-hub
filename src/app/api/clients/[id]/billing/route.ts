@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { fetchBillingData } from "@/lib/integrations/stripe"
-import { cachedFetch } from "@/lib/cache"
+import { fetchBillingData, type BillingData } from "@/lib/integrations/stripe"
+import { readCache, writeCache } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
@@ -26,12 +26,19 @@ export async function GET(
     return NextResponse.json({ error: "No Stripe Customer ID linked for this client." }, { status: 404 })
   }
 
+  // Cron warms `billing:<id>` every 30min — serve from cache regardless of age
+  // when present (same pattern as kpi_summaries and billing_summaries). On a
+  // cache miss, fall through to live fetch + write so the next reader is fast.
   try {
-    const data = await cachedFetch(
-      `billing:${stripeCustomerId}`,
-      () => fetchBillingData(stripeCustomerId),
-    )
-    return NextResponse.json(data, {
+    const cached = await readCache<BillingData>(`billing:${stripeCustomerId}`)
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+      })
+    }
+    const fresh = await fetchBillingData(stripeCustomerId)
+    void writeCache(`billing:${stripeCustomerId}`, fresh)
+    return NextResponse.json(fresh, {
       headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
     })
   } catch (e) {

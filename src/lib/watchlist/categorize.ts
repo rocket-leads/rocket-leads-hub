@@ -96,10 +96,6 @@ const INSIGHT_STRINGS = {
     en: (leads: number, spend: string) => `${leads} leads from €${spend} spend (7d)`,
     nl: (leads: number, spend: string) => `${leads} leads uit €${spend} spend (7d)`,
   },
-  appts_count: {
-    en: (n: number) => `${n} appts (7d)`,
-    nl: (n: number) => `${n} appts (7d)`,
-  },
   running_no_leads: {
     en: "Running — no leads yet (7d)",
     nl: "Loopt — nog geen leads (7d)",
@@ -315,7 +311,6 @@ export function categorize(
       parts.push(INSIGHT_STRINGS.cpl_plain[locale](cpl2))
     }
     parts.push(INSIGHT_STRINGS.leads_from_spend[locale](kpi.leads, kpi.adSpend.toFixed(0)))
-    if (kpi.appointments > 0) parts.push(INSIGHT_STRINGS.appts_count[locale](kpi.appointments))
     insight = parts.join(" · ")
   } else {
     category = "good"

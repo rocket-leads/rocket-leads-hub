@@ -71,10 +71,7 @@ function makeRichContext(): ClientAiContext {
       adSpend: 700,
       leads: 20,
       cpl: 35,
-      appointments: 3,
-      costPerAppointment: 233.33,
       prevCpl: 30,
-      prevCostPerAppointment: 200,
       prevPeriodReliable: true,
       mondayCrmConnected: true,
     },
@@ -168,14 +165,12 @@ describe("INSIGHT_REGISTRY — shouldGenerate gates", () => {
 })
 
 describe("INSIGHT_REGISTRY — context-awareness in prompts", () => {
-  it("user prompt includes the appropriate UNKNOWN signal when CRM is missing", () => {
+  it("user prompt flags when Monday CRM is missing", () => {
     const ctx = makeMinimalContext()
     const user = INSIGHT_REGISTRY.client_pedro.userPrompt(ctx)
-    // Without Monday CRM, the data-availability block must communicate
-    // appointments are UNKNOWN — guards against the "0 appointments"
-    // hallucination the guardrail validates against.
+    // Without Monday CRM, the data-availability block must communicate it so
+    // the AI knows not to claim lead-quality / status patterns it can't see.
     expect(user).toMatch(/Monday CRM = NOT CONNECTED/)
-    expect(user).toMatch(/UNKNOWN/)
   })
 
   it("user prompt includes Monday updates when present", () => {

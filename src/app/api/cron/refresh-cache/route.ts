@@ -8,7 +8,7 @@ import { isPrevPeriodReliable } from "@/app/api/kpi-summaries/route"
 import { categorize, updateWatchlistClientState } from "@/lib/watchlist/categorize"
 import { mondayStatusToHub, type ClientStatus } from "@/lib/clients/status"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
-import { readCache, writeCache } from "@/lib/cache"
+import { readCache, writeCache, writeCacheBatch } from "@/lib/cache"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { startCronRun } from "@/lib/observability/cron-runs"
 import { computeActionCategory } from "@/lib/clients/action-category"
@@ -72,14 +72,14 @@ function getDailyHistoryRange() {
  */
 function buildDailyRollups(
   metaDaily: Array<{ date: string; spend: number; leads: number; campaignId: string }>,
-  mondayItems: Array<{ dateCreated: string; dateAppointment: string }>,
+  mondayItems: Array<{ dateCreated: string }>,
   rangeStart: string,
 ): DailyRollup[] {
   const byDate = new Map<string, DailyRollup>()
   const cursor = new Date(rangeStart + "T00:00:00Z")
   for (let i = 0; i < DAILY_HISTORY_DAYS; i++) {
     const d = fmtDate(cursor)
-    byDate.set(d, { date: d, spend: 0, metaLeads: 0, mondayLeads: 0, mondayAppts: 0 })
+    byDate.set(d, { date: d, spend: 0, metaLeads: 0, mondayLeads: 0 })
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
   for (const m of metaDaily) {
@@ -92,8 +92,6 @@ function buildDailyRollups(
   for (const it of mondayItems) {
     const lead = byDate.get(it.dateCreated)
     if (lead) lead.mondayLeads += 1
-    const appt = byDate.get(it.dateAppointment)
-    if (appt) appt.mondayAppts += 1
   }
   return Array.from(byDate.values())
 }
@@ -269,13 +267,8 @@ export async function GET(req: NextRequest) {
           const leads = metaFallback ? metaLeadsTotal : mondayLeadsTotal
           const prevLeads = mondayPrevLeadsTotal === 0 && metaPrevLeadsTotal > 0 ? metaPrevLeadsTotal : mondayPrevLeadsTotal
 
-          const appointments = monday.ok ? window7d.reduce((s, d) => s + d.mondayAppts, 0) : 0
-          const prevAppointments = monday.ok ? windowPrev.reduce((s, d) => s + d.mondayAppts, 0) : 0
-
           const cpl = leads > 0 ? adSpend / leads : 0
           const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
-          const costPerAppointment = appointments > 0 ? adSpend / appointments : 0
-          const prevCostPerAppointment = prevAppointments > 0 ? prevAdSpend / prevAppointments : 0
 
           // Coverage check on the prev window — same rule as kpi-summaries' live path:
           // ≥80% of prev days had spend or (when CRM is connected) Monday leads. windowPrev
@@ -309,10 +302,7 @@ export async function GET(req: NextRequest) {
               adSpend,
               leads,
               cpl,
-              appointments,
-              costPerAppointment,
               prevCpl,
-              prevCostPerAppointment,
               prevPeriodReliable,
               ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
               ...(metaFallback ? { metaFallback: true } : {}),
@@ -340,10 +330,20 @@ export async function GET(req: NextRequest) {
     // too since it's the cheapest write and the watchlist depends on it.
     console.log(`[refresh-cache] KPI loop done — writing kpi caches early (${Object.keys(kpiDaily).length} clients)`)
     {
+      // Per-client kpi_daily fan-out — written alongside the monolithic blob so the
+      // slide-over's single-client kpi-summaries request can read one cache row
+      // (~50ms) instead of fetching+parsing the entire 1-2MB blob (~500-700ms).
+      // One batch upsert keeps this to a single round-trip regardless of fleet size.
+      const perClientDailyEntries = Object.entries(kpiDaily).map(([id, value]) => ({
+        key: `kpi_daily:${id}`,
+        value,
+      }))
+
       const earlyJobs = [
         { key: "monday_boards", bytes: JSON.stringify({ onboarding, current }).length, run: () => writeCache("monday_boards", { onboarding, current }) },
         { key: "kpi_summaries", bytes: JSON.stringify(kpiSummaries).length, run: () => writeCache("kpi_summaries", kpiSummaries) },
         { key: "kpi_daily", bytes: JSON.stringify(kpiDaily).length, run: () => writeCache("kpi_daily", kpiDaily) },
+        { key: `kpi_daily:* (${perClientDailyEntries.length} entries)`, bytes: JSON.stringify(perClientDailyEntries).length, run: () => writeCacheBatch(perClientDailyEntries) },
       ]
       for (const j of earlyJobs) console.log(`[refresh-cache] early-writing ${j.key} — ${(j.bytes / 1024).toFixed(0)}KB`)
       const earlyResults = await Promise.allSettled(earlyJobs.map((j) => j.run()))
@@ -352,6 +352,52 @@ export async function GET(req: NextRequest) {
           console.error(`[refresh-cache] EARLY ${earlyJobs[idx].key} write failed:`, r.reason instanceof Error ? r.reason.message : r.reason)
         }
       })
+    }
+
+    // 3b. Top-ads bake — pre-compute the 30d ranked top-ads per client so the
+    // slide-over's HomeTab can serve from cache (~50ms) instead of issuing a
+    // live `fetchMetaAdDetails` call (1-2s) on every open. Runs AFTER the
+    // early-write block so KPI data lands first and a partial run still leaves
+    // the table populated.
+    const topAdsEligible = kpiClients.filter((c) => {
+      const isRlNoCampaign = isRocketLeadsAdAccount(c.metaAdAccountId) && (selectedByMondayItemId[c.mondayItemId]?.size ?? 0) === 0
+      return c.metaAdAccountId && !isRlNoCampaign
+    })
+    if (topAdsEligible.length > 0) {
+      const { fetchMetaAdDetails } = await import("@/lib/integrations/meta")
+      const { rankTopAds, topAdsCacheKey } = await import("@/lib/watchlist/top-ads")
+      const TOP_ADS_BATCH = 10
+      const topAdsEntries: Array<{ key: string; value: unknown }> = []
+      const topAdsStartedAt = Date.now()
+      const adRangeEnd = new Date(); adRangeEnd.setDate(adRangeEnd.getDate() - 1)
+      const adRangeStart = new Date(adRangeEnd); adRangeStart.setDate(adRangeStart.getDate() - 29)
+      const adStart = adRangeStart.toISOString().slice(0, 10)
+      const adEnd = adRangeEnd.toISOString().slice(0, 10)
+
+      for (let i = 0; i < topAdsEligible.length; i += TOP_ADS_BATCH) {
+        const batch = topAdsEligible.slice(i, i + TOP_ADS_BATCH)
+        const elapsedSec = ((Date.now() - topAdsStartedAt) / 1000).toFixed(0)
+        console.log(`[refresh-cache] top-ads batch ${Math.floor(i / TOP_ADS_BATCH) + 1}/${Math.ceil(topAdsEligible.length / TOP_ADS_BATCH)} — ${i}/${topAdsEligible.length} done — ${elapsedSec}s elapsed`)
+        const results = await Promise.allSettled(
+          batch.map(async (c) => {
+            const selected = selectedByMondayItemId[c.mondayItemId]
+            const ads = await fetchMetaAdDetails(c.metaAdAccountId!, adStart, adEnd, selected).catch(() => [])
+            return { mondayItemId: c.mondayItemId, topAds: rankTopAds(ads) }
+          }),
+        )
+        for (const r of results) {
+          if (r.status === "fulfilled") {
+            topAdsEntries.push({ key: topAdsCacheKey(r.value.mondayItemId), value: r.value.topAds })
+          }
+        }
+      }
+
+      console.log(`[refresh-cache] top-ads loop done — writing ${topAdsEntries.length} entries`)
+      try {
+        await writeCacheBatch(topAdsEntries)
+      } catch (e) {
+        console.error("[refresh-cache] top-ads batch write failed:", e instanceof Error ? e.message : e)
+      }
     }
 
     // 4. Compute billing summaries in batches of 10
@@ -374,6 +420,34 @@ export async function GET(req: NextRequest) {
       await writeCache("billing_summaries", billingSummaries)
     } catch (e) {
       console.error("[refresh-cache] billing_summaries write failed:", e instanceof Error ? e.message : e)
+    }
+
+    // 5a. Per-client full billing data warm. The slide-over's HomeTab needs the
+    // invoices array to render the payment banner; without a pre-baked entry it
+    // pays a 1-2.5s Stripe round-trip on every open. We warm `billing:<id>` here
+    // (same key the route reads) so a freshly-opened panel finds it instantly.
+    if (customerIds.length > 0) {
+      const { fetchBillingData } = await import("@/lib/integrations/stripe")
+      const billingEntries: Array<{ key: string; value: unknown }> = []
+      const billingStartedAt = Date.now()
+      const BILLING_BATCH = 10
+      for (let i = 0; i < customerIds.length; i += BILLING_BATCH) {
+        const batch = customerIds.slice(i, i + BILLING_BATCH)
+        const elapsedSec = ((Date.now() - billingStartedAt) / 1000).toFixed(0)
+        console.log(`[refresh-cache] billing-data batch ${Math.floor(i / BILLING_BATCH) + 1}/${Math.ceil(customerIds.length / BILLING_BATCH)} — ${i}/${customerIds.length} done — ${elapsedSec}s elapsed`)
+        const results = await Promise.allSettled(batch.map((id) => fetchBillingData(id)))
+        results.forEach((result, j) => {
+          if (result.status === "fulfilled") {
+            billingEntries.push({ key: `billing:${batch[j]}`, value: result.value })
+          }
+        })
+      }
+      console.log(`[refresh-cache] billing-data loop done — writing ${billingEntries.length} entries`)
+      try {
+        await writeCacheBatch(billingEntries)
+      } catch (e) {
+        console.error("[refresh-cache] billing-data batch write failed:", e instanceof Error ? e.message : e)
+      }
     }
 
     // 5a-pre. Daily score snapshot per CM. Used for the "vs 7d avg" KPI card on the

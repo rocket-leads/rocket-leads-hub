@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { RefreshCw, BarChart3, CreditCard, Settings2, LayoutDashboard, Inbox as InboxIcon, Activity, Sparkles } from "lucide-react"
@@ -19,10 +19,7 @@ import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
-import type { MetaCampaign } from "@/lib/integrations/meta"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
-
-type CampaignWithSelection = MetaCampaign & { isSelected: boolean; isSuggested?: boolean }
 
 type Props = {
   client: MondayClient
@@ -84,21 +81,11 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
 
   const [activeTab, setActiveTab] = useState<string>("home")
 
-  // Pre-fetch campaign selection — used by Campaigns tab. Kept here so the
-  // Refresh button can invalidate it along with everything else.
-  const campaignsQuery = useQuery<{ campaigns: CampaignWithSelection[] }>({
-    queryKey: ["campaigns", client.mondayItemId],
-    queryFn: () =>
-      fetch(`/api/clients/${client.mondayItemId}/campaigns?adAccountId=${client.metaAdAccountId}`).then((r) => r.json()),
-    enabled: !!client.metaAdAccountId,
-  })
-
-  // Currently unused at this layer but kept for parity with the previous
-  // implementation — the Refresh button invalidates by `mondayItemId` prefix.
-  useMemo(
-    () => (campaignsQuery.data?.campaigns ?? []).filter((c) => c.isSelected).map((c) => c.id),
-    [campaignsQuery.data]
-  )
+  // Campaigns query lives in CampaignsTab itself — the previous prefetch here
+  // was dead (its result wasn't read at this layer) and cost a 1-3s Meta call
+  // on every slide-over open. CampaignsTab fetches on mount when the user
+  // actually opens it; the Refresh button still invalidates by mondayItemId
+  // prefix and catches it.
 
   async function handleRefresh() {
     setIsRefreshing(true)

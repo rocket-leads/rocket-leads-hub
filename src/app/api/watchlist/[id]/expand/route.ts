@@ -11,8 +11,9 @@ import type { ClientContext } from "@/lib/watchlist/collect-context"
 import Anthropic from "@anthropic-ai/sdk"
 import { stripAiTells } from "@/lib/ai/guardrails"
 import { NextRequest, NextResponse } from "next/server"
+import { rankTopAds, topAdsCacheKey, type TopAd, type AdVerdict } from "@/lib/watchlist/top-ads"
 
-export type AdVerdict = "winner" | "neutral" | "loser"
+export type { AdVerdict }
 
 export type WatchlistExpandResponse = {
   /** 14d daily trend (spend + leads). Computed live so the chart works even when the
@@ -21,7 +22,7 @@ export type WatchlistExpandResponse = {
   /** Top live ads in the last 30d, sorted by spend desc. Each ad gets a verdict relative
    *  to the account-average CPL — single list (no winner/loser overlap with few ads).
    *  `cpl: 0` is the on-the-wire convention for "no leads with spend"; the UI renders "—". */
-  topAds: Array<{ adName: string; spend: number; leads: number; cpl: number; verdict: AdVerdict }>
+  topAds: TopAd[]
   /** Concise 14d activity summary, AI-generated from Monday updates (both boards) +
    *  Trengo conversations. Null when no qualitative input is available. */
   aiSummary: string | null
@@ -96,16 +97,16 @@ async function generateAiSummary(
 
 ## What's already on screen — DO NOT REPEAT
 The user already sees, for this client, in adjacent columns:
-- Spend, leads, CPL, appts (last 7d) and a 14d CPL sparkline
+- Spend, leads, CPL (last 7d) and a 14d CPL sparkline
 - An "Insight" line for cost/efficiency (e.g. "CPL up 80% — €70 vs €38 prev week", "€350 spent, 0 leads in 7d")
 
 The Insight line for THIS client right now is:
 "${insight || "(none)"}"
 
 Your bullets must NOT contain ANY of:
-- CPL or CPA trend observations (rising / falling / elevated / stable / spike)
-- Restatements of spend, lead count, appointment count, or 7d-vs-prev-7d changes
-- "Zero leads", "no appointments" type claims
+- CPL trend observations (rising / falling / elevated / stable / spike)
+- Restatements of spend, lead count, or 7d-vs-prev-7d changes
+- "Zero leads" type claims
 - Anything that paraphrases the Insight line above
 
 If a draft bullet is essentially the Insight in different words, delete it.
@@ -217,13 +218,23 @@ export async function GET(
     : null
   const cacheValid = cachedSummary != null && cachedSummary.insight === insight
 
+  // Cron pre-bakes the 30d ranked top-ads per client into `client_top_ads:<id>`.
+  // When present we skip the live fetchMetaAdDetails call entirely (1-2s saved).
+  // 30-min TTL matches the refresh-cache cron cadence — a stale entry just means
+  // the next slide-over open sees the prior tick's numbers (fine for triage).
+  const TOP_ADS_TTL_MS = 30 * 60 * 1000
+  const cachedTopAds = wantsTopAds
+    ? await readCache<TopAd[]>(topAdsCacheKey(mondayItemId), TOP_ADS_TTL_MS)
+    : null
+  const needsLiveTopAds = wantsTopAds && !cachedTopAds
+
   // Fire the live calls in parallel, but only the ones we need.
   // Promise.all is fine with skipped slots resolving to []/[].
   const [dailyInsights, ads, currentBoardUpdates] = await Promise.all([
     adAccountId && wantsTrend
       ? fetchMetaInsightsDaily(adAccountId, trendRange.startDate, trendRange.endDate).catch(() => [])
       : Promise.resolve([]),
-    adAccountId && wantsTopAds
+    adAccountId && needsLiveTopAds
       ? fetchMetaAdDetails(adAccountId, adRange.startDate, adRange.endDate, selectedCampaignIds).catch(() => [])
       : Promise.resolve([]),
     wantsSummary
@@ -242,48 +253,14 @@ export async function GET(
     ? fillTrend(aggregateMetaDailyByDate(dailyFiltered), trendRange.startDate)
     : []
 
-  // Single ranked list of top ads (sorted by spend desc) with a per-ad verdict relative to
-  // the account-average CPL. Avoids the previous winner/loser overlap that happened when a
-  // client only had 3-5 live ads — the same ad would qualify as both "lowest CPL" and
-  // "highest CPL" because the ranks are non-exclusive on a tiny set.
-  const enriched = ads
-    .map((a) => ({
-      adName: a.adName,
-      spend: a.spend,
-      leads: a.leads,
-      cpl: a.leads > 0 ? a.spend / a.leads : Infinity,
-    }))
-    .filter((a) => a.spend >= 10) // drop micro-tests so they don't drag the average around
-
-  // Account-average CPL across ads with leads — used as the verdict reference point.
-  const adsWithLeads = enriched.filter((a) => a.leads > 0)
-  const totalSpendWithLeads = adsWithLeads.reduce((s, a) => s + a.spend, 0)
-  const totalLeads = adsWithLeads.reduce((s, a) => s + a.leads, 0)
-  const accountAvgCpl = totalLeads > 0 ? totalSpendWithLeads / totalLeads : 0
-
-  function verdict(ad: { cpl: number; spend: number; leads: number }): AdVerdict {
-    // 0 leads with material spend = pure waste, always loser.
-    if (ad.leads === 0 && ad.spend >= 50) return "loser"
-    // Not enough basis to judge (no account avg yet, or no leads on this ad).
-    if (accountAvgCpl <= 0 || !isFinite(ad.cpl)) return "neutral"
-    // Wide neutral band so we only color the clear winners/losers — keeps the
-    // signal honest with small ad counts where everything is above or below avg.
-    if (ad.cpl <= 0.7 * accountAvgCpl) return "winner"
-    if (ad.cpl >= 1.4 * accountAvgCpl) return "loser"
-    return "neutral"
+  const topAds: TopAd[] = wantsTopAds
+    ? cachedTopAds ?? rankTopAds(ads)
+    : []
+  // Write-through: when we just computed top-ads live, populate the cache so the
+  // next reader within the 30-min window skips the Meta call. Fire-and-forget.
+  if (wantsTopAds && needsLiveTopAds && topAds.length > 0) {
+    void writeCache(topAdsCacheKey(mondayItemId), topAds)
   }
-
-  const topAds = enriched
-    .sort((a, b) => b.spend - a.spend)
-    .slice(0, 5)
-    .map((a) => ({
-      adName: a.adName,
-      spend: a.spend,
-      leads: a.leads,
-      // Wire format: 0 means "no CPL because no leads"; UI renders this as "—".
-      cpl: isFinite(a.cpl) ? a.cpl : 0,
-      verdict: verdict(a),
-    }))
 
   // AI summary — cached 1h per client. Source mix: lead-board updates, current-board updates,
   // Trengo. The model receives explicit per-block window labels so it can't conflate sources,

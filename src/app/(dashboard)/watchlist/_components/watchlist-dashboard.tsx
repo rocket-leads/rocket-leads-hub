@@ -239,7 +239,6 @@ function CreateTaskDialog({
                 leads: kpi.leads,
                 cpl: kpi.cpl,
                 prevCpl: kpi.prevCpl,
-                appointments: kpi.appointments,
               }
             : undefined,
         }),

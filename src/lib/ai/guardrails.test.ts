@@ -17,7 +17,6 @@ import {
  */
 
 const CRM_OK = { mondayCrmConnected: true } as const
-const CRM_MISSING = { mondayCrmConnected: false } as const
 
 describe("validateAiOutput — missing window labels", () => {
   it("flags a bare percentage", () => {
@@ -54,45 +53,6 @@ describe("validateAiOutput — missing window labels", () => {
   it("passes when the prefix is 'last Nd'", () => {
     const v = validateAiOutput("CPL recovered to €25 (last 2d) — monitor.", CRM_OK)
     expect(v.filter((x) => x.rule === "missing_window_label")).toEqual([])
-  })
-})
-
-describe("validateAiOutput — zero appts when CRM missing", () => {
-  it("flags '0 appointments' when CRM is not connected", () => {
-    const v = validateAiOutput("25 leads (all-time), 0 appointments (all-time) — audience mismatch.", CRM_MISSING)
-    expect(v.some((x) => x.rule === "claims_zero_appts_when_crm_missing")).toBe(true)
-  })
-
-  it("flags 'no booked calls' when CRM is not connected", () => {
-    const v = validateAiOutput("Leads come in (14d) but no booked calls.", CRM_MISSING)
-    expect(v.some((x) => x.rule === "claims_zero_appts_when_crm_missing")).toBe(true)
-  })
-
-  it("does NOT flag 0-appts language when CRM IS connected", () => {
-    const v = validateAiOutput("25 leads (all-time), 0 appointments (all-time) — fix opvolging.", CRM_OK)
-    expect(v.some((x) => x.rule === "claims_zero_appts_when_crm_missing")).toBe(false)
-  })
-})
-
-describe("validateAiOutput — CPA as cost driver", () => {
-  it("flags 'CPA up X%'", () => {
-    const v = validateAiOutput("CPA up 40% (7d) — pause this ad set.", CRM_OK)
-    expect(v.some((x) => x.rule === "cpa_as_cost_driver")).toBe(true)
-  })
-
-  it("flags 'high cost per appointment'", () => {
-    const v = validateAiOutput("High cost per appointment (7d) — refresh creative.", CRM_OK)
-    expect(v.some((x) => x.rule === "cpa_as_cost_driver")).toBe(true)
-  })
-
-  it("flags 'appointment cost spiking'", () => {
-    const v = validateAiOutput("Appointment cost spiking — investigate.", CRM_OK)
-    expect(v.some((x) => x.rule === "cpa_as_cost_driver")).toBe(true)
-  })
-
-  it("does NOT flag descriptive appointment counts", () => {
-    const v = validateAiOutput("10 appts (7d), conversion path looks healthy.", CRM_OK)
-    expect(v.some((x) => x.rule === "cpa_as_cost_driver")).toBe(false)
   })
 })
 
@@ -145,21 +105,15 @@ describe("assertAiOutputClean", () => {
 
   it("throws when there are violations, with rule summary in the message", () => {
     expect(() =>
-      assertAiOutputClean("Scale budget on this winner. CPA up 40%.", CRM_OK),
+      assertAiOutputClean("Scale budget on this winner.", CRM_OK),
     ).toThrow(/budget_increase_recommended/)
   })
 })
 
 describe("AI_GUARDRAILS_PROMPT", () => {
-  it("includes the three CRITICAL rule headers a downstream prompt must keep", () => {
+  it("includes the CRITICAL rule headers a downstream prompt must keep", () => {
     expect(AI_GUARDRAILS_PROMPT).toContain("TIME WINDOW LABELS")
     expect(AI_GUARDRAILS_PROMPT).toContain("KNOW WHAT DATA YOU HAVE")
-    expect(AI_GUARDRAILS_PROMPT).toContain("CPA")
-  })
-
-  it("explicitly forbids 0-appts claims when CRM is missing", () => {
-    expect(AI_GUARDRAILS_PROMPT).toMatch(/0 appointments/i)
-    expect(AI_GUARDRAILS_PROMPT).toMatch(/no appointments/i)
   })
 
   it("includes the SIGNAL BAR rule (no padding lists)", () => {

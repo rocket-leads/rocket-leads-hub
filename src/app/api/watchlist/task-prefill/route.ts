@@ -29,7 +29,6 @@ type Body = {
     leads?: number
     cpl?: number
     prevCpl?: number
-    appointments?: number
   }
 }
 
@@ -81,7 +80,6 @@ export async function POST(req: NextRequest) {
     if (typeof k.leads === "number") kpiLines.push(`Leads (7d): ${k.leads}`)
     if (typeof k.cpl === "number" && k.cpl > 0) kpiLines.push(`CPL (7d): €${k.cpl.toFixed(2)}`)
     if (typeof k.prevCpl === "number" && k.prevCpl > 0) kpiLines.push(`CPL (prev 7d): €${k.prevCpl.toFixed(2)}`)
-    if (typeof k.appointments === "number") kpiLines.push(`Appointments (7d): ${k.appointments}`)
   }
   const kpiBlock = kpiLines.length > 0 ? kpiLines.join("\n") : "(no KPI snapshot)"
 

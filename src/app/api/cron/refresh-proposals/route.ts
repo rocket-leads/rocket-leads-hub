@@ -62,7 +62,6 @@ async function loadSelectedCampaigns(
 async function buildKpiInputs(
   client: MondayClient,
   selectedCampaignIds: Set<string>,
-  takenCallStatus: string,
 ) {
   const ranges = [getDateRange(7), getDateRange(14), getDateRange(30)]
 
@@ -89,7 +88,7 @@ async function buildKpiInputs(
         ? insightsByRange[idx].filter((i) => selectedCampaignIds.has(i.campaignId))
         : insightsByRange[idx]
     const adSpend = filtered.reduce((sum, i) => sum + i.spend, 0)
-    return calculateKpis(adSpend, items30, r.startDate, r.endDate, takenCallStatus)
+    return calculateKpis(adSpend, items30, r.startDate, r.endDate)
   })
 
   return { kpis7d: kpis[0], kpis14d: kpis[1], kpis30d: kpis[2] }
@@ -160,12 +159,6 @@ export async function GET(req: NextRequest) {
   const startTime = Date.now()
   const supabase = await createAdminClient()
 
-  // Pull settings (taken-call status value used in KPI calc) up front
-  const { data: settingsRow } = await supabase.from("settings").select("value").eq("key", "board_config").single()
-  const takenCallStatus =
-    (settingsRow?.value as { client_board_columns?: { taken_call_status_value?: string } })?.client_board_columns?.taken_call_status_value ??
-    "Afspraak"
-
   let totalClients = 0
   let processed = 0
   let succeeded = 0
@@ -192,7 +185,7 @@ export async function GET(req: NextRequest) {
           const selectedCampaignIds = selectedByClient[client.mondayItemId] ?? new Set<string>()
 
           const [{ kpis7d, kpis14d, kpis30d }, leadFeedback, adDetails] = await Promise.all([
-            buildKpiInputs(client, selectedCampaignIds, takenCallStatus),
+            buildKpiInputs(client, selectedCampaignIds),
             buildLeadFeedback(client),
             buildAdDetails(client, selectedCampaignIds),
           ])

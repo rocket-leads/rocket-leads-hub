@@ -289,7 +289,7 @@ Return a SINGLE JSON OBJECT with this exact shape:
     {
       "category": "creative" | "pause" | "angle" | "funnel" | "other",
       "title": "Concrete action the CM must do — reference specific ad names, UTMs, or funnel elements (max 100 chars)",
-      "detail": "1-2 sentences with DATA backing: cite actual numbers (leads, appointments, CPL, CTR, spend, timeframe). Example: '14d data: 12 leads, 6 appointments (50% conversion). This hook converts effectively — create variants with same angle, fresh execution.'"
+      "detail": "1-2 sentences with DATA backing: cite actual numbers (leads, deals, CPL, CTR, spend, timeframe). Example: '14d data: 12 leads, 2 deals closed. This hook converts effectively — create variants with same angle, fresh execution.'"
     }
   ]
 }
@@ -322,7 +322,7 @@ BAD: "[Ad name] — poor lead generation efficiency"
 GOOD: "[Ad name]: €154 spend, 2 leads = €77 CPL (30d) — 3x above account average"
 
 **Lead Analysis patterns should surface observations like:**
-- "[Ad name]: €352 spend, 14 leads = €25.14 CPL (30d) — best performer, 4 appointments"
+- "[Ad name]: €352 spend, 14 leads = €25.14 CPL (30d) — best performer"
 - "[Ad name]: €154 spend, 2 leads = €77 CPL (30d) — 3x above account avg of €25"
 - "[Ad name] via UTM [X]: 5/8 leads said 'geen budget' — qualification issue"
 - "Creative fatigue on [ad name]: CTR dropped from 2.1% to 0.8% over 30d despite €280 spend"
@@ -340,7 +340,7 @@ A campaign manager should be able to read each proposal and know EXACTLY what to
 
 **Types of valid proposals (title MUST include numbers):**
 1. **Pause (category: "pause"):** "Pause [ad name] — €154 spend, 2 leads = €77 CPL (30d), 3x above avg"
-2. **Iterate on winners (category: "creative"):** "Iterate on [ad name] — €25 CPL, 14 leads, 4 appointments (30d). Create 3-5 new variants"
+2. **Iterate on winners (category: "creative"):** "Iterate on [ad name] — €25 CPL, 14 leads (30d). Create 3-5 new variants"
 3. **Refresh fatigued (category: "creative"):** "Refresh [ad name] — €352 top spender (30d), CTR dropped 2.1% → 0.8%"
 4. **Funnel (category: "funnel"):** "Add budget question to leadform — 5/8 leads via [UTM] said 'geen budget'"
 5. **New angle (category: "angle"):** "Test [specific angle] — current 3 creatives all above €50 CPL, angle exhausted"
@@ -351,7 +351,7 @@ Every ad reference in a title MUST follow this pattern: "[Ad name]: €X spend, 
 This is non-negotiable. A CM glancing at the title must immediately see the numbers.
 
 **Detail field provides the full data picture:**
-- Calculate and show: spend, leads, CPL, appointments (if available), conversion rate, CTR trend
+- Calculate and show: spend, leads, CPL, deals (if available), CTR trend
 - Compare to account average: "Account avg CPL: €25. This ad: €77 = 3x above average"
 - Include Monday feedback if relevant: "3/5 leads said 'geen budget' — cheap but unqualified"
 - For creative iterations: "Same hook generated €25 CPL across 2 ad sets. Replicate with fresh visuals + new CTA variants"
@@ -427,7 +427,7 @@ ${input.adDetails && input.adDetails.length > 0
       })()
     : "No ad details available."}
 
-## Lead Feedback from Monday Updates (qualitative data from client/appointment setters)
+## Lead Feedback from Monday Updates (qualitative data from client/setters)
 ${input.leadFeedback && input.leadFeedback.length > 0
     ? input.leadFeedback.map((fb) =>
         `### Ad/UTM: ${fb.utm} (${fb.totalLeads} total leads)\n${fb.updates.slice(0, 10).map((u) => `- [${u.leadStatus}] "${u.text.slice(0, 150)}${u.text.length > 150 ? "…" : ""}"`).join("\n")}`
