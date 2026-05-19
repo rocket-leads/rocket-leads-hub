@@ -152,6 +152,16 @@ function WeeklyUpdateQueueSheet({
   // progress. Initialised lazily from each draft's snapshotted parts
   // (already V2-shape from the cron).
   const [editedByDraft, setEditedByDraft] = useState<Record<string, EditableParts>>({})
+  // Toast-style banner: "Verzonden naar <client> ✓" shown briefly after a
+  // successful send so the AM can see what just went out even after the
+  // editor auto-advanced to the next draft. `at` is the trigger time;
+  // a useEffect clears the state ~4s later.
+  const [recentlySent, setRecentlySent] = useState<{ name: string; at: number } | null>(null)
+  useEffect(() => {
+    if (!recentlySent) return
+    const t = setTimeout(() => setRecentlySent(null), 4000)
+    return () => clearTimeout(t)
+  }, [recentlySent])
   // Track which drafts are gone (sent or dismissed) so they disappear
   // from the list immediately, even before the server refetch completes.
   const [consumedIds, setConsumedIds] = useState<Set<string>>(new Set())
@@ -207,16 +217,24 @@ function WeeklyUpdateQueueSheet({
           Wekelijkse updates ({visibleDrafts.length})
         </DialogTitle>
         <header className="flex items-center justify-between border-b border-border/60 px-5 py-3 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <Sparkles className="h-4 w-4 text-violet-500 shrink-0" />
-            <h2 className="text-sm font-semibold truncate">
-              Wekelijkse updates · {notConsumed.length} open
-              {search && visibleDrafts.length !== notConsumed.length && (
-                <span className="text-muted-foreground/60 font-normal ml-1">
-                  · {visibleDrafts.length} match
-                </span>
-              )}
-            </h2>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <Sparkles className="h-4 w-4 text-violet-500 shrink-0" />
+              <h2 className="text-sm font-semibold truncate">
+                Wekelijkse updates · {notConsumed.length} open
+                {search && visibleDrafts.length !== notConsumed.length && (
+                  <span className="text-muted-foreground/60 font-normal ml-1">
+                    · {visibleDrafts.length} match
+                  </span>
+                )}
+              </h2>
+            </div>
+            {recentlySent && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 px-2.5 py-0.5 text-[11px] font-medium animate-in fade-in slide-in-from-left-2 duration-300">
+                <Check className="h-3 w-3" />
+                Verzonden naar {recentlySent.name}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
@@ -295,23 +313,32 @@ function WeeklyUpdateQueueSheet({
           {/* Editor pane */}
           <section className="flex-1 flex flex-col min-w-0">
             {activeDraft && activeParts ? (
+              // `key={activeDraft.id}` is load-bearing: forces React to
+              // unmount + remount the editor when we auto-advance to the
+              // next draft after a send. Without it, local state like
+              // `sent` / `error` from the previous draft sticks and the
+              // Verstuur button stays frozen on "Verzonden ✓".
               <ActiveDraftEditor
+                key={activeDraft.id}
                 draft={activeDraft}
                 parts={activeParts}
                 setParts={setActiveParts}
-                onResolved={(id) => {
+                onResolved={(id, sentClientName) => {
                   setConsumedIds((prev) => {
                     const next = new Set(prev)
                     next.add(id)
                     return next
                   })
+                  if (sentClientName) {
+                    setRecentlySent({ name: sentClientName, at: Date.now() })
+                  }
                   onDraftConsumed()
                   // Auto-close the sheet when the LAST UNRESOLVED draft is
                   // dealt with. Uses notConsumed (not visibleDrafts) so a
                   // narrow search filter doesn't trigger close prematurely.
                   const remaining = notConsumed.filter((d) => d.id !== id)
                   if (remaining.length === 0) {
-                    setTimeout(() => onOpenChange(false), 800)
+                    setTimeout(() => onOpenChange(false), 1200)
                   }
                 }}
               />
@@ -404,7 +431,11 @@ function ActiveDraftEditor({
   draft: WeeklyUpdateDraftListItem
   parts: EditableParts
   setParts: (next: EditableParts) => void
-  onResolved: (draftId: string) => void
+  /** Called after a draft is consumed (sent OR dismissed). When passing
+   *  `sentClientName`, the parent shows a toast "Verzonden naar <name>"
+   *  in the sheet header so the success is visible across the auto-
+   *  advance to the next draft. */
+  onResolved: (draftId: string, sentClientName?: string) => void
 }) {
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -472,9 +503,11 @@ function ActiveDraftEditor({
     },
     onSuccess: () => {
       setSent(true)
-      // Brief "Sent ✓" state before the parent yanks this row from the
-      // sidebar; the parent's effect also auto-selects the next draft.
-      setTimeout(() => onResolved(draft.id), 600)
+      // ~1.2s lets the AM register the "Verzonden ✓" state on the button
+      // before we auto-advance to the next draft. The parent ALSO surfaces
+      // a "Verzonden naar <client>" toast in the sheet header that lingers
+      // for ~4s, so even after the editor switches the success is visible.
+      setTimeout(() => onResolved(draft.id, draft.clientName), 1200)
     },
     onError: (e: Error) => setError(e.message),
   })
