@@ -9,7 +9,9 @@ import {
   CreditCard,
   ExternalLink,
 } from "lucide-react"
-import { BackButton } from "./back-button"
+// BackButton removed — the slide-over now floats a prominent contextual
+// "Back to Clients / Watch List" button in the dimmed backdrop strip so
+// the inline header version was duplicate chrome.
 import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edit-cell"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -146,12 +148,6 @@ export function ClientHeader({ client, canViewBilling }: Props) {
 
   return (
     <div className="mb-6">
-      <div className="flex items-center mb-5">
-        <BackButton />
-        {/* Global client search moved to the dashboard topbar so it's reachable
-            from every page, not just the client detail surface. */}
-      </div>
-
       <div className="-mx-4 px-4 py-4 rounded-xl bg-gradient-to-r from-muted/30 to-transparent">
         <div className="flex items-start justify-between gap-4">
           {/* Left: Avatar + name + status */}

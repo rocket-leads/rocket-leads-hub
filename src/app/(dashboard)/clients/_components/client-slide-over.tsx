@@ -1,16 +1,32 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { Search, X } from "lucide-react"
+import { ArrowLeft, Search, X } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ClientHeader } from "@/app/(dashboard)/clients/[id]/_components/client-header"
 import { ClientTabs } from "@/app/(dashboard)/clients/[id]/_components/client-tabs"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 import { cn } from "@/lib/utils"
+
+/**
+ * Derive the contextual "Back to..." label key from the underlying pathname.
+ * The slide-over renders on top of /clients, /watchlist (and elsewhere); the
+ * label needs to match where the user came from so closing reads as natural
+ * navigation rather than a generic "Close".
+ */
+function backLabelKeyForPath(pathname: string | null): DictionaryKey {
+  if (pathname?.startsWith("/watchlist")) return "client.back.to_watchlist"
+  if (pathname?.startsWith("/clients")) return "client.back.to_clients"
+  return "client.back.generic"
+}
 
 type ClientDetailResponse = {
   client: MondayClient
@@ -55,6 +71,9 @@ const OPTIMISTIC_ACCESS: ClientAccess = {
 
 export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview, allClients, onSelectClient }: Props) {
   const open = !!clientId
+  const pathname = usePathname()
+  const locale = useLocale()
+  const backLabel = t(backLabelKeyForPath(pathname), locale)
 
   const detailQuery = useQuery<ClientDetailResponse>({
     queryKey: ["client-detail", clientId],
@@ -75,10 +94,30 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
         : undefined,
   })
 
-  // ESC closes — base-ui handles this, but we want the URL state to clear too.
+  // Keyboard shortcuts: Esc closes (already handled by base-ui via Dialog,
+  // but we listen here too so the URL `?client=` param clears). ArrowLeft
+  // also closes — Roy wants "press ← to go back" as a muscle-memory shortcut.
+  // We skip ArrowLeft when the user is typing into an input/textarea so it
+  // doesn't hijack normal text-cursor navigation inside the switcher search,
+  // task composer, etc.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && open) onClose()
+      if (!open) return
+      if (e.key === "Escape") {
+        onClose()
+        return
+      }
+      if (e.key === "ArrowLeft") {
+        const target = e.target as HTMLElement | null
+        const tag = target?.tagName
+        const isEditable =
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target?.isContentEditable === true
+        if (isEditable) return
+        onClose()
+      }
     }
     if (open) window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
@@ -103,15 +142,19 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
             "data-closed:animate-out data-closed:fade-out-0",
           )}
         />
-        {allClients && onSelectClient && (
-          <ClientSwitcher
-            clients={allClients}
-            currentId={clientId}
-            onSelect={(id) => {
-              if (id !== clientId) onSelectClient(id)
-            }}
-          />
-        )}
+        {/* Floating nav header — sits in the dimmed backdrop strip on the
+            left of the panel. Always shows a prominent Back button (Roy
+            asked for a "big, clearly clickable" affordance); the search
+            below it appears whenever the parent passes the client list +
+            selection handler so the user can hop to another client without
+            closing the panel. */}
+        <SlideOverNavHeader
+          backLabel={backLabel}
+          onBack={onClose}
+          clients={allClients}
+          currentId={clientId}
+          onSelectClient={onSelectClient}
+        />
         <DialogPrimitive.Popup
           className={cn(
             "fixed inset-y-0 right-0 z-50 w-full lg:w-[70%] max-w-[1500px]",
@@ -202,6 +245,76 @@ function SlideOverContent({
 }
 
 /**
+ * Floating navigation header for the slide-over. Renders a prominent "Back
+ * to [origin]" button on top + (optionally) a quick-switch client search
+ * underneath. Sits in the dimmed backdrop strip to the left of the panel so
+ * it's always reachable without overlapping the client content.
+ *
+ * The Back button is the primary affordance — Roy explicitly wanted a "big,
+ * clearly clickable" return path. The search is secondary: a power-user
+ * shortcut to swap clients without leaving the slide-over.
+ */
+function SlideOverNavHeader({
+  backLabel,
+  onBack,
+  clients,
+  currentId,
+  onSelectClient,
+}: {
+  backLabel: string
+  onBack: () => void
+  clients: MondayClient[] | undefined
+  currentId: string | null
+  onSelectClient: ((id: string) => void) | undefined
+}) {
+  const hasSwitcher = clients && onSelectClient && clients.length > 1
+
+  return (
+    // Floating container — `pointer-events-none` lets the backdrop receive
+    // clicks (click-to-close still works) while the inner panel re-enables
+    // its own events. `stopPropagation` on every interactive child prevents
+    // bubble-up to the backdrop.
+    <div
+      className="pointer-events-none fixed top-6 left-0 right-[max(70%,calc(100vw-1500px))] z-[60] flex justify-center px-4"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="pointer-events-auto w-full max-w-[420px] flex flex-col gap-2.5">
+        {/* Back button — full-width within the floating panel, centered text,
+            ArrowLeft icon so the affordance reads visually before the label. */}
+        <button
+          type="button"
+          onClick={onBack}
+          className={cn(
+            "group/back inline-flex items-center justify-center gap-2 h-11 rounded-xl",
+            "border border-white/15 bg-zinc-900/85 backdrop-blur-md text-zinc-100",
+            "shadow-2xl ring-1 ring-black/20",
+            "transition-all hover:bg-zinc-800/90 hover:border-white/25 active:translate-y-px",
+            "outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+          )}
+          aria-label={backLabel}
+        >
+          <ArrowLeft className="h-4 w-4 transition-transform group-hover/back:-translate-x-0.5" />
+          <span className="text-sm font-medium">{backLabel}</span>
+        </button>
+
+        {/* Switcher — only rendered when the parent supplies a client list
+            + selection callback (clients overview + watchlist do; raw
+            deep-link contexts may not). */}
+        {hasSwitcher && (
+          <ClientSwitcher
+            clients={clients!}
+            currentId={currentId}
+            onSelect={(id) => {
+              if (id !== currentId) onSelectClient!(id)
+            }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
  * Quick-switch search bar that floats in the dimmed backdrop strip on the
  * left of the slide-over panel. Lets the user jump from client A to client B
  * without closing the panel, scrolling the table, and reopening — the URL is
@@ -282,66 +395,63 @@ function ClientSwitcher({
     }
   }
 
+  const locale = useLocale()
+
   return (
-    // Floating panel above the backdrop. `pointer-events-auto` on a wrapper
-    // makes the search clickable; `stopPropagation` on every interaction
-    // keeps the backdrop's click-to-close from firing through to here.
+    // Inner panel only — the outer floating wrapper lives on
+    // `SlideOverNavHeader` so the Back button + this switcher share one
+    // visual frame.
     <div
-      className="pointer-events-none fixed top-6 left-0 right-[max(70%,calc(100vw-1500px))] z-[60] flex justify-center px-4"
+      className="rounded-xl border border-white/10 bg-zinc-900/80 backdrop-blur-md shadow-2xl ring-1 ring-black/20"
       onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
-      <div
-        className="pointer-events-auto w-full max-w-[420px] rounded-xl border border-white/10 bg-zinc-900/80 backdrop-blur-md shadow-2xl ring-1 ring-black/20"
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
-          <Search className="h-4 w-4 text-zinc-400 shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Switch to another client…"
-            className="flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
-            aria-label="Search clients"
-          />
-          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
-            ⌘K
-          </kbd>
-        </div>
-        {filtered.length > 0 && (
-          <ul className="max-h-[360px] overflow-y-auto py-1">
-            {filtered.map((c, idx) => {
-              const isActive = idx === activeIdx
-              return (
-                <li key={c.mondayItemId}>
-                  <button
-                    type="button"
-                    onClick={() => pick(idx)}
-                    onMouseEnter={() => setActiveIdx(idx)}
-                    className={cn(
-                      "w-full text-left px-3 py-2 flex items-center justify-between gap-3 transition-colors",
-                      isActive ? "bg-white/10 text-white" : "text-zinc-200 hover:bg-white/5",
-                    )}
-                  >
-                    <span className="truncate text-sm font-medium">{c.name}</span>
-                    {c.accountManager && (
-                      <span className="shrink-0 text-[11px] text-zinc-500 truncate max-w-[40%]">
-                        {c.accountManager}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-        {query.trim() && filtered.length === 0 && (
-          <p className="px-3 py-3 text-xs text-zinc-500">No matching clients.</p>
-        )}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
+        <Search className="h-4 w-4 text-zinc-400 shrink-0" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={t("client.switch.placeholder", locale)}
+          className="flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
+          aria-label={t("client.switch.placeholder", locale)}
+        />
+        <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+          ⌘K
+        </kbd>
       </div>
+      {filtered.length > 0 && (
+        <ul className="max-h-[360px] overflow-y-auto py-1">
+          {filtered.map((c, idx) => {
+            const isActive = idx === activeIdx
+            return (
+              <li key={c.mondayItemId}>
+                <button
+                  type="button"
+                  onClick={() => pick(idx)}
+                  onMouseEnter={() => setActiveIdx(idx)}
+                  className={cn(
+                    "w-full text-left px-3 py-2 flex items-center justify-between gap-3 transition-colors",
+                    isActive ? "bg-white/10 text-white" : "text-zinc-200 hover:bg-white/5",
+                  )}
+                >
+                  <span className="truncate text-sm font-medium">{c.name}</span>
+                  {c.accountManager && (
+                    <span className="shrink-0 text-[11px] text-zinc-500 truncate max-w-[40%]">
+                      {c.accountManager}
+                    </span>
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {query.trim() && filtered.length === 0 && (
+        <p className="px-3 py-3 text-xs text-zinc-500">{t("client.switch.empty", locale)}</p>
+      )}
     </div>
   )
 }

@@ -46,6 +46,17 @@ export const DICTIONARY = {
   "search.board.onboarding": { nl: "Onboarding", en: "Onboarding" },
   "search.board.current": { nl: "Actief", en: "Active" },
 
+  // ─── Slide-over navigation header (Back button + inline switcher) ─────
+  // Contextual back labels resolved via the underlying pathname so the
+  // panel reads "Back to Watchlist" when opened from /watchlist and
+  // "Back to All Clients" from /clients, etc.
+  "client.back.to_clients": { nl: "Terug naar alle klanten", en: "Back to All Clients" },
+  "client.back.to_watchlist": { nl: "Terug naar Watch List", en: "Back to Watch List" },
+  "client.back.generic": { nl: "Terug", en: "Back" },
+  "client.switch.placeholder": { nl: "Wissel naar een andere klant...", en: "Switch to another client..." },
+  "client.switch.clear": { nl: "Wissen", en: "Clear" },
+  "client.switch.empty": { nl: "Geen andere klanten gevonden", en: "No other clients found" },
+
   // ─── Theme + locale toggles ───────────────────────────────────────────
   "theme.dark": { nl: "Donkere modus", en: "Dark mode" },
   "theme.light": { nl: "Lichte modus", en: "Light mode" },

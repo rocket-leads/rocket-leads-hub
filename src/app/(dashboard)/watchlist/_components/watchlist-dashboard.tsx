@@ -1355,6 +1355,8 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           onClose={handleClosePanel}
           currentUser={currentUser}
           clientPreview={selectedClientPreview}
+          allClients={clients}
+          onSelectClient={handleSelectClient}
         />
       )}
     </div>
