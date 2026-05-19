@@ -50,6 +50,13 @@ export function DateRangePicker({ startDate, endDate, onChange, maxDate }: Props
 
   return (
     <Popover.Root
+      // `modal` ensures the popover gets its own interaction layer when
+      // mounted inside another modal (e.g. the client slide-over Dialog).
+      // Without this the Popover.Portal renders outside the Dialog's tree
+      // and the Dialog's modal layer silently blocks all clicks on the
+      // calendar, so the picker appears to "not open" (2026-05 bug Roy hit
+      // on Ludidi's slide-over).
+      modal
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
@@ -70,10 +77,14 @@ export function DateRangePicker({ startDate, endDate, onChange, maxDate }: Props
         <span className="font-medium">{formatLabel(startDate, endDate)}</span>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Positioner sideOffset={6} align="start">
+        {/* z-[70] sits above the slide-over (z-50) AND the in-panel client
+            switcher (z-60). The Positioner is the layer that gets the
+            absolute/fixed positioning, so z-index belongs here, not just
+            on Popup. */}
+        <Popover.Positioner sideOffset={6} align="start" className="z-[70]">
           <Popover.Popup
             className={cn(
-              "rdp-popup bg-card border border-border rounded-lg shadow-lg p-3 z-50",
+              "rdp-popup bg-card border border-border rounded-lg shadow-lg p-3",
               "outline-none",
             )}
           >
