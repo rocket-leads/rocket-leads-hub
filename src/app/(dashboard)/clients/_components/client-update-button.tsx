@@ -631,13 +631,17 @@ export function ClientUpdateDialog({
   }, [open])
 
   // The Trengo template's sign-off uses the AM's first name. We derive
-  // it from the slug `rl_weekly_<voornaam>` so the preview matches what
-  // the customer actually receives without an extra Trengo round-trip.
-  // Capitalised for readability; falls back to "…" when no template is
-  // resolved yet so the muted line still has shape.
+  // it from the slug, stripping both the `rl_(weekly|universal)_`
+  // prefix AND any version suffix like `_2` (added by re-approvals
+  // when Meta flagged the first version). Capitalised for readability;
+  // falls back to "…" when no template is resolved yet so the muted
+  // line still has shape.
   const amSignOffName = useMemo(() => {
     if (!waTemplateName) return "…"
-    const slug = waTemplateName.replace(/^rl_(weekly|universal)_/i, "").trim()
+    const slug = waTemplateName
+      .replace(/^rl_(weekly|universal)_/i, "")
+      .replace(/_\d+$/, "")
+      .trim()
     if (!slug) return "…"
     return slug.charAt(0).toUpperCase() + slug.slice(1)
   }, [waTemplateName])

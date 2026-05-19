@@ -416,9 +416,14 @@ function ActiveDraftEditor({
 
   // Re-derive the AM's first name from the template slug so the WhatsApp
   // sign-off in the preview matches what the customer will receive.
+  // Strip both the prefix AND any `_N` version suffix (e.g.
+  // `rl_weekly_danny_2` after a Meta re-approval → "Danny").
   const amSignOffName = useMemo(() => {
     if (!draft.templateName) return "…"
-    const slug = draft.templateName.replace(/^rl_(weekly|universal)_/i, "").trim()
+    const slug = draft.templateName
+      .replace(/^rl_(weekly|universal)_/i, "")
+      .replace(/_\d+$/, "")
+      .trim()
     if (!slug) return "…"
     return slug.charAt(0).toUpperCase() + slug.slice(1)
   }, [draft.templateName])

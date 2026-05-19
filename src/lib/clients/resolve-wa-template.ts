@@ -35,10 +35,29 @@ export type WaTemplateResolution = {
 }
 
 /**
+ * Per-AM overrides for the weekly template slug. Used when an AM's
+ * default `rl_weekly_<firstname>` is broken in Meta (e.g., approved
+ * with the wrong body) and a versioned re-approval (`_2`, `_3`)
+ * replaces it. Keyed by the lowercased first name; the override wins
+ * over the convention slug.
+ *
+ * Keep this list short and intentional — long-term these should
+ * become a column on `users` (e.g. `weekly_template_slug`) so admins
+ * can manage them without a deploy. For now in-code is fast enough.
+ */
+const WEEKLY_TEMPLATE_OVERRIDES: Record<string, string> = {
+  // Danny's original `rl_weekly_danny` had a body bug; reapproved as _2.
+  danny: "rl_weekly_danny_2",
+}
+
+/**
  * Build the template slug from an AM's first name + the template kind.
  * Returns null when the first name contains anything other than ASCII
  * letters/digits (Meta slugs don't allow accents or spaces) — caller
  * should treat that as a config error on the user row.
+ *
+ * Per-AM overrides (e.g. Danny's `_2` version) only apply to the
+ * `weekly` kind; universal stays on the convention slug.
  */
 export function hardcodedTemplateName(
   amFirstName: string,
@@ -46,6 +65,9 @@ export function hardcodedTemplateName(
 ): string | null {
   const first = (amFirstName ?? "").trim().toLowerCase().split(/\s+/)[0] ?? ""
   if (!first || !/^[a-z][a-z0-9]*$/.test(first)) return null
+  if (kind === "weekly" && WEEKLY_TEMPLATE_OVERRIDES[first]) {
+    return WEEKLY_TEMPLATE_OVERRIDES[first]
+  }
   return `rl_${kind}_${first}`
 }
 

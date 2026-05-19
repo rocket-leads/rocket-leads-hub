@@ -221,12 +221,15 @@ export async function buildWeeklyUpdateDraft(args: {
     loadHubUserName(amUserId),
   ])
 
-  // AM first name for the email sign-off + WhatsApp preview. Prefer the
-  // resolved slug (`rl_weekly_danny` → "danny") so the rendered text
-  // matches the template; fall back to the AM user's `users.name`.
+  // AM first name for the email sign-off + WhatsApp preview. Prefer
+  // `users.name` because the resolved template slug may carry a
+  // version suffix (e.g. `rl_weekly_danny_2` after a Meta re-approval)
+  // which we don't want bleeding into the rendered "Groetjes, …"
+  // line. Falls back to the slug-stripped name when the user row
+  // has no name, then a hardcoded default.
   const amFirstName =
-    (waTemplate.name?.replace(/^rl_weekly_/i, "").trim() ||
-      hubUser?.name?.split(/\s+/)[0] ||
+    (hubUser?.name?.split(/\s+/)[0] ||
+      waTemplate.name?.replace(/^rl_weekly_/i, "").trim() ||
       "Roel").toString()
 
   const composed = composeInitialParts({
