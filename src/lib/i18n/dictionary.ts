@@ -54,9 +54,18 @@ export const DICTIONARY = {
   "locale.dutch": { nl: "Nederlands", en: "Dutch" },
   "locale.english": { nl: "Engels", en: "English" },
 
-  // ─── Home page ────────────────────────────────────────────────────────
+  // ─── Home page (the "Today" landing — what needs your attention now) ──
   "home.greeting.morning": { nl: "Goedemorgen, {name}", en: "Good morning, {name}" },
+  "home.subtitle": { nl: "Hier is wat vandaag aandacht nodig heeft.", en: "Here's what needs your attention today." },
   "home.updated_prefix": { nl: "Bijgewerkt {ago}", en: "Updated {ago}" },
+
+  // Today's meetings block — surfaces Fathom calls happening today.
+  "home.block.meetings.title": { nl: "Vandaag's meetings", en: "Today's meetings" },
+  "home.block.meetings.empty": { nl: "Geen meetings vandaag.", en: "No meetings today." },
+  "home.block.meetings.cta": { nl: "Open Meetings", en: "Open Meetings" },
+  "home.block.meetings.in": { nl: "over {mins} min", en: "in {mins} min" },
+  "home.block.meetings.now": { nl: "Nu", en: "Now" },
+  "home.block.meetings.passed": { nl: "Eerder vandaag", en: "Earlier today" },
 
   "home.kpi.action.label": { nl: "Actie nodig", en: "Action needed" },
   "home.kpi.action.eq_yesterday": { nl: "= gisteren", en: "= yesterday" },
@@ -519,7 +528,7 @@ export const DICTIONARY = {
 
   // ─── Pedro page ───────────────────────────────────────────────────────
   "pedro.title": { nl: "Pedro", en: "Pedro" },
-  "pedro.subtitle": { nl: "Alle deliverables (brief, research, angles, scripts, creatives, LP, ad copy, refreshes) horen bij de geselecteerde klant.", en: "All deliverables (brief, research, angles, scripts, creatives, LP, ad copy, refreshes) belong to the selected client." },
+  "pedro.subtitle": { nl: "Build-modus — genereer brief, research, angles, scripts, creatives, landingspagina en ad copy voor de geselecteerde klant. Voor per-klant inzichten op één plek, open de Pedro-tab in het klant-paneel.", en: "Build mode — generate brief, research, angles, scripts, creatives, landing page and ad copy for the selected client. For per-client insights in one place, open the Pedro tab inside the client panel." },
   "pedro.status.online": { nl: "Online", en: "Online" },
   "pedro.picker.active_client": { nl: "Actieve klant", en: "Active client" },
   "pedro.picker.onboarding": { nl: "Onboarding", en: "Onboarding" },
@@ -766,6 +775,13 @@ export const DICTIONARY = {
 
   // ─── Client detail — Pedro tab (per-client) ───────────────────────────
   // Status pills
+  // Inline demarcation note in the slide-over Pedro tab — clarifies this is
+  // the *insight-mode* surface for this client (status, brief snapshot,
+  // refresh history) versus the *build-mode* /pedro route (generators,
+  // creatives, scripts). Without this hint users with both surfaces open
+  // mix up where to do what.
+  "client.pedro.mode_hint": { nl: "Inzicht-modus — voor build-tools (creatives, scripts, refreshes), open Pedro.", en: "Insight mode — for build tools (creatives, scripts, refreshes), open Pedro." },
+
   "client.pedro.status.not_started": { nl: "Pedro nog niet gestart", en: "Pedro not started yet" },
   "client.pedro.status.auto_draft": { nl: "Auto-draft (nog niet bewerkt)", en: "Auto-draft (not edited yet)" },
   "client.pedro.status.active": { nl: "Pedro actief — campagne #{n}", en: "Pedro active — campaign #{n}" },

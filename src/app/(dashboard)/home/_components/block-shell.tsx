@@ -33,7 +33,7 @@ export function BlockShell({
   children: ReactNode
 }) {
   return (
-    <div className="bg-card rounded-lg border border-border/40 flex flex-col">
+    <div className="bg-card rounded-2xl border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
         <div className="flex items-center gap-2">
           {icon}

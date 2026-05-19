@@ -19,8 +19,10 @@ import { ActionBlock } from "./_components/action-block"
 import { InboxBlock } from "./_components/inbox-block"
 import { BillingBlock } from "./_components/billing-block"
 import { PedroBlock, type PedroProposal } from "./_components/pedro-block"
+import { MeetingsBlock, type TodayMeeting } from "./_components/meetings-block"
 import { KpiStrip } from "./_components/kpi-strip"
 import { WeeklyUpdateDraftsBanner } from "@/app/(dashboard)/clients/_components/weekly-update-drafts-banner"
+import { MEETING_ROW_COLUMNS, type MeetingRow } from "@/lib/meetings/types"
 
 function HomeLoading() {
   return (
@@ -69,6 +71,7 @@ async function HomeData() {
     myInboxItems,
     inboxBadgeCounts,
     pedroProposals,
+    todayMeetings,
     lastKpiRefreshAt,
   ] = await Promise.all([
     readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards").then(
@@ -92,6 +95,7 @@ async function HomeData() {
         }))
       : Promise.resolve({ unreadUpdates: 0, openTasks: 0, unreadChats: 0 }),
     isAdmin ? fetchPendingPedroProposals() : Promise.resolve<PedroProposal[]>([]),
+    fetchTodayMeetings(),
     fetchLastKpiRefreshAt(),
   ])
 
@@ -188,14 +192,17 @@ async function HomeData() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header — /home is the "Today" landing. Greeting on top, today's date,
+          then a one-line framing ("here's what needs your attention today")
+          so the user reads the page as a daily-focus surface, not a generic
+          dashboard. */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="font-heading text-[24px] font-semibold tracking-tight leading-tight text-foreground">
             {t("home.greeting.morning", locale, { name: firstName })}
           </h1>
           <p className="text-xs text-muted-foreground/60 mt-1">
-            {formatDate(new Date().toISOString(), locale)}
+            {formatDate(new Date().toISOString(), locale)} · {t("home.subtitle", locale)}
           </p>
         </div>
         {lastKpiRefreshAt && (
@@ -244,6 +251,13 @@ async function HomeData() {
         <InboxBlock
           items={topInbox}
           totalCount={unreadInboxCount}
+          locale={locale}
+        />
+
+        <MeetingsBlock
+          items={todayMeetings}
+          totalCount={todayMeetings.length}
+          nowMs={Date.now()}
           locale={locale}
         />
 
@@ -387,6 +401,45 @@ async function fetchLastKpiRefreshAt(): Promise<string | null> {
     return data?.started_at ?? null
   } catch {
     return null
+  }
+}
+
+/**
+ * Today's meetings — Fathom rows with `scheduled_at` between 00:00 and 23:59
+ * of the user's local day. Caps at 10 to keep the home preview compact;
+ * full list lives on /meetings. Joins to clients so the row can show the
+ * linked client name + click straight into the slide-over.
+ */
+async function fetchTodayMeetings(): Promise<TodayMeeting[]> {
+  try {
+    const supabase = await createAdminClient()
+    const now = new Date()
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
+    const { data } = await supabase
+      .from("meetings")
+      .select(`${MEETING_ROW_COLUMNS}, clients(name, monday_item_id)`)
+      .gte("scheduled_at", startOfDay.toISOString())
+      .lte("scheduled_at", endOfDay.toISOString())
+      .order("scheduled_at", { ascending: true })
+      .limit(10)
+
+    return (data ?? []).map((row): TodayMeeting => {
+      const r = row as MeetingRow & {
+        clients: { name: string | null; monday_item_id: string | null } | { name: string | null; monday_item_id: string | null }[] | null
+      }
+      const joined = Array.isArray(r.clients) ? r.clients[0] : r.clients
+      return {
+        id: r.id,
+        title: r.title ?? "(untitled)",
+        scheduledAt: r.scheduled_at ?? new Date().toISOString(),
+        clientName: joined?.name ?? null,
+        mondayItemId: joined?.monday_item_id ?? null,
+        shareUrl: r.share_url,
+      }
+    })
+  } catch {
+    return []
   }
 }
 

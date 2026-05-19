@@ -160,10 +160,13 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
 
   return (
     <div className="space-y-5">
-      {/* Header card — status + open in Pedro */}
+      {/* Header card — status + open in Pedro.
+          Mode hint at the bottom clarifies this tab is the *insight-mode*
+          per-client surface (status, brief snapshot, refresh history) and
+          full build-mode lives on /pedro. */}
       <Card>
         <CardContent className="flex items-center justify-between gap-4 py-5">
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <h3 className="font-heading font-semibold text-base">Pedro</h3>
               <StatusPill state={state} locale={locale} />
@@ -184,6 +187,9 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
                 {state.auto_brief_meta.source}
               </p>
             )}
+            <p className="text-[11px] text-muted-foreground/60 pt-1">
+              {t("client.pedro.mode_hint", locale)}
+            </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Link
