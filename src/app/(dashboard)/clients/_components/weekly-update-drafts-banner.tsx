@@ -8,12 +8,28 @@ import {
   Send,
   Loader2,
   Check,
-  MessageCircle,
   Mail,
+  HelpCircle,
   Search,
   SkipForward,
   RefreshCw,
 } from "lucide-react"
+
+/** Official WhatsApp brand glyph (speech bubble + phone). Lucide doesn't
+ *  ship brand logos, so we inline it. Renders crisply at any size; pass
+ *  text color via `currentColor` (parent's text-* class). */
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+    </svg>
+  )
+}
 import {
   Dialog,
   DialogContent,
@@ -25,7 +41,6 @@ import {
   ContextNoteCard,
   WhatsAppPreview,
   EmailPreview,
-  reshapeForV2,
 } from "./client-update-button"
 import type { EditableParts } from "@/lib/clients/client-update-template"
 import type {
@@ -138,9 +153,9 @@ function WeeklyUpdateQueueSheet({
   // 51-row sidebars are scroll-heavy; the AM almost always knows which
   // company they're looking for so a filter beats scrolling.
   const [search, setSearch] = useState("")
-  // Per-draft edited parts so switching between rows keeps work in progress.
-  // Initialised lazily from each draft's snapshotted parts (with V2 reshape
-  // applied — see `reshapeForV2` for what that does).
+  // Per-draft edited parts so switching between rows keeps work in
+  // progress. Initialised lazily from each draft's snapshotted parts
+  // (already V2-shape from the cron).
   const [editedByDraft, setEditedByDraft] = useState<Record<string, EditableParts>>({})
   // Track which drafts are gone (sent or dismissed) so they disappear
   // from the list immediately, even before the server refetch completes.
@@ -174,9 +189,9 @@ function WeeklyUpdateQueueSheet({
   const activeParts = useMemo(() => {
     if (!activeDraft) return null
     if (editedByDraft[activeDraft.id]) return editedByDraft[activeDraft.id]
-    return activeDraft.templateVersion === 2
-      ? reshapeForV2(activeDraft.parts)
-      : activeDraft.parts
+    // Cron now stores already-V2-shaped parts (composeInitialParts emits
+    // V2 directly for WhatsApp), so no reshape is needed on the way in.
+    return activeDraft.parts
   }, [activeDraft, editedByDraft])
 
   const setActiveParts = (next: EditableParts) => {
@@ -328,8 +343,12 @@ function DraftSidebarRow({
   onClick: () => void
   edited: boolean
 }) {
-  const isEmail = draft.channel === "email"
-  const ChannelIcon = isEmail ? Mail : MessageCircle
+  const channelMeta =
+    draft.channel === "email"
+      ? { bg: "bg-blue-500", title: "Email" }
+      : draft.channel === "whatsapp"
+        ? { bg: "bg-[#25D366]", title: "WhatsApp" }
+        : { bg: "bg-muted-foreground/40", title: "Onbekend kanaal — check Monday" }
   return (
     <button
       type="button"
@@ -341,17 +360,24 @@ function DraftSidebarRow({
           : "border-transparent hover:bg-muted/40",
       )}
     >
-      {/* Solid filled circle — WhatsApp brand green vs email blue — so the
-          channel is recognisable from across the screen instead of two
-          near-identical pale tints. */}
+      {/* Filled circle with the actual channel brand glyph — WhatsApp's
+          official speech bubble for WA, lucide Mail for email, generic
+          HelpCircle (grey) for unknown so the AM can spot misconfigured
+          Monday rows at a glance. */}
       <div
         className={cn(
           "h-7 w-7 rounded-full flex items-center justify-center shrink-0 text-white shadow-sm",
-          isEmail ? "bg-blue-500" : "bg-[#25D366]",
+          channelMeta.bg,
         )}
-        title={isEmail ? "Email" : "WhatsApp"}
+        title={channelMeta.title}
       >
-        <ChannelIcon className="h-3.5 w-3.5" strokeWidth={2.4} />
+        {draft.channel === "email" ? (
+          <Mail className="h-3.5 w-3.5" strokeWidth={2.4} />
+        ) : draft.channel === "whatsapp" ? (
+          <WhatsAppIcon className="h-4 w-4" />
+        ) : (
+          <HelpCircle className="h-3.5 w-3.5" strokeWidth={2.4} />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <p
@@ -392,7 +418,6 @@ function ActiveDraftEditor({
 }) {
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const isV2 = draft.templateVersion === 2
   const isEmail = draft.channel === "email"
 
   // Re-derive the AM's first name from the template slug so the WhatsApp
@@ -498,7 +523,6 @@ function ActiveDraftEditor({
             inputsDisabled={inputsDisabled}
             amSignOffName={amSignOffName}
             timestamp={timestamp}
-            isV2={isV2}
           />
         )}
         {error && (

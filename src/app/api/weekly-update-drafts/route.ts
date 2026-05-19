@@ -38,7 +38,8 @@ export type WeeklyUpdateDraftListItem = {
   accountManager: string
   weekOf: string
   parts: EditableParts
-  templateVersion: 1 | 2
+  /** Legacy field — always 2 in the new flow. Kept for backwards-compat. */
+  templateVersion: 2
   templateName: string | null
   channel: "whatsapp" | "email" | "unknown"
   status: "pending" | "sent" | "dismissed"
@@ -116,7 +117,7 @@ export async function GET() {
         accountManager: (mc?.accountManager ?? "").trim(),
         weekOf: r.week_of,
         parts: r.parts,
-        templateVersion: (r.template_version === 2 ? 2 : 1) as 1 | 2,
+        templateVersion: 2 as const,
         templateName: r.template_name,
         channel: (r.channel as "whatsapp" | "email" | "unknown") ?? "unknown",
         status: r.status,

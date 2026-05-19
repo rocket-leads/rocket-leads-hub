@@ -194,14 +194,23 @@ function trendSentenceFor(kpi: KpiSummary | null): string {
   return ""
 }
 
-function buildKpiBlock(kpi: KpiSummary | null): string {
+/** Per-channel KPI rendering.
+ *
+ *  - WhatsApp: bullets only. The approved template body provides the
+ *    "📊 Cijfers deze week:" header above {{3}} so adding our own would
+ *    double it up.
+ *  - Email: includes the "📊 Afgelopen 7 dagen" header line because the
+ *    email body has no template wrapper — we render everything ourselves.
+ */
+function buildKpiBlock(kpi: KpiSummary | null, channel: Channel): string {
   if (!kpi) return ""
-  const lines = [
-    "📊 Afgelopen 7 dagen",
+  const lines: string[] = []
+  if (channel === "email") lines.push("📊 Afgelopen 7 dagen")
+  lines.push(
     `• Ad spend: ${fmtEur(kpi.adSpend)}`,
     `• Leads: ${kpi.leads}`,
     `• Kosten per lead: ${fmtCpl(kpi.cpl)}`,
-  ]
+  )
   const delta = cplDeltaBullet(kpi)
   if (delta) lines.push(delta)
   return lines.join("\n")
@@ -240,13 +249,15 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
   const channel: Channel = input.channel ?? "whatsapp"
   const isEmail = channel === "email"
 
-  // Opener differs per channel: email gets a full salutation in the body
-  // ("Hé Bram,") because there's no template wrapper; WhatsApp gets just
-  // "Bram!" since the Trengo HSM template prepends "Hey ".
+  // Opener differs per channel:
+  // - Email: full salutation in the body ("Hé Bram,") since there's no
+  //   template wrapper.
+  // - WhatsApp: just the first name (no "!"); the Trengo template body is
+  //   "Hey {{1}}," — Trengo adds the "Hey " prefix and the trailing ",".
   const opener = firstName
     ? isEmail
       ? `Hé ${firstName},`
-      : `${firstName}!`
+      : firstName
     : isEmail
       ? "Hé,"
       : ""
@@ -289,11 +300,18 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
     parts: {
       opener,
       intro: noSignal ? "" : intro,
-      kpiBlock: buildKpiBlock(input.kpi),
+      kpiBlock: buildKpiBlock(input.kpi, channel),
       trendSentence: trendSentenceFor(input.kpi),
       note: "",
       conclusion,
-      actionsHeader: noSignal ? "" : "✅ Wat we deze week gaan doen:",
+      // WhatsApp: empty — the approved template body provides
+      // "✅ Wat we deze week gaan doen:" above {{5}}. Email: still
+      // included since email has no template wrapper.
+      actionsHeader: noSignal
+        ? ""
+        : isEmail
+          ? "✅ Wat we deze week gaan doen:"
+          : "",
       actions,
       subject,
       signOff,

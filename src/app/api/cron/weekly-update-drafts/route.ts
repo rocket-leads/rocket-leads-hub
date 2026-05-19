@@ -148,7 +148,10 @@ export async function GET(req: NextRequest) {
 
         const payload = {
           parts: draft.parts,
-          template_version: draft.templateVersion ?? 1,
+          // Legacy column on weekly_update_drafts — V2 is the only path
+          // now, so we always write 2. Kept for backwards-compat with
+          // any external dashboards reading the column.
+          template_version: 2,
           template_name: draft.whatsappTemplateName,
           channel: draft.channel,
         }

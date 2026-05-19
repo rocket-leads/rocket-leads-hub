@@ -250,35 +250,20 @@ export function ContextNoteCard({ parts, setParts, inputsDisabled }: PreviewProp
   )
 }
 
-export function ActionsBlock({
-  parts,
-  setParts,
-  inputsDisabled,
-  isV2 = false,
-}: PreviewProps & { isV2?: boolean }) {
+export function ActionsBlock({ parts, setParts, inputsDisabled }: PreviewProps) {
   return (
     <div>
-      {isV2 ? (
-        // V2: header is hardcoded in the approved template body
-        // ("✅ Wat we deze week gaan doen:") so we render it as a locked
-        // visual label instead of an editable input. Avoids the AM thinking
-        // they can change it (they can't — Meta approves the template body
-        // verbatim) and avoids a double header on send.
-        <p
-          className="text-[13px] leading-relaxed text-foreground/50 select-none"
-          title="Komt automatisch uit de Trengo template"
-        >
-          ✅ Wat we deze week gaan doen:
-        </p>
-      ) : (
-        <InlineInput
-          value={parts.actionsHeader}
-          onChange={(v) => setParts({ ...parts, actionsHeader: v })}
-          placeholder="✅ Actie-header…"
-          disabled={inputsDisabled}
-          ariaLabel="Actie-header"
-        />
-      )}
+      {/* Locked header — the approved Trengo template body provides
+          "✅ Wat we deze week gaan doen:" above {{5}}, so showing it
+          here as muted/select-none keeps the preview faithful to what
+          the customer receives and prevents the AM from "editing" a
+          string that won't actually change the send. */}
+      <p
+        className="text-[13px] leading-relaxed text-foreground/50 select-none"
+        title="Komt automatisch uit de Trengo template"
+      >
+        ✅ Wat we deze week gaan doen:
+      </p>
       <ul className="space-y-0.5 mt-0.5">
         {parts.actions.map((a, i) => (
           <li key={i} className="group flex items-start gap-2">
@@ -328,31 +313,21 @@ export function ActionsBlock({
   )
 }
 
-/** WhatsApp chat-bubble preview: beige wallpaper, single white bubble on the
- *  right, locked "Hey" prefix + "Groetjes <am>" suffix (from the Trengo HSM
- *  template), all the middle content editable. Short paragraphs, compact
- *  spacing — reads like a real WhatsApp message.
- *
- *  V1 vs V2 layout differences (driven by `isV2`):
- *   - V1: opener placeholder is "Voornaam!" (template body has "Hey {{1}}"
- *     with no trailing punctuation, so AM types the "!"). Sign-off renders
- *     inline as "Groetjes <Naam>".
- *   - V2: opener has a locked "," after the editable name (template body
- *     has "Hey {{1}},"). KPI + actions headers render as fixed labels
- *     because the approved template body provides them verbatim. Sign-off
- *     renders as two lines ("Groetjes," + "<Naam>") to match the multi-line
- *     sign-off baked into the template body. */
+/** WhatsApp chat-bubble preview for the V2 weekly template
+ *  (`rl_weekly_<voornaam>`). All template-body strings ("Hey ", ",",
+ *  "📊 Cijfers deze week:", "✅ Wat we deze week gaan doen:", "Groetjes,",
+ *  AM name) render as locked muted labels — only the variable content
+ *  ({{1}}..{{5}}) is editable. Reads top-to-bottom exactly like what the
+ *  customer will receive. */
 export function WhatsAppPreview({
   parts,
   setParts,
   inputsDisabled,
   amSignOffName,
   timestamp,
-  isV2 = false,
 }: PreviewProps & {
   amSignOffName: string
   timestamp: string
-  isV2?: boolean
 }) {
   return (
     <div
@@ -375,22 +350,17 @@ export function WhatsAppPreview({
             <InlineInput
               value={parts.opener}
               onChange={(v) => setParts({ ...parts, opener: v })}
-              placeholder={isV2 ? "Voornaam" : "Voornaam!"}
+              placeholder="Voornaam"
               disabled={inputsDisabled}
               ariaLabel="Voornaam-regel"
             />
           </div>
-          {isV2 && (
-            // Locked "," — V2 template body is "Hey {{1}}," so the comma is
-            // added by Meta on render. Showing it here keeps the preview
-            // faithful to what the customer receives.
-            <span
-              className="text-[13px] leading-relaxed text-foreground/50 select-none shrink-0"
-              title="Komt automatisch uit de Trengo template"
-            >
-              ,
-            </span>
-          )}
+          <span
+            className="text-[13px] leading-relaxed text-foreground/50 select-none shrink-0"
+            title="Komt automatisch uit de Trengo template"
+          >
+            ,
+          </span>
         </div>
 
         <InlineTextarea
@@ -401,23 +371,17 @@ export function WhatsAppPreview({
           ariaLabel="Intro"
         />
 
-        {isV2 && (
-          // V2: locked "📊 Cijfers deze week:" label sits above the editable
-          // KPI bullets. The kpiBlock value has already had its V1 header
-          // line stripped by reshapeForV2 in the dialog, so the textarea
-          // below shows only bullets.
-          <p
-            className="text-[13px] leading-relaxed text-foreground/50 select-none pt-1"
-            title="Komt automatisch uit de Trengo template"
-          >
-            📊 Cijfers deze week:
-          </p>
-        )}
+        <p
+          className="text-[13px] leading-relaxed text-foreground/50 select-none pt-1"
+          title="Komt automatisch uit de Trengo template"
+        >
+          📊 Cijfers deze week:
+        </p>
 
         <InlineTextarea
           value={parts.kpiBlock}
           onChange={(v) => setParts({ ...parts, kpiBlock: v })}
-          placeholder={isV2 ? "• CPL: €… • Spend: €…" : "📊 KPI block…"}
+          placeholder="• CPL: €… • Spend: €…"
           disabled={inputsDisabled}
           ariaLabel="KPI block"
         />
@@ -448,41 +412,25 @@ export function WhatsAppPreview({
         />
 
         <div className="pt-1">
-          <ActionsBlock
-            parts={parts}
-            setParts={setParts}
-            inputsDisabled={inputsDisabled}
-            isV2={isV2}
-          />
+          <ActionsBlock parts={parts} setParts={setParts} inputsDisabled={inputsDisabled} />
         </div>
 
-        {isV2 ? (
-          // V2 sign-off matches the approved template body: "Groetjes," on
-          // its own line, then the AM's name on the next line. Render as
-          // two separate <p>s so the line break is unambiguous (vs relying
-          // on \n inside one span).
-          <div className="pt-1 space-y-0">
-            <p
-              className="text-[13px] leading-relaxed text-foreground/50 select-none"
-              title="Komt automatisch uit de Trengo template"
-            >
-              Groetjes,
-            </p>
-            <p
-              className="text-[13px] leading-relaxed text-foreground/50 select-none"
-              title="Komt automatisch uit de Trengo template"
-            >
-              {amSignOffName}
-            </p>
-          </div>
-        ) : (
+        {/* Sign-off: template body has "Groetjes,\n<AM>". Two separate
+            paragraphs so the line break is unambiguous. */}
+        <div className="pt-1 space-y-0">
           <p
-            className="text-[13px] leading-relaxed text-foreground/50 select-none pt-1"
+            className="text-[13px] leading-relaxed text-foreground/50 select-none"
             title="Komt automatisch uit de Trengo template"
           >
-            Groetjes {amSignOffName}
+            Groetjes,
           </p>
-        )}
+          <p
+            className="text-[13px] leading-relaxed text-foreground/50 select-none"
+            title="Komt automatisch uit de Trengo template"
+          >
+            {amSignOffName}
+          </p>
+        </div>
 
         <div className="flex justify-end pt-1">
           <span className="text-[10px] text-foreground/40 tabular-nums">{timestamp}</span>
@@ -609,7 +557,6 @@ export type ClientUpdateDraftSeed = {
   draftId: string
   parts: EditableParts
   channel: "whatsapp" | "email" | "unknown"
-  templateVersion: 1 | 2
   templateName: string | null
 }
 
@@ -626,31 +573,6 @@ type DialogProps = Props & {
   onDraftResolved?: () => void
 }
 
-/** Reshape the server-generated parts so they line up with what the V2
- *  approved template body provides verbatim. Called once when the dialog
- *  loads under V2 mode; subsequent edits run on the already-reshaped state.
- *
- *   - opener: strip trailing "!" so the locked "," in the preview lines up
- *     with the template's "Hey {{1}}," construction.
- *   - kpiBlock: drop the leading "📊 KPI deze week:" line (or any non-bullet
- *     leading line) — the template's own "📊 Cijfers deze week:" sits
- *     above on render, so keeping the AM-generated header would double up.
- *   - actionsHeader: blank it. Template fixes the actions header. The
- *     dialog hides the editable input when V2 anyway.
- */
-export function reshapeForV2(parts: EditableParts): EditableParts {
-  const lines = (parts.kpiBlock ?? "").split("\n")
-  const firstBulletIdx = lines.findIndex((l) => /^\s*[•\-*]/.test(l))
-  const kpiBulletsOnly =
-    firstBulletIdx === -1 ? parts.kpiBlock : lines.slice(firstBulletIdx).join("\n")
-  return {
-    ...parts,
-    opener: (parts.opener ?? "").replace(/[!?.,;:]+$/, "").trim(),
-    kpiBlock: kpiBulletsOnly,
-    actionsHeader: "",
-  }
-}
-
 export function ClientUpdateDialog({
   mondayItemId,
   clientName,
@@ -665,14 +587,6 @@ export function ClientUpdateDialog({
   const [channelLabel, setChannelLabel] = useState("")
   const [trengoLinked, setTrengoLinked] = useState(false)
   const [waTemplateName, setWaTemplateName] = useState<string | null>(null)
-  /** 1 = V1 universal single-var (legacy). 2 = V2 multi-var weekly-update.
-   *  Drives the WhatsApp preview layout (locked headers + multi-line
-   *  sign-off when V2). Null when channel is email. */
-  const [templateVersion, setTemplateVersion] = useState<1 | 2 | null>(null)
-  /** Server-side explanation of why V1 fallback is active (or no template
-   *  at all). Shown as an inline diagnostic so the AM can self-fix without
-   *  digging through Vercel logs. */
-  const [templateVersionReason, setTemplateVersionReason] = useState<string | null>(null)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
@@ -691,22 +605,16 @@ export function ClientUpdateDialog({
       return (await res.json()) as ClientUpdateResponse
     },
     onSuccess: (data) => {
-      // V2 mode reshapes the parts so the editable surface matches what the
-      // approved template body provides: strip the "!" from the opener
-      // (template adds ","), drop the leading "📊 KPI…" header line from
-      // kpiBlock (template adds "📊 Cijfers deze week:"), and blank the
-      // editable actionsHeader (template adds "✅ Wat we deze week gaan
-      // doen:"). signOff stays empty for WA in both V1 and V2 since the
-      // template always provides the closing line.
-      const reshaped =
-        data.templateVersion === 2 ? reshapeForV2(data.parts) : data.parts
-      setParts(reshaped)
+      // Parts are already V2-shape (composeInitialParts emits them that
+      // way for the WhatsApp path: no leading KPI header, no editable
+      // actionsHeader, opener without trailing "!"). The template
+      // provides every surrounding string the AM sees as locked muted
+      // labels in the preview.
+      setParts(data.parts)
       setChannel(data.channel)
       setChannelLabel(data.channelLabel)
       setTrengoLinked(data.trengoContactLinked)
       setWaTemplateName(data.whatsappTemplateName)
-      setTemplateVersion(data.templateVersion)
-      setTemplateVersionReason(data.templateVersionReason)
     },
     onError: (e: Error) => setGenerateError(e.message),
   })
@@ -767,7 +675,7 @@ export function ClientUpdateDialog({
     // generated using the SAME pipeline as /client-update would run now,
     // so re-fetching would just produce identical data (assuming same
     // KPI/Pedro cache state). The reshape was already applied at cron time
-    // when templateVersion === 2, so we use parts verbatim here.
+    // when templateVersion === 2 (now always V2), so we use parts verbatim.
     if (draftSeed && !parts) {
       setParts(draftSeed.parts)
       setChannel(draftSeed.channel)
@@ -776,8 +684,6 @@ export function ClientUpdateDialog({
       // by construction the contact is always linked when seeded.
       setTrengoLinked(true)
       setWaTemplateName(draftSeed.templateName)
-      setTemplateVersion(draftSeed.templateVersion)
-      setTemplateVersionReason(null)
       return
     }
     if (!draftSeed && !generate.data && !generate.isPending) generate.mutate()
@@ -794,19 +700,17 @@ export function ClientUpdateDialog({
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
   }, [open])
 
-  // The Trengo template's sign-off uses the AM's first name (e.g. "Groetjes
-  // Roel"). We derive it from the slug `rl_universal_<voornaam>` OR
-  // `rl_weekly_<voornaam>` so the preview matches what the customer
-  // actually receives without an extra Trengo round-trip. Capitalised for
-  // readability; falls back to "…" when no template is resolved yet so the
-  // muted line still has shape.
+  // The Trengo template's sign-off uses the AM's first name. We derive
+  // it from the slug `rl_weekly_<voornaam>` so the preview matches what
+  // the customer actually receives without an extra Trengo round-trip.
+  // Capitalised for readability; falls back to "…" when no template is
+  // resolved yet so the muted line still has shape.
   const amSignOffName = useMemo(() => {
     if (!waTemplateName) return "…"
     const slug = waTemplateName.replace(/^rl_(weekly|universal)_/i, "").trim()
     if (!slug) return "…"
     return slug.charAt(0).toUpperCase() + slug.slice(1)
   }, [waTemplateName])
-  const isV2 = templateVersion === 2
 
   const isLoading = generate.isPending
   const isSending = send.isPending
@@ -862,7 +766,6 @@ export function ClientUpdateDialog({
                 inputsDisabled={inputsDisabled}
                 amSignOffName={amSignOffName}
                 timestamp={timestamp}
-                isV2={isV2}
               />
             )}
 
@@ -872,36 +775,19 @@ export function ClientUpdateDialog({
                   Verzonden als email via Trengo, met onderwerp en sign-off zoals hierboven.
                 </p>
               ) : waTemplateName ? (
-                <>
-                  <p className="text-[11px] text-muted-foreground/70">
-                    Verzonden via WhatsApp template{" "}
-                    <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[10px]">
-                      {waTemplateName}
-                    </code>
-                    {/* V2 is the default — only flag the fallback case with
-                        an amber "V1" pill so the AM knows something's off. */}
-                    {!isV2 && (
-                      <span className="ml-1.5 inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                        V1 fallback
-                      </span>
-                    )}
-                    {/* "(uit Trengo)" hint dropped — the resolver no longer
-                        auto-discovers, it derives the slug from the AM's
-                        first name. The slug itself communicates the source. */}
-                  </p>
-                  {templateVersionReason && (
-                    <p className="text-[11px] text-amber-500/90 italic leading-relaxed">
-                      Waarom V1? {templateVersionReason}
-                    </p>
-                  )}
-                </>
+                <p className="text-[11px] text-muted-foreground/70">
+                  Verzonden via WhatsApp template{" "}
+                  <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[10px]">
+                    {waTemplateName}
+                  </code>
+                </p>
               ) : (
                 <p className="text-xs text-amber-500">
-                  Geen WhatsApp template gevonden in Trengo voor jouw account. Verifieer dat{" "}
+                  Kan WhatsApp template niet afleiden uit users.name. Verwacht{" "}
                   <code className="rounded bg-muted/60 px-1 font-mono text-[10px]">
-                    rl_universal_&lt;voornaam&gt;
+                    rl_weekly_&lt;voornaam&gt;
                   </code>{" "}
-                  bestaat en goedgekeurd is, of stel 'm handmatig in via Settings → Users.
+                  — check Settings &rarr; Users.
                 </p>
               )}
               {!trengoLinked && (

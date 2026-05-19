@@ -8,7 +8,6 @@ import {
   type EditableParts,
 } from "@/lib/clients/client-update-template"
 import {
-  resolveWaTemplate,
   resolveWeeklyUpdateTemplate,
   type WaTemplateResolution,
 } from "@/lib/clients/resolve-wa-template"
@@ -16,18 +15,20 @@ import {
 /**
  * Shared "build a weekly update draft for ONE client" pipeline.
  *
- * Originally lived inline in the GET /client-update route. Hoisted here so
- * the Monday-morning cron (`/api/cron/weekly-update-drafts`) and the
- * interactive dialog endpoint both walk the SAME composition logic — KPI
- * + Pedro lookup, V2/V1 template resolution, channel detection — without
- * duplicating fallback rules or AM-name extraction.
+ * Used by the Monday-morning cron (`/api/cron/weekly-update-drafts`) and
+ * the interactive Client Update dialog endpoint so both walk identical
+ * composition logic — KPI + Pedro lookup, hardcoded `rl_weekly_<voornaam>`
+ * template resolution, channel detection.
  *
- * Returns enough data to:
- *   - render the dialog identically whether the draft was pre-generated or
- *     freshly composed on open
- *   - persist into `weekly_update_drafts` (cron path) including the
- *     resolved template name + version so re-opening doesn't re-resolve
- *     against a potentially-different Trengo state.
+ * WhatsApp path: always uses the V2 multi-variable template
+ * (`rl_weekly_<voornaam>`). No env flag, no V1 fallback. If the template
+ * isn't approved in Trengo yet, Trengo errors at send-time with a clear
+ * "template not found" — better than the old silent V1 fallback which
+ * hid the misconfiguration.
+ *
+ * Email path: skips template resolution entirely. Trengo's email endpoint
+ * accepts the multi-line body free-text with our own greeting + sign-off
+ * baked into the content.
  */
 
 export type WeeklyUpdateChannel = "whatsapp" | "email" | "unknown"
@@ -37,12 +38,11 @@ export type WeeklyUpdateDraftResult = {
   channel: WeeklyUpdateChannel
   channelLabel: string
   trengoContactLinked: boolean
+  /** Resolved `rl_weekly_<voornaam>` slug for the WhatsApp path. Null for
+   *  email channels or when we can't derive a clean first name from
+   *  users.name (rare; user row needs fixing). */
   whatsappTemplateName: string | null
   whatsappTemplateSource: WaTemplateResolution["source"]
-  /** 1 = V1 universal single-var. 2 = V2 multi-var weekly. Null when email. */
-  templateVersion: 1 | 2 | null
-  /** Human-readable diagnostic — null when V2 active or email. */
-  templateVersionReason: string | null
 }
 
 export function detectChannel(label: string): WeeklyUpdateChannel {
@@ -96,41 +96,22 @@ export async function buildWeeklyUpdateDraft(args: {
 
   const channel = detectChannel(client.contactChannel)
   const isEmail = channel === "email"
-  const v2Enabled = !isEmail && process.env.WEEKLY_UPDATE_TEMPLATE_V2 === "true"
 
-  const [kpi, pedro, v2Template, hubUser] = await Promise.all([
+  // Always resolve the weekly template for WhatsApp. Email skips it.
+  const [kpi, pedro, waTemplate, hubUser] = await Promise.all([
     loadKpi(args.mondayItemId),
     loadPedroBody(args.mondayItemId),
-    v2Enabled
-      ? resolveWeeklyUpdateTemplate({ userId: args.userId, mondayItemId: args.mondayItemId })
-      : Promise.resolve({ name: null as string | null, source: "none" as const }),
+    isEmail
+      ? Promise.resolve({ name: null as string | null, source: "none" as const })
+      : resolveWeeklyUpdateTemplate({ userId: args.userId, mondayItemId: args.mondayItemId }),
     loadHubUserName(args.userId),
   ])
 
-  const useV2 = !!v2Template.name
-  const v1Template =
-    isEmail || useV2
-      ? { name: null as string | null, source: "none" as const }
-      : await resolveWaTemplate({ userId: args.userId, mondayItemId: args.mondayItemId })
-
-  const waTemplate = useV2 ? v2Template : v1Template
-
-  let templateVersionReason: string | null = null
-  if (!isEmail && !useV2) {
-    if (!v2Enabled) {
-      templateVersionReason =
-        "WEEKLY_UPDATE_TEMPLATE_V2 env-flag staat uit in Vercel (zet 'm op true en redeploy)."
-    } else {
-      // Hardcoded resolver only returns null when users.name can't be
-      // parsed into an ASCII first name. Everything else (template not
-      // existing in Trengo) bubbles up as an error at send-time.
-      const amSlug = hubUser?.name?.split(/\s+/)[0]?.toLowerCase() ?? "<voornaam>"
-      templateVersionReason = `Kan voornaam niet afleiden uit users.name (verwacht rl_weekly_${amSlug}). Check Settings → Users.`
-    }
-  }
-
+  // AM first name for the email sign-off + WhatsApp preview. Prefer the
+  // resolved slug (`rl_weekly_danny` → "danny") so the rendered text
+  // matches the template; fall back to `users.name` first token.
   const amFirstName =
-    (waTemplate.name?.replace(/^rl_(weekly|universal)_/i, "").trim() ||
+    (waTemplate.name?.replace(/^rl_weekly_/i, "").trim() ||
       hubUser?.name?.split(/\s+/)[0] ||
       "Roel").toString()
 
@@ -151,7 +132,5 @@ export async function buildWeeklyUpdateDraft(args: {
     trengoContactLinked: !!client.trengoContactId,
     whatsappTemplateName: waTemplate.name,
     whatsappTemplateSource: waTemplate.source,
-    templateVersion: isEmail ? null : useV2 ? 2 : 1,
-    templateVersionReason,
   }
 }

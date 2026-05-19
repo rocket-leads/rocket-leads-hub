@@ -38,16 +38,20 @@ describe("renderWeeklyUpdate", () => {
       pedro: PEDRO,
       now: MONDAY_WEEK_20,
     })
-    // Opener is just the name + "!" — no "Hey/Hé/Hoi" greeting word because
-    // the Trengo template's "Hey " prefix already provides it.
-    expect(out).toMatch(/^Bram!/)
+    // Opener is just the name — the V2 Trengo template body provides
+    // both "Hey " prefix and trailing ",", so the variable content stays
+    // bare.
+    expect(out).toMatch(/^Bram\b/)
     expect(out).not.toMatch(/^(Hé|Hoi|Hi|Hey)\s/)
+    expect(out).not.toMatch(/^Bram!/)
     expect(out).toContain("Ad spend: €1.834")
     expect(out).toContain("Kosten per lead: €43,67")
     expect(out).toMatch(/13% stijging/)
     expect(out).toContain(PEDRO.conclusion)
     expect(out).toContain("• " + PEDRO.actions[0])
-    expect(out).toContain("Wat we deze week gaan doen")
+    // Actions header is provided by the V2 template body, not by the
+    // variable content — so it should NOT appear in the rendered string.
+    expect(out).not.toContain("Wat we deze week gaan doen")
     // No sign-off — that comes from the Trengo template suffix.
     expect(out).not.toMatch(/Hoor 't graag/)
     expect(out).not.toMatch(/Groet(jes)?/i)
@@ -68,7 +72,8 @@ describe("renderWeeklyUpdate", () => {
       pedro: null,
       now: MONDAY_WEEK_20,
     })
-    expect(out).toMatch(/^Bram!/)
+    expect(out).toMatch(/^Bram\b/)
+    expect(out).not.toMatch(/^Bram!/)
     expect(out).toMatch(/opstarten/i)
     expect(out).not.toMatch(/Afgelopen 7 dagen/)
     expect(out).not.toMatch(/Wat we deze week gaan doen/)
@@ -115,14 +120,18 @@ describe("composeInitialParts + renderFromParts — fully-editable model", () =>
       pedro: PEDRO,
       now: MONDAY_WEEK_20,
     })
-    expect(parts.opener).toBe("Bram!")
+    // V2 WhatsApp shape: opener is just the first name (template adds
+    // "Hey " + ","), kpiBlock is bullets-only (template provides the
+    // "📊 Cijfers deze week:" header), actionsHeader is empty (template
+    // provides "✅ Wat we deze week gaan doen:").
+    expect(parts.opener).toBe("Bram")
     expect(INTROS).toContain(parts.intro as (typeof INTROS)[number])
-    expect(parts.kpiBlock).toContain("📊 Afgelopen 7 dagen")
+    expect(parts.kpiBlock).not.toContain("📊 Afgelopen 7 dagen")
     expect(parts.kpiBlock).toContain("€1.834")
     expect(parts.trendSentence).toMatch(/Kosten per lead lopen/i)
     expect(parts.conclusion).toBe(PEDRO.conclusion)
     expect(parts.actions).toEqual(PEDRO.actions)
-    expect(parts.actionsHeader).toBe("✅ Wat we deze week gaan doen:")
+    expect(parts.actionsHeader).toBe("")
   })
 
   it("editing every field — including KPI numbers — flows through to the rendered output", () => {
@@ -188,7 +197,7 @@ describe("composeInitialParts + renderFromParts — fully-editable model", () =>
       pedro: null,
       now: MONDAY_WEEK_20,
     })
-    expect(parts.opener).toBe("Bram!")
+    expect(parts.opener).toBe("Bram")
     expect(parts.intro).toBe("")
     expect(parts.kpiBlock).toBe("")
     expect(parts.actions).toEqual([])
@@ -223,8 +232,9 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
     expect(parts.actions.every((a) => a.trim().length > 5)).toBe(true)
     // No duplicates within the trio
     expect(new Set(parts.actions).size).toBe(3)
-    // Header still set so the bullets render under "✅ Wat we deze week..."
-    expect(parts.actionsHeader).toBe("✅ Wat we deze week gaan doen:")
+    // Header is provided by the V2 Trengo template body — not by the
+    // variable content — so it stays empty in `parts`.
+    expect(parts.actionsHeader).toBe("")
   })
 
   it("Pedro wins over defaults when present", () => {
@@ -277,7 +287,7 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
     expect(out).not.toContain("Wekelijkse update SiteJob")
   })
 
-  it("whatsapp mode is unchanged: no subject, no signOff, opener is just name+!", () => {
+  it("whatsapp mode: bare-name opener, no subject, no signOff", () => {
     const { parts } = composeInitialParts({
       firstName: "Bram",
       clientName: "SiteJob",
@@ -288,7 +298,8 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
       pedro: PEDRO,
       now: MONDAY_WEEK_20,
     })
-    expect(parts.opener).toBe("Bram!")
+    // V2 template wraps the body — opener variable is just the name.
+    expect(parts.opener).toBe("Bram")
     expect(parts.subject).toBe("")
     expect(parts.signOff).toBe("")
     const out = renderFromParts(parts)
