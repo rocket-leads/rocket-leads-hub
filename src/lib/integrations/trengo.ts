@@ -124,6 +124,82 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
 }
 
 /**
+ * Return the workspace's first Trengo email channel. Used to bootstrap a
+ * new outbound email ticket when the contact has no existing email
+ * thread — Dr. Ludidi etc. who's email-primary on Monday but has never
+ * been emailed through Trengo before.
+ *
+ * Returns null when no email channel exists in this workspace.
+ */
+export async function findFirstEmailChannel(): Promise<TrengoChannel | null> {
+  const channels = await fetchTrengoChannels()
+  return (
+    channels.find((c) => {
+      const t = (c.type ?? "").toLowerCase()
+      return t === "email" || t.includes("mail") || t === "imap" || t === "outlook"
+    }) ?? null
+  )
+}
+
+/**
+ * Send an email to a Trengo contact via the user's token, creating a
+ * brand-new ticket. Returns the new ticket id + the message id.
+ *
+ * Used when the contact has no existing email conversation — we still
+ * want to send the weekly update without forcing the AM to bootstrap a
+ * ticket manually in Trengo's UI.
+ *
+ * Trengo accepts the message-create payload directly on `/tickets/messages`
+ * with channel_id + contact_id (no ticket_id required). Trengo opens a
+ * new ticket as a side effect and returns the resulting message + ticket
+ * ids. If this endpoint shape changes in a future Trengo API version,
+ * the error bubbles up as a clear "Trengo create-email failed: …".
+ */
+export async function createEmailMessageForContact(args: {
+  userToken: string
+  contactId: string
+  channelId: number
+  subject: string
+  body: string
+}): Promise<{ ticketId: string; messageId: string }> {
+  const res = await fetch(`https://app.trengo.com/api/v2/tickets/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${args.userToken}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      channel_id: args.channelId,
+      contact_id: args.contactId,
+      subject: args.subject,
+      message: args.body,
+    }),
+  })
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "")
+    throw new Error(
+      `Trengo create-email failed (${res.status}, channel=${args.channelId}, contact=${args.contactId}): ${errText.slice(0, 300)}`,
+    )
+  }
+  const json = (await res.json()) as {
+    id?: number | string
+    ticket_id?: number | string
+    message?: { id?: number | string; ticket_id?: number | string }
+    data?: { id?: number | string; ticket_id?: number | string }
+  }
+  const messageId = json.message?.id ?? json.id ?? json.data?.id
+  const ticketId =
+    json.message?.ticket_id ?? json.ticket_id ?? json.data?.ticket_id
+  if (!messageId || !ticketId) {
+    throw new Error(
+      `Trengo create-email returned no ids — keys: ${Object.keys(json).join(",")}`,
+    )
+  }
+  return { ticketId: String(ticketId), messageId: String(messageId) }
+}
+
+/**
  * List all channels in the Trengo workspace. Used by the per-user channel
  * subscription picker on /account so users can pick which Trengo channels
  * (Email, WhatsApp, Voice, etc.) surface in their Hub Client Inbox.

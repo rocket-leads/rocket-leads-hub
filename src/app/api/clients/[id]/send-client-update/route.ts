@@ -1,13 +1,19 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById } from "@/lib/integrations/monday"
-import { fetchConversations, type TrengoConversation } from "@/lib/integrations/trengo"
+import {
+  fetchConversations,
+  findFirstEmailChannel,
+  createEmailMessageForContact,
+  type TrengoConversation,
+} from "@/lib/integrations/trengo"
 import {
   sendTrengoTemplateAsUser,
   sendTrengoReplyAsUser,
   sanitizeWaTemplateParam,
   NeedsConnectError,
 } from "@/lib/inbox/reply"
+import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { resolveWeeklyUpdateTemplate } from "@/lib/clients/resolve-wa-template"
 import { resolveAmUserIdForClient } from "@/lib/clients/build-weekly-update-draft"
 import {
@@ -190,9 +196,59 @@ export async function POST(
 
     // Strict channel-type matching — no silent fallback to `conversations[0]`
     // because that's exactly how the email-into-WA-ticket bug used to land.
-    const ticket = sendAsEmail
+    let ticket = sendAsEmail
       ? conversations.find((c) => isEmailChannel(c.channel?.type))
       : conversations.find((c) => isWhatsAppChannel(c.channel?.type))
+
+    // Email fallback: when the contact has no email ticket yet (e.g.
+    // Dr. Ludidi who's email-primary on Monday but has never been
+    // emailed through Trengo before), bootstrap a fresh email ticket
+    // on the workspace's first email channel and send into it.
+    // WhatsApp has no equivalent fallback — outbound WhatsApp requires
+    // an approved HSM template AND a known channel-with-approval combo,
+    // which the bootstrap path can't produce safely.
+    let bootstrappedEmail: { ticketId: string; messageId: string } | null = null
+    if (!ticket && sendAsEmail) {
+      const emailChannel = await findFirstEmailChannel()
+      if (emailChannel) {
+        const userToken = await getUserPlatformToken(session.user.id, "trengo")
+        if (!userToken) throw new NeedsConnectError("trengo")
+        try {
+          bootstrappedEmail = await createEmailMessageForContact({
+            userToken,
+            contactId: client.trengoContactId,
+            channelId: emailChannel.id,
+            subject:
+              subjectOverride ||
+              `Wekelijkse update ${client.companyName || client.name}`,
+            body: message,
+          })
+        } catch (e) {
+          return NextResponse.json(
+            {
+              error: "create_email_ticket_failed",
+              message: `Kan geen nieuw email-ticket aanmaken in Trengo: ${
+                e instanceof Error ? e.message : "unknown"
+              }`,
+            },
+            { status: 502 },
+          )
+        }
+        // Fake a ticket object so the mirror-insert below has the IDs.
+        ticket = {
+          id: Number(bootstrappedEmail.ticketId),
+          status: "open",
+          subject: null,
+          channel: emailChannel,
+          contact: null,
+          latest_message: null,
+          created_at: new Date().toISOString(),
+          closed_at: null,
+          assignee: null,
+        }
+      }
+    }
+
     if (!ticket) {
       const want = sendAsEmail ? "email" : "WhatsApp"
       const haveTypes = conversations
@@ -212,7 +268,11 @@ export async function POST(
 
     let outboundId: string
     try {
-      if (sendAsEmail) {
+      // Bootstrapped email already sent during create — skip the second
+      // post, just adopt the new message id.
+      if (bootstrappedEmail) {
+        outboundId = bootstrappedEmail.messageId
+      } else if (sendAsEmail) {
         const sent = await sendTrengoReplyAsUser(
           session.user.id,
           ticketId,
