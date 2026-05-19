@@ -278,13 +278,20 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
   // other fields stay empty and don't render.
   const noSignal = !input.kpi && !input.pedro
 
-  // Conclusion: Pedro's text wins. When Pedro hasn't produced anything,
-  // fall back to a CPL-delta-shaped default — same tone as the trend
-  // sentence, so the AM's pre-fill always reads sensibly even with zero AI.
+  // Conclusion: one editable block combining the qualitative trend
+  // headline + Pedro's nuance. The composer used to ship these as two
+  // separate paragraphs (`trendSentence` + `conclusion`), but AMs
+  // experienced them as one block and editing across two fields was
+  // awkward. They're now merged here; trendSentence stays empty on
+  // EditableParts so the rendered output isn't duplicated.
   const pedroConclusion = input.pedro?.conclusion?.trim() ?? ""
+  const trendLine = trendSentenceFor(input.kpi)
+  const bodyConclusion = pedroConclusion || defaultConclusion(input.kpi)
   const conclusion = noSignal
     ? "We zijn nog aan het opstarten met je campagne. Zodra er cijfers zijn deel ik die direct."
-    : pedroConclusion || defaultConclusion(input.kpi)
+    : trendLine
+      ? `${trendLine}\n\n${bodyConclusion}`
+      : bodyConclusion
 
   // Actions: Pedro's bullets win. When Pedro produced none, pre-fill three
   // generic playbook actions so the AM only tweaks them. Empty-state skips
@@ -301,7 +308,10 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
       opener,
       intro: noSignal ? "" : intro,
       kpiBlock: buildKpiBlock(input.kpi, channel),
-      trendSentence: trendSentenceFor(input.kpi),
+      // trendSentence merged into `conclusion` above. Field kept on the
+      // type for backwards compat with stored drafts, but always empty
+      // for new composes — renderers should ignore it.
+      trendSentence: "",
       note: "",
       conclusion,
       // WhatsApp: empty — the approved template body provides

@@ -9,7 +9,6 @@ import {
   Loader2,
   Check,
   Mail,
-  HelpCircle,
   Search,
   SkipForward,
   RefreshCw,
@@ -37,11 +36,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import {
-  ContextNoteCard,
-  WhatsAppPreview,
-  EmailPreview,
-} from "./client-update-button"
+import { WhatsAppPreview, EmailPreview } from "./client-update-button"
 import type { EditableParts } from "@/lib/clients/client-update-template"
 import type {
   WeeklyUpdateDraftListResponse,
@@ -343,12 +338,13 @@ function DraftSidebarRow({
   onClick: () => void
   edited: boolean
 }) {
-  const channelMeta =
-    draft.channel === "email"
-      ? { bg: "bg-blue-500", title: "Email" }
-      : draft.channel === "whatsapp"
-        ? { bg: "bg-[#25D366]", title: "WhatsApp" }
-        : { bg: "bg-muted-foreground/40", title: "Onbekend kanaal — check Monday" }
+  // Unknown channel = Monday's contact_channel column is empty or has an
+  // unrecognised label. ~95% of clients are WhatsApp, so we default the
+  // visual to WhatsApp instead of flagging it; the title attr surfaces
+  // the fact that Monday is missing data for follow-up if needed.
+  const isEmail = draft.channel === "email"
+  const titleSuffix =
+    draft.channel === "unknown" ? " (Monday contact_channel leeg — verifieer)" : ""
   return (
     <button
       type="button"
@@ -360,23 +356,17 @@ function DraftSidebarRow({
           : "border-transparent hover:bg-muted/40",
       )}
     >
-      {/* Filled circle with the actual channel brand glyph — WhatsApp's
-          official speech bubble for WA, lucide Mail for email, generic
-          HelpCircle (grey) for unknown so the AM can spot misconfigured
-          Monday rows at a glance. */}
       <div
         className={cn(
           "h-7 w-7 rounded-full flex items-center justify-center shrink-0 text-white shadow-sm",
-          channelMeta.bg,
+          isEmail ? "bg-blue-500" : "bg-[#25D366]",
         )}
-        title={channelMeta.title}
+        title={(isEmail ? "Email" : "WhatsApp") + titleSuffix}
       >
-        {draft.channel === "email" ? (
+        {isEmail ? (
           <Mail className="h-3.5 w-3.5" strokeWidth={2.4} />
-        ) : draft.channel === "whatsapp" ? (
-          <WhatsAppIcon className="h-4 w-4" />
         ) : (
-          <HelpCircle className="h-3.5 w-3.5" strokeWidth={2.4} />
+          <WhatsAppIcon className="h-4 w-4" />
         )}
       </div>
       <div className="flex-1 min-w-0">
@@ -513,7 +503,6 @@ function ActiveDraftEditor({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
-        <ContextNoteCard parts={parts} setParts={setParts} inputsDisabled={inputsDisabled} />
         {isEmail ? (
           <EmailPreview parts={parts} setParts={setParts} inputsDisabled={inputsDisabled} />
         ) : (
@@ -593,6 +582,9 @@ function renderForSend(parts: EditableParts): string {
   pushIf(parts.opener)
   pushIf(parts.intro)
   pushIf(parts.kpiBlock)
+  // trendSentence + note removed from the editing surface and now empty
+  // on new composes; still call pushIf so legacy stored drafts that
+  // contain values still render.
   pushIf(parts.trendSentence)
   pushIf(parts.note)
   pushIf(parts.conclusion)

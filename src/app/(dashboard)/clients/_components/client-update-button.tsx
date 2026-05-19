@@ -196,59 +196,10 @@ type PreviewProps = {
   inputsDisabled: boolean
 }
 
-/** Free-form context input above the bubble. The AM dictates context here
- *  ("we hebben de drempel verhoogd, daarom is CPL gestegen") and it flows
- *  into the rendered body BEFORE Pedro's conclusion, anchoring the framing
- *  with the AM's first-hand knowledge. White card so it's visually distinct
- *  from the message bubble itself. */
-export function ContextNoteCard({ parts, setParts, inputsDisabled }: PreviewProps) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    // Clamp between 56px (one comfortable line incl. padding) and 160px
-    // (~5 lines). Beyond that the textarea scrolls internally instead of
-    // pushing the rest of the editor down. The hard cap is the fix for
-    // the bug where scrollHeight occasionally returned the parent's flex
-    // size and the field would explode to the full pane height.
-    el.style.height = "auto"
-    const next = Math.min(Math.max(el.scrollHeight, 56), 160)
-    el.style.height = `${next}px`
-  }, [parts.note])
-
-  return (
-    <div className="px-6 pt-4">
-      <div className="rounded-md border border-border/60 bg-background shadow-sm">
-        <div className="px-4 py-2 border-b border-border/40 flex items-center gap-2">
-          <Sparkles className="h-3 w-3 text-muted-foreground/60" />
-          <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-            Extra context (optioneel)
-          </span>
-          <span className="text-[10px] text-muted-foreground/40 italic ml-auto">
-            verschijnt in het bericht
-          </span>
-        </div>
-        <textarea
-          ref={ref}
-          value={parts.note}
-          onChange={(e) => setParts({ ...parts, note: e.target.value })}
-          placeholder="bv. 'we hebben deze week een extra vraag toegevoegd, daarom is CPL gestegen…'"
-          disabled={inputsDisabled}
-          rows={2}
-          className={cn(
-            "w-full px-4 py-2.5 bg-transparent border-0 outline-none resize-none",
-            "text-sm leading-relaxed text-foreground/90 font-sans",
-            "placeholder:text-foreground/30",
-            // Internal scroll once the clamped height is reached; without
-            // this the user can't access text past the 160px cap.
-            "overflow-y-auto",
-            "max-h-[160px] min-h-[56px]",
-          )}
-        />
-      </div>
-    </div>
-  )
-}
+// ContextNoteCard removed — AMs reported it as noise (always empty, took
+// vertical space at the top of the editor). `parts.note` stays on the
+// EditableParts shape for backwards-compat with stored drafts but is
+// neither rendered nor written to anywhere in the UI.
 
 export function ActionsBlock({ parts, setParts, inputsDisabled }: PreviewProps) {
   return (
@@ -330,8 +281,13 @@ export function WhatsAppPreview({
   timestamp: string
 }) {
   return (
+    // Wallpaper fills the entire middle scroll area (the parent gives us
+    // a flex-1 region between header + footer); the bubble floats on it
+    // with `ml-auto max-w-[88%]`. `min-h-full` makes the dotted bg fill
+    // the pane vertically even when the bubble is short, so there's no
+    // empty white strip below.
     <div
-      className="px-6 py-4 bg-[#ece5dd] dark:bg-[#1f2733]"
+      className="px-6 py-5 bg-[#ece5dd] dark:bg-[#1f2733] min-h-full"
       style={{
         backgroundImage:
           "radial-gradient(circle at 1px 1px, rgba(0,0,0,0.04) 1px, transparent 0)",
@@ -386,23 +342,9 @@ export function WhatsAppPreview({
           ariaLabel="KPI block"
         />
 
-        <InlineTextarea
-          value={parts.trendSentence}
-          onChange={(v) => setParts({ ...parts, trendSentence: v })}
-          placeholder="(geen trend zin)"
-          disabled={inputsDisabled}
-          ariaLabel="Trend"
-        />
-
-        {/* AM's dictated context — only renders in the bubble when non-empty
-            (the input itself lives in the Card above the bubble). Same field,
-            two views: edit there, preview here. */}
-        {parts.note?.trim() && (
-          <p className="text-[13px] leading-relaxed text-foreground/90 px-1 -mx-1 whitespace-pre-wrap">
-            {parts.note}
-          </p>
-        )}
-
+        {/* Single conclusion block — was previously split across
+            trendSentence + conclusion. Edits go to `conclusion`; the
+            trendSentence field stays empty on new composes. */}
         <InlineTextarea
           value={parts.conclusion}
           onChange={(v) => setParts({ ...parts, conclusion: v })}
@@ -440,108 +382,96 @@ export function WhatsAppPreview({
   )
 }
 
-/** Email composer preview: looks like a real email client, not a chat bubble.
- *  Subject field at the top, white body area with generous paragraph spacing,
- *  full greeting + sign-off baked into the body (email has no template wrapper).
- *  All fields editable. */
+/** Email composer preview: free-text. Email has no Meta-approved template
+ *  wrapper, so unlike WhatsApp there are NO locked headers, NO comma-after-
+ *  opener, NO multi-line sign-off baked in — the AM types the whole body.
+ *
+ *  On mount, `parts` is pre-seeded by composeInitialParts with a sensible
+ *  starting draft (greeting + intro + KPI block + conclusion + actions +
+ *  sign-off) all rendered into the single body textarea. The AM tweaks
+ *  freely from there.
+ */
 export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) {
+  // One concatenated string the textarea binds to. We keep the underlying
+  // EditableParts split for the send path (subject is separate; body uses
+  // renderFromParts on read), but the AM sees + edits a single body.
+  const body = useMemo(() => {
+    const blocks: string[] = []
+    if (parts.opener?.trim()) blocks.push(parts.opener.trim())
+    if (parts.intro?.trim()) blocks.push(parts.intro.trim())
+    if (parts.kpiBlock?.trim()) blocks.push(parts.kpiBlock.trim())
+    if (parts.conclusion?.trim()) blocks.push(parts.conclusion.trim())
+    const validActions = (parts.actions ?? []).map((a) => a.trim()).filter(Boolean)
+    if (validActions.length > 0) {
+      const lines: string[] = []
+      if (parts.actionsHeader?.trim()) lines.push(parts.actionsHeader.trim())
+      for (const a of validActions) lines.push(`• ${a}`)
+      blocks.push(lines.join("\n"))
+    }
+    if (parts.signOff?.trim()) blocks.push(parts.signOff.trim())
+    return blocks.join("\n\n").trim()
+  }, [parts])
+
+  // Auto-resize so the body grows with content. Capped to 70vh so a very
+  // long draft scrolls inside the editor instead of pushing the footer
+  // off-screen.
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${Math.max(el.scrollHeight, 360)}px`
+  }, [body])
+
   return (
-    <div className="px-6 py-4 bg-muted/20 dark:bg-zinc-900/40">
-      <div className="rounded-lg border border-border/60 bg-background shadow-sm overflow-hidden">
-        {/* Subject row — sticks at top, separated by a thin border like a
-            real email composer. */}
-        <div className="border-b border-border/40 px-4 py-2.5 flex items-baseline gap-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium shrink-0 w-16">
+    <div className="px-6 py-5 bg-muted/30 dark:bg-zinc-900/40 min-h-full">
+      <div className="max-w-3xl mx-auto rounded-lg border border-border/60 bg-background shadow-sm overflow-hidden">
+        {/* Subject row — sticks at top with a thin border, like a real
+            email composer. */}
+        <div className="border-b border-border/60 px-5 py-3 flex items-center gap-3">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium shrink-0 w-20">
             Onderwerp
           </span>
-          <div className="flex-1 min-w-0">
-            <input
-              type="text"
-              value={parts.subject}
-              onChange={(e) => setParts({ ...parts, subject: e.target.value })}
-              placeholder="Wekelijkse update…"
-              disabled={inputsDisabled}
-              aria-label="Onderwerp"
-              className="w-full bg-transparent border-0 outline-none p-0 text-sm font-medium text-foreground leading-snug placeholder:text-foreground/30"
-            />
-          </div>
-        </div>
-
-        {/* Body area with email-style spacing (space-y-4 instead of 2) so
-            paragraphs breathe like an email, not a chat. */}
-        <div className="px-5 py-4 space-y-4">
-          <InlineInput
-            value={parts.opener}
-            onChange={(v) => setParts({ ...parts, opener: v })}
-            placeholder="Hé Voornaam,"
+          <input
+            type="text"
+            value={parts.subject}
+            onChange={(e) => setParts({ ...parts, subject: e.target.value })}
+            placeholder="Wekelijkse update…"
             disabled={inputsDisabled}
-            ariaLabel="Begroeting"
-          />
-
-          <InlineTextarea
-            value={parts.intro}
-            onChange={(v) => setParts({ ...parts, intro: v })}
-            placeholder="Korte intro…"
-            disabled={inputsDisabled}
-            ariaLabel="Intro"
-          />
-
-          <InlineTextarea
-            value={parts.kpiBlock}
-            onChange={(v) => setParts({ ...parts, kpiBlock: v })}
-            placeholder="📊 KPI block…"
-            disabled={inputsDisabled}
-            ariaLabel="KPI block"
-          />
-
-          {parts.trendSentence?.trim() ? (
-            <InlineTextarea
-              value={parts.trendSentence}
-              onChange={(v) => setParts({ ...parts, trendSentence: v })}
-              placeholder="(geen trend zin)"
-              disabled={inputsDisabled}
-              ariaLabel="Trend"
-            />
-          ) : (
-            // Hide the trend slot when empty in email mode — emails read
-            // better without a 1-line stub between paragraphs.
-            <button
-              type="button"
-              onClick={() => setParts({ ...parts, trendSentence: " " })}
-              disabled={inputsDisabled}
-              className="text-[11px] text-muted-foreground/40 hover:text-muted-foreground italic"
-            >
-              + Trend zin toevoegen
-            </button>
-          )}
-
-          {/* AM-dictated context paragraph. Editing happens in the Card above
-              the bubble; here it just renders in place so the email preview
-              shows the full body including the context. */}
-          {parts.note?.trim() && (
-            <p className="text-[13px] leading-relaxed text-foreground/90 whitespace-pre-wrap">
-              {parts.note}
-            </p>
-          )}
-
-          <InlineTextarea
-            value={parts.conclusion}
-            onChange={(v) => setParts({ ...parts, conclusion: v })}
-            placeholder="Conclusie…"
-            disabled={inputsDisabled}
-            ariaLabel="Conclusie"
-          />
-
-          <ActionsBlock parts={parts} setParts={setParts} inputsDisabled={inputsDisabled} />
-
-          <InlineTextarea
-            value={parts.signOff}
-            onChange={(v) => setParts({ ...parts, signOff: v })}
-            placeholder="Groetjes,&#10;…"
-            disabled={inputsDisabled}
-            ariaLabel="Afsluiter"
+            aria-label="Onderwerp"
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none p-0 text-sm font-medium text-foreground placeholder:text-foreground/30"
           />
         </div>
+
+        {/* Body — single free-text textarea. Edits are stored entirely on
+            `parts.conclusion`; opener/intro/kpiBlock/actions/signOff get
+            blanked so renderFromParts emits exactly what the AM typed.
+            For the send, `conclusion` becomes the whole email body. */}
+        <textarea
+          ref={bodyRef}
+          value={body}
+          onChange={(e) =>
+            setParts({
+              ...parts,
+              opener: "",
+              intro: "",
+              kpiBlock: "",
+              conclusion: e.target.value,
+              actionsHeader: "",
+              actions: [],
+              signOff: "",
+            })
+          }
+          disabled={inputsDisabled}
+          placeholder="Typ je email…"
+          aria-label="Email body"
+          className={cn(
+            "w-full px-5 py-4 bg-transparent border-0 outline-none resize-none",
+            "text-sm leading-relaxed text-foreground/90 font-sans",
+            "placeholder:text-foreground/30",
+            "min-h-[360px] max-h-[70vh] overflow-y-auto",
+          )}
+        />
       </div>
     </div>
   )
@@ -748,11 +678,6 @@ export function ClientUpdateDialog({
           </div>
         ) : parts ? (
           <>
-            <ContextNoteCard
-              parts={parts}
-              setParts={setParts}
-              inputsDisabled={inputsDisabled}
-            />
             {isEmail ? (
               <EmailPreview
                 parts={parts}

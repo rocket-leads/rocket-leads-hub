@@ -128,8 +128,12 @@ describe("composeInitialParts + renderFromParts — fully-editable model", () =>
     expect(INTROS).toContain(parts.intro as (typeof INTROS)[number])
     expect(parts.kpiBlock).not.toContain("📊 Afgelopen 7 dagen")
     expect(parts.kpiBlock).toContain("€1.834")
-    expect(parts.trendSentence).toMatch(/Kosten per lead lopen/i)
-    expect(parts.conclusion).toBe(PEDRO.conclusion)
+    // trendSentence is now empty on new composes — the qualitative
+    // headline is concatenated into `conclusion` so the AM edits a
+    // single block.
+    expect(parts.trendSentence).toBe("")
+    expect(parts.conclusion).toMatch(/Kosten per lead lopen/i)
+    expect(parts.conclusion).toContain(PEDRO.conclusion)
     expect(parts.actions).toEqual(PEDRO.actions)
     expect(parts.actionsHeader).toBe("")
   })
@@ -245,7 +249,8 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
       pedro: PEDRO,
       now: MONDAY_WEEK_20,
     })
-    expect(parts.conclusion).toBe(PEDRO.conclusion)
+    // Pedro's conclusion is included verbatim within the merged block.
+    expect(parts.conclusion).toContain(PEDRO.conclusion)
     expect(parts.actions).toEqual(PEDRO.actions)
   })
 
