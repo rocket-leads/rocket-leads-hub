@@ -2,7 +2,18 @@
 
 import { useState, useMemo } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { Sparkles, X, Send, Loader2, Check, MessageCircle, Mail } from "lucide-react"
+import {
+  Sparkles,
+  X,
+  Send,
+  Loader2,
+  Check,
+  MessageCircle,
+  Mail,
+  Search,
+  SkipForward,
+  RefreshCw,
+} from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -50,7 +61,12 @@ export function WeeklyUpdateDraftsBanner() {
   const draftsQuery = useQuery<WeeklyUpdateDraftListResponse>({
     queryKey: ["weekly-update-drafts"],
     queryFn: () => fetch("/api/weekly-update-drafts").then((r) => r.json()),
-    staleTime: 5 * 60 * 1000,
+    // Tighter freshness window: 30s instead of 5min so the queue picks up
+    // the cron's upsert without a hard refresh. Also refetch when the tab
+    // regains focus — AMs often Alt-Tab to Trengo to send something and
+    // come back, and the queue should reflect what they just did.
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
   })
 
   const count = draftsQuery.data?.count ?? 0
@@ -82,6 +98,10 @@ export function WeeklyUpdateDraftsBanner() {
           open={sheetOpen}
           onOpenChange={setSheetOpen}
           drafts={draftsQuery.data?.drafts ?? []}
+          isRefreshing={draftsQuery.isFetching}
+          onRefresh={() => {
+            void draftsQuery.refetch()
+          }}
           onDraftConsumed={() => {
             void queryClient.invalidateQueries({ queryKey: ["weekly-update-drafts"] })
             void queryClient.invalidateQueries({ queryKey: ["last-client-updates"] })
@@ -99,17 +119,25 @@ function WeeklyUpdateQueueSheet({
   onOpenChange,
   drafts,
   onDraftConsumed,
+  onRefresh,
+  isRefreshing,
 }: {
   open: boolean
   onOpenChange: (next: boolean) => void
   drafts: WeeklyUpdateDraftListItem[]
   onDraftConsumed: () => void
+  onRefresh: () => void
+  isRefreshing: boolean
 }) {
   // User-clicked draft id. When null, the active draft is derived as the
   // first visible draft (auto-select on open + auto-advance after a send).
   // Storing the user pick separately keeps the derivation pure and avoids
   // a setState-in-effect cascade.
   const [userPickedId, setUserPickedId] = useState<string | null>(null)
+  // Free-text search over clientName / contactFirstName / accountManager.
+  // 51-row sidebars are scroll-heavy; the AM almost always knows which
+  // company they're looking for so a filter beats scrolling.
+  const [search, setSearch] = useState("")
   // Per-draft edited parts so switching between rows keeps work in progress.
   // Initialised lazily from each draft's snapshotted parts (with V2 reshape
   // applied — see `reshapeForV2` for what that does).
@@ -118,10 +146,21 @@ function WeeklyUpdateQueueSheet({
   // from the list immediately, even before the server refetch completes.
   const [consumedIds, setConsumedIds] = useState<Set<string>>(new Set())
 
-  const visibleDrafts = useMemo(
+  const notConsumed = useMemo(
     () => drafts.filter((d) => !consumedIds.has(d.id)),
     [drafts, consumedIds],
   )
+
+  const visibleDrafts = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return notConsumed
+    return notConsumed.filter(
+      (d) =>
+        d.clientName.toLowerCase().includes(q) ||
+        d.contactFirstName.toLowerCase().includes(q) ||
+        d.accountManager.toLowerCase().includes(q),
+    )
+  }, [notConsumed, search])
 
   // Derived active id: user pick if still visible, else first visible draft.
   // This collapses "auto-select first on open" and "auto-advance after send"
@@ -161,41 +200,86 @@ function WeeklyUpdateQueueSheet({
           <div className="flex items-center gap-2 min-w-0">
             <Sparkles className="h-4 w-4 text-violet-500 shrink-0" />
             <h2 className="text-sm font-semibold truncate">
-              Wekelijkse updates · {visibleDrafts.length}
-              {visibleDrafts.length === 1 ? " open" : " open"}
+              Wekelijkse updates · {notConsumed.length} open
+              {search && visibleDrafts.length !== notConsumed.length && (
+                <span className="text-muted-foreground/60 font-normal ml-1">
+                  · {visibleDrafts.length} match
+                </span>
+              )}
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="rounded-md p-1 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              title="Refresh queue"
+              className="rounded-md p-1 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+              aria-label="Refresh queue"
+            >
+              <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="rounded-md p-1 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </header>
 
         <div className="flex flex-1 min-h-0">
-          {/* Sidebar with draft list — wider so longer client names like
-              "Vloerschuur Meester (Jeffrey's…)" fit without truncation. */}
-          <aside className="w-[360px] border-r border-border/60 shrink-0 overflow-y-auto">
-            {visibleDrafts.length === 0 && (
-              <p className="text-sm text-muted-foreground p-4 text-center">
-                Alles verzonden ✨
-              </p>
-            )}
-            <ul className="py-2">
-              {visibleDrafts.map((d) => (
-                <li key={d.id}>
-                  <DraftSidebarRow
-                    draft={d}
-                    active={d.id === activeId}
-                    onClick={() => setUserPickedId(d.id)}
-                    edited={!!editedByDraft[d.id]}
-                  />
-                </li>
-              ))}
-            </ul>
+          {/* Sidebar with draft list. Top-bar holds a sticky search input
+              (filters by client / contact / AM); list scrolls below it. */}
+          <aside className="w-[360px] border-r border-border/60 shrink-0 flex flex-col">
+            <div className="p-2.5 border-b border-border/60 shrink-0">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Zoek op klant, contact of AM…"
+                  className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border/60 bg-background text-sm outline-none focus:border-violet-500/50 placeholder:text-muted-foreground/40"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground p-0.5"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {notConsumed.length === 0 && (
+                <p className="text-sm text-muted-foreground p-4 text-center">
+                  Alles verzonden ✨
+                </p>
+              )}
+              {notConsumed.length > 0 && visibleDrafts.length === 0 && (
+                <p className="text-xs text-muted-foreground/70 p-4 text-center">
+                  Geen drafts gevonden voor &ldquo;{search}&rdquo;.
+                </p>
+              )}
+              <ul className="py-2">
+                {visibleDrafts.map((d) => (
+                  <li key={d.id}>
+                    <DraftSidebarRow
+                      draft={d}
+                      active={d.id === activeId}
+                      onClick={() => setUserPickedId(d.id)}
+                      edited={!!editedByDraft[d.id]}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
           </aside>
 
           {/* Editor pane */}
@@ -212,9 +296,10 @@ function WeeklyUpdateQueueSheet({
                     return next
                   })
                   onDraftConsumed()
-                  // If this was the last remaining draft, auto-close the
-                  // sheet shortly after the "Sent ✓" state is visible.
-                  const remaining = visibleDrafts.filter((d) => d.id !== id)
+                  // Auto-close the sheet when the LAST UNRESOLVED draft is
+                  // dealt with. Uses notConsumed (not visibleDrafts) so a
+                  // narrow search filter doesn't trigger close prematurely.
+                  const remaining = notConsumed.filter((d) => d.id !== id)
                   if (remaining.length === 0) {
                     setTimeout(() => onOpenChange(false), 800)
                   }
@@ -424,16 +509,23 @@ function ActiveDraftEditor({
       </div>
 
       <footer className="border-t border-border/60 px-5 py-3 flex items-center justify-between shrink-0 bg-muted/20 dark:bg-zinc-900/40">
+        {/* Outlined button with skip icon — was a ghost button with the
+            English "Dismiss" label that read as cancellation of the whole
+            dialog instead of "skip this client this week". */}
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={() => dismissMutation.mutate()}
           disabled={inputsDisabled || dismissMutation.isPending}
+          className="border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+          title="Sla deze klant deze week over (verschijnt niet meer in de queue)"
         >
           {dismissMutation.isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-          ) : null}
-          Dismiss
+          ) : (
+            <SkipForward className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          Overslaan
         </Button>
         <Button
           size="sm"
