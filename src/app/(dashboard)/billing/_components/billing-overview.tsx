@@ -22,7 +22,6 @@ import { NextInvoiceDateCell } from "./next-invoice-date-cell"
 import { CreateInvoiceDialog } from "./create-invoice-dialog"
 import { InvoiceReadinessCell } from "./invoice-readiness-cell"
 import { AgreementAmountCell } from "./agreement-amount-cell"
-import { DriftFixButton } from "./drift-fix-button"
 import { combinedClientName } from "@/lib/billing/sibling-name"
 
 /**
@@ -33,10 +32,10 @@ import { combinedClientName } from "@/lib/billing/sibling-name"
  * - Single-sibling groups behave like the old per-row entries.
  * - Multi-sibling groups expand to show the per-campaign breakdown.
  *
- * `primary` is the sibling whose dates we trust for bucketing into Overdue /
- * Today / This week. With sibling-sync (see `lib/clients/edit.ts`) all
- * siblings should share the same dates, but if drift is detected we surface
- * it via `hasDateDrift` so finance can fix it.
+ * `primary` is the sibling with the earliest `nextInvoiceDate` — used for
+ * bucketing into Overdue / Today / This week. Siblings may legitimately
+ * disagree on dates when each campaign is its own business with its own
+ * start date, so divergent dates are not flagged as an error.
  *
  * `readiness` is the AI invoice-readiness verdict to display on the parent
  * row. For single-sibling groups it's the primary's own. For multi-sibling
@@ -52,8 +51,6 @@ export type BillingGroup = {
   siblings: UpcomingInvoice[]
   totalFee: number
   totalAdBudget: number
-  /** True when at least two siblings disagree on `cycleStartDate`. */
-  hasDateDrift: boolean
   readiness: InvoiceReadiness | null
 }
 
@@ -102,6 +99,10 @@ export type UpcomingInvoice = {
    *  from the `invoice_readiness` cache; null when not yet computed for this
    *  client (the cell falls back to a "Run AI check" affordance). */
   readiness: InvoiceReadiness | null
+  /** Deep link to this client's Monday item, built server-side from the row's
+   *  parent board id. Null when the board config isn't loaded — UI hides the
+   *  "Open in Monday" link in that case rather than render a broken URL. */
+  mondayItemUrl: string | null
 }
 
 type Bucket = {
@@ -307,12 +308,6 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
               {isMulti && (
                 <span className="text-[11px] text-muted-foreground/70 inline-flex items-center">
                   {group.siblings.length} campaigns
-                  {group.hasDateDrift && (
-                    <DriftFixButton
-                      mondayItemId={primary.mondayItemId}
-                      cycleStartDate={primary.cycleStartDate}
-                    />
-                  )}
                 </span>
               )}
             </div>
@@ -414,6 +409,7 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
             mondayItemId={primary.mondayItemId}
             clientName={displayName}
             initial={group.readiness}
+            mondayItemUrl={primary.mondayItemUrl}
           />
         </TableCell>
         <TableCell className="py-2.5">

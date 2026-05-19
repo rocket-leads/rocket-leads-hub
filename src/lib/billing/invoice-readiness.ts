@@ -5,7 +5,7 @@ import type { BillingSummary } from "@/lib/integrations/stripe"
 
 const anthropic = new Anthropic()
 
-export type AiVerdict = "send" | "check" | "hold"
+export type AiVerdict = "send" | "check" | "hold" | "error"
 
 export type InvoiceReadiness = {
   verdict: AiVerdict
@@ -22,7 +22,22 @@ export const UPDATE_LOOKBACK_DAYS = 21
 export const HARD_TTL_MS = 24 * 60 * 60 * 1000
 
 export async function readReadinessMap(): Promise<Record<string, InvoiceReadiness>> {
-  return (await readCache<Record<string, InvoiceReadiness>>(READINESS_CACHE_KEY)) ?? {}
+  const raw = (await readCache<Record<string, InvoiceReadiness>>(READINESS_CACHE_KEY)) ?? {}
+  // Legacy entries (pre-error-verdict) used verdict="check" + confidence=30
+  // for failed AI calls — promote them to the new "error" verdict at read
+  // time so the UI doesn't keep showing fake low-confidence verdicts until
+  // the cron repopulates the cache.
+  for (const id in raw) {
+    const r = raw[id]
+    if (
+      r.verdict === "check" &&
+      r.confidence <= 30 &&
+      r.reason.startsWith("AI-check kon niet draaien")
+    ) {
+      raw[id] = { ...r, verdict: "error", confidence: 0 }
+    }
+  }
+  return raw
 }
 
 export async function writeReadinessMap(map: Record<string, InvoiceReadiness>): Promise<void> {
@@ -117,7 +132,8 @@ export async function classifyInvoiceReadiness(input: {
     const text = msg.content[0]?.type === "text" ? msg.content[0].text : ""
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
-      return { verdict: "check", confidence: 50, reason: "Klassifier gaf geen geldige JSON terug" }
+      console.error("Invoice readiness classify: model returned non-JSON output:", text.slice(0, 200))
+      return { verdict: "error", confidence: 0, reason: "Model gaf geen geldige JSON terug — opnieuw proberen" }
     }
     const parsed = JSON.parse(jsonMatch[0]) as Partial<{ verdict: AiVerdict; confidence: number; reason: string }>
     const verdict: AiVerdict =
@@ -130,7 +146,7 @@ export async function classifyInvoiceReadiness(input: {
     return { verdict, confidence, reason }
   } catch (e) {
     console.error("Invoice readiness classify failed:", e instanceof Error ? e.message : e)
-    return { verdict: "check", confidence: 30, reason: "AI-check kon niet draaien — handmatig checken" }
+    return { verdict: "error", confidence: 0, reason: "AI-check kon niet draaien — opnieuw proberen" }
   }
 }
 

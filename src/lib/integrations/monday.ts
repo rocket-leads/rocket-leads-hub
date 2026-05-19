@@ -24,7 +24,7 @@ export async function getToken(): Promise<string> {
 
 let cachedBoardConfig: { value: BoardConfig | null; expiresAt: number } | null = null
 
-async function getBoardConfig() {
+export async function getBoardConfig() {
   if (cachedBoardConfig && Date.now() < cachedBoardConfig.expiresAt) return cachedBoardConfig.value
 
   const supabase = await createAdminClient()
@@ -44,6 +44,26 @@ export type BoardConfig = {
   onboarding_columns: Record<string, string>
   current_columns: Record<string, string>
   client_board_columns: Record<string, string>
+}
+
+/**
+ * Build the deep-link URL to a Monday item. Monday's item permalink format is
+ * `/boards/{boardId}/pulses/{itemId}` — the `/items/{itemId}` shape doesn't
+ * resolve and is what the "Open in Monday" link used to render (404).
+ *
+ * Returns null when the board ID isn't available; callers should hide the
+ * link in that case rather than render a broken URL.
+ */
+export function mondayItemUrl(
+  itemId: string,
+  boardType: "onboarding" | "current",
+  config: BoardConfig | null,
+): string | null {
+  if (!config) return null
+  const boardId =
+    boardType === "onboarding" ? config.onboarding_board_id : config.current_board_id
+  if (!boardId) return null
+  return `https://rocketleads-team.monday.com/boards/${boardId}/pulses/${itemId}`
 }
 
 export type MondayClient = {

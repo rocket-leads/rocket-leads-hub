@@ -14,6 +14,10 @@ type Props = {
    *  when the cache has no entry yet for this client — the cell shows a
    *  "Run AI check" button on first hit, then auto-fetches. */
   initial: InvoiceReadiness | null
+  /** Deep link to the Monday item, built server-side from the parent board
+   *  ID. Null when board config wasn't available — link is hidden in that
+   *  case rather than rendered broken. */
+  mondayItemUrl: string | null
 }
 
 const VERDICT_TONES = {
@@ -32,6 +36,11 @@ const VERDICT_TONES = {
     dot: "bg-red-500",
     label: "Hold",
   },
+  error: {
+    pill: "bg-muted text-muted-foreground",
+    dot: "bg-muted-foreground/50",
+    label: "AI failed",
+  },
 } as const
 
 /**
@@ -40,7 +49,7 @@ const VERDICT_TONES = {
  * pill to expand the reasoning + the Monday updates the model used as input,
  * and to refresh the verdict on demand.
  */
-export function InvoiceReadinessCell({ mondayItemId, clientName, initial }: Props) {
+export function InvoiceReadinessCell({ mondayItemId, clientName, initial, mondayItemUrl }: Props) {
   const [open, setOpen] = useState(false)
   // Local state keeps things simple — we never want to auto-fetch on mount
   // (would fire ~50 Claude calls per page load), so the React Query machinery
@@ -96,10 +105,14 @@ export function InvoiceReadinessCell({ mondayItemId, clientName, initial }: Prop
           "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium transition-opacity hover:opacity-80",
           tone.pill,
         )}
-        title={`${tone.label} · ${data.confidence}% confidence`}
+        title={
+          data.verdict === "error"
+            ? "AI check failed — open to retry"
+            : `${tone.label} · ${data.confidence}% confidence`
+        }
       >
         <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
-        {tone.label} · {data.confidence}%
+        {data.verdict === "error" ? tone.label : `${tone.label} · ${data.confidence}%`}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[360px] p-0">
         <div className="px-4 py-3 border-b border-border/40">
@@ -122,7 +135,7 @@ export function InvoiceReadinessCell({ mondayItemId, clientName, initial }: Prop
           <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground/70">
             <span className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5", tone.pill)}>
               <span className={cn("h-1 w-1 rounded-full", tone.dot)} />
-              {tone.label} · {data.confidence}%
+              {data.verdict === "error" ? tone.label : `${tone.label} · ${data.confidence}%`}
             </span>
             <span>{new Date(data.computedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
           </div>
@@ -139,14 +152,16 @@ export function InvoiceReadinessCell({ mondayItemId, clientName, initial }: Prop
               <MessageSquareText className="h-3 w-3" />
               Monday updates ({data.updates.length})
             </p>
-            <a
-              href={`https://rocketleads-team.monday.com/boards/items/${mondayItemId}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-primary hover:underline"
-            >
-              Open in Monday
-            </a>
+            {mondayItemUrl && (
+              <a
+                href={mondayItemUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-primary hover:underline"
+              >
+                Open in Monday
+              </a>
+            )}
           </div>
           {data.updates.length === 0 ? (
             <p className="text-xs text-muted-foreground/60 italic">No updates in the last 21 days.</p>
