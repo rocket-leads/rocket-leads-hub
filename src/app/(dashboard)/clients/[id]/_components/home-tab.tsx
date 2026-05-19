@@ -506,11 +506,29 @@ export function HomeTab({
       baselineLabel: "30d",
     }
   }, [])
+  // 90d long-baseline — cross-check against the 30d baseline so we can spot
+  // "baseline drifted high" (Roy 2026-05): if the client was off-track for
+  // weeks, the 30d itself is degraded and a "good vs 30d" verdict is
+  // misleading recovery-from-bad rather than genuine recovery.
+  const { longBaselineStart, longBaselineEnd, longBaselineLabel } = useMemo(() => {
+    const end = subDays(new Date(), 1)
+    const start = subDays(end, 89)
+    return {
+      longBaselineStart: format(start, "yyyy-MM-dd"),
+      longBaselineEnd: format(end, "yyyy-MM-dd"),
+      longBaselineLabel: "90d",
+    }
+  }, [])
   // When the selected window is 30d+ the baseline equals (or overlaps) the
   // current — comparison would be meaningless. The categorizer renders a
-  // "no baseline yet" message in that case.
+  // "no baseline yet" message in that case. Drift cross-check is also
+  // suppressed when the user is already looking at the long window.
   const baselineSuppressed = useMemo(
     () => differenceInCalendarDays(range.endDate, range.startDate) + 1 >= 30,
+    [range.startDate, range.endDate],
+  )
+  const longBaselineSuppressed = useMemo(
+    () => differenceInCalendarDays(range.endDate, range.startDate) + 1 >= 90,
     [range.startDate, range.endDate],
   )
 
@@ -556,6 +574,27 @@ export function HomeTab({
       (!!client.metaAdAccountId || !!client.clientBoardId),
   })
 
+  // 90d long-baseline — only used for the baseline-drift cross-check.
+  // Same endpoint, longer window. Skipped when selected window already
+  // overlaps the 90d (user is looking at the long lens themselves).
+  const kpisLongBaselineQuery = useQuery<KpiResult>({
+    queryKey: ["kpis-baseline-90d", client.mondayItemId, longBaselineStart, longBaselineEnd, refreshNonce],
+    queryFn: () => {
+      const p = new URLSearchParams({
+        startDate: longBaselineStart,
+        endDate: longBaselineEnd,
+        ...(client.metaAdAccountId ? { adAccountId: client.metaAdAccountId } : {}),
+        ...(client.clientBoardId ? { clientBoardId: client.clientBoardId } : {}),
+        ...(refreshNonce > 0 ? { forceRefresh: "1" } : {}),
+      })
+      return fetch(`/api/clients/${client.mondayItemId}/kpis?${p}`).then((r) => r.json())
+    },
+    enabled:
+      !longBaselineSuppressed &&
+      canViewCampaigns &&
+      (!!client.metaAdAccountId || !!client.clientBoardId),
+  })
+
   // 7d summary kept around solely as a fast placeholder for the kpisQuery
   // KPI cards when the selected window is the cron's canonical 7d window
   // (see `kpisPlaceholder` below). Health card no longer reads from it.
@@ -593,6 +632,7 @@ export function HomeTab({
   const health = useMemo(() => {
     const current = kpisQuery.data
     const baseline = kpisBaselineQuery.data
+    const longBaseline = kpisLongBaselineQuery.data
     return categorizeHealthVsBaseline({
       currentCpl: current?.costPerLead ?? 0,
       currentLeads: current?.leads ?? 0,
@@ -602,15 +642,26 @@ export function HomeTab({
       baselineLeads: baseline?.leads ?? 0,
       baselineSpend: baseline?.adSpend ?? 0,
       baselineWindowLabel: baselineLabel,
+      ...(longBaselineSuppressed
+        ? {}
+        : {
+            longBaselineCpl: longBaseline?.costPerLead ?? 0,
+            longBaselineLeads: longBaseline?.leads ?? 0,
+            longBaselineSpend: longBaseline?.adSpend ?? 0,
+            longBaselineWindowLabel: longBaselineLabel,
+          }),
       suppressComparison: baselineSuppressed,
       locale,
     })
   }, [
     kpisQuery.data,
     kpisBaselineQuery.data,
+    kpisLongBaselineQuery.data,
     currentWindowLabel,
     baselineLabel,
+    longBaselineLabel,
     baselineSuppressed,
+    longBaselineSuppressed,
     locale,
   ])
 
@@ -713,7 +764,11 @@ export function HomeTab({
         <HealthCard
           category={health.category}
           insight={health.insight}
-          loading={kpisQuery.isLoading || (!baselineSuppressed && kpisBaselineQuery.isLoading)}
+          loading={
+            kpisQuery.isLoading ||
+            (!baselineSuppressed && kpisBaselineQuery.isLoading) ||
+            (!longBaselineSuppressed && kpisLongBaselineQuery.isLoading)
+          }
           locale={locale}
         />
       </div>

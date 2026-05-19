@@ -701,3 +701,110 @@ describe("categorizeHealthVsBaseline", () => {
     expect(v.insight).toMatch(/omhoog/i)
   })
 })
+
+describe("categorizeHealthVsBaseline — baseline drift cross-check", () => {
+  const baseArgs = {
+    currentWindowLabel: "7d",
+    baselineWindowLabel: "30d",
+    longBaselineWindowLabel: "90d",
+  }
+
+  it("flags drift when 30d baseline is >25% above 90d, downgrades good→watch", () => {
+    // The exact case Roy described: client sat at €55 (90d), drifted to
+    // €110 (30d), now recovered to €55 (7d). Naive comparison would say
+    // "down 50% — great!" but we're back to a still-bad number relative
+    // to the long-term reference. Verdict must reflect that.
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 55,
+      currentLeads: 10,
+      currentSpend: 550,
+      baselineCpl: 110,
+      baselineLeads: 20,
+      baselineSpend: 2200,
+      longBaselineCpl: 55,
+      longBaselineLeads: 80,
+      longBaselineSpend: 4400,
+    })
+    expect(v.category).toBe("watch")
+    expect(v.insight).toMatch(/down/i) // primary "current vs baseline" half
+    expect(v.insight).toMatch(/structurally off-track|structureel off-track/i)
+    expect(v.insight).toMatch(/55\.00 \(90d\)/) // long-baseline reference
+  })
+
+  it("does NOT flag drift when 30d baseline is in line with 90d (no warning, no downgrade)", () => {
+    // Stable client — both windows agree. The drift cross-check stays
+    // silent and we don't reach into the verdict.
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 22,
+      currentLeads: 10,
+      currentSpend: 220,
+      baselineCpl: 20,
+      baselineLeads: 40,
+      baselineSpend: 800,
+      longBaselineCpl: 19,
+      longBaselineLeads: 100,
+      longBaselineSpend: 1900,
+    })
+    expect(v.category).toBe("good")
+    expect(v.insight).not.toMatch(/off-track|structureel/i)
+    expect(v.insight).not.toMatch(/⚠/)
+  })
+
+  it("preserves action category when current is also a fresh spike + drift exists", () => {
+    // Both current AND baseline are bad; the drift warning is additive,
+    // it should not soften an action-level current-vs-baseline verdict.
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 200,
+      currentLeads: 5,
+      currentSpend: 1000,
+      baselineCpl: 110,
+      baselineLeads: 20,
+      baselineSpend: 2200,
+      longBaselineCpl: 55,
+      longBaselineLeads: 80,
+      longBaselineSpend: 4400,
+    })
+    expect(v.category).toBe("action")
+    expect(v.insight).toMatch(/up/i)
+    expect(v.insight).toMatch(/structurally off-track|structureel off-track/i)
+  })
+
+  it("skips drift detection when long-baseline has insufficient data", () => {
+    // Brand-new client — 90d window is empty, no reliable reference.
+    // Should behave exactly like the no-long-baseline case.
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 55,
+      currentLeads: 10,
+      currentSpend: 550,
+      baselineCpl: 110,
+      baselineLeads: 20,
+      baselineSpend: 2200,
+      longBaselineCpl: 0,
+      longBaselineLeads: 0,
+      longBaselineSpend: 0,
+    })
+    expect(v.category).toBe("good") // current vs baseline is down 50% = good
+    expect(v.insight).not.toMatch(/off-track|structureel/i)
+  })
+
+  it("skips drift detection when long-baseline args are not passed at all", () => {
+    // Caller didn't opt in (e.g. long window suppressed in HomeTab). Same
+    // result as Option-A-disabled — pure current-vs-baseline verdict.
+    const v = categorizeHealthVsBaseline({
+      currentCpl: 55,
+      currentLeads: 10,
+      currentSpend: 550,
+      currentWindowLabel: "7d",
+      baselineCpl: 110,
+      baselineLeads: 20,
+      baselineSpend: 2200,
+      baselineWindowLabel: "30d",
+    })
+    expect(v.category).toBe("good")
+    expect(v.insight).not.toMatch(/off-track|structureel/i)
+  })
+})

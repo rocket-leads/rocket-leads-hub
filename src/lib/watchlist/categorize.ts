@@ -162,6 +162,16 @@ const INSIGHT_STRINGS = {
     nl: (cur: string, curWin: string, baseWin: string) =>
       `CPL €${cur} (${curWin}) — nog onvoldoende baseline-activiteit (${baseWin}) om te vergelijken`,
   },
+  // Baseline drift warning — appended to the main insight when the baseline
+  // window is itself notably worse than the long-baseline. Tells the user
+  // the "improvement" they see vs baseline isn't necessarily real; they may
+  // just be back to a still-degraded number from a worse-degraded one.
+  hb_baseline_drifted: {
+    en: (base: string, baseWin: string, longBase: string, longWin: string, pct: string) =>
+      `⚠ ${baseWin} baseline €${base} is itself ${pct}% above €${longBase} (${longWin}) — structurally off-track`,
+    nl: (base: string, baseWin: string, longBase: string, longWin: string, pct: string) =>
+      `⚠ ${baseWin} baseline €${base} ligt zelf ${pct}% boven €${longBase} (${longWin}) — structureel off-track`,
+  },
 } as const
 
 /**
@@ -486,6 +496,12 @@ export async function updateWatchlistClientState(
  * Kept locale-aware via the same INSIGHT_STRINGS table so output language
  * mirrors the rest of the Health card chrome.
  */
+/** Baseline-drift detection thresholds. Any baseline CPL more than
+ *  `DRIFT_PCT_THRESHOLD`% above the long-baseline (typically 90d) triggers
+ *  the drift warning. 25% mirrors the Watch List noise band — anything
+ *  smaller is normal Meta wobble, not a structural shift. */
+const DRIFT_PCT_THRESHOLD = 25
+
 export function categorizeHealthVsBaseline(args: {
   currentCpl: number
   currentLeads: number
@@ -495,6 +511,15 @@ export function categorizeHealthVsBaseline(args: {
   baselineLeads: number
   baselineSpend: number
   baselineWindowLabel: string
+  /** Optional long-window reference (typically 90d). When provided AND the
+   *  shorter baseline is materially higher than this, the insight is
+   *  extended with a "baseline drifted high" warning so a "good" verdict
+   *  against a degraded baseline doesn't read as genuine recovery. Also
+   *  downgrades the category from `good` → `watch` in that case. */
+  longBaselineCpl?: number
+  longBaselineLeads?: number
+  longBaselineSpend?: number
+  longBaselineWindowLabel?: string
   /** When the user picked a long range (≥ baseline window length), there's no
    *  meaningful baseline to compare against. Pass true to suppress comparison
    *  and show a plain "current CPL" insight instead. */
@@ -584,6 +609,29 @@ export function categorizeHealthVsBaseline(args: {
       args.baselineWindowLabel,
       absPct.toFixed(0),
     )
+  }
+
+  // Baseline-drift cross-check. When the long baseline has real activity and
+  // the shorter baseline is materially above it, we're comparing against a
+  // degraded reference period — a "down 50%" verdict here is recovery from
+  // bad, not return to good. Append a warning to the insight AND downgrade
+  // a `good` verdict to `watch` so the user can't read it as all-clear.
+  const longCpl = args.longBaselineCpl ?? 0
+  const longLeads = args.longBaselineLeads ?? 0
+  const longSpend = args.longBaselineSpend ?? 0
+  const longLabel = args.longBaselineWindowLabel
+  if (longLabel && longCpl > 0 && longLeads > 0 && longSpend > 0) {
+    const driftPct = ((args.baselineCpl - longCpl) / longCpl) * 100
+    if (driftPct > DRIFT_PCT_THRESHOLD) {
+      insight = `${insight}. ${INSIGHT_STRINGS.hb_baseline_drifted[locale](
+        args.baselineCpl.toFixed(2),
+        args.baselineWindowLabel,
+        longCpl.toFixed(2),
+        longLabel,
+        driftPct.toFixed(0),
+      )}`
+      if (category === "good") category = "watch"
+    }
   }
 
   return { category, insight }
