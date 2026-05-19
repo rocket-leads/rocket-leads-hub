@@ -9,7 +9,6 @@ import {
   CreditCard,
   ExternalLink,
 } from "lucide-react"
-import { ClientSearch } from "@/components/client-search"
 import { BackButton } from "./back-button"
 import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edit-cell"
 import { buttonVariants } from "@/components/ui/button"
@@ -147,9 +146,10 @@ export function ClientHeader({ client, canViewBilling }: Props) {
 
   return (
     <div className="mb-6">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center mb-5">
         <BackButton />
-        <ClientSearch />
+        {/* Global client search moved to the dashboard topbar so it's reachable
+            from every page, not just the client detail surface. */}
       </div>
 
       <div className="-mx-4 px-4 py-4 rounded-xl bg-gradient-to-r from-muted/30 to-transparent">

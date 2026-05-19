@@ -38,6 +38,14 @@ export const DICTIONARY = {
   "account.sign_out": { nl: "Uitloggen", en: "Sign out" },
   "account.user_fallback": { nl: "Gebruiker", en: "User" },
 
+  // ─── Global client search (top bar, ⌘K) ──────────────────────────────
+  "search.trigger.placeholder": { nl: "Klant zoeken...", en: "Search client..." },
+  "search.input.placeholder": { nl: "Typ een klantnaam...", en: "Type a client name..." },
+  "search.loading": { nl: "Klanten laden...", en: "Loading clients..." },
+  "search.empty": { nl: "Geen klanten gevonden", en: "No clients found" },
+  "search.board.onboarding": { nl: "Onboarding", en: "Onboarding" },
+  "search.board.current": { nl: "Actief", en: "Active" },
+
   // ─── Theme + locale toggles ───────────────────────────────────────────
   "theme.dark": { nl: "Donkere modus", en: "Dark mode" },
   "theme.light": { nl: "Lichte modus", en: "Light mode" },
