@@ -237,6 +237,19 @@ async function fetchSummary(
 
   // Slice daily rows into the two 7d windows and aggregate to per-campaign totals.
   const inWindow = (date: string, s: string, e: string) => date >= s && date <= e
+  // Monday `dateCreated` text often carries a time component
+  // ("2026-05-17 06:50:00"); a naive lex-compare against a YYYY-MM-DD end
+  // date drops every item on the end-date because " 06:50:00" sorts after
+  // the end-date string. Normalize to the YYYY-MM-DD prefix. Same fix as
+  // calculateKpis() in lib/clients/kpis.ts — this code path was missed
+  // when that one was patched (Roy 2026-05, weekly update showed Mon-Sat
+  // instead of Mon-Sun).
+  const inMondayDateRange = (rawDate: string, s: string, e: string): boolean => {
+    if (!rawDate) return false
+    const day = rawDate.match(/(\d{4}-\d{2}-\d{2})/)?.[1]
+    if (!day) return false
+    return day >= s && day <= e
+  }
   const filtered = aggregateMetaDailyToTotals(
     dailyFiltered.filter((d) => inWindow(d.date, startDate, endDate))
   )
@@ -252,10 +265,10 @@ async function fetchSummary(
   // it covers access issues, broken Zapier sync, wrong column mapping, etc. Appointments
   // can only come from Monday CRM, so they always read from `items`.
   const mondayLeads = monday.ok
-    ? items.filter((i) => i.dateCreated >= startDate && i.dateCreated <= endDate).length
+    ? items.filter((i) => inMondayDateRange(i.dateCreated, startDate, endDate)).length
     : 0
   const mondayPrevLeads = monday.ok
-    ? items.filter((i) => i.dateCreated >= prevStartDate && i.dateCreated <= prevEndDate).length
+    ? items.filter((i) => inMondayDateRange(i.dateCreated, prevStartDate, prevEndDate)).length
     : 0
   const metaLeadsReported = filtered.reduce((sum, i) => sum + i.leads, 0)
   const metaPrevLeadsReported = prevFiltered.reduce((sum, i) => sum + i.leads, 0)
@@ -277,7 +290,11 @@ async function fetchSummary(
   }
   if (monday.ok) {
     for (const item of items) {
-      if (item.dateCreated >= prevStartDate && item.dateCreated <= prevEndDate) prevActiveDates.add(item.dateCreated)
+      // Normalize the same way as inMondayDateRange — strip the time off
+      // dateCreated before comparing AND before adding to the set, so a set
+      // entry is a clean YYYY-MM-DD that lines up with `d.date` rows above.
+      const day = item.dateCreated.match(/(\d{4}-\d{2}-\d{2})/)?.[1]
+      if (day && day >= prevStartDate && day <= prevEndDate) prevActiveDates.add(day)
     }
   }
   const prevPeriodReliable = isPrevPeriodReliable(prevStartDate, prevEndDate, prevActiveDates.size, prevAdSpend)
@@ -290,7 +307,12 @@ async function fetchSummary(
     ? fillTrend(
         metaByDate.map((d) => {
           if (monday.ok) {
-            const mondayLeadsForDay = items.filter((i) => i.dateCreated === d.date).length
+            // Strict equality on the date portion only — Monday's dateCreated
+            // includes a time so the legacy `i.dateCreated === d.date`
+            // comparison silently returned 0 for every day.
+            const mondayLeadsForDay = items.filter(
+              (i) => i.dateCreated.match(/(\d{4}-\d{2}-\d{2})/)?.[1] === d.date,
+            ).length
             // Use Monday count if it has any leads; otherwise fall back to Meta for that day.
             return { date: d.date, spend: d.spend, leads: mondayLeadsForDay > 0 ? mondayLeadsForDay : d.leads }
           }

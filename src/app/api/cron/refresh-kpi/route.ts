@@ -75,7 +75,13 @@ function buildDailyRollups(
     }
   }
   for (const it of mondayItems) {
-    const lead = byDate.get(it.dateCreated)
+    // Monday `dateCreated` text often carries a time component
+    // ("2026-05-17 06:50:00"); the byDate map is keyed on YYYY-MM-DD, so a
+    // raw lookup misses for every item that has a time and the day's lead
+    // count silently reads 0. Strip to YYYY-MM-DD before lookup.
+    const day = it.dateCreated.match(/(\d{4}-\d{2}-\d{2})/)?.[1]
+    if (!day) continue
+    const lead = byDate.get(day)
     if (lead) lead.mondayLeads += 1
   }
   return Array.from(byDate.values())
