@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Sparkles,
@@ -409,6 +409,10 @@ function ActiveDraftEditor({
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const isEmail = draft.channel === "email"
+  // Autosave UI state: "idle" before first edit, "saving" while the
+  // PATCH is in flight, "saved" briefly after success. Drives the
+  // small grey marker next to the footer buttons.
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle")
 
   // Re-derive the AM's first name from the template slug so the WhatsApp
   // sign-off in the preview matches what the customer will receive.
@@ -485,6 +489,49 @@ function ActiveDraftEditor({
 
   const inputsDisabled = sendMutation.isPending || sent
 
+  // Autosave: debounced PATCH of `parts` whenever the AM edits anything.
+  // Skips the initial mount (parts === draft.parts → nothing to save yet)
+  // and skips during/after a send to avoid clobbering the row right as
+  // we're flipping it to status='sent'.
+  //
+  // `latestPartsRef` keeps a ref to the most recent parts so the
+  // unmount flush can fire the last save without a stale closure (e.g.,
+  // AM types and immediately closes the sheet within the debounce
+  // window). 800ms debounce — long enough that we don't hammer the API
+  // mid-typing, short enough that "I closed it right after editing"
+  // doesn't lose work.
+  const initialPartsRef = useRef(parts)
+  const latestPartsRef = useRef(parts)
+  useEffect(() => {
+    latestPartsRef.current = parts
+  }, [parts])
+
+  useEffect(() => {
+    if (inputsDisabled) return
+    // No edits yet (parts identical-by-reference to the initial seed) —
+    // don't fire a save just because we mounted.
+    if (parts === initialPartsRef.current) return
+
+    setSaveState("saving")
+    const handle = setTimeout(() => {
+      void savePartsToDraft(draft.id, parts).then((ok) => {
+        setSaveState(ok ? "saved" : "idle")
+      })
+    }, 800)
+    return () => clearTimeout(handle)
+  }, [parts, draft.id, inputsDisabled])
+
+  // Flush on unmount (sheet close, switch to another draft) so a final
+  // edit in the last 800ms isn't lost. Skips when we're mid-send.
+  useEffect(() => {
+    return () => {
+      if (inputsDisabled) return
+      if (latestPartsRef.current === initialPartsRef.current) return
+      void savePartsToDraft(draft.id, latestPartsRef.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.id])
+
   return (
     <>
       <div className="flex items-center justify-between border-b border-border/60 px-5 py-3 shrink-0">
@@ -522,24 +569,40 @@ function ActiveDraftEditor({
       </div>
 
       <footer className="border-t border-border/60 px-5 py-3 flex items-center justify-between shrink-0 bg-muted/20 dark:bg-zinc-900/40">
-        {/* Outlined button with skip icon — was a ghost button with the
-            English "Dismiss" label that read as cancellation of the whole
-            dialog instead of "skip this client this week". */}
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => dismissMutation.mutate()}
-          disabled={inputsDisabled || dismissMutation.isPending}
-          className="border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
-          title="Sla deze klant deze week over (verschijnt niet meer in de queue)"
-        >
-          {dismissMutation.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-          ) : (
-            <SkipForward className="h-3.5 w-3.5 mr-1.5" />
+        <div className="flex items-center gap-3">
+          {/* Outlined button with skip icon — was a ghost button with the
+              English "Dismiss" label that read as cancellation of the whole
+              dialog instead of "skip this client this week". */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => dismissMutation.mutate()}
+            disabled={inputsDisabled || dismissMutation.isPending}
+            className="border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+            title="Sla deze klant deze week over (verschijnt niet meer in de queue)"
+          >
+            {dismissMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+            ) : (
+              <SkipForward className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Overslaan
+          </Button>
+          {/* Autosave indicator — only renders when something has happened.
+              "Opslaan…" during PATCH, "Opgeslagen" briefly after success. */}
+          {saveState === "saving" && (
+            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Opslaan…
+            </span>
           )}
-          Overslaan
-        </Button>
+          {saveState === "saved" && (
+            <span className="text-[11px] text-muted-foreground/70 flex items-center gap-1">
+              <Check className="h-3 w-3 text-emerald-500" />
+              Opgeslagen
+            </span>
+          )}
+        </div>
         <Button
           size="sm"
           onClick={() => sendMutation.mutate()}
@@ -569,6 +632,22 @@ function ActiveDraftEditor({
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
+
+/** Autosave the draft's editable parts. Fire-and-forget at most call sites
+ *  (the user shouldn't see "save failed" toasts for a background save), so
+ *  returns a boolean instead of throwing — callers can flip the UI state. */
+async function savePartsToDraft(draftId: string, parts: EditableParts): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/weekly-update-drafts/${draftId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ parts }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
 
 /** Mirror of `renderFromParts` from the template module — duplicated here
  *  to avoid a deep import chain from a client component into a route
