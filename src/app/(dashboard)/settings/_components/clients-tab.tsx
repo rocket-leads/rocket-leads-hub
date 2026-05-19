@@ -4,7 +4,7 @@ import { useState, useMemo } from "react"
 import { ChevronDown, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ClientInformationPanel } from "@/components/client-information-panel"
-import { mondayStatusToHub, statusLabel, statusTone, type ClientStatus } from "@/lib/clients/status"
+import { mondayStatusToHub, statusLabelI18n, statusTone, type ClientStatus } from "@/lib/clients/status"
 import type { MondayClient } from "@/lib/integrations/monday"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
@@ -87,7 +87,7 @@ export function ClientsTab({ clients }: Props) {
               )}
             >
               <span className={cn("h-1.5 w-1.5 rounded-full", tone.dot)} />
-              {statusLabel(status)}
+              {statusLabelI18n(status, locale)}
               <span className="text-[10px] tabular-nums text-muted-foreground/60">
                 {counts[status]}
               </span>
@@ -130,7 +130,7 @@ export function ClientsTab({ clients }: Props) {
                     className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium shrink-0 ${tone.pill}`}
                   >
                     <span className={`h-1 w-1 rounded-full ${tone.dot}`} />
-                    {statusLabel(hubStatus)}
+                    {statusLabelI18n(hubStatus, locale)}
                   </span>
                   <span className="text-[10px] uppercase tracking-wider text-muted-foreground/40 shrink-0">
                     {client.boardType}
@@ -151,7 +151,7 @@ export function ClientsTab({ clients }: Props) {
         {filtered.length === 0 && (
           <p className="text-sm text-muted-foreground py-8 text-center">
             {t("settings.clients.empty", locale, {
-              status: statusLabel(statusFilter).toLowerCase(),
+              status: statusLabelI18n(statusFilter, locale).toLowerCase(),
               searchSuffix: search ? t("settings.clients.empty_search_suffix", locale) : "",
             })}
           </p>

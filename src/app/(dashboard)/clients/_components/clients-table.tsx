@@ -21,12 +21,12 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { AgreementSummary } from "@/app/api/clients/agreements-summary/route"
 import type { QuickPreset } from "@/types/targets"
 import {
-  STATUS_LABELS,
+  STATUS_LABEL_KEYS,
   STATUS_OPTIONS,
   mondayStatusToHub,
   statusLabel,
   type ClientStatus,
-  PHASE_LABELS,
+  PHASE_LABEL_KEYS,
   PHASE_OPTIONS,
   mondayLabelToOnboardingPhase,
   type OnboardingPhase,
@@ -615,7 +615,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           onChange: setStatusFilter,
           options: [
             { value: "All", label: t("clients.filter.status_all", locale) },
-            ...STATUS_OPTIONS.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+            ...STATUS_OPTIONS.map((s) => ({ value: s, label: t(STATUS_LABEL_KEYS[s], locale) })),
           ],
         }]
       : [{
@@ -625,7 +625,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           onChange: setPhaseFilter,
           options: [
             { value: "All", label: t("clients.filter.phase_all", locale) },
-            ...PHASE_OPTIONS.map((p) => ({ value: p, label: PHASE_LABELS[p] })),
+            ...PHASE_OPTIONS.map((p) => ({ value: p, label: t(PHASE_LABEL_KEYS[p], locale) })),
           ],
         }]),
     {

@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Languages } from "lucide-react"
 import { LOCALES, type Locale, isLocale } from "@/lib/i18n/types"
+import { LOCALE_CHANGE_EVENT } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 
 type Props = {
@@ -45,6 +46,19 @@ export function LocaleToggle({ initialLocale }: Props) {
     const next = LOCALES[(idx + 1) % LOCALES.length]
     setLocale(next)
     writeLocaleCookie(next)
+    // Broadcast to every client component using `useLocale()` so they re-render
+    // with the new locale immediately — without this the kolomheaders, KPI cards,
+    // and other client surfaces stay on the previous locale until the page is
+    // hard-refreshed.
+    if (typeof document !== "undefined") {
+      document.dispatchEvent(new CustomEvent<Locale>(LOCALE_CHANGE_EVENT, { detail: next }))
+    }
+    // Cross-tab signal — storage events only fire in OTHER tabs of the same
+    // origin. Writing a throwaway marker lets useLocale() in those tabs pick
+    // up the cookie change without needing a focus/refresh.
+    try {
+      window.localStorage.setItem("rl-locale-marker", String(Date.now()))
+    } catch {}
     // Persist to DB — fire-and-forget, the cookie is the source of truth
     // for the next render anyway.
     void fetch("/api/account/locale", {

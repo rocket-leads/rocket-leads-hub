@@ -38,6 +38,7 @@ import { CommunicationTab } from "@/app/(dashboard)/clients/[id]/_components/com
 import { MeetingsTab } from "@/app/(dashboard)/clients/[id]/_components/meetings-tab"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { InboxItem, InboxSource, TaskStatus, UpdateStatus } from "@/types/inbox"
 
 export type InboxUser = { id: string; name: string | null; email: string; role: string }
@@ -88,14 +89,16 @@ type TaskFilter = "all" | "open" | "in_progress" | "done"
  *  uncluttered when (e.g.) the user hasn't connected Slack yet. */
 type TaskSourceFilter = "all" | InboxSource
 
-const TASK_SOURCE_LABELS: Record<InboxSource, string> = {
-  manual: "Manual",
-  watchlist: "Watchlist",
-  meeting: "Meetings",
-  monday: "Monday",
-  trengo: "Trengo",
-  slack: "Slack",
-  automation: "Automation",
+/** Dictionary keys for the source chip labels. Resolved via `t()` at render
+ *  time so the strip flips locale together with the rest of the inbox. */
+const TASK_SOURCE_LABEL_KEYS: Record<InboxSource, DictionaryKey> = {
+  manual: "inbox.source.manual",
+  watchlist: "inbox.source.watchlist",
+  meeting: "inbox.source.meetings",
+  monday: "inbox.source.monday",
+  trengo: "inbox.source.trengo",
+  slack: "inbox.source.slack",
+  automation: "inbox.source.automation",
 }
 
 /** Tab/filter labels are dictionary-keyed; icons + ids stay static so a
@@ -2613,6 +2616,7 @@ function TaskSourceChips({
   counts: Partial<Record<InboxSource, number>>
   totalCount: number
 }) {
+  const locale = useLocale()
   // Only render the strip if there's more than one source with content —
   // a single-source workspace doesn't need the affordance.
   const populatedSources = (Object.keys(counts) as InboxSource[]).filter(
@@ -2625,7 +2629,7 @@ function TaskSourceChips({
       <SourceChip
         active={value === "all"}
         onClick={() => onChange("all")}
-        label="All sources"
+        label={t("inbox.source.all", locale)}
         count={totalCount}
       />
       {populatedSources.map((source) => (
@@ -2633,7 +2637,7 @@ function TaskSourceChips({
           key={source}
           active={value === source}
           onClick={() => onChange(source)}
-          label={TASK_SOURCE_LABELS[source]}
+          label={t(TASK_SOURCE_LABEL_KEYS[source], locale)}
           count={counts[source] ?? 0}
         />
       ))}

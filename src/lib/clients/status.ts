@@ -1,3 +1,7 @@
+import type { DictionaryKey } from "@/lib/i18n/dictionary"
+import { t } from "@/lib/i18n/t"
+import type { Locale } from "@/lib/i18n/types"
+
 /**
  * Hub-canonical client statuses. The Hub only displays four statuses, while
  * Monday holds many more (variants of "Stopt", "Subcampaigns only", "Kick off",
@@ -7,6 +11,12 @@
  */
 export type ClientStatus = "onboarding" | "live" | "on_hold" | "churned"
 
+/**
+ * Canonical EN labels — kept stable because they're written back to Monday
+ * (via `hubStatusToMondayLabel`) and used as comparison keys throughout the
+ * codebase. UI-facing surfaces should use STATUS_LABEL_KEYS + t() instead so
+ * Dutch users see Nederlands.
+ */
 export const STATUS_LABELS: Record<ClientStatus, string> = {
   onboarding: "Onboarding",
   live: "Live",
@@ -14,15 +24,38 @@ export const STATUS_LABELS: Record<ClientStatus, string> = {
   churned: "Churned",
 }
 
+/** Dictionary keys for translation. Use with `t(STATUS_LABEL_KEYS[s], locale)`
+ *  wherever a status is shown to the user — filter dropdowns, pills, headers.
+ *  The canonical EN strings above stay reserved for Monday writes + analytics. */
+export const STATUS_LABEL_KEYS: Record<ClientStatus, DictionaryKey> = {
+  onboarding: "client.status.onboarding",
+  live: "client.status.live",
+  on_hold: "client.status.on_hold",
+  churned: "client.status.churned",
+}
+
 /** Label for missing / unmapped status. Used everywhere the UI renders a
  *  status pill — so empty Monday statuses surface as a muted dash instead of
  *  a misleading "Onboarding" label. */
 export const STATUS_LABEL_NONE = "—"
 
-/** Look up the label for a possibly-null status without exploding the type
- *  system at call sites that previously did `STATUS_LABELS[status]`. */
+/** Look up the canonical EN label for a possibly-null status. Used for
+ *  sorting, server-side identifiers, and analytics where the locale-independent
+ *  value matters. UI surfaces should call `statusLabelI18n` instead. */
 export function statusLabel(status: ClientStatus | null): string {
   return status === null ? STATUS_LABEL_NONE : STATUS_LABELS[status]
+}
+
+/** Locale-aware status label — use this for everything the user reads.
+ *  Null falls back to the muted dash; the four canonical statuses route
+ *  through the dictionary. */
+export function statusLabelI18n(status: ClientStatus | null, locale: Locale): string {
+  return status === null ? STATUS_LABEL_NONE : t(STATUS_LABEL_KEYS[status], locale)
+}
+
+/** Locale-aware phase label — display variant for onboarding phase. */
+export function phaseLabelI18n(phase: OnboardingPhase, locale: Locale): string {
+  return t(PHASE_LABEL_KEYS[phase], locale)
 }
 
 /** Order shown in dropdowns and filters. */
@@ -147,9 +180,10 @@ export type OnboardingPhase =
   | "on_hold"
   | "debt_collection"
 
-/** Display labels — must match the Monday status column options EXACTLY,
- *  because these strings are the dropdown options AND the value written back
- *  to Monday on edit. Renaming an option in Monday means renaming it here too. */
+/** Canonical EN labels — must match the Monday status column options EXACTLY,
+ *  because these strings are written back to Monday on edit. Renaming an option
+ *  in Monday means renaming it here too. UI surfaces should use
+ *  PHASE_LABEL_KEYS + t() to display the locale-aware version. */
 export const PHASE_LABELS: Record<OnboardingPhase, string> = {
   kickoff_scheduled: "Kickoff scheduled",
   waiting_on_client: "Waiting on client",
@@ -158,6 +192,19 @@ export const PHASE_LABELS: Record<OnboardingPhase, string> = {
   launch: "LAUNCH 🚀",
   on_hold: "On hold",
   debt_collection: "Debt collection agency",
+}
+
+/** Dictionary keys for translation. Use with `t(PHASE_LABEL_KEYS[p], locale)`
+ *  in dropdowns, pills and any other display surface. Monday writes still go
+ *  through PHASE_LABELS above (canonical EN). */
+export const PHASE_LABEL_KEYS: Record<OnboardingPhase, DictionaryKey> = {
+  kickoff_scheduled: "client.phase.kickoff_scheduled",
+  waiting_on_client: "client.phase.waiting_on_client",
+  create_campaign: "client.phase.create_campaign",
+  waiting_for_feedback: "client.phase.waiting_for_feedback",
+  launch: "client.phase.launch",
+  on_hold: "client.phase.on_hold",
+  debt_collection: "client.phase.debt_collection",
 }
 
 /** Display order — mirrors the chronological flow from kick-off to launch,

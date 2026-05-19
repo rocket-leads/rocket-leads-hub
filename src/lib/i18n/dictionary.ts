@@ -373,6 +373,14 @@ export const DICTIONARY = {
   "inbox.source.meeting": { nl: "Meeting", en: "Meeting" },
   "inbox.source.email": { nl: "Email", en: "Email" },
   "inbox.source.tooltip_prefix": { nl: "Bron:", en: "Source:" },
+  // Additional inbox source labels — used by the source filter chips on
+  // /inbox. Brand names (Monday, Trengo, Slack) stay identical across locales.
+  "inbox.source.manual": { nl: "Handmatig", en: "Manual" },
+  "inbox.source.meetings": { nl: "Meetings", en: "Meetings" },
+  "inbox.source.monday": { nl: "Monday", en: "Monday" },
+  "inbox.source.trengo": { nl: "Trengo", en: "Trengo" },
+  "inbox.source.slack": { nl: "Slack", en: "Slack" },
+  "inbox.source.all": { nl: "Alle bronnen", en: "All sources" },
 
   // ─── Targets ──────────────────────────────────────────────────────────
   "targets.title": { nl: "Targets", en: "Targets" },
@@ -404,6 +412,22 @@ export const DICTIONARY = {
   "targets.pillar.showup.no_target": { nl: "{taken}/{qualified} opgekomen", en: "{taken}/{qualified} showed up" },
   "targets.pillar.conv.with_target": { nl: "target {target} · {deals}/{taken}", en: "target {target} · {deals}/{taken}" },
   "targets.pillar.conv.no_target": { nl: "{deals}/{taken} gesloten", en: "{deals}/{taken} closed" },
+
+  // ─── Client status + onboarding phase (display labels) ───────────────
+  // Canonical EN labels in src/lib/clients/status.ts stay reserved for Monday
+  // writes — these dictionary entries drive everything the user reads.
+  "client.status.onboarding": { nl: "Onboarding", en: "Onboarding" },
+  "client.status.live": { nl: "Live", en: "Live" },
+  "client.status.on_hold": { nl: "On Hold", en: "On Hold" },
+  "client.status.churned": { nl: "Gestopt", en: "Churned" },
+
+  "client.phase.kickoff_scheduled": { nl: "Kickoff ingepland", en: "Kickoff scheduled" },
+  "client.phase.waiting_on_client": { nl: "Wachten op klant", en: "Waiting on client" },
+  "client.phase.create_campaign": { nl: "Campagne opzetten", en: "Create campaign" },
+  "client.phase.waiting_for_feedback": { nl: "Wachten op feedback", en: "Waiting for feedback" },
+  "client.phase.launch": { nl: "LAUNCH 🚀", en: "LAUNCH 🚀" },
+  "client.phase.on_hold": { nl: "On Hold", en: "On Hold" },
+  "client.phase.debt_collection": { nl: "Incassobureau", en: "Debt collection agency" },
 
   // ─── Client detail page ───────────────────────────────────────────────
   // Tab strip
@@ -651,6 +675,31 @@ export const DICTIONARY = {
   "client.billing.invoices.load_failed": { nl: "Facturatie-data kon niet geladen worden.", en: "Failed to load billing data." },
 
   // Summary cards (4 across the top)
+  // Billing / agreement summary tiles (MRR + ad budget)
+  "client.billing.summary.mrr": { nl: "MRR", en: "MRR" },
+  "client.billing.summary.mrr.sub": { nl: "terugkerend per maand", en: "recurring per month" },
+  "client.billing.summary.ad_budget": { nl: "Advertentiebudget", en: "Ad budget" },
+  "client.billing.summary.ad_budget.sub": { nl: "per maand", en: "per month" },
+
+  // Agreement section (top of Billing tab)
+  "client.agreement.title": { nl: "Overeenkomst", en: "Agreement" },
+  "client.agreement.subtitle": { nl: "Wat deze klant per maand betaalt voor deze campagne.", en: "What this client pays per month for this campaign." },
+  "client.agreement.field.ad_budget": { nl: "Advertentiebudget", en: "Ad budget" },
+  "client.agreement.field.platforms": { nl: "Platforms", en: "Platforms" },
+  "client.agreement.field.platform_fee": { nl: "{platform} fee", en: "{platform} fee" },
+  "client.agreement.field.follow_up": { nl: "Leadopvolging", en: "Lead follow-up" },
+  "client.agreement.follow_up.by_rl": { nl: "Door Rocket Leads", en: "Done by Rocket Leads" },
+  "client.agreement.follow_up.by_client": { nl: "Door klant", en: "Done by client" },
+  "client.agreement.field.follow_up_fee": { nl: "Opvolg fee", en: "Follow-up fee" },
+  "client.agreement.field.notes": { nl: "Notities", en: "Notes" },
+  "client.agreement.notes.optional": { nl: "Optioneel", en: "Optional" },
+  "client.agreement.error.load_failed": { nl: "Overeenkomst kon niet geladen worden.", en: "Failed to load agreement." },
+  "client.agreement.error.save_failed": { nl: "Opslaan mislukt", en: "Save failed" },
+  "client.agreement.status.saved": { nl: "Opgeslagen", en: "Saved" },
+  "client.agreement.status.unsaved": { nl: "Niet-opgeslagen wijzigingen", en: "Unsaved changes" },
+  "client.agreement.action.discard": { nl: "Verwerpen", en: "Discard" },
+  "client.agreement.action.save": { nl: "Opslaan", en: "Save" },
+
   "client.billing.summary.invoiced": { nl: "Totaal gefactureerd", en: "Total invoiced" },
   "client.billing.summary.paid": { nl: "Totaal betaald", en: "Total paid" },
   "client.billing.summary.outstanding": { nl: "Openstaand", en: "Outstanding" },

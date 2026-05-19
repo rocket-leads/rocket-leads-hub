@@ -16,6 +16,8 @@ import {
   agreementMonthly,
 } from "@/lib/clients/agreement"
 import { BillingSectionShell } from "./billing-section-shell"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 const PLATFORM_LABEL: Record<Platform, string> = {
   meta: "Meta",
@@ -39,6 +41,7 @@ type Props = {
  * the Billing page consolidates them into a single invoice at send time.
  */
 export function AgreementSection({ mondayItemId }: Props) {
+  const locale = useLocale()
   const queryClient = useQueryClient()
   const queryKey = ["agreement", mondayItemId]
 
@@ -70,7 +73,7 @@ export function AgreementSection({ mondayItemId }: Props) {
 
   if (query.isLoading || !draft) {
     return (
-      <BillingSectionShell icon={Handshake} title="Agreement" subtitle="What this client pays per month for this campaign.">
+      <BillingSectionShell icon={Handshake} title={t("client.agreement.title", locale)} subtitle={t("client.agreement.subtitle", locale)}>
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-40 w-full" />
       </BillingSectionShell>
@@ -79,9 +82,9 @@ export function AgreementSection({ mondayItemId }: Props) {
 
   if (query.isError) {
     return (
-      <BillingSectionShell icon={Handshake} title="Agreement" subtitle="What this client pays per month for this campaign.">
+      <BillingSectionShell icon={Handshake} title={t("client.agreement.title", locale)} subtitle={t("client.agreement.subtitle", locale)}>
         <div className="py-6 text-sm text-destructive">
-          {query.error instanceof Error ? query.error.message : "Failed to load agreement."}
+          {query.error instanceof Error ? query.error.message : t("client.agreement.error.load_failed", locale)}
         </div>
       </BillingSectionShell>
     )
@@ -117,12 +120,12 @@ export function AgreementSection({ mondayItemId }: Props) {
         body: JSON.stringify(draft),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? "Save failed")
+      if (!res.ok) throw new Error(data.error ?? t("client.agreement.error.save_failed", locale))
       await queryClient.invalidateQueries({ queryKey })
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 1500)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed")
+      setError(e instanceof Error ? e.message : t("client.agreement.error.save_failed", locale))
     } finally {
       setSaving(false)
     }
@@ -136,17 +139,17 @@ export function AgreementSection({ mondayItemId }: Props) {
   return (
     <BillingSectionShell
       icon={Handshake}
-      title="Agreement"
-      subtitle="What this client pays per month for this campaign."
+      title={t("client.agreement.title", locale)}
+      subtitle={t("client.agreement.subtitle", locale)}
     >
       {/* Totals — same SummaryCard pattern as the invoices section above */}
       <div className="grid grid-cols-2 gap-3">
-        <SummaryCard title="MRR" value={fmtEuro(mrr)} sub="recurring per month" />
-        <SummaryCard title="Ad budget" value={fmtEuro(draft.ad_budget)} sub="per month" />
+        <SummaryCard title={t("client.billing.summary.mrr", locale)} value={fmtEuro(mrr)} sub={t("client.billing.summary.mrr.sub", locale)} />
+        <SummaryCard title={t("client.billing.summary.ad_budget", locale)} value={fmtEuro(draft.ad_budget)} sub={t("client.billing.summary.ad_budget.sub", locale)} />
       </div>
 
       <div className="rounded-md border bg-card p-4 space-y-2">
-        <FieldRow label="Ad budget">
+        <FieldRow label={t("client.agreement.field.ad_budget", locale)}>
           <EuroInput
             value={draft.ad_budget}
             onChange={(v) => patch({ ad_budget: v })}
@@ -154,7 +157,7 @@ export function AgreementSection({ mondayItemId }: Props) {
           />
         </FieldRow>
 
-        <FieldRow label="Platforms">
+        <FieldRow label={t("client.agreement.field.platforms", locale)}>
           <div className="flex flex-wrap gap-1.5">
             {PLATFORMS.map((p) => {
               const active = draft.platforms.includes(p)
@@ -178,7 +181,7 @@ export function AgreementSection({ mondayItemId }: Props) {
         </FieldRow>
 
         {draft.platforms.map((p) => (
-          <FieldRow key={p} label={`${PLATFORM_LABEL[p]} fee`}>
+          <FieldRow key={p} label={t("client.agreement.field.platform_fee", locale, { platform: PLATFORM_LABEL[p] })}>
             <EuroInput
               value={draft.platform_fees[p] ?? 0}
               onChange={(v) =>
@@ -189,7 +192,7 @@ export function AgreementSection({ mondayItemId }: Props) {
           </FieldRow>
         ))}
 
-        <FieldRow label="Lead follow-up">
+        <FieldRow label={t("client.agreement.field.follow_up", locale)}>
           <div className="flex items-center gap-3">
             <ToggleSwitch
               on={draft.follow_up}
@@ -201,13 +204,15 @@ export function AgreementSection({ mondayItemId }: Props) {
                 draft.follow_up ? "text-foreground" : "text-muted-foreground/60",
               )}
             >
-              {draft.follow_up ? "Done by Rocket Leads" : "Done by client"}
+              {draft.follow_up
+                ? t("client.agreement.follow_up.by_rl", locale)
+                : t("client.agreement.follow_up.by_client", locale)}
             </span>
           </div>
         </FieldRow>
 
         {draft.follow_up && (
-          <FieldRow label="Follow-up fee">
+          <FieldRow label={t("client.agreement.field.follow_up_fee", locale)}>
             <EuroInput
               value={draft.follow_up_fee}
               onChange={(v) => patch({ follow_up_fee: v })}
@@ -216,11 +221,11 @@ export function AgreementSection({ mondayItemId }: Props) {
           </FieldRow>
         )}
 
-        <FieldRow label="Notes">
+        <FieldRow label={t("client.agreement.field.notes", locale)}>
           <Input
             value={draft.notes}
             onChange={(e) => patch({ notes: e.target.value })}
-            placeholder="Optional"
+            placeholder={t("client.agreement.notes.optional", locale)}
             className="h-8 text-sm"
           />
         </FieldRow>
@@ -233,20 +238,20 @@ export function AgreementSection({ mondayItemId }: Props) {
               <span className="text-destructive">{error}</span>
             ) : savedFlash ? (
               <span className="inline-flex items-center gap-1.5 text-emerald-500">
-                <Check className="h-3.5 w-3.5" /> Saved
+                <Check className="h-3.5 w-3.5" /> {t("client.agreement.status.saved", locale)}
               </span>
             ) : (
-              <span className="text-muted-foreground">Unsaved changes</span>
+              <span className="text-muted-foreground">{t("client.agreement.status.unsaved", locale)}</span>
             )}
           </span>
           {dirty && (
             <div className="flex items-center gap-2">
               <Button size="sm" variant="ghost" onClick={discard} disabled={saving}>
-                Discard
+                {t("client.agreement.action.discard", locale)}
               </Button>
               <Button size="sm" onClick={save} disabled={saving}>
                 {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Save
+                {t("client.agreement.action.save", locale)}
               </Button>
             </div>
           )}

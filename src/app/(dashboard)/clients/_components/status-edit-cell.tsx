@@ -6,13 +6,15 @@ import { useRouter } from "next/navigation"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Check } from "lucide-react"
 import {
-  STATUS_LABELS,
+  STATUS_LABEL_KEYS,
   STATUS_OPTIONS,
   hubStatusToMondayLabel,
-  statusLabel,
+  statusLabelI18n,
   statusTone,
   type ClientStatus,
 } from "@/lib/clients/status"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 type Props = {
   mondayItemId: string
@@ -25,6 +27,7 @@ type Props = {
 
 export function StatusEditCell({ mondayItemId, status, readOnly }: Props) {
   const router = useRouter()
+  const locale = useLocale()
   const [open, setOpen] = useState(false)
   const [optimisticStatus, setOptimisticStatus] = useState<ClientStatus | null>(status)
 
@@ -56,7 +59,7 @@ export function StatusEditCell({ mondayItemId, status, readOnly }: Props) {
       className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium ${tone.pill}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
-      {statusLabel(optimisticStatus)}
+      {statusLabelI18n(optimisticStatus, locale)}
     </span>
   )
 
@@ -88,7 +91,7 @@ export function StatusEditCell({ mondayItemId, status, readOnly }: Props) {
           >
             <span className="inline-flex items-center gap-2">
               <span className={`h-1.5 w-1.5 rounded-full ${statusTone(opt).dot}`} />
-              {STATUS_LABELS[opt]}
+              {t(STATUS_LABEL_KEYS[opt], locale)}
             </span>
             {opt === optimisticStatus && <Check className="h-3.5 w-3.5 text-foreground/70" />}
           </button>
