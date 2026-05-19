@@ -153,9 +153,22 @@ export async function sendTrengoTemplateAsUser(
   }
   if (!res.ok) {
     const errText = await res.text().catch(() => "")
-    // Include template name + var count in the thrown message so the
-    // dialog's red error banner is self-debuggable (Trengo errors don't
-    // say which template they couldn't validate against).
+    // Translate the specific "outside 24h + SMS fallback" Trengo response
+    // into an actionable message. This error pattern almost always means
+    // the template isn't approved on the WhatsApp channel that owns the
+    // ticket — Trengo silently degrades the request to free-text, which
+    // then trips the 24h-window check.
+    const channelMatch = errText.match(
+      /Message is outside the 24 hour window[\s\S]*?channel \(([0-9a-f-]{36})\)/,
+    )
+    if (channelMatch) {
+      const channelUuid = channelMatch[1]
+      throw new Error(
+        `Template '${templateName}' is niet approved op WhatsApp channel ${channelUuid}. ` +
+          `Approve 'm in Trengo → Settings → Channels → de betreffende channel → Templates, ` +
+          `en probeer dan opnieuw.`,
+      )
+    }
     const diag = `template=${templateName} vars=${safeParams.length}`
     throw new Error(
       `Trengo template send failed (${res.status}, ${diag}): ${errText.slice(0, 300)}`,
