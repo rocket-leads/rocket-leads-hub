@@ -79,9 +79,44 @@ async function loadHubUserName(userId: string): Promise<{ name: string | null } 
 }
 
 /**
+ * Look up the Hub user id of the AM assigned to this client on Monday.
+ *
+ * Why: the template (`rl_weekly_<voornaam>`) belongs to the AM, not to
+ * whoever happens to be logged in. When Roy (admin) reviews Danny's
+ * client in the queue, the WhatsApp message should still go out as
+ * Danny's template — that's the slug the Trengo channel has approved
+ * AND the slug whose body contains "Groetjes, Danny".
+ *
+ * Returns null when the Monday `accountManager` field is empty OR the
+ * mapping isn't set up in Settings → Users yet. Callers fall back to
+ * the logged-in user's id in that case so a missing mapping doesn't
+ * block sends entirely.
+ */
+export async function resolveAmUserIdForClient(
+  monday: MondayClient,
+): Promise<string | null> {
+  const amName = monday.accountManager?.trim()
+  if (!amName) return null
+  const supabase = await createAdminClient()
+  const { data } = await supabase
+    .from("user_column_mappings")
+    .select("user_id")
+    .eq("monday_column_role", "account_manager")
+    .eq("monday_person_name", amName)
+    .maybeSingle<{ user_id: string }>()
+  return data?.user_id ?? null
+}
+
+/**
  * Compose a draft for the given client + user. `client` can be passed in
  * when the caller already has the Monday row (cron pre-fetches all clients
  * in one batch — we don't want to re-fetch one-by-one per client).
+ *
+ * `userId` is the FALLBACK identity for template resolution. The function
+ * always tries the client's assigned AM first (via Monday accountManager
+ * → user_column_mappings); only when no mapping exists does it fall back
+ * to the passed `userId`. This keeps Roy-as-admin reviewing a Danny client
+ * sending out as Danny's template, not Roy's.
  */
 export async function buildWeeklyUpdateDraft(args: {
   userId: string
@@ -97,19 +132,24 @@ export async function buildWeeklyUpdateDraft(args: {
   const channel = detectChannel(client.contactChannel)
   const isEmail = channel === "email"
 
+  // Whose template + sign-off name to use. Prefer the AM mapped to this
+  // client on Monday; fall back to the calling user when no mapping
+  // exists so the dialog still works for un-mapped clients.
+  const amUserId = (await resolveAmUserIdForClient(client)) ?? args.userId
+
   // Always resolve the weekly template for WhatsApp. Email skips it.
   const [kpi, pedro, waTemplate, hubUser] = await Promise.all([
     loadKpi(args.mondayItemId),
     loadPedroBody(args.mondayItemId),
     isEmail
       ? Promise.resolve({ name: null as string | null, source: "none" as const })
-      : resolveWeeklyUpdateTemplate({ userId: args.userId, mondayItemId: args.mondayItemId }),
-    loadHubUserName(args.userId),
+      : resolveWeeklyUpdateTemplate({ userId: amUserId, mondayItemId: args.mondayItemId }),
+    loadHubUserName(amUserId),
   ])
 
   // AM first name for the email sign-off + WhatsApp preview. Prefer the
   // resolved slug (`rl_weekly_danny` → "danny") so the rendered text
-  // matches the template; fall back to `users.name` first token.
+  // matches the template; fall back to the AM user's `users.name`.
   const amFirstName =
     (waTemplate.name?.replace(/^rl_weekly_/i, "").trim() ||
       hubUser?.name?.split(/\s+/)[0] ||

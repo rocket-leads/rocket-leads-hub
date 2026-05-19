@@ -10,6 +10,7 @@ import {
   NeedsConnectError,
 } from "@/lib/inbox/reply"
 import { resolveWeeklyUpdateTemplate } from "@/lib/clients/resolve-wa-template"
+import { resolveAmUserIdForClient } from "@/lib/clients/build-weekly-update-draft"
 import {
   partsToWeeklyUpdateParams,
   type EditableParts,
@@ -114,20 +115,23 @@ export async function POST(
     // WhatsApp goes through one of two HSM templates.
     const sendAsEmail = preferEmail(client.contactChannel)
 
-    // WhatsApp send always uses the weekly multi-variable template
-    // (`rl_weekly_<voornaam>`). No env flag, no V1 fallback — kept in
-    // lock-step with the cron/dialog flow. Email skips template
-    // resolution entirely.
+    // WhatsApp send always uses the assigned AM's weekly template
+    // (`rl_weekly_<voornaam>`), regardless of who's logged in. Roy
+    // reviewing Danny's client still sends out `rl_weekly_danny` so
+    // the customer sees "Groetjes, Danny" and the channel's
+    // template-approval matches. Falls back to logged-in user when no
+    // AM mapping exists.
+    const amUserId = (await resolveAmUserIdForClient(client)) ?? session.user.id
     const waTemplate = sendAsEmail
       ? { name: null as string | null, source: "none" as const }
-      : await resolveWeeklyUpdateTemplate({ userId: session.user.id, mondayItemId })
+      : await resolveWeeklyUpdateTemplate({ userId: amUserId, mondayItemId })
 
     if (!sendAsEmail && !waTemplate.name) {
       return NextResponse.json(
         {
           error: "no_wa_template",
           message:
-            "Kan WhatsApp template niet afleiden uit users.name. Verwacht `rl_weekly_<voornaam>` (bijv. rl_weekly_danny). Check Settings → Users.",
+            "Kan WhatsApp template niet afleiden voor de AM van deze klant. Verwacht `rl_weekly_<voornaam>` (bijv. rl_weekly_danny). Check Monday accountManager + Settings → Users mapping.",
         },
         { status: 400 },
       )
