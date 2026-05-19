@@ -136,13 +136,19 @@ async function gql(
 export async function fetchAllItems(
   boardId: string,
   token: string,
-  maxRetries = 2,
+  maxRetries = 4,
   options: { bypassCache?: boolean } = {},
 ) {
+  // Page size lowered from 500 → 200 (2026-05) after a string of
+  // CursorExpiredError reports on the Clients overview. Monday's `items_page`
+  // cursor has a ~60s TTL; a 500-item page on a slow Monday day can take long
+  // enough that the *next* page's cursor is already stale. 200 keeps each
+  // round-trip well under the TTL while still being only ~5 pages for the
+  // largest boards in the workspace.
   const query = `
     query GetItems($boardId: ID!, $cursor: String) {
       boards(ids: [$boardId]) {
-        items_page(limit: 500, cursor: $cursor) {
+        items_page(limit: 200, cursor: $cursor) {
           cursor
           items {
             id
@@ -157,7 +163,19 @@ export async function fetchAllItems(
     }
   `
 
+  let lastError: unknown = null
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Exponential backoff between attempts — 0ms before the first attempt,
+    // then ~500ms, ~1s, ~2s, ~4s. Gives Monday time to recover when it's
+    // having a slow burst; without this, retrying immediately just hits the
+    // same overloaded backend again. Jittered to avoid thundering-herd if
+    // multiple boards retry at once from the same cron tick.
+    if (attempt > 0) {
+      const baseMs = 500 * Math.pow(2, attempt - 1)
+      const jitter = Math.floor(Math.random() * 200)
+      await new Promise((r) => setTimeout(r, baseMs + jitter))
+    }
+
     try {
       const allItems: Array<{ id: string; name: string; column_values: Array<{ id: string; text: string }> }> = []
       let cursor: string | null = null
@@ -181,12 +199,26 @@ export async function fetchAllItems(
 
       return allItems
     } catch (error) {
-      const isCursorExpired = error instanceof Error && error.message.includes("cursor")
-      if (!isCursorExpired || attempt === maxRetries) throw error
-      // Retry from scratch with a fresh cursor
+      lastError = error
+      const msg = error instanceof Error ? error.message.toLowerCase() : ""
+      // Retry on cursor expiry (most common) and on transient 5xx/timeout
+      // signatures. Anything else (auth, malformed query, missing board) is
+      // not going to fix itself — fail fast so the caller sees a real error.
+      const retryable =
+        msg.includes("cursor") ||
+        msg.includes("timeout") ||
+        msg.includes("502") ||
+        msg.includes("503") ||
+        msg.includes("504") ||
+        msg.includes("complexity")
+      if (!retryable || attempt === maxRetries) throw error
+      // Backoff for the next iteration is applied at the top of the loop.
     }
   }
 
+  // Loop exited without success and without throwing — defensive fallback,
+  // surface the last seen error rather than silently returning empty.
+  if (lastError) throw lastError
   return []
 }
 
@@ -476,6 +508,79 @@ export async function fetchItemUpdates(
       creatorName: (u.creator?.name ?? "").trim(),
     }))
     .filter((u: ItemUpdate) => u.text && u.createdAt >= cutoffStr)
+}
+
+/**
+ * Fuller version of {@link fetchItemUpdates} used by the timeline backfill —
+ * paginates through ALL updates for an item (not just the last 50), returns
+ * the Monday update id (stable dedupe key), full ISO timestamps, raw HTML
+ * body (for downstream mention parsing), and the creator's Monday user id.
+ *
+ * Monday's `updates` connection caps `limit` at 100 per page; we walk pages
+ * until a short page comes back. Internal safety cap stops us at 50 pages
+ * (=5,000 updates) — no real client has more than that.
+ */
+export type ItemUpdateFull = {
+  /** Stable Monday update id — anchor for `source_msg_id` dedupe. */
+  id: string
+  /** Plain-text body (stripped by Monday). Empty when the update was purely
+   *  attachment-driven. */
+  text: string
+  /** Raw HTML body — used for parsing @-mention anchors during backfill. */
+  body: string
+  /** Full ISO timestamp (UTC). */
+  createdAt: string
+  /** Monday user id of the author. Empty when Monday didn't return one. */
+  creatorId: string
+  /** Author display name. Empty when Monday didn't return one. */
+  creatorName: string
+}
+
+export async function fetchAllItemUpdates(itemId: string): Promise<ItemUpdateFull[]> {
+  const token = await getToken()
+
+  const query = `
+    query GetAllItemUpdates($itemId: ID!, $page: Int!) {
+      items(ids: [$itemId]) {
+        updates(limit: 100, page: $page) {
+          id
+          text_body
+          body
+          created_at
+          creator { id name }
+        }
+      }
+    }
+  `
+
+  type RawUpdate = {
+    id?: string | number
+    text_body?: string
+    body?: string
+    created_at?: string
+    creator?: { id?: string | number; name?: string } | null
+  }
+
+  const all: ItemUpdateFull[] = []
+  for (let page = 1; page <= 50; page++) {
+    const data = await gql(query, { itemId, page }, token)
+    const updates = (data.items?.[0]?.updates ?? []) as RawUpdate[]
+    if (updates.length === 0) break
+    for (const u of updates) {
+      const id = String(u.id ?? "")
+      if (!id) continue
+      all.push({
+        id,
+        text: (u.text_body ?? "").trim(),
+        body: u.body ?? "",
+        createdAt: u.created_at ?? "",
+        creatorId: u.creator?.id != null ? String(u.creator.id) : "",
+        creatorName: (u.creator?.name ?? "").trim(),
+      })
+    }
+    if (updates.length < 100) break // last page
+  }
+  return all
 }
 
 export async function fetchClientBoardItemsWithUpdates(
