@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById } from "@/lib/integrations/monday"
 import { fetchConversations, type TrengoConversation } from "@/lib/integrations/trengo"
 import {
-  replyToInboxEvent,
   sendTrengoTemplateAsUser,
   sendTrengoReplyAsUser,
   sanitizeWaTemplateParam,
@@ -162,138 +161,133 @@ export async function POST(
       )
     }
 
-    const { data: anchorRows } = await supabase
-      .from("inbox_events")
-      .select("id, created_at_src")
-      .eq("client_id", clientRow.id)
-      .eq("source", "trengo")
-      .order("created_at_src", { ascending: false })
-      .limit(1)
-    const anchorId = anchorRows?.[0]?.id as string | undefined
+    // Channel routing for client-update sends is ALWAYS done via the live
+    // Trengo conversation list — we no longer use a "last inbox_event"
+    // anchor for threading. Two bugs the anchor caused:
+    //   1. Email sends could land in a WhatsApp ticket when the latest
+    //      inbox_event happened to be a WA message (Dr. Ludidi case).
+    //      Trengo rejected with "outside 24h window / SMS fallback" —
+    //      WhatsApp constraints triggered by email content.
+    //   2. WhatsApp sends could pick a channel where the AM's template
+    //      isn't approved when the latest event was on a different WA
+    //      channel than the one with the approved template.
+    // Trade-off: slightly worse threading (a brand-new ticket may be
+    // created when an old one would have worked). Worth it — sends are
+    // rare, wrong channel breaks them entirely.
+    const conversations = await fetchConversations(client.trengoContactId).catch(
+      () => [] as TrengoConversation[],
+    )
+    if (conversations.length === 0) {
+      return NextResponse.json(
+        {
+          error: "no_active_conversation",
+          message:
+            "Deze klant heeft nog geen enkel gesprek in Trengo. Start eerst handmatig een gesprek zodat er een contact-ticket bestaat, en probeer dan opnieuw.",
+        },
+        { status: 400 },
+      )
+    }
 
-    let result: {
+    // Strict channel-type matching — no silent fallback to `conversations[0]`
+    // because that's exactly how the email-into-WA-ticket bug used to land.
+    const ticket = sendAsEmail
+      ? conversations.find((c) => isEmailChannel(c.channel?.type))
+      : conversations.find((c) => isWhatsAppChannel(c.channel?.type))
+    if (!ticket) {
+      const want = sendAsEmail ? "email" : "WhatsApp"
+      const haveTypes = conversations
+        .map((c) => c.channel?.type ?? "unknown")
+        .filter((v, i, a) => a.indexOf(v) === i)
+        .join(", ")
+      return NextResponse.json(
+        {
+          error: "no_channel_match",
+          message: `Geen ${want}-ticket gevonden voor deze klant in Trengo (beschikbare channels: ${haveTypes || "geen"}). Open eerst een ${want}-gesprek met de klant in Trengo.`,
+        },
+        { status: 400 },
+      )
+    }
+    const ticketId = String(ticket.id)
+    const channelId = ticket.channel?.id ?? null
+
+    let outboundId: string
+    try {
+      if (sendAsEmail) {
+        const sent = await sendTrengoReplyAsUser(
+          session.user.id,
+          ticketId,
+          message,
+          false,
+          [],
+          subjectOverride ? { subject: subjectOverride } : undefined,
+        )
+        outboundId = sent.message_id
+      } else {
+        const sent = await sendTrengoTemplateAsUser(
+          session.user.id,
+          ticketId,
+          templateName,
+          "nl",
+          templateParams,
+        )
+        outboundId = sent.message_id
+      }
+    } catch (e) {
+      if (e instanceof NeedsConnectError) throw e
+      throw e
+    }
+
+    // Mirror the outbound into inbox_events so chat-pane history matches.
+    const { data: hubUser } = await supabase
+      .from("users")
+      .select("id, name, email")
+      .eq("id", session.user.id)
+      .maybeSingle<{ id: string; name: string | null; email: string | null }>()
+
+    // WhatsApp sends were flattened by sanitizeWaTemplateParam at the API
+    // boundary — mirror what the customer actually received (single-line
+    // with " • " bullets). Email keeps the original multi-line body since
+    // email accepts newlines natively.
+    const previewSource = sendAsEmail ? message : sanitizeWaTemplateParam(message)
+    const titlePreview =
+      previewSource.length > 100 ? previewSource.slice(0, 100) + "…" : previewSource
+    const bodyFull = previewSource.length > 100 ? previewSource : null
+    const createdAtSrc = new Date().toISOString()
+
+    const { data: inserted } = await supabase
+      .from("inbox_events")
+      .insert({
+        kind: "chat",
+        client_id: clientRow.id,
+        author_id: session.user.id,
+        assignee_id: session.user.id,
+        title: titlePreview,
+        body: bodyFull,
+        status: "read",
+        source: "trengo",
+        source_thread: `trengo:ticket:${ticketId}`,
+        source_msg_id: `trengo:msg:${outboundId}`,
+        thread_key: `trengo:contact:${client.trengoContactId}`,
+        scope: "external",
+        author_kind: "rl_team",
+        author_external: null,
+        author_name_cached: hubUser?.name ?? hubUser?.email ?? null,
+        classify_method: "manual",
+        created_at_src: createdAtSrc,
+        trengo_channel_id: channelId,
+        is_internal: false,
+      })
+      .select("id")
+      .single()
+
+    const result: {
       source: "trengo" | "slack"
       outboundMsgId: string
       inboxEventId: string
-    }
-
-    if (anchorId) {
-      // Happy path: existing Trengo inbox_event we can thread through.
-      // - WhatsApp: send as HSM template (Meta requires it outside 24h).
-      // - Email: free-text with subject override; no template.
-      result = await replyToInboxEvent(session.user.id, anchorId, sendAsEmail ? message : "", {
-        internalNote: false,
-        template: sendAsEmail
-          ? undefined
-          : {
-              name: templateName,
-              language: "nl",
-              params: templateParams,
-            },
-        email: sendAsEmail && subjectOverride ? { subject: subjectOverride } : undefined,
-      })
-    } else {
-      // No Hub anchor yet — webhook hasn't backfilled, or brand-new ticket.
-      // Send directly to the latest matching Trengo ticket + write the mirror
-      // inbox_events row ourselves so Hub history stays complete.
-      const conversations = await fetchConversations(client.trengoContactId).catch(
-        () => [] as TrengoConversation[],
-      )
-      if (conversations.length === 0) {
-        return NextResponse.json(
-          {
-            error: "no_active_conversation",
-            message:
-              "Deze klant heeft nog geen enkel gesprek in Trengo. Start eerst handmatig een gesprek zodat er een contact-ticket bestaat, en probeer dan opnieuw.",
-          },
-          { status: 400 },
-        )
-      }
-
-      // Pick the channel-appropriate ticket. Trengo enforces channel match
-      // server-side (you can't send an email body into a WhatsApp ticket).
-      const ticket = sendAsEmail
-        ? conversations.find((c) => isEmailChannel(c.channel?.type)) ?? conversations[0]
-        : conversations.find((c) => isWhatsAppChannel(c.channel?.type)) ?? conversations[0]
-      const ticketId = String(ticket.id)
-      const channelId = ticket.channel?.id ?? null
-
-      let outboundId: string
-      try {
-        if (sendAsEmail) {
-          const sent = await sendTrengoReplyAsUser(
-            session.user.id,
-            ticketId,
-            message,
-            false,
-            [],
-            subjectOverride ? { subject: subjectOverride } : undefined,
-          )
-          outboundId = sent.message_id
-        } else {
-          const sent = await sendTrengoTemplateAsUser(
-            session.user.id,
-            ticketId,
-            templateName,
-            "nl",
-            templateParams,
-          )
-          outboundId = sent.message_id
-        }
-      } catch (e) {
-        if (e instanceof NeedsConnectError) throw e
-        throw e
-      }
-
-      // Mirror the outbound into inbox_events so chat-pane history matches
-      // anchor-routed sends.
-      const { data: hubUser } = await supabase
-        .from("users")
-        .select("id, name, email")
-        .eq("id", session.user.id)
-        .maybeSingle<{ id: string; name: string | null; email: string | null }>()
-
-      // WhatsApp sends were flattened by sanitizeWaTemplateParam at the API
-      // boundary — mirror what the customer actually received (single-line
-      // with " • " bullets). Email keeps the original multi-line body since
-      // email accepts newlines natively.
-      const previewSource = sendAsEmail ? message : sanitizeWaTemplateParam(message)
-      const titlePreview =
-        previewSource.length > 100 ? previewSource.slice(0, 100) + "…" : previewSource
-      const bodyFull = previewSource.length > 100 ? previewSource : null
-      const createdAtSrc = new Date().toISOString()
-
-      const { data: inserted } = await supabase
-        .from("inbox_events")
-        .insert({
-          kind: "chat",
-          client_id: clientRow.id,
-          author_id: session.user.id,
-          assignee_id: session.user.id,
-          title: titlePreview,
-          body: bodyFull,
-          status: "read",
-          source: "trengo",
-          source_thread: `trengo:ticket:${ticketId}`,
-          source_msg_id: `trengo:msg:${outboundId}`,
-          thread_key: `trengo:contact:${client.trengoContactId}`,
-          scope: "external",
-          author_kind: "rl_team",
-          author_external: null,
-          author_name_cached: hubUser?.name ?? hubUser?.email ?? null,
-          classify_method: "manual",
-          created_at_src: createdAtSrc,
-          trengo_channel_id: channelId,
-          is_internal: false,
-        })
-        .select("id")
-        .single()
-
-      result = {
-        source: "trengo",
-        outboundMsgId: outboundId,
-        inboxEventId: (inserted?.id as string) ?? "",
-      }
+    } = {
+      source: "trengo",
+      outboundMsgId: outboundId,
+      inboxEventId: (inserted?.id as string) ?? "",
     }
 
     // Audit + freshness signal. The log row backs future history views; the
