@@ -147,7 +147,10 @@ function WeeklyUpdateQueueSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[1200px] w-[95vw] h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
+      {/* sm:max-w-[1700px] explicitly overrides shadcn DialogContent's
+          default `sm:max-w-sm` (384px on desktop). Without the sm: prefix
+          the responsive default still wins and the dialog stays tiny. */}
+      <DialogContent className="sm:max-w-[1700px] w-[98vw] h-[92vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogTitle className="sr-only">
           Wekelijkse updates ({visibleDrafts.length})
         </DialogTitle>
@@ -170,8 +173,9 @@ function WeeklyUpdateQueueSheet({
         </header>
 
         <div className="flex flex-1 min-h-0">
-          {/* Sidebar with draft list */}
-          <aside className="w-[300px] border-r border-border/60 shrink-0 overflow-y-auto">
+          {/* Sidebar with draft list — wider so longer client names like
+              "Vloerschuur Meester (Jeffrey's…)" fit without truncation. */}
+          <aside className="w-[360px] border-r border-border/60 shrink-0 overflow-y-auto">
             {visibleDrafts.length === 0 && (
               <p className="text-sm text-muted-foreground p-4 text-center">
                 Alles verzonden ✨
