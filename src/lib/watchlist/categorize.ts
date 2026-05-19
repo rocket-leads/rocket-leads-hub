@@ -126,6 +126,42 @@ const INSIGHT_STRINGS = {
     en: "Live but no spend yesterday — campaign likely paused in Meta.",
     nl: "Live maar geen spend gisteren — campagne staat waarschijnlijk uit in Meta.",
   },
+  // ─── HomeTab Health-vs-baseline strings ──────────────────────────────
+  // Selected window vs 30d baseline. Always carries both window labels so
+  // the user knows what's being compared and contradictions with the KPI
+  // cards above are impossible.
+  hb_cpl_spike: {
+    en: (cur: string, curWin: string, base: string, baseWin: string, pct: string) =>
+      `CPL up ${pct}% — €${cur} (${curWin}) vs €${base} baseline (${baseWin})`,
+    nl: (cur: string, curWin: string, base: string, baseWin: string, pct: string) =>
+      `CPL omhoog ${pct}% — €${cur} (${curWin}) vs €${base} baseline (${baseWin})`,
+  },
+  hb_cpl_dropped: {
+    en: (cur: string, curWin: string, base: string, baseWin: string, pct: string) =>
+      `CPL down ${pct}% — €${cur} (${curWin}) vs €${base} baseline (${baseWin})`,
+    nl: (cur: string, curWin: string, base: string, baseWin: string, pct: string) =>
+      `CPL omlaag ${pct}% — €${cur} (${curWin}) vs €${base} baseline (${baseWin})`,
+  },
+  hb_cpl_stable: {
+    en: (cur: string, curWin: string, base: string, baseWin: string) =>
+      `CPL stable — €${cur} (${curWin}) vs €${base} baseline (${baseWin})`,
+    nl: (cur: string, curWin: string, base: string, baseWin: string) =>
+      `CPL stabiel — €${cur} (${curWin}) vs €${base} baseline (${baseWin})`,
+  },
+  hb_no_leads_with_spend: {
+    en: (spend: string, win: string) => `€${spend} (${win}) spent, 0 leads`,
+    nl: (spend: string, win: string) => `€${spend} (${win}) uitgegeven, 0 leads`,
+  },
+  hb_no_spend_either: {
+    en: (win: string) => `No spend or leads (${win}) — campaign paused, ad account issue, or idle.`,
+    nl: (win: string) => `Geen spend of leads (${win}) — campagne gepauzeerd, ad account probleem, of inactief.`,
+  },
+  hb_no_baseline: {
+    en: (cur: string, curWin: string, baseWin: string) =>
+      `CPL €${cur} (${curWin}) — not enough baseline activity (${baseWin}) to compare yet`,
+    nl: (cur: string, curWin: string, baseWin: string) =>
+      `CPL €${cur} (${curWin}) — nog onvoldoende baseline-activiteit (${baseWin}) om te vergelijken`,
+  },
 } as const
 
 /**
@@ -432,4 +468,123 @@ export async function updateWatchlistClientState(
     return { written: 0 }
   }
   return { written: upserts.length }
+}
+
+/**
+ * Home tab Health card categorizer. Compares the user-selected window's CPL
+ * against a longer-window baseline (typically 30d). The big difference from
+ * `categorize()` above: every emitted insight string includes BOTH window
+ * labels inline, so the Health card on the slide-over can never contradict
+ * the KPI cards next to it. ("CPL €383 (7d) vs €20.44 baseline (30d) — up
+ * 1775%" — you immediately see which lens is which.)
+ *
+ * This is intentionally separate from `categorize()`:
+ *  - `categorize` runs cross-client on the Watch List, always 7d vs prev-7d
+ *  - `categorizeHealthVsBaseline` runs per-client on the slide-over, selected
+ *    vs 30d baseline, with explicit window labels
+ *
+ * Kept locale-aware via the same INSIGHT_STRINGS table so output language
+ * mirrors the rest of the Health card chrome.
+ */
+export function categorizeHealthVsBaseline(args: {
+  currentCpl: number
+  currentLeads: number
+  currentSpend: number
+  currentWindowLabel: string
+  baselineCpl: number
+  baselineLeads: number
+  baselineSpend: number
+  baselineWindowLabel: string
+  /** When the user picked a long range (≥ baseline window length), there's no
+   *  meaningful baseline to compare against. Pass true to suppress comparison
+   *  and show a plain "current CPL" insight instead. */
+  suppressComparison?: boolean
+  locale?: CategorizeLocale
+}): { category: WatchCategory; insight: string } {
+  const locale = args.locale ?? "en"
+
+  // No activity in either window — nothing useful to say beyond "idle".
+  if (args.currentSpend === 0 && args.currentLeads === 0) {
+    return {
+      category: "no-data",
+      insight: INSIGHT_STRINGS.hb_no_spend_either[locale](args.currentWindowLabel),
+    }
+  }
+
+  // Spend without leads in the current window — always action (€ burning).
+  if (args.currentSpend > 0 && args.currentLeads === 0) {
+    return {
+      category: "action",
+      insight: INSIGHT_STRINGS.hb_no_leads_with_spend[locale](
+        args.currentSpend.toFixed(0),
+        args.currentWindowLabel,
+      ),
+    }
+  }
+
+  // Suppressed (selected range overlaps / equals baseline) OR baseline has
+  // insufficient activity to compare against — emit a "no baseline yet"
+  // insight so the user knows why no delta is shown.
+  if (
+    args.suppressComparison ||
+    args.baselineLeads === 0 ||
+    args.baselineSpend === 0 ||
+    args.baselineCpl <= 0
+  ) {
+    return {
+      category: "good",
+      insight: INSIGHT_STRINGS.hb_no_baseline[locale](
+        args.currentCpl.toFixed(2),
+        args.currentWindowLabel,
+        args.baselineWindowLabel,
+      ),
+    }
+  }
+
+  // We have both signals — compute the delta and pick a bucket. Thresholds
+  // mirror the Watch List's: ±25% is normal Meta noise, 25-50% is "watch",
+  // 50%+ is "action".
+  const pctChange = ((args.currentCpl - args.baselineCpl) / args.baselineCpl) * 100
+  const absPct = Math.abs(pctChange)
+
+  let category: WatchCategory
+  if (absPct < 25) {
+    category = "good"
+  } else if (pctChange < 0) {
+    // CPL dropped >25% — that's good news, not a concern.
+    category = "good"
+  } else if (pctChange < 50) {
+    category = "watch"
+  } else {
+    category = "action"
+  }
+
+  // Pick the right insight string variant based on direction + magnitude.
+  let insight: string
+  if (absPct < 25) {
+    insight = INSIGHT_STRINGS.hb_cpl_stable[locale](
+      args.currentCpl.toFixed(2),
+      args.currentWindowLabel,
+      args.baselineCpl.toFixed(2),
+      args.baselineWindowLabel,
+    )
+  } else if (pctChange > 0) {
+    insight = INSIGHT_STRINGS.hb_cpl_spike[locale](
+      args.currentCpl.toFixed(2),
+      args.currentWindowLabel,
+      args.baselineCpl.toFixed(2),
+      args.baselineWindowLabel,
+      pctChange.toFixed(0),
+    )
+  } else {
+    insight = INSIGHT_STRINGS.hb_cpl_dropped[locale](
+      args.currentCpl.toFixed(2),
+      args.currentWindowLabel,
+      args.baselineCpl.toFixed(2),
+      args.baselineWindowLabel,
+      absPct.toFixed(0),
+    )
+  }
+
+  return { category, insight }
 }

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { subDays } from "date-fns"
+import { differenceInCalendarDays, format, isSameDay, startOfMonth, subDays, subMonths } from "date-fns"
 import {
   Euro,
   Users,
@@ -19,7 +19,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
-import { categorize, type WatchCategory } from "@/lib/watchlist/categorize"
+import { categorizeHealthVsBaseline, type WatchCategory } from "@/lib/watchlist/categorize"
 import { PedroInsightCard } from "./pedro-insight-card"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
@@ -96,6 +96,41 @@ function fmtCurrencyShort(n: number): string {
   return `€${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
 }
 
+/**
+ * Compact label for a date window. Recognises the common presets exposed by
+ * `useDateRange` ("Last 7 Days" → "7d", "MTD" → "MTD", "Last Month" → "Last
+ * Month") and falls back to a literal day count for anything bespoke. Used to
+ * suffix the Home tab's KPI cards + thread the same label through the Health
+ * card insight so both sides of the comparison are unambiguous.
+ */
+function describeWindow(start: Date, end: Date): string {
+  const today = new Date()
+  const yesterday = subDays(today, 1)
+  const days = differenceInCalendarDays(end, start) + 1
+
+  // End must be yesterday for any of the rolling-window presets to apply —
+  // otherwise we're looking at a historical range and the day count is the
+  // only honest label.
+  if (isSameDay(end, yesterday)) {
+    if (days === 7) return "7d"
+    if (days === 14) return "14d"
+    if (days === 30) return "30d"
+    if (days >= 89 && days <= 92) return "Last 3M"
+    if (isSameDay(start, startOfMonth(today))) return "MTD"
+  }
+
+  // "Last Month" — start at first day of last month, end at last day of last month.
+  const lastMonth = subMonths(today, 1)
+  const lastMonthStart = startOfMonth(lastMonth)
+  // endOfMonth would need an import; cheap to compute: day before this month starts.
+  const lastMonthEnd = subDays(startOfMonth(today), 1)
+  if (isSameDay(start, lastMonthStart) && isSameDay(end, lastMonthEnd)) return "Last Month"
+
+  // Fallback: literal day count, then a date range for long bespoke windows.
+  if (days <= 365) return `${days}d`
+  return `${format(start, "d MMM")} – ${format(end, "d MMM yyyy")}`
+}
+
 function summarizePayments(invoices: InvoiceRow[] | undefined) {
   if (!invoices) return null
   const overdue = invoices.filter((i) => i.status === "overdue")
@@ -121,11 +156,16 @@ function KpiCard({
   label,
   icon: Icon,
   value,
+  windowLabel,
   loading,
 }: {
   label: string
   icon: typeof Euro
   value: string
+  /** Tiny period suffix shown next to the label, e.g. "7d" or "MTD". Required
+   *  on the Home tab so the user can never confuse this card with the Health
+   *  card next to it which reads a different (fixed 30d baseline) window. */
+  windowLabel?: string
   loading?: boolean
 }) {
   return (
@@ -133,7 +173,12 @@ function KpiCard({
       <CardContent className="p-4">
         <div className="flex items-center gap-2 mb-2">
           <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">{label}</span>
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
+            {label}
+            {windowLabel && (
+              <span className="text-muted-foreground/40 font-normal"> · {windowLabel}</span>
+            )}
+          </span>
         </div>
         {loading ? (
           <Skeleton className="h-7 w-24" />
@@ -439,6 +484,36 @@ export function HomeTab({
   const endDateStr = formatDate(range.endDate)
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
 
+  // Friendly label for the currently-selected window. Drives the suffix on
+  // the KPI cards (`Ad Spend · 7d`) and the "current" leg of the Health card
+  // insight string. Common ranges are recognised and named ("7d", "MTD",
+  // "Last Month"); anything bespoke falls back to a literal day count.
+  const currentWindowLabel = useMemo(
+    () => describeWindow(range.startDate, range.endDate),
+    [range.startDate, range.endDate],
+  )
+
+  // 30d baseline window — yesterday back 30 days. The Health card always
+  // compares the user-selected current window against this. Kept stable so
+  // changing the picker only shifts the "current" side of the comparison;
+  // the baseline stays anchored.
+  const { baselineStart, baselineEnd, baselineLabel } = useMemo(() => {
+    const end = subDays(new Date(), 1)
+    const start = subDays(end, 29)
+    return {
+      baselineStart: format(start, "yyyy-MM-dd"),
+      baselineEnd: format(end, "yyyy-MM-dd"),
+      baselineLabel: "30d",
+    }
+  }, [])
+  // When the selected window is 30d+ the baseline equals (or overlaps) the
+  // current — comparison would be meaningless. The categorizer renders a
+  // "no baseline yet" message in that case.
+  const baselineSuppressed = useMemo(
+    () => differenceInCalendarDays(range.endDate, range.startDate) + 1 >= 30,
+    [range.startDate, range.endDate],
+  )
+
   // Period KPIs (AdSpend, Leads, CPL) — driven by the period selector.
   // `refreshNonce` is part of the queryKey so the Refresh button reliably
   // triggers a refetch, and we forward `forceRefresh=1` whenever the user
@@ -459,9 +534,31 @@ export function HomeTab({
     enabled: canViewCampaigns && (!!client.metaAdAccountId || !!client.clientBoardId),
   })
 
-  // 7d KPI summary for the Health card — Watch List logic is anchored to a 7d
-  // window and a prev-7d trend, so it stays fixed regardless of the period
-  // selector above.
+  // 30d baseline KPI — Health card compares the selected window against this.
+  // Same `/kpis` endpoint as kpisQuery but fixed to the 30d window so the
+  // baseline doesn't move when the user shifts the period picker. Skipped
+  // when selected window already overlaps baseline (suppressComparison path).
+  const kpisBaselineQuery = useQuery<KpiResult>({
+    queryKey: ["kpis-baseline-30d", client.mondayItemId, baselineStart, baselineEnd, refreshNonce],
+    queryFn: () => {
+      const p = new URLSearchParams({
+        startDate: baselineStart,
+        endDate: baselineEnd,
+        ...(client.metaAdAccountId ? { adAccountId: client.metaAdAccountId } : {}),
+        ...(client.clientBoardId ? { clientBoardId: client.clientBoardId } : {}),
+        ...(refreshNonce > 0 ? { forceRefresh: "1" } : {}),
+      })
+      return fetch(`/api/clients/${client.mondayItemId}/kpis?${p}`).then((r) => r.json())
+    },
+    enabled:
+      !baselineSuppressed &&
+      canViewCampaigns &&
+      (!!client.metaAdAccountId || !!client.clientBoardId),
+  })
+
+  // 7d summary kept around solely as a fast placeholder for the kpisQuery
+  // KPI cards when the selected window is the cron's canonical 7d window
+  // (see `kpisPlaceholder` below). Health card no longer reads from it.
   const summaryQuery = useQuery<Record<string, KpiSummary>>({
     queryKey: ["kpi-summary-single", client.mondayItemId],
     queryFn: () =>
@@ -480,13 +577,6 @@ export function HomeTab({
       }).then((r) => r.json()),
     enabled: canViewCampaigns && (!!client.metaAdAccountId || !!client.clientBoardId),
     staleTime: 5 * 60 * 1000,
-    // Reuse the All Clients page's batched `kpi-summaries` cache as placeholder
-    // so the Health card renders instantly when the user opens the slide-over
-    // from the table — same client, same shape, already in memory. The single-
-    // client refetch still runs in the background to refine the entry (parent's
-    // batch may have used a different date range, server defaults to a 7d
-    // window for the slide-over). Without this, opening the panel triggers a
-    // second Meta API call for data the parent already has.
     placeholderData: () => {
       const matches = queryClient.getQueriesData<Record<string, KpiSummary>>({
         queryKey: ["kpi-summaries"],
@@ -500,7 +590,29 @@ export function HomeTab({
   })
 
   const kpiSummary = summaryQuery.data?.[client.mondayItemId]
-  const health = useMemo(() => categorize(client, kpiSummary), [client, kpiSummary])
+  const health = useMemo(() => {
+    const current = kpisQuery.data
+    const baseline = kpisBaselineQuery.data
+    return categorizeHealthVsBaseline({
+      currentCpl: current?.costPerLead ?? 0,
+      currentLeads: current?.leads ?? 0,
+      currentSpend: current?.adSpend ?? 0,
+      currentWindowLabel,
+      baselineCpl: baseline?.costPerLead ?? 0,
+      baselineLeads: baseline?.leads ?? 0,
+      baselineSpend: baseline?.adSpend ?? 0,
+      baselineWindowLabel: baselineLabel,
+      suppressComparison: baselineSuppressed,
+      locale,
+    })
+  }, [
+    kpisQuery.data,
+    kpisBaselineQuery.data,
+    currentWindowLabel,
+    baselineLabel,
+    baselineSuppressed,
+    locale,
+  ])
 
   // Top ads (30d) — surfaced under the Pedro card so the user can verify which
   // specific ads are driving Pedro's verdict. The AI activity summary that used
@@ -589,18 +701,19 @@ export function HomeTab({
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Ad Spend" icon={Euro} value={fmtCurrency(adSpendValue)} loading={kpisLoading} />
-        <KpiCard label="Leads" icon={Users} value={fmtInt(leadsValue)} loading={kpisLoading} />
+        <KpiCard label="Ad Spend" icon={Euro} value={fmtCurrency(adSpendValue)} windowLabel={currentWindowLabel} loading={kpisLoading} />
+        <KpiCard label="Leads" icon={Users} value={fmtInt(leadsValue)} windowLabel={currentWindowLabel} loading={kpisLoading} />
         <KpiCard
           label="CPL"
           icon={cplValue > 0 ? TrendingDown : TrendingUp}
           value={fmtCurrency(cplValue)}
+          windowLabel={currentWindowLabel}
           loading={kpisLoading}
         />
         <HealthCard
           category={health.category}
           insight={health.insight}
-          loading={summaryQuery.isLoading && !kpiSummary}
+          loading={kpisQuery.isLoading || (!baselineSuppressed && kpisBaselineQuery.isLoading)}
           locale={locale}
         />
       </div>

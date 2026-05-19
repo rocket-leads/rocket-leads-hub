@@ -554,3 +554,150 @@ describe("severityScore — live-but-dark floor", () => {
     expect(severityScore(kpi)).toBe(2000)
   })
 })
+
+// ─── categorizeHealthVsBaseline (Home tab Health card) ─────────────────────
+
+import { categorizeHealthVsBaseline } from "./categorize"
+
+describe("categorizeHealthVsBaseline", () => {
+  const baseArgs = {
+    currentWindowLabel: "7d",
+    baselineWindowLabel: "30d",
+  }
+
+  it("flags a major CPL spike as action and includes both windows in the insight", () => {
+    // Mirrors the exact misalignment Roy reported: 1 lead this week at €383
+    // CPL, vs a healthy €20 baseline over 30d. Must read as action + the
+    // insight must surface both numbers + windows so it's never ambiguous
+    // alongside the KPI cards.
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 383.66,
+      currentLeads: 1,
+      currentSpend: 383.66,
+      baselineCpl: 20.44,
+      baselineLeads: 45,
+      baselineSpend: 919.74,
+    })
+    expect(v.category).toBe("action")
+    expect(v.insight).toMatch(/383\.66/)
+    expect(v.insight).toMatch(/20\.44/)
+    expect(v.insight).toMatch(/\(7d\)/)
+    expect(v.insight).toMatch(/\(30d\)/)
+    expect(v.insight).toMatch(/up/i)
+  })
+
+  it("treats a 30% spike as watch (within 25-50% band)", () => {
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 26,
+      currentLeads: 10,
+      currentSpend: 260,
+      baselineCpl: 20,
+      baselineLeads: 40,
+      baselineSpend: 800,
+    })
+    expect(v.category).toBe("watch")
+  })
+
+  it("treats a 10% spike as good (within ±25% noise band)", () => {
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 22,
+      currentLeads: 10,
+      currentSpend: 220,
+      baselineCpl: 20,
+      baselineLeads: 40,
+      baselineSpend: 800,
+    })
+    expect(v.category).toBe("good")
+    expect(v.insight).toMatch(/stable/i)
+  })
+
+  it("treats a CPL drop as good, surfaces the down-direction in the insight", () => {
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 12,
+      currentLeads: 20,
+      currentSpend: 240,
+      baselineCpl: 20,
+      baselineLeads: 40,
+      baselineSpend: 800,
+    })
+    expect(v.category).toBe("good")
+    expect(v.insight).toMatch(/down/i)
+  })
+
+  it("flags spend-without-leads as action regardless of baseline", () => {
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 0,
+      currentLeads: 0,
+      currentSpend: 450,
+      baselineCpl: 20,
+      baselineLeads: 40,
+      baselineSpend: 800,
+    })
+    expect(v.category).toBe("action")
+    expect(v.insight).toMatch(/0 leads/)
+  })
+
+  it("returns no-data when neither window has activity", () => {
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 0,
+      currentLeads: 0,
+      currentSpend: 0,
+      baselineCpl: 0,
+      baselineLeads: 0,
+      baselineSpend: 0,
+    })
+    expect(v.category).toBe("no-data")
+  })
+
+  it("emits 'no baseline yet' when baseline has no leads/spend", () => {
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 25,
+      currentLeads: 10,
+      currentSpend: 250,
+      baselineCpl: 0,
+      baselineLeads: 0,
+      baselineSpend: 0,
+    })
+    expect(v.category).toBe("good")
+    expect(v.insight).toMatch(/baseline/i)
+    expect(v.insight).toMatch(/25\.00/)
+  })
+
+  it("respects suppressComparison even when both sides have data", () => {
+    // Used when the user picks a 30d+ range — comparing 30d against 30d is
+    // meaningless. The Health card switches to a plain "current CPL" insight.
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 30,
+      currentLeads: 10,
+      currentSpend: 300,
+      baselineCpl: 25,
+      baselineLeads: 40,
+      baselineSpend: 1000,
+      suppressComparison: true,
+    })
+    expect(v.category).toBe("good")
+    expect(v.insight).toMatch(/baseline/i)
+  })
+
+  it("emits Dutch when locale=nl", () => {
+    const v = categorizeHealthVsBaseline({
+      ...baseArgs,
+      currentCpl: 383.66,
+      currentLeads: 1,
+      currentSpend: 383.66,
+      baselineCpl: 20.44,
+      baselineLeads: 45,
+      baselineSpend: 919.74,
+      locale: "nl",
+    })
+    expect(v.insight).toMatch(/omhoog/i)
+  })
+})
