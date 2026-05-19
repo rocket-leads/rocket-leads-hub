@@ -3,9 +3,14 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Users, Eye, Target, Settings, Inbox, Video, Receipt, Megaphone, LayoutDashboard } from "lucide-react"
+import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, LayoutDashboard } from "lucide-react"
 
-const ICONS = { Users, Eye, Target, Settings, Inbox, Video, Receipt, Megaphone, LayoutDashboard }
+// Note: lucide's `Receipt` ships with a $ glyph baked into the SVG. Roy
+// flagged it as off-brand for a Hub that talks Euros — we use `CreditCard`
+// here so the nav-level Billing icon stays currency-agnostic and visually
+// quiet, matching the abstract style of the rest of the sidebar items
+// (Users, Inbox, Megaphone, Target, etc.).
+const ICONS = { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, LayoutDashboard }
 
 type NavItem = { href: string; label: string; icon: keyof typeof ICONS }
 

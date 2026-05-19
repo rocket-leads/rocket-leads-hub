@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Receipt, ArrowRight } from "lucide-react"
+import { CreditCard, ArrowRight } from "lucide-react"
 import { BlockShell } from "./block-shell"
 import { t } from "@/lib/i18n/t"
 import { formatCurrency } from "@/lib/i18n/format"
@@ -26,7 +26,7 @@ export function BillingBlock({
   return (
     <BlockShell
       title={t("home.block.billing.title", locale)}
-      icon={<Receipt className="h-4 w-4 text-amber-400" />}
+      icon={<CreditCard className="h-4 w-4 text-amber-400" />}
       count={totalCount}
       footerHref="/billing"
       footerLabel={t("home.block.billing.cta", locale)}

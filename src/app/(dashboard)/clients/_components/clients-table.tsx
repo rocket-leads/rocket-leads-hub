@@ -686,7 +686,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           placeholder={t("clients.search_placeholder", locale)}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-60 h-9 border border-border bg-card rounded-xl text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 px-3.5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
+          className="w-60 h-10 border border-border bg-card rounded-lg text-sm text-foreground placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 px-3.5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
         />
         <FiltersPopover filters={filters} />
         {dateRangeControl && (

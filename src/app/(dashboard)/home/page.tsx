@@ -4,7 +4,7 @@ import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { categorize, severityScore } from "@/lib/watchlist/categorize"
-import { listInboxItems } from "@/lib/inbox/fetchers"
+import { listInboxItems, getInboxBadgeCounts } from "@/lib/inbox/fetchers"
 import { createAdminClient } from "@/lib/supabase/server"
 import { agreementMonthly, normalizeAgreement } from "@/lib/clients/agreement"
 import { getUserLocale } from "@/lib/i18n/server"
@@ -67,6 +67,7 @@ async function HomeData() {
     billingCache,
     agreementsByMondayId,
     myInboxItems,
+    inboxBadgeCounts,
     pedroProposals,
     lastKpiRefreshAt,
   ] = await Promise.all([
@@ -79,6 +80,17 @@ async function HomeData() {
     readCache<Record<string, BillingSummary>>("billing_summaries").then((c) => c ?? {}),
     fetchAgreementsByMondayId(),
     fetchMyInbox(userId, role),
+    // Single source of truth for the sidebar badge — includes unread chat
+    // messages, not just tasks/updates. The home Inbox Block now reads its
+    // total + empty state from here so "Inbox Zero" doesn't show while you
+    // still have unread Trengo/Slack messages waiting.
+    userId
+      ? getInboxBadgeCounts(userId, role === "admin" ? "admin" : "member").catch(() => ({
+          unreadUpdates: 0,
+          openTasks: 0,
+          unreadChats: 0,
+        }))
+      : Promise.resolve({ unreadUpdates: 0, openTasks: 0, unreadChats: 0 }),
     isAdmin ? fetchPendingPedroProposals() : Promise.resolve<PedroProposal[]>([]),
     fetchLastKpiRefreshAt(),
   ])
@@ -110,15 +122,23 @@ async function HomeData() {
   const healthScore =
     healthDenominator > 0 ? Math.round((good.length / healthDenominator) * 100) : null
 
-  // Team MRR — sum agreementMonthly across the user's visible clients (any
-  // status). Drives the "what is this team currently running" KPI. Admins
-  // see the org-wide total since filterClientsByUser returns everything for
-  // them. CMs/AMs see only their own team.
-  const teamMrr = visibleClients.reduce((sum, c) => {
+  // Team MRR (this month) — sum agreementMonthly across only those clients
+  // whose billing cycle starts in the current calendar month. Answers "what
+  // are we actually invoicing this month?" rather than "what's our
+  // annualised run-rate?". A quarterly client billed in March doesn't
+  // contribute to May's number, even though their MRR-equivalent is still
+  // running — for cash-this-month framing, the cycle date is what counts.
+  // Admins see the org-wide total since filterClientsByUser returns
+  // everything for them. CMs/AMs see only their own team.
+  const thisMonthPrefix = new Date().toISOString().slice(0, 7) // "YYYY-MM"
+  const thisMonthMrrClients = visibleClients.filter((c) =>
+    c.cycleStartDate.startsWith(thisMonthPrefix),
+  )
+  const teamMrr = thisMonthMrrClients.reduce((sum, c) => {
     const mrr = agreementsByMondayId[c.mondayItemId] ?? 0
     return sum + mrr
   }, 0)
-  const teamMrrClientCount = visibleClients.reduce((n, c) => {
+  const teamMrrClientCount = thisMonthMrrClients.reduce((n, c) => {
     const mrr = agreementsByMondayId[c.mondayItemId] ?? 0
     return mrr > 0 ? n + 1 : n
   }, 0)
@@ -154,9 +174,17 @@ async function HomeData() {
   const totalOutstanding = overdueClients.reduce((s, x) => s + x.summary.outstanding, 0)
   const topOverdue = overdueClients.slice(0, 5)
 
-  // Inbox — counts already capped server-side; take top 5 by created_at desc.
+  // Inbox — preview list still shows the 5 most recent tasks/updates (those
+  // are the items with a discrete title we can render in a row), but the
+  // total count + empty-state check use the badge counts which ALSO include
+  // unread chat messages. Without this, the block flipped to "Inbox Zero"
+  // while the sidebar badge still showed unread Trengo/Slack threads (Roy
+  // 2026-05).
   const topInbox = myInboxItems.slice(0, 5)
-  const unreadInboxCount = myInboxItems.length
+  const unreadInboxCount =
+    inboxBadgeCounts.unreadUpdates +
+    inboxBadgeCounts.openTasks +
+    inboxBadgeCounts.unreadChats
 
   return (
     <div className="space-y-6">

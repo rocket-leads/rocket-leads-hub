@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { CalendarClock, Receipt } from "lucide-react"
+import { CalendarClock, FileText } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { BillingOverview, type BillingGroup } from "./billing-overview"
@@ -20,7 +20,7 @@ type Tab = "future" | "past"
 
 const TABS: TopTab<Tab>[] = [
   { id: "future", label: "Future invoices", icon: CalendarClock },
-  { id: "past", label: "Past invoices", icon: Receipt },
+  { id: "past", label: "Past invoices", icon: FileText },
 ]
 
 /**

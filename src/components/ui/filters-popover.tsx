@@ -44,7 +44,7 @@ export function FiltersPopover({ filters, align = "start" }: Props) {
   return (
     <Popover>
       <PopoverTrigger
-        className={`inline-flex items-center gap-1.5 h-9 rounded-xl border border-border bg-card px-3.5 text-sm font-medium transition-colors hover:bg-muted/40 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
+        className={`inline-flex items-center gap-1.5 h-10 rounded-lg border border-border bg-card px-4 text-sm font-medium transition-colors hover:bg-muted/40 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] outline-none focus-visible:ring-2 focus-visible:ring-primary/30 ${
           activeCount > 0 ? "text-foreground" : "text-muted-foreground"
         }`}
       >

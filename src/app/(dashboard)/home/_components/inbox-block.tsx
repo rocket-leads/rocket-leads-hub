@@ -55,6 +55,9 @@ export function InboxBlock({
   locale,
 }: {
   items: InboxItem[]
+  /** Includes unread chat messages too — drives the empty-state check so we
+   *  never flip to "Inbox Zero" while messages are still unread, even if the
+   *  preview list (tasks + updates only) happens to be empty. */
   totalCount: number
   locale: Locale
 }) {
@@ -65,9 +68,23 @@ export function InboxBlock({
       count={totalCount}
       footerHref="/inbox"
       footerLabel={t("home.block.inbox.cta", locale)}
-      empty={items.length === 0}
+      empty={totalCount === 0}
       emptyContent={<InboxZeroState />}
     >
+      {items.length === 0 ? (
+        // Only chat messages are unread — no tasks/updates to preview. Keep
+        // the block populated with a clear "open the inbox" hint instead of
+        // an empty list under the title.
+        <div className="flex flex-col items-center justify-center h-full px-6 py-8 gap-2 text-center">
+          <MessageSquare className="h-5 w-5 text-violet-400" />
+          <p className="text-sm text-foreground/80">
+            {totalCount} unread {totalCount === 1 ? "message" : "messages"}
+          </p>
+          <p className="text-[11px] text-muted-foreground/60">
+            Open the inbox to read them.
+          </p>
+        </div>
+      ) : (
       <ul className="divide-y divide-border/30">
         {items.map((item) => (
           <li key={item.id}>
@@ -90,6 +107,7 @@ export function InboxBlock({
           </li>
         ))}
       </ul>
+      )}
     </BlockShell>
   )
 }

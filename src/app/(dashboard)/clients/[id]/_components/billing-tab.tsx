@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { CalendarClock, Check, ExternalLink, Loader2, Receipt, X } from "lucide-react"
+import { CalendarClock, Check, ExternalLink, FileText, Loader2, X } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -212,7 +212,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
 
   if (!stripeCustomerId) {
     return (
-      <BillingSectionShell icon={Receipt} title={t("client.billing.invoices.title", locale)} subtitle={t("client.billing.invoices.subtitle_fallback", locale)}>
+      <BillingSectionShell icon={FileText} title={t("client.billing.invoices.title", locale)} subtitle={t("client.billing.invoices.subtitle_fallback", locale)}>
         <div className="rounded-md border border-dashed border-border/50 p-6 text-center text-sm text-muted-foreground">
           {t("client.billing.invoices.no_stripe_id", locale)}
         </div>
@@ -222,7 +222,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
 
   if (query.isLoading) {
     return (
-      <BillingSectionShell icon={Receipt} title={t("client.billing.invoices.title", locale)} subtitle={subtitle} actions={actions}>
+      <BillingSectionShell icon={FileText} title={t("client.billing.invoices.title", locale)} subtitle={subtitle} actions={actions}>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24" />)}
         </div>
@@ -233,7 +233,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
 
   if (query.isError || !data) {
     return (
-      <BillingSectionShell icon={Receipt} title={t("client.billing.invoices.title", locale)} subtitle={subtitle} actions={actions}>
+      <BillingSectionShell icon={FileText} title={t("client.billing.invoices.title", locale)} subtitle={subtitle} actions={actions}>
         <div className="py-6 text-center text-sm text-destructive">
           {query.error instanceof Error ? query.error.message : t("client.billing.invoices.load_failed", locale)}
         </div>
@@ -245,7 +245,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
   const dateLocale = locale === "nl" ? "nl-NL" : "en-GB"
 
   return (
-    <BillingSectionShell icon={Receipt} title={t("client.billing.invoices.title", locale)} subtitle={subtitle} actions={actions}>
+    <BillingSectionShell icon={FileText} title={t("client.billing.invoices.title", locale)} subtitle={subtitle} actions={actions}>
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryCard title={t("client.billing.summary.invoiced", locale)} value={fmt(totalInvoiced)} />

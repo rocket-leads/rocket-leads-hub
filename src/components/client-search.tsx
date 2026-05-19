@@ -122,7 +122,7 @@ export function ClientSearch() {
           setOpen(true)
           fetchClients()
         }}
-        className="flex items-center gap-2 h-9 w-72 rounded-xl border border-border bg-card px-3 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
+        className="flex items-center gap-2 h-10 w-72 rounded-lg border border-border bg-card px-3.5 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
       >
         <Search className="h-3.5 w-3.5 shrink-0" />
         <span className="flex-1 text-left">{t("search.trigger.placeholder", locale)}</span>
@@ -132,7 +132,7 @@ export function ClientSearch() {
       </button>
 
       {open && (
-        <div className="absolute top-full right-0 mt-1 w-80 rounded-xl border border-border/40 bg-popover shadow-xl z-50 overflow-hidden">
+        <div className="absolute top-full right-0 mt-1 w-80 rounded-lg border border-border/60 bg-popover shadow-xl z-50 overflow-hidden">
           <div className="flex items-center gap-2 border-b border-border/30 px-3 py-2">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <input

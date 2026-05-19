@@ -34,7 +34,7 @@ export async function Sidebar() {
     { href: "/meetings", label: t("nav.meetings", locale), icon: "Video" as const },
     { href: "/pedro", label: t("nav.pedro", locale), icon: "Megaphone" as const },
     { href: "/targets", label: t("nav.targets", locale), icon: "Target" as const },
-    { href: "/billing", label: t("nav.billing", locale), icon: "Receipt" as const },
+    { href: "/billing", label: t("nav.billing", locale), icon: "CreditCard" as const },
   ] as const
 
   const allItems = [
