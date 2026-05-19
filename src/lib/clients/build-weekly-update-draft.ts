@@ -1,8 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById, type MondayClient } from "@/lib/integrations/monday"
 import { parsePedroBody } from "@/lib/pedro/insights/types"
-import { readCache } from "@/lib/cache"
-import type { KpiSummary } from "@/app/api/kpi-summaries/route"
+import {
+  fetchKpisForWindow,
+  type KpiSummary,
+} from "@/app/api/kpi-summaries/route"
 import {
   composeInitialParts,
   type EditableParts,
@@ -52,9 +54,49 @@ export function detectChannel(label: string): WeeklyUpdateChannel {
   return "unknown"
 }
 
-async function loadKpi(mondayItemId: string): Promise<KpiSummary | null> {
-  const cache = await readCache<Record<string, KpiSummary>>("kpi_summaries")
-  return cache?.[mondayItemId] ?? null
+/** Format an ISO date (YYYY-MM-DD) in UTC. */
+function fmtDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Range covering the most recently completed Monday → Sunday week,
+ * in UTC. Anchor on `now` so calling on Monday morning still gives
+ * "last week" rather than "the week we're currently in".
+ *
+ * Examples (all UTC):
+ *   now = Mon 2026-05-18 06:00 → { start: 2026-05-11, end: 2026-05-17 }
+ *   now = Tue 2026-05-19 08:00 → { start: 2026-05-11, end: 2026-05-17 }
+ *   now = Sun 2026-05-24 23:59 → { start: 2026-05-11, end: 2026-05-17 }
+ */
+export function lastCompletedWeek(now: Date = new Date()): { startDate: string; endDate: string } {
+  const day = now.getUTCDay() // 0 = Sun, 1 = Mon, ... 6 = Sat
+  const sundayOffset = day === 0 ? 7 : day // Sun → 7 days back, Mon → 1, etc.
+  const lastSunday = new Date(now)
+  lastSunday.setUTCDate(now.getUTCDate() - sundayOffset)
+  const lastMonday = new Date(lastSunday)
+  lastMonday.setUTCDate(lastSunday.getUTCDate() - 6)
+  return { startDate: fmtDate(lastMonday), endDate: fmtDate(lastSunday) }
+}
+
+/**
+ * Format a date range as "11 t/m 17 mei" (Dutch). Years dropped when
+ * both ends fall in the current year; months dropped on the start when
+ * both sides land in the same month.
+ */
+export function formatWeekLabel(startISO: string, endISO: string): string {
+  const start = new Date(`${startISO}T00:00:00Z`)
+  const end = new Date(`${endISO}T00:00:00Z`)
+  const months = [
+    "jan", "feb", "mrt", "apr", "mei", "jun",
+    "jul", "aug", "sep", "okt", "nov", "dec",
+  ]
+  const sd = start.getUTCDate()
+  const sm = months[start.getUTCMonth()]
+  const ed = end.getUTCDate()
+  const em = months[end.getUTCMonth()]
+  if (sm === em) return `${sd} t/m ${ed} ${em}`
+  return `${sd} ${sm} t/m ${ed} ${em}`
 }
 
 async function loadPedroBody(mondayItemId: string) {
@@ -117,6 +159,12 @@ export async function resolveAmUserIdForClient(
  * → user_column_mappings); only when no mapping exists does it fall back
  * to the passed `userId`. This keeps Roy-as-admin reviewing a Danny client
  * sending out as Danny's template, not Roy's.
+ *
+ * KPI strategy: the weekly update is a snapshot of LAST WEEK (Monday
+ * through Sunday), not a rolling 7d window. The cron pre-fetches KPI
+ * for every Live client for that specific range and passes the result
+ * in via `kpi`. When `kpi` is omitted (dialog calling for a single
+ * client), the function fetches inline for the same Mon-Sun range.
  */
 export async function buildWeeklyUpdateDraft(args: {
   userId: string
@@ -125,6 +173,13 @@ export async function buildWeeklyUpdateDraft(args: {
    *  we fetch via fetchClientById. The dialog endpoint always omits this;
    *  the cron always passes it. */
   client?: MondayClient
+  /** Pre-fetched KPI for this client + the weekly window. When omitted,
+   *  we fetch fresh for the most recently completed Mon-Sun. Cron passes
+   *  this from its bulk fetch; dialog skips and lets us fetch one. */
+  kpi?: KpiSummary | null
+  /** Override the "last completed week" anchor. Used in tests; production
+   *  callers leave it undefined so we anchor on real time. */
+  now?: Date
 }): Promise<WeeklyUpdateDraftResult | null> {
   const client = args.client ?? (await fetchClientById(args.mondayItemId))
   if (!client) return null
@@ -137,9 +192,28 @@ export async function buildWeeklyUpdateDraft(args: {
   // exists so the dialog still works for un-mapped clients.
   const amUserId = (await resolveAmUserIdForClient(client)) ?? args.userId
 
+  // Fresh per-week KPI fetch when the caller didn't pre-load one.
+  const weekRange = lastCompletedWeek(args.now)
+  const kpiPromise: Promise<KpiSummary | null> =
+    args.kpi !== undefined
+      ? Promise.resolve(args.kpi)
+      : fetchKpisForWindow({
+          clients: [
+            {
+              mondayItemId: client.mondayItemId,
+              metaAdAccountId: client.metaAdAccountId || null,
+              clientBoardId: client.clientBoardId || null,
+            },
+          ],
+          startDate: weekRange.startDate,
+          endDate: weekRange.endDate,
+        })
+          .then((map) => map[client.mondayItemId] ?? null)
+          .catch(() => null)
+
   // Always resolve the weekly template for WhatsApp. Email skips it.
   const [kpi, pedro, waTemplate, hubUser] = await Promise.all([
-    loadKpi(args.mondayItemId),
+    kpiPromise,
     loadPedroBody(args.mondayItemId),
     isEmail
       ? Promise.resolve({ name: null as string | null, source: "none" as const })
@@ -163,6 +237,7 @@ export async function buildWeeklyUpdateDraft(args: {
     channel,
     kpi,
     pedro,
+    weekLabel: formatWeekLabel(weekRange.startDate, weekRange.endDate),
   })
 
   return {

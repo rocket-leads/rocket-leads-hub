@@ -5,7 +5,11 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { ensureClientId } from "@/lib/clients/sync"
-import { buildWeeklyUpdateDraft } from "@/lib/clients/build-weekly-update-draft"
+import {
+  buildWeeklyUpdateDraft,
+  lastCompletedWeek,
+} from "@/lib/clients/build-weekly-update-draft"
+import { fetchKpisForWindow, type KpiSummary } from "@/app/api/kpi-summaries/route"
 
 /**
  * Weekly Update drafts — Monday morning cron.
@@ -89,6 +93,25 @@ export async function GET(req: NextRequest) {
 
     const amNameToUserId = await loadAmNameToUserId(supabase)
 
+    // Pre-fetch KPI for the most-recently-completed Mon-Sun for every
+    // candidate in ONE batch instead of 51 sequential per-client fetches.
+    // The build pipeline then reads from this map (no internal cache
+    // lookup) — keeps the cron's runtime under a minute and guarantees
+    // the data exactly matches the date label rendered in the message.
+    const weekRange = lastCompletedWeek(new Date(startedAt))
+    const weeklyKpis: Record<string, KpiSummary> = await fetchKpisForWindow({
+      clients: candidates.map((c) => ({
+        mondayItemId: c.mondayItemId,
+        metaAdAccountId: c.metaAdAccountId || null,
+        clientBoardId: c.clientBoardId || null,
+      })),
+      startDate: weekRange.startDate,
+      endDate: weekRange.endDate,
+    }).catch((e) => {
+      console.error("[weekly-update-drafts] fetchKpisForWindow failed:", e)
+      return {} as Record<string, KpiSummary>
+    })
+
     type Skip = { mondayItemId: string; name: string; reason: string }
     const skipped: Skip[] = []
     let created = 0
@@ -124,6 +147,11 @@ export async function GET(req: NextRequest) {
           userId: amUserId,
           mondayItemId: client.mondayItemId,
           client,
+          // Pass the pre-fetched weekly KPI through so the builder
+          // skips its inline fallback fetch. Null when this client
+          // had no data in the bulk fetch.
+          kpi: weeklyKpis[client.mondayItemId] ?? null,
+          now: new Date(startedAt),
         })
         if (!draft) {
           skipped.push({

@@ -468,6 +468,41 @@ async function batchProcess(
   return results
 }
 
+/**
+ * Fresh KPI fetch for an arbitrary date window. Wraps the same
+ * batchProcess the POST handler uses, but skips the rolling-7d cache so
+ * callers can ask for any [startDate, endDate] range (e.g., last week's
+ * Mon-Sun for the weekly-update queue).
+ *
+ * Internal call only — assumes admin context. Don't expose without auth.
+ */
+export async function fetchKpisForWindow(args: {
+  clients: ClientInput[]
+  startDate: string
+  endDate: string
+}): Promise<Record<string, KpiSummary>> {
+  const { clients, startDate, endDate } = args
+  if (clients.length === 0) return {}
+  const supabase = await createAdminClient()
+  const selectedByMondayItemId = await loadSelectedCampaigns(
+    supabase,
+    clients.map((c) => c.mondayItemId),
+  )
+  const prev = getPreviousRange(startDate, endDate)
+  return batchProcess(
+    clients,
+    startDate,
+    endDate,
+    prev.startDate,
+    prev.endDate,
+    5,
+    selectedByMondayItemId,
+    supabase,
+  )
+}
+
+export type { ClientInput as KpiClientInput }
+
 export const maxDuration = 300
 
 export async function POST(req: NextRequest) {

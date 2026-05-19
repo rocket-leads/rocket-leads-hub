@@ -236,6 +236,12 @@ export type ComposeInput = {
   pedro: PedroInsightBody | null
   /** Render date — pass `new Date()` in production, fixed dates in tests. */
   now?: Date
+  /** Human-readable date range for the week the update covers (e.g.
+   *  "11 t/m 17 mei"). When set, the intro reads "Hier de update over
+   *  de week van {weekLabel}:" instead of one of the random INTROS
+   *  variants. Lets the AM see the precise window the KPIs cover so
+   *  "afgelopen week" can never mean "rolling 7d". */
+  weekLabel?: string
 }
 
 /** Build the initial draft. Picks a weekly intro variant + pre-renders KPI
@@ -244,7 +250,12 @@ export type ComposeInput = {
 export function composeInitialParts(input: ComposeInput): ComposedUpdate {
   const now = input.now ?? new Date()
   const seed = seedHash(`${input.clientId}:${now.getUTCFullYear()}:${isoWeek(now)}`)
-  const intro = pick(INTROS, seed >> 3)
+  // Prefer the deterministic, date-explicit intro when the caller passed
+  // a weekLabel. Falls back to the rotating INTROS pool for legacy code
+  // paths (tests, ad-hoc dialog opens without a date anchor).
+  const intro = input.weekLabel
+    ? `Hier de update over de week van ${input.weekLabel}:`
+    : pick(INTROS, seed >> 3)
   const firstName = (input.firstName ?? "").trim()
   const channel: Channel = input.channel ?? "whatsapp"
   const isEmail = channel === "email"
