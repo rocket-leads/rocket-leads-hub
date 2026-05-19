@@ -259,6 +259,8 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
           onClose={handleClosePanel}
           currentUser={currentUser}
           clientPreview={selectedClientPreview}
+          allClients={activeClients}
+          onSelectClient={handleSelectClient}
         />
       )}
     </div>

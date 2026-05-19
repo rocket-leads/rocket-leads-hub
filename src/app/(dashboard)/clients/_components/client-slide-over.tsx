@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { X } from "lucide-react"
+import { Search, X } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ClientHeader } from "@/app/(dashboard)/clients/[id]/_components/client-header"
 import { ClientTabs } from "@/app/(dashboard)/clients/[id]/_components/client-tabs"
@@ -34,6 +34,12 @@ type Props = {
    *  2000ms) before showing anything — that's the "traag" complaint
    *  Roy filed on 2026-05-18. */
   clientPreview?: MondayClient | null
+  /** Full clients list for the in-panel quick-switch search. When provided
+   *  together with `onSelectClient`, a search box floats in the dimmed
+   *  backdrop strip so the user can jump from client A to client B without
+   *  closing the panel + scrolling the table. */
+  allClients?: MondayClient[]
+  onSelectClient?: (mondayItemId: string) => void
 }
 
 // Permissive defaults used while the real access query is still in
@@ -47,7 +53,7 @@ const OPTIMISTIC_ACCESS: ClientAccess = {
   canViewCommunication: true,
 }
 
-export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview }: Props) {
+export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview, allClients, onSelectClient }: Props) {
   const open = !!clientId
 
   const detailQuery = useQuery<ClientDetailResponse>({
@@ -97,6 +103,15 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview 
             "data-closed:animate-out data-closed:fade-out-0",
           )}
         />
+        {allClients && onSelectClient && (
+          <ClientSwitcher
+            clients={allClients}
+            currentId={clientId}
+            onSelect={(id) => {
+              if (id !== clientId) onSelectClient(id)
+            }}
+          />
+        )}
         <DialogPrimitive.Popup
           className={cn(
             "fixed inset-y-0 right-0 z-50 w-full lg:w-[70%] max-w-[1500px]",
@@ -183,5 +198,150 @@ function SlideOverContent({
         />
       </div>
     </>
+  )
+}
+
+/**
+ * Quick-switch search bar that floats in the dimmed backdrop strip on the
+ * left of the slide-over panel. Lets the user jump from client A to client B
+ * without closing the panel, scrolling the table, and reopening — the URL is
+ * just rewritten in place and the panel content swaps. Cmd+K (Ctrl+K on
+ * non-Mac) focuses the input from anywhere while the panel is open.
+ *
+ * Filtering is case-insensitive across `name`, `companyName`, `accountManager`,
+ * and `campaignManager` so the AM can find a client by their own name too.
+ * Results are capped at 8 to keep the dropdown calm.
+ */
+function ClientSwitcher({
+  clients,
+  currentId,
+  onSelect,
+}: {
+  clients: MondayClient[]
+  currentId: string | null
+  onSelect: (id: string) => void
+}) {
+  const [query, setQuery] = useState("")
+  const [activeIdx, setActiveIdx] = useState(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Cmd/Ctrl+K focuses the search from anywhere while the panel is open.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault()
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) {
+      // Empty query — surface the first 8 clients excluding the current one.
+      // Gives the user a one-click way to jump to a neighbour without typing.
+      return clients.filter((c) => c.mondayItemId !== currentId).slice(0, 8)
+    }
+    const hits: MondayClient[] = []
+    for (const c of clients) {
+      if (c.mondayItemId === currentId) continue
+      const hay = `${c.name} ${c.companyName ?? ""} ${c.accountManager ?? ""} ${c.campaignManager ?? ""}`.toLowerCase()
+      if (hay.includes(q)) {
+        hits.push(c)
+        if (hits.length >= 8) break
+      }
+    }
+    return hits
+  }, [clients, query, currentId])
+
+  // Reset the highlight when the result set changes shape.
+  useEffect(() => {
+    setActiveIdx(0)
+  }, [query])
+
+  function pick(idx: number) {
+    const c = filtered[idx]
+    if (!c) return
+    onSelect(c.mondayItemId)
+    setQuery("")
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setActiveIdx((i) => Math.min(i + 1, filtered.length - 1))
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      setActiveIdx((i) => Math.max(i - 1, 0))
+    } else if (e.key === "Enter") {
+      e.preventDefault()
+      pick(activeIdx)
+    }
+  }
+
+  return (
+    // Floating panel above the backdrop. `pointer-events-auto` on a wrapper
+    // makes the search clickable; `stopPropagation` on every interaction
+    // keeps the backdrop's click-to-close from firing through to here.
+    <div
+      className="pointer-events-none fixed top-6 left-0 right-[max(70%,calc(100vw-1500px))] z-[60] flex justify-center px-4"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        className="pointer-events-auto w-full max-w-[420px] rounded-xl border border-white/10 bg-zinc-900/80 backdrop-blur-md shadow-2xl ring-1 ring-black/20"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
+          <Search className="h-4 w-4 text-zinc-400 shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Switch to another client…"
+            className="flex-1 bg-transparent text-sm text-zinc-100 placeholder:text-zinc-500 outline-none"
+            aria-label="Search clients"
+          />
+          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+            ⌘K
+          </kbd>
+        </div>
+        {filtered.length > 0 && (
+          <ul className="max-h-[360px] overflow-y-auto py-1">
+            {filtered.map((c, idx) => {
+              const isActive = idx === activeIdx
+              return (
+                <li key={c.mondayItemId}>
+                  <button
+                    type="button"
+                    onClick={() => pick(idx)}
+                    onMouseEnter={() => setActiveIdx(idx)}
+                    className={cn(
+                      "w-full text-left px-3 py-2 flex items-center justify-between gap-3 transition-colors",
+                      isActive ? "bg-white/10 text-white" : "text-zinc-200 hover:bg-white/5",
+                    )}
+                  >
+                    <span className="truncate text-sm font-medium">{c.name}</span>
+                    {c.accountManager && (
+                      <span className="shrink-0 text-[11px] text-zinc-500 truncate max-w-[40%]">
+                        {c.accountManager}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {query.trim() && filtered.length === 0 && (
+          <p className="px-3 py-3 text-xs text-zinc-500">No matching clients.</p>
+        )}
+      </div>
+    </div>
   )
 }
