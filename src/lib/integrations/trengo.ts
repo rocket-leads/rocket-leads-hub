@@ -145,15 +145,13 @@ export async function findFirstEmailChannel(): Promise<TrengoChannel | null> {
  * Send an email to a Trengo contact via the user's token, creating a
  * brand-new ticket. Returns the new ticket id + the message id.
  *
- * Used when the contact has no existing email conversation — we still
- * want to send the weekly update without forcing the AM to bootstrap a
- * ticket manually in Trengo's UI.
+ * Two-step because Trengo's `POST /api/v2/tickets/messages` shortcut
+ * returns 405 — that route is read-only. Standard REST flow:
+ *   1. `POST /api/v2/tickets`     → create ticket (channel + contact + subject)
+ *   2. `POST /api/v2/tickets/{id}/messages` → send body into new ticket
  *
- * Trengo accepts the message-create payload directly on `/tickets/messages`
- * with channel_id + contact_id (no ticket_id required). Trengo opens a
- * new ticket as a side effect and returns the resulting message + ticket
- * ids. If this endpoint shape changes in a future Trengo API version,
- * the error bubbles up as a clear "Trengo create-email failed: …".
+ * If either step fails, the thrown error includes the step + Trengo's
+ * response so the dialog's red banner is self-debuggable.
  */
 export async function createEmailMessageForContact(args: {
   userToken: string
@@ -162,7 +160,8 @@ export async function createEmailMessageForContact(args: {
   subject: string
   body: string
 }): Promise<{ ticketId: string; messageId: string }> {
-  const res = await fetch(`https://app.trengo.com/api/v2/tickets/messages`, {
+  // Step 1 — create the ticket.
+  const createRes = await fetch(`https://app.trengo.com/api/v2/tickets`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${args.userToken}`,
@@ -173,27 +172,61 @@ export async function createEmailMessageForContact(args: {
       channel_id: args.channelId,
       contact_id: args.contactId,
       subject: args.subject,
-      message: args.body,
     }),
   })
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "")
+  if (!createRes.ok) {
+    const errText = await createRes.text().catch(() => "")
     throw new Error(
-      `Trengo create-email failed (${res.status}, channel=${args.channelId}, contact=${args.contactId}): ${errText.slice(0, 300)}`,
+      `Trengo create-ticket failed (${createRes.status}, channel=${args.channelId}, contact=${args.contactId}): ${errText.slice(0, 300)}`,
     )
   }
-  const json = (await res.json()) as {
+  const createJson = (await createRes.json()) as {
     id?: number | string
     ticket_id?: number | string
-    message?: { id?: number | string; ticket_id?: number | string }
     data?: { id?: number | string; ticket_id?: number | string }
   }
-  const messageId = json.message?.id ?? json.id ?? json.data?.id
   const ticketId =
-    json.message?.ticket_id ?? json.ticket_id ?? json.data?.ticket_id
-  if (!messageId || !ticketId) {
+    createJson.id ?? createJson.ticket_id ?? createJson.data?.id ?? createJson.data?.ticket_id
+  if (!ticketId) {
     throw new Error(
-      `Trengo create-email returned no ids — keys: ${Object.keys(json).join(",")}`,
+      `Trengo create-ticket returned no id — keys: ${Object.keys(createJson).join(",")}`,
+    )
+  }
+
+  // Step 2 — send the message into the new ticket. Mirrors the regular
+  // outbound email reply payload (subject re-stated for clarity even
+  // though the ticket already carries it).
+  const sendRes = await fetch(
+    `https://app.trengo.com/api/v2/tickets/${ticketId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${args.userToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        message: args.body,
+        subject: args.subject,
+        internal_note: false,
+      }),
+    },
+  )
+  if (!sendRes.ok) {
+    const errText = await sendRes.text().catch(() => "")
+    throw new Error(
+      `Trengo email-send failed (${sendRes.status}, ticket=${ticketId}): ${errText.slice(0, 300)}`,
+    )
+  }
+  const sendJson = (await sendRes.json()) as {
+    id?: number | string
+    message?: { id?: number | string }
+    data?: { id?: number | string }
+  }
+  const messageId = sendJson.message?.id ?? sendJson.id ?? sendJson.data?.id
+  if (!messageId) {
+    throw new Error(
+      `Trengo email-send returned no id — keys: ${Object.keys(sendJson).join(",")}`,
     )
   }
   return { ticketId: String(ticketId), messageId: String(messageId) }
