@@ -166,6 +166,20 @@ export async function GET(
   const { id: mondayItemId } = await params
   const insight = req.nextUrl.searchParams.get("insight") ?? ""
 
+  // Field selector: callers that don't need all three datasets save the
+  // round-trips for the ones they're not going to render. Currently the
+  // slide-over's HomeTab only uses topAds — passing `?fields=topAds`
+  // skips the Meta-daily fetch (trend), the Monday updates fetch, and
+  // the Claude AI summary generation, dropping latency from 6-7s to
+  // ~1-2s. Empty / missing → all fields, for back-compat.
+  const fieldsParam = req.nextUrl.searchParams.get("fields")
+  const requestedFields = fieldsParam
+    ? new Set(fieldsParam.split(",").map((s) => s.trim()).filter(Boolean))
+    : null
+  const wantsTrend = !requestedFields || requestedFields.has("dailyTrend")
+  const wantsTopAds = !requestedFields || requestedFields.has("topAds")
+  const wantsSummary = !requestedFields || requestedFields.has("aiSummary")
+
   const supabase = await createAdminClient()
   const { data: clientRow } = await supabase
     .from("clients")
@@ -189,37 +203,44 @@ export async function GET(
   const trendRange = getTrendRange()
   const adRange = getLast30DaysRange()
 
-  // Pre-baked Monday lead board updates + Trengo come from the cron-managed cache.
-  const contextCache = (await readCache<Record<string, ClientContext>>("watchlist_context")) ?? {}
-  const ctx = contextCache[mondayItemId]
+  // Pre-baked Monday lead board updates + Trengo come from the cron-managed
+  // cache — only read when the AI summary is actually requested.
+  const ctx = wantsSummary
+    ? ((await readCache<Record<string, ClientContext>>("watchlist_context")) ?? {})[mondayItemId]
+    : undefined
 
-  // Fire all live calls in parallel — Meta daily (for trend), Meta ad details (winners/losers),
-  // Monday item updates (current-clients-board commentary), and the cached AI summary lookup.
-  // Cache key is bumped to v2 so old summaries (built under the looser prompt) regenerate.
+  // AI summary cache lookup is also gated on wantsSummary so the cheap
+  // Supabase read for the cache entry doesn't happen on topAds-only calls.
   const aiSummaryCacheKey = `watchlist_expand_summary_v2:${mondayItemId}`
-  const cachedSummary = await readCache<{ summary: string | null; insight: string }>(aiSummaryCacheKey, AI_SUMMARY_TTL_MS)
-  // If the visible Insight changed since the last summary, regenerate — the AI compares
-  // against the Insight to avoid duplicates, so a stale Insight invalidates the summary.
+  const cachedSummary = wantsSummary
+    ? await readCache<{ summary: string | null; insight: string }>(aiSummaryCacheKey, AI_SUMMARY_TTL_MS)
+    : null
   const cacheValid = cachedSummary != null && cachedSummary.insight === insight
 
+  // Fire the live calls in parallel, but only the ones we need.
+  // Promise.all is fine with skipped slots resolving to []/[].
   const [dailyInsights, ads, currentBoardUpdates] = await Promise.all([
-    adAccountId
+    adAccountId && wantsTrend
       ? fetchMetaInsightsDaily(adAccountId, trendRange.startDate, trendRange.endDate).catch(() => [])
       : Promise.resolve([]),
-    adAccountId
+    adAccountId && wantsTopAds
       ? fetchMetaAdDetails(adAccountId, adRange.startDate, adRange.endDate, selectedCampaignIds).catch(() => [])
       : Promise.resolve([]),
-    fetchItemUpdates(mondayItemId, 14).catch((e) => {
-      console.error("Watchlist expand: item-updates fetch failed", mondayItemId, e instanceof Error ? e.message : e)
-      return [] as Array<{ text: string; createdAt: string }>
-    }),
+    wantsSummary
+      ? fetchItemUpdates(mondayItemId, 14).catch((e) => {
+          console.error("Watchlist expand: item-updates fetch failed", mondayItemId, e instanceof Error ? e.message : e)
+          return [] as Array<{ text: string; createdAt: string }>
+        })
+      : Promise.resolve([] as Array<{ text: string; createdAt: string }>),
   ])
 
   // 14d daily trend (filtered to selected campaigns if any).
   const dailyFiltered = selectedCampaignIds
     ? dailyInsights.filter((d) => selectedCampaignIds!.has(d.campaignId))
     : dailyInsights
-  const dailyTrend = fillTrend(aggregateMetaDailyByDate(dailyFiltered), trendRange.startDate)
+  const dailyTrend = wantsTrend
+    ? fillTrend(aggregateMetaDailyByDate(dailyFiltered), trendRange.startDate)
+    : []
 
   // Single ranked list of top ads (sorted by spend desc) with a per-ad verdict relative to
   // the account-average CPL. Avoids the previous winner/loser overlap that happened when a
@@ -268,7 +289,7 @@ export async function GET(
   // Trengo. The model receives explicit per-block window labels so it can't conflate sources,
   // and the current Insight text so it can avoid duplicating what's already on screen.
   let aiSummary: string | null = cacheValid ? cachedSummary!.summary : null
-  if (!cacheValid) {
+  if (wantsSummary && !cacheValid) {
     const currentBoardText = currentBoardUpdates
       .map((u) => `[${u.createdAt}] ${u.text.slice(0, 250)}`)
       .join("\n")

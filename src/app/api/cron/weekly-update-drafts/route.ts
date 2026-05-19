@@ -128,36 +128,64 @@ export async function GET(req: NextRequest) {
           continue
         }
 
-        const { error: insertErr } = await supabase
+        // Upsert-if-pending: re-running the cron the same week replaces
+        // any still-pending draft with fresh parts (handy when V2 env was
+        // toggled on between runs, or when KPI/Pedro caches refreshed
+        // after the first attempt). Sent / dismissed rows are left alone
+        // so we don't resurrect work the AM already finished.
+        const { data: existing } = await supabase
           .from("weekly_update_drafts")
-          .insert({
-            client_id: clientUuid,
-            monday_item_id: client.mondayItemId,
-            week_of: weekOf,
-            parts: draft.parts,
-            template_version: draft.templateVersion ?? 1,
-            template_name: draft.whatsappTemplateName,
-            channel: draft.channel,
-            status: "pending",
-          })
+          .select("id, status")
+          .eq("client_id", clientUuid)
+          .eq("week_of", weekOf)
+          .maybeSingle<{ id: string; status: string }>()
 
-        if (insertErr) {
-          // 23505 = unique_violation → draft already exists for this week.
-          // Treat as idempotency success, not failure.
-          if (insertErr.code === "23505") {
-            alreadyExists += 1
-          } else {
+        const payload = {
+          parts: draft.parts,
+          template_version: draft.templateVersion ?? 1,
+          template_name: draft.whatsappTemplateName,
+          channel: draft.channel,
+        }
+
+        if (!existing) {
+          const { error: insertErr } = await supabase
+            .from("weekly_update_drafts")
+            .insert({
+              client_id: clientUuid,
+              monday_item_id: client.mondayItemId,
+              week_of: weekOf,
+              status: "pending",
+              ...payload,
+            })
+          if (insertErr) {
             failed += 1
             skipped.push({
               mondayItemId: client.mondayItemId,
               name: client.name,
               reason: `DB insert failed: ${insertErr.message}`,
             })
+            continue
           }
-          continue
+          created += 1
+        } else if (existing.status === "pending") {
+          const { error: updateErr } = await supabase
+            .from("weekly_update_drafts")
+            .update(payload)
+            .eq("id", existing.id)
+          if (updateErr) {
+            failed += 1
+            skipped.push({
+              mondayItemId: client.mondayItemId,
+              name: client.name,
+              reason: `DB update failed: ${updateErr.message}`,
+            })
+            continue
+          }
+          alreadyExists += 1
+        } else {
+          // sent / dismissed — never touch.
+          alreadyExists += 1
         }
-
-        created += 1
       } catch (e) {
         failed += 1
         skipped.push({

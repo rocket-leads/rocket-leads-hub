@@ -147,10 +147,13 @@ function WeeklyUpdateQueueSheet({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* sm:max-w-[1700px] explicitly overrides shadcn DialogContent's
-          default `sm:max-w-sm` (384px on desktop). Without the sm: prefix
-          the responsive default still wins and the dialog stays tiny. */}
-      <DialogContent className="sm:max-w-[1700px] w-[98vw] h-[92vh] p-0 gap-0 overflow-hidden flex flex-col">
+      {/* sm:max-w-[1400px] explicitly overrides shadcn DialogContent's
+          default `sm:max-w-sm` (384px on desktop). Width is wide enough
+          for the split-pane without leaving a giant horizontal hole on
+          1440-class screens. Height is tighter (80vh) so the editor pane
+          doesn't trail off with white space below short message bodies;
+          the sidebar scrolls internally when it has more rows than fit. */}
+      <DialogContent className="sm:max-w-[1400px] w-[96vw] h-[80vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogTitle className="sr-only">
           Wekelijkse updates ({visibleDrafts.length})
         </DialogTitle>
@@ -240,29 +243,30 @@ function DraftSidebarRow({
   onClick: () => void
   edited: boolean
 }) {
-  const channelIcon = draft.channel === "email" ? Mail : MessageCircle
-  const ChannelIcon = channelIcon
+  const isEmail = draft.channel === "email"
+  const ChannelIcon = isEmail ? Mail : MessageCircle
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full text-left px-3 py-2.5 border-l-2 transition-colors flex items-start gap-2.5",
+        "w-full text-left px-3 py-2.5 border-l-2 transition-colors flex items-center gap-2.5",
         active
           ? "border-violet-500 bg-violet-500/8"
           : "border-transparent hover:bg-muted/40",
       )}
     >
+      {/* Solid filled circle — WhatsApp brand green vs email blue — so the
+          channel is recognisable from across the screen instead of two
+          near-identical pale tints. */}
       <div
         className={cn(
-          "mt-0.5 h-6 w-6 rounded-md flex items-center justify-center shrink-0",
-          draft.channel === "email"
-            ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-            : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+          "h-7 w-7 rounded-full flex items-center justify-center shrink-0 text-white shadow-sm",
+          isEmail ? "bg-blue-500" : "bg-[#25D366]",
         )}
-        title={draft.channel}
+        title={isEmail ? "Email" : "WhatsApp"}
       >
-        <ChannelIcon className="h-3 w-3" />
+        <ChannelIcon className="h-3.5 w-3.5" strokeWidth={2.4} />
       </div>
       <div className="flex-1 min-w-0">
         <p
@@ -280,7 +284,7 @@ function DraftSidebarRow({
       </div>
       {edited && (
         <span
-          className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-500"
+          className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0"
           title="Bewerkt sinds geopend"
         />
       )}

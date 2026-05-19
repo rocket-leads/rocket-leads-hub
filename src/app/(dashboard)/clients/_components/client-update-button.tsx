@@ -206,8 +206,14 @@ export function ContextNoteCard({ parts, setParts, inputsDisabled }: PreviewProp
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    el.style.height = "0px"
-    el.style.height = `${Math.max(el.scrollHeight, 48)}px`
+    // Clamp between 56px (one comfortable line incl. padding) and 160px
+    // (~5 lines). Beyond that the textarea scrolls internally instead of
+    // pushing the rest of the editor down. The hard cap is the fix for
+    // the bug where scrollHeight occasionally returned the parent's flex
+    // size and the field would explode to the full pane height.
+    el.style.height = "auto"
+    const next = Math.min(Math.max(el.scrollHeight, 56), 160)
+    el.style.height = `${next}px`
   }, [parts.note])
 
   return (
@@ -228,12 +234,15 @@ export function ContextNoteCard({ parts, setParts, inputsDisabled }: PreviewProp
           onChange={(e) => setParts({ ...parts, note: e.target.value })}
           placeholder="bv. 'we hebben deze week een extra vraag toegevoegd, daarom is CPL gestegen…'"
           disabled={inputsDisabled}
-          rows={1}
+          rows={2}
           className={cn(
             "w-full px-4 py-2.5 bg-transparent border-0 outline-none resize-none",
             "text-sm leading-relaxed text-foreground/90 font-sans",
             "placeholder:text-foreground/30",
-            "overflow-hidden",
+            // Internal scroll once the clamped height is reached; without
+            // this the user can't access text past the 160px cap.
+            "overflow-y-auto",
+            "max-h-[160px] min-h-[56px]",
           )}
         />
       </div>
@@ -347,7 +356,7 @@ export function WhatsAppPreview({
 }) {
   return (
     <div
-      className="px-6 py-6 bg-[#ece5dd] dark:bg-[#1f2733]"
+      className="px-6 py-4 bg-[#ece5dd] dark:bg-[#1f2733]"
       style={{
         backgroundImage:
           "radial-gradient(circle at 1px 1px, rgba(0,0,0,0.04) 1px, transparent 0)",

@@ -504,11 +504,16 @@ export function HomeTab({
 
   // Top ads (30d) — surfaced under the Pedro card so the user can verify which
   // specific ads are driving Pedro's verdict. The AI activity summary that used
-  // to live alongside this has been absorbed into the unified Pedro insight.
+  // to live alongside this has been absorbed into the unified Pedro insight,
+  // and the 14d daily-trend sparkline that used to live in the Watch List rows
+  // is no longer rendered either. So we ask the expand endpoint for `topAds`
+  // only — skips a Meta-daily fetch (~1s), a Monday updates fetch (~500ms),
+  // and a Claude AI generation (~1-3s on a cache miss), dropping latency from
+  // ~6s to ~1-2s.
   const expandQuery = useQuery<WatchlistExpandResponse>({
     queryKey: ["client-expand", client.mondayItemId],
     queryFn: () =>
-      fetch(`/api/watchlist/${client.mondayItemId}/expand?insight=`).then((r) => r.json()),
+      fetch(`/api/watchlist/${client.mondayItemId}/expand?fields=topAds`).then((r) => r.json()),
     enabled: canViewCampaigns && !!client.metaAdAccountId,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
