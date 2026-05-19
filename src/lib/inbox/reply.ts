@@ -121,6 +121,20 @@ export async function sendTrengoTemplateAsUser(
   // automatically — no 422 from forgotten sanitisation upstream.
   const safeParams = params.map(sanitizeWaTemplateParam)
 
+  // Both `type` and `body_type` carried so the payload survives Trengo's
+  // OpenAPI rename without us knowing which one is required this week.
+  // Past 422 ("message field is required when none of body type /
+  // attachment ids are present") was Trengo not recognising `type` alone
+  // as a body-type signal.
+  const payload = {
+    type: "TEMPLATE",
+    body_type: "TEMPLATE",
+    template_name: templateName,
+    language,
+    params: safeParams,
+    internal_note: false,
+  }
+
   const res = await fetch(`https://app.trengo.com/api/v2/tickets/${ticketId}/messages`, {
     method: "POST",
     headers: {
@@ -128,13 +142,7 @@ export async function sendTrengoTemplateAsUser(
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({
-      type: "TEMPLATE",
-      template_name: templateName,
-      language,
-      params: safeParams,
-      internal_note: false,
-    }),
+    body: JSON.stringify(payload),
   })
 
   if (res.status === 401 || res.status === 403) {
@@ -145,7 +153,13 @@ export async function sendTrengoTemplateAsUser(
   }
   if (!res.ok) {
     const errText = await res.text().catch(() => "")
-    throw new Error(`Trengo template send failed (${res.status}): ${errText.slice(0, 200)}`)
+    // Include template name + var count in the thrown message so the
+    // dialog's red error banner is self-debuggable (Trengo errors don't
+    // say which template they couldn't validate against).
+    const diag = `template=${templateName} vars=${safeParams.length}`
+    throw new Error(
+      `Trengo template send failed (${res.status}, ${diag}): ${errText.slice(0, 300)}`,
+    )
   }
 
   const json = (await res.json()) as {

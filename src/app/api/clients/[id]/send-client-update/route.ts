@@ -9,7 +9,7 @@ import {
   sanitizeWaTemplateParam,
   NeedsConnectError,
 } from "@/lib/inbox/reply"
-import { resolveWaTemplate, resolveWeeklyUpdateTemplate } from "@/lib/clients/resolve-wa-template"
+import { resolveWeeklyUpdateTemplate } from "@/lib/clients/resolve-wa-template"
 import {
   partsToWeeklyUpdateParams,
   type EditableParts,
@@ -114,55 +114,31 @@ export async function POST(
     // WhatsApp goes through one of two HSM templates.
     const sendAsEmail = preferEmail(client.contactChannel)
 
-    // V2 weekly-update template path is opt-in via env flag. When all three
-    // preconditions hold (flag on + WhatsApp + dialog shipped the editable
-    // parts + Meta has approved `rl_weekly_<voornaam>` for this AM),
-    // we send a multi-variable template so the customer gets a properly
-    // structured message instead of a flattened single-paragraph blob.
-    // Any failure falls back to V1 (universal + sanitised single-var) so a
-    // missing approval / cold-start never hard-fails a send.
-    const v2Enabled =
-      !sendAsEmail && !!editableParts && process.env.WEEKLY_UPDATE_TEMPLATE_V2 === "true"
-
-    const v2Template = v2Enabled
-      ? await resolveWeeklyUpdateTemplate({ userId: session.user.id, mondayItemId })
-      : { name: null as string | null, source: "none" as const }
-
-    const useV2 = v2Enabled && !!v2Template.name
-    if (v2Enabled && !useV2) {
-      // Flag on but no approved weekly template for this AM yet — fall back
-      // to V1 instead of erroring. Log loud so we notice during rollout.
-      console.warn(
-        `[send-client-update] V2 flag on but rl_weekly_* not resolved for user ${session.user.id}; falling back to V1 universal template.`,
-      )
-    }
-
-    // V1 universal template — used as the default path AND as fallback when
-    // V2 is unavailable. Skipped entirely for email (no template needed).
-    const v1Template =
-      sendAsEmail || useV2
-        ? { name: null as string | null, source: "none" as const }
-        : await resolveWaTemplate({ userId: session.user.id, mondayItemId })
-
-    const waTemplate = useV2 ? v2Template : v1Template
+    // WhatsApp send always uses the weekly multi-variable template
+    // (`rl_weekly_<voornaam>`). No env flag, no V1 fallback — kept in
+    // lock-step with the cron/dialog flow. Email skips template
+    // resolution entirely.
+    const waTemplate = sendAsEmail
+      ? { name: null as string | null, source: "none" as const }
+      : await resolveWeeklyUpdateTemplate({ userId: session.user.id, mondayItemId })
 
     if (!sendAsEmail && !waTemplate.name) {
       return NextResponse.json(
         {
           error: "no_wa_template",
           message:
-            "Geen WhatsApp template gevonden voor deze gebruiker. Verifieer dat `rl_universal_<voornaam>` in Trengo bestaat en goedgekeurd is, of stel `whatsapp_template_name` in via Settings → Users.",
+            "Kan WhatsApp template niet afleiden uit users.name. Verwacht `rl_weekly_<voornaam>` (bijv. rl_weekly_danny). Check Settings → Users.",
         },
         { status: 400 },
       )
     }
     const templateName = waTemplate.name ?? ""
 
-    // Template params: V2 = 5 derived vars matching the approved body;
-    // V1 = entire rendered body as `{{1}}` (sanitiser flattens it to a
-    // single Meta-valid line at the API boundary).
-    const templateParams: string[] = useV2
-      ? partsToWeeklyUpdateParams(editableParts!)
+    // Template params: 5 derived vars matching the approved 5-variable
+    // body. When the dialog skipped shipping `parts` (legacy code paths),
+    // fall back to dumping the rendered message into a single param.
+    const templateParams: string[] = editableParts
+      ? partsToWeeklyUpdateParams(editableParts)
       : [message]
 
     // Strategy: look for an existing Trengo-sourced inbox_event we can reuse
@@ -353,14 +329,9 @@ export async function POST(
       source: result.source,
       outboundMsgId: result.outboundMsgId,
       inboxEventId: result.inboxEventId,
-      sentVia: sendAsEmail
-        ? "trengo_email"
-        : useV2
-          ? "trengo_whatsapp_template_v2"
-          : "trengo_whatsapp_template",
+      sentVia: sendAsEmail ? "trengo_email" : "trengo_whatsapp_template",
       templateName: sendAsEmail ? null : templateName,
       templateSource: sendAsEmail ? "none" : waTemplate.source,
-      templateVersion: sendAsEmail ? null : useV2 ? 2 : 1,
       sentAt,
     })
   } catch (e) {
