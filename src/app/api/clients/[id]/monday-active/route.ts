@@ -4,12 +4,11 @@ import { NextRequest, NextResponse } from "next/server"
 
 export type KpiVisibility = {
   leads: boolean
-  appointments: boolean
   deals: boolean
 }
 
-const ALL_ON: KpiVisibility = { leads: true, appointments: true, deals: true }
-const LEADS_ONLY: KpiVisibility = { leads: true, appointments: false, deals: false }
+const ALL_ON: KpiVisibility = { leads: true, deals: true }
+const LEADS_ONLY: KpiVisibility = { leads: true, deals: false }
 
 export async function GET(
   _req: NextRequest,
@@ -27,12 +26,16 @@ export async function GET(
     .eq("monday_item_id", mondayItemId)
     .single()
 
-  // If kpi_visibility is set, use it. Otherwise default based on whether a board is linked.
+  // If kpi_visibility is set, normalize it to the post-appointments-removal
+  // shape (legacy rows may still carry an `appointments` key that we ignore).
+  // Default based on whether a board is linked.
+  const raw = (data?.kpi_visibility ?? {}) as Partial<KpiVisibility> & { appointments?: boolean }
   const visibility: KpiVisibility = data?.kpi_visibility
-    ?? (data?.monday_client_board_id ? ALL_ON : LEADS_ONLY)
+    ? { leads: raw.leads ?? true, deals: raw.deals ?? false }
+    : (data?.monday_client_board_id ? ALL_ON : LEADS_ONLY)
 
   // Backwards compat: derive mondayActive from visibility
-  const mondayActive = visibility.appointments || visibility.deals
+  const mondayActive = visibility.deals
 
   return NextResponse.json({ mondayActive, kpiVisibility: visibility })
 }

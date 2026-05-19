@@ -37,12 +37,9 @@ function fmtKpiBlock(ctx: ClientAiContext): string {
     k.prevCpl > 0 && k.prevPeriodReliable !== false
       ? `${(((k.cpl - k.prevCpl) / k.prevCpl) * 100).toFixed(0)}% wow`
       : "n/a"
-  const apptsLine = ctx.sources.mondayUpdates
-    ? `appts ${k.appointments} (informational only — CPA is NOT a signal driver)`
-    : `appts UNKNOWN — Monday CRM not connected (do NOT claim 0 appointments)`
   return [
     `KPI [WINDOW: last 7d]:`,
-    `  spend €${k.adSpend.toFixed(0)} | leads ${k.leads} | CPL €${k.cpl.toFixed(2)} (${cplPct}) | ${apptsLine}`,
+    `  spend €${k.adSpend.toFixed(0)} | leads ${k.leads} | CPL €${k.cpl.toFixed(2)} (${cplPct})`,
   ].join("\n")
 }
 
@@ -110,7 +107,7 @@ function fmtDataAvailability(ctx: ClientAiContext): string {
   return [
     `DATA AVAILABILITY:`,
     `  KPI = ${ctx.sources.kpi ? "PRESENT (last 7d)" : "MISSING"}`,
-    `  Monday CRM = ${ctx.sources.mondayUpdates ? "CONNECTED" : "NOT CONNECTED — appointments are UNKNOWN, not zero"}`,
+    `  Monday CRM = ${ctx.sources.mondayUpdates ? "CONNECTED" : "NOT CONNECTED"}`,
     `  Trengo = ${ctx.sources.trengoSummary ? "PRESENT (last 14d)" : "MISSING"}`,
     `  Fathom meetings = ${ctx.sources.fathomMeetings ? "PRESENT" : "MISSING"}`,
     `  Internal inbox = ${ctx.sources.inboxEvents ? "PRESENT" : "MISSING"}`,

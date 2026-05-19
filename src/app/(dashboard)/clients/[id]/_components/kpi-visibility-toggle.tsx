@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
 type KpiVisibility = {
   leads: boolean
-  appointments: boolean
   deals: boolean
 }
 
@@ -14,8 +13,7 @@ type Props = {
 
 const SECTIONS = [
   { key: "leads" as const, label: "Leads", description: "Adspend, Leads, Cost per Lead" },
-  { key: "appointments" as const, label: "Appointments", description: "QR%, Booked Appointments, Cost per Booked Appointment, SU%, Taken Appointments, Cost per Taken Appointment" },
-  { key: "deals" as const, label: "Deals", description: "Deals, CR%, Cost per Deal, Closed Revenue, ROI" },
+  { key: "deals" as const, label: "Deals", description: "Deals, Cost per Deal, Closed Revenue, ROI" },
 ]
 
 export function KpiVisibilityToggle({ mondayItemId }: Props) {
@@ -42,7 +40,7 @@ export function KpiVisibilityToggle({ mondayItemId }: Props) {
     },
   })
 
-  const visibility = query.data?.kpiVisibility ?? { leads: true, appointments: false, deals: false }
+  const visibility = query.data?.kpiVisibility ?? { leads: true, deals: false }
   const isLoading = query.isLoading || mutation.isPending
 
   function toggle(key: keyof KpiVisibility) {

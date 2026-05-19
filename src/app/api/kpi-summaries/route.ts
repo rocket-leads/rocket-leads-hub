@@ -355,6 +355,7 @@ async function fetchSummary(
 async function loadSelectedCampaigns(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   mondayItemIds: string[],
+  options: { skipAutoSelect?: boolean } = {},
 ): Promise<Record<string, Set<string>>> {
   const result: Record<string, Set<string>> = {}
   if (mondayItemIds.length === 0) return result
@@ -366,23 +367,29 @@ async function loadSelectedCampaigns(
 
   // Auto-select pass — best-effort; failures here just mean the existing selections
   // get used as-is, same as if this step didn't exist.
-  try {
-    const { autoSelectActiveCampaignsForNonRlClients } = await import("@/lib/clients/auto-select-non-rl-campaigns")
-    const candidates = (clientRows ?? [])
-      .filter((r): r is { id: string; monday_item_id: string; meta_ad_account_id: string } =>
-        Boolean(r.id && r.monday_item_id && r.meta_ad_account_id),
-      )
-      .map((r) => ({ clientId: r.id, mondayItemId: r.monday_item_id, metaAdAccountId: r.meta_ad_account_id }))
-    if (candidates.length > 0) {
-      const matched = await autoSelectActiveCampaignsForNonRlClients(supabase, candidates)
-      if (matched.assignedCount > 0) {
-        console.log(
-          `[kpi-summaries] auto-selected ${matched.assignedCount} new ACTIVE non-RL campaigns across ${matched.affectedMondayItemIds.length} clients before live-fetch`,
+  // Skipped when the caller only needs current selections (e.g. the self-heal
+  // lookup just wants to know "does this client have ANY selected campaign?")
+  // — the cron handles auto-selection daily so we don't need to do it on every
+  // request, and the Meta fetch makes this the hottest cost in the route.
+  if (!options.skipAutoSelect) {
+    try {
+      const { autoSelectActiveCampaignsForNonRlClients } = await import("@/lib/clients/auto-select-non-rl-campaigns")
+      const candidates = (clientRows ?? [])
+        .filter((r): r is { id: string; monday_item_id: string; meta_ad_account_id: string } =>
+          Boolean(r.id && r.monday_item_id && r.meta_ad_account_id),
         )
+        .map((r) => ({ clientId: r.id, mondayItemId: r.monday_item_id, metaAdAccountId: r.meta_ad_account_id }))
+      if (candidates.length > 0) {
+        const matched = await autoSelectActiveCampaignsForNonRlClients(supabase, candidates)
+        if (matched.assignedCount > 0) {
+          console.log(
+            `[kpi-summaries] auto-selected ${matched.assignedCount} new ACTIVE non-RL campaigns across ${matched.affectedMondayItemIds.length} clients before live-fetch`,
+          )
+        }
       }
+    } catch (e) {
+      console.error("[kpi-summaries] non-RL auto-select failed:", e instanceof Error ? e.message : e)
     }
-  } catch (e) {
-    console.error("[kpi-summaries] non-RL auto-select failed:", e instanceof Error ? e.message : e)
   }
 
   const itemToClientId: Record<string, string> = {}
@@ -429,7 +436,10 @@ async function findStaleRlNoCampaign(
   candidateIds: string[],
 ): Promise<Set<string>> {
   if (candidateIds.length === 0) return new Set()
-  const selected = await loadSelectedCampaigns(supabase, candidateIds)
+  // skipAutoSelect: we only need to know "do they have ANY selected campaign right
+  // now"; running fetchMetaCampaigns for every non-RL ad account on a hot read path
+  // adds seconds per request. The cron handles auto-selection daily.
+  const selected = await loadSelectedCampaigns(supabase, candidateIds, { skipAutoSelect: true })
   const stale = new Set<string>()
   for (const id of candidateIds) {
     if ((selected[id]?.size ?? 0) > 0) stale.add(id)

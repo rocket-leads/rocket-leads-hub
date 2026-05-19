@@ -70,7 +70,7 @@ export type ClientAiContext = {
   /** Hub-canonical client identifier. */
   clientId: string
   client: MondayClient
-  /** 7d KPI summary — cpl, prevCpl, leads, appointments, etc. Null when missing. */
+  /** 7d KPI summary — cpl, prevCpl, leads, deals, etc. Null when missing. */
   kpi: KpiSummary | null
   /** Recent-window CPL signal (1d/2d/3d) — nullable. */
   recent: RecentSignal | null

@@ -216,7 +216,7 @@ function HealthBadge({ health, locale }: { health: HealthResult; locale: Locale 
   )
 }
 
-type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "phase" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "appointments" | "cpa" | "cpaDelta" | "paymentStatus" | "outstanding" | "health" | "mrr" | "nextInvoice" | "clientUpdate"
+type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "phase" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "paymentStatus" | "outstanding" | "health" | "mrr" | "nextInvoice" | "clientUpdate"
 type SortDir = "asc" | "desc"
 
 type Props = {
@@ -531,15 +531,6 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           valB = (reliableB && kpiB?.cpl && kpiB?.prevCpl) ? ((kpiB.cpl - kpiB.prevCpl) / kpiB.prevCpl) * 100 : 0
           break
         }
-        case "appointments": valA = kpiA?.appointments ?? 0; valB = kpiB?.appointments ?? 0; break
-        case "cpa": valA = kpiA?.costPerAppointment ?? 0; valB = kpiB?.costPerAppointment ?? 0; break
-        case "cpaDelta": {
-          const reliableA = kpiA?.prevPeriodReliable !== false
-          const reliableB = kpiB?.prevPeriodReliable !== false
-          valA = (reliableA && kpiA?.costPerAppointment && kpiA?.prevCostPerAppointment) ? ((kpiA.costPerAppointment - kpiA.prevCostPerAppointment) / kpiA.prevCostPerAppointment) * 100 : 0
-          valB = (reliableB && kpiB?.costPerAppointment && kpiB?.prevCostPerAppointment) ? ((kpiB.costPerAppointment - kpiB.prevCostPerAppointment) / kpiB.prevCostPerAppointment) * 100 : 0
-          break
-        }
         case "paymentStatus": valA = billingA?.status ?? ""; valB = billingB?.status ?? ""; break
         case "outstanding": valA = billingA?.outstanding ?? 0; valB = billingB?.outstanding ?? 0; break
         case "mrr":
@@ -607,7 +598,8 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
     return () => observer.disconnect()
   }, [sorted.length, visibleCount])
 
-  const colSpan = boardType === "onboarding" ? 11 : 18
+  // 18 → 15 after Appointments + CPA + CPA-Delta cells removed 2026-05.
+  const colSpan = boardType === "onboarding" ? 11 : 15
 
   // Status / phase value labels stay as their Monday-canonical English form for
   // now — they're the wire format the dropdown writes back to Monday, and the
@@ -781,13 +773,6 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   <SortableHead
                     label={<span className="inline-flex items-center gap-1.5">{t("clients.col.cpl", locale)} <TrendingUpDown className="h-3.5 w-3.5 text-muted-foreground/70" /></span>}
                     sortKey="cplDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort}
-                    className="text-[13px] text-foreground/80 font-semibold w-[90px]"
-                  />
-                  <SortableHead label={t("clients.col.appts", locale)} sortKey="appointments" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[65px]" />
-                  <SortableHead label={t("clients.col.cpa", locale)} sortKey="cpa" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px]" />
-                  <SortableHead
-                    label={<span className="inline-flex items-center gap-1.5">{t("clients.col.cpa", locale)} <TrendingUpDown className="h-3.5 w-3.5 text-muted-foreground/70" /></span>}
-                    sortKey="cpaDelta" currentKey={sortKey} currentDir={sortDir} onSort={handleSort}
                     className="text-[13px] text-foreground/80 font-semibold w-[90px]"
                   />
                   <SortableHead
@@ -1007,26 +992,6 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           ) : kpi && kpi.cpl > 0 && kpi.prevCpl > 0 && kpi.prevPeriodReliable !== false ? (
                             <DeltaPill pct={((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100} />
                           ) : kpi && kpi.cpl > 0 && kpi.prevPeriodReliable === false ? (
-                            <span
-                              className="text-muted-foreground/40"
-                              title={t("clients.tooltip.no_prev_period", locale)}
-                            >
-                              —
-                            </span>
-                          ) : ""}
-                        </TableCell>
-                        <TableCell className="text-xs tabular-nums font-medium">
-                          {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.appointments > 0 ? fmtKpi(kpi.appointments, "integer") : ""}
-                        </TableCell>
-                        <TableCell className={`text-xs tabular-nums ${kpi && kpi.costPerAppointment > 200 ? "text-red-400" : ""}`}>
-                          {kpiLoading ? <span className="text-muted-foreground/40">...</span> : kpi && kpi.costPerAppointment > 0 ? fmtKpi(kpi.costPerAppointment, "currency") : ""}
-                        </TableCell>
-                        <TableCell className="text-xs tabular-nums">
-                          {kpiLoading ? (
-                            <span className="text-muted-foreground/40">...</span>
-                          ) : kpi && kpi.costPerAppointment > 0 && kpi.prevCostPerAppointment > 0 && kpi.prevPeriodReliable !== false ? (
-                            <DeltaPill pct={((kpi.costPerAppointment - kpi.prevCostPerAppointment) / kpi.prevCostPerAppointment) * 100} />
-                          ) : kpi && kpi.costPerAppointment > 0 && kpi.prevPeriodReliable === false ? (
                             <span
                               className="text-muted-foreground/40"
                               title={t("clients.tooltip.no_prev_period", locale)}

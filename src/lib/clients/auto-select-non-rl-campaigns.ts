@@ -38,7 +38,9 @@ export type NonRlAutoSelectResult = {
 export async function autoSelectActiveCampaignsForNonRlClients(
   supabase: Supabase,
   clients: NonRlAutoSelectInput[],
+  options: { skipMetaFetch?: boolean } = {},
 ): Promise<NonRlAutoSelectResult> {
+  if (options.skipMetaFetch) return { assignedCount: 0, affectedMondayItemIds: [] }
   const nonRl = clients.filter((c) => c.metaAdAccountId && !isRocketLeadsAdAccount(c.metaAdAccountId))
   if (nonRl.length === 0) return { assignedCount: 0, affectedMondayItemIds: [] }
 

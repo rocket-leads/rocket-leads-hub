@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchConversations, fetchMessages } from "@/lib/integrations/trengo"
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
+import { hardcodedTemplateName } from "@/lib/clients/resolve-wa-template"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
@@ -126,13 +127,11 @@ export async function POST(
 
     // 24h session window: free text only allowed when the latest *contact-
     // authored* message is ≤24h old. Outside the window we have to send via
-    // a Meta-approved template registered in Trengo. The assignee's template
-    // name is stored on `users.whatsapp_template_name` (e.g. rl_universal_roel).
+    // a Meta-approved template registered in Trengo. The convention is
+    // `rl_universal_<voornaam>` for ad-hoc outbound — derived hardcoded
+    // from the assignee's `users.name` (no per-AM override consulted).
     const windowOpen = await isSessionWindowOpen(waTicket.id)
     if (!windowOpen) {
-      // Look up the assignee's registered template. Without one, we can't
-      // initiate outbound — fall back to "send manually" with a friendly hint
-      // pointing at where to register it.
       const assigneeId = task.assignee_id
       if (!assigneeId) {
         return NextResponse.json(
@@ -142,14 +141,14 @@ export async function POST(
       }
       const { data: assignee } = await supabase
         .from("users")
-        .select("name, whatsapp_template_name")
+        .select("name")
         .eq("id", assigneeId)
-        .maybeSingle<{ name: string | null; whatsapp_template_name: string | null }>()
-      const templateName = assignee?.whatsapp_template_name?.trim() ?? ""
+        .maybeSingle<{ name: string | null }>()
+      const templateName = hardcodedTemplateName(assignee?.name ?? "", "universal")
       if (!templateName) {
         return NextResponse.json(
           {
-            error: `Buiten 24u session window en ${assignee?.name ?? "deze AM"} heeft nog geen WhatsApp-template gekoppeld in Settings → Users. Stuur 'm even handmatig of vraag een admin om de template_name in te stellen.`,
+            error: `Buiten 24u session window en kan geen template-naam afleiden uit ${assignee?.name ?? "de assignee"}. Verifieer dat users.name een geldige voornaam bevat.`,
           },
           { status: 501 },
         )

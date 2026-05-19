@@ -665,7 +665,6 @@ export function ClientUpdateDialog({
   const [channelLabel, setChannelLabel] = useState("")
   const [trengoLinked, setTrengoLinked] = useState(false)
   const [waTemplateName, setWaTemplateName] = useState<string | null>(null)
-  const [waTemplateSource, setWaTemplateSource] = useState<ClientUpdateResponse["whatsappTemplateSource"]>("none")
   /** 1 = V1 universal single-var (legacy). 2 = V2 multi-var weekly-update.
    *  Drives the WhatsApp preview layout (locked headers + multi-line
    *  sign-off when V2). Null when channel is email. */
@@ -706,7 +705,6 @@ export function ClientUpdateDialog({
       setChannelLabel(data.channelLabel)
       setTrengoLinked(data.trengoContactLinked)
       setWaTemplateName(data.whatsappTemplateName)
-      setWaTemplateSource(data.whatsappTemplateSource)
       setTemplateVersion(data.templateVersion)
       setTemplateVersionReason(data.templateVersionReason)
     },
@@ -778,9 +776,6 @@ export function ClientUpdateDialog({
       // by construction the contact is always linked when seeded.
       setTrengoLinked(true)
       setWaTemplateName(draftSeed.templateName)
-      // Draft templates always come from Trengo auto-discovery (the cron
-      // doesn't read users.whatsapp_template_name overrides).
-      setWaTemplateSource("trengo_auto")
       setTemplateVersion(draftSeed.templateVersion)
       setTemplateVersionReason(null)
       return
@@ -890,9 +885,9 @@ export function ClientUpdateDialog({
                         V1 fallback
                       </span>
                     )}
-                    {waTemplateSource === "trengo_auto" && (
-                      <span className="ml-1 text-muted-foreground/50">(uit Trengo)</span>
-                    )}
+                    {/* "(uit Trengo)" hint dropped — the resolver no longer
+                        auto-discovers, it derives the slug from the AM's
+                        first name. The slug itself communicates the source. */}
                   </p>
                   {templateVersionReason && (
                     <p className="text-[11px] text-amber-500/90 italic leading-relaxed">

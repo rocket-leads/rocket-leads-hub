@@ -42,9 +42,9 @@ export type ClientUpdateResponse = {
    *  to know whether to render in V1 or V2 layout (locked headers + comma
    *  greeting + multi-line sign-off for V2). */
   whatsappTemplateName: string | null
-  /** Where the resolved template came from. The dialog renders a small
-   *  "(uit Trengo)" hint on `trengo_auto` so the AM knows it was discovered
-   *  rather than configured by an admin. */
+  /** Always "hardcoded" in the new flow (derived from users.name + kind).
+   *  Kept on the response shape so any existing client code that reads it
+   *  doesn't crash; the dialog no longer branches on it. */
   whatsappTemplateSource: WeeklyUpdateDraftResult["whatsappTemplateSource"]
   /** 1 = V1 universal single-var path (legacy + fallback when V2 template
    *  not approved). 2 = V2 multi-var weekly-update path. Dialog uses this

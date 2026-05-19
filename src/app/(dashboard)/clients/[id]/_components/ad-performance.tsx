@@ -3,12 +3,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { UtmRow, KpiResult } from "@/lib/clients/kpis"
 
+// Rewritten 2026-05 after appointments tracking was removed from the Hub —
+// previously categorization leaned on taken-call rate, which depended on the
+// `dateAppointment` + `leadStatus2` Monday columns being reliably maintained
+// (they weren't). Quality signal is now deals/leads conversion only.
 export type ScoredRow = UtmRow & {
-  takenCallRate: number
-  bookingRate: number
   dealRate: number
   reliability: "high" | "medium" | "low"
-  category: "winner" | "sniper" | "fake" | "garbage"
+  category: "winner" | "sniper" | "garbage"
 }
 
 function median(values: number[]): number {
@@ -27,8 +29,8 @@ function fmtEur(n: number) {
 }
 
 function reliability(row: UtmRow): "high" | "medium" | "low" {
-  if (row.leads >= 15 || row.takenCalls >= 5) return "high"
-  if (row.leads >= 5 || row.takenCalls >= 2) return "medium"
+  if (row.leads >= 15 || row.deals >= 3) return "high"
+  if (row.leads >= 5 || row.deals >= 1) return "medium"
   return "low"
 }
 
@@ -37,31 +39,24 @@ export function scoreRows(rows: UtmRow[]): ScoredRow[] | null {
   if (withLeads.length < 2) return null
 
   const medianLeads = median(withLeads.map((r) => r.leads))
-  const takenCallRates = withLeads.map((r) => r.takenCalls / r.leads)
-  const medianTakenCallRate = median(takenCallRates)
 
-  return withLeads.map((row, i) => {
-    const takenCallRate = takenCallRates[i]
-    const bookingRate = row.bookedCalls / row.leads
-    const dealRate = row.takenCalls > 0 ? row.deals / row.takenCalls : 0
-
+  return withLeads.map((row) => {
+    const dealRate = row.leads > 0 ? row.deals / row.leads : 0
     const highVolume = row.leads >= medianLeads
-    const highQuality = takenCallRate >= medianTakenCallRate
+    const hasDeals = row.deals >= 1
 
     let category: ScoredRow["category"]
-    if (highVolume && highQuality) category = "winner"
-    else if (!highVolume && highQuality) category = "sniper"
-    else if (highVolume && !highQuality) category = "fake"
+    if (highVolume && hasDeals) category = "winner"
+    else if (!highVolume && hasDeals) category = "sniper"
     else category = "garbage"
 
-    return { ...row, takenCallRate, bookingRate, dealRate, reliability: reliability(row), category }
+    return { ...row, dealRate, reliability: reliability(row), category }
   })
 }
 
 const CATEGORIES = [
   { key: "winner", label: "All-round winner", emoji: "🏆", border: "border-green-500/40", bg: "bg-green-500/5" },
   { key: "sniper", label: "Sniper", emoji: "🎯", border: "border-blue-500/40", bg: "bg-blue-500/5" },
-  { key: "fake", label: "Fake winner", emoji: "⚠️", border: "border-amber-500/40", bg: "bg-amber-500/5" },
   { key: "garbage", label: "Garbage", emoji: "🗑️", border: "border-red-500/40", bg: "bg-red-500/5" },
 ] as const
 
@@ -89,31 +84,22 @@ function AdRow({ row }: { row: ScoredRow }) {
       </div>
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
         <span>{row.leads} leads</span>
-        <span>{row.bookedCalls} booked</span>
-        <span>{row.takenCalls} taken</span>
         {row.deals > 0 && <span>{row.deals} deals</span>}
         {row.revenue > 0 && <span>{fmtEur(row.revenue)}</span>}
-        <span className="font-medium text-foreground">{fmtPct(row.takenCallRate)} taken rate</span>
-        <span>{fmtPct(row.bookingRate)} booking rate</span>
+        {row.deals > 0 && <span className="font-medium text-foreground">{fmtPct(row.dealRate)} deal rate</span>}
       </div>
     </div>
   )
 }
 
 export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kpis: KpiResult }) {
-  const scale = scored.filter(
-    (r) => (r.category === "winner" || r.category === "sniper") && r.takenCalls >= 1
-  ).sort((a, b) => b.takenCalls - a.takenCalls)
+  const scale = scored.filter((r) => r.category === "winner" || r.category === "sniper")
+    .sort((a, b) => b.deals - a.deals || b.leads - a.leads)
 
-  const reduce = scored.filter(
-    (r) => (r.category === "fake" || r.category === "garbage") && r.leads >= 3
-  ).sort((a, b) => b.leads - a.leads)
+  const reduce = scored.filter((r) => r.category === "garbage" && r.leads >= 3)
+    .sort((a, b) => b.leads - a.leads)
 
-  const monitor = scored.filter(
-    (r) =>
-      (r.category === "winner" || r.category === "sniper") && r.takenCalls === 0 ||
-      r.reliability === "low"
-  )
+  const monitor = scored.filter((r) => r.reliability === "low" && r.category !== "winner")
 
   const hasRoi = kpis.roi > 0
 
@@ -122,7 +108,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Campaign Optimisation Proposal</CardTitle>
         <p className="text-xs text-muted-foreground">
-          Based on taken call rate and booking rate per ad. Prioritises conversion quality over lead volume.
+          Based on lead volume and deals closed per ad. Prioritises ads that produce paying customers.
           {hasRoi && ` Overall account ROI: ${kpis.roi.toFixed(2)}x (€${kpis.revenue.toLocaleString("en-GB", { maximumFractionDigits: 0 })} revenue on €${kpis.adSpend.toLocaleString("en-GB", { maximumFractionDigits: 0 })} spend).`}
         </p>
       </CardHeader>
@@ -142,17 +128,15 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {r.category === "winner"
-                      ? `All-round performer — ${r.takenCalls} taken calls (${fmtPct(r.takenCallRate)} rate), ${r.leads} leads. ${
-                          r.reliability === "low"
-                            ? "Scale cautiously — limited data so far."
-                            : "Strong across both volume and quality. Scale with confidence."
+                      ? `All-round performer — ${r.leads} leads, ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed (${fmtPct(r.dealRate)} conversion). ${
+                          r.reliability === "low" ? "Scale cautiously — limited data so far." : "Strong across volume and revenue. Scale with confidence."
                         }`
-                      : `Sniper — low opt-in volume but ${fmtPct(r.takenCallRate)} taken call rate. ${r.takenCalls} taken call${r.takenCalls !== 1 ? "s" : ""}. ${
+                      : `Sniper — low opt-in volume but ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed. ${
                           r.reliability === "low"
-                            ? "Promising early signal — scale modestly to gather more data before committing."
+                            ? "Promising early signal — scale modestly to gather more data."
                             : "Reliable signal. Scale budget to capture more of this high-quality traffic."
                         }`}
-                    {r.deals > 0 && ` ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed${r.revenue > 0 ? ` (${fmtEur(r.revenue)})` : ""}.`}
+                    {r.revenue > 0 && ` ${fmtEur(r.revenue)} revenue.`}
                   </p>
                 </div>
               ))}
@@ -174,12 +158,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
                     <ReliabilityBadge level={r.reliability} />
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {r.category === "fake"
-                      ? `Fake winner — ${r.leads} opt-ins but only ${r.takenCalls} taken call${r.takenCalls !== 1 ? "s" : ""} (${fmtPct(r.takenCallRate)} rate). High volume of unqualified leads is inflating cost per taken call.`
-                      : `Low performer — ${r.leads} leads, ${r.takenCalls} taken call${r.takenCalls !== 1 ? "s" : ""}. Neither volume nor quality justifies continued spend.`}
-                    {r.deals > 0
-                      ? ` ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed — monitor before cutting entirely.`
-                      : " No deals closed in this period."}
+                    {`${r.leads} leads but no deals closed. Volume alone doesn't justify spend without conversion.`}
                   </p>
                 </div>
               ))}
@@ -197,7 +176,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
               {monitor.map((r) => (
                 <div key={r.utm} className="flex items-center justify-between gap-2 rounded-md border border-amber-500/20 bg-amber-500/5 pl-4 pr-3 py-2">
                   <span className="font-mono text-xs break-all text-foreground">{r.utm}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{r.leads} leads · {r.takenCalls} taken</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{r.leads} leads · {r.deals} deals</span>
                 </div>
               ))}
             </div>
@@ -205,7 +184,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
         )}
 
         {scale.length === 0 && reduce.length === 0 && monitor.length === 0 && (
-          <p className="text-sm text-muted-foreground">Not enough conversion data to generate recommendations. More taken calls are needed across ads.</p>
+          <p className="text-sm text-muted-foreground">Not enough conversion data to generate recommendations. More deals are needed across ads.</p>
         )}
       </CardContent>
     </Card>
@@ -224,13 +203,13 @@ export function AdPerformance({ rows }: Props) {
   }
 
   const byCategory = (key: ScoredRow["category"]) =>
-    scored.filter((r) => r.category === key).sort((a, b) => b.takenCalls - a.takenCalls || b.leads - a.leads)
+    scored.filter((r) => r.category === key).sort((a, b) => b.deals - a.deals || b.leads - a.leads)
 
   return (
     <div className="space-y-4">
       <h3 className="text-base font-semibold">Ad Performance Analysis</h3>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {CATEGORIES.map(({ key, label, emoji, border, bg }) => {
           const ads = byCategory(key as ScoredRow["category"])
           return (
@@ -258,7 +237,7 @@ export function AdPerformance({ rows }: Props) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Categories are based on relative opt-in volume (proxy for cost per lead) and taken call rate (proxy for cost per call) compared to the median across all ads in this period. Reliability reflects data confidence based on lead and call volume.
+        Categories are based on lead volume (relative to median across all ads) and whether the ad has produced any deals. Reliability reflects data confidence.
       </p>
     </div>
   )

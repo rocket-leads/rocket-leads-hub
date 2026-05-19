@@ -6,8 +6,6 @@ import {
   Euro,
   Users,
   BarChart3,
-  CalendarCheck,
-  CalendarCheck2,
   Handshake,
   TrendingUp,
   type LucideIcon,
@@ -41,14 +39,14 @@ type KpiCardDef = {
   label: string
   type: "currency" | "percent" | "integer" | "multiplier"
   icon: LucideIcon
-  showWhen?: keyof KpiVisibility
   /** "cost" = lower is better, "rate" = higher is better, "neutral" = no trend coloring */
   direction: "cost" | "rate" | "neutral"
 }
 
+// Appointments section removed 2026-05 — see knowledge/vision-rocketleads-hub.md.
+// `appointments` is no longer a tracked dimension; visibility now toggles deals only.
 export type KpiVisibility = {
   leads: boolean
-  appointments: boolean
   deals: boolean
 }
 
@@ -60,7 +58,6 @@ type KpiGroup = {
 
 // KPI card labels stay English in both locales — these are agreed RL jargon
 // shared with Slack, the Targets settings panel, and the campaigns framework.
-// Only the group titles (Leads / Afspraken / Deals) flip with the locale.
 const KPI_GROUPS: KpiGroup[] = [
   {
     titleKey: "kpi.group.leads",
@@ -69,18 +66,6 @@ const KPI_GROUPS: KpiGroup[] = [
       { key: "adSpend", label: "Adspend", type: "currency", icon: Euro, direction: "neutral" },
       { key: "leads", label: "Leads", type: "integer", icon: Users, direction: "rate" },
       { key: "costPerLead", label: "Cost per Lead", type: "currency", icon: Euro, direction: "cost" },
-      { key: "qrPercent", label: "QR%", type: "percent", icon: BarChart3, showWhen: "appointments", direction: "rate" },
-    ],
-  },
-  {
-    titleKey: "kpi.group.appointments",
-    section: "appointments",
-    cards: [
-      { key: "bookedCalls", label: "Booked Appointments", type: "integer", icon: CalendarCheck, direction: "rate" },
-      { key: "costPerBookedCall", label: "Cost per Booked Appt.", type: "currency", icon: Euro, direction: "cost" },
-      { key: "suPercent", label: "SU% (Show Up)", type: "percent", icon: BarChart3, direction: "rate" },
-      { key: "takenCalls", label: "Taken Appointments", type: "integer", icon: CalendarCheck2, direction: "rate" },
-      { key: "costPerTakenCall", label: "Cost per Taken Appt.", type: "currency", icon: Euro, direction: "cost" },
     ],
   },
   {
@@ -88,7 +73,6 @@ const KPI_GROUPS: KpiGroup[] = [
     section: "deals",
     cards: [
       { key: "deals", label: "Deals", type: "integer", icon: Handshake, direction: "rate" },
-      { key: "crPercent", label: "CR%", type: "percent", icon: BarChart3, direction: "rate" },
       { key: "costPerDeal", label: "Cost per Deal", type: "currency", icon: Euro, direction: "cost" },
       { key: "revenue", label: "Closed Revenue", type: "currency", icon: TrendingUp, direction: "rate" },
       { key: "roi", label: "ROI", type: "multiplier", icon: TrendingUp, direction: "rate" },
@@ -147,22 +131,19 @@ type Props = {
   visibility?: KpiVisibility
 }
 
-export function KpiCards({ data, previousData, isLoading, visibility = { leads: true, appointments: true, deals: true } }: Props) {
+export function KpiCards({ data, previousData, isLoading, visibility = { leads: true, deals: true } }: Props) {
   const locale = useLocale()
   return (
     <div className="space-y-4">
       {KPI_GROUPS.map((group) => {
         if (!visibility[group.section]) return null
 
-        const visibleCards = group.cards.filter(
-          (kpi) => !kpi.showWhen || visibility[kpi.showWhen]
-        )
+        const visibleCards = group.cards
         if (visibleCards.length === 0) return null
 
-        // Auto-hide non-leads groups when there's nothing to show. Leads is the
-        // primary group and always renders (even at zero, the spend/cost frame
-        // is still useful context). Appointments and Deals only surface once
-        // they actually have data — otherwise they're noise.
+        // Auto-hide the Deals group when there's nothing to show — Leads is the
+        // primary group and always renders, but Deals only surfaces once it
+        // actually has data, otherwise it's noise.
         if (group.section !== "leads" && data && !isLoading) {
           const allZero = visibleCards.every((kpi) => {
             const v = data[kpi.key] as number | undefined

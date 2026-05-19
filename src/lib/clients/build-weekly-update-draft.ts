@@ -120,11 +120,12 @@ export async function buildWeeklyUpdateDraft(args: {
     if (!v2Enabled) {
       templateVersionReason =
         "WEEKLY_UPDATE_TEMPLATE_V2 env-flag staat uit in Vercel (zet 'm op true en redeploy)."
-    } else if (!v2Template.name) {
+    } else {
+      // Hardcoded resolver only returns null when users.name can't be
+      // parsed into an ASCII first name. Everything else (template not
+      // existing in Trengo) bubbles up as an error at send-time.
       const amSlug = hubUser?.name?.split(/\s+/)[0]?.toLowerCase() ?? "<voornaam>"
-      templateVersionReason = v1Template.name
-        ? `rl_weekly_${amSlug} niet gevonden in Trengo (status APPROVED?). V1-fallback actief.`
-        : `Geen WhatsApp template gevonden — verifieer dat rl_weekly_${amSlug} approved is én dat deze klant minimaal 1 eerder Trengo-gesprek heeft (resolver heeft channel_id nodig).`
+      templateVersionReason = `Kan voornaam niet afleiden uit users.name (verwacht rl_weekly_${amSlug}). Check Settings → Users.`
     }
   }
 

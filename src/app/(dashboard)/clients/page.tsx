@@ -2,13 +2,15 @@ import { Suspense } from "react"
 import { fetchBothBoards } from "@/lib/integrations/monday"
 import { readCache } from "@/lib/cache"
 import { ClientsOverview } from "./_components/clients-overview"
-import { filterClientsByUser } from "@/lib/clients/filter"
+import { loadUserMappingsContext, filterClientsByContext } from "@/lib/clients/filter"
 import { auth } from "@/lib/auth"
 import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
 import type { MondayClient } from "@/lib/integrations/monday"
+import type { Session } from "next-auth"
+import type { Locale } from "@/lib/i18n/types"
 
 function ClientsLoading() {
   return (
@@ -21,31 +23,31 @@ function ClientsLoading() {
   )
 }
 
-async function ClientsData() {
-  let onboarding: Awaited<ReturnType<typeof fetchBothBoards>>["onboarding"] = []
-  let current: Awaited<ReturnType<typeof fetchBothBoards>>["current"] = []
+async function ClientsData({ session, locale }: { session: Session | null; locale: Locale }) {
+  let onboarding: MondayClient[] = []
+  let current: MondayClient[] = []
   let error: string | null = null
 
-  const session = await auth()
-  const locale = await getUserLocale(session?.user?.id)
-
   try {
-    // Try cache first (kept fresh by cron at 5:00 / 5:30), fall back to live API.
-    // 60-min TTL is a safety net: if the cron silently fails, the page won't keep
-    // showing day-old data — after an hour we re-fetch live (slower but correct).
-    const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+    // Run the three independent lookups concurrently:
+    //   - monday_boards cache (60-min TTL safety net if cron silently failed)
+    //   - user_column_mappings (filtered against both boards in-memory)
+    // Previously these ran sequentially AND filterClientsByUser was called twice,
+    // querying mappings once per board.
+    const mappingsContextPromise =
+      session?.user?.id && session.user.role
+        ? loadUserMappingsContext(session.user.id, session.user.role)
+        : Promise.resolve(null)
+    const cachedPromise = readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
       "monday_boards",
       60 * 60 * 1000,
     )
-    const data = cached ?? await fetchBothBoards()
 
-    if (session?.user?.id && session.user.role) {
-      onboarding = await filterClientsByUser(data.onboarding, session.user.id, session.user.role)
-      current = await filterClientsByUser(data.current, session.user.id, session.user.role)
-    } else {
-      onboarding = data.onboarding
-      current = data.current
-    }
+    const [cached, mappingsContext] = await Promise.all([cachedPromise, mappingsContextPromise])
+    const data = cached ?? (await fetchBothBoards())
+
+    onboarding = filterClientsByContext(data.onboarding, mappingsContext)
+    current = filterClientsByContext(data.current, mappingsContext)
   } catch (e) {
     error = e instanceof Error ? e.message : t("clients.error.failed_to_load", locale)
   }
@@ -81,6 +83,8 @@ async function ClientsData() {
 }
 
 export default async function ClientsPage() {
+  // Single auth() + getUserLocale() pair — both child renders reuse these via props.
+  // Previously each ran twice (once in the page, once in ClientsData inner func).
   const session = await auth()
   const locale = await getUserLocale(session?.user?.id)
   return (
@@ -90,7 +94,7 @@ export default async function ClientsPage() {
       </div>
 
       <Suspense fallback={<ClientsLoading />}>
-        <ClientsData />
+        <ClientsData session={session} locale={locale} />
       </Suspense>
     </div>
   )

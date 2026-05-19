@@ -59,12 +59,6 @@ export function UtmTable({ rows, isLoading }: Props) {
             <TableHead className={colClass} onClick={() => handleSort("leads")}>
               Leads <SortIcon col="leads" />
             </TableHead>
-            <TableHead className={colClass} onClick={() => handleSort("bookedCalls")}>
-              Booked Calls <SortIcon col="bookedCalls" />
-            </TableHead>
-            <TableHead className={colClass} onClick={() => handleSort("takenCalls")}>
-              Taken Calls <SortIcon col="takenCalls" />
-            </TableHead>
             <TableHead className={colClass} onClick={() => handleSort("deals")}>
               Deals <SortIcon col="deals" />
             </TableHead>
@@ -80,8 +74,6 @@ export function UtmTable({ rows, isLoading }: Props) {
                 {row.utm}
               </TableCell>
               <TableCell>{row.leads}</TableCell>
-              <TableCell>{row.bookedCalls}</TableCell>
-              <TableCell>{row.takenCalls}</TableCell>
               <TableCell>{row.deals}</TableCell>
               <TableCell>
                 {row.revenue > 0

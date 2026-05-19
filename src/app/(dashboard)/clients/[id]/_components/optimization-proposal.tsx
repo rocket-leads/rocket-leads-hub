@@ -9,15 +9,9 @@ import { scoreRows } from "./ad-performance"
 import type { KpiResult, UtmRow } from "@/lib/clients/kpis"
 
 type ScoredRow = UtmRow & {
-  takenCallRate: number
-  bookingRate: number
   dealRate: number
   reliability: "high" | "medium" | "low"
-  category: "winner" | "sniper" | "fake" | "garbage"
-}
-
-function fmtPct(n: number) {
-  return `${(n * 100).toFixed(0)}%`
+  category: "winner" | "sniper" | "garbage"
 }
 
 function fmtEur(n: number) {
@@ -146,52 +140,13 @@ function generateKpiInsights(
     })
   }
 
-  // 4. CRM-based insights (only when Monday data exists)
-  if (hasCrm && kpis7d.leads > 0) {
-    // QR% trend
-    if (kpis7d.qrPercent > 0 && has30d && kpis30d.qrPercent > 0) {
-      const qrChange = pctChange(kpis7d.qrPercent, kpis30d.qrPercent)
-      if (qrChange < -25) {
-        insights.push({
-          type: "warning",
-          title: `Qualification rate dropped ${Math.abs(qrChange).toFixed(0)}% (${kpis7d.qrPercent.toFixed(1)}%)`,
-          body: `Fewer leads are converting to appointments compared to the 30-day average (${kpis30d.qrPercent.toFixed(1)}%). Consider: adding qualification questions to the form, adjusting the marketing angle to attract more serious prospects.`,
-        })
-      }
-    }
-
-    // Show-up rate trend
-    if (kpis7d.bookedCalls > 0 && kpis7d.suPercent > 0 && has30d && kpis30d.suPercent > 0) {
-      const suChange = pctChange(kpis7d.suPercent, kpis30d.suPercent)
-      if (suChange < -25) {
-        insights.push({
-          type: "warning",
-          title: `Show-up rate dropped ${Math.abs(suChange).toFixed(0)}% (${kpis7d.suPercent.toFixed(1)}%)`,
-          body: `More no-shows than usual. Ensure the automated WhatsApp confirmation and reminder sequences are working. The follow-up loop should have 11 contact moments within 48 hours.`,
-        })
-      }
-    }
-
-    // CR% trend
-    if (kpis7d.takenCalls >= 3 && has30d && kpis30d.crPercent > 0) {
-      const crChange = pctChange(kpis7d.crPercent, kpis30d.crPercent)
-      if (crChange < -25) {
-        insights.push({
-          type: "warning",
-          title: `Close rate dropped ${Math.abs(crChange).toFixed(0)}% (${kpis7d.crPercent.toFixed(1)}%)`,
-          body: `${kpis7d.takenCalls} appointments taken but only ${kpis7d.deals} deals closed. This is a sales-side issue, not marketing. Review: are the right leads reaching the sales team? Is the proposition clear?`,
-        })
-      }
-    }
-
-    // ROI positive signal
-    if (kpis7d.deals > 0 && kpis7d.roi >= 2) {
-      insights.push({
-        type: "positive",
-        title: `Strong ROI: ${kpis7d.roi.toFixed(1)}x return on ad spend`,
-        body: `Generating €${fmtNum(kpis7d.revenue)} revenue on €${fmtNum(kpis7d.adSpend)} spend with a cost per deal of €${fmtNum(kpis7d.costPerDeal)}. The funnel is profitable — consider scaling budget by 20% per day.`,
-      })
-    }
+  // 4. Deal-based positive signal (only when Monday CRM is linked so deal data is reliable)
+  if (hasCrm && kpis7d.leads > 0 && kpis7d.deals > 0 && kpis7d.roi >= 2) {
+    insights.push({
+      type: "positive",
+      title: `Strong ROI: ${kpis7d.roi.toFixed(1)}x return on ad spend`,
+      body: `Generating €${fmtNum(kpis7d.revenue)} revenue on €${fmtNum(kpis7d.adSpend)} spend with a cost per deal of €${fmtNum(kpis7d.costPerDeal)}. The funnel is profitable — consider scaling budget by 20% per day.`,
+    })
   }
 
   // 5. Budget utilization
@@ -247,15 +202,18 @@ function generateUtmInsights(
   const scored7d = scoreRows(kpis7d.utmBreakdown ?? [])
   if (!scored7d || scored7d.length === 0) return insights
 
-  const winners = scored7d.filter((r) => (r.category === "winner" || r.category === "sniper") && r.takenCalls >= 1)
-  const losers = scored7d.filter((r) => (r.category === "fake" || r.category === "garbage") && r.leads >= 3)
+  // Winners = ads with deals; losers = high-volume ads with no deals.
+  // Pre-2026-05 this also flagged ads by taken-call rate, but appointment
+  // tracking was removed because the underlying Monday data was unreliable.
+  const winners = scored7d.filter((r) => r.category === "winner" || r.category === "sniper")
+  const losers = scored7d.filter((r) => r.category === "garbage" && r.leads >= 5)
 
   if (winners.length > 0) {
-    const top = winners.sort((a, b) => b.takenCalls - a.takenCalls)[0]
+    const top = winners.sort((a, b) => b.deals - a.deals || b.leads - a.leads)[0]
     insights.push({
       type: "positive",
       title: `Top performing ad: ${top.utm}`,
-      body: `${top.takenCalls} taken appointment${top.takenCalls !== 1 ? "s" : ""} from ${top.leads} leads (${fmtPct(top.takenCallRate)} rate) in the past 7 days.${top.deals > 0 ? ` ${top.deals} deal${top.deals !== 1 ? "s" : ""} closed${top.revenue > 0 ? ` (${fmtEur(top.revenue)})` : ""}.` : ""} Scale budget on this ad by up to 20% per day.`,
+      body: `${top.deals} deal${top.deals !== 1 ? "s" : ""} from ${top.leads} leads in the past 7 days${top.revenue > 0 ? ` (${fmtEur(top.revenue)} revenue)` : ""}. Scale budget on this ad by up to 20% per day.`,
     })
   }
 
@@ -264,7 +222,7 @@ function generateUtmInsights(
     insights.push({
       type: "critical",
       title: `Underperforming ad: ${worst.utm}`,
-      body: `${worst.leads} leads but only ${worst.takenCalls} taken appointment${worst.takenCalls !== 1 ? "s" : ""} (${fmtPct(worst.takenCallRate)} rate). ${worst.category === "fake" ? "High volume of unqualified leads is inflating cost per appointment." : "Neither volume nor quality justifies continued spend."} Consider pausing or replacing with a new creative.`,
+      body: `${worst.leads} leads but no deals closed. Volume alone doesn't justify spend without conversion. Consider pausing or replacing with a new creative.`,
     })
   }
 

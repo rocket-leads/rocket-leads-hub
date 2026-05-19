@@ -207,6 +207,33 @@ Trengo/Monday/Slack worden onzichtbare backends.
 
 ---
 
+## Toekomstige capability — Appointments tracking (uit Hub gehaald 2026-05)
+
+Per-klant afspraken (booked calls, taken calls, qualification rate, show-up rate, conversion rate, CPA) zijn in mei 2026 uit het klant-facing systeem verwijderd. Niet omdat het concept verkeerd is — het is letterlijk pilaar 2-4 uit het 4-pilaren framework — maar omdat de **onderliggende data niet betrouwbaar genoeg is** om beslissingen op te bouwen:
+
+- Klanten houden Monday's lead-statussen (`Afspraak`, `Kennismaking gehad`, no-show, etc.) niet consistent bij. Sommige klanten doen niets, andere doen het 1 week wel en 2 weken niet.
+- Setters / AM's gebruiken eigen kolommen of laten leads gewoon staan na de afspraak.
+- Dezelfde "Afspraak" status kan in client A een appointment betekenen en in client B een lead die de telefoon opnam.
+- Cost per appointment, show-up rate en conversion rate werden daardoor structureel verkeerd berekend → AI optimisation insights die hierop bouwden waren misleidend → CM's verloren vertrouwen in de cijfers → kolommen werden genegeerd → klutterde de UI alleen maar op.
+
+**Wat eraan vooraf moet voordat we het terugbrengen:**
+
+1. **Monday lead-board normalisatie per klant.** Eén gestandaardiseerd status-schema (`Nieuwe lead` / `Gebeld` / `Afspraak gepland` / `Afspraak gehad` / `No-show` / `Deal` / `Lost`) dat AM's verplicht aanhouden. Geen vrije variaties per klant meer.
+2. **Setter/AM enforcement loop.** Hub flagt klanten waar lead-statussen 5+ dagen stilstaan na afspraak-datum, met directe nudge naar verantwoordelijke. Pas valide data leveren is een precondition voor het tonen ervan.
+3. **Appointment events ipv status-derivation.** Liever een Calendly-webhook of Trengo-confirmation die direct in onze database een `appointment_event` schrijft, dan Monday status sniffen. Heldere, niet-interpretabele bron.
+4. **Per-klant kalibratie van pilaar-benchmarks.** De 75% qualification rate / 80% show-up / 30% conversion benchmarks (knowledge/campaigns.md) zijn industrie-gemiddelden. Hub moet per klant zien wat realistisch is en daarop alarmeren — niet één-size-fits-all.
+
+**Wanneer we het terug aanzetten ziet het er als volgt uit (eindstaat):**
+
+- KPI cards op klantpagina krijgen weer een "Appointments" sectie met QR%, SU%, CR%, CPA — maar alleen wanneer dataquality-score voor die klant > drempel
+- Watch List severity weegt CPA mee naast CPL (met recovery-window override zoals nu al voor CPL geldt)
+- Pedro Optimisation Proposals genereren acties op basis van waar in de funnel de bottleneck zit (creative / messaging / lead-flow / sales-close) — niet alleen CPL
+- Cron schrijft per-klant `kpi_funnel:{mondayItemId}` cache met de 4 pilaren
+
+**Decommissioning (uitgevoerd 2026-05):** alle `appointments` / `costPerAppointment` / `bookedCalls` / `takenCalls` / `costPerBookedCall` / `costPerTakenCall` / `crPercent` velden + bijbehorende UI zijn verwijderd uit KpiSummary, KpiResult, UtmRow, cron, kpi-summaries route, Pedro insights/prompts, AI guardrails. Targets dashboard (RL's eigen sales funnel) is onaangeroerd — die heeft eigen, betrouwbare data via de centrale targets-board.
+
+---
+
 ## Supporting Capabilities (Behouden uit v2.0)
 
 De analytische en automatiseringslaag uit de vorige visie blijft, maar wordt ondergeschikt aan de operationele laag. Outputs van deze capabilities verschijnen nu als items in de unified inbox of als tasks in het unified to-do-systeem — niet als losse notificaties in Slack of mailtjes.
