@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById } from "@/lib/integrations/monday"
 import {
   fetchConversations,
-  findFirstEmailChannel,
+  findAmEmailChannel,
   createEmailMessageForContact,
   type TrengoConversation,
 } from "@/lib/integrations/trengo"
@@ -203,49 +203,75 @@ export async function POST(
     // Email fallback: when the contact has no email ticket yet (e.g.
     // Dr. Ludidi who's email-primary on Monday but has never been
     // emailed through Trengo before), bootstrap a fresh email ticket
-    // on the workspace's first email channel and send into it.
+    // on the AM's PERSONAL email channel — NOT the workspace's first
+    // catch-all. Using `findFirstEmailChannel` previously caused the
+    // mail to go out from `rocket-lea-mail.*@trengomail.com` (Trengo's
+    // generic) instead of `roel@rocketleads.nl` (the channel Roel
+    // actually selected in /account → Trengo Channels).
+    //
+    // We also send via the AM's own Trengo token now, so the ticket
+    // gets attributed to the AM agent in Trengo — Roy clicking Send for
+    // Roel's client should never make Roy the sender of record.
+    //
     // WhatsApp has no equivalent fallback — outbound WhatsApp requires
     // an approved HSM template AND a known channel-with-approval combo,
     // which the bootstrap path can't produce safely.
     let bootstrappedEmail: { ticketId: string; messageId: string } | null = null
     if (!ticket && sendAsEmail) {
-      const emailChannel = await findFirstEmailChannel()
-      if (emailChannel) {
-        const userToken = await getUserPlatformToken(session.user.id, "trengo")
-        if (!userToken) throw new NeedsConnectError("trengo")
-        try {
-          bootstrappedEmail = await createEmailMessageForContact({
-            userToken,
-            contactId: client.trengoContactId,
-            channelId: emailChannel.id,
-            subject:
-              subjectOverride ||
-              `Wekelijkse update ${client.companyName || client.name}`,
-            body: message,
-          })
-        } catch (e) {
-          return NextResponse.json(
-            {
-              error: "create_email_ticket_failed",
-              message: `Kan geen nieuw email-ticket aanmaken in Trengo: ${
-                e instanceof Error ? e.message : "unknown"
-              }`,
-            },
-            { status: 502 },
-          )
-        }
-        // Fake a ticket object so the mirror-insert below has the IDs.
-        ticket = {
-          id: Number(bootstrappedEmail.ticketId),
-          status: "open",
-          subject: null,
-          channel: emailChannel,
-          contact: null,
-          latest_message: null,
-          created_at: new Date().toISOString(),
-          closed_at: null,
-          assignee: null,
-        }
+      const emailChannel = await findAmEmailChannel(amUserId)
+      if (!emailChannel) {
+        return NextResponse.json(
+          {
+            error: "am_email_channel_missing",
+            message:
+              "De AM van deze klant heeft geen email-channel geselecteerd in /account → Trengo Channels. Laat 'm daar minstens één email-channel aanvinken (de inbox waaruit ze willen versturen) en probeer opnieuw.",
+          },
+          { status: 400 },
+        )
+      }
+      const userToken = await getUserPlatformToken(amUserId, "trengo")
+      if (!userToken) {
+        return NextResponse.json(
+          {
+            error: "am_trengo_not_connected",
+            message:
+              "De AM van deze klant heeft Trengo nog niet verbonden in /account. Laat 'm Trengo daar koppelen en probeer opnieuw — anders kunnen we niet als hen versturen.",
+          },
+          { status: 400 },
+        )
+      }
+      try {
+        bootstrappedEmail = await createEmailMessageForContact({
+          userToken,
+          contactId: client.trengoContactId,
+          channelId: emailChannel.id,
+          subject:
+            subjectOverride ||
+            `Wekelijkse update ${client.companyName || client.name}`,
+          body: message,
+        })
+      } catch (e) {
+        return NextResponse.json(
+          {
+            error: "create_email_ticket_failed",
+            message: `Kan geen nieuw email-ticket aanmaken in Trengo: ${
+              e instanceof Error ? e.message : "unknown"
+            }`,
+          },
+          { status: 502 },
+        )
+      }
+      // Fake a ticket object so the mirror-insert below has the IDs.
+      ticket = {
+        id: Number(bootstrappedEmail.ticketId),
+        status: "open",
+        subject: null,
+        channel: emailChannel,
+        contact: null,
+        latest_message: null,
+        created_at: new Date().toISOString(),
+        closed_at: null,
+        assignee: null,
       }
     }
 
@@ -273,8 +299,23 @@ export async function POST(
       if (bootstrappedEmail) {
         outboundId = bootstrappedEmail.messageId
       } else if (sendAsEmail) {
+        // Reply path uses the AM's token too (same reasoning as the
+        // bootstrap branch above): Roy clicking Send for Roel's client
+        // should land as Roel in Trengo, with Roel's selected email
+        // channel as the From — not session.user's.
+        const amToken = await getUserPlatformToken(amUserId, "trengo")
+        if (!amToken) {
+          return NextResponse.json(
+            {
+              error: "am_trengo_not_connected",
+              message:
+                "De AM van deze klant heeft Trengo nog niet verbonden in /account. Laat 'm Trengo daar koppelen en probeer opnieuw — anders kunnen we niet als hen versturen.",
+            },
+            { status: 400 },
+          )
+        }
         const sent = await sendTrengoReplyAsUser(
-          session.user.id,
+          amUserId,
           ticketId,
           message,
           false,

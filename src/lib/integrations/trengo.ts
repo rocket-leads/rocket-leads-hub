@@ -123,6 +123,15 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
   return all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }
 
+/** True for any Trengo channel whose `type` describes an email channel
+ *  (Trengo uses "email", "imap", "outlook", or sometimes a "*mail*"
+ *  marker). Centralised so the workspace-wide and per-AM helpers agree
+ *  on what counts as an email channel. */
+export function isEmailChannelType(type: string | null | undefined): boolean {
+  const t = (type ?? "").toLowerCase()
+  return t === "email" || t.includes("mail") || t === "imap" || t === "outlook"
+}
+
 /**
  * Return the workspace's first Trengo email channel. Used to bootstrap a
  * new outbound email ticket when the contact has no existing email
@@ -130,14 +139,37 @@ export async function fetchConversations(contactId: string): Promise<TrengoConve
  * been emailed through Trengo before.
  *
  * Returns null when no email channel exists in this workspace.
+ *
+ * Prefer `findAmEmailChannel(amUserId)` for client-update sends — that
+ * picks the AM's personally-selected email channel (so the email goes
+ * FROM the AM's address, not the workspace's generic catch-all).
  */
 export async function findFirstEmailChannel(): Promise<TrengoChannel | null> {
   const channels = await fetchTrengoChannels()
+  return channels.find((c) => isEmailChannelType(c.type)) ?? null
+}
+
+/**
+ * Resolve the email channel an AM should send FROM. Intersects the AM's
+ * per-user channel subscriptions (selected in /account → Trengo
+ * Channels) with the workspace's email channels and returns the first
+ * match. Returns null when the AM hasn't subscribed to any email
+ * channel — caller should surface a clear "configure your email
+ * channel" error instead of silently falling back to the workspace's
+ * generic catch-all (the Roel-vs-`rocket-lea-mail@trengomail.com` bug).
+ */
+export async function findAmEmailChannel(
+  amUserId: string,
+): Promise<TrengoChannel | null> {
+  const { getUserTrengoChannelIds } = await import("@/lib/inbox/user-prefs")
+  const [amChannelIds, allChannels] = await Promise.all([
+    getUserTrengoChannelIds(amUserId),
+    fetchTrengoChannels(),
+  ])
+  if (amChannelIds.length === 0) return null
+  const set = new Set(amChannelIds)
   return (
-    channels.find((c) => {
-      const t = (c.type ?? "").toLowerCase()
-      return t === "email" || t.includes("mail") || t === "imap" || t === "outlook"
-    }) ?? null
+    allChannels.find((c) => set.has(c.id) && isEmailChannelType(c.type)) ?? null
   )
 }
 
