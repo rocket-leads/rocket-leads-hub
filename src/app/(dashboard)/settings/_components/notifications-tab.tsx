@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -63,11 +64,27 @@ export function NotificationsTab({
   recipients,
   teamChannelId,
   salesChannelId,
-  closers,
+  closers: initialClosers,
 }: Props) {
   const locale = useLocale()
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({})
+
+  // Closers list moved out of SSR to keep /settings fast — see the comment
+  // in /api/admin/settings/closer-names/route.ts for context. Server passes
+  // an empty `initialClosers` now; we hydrate via this query as soon as the
+  // Notifications tab mounts. 30-min staleTime so flipping between tabs
+  // doesn't re-pay the cost.
+  const closersQuery = useQuery<{ closers: Closer[] }>({
+    queryKey: ["settings-closers"],
+    queryFn: () => fetch("/api/admin/settings/closer-names").then((r) => r.json()),
+    staleTime: 30 * 60 * 1000,
+    // Fall through to whatever the parent passed in (usually empty post-fix,
+    // non-empty before this change) until the network call returns. Keeps
+    // the dropdown populated immediately if we ever re-add SSR data.
+    initialData: initialClosers.length > 0 ? { closers: initialClosers } : undefined,
+  })
+  const closers = closersQuery.data?.closers ?? initialClosers
 
   async function runPreview(id: string, endpoint: string) {
     setBusy((b) => ({ ...b, [id]: true }))

@@ -9,7 +9,7 @@ import {
 } from "./types"
 import { ApiHealthBar } from "./_components/api-health-bar"
 import { PageHeader } from "@/components/ui/page-header"
-import { fetchAllItems, fetchBothBoards, getToken as getMondayToken, type MondayClient } from "@/lib/integrations/monday"
+import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { getSlackChannels } from "@/lib/slack"
 import { fetchFathomTeamMembers, type FathomTeamMember } from "@/lib/integrations/fathom"
 import { cachedFetch, readCache } from "@/lib/cache"
@@ -41,22 +41,20 @@ export default async function SettingsPage() {
     getSlackChannels(),
   ])
 
-  // The three heavy data sources the Settings page needs — Monday boards,
-  // Fathom team members, Targets-board closers — all run in parallel here
-  // and each goes through a cache so we don't hammer the live APIs on every
-  // admin load. Previously this block was three sequential awaits → ~10-20s
-  // page load on a cold render.
+  // Two heavy data sources stayed in SSR: Monday boards (cron-warmed,
+  // sub-second from cache) and Fathom team members (24h cache, only 1-2s
+  // on the once-a-day cold path).
   //
-  // Cache tiers:
-  //   - monday_boards: cron-warmed once daily; webhook patches keep it fresh
-  //     intra-day. 1h TTL fallback for safety (same as /clients page).
-  //   - fathom_team_members: 24h TTL — Fathom team membership barely changes.
-  //   - targets_closer_names: 1h TTL — closer roster shifts occasionally;
-  //     extracted from the heavy targets-board fetch which would otherwise
-  //     burn 5-10s every render.
+  // The third — `targets_closer_names` — used to run here too but the
+  // underlying `fetchAllItems("3762696870")` paginates the whole targets
+  // board (1000s of leads, 5-10s cold) and was blocking the Board Config
+  // tab loading even though closers are only used in the Notifications
+  // tab. NotificationsTab now fetches it client-side via useQuery from
+  // /api/admin/settings/closer-names, so opening Settings no longer waits
+  // on Monday's targets-board pagination.
   const ACTIVE_STATUSES = new Set(["Kick off", "In development", "Live"])
 
-  const [boards, fathomTeamMembers, closerNames] = await Promise.all([
+  const [boards, fathomTeamMembers] = await Promise.all([
     (async () => {
       try {
         const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
@@ -74,30 +72,12 @@ export default async function SettingsPage() {
       () => fetchFathomTeamMembers(),
       24 * 60 * 60 * 1000,
     ).catch(() => [] as FathomTeamMember[]),
-    cachedFetch<string[]>(
-      "targets_closer_names",
-      async () => {
-        // Closer names from targets board `wie_` column — only include people
-        // who had at least one lead come in within the last 60 days. Old /
-        // inactive closers would otherwise clutter the mapping list forever.
-        const token = await getMondayToken()
-        const items = await fetchAllItems("3762696870", token)
-        const cutoff = new Date()
-        cutoff.setUTCDate(cutoff.getUTCDate() - 60)
-        const cutoffIso = cutoff.toISOString().slice(0, 10)
-        const names = new Set<string>()
-        for (const item of items) {
-          const wie = item.column_values.find((c) => c.id === "wie_")?.text?.trim()
-          if (!wie) continue
-          const created = item.column_values.find((c) => c.id === "datum_created")?.text ?? ""
-          const createdDate = created.match(/(\d{4}-\d{2}-\d{2})/)?.[1]
-          if (createdDate && createdDate >= cutoffIso) names.add(wie)
-        }
-        return Array.from(names).sort()
-      },
-      60 * 60 * 1000,
-    ).catch(() => [] as string[]),
   ])
+
+  // Closer-names list starts empty; NotificationsTab hydrates it via
+  // useQuery on mount. Keeping the variable here so the rest of the page
+  // wiring (notifications.closers mapping below) stays the same shape.
+  const closerNames: string[] = []
 
   const allClients = [...boards.onboarding, ...boards.current]
   const mondayPeople: string[] = (() => {
