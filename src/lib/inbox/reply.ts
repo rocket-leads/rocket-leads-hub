@@ -41,8 +41,15 @@ export class NeedsConnectError extends Error {
  * multi-line body as-is.
  */
 export function sanitizeWaTemplateParam(s: string): string {
-  if (!s) return s
-  return s
+  // Coerce defensively: a caller passing `null` / `undefined` here used
+  // to leak straight through `if (!s) return s`, and JSON.stringify then
+  // serialised them as `null` in the params array. Meta replies with
+  // "JSON schema constraint 'type' for the JSON field 'text.body' …
+  // expected: 'string'", which is its 422 for "you sent me null where I
+  // wanted a string". Guarantee string output at this boundary.
+  const str = String(s ?? "")
+  if (!str) return ""
+  return str
     // Inline bullets first so "\n• Actie" survives as " • Actie" instead of
     // "  Actie" after the generic newline-strip below.
     .replace(/\n\s*[•\-*]\s+/g, " • ")

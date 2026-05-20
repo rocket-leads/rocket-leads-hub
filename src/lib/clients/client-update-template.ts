@@ -408,7 +408,9 @@ export function renderWeeklyUpdate(input: ComposeInput): string {
  * not this function, since email has no HSM-template variable limits.
  */
 export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
-  const firstName = parts.opener.replace(/[!?.,;:]+$/, "").trim()
+  const firstName = String(parts.opener ?? "")
+    .replace(/[!?.,;:]+$/, "")
+    .trim()
 
   const intro = sanitizeForWaParam(parts.intro)
 
@@ -418,7 +420,7 @@ export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
   // doesn't run on awkwardly when WhatsApp wraps it.
   const kpiInline = sanitizeForWaParam(
     finishSentence(
-      stripLeadingHeaderLine(parts.kpiBlock)
+      stripLeadingHeaderLine(String(parts.kpiBlock ?? ""))
         .split("\n")
         .map((line) => line.replace(/^\s*[•\-*]\s*/, "").trim())
         .filter(Boolean)
@@ -430,7 +432,7 @@ export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
   // and slot into the same paragraph between KPIs and the action list.
   const bodyInline = sanitizeForWaParam(
     [parts.trendSentence, parts.note, parts.conclusion]
-      .map((s) => (s ?? "").trim())
+      .map((s) => String(s ?? "").trim())
       .filter(Boolean)
       .join(" "),
   )
@@ -439,14 +441,28 @@ export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
   // ensure trailing punctuation, join with single spaces so they read
   // as a flowing paragraph.
   const actionsInline = sanitizeForWaParam(
-    parts.actions
-      .map((a) => a.trim().replace(/^[•\-*]\s*/, ""))
+    (parts.actions ?? [])
+      .map((a) => String(a ?? "").trim().replace(/^[•\-*]\s*/, ""))
       .filter(Boolean)
       .map(finishSentence)
       .join(" "),
   )
 
-  return [firstName, intro, kpiInline, bodyInline, actionsInline]
+  // Meta rejects WhatsApp template body parameters that are empty, null,
+  // or anything other than a non-empty string — the error surfaces as
+  // "JSON schema constraint 'type' for the JSON field 'text.body' …
+  // expected: 'string'", which is misleading (empty string IS a string,
+  // but Meta validates non-empty here). Guarantee every slot has
+  // *something* sensible by substituting a per-slot fallback when our
+  // composer produced nothing useful. The AM can always edit before
+  // sending; this is the floor.
+  return [
+    firstName || "daar",
+    intro || "Update over de afgelopen week.",
+    kpiInline || "Geen meetbare cijfers deze week.",
+    bodyInline || "Komende dagen kijk ik mee om bij te sturen waar nodig.",
+    actionsInline || "Geen specifieke actiepunten deze week.",
+  ]
 }
 
 /** Append a trailing period when the string doesn't already end with
@@ -473,8 +489,14 @@ function stripLeadingHeaderLine(s: string): string {
  *  boundary's defensive sanitiser. Tested directly in this file's test
  *  suite + indirectly via reply.test.ts. */
 function sanitizeForWaParam(s: string): string {
-  if (!s) return s
-  return s
+  // Coerce: callers can hand us `null`/`undefined` from optional-field
+  // EditableParts and we must NEVER let those reach the Trengo payload
+  // (Meta rejects non-string body params with a misleading "expected:
+  // 'string'" 422). Empty string is a valid intermediate — the per-slot
+  // empty fallback in partsToWeeklyUpdateParams handles those.
+  const str = String(s ?? "")
+  if (!str) return ""
+  return str
     .replace(/\n\s*[•\-*]\s+/g, " • ")
     .replace(/[\r\n\t]+/g, " ")
     .replace(/ {2,}/g, " ")

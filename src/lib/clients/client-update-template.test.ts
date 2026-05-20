@@ -406,7 +406,7 @@ describe("partsToWeeklyUpdateParams — V2 multi-variable template mapping", () 
     }
   })
 
-  it("handles empty intro / trend / note gracefully (still 5 params)", () => {
+  it("handles empty intro / trend / note gracefully (still 5 non-empty params)", () => {
     const sparse: EditableParts = {
       ...baseParts,
       intro: "",
@@ -415,13 +415,53 @@ describe("partsToWeeklyUpdateParams — V2 multi-variable template mapping", () 
     }
     const out = partsToWeeklyUpdateParams(sparse)
     expect(out).toHaveLength(5)
-    expect(out[1]).toBe("")
-    // Body collapses to just the conclusion
+    // Empty intro → fallback placeholder (Meta rejects empty body params)
+    expect(out[1]).toBe("Update over de afgelopen week.")
+    // Body still collapses to just the conclusion since that's non-empty
     expect(out[3]).toBe("Volgende week zien we of dit zich vertaalt.")
   })
 
-  it("handles empty actions list (returns empty string for {{5}})", () => {
+  it("handles empty actions list with a fallback placeholder for {{5}}", () => {
     const out = partsToWeeklyUpdateParams({ ...baseParts, actions: [] })
-    expect(out[4]).toBe("")
+    // Meta rejects empty body params — must substitute something non-empty.
+    expect(out[4]).toBe("Geen specifieke actiepunten deze week.")
+  })
+
+  it("substitutes per-slot fallbacks when every editable field is empty (defends against Meta 422)", () => {
+    const blank: EditableParts = {
+      opener: "",
+      intro: "",
+      kpiBlock: "",
+      trendSentence: "",
+      note: "",
+      conclusion: "",
+      actionsHeader: "",
+      actions: [],
+      subject: "",
+      signOff: "",
+    }
+    const out = partsToWeeklyUpdateParams(blank)
+    expect(out).toHaveLength(5)
+    for (const p of out) {
+      expect(typeof p).toBe("string")
+      expect(p.length).toBeGreaterThan(0)
+    }
+  })
+
+  it("coerces null/undefined fields without crashing (defensive against stored drafts)", () => {
+    const dirty = {
+      ...baseParts,
+      intro: null,
+      kpiBlock: undefined,
+      conclusion: null,
+      actions: [null, "Echte actie", undefined],
+    } as unknown as EditableParts
+    const out = partsToWeeklyUpdateParams(dirty)
+    expect(out).toHaveLength(5)
+    for (const p of out) {
+      expect(typeof p).toBe("string")
+      expect(p.length).toBeGreaterThan(0)
+    }
+    expect(out[4]).toContain("Echte actie")
   })
 })
