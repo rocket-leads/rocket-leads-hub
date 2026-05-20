@@ -135,6 +135,22 @@ export async function sendTrengoTemplateAsUser(
   // automatically — no 422 from forgotten sanitisation upstream.
   const safeParams = params.map(sanitizeWaTemplateParam)
 
+  // Trengo's HSM template endpoint expects EACH parameter as a structured
+  // `{type, key, value}` object — NOT a bare string. Verified against
+  // developers.trengo.com/reference: `type` selects the component
+  // (body/header/button/otp), `key` is the placeholder identifier
+  // (`{{1}}`, `{{2}}`, …), `value` is the substitution. Older 1-var
+  // templates happened to work with a flat string array because Trengo
+  // mapped positional strings tolerantly, but multi-var templates strictly
+  // validate and the rejected payload then forwarded malformed params to
+  // Meta — which surfaced as the misleading "JSON schema constraint 'type'
+  // for the JSON field 'text.body' … expected: 'string'" 422.
+  const structuredParams = safeParams.map((value, idx) => ({
+    type: "body",
+    key: `{{${idx + 1}}}`,
+    value,
+  }))
+
   // Both `type` and `body_type` carried so the payload survives Trengo's
   // OpenAPI rename without us knowing which one is required this week.
   // Past 422 ("message field is required when none of body type /
@@ -145,7 +161,7 @@ export async function sendTrengoTemplateAsUser(
     body_type: "TEMPLATE",
     template_name: templateName,
     language,
-    params: safeParams,
+    params: structuredParams,
     internal_note: false,
   }
 
