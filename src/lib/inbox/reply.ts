@@ -211,6 +211,19 @@ export async function sendTrengoTemplateAsUser(
       )
     }
     const diag = `template=${templateName} vars=${safeParams.length}`
+    // Log the full Trengo response server-side — Meta nests detail inside
+    // their error body that the truncated 300-char preview hides. Surfaces
+    // in the same Vercel function-invocation log block as the outgoing
+    // params diagnostic, so a 422 has both halves of the picture.
+    console.log(
+      "[trengo-template-send] failure response",
+      JSON.stringify({
+        status: res.status,
+        templateName,
+        vars: safeParams.length,
+        body: errText,
+      }),
+    )
     throw new Error(
       `Trengo template send failed (${res.status}, ${diag}): ${errText.slice(0, 300)}`,
     )

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById } from "@/lib/integrations/monday"
 import {
   fetchConversations,
+  fetchWaTemplates,
   findFirstEmailChannel,
   createEmailMessageForContact,
   type TrengoConversation,
@@ -285,6 +286,50 @@ export async function POST(
     }
     const ticketId = String(ticket.id)
     const channelId = ticket.channel?.id ?? null
+
+    // Diagnostic: for the WhatsApp template path, fetch the approved
+    // template's full component structure from Trengo and log it. Lets us
+    // verify whether `rl_weekly_<voornaam>` has a HEADER / FOOTER with
+    // its own variables — Meta's misleading "expected: 'string'" 422 can
+    // be triggered by an unfilled header text variable, not a body one.
+    // Temporary; remove once the V2 send is stable.
+    if (!sendAsEmail && channelId != null) {
+      try {
+        const tmpls = await fetchWaTemplates(channelId)
+        const match = tmpls.find(
+          (t) => (t.slug ?? t.title) === templateName,
+        )
+        if (match) {
+          console.log(
+            "[send-client-update] template structure",
+            JSON.stringify({
+              templateName,
+              channelId,
+              language: match.language,
+              messageVars:
+                (match.message?.match(/\{\{\d+\}\}/g) ?? []).length,
+              messageBody: match.message?.slice(0, 300) ?? null,
+              components: match.components?.map((c) => ({
+                type: c.type,
+                sub_type: c.sub_type,
+                value: c.value?.slice(0, 200) ?? null,
+                vars: (c.value?.match(/\{\{\d+\}\}/g) ?? []).length,
+              })),
+            }),
+          )
+        } else {
+          console.log(
+            "[send-client-update] template NOT in approved list for channel",
+            JSON.stringify({ templateName, channelId }),
+          )
+        }
+      } catch (e) {
+        console.log(
+          "[send-client-update] template structure fetch failed",
+          e instanceof Error ? e.message : String(e),
+        )
+      }
+    }
 
     let outboundId: string
     try {
