@@ -10,7 +10,7 @@ import { Loader2, RefreshCw, Webhook } from "lucide-react"
 type MondayWebhookEvent =
   | "change_column_value"
   | "change_name"
-  | "create_pulse"
+  | "create_item"
   | "item_deleted"
   | "create_update"
 

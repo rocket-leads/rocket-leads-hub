@@ -204,11 +204,14 @@ export async function POST(req: NextRequest) {
   // `create_update` (existing path below) is the inbox / @-mention flow and
   // continues to its specialised handler. Anything else is acknowledged but
   // not acted on.
+  // Both `create_item` (v2 enum) and `create_pulse` (legacy alias) — the
+  // payload type Monday sends depends on when the webhook was registered.
   const SYNC_EVENT_TYPES = new Set([
     "change_column_value",
     "change_status_column_value",
     "change_name",
     "update_name",
+    "create_item",
     "create_pulse",
   ])
   const DELETE_EVENT_TYPES = new Set(["item_deleted", "archive_pulse"])

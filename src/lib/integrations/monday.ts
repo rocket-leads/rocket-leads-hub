@@ -856,11 +856,16 @@ export async function fetchClientItemUpdates(
 
 /** Event types Monday webhooks support that we currently consume.
  *  Adding a new one here is a no-op until the receiver knows what to do with
- *  it; the registration helpers below + the receiver are the matched pair. */
+ *  it; the registration helpers below + the receiver are the matched pair.
+ *
+ *  Monday's v2 GraphQL enum renamed the legacy `create_pulse` to
+ *  `create_item`. The new name is what `create_webhook` accepts; the
+ *  receiver below still tolerates `create_pulse` payloads for back-compat
+ *  if any older webhook lingers anywhere. */
 export type MondayWebhookEvent =
   | "change_column_value"
   | "change_name"
-  | "create_pulse"
+  | "create_item"
   | "item_deleted"
   | "create_update"
 

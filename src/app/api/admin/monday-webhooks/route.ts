@@ -31,10 +31,15 @@ import {
 // Every event type we want Monday to push into the Hub's receiver.
 // `create_update` is the legacy inbox-mention path (still registered);
 // the rest are the new client-mutation sync.
+//
+// Note: Monday's v2 GraphQL enum uses `create_item` for new-item events;
+// `create_pulse` is the deprecated legacy alias and `create_webhook`
+// rejects it with `INVALID_ENUM_VALUE`. The receiver still accepts both
+// payload type strings for safety.
 const TARGET_EVENTS: MondayWebhookEvent[] = [
   "change_column_value",
   "change_name",
-  "create_pulse",
+  "create_item",
   "item_deleted",
   "create_update",
 ]
