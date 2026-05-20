@@ -289,6 +289,7 @@ export async function POST(
           templateName,
           "nl",
           templateParams,
+          channelId,
         )
         outboundId = sent.message_id
       }

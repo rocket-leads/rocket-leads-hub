@@ -1,7 +1,7 @@
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
 import { createAdminClient } from "@/lib/supabase/server"
 import { sendPushToUser } from "@/lib/notifications/push"
-import { updateTrengoContactName } from "@/lib/integrations/trengo"
+import { updateTrengoContactName, fetchWaTemplates } from "@/lib/integrations/trengo"
 
 /**
  * Outbound reply path — sends a Hub reply back to the source platform AS the
@@ -112,6 +112,13 @@ export async function sendTrengoTemplateAsUser(
   templateName: string,
   language: string,
   params: string[],
+  /** Optional channel id of the ticket. When provided, a 422 failure
+   *  triggers a follow-up `/wa_templates?channel_id=…` lookup so the
+   *  thrown error can tell the AM whether the template is actually
+   *  missing on this channel OR present-but-rejected for a different
+   *  reason (language mismatch, var count, etc.). Skipped when omitted
+   *  so non-Client-Update callers keep their cheaper failure path. */
+  channelId?: number | null,
 ): Promise<{ message_id: string }> {
   const token = await getUserPlatformToken(userId, "trengo")
   if (!token) throw new NeedsConnectError("trengo")
@@ -153,20 +160,47 @@ export async function sendTrengoTemplateAsUser(
   }
   if (!res.ok) {
     const errText = await res.text().catch(() => "")
-    // Translate the specific "outside 24h + SMS fallback" Trengo response
-    // into an actionable message. This error pattern almost always means
-    // the template isn't approved on the WhatsApp channel that owns the
-    // ticket — Trengo silently degrades the request to free-text, which
-    // then trips the 24h-window check.
+    // Trengo's "Message is outside the 24 hour window" pattern shows up
+    // whenever Trengo doesn't recognise our request as a valid template
+    // send — could be template-not-on-channel, language mismatch, wrong
+    // var count, etc. Fetch the channel's approved templates so the
+    // error can pinpoint the actual mismatch instead of guessing.
     const channelMatch = errText.match(
       /Message is outside the 24 hour window[\s\S]*?channel \(([0-9a-f-]{36})\)/,
     )
-    if (channelMatch) {
-      const channelUuid = channelMatch[1]
+    if (channelMatch && channelId) {
+      const channelUuidFromErr = channelMatch[1]
+      let approved: Array<{ name: string; lang: string; vars: number }> = []
+      try {
+        const templates = await fetchWaTemplates(channelId)
+        approved = templates.map((t) => ({
+          name: t.slug ?? t.title,
+          lang: t.language,
+          vars: (t.message?.match(/\{\{\d+\}\}/g) ?? []).length,
+        }))
+      } catch {
+        // best-effort enrichment; fall through to generic message below
+      }
+      const ours = approved.find((t) => t.name === templateName)
+      if (!ours) {
+        const sameAm = approved.filter((t) => t.name.startsWith(templateName.replace(/_\d+$/, "")))
+        const hint =
+          sameAm.length > 0
+            ? ` Wel approved op deze channel met dezelfde naam-prefix: ${sameAm.map((t) => t.name).join(", ")}.`
+            : ""
+        throw new Error(
+          `Template '${templateName}' staat NIET in de approved lijst voor channel ${channelUuidFromErr}.${hint} Approve 'm in Trengo → Settings → Channels → die channel → Templates.`,
+        )
+      }
+      // Template IS in the approved list but Trengo still rejected — pinpoint why.
+      const mismatches: string[] = []
+      if (ours.lang !== language) mismatches.push(`language=${ours.lang} (wij sturen ${language})`)
+      if (ours.vars !== safeParams.length) mismatches.push(`vars=${ours.vars} (wij sturen ${safeParams.length})`)
+      const detail = mismatches.length > 0
+        ? `: ${mismatches.join(", ")}`
+        : `: Trengo accepteert 'm niet en de mismatch is niet duidelijk — raw: ${errText.slice(0, 200)}`
       throw new Error(
-        `Template '${templateName}' is niet approved op WhatsApp channel ${channelUuid}. ` +
-          `Approve 'm in Trengo → Settings → Channels → de betreffende channel → Templates, ` +
-          `en probeer dan opnieuw.`,
+        `Template '${templateName}' is approved op channel ${channelUuidFromErr} maar Trengo rejected${detail}`,
       )
     }
     const diag = `template=${templateName} vars=${safeParams.length}`
