@@ -14,6 +14,7 @@ import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
+import { mondayStatusToHub } from "@/lib/clients/status"
 import { cn } from "@/lib/utils"
 
 /**
@@ -275,7 +276,7 @@ function SlideOverNavHeader({
     // its own events. `stopPropagation` on every interactive child prevents
     // bubble-up to the backdrop.
     <div
-      className="pointer-events-none fixed top-6 left-0 right-[max(70%,calc(100vw-1500px))] z-[60] flex justify-center px-4"
+      className="pointer-events-none fixed inset-y-0 left-0 right-[max(70%,calc(100vw-1500px))] z-[60] flex items-center justify-center px-4"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="pointer-events-auto w-full max-w-[420px] flex flex-col gap-2.5">
@@ -286,10 +287,10 @@ function SlideOverNavHeader({
           onClick={onBack}
           className={cn(
             "group/back inline-flex items-center justify-center gap-2 h-11 rounded-xl",
-            "border border-white/15 bg-zinc-900/85 backdrop-blur-md text-zinc-100",
-            "shadow-2xl ring-1 ring-black/20",
-            "transition-all hover:bg-zinc-800/90 hover:border-white/25 active:translate-y-px",
-            "outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+            "border border-emerald-400/40 bg-emerald-500/95 backdrop-blur-md text-white",
+            "shadow-2xl ring-1 ring-emerald-900/30",
+            "transition-all hover:bg-emerald-500 hover:border-emerald-300/60 active:translate-y-px",
+            "outline-none focus-visible:ring-2 focus-visible:ring-emerald-300/60",
           )}
           aria-label={backLabel}
         >
@@ -351,12 +352,16 @@ function ClientSwitcher({
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
+  // Default preview (empty query) is live-only — onboarding/on-hold/churned
+  // clients aren't ones a CM/AM wants to *passively* switch to. But once the
+  // user actively types a query, search spans the full list so they can still
+  // jump to that one on-hold client by name without leaving the panel.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) {
-      // Empty query — surface the first 8 clients excluding the current one.
-      // Gives the user a one-click way to jump to a neighbour without typing.
-      return clients.filter((c) => c.mondayItemId !== currentId).slice(0, 8)
+      return clients
+        .filter((c) => c.mondayItemId !== currentId && mondayStatusToHub(c.campaignStatus, "current") === "live")
+        .slice(0, 8)
     }
     const hits: MondayClient[] = []
     for (const c of clients) {
