@@ -25,6 +25,11 @@ type StatusResponse = {
   boards: { onboarding: string; current: string }
   targetEvents: MondayWebhookEvent[]
   secretConfigured: boolean
+  /** True when the current host is a public HTTPS URL Monday can reach.
+   *  False on localhost / private IPs — UI disables register + reset to
+   *  prevent the "delete from dev nukes prod webhooks" foot-gun. */
+  publicReachable?: boolean
+  currentOrigin?: string
   onboarding: Webhook[]
   current: Webhook[]
 }
@@ -148,6 +153,16 @@ export function MondayWebhooksCard() {
           </div>
         )}
 
+        {status?.secretConfigured && status.publicReachable === false && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+            <strong>You&apos;re on a non-public host</strong> (<code>{status.currentOrigin}</code>).
+            Monday only accepts publicly-reachable HTTPS endpoints, so
+            Register / Reset are disabled here — running them would delete
+            the production webhooks without being able to recreate them.
+            Open this page on <code>https://hub.rocketleads.com/settings</code> instead.
+          </div>
+        )}
+
         {error && (
           <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
             {error}
@@ -215,7 +230,7 @@ export function MondayWebhooksCard() {
         )}
 
         <div className="flex items-center gap-2 pt-1 flex-wrap">
-          <Button onClick={() => register(false)} disabled={busy || !status?.secretConfigured}>
+          <Button onClick={() => register(false)} disabled={busy || !status?.secretConfigured || status?.publicReachable === false}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Webhook className="h-4 w-4" />}
             Register webhooks
           </Button>
@@ -227,7 +242,7 @@ export function MondayWebhooksCard() {
           <Button
             variant="outline"
             onClick={() => register(true)}
-            disabled={busy || !status?.secretConfigured}
+            disabled={busy || !status?.secretConfigured || status?.publicReachable === false}
           >
             <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
             Reset &amp; re-register

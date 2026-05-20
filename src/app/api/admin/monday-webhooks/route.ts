@@ -54,6 +54,30 @@ function buildWebhookUrl(req: NextRequest): string | null {
   return `${req.nextUrl.origin}/api/webhooks/monday?secret=${encodeURIComponent(secret)}`
 }
 
+/** Monday only accepts publicly-reachable HTTPS URLs as webhook targets.
+ *  Trying to register a `http://localhost:3000` (or any private host) makes
+ *  the create_webhook mutation throw — and worse, if combined with the
+ *  reset flag, the delete pass goes through FIRST and wipes the good prod
+ *  webhooks before the doomed create can even run. Gate both register and
+ *  reset behind this check so a stray click from dev can't take production
+ *  down. */
+function isPublicWebhookUrl(url: string): boolean {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== "https:") return false
+    const host = u.hostname
+    // Reject obvious private hosts. Production runs on a real domain, so
+    // anything matching localhost / 127.0.0.1 / 0.0.0.0 / *.local / *.lan /
+    // RFC1918 ranges should not be wired into Monday.
+    if (host === "localhost" || host === "0.0.0.0" || host === "127.0.0.1") return false
+    if (host.endsWith(".local") || host.endsWith(".lan")) return false
+    if (/^192\.168\./.test(host) || /^10\./.test(host) || /^172\.(1[6-9]|2[0-9]|3[01])\./.test(host)) return false
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function gatherBoards(): Promise<{ onboarding: string; current: string } | null> {
   const config = await getBoardConfig()
   if (!config) return null
@@ -63,7 +87,7 @@ async function gatherBoards(): Promise<{ onboarding: string; current: string } |
   return { onboarding, current }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (session?.user?.role !== "admin") {
     return NextResponse.json({ error: "Admin only" }, { status: 401 })
@@ -89,6 +113,8 @@ export async function GET() {
   const mondayEnvKeys = Object.keys(process.env)
     .filter((k) => k.toUpperCase().startsWith("MONDAY"))
     .sort()
+  const wouldBeUrl = secretConfigured ? buildWebhookUrl(req) : null
+  const publicReachable = !!wouldBeUrl && isPublicWebhookUrl(wouldBeUrl)
 
   return NextResponse.json({
     boards,
@@ -98,6 +124,11 @@ export async function GET() {
     mondayEnvKeys,
     runtime: process.env.NEXT_RUNTIME ?? "nodejs",
     vercelEnv: process.env.VERCEL_ENV ?? null,
+    // Tells the UI to disable register/reset buttons when the current host
+    // isn't a public HTTPS URL Monday can call. Prevents the "delete from
+    // dev nukes prod webhooks" foot-gun.
+    publicReachable,
+    currentOrigin: req.nextUrl.origin,
     onboarding: onboardingWebhooks,
     current: currentWebhooks,
   })
@@ -114,6 +145,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "MONDAY_WEBHOOK_SECRET not set in env — set it before registering." },
       { status: 500 },
+    )
+  }
+  // Guard against running from a non-public host (localhost dev, *.local,
+  // private IP). Monday rejects those URLs on create — but the reset path
+  // would already have deleted the good prod webhooks by the time we
+  // discover this. Refuse loudly instead.
+  if (!isPublicWebhookUrl(webhookUrl)) {
+    return NextResponse.json(
+      {
+        error:
+          "Refusing to register from a non-public URL — Monday only accepts publicly-reachable HTTPS endpoints. Run this from the production deployment (hub.rocketleads.com), not localhost.",
+        attemptedUrl: webhookUrl,
+      },
+      { status: 400 },
     )
   }
   const boards = await gatherBoards()
