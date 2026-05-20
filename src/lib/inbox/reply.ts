@@ -139,33 +139,57 @@ export async function sendTrengoTemplateAsUser(
   // `{type, key, value}` object — NOT a bare string. Verified against
   // developers.trengo.com/reference: `type` selects the component
   // (body/header/button/otp), `key` is the placeholder identifier
-  // (`{{1}}`, `{{2}}`, …), `value` is the substitution. Older 1-var
-  // templates happened to work with a flat string array because Trengo
-  // mapped positional strings tolerantly, but multi-var templates strictly
-  // validate and the rejected payload then forwarded malformed params to
-  // Meta — which surfaced as the misleading "JSON schema constraint 'type'
-  // for the JSON field 'text.body' … expected: 'string'" 422.
+  // (`{{1}}`, `{{2}}`, …), `value` is the substitution.
   const structuredParams = safeParams.map((value, idx) => ({
     type: "body",
     key: `{{${idx + 1}}}`,
     value,
   }))
 
-  // Both `type` and `body_type` carried so the payload survives Trengo's
-  // OpenAPI rename without us knowing which one is required this week.
-  // Past 422 ("message field is required when none of body type /
-  // attachment ids are present") was Trengo not recognising `type` alone
-  // as a body-type signal.
-  const payload = {
-    type: "TEMPLATE",
-    body_type: "TEMPLATE",
-    template_name: templateName,
-    language,
-    params: structuredParams,
-    internal_note: false,
+  // Resolve the numeric `hsm_id` from the template name. The /wa_sessions
+  // endpoint requires the integer id, NOT the slug — the old code path was
+  // posting to /tickets/{id}/messages with `template_name` which is silently
+  // not a template-supporting endpoint (only accepts message/internal_note/
+  // subject/attachment_ids per Trengo docs). Trengo therefore fell back to
+  // a text-message shape and forwarded `text.body = <something non-string>`
+  // to Meta → misleading "expected: 'string'" 422.
+  if (!channelId) {
+    throw new Error(
+      `Trengo template send needs channelId to resolve hsm_id for '${templateName}'`,
+    )
+  }
+  const approvedTemplates = await fetchWaTemplates(channelId)
+  const tmpl = approvedTemplates.find(
+    (t) => (t.slug ?? t.title) === templateName,
+  )
+  if (!tmpl) {
+    throw new Error(
+      `Template '${templateName}' is niet approved op channel ${channelId}. Approve 'm in Trengo → Settings → Channels → die channel → Templates.`,
+    )
   }
 
-  const res = await fetch(`https://app.trengo.com/api/v2/tickets/${ticketId}/messages`, {
+  // POST /v2/wa_sessions is Trengo's HSM template send endpoint. Accepts
+  // either `recipient_phone_number` or `ticket_id` — we always have the
+  // ticket id because the caller resolved an existing conversation, so we
+  // pass that and the message lands in the same ticket.
+  const payload = {
+    hsm_id: tmpl.id,
+    ticket_id: ticketId,
+    params: structuredParams,
+  }
+
+  console.log(
+    "[trengo-template-send] outgoing payload",
+    JSON.stringify({
+      endpoint: "POST /v2/wa_sessions",
+      hsm_id: tmpl.id,
+      template_name: templateName,
+      ticket_id: ticketId,
+      paramCount: structuredParams.length,
+    }),
+  )
+
+  const res = await fetch(`https://app.trengo.com/api/v2/wa_sessions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -500,6 +524,9 @@ export async function replyToInboxEvent(
         template.name,
         template.language,
         template.params,
+        // hsm_id lookup needs the channel id; events carry it from the
+        // original Trengo webhook, so propagate it straight through.
+        event.trengo_channel_id,
       )
       outboundId = r.message_id
       sourceMsgId = `trengo:msg:${outboundId}`
