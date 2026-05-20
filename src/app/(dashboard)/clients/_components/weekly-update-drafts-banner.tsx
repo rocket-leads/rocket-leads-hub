@@ -165,6 +165,20 @@ function WeeklyUpdateQueueSheet({
   // Track which drafts are gone (sent or dismissed) so they disappear
   // from the list immediately, even before the server refetch completes.
   const [consumedIds, setConsumedIds] = useState<Set<string>>(new Set())
+  // Bulk selection — checkbox per row. Lets the AM tag multiple drafts
+  // for "Overslaan in bulk" (mass dismiss) or "Versturen in bulk"
+  // (sequential mass-send with a progress bar). Cleared whenever a
+  // selected draft is consumed individually.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // Bulk-send progress state. Null when idle. While running, holds the
+  // total + done counters so the header strip can render a progress bar.
+  const [bulkSend, setBulkSend] = useState<
+    | null
+    | { total: number; done: number; failed: number; lastError: string | null }
+  >(null)
+  // Bulk-skip in-flight flag — disables actions during the brief parallel
+  // PATCH burst so the AM can't double-click "Overslaan" mid-flight.
+  const [bulkSkipping, setBulkSkipping] = useState(false)
 
   const notConsumed = useMemo(
     () => drafts.filter((d) => !consumedIds.has(d.id)),
@@ -203,6 +217,156 @@ function WeeklyUpdateQueueSheet({
     if (!activeDraft) return
     setEditedByDraft((prev) => ({ ...prev, [activeDraft.id]: next }))
   }
+
+  // Clean up selectedIds whenever drafts disappear (consumed individually
+  // OR filtered out by search). Keeps the "X selected" counter honest.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev
+      const visibleSet = new Set(visibleDrafts.map((d) => d.id))
+      let changed = false
+      const next = new Set<string>()
+      for (const id of prev) {
+        if (visibleSet.has(id)) next.add(id)
+        else changed = true
+      }
+      return changed ? next : prev
+    })
+  }, [visibleDrafts])
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(visibleDrafts.map((d) => d.id)))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  /** Bulk dismiss — fires the existing single-draft PATCH per selected id
+   *  in parallel. Status flip is cheap, the risk is low, and parallel
+   *  finishes faster than sequential for the typical 5-15 drafts. */
+  async function bulkSkip() {
+    if (selectedIds.size === 0 || bulkSkipping) return
+    const ids = Array.from(selectedIds)
+    setBulkSkipping(true)
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/weekly-update-drafts/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "dismissed" }),
+          }).catch(() => null),
+        ),
+      )
+      // Drop everything from the local view in one go.
+      setConsumedIds((prev) => {
+        const next = new Set(prev)
+        for (const id of ids) next.add(id)
+        return next
+      })
+      setSelectedIds(new Set())
+      onDraftConsumed()
+    } finally {
+      setBulkSkipping(false)
+    }
+  }
+
+  /** Bulk send — runs the same /send-client-update endpoint per draft in
+   *  SEQUENCE (not parallel). Trengo's API rate-limits at ~10 req/s and
+   *  we'd rather stagger than collide. Tracks per-draft progress so the
+   *  header strip can show "Sending 4 of 12 …". On the first failure we
+   *  surface the error inline but keep going — one bad client shouldn't
+   *  block the rest. */
+  async function bulkSendAll() {
+    if (selectedIds.size === 0 || bulkSend !== null) return
+    const idsToSend = Array.from(selectedIds)
+    if (
+      !window.confirm(
+        `${idsToSend.length} wekelijkse update${idsToSend.length === 1 ? "" : "s"} versturen naar de klanten?`,
+      )
+    ) {
+      return
+    }
+    setBulkSend({ total: idsToSend.length, done: 0, failed: 0, lastError: null })
+
+    for (const id of idsToSend) {
+      const draft = drafts.find((d) => d.id === id)
+      if (!draft) {
+        setBulkSend((s) => (s ? { ...s, done: s.done + 1, failed: s.failed + 1 } : s))
+        continue
+      }
+      const parts = editedByDraft[id] ?? draft.parts
+      const message = renderForSend(parts)
+      try {
+        const res = await fetch(
+          `/api/clients/${draft.mondayItemId}/send-client-update`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message, subject: parts.subject, parts }),
+          },
+        )
+        if (!res.ok) {
+          const err = (await res.json().catch(() => ({}))) as {
+            error?: string
+            message?: string
+          }
+          throw new Error(err.message ?? err.error ?? "send failed")
+        }
+        const data = (await res.json()) as { outboundMsgId?: string }
+        // Mark draft consumed (fire-and-forget like the single-send path).
+        try {
+          await fetch(`/api/weekly-update-drafts/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              status: "sent",
+              sentMessageId: data.outboundMsgId,
+            }),
+          })
+        } catch {
+          // intentional swallow
+        }
+        setConsumedIds((prev) => {
+          const next = new Set(prev)
+          next.add(id)
+          return next
+        })
+        setBulkSend((s) => (s ? { ...s, done: s.done + 1 } : s))
+      } catch (e) {
+        setBulkSend((s) =>
+          s
+            ? {
+                ...s,
+                done: s.done + 1,
+                failed: s.failed + 1,
+                lastError: e instanceof Error ? e.message : "send failed",
+              }
+            : s,
+        )
+      }
+    }
+
+    setSelectedIds(new Set())
+    onDraftConsumed()
+    // Leave the progress strip visible for a few seconds with the final
+    // tallies so the AM can see what happened, then fade out.
+    setTimeout(() => setBulkSend(null), 4500)
+  }
+
+  const allVisibleSelected =
+    visibleDrafts.length > 0 && selectedIds.size === visibleDrafts.length
+  const someVisibleSelected = selectedIds.size > 0 && !allVisibleSelected
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -284,6 +448,94 @@ function WeeklyUpdateQueueSheet({
                 )}
               </div>
             </div>
+
+            {/* Bulk action bar — appears between the search and the list
+                whenever ≥1 drafts are selected. Master-checkbox toggles
+                "all visible". */}
+            <div className="px-2.5 py-1.5 border-b border-border/60 shrink-0 flex items-center justify-between gap-2">
+              <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someVisibleSelected
+                  }}
+                  onChange={(e) =>
+                    e.target.checked ? selectAllVisible() : clearSelection()
+                  }
+                  disabled={visibleDrafts.length === 0 || bulkSkipping || !!bulkSend}
+                  className="h-3.5 w-3.5 rounded border-border accent-violet-500"
+                />
+                {selectedIds.size > 0
+                  ? `${selectedIds.size} selected`
+                  : "Select all"}
+              </label>
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={bulkSkip}
+                    disabled={bulkSkipping || !!bulkSend}
+                    className="text-[11px] inline-flex items-center gap-1 rounded-md border border-border/80 px-2 py-1 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-50"
+                    title={`Overslaan voor ${selectedIds.size} drafts`}
+                  >
+                    {bulkSkipping ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <SkipForward className="h-3 w-3" />
+                    )}
+                    Skip
+                  </button>
+                  <button
+                    type="button"
+                    onClick={bulkSendAll}
+                    disabled={bulkSkipping || !!bulkSend}
+                    className="text-[11px] inline-flex items-center gap-1 rounded-md bg-violet-500 hover:bg-violet-600 px-2 py-1 text-white transition-colors disabled:opacity-50"
+                    title={`Verstuur ${selectedIds.size} drafts`}
+                  >
+                    {bulkSend ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Send className="h-3 w-3" />
+                    )}
+                    Send
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Bulk send progress — visible while sending, plus ~4.5s
+                after to show the final tallies. Failures are surfaced
+                inline; the bulk continues past errors so one bad client
+                doesn't block the rest. */}
+            {bulkSend && (
+              <div className="px-2.5 py-2 border-b border-border/60 shrink-0 space-y-1">
+                <p className="text-[11px] text-foreground/80">
+                  {bulkSend.done < bulkSend.total ? (
+                    <>Versturen {bulkSend.done + 1} van {bulkSend.total}…</>
+                  ) : (
+                    <>
+                      Klaar — {bulkSend.total - bulkSend.failed} verzonden
+                      {bulkSend.failed > 0 && `, ${bulkSend.failed} mislukt`}
+                    </>
+                  )}
+                </p>
+                <div className="h-1 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-violet-500 transition-all"
+                    style={{
+                      width: `${Math.round((bulkSend.done / Math.max(bulkSend.total, 1)) * 100)}%`,
+                    }}
+                  />
+                </div>
+                {bulkSend.lastError && (
+                  <p className="text-[11px] text-red-500 truncate" title={bulkSend.lastError}>
+                    {bulkSend.lastError}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto">
               {notConsumed.length === 0 && (
                 <p className="text-sm text-muted-foreground p-4 text-center">
@@ -301,7 +553,9 @@ function WeeklyUpdateQueueSheet({
                     <DraftSidebarRow
                       draft={d}
                       active={d.id === activeId}
+                      selected={selectedIds.has(d.id)}
                       onClick={() => setUserPickedId(d.id)}
+                      onToggleSelect={() => toggleSelected(d.id)}
                       edited={!!editedByDraft[d.id]}
                     />
                   </li>
@@ -357,12 +611,16 @@ function WeeklyUpdateQueueSheet({
 function DraftSidebarRow({
   draft,
   active,
+  selected,
   onClick,
+  onToggleSelect,
   edited,
 }: {
   draft: WeeklyUpdateDraftListItem
   active: boolean
+  selected: boolean
   onClick: () => void
+  onToggleSelect: () => void
   edited: boolean
 }) {
   // Unknown channel = Monday's contact_channel column is empty or has an
@@ -373,9 +631,7 @@ function DraftSidebarRow({
   const titleSuffix =
     draft.channel === "unknown" ? " (Monday contact_channel leeg — verifieer)" : ""
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
         "w-full text-left px-3 py-2.5 border-l-2 transition-colors flex items-center gap-2.5",
         active
@@ -383,40 +639,57 @@ function DraftSidebarRow({
           : "border-transparent hover:bg-muted/40",
       )}
     >
-      <div
-        className={cn(
-          "h-7 w-7 rounded-full flex items-center justify-center shrink-0 text-white shadow-sm",
-          isEmail ? "bg-blue-500" : "bg-[#25D366]",
-        )}
-        title={(isEmail ? "Email" : "WhatsApp") + titleSuffix}
+      {/* Checkbox lives outside the row's main click target so toggling
+          select doesn't also switch the editor pane. stopPropagation on
+          the click handles taps within the checkbox itself. */}
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={onToggleSelect}
+        onClick={(e) => e.stopPropagation()}
+        aria-label={`Select ${draft.clientName}`}
+        className="h-3.5 w-3.5 rounded border-border accent-violet-500 shrink-0"
+      />
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
       >
-        {isEmail ? (
-          <Mail className="h-3.5 w-3.5" strokeWidth={2.4} />
-        ) : (
-          <WhatsAppIcon className="h-4 w-4" />
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p
+        <div
           className={cn(
-            "text-sm font-medium truncate",
-            active ? "text-foreground" : "text-foreground/90",
+            "h-7 w-7 rounded-full flex items-center justify-center shrink-0 text-white shadow-sm",
+            isEmail ? "bg-blue-500" : "bg-[#25D366]",
           )}
+          title={(isEmail ? "Email" : "WhatsApp") + titleSuffix}
         >
-          {draft.clientName}
-        </p>
-        <p className="text-[11px] text-muted-foreground truncate">
-          {draft.contactFirstName ? `${draft.contactFirstName} · ` : ""}
-          {draft.accountManager || "—"}
-        </p>
-      </div>
-      {edited && (
-        <span
-          className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0"
-          title="Bewerkt sinds geopend"
-        />
-      )}
-    </button>
+          {isEmail ? (
+            <Mail className="h-3.5 w-3.5" strokeWidth={2.4} />
+          ) : (
+            <WhatsAppIcon className="h-4 w-4" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p
+            className={cn(
+              "text-sm font-medium truncate",
+              active ? "text-foreground" : "text-foreground/90",
+            )}
+          >
+            {draft.clientName}
+          </p>
+          <p className="text-[11px] text-muted-foreground truncate">
+            {draft.contactFirstName ? `${draft.contactFirstName} · ` : ""}
+            {draft.accountManager || "—"}
+          </p>
+        </div>
+        {edited && (
+          <span
+            className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0"
+            title="Bewerkt sinds geopend"
+          />
+        )}
+      </button>
+    </div>
   )
 }
 
