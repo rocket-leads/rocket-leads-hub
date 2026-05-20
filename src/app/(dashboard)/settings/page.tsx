@@ -9,9 +9,10 @@ import {
 } from "./types"
 import { ApiHealthBar } from "./_components/api-health-bar"
 import { PageHeader } from "@/components/ui/page-header"
-import { fetchAllItems, fetchBothBoards, getToken as getMondayToken } from "@/lib/integrations/monday"
+import { fetchAllItems, fetchBothBoards, getToken as getMondayToken, type MondayClient } from "@/lib/integrations/monday"
 import { getSlackChannels } from "@/lib/slack"
 import { fetchFathomTeamMembers, type FathomTeamMember } from "@/lib/integrations/fathom"
+import { cachedFetch, readCache } from "@/lib/cache"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
 
@@ -40,56 +41,74 @@ export default async function SettingsPage() {
     getSlackChannels(),
   ])
 
-  // Collect unique Monday people names from active clients only (not churned/on hold)
+  // The three heavy data sources the Settings page needs — Monday boards,
+  // Fathom team members, Targets-board closers — all run in parallel here
+  // and each goes through a cache so we don't hammer the live APIs on every
+  // admin load. Previously this block was three sequential awaits → ~10-20s
+  // page load on a cold render.
+  //
+  // Cache tiers:
+  //   - monday_boards: cron-warmed once daily; webhook patches keep it fresh
+  //     intra-day. 1h TTL fallback for safety (same as /clients page).
+  //   - fathom_team_members: 24h TTL — Fathom team membership barely changes.
+  //   - targets_closer_names: 1h TTL — closer roster shifts occasionally;
+  //     extracted from the heavy targets-board fetch which would otherwise
+  //     burn 5-10s every render.
   const ACTIVE_STATUSES = new Set(["Kick off", "In development", "Live"])
-  let mondayPeople: string[] = []
-  let closerNames: string[] = []
-  let allClients: Awaited<ReturnType<typeof fetchBothBoards>>["current"] = []
-  try {
-    const { onboarding, current } = await fetchBothBoards()
-    allClients = [...onboarding, ...current]
+
+  const [boards, fathomTeamMembers, closerNames] = await Promise.all([
+    (async () => {
+      try {
+        const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+          "monday_boards",
+          60 * 60 * 1000,
+        )
+        if (cached) return cached
+        return await fetchBothBoards()
+      } catch {
+        return { onboarding: [] as MondayClient[], current: [] as MondayClient[] }
+      }
+    })(),
+    cachedFetch<FathomTeamMember[]>(
+      "fathom_team_members",
+      () => fetchFathomTeamMembers(),
+      24 * 60 * 60 * 1000,
+    ).catch(() => [] as FathomTeamMember[]),
+    cachedFetch<string[]>(
+      "targets_closer_names",
+      async () => {
+        // Closer names from targets board `wie_` column — only include people
+        // who had at least one lead come in within the last 60 days. Old /
+        // inactive closers would otherwise clutter the mapping list forever.
+        const token = await getMondayToken()
+        const items = await fetchAllItems("3762696870", token)
+        const cutoff = new Date()
+        cutoff.setUTCDate(cutoff.getUTCDate() - 60)
+        const cutoffIso = cutoff.toISOString().slice(0, 10)
+        const names = new Set<string>()
+        for (const item of items) {
+          const wie = item.column_values.find((c) => c.id === "wie_")?.text?.trim()
+          if (!wie) continue
+          const created = item.column_values.find((c) => c.id === "datum_created")?.text ?? ""
+          const createdDate = created.match(/(\d{4}-\d{2}-\d{2})/)?.[1]
+          if (createdDate && createdDate >= cutoffIso) names.add(wie)
+        }
+        return Array.from(names).sort()
+      },
+      60 * 60 * 1000,
+    ).catch(() => [] as string[]),
+  ])
+
+  const allClients = [...boards.onboarding, ...boards.current]
+  const mondayPeople: string[] = (() => {
     const names = new Set<string>()
     for (const c of allClients) {
       if (!ACTIVE_STATUSES.has(c.campaignStatus)) continue
       if (c.accountManager) names.add(c.accountManager)
       if (c.campaignManager) names.add(c.campaignManager)
     }
-    mondayPeople = Array.from(names).sort()
-  } catch {
-    // Monday token might not be configured yet — that's fine
-  }
-
-  // Fathom team members — used to populate the per-user Fathom email dropdown
-  // in the Users tab. Empty list if Fathom isn't configured yet, that just
-  // disables the dropdown gracefully rather than blocking the whole page.
-  let fathomTeamMembers: FathomTeamMember[] = []
-  try {
-    fathomTeamMembers = await fetchFathomTeamMembers()
-  } catch {
-    // Fathom token missing or invalid — leave empty
-  }
-
-  // Closer names from targets board `wie_` column — only include people who
-  // had at least one lead come in within the last 60 days. Old/inactive closers
-  // would otherwise clutter the mapping list forever.
-  try {
-    const token = await getMondayToken()
-    const items = await fetchAllItems("3762696870", token)
-    const cutoff = new Date()
-    cutoff.setUTCDate(cutoff.getUTCDate() - 60)
-    const cutoffIso = cutoff.toISOString().slice(0, 10)
-    const names = new Set<string>()
-    for (const item of items) {
-      const wie = item.column_values.find((c) => c.id === "wie_")?.text?.trim()
-      if (!wie) continue
-      const created = item.column_values.find((c) => c.id === "datum_created")?.text ?? ""
-      const createdDate = created.match(/(\d{4}-\d{2}-\d{2})/)?.[1]
-      if (createdDate && createdDate >= cutoffIso) names.add(wie)
-    }
-    closerNames = Array.from(names).sort()
-  } catch {
-    // Targets board not accessible — leave empty
-  }
+    return Array.from(names).sort()
+  })()
 
   const tokenStatuses = Object.fromEntries(
     (tokens ?? []).map((t) => [t.service, { is_valid: t.is_valid, last_verified: t.last_verified }])
