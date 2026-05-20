@@ -150,6 +150,26 @@ export async function POST(
       ? partsToWeeklyUpdateParams(editableParts)
       : [message]
 
+    // Diagnostic: log each outgoing param's type + length + a length-capped
+    // preview so a Meta 422 ("expected: 'string'", "outside 24h window",
+    // etc.) can be pinpointed to which slot misbehaved. Stays in until the
+    // template-send pipeline has been quiet in production for a while —
+    // delete the block once it has, the log is noisy on a high-volume day.
+    console.log(
+      "[send-client-update] outgoing template params",
+      JSON.stringify({
+        mondayItemId,
+        templateName,
+        channel: sendAsEmail ? "email" : "whatsapp",
+        params: templateParams.map((p, i) => ({
+          slot: i + 1,
+          type: typeof p,
+          length: typeof p === "string" ? p.length : null,
+          preview: typeof p === "string" ? p.slice(0, 80) : String(p),
+        })),
+      }),
+    )
+
     // Strategy: look for an existing Trengo-sourced inbox_event we can reuse
     // as the threading anchor. The reply pipeline propagates source_thread +
     // trengo_channel_id from the anchor, so the template send lands in the same
