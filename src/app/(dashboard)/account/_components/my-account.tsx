@@ -17,6 +17,7 @@ import {
   connectMyPlatform,
   disconnectMyPlatform,
   saveMyTrengoChannels,
+  saveMyPrimaryChannels,
 } from "../actions"
 import type { UserPlatformConnection, Platform } from "@/lib/inbox/user-platform-tokens"
 
@@ -27,6 +28,8 @@ type Props = {
   trengo: UserPlatformConnection | null
   monday: UserPlatformConnection | null
   trengoChannelIds: number[]
+  primaryEmailChannelId: number | null
+  primaryWaChannelId: number | null
   slackError: string | null
 }
 
@@ -37,6 +40,8 @@ export function MyAccount({
   trengo,
   monday,
   trengoChannelIds,
+  primaryEmailChannelId,
+  primaryWaChannelId,
   slackError,
 }: Props) {
   return (
@@ -66,6 +71,17 @@ export function MyAccount({
           Krijg een melding op je desktop of telefoon zodra er een nieuwe taak op je naam komt — ook als de Hub-tab dicht is.
         </p>
         <BrowserNotificationsCard />
+      </div>
+
+      <div>
+        <h2 className="text-sm font-medium mb-1">Default sender</h2>
+        <p className="text-xs text-muted-foreground/60 mb-4">
+          Which Trengo channels outbound client-updates leave through when someone (admin, you) sends an update on your behalf. Pick the inbox each customer should see as the FROM address.
+        </p>
+        <PrimaryChannelsCard
+          initialEmail={primaryEmailChannelId}
+          initialWa={primaryWaChannelId}
+        />
       </div>
 
       <div>
@@ -330,6 +346,171 @@ function TokenInputCard({
         <p className="text-[11px] text-destructive mt-2">{error}</p>
       )}
     </PlatformCard>
+  )
+}
+
+// --- Default outbound sender (primary email + WA channel) ---
+
+function PrimaryChannelsCard({
+  initialEmail,
+  initialWa,
+}: {
+  initialEmail: number | null
+  initialWa: number | null
+}) {
+  const [channels, setChannels] = useState<TrengoChannelOption[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [email, setEmail] = useState<number | null>(initialEmail)
+  const [wa, setWa] = useState<number | null>(initialWa)
+  const [pending, startTransition] = useTransition()
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/integrations/trengo/channels")
+      .then(async (r) => {
+        const json = await r.json()
+        if (!r.ok) throw new Error(json.error ?? "Failed to load channels")
+        return json
+      })
+      .then((data: { channels: TrengoChannelOption[] }) => {
+        if (cancelled) return
+        setChannels(data.channels)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setLoadError(e instanceof Error ? e.message : "Failed to load channels")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  function isEmailType(type: string): boolean {
+    const t = type.toLowerCase()
+    return t === "email" || t.includes("mail") || t === "imap" || t === "outlook"
+  }
+  function isWaType(type: string): boolean {
+    const t = type.toLowerCase()
+    return t.includes("whatsapp") || t.includes("wa_")
+  }
+  const emailChannels = (channels ?? []).filter((c) => isEmailType(c.type))
+  const waChannels = (channels ?? []).filter((c) => isWaType(c.type))
+
+  function persist(patch: { primaryEmailChannelId?: number | null; primaryWaChannelId?: number | null }) {
+    setSaveError(null)
+    startTransition(async () => {
+      try {
+        await saveMyPrimaryChannels(patch)
+        setSavedAt(Date.now())
+      } catch (e) {
+        setSaveError(e instanceof Error ? e.message : "Failed to save")
+      }
+    })
+  }
+
+  function pickEmail(id: number | null) {
+    setEmail(id)
+    persist({ primaryEmailChannelId: id })
+  }
+  function pickWa(id: number | null) {
+    setWa(id)
+    persist({ primaryWaChannelId: id })
+  }
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card px-4 py-4">
+      <div className="flex items-start gap-4">
+        <div className="h-9 w-9 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+          <ExternalLink className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+            <p className="text-sm font-semibold">Outbound sender channels</p>
+            <div className="flex items-center gap-3 text-[11px]">
+              {pending && (
+                <span className="inline-flex items-center gap-1 text-muted-foreground/60">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Saving…
+                </span>
+              )}
+              {!pending && savedAt && (
+                <span className="text-emerald-500">Saved</span>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground/80 leading-relaxed mb-3">
+            Pick ONE email and ONE WhatsApp channel per type. When anyone triggers a client-update for one of your clients, the message goes out via these channels.
+          </p>
+
+          {loadError && (
+            <div className="text-[11px] text-destructive mb-3">{loadError}</div>
+          )}
+
+          {!channels && !loadError && (
+            <div className="text-[11px] text-muted-foreground/60 inline-flex items-center gap-1.5">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Loading channels…
+            </div>
+          )}
+
+          {channels && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium block mb-1.5">
+                  Email channel
+                </label>
+                {emailChannels.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground/60">
+                    No email channels found in this Trengo workspace.
+                  </p>
+                ) : (
+                  <select
+                    value={email ?? ""}
+                    onChange={(e) => pickEmail(e.target.value === "" ? null : Number(e.target.value))}
+                    disabled={pending}
+                    className="text-xs w-full px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted/40 transition-colors disabled:opacity-50"
+                  >
+                    <option value="">— none selected —</option>
+                    {emailChannels.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium block mb-1.5">
+                  WhatsApp channel
+                </label>
+                {waChannels.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground/60">
+                    No WhatsApp channels found in this Trengo workspace.
+                  </p>
+                ) : (
+                  <select
+                    value={wa ?? ""}
+                    onChange={(e) => pickWa(e.target.value === "" ? null : Number(e.target.value))}
+                    disabled={pending}
+                    className="text-xs w-full px-2 py-1.5 rounded-md border border-border bg-background hover:bg-muted/40 transition-colors disabled:opacity-50"
+                  >
+                    <option value="">— none selected —</option>
+                    {waChannels.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+          )}
+
+          {saveError && (
+            <p className="text-[11px] text-destructive mt-2">{saveError}</p>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

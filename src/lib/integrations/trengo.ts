@@ -150,27 +150,49 @@ export async function findFirstEmailChannel(): Promise<TrengoChannel | null> {
 }
 
 /**
- * Resolve the email channel an AM should send FROM. Intersects the AM's
- * per-user channel subscriptions (selected in /account → Trengo
- * Channels) with the workspace's email channels and returns the first
- * match. Returns null when the AM hasn't subscribed to any email
- * channel — caller should surface a clear "configure your email
- * channel" error instead of silently falling back to the workspace's
- * generic catch-all (the Roel-vs-`rocket-lea-mail@trengomail.com` bug).
+ * Resolve the email channel an AM should send FROM. Reads the AM's
+ * explicit `users.primary_email_channel_id` setting (configured at
+ * /account → Outbound sender channels) and looks up the channel in
+ * the workspace metadata. Returns null when the AM hasn't picked one
+ * yet — caller surfaces a clear "configure your outbound channel"
+ * error instead of silently falling back to the workspace catch-all
+ * (the Roel-vs-`rocket-lea-mail.*@trengomail.com` bug).
+ *
+ * Note: this used to intersect `trengo_channel_ids` (the VISIBILITY
+ * set) with workspace email channels. That overloaded one column for
+ * two unrelated concepts — fixed by adding `primary_email_channel_id`
+ * (migration 20240043). Visibility stays on `trengo_channel_ids`;
+ * outbound is its own explicit column.
  */
 export async function findAmEmailChannel(
   amUserId: string,
 ): Promise<TrengoChannel | null> {
-  const { getUserTrengoChannelIds } = await import("@/lib/inbox/user-prefs")
-  const [amChannelIds, allChannels] = await Promise.all([
-    getUserTrengoChannelIds(amUserId),
+  const { getUserPrimaryChannels } = await import("@/lib/inbox/user-prefs")
+  const [{ primaryEmailChannelId }, allChannels] = await Promise.all([
+    getUserPrimaryChannels(amUserId),
     fetchTrengoChannels(),
   ])
-  if (amChannelIds.length === 0) return null
-  const set = new Set(amChannelIds)
-  return (
-    allChannels.find((c) => set.has(c.id) && isEmailChannelType(c.type)) ?? null
-  )
+  if (primaryEmailChannelId == null) return null
+  return allChannels.find((c) => c.id === primaryEmailChannelId) ?? null
+}
+
+/**
+ * Resolve the WhatsApp channel an AM should send FROM. Mirrors
+ * `findAmEmailChannel` — reads `users.primary_wa_channel_id` and looks
+ * up the workspace channel. Returns null when unset (current send paths
+ * fall back to the existing-ticket channel anyway, since WhatsApp has
+ * no bootstrap flow — kept here for future use).
+ */
+export async function findAmWaChannel(
+  amUserId: string,
+): Promise<TrengoChannel | null> {
+  const { getUserPrimaryChannels } = await import("@/lib/inbox/user-prefs")
+  const [{ primaryWaChannelId }, allChannels] = await Promise.all([
+    getUserPrimaryChannels(amUserId),
+    fetchTrengoChannels(),
+  ])
+  if (primaryWaChannelId == null) return null
+  return allChannels.find((c) => c.id === primaryWaChannelId) ?? null
 }
 
 /**

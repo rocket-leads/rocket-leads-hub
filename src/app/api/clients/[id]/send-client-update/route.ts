@@ -224,7 +224,7 @@ export async function POST(
           {
             error: "am_email_channel_missing",
             message:
-              "De AM van deze klant heeft geen email-channel geselecteerd in /account → Trengo Channels. Laat 'm daar minstens één email-channel aanvinken (de inbox waaruit ze willen versturen) en probeer opnieuw.",
+              "De AM van deze klant heeft geen outbound email-channel geselecteerd in /account → Outbound sender channels. Laat 'm daar één email-channel kiezen (de inbox waaruit klanten de mail moeten ontvangen) en probeer opnieuw.",
           },
           { status: 400 },
         )
