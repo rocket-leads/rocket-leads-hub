@@ -7,11 +7,7 @@ import {
   disconnectUserPlatform,
   type Platform,
 } from "@/lib/inbox/user-platform-tokens"
-import {
-  setUserTrengoChannelIds,
-  setUserPrimaryChannels,
-  type UserPrimaryChannels,
-} from "@/lib/inbox/user-prefs"
+import { setUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 
 async function requireSession() {
   const session = await auth()
@@ -51,15 +47,3 @@ export async function saveMyTrengoChannels(channelIds: number[]) {
   revalidatePath("/inbox")
 }
 
-/**
- * Save the logged-in user's PRIMARY outbound channels — the single email
- * channel + single WhatsApp channel they want client-update sends to
- * leave through. Separate from `saveMyTrengoChannels` (which controls
- * inbox VISIBILITY). Partial: caller can update one field at a time
- * without clearing the other.
- */
-export async function saveMyPrimaryChannels(patch: Partial<UserPrimaryChannels>) {
-  const userId = await requireSession()
-  await setUserPrimaryChannels(userId, patch)
-  revalidatePath("/account")
-}

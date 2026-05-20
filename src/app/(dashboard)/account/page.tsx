@@ -1,10 +1,7 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { listUserPlatformConnections } from "@/lib/inbox/user-platform-tokens"
-import {
-  getUserTrengoChannelIds,
-  getUserPrimaryChannels,
-} from "@/lib/inbox/user-prefs"
+import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 import { MyAccount } from "./_components/my-account"
 import { PageHeader } from "@/components/ui/page-header"
 
@@ -16,10 +13,9 @@ export default async function AccountPage({
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
 
-  const [connections, trengoChannelIds, primaryChannels, params] = await Promise.all([
+  const [connections, trengoChannelIds, params] = await Promise.all([
     listUserPlatformConnections(session.user.id),
     getUserTrengoChannelIds(session.user.id),
-    getUserPrimaryChannels(session.user.id),
     searchParams,
   ])
 
@@ -40,8 +36,6 @@ export default async function AccountPage({
         trengo={connectionMap.trengo ?? null}
         monday={connectionMap.monday ?? null}
         trengoChannelIds={trengoChannelIds}
-        primaryEmailChannelId={primaryChannels.primaryEmailChannelId}
-        primaryWaChannelId={primaryChannels.primaryWaChannelId}
         slackError={params.slack_error ?? null}
       />
     </div>
