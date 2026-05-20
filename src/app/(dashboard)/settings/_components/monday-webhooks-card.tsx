@@ -36,10 +36,12 @@ type RegisterResult = {
   results: Array<{
     boardId: string
     event: MondayWebhookEvent
-    status: "created" | "exists" | "failed"
+    status: "created" | "exists" | "failed" | "deleted"
     webhookId?: string
     error?: string
   }>
+  reset?: boolean
+  deleted?: number
 }
 
 /**
@@ -81,12 +83,25 @@ export function MondayWebhooksCard() {
     void load()
   }, [])
 
-  async function register() {
+  async function register(reset = false) {
+    if (reset) {
+      // Reset wipes every existing webhook for our target events on both
+      // boards before re-registering. Used when the secret has rotated and
+      // the URL embedded in Monday no longer matches what the receiver
+      // checks against. Confirm because the in-flight events between delete
+      // and re-create are dropped (Monday won't retry events sent during
+      // that ~1s window).
+      const ok = window.confirm(
+        "This deletes every existing Monday webhook for the 5 target events on both boards and re-creates them with the current secret URL. Continue?",
+      )
+      if (!ok) return
+    }
     setBusy(true)
     setError(null)
     setLastResult(null)
     try {
-      const res = await fetch("/api/admin/monday-webhooks", { method: "POST" })
+      const qs = reset ? "?reset=1" : ""
+      const res = await fetch(`/api/admin/monday-webhooks${qs}`, { method: "POST" })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Register failed")
       setLastResult(data as RegisterResult)
@@ -189,7 +204,9 @@ export function MondayWebhooksCard() {
         {lastResult && (
           <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs">
             <p className="font-medium mb-1">
-              Last run: {lastResult.created} created, {lastResult.failed} failed
+              Last run{lastResult.reset ? " (reset)" : ""}:{" "}
+              {(lastResult.deleted ?? 0) > 0 && <>{lastResult.deleted} deleted, </>}
+              {lastResult.created} created, {lastResult.failed} failed
             </p>
             <p className="text-muted-foreground break-all">
               URL: <code>{lastResult.webhookUrl}</code>
@@ -197,10 +214,23 @@ export function MondayWebhooksCard() {
           </div>
         )}
 
-        <div className="flex items-center gap-2 pt-1">
-          <Button onClick={register} disabled={busy || !status?.secretConfigured}>
+        <div className="flex items-center gap-2 pt-1 flex-wrap">
+          <Button onClick={() => register(false)} disabled={busy || !status?.secretConfigured}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Webhook className="h-4 w-4" />}
             Register webhooks
+          </Button>
+          {/* Reset path — needed when the secret has rotated and the existing
+              webhooks point at URLs the receiver no longer authenticates. The
+              normal Register call treats them as "exists" and skips, so we
+              need an explicit delete+recreate. Destructive enough to confirm
+              before firing. */}
+          <Button
+            variant="outline"
+            onClick={() => register(true)}
+            disabled={busy || !status?.secretConfigured}
+          >
+            <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} />
+            Reset &amp; re-register
           </Button>
           <Button variant="outline" onClick={load} disabled={busy || loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />

@@ -121,7 +121,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Board config missing" }, { status: 500 })
   }
 
-  type Result = { boardId: string; event: MondayWebhookEvent; status: "created" | "exists" | "failed"; webhookId?: string; error?: string }
+  // `?reset=1` mode: delete every existing webhook for our target events on
+  // both boards before re-registering. Use when the secret has rotated and
+  // old webhooks point at stale URLs that the receiver no longer accepts —
+  // a normal Register call would treat them as "exists" and never refresh
+  // the URL embedded in Monday's registration.
+  const reset = req.nextUrl.searchParams.get("reset") === "1"
+
+  type Result = { boardId: string; event: MondayWebhookEvent; status: "created" | "exists" | "failed" | "deleted"; webhookId?: string; error?: string }
   const results: Result[] = []
 
   // Reconcile each board independently. Existing-webhook lookup runs once
@@ -134,6 +141,30 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       console.error("[monday-webhooks] list failed for", boardId, e)
     }
+
+    // In reset mode, kill every existing webhook for our target events first
+    // so the next create call writes a fresh URL with the current secret.
+    if (reset) {
+      const toDelete = existing.filter((w) => TARGET_EVENTS.includes(w.event))
+      for (const w of toDelete) {
+        try {
+          await deleteMondayWebhook(w.id)
+          results.push({ boardId, event: w.event, status: "deleted", webhookId: w.id })
+        } catch (e) {
+          results.push({
+            boardId,
+            event: w.event,
+            status: "failed",
+            webhookId: w.id,
+            error: `delete failed: ${e instanceof Error ? e.message : String(e)}`,
+          })
+        }
+      }
+      // Wipe `existing` so the registration pass below treats every target
+      // event as missing and re-creates them with the current URL.
+      existing = existing.filter((w) => !TARGET_EVENTS.includes(w.event))
+    }
+
     const presentEvents = new Set(
       existing
         // Only count webhooks pointing at OUR URL — a webhook registered
@@ -163,8 +194,9 @@ export async function POST(req: NextRequest) {
   }
 
   const created = results.filter((r) => r.status === "created").length
+  const deleted = results.filter((r) => r.status === "deleted").length
   const failed = results.filter((r) => r.status === "failed").length
-  return NextResponse.json({ webhookUrl, created, failed, results })
+  return NextResponse.json({ webhookUrl, reset, created, deleted, failed, results })
 }
 
 export async function DELETE(req: NextRequest) {
