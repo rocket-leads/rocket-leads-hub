@@ -378,9 +378,10 @@ describe("partsToWeeklyUpdateParams — V2 multi-variable template mapping", () 
     expect(out[0]).toBe("Bram")
   })
 
-  it("flattens the KPI block to inline bullets and drops the header line", () => {
+  it("renders the KPI block as a flat comma-separated phrase (no bullets, no header)", () => {
     const out = partsToWeeklyUpdateParams(baseParts)
-    expect(out[2]).toBe("• CPL: €11.42 • Spend: €450 • Leads: 39")
+    expect(out[2]).toBe("CPL: €11.42, Spend: €450, Leads: 39.")
+    expect(out[2]).not.toContain("•")
     expect(out[2]).not.toContain("KPI deze week")
   })
 
@@ -391,9 +392,10 @@ describe("partsToWeeklyUpdateParams — V2 multi-variable template mapping", () 
     expect(out[3]).toContain("Volgende week zien we")
   })
 
-  it("renders actions inline with ' • ' separators", () => {
+  it("renders actions as flowing sentences joined with spaces (no bullets)", () => {
     const out = partsToWeeklyUpdateParams(baseParts)
-    expect(out[4]).toBe("• Nieuwe varianten testen • Doelgroep verfijnen")
+    expect(out[4]).toBe("Nieuwe varianten testen. Doelgroep verfijnen.")
+    expect(out[4]).not.toContain("•")
   })
 
   it("never produces newlines, tabs, or double spaces in any param", () => {

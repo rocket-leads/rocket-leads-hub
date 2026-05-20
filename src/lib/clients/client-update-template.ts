@@ -392,25 +392,39 @@ export function renderWeeklyUpdate(input: ComposeInput): string {
  * Slot mapping:
  *   [0] → {{1}}  first name (no trailing "!")
  *   [1] → {{2}}  intro sentence
- *   [2] → {{3}}  KPI bullets inline ("• CPL: €X • Spend: €Y • Leads: Z")
- *   [3] → {{4}}  trend + AM note + conclusion combined into one flat block
- *   [4] → {{5}}  action bullets inline ("• Actie 1 • Actie 2")
+ *   [2] → {{3}}  KPI as flat comma-separated phrase, no bullets
+ *                ("Ad spend: €389, leads: 66, kosten per lead: €5,90")
+ *   [3] → {{4}}  trend + AM note + conclusion as one flowing paragraph
+ *   [4] → {{5}}  actions as flowing sentences joined with spaces, no bullets
  *
- * Every value is fed through `sanitizeWaTemplateParam` as the final safety
- * net — Meta rejects newlines / tabs / 4+ consecutive whitespace in body
- * variables, and this is the boundary where we guarantee compliance.
+ * Why bullet-free: Meta accepts `•` characters in template body params,
+ * BUT the per-AM real-world testing showed Trengo / Meta rejecting our
+ * 5-var sends despite all sanitisation. The user asked for prose-style
+ * params (Ad spend: €X, leads: Y, …) instead of bulleted ones; that's
+ * the format that gets through cleanly. The template body itself can
+ * still wrap the bullets visually if Meta-approved that way.
  *
- * The AM's `kpiBlock` typically starts with "📊 KPI deze week:" + bullets;
- * we strip that leading header line because the template body already
- * provides "📊 Cijfers deze week:". Same for `actionsHeader` — dropped
- * because the template fixes "✅ Wat we deze week gaan doen:".
+ * Email keeps its bulleted/multi-line shape — it uses `renderFromParts`,
+ * not this function, since email has no HSM-template variable limits.
  */
 export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
   const firstName = parts.opener.replace(/[!?.,;:]+$/, "").trim()
 
   const intro = sanitizeForWaParam(parts.intro)
 
-  const kpiInline = sanitizeForWaParam(stripLeadingHeaderLine(parts.kpiBlock))
+  // KPI: strip the leading "📊 …" header, drop bullet markers from each
+  // line, join with comma-space so it reads as a sentence-style phrase.
+  // Ensures the final phrase ends with a period so the next paragraph
+  // doesn't run on awkwardly when WhatsApp wraps it.
+  const kpiInline = sanitizeForWaParam(
+    finishSentence(
+      stripLeadingHeaderLine(parts.kpiBlock)
+        .split("\n")
+        .map((line) => line.replace(/^\s*[•\-*]\s*/, "").trim())
+        .filter(Boolean)
+        .join(", "),
+    ),
+  )
 
   // Trend, AM note, and Pedro's conclusion all describe "what's happening"
   // and slot into the same paragraph between KPIs and the action list.
@@ -421,15 +435,26 @@ export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
       .join(" "),
   )
 
+  // Actions: each is its own sentence/question. Drop bullet markers,
+  // ensure trailing punctuation, join with single spaces so they read
+  // as a flowing paragraph.
   const actionsInline = sanitizeForWaParam(
     parts.actions
-      .map((a) => a.trim())
+      .map((a) => a.trim().replace(/^[•\-*]\s*/, ""))
       .filter(Boolean)
-      .map((a) => `• ${a.replace(/^[•\-*]\s*/, "")}`)
+      .map(finishSentence)
       .join(" "),
   )
 
   return [firstName, intro, kpiInline, bodyInline, actionsInline]
+}
+
+/** Append a trailing period when the string doesn't already end with
+ *  one of `.!?:` — so chained sentences/phrases don't run together. */
+function finishSentence(s: string): string {
+  const t = s.trim()
+  if (!t) return t
+  return /[.!?:]$/.test(t) ? t : `${t}.`
 }
 
 /** Strip everything before the first bullet line. Turns
