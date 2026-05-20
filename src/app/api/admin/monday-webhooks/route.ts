@@ -79,10 +79,25 @@ export async function GET() {
     listMondayWebhooks(boards.current).catch(() => [] as MondayWebhook[]),
   ])
 
+  // Diagnostics for "secret is set in Vercel but the function says it isn't"
+  // troubleshooting. Returns metadata only — never the actual secret value —
+  // so we can confirm what the running serverless function sees without
+  // leaking the credential. Admin-only.
+  const rawSecret = process.env.MONDAY_WEBHOOK_SECRET
+  const secretLength = rawSecret?.length ?? 0
+  const secretConfigured = !!rawSecret && rawSecret.trim().length > 0
+  const mondayEnvKeys = Object.keys(process.env)
+    .filter((k) => k.toUpperCase().startsWith("MONDAY"))
+    .sort()
+
   return NextResponse.json({
     boards,
     targetEvents: TARGET_EVENTS,
-    secretConfigured: !!process.env.MONDAY_WEBHOOK_SECRET,
+    secretConfigured,
+    secretLength,
+    mondayEnvKeys,
+    runtime: process.env.NEXT_RUNTIME ?? "nodejs",
+    vercelEnv: process.env.VERCEL_ENV ?? null,
     onboarding: onboardingWebhooks,
     current: currentWebhooks,
   })
