@@ -39,7 +39,7 @@ export default async function SettingsPage() {
   ] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
-    supabase.from("users").select("id, email, name, role, slack_user_id, fathom_email, whatsapp_template_name, primary_email_channel_id, primary_wa_channel_id, created_at").order("created_at"),
+    supabase.from("users").select("id, email, name, role, slack_user_id, fathom_email, whatsapp_template_name, primary_email_channel_id, primary_wa_channel_id, test_trengo_contact_id, created_at").order("created_at"),
     supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
     supabase.from("closer_slack_mappings").select("monday_person_name, slack_user_id"),
     supabase.from("settings").select("value").eq("key", "inbox_automation_rules").maybeSingle(),
@@ -187,6 +187,7 @@ export default async function SettingsPage() {
           whatsapp_template_name: u.whatsapp_template_name ?? null,
           primary_email_channel_id: u.primary_email_channel_id ?? null,
           primary_wa_channel_id: u.primary_wa_channel_id ?? null,
+          test_trengo_contact_id: u.test_trengo_contact_id ?? null,
           monday_role: mappingByUser.get(u.id)?.role ?? null,
           monday_person_name: mappingByUser.get(u.id)?.name ?? null,
           created_at: u.created_at,

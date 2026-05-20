@@ -24,6 +24,7 @@ import {
   updateUserPrimaryWaChannel,
   updateUserRole,
   updateUserSlackId,
+  updateUserTestTrengoContact,
   updateUserWhatsappTemplate,
 } from "../actions"
 import {
@@ -44,6 +45,7 @@ type User = {
   whatsapp_template_name: string | null
   primary_email_channel_id: number | null
   primary_wa_channel_id: number | null
+  test_trengo_contact_id: number | null
   monday_role: MondayRole | null
   monday_person_name: string | null
   created_at: string
@@ -100,6 +102,8 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
   const [nameSaving, setNameSaving] = useState<Record<string, boolean>>({})
   const [emailChannelSaving, setEmailChannelSaving] = useState<Record<string, boolean>>({})
   const [waChannelSaving, setWaChannelSaving] = useState<Record<string, boolean>>({})
+  const [testContactDrafts, setTestContactDrafts] = useState<Record<string, string>>({})
+  const [testContactSaving, setTestContactSaving] = useState<Record<string, boolean>>({})
 
   const emailChannelOptions = trengoChannels.filter((c) => c.isEmail)
   const waChannelOptions = trengoChannels.filter((c) => c.isWa)
@@ -194,6 +198,34 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
       console.error(e)
     } finally {
       setWaChannelSaving((s) => ({ ...s, [userId]: false }))
+    }
+  }
+
+  async function handleTestContactSave(userId: string) {
+    const draft = testContactDrafts[userId]
+    if (draft === undefined) return
+    const trimmed = draft.trim()
+    const current = users.find((u) => u.id === userId)
+    if (!current) return
+    const parsed = trimmed.length === 0 ? null : Number(trimmed)
+    if (parsed != null && (!Number.isFinite(parsed) || parsed <= 0)) return
+    if ((current.test_trengo_contact_id ?? null) === parsed) return
+    setTestContactSaving((s) => ({ ...s, [userId]: true }))
+    try {
+      await updateUserTestTrengoContact(userId, parsed)
+      setUsers((u) =>
+        u.map((user) =>
+          user.id === userId ? { ...user, test_trengo_contact_id: parsed } : user,
+        ),
+      )
+      setTestContactDrafts((d) => {
+        const { [userId]: _drop, ...rest } = d
+        return rest
+      })
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setTestContactSaving((s) => ({ ...s, [userId]: false }))
     }
   }
 
@@ -299,6 +331,7 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           whatsapp_template_name: null,
           primary_email_channel_id: null,
           primary_wa_channel_id: null,
+          test_trengo_contact_id: null,
           monday_role: inviteMondayRole,
           monday_person_name: inviteMondayName,
           created_at: new Date().toISOString(),
@@ -466,6 +499,9 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
               </TableHead>
               <TableHead className="w-[210px]" title="Trengo WhatsApp channel reserved for future bootstrap sends.">
                 WhatsApp channel
+              </TableHead>
+              <TableHead className="w-[140px]" title="Trengo contact id used as the recipient when the send dialog is in Test mode. Create a contact in Trengo with your own email + WhatsApp number, paste the id here.">
+                Test contact
               </TableHead>
               <TableHead className="w-[220px]">{t("settings.users.col.fathom_email", locale)}</TableHead>
               <TableHead className="w-[100px]">{t("settings.users.col.joined", locale)}</TableHead>
@@ -712,6 +748,32 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                         </SelectContent>
                       </Select>
                       {waChannelSaving[user.id] && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                  </TableCell>
+
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        placeholder="Contact ID"
+                        className="h-8 font-mono text-xs w-[120px]"
+                        value={
+                          testContactDrafts[user.id] ??
+                          (user.test_trengo_contact_id?.toString() ?? "")
+                        }
+                        onChange={(e) =>
+                          setTestContactDrafts((d) => ({ ...d, [user.id]: e.target.value }))
+                        }
+                        onBlur={() => handleTestContactSave(user.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            ;(e.target as HTMLInputElement).blur()
+                          }
+                        }}
+                      />
+                      {testContactSaving[user.id] && (
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                       )}
                     </div>

@@ -400,6 +400,53 @@ export async function fetchWaTemplates(channelId: number): Promise<TrengoWaTempl
 }
 
 /**
+ * Subset of a Trengo contact's fields we read for outbound destination
+ * decisions. The full Trengo `Contact` returns many more fields — we type
+ * only what we use so the surface area stays narrow.
+ */
+export type TrengoContact = {
+  id: number
+  name: string | null
+  email: string | null
+  phone: string | null
+  full_name: string | null
+}
+
+/**
+ * Look up a single Trengo contact by id. Used by:
+ *  - Client detail dialog: display the email/phone that an outbound is
+ *    going to ("recipient verification" UX) so an admin sees the actual
+ *    address before pressing send.
+ *  - Test-send path: resolve the test contact's phone for WhatsApp
+ *    `wa_sessions` calls (the endpoint accepts a raw phone number, no
+ *    ticket needed), and derive the email for email-mode bootstrapping.
+ *
+ * Uses the system Trengo token — contact records aren't per-agent gated.
+ * Returns null on 404 so callers can render a clean "no test contact set"
+ * state without a try/catch wrapper.
+ */
+export async function fetchTrengoContact(
+  contactId: number | string,
+): Promise<TrengoContact | null> {
+  try {
+    const data = await trengoFetch<{ data?: TrengoContact } | TrengoContact>(
+      `/contacts/${contactId}`,
+    )
+    const obj = (data as { data?: TrengoContact }).data ?? (data as TrengoContact)
+    if (!obj || typeof obj.id !== "number") return null
+    return {
+      id: obj.id,
+      name: obj.name ?? null,
+      email: obj.email ?? null,
+      phone: obj.phone ?? null,
+      full_name: obj.full_name ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Update a Trengo contact's name. Used by the inbox composer's editable
  * conversation header — the AM types a real name over an "Unknown"/phone-
  * number contact and we propagate it back to Trengo so every workspace

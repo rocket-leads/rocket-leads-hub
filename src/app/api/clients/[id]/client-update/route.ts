@@ -37,6 +37,10 @@ export type ClientUpdateResponse = {
    *  channels or when users.name can't be parsed into an ASCII first name. */
   whatsappTemplateName: string | null
   whatsappTemplateSource: WeeklyUpdateDraftResult["whatsappTemplateSource"]
+  /** Email + phone resolved from the client's Trengo contact, so the
+   *  dialog can render "To: <address>" for verification before send. */
+  recipientEmail: string | null
+  recipientPhone: string | null
 }
 
 export async function POST(
@@ -63,6 +67,8 @@ export async function POST(
       trengoContactLinked: built.trengoContactLinked,
       whatsappTemplateName: built.whatsappTemplateName,
       whatsappTemplateSource: built.whatsappTemplateSource,
+      recipientEmail: built.recipientEmail,
+      recipientPhone: built.recipientPhone,
     })
   } catch (e) {
     console.error(

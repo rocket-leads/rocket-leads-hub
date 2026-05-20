@@ -4,11 +4,14 @@ import { fetchClientById } from "@/lib/integrations/monday"
 import {
   fetchConversations,
   findAmEmailChannel,
+  findAmWaChannel,
+  fetchTrengoContact,
   createEmailMessageForContact,
   type TrengoConversation,
 } from "@/lib/integrations/trengo"
 import {
   sendTrengoTemplateAsUser,
+  sendTrengoTemplateToPhoneAsUser,
   sendTrengoReplyAsUser,
   sanitizeWaTemplateParam,
   NeedsConnectError,
@@ -100,6 +103,7 @@ export async function POST(
   const message = (body.message ?? "").trim()
   const subjectOverride = (body.subject ?? "").trim()
   const editableParts = body.parts ?? null
+  const testMode = (body as { test?: boolean }).test === true
   if (!message) {
     return NextResponse.json({ error: "Empty message" }, { status: 400 })
   }
@@ -149,6 +153,144 @@ export async function POST(
     const templateParams: string[] = editableParts
       ? partsToWeeklyUpdateParams(editableParts)
       : [message]
+
+    // Test mode: short-circuit the entire conversation-routing dance and
+    // deliver the rendered message to the session user's own test
+    // contact. Uses the AM's outbound channels + token + template, so
+    // the test is end-to-end faithful — only the recipient is swapped.
+    // Skips the inbox_events mirror + client_updates audit (this isn't a
+    // real client communication, no need to pollute the timeline).
+    if (testMode) {
+      const supabaseAdmin = await createAdminClient()
+      const { data: senderRow } = await supabaseAdmin
+        .from("users")
+        .select("test_trengo_contact_id")
+        .eq("id", session.user.id)
+        .maybeSingle<{ test_trengo_contact_id: number | null }>()
+      const testContactId = senderRow?.test_trengo_contact_id ?? null
+      if (!testContactId) {
+        return NextResponse.json(
+          {
+            error: "no_test_contact",
+            message:
+              "Geen test contact ingesteld voor je account. Maak een Trengo contact aan met je eigen email + WhatsApp nummer en zet de contact ID in Settings → Users → Test contact.",
+          },
+          { status: 400 },
+        )
+      }
+
+      if (sendAsEmail) {
+        const emailChannel = await findAmEmailChannel(amUserId)
+        if (!emailChannel) {
+          return NextResponse.json(
+            {
+              error: "am_email_channel_missing",
+              message:
+                "De AM van deze klant heeft geen outbound email-channel geselecteerd in Settings → Users. Kies daar één email-channel en probeer opnieuw.",
+            },
+            { status: 400 },
+          )
+        }
+        const amToken = await getUserPlatformToken(amUserId, "trengo")
+        if (!amToken) {
+          return NextResponse.json(
+            {
+              error: "am_trengo_not_connected",
+              message:
+                "De AM van deze klant heeft Trengo nog niet verbonden in /account.",
+            },
+            { status: 400 },
+          )
+        }
+        try {
+          const sent = await createEmailMessageForContact({
+            userToken: amToken,
+            contactId: String(testContactId),
+            channelId: emailChannel.id,
+            subject:
+              subjectOverride ||
+              `Wekelijkse update ${client.companyName || client.name}`,
+            body: message,
+          })
+          return NextResponse.json({
+            test: true,
+            channel: "email",
+            outboundMsgId: sent.messageId,
+            ticketId: sent.ticketId,
+          })
+        } catch (e) {
+          return NextResponse.json(
+            {
+              error: "test_email_send_failed",
+              message: `Test email send mislukt: ${
+                e instanceof Error ? e.message : "unknown"
+              }`,
+            },
+            { status: 502 },
+          )
+        }
+      } else {
+        // WhatsApp test: skip the existing-ticket requirement entirely
+        // and go straight to /v2/wa_sessions with the test contact's
+        // phone number. Requires AM to have set primary_wa_channel_id
+        // (the channel the HSM template is approved on).
+        const waChannel = await findAmWaChannel(amUserId)
+        if (!waChannel) {
+          return NextResponse.json(
+            {
+              error: "am_wa_channel_missing",
+              message:
+                "De AM heeft geen outbound WhatsApp channel geselecteerd in Settings → Users. Kies daar de channel waar de HSM template approved is en probeer opnieuw.",
+            },
+            { status: 400 },
+          )
+        }
+        const testContact = await fetchTrengoContact(testContactId)
+        if (!testContact?.phone) {
+          return NextResponse.json(
+            {
+              error: "test_contact_no_phone",
+              message: `Test contact ${testContactId} heeft geen telefoonnummer in Trengo. Voeg een WhatsApp nummer toe aan het contact en probeer opnieuw.`,
+            },
+            { status: 400 },
+          )
+        }
+        try {
+          const sent = await sendTrengoTemplateToPhoneAsUser(
+            amUserId,
+            testContact.phone,
+            templateName,
+            templateParams,
+            waChannel.id,
+          )
+          return NextResponse.json({
+            test: true,
+            channel: "whatsapp",
+            outboundMsgId: sent.message_id,
+            recipientPhone: testContact.phone,
+          })
+        } catch (e) {
+          if (e instanceof NeedsConnectError) {
+            return NextResponse.json(
+              {
+                error: "am_trengo_not_connected",
+                message: "De AM van deze klant heeft Trengo nog niet verbonden in /account.",
+              },
+              { status: 400 },
+            )
+          }
+          return NextResponse.json(
+            {
+              error: "test_wa_send_failed",
+              message: `Test WhatsApp send mislukt: ${
+                e instanceof Error ? e.message : "unknown"
+              }`,
+            },
+            { status: 502 },
+          )
+        }
+      }
+    }
 
     // Strategy: look for an existing Trengo-sourced inbox_event we can reuse
     // as the threading anchor. The reply pipeline propagates source_thread +

@@ -273,6 +273,100 @@ export async function sendTrengoTemplateAsUser(
   return { message_id: String(id) }
 }
 
+/**
+ * Send a Trengo WhatsApp Business HSM template directly to a phone
+ * number — no existing ticket required. Used by the client-update
+ * "test mode" path so we can deliver a template message to an AM's
+ * own phone without first staging a fake WA conversation with that
+ * contact. Trengo's `POST /v2/wa_sessions` accepts `recipient_phone_number`
+ * as an alternative to `ticket_id`.
+ *
+ * Returns the same `{ message_id }` shape as `sendTrengoTemplateAsUser`
+ * for parity, even though the response from `wa_sessions` is a freshly-
+ * created session (Trengo internally spawns a ticket for it). The
+ * derived id is used by the route to mirror the outbound into
+ * inbox_events as usual.
+ */
+export async function sendTrengoTemplateToPhoneAsUser(
+  userId: string,
+  recipientPhoneNumber: string,
+  templateName: string,
+  params: string[],
+  channelId: number,
+): Promise<{ message_id: string }> {
+  const token = await getUserPlatformToken(userId, "trengo")
+  if (!token) throw new NeedsConnectError("trengo")
+
+  const safeParams = params.map(sanitizeWaTemplateParam)
+  const structuredParams = safeParams.map((value, idx) => ({
+    type: "body",
+    key: `{{${idx + 1}}}`,
+    value,
+  }))
+
+  // Resolve numeric hsm_id from the template name. Same shape as the
+  // ticketed variant, just keyed off recipient_phone_number instead of
+  // ticket_id.
+  const approvedTemplates = await fetchWaTemplates(channelId)
+  const tmpl = approvedTemplates.find(
+    (t) => (t.slug ?? t.title) === templateName,
+  )
+  if (!tmpl) {
+    throw new Error(
+      `Template '${templateName}' is niet approved op channel ${channelId}. Approve 'm in Trengo → Settings → Channels → die channel → Templates.`,
+    )
+  }
+
+  const payload = {
+    hsm_id: tmpl.id,
+    recipient_phone_number: recipientPhoneNumber,
+    params: structuredParams,
+  }
+
+  const res = await fetch(`https://app.trengo.com/api/v2/wa_sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (res.status === 401 || res.status === 403) {
+    throw new NeedsConnectError("trengo")
+  }
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "")
+    console.log(
+      "[trengo-template-send-phone] failure response",
+      JSON.stringify({
+        status: res.status,
+        templateName,
+        recipientPhoneNumber,
+        body: errText,
+      }),
+    )
+    throw new Error(
+      `Trengo template-to-phone send failed (${res.status}, template=${templateName}, recipient=${recipientPhoneNumber}): ${errText.slice(0, 300)}`,
+    )
+  }
+
+  const json = (await res.json()) as {
+    id?: number | string
+    message_id?: number | string
+    data?: { id?: number | string; ticket_id?: number | string; message_id?: number | string }
+  }
+  const id =
+    json.data?.message_id ?? json.message_id ?? json.id ?? json.data?.id ?? json.data?.ticket_id
+  if (id == null) {
+    throw new Error(
+      `Trengo wa_sessions returned no id — keys: ${Object.keys(json).join(",")}`,
+    )
+  }
+  return { message_id: String(id) }
+}
+
 /** Email-only send fields that piggyback on the same message endpoint.
  *  Subject overrides the ticket's auto `Re: ` default (most replies don't
  *  set this); cc / bcc are comma-separated strings (Trengo's array shape

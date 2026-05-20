@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById, type MondayClient } from "@/lib/integrations/monday"
+import { fetchTrengoContact } from "@/lib/integrations/trengo"
 import { parsePedroBody } from "@/lib/pedro/insights/types"
 import {
   fetchKpisForWindow,
@@ -45,6 +46,12 @@ export type WeeklyUpdateDraftResult = {
    *  users.name (rare; user row needs fixing). */
   whatsappTemplateName: string | null
   whatsappTemplateSource: WaTemplateResolution["source"]
+  /** Email + phone resolved from the linked Trengo contact, shown in the
+   *  dialog as "To: <address>" so the user verifies the actual recipient
+   *  before pressing send. Either can be null when the contact record
+   *  doesn't carry it or when no contact is linked at all. */
+  recipientEmail: string | null
+  recipientPhone: string | null
 }
 
 export function detectChannel(label: string): WeeklyUpdateChannel {
@@ -243,6 +250,15 @@ export async function buildWeeklyUpdateDraft(args: {
     weekLabel: formatWeekLabel(weekRange.startDate, weekRange.endDate),
   })
 
+  // Fetch the Trengo contact (best-effort) so the dialog can render the
+  // outgoing email / phone for verification before the AM clicks Send.
+  // Cheap: shared 5-min trengoFetch cache + parallel with the rest of
+  // the pipeline. A missing contact / failed fetch falls back to nulls
+  // — the dialog handles those gracefully (just no "To:" label).
+  const trengoContact = client.trengoContactId
+    ? await fetchTrengoContact(client.trengoContactId)
+    : null
+
   return {
     parts: composed.parts,
     channel,
@@ -250,5 +266,7 @@ export async function buildWeeklyUpdateDraft(args: {
     trengoContactLinked: !!client.trengoContactId,
     whatsappTemplateName: waTemplate.name,
     whatsappTemplateSource: waTemplate.source,
+    recipientEmail: trengoContact?.email ?? null,
+    recipientPhone: trengoContact?.phone ?? null,
   }
 }

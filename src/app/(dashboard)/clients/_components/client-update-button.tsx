@@ -517,9 +517,12 @@ export function ClientUpdateDialog({
   const [channelLabel, setChannelLabel] = useState("")
   const [trengoLinked, setTrengoLinked] = useState(false)
   const [waTemplateName, setWaTemplateName] = useState<string | null>(null)
+  const [recipientEmail, setRecipientEmail] = useState<string | null>(null)
+  const [recipientPhone, setRecipientPhone] = useState<string | null>(null)
   const [generateError, setGenerateError] = useState<string | null>(null)
   const [sendError, setSendError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
+  const [testMode, setTestMode] = useState(false)
 
   const generate = useMutation({
     mutationFn: async () => {
@@ -545,6 +548,8 @@ export function ClientUpdateDialog({
       setChannelLabel(data.channelLabel)
       setTrengoLinked(data.trengoContactLinked)
       setWaTemplateName(data.whatsappTemplateName)
+      setRecipientEmail(data.recipientEmail)
+      setRecipientPhone(data.recipientPhone)
     },
     onError: (e: Error) => setGenerateError(e.message),
   })
@@ -557,6 +562,10 @@ export function ClientUpdateDialog({
        *  template sends (`rl_weekly_<voornaam>`) when the feature
        *  flag is on. Ignored on V1 path. */
       parts?: EditableParts
+      /** Test mode: swap recipient with the session user's test contact
+       *  (set in Settings → Users → Test contact). Body/template/channel
+       *  stay real — only the destination is replaced. */
+      test?: boolean
     }) => {
       setSendError(null)
       const res = await fetch(`/api/clients/${mondayItemId}/send-client-update`, {
@@ -573,11 +582,16 @@ export function ClientUpdateDialog({
     onSuccess: async (data) => {
       setSent(true)
       void queryClient.invalidateQueries({ queryKey: ["last-client-updates"] })
+      // Test sends never consume a draft or trigger client-side state
+      // changes — they're verifications, not real client communications.
+      // The dialog closes after the success indicator and the draft
+      // queue stays untouched.
+      const wasTest = (data as { test?: boolean })?.test === true
       // Draft-backed send → mark the draft consumed so it leaves the queue.
       // Fire-and-forget: a flake here shouldn't roll back the visible
       // "Sent" state, the cron is idempotent so worst case the draft
       // reappears next Monday.
-      if (draftSeed?.draftId) {
+      if (!wasTest && draftSeed?.draftId) {
         try {
           await fetch(`/api/weekly-update-drafts/${draftSeed.draftId}`, {
             method: "PATCH",
@@ -671,6 +685,14 @@ export function ClientUpdateDialog({
           </div>
         </DialogHeader>
 
+        {testMode && parts && (
+          <div className="mx-6 mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+            <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+              <strong>Test mode</strong> — bericht gaat naar JOUW test contact in Trengo, niet naar de klant. Body, FROM channel en template blijven realistisch.
+            </p>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground justify-center">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -719,40 +741,69 @@ export function ClientUpdateDialog({
                   — check Settings &rarr; Users.
                 </p>
               )}
+              {/* Recipient verification — shows the actual email/phone the
+                  send is going to, resolved from the linked Trengo contact.
+                  Suppressed in test mode (banner above already explains
+                  where it goes). */}
+              {!testMode && trengoLinked && (isEmail ? recipientEmail : recipientPhone) && (
+                <p className="text-[11px] text-muted-foreground/70">
+                  Naar:{" "}
+                  <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[10px]">
+                    {isEmail ? recipientEmail : recipientPhone}
+                  </code>
+                </p>
+              )}
               {!trengoLinked && (
                 <p className="text-xs text-amber-500">
                   Geen Trengo contact gekoppeld op deze klant, versturen is niet mogelijk.
                 </p>
               )}
               {sendError && <p className="text-xs text-red-500">{sendError}</p>}
-              {sent && <p className="text-xs text-emerald-500">Bericht verzonden ✓</p>}
+              {sent && (
+                <p className="text-xs text-emerald-500">
+                  {testMode ? "Test bericht verzonden ✓" : "Bericht verzonden ✓"}
+                </p>
+              )}
             </div>
           </>
         ) : null}
 
-        <DialogFooter className="px-6 pb-6">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSending}>
-            Annuleren
-          </Button>
-          <Button
-            onClick={() =>
-              send.mutate({
-                message: previewText,
-                subject: isEmail ? parts?.subject?.trim() || undefined : undefined,
-                // Ship the editable parts too so the server can derive V2
-                // template variables. Server ignores this when V2 flag is
-                // off or when channel is email.
-                parts: parts ?? undefined,
-              })
-            }
-            disabled={!canSend}
-            className="gap-1.5"
-          >
-            {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-            Verstuur
-            {channel === "whatsapp" && " via WhatsApp"}
-            {channel === "email" && " via email"}
-          </Button>
+        <DialogFooter className="px-6 pb-6 flex items-center justify-between gap-3 sm:justify-between">
+          <label className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={testMode}
+              onChange={(e) => setTestMode(e.target.checked)}
+              disabled={inputsDisabled}
+              className="h-3.5 w-3.5 rounded border-border accent-amber-500"
+            />
+            Send as test (to me)
+          </label>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={isSending}>
+              Annuleren
+            </Button>
+            <Button
+              onClick={() =>
+                send.mutate({
+                  message: previewText,
+                  subject: isEmail ? parts?.subject?.trim() || undefined : undefined,
+                  // Ship the editable parts too so the server can derive V2
+                  // template variables. Server ignores this when V2 flag is
+                  // off or when channel is email.
+                  parts: parts ?? undefined,
+                  test: testMode || undefined,
+                })
+              }
+              disabled={!canSend}
+              className={cn("gap-1.5", testMode && "bg-amber-500 hover:bg-amber-600 text-white")}
+            >
+              {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+              {testMode ? "Test verstuur" : "Verstuur"}
+              {!testMode && channel === "whatsapp" && " via WhatsApp"}
+              {!testMode && channel === "email" && " via email"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
