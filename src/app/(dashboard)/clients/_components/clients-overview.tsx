@@ -4,14 +4,12 @@ import { useState, useMemo, useCallback, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { RefreshCw, Users, Sparkles } from "lucide-react"
-import { format, subDays } from "date-fns"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { Panel } from "@/components/ui/panel"
 import { ClientsTable } from "./clients-table"
 import { ClientSlideOver } from "./client-slide-over"
 import { WeeklyUpdateDraftsBanner } from "./weekly-update-drafts-banner"
-import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
@@ -78,10 +76,14 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   const [showAll, setShowAll] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState<"current" | "onboarding">("current")
-  const dateRange = useDateRange()
-  const startDateStr = format(dateRange.range.startDate, "yyyy-MM-dd")
-  const endDateStr = format(dateRange.range.endDate, "yyyy-MM-dd")
-  const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
+  // The All Clients overview is the "is everyone OK?" surface — same
+  // intent as the Watch List. KPI columns lock to the canonical 7d
+  // window so they match Watch List + Home page + Pedro numbers
+  // always. The date picker was removed 2026-05 because a stale
+  // localStorage choice (e.g. user once picked MTD on /targets) made
+  // the table show 18-day numbers under a label that read like a 7d
+  // snapshot. Deeper-window analysis lives in the slide-over's
+  // Campaigns tab where the picker still exists.
 
   const visibleCurrent = useMemo(
     () =>
@@ -146,13 +148,17 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
     staleTime: 30 * 1000,
   })
 
+  // No startDate/endDate in the POST body — the endpoint falls back to
+  // the cron's canonical last-7d window. Same window the Watch List +
+  // Home page + Pedro narrative use, so the columns on this table are
+  // guaranteed to match every other surface in the app.
   const kpiQuery = useQuery<Record<string, KpiSummary>>({
-    queryKey: ["kpi-summaries", kpiClients.map((c) => c.mondayItemId), startDateStr, endDateStr],
+    queryKey: ["kpi-summaries", kpiClients.map((c) => c.mondayItemId)],
     queryFn: () =>
       fetch("/api/kpi-summaries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clients: kpiClients, startDate: startDateStr, endDate: endDateStr }),
+        body: JSON.stringify({ clients: kpiClients }),
       }).then((r) => r.json()),
     enabled: kpiClients.length > 0,
     staleTime: 60 * 60 * 1000,
@@ -226,14 +232,6 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
               showAll,
               setShowAll,
               totalCount: current.length,
-            }}
-            dateRangeControl={{
-              startDate: dateRange.range.startDate,
-              endDate: dateRange.range.endDate,
-              setRange: dateRange.setRange,
-              presets: dateRange.presets,
-              applyPreset: dateRange.applyPreset,
-              maxDate: maxPickerDate,
             }}
           />
         </Panel>

@@ -18,7 +18,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
-import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
+import { useClientDateRange } from "@/app/(dashboard)/clients/[id]/_hooks/use-client-date-range"
 import { categorizeHealthVsBaseline, type WatchCategory } from "@/lib/watchlist/categorize"
 import { PedroInsightCard } from "./pedro-insight-card"
 import { useLocale } from "@/lib/i18n/client"
@@ -477,7 +477,11 @@ export function HomeTab({
 }: Props) {
   const locale = useLocale()
   const queryClient = useQueryClient()
-  const { range, setRange, presets, applyPreset, formatDate } = useDateRange()
+  // useClientDateRange (slide-over only) defaults to Last 7 Days every
+  // open, no localStorage persistence — so the picker on /clients
+  // overview or /targets can't leak in and make the KPI cards under a
+  // Watch List link disagree with the canonical 7d numbers.
+  const { range, setRange, presets, applyPreset, formatDate } = useClientDateRange()
   const startDateStr = formatDate(range.startDate)
   const endDateStr = formatDate(range.endDate)
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])

@@ -10,7 +10,7 @@ import { KpiCards } from "./kpi-cards"
 import { PedroInsightCard } from "./pedro-insight-card"
 import { UtmTable } from "./utm-table"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
-import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
+import { useClientDateRange } from "@/app/(dashboard)/clients/[id]/_hooks/use-client-date-range"
 
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -39,7 +39,9 @@ type Props = {
 
 export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, onNavigateToSettings }: Props) {
   const locale = useLocale()
-  const { range, setRange, presets, applyPreset, formatDate } = useDateRange()
+  // Slide-over picker: session-only, defaults to Last 7 Days on each
+  // open (see useClientDateRange) so cross-surface drift can't happen.
+  const { range, setRange, presets, applyPreset, formatDate } = useClientDateRange()
   const startDateStr = formatDate(range.startDate)
   const endDateStr = formatDate(range.endDate)
   const maxPickerDate = useMemo(() => subDays(new Date(), 1), [])
