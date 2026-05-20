@@ -340,6 +340,13 @@ export type CreateInvoiceInput = {
    *  standard Rocket Leads payment term. */
   daysUntilDue?: number
   currency?: string
+  /** Billing cycle start date (`YYYY-MM-DD`) that this invoice covers. When
+   *  set, every line item is tagged with Stripe's `period.start`/`period.end`
+   *  (cycle_start → cycle_start + 1 month - 1 day) and the line description
+   *  gets a "(26 May – 25 Jun 2026)" suffix so the customer can see exactly
+   *  which period they're paying for. Omit when finance doesn't have a
+   *  cycle yet — the invoice just won't carry a period block. */
+  cycleStartDate?: string | null
 }
 
 export type CreateInvoiceResult = {
@@ -372,6 +379,11 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
   const currency = (input.currency ?? "eur").toLowerCase()
   const daysUntilDue = Math.max(0, Math.trunc(input.daysUntilDue ?? 7))
 
+  // Resolve the billing period once. Empty cycle → no period block on the
+  // line items + no period suffix; Stripe accepts invoices without periods
+  // (it just won't render the "Period:" row in the hosted invoice).
+  const period = resolveBillingPeriod(input.cycleStartDate ?? null)
+
   // 1. Draft.
   const draft = await stripe.invoices.create({
     customer: input.customerId,
@@ -387,12 +399,20 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
   try {
     // 2. Line items — must use cents, Stripe truncates fractional cents.
     for (const item of items) {
+      const description = period
+        ? `${item.description.trim()} (${period.label})`
+        : item.description.trim()
       await stripe.invoiceItems.create({
         customer: input.customerId,
         invoice: invoiceId,
         amount: Math.round(item.amountEuro * 100),
         currency,
-        description: item.description.trim(),
+        description,
+        // Stripe renders this as "Period: <start> – <end>" on the hosted
+        // invoice + the PDF. Skipped entirely when we don't have a cycle.
+        ...(period
+          ? { period: { start: period.unixStart, end: period.unixEnd } }
+          : {}),
       })
     }
 
@@ -417,4 +437,55 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
     }
     throw e
   }
+}
+
+/**
+ * Compute the billing period covered by an invoice given its cycle start.
+ * The Rocket Leads cadence is monthly, so the period runs from cycle_start
+ * to the day BEFORE the next cycle start — i.e. 26 May → 25 Jun (not 26 Jun)
+ * so two consecutive periods don't visually overlap on the customer's bank
+ * statement.
+ *
+ * Returns null when the cycle string is empty or malformed. Caller checks
+ * for null and omits the period block in that case.
+ */
+function resolveBillingPeriod(
+  cycleStartDate: string | null,
+): { unixStart: number; unixEnd: number; label: string } | null {
+  if (!cycleStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(cycleStartDate)) return null
+  const [y, m, d] = cycleStartDate.split("-").map(Number)
+  // UTC math — same approach as `addMonthsIso` in clients/billing-cycle.ts.
+  const startUtcMs = Date.UTC(y, m - 1, d)
+  // End = same-day next month, then -1 day → "25 Jun" for a 26 May cycle.
+  // Clamp the day to the target month's last day so 31 Jan + 1mo - 1d
+  // becomes 27/28 Feb (not 30 Feb).
+  const totalMonths = m - 1 + 1
+  const endYear = y + Math.floor(totalMonths / 12)
+  const endMonthIdx = ((totalMonths % 12) + 12) % 12
+  const lastDayNextMonth = new Date(Date.UTC(endYear, endMonthIdx + 1, 0)).getUTCDate()
+  const endDay = Math.min(d, lastDayNextMonth)
+  const endUtcMs = Date.UTC(endYear, endMonthIdx, endDay) - 24 * 60 * 60 * 1000
+
+  // Stripe expects period boundaries in Unix seconds (not ms).
+  const unixStart = Math.floor(startUtcMs / 1000)
+  const unixEnd = Math.floor(endUtcMs / 1000)
+
+  // Human-readable label for the description suffix. Year is shown once at
+  // the end so "26 May – 25 Jun 2026" reads cleanly; falls back to two-year
+  // form when the period straddles a year boundary (e.g. Dec → Jan).
+  const startDate = new Date(startUtcMs)
+  const endDate = new Date(endUtcMs)
+  const sameYear = startDate.getUTCFullYear() === endDate.getUTCFullYear()
+  const fmt = (date: Date, withYear: boolean) =>
+    date.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: withYear ? "numeric" : undefined,
+      timeZone: "UTC",
+    })
+  const label = sameYear
+    ? `${fmt(startDate, false)} – ${fmt(endDate, true)}`
+    : `${fmt(startDate, true)} – ${fmt(endDate, true)}`
+
+  return { unixStart, unixEnd, label }
 }

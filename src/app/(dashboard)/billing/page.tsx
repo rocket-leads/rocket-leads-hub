@@ -60,12 +60,15 @@ export default async function BillingPage() {
   // Supabase fallback — fills in dates for rows where the live/cache source
   // didn't carry the date (e.g. Monday API hiccup, cache pre-dates the new
   // `cycleStartDate` field). Cheap query, indexed on both columns.
+  // Also pulls the manual billing-hold flag in the same round-trip.
   const supabase = await createAdminClient()
   const { data: supaRows } = await supabase
     .from("clients")
-    .select("monday_item_id, next_invoice_date, cycle_start_date")
-    .or("next_invoice_date.not.is.null,cycle_start_date.not.is.null")
+    .select(
+      "monday_item_id, next_invoice_date, cycle_start_date, billing_hold, billing_hold_reason",
+    )
   const supaDates = new Map<string, { invoice: string; cycle: string }>()
+  const billingHoldByMondayId = new Map<string, { hold: boolean; reason: string | null }>()
   for (const r of supaRows ?? []) {
     const inv = (r.next_invoice_date as string | null) ?? ""
     const cyc = (r.cycle_start_date as string | null) ?? ""
@@ -73,6 +76,12 @@ export default async function BillingPage() {
       invoice: DATE_RE.test(inv) ? inv : "",
       cycle: DATE_RE.test(cyc) ? cyc : "",
     })
+    if (r.billing_hold) {
+      billingHoldByMondayId.set(r.monday_item_id as string, {
+        hold: true,
+        reason: (r.billing_hold_reason as string | null) ?? null,
+      })
+    }
   }
 
   type ScheduledClient = MondayClient & {
@@ -200,6 +209,7 @@ export default async function BillingPage() {
   const rows: UpcomingInvoice[] = scheduled.map((c) => {
     const money = moneyByMondayId.get(c.mondayItemId)
     const summary = c.stripeCustomerId ? billingCache[c.stripeCustomerId] : undefined
+    const heldEntry = billingHoldByMondayId.get(c.mondayItemId)
     return {
       mondayItemId: c.mondayItemId,
       name: c.name,
@@ -215,6 +225,9 @@ export default async function BillingPage() {
       outstanding: summary?.outstanding ?? 0,
       readiness: readinessCache[c.mondayItemId] ?? null,
       mondayItemUrl: mondayItemUrl(c.mondayItemId, c.boardType, boardConfig),
+      billingHold: !!heldEntry,
+      billingHoldReason: heldEntry?.reason ?? null,
+      administration: c.administration,
     }
   })
 
@@ -225,6 +238,15 @@ export default async function BillingPage() {
   // uniformly.
   const groups: BillingGroup[] = groupBillingRows(rows)
 
+  // Distinct admin labels currently in use anywhere on the boards — feeds the
+  // editable Admin cell's popover so finance can pick any value Monday
+  // already accepts. Discovered from real data (not a hardcoded list) so a
+  // new Monday option becomes available the moment a single client uses it,
+  // without a Hub deploy. Sorted alphabetically for a stable menu order.
+  const adminOptions = Array.from(
+    new Set(allClients.map((c) => c.administration).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b))
+
   return (
     <div>
       <PageHeader
@@ -232,7 +254,7 @@ export default async function BillingPage() {
         subtitle="Upcoming invoices grouped by when they need to go out. The invoice date is always 7 days before the new cycle starts — edit a client's cycle to move both dates in lockstep."
         actions={<RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />}
       />
-      <BillingTabs futureGroups={groups} pastInvoices={pastInvoices} />
+      <BillingTabs futureGroups={groups} pastInvoices={pastInvoices} adminOptions={adminOptions} />
     </div>
   )
 }

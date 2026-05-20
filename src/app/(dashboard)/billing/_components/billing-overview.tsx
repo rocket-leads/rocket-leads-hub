@@ -22,6 +22,8 @@ import { NextInvoiceDateCell } from "./next-invoice-date-cell"
 import { CreateInvoiceDialog } from "./create-invoice-dialog"
 import { InvoiceReadinessCell } from "./invoice-readiness-cell"
 import { AgreementAmountCell } from "./agreement-amount-cell"
+import { BillingHoldToggle } from "./billing-hold-toggle"
+import { AdminEditCell } from "./admin-edit-cell"
 import { combinedClientName } from "@/lib/billing/sibling-name"
 
 /**
@@ -103,10 +105,21 @@ export type UpcomingInvoice = {
    *  parent board id. Null when the board config isn't loaded — UI hides the
    *  "Open in Monday" link in that case rather than render a broken URL. */
   mondayItemUrl: string | null
+  /** Manual billing-hold flag from `clients.billing_hold`. Held rows render
+   *  in a dedicated "On Hold" bucket above the time-based ones and stay
+   *  parked there across refreshes until finance toggles them off. */
+  billingHold: boolean
+  /** Optional note finance attached when holding (e.g. "wachten op refund").
+   *  Shown next to the hold pill so context isn't lost on handoff. */
+  billingHoldReason: string | null
+  /** Raw value from Monday's "Administration" status column (`status_16`).
+   *  Translated for display by `viewAdministration` — original Dutch label
+   *  is preserved on the tooltip for finance traceability. */
+  administration: string
 }
 
 type Bucket = {
-  key: "overdue" | "today" | "this_week" | "next_week" | "later"
+  key: "hold" | "overdue" | "today" | "this_week" | "next_week"
   label: string
   hint: string
   tone: string
@@ -144,14 +157,30 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
   const endOfNextWeek = endOfThisWeek + 7 * dayMs
 
   const buckets: Record<Bucket["key"], BillingGroup[]> = {
+    hold: [],
     overdue: [],
     today: [],
     this_week: [],
     next_week: [],
-    later: [],
   }
 
+  // Held groups go to the Hold bucket regardless of their invoice date — the
+  // whole point of holding is to override the time-based buckets. A group
+  // counts as held when ANY sibling has billing_hold=true; finance pinning
+  // the parent should also park its sub-campaigns.
+  //
+  // Otherwise: clients more than 2 weeks out are intentionally dropped from
+  // the overview. After a successful invoice send, `create-invoice` advances
+  // cycle_start by a month → next_invoice_date jumps +1 month → the client
+  // is now ~3 weeks out and falls off the page. That's the desired UX: "out
+  // of overview as soon as the invoice is sent". Re-appears in `next_week`
+  // when its next cycle approaches.
   for (const group of groups) {
+    const isHeld = group.siblings.some((s) => s.billingHold)
+    if (isHeld) {
+      buckets.hold.push(group)
+      continue
+    }
     const d = new Date(group.primary.nextInvoiceDate)
     d.setHours(0, 0, 0, 0)
     const ms = d.getTime()
@@ -159,20 +188,27 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
     else if (ms === todayMs) buckets.today.push(group)
     else if (ms <= endOfThisWeek) buckets.this_week.push(group)
     else if (ms <= endOfNextWeek) buckets.next_week.push(group)
-    else buckets.later.push(group)
+    // else: > 2 weeks out → not actionable yet, hidden.
   }
 
   const all: Bucket[] = [
+    { key: "hold", label: "On hold", hint: "Manually parked by finance", tone: "text-violet-500", groups: buckets.hold },
     { key: "overdue", label: "Overdue", hint: "Past their next-invoice date", tone: "text-red-500", groups: buckets.overdue },
     { key: "today", label: "Today", hint: "Send today", tone: "text-amber-500", groups: buckets.today },
     { key: "this_week", label: "This week", hint: "Through Sunday", tone: "text-foreground", groups: buckets.this_week },
     { key: "next_week", label: "Next week", hint: "On the radar", tone: "text-muted-foreground", groups: buckets.next_week },
-    { key: "later", label: "Later", hint: "More than two weeks out", tone: "text-muted-foreground/70", groups: buckets.later },
   ]
   return all.filter((b) => b.groups.length > 0)
 }
 
-export function BillingOverview({ groups }: { groups: BillingGroup[] }) {
+export function BillingOverview({
+  groups,
+  adminOptions,
+}: {
+  groups: BillingGroup[]
+  /** Distinct labels finance can pick from in the inline Admin cell. */
+  adminOptions: string[]
+}) {
   const buckets = bucketGroups(groups)
 
   if (buckets.length === 0) {
@@ -232,6 +268,7 @@ export function BillingOverview({ groups }: { groups: BillingGroup[] }) {
                 <TableHead className="text-[12px] text-foreground/80 font-semibold">Client</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[150px]">Action</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Status</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Admin</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">AM</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Invoice date</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">New cycle</TableHead>
@@ -244,7 +281,7 @@ export function BillingOverview({ groups }: { groups: BillingGroup[] }) {
             </TableHeader>
             <TableBody>
               {bucket.groups.map((group) => (
-                <BillingGroupRow key={group.groupKey} group={group} />
+                <BillingGroupRow key={group.groupKey} group={group} adminOptions={adminOptions} />
               ))}
             </TableBody>
           </Table>
@@ -263,7 +300,7 @@ export function BillingOverview({ groups }: { groups: BillingGroup[] }) {
  * combined "client" label (shared prefix or "X campaigns") + chevron to
  * reveal a child sub-table with each campaign's own row data.
  */
-function BillingGroupRow({ group }: { group: BillingGroup }) {
+function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOptions: string[] }) {
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const isMulti = group.siblings.length > 1
@@ -314,27 +351,41 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
           </div>
         </TableCell>
         <TableCell className="py-2.5">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!primary.stripeCustomerId}
-            onClick={() => setInvoiceOpen(true)}
-            title={
-              primary.stripeCustomerId
-                ? isMulti
-                  ? `Create one Stripe invoice covering all ${group.siblings.length} campaigns`
-                  : "Create + send a Stripe invoice"
-                : "No Stripe customer linked"
-            }
-          >
-            <FilePlus className="h-3.5 w-3.5" />
-            Create invoice
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!primary.stripeCustomerId}
+              onClick={() => setInvoiceOpen(true)}
+              title={
+                primary.stripeCustomerId
+                  ? isMulti
+                    ? `Create one Stripe invoice covering all ${group.siblings.length} campaigns`
+                    : "Create + send a Stripe invoice"
+                  : "No Stripe customer linked"
+              }
+            >
+              <FilePlus className="h-3.5 w-3.5" />
+              Create invoice
+            </Button>
+            <BillingHoldToggle
+              mondayItemId={primary.mondayItemId}
+              held={primary.billingHold}
+              reason={primary.billingHoldReason}
+            />
+          </div>
         </TableCell>
         <TableCell className="py-2.5">
           <StatusEditCell
             mondayItemId={primary.mondayItemId}
             status={primary.campaignStatus}
+          />
+        </TableCell>
+        <TableCell className="py-2.5">
+          <AdminEditCell
+            mondayItemId={primary.mondayItemId}
+            value={primary.administration}
+            options={adminOptions}
           />
         </TableCell>
         <TableCell className="py-2.5">
@@ -453,7 +504,15 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
                 {sib.name}
               </Link>
             </TableCell>
+            {/* Action + Status — both already on the parent row */}
             <TableCell colSpan={2} className="py-2" />
+            <TableCell className="py-2">
+              <AdminEditCell
+                mondayItemId={sib.mondayItemId}
+                value={sib.administration}
+                options={adminOptions}
+              />
+            </TableCell>
             <TableCell className="py-2">
               <PersonEditCell
                 mondayItemId={sib.mondayItemId}
@@ -483,6 +542,7 @@ function BillingGroupRow({ group }: { group: BillingGroup }) {
                 placeholder={sib.usesRocketLeadsAdAccount ? "0" : "—"}
               />
             </TableCell>
+            {/* Payment + AI check + Stripe — all on the parent row */}
             <TableCell colSpan={3} className="py-2" />
           </TableRow>
         ))}

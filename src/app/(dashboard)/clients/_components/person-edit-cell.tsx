@@ -119,7 +119,7 @@ export function PersonEditCell({ mondayItemId, fieldKey, value, multi = false }:
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         onClick={(e) => e.stopPropagation()}
-        className="flex justify-center w-full hover:opacity-80 transition-opacity outline-none"
+        className="flex justify-start w-full hover:opacity-80 transition-opacity outline-none"
         title={display || t("clients.cell.click_to_assign", locale)}
       >
         {primaryName ? (

@@ -11,6 +11,8 @@ import {
 import { fetchBothBoards } from "@/lib/integrations/monday"
 import { updateClientField } from "@/lib/clients/edit"
 import { addMonthsIso } from "@/lib/clients/billing-cycle"
+import { setAdministration } from "@/lib/clients/administration-sync"
+import { ADMIN_LABELS } from "@/lib/clients/administration"
 import { readCache, writeCache } from "@/lib/cache"
 
 /**
@@ -101,6 +103,10 @@ export async function POST(
       customerId: client.stripe_customer_id,
       items,
       daysUntilDue: body.daysUntilDue,
+      // Pass the current cycle so Stripe stamps the line items with the
+      // period this invoice covers ("26 May – 25 Jun 2026"). Falls back to
+      // no period block when the row has no cycle yet.
+      cycleStartDate: (client.cycle_start_date as string | null) ?? null,
     })
   } catch (e) {
     return NextResponse.json(
@@ -110,6 +116,13 @@ export async function POST(
   }
 
   // ---- Post-send actions (best effort) ----
+
+  // 0. Stamp the Monday "Administration" column to "Invoice send". Per Roy's
+  // 2026-05-19 spec this is the one auto-target allowed to overwrite ANY
+  // existing value (incl. Discuss first / Debt collection agencies) because
+  // "Stripe shipped the invoice" is an objective fact. Best-effort: a Monday
+  // write failure doesn't block the rest of the post-send flow.
+  await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
 
   // 1. Advance cycle by one month. Skip when the row has no cycle yet —
   // there's nothing to advance and the next-render bucket is unaffected.

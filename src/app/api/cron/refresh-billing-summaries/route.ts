@@ -8,6 +8,8 @@ import {
 } from "@/lib/integrations/stripe"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { startCronRun } from "@/lib/observability/cron-runs"
+import { mondayStatusToHub } from "@/lib/clients/status"
+import { reconcileAdministrationForClient } from "@/lib/clients/administration-sync"
 
 /** How many days of past invoices to keep cached. Wider window = more data
  *  for the past-invoices tab, more API quota per refresh. 180d covers
@@ -72,11 +74,43 @@ async function handler(req: NextRequest) {
 
     await writeCache("billing_refreshed_at", new Date().toISOString())
 
+    // Reconcile Monday's "Administration" column against the freshly-pulled
+    // Stripe state + cycle date. Bounded concurrency so we don't hammer Monday
+    // when 50+ rows need a write at once; per-row errors are swallowed inside
+    // `reconcileAdministrationForClient` so one bad client doesn't kill the
+    // whole pass. Skip Onboarding/Churned — those statuses don't get invoiced
+    // anyway so an admin label there would just be noise.
+    const today = new Date().toISOString().slice(0, 10)
+    const adminTargets = allClients.filter((c) => {
+      const status = mondayStatusToHub(c.campaignStatus, c.boardType)
+      return status === "live" || status === "on_hold"
+    })
+
+    let adminWritten = 0
+    const ADMIN_CONCURRENCY = 5
+    let cursor = 0
+    async function nextWorker(): Promise<void> {
+      while (cursor < adminTargets.length) {
+        const client = adminTargets[cursor++]
+        const summary = client.stripeCustomerId ? merged[client.stripeCustomerId] ?? null : null
+        const wrote = await reconcileAdministrationForClient(client.mondayItemId, {
+          campaignStatus: mondayStatusToHub(client.campaignStatus, client.boardType),
+          stripe: summary,
+          nextInvoiceDate: client.nextInvoiceDate || null,
+          currentAdministration: client.administration,
+          today,
+        })
+        if (wrote) adminWritten++
+      }
+    }
+    await Promise.all(Array.from({ length: ADMIN_CONCURRENCY }, () => nextWorker()))
+
     const metrics = {
       customers: customerIds.length,
       refreshed: Object.keys(summaryRes.summaries).length,
       failed: summaryRes.failed,
       pastInvoices: pastInvoices?.length ?? null,
+      adminWritten,
     }
     if (summaryRes.failed > 0) {
       await tracker.partial(`${summaryRes.failed} customer summaries failed`, metrics)

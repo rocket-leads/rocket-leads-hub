@@ -32,9 +32,14 @@ const TABS: TopTab<Tab>[] = [
 export function BillingTabs({
   futureGroups,
   pastInvoices,
+  adminOptions,
 }: {
   futureGroups: BillingGroup[]
   pastInvoices: PastInvoiceRow[]
+  /** Distinct admin labels currently in use across all clients — feeds the
+   *  Admin column's edit popover so finance can pick any value Monday already
+   *  knows about. */
+  adminOptions: string[]
 }) {
   const [tab, setTab] = useState<Tab>("future")
   // Tab badges count "what needs action now":
@@ -69,7 +74,7 @@ export function BillingTabs({
   return (
     <div className="space-y-5">
       <TopTabs<Tab> tabs={tabsWithCounts} value={tab} onChange={setTab} />
-      {tab === "future" && <BillingOverview groups={futureGroups} />}
+      {tab === "future" && <BillingOverview groups={futureGroups} adminOptions={adminOptions} />}
       {tab === "past" && <PastInvoicesView invoices={pastInvoices} />}
     </div>
   )
