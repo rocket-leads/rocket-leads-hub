@@ -530,11 +530,25 @@ export function HomeTab({
     [range.startDate, range.endDate],
   )
 
+  // Whether the user-selected window matches the cron's canonical last-7d.
+  // Drives a single-source-of-truth decision: when this is true, the KPI
+  // cards + Health current value read from `kpi_summaries` (same bucket the
+  // Watch List + Home page + Pedro narrative read), so they can never
+  // disagree. When the user picks a custom range, we live-fetch via the
+  // kpis endpoint — no Watch List equivalent for that window, so no risk
+  // of cross-surface mismatch.
+  const isCronSevenDayWindow = useMemo(() => {
+    const end = subDays(new Date(), 1)
+    const start = subDays(end, 6)
+    return formatDate(start) === startDateStr && formatDate(end) === endDateStr
+  }, [startDateStr, endDateStr, formatDate])
+
   // Period KPIs (AdSpend, Leads, CPL) — driven by the period selector.
-  // `refreshNonce` is part of the queryKey so the Refresh button reliably
-  // triggers a refetch, and we forward `forceRefresh=1` whenever the user
-  // explicitly asked for fresh data (nonce > 0) so the API bypasses its
-  // server-side cache_store entries.
+  // Disabled when the selected window is the canonical 7d; that case reads
+  // from kpi_summaries via `summaryQuery` below so every surface shows the
+  // same number. `refreshNonce` is part of the queryKey so the Refresh
+  // button reliably triggers a refetch on the custom-range path, and we
+  // forward `forceRefresh=1` so the API bypasses its server-side cache.
   const kpisQuery = useQuery<KpiResult>({
     queryKey: ["kpis", client.mondayItemId, startDateStr, endDateStr, refreshNonce],
     queryFn: () => {
@@ -547,7 +561,10 @@ export function HomeTab({
       })
       return fetch(`/api/clients/${client.mondayItemId}/kpis?${p}`).then((r) => r.json())
     },
-    enabled: canViewCampaigns && (!!client.metaAdAccountId || !!client.clientBoardId),
+    enabled:
+      !isCronSevenDayWindow &&
+      canViewCampaigns &&
+      (!!client.metaAdAccountId || !!client.clientBoardId),
   })
 
   // 30d baseline KPI — Health card compares the selected window against this.
@@ -593,13 +610,21 @@ export function HomeTab({
       (!!client.metaAdAccountId || !!client.clientBoardId),
   })
 
-  // 7d summary kept around solely as a fast placeholder for the kpisQuery
-  // KPI cards when the selected window is the cron's canonical 7d window
-  // (see `kpisPlaceholder` below). Health card no longer reads from it.
+  // 7d summary — single source of truth for the KPI cards + Health card
+  // current value when the user is on the canonical 7d window. Reads the
+  // same kpi_summaries cache that the Watch List + Home page + Pedro
+  // narrative all read from, so all four surfaces show identical numbers.
+  // Refresh button bumps refreshNonce → ?force=1 → endpoint bypasses the
+  // per-client fast-path cache and live-recomputes this client, writing
+  // the fresh value back so subsequent reads (and the rest of the app) see
+  // it within a single cron tick rather than waiting up to an hour.
   const summaryQuery = useQuery<Record<string, KpiSummary>>({
-    queryKey: ["kpi-summary-single", client.mondayItemId],
-    queryFn: () =>
-      fetch("/api/kpi-summaries", {
+    queryKey: ["kpi-summary-single", client.mondayItemId, refreshNonce],
+    queryFn: () => {
+      const url = refreshNonce > 0
+        ? "/api/kpi-summaries?force=1"
+        : "/api/kpi-summaries"
+      return fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -611,7 +636,8 @@ export function HomeTab({
             },
           ],
         }),
-      }).then((r) => r.json()),
+      }).then((r) => r.json())
+    },
     enabled: canViewCampaigns && (!!client.metaAdAccountId || !!client.clientBoardId),
     staleTime: 5 * 60 * 1000,
     placeholderData: () => {
@@ -627,14 +653,28 @@ export function HomeTab({
   })
 
   const kpiSummary = summaryQuery.data?.[client.mondayItemId]
+  // Single-source-of-truth resolver for the "current" leg of the Health
+  // verdict + KPI cards. When the user is on the canonical 7d window we
+  // read from kpiSummary (kpi_summaries cache), exactly what the Watch
+  // List + Home page + Pedro narrative read. When the user picks a custom
+  // range, fall back to the live kpisQuery — no Watch List equivalent
+  // exists for that range so there's nothing to drift against.
+  const currentCpl = isCronSevenDayWindow
+    ? kpiSummary?.cpl ?? 0
+    : kpisQuery.data?.costPerLead ?? 0
+  const currentLeads = isCronSevenDayWindow
+    ? kpiSummary?.leads ?? 0
+    : kpisQuery.data?.leads ?? 0
+  const currentSpend = isCronSevenDayWindow
+    ? kpiSummary?.adSpend ?? 0
+    : kpisQuery.data?.adSpend ?? 0
   const health = useMemo(() => {
-    const current = kpisQuery.data
     const baseline = kpisBaselineQuery.data
     const longBaseline = kpisLongBaselineQuery.data
     return categorizeHealthVsBaseline({
-      currentCpl: current?.costPerLead ?? 0,
-      currentLeads: current?.leads ?? 0,
-      currentSpend: current?.adSpend ?? 0,
+      currentCpl,
+      currentLeads,
+      currentSpend,
       currentWindowLabel,
       baselineCpl: baseline?.costPerLead ?? 0,
       baselineLeads: baseline?.leads ?? 0,
@@ -652,7 +692,9 @@ export function HomeTab({
       locale,
     })
   }, [
-    kpisQuery.data,
+    currentCpl,
+    currentLeads,
+    currentSpend,
     kpisBaselineQuery.data,
     kpisLongBaselineQuery.data,
     currentWindowLabel,
@@ -700,31 +742,15 @@ export function HomeTab({
 
   const paymentSummary = summarizePayments(billingQuery.data?.invoices)
 
-  // When the date range matches the cron's canonical last-7d window (yesterday
-  // back 6 days), reuse the precomputed `kpi_summaries` numbers from
-  // summaryQuery as a placeholder. summaryQuery typically resolves in ~50ms
-  // (single Supabase read) versus kpisQuery's 100-2000ms (Monday + Meta even
-  // with our pre-warm cron), so users see real numbers immediately instead of
-  // a skeleton flash.
-  const isCronSevenDayWindow = useMemo(() => {
-    const end = subDays(new Date(), 1)
-    const start = subDays(end, 6)
-    return formatDate(start) === startDateStr && formatDate(end) === endDateStr
-  }, [startDateStr, endDateStr, formatDate])
-
-  const kpisPlaceholder = useMemo(() => {
-    if (!isCronSevenDayWindow || !kpiSummary) return null
-    return {
-      adSpend: kpiSummary.adSpend,
-      leads: kpiSummary.leads,
-      costPerLead: kpiSummary.cpl,
-    }
-  }, [isCronSevenDayWindow, kpiSummary])
-
-  const adSpendValue = kpisQuery.data?.adSpend ?? kpisPlaceholder?.adSpend ?? 0
-  const leadsValue = kpisQuery.data?.leads ?? kpisPlaceholder?.leads ?? 0
-  const cplValue = kpisQuery.data?.costPerLead ?? kpisPlaceholder?.costPerLead ?? 0
-  const kpisLoading = kpisQuery.isLoading && !kpisPlaceholder
+  // Display values for the KPI cards are derived once above (single source
+  // of truth: `currentSpend / currentLeads / currentCpl` — kpi_summaries
+  // for the canonical 7d window, live kpisQuery for custom ranges).
+  const adSpendValue = currentSpend
+  const leadsValue = currentLeads
+  const cplValue = currentCpl
+  const kpisLoading = isCronSevenDayWindow
+    ? summaryQuery.isLoading && !kpiSummary
+    : kpisQuery.isLoading
 
   return (
     <div className="space-y-5">
