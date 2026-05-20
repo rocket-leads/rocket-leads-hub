@@ -24,6 +24,19 @@ function kindIcon(kind: InboxItem["kind"]) {
 }
 
 /**
+ * Where to send the user when they click an inbox row on the home page.
+ * Tasks + updates land on the matching tab with the row pre-selected via
+ * `?id=`. Chat threads (kind === "chat") link to the Client Inbox tab —
+ * inbox-view doesn't yet resolve a `?id=` to a chat thread, so we land
+ * the user on the right tab and let them pick the conversation from the
+ * already-loaded list. Better than dumping them into the wrong tab.
+ */
+function itemHref(item: InboxItem): string {
+  if (item.kind === "chat") return "/inbox?tab=client-inbox"
+  return `/inbox?id=${item.id}`
+}
+
+/**
  * Inbox Zero celebration state. Picks a rotating motivational line — same
  * for everyone for the whole UTC day, changes at midnight UTC. The point is
  * to make Inbox Zero feel like a tiny win you want to keep, not a dead empty
@@ -71,32 +84,20 @@ export function InboxBlock({
       empty={totalCount === 0}
       emptyContent={<InboxZeroState />}
     >
-      {items.length === 0 ? (
-        // Only chat messages are unread — no tasks/updates to preview. Keep
-        // the block populated with a clear "open the inbox" hint instead of
-        // an empty list under the title.
-        <div className="flex flex-col items-center justify-center h-full px-6 py-8 gap-2 text-center">
-          <MessageSquare className="h-5 w-5 text-violet-400" />
-          <p className="text-sm text-foreground/80">
-            {totalCount} unread {totalCount === 1 ? "message" : "messages"}
-          </p>
-          <p className="text-[11px] text-muted-foreground/60">
-            Open the inbox to read them.
-          </p>
-        </div>
-      ) : (
       <ul className="divide-y divide-border/30">
         {items.map((item) => (
           <li key={item.id}>
             <Link
-              href={`/inbox?id=${item.id}`}
+              href={itemHref(item)}
               className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors group"
             >
               <span className="mt-1 shrink-0">{kindIcon(item.kind)}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{item.title}</p>
                 <p className="text-[11px] text-muted-foreground/70 mt-0.5 truncate">
-                  {item.clientName} · {item.authorName} · {timeAgo(item.createdAt)}
+                  {[item.clientName, item.authorName, timeAgo(item.createdAt)]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
                 {item.body && (
                   <p className="text-[11px] text-muted-foreground/50 mt-1 line-clamp-1">{item.body}</p>
@@ -107,7 +108,6 @@ export function InboxBlock({
           </li>
         ))}
       </ul>
-      )}
     </BlockShell>
   )
 }

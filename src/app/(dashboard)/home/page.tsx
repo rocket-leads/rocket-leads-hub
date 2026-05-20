@@ -4,7 +4,7 @@ import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { categorize, severityScore } from "@/lib/watchlist/categorize"
-import { listInboxItems, getInboxBadgeCounts } from "@/lib/inbox/fetchers"
+import { listInboxItems, getInboxBadgeCounts, listChatThreads, type ChatThreadSummary } from "@/lib/inbox/fetchers"
 import { createAdminClient } from "@/lib/supabase/server"
 import { agreementMonthly, normalizeAgreement } from "@/lib/clients/agreement"
 import { getUserLocale } from "@/lib/i18n/server"
@@ -306,17 +306,64 @@ async function fetchWatchlistState(): Promise<Record<string, WatchlistClientStat
 }
 
 /**
- * Tasks open/in_progress + Updates unread, both assigned to the current user.
- * Snoozed tasks are excluded — same rules the inbox badge uses.
+ * Tasks open/in_progress + Updates unread + unread chat threads (Trengo +
+ * Slack), shown as a single chronological preview list in the home Inbox
+ * Block. Tasks/Updates are assignee-scoped; chat threads use the same
+ * visibility rules as the Client Inbox / Team Inbox tabs (channel
+ * subscription + client access + participant fallback). Snoozed tasks
+ * excluded — same rules the inbox badge uses.
+ *
+ * Chat threads are mapped to the InboxItem shape so the existing render
+ * path in inbox-block.tsx works unchanged. Fields the block doesn't read
+ * are filled with safe defaults; the discriminator is `kind === "chat"`.
  */
-async function fetchMyInbox(userId: string, role: string): Promise<InboxItem[]> {
+async function fetchMyInbox(
+  userId: string,
+  role: string,
+): Promise<InboxItem[]> {
   if (!userId) return []
   try {
-    const [tasks, updates] = await Promise.all([
+    const roleArg = role === "admin" ? "admin" : "member"
+    const [tasks, updates, externalThreads, internalThreads] = await Promise.all([
       listInboxItems(userId, role, { kind: "task", assignedToMe: true, snoozed: "active" }),
       listInboxItems(userId, role, { kind: "update", assignedToMe: true }),
+      listChatThreads(userId, roleArg, "external").catch(() => [] as ChatThreadSummary[]),
+      listChatThreads(userId, roleArg, "internal").catch(() => [] as ChatThreadSummary[]),
     ])
-    return [...tasks, ...updates].sort(
+    const chats = [...externalThreads, ...internalThreads]
+      .filter((t) => t.unreadCount > 0)
+      .map((t): InboxItem => ({
+        id: `chat:${t.threadKey}`,
+        kind: "chat",
+        clientId: "",
+        clientName: t.clientName ?? "",
+        authorId: "",
+        authorName: t.primaryName,
+        authorExternal: null,
+        assigneeId: "",
+        assigneeName: "",
+        title: t.channelName ? `${t.primaryName} · ${t.channelName}` : t.primaryName,
+        body: t.latestPreview || null,
+        status: "unread",
+        priority: null,
+        dueDate: null,
+        source: t.source,
+        channelKind:
+          t.channelKind === "whatsapp" || t.channelKind === "email"
+            ? t.channelKind
+            : t.channelKind == null
+              ? null
+              : "other",
+        sourceRef: { threadKey: t.threadKey, scope: t.scope },
+        mondayUpdateId: null,
+        isUnlinked: false,
+        snoozedUntil: null,
+        createdAt: t.latestAt,
+        updatedAt: t.latestAt,
+        completedAt: null,
+        commentCount: t.unreadCount,
+      }))
+    return [...tasks, ...updates, ...chats].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     )
   } catch {
