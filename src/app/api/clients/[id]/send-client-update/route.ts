@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById } from "@/lib/integrations/monday"
 import {
   fetchConversations,
-  fetchWaTemplates,
   findFirstEmailChannel,
   createEmailMessageForContact,
   type TrengoConversation,
@@ -151,26 +150,6 @@ export async function POST(
       ? partsToWeeklyUpdateParams(editableParts)
       : [message]
 
-    // Diagnostic: log each outgoing param's type + length + a length-capped
-    // preview so a Meta 422 ("expected: 'string'", "outside 24h window",
-    // etc.) can be pinpointed to which slot misbehaved. Stays in until the
-    // template-send pipeline has been quiet in production for a while —
-    // delete the block once it has, the log is noisy on a high-volume day.
-    console.log(
-      "[send-client-update] outgoing template params",
-      JSON.stringify({
-        mondayItemId,
-        templateName,
-        channel: sendAsEmail ? "email" : "whatsapp",
-        params: templateParams.map((p, i) => ({
-          slot: i + 1,
-          type: typeof p,
-          length: typeof p === "string" ? p.length : null,
-          preview: typeof p === "string" ? p.slice(0, 80) : String(p),
-        })),
-      }),
-    )
-
     // Strategy: look for an existing Trengo-sourced inbox_event we can reuse
     // as the threading anchor. The reply pipeline propagates source_thread +
     // trengo_channel_id from the anchor, so the template send lands in the same
@@ -286,50 +265,6 @@ export async function POST(
     }
     const ticketId = String(ticket.id)
     const channelId = ticket.channel?.id ?? null
-
-    // Diagnostic: for the WhatsApp template path, fetch the approved
-    // template's full component structure from Trengo and log it. Lets us
-    // verify whether `rl_weekly_<voornaam>` has a HEADER / FOOTER with
-    // its own variables — Meta's misleading "expected: 'string'" 422 can
-    // be triggered by an unfilled header text variable, not a body one.
-    // Temporary; remove once the V2 send is stable.
-    if (!sendAsEmail && channelId != null) {
-      try {
-        const tmpls = await fetchWaTemplates(channelId)
-        const match = tmpls.find(
-          (t) => (t.slug ?? t.title) === templateName,
-        )
-        if (match) {
-          console.log(
-            "[send-client-update] template structure",
-            JSON.stringify({
-              templateName,
-              channelId,
-              language: match.language,
-              messageVars:
-                (match.message?.match(/\{\{\d+\}\}/g) ?? []).length,
-              messageBody: match.message?.slice(0, 300) ?? null,
-              components: match.components?.map((c) => ({
-                type: c.type,
-                sub_type: c.sub_type,
-                value: c.value?.slice(0, 200) ?? null,
-                vars: (c.value?.match(/\{\{\d+\}\}/g) ?? []).length,
-              })),
-            }),
-          )
-        } else {
-          console.log(
-            "[send-client-update] template NOT in approved list for channel",
-            JSON.stringify({ templateName, channelId }),
-          )
-        }
-      } catch (e) {
-        console.log(
-          "[send-client-update] template structure fetch failed",
-          e instanceof Error ? e.message : String(e),
-        )
-      }
-    }
 
     let outboundId: string
     try {

@@ -178,17 +178,6 @@ export async function sendTrengoTemplateAsUser(
     params: structuredParams,
   }
 
-  console.log(
-    "[trengo-template-send] outgoing payload",
-    JSON.stringify({
-      endpoint: "POST /v2/wa_sessions",
-      hsm_id: tmpl.id,
-      template_name: templateName,
-      ticket_id: ticketId,
-      paramCount: structuredParams.length,
-    }),
-  )
-
   const res = await fetch(`https://app.trengo.com/api/v2/wa_sessions`, {
     method: "POST",
     headers: {
