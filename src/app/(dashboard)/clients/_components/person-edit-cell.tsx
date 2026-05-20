@@ -62,11 +62,14 @@ export function PersonEditCell({ mondayItemId, fieldKey, value, multi = false }:
   })
 
   const mutation = useMutation({
-    mutationFn: async (personIds: number[]) => {
+    mutationFn: async ({ personIds, personNames }: { personIds: number[]; personNames: string[] }) => {
+      // Names accompany the IDs so the backend can patch the cache with
+      // the value we know was selected — avoids the Monday read-after-write
+      // race that previously flashed the cell back to "unassigned".
       const res = await fetch(`/api/clients/${mondayItemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fieldKey, personIds }),
+        body: JSON.stringify({ fieldKey, personIds, personNames }),
       })
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string }
@@ -98,17 +101,17 @@ export function PersonEditCell({ mondayItemId, fieldKey, value, multi = false }:
         : [...currentNames, user.name]
       const nextIds = allUsers.filter((u) => nextNames.includes(u.name)).map((u) => u.id)
       setOptimisticValue(nextNames.join(", "))
-      mutation.mutate(nextIds)
+      mutation.mutate({ personIds: nextIds, personNames: nextNames })
     } else {
       setOptimisticValue(user.name)
-      mutation.mutate([user.id])
+      mutation.mutate({ personIds: [user.id], personNames: [user.name] })
       setOpen(false)
     }
   }
 
   function handleClear() {
     setOptimisticValue("")
-    mutation.mutate([])
+    mutation.mutate({ personIds: [], personNames: [] })
     setOpen(false)
   }
 

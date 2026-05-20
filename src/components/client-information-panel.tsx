@@ -246,11 +246,16 @@ function PersonField({ mondayItemId, fieldKey, value, label, multi = false }: Pe
   })
 
   const mutation = useMutation({
-    mutationFn: async (personIds: number[]) => {
+    mutationFn: async ({ personIds, personNames }: { personIds: number[]; personNames: string[] }) => {
+      // personNames go alongside the IDs so the server can patch the
+      // cache directly with the display value we know was selected,
+      // without paying Monday's read-after-write eventual-consistency
+      // window (which was the root cause of the "springt naar
+      // unassigned" jump-back).
       const res = await fetch(`/api/clients/${mondayItemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fieldKey, personIds }),
+        body: JSON.stringify({ fieldKey, personIds, personNames }),
       })
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string }
@@ -290,17 +295,17 @@ function PersonField({ mondayItemId, fieldKey, value, label, multi = false }: Pe
         : [...currentNames, user.name]
       const nextIds = allUsers.filter((u) => nextNames.includes(u.name)).map((u) => u.id)
       setOptimisticValue(nextNames.join(", "))
-      mutation.mutate(nextIds)
+      mutation.mutate({ personIds: nextIds, personNames: nextNames })
     } else {
       setOptimisticValue(user.name)
-      mutation.mutate([user.id])
+      mutation.mutate({ personIds: [user.id], personNames: [user.name] })
       setOpen(false)
     }
   }
 
   function handleClear() {
     setOptimisticValue("")
-    mutation.mutate([])
+    mutation.mutate({ personIds: [], personNames: [] })
     setOpen(false)
   }
 

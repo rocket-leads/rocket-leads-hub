@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import {
+  clientItemCacheKey,
   fetchClientById,
   setItemColumnValue,
   setItemColumnValueRaw,
@@ -36,10 +37,17 @@ export type SimpleFieldKey = (typeof SIMPLE_FIELDS)[number]
 export type StatusFieldKey = (typeof STATUS_FIELDS)[number]
 export type PersonFieldKey = (typeof PERSON_FIELDS)[number]
 
+/**
+ * Person updates carry both IDs (what Monday needs in the mutation) and
+ * the display names (what the cache patch writes in-place). With names in
+ * the payload we can skip the read-after-write entirely and avoid Monday's
+ * person-column eventual-consistency window — see the comment above
+ * `patchCacheWithKnownValue` for the full rationale.
+ */
 export type ClientFieldUpdate =
   | { fieldKey: SimpleFieldKey; value: string }
   | { fieldKey: StatusFieldKey; label: string }
-  | { fieldKey: PersonFieldKey; personIds: number[] }
+  | { fieldKey: PersonFieldKey; personIds: number[]; personNames?: string[] }
 
 const SIMPLE_SET = new Set<string>(SIMPLE_FIELDS)
 const STATUS_SET = new Set<string>(STATUS_FIELDS)
@@ -117,19 +125,126 @@ export async function updateClientField(
     throw new Error(`Unsupported field update for "${update.fieldKey}"`)
   }
 
-  // Bypass cache on this read — we just wrote to Monday and the 5-minute
-  // cached value is stale by definition. Without the bypass, the cache patch
-  // below would re-poison `monday_boards` with the pre-edit snapshot and the
-  // status pill / cycle date would visibly snap back to the old value on
-  // `router.refresh()`.
-  const refreshed = await fetchClientById(mondayItemId, { bypassCache: true })
-  if (refreshed) {
-    await syncClientToSupabase(refreshed)
-    // Patch the `monday_boards` cache so the next page render — kicked off by
-    // the caller's router.refresh() — sees the new value instead of the
-    // pre-edit snapshot the cron last wrote.
-    await patchMondayBoardsCache(refreshed)
+  // Patch the cache with what WE wrote — not with a Monday re-read.
+  //
+  // Why this matters: Monday's REST/GraphQL has read-after-write eventual
+  // consistency, worst for `people` columns where the column.text join can
+  // take 1-2s to settle. If we re-fetch immediately and write that back to
+  // the cache, the cache momentarily holds the PRE-edit value. The client's
+  // React Query invalidate (fired right after the PATCH returns) then reads
+  // that stale cache and resets the optimistic state to "Unassigned" —
+  // exactly Roy's "springt gelijk naar unassigned" symptom.
+  //
+  // By patching the cache with the value we know we wrote, the next render
+  // sees the right thing immediately. The Monday webhook will fire a
+  // second-or-so later and patch the cache again with Monday's actual
+  // state — if our write succeeded as expected, that's an identical patch;
+  // if Monday silently rejected something, the webhook's value wins and the
+  // UI corrects itself.
+  const patchedCachedClient = await patchCacheWithKnownValue(mondayItemId, update)
+  if (patchedCachedClient) {
+    // Best-effort Supabase mirror. Errors get swallowed — the per-client
+    // sync runs again on the next page view through the existing ensureClientId
+    // path so a transient Supabase blip doesn't block the Monday write.
+    void syncClientToSupabase(patchedCachedClient).catch((e) => {
+      console.error("[edit] supabase mirror after edit failed:", mondayItemId, e instanceof Error ? e.message : e)
+    })
   }
+}
+
+/**
+ * Apply our just-written value directly to the cached client snapshot,
+ * skipping the Monday re-fetch race. Returns the patched client so callers
+ * can mirror it to Supabase. Returns null when the client isn't in the
+ * `monday_boards` cache yet — the cron will pick them up on its next tick.
+ */
+async function patchCacheWithKnownValue(
+  mondayItemId: string,
+  update: ClientFieldUpdate,
+): Promise<MondayClient | null> {
+  const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+    "monday_boards",
+  )
+  if (!cached) return null
+
+  let patched: MondayClient | null = null
+
+  const applyTo = (c: MondayClient): MondayClient => {
+    if (c.mondayItemId !== mondayItemId) return c
+    const next: MondayClient = { ...c }
+    if (SIMPLE_SET.has(update.fieldKey) && "value" in update) {
+      // Map fieldKey → MondayClient property. Anything not listed here is
+      // an admin-only Supabase-mirrored field; the cache key doesn't carry
+      // it so there's nothing to patch.
+      const prop = SIMPLE_TO_CLIENT_PROP[update.fieldKey as SimpleFieldKey]
+      if (prop) (next as Record<string, unknown>)[prop] = update.value
+      // Cycle drives next-invoice — re-derive so the UI shows the linked
+      // value without waiting for a refresh.
+      if (update.fieldKey === "cycle_start_date") {
+        next.nextInvoiceDate = deriveInvoiceDate(update.value) ?? ""
+      }
+    } else if (STATUS_SET.has(update.fieldKey) && "label" in update) {
+      const prop = STATUS_TO_CLIENT_PROP[update.fieldKey as StatusFieldKey]
+      if (prop) (next as Record<string, unknown>)[prop] = update.label
+    } else if (PERSON_SET.has(update.fieldKey) && "personIds" in update) {
+      const prop = PERSON_TO_CLIENT_PROP[update.fieldKey as PersonFieldKey]
+      // personNames is the display value the cell renders. When the caller
+      // didn't supply it (legacy callers, scripted edits) we fall back to
+      // an empty string — the webhook will fill it in shortly anyway.
+      if (prop) (next as Record<string, unknown>)[prop] = (update.personNames ?? []).join(", ")
+    }
+    patched = next
+    return next
+  }
+
+  await writeCache("monday_boards", {
+    onboarding: cached.onboarding.map(applyTo),
+    current: cached.current.map(applyTo),
+  })
+
+  // Also patch the per-client item cache (fetchClientById's 5-minute key)
+  // so the slide-over's detail fetch picks up the new value immediately.
+  if (patched) {
+    try {
+      await writeCache(clientItemCacheKey(mondayItemId), patched)
+    } catch {
+      // Per-item cache miss is fine — the next fetchClientById call will
+      // re-populate it from Monday (post-consistency window).
+    }
+  }
+
+  return patched
+}
+
+// Maps from API fieldKey → MondayClient property. Anything that maps to
+// undefined here lives on the Supabase mirror only (not in the cached
+// MondayClient shape) and so doesn't need a cache patch.
+const SIMPLE_TO_CLIENT_PROP: Partial<Record<SimpleFieldKey, keyof MondayClient>> = {
+  company_name: "companyName",
+  first_name: "firstName",
+  ad_budget: "adBudget",
+  service_fee: "serviceFee",
+  meta_ad_account_id: "metaAdAccountId",
+  stripe_customer_id: "stripeCustomerId",
+  trengo_contact_id: "trengoContactId",
+  client_board_id: "clientBoardId",
+  google_drive_id: "googleDriveId",
+  kick_off_date: "kickOffDate",
+  cycle_start_date: "cycleStartDate",
+  next_invoice_date: "nextInvoiceDate",
+}
+
+const STATUS_TO_CLIENT_PROP: Partial<Record<StatusFieldKey, keyof MondayClient>> = {
+  campaign_status: "campaignStatus",
+  // `country`, `contact_channel`, `administration` aren't on the
+  // MondayClient shape today — they're parsed lazily where needed. If we
+  // add them later, mirror them here so the cache patch covers them too.
+}
+
+const PERSON_TO_CLIENT_PROP: Record<PersonFieldKey, keyof MondayClient> = {
+  account_manager: "accountManager",
+  campaign_manager: "campaignManager",
+  appointment_setter: "appointmentSetter",
 }
 
 /**
