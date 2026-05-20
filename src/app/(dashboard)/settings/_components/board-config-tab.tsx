@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { saveBoardConfig } from "../actions"
+import { MondayWebhooksCard } from "./monday-webhooks-card"
 
 type BoardConfig = {
   onboarding_board_id: string
@@ -194,6 +195,12 @@ export function BoardConfigTab({ config: initial, defaults }: Props) {
       <Button onClick={handleSave} disabled={saving}>
         {saving ? t("settings.board.action.saving", locale) : saved ? t("settings.board.action.saved", locale) : t("settings.board.action.save", locale)}
       </Button>
+
+      {/* Real-time sync — registers Monday webhooks against the boards
+          configured above so status / name / create / delete events push to
+          the Hub within seconds. Without this, the Hub relies on the daily
+          refresh-cache cron and can be up to 24h stale. */}
+      <MondayWebhooksCard />
     </div>
   )
 }

@@ -28,7 +28,7 @@ const SIMPLE_FIELDS = [
   "next_invoice_date",
 ] as const
 
-const STATUS_FIELDS = ["campaign_status", "country", "contact_channel"] as const
+const STATUS_FIELDS = ["campaign_status", "country", "contact_channel", "administration"] as const
 
 const PERSON_FIELDS = ["account_manager", "campaign_manager", "appointment_setter"] as const
 
@@ -92,6 +92,23 @@ export async function updateClientField(
     await setItemColumnValueRaw(boardType, mondayItemId, update.fieldKey, {
       label: update.label,
     })
+    // Auto-sync: when the campaign flips to "On hold" the Administration column
+    // should follow as "On hold" too — billing is paused, finance shouldn't be
+    // chasing a held client. The two columns share the same label by design
+    // so finance can scan either one. Single Monday write, same boardType, no
+    // extra refetch needed because the cache patch below picks both up.
+    if (update.fieldKey === "campaign_status" && update.label === "On hold") {
+      try {
+        await setItemColumnValueRaw(boardType, mondayItemId, "administration", {
+          label: "On hold",
+        })
+      } catch (e) {
+        console.error(
+          `[edit] on_hold → admin On-hold sync failed for ${mondayItemId}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
   } else if (PERSON_SET.has(update.fieldKey) && "personIds" in update) {
     await setItemColumnValueRaw(boardType, mondayItemId, update.fieldKey, {
       personsAndTeams: update.personIds.map((id) => ({ id, kind: "person" })),
@@ -100,19 +117,29 @@ export async function updateClientField(
     throw new Error(`Unsupported field update for "${update.fieldKey}"`)
   }
 
-  const refreshed = await fetchClientById(mondayItemId)
+  // Bypass cache on this read — we just wrote to Monday and the 5-minute
+  // cached value is stale by definition. Without the bypass, the cache patch
+  // below would re-poison `monday_boards` with the pre-edit snapshot and the
+  // status pill / cycle date would visibly snap back to the old value on
+  // `router.refresh()`.
+  const refreshed = await fetchClientById(mondayItemId, { bypassCache: true })
   if (refreshed) {
     await syncClientToSupabase(refreshed)
     // Patch the `monday_boards` cache so the next page render — kicked off by
     // the caller's router.refresh() — sees the new value instead of the
-    // pre-edit snapshot the cron last wrote. Without this, the optimistic
-    // pill in the edit cell visibly reverts to the old label until the next
-    // cron tick.
+    // pre-edit snapshot the cron last wrote.
     await patchMondayBoardsCache(refreshed)
   }
 }
 
-async function patchMondayBoardsCache(refreshed: MondayClient): Promise<void> {
+/**
+ * Patch a single client into the `monday_boards` cache so the next page
+ * render sees the up-to-date row without waiting for the daily cron tick.
+ * Exported so the Monday webhook receiver can call it when a column changes
+ * upstream (status edit in Monday, AM swap, etc.) — same code path the
+ * in-Hub edit uses, keeping both edit-paths byte-equivalent.
+ */
+export async function patchMondayBoardsCache(refreshed: MondayClient): Promise<void> {
   try {
     const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards")
     if (!cached) return
@@ -174,7 +201,7 @@ async function syncCycleToSiblings(
     try {
       await setItemColumnValue(sibBoardType, sibId, "cycle_start_date", cycleStartDate)
       await setItemColumnValue(sibBoardType, sibId, "next_invoice_date", derivedInvoiceDate)
-      const refreshed = await fetchClientById(sibId)
+      const refreshed = await fetchClientById(sibId, { bypassCache: true })
       if (refreshed) await syncClientToSupabase(refreshed)
     } catch (e) {
       console.error(

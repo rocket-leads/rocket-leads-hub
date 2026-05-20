@@ -98,6 +98,13 @@ export type MondayClient = {
   trengoContactId: string
   clientBoardId: string
   googleDriveId: string
+  /** Raw Monday status from the "Administration" column (`status_16` on the
+   *  current-clients board). Reflects finance's manual bookkeeping on whether
+   *  the invoice has been sent / paid / chased. Distinct from
+   *  `BillingSummary.status` (Stripe-derived) — finance considers Monday the
+   *  source of truth for the workflow state, not Stripe. Empty when unset
+   *  or when the column isn't on the row's board. */
+  administration: string
   /** Date the client's new billing cycle starts. Manual source of truth from
    *  Monday's `date3` column. `YYYY-MM-DD` or "" when unset. */
   cycleStartDate: string
@@ -262,6 +269,10 @@ function mapItem(
     trengoContactId: cv[columns.trengo_contact_id] ?? "",
     clientBoardId: cv[columns.client_board_id] ?? "",
     googleDriveId: cv[columns.google_drive_id] ?? "",
+    // Falls back to the literal `status_16` column ID — current-clients board
+    // uses it consistently and existing board_config rows may not have an
+    // `administration` mapping yet.
+    administration: cv[columns.administration] ?? cv["status_16"] ?? "",
     // Two-date model — see lib/clients/billing-cycle.ts for the relationship:
     //   cycleStartDate   = manual source of truth, Monday `date3`
     //   nextInvoiceDate  = derived (cycle - 7d), stored on Monday `date_mm3297df`
@@ -403,15 +414,28 @@ export const clientItemCacheKey = (itemId: string) => `monday_client_item:${item
  * the call instant in normal workflow; PATCH bursts the entry so client edits
  * never serve stale data.
  */
-export async function fetchClientById(itemId: string): Promise<MondayClient | null> {
+/**
+ * Pass `bypassCache: true` after any write to this same item — the 5-minute
+ * cached value is stale the moment Monday accepts the change, and serving it
+ * back to the caller (typically `updateClientField` patching the
+ * `monday_boards` cache) would re-poison the cache with pre-edit data.
+ */
+export async function fetchClientById(
+  itemId: string,
+  options: { bypassCache?: boolean } = {},
+): Promise<MondayClient | null> {
   return cachedFetch(
     clientItemCacheKey(itemId),
-    () => fetchClientByIdLive(itemId),
+    () => fetchClientByIdLive(itemId, { bypassCache: options.bypassCache }),
     5 * 60 * 1000,
+    { bypass: options.bypassCache },
   )
 }
 
-async function fetchClientByIdLive(itemId: string): Promise<MondayClient | null> {
+async function fetchClientByIdLive(
+  itemId: string,
+  options: { bypassCache?: boolean } = {},
+): Promise<MondayClient | null> {
   const [token, config] = await Promise.all([getToken(), getBoardConfig()])
   if (!config) throw new Error("Board config not found.")
 
@@ -429,7 +453,7 @@ async function fetchClientByIdLive(itemId: string): Promise<MondayClient | null>
     }
   `
 
-  const data = await gql(query, { itemId }, token)
+  const data = await gql(query, { itemId }, token, { bypassCache: options.bypassCache })
   const item = data.items?.[0]
   if (!item) return null
 
@@ -674,6 +698,17 @@ export function parseStripeCustomerIds(raw: string | null | undefined): string[]
  * Returns a brief reason string when the column key isn't mapped or the GraphQL
  * call fails; throws only on auth/config issues.
  */
+/**
+ * Hardcoded fallback Monday column IDs for logical keys that are stable
+ * across boards. Lets the write path succeed without forcing every existing
+ * `board_config` row to be re-saved through Settings — same pattern the read
+ * path uses inline in `mapItem` (e.g. `cv[columns.administration] ?? cv["status_16"]`).
+ * Keep entries in lockstep with the corresponding `mapItem` fallbacks.
+ */
+const KNOWN_COLUMN_FALLBACKS: Record<string, string> = {
+  administration: "status_16",
+}
+
 export async function setItemColumnValue(
   boardType: "onboarding" | "current",
   itemId: string,
@@ -685,7 +720,7 @@ export async function setItemColumnValue(
 
   const boardId = boardType === "onboarding" ? config.onboarding_board_id : config.current_board_id
   const columns = boardType === "onboarding" ? config.onboarding_columns : config.current_columns
-  const columnId = columns[columnKey]
+  const columnId = columns[columnKey] ?? KNOWN_COLUMN_FALLBACKS[columnKey]
   if (!columnId) throw new Error(`Column "${columnKey}" is not mapped for the ${boardType} board.`)
 
   const mutation = `
@@ -720,7 +755,7 @@ export async function setItemColumnValueRaw(
 
   const boardId = boardType === "onboarding" ? config.onboarding_board_id : config.current_board_id
   const columns = boardType === "onboarding" ? config.onboarding_columns : config.current_columns
-  const columnId = columns[columnKey]
+  const columnId = columns[columnKey] ?? KNOWN_COLUMN_FALLBACKS[columnKey]
   if (!columnId) throw new Error(`Column "${columnKey}" is not mapped for the ${boardType} board.`)
 
   const mutation = `
@@ -812,4 +847,120 @@ export async function fetchClientItemUpdates(
     text: u.text_body ?? "",
     createdAt: u.created_at ?? "",
   }))
+}
+
+// ─── Webhook management ─────────────────────────────────────────────────
+// Used by the admin tool to register / inspect / remove Monday webhooks for
+// real-time client-mutation sync (status edits, name changes, create, delete).
+// Endpoint: /api/webhooks/monday — see that route for what each event drives.
+
+/** Event types Monday webhooks support that we currently consume.
+ *  Adding a new one here is a no-op until the receiver knows what to do with
+ *  it; the registration helpers below + the receiver are the matched pair. */
+export type MondayWebhookEvent =
+  | "change_column_value"
+  | "change_name"
+  | "create_pulse"
+  | "item_deleted"
+  | "create_update"
+
+export type MondayWebhook = {
+  id: string
+  boardId: string
+  event: MondayWebhookEvent
+  url: string | null
+}
+
+/**
+ * Register a single webhook on a Monday board. Idempotency is the CALLER's
+ * problem — Monday happily creates duplicates if you ask twice. The admin
+ * registration endpoint reconciles by listing first and only creating the
+ * missing (boardId, event) pairs.
+ *
+ * Returns the new webhook's Monday id.
+ */
+export async function createMondayWebhook(
+  boardId: string,
+  event: MondayWebhookEvent,
+  url: string,
+): Promise<string> {
+  const token = await getToken()
+  const query = `mutation ($boardId: ID!, $url: String!, $event: WebhookEventType!) {
+    create_webhook(board_id: $boardId, url: $url, event: $event) {
+      id
+    }
+  }`
+  const res = await fetch(MONDAY_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: token },
+    body: JSON.stringify({ query, variables: { boardId, url, event } }),
+  })
+  const json = (await res.json()) as {
+    data?: { create_webhook?: { id?: string } }
+    errors?: Array<{ message: string }>
+  }
+  if (json.errors?.length) {
+    throw new Error(`create_webhook failed: ${json.errors.map((e) => e.message).join("; ")}`)
+  }
+  const id = json.data?.create_webhook?.id
+  if (!id) throw new Error("create_webhook returned no id")
+  return id
+}
+
+/**
+ * List existing webhooks on a board so the admin tool can show what's already
+ * registered + skip duplicates on re-registration. Returned `url` may be null
+ * — Monday doesn't always echo it back depending on app permissions.
+ */
+export async function listMondayWebhooks(boardId: string): Promise<MondayWebhook[]> {
+  const token = await getToken()
+  const query = `query ($boardId: ID!) {
+    webhooks(board_id: $boardId) { id board_id event config }
+  }`
+  const res = await fetch(MONDAY_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: token },
+    body: JSON.stringify({ query, variables: { boardId } }),
+  })
+  const json = (await res.json()) as {
+    data?: { webhooks?: Array<{ id: string; board_id: string; event: string; config?: string }> }
+    errors?: Array<{ message: string }>
+  }
+  if (json.errors?.length) {
+    throw new Error(`webhooks query failed: ${json.errors.map((e) => e.message).join("; ")}`)
+  }
+  const list = json.data?.webhooks ?? []
+  return list.map((w) => {
+    let url: string | null = null
+    if (w.config) {
+      try {
+        const parsed = JSON.parse(w.config) as { url?: string }
+        url = parsed.url ?? null
+      } catch {
+        // Some webhook configs aren't JSON — leave url null.
+      }
+    }
+    return {
+      id: String(w.id),
+      boardId: String(w.board_id),
+      event: w.event as MondayWebhookEvent,
+      url,
+    }
+  })
+}
+
+/** Remove a webhook by Monday's webhook id. Used by the admin tool to clean
+ *  up dangling webhooks (URL changed, env rotated, board retired). */
+export async function deleteMondayWebhook(webhookId: string): Promise<void> {
+  const token = await getToken()
+  const query = `mutation ($id: ID!) { delete_webhook(id: $id) { id } }`
+  const res = await fetch(MONDAY_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: token },
+    body: JSON.stringify({ query, variables: { id: webhookId } }),
+  })
+  const json = (await res.json()) as { errors?: Array<{ message: string }> }
+  if (json.errors?.length) {
+    throw new Error(`delete_webhook failed: ${json.errors.map((e) => e.message).join("; ")}`)
+  }
 }

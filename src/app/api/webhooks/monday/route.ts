@@ -3,6 +3,10 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { classifyInboxMessage } from "@/lib/inbox/classify"
 import { stripHtml } from "@/lib/html"
 import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
+import { fetchClientById, type MondayClient } from "@/lib/integrations/monday"
+import { patchMondayBoardsCache } from "@/lib/clients/edit"
+import { syncClientToSupabase } from "@/lib/clients/sync"
+import { readCache, writeCache } from "@/lib/cache"
 
 export const maxDuration = 60
 
@@ -47,6 +51,11 @@ type MondayEventPayload = {
     userName?: string
     body?: string
     textBody?: string
+    /** Column id whose value changed (only on `change_column_value` /
+     *  `change_status_column_value` / `change_name` events). */
+    columnId?: string
+    /** Item name on `update_name` / `create_pulse` events. */
+    pulseName?: string
     value?: { text?: string; body?: string }
     triggerTime?: string
   }
@@ -161,11 +170,6 @@ export async function POST(req: NextRequest) {
   const event = (payload as MondayEventPayload).event
   if (!event) return NextResponse.json({ ok: true, ignored: "no event" })
 
-  // We only care about new updates on client items.
-  if (event.type !== "create_update") {
-    return NextResponse.json({ ok: true, ignored: event.type })
-  }
-
   const supabase = await createAdminClient()
   const boardConfig = await getBoardConfig(supabase)
   if (!boardConfig) {
@@ -176,8 +180,50 @@ export async function POST(req: NextRequest) {
   const onboardingBoard = String(boardConfig.onboarding_board_id ?? "")
   const currentBoard = String(boardConfig.current_board_id ?? "")
   if (eventBoardId !== onboardingBoard && eventBoardId !== currentBoard) {
-    // Update on some other board (lead board, internal board, etc.) — out of scope.
+    // Event on some other board (lead board, internal board, etc.) — out of scope.
     return NextResponse.json({ ok: true, ignored: "non-client board" })
+  }
+
+  // Real-time cache sync for client mutations on the onboarding / current
+  // boards. Without this, status / AM / phase / cycle edits made directly in
+  // Monday don't reach the Hub until the next daily refresh-cache cron tick —
+  // /watchlist + /clients display stale rows for up to 24h. The webhook
+  // patches the `monday_boards` cache + Supabase mirror surgically so the
+  // next page render reflects the change within a couple of seconds.
+  //
+  // Event types we handle:
+  //   - change_column_value / change_status_column_value / change_name —
+  //     a column on an existing client was edited (status, AM/CM, phase,
+  //     cycle date, etc.). Re-fetch the full client and replace the cached
+  //     row in-place.
+  //   - update_name — the item's name (= client name) was renamed in Monday.
+  //   - create_pulse — a brand-new client row landed on one of the boards.
+  //   - item_deleted / archive_pulse — client removed. We strip them from
+  //     the cache so they stop showing on the Hub immediately.
+  //
+  // `create_update` (existing path below) is the inbox / @-mention flow and
+  // continues to its specialised handler. Anything else is acknowledged but
+  // not acted on.
+  const SYNC_EVENT_TYPES = new Set([
+    "change_column_value",
+    "change_status_column_value",
+    "change_name",
+    "update_name",
+    "create_pulse",
+  ])
+  const DELETE_EVENT_TYPES = new Set(["item_deleted", "archive_pulse"])
+
+  if (event.type && SYNC_EVENT_TYPES.has(event.type)) {
+    return await handleClientSync(event)
+  }
+  if (event.type && DELETE_EVENT_TYPES.has(event.type)) {
+    return await handleClientDelete(event)
+  }
+
+  // From here down, only the inbox-update path remains. Anything else gets
+  // a benign ack so Monday doesn't retry forever.
+  if (event.type !== "create_update") {
+    return NextResponse.json({ ok: true, ignored: event.type })
   }
 
   const pulseId = String(event.pulseId ?? "")
@@ -324,4 +370,92 @@ export async function POST(req: NextRequest) {
     pulseId,
     boardId: eventBoardId,
   })
+}
+
+/**
+ * Real-time client sync — fires on column / name / create events. Re-fetches
+ * the canonical client snapshot from Monday (bypasses the 5-min item cache
+ * because the value we want IS the change that just landed), patches the
+ * `monday_boards` cache in-place so the watchlist + clients table reflect it
+ * within the next page render, and mirrors the row into Supabase.
+ *
+ * Errors are surfaced in the response (status 500) so Monday will retry;
+ * cache + Supabase writes are best-effort independently — a partial success
+ * on one shouldn't block the other.
+ */
+async function handleClientSync(
+  event: NonNullable<MondayEventPayload["event"]>,
+): Promise<NextResponse> {
+  const pulseId = String(event.pulseId ?? "")
+  if (!pulseId) {
+    return NextResponse.json({ ok: false, error: "missing pulseId" }, { status: 400 })
+  }
+
+  let refreshed
+  try {
+    refreshed = await fetchClientById(pulseId, { bypassCache: true })
+  } catch (e) {
+    console.error("[monday-webhook] fetchClientById failed:", pulseId, e instanceof Error ? e.message : e)
+    return NextResponse.json({ ok: false, error: "fetch failed" }, { status: 500 })
+  }
+  if (!refreshed) {
+    // Item is gone from Monday between the event firing and our fetch —
+    // treat it as a delete so the cache strips the row instead of holding a
+    // ghost entry.
+    return await handleClientDelete(event)
+  }
+
+  // Two writes in parallel. patchMondayBoardsCache already swallows its own
+  // errors (best-effort), syncClientToSupabase will throw on failure — we
+  // catch + log here so a Supabase blip doesn't 500 the webhook (Monday
+  // would retry endlessly and worsen the situation).
+  await Promise.allSettled([
+    patchMondayBoardsCache(refreshed),
+    syncClientToSupabase(refreshed).catch((e) => {
+      console.error("[monday-webhook] supabase sync failed:", pulseId, e instanceof Error ? e.message : e)
+    }),
+  ])
+
+  return NextResponse.json({
+    ok: true,
+    event: event.type,
+    pulseId,
+    columnId: event.columnId ?? null,
+    // Surface a tiny snapshot in the response so the Monday "test webhook"
+    // tool gives a readable confirmation.
+    name: refreshed.name,
+    status: refreshed.campaignStatus,
+  })
+}
+
+/**
+ * Strip a deleted / archived client from the `monday_boards` cache so it
+ * stops showing on the Hub before the next cron tick rewrites the cache.
+ * Supabase soft-delete is out of scope here — leaving the row historical
+ * for reporting; only the cache (which drives current-state UI) is touched.
+ */
+async function handleClientDelete(
+  event: NonNullable<MondayEventPayload["event"]>,
+): Promise<NextResponse> {
+  const pulseId = String(event.pulseId ?? "")
+  if (!pulseId) {
+    return NextResponse.json({ ok: false, error: "missing pulseId" }, { status: 400 })
+  }
+
+  try {
+    type Boards = { onboarding: MondayClient[]; current: MondayClient[] }
+    const cached = await readCache<Boards>("monday_boards")
+    if (!cached) {
+      return NextResponse.json({ ok: true, deleted: pulseId, cacheMiss: true })
+    }
+    const strip = (list: MondayClient[]) => list.filter((c) => c.mondayItemId !== pulseId)
+    await writeCache("monday_boards", {
+      onboarding: strip(cached.onboarding),
+      current: strip(cached.current),
+    })
+    return NextResponse.json({ ok: true, deleted: pulseId })
+  } catch (e) {
+    console.error("[monday-webhook] cache strip failed:", pulseId, e instanceof Error ? e.message : e)
+    return NextResponse.json({ ok: false, error: "cache strip failed" }, { status: 500 })
+  }
 }
