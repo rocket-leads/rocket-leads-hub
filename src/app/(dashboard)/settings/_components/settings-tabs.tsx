@@ -26,6 +26,7 @@ type Props = {
   currentUserId: string
   mondayPeople: string[]
   fathomTeamMembers: React.ComponentProps<typeof UsersTab>["fathomTeamMembers"]
+  trengoChannels: React.ComponentProps<typeof UsersTab>["trengoChannels"]
   clients: MondayClient[]
   inboxAutomationRules: InboxAutomationRules
   notifications: {
@@ -45,6 +46,7 @@ export function SettingsTabs({
   currentUserId,
   mondayPeople,
   fathomTeamMembers,
+  trengoChannels,
   clients,
   inboxAutomationRules,
   notifications,
@@ -80,6 +82,7 @@ export function SettingsTabs({
           currentUserId={currentUserId}
           mondayPeople={mondayPeople}
           fathomTeamMembers={fathomTeamMembers}
+          trengoChannels={trengoChannels}
         />
       )}
       {activeTab === "notifications" && (

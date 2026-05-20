@@ -132,6 +132,14 @@ export function isEmailChannelType(type: string | null | undefined): boolean {
   return t === "email" || t.includes("mail") || t === "imap" || t === "outlook"
 }
 
+/** True for any Trengo channel whose `type` describes a WhatsApp channel
+ *  (`whatsapp`, `wa_*`, etc.). Centralised so the Settings → Users
+ *  dropdown and any future WA-bootstrap helper agree on what counts. */
+export function isWhatsAppChannelType(type: string | null | undefined): boolean {
+  const t = (type ?? "").toLowerCase()
+  return t.includes("whatsapp") || t.startsWith("wa_") || t === "wa"
+}
+
 /**
  * Return the workspace's first Trengo email channel. Used to bootstrap a
  * new outbound email ticket when the contact has no existing email

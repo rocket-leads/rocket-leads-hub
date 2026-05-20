@@ -196,6 +196,50 @@ export async function updateUserWhatsappTemplate(userId: string, templateName: s
   revalidatePath("/settings")
 }
 
+/**
+ * Per-user PRIMARY outbound email channel. The send-client-update route
+ * resolves AM from Monday → Hub user, then reads this column to decide
+ * which Trengo email channel the outbound mail leaves through. Null
+ * = unset → send pipeline hard-fails with `am_email_channel_missing`.
+ *
+ * Admin-managed centrally here in Settings → Users so freelance AMs
+ * don't each have to configure their own /account separately.
+ */
+export async function updateUserPrimaryEmailChannel(
+  userId: string,
+  channelId: number | null,
+) {
+  await requireAdmin()
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from("users")
+    .update({ primary_email_channel_id: channelId })
+    .eq("id", userId)
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
+/**
+ * Per-user PRIMARY outbound WhatsApp channel. Mirrors
+ * `updateUserPrimaryEmailChannel`. Currently only used by a future
+ * WA-bootstrap send flow — the existing WA path inherits the channel
+ * from the open ticket — but stored centrally so we don't need another
+ * migration when that flow ships.
+ */
+export async function updateUserPrimaryWaChannel(
+  userId: string,
+  channelId: number | null,
+) {
+  await requireAdmin()
+  const supabase = await createAdminClient()
+  const { error } = await supabase
+    .from("users")
+    .update({ primary_wa_channel_id: channelId })
+    .eq("id", userId)
+  if (error) throw new Error(error.message)
+  revalidatePath("/settings")
+}
+
 export async function updateUserName(userId: string, name: string | null) {
   await requireAdmin()
   const trimmed = name?.trim() || null

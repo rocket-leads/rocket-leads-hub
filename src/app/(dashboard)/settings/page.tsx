@@ -12,6 +12,11 @@ import { PageHeader } from "@/components/ui/page-header"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { getSlackChannels } from "@/lib/slack"
 import { fetchFathomTeamMembers, type FathomTeamMember } from "@/lib/integrations/fathom"
+import {
+  fetchTrengoChannels,
+  isEmailChannelType,
+  isWhatsAppChannelType,
+} from "@/lib/integrations/trengo"
 import { cachedFetch, readCache } from "@/lib/cache"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
@@ -34,7 +39,7 @@ export default async function SettingsPage() {
   ] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
-    supabase.from("users").select("id, email, name, role, slack_user_id, fathom_email, whatsapp_template_name, created_at").order("created_at"),
+    supabase.from("users").select("id, email, name, role, slack_user_id, fathom_email, whatsapp_template_name, primary_email_channel_id, primary_wa_channel_id, created_at").order("created_at"),
     supabase.from("user_column_mappings").select("user_id, monday_column_role, monday_person_name"),
     supabase.from("closer_slack_mappings").select("monday_person_name, slack_user_id"),
     supabase.from("settings").select("value").eq("key", "inbox_automation_rules").maybeSingle(),
@@ -54,7 +59,7 @@ export default async function SettingsPage() {
   // on Monday's targets-board pagination.
   const ACTIVE_STATUSES = new Set(["Kick off", "In development", "Live"])
 
-  const [boards, fathomTeamMembers] = await Promise.all([
+  const [boards, fathomTeamMembers, trengoChannels] = await Promise.all([
     (async () => {
       try {
         const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
@@ -72,7 +77,22 @@ export default async function SettingsPage() {
       () => fetchFathomTeamMembers(),
       24 * 60 * 60 * 1000,
     ).catch(() => [] as FathomTeamMember[]),
+    fetchTrengoChannels().catch(() => []),
   ])
+
+  // Strip the full channel record to just the fields the UsersTab dropdowns
+  // need — keeps SSR payload + client bundle lean and decoupled from any
+  // Trengo type churn. Pre-tag with isEmail / isWa so the UI doesn't need
+  // to re-classify on every render.
+  const trengoChannelOptions = trengoChannels
+    .filter((c) => isEmailChannelType(c.type) || isWhatsAppChannelType(c.type))
+    .map((c) => ({
+      id: c.id,
+      name: c.name ?? c.title ?? c.email_address ?? c.phone ?? `#${c.id}`,
+      type: c.type,
+      isEmail: isEmailChannelType(c.type),
+      isWa: isWhatsAppChannelType(c.type),
+    }))
 
   // Closer-names list starts empty; NotificationsTab hydrates it via
   // useQuery on mount. Keeping the variable here so the rest of the page
@@ -165,6 +185,8 @@ export default async function SettingsPage() {
           slack_user_id: u.slack_user_id ?? null,
           fathom_email: u.fathom_email ?? null,
           whatsapp_template_name: u.whatsapp_template_name ?? null,
+          primary_email_channel_id: u.primary_email_channel_id ?? null,
+          primary_wa_channel_id: u.primary_wa_channel_id ?? null,
           monday_role: mappingByUser.get(u.id)?.role ?? null,
           monday_person_name: mappingByUser.get(u.id)?.name ?? null,
           created_at: u.created_at,
@@ -191,6 +213,7 @@ export default async function SettingsPage() {
             currentUserId={session.user.id}
             mondayPeople={mondayPeople}
             fathomTeamMembers={fathomTeamMembers}
+            trengoChannels={trengoChannelOptions}
             clients={allClients}
             inboxAutomationRules={inboxAutomationRules}
             notifications={{

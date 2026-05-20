@@ -20,6 +20,8 @@ import {
   setUserMondayMapping,
   updateUserFathomEmail,
   updateUserName,
+  updateUserPrimaryEmailChannel,
+  updateUserPrimaryWaChannel,
   updateUserRole,
   updateUserSlackId,
   updateUserWhatsappTemplate,
@@ -40,6 +42,8 @@ type User = {
   slack_user_id: string | null
   fathom_email: string | null
   whatsapp_template_name: string | null
+  primary_email_channel_id: number | null
+  primary_wa_channel_id: number | null
   monday_role: MondayRole | null
   monday_person_name: string | null
   created_at: string
@@ -50,17 +54,26 @@ type FathomTeamMember = {
   email: string
 }
 
+type TrengoChannelOption = {
+  id: number
+  name: string
+  type: string
+  isEmail: boolean
+  isWa: boolean
+}
+
 type Props = {
   users: User[]
   currentUserId: string
   mondayPeople: string[]
   fathomTeamMembers: FathomTeamMember[]
+  trengoChannels: TrengoChannelOption[]
 }
 
 const NONE = "__none__"
 const UNSET_LABEL = "—"
 
-export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTeamMembers }: Props) {
+export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTeamMembers, trengoChannels }: Props) {
   const locale = useLocale()
   const [users, setUsers] = useState(initial)
   const [error, setError] = useState<string | null>(null)
@@ -85,6 +98,11 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
   const [fathomSaving, setFathomSaving] = useState<Record<string, boolean>>({})
   const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({})
   const [nameSaving, setNameSaving] = useState<Record<string, boolean>>({})
+  const [emailChannelSaving, setEmailChannelSaving] = useState<Record<string, boolean>>({})
+  const [waChannelSaving, setWaChannelSaving] = useState<Record<string, boolean>>({})
+
+  const emailChannelOptions = trengoChannels.filter((c) => c.isEmail)
+  const waChannelOptions = trengoChannels.filter((c) => c.isWa)
 
   async function handleRoleChange(userId: string, role: Role) {
     setUsers((u) => u.map((user) => (user.id === userId ? { ...user, role } : user)))
@@ -146,6 +164,36 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
       console.error(e)
     } finally {
       setFathomSaving((s) => ({ ...s, [userId]: false }))
+    }
+  }
+
+  async function handleEmailChannelChange(userId: string, value: string) {
+    const newId = value === NONE ? null : Number(value)
+    setUsers((u) =>
+      u.map((user) => (user.id === userId ? { ...user, primary_email_channel_id: newId } : user)),
+    )
+    setEmailChannelSaving((s) => ({ ...s, [userId]: true }))
+    try {
+      await updateUserPrimaryEmailChannel(userId, newId)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setEmailChannelSaving((s) => ({ ...s, [userId]: false }))
+    }
+  }
+
+  async function handleWaChannelChange(userId: string, value: string) {
+    const newId = value === NONE ? null : Number(value)
+    setUsers((u) =>
+      u.map((user) => (user.id === userId ? { ...user, primary_wa_channel_id: newId } : user)),
+    )
+    setWaChannelSaving((s) => ({ ...s, [userId]: true }))
+    try {
+      await updateUserPrimaryWaChannel(userId, newId)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setWaChannelSaving((s) => ({ ...s, [userId]: false }))
     }
   }
 
@@ -249,6 +297,8 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
           slack_user_id: inviteSlackId.trim() || null,
           fathom_email: null,
           whatsapp_template_name: null,
+          primary_email_channel_id: null,
+          primary_wa_channel_id: null,
           monday_role: inviteMondayRole,
           monday_person_name: inviteMondayName,
           created_at: new Date().toISOString(),
@@ -410,6 +460,12 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
               <TableHead className="w-[200px]">{t("settings.users.col.slack_id", locale)}</TableHead>
               <TableHead className="w-[200px]" title={t("settings.users.row.wa_tooltip", locale)}>
                 {t("settings.users.col.wa_template", locale)}
+              </TableHead>
+              <TableHead className="w-[210px]" title="Trengo email channel outbound client-updates leave through for this user's clients.">
+                Email channel
+              </TableHead>
+              <TableHead className="w-[210px]" title="Trengo WhatsApp channel reserved for future bootstrap sends.">
+                WhatsApp channel
               </TableHead>
               <TableHead className="w-[220px]">{t("settings.users.col.fathom_email", locale)}</TableHead>
               <TableHead className="w-[100px]">{t("settings.users.col.joined", locale)}</TableHead>
@@ -596,6 +652,68 @@ export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTe
                           <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                         )}
                       </div>
+                    </div>
+                  </TableCell>
+
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Select
+                        value={user.primary_email_channel_id?.toString() ?? NONE}
+                        onValueChange={(v) => handleEmailChannelChange(user.id, v ?? NONE)}
+                        disabled={emailChannelOptions.length === 0}
+                      >
+                        <SelectTrigger className="h-8 w-[200px]">
+                          <SelectValue
+                            placeholder={
+                              emailChannelOptions.length === 0
+                                ? "No email channels"
+                                : "Pick email channel"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE}>—</SelectItem>
+                          {emailChannelOptions.map((c) => (
+                            <SelectItem key={c.id} value={c.id.toString()}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {emailChannelSaving[user.id] && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                  </TableCell>
+
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      <Select
+                        value={user.primary_wa_channel_id?.toString() ?? NONE}
+                        onValueChange={(v) => handleWaChannelChange(user.id, v ?? NONE)}
+                        disabled={waChannelOptions.length === 0}
+                      >
+                        <SelectTrigger className="h-8 w-[200px]">
+                          <SelectValue
+                            placeholder={
+                              waChannelOptions.length === 0
+                                ? "No WA channels"
+                                : "Pick WhatsApp channel"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE}>—</SelectItem>
+                          {waChannelOptions.map((c) => (
+                            <SelectItem key={c.id} value={c.id.toString()}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {waChannelSaving[user.id] && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                      )}
                     </div>
                   </TableCell>
 
