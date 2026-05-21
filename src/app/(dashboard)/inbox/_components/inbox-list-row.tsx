@@ -100,9 +100,11 @@ export function InboxListRow({
       }}
       data-inbox-row-id={item.id}
       className={cn(
-        "group w-full text-left rounded-lg border border-border/40 bg-card hover:border-border hover:bg-muted/30 transition-all px-4 py-3 cursor-pointer",
-        isUnread && "ring-1 ring-primary/30 bg-primary/[0.02]",
-        selected && "ring-2 ring-primary/60 bg-primary/[0.05] border-primary/40",
+        "group relative w-full text-left rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all px-5 py-4 cursor-pointer overflow-hidden",
+        // Unread state: left accent bar instead of a subtle full-row ring.
+        // Bar is rendered via ::before below so it survives the card radius.
+        isUnread && "bg-primary/[0.03]",
+        selected && "ring-2 ring-primary/60 bg-primary/[0.06] border-primary/40",
         // Keyboard focus ring sits ABOVE the unread/selected rings visually
         // (last in the cn order). Distinct violet ring so it doesn't collide
         // with the cyan unread tint.
@@ -110,6 +112,12 @@ export function InboxListRow({
         isCompleted && "opacity-60",
       )}
     >
+      {isUnread && (
+        <span
+          aria-hidden
+          className="absolute left-0 top-0 bottom-0 w-1 bg-primary"
+        />
+      )}
       <div className="flex items-start gap-3">
         {/* Bulk-select checkbox for tasks. Hover-revealed by default, pinned
             visible when this row is selected so the AM can see what's in their
@@ -127,7 +135,9 @@ export function InboxListRow({
               "h-5 w-5 shrink-0 rounded border-2 inline-flex items-center justify-center mt-0.5 transition-all",
               selected
                 ? "bg-primary border-primary text-primary-foreground"
-                : "border-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:border-foreground hover:bg-muted/40",
+                // Always visible but muted by default so the affordance is
+                // discoverable without hover. Sharpens on hover/focus.
+                : "border-muted-foreground/40 opacity-40 group-hover:opacity-100 hover:border-foreground hover:bg-muted/40",
             )}
             title={selected ? "Deselecteer" : "Selecteer voor bulk-actie"}
           >
@@ -160,7 +170,7 @@ export function InboxListRow({
               <RowTitle
                 title={item.title}
                 statusClass={cn(
-                  "text-sm truncate",
+                  "text-[15px] truncate",
                   isUnread ? "font-semibold" : "font-medium",
                   item.status === "done" || item.status === "cancelled"
                     ? "line-through text-muted-foreground"
@@ -172,7 +182,7 @@ export function InboxListRow({
             ) : (
               <span
                 className={cn(
-                  "text-sm truncate",
+                  "text-[15px] truncate",
                   isUnread ? "font-semibold" : "font-medium",
                   item.status === "done" || item.status === "cancelled" ? "line-through text-muted-foreground" : "",
                   item.status === "read" && "text-muted-foreground",
@@ -182,12 +192,12 @@ export function InboxListRow({
               </span>
             )}
             {taskStatus && (
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${taskStatus.cls}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${taskStatus.cls}`}>
                 {taskStatus.label}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground/70 flex-wrap">
+          <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground/80 flex-wrap">
             {showClient && (
               <>
                 {item.isUnlinked ? (
@@ -259,7 +269,7 @@ export function InboxListRow({
             }}
             title="Convert to task"
             aria-label="Convert to task"
-            className="opacity-0 group-hover:opacity-100 transition-opacity h-9 px-2.5 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 text-xs font-medium text-muted-foreground hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-500/30 shrink-0"
+            className="opacity-60 group-hover:opacity-100 transition-opacity h-9 px-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 text-xs font-medium text-muted-foreground hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-500/30 shrink-0"
           >
             <ListTodo className="h-3.5 w-3.5" />
             Make task

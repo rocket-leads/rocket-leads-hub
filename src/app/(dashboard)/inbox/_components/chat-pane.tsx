@@ -26,6 +26,7 @@ import {
   Clock3,
   ShieldAlert,
   ChevronDown,
+  ListTodo,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -39,6 +40,12 @@ type Props = {
   /** Reserved for future features (assignee labels, @-mention autocomplete).
    *  Accepted now so callers can wire it pre-emptively. */
   users?: InboxUser[]
+  /** Opens the parent composer pre-filled when the user hits "Make task" on
+   *  a message bubble. Passes through the linked client id + a title preview
+   *  derived from the message body so the AM only has to confirm. Optional
+   *  — when omitted, the Make-task affordance is hidden (e.g. per-client
+   *  views that don't have a composer wired up yet). */
+  onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
 }
 
 type MarkAction = "mark_read" | "mark_unread"
@@ -62,7 +69,7 @@ type ChatFilter = "all" | "unread" | "read"
  * thread list scrolls independently of the page chrome — fixes the prior
  * h-[640px] which left half the page empty.
  */
-export function ChatPane({ scope, users }: Props) {
+export function ChatPane({ scope, users, onMakeTaskFromMessage }: Props) {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<ChatThreadSummary | null>(null)
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
@@ -237,7 +244,7 @@ export function ChatPane({ scope, users }: Props) {
           onMarkThread={markThread}
           scope={scope}
         />
-        <ThreadView thread={selected} onReplied={refresh} users={users} />
+        <ThreadView thread={selected} onReplied={refresh} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} />
       </div>
 
       {selectedKeys.size > 0 && (
@@ -603,10 +610,12 @@ function ThreadView({
   thread,
   onReplied,
   users,
+  onMakeTaskFromMessage,
 }: {
   thread: ChatThreadSummary | null
   onReplied: () => void
   users?: InboxUser[]
+  onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
 }) {
   if (!thread) {
     return (
@@ -616,7 +625,7 @@ function ThreadView({
     )
   }
 
-  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} />
+  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} />
 }
 
 type ComposerMode = "reply" | "internal"
@@ -656,10 +665,12 @@ function ThreadMessages({
   thread,
   onReplied,
   users,
+  onMakeTaskFromMessage,
 }: {
   thread: ChatThreadSummary
   onReplied: () => void
   users?: InboxUser[]
+  onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
 }) {
   const queryClient = useQueryClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -1234,7 +1245,26 @@ function ThreadMessages({
             No messages in this thread.
           </p>
         ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+          messages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              msg={msg}
+              onMakeTask={
+                onMakeTaskFromMessage && thread.clientId
+                  ? () => {
+                      const preview = msg.body.trim().replace(/\s+/g, " ")
+                      const title =
+                        preview.length > 80 ? preview.slice(0, 77) + "…" : preview || "Follow up"
+                      onMakeTaskFromMessage({
+                        clientId: thread.clientId!,
+                        title,
+                        body: preview.length > 80 ? msg.body : undefined,
+                      })
+                    }
+                  : undefined
+              }
+            />
+          ))
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -1308,7 +1338,7 @@ function ThreadMessages({
           {needsConnect && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 mb-2 text-xs">
               Connect your {needsConnect} account first.{" "}
-              <Link href="/account" className="underline font-medium">
+              <Link href="/settings?tab=me" className="underline font-medium">
                 Go to My Account
               </Link>
             </div>
@@ -2300,14 +2330,29 @@ function AttachmentChip({
   )
 }
 
-function MessageBubble({ msg }: { msg: ChatMessage }) {
+function MessageBubble({
+  msg,
+  onMakeTask,
+}: {
+  msg: ChatMessage
+  /** When defined, a hover-revealed "Make task" button appears next to the
+   *  bubble. Closes the Phase D loop: any inbox message can become an
+   *  actionable task in one click. Hidden when the thread isn't linked to
+   *  a client yet (we'd have no place to attach the task to). */
+  onMakeTask?: () => void
+}) {
   const isUs = msg.authorKind === "rl_team"
   const isInternal = msg.isInternal === true
   // Internal notes get a distinct yellow tint regardless of author —
   // signals "team-only annotation, not part of the customer-visible
   // conversation." Same convention Trengo uses on their own UI.
   return (
-    <div className={cn("flex gap-2", isUs ? "justify-end" : "justify-start")}>
+    <div className={cn("group flex items-center gap-2", isUs ? "justify-end" : "justify-start")}>
+      {/* On outgoing bubbles the make-task button sits on the LEFT of the
+          bubble so it doesn't shove off-screen on narrow viewports. */}
+      {isUs && onMakeTask && (
+        <MakeTaskInlineButton onClick={onMakeTask} />
+      )}
       <div
         className={cn(
           "max-w-[75%] rounded-2xl px-3 py-2",
@@ -2340,7 +2385,28 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
         </div>
         <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.body}</p>
       </div>
+      {!isUs && onMakeTask && (
+        <MakeTaskInlineButton onClick={onMakeTask} />
+      )}
     </div>
+  )
+}
+
+/** Hover-revealed pill button next to each chat bubble. Pre-fills the
+ *  composer with this message's body so the AM only has to confirm + pick
+ *  a due date. Subtle by default; sharpens on hover/focus. */
+function MakeTaskInlineButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Make task from this message"
+      aria-label="Make task from this message"
+      className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity h-7 px-2 inline-flex items-center gap-1 rounded-md border border-border bg-popover text-[11px] font-medium text-muted-foreground hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-500/40 shadow-sm shrink-0"
+    >
+      <ListTodo className="h-3.5 w-3.5" />
+      Task
+    </button>
   )
 }
 
@@ -2424,11 +2490,10 @@ function fmtTime(iso: string): string {
  *  hook in src/lib). Falls back to "all" if storage is blocked or the
  *  persisted JSON is corrupt. */
 function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) => void] {
-  const key = `inbox.chatFilter.${scope}`
-  // Default to "unread" so opening the Client Inbox lands on the action
-  // surface — matches the Updates tab default. AMs almost always want
-  // "what needs my attention" first, not "everything ever".
-  const [value, setValue] = useState<ChatFilter>("unread")
+  // v2 key — default flipped from "unread" to "all" so every inbox subtab
+  // opens on the same baseline view. Bumping the key resets returning users.
+  const key = `inbox.chatFilter.v2.${scope}`
+  const [value, setValue] = useState<ChatFilter>("all")
   const hydratedRef = useRef(false)
 
   useEffect(() => {

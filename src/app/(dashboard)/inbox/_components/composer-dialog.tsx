@@ -22,10 +22,17 @@ type Props = {
   lockedClient?: InboxClientOption
   currentUserId: string
   onCreated: () => void
+  /** When the composer is opened from "Make task" on a chat message, the
+   *  caller pre-fills the client + title so the user only confirms. Cleared
+   *  every fresh open with no defaults (so re-opening from the toolbar
+   *  doesn't keep the chat-derived state). */
+  defaultClientId?: string
+  defaultTitle?: string
+  defaultBody?: string
 }
 
 const SELECT_CLS =
-  "h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+  "h-10 w-full rounded-lg border border-input bg-transparent px-3 text-[15px] dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
@@ -40,13 +47,16 @@ export function ComposerDialog({
   lockedClient,
   currentUserId,
   onCreated,
+  defaultClientId,
+  defaultTitle,
+  defaultBody,
 }: Props) {
   const locale = useLocale()
   const [kind, setKind] = useState<InboxKind>(defaultKind)
-  const [clientId, setClientId] = useState(lockedClient?.id ?? "")
+  const [clientId, setClientId] = useState(lockedClient?.id ?? defaultClientId ?? "")
   const [assigneeId, setAssigneeId] = useState("")
-  const [title, setTitle] = useState("")
-  const [body, setBody] = useState("")
+  const [title, setTitle] = useState(defaultTitle ?? "")
+  const [body, setBody] = useState(defaultBody ?? "")
   const [priority, setPriority] = useState<InboxPriority>("normal")
   const [dueDate, setDueDate] = useState<string>(todayIso())
   const [submitting, setSubmitting] = useState(false)
@@ -54,21 +64,24 @@ export function ComposerDialog({
 
   // Reset form on open / when defaults change. Due date defaults to today on
   // every fresh open so the AM doesn't have to type/click — Roy's directive.
+  // Pre-fill from chat-derived defaults when present (e.g. "Make task" on a
+  // Trengo message); otherwise reset to empty so the standalone toolbar
+  // open doesn't inherit stale chat state.
   useEffect(() => {
     if (!open) return
     setKind(defaultKind)
-    setClientId(lockedClient?.id ?? "")
+    setClientId(lockedClient?.id ?? defaultClientId ?? "")
     setAssigneeId(
       defaultKind === "task"
         ? currentUserId
         : users.find((u) => u.id !== currentUserId)?.id ?? currentUserId,
     )
-    setTitle("")
-    setBody("")
+    setTitle(defaultTitle ?? "")
+    setBody(defaultBody ?? "")
     setPriority("normal")
     setDueDate(todayIso())
     setError(null)
-  }, [open, defaultKind, lockedClient?.id, currentUserId, users])
+  }, [open, defaultKind, lockedClient?.id, currentUserId, users, defaultClientId, defaultTitle, defaultBody])
 
   async function submit() {
     if (!clientId) {
@@ -117,23 +130,27 @@ export function ComposerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{kind === "task" ? t("inbox.composer.title.task", locale) : t("inbox.composer.title.update", locale)}</DialogTitle>
+          <DialogTitle className="text-xl">
+            {kind === "task" ? t("inbox.composer.title.task", locale) : t("inbox.composer.title.update", locale)}
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
-          {/* Kind switcher */}
-          <div className="inline-flex rounded-lg border border-border/40 p-0.5 text-xs">
+        <div className="space-y-5">
+          {/* Kind switcher — promoted to full-weight segmented control so the
+              user immediately sees they're choosing between a one-way Update
+              and an actionable Task. */}
+          <div className="inline-flex rounded-lg border border-border p-1 text-sm bg-muted/40">
             {(["update", "task"] as const).map((k) => (
               <button
                 key={k}
                 type="button"
                 onClick={() => setKind(k)}
                 className={cn(
-                  "px-3 py-1 rounded-md transition-colors",
+                  "px-4 py-1.5 rounded-md transition-colors font-medium",
                   kind === k
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -142,33 +159,41 @@ export function ComposerDialog({
             ))}
           </div>
 
-          {!lockedClient && (
-            <div className="space-y-1.5">
-              <Label htmlFor="client">{t("inbox.composer.field.client", locale)}</Label>
-              <ClientCombobox
-                clients={clients}
-                value={clientId}
-                onChange={setClientId}
-                locale={locale}
-              />
-            </div>
-          )}
+          {/* Client + Assignee live on the same row when both are needed —
+              they're the two "who is this about / who acts" knobs and belong
+              together. When the dialog is locked to a client, assignee
+              stretches full-width on its own row. */}
+          <div className={cn("grid gap-4", !lockedClient ? "grid-cols-2" : "grid-cols-1")}>
+            {!lockedClient && (
+              <div className="space-y-1.5">
+                <Label htmlFor="client">{t("inbox.composer.field.client", locale)}</Label>
+                <ClientCombobox
+                  clients={clients}
+                  value={clientId}
+                  onChange={setClientId}
+                  locale={locale}
+                />
+              </div>
+            )}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="assignee">{kind === "update" ? t("inbox.composer.field.to", locale) : t("inbox.composer.field.assignee", locale)}</Label>
-            <select
-              id="assignee"
-              value={assigneeId}
-              onChange={(e) => setAssigneeId(e.target.value)}
-              className={SELECT_CLS}
-            >
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name ?? u.email}
-                  {u.id === currentUserId ? t("inbox.composer.you_suffix", locale) : ""}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-1.5">
+              <Label htmlFor="assignee">
+                {kind === "update" ? t("inbox.composer.field.to", locale) : t("inbox.composer.field.assignee", locale)}
+              </Label>
+              <select
+                id="assignee"
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                className={SELECT_CLS}
+              >
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name ?? u.email}
+                    {u.id === currentUserId ? t("inbox.composer.you_suffix", locale) : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="space-y-1.5">
@@ -178,6 +203,7 @@ export function ComposerDialog({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={kind === "task" ? t("inbox.composer.placeholder.title_task", locale) : t("inbox.composer.placeholder.title_update", locale)}
+              className="h-10 text-[15px]"
             />
           </div>
 
@@ -187,14 +213,14 @@ export function ComposerDialog({
               id="body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={4}
-              className="w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none"
+              rows={5}
+              className="w-full rounded-lg border border-input bg-transparent px-3 py-2 text-[15px] dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none"
               placeholder={t("inbox.composer.placeholder.body", locale)}
             />
           </div>
 
           {kind === "task" && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label htmlFor="priority">{t("inbox.composer.field.priority", locale)}</Label>
                 <select
@@ -216,12 +242,13 @@ export function ComposerDialog({
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
                   required
+                  className="h-10 text-[15px]"
                 />
               </div>
             </div>
           )}
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
 
         <DialogFooter>
@@ -304,7 +331,7 @@ function ClientCombobox({
   return (
     <div ref={containerRef} className="relative">
       <div className="relative">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 pointer-events-none" />
         <input
           type="text"
           value={query}
@@ -336,7 +363,7 @@ function ClientCombobox({
               setOpen(false)
             }
           }}
-          className={cn(SELECT_CLS, "pl-8 pr-8")}
+          className={cn(SELECT_CLS, "pl-9 pr-9")}
         />
         {value && (
           <button

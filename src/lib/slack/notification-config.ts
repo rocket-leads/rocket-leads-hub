@@ -5,6 +5,7 @@ export type NotificationKey =
   | "team_watchlist"
   | "personal_sales"
   | "team_sales"
+  | "personal_inbox"
 
 export type NotificationConfig = {
   enabled: boolean
@@ -23,6 +24,7 @@ const DEFAULTS: AllNotificationConfigs = {
   team_watchlist: { enabled: true, hour: DEFAULT_HOUR, template: null },
   personal_sales: { enabled: true, hour: DEFAULT_HOUR, template: null },
   team_sales: { enabled: true, hour: DEFAULT_HOUR, template: null },
+  personal_inbox: { enabled: true, hour: 8, template: null },
 }
 
 const KEYS: NotificationKey[] = [
@@ -30,6 +32,7 @@ const KEYS: NotificationKey[] = [
   "team_watchlist",
   "personal_sales",
   "team_sales",
+  "personal_inbox",
 ]
 
 function normaliseHour(value: unknown): number {
@@ -137,6 +140,13 @@ export const DEFAULT_TEMPLATES: Record<NotificationKey, string> = {
 {{mtd_lines}}
 
 {{leaderboard_section}}`,
+
+  personal_inbox: `Goedemorgen {{first_name}}.
+
+*Op je bord vandaag*
+{{summary_line}}
+
+{{overdue_section}}{{today_section}}{{updates_section}}{{chats_section}}{{empty_section}}{{open_link}}`,
 }
 
 // ─── Variable reference (used by the Settings UI) ──────────────────────────
@@ -187,6 +197,20 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "leaderboard_section", description: "Closer leaderboard block (top 3 by deals, MTD-active closers only), or empty." },
     { name: "action_items_section", description: ":rotating_light: *Empty call outcomes* header + per-closer breakdown ('2 bij Sebastiaan en 1 bij Anel — checken in Monday'). Empty when all outcomes are logged." },
     { name: "open_link", description: "Slack link to open the Targets page." },
+  ],
+  personal_inbox: [
+    { name: "first_name", description: "Hub user's first name (split on space)." },
+    { name: "summary_line", description: "One-line tally: '3 te laat · 2 vandaag · 4 nieuwe updates · 1 nieuw chatbericht'." },
+    { name: "overdue_count", description: "Just the overdue task count." },
+    { name: "today_count", description: "Just the due-today task count." },
+    { name: "updates_count", description: "Just the unread updates count." },
+    { name: "chats_count", description: "Just the unread chat threads count." },
+    { name: "overdue_section", description: "Header + up to 5 overdue task lines, or empty." },
+    { name: "today_section", description: "Header + up to 5 due-today task lines, or empty." },
+    { name: "updates_section", description: "Header + up to 5 unread update lines, or empty." },
+    { name: "chats_section", description: "Header + up to 5 unread chat thread lines, or empty." },
+    { name: "empty_section", description: "Celebratory 'inbox zero' line when everything is empty, or empty." },
+    { name: "open_link", description: "Slack link to open the Hub inbox." },
   ],
 }
 

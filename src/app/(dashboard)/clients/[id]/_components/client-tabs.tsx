@@ -97,7 +97,11 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
   // and coming back lands on the same sub-tab.
   const [activeGroup, setActiveGroup] = useState<TopGroup>("performance")
   const [performanceView, setPerformanceView] = useState<PerformanceView>("overview")
-  const [conversationsView, setConversationsView] = useState<ConversationsView>("inbox")
+  // Default to Activity (the cross-source chronological feed) so the AM/CM
+  // lands on "what's happened with this client" first; switching to Inbox is
+  // one click away when they want to act. Per Roy's plan: surface the
+  // activity view as the primary CRM-style canvas for one client.
+  const [conversationsView, setConversationsView] = useState<ConversationsView>("timeline")
   // Default to Billing when the user has billing access (the more frequently
   // touched view); fall back to Settings when they don't.
   const [adminView, setAdminView] = useState<AdminView>(
@@ -222,8 +226,8 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
         <div className="space-y-4">
           <SegmentedTabs<ConversationsView>
             items={[
-              { id: "inbox", label: t("client.tab.sub.inbox", locale) },
               { id: "timeline", label: t("client.tab.sub.timeline", locale) },
+              { id: "inbox", label: t("client.tab.sub.inbox", locale) },
             ]}
             value={conversationsView}
             onChange={setConversationsView}

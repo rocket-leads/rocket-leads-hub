@@ -179,9 +179,9 @@ export function TimelineTab({ mondayItemId }: Props) {
               key={chip.id}
               type="button"
               onClick={() => setSourceFilter(chip.id)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ring-1 ring-inset ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ring-1 ring-inset ${
                 active
-                  ? "bg-primary/10 text-primary ring-primary/20"
+                  ? "bg-primary/10 text-primary ring-primary/30"
                   : "bg-muted/50 text-muted-foreground ring-border hover:bg-muted"
               }`}
             >
@@ -208,39 +208,42 @@ export function TimelineTab({ mondayItemId }: Props) {
       ) : (
         grouped.map(([day, dayEntries]) => (
           <div key={day} className="space-y-2">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70 px-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/80 px-1">
               {day}
             </p>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {dayEntries.map((entry) => {
                 const Icon = iconFor(entry)
                 return (
-                  <Card key={entry.id} className="transition-colors hover:bg-muted/30">
-                    <CardContent className="flex items-start gap-3 p-3">
-                      <div className="shrink-0 mt-0.5 h-7 w-7 rounded-full bg-muted/60 flex items-center justify-center">
-                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                  <div
+                    key={entry.id}
+                    className="rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all px-5 py-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="shrink-0 mt-0.5 h-9 w-9 rounded-full bg-muted/60 flex items-center justify-center">
+                        <Icon className="h-[18px] w-[18px] text-muted-foreground" />
                       </div>
-                      <div className="min-w-0 flex-1 space-y-1">
+                      <div className="min-w-0 flex-1 space-y-1.5">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ring-1 ring-inset ${SOURCE_BADGE_CLASS[entry.source]}`}
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wide ring-1 ring-inset ${SOURCE_BADGE_CLASS[entry.source]}`}
                           >
                             {t(SOURCE_LABEL_KEY[entry.source], locale)}
                           </span>
                           {entry.scope === "internal" && (
-                            <span className="text-[10px] text-muted-foreground/70">{t("client.timeline.scope.internal", locale)}</span>
+                            <span className="text-xs text-muted-foreground/80">{t("client.timeline.scope.internal", locale)}</span>
                           )}
                           {entry.author && (
-                            <span className="text-[11px] text-muted-foreground truncate">{entry.author}</span>
+                            <span className="text-xs text-muted-foreground truncate">{entry.author}</span>
                           )}
-                          <span className="ml-auto inline-flex items-center gap-1 text-[10.5px] text-muted-foreground/70 shrink-0">
+                          <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground/80 shrink-0">
                             <Clock className="h-3 w-3" />
                             {formatDateTime(entry.occurred_at, locale)}
                           </span>
                         </div>
-                        <p className="text-sm font-medium leading-snug truncate">{entry.title}</p>
+                        <p className="text-[15px] font-medium leading-snug truncate">{entry.title}</p>
                         {entry.body && (
-                          <p className="text-[12.5px] text-muted-foreground/90 leading-relaxed line-clamp-3">
+                          <p className="text-sm text-muted-foreground/90 leading-relaxed line-clamp-3">
                             {entry.body}
                           </p>
                         )}
@@ -249,15 +252,15 @@ export function TimelineTab({ mondayItemId }: Props) {
                             href={entry.link_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                           >
                             <ExternalLink className="h-3 w-3" />
                             {t("client.timeline.open_link", locale)}
                           </a>
                         )}
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 )
               })}
             </div>

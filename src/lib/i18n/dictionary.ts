@@ -26,7 +26,7 @@ export const DICTIONARY = {
   // ─── Sidebar nav ──────────────────────────────────────────────────────
   "nav.home": { nl: "Home", en: "Home" },
   "nav.watch_list": { nl: "Watch List", en: "Watch List" }, // brand term
-  "nav.clients": { nl: "Klanten", en: "Clients" },
+  "nav.clients": { nl: "Alle Clients", en: "All Clients" },
   "nav.inbox": { nl: "Inbox", en: "Inbox" },
   "nav.meetings": { nl: "Meetings", en: "Meetings" },
   "nav.pedro": { nl: "Pedro", en: "Pedro" },
@@ -71,25 +71,25 @@ export const DICTIONARY = {
   "home.updated_prefix": { nl: "Bijgewerkt {ago}", en: "Updated {ago}" },
 
   // Today's meetings block — surfaces Fathom calls happening today.
-  "home.block.meetings.title": { nl: "Vandaag's meetings", en: "Today's meetings" },
+  "home.block.meetings.title": { nl: "Vandaag's meetings", en: "Today's Meetings" },
   "home.block.meetings.empty": { nl: "Geen meetings vandaag.", en: "No meetings today." },
   "home.block.meetings.cta": { nl: "Open Meetings", en: "Open Meetings" },
   "home.block.meetings.in": { nl: "over {mins} min", en: "in {mins} min" },
   "home.block.meetings.now": { nl: "Nu", en: "Now" },
   "home.block.meetings.passed": { nl: "Eerder vandaag", en: "Earlier today" },
 
-  "home.kpi.action.label": { nl: "Actie nodig", en: "Action needed" },
+  "home.kpi.action.label": { nl: "Actie nodig", en: "Action Needed" },
   "home.kpi.action.eq_yesterday": { nl: "= gisteren", en: "= yesterday" },
   "home.kpi.action.delta_pos": { nl: "+{n} t.o.v. gisteren", en: "+{n} vs yesterday" },
   "home.kpi.action.delta_neg": { nl: "{n} t.o.v. gisteren", en: "{n} vs yesterday" },
   "home.kpi.action.no_scope": { nl: "Geen actieve klanten", en: "No live clients in scope" },
-  "home.kpi.inbox.label": { nl: "Inbox voor jou", en: "Your inbox" },
+  "home.kpi.inbox.label": { nl: "Inbox voor jou", en: "Your Inbox" },
   "home.kpi.inbox.zero": { nl: "Inbox zero", en: "Inbox zero" },
   "home.kpi.inbox.subtitle": { nl: "taken + ongelezen updates", en: "tasks + unread updates" },
-  "home.kpi.health.label": { nl: "Gezondheidsscore", en: "Health score" },
+  "home.kpi.health.label": { nl: "Gezondheidsscore", en: "Health Score" },
   "home.kpi.health.target": { nl: "doel ≥ 75%", en: "target ≥ 75%" },
   "home.kpi.health.no_scope": { nl: "Geen actieve klanten", en: "No live clients in scope" },
-  "home.kpi.mrr.label": { nl: "Team MRR · Deze maand", en: "Team MRR · This month" },
+  "home.kpi.mrr.label": { nl: "Team MRR · Deze maand", en: "Team MRR · This Month" },
   "home.kpi.mrr.no_agreements": { nl: "Geen facturatie deze maand", en: "No invoicing this month" },
   "home.kpi.mrr.live_one": { nl: "{n} klant deze maand", en: "{n} client this month" },
   "home.kpi.mrr.live_many": { nl: "{n} klanten deze maand", en: "{n} clients this month" },
@@ -97,14 +97,14 @@ export const DICTIONARY = {
   "home.block.action.title": { nl: "Actie nodig", en: "Action Needed" },
   "home.block.action.empty": { nl: "Niks urgents — top of watch list ↓", en: "Nothing urgent — top of watch list ↓" },
   "home.block.action.cta": { nl: "Open Watch List", en: "Open Watch List" },
-  "home.block.inbox.title": { nl: "Inbox voor jou", en: "Your inbox" },
+  "home.block.inbox.title": { nl: "Inbox voor jou", en: "Your Inbox" },
   "home.block.inbox.empty": { nl: "Inbox zero — niks toegewezen.", en: "Inbox zero — nothing assigned." },
   "home.block.inbox.cta": { nl: "Open Inbox", en: "Open Inbox" },
-  "home.block.billing.title": { nl: "Openstaande facturen", en: "Open invoices" },
-  "home.block.billing.total_open": { nl: "Totaal open", en: "Total open" },
+  "home.block.billing.title": { nl: "Openstaande facturen", en: "Open Invoices" },
+  "home.block.billing.total_open": { nl: "Totaal open", en: "Total Open" },
   "home.block.billing.empty": { nl: "Geen openstaande facturen.", en: "No open invoices." },
   "home.block.billing.cta": { nl: "Open Facturatie", en: "Open Billing" },
-  "home.block.pedro.title": { nl: "Pedro voorstellen", en: "Pedro proposals" },
+  "home.block.pedro.title": { nl: "Pedro voorstellen", en: "Pedro Proposals" },
   "home.block.pedro.empty": { nl: "Niks te reviewen.", en: "Nothing to review." },
   "home.block.pedro.cta": { nl: "Open Pedro", en: "Open Pedro" },
 
@@ -367,16 +367,26 @@ export const DICTIONARY = {
   "inbox.action.shortcuts": { nl: "Toetsenbord shortcuts (?)", en: "Keyboard shortcuts (?)" },
 
   // Main tabs
+  "inbox.tab.now": { nl: "Nu", en: "Now" },
   "inbox.tab.tasks": { nl: "Taken", en: "Tasks" },
   "inbox.tab.updates": { nl: "Updates", en: "Updates" },
   "inbox.tab.client_inbox": { nl: "Klanten Inbox", en: "Client Inbox" },
   "inbox.tab.meetings": { nl: "Meetings", en: "Meetings" },
+
+  // Now-feed section labels + empty state
+  "inbox.now.section.overdue": { nl: "Te laat", en: "Overdue" },
+  "inbox.now.section.today": { nl: "Vandaag", en: "Due today" },
+  "inbox.now.section.updates": { nl: "Nieuwe updates", en: "Unread updates" },
+  "inbox.now.section.chats": { nl: "Nieuwe berichten", en: "Unread chats" },
+  "inbox.now.empty": { nl: "Alles bij. Geen urgente items op dit moment.", en: "All caught up. No urgent items right now." },
+  "inbox.now.chat.open": { nl: "Open in Klanten Inbox", en: "Open in Client Inbox" },
 
   // Task status filters
   "inbox.task.filter.open": { nl: "Open", en: "Open" },
   "inbox.task.filter.in_progress": { nl: "Bezig", en: "In progress" },
   "inbox.task.filter.done": { nl: "Klaar", en: "Done" },
   "inbox.task.filter.all": { nl: "Alles", en: "All" },
+  "inbox.task.filter.snoozed": { nl: "Snoozed", en: "Snoozed" },
 
   // Update status filters
   "inbox.update.filter.all": { nl: "Alle updates", en: "All updates" },
@@ -493,7 +503,7 @@ export const DICTIONARY = {
   "client.tab.sub.overview": { nl: "Overzicht", en: "Overview" },
   "client.tab.sub.campaigns": { nl: "Campagnes", en: "Campaigns" },
   "client.tab.sub.inbox": { nl: "Inbox", en: "Inbox" },
-  "client.tab.sub.timeline": { nl: "Tijdlijn", en: "Timeline" },
+  "client.tab.sub.timeline": { nl: "Activiteit", en: "Activity" },
   "client.tab.sub.billing": { nl: "Facturatie", en: "Billing" },
   "client.tab.sub.settings": { nl: "Instellingen", en: "Settings" },
   "client.tab.refresh_title": { nl: "Data verversen en analyse opnieuw genereren", en: "Refresh data and regenerate analysis" },

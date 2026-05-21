@@ -24,6 +24,9 @@ import {
   Search,
   Trash2,
   UserCog,
+  BellOff,
+  Sparkles,
+  Activity,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -34,6 +37,7 @@ import { InboxListRow, type RowAction } from "./inbox-list-row"
 import { ComposerDialog } from "./composer-dialog"
 import { ItemDetailDialog } from "./item-detail-dialog"
 import { ChatPane } from "./chat-pane"
+import type { ChatThreadSummary } from "@/lib/inbox/fetchers"
 import { CommunicationTab } from "@/app/(dashboard)/clients/[id]/_components/communication-tab"
 import { MeetingsTab } from "@/app/(dashboard)/clients/[id]/_components/meetings-tab"
 import { useLocale } from "@/lib/i18n/client"
@@ -70,18 +74,17 @@ type Props = {
   lockedClient?: LockedClient
 }
 
-type MainTab = "tasks" | "updates" | "client-inbox" | "meetings"
+type MainTab = "now" | "tasks" | "updates" | "client-inbox" | "meetings"
 type UpdateFilter = "all" | UpdateStatus
 /**
- * Task filters intentionally cover only the active lifecycle: All / Open /
- * In progress / Done. Snoozed and Cancelled are treated as ARCHIVED state —
- * they don't get their own tab. Snoozed tasks come back automatically when
- * their snooze expires; Cancelled tasks are out for good (Cancel is the
- * "soft delete with audit trail" path; Bulk Delete is the hard remove).
- * Per Roy's call: "snooze items hoeven geen tab te zijn — die komen vanzelf
- * weer terug. Cancelled is gearchiveerd."
+ * Task filters cover the active lifecycle (All / Open / In progress / Done)
+ * plus a dedicated Snoozed tab so parked items remain visible to the user.
+ * Without it, snoozed tasks vanish from every view until the snooze clock
+ * expires — which felt like things were silently dropped. Cancelled tasks
+ * remain archived (no tab); Cancel is the "soft delete with audit trail"
+ * path and Bulk Delete is the hard remove.
  */
-type TaskFilter = "all" | "open" | "in_progress" | "done"
+type TaskFilter = "all" | "open" | "in_progress" | "done" | "snoozed"
 
 /** Secondary filter strip on Tasks: narrow by source. "all" shows everything;
  *  the chip strip below TASK_FILTERS only renders chips for sources that
@@ -114,6 +117,7 @@ const TASK_FILTER_SHAPE = [
   { id: "open" as const, labelKey: "inbox.task.filter.open" as const, icon: Circle },
   { id: "in_progress" as const, labelKey: "inbox.task.filter.in_progress" as const, icon: Clock },
   { id: "done" as const, labelKey: "inbox.task.filter.done" as const, icon: CircleCheck },
+  { id: "snoozed" as const, labelKey: "inbox.task.filter.snoozed" as const, icon: BellOff },
   { id: "all" as const, labelKey: "inbox.task.filter.all" as const, icon: LayoutList },
 ]
 
@@ -124,8 +128,8 @@ const ALL_UPDATE_STATUSES: UpdateStatus[] = ["unread", "read"]
 // when the need actually shows up.
 const VISIBLE_TASK_STATUSES: TaskStatus[] = ["open", "in_progress", "done"]
 
-const DEFAULT_UPDATE_FILTER: UpdateFilter = "unread"
-const DEFAULT_TASK_FILTER: TaskFilter = "open"
+const DEFAULT_UPDATE_FILTER: UpdateFilter = "all"
+const DEFAULT_TASK_FILTER: TaskFilter = "all"
 
 export function InboxView({
   currentUser,
@@ -150,20 +154,25 @@ export function InboxView({
   )
 
   // activeTab intentionally NOT persisted — opening the inbox should land
-  // on Tasks ("what do I need to do") regardless of where the user was
-  // last time. Everything else is sticky so a reload doesn't blow away
-  // the filter context the AM was working from.
-  const [activeTab, setActiveTab] = useState<MainTab>("tasks")
+  // on Now ("what needs my attention right now") regardless of where the
+  // user was last time. Per-client inbox skips the Now tab and goes
+  // straight to Tasks (Now is global-only — see mainTabs below). Everything
+  // else is sticky so a reload doesn't blow away the filter context the AM
+  // was working from.
+  const [activeTab, setActiveTab] = useState<MainTab>(lockedClient ? "tasks" : "now")
   const [assignedToMe, setAssignedToMe] = usePersistedState(
     "inbox.assignedToMe",
     true,
   )
   const [updateFilter, setUpdateFilter] = usePersistedState<UpdateFilter>(
-    "inbox.updateFilter",
+    // v2 key — defaults shifted from "unread"/"open" to "all". Bumping the
+    // key resets returning users so they land on the new default instead of
+    // a stale persisted value from before the change.
+    "inbox.updateFilter.v2",
     DEFAULT_UPDATE_FILTER,
   )
   const [taskFilter, setTaskFilter] = usePersistedState<TaskFilter>(
-    "inbox.taskFilter",
+    "inbox.taskFilter.v2",
     DEFAULT_TASK_FILTER,
   )
   const [taskSourceFilter, setTaskSourceFilter] = usePersistedState<TaskSourceFilter>(
@@ -176,6 +185,14 @@ export function InboxView({
   )
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerKind, setComposerKind] = useState<"update" | "task">("update")
+  // Chat-derived prefill — set when the user clicks "Make task" on a chat
+  // message bubble. Cleared whenever the composer is reopened from the
+  // toolbar so a standard "New task" doesn't inherit stale chat context.
+  const [composerPrefill, setComposerPrefill] = useState<{
+    clientId?: string
+    title?: string
+    body?: string
+  }>({})
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null)
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -187,13 +204,17 @@ export function InboxView({
   )
   const taskStatuses = useMemo(() => {
     if (taskFilter === "all") return VISIBLE_TASK_STATUSES
+    // Snoozed view: tasks are still "open" or "in_progress" status-wise, the
+    // snoozed_until clock is what hides them. Surface both so the user sees
+    // everything they've parked, regardless of which workflow stage.
+    if (taskFilter === "snoozed") return ["open", "in_progress"] as TaskStatus[]
     return [taskFilter]
   }, [taskFilter])
 
-  // Snoozed tasks are archived from every visible filter — they wake up
-  // automatically when their snooze expires and pop back into Open. There's
-  // no tab to surface them while they're parked, by design.
-  const taskSnoozeMode: "active" = "active"
+  // When the user opens the Snoozed filter we flip the API param from
+  // "active" (default — hide snoozed) to "snoozed" (show only snoozed).
+  const taskSnoozeMode: "active" | "snoozed" =
+    taskFilter === "snoozed" ? "snoozed" : "active"
 
   const buildUrl = (kind: "update" | "task", statuses: string[]) => {
     const params = new URLSearchParams({ kind })
@@ -261,6 +282,24 @@ export function InboxView({
 
   function openComposer(kind: "update" | "task") {
     setComposerKind(kind)
+    setComposerPrefill({})
+    setComposerOpen(true)
+  }
+
+  /** Open the composer pre-filled from a chat message bubble. The thread's
+   *  linked client id becomes the locked client, and a truncated message
+   *  body becomes the task title — AM only confirms + sets a due date. */
+  function openComposerFromChat({
+    clientId,
+    title,
+    body,
+  }: {
+    clientId: string
+    title: string
+    body?: string
+  }) {
+    setComposerKind("task")
+    setComposerPrefill({ clientId, title, body })
     setComposerOpen(true)
   }
 
@@ -558,6 +597,12 @@ export function InboxView({
   // expose human-to-human DMs, so we replace that workflow in Phase E
   // (Hub-native team chat) instead of half-syncing it.
   const tabBadge = badgeQuery.data
+  // Now-tab count = the "what needs my attention right now" summary that
+  // matches the feed's content: unread updates + open tasks + unread chats
+  // (badge endpoint already aggregates these for the sidebar pill).
+  const nowCount = tabBadge
+    ? tabBadge.unreadUpdates + tabBadge.openTasks + tabBadge.unreadChats
+    : undefined
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
         { id: "tasks", label: t("inbox.tab.tasks", locale), icon: ListTodo, count: tasks.length },
@@ -568,6 +613,12 @@ export function InboxView({
         { id: "meetings", label: t("inbox.tab.meetings", locale), icon: Video },
       ]
     : [
+        {
+          id: "now",
+          label: t("inbox.tab.now", locale),
+          icon: Sparkles,
+          count: nowCount,
+        },
         {
           id: "tasks",
           label: t("inbox.tab.tasks", locale),
@@ -593,11 +644,15 @@ export function InboxView({
 
   const isChatTab = activeTab === "client-inbox"
   const isClientOnlyTab = activeTab === "meetings" || (!!lockedClient && activeTab === "client-inbox")
+  // Now tab is read-only triage — it shows what needs attention but doesn't
+  // own the composer/search affordances those belong to (those live in the
+  // tabs that author their own items).
+  const isNowTab = activeTab === "now"
 
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between gap-4">
-        <h1 className="font-heading text-[24px] font-semibold tracking-tight leading-tight text-foreground">{t("inbox.title", locale)}</h1>
+        <h1 className="font-heading text-[28px] font-semibold tracking-tight leading-tight text-foreground">{t("inbox.title", locale)}</h1>
         <div className="flex items-center gap-2">
           {!isChatTab && !isClientOnlyTab && (
             <div className="relative">
@@ -637,7 +692,7 @@ export function InboxView({
               {assignedToMe ? t("inbox.filter.assigned_to_me", locale) : t("inbox.filter.all", locale)}
             </Button>
           )}
-          {!isChatTab && !isClientOnlyTab && (
+          {!isChatTab && !isClientOnlyTab && !isNowTab && (
             <Button size="sm" onClick={() => openComposer(activeTab === "tasks" ? "task" : "update")}>
               <Plus className="h-4 w-4" />
               {activeTab === "tasks" ? t("inbox.action.new_task", locale) : t("inbox.action.new_update", locale)}
@@ -660,6 +715,15 @@ export function InboxView({
       <TopTabs<MainTab> tabs={mainTabs} value={activeTab} onChange={setActiveTab} />
 
       <div className="space-y-4">
+        {activeTab === "now" && !lockedClient && (
+          <NowFeed
+            currentUserId={currentUser.id}
+            users={users}
+            onOpenItem={(item) => setDetailItem(item)}
+            onGoToChats={() => setActiveTab("client-inbox")}
+          />
+        )}
+
         {activeTab === "tasks" && (
           <>
             <TopTabs<TaskFilter>
@@ -675,6 +739,7 @@ export function InboxView({
             />
             <QuickAddTaskBar
               clients={clients}
+              users={users}
               lockedClient={lockedClient}
               currentUserId={currentUser.id}
               onCreated={refreshAll}
@@ -884,7 +949,11 @@ export function InboxView({
               trengoContactId={lockedClient.trengoContactId ?? null}
             />
           ) : (
-            <ChatPane scope="external" users={users} />
+            <ChatPane
+              scope="external"
+              users={users}
+              onMakeTaskFromMessage={openComposerFromChat}
+            />
           )
         )}
 
@@ -901,6 +970,9 @@ export function InboxView({
         clients={clients}
         lockedClient={lockedClient}
         currentUserId={currentUser.id}
+        defaultClientId={composerPrefill.clientId}
+        defaultTitle={composerPrefill.title}
+        defaultBody={composerPrefill.body}
         onCreated={() => {
           setComposerOpen(false)
           refreshAll()
@@ -1105,10 +1177,13 @@ function usePersistedState<T>(key: string, initial: T): [T, (v: T) => void] {
 
 function EmptyState({ text, onCreate }: { text: string; onCreate?: () => void }) {
   return (
-    <div className="border border-dashed border-border/40 rounded-lg p-8 text-center">
-      <p className="text-sm text-muted-foreground">{text}</p>
+    <div className="border border-dashed border-border/60 rounded-lg p-12 text-center bg-card/30">
+      <div className="mx-auto h-12 w-12 rounded-full bg-muted/50 flex items-center justify-center mb-3">
+        <InboxIcon className="h-6 w-6 text-muted-foreground/60" />
+      </div>
+      <p className="text-base text-muted-foreground">{text}</p>
       {onCreate && (
-        <Button size="sm" className="mt-4" onClick={onCreate}>
+        <Button size="sm" className="mt-5" onClick={onCreate}>
           <Plus className="h-4 w-4" />
           Create one
         </Button>
@@ -1138,17 +1213,22 @@ function EmptyState({ text, onCreate }: { text: string; onCreate?: () => void })
  */
 function QuickAddTaskBar({
   clients,
+  users,
   lockedClient,
   currentUserId,
   onCreated,
 }: {
   clients: InboxClientOption[]
+  users: InboxUser[]
   lockedClient?: InboxClientOption
   currentUserId: string
   onCreated: () => void
 }) {
   const [title, setTitle] = useState("")
   const [clientId, setClientId] = useState<string>(lockedClient?.id ?? "")
+  // Tasks default to "me" — AMs typically jot down their own to-dos via
+  // QuickAdd and reassign via the composer or row action when needed.
+  const [assigneeId, setAssigneeId] = useState<string>(currentUserId)
   const [dueDate, setDueDate] = useState<string>(() =>
     new Date().toISOString().slice(0, 10),
   )
@@ -1185,7 +1265,7 @@ function QuickAddTaskBar({
         body: JSON.stringify({
           kind: "task",
           clientId,
-          assigneeId: currentUserId,
+          assigneeId,
           title: trimmed,
           dueDate,
         }),
@@ -1208,9 +1288,9 @@ function QuickAddTaskBar({
   const showClient = !lockedClient
 
   return (
-    <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
+    <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
       <div className="flex items-center gap-2">
-        <Plus className="h-4 w-4 text-muted-foreground/70 shrink-0" />
+        <Plus className="h-5 w-5 text-muted-foreground/70 shrink-0" />
         <input
           ref={titleRef}
           type="text"
@@ -1229,10 +1309,10 @@ function QuickAddTaskBar({
           }}
           placeholder="Add a task — type and Enter"
           disabled={submitting}
-          className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
+          className="flex-1 bg-transparent text-[15px] placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
         />
         {showClient && (
-          <div ref={clientWrapRef} className="w-48 shrink-0">
+          <div ref={clientWrapRef} className="w-44 shrink-0">
             <QuickClientPicker
               clients={clients}
               value={clientId}
@@ -1243,24 +1323,36 @@ function QuickAddTaskBar({
             />
           </div>
         )}
+        <select
+          value={assigneeId}
+          onChange={(e) => setAssigneeId(e.target.value)}
+          className="h-9 rounded-md border border-input bg-background px-2.5 text-xs max-w-[150px] shrink-0"
+          title="Assignee"
+        >
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.id === currentUserId ? "Me" : u.name ?? u.email}
+            </option>
+          ))}
+        </select>
         <input
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
-          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+          className="h-9 rounded-md border border-input bg-background px-2.5 text-xs"
           title="Due date"
         />
         <Button
           size="sm"
           onClick={submit}
           disabled={submitting || !title.trim()}
-          className="shrink-0"
+          className="shrink-0 h-9"
         >
           Add
         </Button>
       </div>
       {error && (
-        <p className="text-[11px] text-red-400 mt-1.5 ml-6">{error}</p>
+        <p className="text-xs text-red-400 mt-1.5 ml-7">{error}</p>
       )}
     </div>
   )
@@ -1356,9 +1448,9 @@ function QuickAddUpdateBar({
   const showClient = !lockedClient
 
   return (
-    <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2">
+    <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
       <div className="flex items-center gap-2">
-        <Plus className="h-4 w-4 text-muted-foreground/70 shrink-0" />
+        <Plus className="h-5 w-5 text-muted-foreground/70 shrink-0" />
         <input
           ref={titleRef}
           type="text"
@@ -1377,7 +1469,7 @@ function QuickAddUpdateBar({
           }}
           placeholder="Add an update — type and Enter"
           disabled={submitting}
-          className="flex-1 bg-transparent text-sm placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
+          className="flex-1 bg-transparent text-[15px] placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
         />
         {showClient && (
           <div ref={clientWrapRef} className="w-44 shrink-0">
@@ -1397,12 +1489,12 @@ function QuickAddUpdateBar({
             setAssigneeId(e.target.value)
             if (error) setError(null)
           }}
-          className="h-8 rounded-md border border-input bg-background px-2 text-xs max-w-[140px]"
+          className="h-9 rounded-md border border-input bg-background px-2.5 text-xs max-w-[150px] shrink-0"
           title="Recipient"
         >
           {users.map((u) => (
             <option key={u.id} value={u.id}>
-              {u.name ?? u.email}
+              {u.id === currentUserId ? "Me" : u.name ?? u.email}
             </option>
           ))}
         </select>
@@ -1410,13 +1502,13 @@ function QuickAddUpdateBar({
           size="sm"
           onClick={submit}
           disabled={submitting || !title.trim()}
-          className="shrink-0"
+          className="shrink-0 h-9"
         >
           Add
         </Button>
       </div>
       {error && (
-        <p className="text-[11px] text-red-400 mt-1.5 ml-6">{error}</p>
+        <p className="text-xs text-red-400 mt-1.5 ml-7">{error}</p>
       )}
     </div>
   )
@@ -1490,7 +1582,7 @@ function QuickClientPicker({
             setOpen(false)
           }
         }}
-        className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       />
       {open && filtered.length > 0 && (
         <div className="absolute z-30 mt-1 w-full max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-lg py-1">
@@ -1682,13 +1774,13 @@ function SectionHeader({
       <button
         type="button"
         onClick={onToggle}
-        className="flex items-center gap-3 flex-1 min-w-0 px-3 py-2.5 text-left"
+        className="flex items-center gap-3 flex-1 min-w-0 px-3 py-3.5 text-left"
       >
-        <span className={`h-7 w-7 rounded-md flex items-center justify-center shrink-0 ${t.iconBg}`}>
-          <Icon className="h-4 w-4" />
+        <span className={`h-9 w-9 rounded-md flex items-center justify-center shrink-0 ${t.iconBg}`}>
+          <Icon className="h-[18px] w-[18px]" />
         </span>
-        <span className={`text-sm font-semibold ${t.text}`}>{label}</span>
-        <span className={`text-xs tabular-nums ${t.text} opacity-70`}>{count}</span>
+        <span className={`text-base font-semibold ${t.text}`}>{label}</span>
+        <span className={`text-sm tabular-nums ${t.text} opacity-70`}>{count}</span>
         <ChevronDown
           className={`h-4 w-4 ml-auto transition-transform ${t.text} opacity-50 group-hover:opacity-100 ${
             collapsed ? "-rotate-90" : ""
@@ -1767,7 +1859,7 @@ function TaskGroupSection({
         }
       />
       {!collapsed && (
-        <div className="space-y-2 mb-1">
+        <div className="space-y-1.5 mb-1">
           {items.map((item) => (
             <InboxListRow
               key={item.id}
@@ -2020,7 +2112,7 @@ function BulkActionBar({
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-full border border-border bg-popover shadow-lg px-2 py-1.5">
       <span className="text-xs font-medium px-2 tabular-nums">
-        {count} {count === 1 ? "geselecteerd" : "geselecteerd"}
+        {count} geselecteerd
       </span>
       <span className="h-4 w-px bg-border/60" aria-hidden />
       <button
@@ -2293,7 +2385,7 @@ function UpdateGroupSection({
         }
       />
       {!collapsed && (
-        <div className="space-y-2 mb-1">
+        <div className="space-y-1.5 mb-1">
           {items.map((item) => (
             <InboxListRow
               key={item.id}
@@ -2529,7 +2621,7 @@ function UpdateBulkActionBar({
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-full border border-border bg-popover shadow-lg px-2 py-1.5">
       <span className="text-xs font-medium px-2 tabular-nums">
-        {count} {count === 1 ? "geselecteerd" : "geselecteerd"}
+        {count} geselecteerd
       </span>
       <span className="h-4 w-px bg-border/60" aria-hidden />
       <button
@@ -2666,6 +2758,292 @@ function SourceChip({
     >
       {label}
       <span className="tabular-nums opacity-70">{count}</span>
+    </button>
+  )
+}
+
+/**
+ * "Now" — the cross-source triage feed.
+ *
+ * Merges three independent queries (tasks, updates, chats) into a single
+ * scannable surface so an AM doesn't have to switch tabs to figure out
+ * what's on their plate. Each section renders only when it has something;
+ * empty Now == "all caught up" celebratory state.
+ *
+ * Read-only by design: items keep their full action surface (mark done,
+ * snooze, reassign) via the InboxListRow component, but creating new items
+ * happens in the dedicated tabs. Clicking a chat card switches to the
+ * Client Inbox tab — opening a specific thread isn't wired yet (one click
+ * away is acceptable for v1).
+ */
+function NowFeed({
+  currentUserId,
+  users,
+  onOpenItem,
+  onGoToChats,
+}: {
+  currentUserId: string
+  users: InboxUser[]
+  onOpenItem: (item: InboxItem) => void
+  onGoToChats: () => void
+}) {
+  const locale = useLocale()
+  const POLL_MS = 15 * 1000
+
+  // Overdue + today tasks: open or in_progress, assigned to me, not snoozed.
+  // We over-fetch slightly (all active assigned-to-me) and filter to due≤today
+  // client-side rather than adding a dueBefore param to the API — keeps the
+  // server fetcher simple, and the assigned-to-me set is small enough that
+  // shipping a few extra rows is fine.
+  const tasksQuery = useQuery<{ items: InboxItem[] }>({
+    queryKey: ["inbox-now", "tasks", currentUserId],
+    queryFn: () =>
+      fetch(
+        `/api/inbox?kind=task&assignedToMe=true&statuses=open,in_progress&snoozed=active`,
+      ).then((r) => r.json()),
+    refetchInterval: POLL_MS,
+    staleTime: 10 * 1000,
+  })
+
+  const updatesQuery = useQuery<{ items: InboxItem[] }>({
+    queryKey: ["inbox-now", "updates", currentUserId],
+    queryFn: () =>
+      fetch(`/api/inbox?kind=update&assignedToMe=true&statuses=unread`).then((r) =>
+        r.json(),
+      ),
+    refetchInterval: POLL_MS,
+    staleTime: 10 * 1000,
+  })
+
+  const chatsQuery = useQuery<{ threads: ChatThreadSummary[] }>({
+    queryKey: ["inbox-now", "chats"],
+    queryFn: () => fetch(`/api/inbox/threads?scope=external`).then((r) => r.json()),
+    refetchInterval: POLL_MS,
+    staleTime: 10 * 1000,
+  })
+
+  const todayStart = useMemo(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d
+  }, [])
+  const tomorrowStart = useMemo(() => {
+    const d = new Date(todayStart)
+    d.setDate(d.getDate() + 1)
+    return d
+  }, [todayStart])
+
+  const { overdue, today } = useMemo(() => {
+    const all = tasksQuery.data?.items ?? []
+    const o: InboxItem[] = []
+    const t: InboxItem[] = []
+    for (const item of all) {
+      if (!item.dueDate) continue
+      const due = new Date(item.dueDate + "T00:00:00")
+      if (due.getTime() < todayStart.getTime()) o.push(item)
+      else if (due.getTime() < tomorrowStart.getTime()) t.push(item)
+      // Future tasks intentionally excluded — they belong in the Tasks tab.
+    }
+    return { overdue: o, today: t }
+  }, [tasksQuery.data, todayStart, tomorrowStart])
+
+  const unreadUpdates = updatesQuery.data?.items ?? []
+  const unreadChats = useMemo(
+    () =>
+      (chatsQuery.data?.threads ?? [])
+        .filter((tt) => tt.unreadCount > 0)
+        .sort((a, b) => b.latestAt.localeCompare(a.latestAt)),
+    [chatsQuery.data],
+  )
+
+  const totalCount =
+    overdue.length + today.length + unreadUpdates.length + unreadChats.length
+
+  const loading =
+    tasksQuery.isLoading || updatesQuery.isLoading || chatsQuery.isLoading
+
+  if (loading && totalCount === 0) {
+    return <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
+  }
+
+  if (totalCount === 0) {
+    return (
+      <div className="border border-dashed border-border/60 rounded-lg p-12 text-center bg-card/30">
+        <div className="mx-auto h-12 w-12 rounded-full bg-emerald-500/15 flex items-center justify-center mb-3">
+          <Check className="h-6 w-6 text-emerald-500" strokeWidth={2.5} />
+        </div>
+        <p className="text-base text-muted-foreground">{t("inbox.now.empty", locale)}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5 pb-12">
+      {overdue.length > 0 && (
+        <NowSection
+          icon={AlertOctagon}
+          label={t("inbox.now.section.overdue", locale)}
+          count={overdue.length}
+          tone="red"
+        >
+          <div className="space-y-1.5">
+            {overdue.map((item) => (
+              <InboxListRow
+                key={item.id}
+                item={item}
+                showClient
+                onClick={() => onOpenItem(item)}
+                users={users}
+              />
+            ))}
+          </div>
+        </NowSection>
+      )}
+
+      {today.length > 0 && (
+        <NowSection
+          icon={CalendarDays}
+          label={t("inbox.now.section.today", locale)}
+          count={today.length}
+          tone="amber"
+        >
+          <div className="space-y-1.5">
+            {today.map((item) => (
+              <InboxListRow
+                key={item.id}
+                item={item}
+                showClient
+                onClick={() => onOpenItem(item)}
+                users={users}
+              />
+            ))}
+          </div>
+        </NowSection>
+      )}
+
+      {unreadUpdates.length > 0 && (
+        <NowSection
+          icon={InboxIcon}
+          label={t("inbox.now.section.updates", locale)}
+          count={unreadUpdates.length}
+          tone="muted"
+        >
+          <div className="space-y-1.5">
+            {unreadUpdates.map((item) => (
+              <InboxListRow
+                key={item.id}
+                item={item}
+                showClient
+                onClick={() => onOpenItem(item)}
+                users={users}
+              />
+            ))}
+          </div>
+        </NowSection>
+      )}
+
+      {unreadChats.length > 0 && (
+        <NowSection
+          icon={MessageCircle}
+          label={t("inbox.now.section.chats", locale)}
+          count={unreadChats.length}
+          tone="muted"
+        >
+          <div className="space-y-1.5">
+            {unreadChats.map((thread) => (
+              <NowChatCard
+                key={thread.threadKey}
+                thread={thread}
+                onOpen={onGoToChats}
+                openLabel={t("inbox.now.chat.open", locale)}
+              />
+            ))}
+          </div>
+        </NowSection>
+      )}
+    </div>
+  )
+}
+
+/** Lightweight section wrapper for the Now feed — re-uses the same tonal
+ *  pattern as TaskGroupSection but rendered inline (not collapsible, no
+ *  bulk-select). Sections only render when they have items. */
+function NowSection({
+  icon: Icon,
+  label,
+  count,
+  tone,
+  children,
+}: {
+  icon: typeof AlertOctagon
+  label: string
+  count: number
+  tone: SectionTone
+  children: React.ReactNode
+}) {
+  const t = SECTION_TONES[tone]
+  return (
+    <div>
+      <div
+        className={`w-full flex items-stretch gap-3 rounded-lg overflow-hidden ${t.bg} mb-2`}
+      >
+        <span className={`w-1 shrink-0 ${t.bar}`} aria-hidden />
+        <div className="flex items-center gap-3 px-3 py-3">
+          <span
+            className={`h-9 w-9 rounded-md flex items-center justify-center shrink-0 ${t.iconBg}`}
+          >
+            <Icon className="h-[18px] w-[18px]" />
+          </span>
+          <span className={`text-base font-semibold ${t.text}`}>{label}</span>
+          <span className={`text-sm tabular-nums ${t.text} opacity-70`}>{count}</span>
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** Compact card for an unread chat thread in the Now feed. Clicking opens
+ *  the Client Inbox tab — selecting the specific thread is a v2 nicety
+ *  (one extra click in v1 is acceptable). */
+function NowChatCard({
+  thread,
+  onOpen,
+  openLabel,
+}: {
+  thread: ChatThreadSummary
+  onOpen: () => void
+  openLabel: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={openLabel}
+      className="group relative w-full text-left rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all px-5 py-4 overflow-hidden"
+    >
+      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
+      <div className="flex items-start gap-3">
+        <span className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+          <MessageCircle className="h-4 w-4" />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[15px] font-semibold truncate">
+              {thread.clientName ?? thread.primaryName}
+            </span>
+            {thread.clientName && thread.clientName !== thread.primaryName && (
+              <span className="text-xs text-muted-foreground/80">via {thread.primaryName}</span>
+            )}
+            <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-primary/15 text-primary tabular-nums">
+              {thread.unreadCount} unread
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground/90 line-clamp-2">
+            {thread.latestPreview}
+          </p>
+        </div>
+      </div>
     </button>
   )
 }

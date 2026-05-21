@@ -511,6 +511,10 @@ export type ChatThreadSummary = {
   primaryName: string
   /** Linked Hub client name when client_id is set on any event in the thread. */
   clientName: string | null
+  /** Monday item id of the linked client — surfaced so the chat-pane can
+   *  create tasks/updates against this thread's client without an extra
+   *  lookup. Null when the thread isn't linked yet (Trengo "unlinked"). */
+  clientId: string | null
   /** WhatsApp / email / other — drives the icon shown next to the thread.
    *  Resolved from Trengo channel id at fetch time so the UI doesn't need
    *  a separate roundtrip. Null for Slack and other non-Trengo sources. */
@@ -765,6 +769,7 @@ export async function listChatThreads(
       source: latest.source,
       primaryName,
       clientName,
+      clientId: latest.client_id || null,
       channelKind,
       channelName,
       trengoChannelId,

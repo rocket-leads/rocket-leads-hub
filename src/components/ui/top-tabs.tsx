@@ -70,8 +70,8 @@ export function TopTabs<T extends string>({
               {typeof count === "number" && (
                 <span
                   className={cn(
-                    "ml-1 text-xs tabular-nums",
-                    active ? "text-primary" : "text-muted-foreground/40",
+                    "ml-1 text-xs tabular-nums font-medium",
+                    active ? "text-primary" : "text-muted-foreground/70",
                   )}
                 >
                   {count}
