@@ -523,6 +523,25 @@ export function ClientUpdateDialog({
   const [sendError, setSendError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
   const [testMode, setTestMode] = useState(false)
+  // Ad-hoc test recipients — persisted in localStorage so the AM doesn't
+  // have to retype each session, but never stored server-side (there's
+  // no per-user "test contact" setting any more). The dialog renders an
+  // email OR phone input depending on the channel of the current send.
+  const [testEmail, setTestEmail] = useState("")
+  const [testPhone, setTestPhone] = useState("")
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    setTestEmail(window.localStorage.getItem("hub:test:email") ?? "")
+    setTestPhone(window.localStorage.getItem("hub:test:phone") ?? "")
+  }, [])
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (testEmail) window.localStorage.setItem("hub:test:email", testEmail)
+  }, [testEmail])
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (testPhone) window.localStorage.setItem("hub:test:phone", testPhone)
+  }, [testPhone])
 
   const generate = useMutation({
     mutationFn: async () => {
@@ -562,10 +581,14 @@ export function ClientUpdateDialog({
        *  template sends (`rl_weekly_<voornaam>`) when the feature
        *  flag is on. Ignored on V1 path. */
       parts?: EditableParts
-      /** Test mode: swap recipient with the session user's test contact
-       *  (set in Settings → Users → Test contact). Body/template/channel
-       *  stay real — only the destination is replaced. */
+      /** Test mode: swap recipient with the ad-hoc email/phone supplied
+       *  below. Body/template/channel stay real — only the destination
+       *  is replaced. */
       test?: boolean
+      /** Ad-hoc test recipients. Email is required for an email-channel
+       *  send, phone for a WhatsApp send. */
+      testEmail?: string
+      testPhone?: string
     }) => {
       setSendError(null)
       const res = await fetch(`/api/clients/${mondayItemId}/send-client-update`, {
@@ -668,7 +691,16 @@ export function ClientUpdateDialog({
   // text outside the 24h window, and we route ALL outbound via template).
   // For email no template is needed — Trengo handles the email channel
   // server-side once we have a Trengo contact.
-  const canSend = !!previewText.trim() && !inputsDisabled && trengoLinked && (isEmail || !!waTemplateName)
+  // Test mode adds its own gate: the ad-hoc destination input must be
+  // filled before we let the send fire — server would reject otherwise
+  // with a less friendly 400.
+  const testRecipientReady = !testMode || (isEmail ? !!testEmail.trim() : !!testPhone.trim())
+  const canSend =
+    !!previewText.trim() &&
+    !inputsDisabled &&
+    trengoLinked &&
+    (isEmail || !!waTemplateName) &&
+    testRecipientReady
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -686,9 +718,34 @@ export function ClientUpdateDialog({
         </DialogHeader>
 
         {testMode && parts && (
-          <div className="mx-6 mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+          <div className="mx-6 mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 space-y-2">
             <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
-              <strong>Test mode</strong> — bericht gaat naar JOUW test contact in Trengo, niet naar de klant. Body, FROM channel en template blijven realistisch.
+              <strong>Test mode</strong> — bericht gaat naar het ingevulde adres hieronder, niet naar de klant. FROM channel, template en body blijven realistisch.
+            </p>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] uppercase tracking-wider text-amber-700/70 dark:text-amber-400/70 font-medium shrink-0 w-16">
+                {channel === "email" ? "To (email)" : "To (phone)"}
+              </label>
+              {channel === "email" ? (
+                <input
+                  type="email"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  placeholder="jij@rocketleads.com"
+                  className="flex-1 text-xs px-2 py-1.5 rounded-md border border-amber-500/30 bg-background outline-none focus:border-amber-500"
+                />
+              ) : (
+                <input
+                  type="tel"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  placeholder="+31612345678"
+                  className="flex-1 text-xs px-2 py-1.5 rounded-md border border-amber-500/30 bg-background outline-none focus:border-amber-500 font-mono"
+                />
+              )}
+            </div>
+            <p className="text-[10px] text-amber-700/60 dark:text-amber-400/60">
+              Opgeslagen in je browser — hoef je niet opnieuw te typen.
             </p>
           </div>
         )}
@@ -793,6 +850,8 @@ export function ClientUpdateDialog({
                   // off or when channel is email.
                   parts: parts ?? undefined,
                   test: testMode || undefined,
+                  testEmail: testMode && isEmail ? testEmail.trim() : undefined,
+                  testPhone: testMode && !isEmail ? testPhone.trim() : undefined,
                 })
               }
               disabled={!canSend}

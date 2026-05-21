@@ -5,7 +5,7 @@ import {
   fetchConversations,
   findAmEmailChannel,
   findAmWaChannel,
-  fetchTrengoContact,
+  findOrCreateTrengoEmailContact,
   createEmailMessageForContact,
   type TrengoConversation,
 } from "@/lib/integrations/trengo"
@@ -103,7 +103,14 @@ export async function POST(
   const message = (body.message ?? "").trim()
   const subjectOverride = (body.subject ?? "").trim()
   const editableParts = body.parts ?? null
-  const testMode = (body as { test?: boolean }).test === true
+  const extras = body as {
+    test?: boolean
+    testEmail?: string
+    testPhone?: string
+  }
+  const testMode = extras.test === true
+  const testEmail = (extras.testEmail ?? "").trim()
+  const testPhone = (extras.testPhone ?? "").trim()
   if (!message) {
     return NextResponse.json({ error: "Empty message" }, { status: 400 })
   }
@@ -155,31 +162,23 @@ export async function POST(
       : [message]
 
     // Test mode: short-circuit the entire conversation-routing dance and
-    // deliver the rendered message to the session user's own test
-    // contact. Uses the AM's outbound channels + token + template, so
-    // the test is end-to-end faithful — only the recipient is swapped.
-    // Skips the inbox_events mirror + client_updates audit (this isn't a
-    // real client communication, no need to pollute the timeline).
+    // deliver the rendered message to an ad-hoc address supplied at send
+    // time (no persisted "test contact" lookup — testing is rare, the
+    // dialog just remembers via localStorage). Uses the AM's outbound
+    // channels + token + template, so the test is end-to-end faithful —
+    // only the destination is swapped. Skips the inbox_events mirror +
+    // client_updates audit (this isn't a real client communication).
     if (testMode) {
-      const supabaseAdmin = await createAdminClient()
-      const { data: senderRow } = await supabaseAdmin
-        .from("users")
-        .select("test_trengo_contact_id")
-        .eq("id", session.user.id)
-        .maybeSingle<{ test_trengo_contact_id: number | null }>()
-      const testContactId = senderRow?.test_trengo_contact_id ?? null
-      if (!testContactId) {
-        return NextResponse.json(
-          {
-            error: "no_test_contact",
-            message:
-              "Geen test contact ingesteld voor je account. Maak een Trengo contact aan met je eigen email + WhatsApp nummer en zet de contact ID in Settings → Users → Test contact.",
-          },
-          { status: 400 },
-        )
-      }
-
       if (sendAsEmail) {
+        if (!testEmail) {
+          return NextResponse.json(
+            {
+              error: "test_email_required",
+              message: "Vul een test email-adres in het send-dialog in.",
+            },
+            { status: 400 },
+          )
+        }
         const emailChannel = await findAmEmailChannel(amUserId)
         if (!emailChannel) {
           return NextResponse.json(
@@ -203,9 +202,15 @@ export async function POST(
           )
         }
         try {
+          const contact = await findOrCreateTrengoEmailContact({
+            userToken: amToken,
+            channelId: emailChannel.id,
+            email: testEmail,
+            name: "Hub Test",
+          })
           const sent = await createEmailMessageForContact({
             userToken: amToken,
-            contactId: String(testContactId),
+            contactId: String(contact.id),
             channelId: emailChannel.id,
             subject:
               subjectOverride ||
@@ -217,6 +222,7 @@ export async function POST(
             channel: "email",
             outboundMsgId: sent.messageId,
             ticketId: sent.ticketId,
+            recipientEmail: testEmail,
           })
         } catch (e) {
           return NextResponse.json(
@@ -231,9 +237,18 @@ export async function POST(
         }
       } else {
         // WhatsApp test: skip the existing-ticket requirement entirely
-        // and go straight to /v2/wa_sessions with the test contact's
-        // phone number. Requires AM to have set primary_wa_channel_id
-        // (the channel the HSM template is approved on).
+        // and go straight to /v2/wa_sessions with the supplied phone.
+        // Requires AM to have set primary_wa_channel_id (the channel
+        // the HSM template is approved on).
+        if (!testPhone) {
+          return NextResponse.json(
+            {
+              error: "test_phone_required",
+              message: "Vul een test telefoonnummer in het send-dialog in (E.164, bv. +31612345678).",
+            },
+            { status: 400 },
+          )
+        }
         const waChannel = await findAmWaChannel(amUserId)
         if (!waChannel) {
           return NextResponse.json(
@@ -245,20 +260,10 @@ export async function POST(
             { status: 400 },
           )
         }
-        const testContact = await fetchTrengoContact(testContactId)
-        if (!testContact?.phone) {
-          return NextResponse.json(
-            {
-              error: "test_contact_no_phone",
-              message: `Test contact ${testContactId} heeft geen telefoonnummer in Trengo. Voeg een WhatsApp nummer toe aan het contact en probeer opnieuw.`,
-            },
-            { status: 400 },
-          )
-        }
         try {
           const sent = await sendTrengoTemplateToPhoneAsUser(
             amUserId,
-            testContact.phone,
+            testPhone,
             templateName,
             templateParams,
             waChannel.id,
@@ -267,7 +272,7 @@ export async function POST(
             test: true,
             channel: "whatsapp",
             outboundMsgId: sent.message_id,
-            recipientPhone: testContact.phone,
+            recipientPhone: testPhone,
           })
         } catch (e) {
           if (e instanceof NeedsConnectError) {

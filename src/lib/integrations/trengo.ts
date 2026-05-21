@@ -447,6 +447,73 @@ export async function fetchTrengoContact(
 }
 
 /**
+ * Find or create a Trengo contact for an arbitrary email address. Used by
+ * the ad-hoc test-send flow: the dialog accepts a raw email at send-time
+ * (no persisted "Test contact" config), and Trengo's email channel needs
+ * a contact_id to post a ticket against. We try POST /v2/contacts first
+ * (cheap when the email is new); on the duplicate-conflict response we
+ * fall back to a search lookup.
+ *
+ * `channelId` should be the email channel the contact will live under —
+ * Trengo scopes contacts to channels for email.
+ */
+export async function findOrCreateTrengoEmailContact(args: {
+  userToken: string
+  channelId: number
+  email: string
+  name?: string
+}): Promise<{ id: number }> {
+  const { userToken, channelId, email, name } = args
+  const createRes = await fetch(`https://app.trengo.com/api/v2/contacts`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userToken}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      channel_id: channelId,
+      email,
+      name: name ?? email,
+    }),
+  })
+  if (createRes.ok) {
+    const json = (await createRes.json()) as {
+      id?: number | string
+      data?: { id?: number | string }
+    }
+    const id = json.data?.id ?? json.id
+    if (id != null) return { id: Number(id) }
+  }
+
+  // Conflict / duplicate path — search the workspace for an existing
+  // contact carrying this email and use that. Trengo's search returns
+  // matches across channels; we pick the first hit.
+  const searchRes = await fetch(
+    `https://app.trengo.com/api/v2/contacts?term=${encodeURIComponent(email)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+        Accept: "application/json",
+      },
+    },
+  )
+  if (searchRes.ok) {
+    const json = (await searchRes.json()) as {
+      data?: Array<{ id?: number | string; email?: string }>
+    }
+    const match = json.data?.find((c) => c.email === email)
+    if (match?.id != null) return { id: Number(match.id) }
+  }
+
+  const errText = await createRes.text().catch(() => "")
+  throw new Error(
+    `Couldn't find or create a Trengo contact for ${email}: ${errText.slice(0, 200)}`,
+  )
+}
+
+/**
  * Update a Trengo contact's name. Used by the inbox composer's editable
  * conversation header — the AM types a real name over an "Unknown"/phone-
  * number contact and we propagate it back to Trengo so every workspace
