@@ -52,7 +52,6 @@ const EXPECTED_CRONS: ReadonlyArray<{ name: string; description: string; cadence
   { name: "refresh-pedro-insights", description: "Unified Pedro insights cache (replaces watchlist-summaries + per-client AI calls)", cadenceKey: "settings.health.cadence.hourly" },
   { name: "pedro-auto-tasks", description: "Pedro background co-pilot — auto-creates inbox tasks for stuck-in-Action clients (with anti-spam guardrails)", cadenceKey: "settings.health.cadence.daily_7utc" },
   { name: "pedro-knowledge-proposals", description: "Pedro knowledge-base scan", cadenceKey: "settings.health.cadence.weekly" },
-  { name: "sync-campaign-status", description: "Live ↔ On Hold flip + onboarding → LAUNCH", cadenceKey: "settings.health.cadence.daily" },
   { name: "inbox-automations", description: "Inbox snooze / auto-resolve rules", cadenceKey: "settings.health.cadence.hourly" },
   { name: "slack-team-watchlist", description: "Team watchlist Slack post", cadenceKey: "settings.health.cadence.hourly_gated" },
   { name: "slack-daily-watchlist", description: "Personal watchlist Slack DMs", cadenceKey: "settings.health.cadence.hourly_gated" },
