@@ -26,6 +26,10 @@ type Props = {
   client: MondayClient
   supabaseClientId: string
   access: ClientAccess
+  /** Hub-only billing fields not stored on Monday. Null when the
+   *  placeholder render is still in flight; the BillingTab handles
+   *  the missing-data case by showing an empty input. */
+  hubBilling: { nextAdBudgetInvoiceDate: string | null } | null
   currentUser: CurrentUser
 }
 
@@ -62,7 +66,7 @@ function hasOverdue(invoices: InvoiceRow[] | undefined): boolean {
   return !!invoices?.some((i) => i.status === "overdue")
 }
 
-export function ClientTabs({ client, supabaseClientId, access, currentUser }: Props) {
+export function ClientTabs({ client, supabaseClientId, access, hubBilling, currentUser }: Props) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const locale = useLocale()
@@ -269,7 +273,9 @@ export function ClientTabs({ client, supabaseClientId, access, currentUser }: Pr
               <BillingTab
                 mondayItemId={client.mondayItemId}
                 stripeCustomerId={client.stripeCustomerId || null}
+                metaAdAccountId={client.metaAdAccountId || null}
                 initialNextInvoiceDate={client.nextInvoiceDate || null}
+                initialNextAdBudgetInvoiceDate={hubBilling?.nextAdBudgetInvoiceDate ?? null}
               />
             ) : <NoAccess />
           )}

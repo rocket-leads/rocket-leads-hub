@@ -278,6 +278,7 @@ export const DICTIONARY = {
   "settings.subtitle": { nl: "API tokens, board config, gebruikers en notificaties.", en: "API tokens, board config, users and notifications." },
   "settings.health_link": { nl: "Health →", en: "Health →" },
 
+  "settings.tab.me": { nl: "Mijn account", en: "My account" },
   "settings.tab.clients": { nl: "Klanten", en: "Clients" },
   "settings.tab.tokens": { nl: "API Tokens", en: "API Tokens" },
   "settings.tab.board": { nl: "Board Config", en: "Board Config" },
@@ -285,6 +286,7 @@ export const DICTIONARY = {
   "settings.tab.notifications": { nl: "Notificaties", en: "Notifications" },
   "settings.tab.inbox": { nl: "Inbox", en: "Inbox" },
   "settings.tab.pedro": { nl: "Pedro", en: "Pedro" },
+  "settings.tab.health": { nl: "Health", en: "Health" },
 
   // ApiHealthBar
   "settings.api_status.title": { nl: "API Status", en: "API Status" },
@@ -456,6 +458,18 @@ export const DICTIONARY = {
   "client.phase.launch": { nl: "LAUNCH 🚀", en: "LAUNCH 🚀" },
   "client.phase.on_hold": { nl: "On Hold", en: "On Hold" },
   "client.phase.debt_collection": { nl: "Incassobureau", en: "Debt collection agency" },
+
+  // Onboarding checklist — only shown for clients on the onboarding board.
+  "client.onboarding.checklist.title": { nl: "Onboarding checklist", en: "Onboarding checklist" },
+  "client.onboarding.checklist.team_assigned": { nl: "AM + CM toegewezen", en: "AM + CM assigned" },
+  "client.onboarding.checklist.stripe_linked": { nl: "Stripe gekoppeld", en: "Stripe linked" },
+  "client.onboarding.checklist.kickoff_scheduled": { nl: "Kick-off ingepland", en: "Kick-off scheduled" },
+  "client.onboarding.checklist.drive_created": { nl: "Google Drive aangemaakt", en: "Google Drive created" },
+  "client.onboarding.checklist.meta_linked": { nl: "Meta ad account gekoppeld", en: "Meta ad account linked" },
+  "client.onboarding.checklist.lead_board_created": { nl: "Lead-board aangemaakt", en: "Lead board created" },
+  "client.onboarding.checklist.trengo_linked": { nl: "Trengo contact gekoppeld", en: "Trengo contact linked" },
+  "client.onboarding.checklist.creatives_approved": { nl: "Creatives goedgekeurd", en: "Creatives approved" },
+  "client.onboarding.checklist.live": { nl: "Campagne live", en: "Campaign live" },
 
   // ─── Client detail page ───────────────────────────────────────────────
   // Legacy per-section labels — used by sub-toggles inside the 4 top
@@ -706,6 +720,14 @@ export const DICTIONARY = {
   // Next invoice date section
   "client.billing.next_invoice.title": { nl: "Volgende factuur", en: "Next invoice" },
   "client.billing.next_invoice.subtitle": { nl: "Wanneer de volgende factuur de deur uit moet. Op deze datum verschijnt automatisch een taak in de inbox van finance.", en: "When the next invoice should go out. A task lands in finance's inbox automatically on this date." },
+  // Variants used when fee + ad budget invoices run on different cadences
+  // (RL-ad-account clients who paid the fee upfront but still get monthly
+  // ad-budget invoices). The plain "next_invoice" labels above are kept for
+  // clients with a single cadence.
+  "client.billing.next_invoice.fee.title": { nl: "Volgende factuur — service fee", en: "Next invoice — service fee" },
+  "client.billing.next_invoice.fee.subtitle": { nl: "Wanneer de volgende fee-factuur de deur uit moet. Bij kwartaalbetaling zet je deze datum op het einde van het kwartaal.", en: "When the next service-fee invoice should go out. For quarterly-paid clients, set this to the end of the prepaid quarter." },
+  "client.billing.next_invoice.ad_budget.title": { nl: "Volgende factuur — ad budget", en: "Next invoice — ad budget" },
+  "client.billing.next_invoice.ad_budget.subtitle": { nl: "Wanneer de volgende ad-budget factuur de deur uit moet. Alleen relevant als wij het ad budget voorschieten en doorbelasten — meestal maandelijks, ongeacht of de fee voor een kwartaal vooruit is betaald.", en: "When the next ad-budget invoice should go out. Only relevant when RL fronts the ad budget — typically monthly, even when the fee is prepaid for a quarter." },
   "client.billing.action.save": { nl: "Opslaan", en: "Save" },
   "client.billing.action.clear": { nl: "Wissen", en: "Clear" },
   "client.billing.action.clear_title": { nl: "Datum volgende factuur wissen", en: "Clear next invoice date" },

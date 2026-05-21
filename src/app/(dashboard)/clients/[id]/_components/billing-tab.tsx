@@ -3,7 +3,8 @@
 import Image from "next/image"
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { CalendarClock, Check, ExternalLink, FileText, Loader2, X } from "lucide-react"
+import { CalendarClock, Check, ExternalLink, FileText, Loader2, Megaphone, X } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -14,13 +15,21 @@ import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
+import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { AgreementSection } from "./agreement-section"
 import { BillingSectionShell } from "./billing-section-shell"
 
 type Props = {
   mondayItemId: string
   stripeCustomerId: string | null
+  /** Used to detect whether ads run on the Rocket Leads ad account — only
+   *  then does RL invoice the ad budget separately and need its own date. */
+  metaAdAccountId?: string | null
   initialNextInvoiceDate?: string | null
+  /** Hub-only ad-budget invoice date. When the client pays a quarterly fee
+   *  but RL fronts the monthly ad budget, this date drives the in-between
+   *  invoices. Null until the network refetch lands (placeholder state). */
+  initialNextAdBudgetInvoiceDate?: string | null
 }
 
 /** Invoice status pill — label flips via dictionary, class + icon stay
@@ -76,13 +85,40 @@ function SummaryCard({ title, value, sub }: { title: string; value: string; sub?
   )
 }
 
-export function BillingTab({ mondayItemId, stripeCustomerId, initialNextInvoiceDate }: Props) {
+export function BillingTab({
+  mondayItemId,
+  stripeCustomerId,
+  metaAdAccountId,
+  initialNextInvoiceDate,
+  initialNextAdBudgetInvoiceDate,
+}: Props) {
+  // Only RL-ad-account clients have a separate ad-budget invoice — for
+  // everyone else the client pays Meta directly, so there's nothing for
+  // us to bill on a different cadence than the fee.
+  const showAdBudgetDate = isRocketLeadsAdAccount(metaAdAccountId)
+
   return (
     <div className="space-y-6">
-      <NextInvoiceDateSection
+      <InvoiceDateSection
         mondayItemId={mondayItemId}
+        fieldKey="next_invoice_date"
+        icon={CalendarClock}
+        // Distinguish the title only when both dates are visible — otherwise
+        // the original "Next invoice" reads naturally for clients with one cadence.
+        titleKey={showAdBudgetDate ? "client.billing.next_invoice.fee.title" : "client.billing.next_invoice.title"}
+        subtitleKey={showAdBudgetDate ? "client.billing.next_invoice.fee.subtitle" : "client.billing.next_invoice.subtitle"}
         initialDate={initialNextInvoiceDate ?? null}
       />
+      {showAdBudgetDate && (
+        <InvoiceDateSection
+          mondayItemId={mondayItemId}
+          fieldKey="next_ad_budget_invoice_date"
+          icon={Megaphone}
+          titleKey="client.billing.next_invoice.ad_budget.title"
+          subtitleKey="client.billing.next_invoice.ad_budget.subtitle"
+          initialDate={initialNextAdBudgetInvoiceDate ?? null}
+        />
+      )}
       <InvoicesSection mondayItemId={mondayItemId} stripeCustomerId={stripeCustomerId} />
       <AgreementSection mondayItemId={mondayItemId} />
     </div>
@@ -90,16 +126,24 @@ export function BillingTab({ mondayItemId, stripeCustomerId, initialNextInvoiceD
 }
 
 /**
- * Editable next-invoice-date for this client. Bidi-syncs with Monday's `date3`
- * column via the existing /api/clients/[id] PATCH path. The daily inbox-task
- * cron picks up whichever date is set here and creates a "send invoice" task
- * for the finance user when it arrives.
+ * Editable date section for a billing-cadence field. Used for both the fee
+ * `next_invoice_date` (Monday-mirrored via /api/clients/[id] PATCH) and the
+ * Hub-only `next_ad_budget_invoice_date` — the PATCH endpoint dispatches on
+ * `fieldKey`, so the same component covers both.
  */
-function NextInvoiceDateSection({
+function InvoiceDateSection({
   mondayItemId,
+  fieldKey,
+  icon,
+  titleKey,
+  subtitleKey,
   initialDate,
 }: {
   mondayItemId: string
+  fieldKey: "next_invoice_date" | "next_ad_budget_invoice_date"
+  icon: LucideIcon
+  titleKey: DictionaryKey
+  subtitleKey: DictionaryKey
   initialDate: string | null
 }) {
   const locale = useLocale()
@@ -118,7 +162,7 @@ function NextInvoiceDateSection({
       const res = await fetch(`/api/clients/${mondayItemId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fieldKey: "next_invoice_date", value }),
+        body: JSON.stringify({ fieldKey, value }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? t("client.billing.error.save_failed", locale))
@@ -135,9 +179,9 @@ function NextInvoiceDateSection({
 
   return (
     <BillingSectionShell
-      icon={CalendarClock}
-      title={t("client.billing.next_invoice.title", locale)}
-      subtitle={t("client.billing.next_invoice.subtitle", locale)}
+      icon={icon}
+      title={t(titleKey, locale)}
+      subtitle={t(subtitleKey, locale)}
     >
       <div className="flex items-center gap-2 flex-wrap">
         <input

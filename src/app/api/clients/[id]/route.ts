@@ -3,6 +3,7 @@ import { updateClientField, type ClientFieldUpdate } from "@/lib/clients/edit"
 import { fetchClientById, clientItemCacheKey } from "@/lib/integrations/monday"
 import { syncClientToSupabase, ensureClientId } from "@/lib/clients/sync"
 import { getClientAccess } from "@/lib/clients/access"
+import { createAdminClient } from "@/lib/supabase/server"
 import { deleteCache } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -58,7 +59,32 @@ export async function GET(
       console.error("Background Supabase sync failed:", e)
     })
 
-    return NextResponse.json({ client, supabaseClientId, access })
+    // Hub-only billing fields (no Monday column) — fetched directly
+    // from Supabase. `nextAdBudgetInvoiceDate` is the ad-budget
+    // counterpart to `client.nextInvoiceDate` (the fee date), used
+    // only for clients whose ads run on the Rocket Leads ad account.
+    // Best-effort: a Supabase read miss leaves the field null and
+    // the billing tab falls back to "no date set".
+    let nextAdBudgetInvoiceDate: string | null = null
+    try {
+      const supabase = await createAdminClient()
+      const { data } = await supabase
+        .from("clients")
+        .select("next_ad_budget_invoice_date")
+        .eq("monday_item_id", mondayItemId)
+        .single()
+      const raw = data?.next_ad_budget_invoice_date as string | null | undefined
+      nextAdBudgetInvoiceDate = raw ?? null
+    } catch (e) {
+      console.error("next_ad_budget_invoice_date fetch failed:", e)
+    }
+
+    return NextResponse.json({
+      client,
+      supabaseClientId,
+      access,
+      hubBilling: { nextAdBudgetInvoiceDate },
+    })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to load client" },

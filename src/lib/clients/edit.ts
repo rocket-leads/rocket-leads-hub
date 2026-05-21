@@ -33,9 +33,16 @@ const STATUS_FIELDS = ["campaign_status", "country", "contact_channel", "adminis
 
 const PERSON_FIELDS = ["account_manager", "campaign_manager", "appointment_setter"] as const
 
+// Fields that live only in Supabase — no Monday column behind them. Writes go
+// straight to the `clients` table, no Monday mutation, no cache patch on the
+// `monday_boards` snapshot (which is keyed off Monday columns). See the
+// 20240046 migration for the rationale on `next_ad_budget_invoice_date`.
+const SUPABASE_ONLY_FIELDS = ["next_ad_budget_invoice_date"] as const
+
 export type SimpleFieldKey = (typeof SIMPLE_FIELDS)[number]
 export type StatusFieldKey = (typeof STATUS_FIELDS)[number]
 export type PersonFieldKey = (typeof PERSON_FIELDS)[number]
+export type SupabaseOnlyFieldKey = (typeof SUPABASE_ONLY_FIELDS)[number]
 
 /**
  * Person updates carry both IDs (what Monday needs in the mutation) and
@@ -48,10 +55,12 @@ export type ClientFieldUpdate =
   | { fieldKey: SimpleFieldKey; value: string }
   | { fieldKey: StatusFieldKey; label: string }
   | { fieldKey: PersonFieldKey; personIds: number[]; personNames?: string[] }
+  | { fieldKey: SupabaseOnlyFieldKey; value: string }
 
 const SIMPLE_SET = new Set<string>(SIMPLE_FIELDS)
 const STATUS_SET = new Set<string>(STATUS_FIELDS)
 const PERSON_SET = new Set<string>(PERSON_FIELDS)
+const SUPABASE_ONLY_SET = new Set<string>(SUPABASE_ONLY_FIELDS)
 
 /**
  * Apply a single field update to a client, identified by Monday item ID
@@ -78,6 +87,16 @@ export async function updateClientField(
   }
 
   const boardType = client.monday_board_type as "onboarding" | "current"
+
+  if (SUPABASE_ONLY_SET.has(update.fieldKey) && "value" in update) {
+    // Hub-only field — no Monday column behind it, so this is a Supabase
+    // write only. We also short-circuit the cache-patch + re-sync that
+    // Monday-backed fields go through: the `monday_boards` cache is keyed
+    // off Monday columns, and `syncClientToSupabase` re-mirrors only the
+    // Monday-derived fields — neither touches this column.
+    await writeSupabaseOnlyField(mondayItemId, update.fieldKey as SupabaseOnlyFieldKey, update.value)
+    return
+  }
 
   if (SIMPLE_SET.has(update.fieldKey) && "value" in update) {
     await setItemColumnValue(boardType, mondayItemId, update.fieldKey, update.value)
@@ -268,6 +287,59 @@ export async function patchMondayBoardsCache(refreshed: MondayClient): Promise<v
     // Cache patching is best-effort — a failed write only means the user
     // sees stale state until the next cron tick or manual refresh.
     console.error("monday_boards cache patch failed:", e instanceof Error ? e.message : e)
+  }
+}
+
+/**
+ * Write a Hub-only client field directly to Supabase. Also propagates to
+ * sibling rows that share a `stripe_customer_id`, so multi-campaign clients
+ * (B2B + B2C under one Stripe customer) keep one cadence per billable.
+ *
+ * Empty string clears the column (DATE → null). Treats anything that isn't
+ * `YYYY-MM-DD` as a clear — same convention `syncClientToSupabase` uses for
+ * the Monday-mirrored dates.
+ */
+async function writeSupabaseOnlyField(
+  mondayItemId: string,
+  fieldKey: SupabaseOnlyFieldKey,
+  value: string,
+): Promise<void> {
+  const supabase = await createAdminClient()
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null
+
+  const { data: source, error: srcErr } = await supabase
+    .from("clients")
+    .select("stripe_customer_id")
+    .eq("monday_item_id", mondayItemId)
+    .single()
+  if (srcErr || !source) {
+    throw new Error(`Client ${mondayItemId} not found in Supabase`)
+  }
+
+  const { error: updateErr } = await supabase
+    .from("clients")
+    .update({ [fieldKey]: normalized, updated_at: new Date().toISOString() })
+    .eq("monday_item_id", mondayItemId)
+  if (updateErr) {
+    throw new Error(`Failed to update ${fieldKey}: ${updateErr.message}`)
+  }
+
+  const stripeCustomerId = source.stripe_customer_id as string | null
+  if (!stripeCustomerId) return
+
+  // Sibling sync — same rationale as `syncCycleToSiblings` for the fee
+  // cycle. Per-sibling failures are logged but don't bubble up; the
+  // primary row is already saved.
+  const { error: sibErr } = await supabase
+    .from("clients")
+    .update({ [fieldKey]: normalized, updated_at: new Date().toISOString() })
+    .eq("stripe_customer_id", stripeCustomerId)
+    .neq("monday_item_id", mondayItemId)
+  if (sibErr) {
+    console.error(
+      `Sibling sync for ${fieldKey} failed (Stripe ${stripeCustomerId}):`,
+      sibErr.message,
+    )
   }
 }
 

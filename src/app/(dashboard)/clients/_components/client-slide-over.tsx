@@ -33,6 +33,12 @@ type ClientDetailResponse = {
   client: MondayClient
   supabaseClientId: string
   access: ClientAccess
+  /** Hub-only billing fields — no Monday column behind them. Optional
+   *  because cached placeholder responses (from the boards list) don't
+   *  have them; the network refetch fills them in. */
+  hubBilling?: {
+    nextAdBudgetInvoiceDate: string | null
+  }
 }
 
 type Props = {
@@ -195,6 +201,7 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
                 client={detailQuery.data.client}
                 supabaseClientId={detailQuery.data.supabaseClientId}
                 access={detailQuery.data.access}
+                hubBilling={detailQuery.data.hubBilling ?? null}
                 currentUser={currentUser}
               />
             )}
@@ -223,11 +230,13 @@ function SlideOverContent({
   client,
   supabaseClientId,
   access,
+  hubBilling,
   currentUser,
 }: {
   client: MondayClient
   supabaseClientId: string
   access: ClientAccess
+  hubBilling: NonNullable<ClientDetailResponse["hubBilling"]> | null
   currentUser: CurrentUser
 }) {
   return (
@@ -238,6 +247,7 @@ function SlideOverContent({
           client={client}
           supabaseClientId={supabaseClientId}
           access={access}
+          hubBilling={hubBilling}
           currentUser={currentUser}
         />
       </div>
