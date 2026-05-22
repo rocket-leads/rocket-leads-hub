@@ -302,11 +302,13 @@ input[type="number"] {
 }
 
 /* ── Pedro (Campaign Manager) — hub-aligned button + form helpers ──
-   Pedro components were originally Mike's standalone Tailwind v3 app. We
-   migrated all custom color tokens to hub utilities (text-foreground,
-   bg-card, etc.) so light/dark mode just works. The pedro-btn-* classes
-   below give shadcn-Button-compatible styling for Mike's <button> tags
-   without having to convert every <button> to <Button>. */
+   Pedro started as Mike's standalone Tailwind v3 app. The CSS below
+   re-implements the small button + form primitives Mike used (.pedro-btn-*
+   and bare <input>/<textarea> inside .pedro-root) so they read 1:1 with
+   the rest of the platform's shadcn surface — same h-10, same rounded-lg,
+   same focus ring — without having to convert every Mike tag to <Button>
+   / <Input>. New code in Pedro should prefer the proper components
+   (Button, Input, AutoTextarea) over these classes. */
 
 @keyframes blink {
   0%, 100% { opacity: 1; }
@@ -319,10 +321,10 @@ input[type="number"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.375rem;
-  height: 2.25rem;
-  padding: 0 0.875rem;
-  border-radius: var(--radius-md);
+  gap: 0.5rem;
+  height: 2.5rem; /* h-10 — matches shadcn Button size="default" */
+  padding: 0 1rem; /* px-4 */
+  border-radius: 0.5rem; /* rounded-lg */
   font-family: var(--font-inter), "Inter", sans-serif;
   font-weight: 500;
   font-size: 0.875rem;
@@ -345,16 +347,16 @@ input[type="number"] {
   color: var(--primary-foreground);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
-.pedro-btn-primary:hover { background: color-mix(in srgb, var(--primary) 90%, black); }
+.pedro-btn-primary:hover { background: color-mix(in srgb, var(--primary) 92%, black); }
 
 .pedro-btn-ghost {
-  background: transparent;
+  background: var(--card);
   color: var(--foreground);
   border-color: var(--border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 .pedro-btn-ghost:hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
 }
 
 .pedro-btn-teal {
@@ -364,17 +366,20 @@ input[type="number"] {
 }
 .pedro-btn-teal:hover { background: #059669; }
 
-/* Form fields scoped to .pedro-root so we don't override the rest of the
-   hub. Matches shadcn Input look (h-9, rounded-md, border, bg-transparent
-   with focus ring). Selector is bare `input` (no [type] filter) so file/
-   hidden/etc inputs in Mike's components also pick up baseline styling. */
+/* Form fields scoped to .pedro-root mirror shadcn Input + AutoTextarea
+   styling exactly — same h-10, rounded-lg, padding, focus ring — so
+   the bare <input>/<textarea> tags in Mike's components are visually
+   indistinguishable from the proper primitives used elsewhere. The
+   manual resize handle on textareas is gone: AutoTextarea handles the
+   growing for newer code; legacy textareas in here size to content
+   via `field-sizing: content` where supported. */
 .pedro-root input,
 .pedro-root textarea,
 .pedro-root select {
   width: 100%;
-  height: 2.25rem;
-  padding: 0 0.75rem;
-  border-radius: var(--radius-md);
+  height: 2.5rem; /* h-10 — matches Input */
+  padding: 0 0.875rem; /* px-3.5 */
+  border-radius: 0.5rem; /* rounded-lg */
   border: 1px solid var(--input) !important;
   background: transparent !important;
   color: var(--foreground) !important;
@@ -396,15 +401,16 @@ input[type="number"] {
 .pedro-root textarea {
   height: auto;
   min-height: 4.5rem;
-  padding: 0.5rem 0.75rem;
-  resize: vertical;
+  padding: 0.5rem 0.875rem;
+  resize: none; /* Auto-grow handles sizing — no drag handle */
   line-height: 1.5;
+  field-sizing: content; /* Chromium + Safari: auto-grow to content */
 }
-.pedro-root input:focus,
-.pedro-root textarea:focus,
-.pedro-root select:focus {
+.pedro-root input:focus-visible,
+.pedro-root textarea:focus-visible,
+.pedro-root select:focus-visible {
   border-color: var(--ring) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent);
 }
 .pedro-root input::placeholder,
 .pedro-root textarea::placeholder {

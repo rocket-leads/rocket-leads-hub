@@ -340,7 +340,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
           onClick={() => setLibraryOpen(!libraryOpen)}
         >
           <div className="flex items-center gap-3">
-            <div className="font-heading font-semibold text-sm tracking-tight">Research bibliotheek</div>
+            <div className="font-heading font-semibold text-base tracking-tight">Research bibliotheek</div>
             <span className="text-[10px] uppercase tracking-[0.5px] text-primary bg-primary/10 border border-primary/30 px-2 py-0.5 rounded-full">
               {library.length} {library.length === 1 ? "item" : "items"}
             </span>
@@ -423,7 +423,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
       <div className="bg-card border border-primary/30 rounded-2xl p-6 mb-5 ring-1 ring-primary/20">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <div className="font-heading font-semibold text-[15px] tracking-tight">Research</div>
+            <div className="font-heading font-semibold text-base tracking-tight">Research</div>
             <div className="text-xs text-muted-foreground mt-[3px]">
               Onderzoek winnende campagnes in deze branche of voor deze propositie
             </div>
@@ -432,7 +432,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
 
         <div className="grid grid-cols-2 gap-[0.875rem]">
           <div className="flex flex-col gap-[5px]">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Branche / sector *</label>
+            <label className="text-xs font-medium text-muted-foreground">Branche / sector *</label>
             <input
               type="text"
               placeholder="bv. Loodgieters, Vloerlegging"
@@ -441,7 +441,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
             />
           </div>
           <div className="flex flex-col gap-[5px]">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Klantnaam (optioneel)</label>
+            <label className="text-xs font-medium text-muted-foreground">Klantnaam (optioneel)</label>
             <input
               type="text"
               placeholder="bv. Solution Afbouw Group"
@@ -450,7 +450,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
             />
           </div>
           <div className="flex flex-col gap-[5px]">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Doelgroep</label>
+            <label className="text-xs font-medium text-muted-foreground">Doelgroep</label>
             <input
               type="text"
               placeholder="bv. Huiseigenaren 30-65, B2C NL"
@@ -459,7 +459,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
             />
           </div>
           <div className="flex flex-col gap-[5px]">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Propositie</label>
+            <label className="text-xs font-medium text-muted-foreground">Propositie</label>
             <input
               type="text"
               placeholder="bv. Snel & betaalbaar, Premium maatwerk"
@@ -468,7 +468,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
             />
           </div>
           <div className="flex flex-col gap-[5px] col-span-2">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Extra context (optioneel)</label>
+            <label className="text-xs font-medium text-muted-foreground">Extra context (optioneel)</label>
             <textarea
               style={{ minHeight: 60 }}
               placeholder="Specifieke USPs, concurrenten, prijsklasse, regio..."
@@ -523,7 +523,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
 
           {/* Insights */}
           <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
-            <div className="font-heading font-semibold text-sm tracking-tight mb-4">Insights & patronen</div>
+            <div className="font-heading font-semibold text-base tracking-tight mb-4">Insights & patronen</div>
 
             <InsightSection title="Winnende angles" items={result.insights.winningAngles} accent="purple" />
             <InsightSection title="Veelgebruikte hooks" items={result.insights.commonHooks} accent="teal" />
@@ -536,7 +536,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
           {/* Example ads */}
           {result.exampleAds.length > 0 && (
             <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
-              <div className="font-heading font-semibold text-sm tracking-tight mb-4">Voorbeeld ads</div>
+              <div className="font-heading font-semibold text-base tracking-tight mb-4">Voorbeeld ads</div>
               <div className="flex flex-col gap-3">
                 {result.exampleAds.map((ad, i) => (
                   <div key={i} className="bg-muted/40 border border-border/60 rounded-lg p-4">
@@ -561,7 +561,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
           {/* Recommendations */}
           {result.recommendations.length > 0 && (
             <div className="bg-gradient-to-br from-primary/10 to-emerald-500/5 border border-primary/30 rounded-2xl p-6 mb-5">
-              <div className="font-heading font-semibold text-sm tracking-tight mb-3">Pedro&apos;s aanbevelingen</div>
+              <div className="font-heading font-semibold text-base tracking-tight mb-3">Pedro&apos;s aanbevelingen</div>
               <ol className="flex flex-col gap-2 pl-5 list-decimal text-[12.5px] text-foreground leading-[1.6]">
                 {result.recommendations.map((rec, i) => (
                   <li key={i}>{rec}</li>
@@ -612,8 +612,8 @@ function InsightSection({ title, items, accent }: { title: string; items: string
   const color = accent === "purple" ? "text-primary" : "text-emerald-500";
   return (
     <div className="mb-4 last:mb-0">
-      <div className={`text-[10px] font-semibold uppercase tracking-[0.12em] mb-2 ${color}`}>{title}</div>
-      <ul className="flex flex-col gap-1.5 pl-4 list-disc text-[12px] text-muted-foreground leading-[1.55]">
+      <div className={`text-xs font-semibold mb-2 ${color}`}>{title}</div>
+      <ul className="flex flex-col gap-1.5 pl-4 list-disc text-xs text-muted-foreground leading-relaxed">
         {items.map((item, i) => (
           <li key={i}>{item}</li>
         ))}

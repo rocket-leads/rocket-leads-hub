@@ -283,12 +283,24 @@ function OutputBlock({ content, expandFull }: { content: string; expandFull?: bo
 function Card({ active, children }: { active?: boolean; children: React.ReactNode }) {
   return (
     <div
-      className={`rounded-2xl border bg-card p-6 mb-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04),0_1px_3px_-1px_rgb(0_0_0_/_0.04)] dark:shadow-[0_1px_2px_0_rgb(0_0_0_/_0.3)] transition-colors ${
+      className={`rounded-2xl border bg-card p-6 mb-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] transition-colors ${
         active ? "border-primary/30 ring-1 ring-primary/20" : "border-border/60"
       }`}
     >
       {children}
     </div>
+  );
+}
+
+// Standard field label used across the brief form. Matches the
+// Settings + Client Info + Billing labels (12px, sentence-case, normal
+// weight). Replaces the old 10px uppercase tracking-[0.12em] style
+// that made Pedro feel like a different product.
+function FieldLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <label className={`text-xs font-medium text-muted-foreground ${className ?? ""}`}>
+      {children}
+    </label>
   );
 }
 
@@ -1553,7 +1565,7 @@ ${creativeDescriptions}`;
         <Card active>
           <div className="flex items-start justify-between mb-5">
             <div>
-              <div className="font-heading font-semibold text-[15px] tracking-tight">Client brief</div>
+              <div className="font-heading font-semibold text-base tracking-tight">Client brief</div>
               <div className="text-xs text-muted-foreground mt-[3px]">Importeer uit monday of vul handmatig in</div>
             </div>
           </div>
@@ -1625,9 +1637,9 @@ ${creativeDescriptions}`;
 
           {/* Brand colors result -- editable swatches */}
           {brandStyle && (
-            <div className="bg-muted/40 border border-emerald-500/20 rounded-lg p-[0.75rem_1rem] mb-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-500">Brand kleuren -- klik om te wijzigen</div>
+            <div className="bg-muted/30 border border-border/60 rounded-lg px-4 py-3 mb-3">
+              <div className="flex items-center justify-between mb-2.5">
+                <div className="text-xs font-medium text-muted-foreground">Brand kleuren · klik om te wijzigen</div>
               </div>
 
               {/* Active brand colors (editable) */}
@@ -1637,10 +1649,10 @@ ${creativeDescriptions}`;
                   if (!color) return null;
                   const label = field === "primaryColor" ? "Primary (CTA)" : field === "secondaryColor" ? "Secondary" : "Accent";
                   return (
-                    <div key={field} className="flex flex-col items-center gap-1">
+                    <div key={field} className="flex flex-col items-center gap-1.5">
                       <label className="relative cursor-pointer group">
                         <div
-                          className="w-10 h-10 rounded-lg border-2 border-border/60 group-hover:border-primary transition-all shadow-md"
+                          className="w-11 h-11 rounded-lg border border-border group-hover:border-primary transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]"
                           style={{ background: color }}
                         />
                         <input
@@ -1650,7 +1662,7 @@ ${creativeDescriptions}`;
                           className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
                         />
                       </label>
-                      <span className="text-[9px] text-muted-foreground/60 uppercase tracking-[0.5px]">{label}</span>
+                      <span className="text-[10px] text-muted-foreground">{label}</span>
                       <input
                         type="text"
                         value={color}
@@ -1658,7 +1670,7 @@ ${creativeDescriptions}`;
                           const v = e.target.value;
                           if (/^#[0-9a-fA-F]{6}$/.test(v)) overrideBrandColor(field, v);
                         }}
-                        className="!w-[72px] !text-[10px] !p-[2px_4px] text-center !bg-card !border-border/60"
+                        className="!w-[78px] !h-7 !text-[11px] !px-1.5 !py-0 text-center !bg-card !border-border"
                       />
                     </div>
                   );
@@ -1706,42 +1718,42 @@ ${creativeDescriptions}`;
           {/* Form fields */}
           <div className="grid grid-cols-2 gap-[0.875rem] mt-4">
             <div className="flex flex-col gap-[5px]">
-              <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Bedrijfsnaam</label>
+              <label className="text-xs font-medium text-muted-foreground">Bedrijfsnaam</label>
               <input type="text" placeholder="bv. GJJ Riooltechniek BV" value={brief.bedrijf} onChange={(e) => updateBrief("bedrijf", e.target.value)} />
               <SourceTag sources={briefSources.bedrijf} />
             </div>
             <div className="flex flex-col gap-[5px]">
-              <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Sector</label>
+              <label className="text-xs font-medium text-muted-foreground">Sector</label>
               <input type="text" placeholder="bv. Loodgieter / riool" value={brief.sector} onChange={(e) => updateBrief("sector", e.target.value)} />
               <SourceTag sources={briefSources.sector} />
             </div>
             <div className="flex flex-col gap-[5px]">
-              <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Doelgroep</label>
+              <label className="text-xs font-medium text-muted-foreground">Doelgroep</label>
               <textarea style={{ minHeight: 80 }} placeholder="bv. B2C huiseigenaren NL, 30+, spaargeld" value={brief.doel} onChange={(e) => updateBrief("doel", e.target.value)} />
               <SourceTag sources={briefSources.doel} />
             </div>
             <div className="flex flex-col gap-[5px]">
-              <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Pijnpunt</label>
+              <label className="text-xs font-medium text-muted-foreground">Pijnpunt</label>
               <textarea style={{ minHeight: 80 }} placeholder="bv. Verstopte afvoer, dure loodgieter" value={brief.pijn} onChange={(e) => updateBrief("pijn", e.target.value)} />
               <SourceTag sources={briefSources.pijn} />
             </div>
             <div className="flex flex-col gap-[5px] col-span-2">
-              <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Aanbod / dienst</label>
+              <label className="text-xs font-medium text-muted-foreground">Aanbod / dienst</label>
               <textarea placeholder="Beschrijf het aanbod, tarieven en werkwijze..." value={brief.aanbod} onChange={(e) => updateBrief("aanbod", e.target.value)} />
               <SourceTag sources={briefSources.aanbod} />
             </div>
             <div className="flex flex-col gap-[5px]">
-              <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">USP&apos;s</label>
+              <label className="text-xs font-medium text-muted-foreground">USP&apos;s</label>
               <textarea style={{ minHeight: 100 }} placeholder={"- Binnen 60 min op locatie\n- 24/7 bereikbaar\n- Vaste prijzen"} value={brief.usps} onChange={(e) => updateBrief("usps", e.target.value)} />
               <SourceTag sources={briefSources.usps} />
             </div>
             <div className="flex flex-col gap-[5px]">
-              <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Marketing hooks (account manager)</label>
+              <label className="text-xs font-medium text-muted-foreground">Marketing hooks (account manager)</label>
               <textarea style={{ minHeight: 100 }} placeholder="Hooks vanuit kick-off update..." value={brief.hooksAM} onChange={(e) => updateBrief("hooksAM", e.target.value)} />
               <SourceTag sources={briefSources.hooksAM} />
             </div>
             <div className="flex flex-col gap-[5px] col-span-2">
-              <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Extra hooks - campaign manager</label>
+              <label className="text-xs font-medium text-muted-foreground">Extra hooks - campaign manager</label>
               <textarea style={{ minHeight: 100 }} placeholder="Jouw eigen invalshoeken en aanvullingen op de kick-off..." value={brief.hooksExtra} onChange={(e) => updateBrief("hooksExtra", e.target.value)} />
               <div className="text-[10.5px] text-primary mt-[3px] opacity-85">
                 → Pedro prioriteert deze hooks als extra laag bovenop de kick-off
@@ -1750,10 +1762,7 @@ ${creativeDescriptions}`;
           </div>
 
           <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-            <div className="text-[11px] text-muted-foreground/60">
-              Stap 1 van 6{" "}
-              <span className="text-muted-foreground/40">· tab-nav bovenin slaat niet op</span>
-            </div>
+            <div className="text-xs text-muted-foreground">Stap 1 van 6</div>
             <button
               className="pedro-btn-primary"
               onClick={() =>
@@ -1781,7 +1790,7 @@ ${creativeDescriptions}`;
         <Card active>
           <div className="flex items-start justify-between mb-5">
             <div>
-              <div className="font-heading font-semibold text-[15px] tracking-tight">Marketing angles</div>
+              <div className="font-heading font-semibold text-base tracking-tight">Marketing angles</div>
               <div className="text-xs text-muted-foreground mt-[3px]">Selecteer 1 of meerdere angles om mee te testen</div>
             </div>
             <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(1)}>← Terug</button>
@@ -1989,7 +1998,7 @@ ${creativeDescriptions}`;
         <Card active>
           <div className="flex items-start justify-between mb-5">
             <div>
-              <div className="font-heading font-semibold text-[15px] tracking-tight">
+              <div className="font-heading font-semibold text-base tracking-tight">
                 Video script
                 <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.4px] text-muted-foreground/60 bg-muted/40 px-2 py-0.5 rounded-full border border-border/60 align-middle">Optioneel</span>
               </div>
@@ -2106,7 +2115,7 @@ ${creativeDescriptions}`;
           <Card active>
             <div className="flex items-start justify-between mb-5">
               <div>
-                <div className="font-heading font-semibold text-[15px] tracking-tight">Creatives configuratie</div>
+                <div className="font-heading font-semibold text-base tracking-tight">Creatives configuratie</div>
                 <div className="text-xs text-muted-foreground mt-[3px]">Aantal, formaat en client content</div>
               </div>
               <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(3)}>← Terug</button>
@@ -2187,7 +2196,7 @@ ${creativeDescriptions}`;
                 </div>
               ) : (
                 <div className="flex flex-col gap-[5px]">
-                  <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <label className="text-xs font-medium text-muted-foreground">
                     {huisstijlOverride ? "Overschrijf de geanalyseerde huisstijl" : "Beschrijf de huisstijl (of analyseer de website in stap 1)"}
                   </label>
                   <textarea
@@ -2206,13 +2215,13 @@ ${creativeDescriptions}`;
               <div className="flex flex-col gap-3">
                 {/* Drive link */}
                 <div className="flex flex-col gap-[5px]">
-                  <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Afbeeldingen uit Drive</label>
+                  <label className="text-xs font-medium text-muted-foreground">Afbeeldingen uit Drive</label>
                   <input type="text" placeholder="https://drive.google.com/drive/folders/..." value={driveLink} onChange={(e) => setDriveLink(e.target.value)} />
                 </div>
 
                 {/* Image upload */}
                 <div className="flex flex-col gap-[5px]">
-                  <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Upload afbeeldingen handmatig</label>
+                  <label className="text-xs font-medium text-muted-foreground">Upload afbeeldingen handmatig</label>
                   <div className="flex items-center gap-2">
                     <label className="px-3 py-[0.4rem] rounded-lg border border-border/60 text-[11.5px] text-muted-foreground cursor-pointer hover:border-primary/40 hover:text-primary transition-all">
                       Kies bestanden...
@@ -2243,7 +2252,7 @@ ${creativeDescriptions}`;
 
                 {/* Brandbook */}
                 <div className="flex flex-col gap-[5px]">
-                  <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Brandbook uploaden (PDF)</label>
+                  <label className="text-xs font-medium text-muted-foreground">Brandbook uploaden (PDF)</label>
                   <div className="flex items-center gap-2">
                     <label className="px-3 py-[0.4rem] rounded-lg border border-border/60 text-[11.5px] text-muted-foreground cursor-pointer hover:border-primary/40 hover:text-primary transition-all">
                       Kies PDF...
@@ -2284,7 +2293,7 @@ ${creativeDescriptions}`;
                 className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
               />
               <div className="flex items-center justify-between">
-                <div className="text-[11px] text-muted-foreground/60">Stap 4 van 6</div>
+                <div className="text-xs text-muted-foreground">Stap 4 van 6</div>
                 <button className="pedro-btn-primary" onClick={() => doCreative()} disabled={manusLoading}>
                   {manusLoading ? "Genereren..." : manusPrompt ? "↻ Regenereer met steering" : "Genereer Manus prompt"}
                 </button>
@@ -2348,7 +2357,7 @@ ${creativeDescriptions}`;
           <Card active>
             <div className="flex items-start justify-between mb-5">
               <div>
-                <div className="font-heading font-semibold text-[15px] tracking-tight">Landingspagina configuratie</div>
+                <div className="font-heading font-semibold text-base tracking-tight">Landingspagina configuratie</div>
                 <div className="text-xs text-muted-foreground mt-[3px]">Stijl, lengte, tracking &amp; technisch</div>
               </div>
               <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(4)}>← Terug</button>
@@ -2395,22 +2404,22 @@ ${creativeDescriptions}`;
               <div className="font-heading font-semibold text-[11.5px] text-primary uppercase tracking-[0.9px] mb-3">Pixel &amp; Tracking</div>
               <div className="grid grid-cols-2 gap-[0.875rem]">
                 <div className="flex flex-col gap-[5px]">
-                  <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Meta Pixel ID</label>
+                  <label className="text-xs font-medium text-muted-foreground">Meta Pixel ID</label>
                   <input type="text" placeholder="bv. 1234567890123456" value={pixelId} onChange={(e) => setPixelId(e.target.value)} />
                 </div>
                 <div className="flex flex-col gap-[5px]">
-                  <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Zapier Webhook URL</label>
+                  <label className="text-xs font-medium text-muted-foreground">Zapier Webhook URL</label>
                   <input type="text" placeholder="https://hooks.zapier.com/..." value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
                 </div>
                 <div className="flex flex-col gap-[5px] col-span-2">
-                  <label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">UTM structuur</label>
+                  <label className="text-xs font-medium text-muted-foreground">UTM structuur</label>
                   <input type="text" placeholder="utm_source=meta&utm_medium=paid&utm_campaign={{naam}}" value={utmStr} onChange={(e) => setUtmStr(e.target.value)} />
                 </div>
               </div>
             </div>
 
             <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-              <div className="text-[11px] text-muted-foreground/60">Stap 5 van 6</div>
+              <div className="text-xs text-muted-foreground">Stap 5 van 6</div>
               <button className="pedro-btn-primary" onClick={() => doLP()}>Genereer Lovable prompt →</button>
             </div>
           </Card>
@@ -2446,7 +2455,7 @@ ${creativeDescriptions}`;
         <Card active>
           <div className="flex items-start justify-between mb-5">
             <div>
-              <div className="font-heading font-semibold text-[15px] tracking-tight">Ad copy</div>
+              <div className="font-heading font-semibold text-base tracking-tight">Ad copy</div>
               <div className="text-xs text-muted-foreground mt-[3px]">Meta &amp; Instagram advertentieteksten - afgestemd op de LP</div>
             </div>
             <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(5)}>← Terug</button>
