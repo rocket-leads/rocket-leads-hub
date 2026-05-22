@@ -28,6 +28,12 @@ type Props = {
    *  next to the open ticket. The body content is identical in both modes;
    *  only the outer shell differs. */
   mode?: "overlay" | "docked"
+  /** When docked and butted up against the list on the left, drop the
+   *  left radius + left border so the two cards read as one continuous
+   *  panel (email-client style). Roy: same visual language across Tasks /
+   *  Updates / Client Inbox / Now — no floating side-panels, one merged
+   *  surface. */
+  mergedLeftEdge?: boolean
 }
 
 const TASK_STATUS_OPTIONS: Array<{ value: TaskStatus; label: string; cls: string }> = [
@@ -105,7 +111,7 @@ function fmtDateTime(iso: string): string {
   })
 }
 
-export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChanged, mode = "overlay" }: Props) {
+export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChanged, mode = "overlay", mergedLeftEdge }: Props) {
   const queryClient = useQueryClient()
   const [commentBody, setCommentBody] = useState("")
   const [submittingComment, setSubmittingComment] = useState(false)
@@ -719,7 +725,57 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
             )}
           </>
         )}
-          </div>
+      </div>
+    </>
+  )
+
+  if (mode === "docked") {
+    // Docked variant: rendered inline inside the inbox layout as a flex
+    // column. No portal, no backdrop — the list stays interactive next to
+    // the open ticket. Parent owns positioning (sticky/height); we only
+    // own the background + border so the pane looks like a card. When
+    // `mergedLeftEdge` is set, the left side butts up against the list so
+    // the radius + border on that edge are removed.
+    return (
+      <div
+        className={cn(
+          "relative flex h-full flex-col border border-border bg-background shadow-sm overflow-hidden",
+          mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl",
+        )}
+      >
+        {body}
+      </div>
+    )
+  }
+
+  return (
+    <DialogPrimitive.Root open onOpenChange={(o) => !o && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Backdrop
+          onClick={onClose}
+          className={cn(
+            "fixed inset-0 isolate z-50 bg-black/40 backdrop-blur-sm",
+            "cursor-pointer transition-colors hover:bg-black/55",
+            "duration-100 ease-out",
+            "data-open:animate-in data-open:fade-in-0",
+            "data-closed:animate-out data-closed:fade-out-0",
+          )}
+        />
+        <DialogPrimitive.Popup
+          className={cn(
+            // Right-side slide panel — used on viewports narrower than xl
+            // where the list can't sensibly sit next to a docked pane.
+            // On xl+ the parent renders <ItemDetailDialog mode="docked" />
+            // instead and this overlay path is never reached.
+            "fixed inset-y-0 right-0 z-50 w-full sm:w-[80%] md:w-[55%] lg:w-[40%] max-w-[640px]",
+            "bg-background shadow-2xl ring-1 ring-foreground/10 outline-none",
+            "flex flex-col",
+            "duration-[120ms] ease-out",
+            "data-open:animate-in data-open:slide-in-from-right",
+            "data-closed:animate-out data-closed:slide-out-to-right",
+          )}
+        >
+          {body}
         </DialogPrimitive.Popup>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

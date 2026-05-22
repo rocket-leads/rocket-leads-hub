@@ -3,6 +3,13 @@
 import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+/** Per-tab accent colour. Overrides the default primary tint on the active
+ *  tab so different tab strips can carry their own colour language. Used
+ *  by the inbox main tabs to match the row rail palette (violet=Tasks,
+ *  sky=Updates, emerald=Client). When omitted, the active tab falls back
+ *  to the brand primary purple. */
+export type TabAccent = "primary" | "violet" | "sky" | "emerald" | "red" | "amber"
+
 export type TopTab<T extends string = string> = {
   id: T
   label: string
@@ -10,6 +17,42 @@ export type TopTab<T extends string = string> = {
   count?: number
   /** Small status dot on the icon — used by client-detail for overdue/open invoices. */
   dot?: "red" | "amber"
+  /** Active-state accent. Defaults to `primary` when unset. */
+  accent?: TabAccent
+}
+
+/** Maps `TabAccent` to the Tailwind classes used on the active tab. Single
+ *  source of truth so the icon, count, and underline all stay in sync.
+ *  Inactive state never uses these — it's always muted regardless of the
+ *  accent, otherwise the tabs would look like a coloured carousel and the
+ *  user wouldn't be able to tell which one is selected. */
+const ACCENT_CLASSES: Record<TabAccent, { icon: string; count: string; bar: string }> = {
+  primary: { icon: "text-primary", count: "text-primary", bar: "bg-primary" },
+  violet: {
+    icon: "text-violet-500 dark:text-violet-400",
+    count: "text-violet-600 dark:text-violet-300",
+    bar: "bg-violet-500",
+  },
+  sky: {
+    icon: "text-sky-500 dark:text-sky-400",
+    count: "text-sky-600 dark:text-sky-300",
+    bar: "bg-sky-500",
+  },
+  emerald: {
+    icon: "text-emerald-500 dark:text-emerald-400",
+    count: "text-emerald-600 dark:text-emerald-300",
+    bar: "bg-emerald-500",
+  },
+  red: {
+    icon: "text-red-500 dark:text-red-400",
+    count: "text-red-600 dark:text-red-300",
+    bar: "bg-red-500",
+  },
+  amber: {
+    icon: "text-amber-500 dark:text-amber-400",
+    count: "text-amber-600 dark:text-amber-300",
+    bar: "bg-amber-500",
+  },
 }
 
 type Props<T extends string> = {
@@ -36,8 +79,9 @@ export function TopTabs<T extends string>({
   return (
     <div className={cn("flex items-center justify-between border-b border-border/40", className)}>
       <div className="flex items-center gap-0">
-        {tabs.map(({ id, label, icon: Icon, count, dot }) => {
+        {tabs.map(({ id, label, icon: Icon, count, dot, accent }) => {
           const active = value === id
+          const palette = ACCENT_CLASSES[accent ?? "primary"]
           return (
             <button
               key={id}
@@ -53,7 +97,7 @@ export function TopTabs<T extends string>({
                   <Icon
                     className={cn(
                       "h-4 w-4 transition-colors",
-                      active ? "text-primary" : "",
+                      active ? palette.icon : "",
                     )}
                   />
                   {dot && !active && (
@@ -71,14 +115,14 @@ export function TopTabs<T extends string>({
                 <span
                   className={cn(
                     "ml-1 text-xs tabular-nums font-medium",
-                    active ? "text-primary" : "text-muted-foreground/70",
+                    active ? palette.count : "text-muted-foreground/70",
                   )}
                 >
                   {count}
                 </span>
               )}
               {active && (
-                <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-primary rounded-t-full" />
+                <span className={cn("absolute bottom-0 left-2 right-2 h-[2px] rounded-t-full", palette.bar)} />
               )}
             </button>
           )

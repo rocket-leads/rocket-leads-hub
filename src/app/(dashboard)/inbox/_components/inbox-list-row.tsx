@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw, Link2Off, Clock, BellOff, UserCog, ListTodo, Trash2 } from "lucide-react"
+import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw, Link2Off, Clock, BellOff, UserCog, ListTodo, Trash2, Inbox as InboxIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SourcePill } from "./source-pill"
 import type { InboxItem, TaskStatus } from "@/types/inbox"
@@ -13,6 +13,43 @@ const TASK_STATUS_LABELS: Record<TaskStatus, { label: string; cls: string }> = {
   in_progress: { label: "In progress", cls: "bg-amber-500/10 text-amber-400" },
   done: { label: "Done", cls: "bg-emerald-500/10 text-emerald-400" },
   cancelled: { label: "Cancelled", cls: "bg-muted text-muted-foreground" },
+}
+
+/**
+ * Per-kind visual treatment: a coloured rail on the left edge of the row +
+ * a matching type chip next to the title. Roy: "ik wil veel beter kunnen
+ * zien of het gaat om een taak, een update, of client inbox." The rail is
+ * the at-a-glance signal (peripheral vision across a long list); the chip
+ * confirms the type in plain English right next to the title.
+ *
+ * Colours are deliberately distinct from the SourcePill brand colours on
+ * the right edge: rail says *what kind of work this is*, the SourcePill
+ * still says *where it came from* (WhatsApp emerald / Email blue / Slack
+ * purple etc.). Reading left-to-right: type → title → meta → channel.
+ *
+ * - Task → violet (the colour we already use for the keyboard-focus ring
+ *   and `Make task` button, so it reads as "this is an action item")
+ * - Update → sky/blue (informational tone — matches the "Open" task status
+ *   shade but in a separate column, so no visual collision)
+ */
+const KIND_TREATMENT: Record<"task" | "update", {
+  rail: string
+  chip: string
+  icon: typeof ListTodo
+  label: string
+}> = {
+  task: {
+    rail: "bg-violet-500",
+    chip: "bg-violet-500/10 text-violet-600 dark:text-violet-300 border-violet-500/20",
+    icon: ListTodo,
+    label: "Task",
+  },
+  update: {
+    rail: "bg-sky-500",
+    chip: "bg-sky-500/10 text-sky-600 dark:text-sky-300 border-sky-500/20",
+    icon: InboxIcon,
+    label: "Update",
+  },
 }
 
 function fmtDate(iso: string): string {
@@ -80,6 +117,11 @@ export function InboxListRow({
   const taskStatus = !isUpdate ? TASK_STATUS_LABELS[item.status as TaskStatus] : null
   const isHighPriority = item.priority === "high"
   const isCompleted = ["done", "cancelled", "read"].includes(item.status)
+  // Type rail + chip — the at-a-glance "is this a Task or an Update" signal
+  // that Roy specifically asked for. Stored at the kind level so the row
+  // body picks the right colour without a switch statement inline.
+  const kindTreatment = isUpdate ? KIND_TREATMENT.update : KIND_TREATMENT.task
+  const KindIcon = kindTreatment.icon
   // Bulk-select checkbox shown on tasks AND updates when the parent
   // hooks it up. Updates also keep their leading read/unread bubble
   // (which has a different role: per-row read toggle, not bulk select);
@@ -101,21 +143,41 @@ export function InboxListRow({
       data-inbox-row-id={item.id}
       className={cn(
         "group relative w-full text-left rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all px-5 py-4 cursor-pointer overflow-hidden",
-        // Unread state: left accent bar instead of a subtle full-row ring.
-        // Bar is rendered via ::before below so it survives the card radius.
-        isUnread && "bg-primary/[0.03]",
+        // Slight inset on the left so the rail (w-1) doesn't collide with
+        // the title/checkbox at small viewport widths. The rail itself is
+        // absolute-positioned so this padding sits above it.
+        "pl-6",
         selected && "ring-2 ring-primary/60 bg-primary/[0.06] border-primary/40",
-        // Keyboard focus ring sits ABOVE the unread/selected rings visually
-        // (last in the cn order). Distinct violet ring so it doesn't collide
-        // with the cyan unread tint.
+        // Keyboard focus ring also denotes "this row's detail is open" in
+        // docked mode — see inbox-view.tsx where setFocusedItemId follows
+        // setDetailItem on every click. Distinct violet ring so it doesn't
+        // collide with the type rail colour.
         keyboardFocused && "ring-2 ring-violet-500/60 bg-violet-500/[0.04]",
         isCompleted && "opacity-60",
       )}
     >
+      {/* Type rail on the left edge — always rendered (so type is visible
+          at a glance on every row), but dimmed to ~45% when the item is
+          done/cancelled/read so completed rows visually recede. Unread
+          updates get the rail at full saturation: the rail does double
+          duty as the unread signal, which keeps a single column of meaning
+          on the left edge instead of two competing stripes. */}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute left-0 top-0 bottom-0 w-1",
+          kindTreatment.rail,
+          isCompleted && "opacity-40",
+        )}
+      />
+      {/* Subtle background tint for unread updates — kept from the old
+          treatment because the rail alone isn't quite strong enough on a
+          dense list. The colour is sky-tinted to match the Update rail
+          (was primary/violet before, which clashed with the new Task rail). */}
       {isUnread && (
         <span
           aria-hidden
-          className="absolute left-0 top-0 bottom-0 w-1 bg-primary"
+          className="absolute inset-0 bg-sky-500/[0.04] pointer-events-none"
         />
       )}
       <div className="flex items-start gap-3">
@@ -157,6 +219,32 @@ export function InboxListRow({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Type chip — small icon+label next to the title so the row's
+                kind is unmistakable even when the rail is out of peripheral
+                vision (e.g. scanning the title column). Pairs with the
+                left rail for redundant encoding (colour + text + icon),
+                which Roy explicitly asked for: "het moet visueel duidelijker
+                zijn of het gaat om een taak, een update, wat dan ook." */}
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0",
+                kindTreatment.chip,
+              )}
+              title={kindTreatment.label}
+            >
+              <KindIcon className="h-3 w-3" />
+              {kindTreatment.label}
+            </span>
+            {/* SourcePill on the title row, immediately after the type chip.
+                Pairs the categorical labels together (TYPE + SOURCE) and
+                keeps the row's right edge clean for the action button —
+                Roy: previously the Automation/WhatsApp chip sat awkwardly
+                between the metadata row and the Create-task button, which
+                made the row feel crowded on the right side. */}
+            <SourcePill
+              source={item.source}
+              channelKind={item.channelKind}
+            />
             {isHighPriority && (
               <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
             )}
@@ -198,19 +286,27 @@ export function InboxListRow({
             )}
           </div>
           <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground/80 flex-wrap">
-            {showClient && (
+            {/* Client name — only rendered when there's a real client to
+                show. Unlinked Trengo contacts get a warning chip so the AM
+                knows the item hasn't been mapped yet; the previous
+                "(unknown)" filler fallback is suppressed because it added
+                noise without information ("I have no client" doesn't need
+                to take up a row slot). */}
+            {showClient && item.isUnlinked && (
               <>
-                {item.isUnlinked ? (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-500 dark:text-amber-400 px-1.5 py-0.5 font-medium"
-                    title="This Trengo contact isn't linked to a client yet"
-                  >
-                    <Link2Off className="h-3 w-3" />
-                    Unlinked
-                  </span>
-                ) : (
-                  <span className="font-medium">{item.clientName}</span>
-                )}
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-500 dark:text-amber-400 px-1.5 py-0.5 font-medium"
+                  title="This Trengo contact isn't linked to a client yet"
+                >
+                  <Link2Off className="h-3 w-3" />
+                  Unlinked
+                </span>
+                <span>·</span>
+              </>
+            )}
+            {showClient && !item.isUnlinked && item.clientName && item.clientName !== "(unknown)" && (
+              <>
+                <span className="font-medium">{item.clientName}</span>
                 <span>·</span>
               </>
             )}
@@ -241,15 +337,6 @@ export function InboxListRow({
                 </span>
               </>
             )}
-            {/* Source pill — pushed to the right edge of the metadata row.
-                Per the Phase C design: brand-coloured chip so AMs can tell at
-                a glance whether a task came from a client message, a Monday
-                update, an automation, etc. */}
-            <SourcePill
-              source={item.source}
-              channelKind={item.channelKind}
-              className="ml-auto"
-            />
           </div>
         </div>
 
@@ -267,12 +354,12 @@ export function InboxListRow({
               e.stopPropagation()
               onAction("make_task")
             }}
-            title="Convert to task"
-            aria-label="Convert to task"
+            title="Create task from this update"
+            aria-label="Create task from this update"
             className="opacity-60 group-hover:opacity-100 transition-opacity h-9 px-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 text-xs font-medium text-muted-foreground hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-500/30 shrink-0"
           >
             <ListTodo className="h-3.5 w-3.5" />
-            Make task
+            Create task
           </button>
         )}
       </div>

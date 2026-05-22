@@ -379,6 +379,10 @@ export const DICTIONARY = {
   "inbox.now.section.today": { nl: "Vandaag", en: "Due today" },
   "inbox.now.section.updates": { nl: "Nieuwe updates", en: "Unread updates" },
   "inbox.now.section.chats": { nl: "Nieuwe berichten", en: "Unread chats" },
+  // Combined "Unread inbox" — single Now section that mixes unread updates
+  // and unread client chats, sorted by recency. Roy: one consolidated
+  // signal instead of two separate sections.
+  "inbox.now.section.unread_inbox": { nl: "Nieuwe inbox", en: "Unread inbox" },
   "inbox.now.empty": { nl: "Alles bij. Geen urgente items op dit moment.", en: "All caught up. No urgent items right now." },
   "inbox.now.chat.open": { nl: "Open in Klanten Inbox", en: "Open in Client Inbox" },
 

@@ -36,7 +36,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { InboxListRow, type RowAction } from "./inbox-list-row"
 import { ComposerDialog } from "./composer-dialog"
 import { ItemDetailDialog } from "./item-detail-dialog"
-import { ChatPane } from "./chat-pane"
+import { ChatPane, ThreadView } from "./chat-pane"
 import type { ChatThreadSummary } from "@/lib/inbox/fetchers"
 import { CommunicationTab } from "@/app/(dashboard)/clients/[id]/_components/communication-tab"
 import { MeetingsTab } from "@/app/(dashboard)/clients/[id]/_components/meetings-tab"
@@ -114,11 +114,15 @@ const UPDATE_FILTER_SHAPE = [
 ]
 
 const TASK_FILTER_SHAPE = [
+  // "All" goes first to mirror the Updates strip (All / Unread / Read).
+  // Roy: consistency across tabs — a user scanning the filter row should
+  // find the same anchor option in the same position regardless of which
+  // tab they're on.
+  { id: "all" as const, labelKey: "inbox.task.filter.all" as const, icon: LayoutList },
   { id: "open" as const, labelKey: "inbox.task.filter.open" as const, icon: Circle },
   { id: "in_progress" as const, labelKey: "inbox.task.filter.in_progress" as const, icon: Clock },
   { id: "done" as const, labelKey: "inbox.task.filter.done" as const, icon: CircleCheck },
   { id: "snoozed" as const, labelKey: "inbox.task.filter.snoozed" as const, icon: BellOff },
-  { id: "all" as const, labelKey: "inbox.task.filter.all" as const, icon: LayoutList },
 ]
 
 const ALL_UPDATE_STATUSES: UpdateStatus[] = ["unread", "read"]
@@ -194,6 +198,10 @@ export function InboxView({
     body?: string
   }>({})
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null)
+  // Selected chat thread — second tenant of the docked pane. Mutually
+  // exclusive with `detailItem` (opening a task closes any open thread and
+  // vice versa) so the user always sees exactly one detail surface.
+  const [selectedThread, setSelectedThread] = useState<ChatThreadSummary | null>(null)
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -521,7 +529,19 @@ export function InboxView({
       }
 
       if (isTypingTarget(e.target)) return
-      if (detailItem) return // detail dialog owns the keyboard while open
+
+      // Escape closes the docked detail pane (either tenant: InboxItem or
+      // chat thread). The overlay variant has its own Esc handler via
+      // DialogPrimitive, but the docked pane lives inline and would
+      // otherwise need an explicit close click. Mirroring Linear/Slack:
+      // Esc dismisses the open ticket regardless of mode.
+      if (e.key === "Escape" && (detailItem || selectedThread)) {
+        e.preventDefault()
+        closeDock()
+        return
+      }
+
+      if (detailItem || selectedThread) return // detail surface owns the rest of the keyboard while open
 
       // c opens the composer for whichever pane the user is on. Tasks/
       // Updates → composer in matching kind. Skipped on chat/meetings
@@ -560,7 +580,7 @@ export function InboxView({
 
       if (e.key === "Enter" || e.key === "o") {
         e.preventDefault()
-        setDetailItem(focused)
+        openDetailItem(focused)
         return
       }
 
@@ -605,14 +625,18 @@ export function InboxView({
     : undefined
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
-        { id: "tasks", label: t("inbox.tab.tasks", locale), icon: ListTodo, count: tasks.length },
-        { id: "updates", label: t("inbox.tab.updates", locale), icon: InboxIcon, count: updates.length },
+        { id: "tasks", label: t("inbox.tab.tasks", locale), icon: ListTodo, count: tasks.length, accent: "violet" as const },
+        { id: "updates", label: t("inbox.tab.updates", locale), icon: InboxIcon, count: updates.length, accent: "sky" as const },
         ...(lockedClient.canViewCommunication
-          ? [{ id: "client-inbox" as const, label: t("inbox.tab.client_inbox", locale), icon: MessageCircle }]
+          ? [{ id: "client-inbox" as const, label: t("inbox.tab.client_inbox", locale), icon: MessageCircle, accent: "emerald" as const }]
           : []),
         { id: "meetings", label: t("inbox.tab.meetings", locale), icon: Video },
       ]
     : [
+        // Per-tab accents echo the row-rail palette (Tasks=violet,
+        // Updates=sky, Client=emerald) so the active tab visually pulses
+        // the same colour as the rows it contains. Now keeps the primary
+        // brand purple since it spans all three queues.
         {
           id: "now",
           label: t("inbox.tab.now", locale),
@@ -627,18 +651,21 @@ export function InboxView({
           // status/source filter. Falls back to the local filtered count
           // before the badge query resolves.
           count: tabBadge?.openTasks ?? tasks.length,
+          accent: "violet" as const,
         },
         {
           id: "updates",
           label: t("inbox.tab.updates", locale),
           icon: InboxIcon,
           count: tabBadge?.unreadUpdates ?? updates.length,
+          accent: "sky" as const,
         },
         {
           id: "client-inbox",
           label: t("inbox.tab.client_inbox", locale),
           icon: MessageCircle,
           count: tabBadge?.unreadChats ?? 0,
+          accent: "emerald" as const,
         },
       ]
 
@@ -648,6 +675,93 @@ export function InboxView({
   // own the composer/search affordances those belong to (those live in the
   // tabs that author their own items).
   const isNowTab = activeTab === "now"
+
+  // Unified detail surface: every tab (Now / Tasks / Updates / Client Inbox)
+  // opens its detail inline as a 50/50 split inside the tab's content
+  // area on xl+. The list compresses to the left half, the detail renders
+  // in the right half, no gap, merged borders — email-client style. Below
+  // xl, ItemDetailDialog falls back to its overlay slide-over and the list
+  // stays full-width. The helpers below enforce "only one detail open at
+  // a time" so the right column always knows which surface to render.
+
+  // Close helpers. Opening a task closes any open thread and vice versa
+  // (one detail surface at a time) so the user never has two open detail
+  // contexts to mentally track.
+  function openDetailItem(item: InboxItem) {
+    setSelectedThread(null)
+    setDetailItem(item)
+    setFocusedItemId(item.id)
+  }
+  function openThread(thread: ChatThreadSummary) {
+    setDetailItem(null)
+    setSelectedThread(thread)
+  }
+  function closeDock() {
+    setDetailItem(null)
+    setSelectedThread(null)
+  }
+
+  /** Right column of the inline 50/50 split. Picks the surface based on
+   *  what's open: a Task/Update detail (ItemDetailDialog) or a chat thread
+   *  (ThreadView). Mutually exclusive — see openDetailItem / openThread.
+   *  Returns null when neither is open so callers can decide whether to
+   *  render the split at all. */
+  function renderInlineDetail(): React.ReactNode {
+    if (detailItem) {
+      return (
+        <ItemDetailDialog
+          itemId={detailItem.id}
+          currentUser={currentUser}
+          users={users}
+          onClose={closeDock}
+          onChanged={refreshAll}
+          mode="docked"
+          mergedLeftEdge
+        />
+      )
+    }
+    if (selectedThread) {
+      return (
+        <ThreadView
+          thread={selectedThread}
+          users={users}
+          onMakeTaskFromMessage={openComposerFromChat}
+          onReplied={() => {
+            queryClient.invalidateQueries({ queryKey: ["inbox-threads", "external"] })
+            queryClient.invalidateQueries({
+              queryKey: ["inbox-thread", selectedThread.threadKey],
+            })
+          }}
+          mergedLeftEdge
+        />
+      )
+    }
+    return null
+  }
+
+  /** Wrap a tab's list area in the 50/50 inline-detail split when a detail
+   *  is open. The list stays on the left and the detail renders on the
+   *  right with no gap, mirroring the Client Inbox layout. Below xl the
+   *  list is shown full-width and ItemDetailDialog falls back to its
+   *  overlay slide-over (rendered separately at the bottom of the view).
+   *
+   *  `allowThread` is opt-in per tab — Tasks/Updates only want the task
+   *  detail surface, while Now also surfaces chat threads inline.
+   *
+   *  Height calc uses `dvh` so mobile browser chrome doesn't push the
+   *  panel below the fold. 400px offset covers the page header, inbox
+   *  H1, main tabs, filter sub-tabs, source chips and quick-add bar —
+   *  the chrome above the list on Tasks/Updates. */
+  function withInlineDetail(list: React.ReactNode, allowThread: boolean): React.ReactNode {
+    const right = detailItem || (allowThread && selectedThread) ? renderInlineDetail() : null
+    if (!right) return list
+    return (
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-0 xl:h-[calc(100dvh-400px)] xl:min-h-[500px]">
+        <div className="xl:overflow-y-auto xl:pr-3 space-y-1.5 min-w-0">{list}</div>
+        <div className="hidden xl:block min-w-0">{right}</div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -684,10 +798,21 @@ export function InboxView({
             </div>
           )}
           {!lockedClient && (
+            // Filter toggle styled as a secondary affordance (outline) so it
+            // never collides visually with the primary action button (purple
+            // "New update" / "New task") sitting right next to it. Active
+            // state is signalled by a subtle primary-tinted background +
+            // border, not by switching to the full primary fill — Roy: two
+            // identical purple buttons next to each other made it unclear
+            // which one was the action vs. the filter.
             <Button
-              variant={assignedToMe ? "default" : "outline"}
+              variant="outline"
               size="sm"
               onClick={() => setAssignedToMe(!assignedToMe)}
+              className={cn(
+                assignedToMe &&
+                  "bg-primary/10 border-primary/30 text-primary hover:bg-primary/15 hover:text-primary",
+              )}
             >
               {assignedToMe ? t("inbox.filter.assigned_to_me", locale) : t("inbox.filter.all", locale)}
             </Button>
@@ -719,8 +844,19 @@ export function InboxView({
           <NowFeed
             currentUserId={currentUser.id}
             users={users}
-            onOpenItem={(item) => setDetailItem(item)}
-            onGoToChats={() => setActiveTab("client-inbox")}
+            summary={{
+              tasks: tabBadge?.openTasks ?? 0,
+              updates: tabBadge?.unreadUpdates ?? 0,
+              chats: tabBadge?.unreadChats ?? 0,
+            }}
+            onJumpToTab={(tab) => setActiveTab(tab)}
+            onOpenItem={openDetailItem}
+            // Chat click opens the thread IN the Now tab's right column
+            // (no tab switch) so the AM never loses context. Same email-
+            // client split as Tasks/Updates/Client Inbox — Roy: gelijke UX
+            // voor alle ticket-typen.
+            onOpenThread={openThread}
+            inlineDetail={renderInlineDetail()}
           />
         )}
 
@@ -744,21 +880,22 @@ export function InboxView({
               currentUserId={currentUser.id}
               onCreated={refreshAll}
             />
-            {tasksQuery.isLoading ? (
-              <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
-            ) : tasks.length === 0 ? (
-              <EmptyState
-                text={
-                  taskFilter === "all"
-                    ? t("inbox.empty.tasks_none", locale)
-                    : t("inbox.empty.tasks_filtered", locale, {
-                        filter: (TASK_FILTERS.find((f) => f.id === taskFilter)?.label ?? "").toLowerCase(),
-                        assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
-                      })
-                }
-                onCreate={() => openComposer("task")}
-              />
-            ) : (
+            {withInlineDetail(
+              tasksQuery.isLoading ? (
+                <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
+              ) : tasks.length === 0 ? (
+                <EmptyState
+                  text={
+                    taskFilter === "all"
+                      ? t("inbox.empty.tasks_none", locale)
+                      : t("inbox.empty.tasks_filtered", locale, {
+                          filter: (TASK_FILTERS.find((f) => f.id === taskFilter)?.label ?? "").toLowerCase(),
+                          assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
+                        })
+                  }
+                  onCreate={() => openComposer("task")}
+                />
+              ) : (
               <GroupedTasks
                 tasks={tasks}
                 showClient={!lockedClient}
@@ -772,7 +909,7 @@ export function InboxView({
                   // signal that they should Cancel instead of Delete.
                   for (const id of ids) deleteItem(id)
                 }}
-                onItemClick={(item) => setDetailItem(item)}
+                onItemClick={openDetailItem}
                 onAction={(item, action) => {
                   // Optimistic strategy:
                   //   - Done, Snooze, Delete, and Reassign-away leave the
@@ -834,6 +971,8 @@ export function InboxView({
                   }
                 }}
               />
+              ),
+              false,
             )}
           </>
         )}
@@ -870,29 +1009,30 @@ export function InboxView({
               currentUserId={currentUser.id}
               onCreated={refreshAll}
             />
-            {updatesQuery.isLoading ? (
-              <EmptyState text={t("inbox.empty.updates_loading", locale)} />
-            ) : updates.length === 0 ? (
-              <EmptyState
-                text={
-                  updateFilter === "all"
-                    ? t("inbox.empty.updates_none", locale)
-                    : t("inbox.empty.updates_filtered", locale, {
-                        filter:
-                          updateFilter === "unread"
-                            ? t("inbox.update.filter.unread_lower", locale)
-                            : t("inbox.update.filter.read_lower", locale),
-                        assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
-                      })
-                }
-                onCreate={() => openComposer("update")}
-              />
-            ) : (
+            {withInlineDetail(
+              updatesQuery.isLoading ? (
+                <EmptyState text={t("inbox.empty.updates_loading", locale)} />
+              ) : updates.length === 0 ? (
+                <EmptyState
+                  text={
+                    updateFilter === "all"
+                      ? t("inbox.empty.updates_none", locale)
+                      : t("inbox.empty.updates_filtered", locale, {
+                          filter:
+                            updateFilter === "unread"
+                              ? t("inbox.update.filter.unread_lower", locale)
+                              : t("inbox.update.filter.read_lower", locale),
+                          assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
+                        })
+                  }
+                  onCreate={() => openComposer("update")}
+                />
+              ) : (
               <GroupedUpdates
                 updates={updates}
                 showClient={!lockedClient}
                 focusedItemId={focusedItemId}
-                onItemClick={(item) => setDetailItem(item)}
+                onItemClick={openDetailItem}
                 onBulkDelete={(ids) => {
                   for (const id of ids) deleteItem(id)
                 }}
@@ -938,6 +1078,8 @@ export function InboxView({
                   }
                 }}
               />
+              ),
+              false,
             )}
           </>
         )}
@@ -949,11 +1091,30 @@ export function InboxView({
               trengoContactId={lockedClient.trengoContactId ?? null}
             />
           ) : (
-            <ChatPane
-              scope="external"
-              users={users}
-              onMakeTaskFromMessage={openComposerFromChat}
-            />
+            <>
+              {/* Two ChatPane variants behind one tab. On xl+ we render the
+                  docked-detail variant so the selected thread opens in the
+                  right-side dock (same UX as Tasks/Updates). Below xl,
+                  ChatPane keeps its internal 360px|1fr split — there isn't
+                  room for a separate dock at that width. */}
+              <div className="hidden xl:block">
+                <ChatPane
+                  scope="external"
+                  users={users}
+                  onMakeTaskFromMessage={openComposerFromChat}
+                  dockedDetail
+                  selectedThreadKey={selectedThread?.threadKey ?? null}
+                  onSelectedChange={(t) => setSelectedThread(t)}
+                />
+              </div>
+              <div className="xl:hidden">
+                <ChatPane
+                  scope="external"
+                  users={users}
+                  onMakeTaskFromMessage={openComposerFromChat}
+                />
+              </div>
+            </>
           )
         )}
 
@@ -979,14 +1140,22 @@ export function InboxView({
         }}
       />
 
+      {/* Below-xl fallback: a Task/Update detail is shown as the original
+          right-side slide-over with a backdrop. The xl+ docked surface is
+          rendered inline inside each tab's content area (see Tasks /
+          Updates / Now branches above) — single visual language across all
+          tabs, list on the left, detail on the right, no floating panels. */}
       {detailItem && (
-        <ItemDetailDialog
-          itemId={detailItem.id}
-          currentUser={currentUser}
-          users={users}
-          onClose={() => setDetailItem(null)}
-          onChanged={refreshAll}
-        />
+        <div className="xl:hidden">
+          <ItemDetailDialog
+            itemId={detailItem.id}
+            currentUser={currentUser}
+            users={users}
+            onClose={closeDock}
+            onChanged={refreshAll}
+            mode="overlay"
+          />
+        </div>
       )}
 
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
@@ -1700,6 +1869,12 @@ const SECTION_TONES = {
     text: "text-emerald-700 dark:text-emerald-400",
     iconBg: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
   },
+  sky: {
+    bar: "bg-sky-500",
+    bg: "bg-sky-500/10 hover:bg-sky-500/15",
+    text: "text-sky-700 dark:text-sky-400",
+    iconBg: "bg-sky-500/20 text-sky-600 dark:text-sky-400",
+  },
   muted: {
     bar: "bg-muted-foreground/30",
     bg: "bg-muted/40 hover:bg-muted/60",
@@ -1734,60 +1909,87 @@ function SectionHeader({
 }) {
   const t = SECTION_TONES[tone]
   const showSelectAll = !!onToggleSelectAll
+  // Compact divider style — mirrors NowSection so all section headers in
+  // the inbox share the same visual language. Reads as a label + rule
+  // rather than a card, so the eye can tell at a glance that headers are
+  // not items. Bulk-select checkbox (when present) sits between the
+  // chevron and the icon pill, hover-revealed except when something is
+  // already selected.
   return (
-    <div
-      className={`group w-full flex items-stretch gap-3 rounded-lg overflow-hidden transition-colors ${t.bg} mb-2`}
-    >
-      <span className={`w-1 shrink-0 ${t.bar}`} aria-hidden />
-      {showSelectAll && (
+    <section className="group">
+      <div className="w-full flex items-center gap-2.5 py-1.5">
         <button
           type="button"
-          role="checkbox"
-          aria-checked={selectAllState === "all"}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleSelectAll?.()
-          }}
-          className={cn(
-            "self-center h-5 w-5 shrink-0 rounded border-2 inline-flex items-center justify-center transition-all ml-3",
-            // Pinned visible when something in the section is selected so
-            // the AM can see "yes, the whole bucket is queued". Otherwise
-            // hover-revealed to keep the header clean.
-            selectAllState === "none"
-              ? "border-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:border-foreground hover:bg-muted/40"
-              : selectAllState === "all"
-                ? "bg-primary border-primary text-primary-foreground"
-                : "bg-primary/20 border-primary text-primary",
-          )}
-          title={
-            selectAllState === "all"
-              ? "Deselect all in this group"
-              : "Select all in this group"
-          }
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? `Expand ${label}` : `Collapse ${label}`}
+          className="shrink-0"
         >
-          {selectAllState === "all" && <Check className="h-3 w-3" strokeWidth={3} />}
-          {selectAllState === "some" && (
-            <span className="block h-0.5 w-2.5 bg-primary rounded-full" aria-hidden />
-          )}
+          <ChevronDown
+            className={cn(
+              "h-3.5 w-3.5 text-muted-foreground/60 transition-transform duration-150 group-hover:text-foreground",
+              collapsed && "-rotate-90",
+            )}
+          />
         </button>
-      )}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex items-center gap-3 flex-1 min-w-0 px-3 py-3.5 text-left"
-      >
-        <span className={`h-9 w-9 rounded-md flex items-center justify-center shrink-0 ${t.iconBg}`}>
-          <Icon className="h-[18px] w-[18px]" />
-        </span>
-        <span className={`text-base font-semibold ${t.text}`}>{label}</span>
-        <span className={`text-sm tabular-nums ${t.text} opacity-70`}>{count}</span>
-        <ChevronDown
-          className={`h-4 w-4 ml-auto transition-transform ${t.text} opacity-50 group-hover:opacity-100 ${
-            collapsed ? "-rotate-90" : ""
-          }`}
-        />
-      </button>
-    </div>
+        {showSelectAll && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selectAllState === "all"}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelectAll?.()
+            }}
+            className={cn(
+              "h-4 w-4 shrink-0 rounded border-2 inline-flex items-center justify-center transition-all",
+              selectAllState === "none"
+                ? "border-muted-foreground/30 opacity-0 group-hover:opacity-100 hover:border-foreground hover:bg-muted/40"
+                : selectAllState === "all"
+                  ? "bg-primary border-primary text-primary-foreground"
+                  : "bg-primary/20 border-primary text-primary",
+            )}
+            title={
+              selectAllState === "all"
+                ? "Deselect all in this group"
+                : "Select all in this group"
+            }
+          >
+            {selectAllState === "all" && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+            {selectAllState === "some" && (
+              <span className="block h-0.5 w-2 bg-primary rounded-full" aria-hidden />
+            )}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex items-center gap-2.5 min-w-0 text-left flex-1"
+        >
+          <span
+            className={cn(
+              "h-5 w-5 rounded-md flex items-center justify-center shrink-0",
+              t.iconBg,
+            )}
+            aria-hidden
+          >
+            <Icon className="h-3 w-3" />
+          </span>
+          <span
+            className={cn(
+              "text-[11px] font-semibold uppercase tracking-wide",
+              t.text,
+            )}
+          >
+            {label}
+          </span>
+          <span className="text-[11px] tabular-nums text-muted-foreground/70 font-medium">
+            {count}
+          </span>
+          <span className="flex-1 ml-1 h-px bg-border/60" aria-hidden />
+        </button>
+      </div>
+    </section>
   )
 }
 
@@ -2023,7 +2225,7 @@ function GroupedTasks({
   }
 
   return (
-    <div className="space-y-3 pb-20">
+    <div className="space-y-1 pb-20">
       <TaskGroupSection
         icon={AlertOctagon}
         label="Overdue"
@@ -2527,7 +2729,7 @@ function GroupedUpdates({
   }
 
   return (
-    <div className="space-y-3 pb-20">
+    <div className="space-y-1 pb-20">
       <UpdateGroupSection
         icon={CalendarDays}
         label="Today"
@@ -2637,10 +2839,10 @@ function UpdateBulkActionBar({
         type="button"
         onClick={() => onBulk("make_task")}
         className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-        title="Promoot geselecteerde updates naar tasks"
+        title="Create tasks from selected updates"
       >
         <ListTodo className="h-3.5 w-3.5" />
-        Make task
+        Create task
       </button>
       <button
         type="button"
@@ -2779,13 +2981,29 @@ function SourceChip({
 function NowFeed({
   currentUserId,
   users,
+  summary,
+  onJumpToTab,
   onOpenItem,
-  onGoToChats,
+  onOpenThread,
+  inlineDetail,
 }: {
   currentUserId: string
   users: InboxUser[]
+  /** Aggregate counts for the three jump-cards rendered above the sections.
+   *  Wired to the same `inbox-badge` query the main tabs use, so the cards
+   *  and the tab counters never disagree. */
+  summary: { tasks: number; updates: number; chats: number }
+  /** Click handler for the jump-cards. Switches the parent's activeTab so
+   *  the AM can drill into the relevant queue from the Now summary. */
+  onJumpToTab: (tab: "tasks" | "updates" | "client-inbox") => void
   onOpenItem: (item: InboxItem) => void
-  onGoToChats: () => void
+  /** Open a chat thread in the right column of the Now tab (no tab switch).
+   *  Roy: unified UX — any ticket opens to the right of where it was
+   *  clicked, never a tab jump. */
+  onOpenThread: (thread: ChatThreadSummary) => void
+  /** Right-column content for the 50/50 split. Null when no detail is
+   *  open; the sections list then takes full width. */
+  inlineDetail: React.ReactNode
 }) {
   const locale = useLocale()
   const POLL_MS = 15 * 1000
@@ -2856,125 +3074,287 @@ function NowFeed({
     [chatsQuery.data],
   )
 
-  const totalCount =
-    overdue.length + today.length + unreadUpdates.length + unreadChats.length
+  // Combined "Unread inbox" feed — interleave unread updates + unread chat
+  // threads, sorted by most-recent activity. Roy: one consolidated section
+  // instead of two separate ones, so the AM has a single "what's new" list
+  // to scan. The discriminated union below preserves per-entry typing so
+  // the renderer can dispatch to InboxListRow vs NowChatCard cleanly.
+  type UnreadEntry =
+    | { kind: "update"; item: InboxItem; sortKey: string }
+    | { kind: "chat"; thread: ChatThreadSummary; sortKey: string }
+  const unreadFeed = useMemo<UnreadEntry[]>(() => {
+    const entries: UnreadEntry[] = [
+      ...unreadUpdates.map((item) => ({
+        kind: "update" as const,
+        item,
+        sortKey: item.createdAt,
+      })),
+      ...unreadChats.map((thread) => ({
+        kind: "chat" as const,
+        thread,
+        sortKey: thread.latestAt,
+      })),
+    ]
+    entries.sort((a, b) => b.sortKey.localeCompare(a.sortKey))
+    return entries
+  }, [unreadUpdates, unreadChats])
+
+  const totalCount = overdue.length + today.length + unreadFeed.length
 
   const loading =
     tasksQuery.isLoading || updatesQuery.isLoading || chatsQuery.isLoading
 
-  if (loading && totalCount === 0) {
-    return <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
-  }
+  // Top-of-Now summary cards — three jump-cards showing what's still open
+  // across the AM's queues so the inbox state is legible at a glance. The
+  // cards are always rendered (even on "all caught up") so the user has a
+  // consistent landing zone; when everything is zero the cards just confirm
+  // it. Counts come from the shared `inbox-badge` query upstream so they
+  // never drift from the main-tab badges. Click jumps to that queue.
+  const summaryCards = (
+    <div className="grid grid-cols-3 gap-3">
+      <NowSummaryCard
+        icon={ListTodo}
+        label="Tasks"
+        count={summary.tasks}
+        tone="violet"
+        onClick={() => onJumpToTab("tasks")}
+      />
+      <NowSummaryCard
+        icon={InboxIcon}
+        label="Updates"
+        count={summary.updates}
+        tone="sky"
+        onClick={() => onJumpToTab("updates")}
+      />
+      <NowSummaryCard
+        icon={MessageCircle}
+        label="Client Inbox"
+        count={summary.chats}
+        tone="emerald"
+        onClick={() => onJumpToTab("client-inbox")}
+      />
+    </div>
+  )
 
-  if (totalCount === 0) {
-    return (
+  // Sections list — same structure regardless of whether the inline detail
+  // is open. When open, the parent caller wraps it in the 50/50 grid below
+  // so the list scrolls inside the left column with the detail on the
+  // right; when closed, the sections render full-width as before.
+  //
+  // Outer gap is small (space-y-1) because each section already has its
+  // own internal mb-3 below the items — keeps spacing consistent whether
+  // a section is collapsed or expanded.
+  const sectionsList = (
+    <div className="space-y-1">
+      {overdue.length > 0 && (
+        <NowSection
+          sectionKey="overdue"
+          icon={AlertOctagon}
+          label={t("inbox.now.section.overdue", locale)}
+          count={overdue.length}
+          tone="red"
+        >
+          {overdue.map((item) => (
+            <InboxListRow
+              key={item.id}
+              item={item}
+              showClient
+              onClick={() => onOpenItem(item)}
+              users={users}
+            />
+          ))}
+        </NowSection>
+      )}
+
+      {today.length > 0 && (
+        <NowSection
+          sectionKey="today"
+          icon={CalendarDays}
+          label={t("inbox.now.section.today", locale)}
+          count={today.length}
+          tone="amber"
+        >
+          {today.map((item) => (
+            <InboxListRow
+              key={item.id}
+              item={item}
+              showClient
+              onClick={() => onOpenItem(item)}
+              users={users}
+            />
+          ))}
+        </NowSection>
+      )}
+
+      {unreadFeed.length > 0 && (
+        <NowSection
+          sectionKey="unread"
+          icon={InboxIcon}
+          label={t("inbox.now.section.unread_inbox", locale)}
+          count={unreadFeed.length}
+          tone="sky"
+        >
+          {unreadFeed.map((entry) =>
+            entry.kind === "update" ? (
+              <InboxListRow
+                key={`u-${entry.item.id}`}
+                item={entry.item}
+                showClient
+                onClick={() => onOpenItem(entry.item)}
+                users={users}
+              />
+            ) : (
+              <NowChatCard
+                key={`c-${entry.thread.threadKey}`}
+                thread={entry.thread}
+                onOpen={() => onOpenThread(entry.thread)}
+                openLabel={t("inbox.now.chat.open", locale)}
+              />
+            ),
+          )}
+        </NowSection>
+      )}
+    </div>
+  )
+
+  // Body: either the sections list (when nothing is open) or a 50/50 grid
+  // mirroring the email-client split used by Client Inbox / Tasks / Updates.
+  // Below xl the detail surface falls back to the overlay slide-over, so we
+  // render the sections list full-width.
+  //
+  // Height calc on Now is more aggressive (~360px) than the Tasks/Updates
+  // split because the summary cards above the body eat an extra row of
+  // vertical space — without it the right column would end well before
+  // the page bottom while the left list scrolled past it.
+  const body =
+    inlineDetail ? (
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-0 xl:h-[calc(100dvh-360px)] xl:min-h-[500px]">
+        <div className="xl:overflow-y-auto xl:pr-3 min-w-0">{sectionsList}</div>
+        <div className="hidden xl:block min-w-0">{inlineDetail}</div>
+      </div>
+    ) : totalCount === 0 && loading ? (
+      <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
+    ) : totalCount === 0 ? (
       <div className="border border-dashed border-border/60 rounded-lg p-12 text-center bg-card/30">
         <div className="mx-auto h-12 w-12 rounded-full bg-emerald-500/15 flex items-center justify-center mb-3">
           <Check className="h-6 w-6 text-emerald-500" strokeWidth={2.5} />
         </div>
         <p className="text-base text-muted-foreground">{t("inbox.now.empty", locale)}</p>
       </div>
+    ) : (
+      sectionsList
     )
-  }
 
   return (
     <div className="space-y-5 pb-12">
-      {overdue.length > 0 && (
-        <NowSection
-          icon={AlertOctagon}
-          label={t("inbox.now.section.overdue", locale)}
-          count={overdue.length}
-          tone="red"
-        >
-          <div className="space-y-1.5">
-            {overdue.map((item) => (
-              <InboxListRow
-                key={item.id}
-                item={item}
-                showClient
-                onClick={() => onOpenItem(item)}
-                users={users}
-              />
-            ))}
-          </div>
-        </NowSection>
-      )}
-
-      {today.length > 0 && (
-        <NowSection
-          icon={CalendarDays}
-          label={t("inbox.now.section.today", locale)}
-          count={today.length}
-          tone="amber"
-        >
-          <div className="space-y-1.5">
-            {today.map((item) => (
-              <InboxListRow
-                key={item.id}
-                item={item}
-                showClient
-                onClick={() => onOpenItem(item)}
-                users={users}
-              />
-            ))}
-          </div>
-        </NowSection>
-      )}
-
-      {unreadUpdates.length > 0 && (
-        <NowSection
-          icon={InboxIcon}
-          label={t("inbox.now.section.updates", locale)}
-          count={unreadUpdates.length}
-          tone="muted"
-        >
-          <div className="space-y-1.5">
-            {unreadUpdates.map((item) => (
-              <InboxListRow
-                key={item.id}
-                item={item}
-                showClient
-                onClick={() => onOpenItem(item)}
-                users={users}
-              />
-            ))}
-          </div>
-        </NowSection>
-      )}
-
-      {unreadChats.length > 0 && (
-        <NowSection
-          icon={MessageCircle}
-          label={t("inbox.now.section.chats", locale)}
-          count={unreadChats.length}
-          tone="muted"
-        >
-          <div className="space-y-1.5">
-            {unreadChats.map((thread) => (
-              <NowChatCard
-                key={thread.threadKey}
-                thread={thread}
-                onOpen={onGoToChats}
-                openLabel={t("inbox.now.chat.open", locale)}
-              />
-            ))}
-          </div>
-        </NowSection>
-      )}
+      {summaryCards}
+      {body}
     </div>
   )
 }
 
-/** Lightweight section wrapper for the Now feed — re-uses the same tonal
- *  pattern as TaskGroupSection but rendered inline (not collapsible, no
- *  bulk-select). Sections only render when they have items. */
+/** Top-of-Now jump-card. Three of these render side-by-side at the top of
+ *  the Now feed, summarising what's still open across the AM's queues
+ *  (Tasks / Updates / Client Inbox). The card colour matches the row rail
+ *  treatment elsewhere (violet/sky/emerald) so the same visual language
+ *  ties the summary to the lists below. Click jumps to that tab.
+ *
+ *  The "0" state is rendered intentionally — a deliberate zero is more
+ *  useful than a missing card ("yes, I have nothing in Tasks" reassures
+ *  more than the card just being absent). Zero cards get a muted treatment
+ *  so the AM's eye lands on the cards that actually need attention. */
+function NowSummaryCard({
+  icon: Icon,
+  label,
+  count,
+  tone,
+  onClick,
+}: {
+  icon: typeof ListTodo
+  label: string
+  count: number
+  tone: "violet" | "sky" | "emerald"
+  onClick: () => void
+}) {
+  const isZero = count === 0
+  // Saturated styling when there's something to act on; muted greys when
+  // the queue is empty so the eye is drawn only to the cards that matter.
+  const palettes = {
+    violet: {
+      iconBg: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+      count: "text-violet-600 dark:text-violet-300",
+      hover: "hover:border-violet-500/40 hover:bg-violet-500/[0.04]",
+    },
+    sky: {
+      iconBg: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+      count: "text-sky-600 dark:text-sky-300",
+      hover: "hover:border-sky-500/40 hover:bg-sky-500/[0.04]",
+    },
+    emerald: {
+      iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      count: "text-emerald-600 dark:text-emerald-300",
+      hover: "hover:border-emerald-500/40 hover:bg-emerald-500/[0.04]",
+    },
+  }[tone]
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5 text-left transition-all",
+        isZero ? "opacity-70 hover:opacity-100" : "",
+        palettes.hover,
+      )}
+    >
+      <span
+        className={cn(
+          "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
+          isZero ? "bg-muted text-muted-foreground" : palettes.iconBg,
+        )}
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          {label}
+        </div>
+        <div
+          className={cn(
+            "text-2xl font-semibold leading-tight tabular-nums",
+            isZero ? "text-muted-foreground" : palettes.count,
+          )}
+        >
+          {count}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+/** Section header + collapsible body for the Now feed.
+ *
+ *  Roy: the previous design rendered each section header as a full-width
+ *  coloured card, which made headers and rows compete visually — the eye
+ *  couldn't tell at a glance which was a label vs. an item. New treatment
+ *  is a compact "section divider" style: small tonal icon pill, label in
+ *  the tone colour, count, a thin rule extending to the right edge, and
+ *  a chevron on the far right. No big background card. Reads as a clear
+ *  visual hierarchy (header → indented item cards below). Each section is
+ *  collapsible; open/closed state is persisted per section in localStorage
+ *  so the AM can hide queues they're not working on without re-clicking
+ *  every reload. */
 function NowSection({
+  sectionKey,
   icon: Icon,
   label,
   count,
   tone,
   children,
 }: {
+  /** Stable key used for the localStorage entry that remembers the
+   *  collapsed/expanded state across reloads. Keep it short and snake-case
+   *  ("overdue", "today", …). */
+  sectionKey: string
   icon: typeof AlertOctagon
   label: string
   count: number
@@ -2982,24 +3362,50 @@ function NowSection({
   children: React.ReactNode
 }) {
   const t = SECTION_TONES[tone]
+  const [open, setOpen] = usePersistedState<boolean>(
+    `inbox.now.section.${sectionKey}.open`,
+    true,
+  )
   return (
-    <div>
-      <div
-        className={`w-full flex items-stretch gap-3 rounded-lg overflow-hidden ${t.bg} mb-2`}
+    <section>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="group w-full flex items-center gap-2.5 py-1.5 text-left"
       >
-        <span className={`w-1 shrink-0 ${t.bar}`} aria-hidden />
-        <div className="flex items-center gap-3 px-3 py-3">
-          <span
-            className={`h-9 w-9 rounded-md flex items-center justify-center shrink-0 ${t.iconBg}`}
-          >
-            <Icon className="h-[18px] w-[18px]" />
-          </span>
-          <span className={`text-base font-semibold ${t.text}`}>{label}</span>
-          <span className={`text-sm tabular-nums ${t.text} opacity-70`}>{count}</span>
-        </div>
-      </div>
-      {children}
-    </div>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-150 group-hover:text-foreground",
+            !open && "-rotate-90",
+          )}
+        />
+        <span
+          className={cn(
+            "h-5 w-5 rounded-md flex items-center justify-center shrink-0",
+            t.iconBg,
+          )}
+          aria-hidden
+        >
+          <Icon className="h-3 w-3" />
+        </span>
+        <span
+          className={cn(
+            "text-[11px] font-semibold uppercase tracking-wide",
+            t.text,
+          )}
+        >
+          {label}
+        </span>
+        <span className="text-[11px] tabular-nums text-muted-foreground/70 font-medium">
+          {count}
+        </span>
+        {/* Hairline rule extending to the right edge — gives the header a
+            divider feel without a heavy card background. */}
+        <span className="flex-1 ml-1 h-px bg-border/60" aria-hidden />
+      </button>
+      {open && <div className="space-y-1.5 mt-2 mb-3">{children}</div>}
+    </section>
   )
 }
 
@@ -3020,22 +3426,37 @@ function NowChatCard({
       type="button"
       onClick={onOpen}
       title={openLabel}
-      className="group relative w-full text-left rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all px-5 py-4 overflow-hidden"
+      className="group relative w-full text-left rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all pl-6 pr-5 py-4 overflow-hidden"
     >
-      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
+      {/* Emerald rail — the "Client" type colour. Matches the type rail
+          system used by InboxListRow for Tasks (violet) and Updates (sky),
+          so the three kinds form one consistent visual language across
+          the Now feed and the individual tabs. */}
+      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />
       <div className="flex items-start gap-3">
-        <span className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+        <span className="h-9 w-9 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
           <MessageCircle className="h-4 w-4" />
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Type chip — symmetric with the Task/Update chips on
+                InboxListRow. Stays "Client" rather than "Chat" because
+                that's what Roy refers to this lane as ("client inbox
+                tickets"); reads naturally next to the client name. */}
+            <span
+              className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0"
+              title="Client"
+            >
+              <MessageCircle className="h-3 w-3" />
+              Client
+            </span>
             <span className="text-[15px] font-semibold truncate">
               {thread.clientName ?? thread.primaryName}
             </span>
             {thread.clientName && thread.clientName !== thread.primaryName && (
               <span className="text-xs text-muted-foreground/80">via {thread.primaryName}</span>
             )}
-            <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-primary/15 text-primary tabular-nums">
+            <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 tabular-nums">
               {thread.unreadCount} unread
             </span>
           </div>

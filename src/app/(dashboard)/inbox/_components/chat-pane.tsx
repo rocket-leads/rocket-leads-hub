@@ -46,6 +46,19 @@ type Props = {
    *  — when omitted, the Make-task affordance is hidden (e.g. per-client
    *  views that don't have a composer wired up yet). */
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
+  /** Docked-pane mode. When true, ChatPane renders only the thread list
+   *  (no internal ThreadView column) and bubbles the current selection up
+   *  to the parent via `selectedThreadKey` + `onSelectedChange`. The parent
+   *  is then responsible for rendering ThreadView inside the right-side
+   *  docked pane. This keeps the Client Inbox visually consistent with the
+   *  Tasks/Updates docked pattern on xl+ screens. */
+  dockedDetail?: boolean
+  /** Controlled-mode selection. Provided alongside `dockedDetail` so the
+   *  parent (inbox-view) can open a thread from outside the pane (e.g.
+   *  clicking a chat card on the Now tab). Omit for the legacy internal
+   *  split layout where ChatPane manages selection itself. */
+  selectedThreadKey?: string | null
+  onSelectedChange?: (thread: ChatThreadSummary | null) => void
 }
 
 type MarkAction = "mark_read" | "mark_unread"
@@ -69,9 +82,27 @@ type ChatFilter = "all" | "unread" | "read"
  * thread list scrolls independently of the page chrome — fixes the prior
  * h-[640px] which left half the page empty.
  */
-export function ChatPane({ scope, users, onMakeTaskFromMessage }: Props) {
+export function ChatPane({
+  scope,
+  users,
+  onMakeTaskFromMessage,
+  dockedDetail,
+  selectedThreadKey,
+  onSelectedChange,
+}: Props) {
   const queryClient = useQueryClient()
-  const [selected, setSelected] = useState<ChatThreadSummary | null>(null)
+  // Selection state. Always lives in `selectedInternal`; in docked mode we
+  // keep it in sync with the parent's controlled `selectedThreadKey` via a
+  // useEffect below, so auto-select-first and re-select-on-refresh logic
+  // still works without a second source of truth. setSelected fans out to
+  // the parent in docked mode so the parent's docked aside renders the
+  // correct ThreadView.
+  const [selectedInternal, setSelectedInternal] = useState<ChatThreadSummary | null>(null)
+  const selected = selectedInternal
+  function setSelected(next: ChatThreadSummary | null) {
+    setSelectedInternal(next)
+    if (dockedDetail) onSelectedChange?.(next)
+  }
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
   // Filter strip state — All / Unread / Read. Persisted per scope so the
   // Client Inbox and Team Inbox keep their own preferences (an AM might
@@ -195,10 +226,13 @@ export function ChatPane({ scope, users, onMakeTaskFromMessage }: Props) {
   // Auto-select the first thread when the list loads, so the empty right pane
   // doesn't sit there waiting for a click. Also marks it read so the badge
   // doesn't sit there showing unread for a thread the user is actively viewing.
+  // Skip in docked mode — the parent owns whether/when to open a thread (e.g.
+  // it might want to open the user to an empty list and let them pick).
   useEffect(() => {
+    if (dockedDetail) return
     if (!selected && threads.length > 0) selectAndMarkRead(threads[0])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, threads])
+  }, [selected, threads, dockedDetail])
 
   // Re-select the same thread by key when threads refresh, so the selection
   // survives query invalidations.
@@ -206,7 +240,24 @@ export function ChatPane({ scope, users, onMakeTaskFromMessage }: Props) {
     if (selected && !threads.some((t) => t.threadKey === selected.threadKey)) {
       setSelected(threads[0] ?? null)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, threads])
+
+  // Controlled-mode sync: when the parent changes `selectedThreadKey` (e.g. a
+  // NowChatCard click sets the active thread before switching tabs), align
+  // ChatPane's internal `selected` to match so the right thread shows as
+  // active in the list. Null clears.
+  useEffect(() => {
+    if (!dockedDetail) return
+    if (selectedThreadKey == null) {
+      if (selected) setSelectedInternal(null)
+      return
+    }
+    if (selected?.threadKey === selectedThreadKey) return
+    const match = threads.find((t) => t.threadKey === selectedThreadKey)
+    if (match) setSelectedInternal(match)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dockedDetail, selectedThreadKey, threads])
 
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ["inbox-threads", scope] })
@@ -229,8 +280,22 @@ export function ChatPane({ scope, users, onMakeTaskFromMessage }: Props) {
           locked to 640px — keeps the thread list and chat pane equal in
           height regardless of screen size, and prevents the prior "sidebar
           stops halfway down the page" UX bug. The 280px subtraction covers
-          page header + main tabs + filter tabs + spacing. */}
-      <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-4 h-[calc(100vh-280px)] min-h-[500px]">
+          page header + main tabs + filter tabs + spacing.
+          In docked-detail mode (xl+ Client Inbox) the grid flips to a 50/50
+          split with no gap — Roy wants the list + thread view to read as
+          one continuous panel (email-client style), not two floating boxes.
+          The merged-edge styling (no rounded inside corners, single shared
+          border) is owned by the children's wrappers below. */}
+      <div
+        className={cn(
+          "grid grid-cols-1 h-[calc(100vh-280px)] min-h-[500px]",
+          dockedDetail
+            ? // 50/50 split, no gap — children handle the border seam.
+              "lg:grid-cols-2 gap-0"
+            : // Legacy internal split with breathing room.
+              "lg:grid-cols-[360px_1fr] gap-4",
+        )}
+      >
         <ThreadList
           threads={filteredThreads}
           loading={threadsQuery.isLoading}
@@ -243,8 +308,15 @@ export function ChatPane({ scope, users, onMakeTaskFromMessage }: Props) {
           onClearSelection={clearSelection}
           onMarkThread={markThread}
           scope={scope}
+          mergedRightEdge={dockedDetail}
         />
-        <ThreadView thread={selected} onReplied={refresh} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} />
+        <ThreadView
+          thread={selected}
+          onReplied={refresh}
+          users={users}
+          onMakeTaskFromMessage={onMakeTaskFromMessage}
+          mergedLeftEdge={dockedDetail}
+        />
       </div>
 
       {selectedKeys.size > 0 && (
@@ -272,6 +344,7 @@ function ThreadList({
   onClearSelection,
   onMarkThread,
   scope,
+  mergedRightEdge,
 }: {
   threads: ChatThreadSummary[]
   loading: boolean
@@ -284,10 +357,19 @@ function ThreadList({
   onClearSelection: () => void
   onMarkThread: (thread: ChatThreadSummary, action: MarkAction) => void
   scope: ChatScope
+  /** When true, the right edge of this panel butts up against the
+   *  ThreadView panel — drop the right border-radius so the two cards
+   *  read as one continuous surface. */
+  mergedRightEdge?: boolean
 }) {
+  // Wrapper classes shared between loading / empty / loaded states so the
+  // outer card is consistent — only its border-radius changes in merged
+  // mode. We avoid passing this through the prop sidewalk for every
+  // visual state.
+  const wrapperClass = mergedRightEdge ? "rounded-l-xl rounded-r-none" : "rounded-xl"
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card shadow-sm flex items-center justify-center py-12">
+      <div className={cn("border border-border bg-card shadow-sm flex items-center justify-center py-12", wrapperClass)}>
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
       </div>
     )
@@ -313,7 +395,7 @@ function ThreadList({
           : "Slack messages will appear here once webhooks fire."
         : "Try switching tabs to see other conversations."
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card/40 flex flex-col items-center justify-center py-12 px-4 text-center">
+      <div className={cn("border border-dashed border-border bg-card/40 flex flex-col items-center justify-center py-12 px-4 text-center", wrapperClass)}>
         <Inbox className="h-6 w-6 text-muted-foreground/40 mb-2" />
         <p className="text-sm text-muted-foreground">{empty}</p>
         <p className="text-[11px] text-muted-foreground/60 mt-1">{sub}</p>
@@ -330,7 +412,7 @@ function ThreadList({
       : "none"
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm flex flex-col overflow-hidden">
+    <div className={cn("border border-border bg-card shadow-sm flex flex-col overflow-hidden", wrapperClass)}>
       {/* Sticky header: shows total + a select-all checkbox. When 1+ threads
           are selected the header shifts to a "X selected · Clear" strip so
           the bulk affordance is discoverable without scrolling to the
@@ -606,26 +688,33 @@ function ChatBulkActionBar({
 
 // --- Thread view (right pane) --------------------------------------------
 
-function ThreadView({
+/** Renders the selected thread's messages + composer in a self-contained
+ *  card. Pass `thread=null` to show the "Select a conversation" placeholder.
+ *  `mergedLeftEdge` drops the left border-radius so this panel can sit
+ *  flush against the ThreadList on the 50/50 docked-detail layout. */
+export function ThreadView({
   thread,
   onReplied,
   users,
   onMakeTaskFromMessage,
+  mergedLeftEdge,
 }: {
   thread: ChatThreadSummary | null
   onReplied: () => void
   users?: InboxUser[]
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
+  mergedLeftEdge?: boolean
 }) {
+  const wrapperRadius = mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl"
   if (!thread) {
     return (
-      <div className="rounded-xl border border-border bg-card shadow-sm flex items-center justify-center text-sm text-muted-foreground/60">
+      <div className={cn("h-full border border-border bg-card shadow-sm flex items-center justify-center text-sm text-muted-foreground/60", wrapperRadius)}>
         Select a conversation
       </div>
     )
   }
 
-  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} />
+  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} mergedLeftEdge={mergedLeftEdge} />
 }
 
 type ComposerMode = "reply" | "internal"
@@ -666,11 +755,13 @@ function ThreadMessages({
   onReplied,
   users,
   onMakeTaskFromMessage,
+  mergedLeftEdge,
 }: {
   thread: ChatThreadSummary
   onReplied: () => void
   users?: InboxUser[]
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
+  mergedLeftEdge?: boolean
 }) {
   const queryClient = useQueryClient()
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -1175,7 +1266,12 @@ function ThreadMessages({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card shadow-sm flex flex-col overflow-hidden">
+    <div
+      className={cn(
+        "h-full border border-border bg-card shadow-sm flex flex-col overflow-hidden",
+        mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl",
+      )}
+    >
       {/* Header */}
       <div className="border-b border-border px-4 py-3 flex items-center justify-between gap-3 bg-muted/20 shrink-0">
         <div className="min-w-0 flex-1">
@@ -2400,8 +2496,8 @@ function MakeTaskInlineButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      title="Make task from this message"
-      aria-label="Make task from this message"
+      title="Create task from this message"
+      aria-label="Create task from this message"
       className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity h-7 px-2 inline-flex items-center gap-1 rounded-md border border-border bg-popover text-[11px] font-medium text-muted-foreground hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-500/40 shadow-sm shrink-0"
     >
       <ListTodo className="h-3.5 w-3.5" />
