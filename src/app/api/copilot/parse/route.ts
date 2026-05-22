@@ -10,10 +10,11 @@ import {
   type CopilotAction,
   type CopilotParseResult,
 } from "@/lib/copilot/tools"
+import { enrichTaskBody } from "@/lib/copilot/enrich"
 import type { CopilotPageContext } from "@/lib/copilot/context"
 
-// Tool-use parsing is fast on Sonnet — ~2-5s round-trips. The 30s ceiling
-// is well above expected, and matches Vercel's per-route default safety net.
+// Two Haiku round-trips (intent + enrichment) + Hub context fetch. Worst-
+// case ~10-12s; 30s ceiling leaves plenty of headroom.
 export const maxDuration = 30
 
 const anthropic = new Anthropic()
@@ -110,8 +111,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(result)
     }
 
+    // Enrichment pass: when the action is a task tied to a real client,
+    // pull the canonical Hub context bundle (KPI + Monday + Trengo + Pedro
+    // insight + meetings + inbox events) and ask Haiku to rewrite the body
+    // with citations. The original (echoed) body is the fallback if context
+    // is unavailable.
+    let sourcesUsed: string[] = []
+    if (action.type === "create_task" && action.clientId) {
+      const client = visibleClients.find((c) => c.mondayItemId === action.clientId)
+      if (client) {
+        const assigneeName =
+          users.find((u) => u.id === action.assigneeId)?.name ??
+          users.find((u) => u.id === action.assigneeId)?.email ??
+          null
+        const enrichment = await enrichTaskBody({
+          userInput: input,
+          taskTitle: action.title,
+          originalBody: action.body,
+          client,
+          supabase,
+          assigneeName,
+        })
+        action.body = enrichment.body || action.body
+        sourcesUsed = enrichment.sourcesUsed
+      }
+    }
+
     const summary = describeAction(action, users, visibleClients)
-    const result: CopilotParseResult = { ok: true, action, summary }
+    const result: CopilotParseResult = { ok: true, action, summary, sourcesUsed }
     return NextResponse.json(result)
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Parse failed"

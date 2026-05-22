@@ -179,6 +179,7 @@ export function CommandBar() {
               onCancel={() => setPhase("input")}
               executing={phase === "executing"}
               originalSummary={parseResult?.ok ? parseResult.summary : ""}
+              sourcesUsed={parseResult?.ok ? parseResult.sourcesUsed ?? [] : []}
               error={error}
             />
           ) : (
@@ -237,7 +238,7 @@ function InputView({
         <Button onClick={onSubmit} disabled={!input.trim() || loading} size="sm">
           {loading ? (
             <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Parsing…
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading context…
             </>
           ) : (
             "Parse"
@@ -257,6 +258,7 @@ function ConfirmView({
   onCancel,
   executing,
   originalSummary,
+  sourcesUsed,
   error,
 }: {
   draft: CopilotAction
@@ -267,6 +269,7 @@ function ConfirmView({
   onCancel: () => void
   executing: boolean
   originalSummary: string
+  sourcesUsed: string[]
   error: string | null
 }) {
   return (
@@ -278,6 +281,11 @@ function ConfirmView({
       {originalSummary && (
         <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground italic">
           AI parsed: {originalSummary}
+        </div>
+      )}
+      {sourcesUsed.length > 0 && (
+        <div className="rounded-md bg-primary/5 px-3 py-2 text-xs text-primary/80">
+          <span className="font-medium">Context used:</span> {sourcesUsed.join(" · ")}
         </div>
       )}
 

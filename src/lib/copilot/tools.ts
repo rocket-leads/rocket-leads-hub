@@ -125,6 +125,10 @@ export type CopilotParseSuccess = {
   action: CopilotAction
   /** Human-readable preview the UI shows in the confirmation card. */
   summary: string
+  /** Source labels that contributed to the (enriched) task body — shown
+   *  under the AI parsed line so the user can see what data the co-pilot
+   *  actually consulted. Empty for non-enriched actions (Pedro, navigate). */
+  sourcesUsed?: string[]
 }
 
 export type CopilotParseClarify = {
