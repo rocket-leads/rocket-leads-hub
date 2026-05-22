@@ -21,6 +21,7 @@ import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-rang
 import { useClientDateRange } from "@/app/(dashboard)/clients/[id]/_hooks/use-client-date-range"
 import { categorizeHealthVsBaseline, type WatchCategory } from "@/lib/watchlist/categorize"
 import { PedroInsightCard } from "./pedro-insight-card"
+import { PedroDeliverableCard } from "./pedro-deliverable-card"
 import { OnboardingChecklist } from "./onboarding-checklist"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
@@ -807,6 +808,10 @@ export function HomeTab({
       {/* Single Pedro insight — replaces the old LeadAnalysisCard / Activity
           Summary / Optimization Proposal stack. One AI voice across the platform. */}
       <PedroInsightCard mondayItemId={client.mondayItemId} locale={locale} />
+
+      {/* Deliverable #1 — assembled markdown of every Pedro stage saved
+          for this client. Re-readable + downloadable as the formal hand-off. */}
+      <PedroDeliverableCard mondayItemId={client.mondayItemId} />
 
       {canViewCampaigns && client.metaAdAccountId && (
         <TopAdsCard ads={expandQuery.data?.topAds} loading={expandQuery.isLoading} locale={locale} />

@@ -419,6 +419,13 @@ export function Campaign({
     adCopy: ParallelStage;
   }>({ script: "idle", creatives: "idle", lp: "idle", adCopy: "idle" });
 
+  // Client deliverable (#5b): the "Deliverable #1" markdown doc that
+  // gets stored against the client. Distinct from the in-memory
+  // download flow above — this hits the server, reads the latest
+  // saved stage versions, and upserts to pedro_deliverables so the
+  // client detail page can show + serve it.
+  const [deliverableSaving, setDeliverableSaving] = useState(false);
+
   // Step 3: Script (optional)
   const [script, setScript] = useState("");
   const [scriptVideos, setScriptVideos] = useState<ScriptVideo[]>([]);
@@ -1305,6 +1312,42 @@ ${creativeDescriptions}`;
     showToast("✓ Alle stages gegenereerd");
     // Navigate to ad-copy step so the CM lands on the final output.
     goTo(6);
+    // Auto-save deliverable so the parallel "one click" path produces
+    // an end-to-end artifact. Fire-and-forget; the manual button on
+    // the ad-copy step lets the CM re-save after any edits.
+    if (selectedClientId) {
+      void saveClientDeliverable();
+    }
+  }
+
+  // Bake the saved-versions of every stage into a single deliverable
+  // markdown and store it as the client's canonical Pedro deliverable.
+  // Distinct from generateAndDownloadClientMD (local snapshot only) —
+  // this persists server-side so the client detail page can show + serve it.
+  async function saveClientDeliverable() {
+    if (!selectedClientId) {
+      showToast("Geen klant geselecteerd");
+      return;
+    }
+    if (deliverableSaving) return;
+    setDeliverableSaving(true);
+    try {
+      const res = await fetch("/api/pedro/deliverable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: selectedClientId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      showToast("✓ Client deliverable opgeslagen");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[pedro] saveClientDeliverable failed", e);
+      showToast(`Fout bij opslaan deliverable: ${msg}`);
+    }
+    setDeliverableSaving(false);
   }
 
   // ── Reset ──
@@ -2444,10 +2487,17 @@ ${creativeDescriptions}`;
 
               <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                 <button className="pedro-btn-ghost text-[11px]" onClick={() => doAdCopy()}>↻ Opnieuw</button>
-                <div className="flex gap-2">
-                  <button className="pedro-btn-ghost text-[11px]" onClick={generateAndDownloadClientMD}>Client MD</button>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    className="pedro-btn-teal text-[11px] disabled:opacity-60"
+                    onClick={saveClientDeliverable}
+                    disabled={deliverableSaving || !selectedClientId}
+                    title="Bundel alle opgeslagen stages tot één client deliverable .md en sla op aan de klant"
+                  >
+                    {deliverableSaving ? "Opslaan…" : "📄 Sla op als client deliverable"}
+                  </button>
+                  <button className="pedro-btn-ghost text-[11px]" onClick={generateAndDownloadClientMD}>Client MD download</button>
                   <button className="pedro-btn-ghost text-[11px]" onClick={resetAll}>+ Nieuwe campagne</button>
-                  <button className="pedro-btn-teal" onClick={() => { generateAndDownloadClientMD(); showToast("Campagne opgeslagen ✓"); }}>Opslaan & download MD</button>
                 </div>
               </div>
             </>
