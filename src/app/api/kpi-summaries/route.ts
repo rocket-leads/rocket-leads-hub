@@ -202,7 +202,12 @@ async function fetchSummary(
   endDate: string,
   prevStartDate: string,
   prevEndDate: string,
-  selectedCampaignIds: Set<string>
+  selectedCampaignIds: Set<string>,
+  /** When true, force a fresh fetch from Monday/Meta — skips the Next.js
+   *  60s fetch cache that otherwise serves stale data on the user-facing
+   *  Refresh button. Without this, the route would bypass our own
+   *  `kpi_daily:<id>` cache but still get stale upstream API responses. */
+  bypassUpstreamCache = false,
 ): Promise<FetchResult> {
   // RL ad account with no campaigns selected → return empty data with flag
   const isRlNoCampaign = isRocketLeadsAdAccount(client.metaAdAccountId) && selectedCampaignIds.size === 0
@@ -223,10 +228,10 @@ async function fetchSummary(
 
   const [dailyInsights, monday] = await Promise.all([
     shouldFetchMeta
-      ? fetchMetaInsightsDaily(client.metaAdAccountId!, metaFetchStart, metaFetchEnd).catch(() => [])
+      ? fetchMetaInsightsDaily(client.metaAdAccountId!, metaFetchStart, metaFetchEnd, { bypassCache: bypassUpstreamCache }).catch(() => [])
       : Promise.resolve([]),
     client.clientBoardId
-      ? fetchClientBoardItems(client.clientBoardId)
+      ? fetchClientBoardItems(client.clientBoardId, undefined, { bypassCache: bypassUpstreamCache })
           .then((items): MondayResult => ({ ok: true, items }))
           .catch((e): MondayResult => {
             console.error("Monday fetch failed for board", client.clientBoardId, e instanceof Error ? e.message : e)
@@ -459,7 +464,10 @@ async function batchProcess(
   prevEndDate: string,
   batchSize: number,
   selectedByMondayItemId: Record<string, Set<string>>,
-  supabase: Awaited<ReturnType<typeof createAdminClient>>
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  /** When true, fetchSummary bypasses the Next.js 60s upstream cache so
+   *  Refresh-button traffic actually pulls fresh Monday + Meta data. */
+  bypassUpstreamCache = false,
 ): Promise<Record<string, KpiSummary>> {
   const results: Record<string, KpiSummary> = {}
   const activityUpdates: Array<{ mondayItemId: string; active: boolean }> = []
@@ -468,7 +476,11 @@ async function batchProcess(
     const batch = clients.slice(i, i + batchSize)
     const settled = await Promise.allSettled(
       batch.map((c) =>
-        fetchSummary(c, startDate, endDate, prevStartDate, prevEndDate, selectedByMondayItemId[c.mondayItemId] ?? new Set())
+        fetchSummary(
+          c, startDate, endDate, prevStartDate, prevEndDate,
+          selectedByMondayItemId[c.mondayItemId] ?? new Set(),
+          bypassUpstreamCache,
+        )
       )
     )
     settled.forEach((result, j) => {
@@ -770,8 +782,14 @@ export async function POST(req: NextRequest) {
     body.clients.map((c) => c.mondayItemId),
   )
 
+  // `force` reaches here on Refresh-button traffic — pass it through so the
+  // upstream Monday + Meta fetches skip their own 60s caches. Without this,
+  // a refresh would bypass the kpi_daily cache but still receive a 60s-stale
+  // Monday board, which is exactly the "1 lead in Monday, dashboard says 0
+  // after refresh" symptom we saw on Financieel Verder (Roy, 2026-05-22).
   const summaries = await batchProcess(
-    body.clients, startDate, endDate, prevStartDate, prevEndDate, 5, selectedByMondayItemId, supabase
+    body.clients, startDate, endDate, prevStartDate, prevEndDate, 5, selectedByMondayItemId, supabase,
+    force,
   )
 
   // On force-refresh of the DEFAULT (7d) view, merge fresh results into the

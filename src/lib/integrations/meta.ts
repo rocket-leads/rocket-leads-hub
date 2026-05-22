@@ -131,7 +131,8 @@ export type MetaDailyInsight = {
 export async function fetchMetaInsightsDaily(
   adAccountId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  options: { bypassCache?: boolean } = {},
 ): Promise<MetaDailyInsight[]> {
   const token = await getToken()
   const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
@@ -144,7 +145,7 @@ export async function fetchMetaInsightsDaily(
     date_start: string
     spend: string
     actions?: Array<{ action_type: string; value: string }>
-  }>(url)
+  }>(url, { bypassCache: options.bypassCache })
   return data.map((d) => ({
     campaignId: d.campaign_id,
     campaignName: d.campaign_name,
