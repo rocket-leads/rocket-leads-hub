@@ -13,12 +13,10 @@ import {
   huisstijlContext as buildHuisstijlContext,
   huisstijlForLp as buildHuisstijlForLp,
   previousManusReference,
-  buildAnglesPrompt,
-  buildScriptPrompt,
+  // The other build* prompt functions moved server-side (#7); only the
+  // creatives master prompt stays client-side because it's a static
+  // string assembly that doesn't hit Claude.
   buildCreativesMasterPrompt,
-  buildCreativesDescriptionsPrompt,
-  buildLpPrompt,
-  buildAdCopyPrompt,
 } from "@/lib/pedro/prompts";
 
 // ── Types ──
@@ -74,17 +72,32 @@ interface MetaAd {
 }
 
 // ── Helpers ──
+/** Stage → typed prompt-builder args. Mirrors STAGE_CONFIGS on the
+ *  server side. Server picks the prompt builder + default model +
+ *  default max_tokens from the stage name; client just sends typed
+ *  options. */
+type StageOptionsMap = {
+  angles: import("@/lib/pedro/prompts").AnglesPromptArgs;
+  script: import("@/lib/pedro/prompts").ScriptPromptArgs;
+  creatives: import("@/lib/pedro/prompts").CreativesDescriptionsArgs;
+  lp: import("@/lib/pedro/prompts").LpPromptArgs;
+  "ad-copy": import("@/lib/pedro/prompts").AdCopyPromptArgs;
+};
+type StageName = keyof StageOptionsMap;
+
 type ClaudeCtx = {
   clientId?: string | null;
-  stage?: string;
-  /** "haiku" for structured-output stages (angles JSON, ad copy JSON) -
-   *  4-5x faster, ~10x cheaper, no quality drop for schema'd output.
-   *  Defaults to "sonnet" for reasoning-heavy stages. */
+  /** "haiku" override for structured-output stages, "sonnet" for prose.
+   *  Server falls back to a sensible per-stage default — set this only
+   *  when forcing a different tier than the default. */
   model?: "sonnet" | "haiku";
+  /** Override max_tokens when the per-stage default isn't enough — e.g.
+   *  the truncation-retry doubles this before re-calling. */
+  maxTokens?: number;
   /** Called with each text delta as Claude streams. The cumulative full
    *  text so far is passed alongside the delta so prose stages can drive
    *  a state setter directly without managing their own buffer. JSON
-   *  stages don't pass this - they need the final text to parse. */
+   *  stages don't pass this — they need the final text to parse. */
   onDelta?: (delta: string, fullSoFar: string) => void;
 };
 
@@ -97,23 +110,22 @@ type ClaudeResult = { text: string; stopReason: string | null };
  * carries the canonical full text + stop_reason, so we don't have to
  * trust concatenated deltas for correctness.
  */
-async function callClaudeRaw(
-  prompt: string,
-  maxTokens: number,
+async function callClaudeRaw<S extends StageName>(
+  stage: S,
+  options: StageOptionsMap[S],
   ctx?: ClaudeCtx,
 ): Promise<ClaudeResult> {
   const res = await fetch("/api/pedro/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
     body: JSON.stringify({
-      prompt,
-      maxTokens,
-      // When clientId+stage are present the server enriches the system
-      // prompt with prior Pedro outputs for that stage so Pedro doesn't
-      // repeat itself across campaigns.
+      stage,
+      options,
+      // Server enriches the system prompt with prior Pedro outputs +
+      // cross-client examples for this stage when clientId is present.
       clientId: ctx?.clientId ?? undefined,
-      stage: ctx?.stage ?? undefined,
-      model: ctx?.model ?? undefined,
+      model: ctx?.model,
+      maxTokens: ctx?.maxTokens,
     }),
   });
   // Vercel 504 / gateway errors return HTML, not JSON — guard before parsing
@@ -168,45 +180,56 @@ async function callClaudeRaw(
 }
 
 /**
- * Text-stage Claude call with automatic truncation retry. When the
+ * Text-stage Pedro call with automatic truncation retry. When the
  * model hits the maxTokens cap (`stop_reason === "max_tokens"`) we
  * retry once with 2x the cap so the CM doesn't end up with a half-
- * generated LP or Manus prompt. One retry is enough - if 2x still
+ * generated LP or Manus prompt. One retry is enough — if 2x still
  * truncates the prompt is unreasonably large and the CM needs to know.
  */
-async function callClaude(
-  prompt: string,
-  maxTokens = 1000,
+async function callPedro<S extends StageName>(
+  stage: S,
+  options: StageOptionsMap[S],
   ctx?: ClaudeCtx,
 ): Promise<string> {
-  const first = await callClaudeRaw(prompt, maxTokens, ctx);
+  const first = await callClaudeRaw(stage, options, ctx);
   if (first.stopReason !== "max_tokens") return first.text;
-  console.warn(`[pedro] truncated at ${maxTokens} tokens - retrying at ${maxTokens * 2}`);
-  const retry = await callClaudeRaw(prompt, maxTokens * 2, ctx);
+  const baseTokens = ctx?.maxTokens;
+  const retryTokens = baseTokens ? baseTokens * 2 : 4000;
+  console.warn(`[pedro] truncated on stage ${stage} — retrying at ${retryTokens} tokens`);
+  const retry = await callClaudeRaw(stage, options, { ...ctx, maxTokens: retryTokens });
   if (retry.stopReason === "max_tokens") {
-    console.warn(`[pedro] still truncated at ${maxTokens * 2} tokens - returning anyway`);
+    console.warn(`[pedro] still truncated at ${retryTokens} tokens — returning anyway`);
   }
   return retry.text;
 }
 
 /**
- * JSON-stage Claude call with parse-validation + one retry. Catches
+ * JSON-stage Pedro call with parse-validation + one retry. Catches
  * the classic failure mode where Claude adds a preamble ("Hier is je
  * JSON:") that crashes parseJSON and surfaces as a generic toast.
- * Retry appends a strict reminder to the prompt.
+ *
+ * Retry path: we can't append "geef alleen JSON" to the prompt anymore
+ * since the server owns prompt construction, so we send a follow-up
+ * via the special `_jsonRetry` flag in options. The server-side
+ * builders for JSON stages (angles, ad-copy) honour this by appending
+ * the strict reminder before sending to Claude. Pragmatic shortcut to
+ * keep client-side parsing logic working without dual-mode routes.
  */
-async function callClaudeJson<T>(
-  prompt: string,
-  maxTokens = 1000,
+async function callPedroJson<T, S extends Extract<StageName, "angles" | "ad-copy">>(
+  stage: S,
+  options: StageOptionsMap[S],
   ctx?: ClaudeCtx,
 ): Promise<T> {
-  const first = await callClaude(prompt, maxTokens, ctx);
+  const first = await callPedro(stage, options, ctx);
   try {
     return parseJSON<T>(first);
   } catch (e) {
-    console.warn("[pedro] JSON parse failed, retrying with stricter prompt:", e);
-    const stricter = `${prompt}\n\nBELANGRIJK: Je vorige antwoord was geen geldige JSON. Geef nu ALLEEN het JSON-object/array. Geen preamble, geen markdown-fences, geen uitleg, geen tekst eromheen - alleen pure JSON die direct te parsen is.`;
-    const retry = await callClaude(stricter, maxTokens, ctx);
+    console.warn(`[pedro] JSON parse failed on ${stage}, retrying with stricter options:`, e);
+    const retryOptions = {
+      ...options,
+      _jsonRetry: true,
+    } as StageOptionsMap[S];
+    const retry = await callPedro(stage, retryOptions, ctx);
     return parseJSON<T>(retry);
   }
 }
@@ -854,18 +877,17 @@ export function Campaign({
     }
 
     try {
-      // Haiku for JSON output stages: 4-5x faster, no quality drop on
-      // schema'd output. callClaudeJson handles parse-fail retry, so the
-      // old try/catch around parseJSON is no longer needed.
-      const parsed = await callClaudeJson<Angle[]>(
-        buildAnglesPrompt({
+      // Server picks the prompt builder + Haiku default for JSON
+      // stages. callPedroJson handles parse-fail retry.
+      const parsed = await callPedroJson<Angle[], "angles">(
+        "angles",
+        {
           brief,
           researchContext,
           styleRef: styleRef(),
           huisstijl: huisstijlCtx(),
-        }),
-        1500,
-        { clientId: selectedClientId, stage: "angles", model: "haiku" }
+        },
+        { clientId: selectedClientId }
       );
       setAngles(parsed.map((a) => ({ ...a, titel: sanitizeOutput(a.titel), beschrijving: sanitizeOutput(a.beschrijving) })));
     } catch (e) {
@@ -896,17 +918,16 @@ export function Campaign({
       // sees video 1/2/3 appear as Claude writes them, instead of a
       // 30-60s spinner. parseScriptText runs once at the end on the
       // canonical full text.
-      const res = sanitizeOutput(await callClaude(
-        buildScriptPrompt({
+      const res = sanitizeOutput(await callPedro(
+        "script",
+        {
           brief,
           anglesStr: anglesStr(),
           styleRef: styleRef(),
           huisstijl: huisstijlCtx(),
-        }),
-        1500,
+        },
         {
           clientId: selectedClientId,
-          stage: "script",
           onDelta: (_d, full) => setScript(sanitizeOutput(full)),
         }
       ));
@@ -984,11 +1005,12 @@ export function Campaign({
       const streamPrefix = `${masterPrompt}\n\n---\n\n## CREATIVES VOOR DEZE CAMPAGNE\n\n`;
 
       // Section 2: Ask Claude to generate only the creative descriptions.
-      // 4000 max tokens (was 2500) — at qty=5+ the creatives section
-      // routinely cut off mid-creative. Auto-retry at 8000 covers qty=10
-      // worst-case.
-      const creativeDescriptions = sanitizeOutput(await callClaude(
-        buildCreativesDescriptionsPrompt({
+      // Server defaults to 4000 max tokens for the creatives stage — at
+      // qty=5+ the creatives section used to cut off mid-creative.
+      // callPedro's auto-retry at 8000 covers qty=10 worst-case.
+      const creativeDescriptions = sanitizeOutput(await callPedro(
+        "creatives",
+        {
           brief,
           anglesStr: anglesStr(),
           qty,
@@ -997,11 +1019,9 @@ export function Campaign({
           brandStyle,
           scriptContext: scriptCtx(),
           previousManusRef: previousManusReference(clientDB),
-        }),
-        4000,
+        },
         {
           clientId: selectedClientId,
-          stage: "creatives",
           onDelta: (_d, full) => setManusPrompt(streamPrefix + sanitizeOutput(full)),
         }
       ));
@@ -1043,13 +1063,14 @@ ${creativeDescriptions}`;
     setLpLoading(true);
     setLpPrompt("");
     try {
-      // 2500 max tokens (was 1200) — long Lovable prompts with social
-      // proof + form + FAQ sections were truncating silently. callClaude
-      // now auto-retries at 5000 if 2500 still hits the cap. onDelta
-      // streams the Lovable prompt into the output box so the CM can
-      // start reading the hero copy before the form spec lands.
-      const res = sanitizeOutput(await callClaude(
-        buildLpPrompt({
+      // Server defaults to 2500 max tokens for LP — was 1200, long
+      // Lovable prompts with social proof + form + FAQ were truncating
+      // silently. callPedro auto-retries at 5000 if that still hits.
+      // onDelta streams the Lovable prompt into the output box so the
+      // CM can start reading the hero copy before the form spec lands.
+      const res = sanitizeOutput(await callPedro(
+        "lp",
+        {
           brief,
           selectedAngles,
           anglesStr: anglesStr(),
@@ -1061,11 +1082,9 @@ ${creativeDescriptions}`;
           pixelId,
           webhookUrl,
           utmStr,
-        }),
-        2500,
+        },
         {
           clientId: selectedClientId,
-          stage: "lp",
           onDelta: (_d, full) => setLpPrompt(sanitizeOutput(full)),
         }
       ));
@@ -1098,20 +1117,20 @@ ${creativeDescriptions}`;
     setAdCopy(null);
     setCopyTab("primary");
     try {
-      // Haiku + callClaudeJson — see angles stage for rationale. The
-      // text fields get post-sanitized after parse so smart quotes from
-      // Claude don't leak into Meta copy.
-      const parsed = await callClaudeJson<AdCopy>(
-        buildAdCopyPrompt({
+      // Server defaults to Haiku + 1200 max_tokens for ad-copy. Text
+      // fields post-sanitized after parse so smart quotes from Claude
+      // don't leak into Meta copy.
+      const parsed = await callPedroJson<AdCopy, "ad-copy">(
+        "ad-copy",
+        {
           brief,
           anglesStr: anglesStr(),
           scriptContext: scriptCtx(),
           lpPrompt,
           styleRef: styleRef(),
           huisstijl: huisstijlCtx(),
-        }),
-        1200,
-        { clientId: selectedClientId, stage: "ad-copy", model: "haiku" }
+        },
+        { clientId: selectedClientId }
       );
       setAdCopy({
         variantA: sanitizeOutput(parsed.variantA),

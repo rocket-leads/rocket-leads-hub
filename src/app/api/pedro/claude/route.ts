@@ -5,6 +5,13 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { loadPedroSystemPrompt } from "@/lib/pedro/knowledge"
 import { pastContextForStage, type PedroStage } from "@/lib/pedro/past-campaigns"
 import { crossClientExamplesBlock } from "@/lib/pedro/cross-client-examples"
+import {
+  buildAnglesPrompt,
+  buildScriptPrompt,
+  buildCreativesDescriptionsPrompt,
+  buildLpPrompt,
+  buildAdCopyPrompt,
+} from "@/lib/pedro/prompts"
 
 // SDK reads ANTHROPIC_API_KEY from env automatically — same key the rest of
 // the hub (watchlist, refresh-cache) uses.
@@ -15,8 +22,6 @@ const anthropic = new Anthropic()
 // Without this Vercel kills the function at 10s and the client sees a
 // HTML 504 page instead of JSON.
 export const maxDuration = 120
-
-const VALID_STAGES: PedroStage[] = ["brief", "angles", "script", "creatives", "lp", "ad-copy"]
 
 // Stages where same-vertical RL winners help most. Brief is omitted —
 // briefs come from the client's OWN data, cross-client examples would
@@ -38,12 +43,42 @@ function resolveModel(tier: ModelTier | undefined): string {
 }
 
 /**
+ * Per-stage config: which builder produces the prompt, default model,
+ * default max_tokens. Owning these defaults server-side means the
+ * client just says `stage: "lp"` and the server picks the right cost
+ * / latency / quality trade-off — no leaking model IDs into bundles.
+ * Client may still override via the request body when a special case
+ * demands it.
+ */
+type StageConfig = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  build: (options: any) => string
+  defaultMaxTokens: number
+  defaultModel: ModelTier
+}
+const STAGE_CONFIGS: Record<string, StageConfig> = {
+  angles: { build: buildAnglesPrompt, defaultMaxTokens: 1500, defaultModel: "haiku" },
+  script: { build: buildScriptPrompt, defaultMaxTokens: 1500, defaultModel: "sonnet" },
+  creatives: { build: buildCreativesDescriptionsPrompt, defaultMaxTokens: 4000, defaultModel: "sonnet" },
+  lp: { build: buildLpPrompt, defaultMaxTokens: 2500, defaultModel: "sonnet" },
+  "ad-copy": { build: buildAdCopyPrompt, defaultMaxTokens: 1200, defaultModel: "haiku" },
+}
+
+/**
  * Pedro generation endpoint. Always streams via Server-Sent Events so the
  * client can render text progressively as Claude generates it. Event types:
  *
  *   data: {"type":"text","delta":"..."}         — text chunk
  *   data: {"type":"done","text":"...","stopReason":"end_turn","usage":{...}}
  *   data: {"type":"error","message":"..."}
+ *
+ * Request body:
+ *   stage:      "angles" | "script" | "creatives" | "lp" | "ad-copy"
+ *   options:    the typed args object for the corresponding prompt builder
+ *   clientId:   optional — when present, server injects past-campaign +
+ *               cross-client context into the system prompt
+ *   model:      optional override — defaults from STAGE_CONFIGS
+ *   maxTokens:  optional override — defaults from STAGE_CONFIGS
  *
  * The `done` event carries the canonical full text + stop_reason so the
  * client doesn't need to concatenate deltas correctly to know when to fire
@@ -57,42 +92,48 @@ export async function POST(req: NextRequest) {
   }
 
   let body: {
-    prompt?: string
-    maxTokens?: number
-    images?: Array<{ data: string; mediaType: string }>
-    clientId?: string
     stage?: string
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    options?: any
+    clientId?: string
     model?: ModelTier
+    maxTokens?: number
   }
   try {
     body = await req.json()
   } catch {
     return sseErrorResponse("Invalid JSON body", 400)
   }
-  const { prompt, maxTokens = 1000, images, clientId, stage, model: modelTier } = body
+  const { stage, options, clientId, model: modelOverride, maxTokens: maxTokensOverride } = body
 
-  if (!prompt) {
-    return sseErrorResponse("Prompt is required", 400)
+  if (!stage || typeof stage !== "string" || !STAGE_CONFIGS[stage]) {
+    return sseErrorResponse(`Unknown stage: ${stage ?? "(missing)"}`, 400)
+  }
+  if (!options || typeof options !== "object") {
+    return sseErrorResponse("options is required", 400)
   }
 
-  const content: Anthropic.MessageCreateParams["messages"][0]["content"] = []
-
-  if (images && Array.isArray(images)) {
-    for (const img of images) {
-      if (img.data && img.mediaType) {
-        content.push({
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-            data: img.data,
-          },
-        })
-      }
-    }
+  const stageConfig = STAGE_CONFIGS[stage]
+  // Strip the magic `_jsonRetry` flag before passing to the builder so
+  // none of the typed builders need to know about it. When set, we
+  // append a strict "JSON only" reminder to the built prompt — used by
+  // callPedroJson on the client to recover from Claude preambles that
+  // break parseJSON.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { _jsonRetry, ...builderOptions } = options as any
+  let prompt: string
+  try {
+    prompt = stageConfig.build(builderOptions)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "prompt build failed"
+    return sseErrorResponse(`Bad options for stage ${stage}: ${msg}`, 400)
+  }
+  if (_jsonRetry) {
+    prompt += `\n\nBELANGRIJK: Je vorige antwoord was geen geldige JSON. Geef nu ALLEEN het JSON-object/array. Geen preamble, geen markdown-fences, geen uitleg, geen tekst eromheen — alleen pure JSON die direct te parsen is.`
   }
 
-  content.push({ type: "text", text: prompt })
+  const maxTokens = typeof maxTokensOverride === "number" ? maxTokensOverride : stageConfig.defaultMaxTokens
+  const modelTier = modelOverride ?? stageConfig.defaultModel
 
   // System prompt is split into two blocks so prompt caching can hit
   // the heavy one. The knowledge-base block (~25k tokens of
@@ -110,12 +151,7 @@ export async function POST(req: NextRequest) {
     },
   ]
 
-  if (
-    typeof clientId === "string" &&
-    clientId &&
-    typeof stage === "string" &&
-    (VALID_STAGES as string[]).includes(stage)
-  ) {
+  if (typeof clientId === "string" && clientId) {
     const stageTyped = stage as PedroStage
     const supabase = await createAdminClient()
     const past = await pastContextForStage(clientId, stageTyped, 2).catch(() => "")
@@ -156,7 +192,7 @@ export async function POST(req: NextRequest) {
           model: resolveModel(modelTier),
           max_tokens: maxTokens,
           system: systemBlocks,
-          messages: [{ role: "user", content }],
+          messages: [{ role: "user", content: prompt }],
         })
 
         for await (const event of messageStream) {
