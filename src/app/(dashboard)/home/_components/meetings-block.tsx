@@ -85,10 +85,10 @@ export function MeetingsBlock({
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{m.title}</p>
                   {m.clientName && (
-                    <p className="text-[11px] text-muted-foreground/60 truncate">{m.clientName}</p>
+                    <p className="text-xs text-muted-foreground/60 truncate">{m.clientName}</p>
                   )}
                 </div>
-                <span className={`text-[11px] tabular-nums shrink-0 ${status.tone}`}>
+                <span className={`text-xs tabular-nums shrink-0 ${status.tone}`}>
                   {status.label}
                 </span>
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors" />

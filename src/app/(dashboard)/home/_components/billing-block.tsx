@@ -33,8 +33,8 @@ export function BillingBlock({
       empty={items.length === 0}
       emptyMessage={t("home.block.billing.empty", locale)}
     >
-      <div className="px-4 py-2.5 border-b border-border/30 flex items-center justify-between">
-        <span className="text-[11px] text-muted-foreground/60 uppercase tracking-wider">{t("home.block.billing.total_open", locale)}</span>
+      <div className="px-5 py-3 border-b border-border/30 flex items-center justify-between">
+        <span className="text-sm font-medium text-muted-foreground">{t("home.block.billing.total_open", locale)}</span>
         <span className="text-sm font-mono tabular-nums text-amber-400">{formatCurrency(totalOutstanding, locale)}</span>
       </div>
       <ul className="divide-y divide-border/30">

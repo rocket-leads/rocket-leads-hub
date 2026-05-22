@@ -40,15 +40,15 @@ function Card({
   // 11px uppercase label, font-heading hero number with tabular-nums for column
   // alignment when stacked in a strip.
   return (
-    <div className="bg-card rounded-2xl px-5 py-4 border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] flex flex-col gap-3 h-full">
+    <div className="bg-card rounded-2xl px-5 py-5 border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] flex flex-col gap-3 h-full">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground/70 font-medium">{label}</span>
-        {trend && <TrendIcon className={cn("h-3.5 w-3.5", trendColor)} strokeWidth={2.5} />}
+        <span className="text-sm font-medium text-muted-foreground">{label}</span>
+        {trend && <TrendIcon className={cn("h-4 w-4", trendColor)} strokeWidth={2.5} />}
       </div>
-      <span className={cn("font-heading text-[26px] font-bold leading-none tracking-tight tabular-nums", valueColor)}>
+      <span className={cn("font-heading text-[28px] font-bold leading-none tracking-tight tabular-nums", valueColor)}>
         {value}
       </span>
-      <span className="text-[11px] text-muted-foreground/70 leading-snug">{subtitle}</span>
+      <span className="text-xs text-muted-foreground leading-snug">{subtitle}</span>
     </div>
   )
 }

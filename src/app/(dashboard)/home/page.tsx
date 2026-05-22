@@ -23,6 +23,7 @@ import { MeetingsBlock, type TodayMeeting } from "./_components/meetings-block"
 import { KpiStrip } from "./_components/kpi-strip"
 import { WeeklyUpdateDraftsBanner } from "@/app/(dashboard)/clients/_components/weekly-update-drafts-banner"
 import { MEETING_ROW_COLUMNS, type MeetingRow } from "@/lib/meetings/types"
+import { safeFetch } from "@/lib/safe-fetch"
 
 function HomeLoading() {
   return (
@@ -198,16 +199,16 @@ async function HomeData() {
           dashboard. */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-heading text-[24px] font-semibold tracking-tight leading-tight text-foreground">
+          <h1 className="font-heading text-[28px] font-semibold tracking-tight leading-tight text-foreground">
             {t("home.greeting.morning", locale, { name: firstName })}
           </h1>
-          <p className="text-xs text-muted-foreground/60 mt-1">
+          <p className="text-sm text-muted-foreground mt-1.5">
             {formatDate(new Date().toISOString(), locale)} · {t("home.subtitle", locale)}
           </p>
         </div>
         {lastKpiRefreshAt && (
           <span
-            className="text-[11px] text-muted-foreground/40 mt-2 tabular-nums shrink-0"
+            className="text-xs text-muted-foreground mt-2 tabular-nums shrink-0"
             title={new Date(lastKpiRefreshAt).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB")}
           >
             {t("home.updated_prefix", locale, { ago: formatTimeAgo(lastKpiRefreshAt, locale) })}
@@ -327,8 +328,8 @@ async function fetchMyInbox(
     const [tasks, updates, externalThreads, internalThreads] = await Promise.all([
       listInboxItems(userId, role, { kind: "task", assignedToMe: true, snoozed: "active" }),
       listInboxItems(userId, role, { kind: "update", assignedToMe: true }),
-      listChatThreads(userId, roleArg, "external").catch(() => [] as ChatThreadSummary[]),
-      listChatThreads(userId, roleArg, "internal").catch(() => [] as ChatThreadSummary[]),
+      safeFetch("home:chat_threads_external", () => listChatThreads(userId, roleArg, "external"), [] as ChatThreadSummary[]),
+      safeFetch("home:chat_threads_internal", () => listChatThreads(userId, roleArg, "internal"), [] as ChatThreadSummary[]),
     ])
     const chats = [...externalThreads, ...internalThreads]
       .filter((t) => t.unreadCount > 0)

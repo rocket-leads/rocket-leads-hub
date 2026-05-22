@@ -21,6 +21,7 @@ import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-rang
 import { useClientDateRange } from "@/app/(dashboard)/clients/[id]/_hooks/use-client-date-range"
 import { categorizeHealthVsBaseline, type WatchCategory } from "@/lib/watchlist/categorize"
 import { PedroInsightCard } from "./pedro-insight-card"
+import { OnboardingChecklist } from "./onboarding-checklist"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
@@ -758,6 +759,8 @@ export function HomeTab({
 
   return (
     <div className="space-y-5">
+      <OnboardingChecklist client={client} />
+
       <div className="flex items-center gap-3 flex-wrap">
         <DateRangePicker
           startDate={range.startDate}

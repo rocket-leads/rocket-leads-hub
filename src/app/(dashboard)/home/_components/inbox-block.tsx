@@ -52,8 +52,8 @@ function InboxZeroState() {
         </div>
         <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-green-500 animate-pulse" />
       </div>
-      <p className="text-[10px] uppercase tracking-wider text-violet-400 font-semibold">
-        Inbox zero
+      <p className="text-xs font-semibold text-violet-400">
+        Inbox Zero
       </p>
       <p className="text-sm text-foreground/80 leading-snug max-w-[280px]">
         {message}
@@ -94,13 +94,13 @@ export function InboxBlock({
               <span className="mt-1 shrink-0">{kindIcon(item.kind)}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{item.title}</p>
-                <p className="text-[11px] text-muted-foreground/70 mt-0.5 truncate">
+                <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
                   {[item.clientName, item.authorName, timeAgo(item.createdAt)]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
                 {item.body && (
-                  <p className="text-[11px] text-muted-foreground/50 mt-1 line-clamp-1">{item.body}</p>
+                  <p className="text-xs text-muted-foreground/50 mt-1 line-clamp-1">{item.body}</p>
                 )}
               </div>
               <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors mt-1" />

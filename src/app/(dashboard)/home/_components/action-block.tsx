@@ -57,20 +57,20 @@ export function ActionBlock({
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-red-400 leading-snug mt-0.5 line-clamp-1">{item.insight}</p>
+                <p className="text-xs text-red-400 leading-snug mt-0.5 line-clamp-1">{item.insight}</p>
                 {item.aiNote && (
-                  <p className="text-[11px] text-muted-foreground/80 leading-snug mt-1 line-clamp-2 flex items-start gap-1">
+                  <p className="text-xs text-muted-foreground/80 leading-snug mt-1 line-clamp-2 flex items-start gap-1">
                     <Sparkles className="h-2.5 w-2.5 text-violet-400 shrink-0 mt-[3px]" />
                     <span>{item.aiNote}</span>
                   </p>
                 )}
               </div>
               <div className="text-right shrink-0">
-                <p className="text-[11px] tabular-nums text-muted-foreground/80">
+                <p className="text-xs tabular-nums text-muted-foreground/80">
                   {fmtSpend(item.spend)} · {item.leads} leads
                 </p>
                 {item.cpl > 0 && (
-                  <p className="text-[10px] tabular-nums text-muted-foreground/40 mt-0.5">
+                  <p className="text-[11px] tabular-nums text-muted-foreground/60 mt-0.5">
                     €{item.cpl.toFixed(2)} CPL
                   </p>
                 )}
