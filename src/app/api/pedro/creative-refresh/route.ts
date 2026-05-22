@@ -15,6 +15,12 @@ import { loadPedroSystemPrompt } from "@/lib/pedro/knowledge"
 import { pastContextForStage } from "@/lib/pedro/past-campaigns"
 import { crossClientExamplesBlock } from "@/lib/pedro/cross-client-examples"
 
+// Creative refresh: full knowledge base + per-ad performance render +
+// past-campaign context + 4000 output tokens. Routinely 40-90s on
+// Sonnet 4. Without maxDuration Vercel kills at 10s and the CM sees a
+// 504 HTML page instead of refresh proposals.
+export const maxDuration = 120
+
 /**
  * POST /api/pedro/creative-refresh
  *   body: { clientId, days?: 30 }

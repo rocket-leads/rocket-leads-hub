@@ -20,6 +20,13 @@ interface MetaAd {
 // SDK reads ANTHROPIC_API_KEY from env automatically.
 const anthropic = new Anthropic()
 
+// Research generation reads the full knowledge base + a batch of recent
+// RL Meta ads + 4000 max_tokens of output. Comfortably 30-60s on Sonnet 4
+// when the cache is cold. Without maxDuration Vercel kills at 10s and
+// the CM gets a 504 HTML page instead of research. Matches the
+// /api/pedro/claude 120s ceiling.
+export const maxDuration = 120
+
 async function fetchRLMetaAds(req: NextRequest): Promise<MetaAd[]> {
   try {
     const url = new URL("/api/pedro/meta/campaigns", req.nextUrl.origin)

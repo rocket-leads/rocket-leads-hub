@@ -3,6 +3,12 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { generateAutoBrief } from "@/lib/pedro/generate-brief"
 
+// Brief generation routinely takes 20-40s on Sonnet 4 with the full
+// kick-off / Trengo / Monday context bundle. Without an explicit
+// maxDuration, Vercel kills the function at 10s and the CM gets a 504
+// HTML page instead of a brief. Matches /api/pedro/claude's 120s ceiling.
+export const maxDuration = 120
+
 /**
  * POST /api/pedro/auto-brief
  *   body: { clientId }
