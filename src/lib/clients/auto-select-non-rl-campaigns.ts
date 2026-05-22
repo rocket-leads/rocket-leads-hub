@@ -53,15 +53,32 @@ export async function autoSelectActiveCampaignsForNonRlClients(
   }
 
   const allClientIds = nonRl.map((c) => c.clientId)
-  const { data: existingRows } = await supabase
-    .from("client_campaigns")
-    .select("client_id, meta_campaign_id")
-    .in("client_id", allClientIds)
-
+  // Paginated — Supabase's default 1000-row cap was silently
+  // truncating the existingRows on accounts with thousands of
+  // client_campaigns rows, causing the matcher to re-assign
+  // campaigns the user had already deselected. Roy 2026-05-22.
   const knownByClient = new Map<string, Set<string>>()
-  for (const row of existingRows ?? []) {
-    if (!knownByClient.has(row.client_id)) knownByClient.set(row.client_id, new Set())
-    knownByClient.get(row.client_id)!.add(row.meta_campaign_id)
+  {
+    const PAGE = 1000
+    const MAX = 100_000
+    let offset = 0
+    while (offset < MAX) {
+      const { data: existingRows, error } = await supabase
+        .from("client_campaigns")
+        .select("client_id, meta_campaign_id")
+        .in("client_id", allClientIds)
+        .range(offset, offset + PAGE - 1)
+      if (error) {
+        console.error("[auto-select-non-rl] existing fetch failed:", error.message)
+        break
+      }
+      for (const row of existingRows ?? []) {
+        if (!knownByClient.has(row.client_id)) knownByClient.set(row.client_id, new Set())
+        knownByClient.get(row.client_id)!.add(row.meta_campaign_id)
+      }
+      if (!existingRows || existingRows.length < PAGE) break
+      offset += PAGE
+    }
   }
 
   const newRows: Array<{

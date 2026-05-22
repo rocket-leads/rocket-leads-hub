@@ -81,11 +81,31 @@ export async function GET(
 
     let globallyAssigned = new Set<string>()
     if (candidateIds.length > 0) {
-      const { data: existing } = await supabase
-        .from("client_campaigns")
-        .select("meta_campaign_id")
-        .in("client_id", candidateIds)
-      globallyAssigned = new Set((existing ?? []).map((r) => r.meta_campaign_id))
+      // CRITICAL: Supabase's default row cap is 1000. On the shared RL ad
+      // account with thousands of campaigns + many clients, a plain
+      // `.select(...)` truncates and globallyAssigned ends up missing the
+      // rest — which makes the matcher think those campaigns are unknown
+      // and re-assign them, undoing user deselections on every page load.
+      // Paginate to be safe. Roy 2026-05-22.
+      const PAGE = 1000
+      let offset = 0
+      // Safety cap so a runaway query can't infinite-loop. 100k rows of
+      // client_campaigns is well past anything we expect to see.
+      const MAX = 100_000
+      while (offset < MAX) {
+        const { data: existing, error } = await supabase
+          .from("client_campaigns")
+          .select("meta_campaign_id")
+          .in("client_id", candidateIds)
+          .range(offset, offset + PAGE - 1)
+        if (error) {
+          console.error("[campaigns GET] existing fetch failed:", error)
+          break
+        }
+        for (const r of existing ?? []) globallyAssigned.add(r.meta_campaign_id)
+        if (!existing || existing.length < PAGE) break
+        offset += PAGE
+      }
     }
 
     const newRows: Array<{

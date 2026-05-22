@@ -54,11 +54,32 @@ export async function runRocketLeadsCampaignMatcher(
     return { assignedCount: 0, affectedMondayItemIds: [] }
   }
 
-  const { data: existing } = await supabase
-    .from("client_campaigns")
-    .select("meta_campaign_id")
-    .in("client_id", candidateIds)
-  const globallyAssigned = new Set((existing ?? []).map((r) => r.meta_campaign_id))
+  // Paginated read — Supabase's default 1000-row cap was silently
+  // truncating the set on shared RL ad accounts with thousands of
+  // campaigns + many clients. Missing rows here = the matcher thinks
+  // those campaigns are unknown and re-assigns them every hour, which
+  // showed up as "I deselected, came back, and it's selected again".
+  // Roy 2026-05-22.
+  const globallyAssigned = new Set<string>()
+  {
+    const PAGE = 1000
+    const MAX = 100_000
+    let offset = 0
+    while (offset < MAX) {
+      const { data: existing, error } = await supabase
+        .from("client_campaigns")
+        .select("meta_campaign_id")
+        .in("client_id", candidateIds)
+        .range(offset, offset + PAGE - 1)
+      if (error) {
+        console.error("[matcher] existing fetch failed:", error.message)
+        break
+      }
+      for (const r of existing ?? []) globallyAssigned.add(r.meta_campaign_id)
+      if (!existing || existing.length < PAGE) break
+      offset += PAGE
+    }
+  }
 
   const idToMondayItem = new Map(candidates.map((c) => [c.id, c.monday_item_id]))
   const affectedSet = new Set<string>()

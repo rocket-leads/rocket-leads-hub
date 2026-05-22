@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Check, Search } from "lucide-react"
+import { Check, Search, Loader2 } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,34 +22,32 @@ type Props = {
 
 type View = "selected" | "available"
 
-const STATUS_COLORS: Record<string, string> = {
-  ACTIVE: "bg-green-500/15 text-green-600 dark:text-green-400 border-green-500/30",
-  PAUSED: "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border-yellow-500/30",
-  ARCHIVED: "bg-muted text-muted-foreground",
-}
-
 /**
- * Campaign selection panel for the client detail page. Two-tab layout
- * (Geselecteerd / Beschikbaar) so the CM can see at-a-glance which
- * campaigns are currently feeding KPIs vs. which ones are sitting on
- * the account waiting to be picked up. Click any row to flip its
- * selection — the row instantly disappears from the current tab and
- * shows up in the other.
+ * Campaign selection panel for the client detail page.
  *
- * Earlier design used grouped headers within one list, which buried
- * "Selected" under a long Available list when the account had many
- * campaigns (typical for RL shared ad accounts). Roy 2026-05-22.
+ * Roy 2026-05-22 (second pass):
+ *   - Search input moved below the tab strip so it visually belongs to
+ *     the active tab.
+ *   - Dropped the "Verberg inactief" toggle — both active and inactive
+ *     campaigns are shown in every tab, with status surfaced as a small
+ *     coloured dot per row (green=ACTIVE, amber=PAUSED, grey=ARCHIVED).
+ *   - Sorted active first within each tab so the relevant rows are
+ *     always at the top.
+ *   - Added a "Opgeslagen" / "Bezig met opslaan…" badge near the tabs
+ *     so the CM has visual confirmation that toggles persisted (this
+ *     was the missing trust signal that made Roy think selections
+ *     weren't saving).
  */
 export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelectionChange }: Props) {
   const queryClient = useQueryClient()
   const [view, setView] = useState<View>("selected")
-  const [showInactive, setShowInactive] = useState(false)
   const [search, setSearch] = useState("")
+  const [savingCount, setSavingCount] = useState(0)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
   const queryKey = ["campaigns", mondayItemId]
 
-  // Optimistically flip the selection in the React Query cache so the
-  // UI updates instantly. Returns the snapshot so the mutation can roll
-  // back on failure without losing concurrent edits the user made.
+  // Optimistically flip the selection in the React Query cache so the UI
+  // updates instantly. Returns the previous snapshot for rollback.
   function applyOptimistic(targetIds: Set<string>, isSelected: boolean) {
     const previous = queryClient.getQueryData<{ campaigns: CampaignWithSelection[] }>(queryKey)
     queryClient.setQueryData<{ campaigns: CampaignWithSelection[] }>(queryKey, (old) => {
@@ -64,23 +62,6 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
     return previous
   }
 
-  // Roy 2026-05-22 bug: clicking a campaign sometimes appeared to
-  // un-click itself. Two reasons combined:
-  //
-  //   1. The GET response carried a `Cache-Control: s-maxage=60`
-  //      header so the refetch after a POST occasionally served the
-  //      pre-click cached body — overwriting the optimistic state.
-  //   2. The POST handler never checked Supabase's upsert error, so a
-  //      silent constraint / RLS failure returned ok:true while the
-  //      DB hadn't actually written — and the next GET read the OLD
-  //      state, again overwriting the optimistic UI.
-  //
-  // Both server-side issues are fixed. On this client side we also
-  // stop blindly refetching after every toggle: the optimistic update
-  // IS the source of truth for the row's selected flag, and the GET
-  // only adds server-computed extras (auto-select rows, isSuggested
-  // badges) that don't change on each individual click. We still
-  // surface the error path so a failed POST visibly rolls back.
   async function postSelection(
     targets: Array<{ campaignId: string; campaignName: string; isSelected: boolean }>,
   ): Promise<{ ok: boolean; error?: string }> {
@@ -89,9 +70,7 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          targets.length === 1
-            ? targets[0]
-            : { campaigns: targets },
+          targets.length === 1 ? targets[0] : { campaigns: targets },
         ),
       })
       if (!res.ok) {
@@ -107,25 +86,24 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
   async function toggleCampaign(campaign: CampaignWithSelection) {
     const next = !campaign.isSelected
     const snapshot = applyOptimistic(new Set([campaign.id]), next)
+    setSavingCount((c) => c + 1)
     const result = await postSelection([
       { campaignId: campaign.id, campaignName: campaign.name, isSelected: next },
     ])
+    setSavingCount((c) => c - 1)
     if (!result.ok) {
-      // Roll back the cache to the pre-click snapshot so the UI matches
-      // server truth. Without this the optimistic flip would persist
-      // until a manual refresh.
       if (snapshot) queryClient.setQueryData(queryKey, snapshot)
       console.error("[campaign-selector] toggle failed:", result.error)
       return
     }
-    // Notify the parent so it can refresh sibling queries (KPIs etc.)
-    // that depend on which campaigns are tracked.
+    setSavedAt(Date.now())
     onSelectionChange()
   }
 
   async function bulkSetSelection(targets: CampaignWithSelection[], isSelected: boolean) {
     if (targets.length === 0) return
     const snapshot = applyOptimistic(new Set(targets.map((c) => c.id)), isSelected)
+    setSavingCount((c) => c + 1)
     const result = await postSelection(
       targets.map((c) => ({
         campaignId: c.id,
@@ -133,33 +111,46 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         isSelected,
       })),
     )
+    setSavingCount((c) => c - 1)
     if (!result.ok) {
       if (snapshot) queryClient.setQueryData(queryKey, snapshot)
       console.error("[campaign-selector] bulk toggle failed:", result.error)
       return
     }
+    setSavedAt(Date.now())
     onSelectionChange()
   }
 
-  const { selectedAll, availableAll, inactiveCount } = useMemo(() => {
-    const selectedAll = campaigns.filter((c) => c.isSelected)
-    // Available = not selected. Filter by status here so the tab counts
-    // match what the CM actually sees in the list below.
+  // Sort: ACTIVE first, then PAUSED, then everything else; alphabetical
+  // within each status bucket. Roy: actieve bovenaan zodat de CM die als
+  // eerste ziet — inactieven blijven zichtbaar maar staan onderaan.
+  const STATUS_RANK: Record<string, number> = {
+    ACTIVE: 0,
+    PAUSED: 1,
+    ARCHIVED: 2,
+  }
+  function statusSort(a: CampaignWithSelection, b: CampaignWithSelection): number {
+    const ra = STATUS_RANK[a.status] ?? 99
+    const rb = STATUS_RANK[b.status] ?? 99
+    if (ra !== rb) return ra - rb
+    return a.name.localeCompare(b.name)
+  }
+
+  const { selectedAll, availableAll } = useMemo(() => {
+    const selectedAll = campaigns.filter((c) => c.isSelected).sort(statusSort)
     const availableAll = campaigns
       .filter((c) => !c.isSelected)
-      .filter((c) => showInactive || c.status === "ACTIVE")
       .sort(
         (a, b) =>
-          Number(b.isSuggested ?? false) - Number(a.isSuggested ?? false) ||
-          a.name.localeCompare(b.name),
+          // Suggested rows surface to the top of Available so the CM
+          // sees them first; otherwise fall through to status sort.
+          Number(b.isSuggested ?? false) - Number(a.isSuggested ?? false) || statusSort(a, b),
       )
-    const inactiveCount = campaigns.filter(
-      (c) => !c.isSelected && c.status !== "ACTIVE",
-    ).length
-    return { selectedAll, availableAll, inactiveCount }
-  }, [campaigns, showInactive])
+    return { selectedAll, availableAll }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaigns])
 
-  // Search applies to both tab contents.
+  // Search applies to the active tab only.
   const q = search.trim().toLowerCase()
   const selected = q
     ? selectedAll.filter((c) => c.name.toLowerCase().includes(q))
@@ -167,6 +158,8 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
   const available = q
     ? availableAll.filter((c) => c.name.toLowerCase().includes(q))
     : availableAll
+  const list = view === "selected" ? selected : available
+  const visibleAll = view === "selected" ? selectedAll : availableAll
 
   if (isLoading) {
     return (
@@ -182,24 +175,10 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
     return <p className="text-sm text-muted-foreground">Geen campagnes gevonden op dit ad account.</p>
   }
 
-  const list = view === "selected" ? selected : available
-  const visibleAll = view === "selected" ? selectedAll : availableAll
-  const allVisibleSelected = list.length > 0 && view === "selected"
-
   return (
     <div className="space-y-3">
-      {/* Search — applies to both tabs */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/70 pointer-events-none" />
-        <Input
-          placeholder="Zoek campagnes…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-
-      {/* Two-tab switcher */}
+      {/* Tab strip + save indicator. Search lives BELOW per Roy 2026-05-22 —
+          it visually belongs to the active tab's list. */}
       <TopTabs<View>
         tabs={[
           { id: "selected", label: "Geselecteerd", count: selectedAll.length, icon: Check },
@@ -208,27 +187,16 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         value={view}
         onChange={setView}
         rightContent={
-          <div className="flex items-center gap-1">
-            {view === "available" && inactiveCount > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-xs h-7"
-                onClick={() => setShowInactive((v) => !v)}
-              >
-                {showInactive
-                  ? `Verberg inactief (${inactiveCount})`
-                  : `Toon inactief (${inactiveCount})`}
-              </Button>
-            )}
+          <div className="flex items-center gap-2">
+            {/* Save indicator — feedback that toggles actually persisted.
+                Was missing; Roy thought selections were silently dropping. */}
+            <SaveIndicator savingCount={savingCount} savedAt={savedAt} />
             {visibleAll.length > 0 && (
               <Button
                 size="sm"
                 variant="ghost"
                 className="text-xs h-7"
-                onClick={() =>
-                  bulkSetSelection(visibleAll, view === "available")
-                }
+                onClick={() => bulkSetSelection(visibleAll, view === "available")}
               >
                 {view === "selected" ? "Deselecteer alle" : "Selecteer alle"}
               </Button>
@@ -237,7 +205,22 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         }
       />
 
-      {/* Empty / count line */}
+      {/* Per-tab search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/70 pointer-events-none" />
+        <Input
+          placeholder={
+            view === "selected"
+              ? "Zoek in geselecteerd…"
+              : "Zoek in beschikbaar…"
+          }
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      {/* Count line */}
       <p className="text-xs text-muted-foreground">
         {view === "selected" ? (
           selected.length === 0 && q ? (
@@ -252,7 +235,7 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         ) : available.length === 0 && q ? (
           "Geen beschikbare campagne matcht je zoekopdracht."
         ) : available.length === 0 ? (
-          "Geen beschikbare campagnes — alle actieve campagnes zijn al gekoppeld."
+          "Alle campagnes op dit account zijn al gekoppeld."
         ) : (
           `${available.length} ${
             available.length === 1 ? "campagne" : "campagnes"
@@ -271,6 +254,57 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         ))}
       </div>
     </div>
+  )
+}
+
+function SaveIndicator({
+  savingCount,
+  savedAt,
+}: {
+  savingCount: number
+  savedAt: number | null
+}) {
+  // Saving: spinner + "Opslaan…". Recently saved (≤3s): green ✓ + "Opgeslagen".
+  // Otherwise nothing — silence is the resting state.
+  const [, force] = useState(0)
+  useMemo(() => {
+    if (!savedAt) return
+    const t = setTimeout(() => force((x) => x + 1), 3500)
+    return () => clearTimeout(t)
+  }, [savedAt])
+
+  if (savingCount > 0) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Opslaan…
+      </span>
+    )
+  }
+  if (savedAt && Date.now() - savedAt < 3000) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+        <Check className="h-3 w-3" strokeWidth={3} />
+        Opgeslagen
+      </span>
+    )
+  }
+  return null
+}
+
+function StatusDot({ status }: { status: string }) {
+  const color =
+    status === "ACTIVE"
+      ? "bg-emerald-500"
+      : status === "PAUSED"
+        ? "bg-amber-500"
+        : "bg-muted-foreground/40"
+  return (
+    <span
+      className={cn("h-2 w-2 rounded-full shrink-0", color)}
+      title={status}
+      aria-label={status}
+    />
   )
 }
 
@@ -306,6 +340,7 @@ function CampaignRow({
           <Check className="h-3 w-3" strokeWidth={3} aria-hidden />
         )}
       </span>
+      <StatusDot status={campaign.status} />
       <span
         className={cn(
           "flex-1 text-sm truncate",
@@ -323,12 +358,6 @@ function CampaignRow({
           Suggested
         </Badge>
       )}
-      <Badge
-        variant="outline"
-        className={cn("text-[10px] shrink-0", STATUS_COLORS[campaign.status] ?? "")}
-      >
-        {campaign.status}
-      </Badge>
     </button>
   )
 }
