@@ -74,11 +74,22 @@ interface MetaAd {
 }
 
 // ── Helpers ──
-async function callClaude(
+type ClaudeCtx = {
+  clientId?: string | null;
+  stage?: string;
+  /** "haiku" for structured-output stages (angles JSON, ad copy JSON) -
+   *  4-5x faster, ~10x cheaper, no quality drop for schema'd output.
+   *  Defaults to "sonnet" for reasoning-heavy stages. */
+  model?: "sonnet" | "haiku";
+};
+
+type ClaudeResult = { text: string; stopReason: string | null };
+
+async function callClaudeRaw(
   prompt: string,
-  maxTokens = 1000,
-  ctx?: { clientId?: string | null; stage?: string },
-): Promise<string> {
+  maxTokens: number,
+  ctx?: ClaudeCtx,
+): Promise<ClaudeResult> {
   const res = await fetch("/api/pedro/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -90,13 +101,14 @@ async function callClaude(
       // repeat itself across campaigns.
       clientId: ctx?.clientId ?? undefined,
       stage: ctx?.stage ?? undefined,
+      model: ctx?.model ?? undefined,
     }),
   });
   // Vercel 504 / gateway errors return HTML, not JSON — guard before parsing
   // so the catch block surfaces a meaningful message instead of "Unexpected
   // token < in JSON".
   const raw = await res.text();
-  let data: { text?: string; error?: string } = {};
+  let data: { text?: string; error?: string; stopReason?: string | null } = {};
   try {
     data = raw ? JSON.parse(raw) : {};
   } catch {
@@ -105,7 +117,51 @@ async function callClaude(
   if (!res.ok || data.error) {
     throw new Error(data.error || `HTTP ${res.status}: ${res.statusText}`);
   }
-  return data.text ?? "";
+  return { text: data.text ?? "", stopReason: data.stopReason ?? null };
+}
+
+/**
+ * Text-stage Claude call with automatic truncation retry. When the
+ * model hits the maxTokens cap (`stop_reason === "max_tokens"`) we
+ * retry once with 2x the cap so the CM doesn't end up with a half-
+ * generated LP or Manus prompt. One retry is enough - if 2x still
+ * truncates the prompt is unreasonably large and the CM needs to know.
+ */
+async function callClaude(
+  prompt: string,
+  maxTokens = 1000,
+  ctx?: ClaudeCtx,
+): Promise<string> {
+  const first = await callClaudeRaw(prompt, maxTokens, ctx);
+  if (first.stopReason !== "max_tokens") return first.text;
+  console.warn(`[pedro] truncated at ${maxTokens} tokens - retrying at ${maxTokens * 2}`);
+  const retry = await callClaudeRaw(prompt, maxTokens * 2, ctx);
+  if (retry.stopReason === "max_tokens") {
+    console.warn(`[pedro] still truncated at ${maxTokens * 2} tokens - returning anyway`);
+  }
+  return retry.text;
+}
+
+/**
+ * JSON-stage Claude call with parse-validation + one retry. Catches
+ * the classic failure mode where Claude adds a preamble ("Hier is je
+ * JSON:") that crashes parseJSON and surfaces as a generic toast.
+ * Retry appends a strict reminder to the prompt.
+ */
+async function callClaudeJson<T>(
+  prompt: string,
+  maxTokens = 1000,
+  ctx?: ClaudeCtx,
+): Promise<T> {
+  const first = await callClaude(prompt, maxTokens, ctx);
+  try {
+    return parseJSON<T>(first);
+  } catch (e) {
+    console.warn("[pedro] JSON parse failed, retrying with stricter prompt:", e);
+    const stricter = `${prompt}\n\nBELANGRIJK: Je vorige antwoord was geen geldige JSON. Geef nu ALLEEN het JSON-object/array. Geen preamble, geen markdown-fences, geen uitleg, geen tekst eromheen - alleen pure JSON die direct te parsen is.`;
+    const retry = await callClaude(stricter, maxTokens, ctx);
+    return parseJSON<T>(retry);
+  }
 }
 
 function sanitizeOutput(text: string): string {
@@ -751,7 +807,10 @@ export function Campaign({
     }
 
     try {
-      const res = sanitizeOutput(await callClaude(
+      // Haiku for JSON output stages: 4-5x faster, no quality drop on
+      // schema'd output. callClaudeJson handles parse-fail retry, so the
+      // old try/catch around parseJSON is no longer needed.
+      const parsed = await callClaudeJson<Angle[]>(
         buildAnglesPrompt({
           brief,
           researchContext,
@@ -759,14 +818,9 @@ export function Campaign({
           huisstijl: huisstijlCtx(),
         }),
         1500,
-        { clientId: selectedClientId, stage: "angles" }
-      ));
-      try {
-        setAngles(parseJSON<Angle[]>(res));
-      } catch (parseErr) {
-        console.error("JSON parse error. Raw response:", res);
-        showToast(`Kon antwoord niet parsen -- check console (${parseErr instanceof Error ? parseErr.message : "parse fout"})`);
-      }
+        { clientId: selectedClientId, stage: "angles", model: "haiku" }
+      );
+      setAngles(parsed.map((a) => ({ ...a, titel: sanitizeOutput(a.titel), beschrijving: sanitizeOutput(a.beschrijving) })));
     } catch (e) {
       const msg = e instanceof Error ? e.message : "onbekende fout";
       console.error("doAngles error:", e);
@@ -865,7 +919,10 @@ export function Campaign({
         previousManusRef: previousManusReference(clientDB),
       });
 
-      // Section 2: Ask Claude to generate only the creative descriptions
+      // Section 2: Ask Claude to generate only the creative descriptions.
+      // 4000 max tokens (was 2500) — at qty=5+ the creatives section
+      // routinely cut off mid-creative. Auto-retry at 8000 covers qty=10
+      // worst-case.
       const creativeDescriptions = sanitizeOutput(await callClaude(
         buildCreativesDescriptionsPrompt({
           brief,
@@ -877,7 +934,7 @@ export function Campaign({
           scriptContext: scriptCtx(),
           previousManusRef: previousManusReference(clientDB),
         }),
-        2500,
+        4000,
         { clientId: selectedClientId, stage: "creatives" }
       ));
 
@@ -918,6 +975,9 @@ ${creativeDescriptions}`;
     setLpLoading(true);
     setLpPrompt("");
     try {
+      // 2500 max tokens (was 1200) — long Lovable prompts with social
+      // proof + form + FAQ sections were truncating silently. callClaude
+      // now auto-retries at 5000 if 2500 still hits the cap.
       const res = sanitizeOutput(await callClaude(
         buildLpPrompt({
           brief,
@@ -932,7 +992,7 @@ ${creativeDescriptions}`;
           webhookUrl,
           utmStr,
         }),
-        1200,
+        2500,
         { clientId: selectedClientId, stage: "lp" }
       ));
       setLpPrompt(res);
@@ -964,7 +1024,10 @@ ${creativeDescriptions}`;
     setAdCopy(null);
     setCopyTab("primary");
     try {
-      const res = sanitizeOutput(await callClaude(
+      // Haiku + callClaudeJson — see angles stage for rationale. The
+      // text fields get post-sanitized after parse so smart quotes from
+      // Claude don't leak into Meta copy.
+      const parsed = await callClaudeJson<AdCopy>(
         buildAdCopyPrompt({
           brief,
           anglesStr: anglesStr(),
@@ -974,9 +1037,14 @@ ${creativeDescriptions}`;
           huisstijl: huisstijlCtx(),
         }),
         1200,
-        { clientId: selectedClientId, stage: "ad-copy" }
-      ));
-      setAdCopy(parseJSON<AdCopy>(res));
+        { clientId: selectedClientId, stage: "ad-copy", model: "haiku" }
+      );
+      setAdCopy({
+        variantA: sanitizeOutput(parsed.variantA),
+        variantB: sanitizeOutput(parsed.variantB),
+        headlines: sanitizeOutput(parsed.headlines),
+        beschrijving: sanitizeOutput(parsed.beschrijving),
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("Pedro ad copy failed:", e);
