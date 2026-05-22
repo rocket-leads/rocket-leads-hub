@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home } from "lucide-react"
+import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers } from "lucide-react"
 
 // Note: lucide's `Receipt` ships with a $ glyph baked into the SVG. Roy
 // flagged it as off-brand for a Hub that talks Euros — we use `CreditCard`
@@ -11,7 +11,7 @@ import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home
 // quiet, matching the abstract style of the rest of the sidebar items
 // (Users, Inbox, Megaphone, Target, etc.). Home uses lucide's `Home`
 // (literal house glyph) per Roy's 2026-05-21 ask.
-const ICONS = { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home }
+const ICONS = { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers }
 
 type NavItem = { href: string; label: string; icon: keyof typeof ICONS }
 

@@ -2,20 +2,29 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
-import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw, Layers, Users } from "lucide-react"
-import { TopTabs } from "@/components/ui/top-tabs"
-import type { TopTab } from "@/components/ui/top-tabs"
+import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw, Users } from "lucide-react"
+import { PhasedTopTabs, type TabPhase } from "@/components/ui/phased-top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { ClientPicker } from "./client-picker"
 import { Campaign } from "./pedro-campaign"
 import { Research } from "./pedro-research"
 import { PedroRefresh } from "./pedro-refresh"
-import { PedroInsights } from "./pedro-insights"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { PedroClient } from "../page"
 
+// Pedro is split into three conceptual phases (Roy 2026-05-22):
+//
+//   1. Voorbereiding — Brief + Research + Angles. Everything the CM
+//      needs to lock in before generating deliverables.
+//   2. Deliverables  — Video scripts, Creatives (Manus prompt), LP
+//      (Lovable prompt), Ad copy. What gets handed to the client.
+//   3. Tools         — Refresh (live-campaign creative iteration).
+//      Stand-alone optimization, not part of the build flow.
+//
+// Insights moved to its own /insights top-level page since it's
+// agency-wide (no client picker) and conceptually a separate product.
 type Section =
   | "brief"
   | "research"
@@ -25,23 +34,39 @@ type Section =
   | "lp"
   | "ad-copy"
   | "refresh"
-  | "insights"
 
-type CampaignSection = Exclude<Section, "research" | "refresh" | "insights">
+type CampaignSection = Exclude<Section, "research" | "refresh">
 
-/** Tab shape lives at module scope (icons + ids never change); the label
- *  flips with the locale toggle so it's built per render via useMemo. */
-const TAB_SHAPE = [
-  { id: "brief" as const, labelKey: "pedro.tab.brief" as const, icon: Sparkles },
-  { id: "research" as const, labelKey: "pedro.tab.research" as const, icon: Lightbulb },
-  { id: "angles" as const, labelKey: "pedro.tab.angles" as const, icon: Compass },
-  { id: "script" as const, labelKey: "pedro.tab.script" as const, icon: Video },
-  { id: "creatives" as const, labelKey: "pedro.tab.creatives" as const, icon: ImageIcon },
-  { id: "lp" as const, labelKey: "pedro.tab.lp" as const, icon: FileCode },
-  { id: "ad-copy" as const, labelKey: "pedro.tab.ad_copy" as const, icon: Megaphone },
-  { id: "refresh" as const, labelKey: "pedro.tab.refresh" as const, icon: RefreshCw },
-  { id: "insights" as const, labelKey: "pedro.tab.insights" as const, icon: Layers },
-]
+/** Per-phase tab shape — icons + ids never change; labels flip with
+ *  the locale toggle so PHASES is built per render via useMemo. */
+const PHASE_SHAPE = [
+  {
+    id: "preparation",
+    labelKey: "pedro.phase.preparation" as const,
+    tabs: [
+      { id: "brief" as const, labelKey: "pedro.tab.brief" as const, icon: Sparkles },
+      { id: "research" as const, labelKey: "pedro.tab.research" as const, icon: Lightbulb },
+      { id: "angles" as const, labelKey: "pedro.tab.angles" as const, icon: Compass },
+    ],
+  },
+  {
+    id: "deliverables",
+    labelKey: "pedro.phase.deliverables" as const,
+    tabs: [
+      { id: "script" as const, labelKey: "pedro.tab.script" as const, icon: Video },
+      { id: "creatives" as const, labelKey: "pedro.tab.creatives" as const, icon: ImageIcon },
+      { id: "lp" as const, labelKey: "pedro.tab.lp" as const, icon: FileCode },
+      { id: "ad-copy" as const, labelKey: "pedro.tab.ad_copy" as const, icon: Megaphone },
+    ],
+  },
+  {
+    id: "tools",
+    labelKey: "pedro.phase.tools" as const,
+    tabs: [
+      { id: "refresh" as const, labelKey: "pedro.tab.refresh" as const, icon: RefreshCw },
+    ],
+  },
+] as const
 
 const VALID_SECTIONS = new Set<Section>([
   "brief",
@@ -52,10 +77,9 @@ const VALID_SECTIONS = new Set<Section>([
   "lp",
   "ad-copy",
   "refresh",
-  "insights",
 ])
 
-// Sections that operate on a single client. Only `insights` is agency-wide.
+// All Pedro sections currently require a selected client.
 const CLIENT_REQUIRED_SECTIONS = new Set<Section>([
   "brief",
   "research",
@@ -75,8 +99,17 @@ export function PedroApp({ clients }: Props) {
   const searchParams = useSearchParams()
   const locale = useLocale()
 
-  const TABS: TopTab<Section>[] = useMemo(
-    () => TAB_SHAPE.map((tab) => ({ id: tab.id, label: t(tab.labelKey, locale), icon: tab.icon })),
+  const PHASES: TabPhase<Section>[] = useMemo(
+    () =>
+      PHASE_SHAPE.map((phase) => ({
+        id: phase.id,
+        label: t(phase.labelKey, locale),
+        tabs: phase.tabs.map((tab) => ({
+          id: tab.id,
+          label: t(tab.labelKey, locale),
+          icon: tab.icon,
+        })),
+      })),
     [locale],
   )
 
@@ -173,7 +206,7 @@ export function PedroApp({ clients }: Props) {
         </div>
       </div>
 
-      <TopTabs<Section> tabs={TABS} value={section} onChange={setSection} className="mb-6" />
+      <PhasedTopTabs<Section> phases={PHASES} value={section} onChange={setSection} className="mb-6" />
 
       <div>
         {needsClient && !selectedClientId ? (
@@ -191,8 +224,6 @@ export function PedroApp({ clients }: Props) {
             selectedClientName={selectedClient?.name ?? ""}
             autoStart={requestedAuto}
           />
-        ) : section === "insights" ? (
-          <PedroInsights />
         ) : (
           <Campaign
             section={section as CampaignSection}

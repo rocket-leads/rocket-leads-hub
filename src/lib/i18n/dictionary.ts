@@ -30,6 +30,7 @@ export const DICTIONARY = {
   "nav.inbox": { nl: "Inbox", en: "Inbox" },
   "nav.meetings": { nl: "Meetings", en: "Meetings" },
   "nav.pedro": { nl: "Pedro", en: "Pedro" },
+  "nav.insights": { nl: "Insights", en: "Insights" },
   "nav.targets": { nl: "Targets", en: "Targets" },
   "nav.billing": { nl: "Facturatie", en: "Billing" },
   "nav.settings": { nl: "Instellingen", en: "Settings" },
@@ -580,6 +581,9 @@ export const DICTIONARY = {
   "pedro.tab.ad_copy": { nl: "Ad copy", en: "Ad copy" },
   "pedro.tab.refresh": { nl: "Refresh", en: "Refresh" },
   "pedro.tab.insights": { nl: "Insights", en: "Insights" },
+  "pedro.phase.preparation": { nl: "Voorbereiding", en: "Preparation" },
+  "pedro.phase.deliverables": { nl: "Deliverables", en: "Deliverables" },
+  "pedro.phase.tools": { nl: "Tools", en: "Tools" },
 
   // No-client-selected state
   "pedro.no_client.title": { nl: "Selecteer een klant om te starten", en: "Select a client to start" },

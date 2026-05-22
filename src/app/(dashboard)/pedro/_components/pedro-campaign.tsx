@@ -1321,7 +1321,7 @@ ${creativeDescriptions}`;
     }
 
     setParallelRunning(false);
-    showToast("✓ Alle stages gegenereerd");
+    showToast("✓ Alle deliverables gegenereerd");
     // Navigate to ad-copy step so the CM lands on the final output.
     goTo(6);
     // Auto-save deliverable so the parallel "one click" path produces
@@ -1922,7 +1922,7 @@ ${creativeDescriptions}`;
                         onClick={generateAllRestParallel}
                         title="Genereer script, creatives, LP en ad copy in één keer (parallel waar mogelijk)"
                       >
-                        🚀 Genereer alle stages
+                        🚀 Genereer alle deliverables
                       </button>
                       <button
                         className="pedro-btn-primary"
@@ -1947,7 +1947,7 @@ ${creativeDescriptions}`;
                   {parallelRunning || Object.values(parallelProgress).some((s) => s !== "idle") ? (
                     <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
                       <div className="text-[11px] font-medium text-primary mb-2">
-                        {parallelRunning ? "Alle stages aan het genereren…" : "Parallel run voltooid"}
+                        {parallelRunning ? "Alle deliverables aan het genereren…" : "Deliverables gegenereerd"}
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {([
