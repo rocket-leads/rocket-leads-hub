@@ -399,6 +399,13 @@ export function Campaign({
   const [angles, setAngles] = useState<Angle[]>([]);
   const [selectedAngles, setSelectedAngles] = useState<Angle[]>([]);
   const [anglesLoading, setAnglesLoading] = useState(false);
+  // Multi-select regenerate: angle.nummer values the CM has marked
+  // for refresh. Separate from selectedAngles (which feeds downstream
+  // stages) so the CM can keep an angle selected for use while still
+  // asking Pedro to come up with a better wording for it.
+  const [regenAngleSet, setRegenAngleSet] = useState<Set<number>>(new Set());
+  const [regenAngleSteering, setRegenAngleSteering] = useState("");
+  const [regenAnglesLoading, setRegenAnglesLoading] = useState(false);
 
   // Step 3: Script (optional)
   const [script, setScript] = useState("");
@@ -415,6 +422,10 @@ export function Campaign({
   const [brandbookName, setBrandbookName] = useState("");
   const [manusPrompt, setManusPrompt] = useState("");
   const [manusLoading, setManusLoading] = useState(false);
+  // Optional steering note for creatives regenerate — empty string =
+  // standard regenerate. CM uses this to push iterations in a
+  // specific direction without rewriting the whole prompt builder.
+  const [creativesSteering, setCreativesSteering] = useState("");
 
   // Step 5: LP
   const [stijl, setStijl] = useState("Urgentie-gedreven");
@@ -890,12 +901,78 @@ export function Campaign({
         { clientId: selectedClientId }
       );
       setAngles(parsed.map((a) => ({ ...a, titel: sanitizeOutput(a.titel), beschrijving: sanitizeOutput(a.beschrijving) })));
+      // Fresh batch — clear any stale regenerate selection.
+      setRegenAngleSet(new Set());
+      setRegenAngleSteering("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "onbekende fout";
       console.error("doAngles error:", e);
       showToast(`Fout bij genereren angles: ${msg}`);
     }
     setAnglesLoading(false);
+  }
+
+  // ── Step 2b: Regenerate selected angles ──
+  // CM marks N angles for refresh (separate from "selected for use"),
+  // optionally adds a steering note ("maak ze harder confronterend"),
+  // and Pedro returns N fresh angles that explicitly avoid the angles
+  // the CM kept. We renumber the returned angles to the slots they're
+  // replacing so the position-in-list stays stable.
+  async function regenerateSelectedAngles() {
+    if (regenAngleSet.size === 0 || regenAnglesLoading) return;
+    if (regenAngleSet.size === angles.length) {
+      // Regenerating ALL is the same as "Nieuwe angles" without keep-context.
+      // Fall through to the normal flow for clarity.
+      void doAngles();
+      return;
+    }
+    setRegenAnglesLoading(true);
+    try {
+      const targets = angles.filter((a) => regenAngleSet.has(a.nummer));
+      const keep = angles.filter((a) => !regenAngleSet.has(a.nummer));
+
+      const parsed = await callPedroJson<Angle[], "angles">(
+        "angles",
+        {
+          brief,
+          styleRef: styleRef(),
+          huisstijl: huisstijlCtx(),
+          count: targets.length,
+          keepAngles: keep,
+          steering: regenAngleSteering.trim() || undefined,
+        },
+        { clientId: selectedClientId }
+      );
+
+      // Position-stable replace: parsed[0] swaps into targets[0]'s slot
+      // (keeping that slot's `nummer`), etc. If Claude returns fewer
+      // items than asked, only the first N slots are replaced.
+      const replacementByNummer = new Map<number, Angle>();
+      targets.forEach((t, i) => {
+        const fresh = parsed[i];
+        if (!fresh) return;
+        replacementByNummer.set(t.nummer, {
+          nummer: t.nummer,
+          titel: sanitizeOutput(fresh.titel),
+          beschrijving: sanitizeOutput(fresh.beschrijving),
+        });
+      });
+      const next = angles.map((a) => replacementByNummer.get(a.nummer) ?? a);
+      setAngles(next);
+      // Also refresh selectedAngles so downstream stages see the new
+      // wording when the CM had already pre-selected a regenerated one.
+      setSelectedAngles((prev) =>
+        prev.map((sa) => replacementByNummer.get(sa.nummer) ?? sa),
+      );
+      setRegenAngleSet(new Set());
+      setRegenAngleSteering("");
+      showToast(`✓ ${replacementByNummer.size} angle${replacementByNummer.size === 1 ? "" : "s"} geregenereerd`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "onbekende fout";
+      console.error("regenerateSelectedAngles error:", e);
+      showToast(`Fout bij regenereren angles: ${msg}`);
+    }
+    setRegenAnglesLoading(false);
   }
 
   // ── Step 3: Script (uses brief + chosen angle) ──
@@ -1008,6 +1085,9 @@ export function Campaign({
       // Server defaults to 4000 max tokens for the creatives stage — at
       // qty=5+ the creatives section used to cut off mid-creative.
       // callPedro's auto-retry at 8000 covers qty=10 worst-case.
+      // creativesSteering, when set, is layered on top of the standard
+      // prompt — used to iterate ("alle creatives in pattern-interrupt
+      // variant F", "minder generieke headlines, meer concrete cijfers").
       const creativeDescriptions = sanitizeOutput(await callPedro(
         "creatives",
         {
@@ -1019,6 +1099,7 @@ export function Campaign({
           brandStyle,
           scriptContext: scriptCtx(),
           previousManusRef: previousManusReference(clientDB),
+          steering: creativesSteering.trim() || undefined,
         },
         {
           clientId: selectedClientId,
@@ -1601,12 +1682,13 @@ ${creativeDescriptions}`;
           ) : (
             <>
               <div className="text-[11px] text-muted-foreground mb-2">
-                Klik om te selecteren/deselecteren - ideaal 3-5 angles
+                Klik op een kaart om te selecteren voor de volgende stages (ideaal 3-5). Klik op het ↻ icoontje om een angle te markeren voor regeneratie.
               </div>
               <div className="flex flex-col gap-[0.7rem]">
                 {angles.map((a) => {
                   const isSelected = selectedAngles.some((s) => s.nummer === a.nummer);
                   const idx = selectedAngles.findIndex((s) => s.nummer === a.nummer);
+                  const markedForRegen = regenAngleSet.has(a.nummer);
                   return (
                     <div
                       key={a.nummer}
@@ -1617,27 +1699,87 @@ ${creativeDescriptions}`;
                       }}
                       className={`bg-muted/40 border rounded-lg p-[0.875rem_1rem] cursor-pointer transition-all relative ${
                         isSelected ? "border-primary bg-primary/10" : "border-border/60 hover:border-[rgba(255,255,255,0.14)]"
-                      }`}
+                      } ${markedForRegen ? "ring-1 ring-amber-500/50" : ""}`}
                     >
-                      <div
-                        className={`absolute top-[0.875rem] right-[0.875rem] w-[18px] h-[18px] rounded-[4px] border-[1.5px] flex items-center justify-center text-[9px] font-bold transition-all ${
-                          isSelected ? "bg-primary border-primary text-white" : "border-border/60"
-                        }`}
-                      >
-                        {isSelected ? idx + 1 : ""}
+                      <div className="absolute top-[0.875rem] right-[0.875rem] flex items-center gap-1.5">
+                        {/* Regen toggle — separate from the select state so
+                            the CM can pre-select an angle for use AND mark
+                            it for a wording-refresh in the same gesture. */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRegenAngleSet((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(a.nummer)) next.delete(a.nummer);
+                              else next.add(a.nummer);
+                              return next;
+                            });
+                          }}
+                          title={markedForRegen ? "Niet regenereren" : "Markeer voor regenereren"}
+                          className={`h-[18px] w-[18px] rounded-[4px] border-[1.5px] flex items-center justify-center text-[10px] leading-none transition-all ${
+                            markedForRegen
+                              ? "bg-amber-500/15 border-amber-500 text-amber-600 dark:text-amber-400"
+                              : "border-border/60 text-muted-foreground/60 hover:border-amber-500/60 hover:text-amber-500"
+                          }`}
+                        >
+                          ↻
+                        </button>
+                        <div
+                          className={`w-[18px] h-[18px] rounded-[4px] border-[1.5px] flex items-center justify-center text-[9px] font-bold transition-all ${
+                            isSelected ? "bg-primary border-primary text-white" : "border-border/60"
+                          }`}
+                        >
+                          {isSelected ? idx + 1 : ""}
+                        </div>
                       </div>
                       <div className="text-[9.5px] uppercase tracking-[1px] text-primary font-semibold mb-1">Angle {a.nummer}</div>
-                      <div className="font-heading font-bold text-sm tracking-tight mb-1 pr-8">{a.titel}</div>
+                      <div className="font-heading font-bold text-sm tracking-tight mb-1 pr-16">{a.titel}</div>
                       <div className="text-xs text-muted-foreground leading-[1.55]">{a.beschrijving}</div>
                     </div>
                   );
                 })}
               </div>
 
+              {/* Regenerate-selected panel — only renders when ≥1 marked. */}
+              {regenAngleSet.size > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
+                  <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                    {regenAngleSet.size} angle{regenAngleSet.size === 1 ? "" : "s"} gemarkeerd voor regeneratie
+                  </div>
+                  <textarea
+                    value={regenAngleSteering}
+                    onChange={(e) => setRegenAngleSteering(e.target.value)}
+                    placeholder="Optionele steering: bv. 'maak ze harder confronterend', 'meer richting AI', 'minder cliché' — laat leeg om Pedro vrij te laten"
+                    rows={2}
+                    className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug resize-none placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="pedro-btn-primary text-[11px] h-7 px-3 disabled:opacity-50"
+                      disabled={regenAnglesLoading}
+                      onClick={regenerateSelectedAngles}
+                    >
+                      {regenAnglesLoading ? "Regenereren…" : `↻ Regenereer ${regenAngleSet.size} geselecteerd${regenAngleSet.size === 1 ? "e angle" : "e angles"}`}
+                    </button>
+                    <button
+                      className="pedro-btn-ghost text-[11px] h-7 px-2"
+                      onClick={() => {
+                        setRegenAngleSet(new Set());
+                        setRegenAngleSteering("");
+                      }}
+                      disabled={regenAnglesLoading}
+                    >
+                      Annuleer
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {angles.length > 0 && (
                 <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                   <div className="flex items-center gap-3">
-                    <button className="pedro-btn-ghost text-[11px]" onClick={doAngles}>↻ Nieuwe angles</button>
+                    <button className="pedro-btn-ghost text-[11px]" onClick={doAngles} disabled={anglesLoading || regenAnglesLoading}>↻ Nieuwe angles</button>
                     <span className="text-[11px] text-muted-foreground/60">{selectedAngles.length}/5 geselecteerd</span>
                   </div>
                   <button
@@ -1959,11 +2101,20 @@ ${creativeDescriptions}`;
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-              <div className="text-[11px] text-muted-foreground/60">Stap 4 van 6</div>
-              <button className="pedro-btn-primary" onClick={doCreative} disabled={manusLoading}>
-                {manusLoading ? "Genereren..." : "Genereer Manus prompt"}
-              </button>
+            <div className="flex flex-col gap-2 pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
+              <input
+                type="text"
+                value={creativesSteering}
+                onChange={(e) => setCreativesSteering(e.target.value)}
+                placeholder="Optionele steering (bv. 'minder generieke headlines, meer concrete cijfers' of 'alle creatives in variant F pattern-interrupt')"
+                className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] text-muted-foreground/60">Stap 4 van 6</div>
+                <button className="pedro-btn-primary" onClick={doCreative} disabled={manusLoading}>
+                  {manusLoading ? "Genereren..." : manusPrompt ? "↻ Regenereer met steering" : "Genereer Manus prompt"}
+                </button>
+              </div>
             </div>
           </Card>
 

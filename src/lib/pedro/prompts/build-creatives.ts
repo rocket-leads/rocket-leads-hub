@@ -195,6 +195,11 @@ export type CreativesDescriptionsArgs = {
   /** Already-rendered video-script context block (empty when script skipped). */
   scriptContext?: string
   previousManusRef?: string
+  /** Free-text steering from the CM — e.g. "minder generieke headlines,
+   *  meer concrete cijfers" or "alle creatives in pattern-interrupt
+   *  variant F". Layered on top of the standard prompt without
+   *  replacing it. */
+  steering?: string
 }
 
 export function buildCreativesDescriptionsPrompt(args: CreativesDescriptionsArgs): string {
@@ -203,8 +208,11 @@ export function buildCreativesDescriptionsPrompt(args: CreativesDescriptionsArgs
   const sHex = bs?.secondaryColor || "#1A1A2E"
   const { brief } = args
   const fmtList = args.formats.length > 0 ? args.formats : ["Static 1:1 (1080x1080)"]
+  const steeringBlock = args.steering
+    ? `\n\nExtra steering van de campaign manager (laat dit zwaar wegen bij ELKE creative): ${args.steering}`
+    : ""
 
-  return `Genereer ${args.qty} creative specs voor Manus. ALLE tekst in het Nederlands. Valuta in €.
+  return `Genereer ${args.qty} creative specs voor Manus. ALLE tekst in het Nederlands. Valuta in €.${steeringBlock}
 
 Klant: ${brief.bedrijf} (${brief.sector})
 Doelgroep: ${brief.doel}
