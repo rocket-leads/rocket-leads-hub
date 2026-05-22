@@ -7,7 +7,7 @@ import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusPill } from "@/components/ui/status-pill"
-import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb, ListTodo, Loader2 } from "lucide-react"
+import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb, ListTodo, Loader2, ArrowRightLeft } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
@@ -18,6 +18,8 @@ import type { WatchlistStateResponse } from "@/app/api/watchlist/state/route"
 import type { WatchlistNarrativeResponse, WatchlistInsight } from "@/app/api/watchlist/narrative/route"
 import type { WatchlistScoreHistoryResponse } from "@/app/api/watchlist/score-history/route"
 import { categorize as sharedCategorize, severityScore as sharedSeverityScore, type WatchCategory as SharedWatchCategory } from "@/lib/watchlist/categorize"
+import { buildSignature, suggestAiAdjustment } from "@/lib/watchlist/learning"
+import type { RecentOverridesResponse } from "@/app/api/watchlist/recent-overrides/route"
 import { ClientSlideOver } from "@/app/(dashboard)/clients/_components/client-slide-over"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
 import { useLocale } from "@/lib/i18n/client"
@@ -46,6 +48,8 @@ type CategorizedClient = {
   isNewToday: boolean
   /** Yesterday's bucket — null if unknown / brand-new client */
   prevCategory: WatchCategory | null
+  /** Active manual override surfaced from the state API — null when none */
+  manualOverride: import("@/app/api/watchlist/state/route").WatchlistClientState["manualOverride"]
 }
 
 const categorize = sharedCategorize
@@ -54,6 +58,328 @@ const severityScore = sharedSeverityScore
 function fmtCurrency(v: number): string {
   if (v >= 1000) return `€${(v / 1000).toFixed(1)}k`
   return `€${v.toFixed(0)}`
+}
+
+/**
+ * Manual override action — campaign manager moves a client into a different
+ * bucket with a required reason. Override lasts 7d max OR releases earlier
+ * when CPL/spend shifts >25% from the snapshot (handled categorizer-side).
+ *
+ * Every Move also lands in the `watchlist_overrides` audit log — that's the
+ * learning corpus the AI adjustment layer feeds on, so the same pattern on
+ * future clients can be auto-suggested.
+ *
+ * Click handling mirrors CreateTaskButton: stopPropagation so the row's
+ * slide-over doesn't open at the same time.
+ */
+function MoveButton({
+  mondayItemId,
+  clientName,
+  category,
+  insight,
+  kpi,
+  manualOverride,
+  locale,
+}: {
+  mondayItemId: string
+  clientName: string
+  category: WatchCategory
+  insight: string
+  kpi: KpiSummary | undefined
+  manualOverride: import("@/app/api/watchlist/state/route").WatchlistClientState["manualOverride"]
+  locale: Locale
+}) {
+  const [open, setOpen] = useState(false)
+  const isOverridden = !!manualOverride
+  const daysLeft = isOverridden
+    ? Math.max(
+        0,
+        Math.ceil((new Date(manualOverride!.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
+      )
+    : 0
+
+  function handleClick(e: React.MouseEvent | React.KeyboardEvent) {
+    e.stopPropagation()
+    e.preventDefault()
+    setOpen(true)
+  }
+
+  const tooltip = isOverridden
+    ? t("watchlist.move.tooltip_overridden", locale, { days: String(daysLeft) })
+    : t("watchlist.move.tooltip", locale)
+
+  const baseCls = "shrink-0 inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors"
+  const stateCls = isOverridden
+    ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15"
+    : "border-border/40 text-muted-foreground/60 hover:border-border hover:text-foreground hover:bg-muted/40"
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") handleClick(e)
+          else e.stopPropagation()
+        }}
+        title={tooltip}
+        aria-label={tooltip}
+        className={cn(baseCls, stateCls)}
+      >
+        <ArrowRightLeft className="h-3.5 w-3.5" />
+      </button>
+      <MoveDialog
+        open={open}
+        onOpenChange={setOpen}
+        mondayItemId={mondayItemId}
+        clientName={clientName}
+        category={category}
+        insight={insight}
+        kpi={kpi}
+        manualOverride={manualOverride}
+        locale={locale}
+      />
+    </>
+  )
+}
+
+function MoveDialog({
+  open,
+  onOpenChange,
+  mondayItemId,
+  clientName,
+  category,
+  insight,
+  kpi,
+  manualOverride,
+  locale,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  mondayItemId: string
+  clientName: string
+  category: WatchCategory
+  insight: string
+  kpi: KpiSummary | undefined
+  manualOverride: import("@/app/api/watchlist/state/route").WatchlistClientState["manualOverride"]
+  locale: Locale
+}) {
+  type Target = "action" | "watch" | "good"
+  // Default selection: if already overridden → its current bucket;
+  // else any rules-based bucket except the one we're already in.
+  const initialTarget: Target = manualOverride
+    ? manualOverride.category
+    : category === "action"
+      ? "watch"
+      : category === "good"
+        ? "watch"
+        : "good"
+  const [target, setTarget] = useState<Target>(initialTarget)
+  const [reason, setReason] = useState(manualOverride?.reason ?? "")
+  const [submitting, setSubmitting] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+
+  // Reset when the dialog re-opens — picks up the latest override snapshot
+  // if the user opens, closes, then re-opens after another override landed.
+  useEffect(() => {
+    if (open) {
+      setTarget(initialTarget)
+      setReason(manualOverride?.reason ?? "")
+      setError(null)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const reasonTrimmed = reason.trim()
+  const canSubmit = reasonTrimmed.length > 0 && !submitting && !clearing
+  const targetLabel: Record<Target, string> = {
+    action: t("watchlist.move.target_action", locale),
+    watch: t("watchlist.move.target_watch", locale),
+    good: t("watchlist.move.target_good", locale),
+  }
+
+  async function handleSubmit() {
+    if (!reasonTrimmed) {
+      setError(t("watchlist.move.reason_required", locale))
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/watchlist/override", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mondayItemId,
+          clientName,
+          toCategory: target,
+          fromCategory: category,
+          reason: reasonTrimmed,
+          insightAtTime: insight,
+          kpiSnapshot: kpi
+            ? {
+                adSpend: kpi.adSpend,
+                leads: kpi.leads,
+                cpl: kpi.cpl,
+                prevCpl: kpi.prevCpl,
+              }
+            : null,
+        }),
+      })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(j.error || t("watchlist.move.failed", locale))
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["watchlist-state"] }),
+        queryClient.invalidateQueries({ queryKey: ["watchlist-recent-overrides"] }),
+      ])
+      onOpenChange(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("watchlist.move.failed", locale))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleClear() {
+    setClearing(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/watchlist/override?mondayItemId=${encodeURIComponent(mondayItemId)}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(j.error || t("watchlist.move.failed", locale))
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["watchlist-state"] }),
+        queryClient.invalidateQueries({ queryKey: ["watchlist-recent-overrides"] }),
+      ])
+      onOpenChange(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("watchlist.move.failed", locale))
+    } finally {
+      setClearing(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+        <DialogHeader>
+          <DialogTitle>{t("watchlist.move.dialog_title", locale)} — {clientName}</DialogTitle>
+          <DialogDescription className="text-xs">
+            {t("watchlist.move.dialog_subtitle", locale)}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Active override pill */}
+          {manualOverride && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+              {t("watchlist.move.current_override", locale, {
+                category: targetLabel[manualOverride.category],
+                days: String(Math.max(0, Math.ceil((new Date(manualOverride.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))),
+                reason: manualOverride.reason,
+              })}
+            </div>
+          )}
+
+          {/* Bucket selector */}
+          <div>
+            <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">
+              {t("watchlist.move.target_label", locale)}
+            </label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(["action", "watch", "good"] as const).map((opt) => {
+                const isSelected = target === opt
+                const tone =
+                  opt === "action"
+                    ? isSelected
+                      ? "border-red-500/60 bg-red-500/10 text-red-700 dark:text-red-300"
+                      : "border-border/40 hover:border-red-500/40"
+                    : opt === "watch"
+                      ? isSelected
+                        ? "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                        : "border-border/40 hover:border-amber-500/40"
+                      : isSelected
+                        ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "border-border/40 hover:border-emerald-500/40"
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setTarget(opt)}
+                    className={cn(
+                      "h-9 rounded-md border px-2 text-[12px] font-medium transition-colors",
+                      tone,
+                    )}
+                  >
+                    {targetLabel[opt]}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div>
+            <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">
+              {t("watchlist.move.reason_label", locale)}
+            </label>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder={t("watchlist.move.reason_placeholder", locale)}
+              rows={4}
+              className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              maxLength={2000}
+            />
+          </div>
+
+          {error && (
+            <div className="text-[11px] text-red-600 dark:text-red-400">{error}</div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          {manualOverride && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={submitting || clearing}
+              onClick={handleClear}
+              className="mr-auto text-xs"
+            >
+              {clearing ? t("watchlist.move.clear_saving", locale) : t("watchlist.move.clear", locale)}
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting || clearing}
+          >
+            {t("watchlist.move.cancel", locale)}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+          >
+            {submitting ? t("watchlist.move.submit_saving", locale) : t("watchlist.move.submit", locale)}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 /**
@@ -711,17 +1037,18 @@ function WatchSection({
               Insight, Spend, Leads, CPL, and one Create-task quick action.
               AI Note / Appts / 14d CPL sparkline / Ask Pedro all removed
               (rolled into the slide-over which opens on row click). */}
-          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
+          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.client", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.insight", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.spend", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.leads", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.cpl", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.create_task", locale)}</span>
+            <span className="text-[13px] text-foreground/80 font-semibold sr-only">{t("watchlist.col.move", locale)}</span>
           </div>
 
           {/* Rows */}
-          {items.map(({ client, insight, kpi, daysInBucket, isNewToday }) => {
+          {items.map(({ client, insight, kpi, daysInBucket, isNewToday, manualOverride }) => {
             const id = client.mondayItemId
 
             return (
@@ -736,7 +1063,7 @@ function WatchSection({
                       onSelectClient(id)
                     }
                   }}
-                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
+                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
                 >
                   {/* Client */}
                   <div className="min-w-0">
@@ -778,6 +1105,19 @@ function WatchSection({
                     category={category}
                     insight={insight}
                     kpi={kpi}
+                    locale={locale}
+                  />
+
+                  {/* Manual override — moves the client between buckets with a
+                      required reason. Reason + KPI snapshot lands in the
+                      audit log as training signal for the AI adjustment layer. */}
+                  <MoveButton
+                    mondayItemId={id}
+                    clientName={client.name}
+                    category={category}
+                    insight={insight}
+                    kpi={kpi}
+                    manualOverride={manualOverride}
                     locale={locale}
                   />
                 </div>
@@ -953,6 +1293,15 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     refetchOnWindowFocus: false,
   })
 
+  // Recent overrides — feeds the learning layer. Every Move action invalidates
+  // this query so the pattern-matcher picks up new corrections immediately.
+  const recentOverridesQuery = useQuery<RecentOverridesResponse>({
+    queryKey: ["watchlist-recent-overrides"],
+    queryFn: () => fetch("/api/watchlist/recent-overrides").then((r) => r.json()),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  })
+
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
   function daysBetween(fromIso: string, toIso: string): number {
@@ -979,12 +1328,27 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
       const daysInBucket = stateMatchesCategory ? daysBetween(state!.sinceDate, today) : null
       const isNewToday = stateMatchesCategory && state!.sinceDate === today
       const prevCategory = stateMatchesCategory ? (state!.prevCategory as WatchCategory | null) : null
-      return { client, category, insight, kpi, severity, daysInBucket, isNewToday, prevCategory }
+      const manualOverride = state?.manualOverride ?? null
+      return { client, category, insight, kpi, severity, daysInBucket, isNewToday, prevCategory, manualOverride }
     }
+
+    const overrides = recentOverridesQuery.data?.overrides ?? []
 
     for (const client of filteredClients) {
       const kpi = kpiQuery.data?.[client.mondayItemId]
-      const { category, insight } = categorize(client, kpi, locale)
+      // Active manual override (if any) — categorize() short-circuits to this
+      // bucket when the override is still within its 7d TTL AND the live KPI
+      // hasn't drifted >25% from the snapshot the CM was looking at.
+      const manualOverride = stateMap[client.mondayItemId]?.manualOverride ?? null
+      // AI adjustment derived from the override audit log — pattern matches
+      // against the team's past corrections. Returns a suggestion only when
+      // ≥2 supporting overrides exist with consistent target bucket. Applied
+      // by categorize() when confidence ≥ 0.75 AND no hard manual override.
+      const aiAdjustment = suggestAiAdjustment(buildSignature(kpi), overrides)
+      const { category, insight } = categorize(client, kpi, locale, {
+        manualOverride,
+        aiAdjustment,
+      })
       const severity = kpi ? severityScore(kpi) : 0
       const gaps = getSetupGaps(client)
 
@@ -1027,7 +1391,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     noData.sort((a, b) => a.client.name.localeCompare(b.client.name))
 
     return { action, watch, good, noData }
-  }, [filteredClients, kpiQuery.data, stateQuery.data, today, locale])
+  }, [filteredClients, kpiQuery.data, stateQuery.data, recentOverridesQuery.data, today, locale])
 
   // Health score for the summary header. Excludes no-data so setup gaps don't water down
   // the percentage (Roy: "die wil ik niet dat die de data beïnvloed").

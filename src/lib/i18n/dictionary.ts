@@ -162,6 +162,27 @@ export const DICTIONARY = {
   "watchlist.col.appts": { nl: "Appts", en: "Appts" },
   "watchlist.col.cpl_14d": { nl: "14d CPL", en: "14d CPL" },
   "watchlist.col.create_task": { nl: "Taak", en: "Task" },
+  "watchlist.col.move": { nl: "Verplaats", en: "Move" },
+
+  // Move (override) — manually moves a client between Action / Watch / Good
+  "watchlist.move.tooltip": { nl: "Verplaats deze klant naar een andere bucket", en: "Move this client to a different bucket" },
+  "watchlist.move.tooltip_overridden": { nl: "Override actief · nog {days}d. Klik om aan te passen of te wissen.", en: "Override active · {days}d left. Click to adjust or clear." },
+  "watchlist.move.dialog_title": { nl: "Verplaats klant", en: "Move client" },
+  "watchlist.move.dialog_subtitle": { nl: "De override geldt 7 dagen of vervalt eerder als de KPI's flink verschuiven. Het algoritme leert van elke move.", en: "Override lasts 7 days or expires sooner when KPIs shift significantly. The algorithm learns from every move." },
+  "watchlist.move.target_label": { nl: "Nieuwe bucket", en: "Move to" },
+  "watchlist.move.target_action": { nl: "Action Needed", en: "Action Needed" },
+  "watchlist.move.target_watch": { nl: "Watch", en: "Watch" },
+  "watchlist.move.target_good": { nl: "Good Performance", en: "Good Performance" },
+  "watchlist.move.reason_label": { nl: "Waarom hoort deze klant daar?", en: "Why does this client belong there?" },
+  "watchlist.move.reason_placeholder": { nl: "Bv. CPL spike was eenmalig na creative refresh — leadkwaliteit is goed", en: "E.g. CPL spike was a one-off after creative refresh — lead quality is good" },
+  "watchlist.move.reason_required": { nl: "Reden is verplicht — dit is de feedback waar het algoritme van leert.", en: "Reason is required — this is the feedback the algorithm learns from." },
+  "watchlist.move.submit": { nl: "Verplaatsen", en: "Move" },
+  "watchlist.move.submit_saving": { nl: "Verplaatsen…", en: "Moving…" },
+  "watchlist.move.clear": { nl: "Override wissen", en: "Clear override" },
+  "watchlist.move.clear_saving": { nl: "Wissen…", en: "Clearing…" },
+  "watchlist.move.cancel": { nl: "Annuleren", en: "Cancel" },
+  "watchlist.move.current_override": { nl: "Actieve override: {category} · nog {days} dagen · reden: {reason}", en: "Active override: {category} · {days}d left · reason: {reason}" },
+  "watchlist.move.failed": { nl: "Verplaatsen mislukt", en: "Move failed" },
 
   // Row UI bits
   "watchlist.row.new_pill": { nl: "NIEUW", en: "NEW" },

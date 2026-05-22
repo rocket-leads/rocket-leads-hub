@@ -38,6 +38,74 @@ export type CategorizeExtras = {
   clientStatus?: ClientStatus | null
   /** Override "today" for deterministic tests. */
   now?: Date
+  /** Active manual override — when present and not expired (7d max OR KPI
+   *  shift >25% from snapshot), the categorizer short-circuits and returns
+   *  this bucket with an override insight string instead of the rules-based
+   *  verdict. The state-route already filters out time-expired overrides;
+   *  the KPI-shift check happens here because we need the live KPI snapshot. */
+  manualOverride?: ManualOverrideExtras | null
+  /** AI-suggested adjustment derived from past CM overrides — applied only
+   *  when no hard manual override is active. Lets the categorizer "learn"
+   *  from accumulated overrides without retraining: the cron computes per
+   *  client whether the team would likely have moved this row based on
+   *  precedent, and stashes the suggestion here. */
+  aiAdjustment?: AiAdjustmentExtras | null
+}
+
+export type ManualOverrideExtras = {
+  category: "action" | "watch" | "good"
+  reason: string
+  overriddenAt: string
+  expiresAt: string
+  kpiSnapshot: {
+    adSpend?: number | null
+    leads?: number | null
+    cpl?: number | null
+    prevCpl?: number | null
+    cpa?: number | null
+    appts?: number | null
+  } | null
+}
+
+export type AiAdjustmentExtras = {
+  /** Bucket the AI thinks fits better than the rules-based verdict. Only
+   *  applied when confidence ≥ AI_ADJUSTMENT_MIN_CONFIDENCE. */
+  suggestedCategory: "action" | "watch" | "good"
+  /** Short rationale referencing the override patterns the AI matched. */
+  reason: string
+  /** 0–1, how confident the AI is the pattern applies. */
+  confidence: number
+}
+
+/** Threshold above which AI adjustment overrides the rules-based verdict.
+ *  Conservative on purpose — better to leave the rules verdict alone than
+ *  to confuse the CM by silently moving rows on a weak signal. */
+const AI_ADJUSTMENT_MIN_CONFIDENCE = 0.75
+
+/** Relative KPI shift that invalidates a manual override before its 7d TTL.
+ *  Matches the 25% noise threshold defined in knowledge/campaigns.md — once
+ *  CPL or spend moves beyond ruis, the snapshot the CM was looking at is no
+ *  longer the data we have, and the override should release. */
+const OVERRIDE_KPI_SHIFT_RATIO = 0.25
+
+/** Returns true when the live KPI's CPL or spend has moved more than
+ *  OVERRIDE_KPI_SHIFT_RATIO away from the snapshot. Either direction counts
+ *  — a 30% improvement also means "this isn't the situation you were
+ *  looking at anymore." */
+function overrideStillFitsKpi(
+  snapshot: ManualOverrideExtras["kpiSnapshot"],
+  live: KpiSummary | undefined,
+): boolean {
+  if (!snapshot || !live) return true // no snapshot or no live data → trust the time-based TTL
+  const shiftedBeyondNoise = (snap: number | null | undefined, now: number | null | undefined): boolean => {
+    if (snap == null || snap <= 0) return false
+    if (now == null) return false
+    const ratio = Math.abs(now - snap) / snap
+    return ratio > OVERRIDE_KPI_SHIFT_RATIO
+  }
+  if (shiftedBeyondNoise(snapshot.cpl, live.cpl)) return false
+  if (shiftedBeyondNoise(snapshot.adSpend, live.adSpend)) return false
+  return true
 }
 
 /** Severity floor applied when the live-but-dark trigger fires, so these
@@ -117,6 +185,18 @@ const INSIGHT_STRINGS = {
       `CPL recovering — €${cpl7d} (7d) but €${recent} (${win}) back at baseline.`,
     nl: (cpl7d: string, recent: string, win: string) =>
       `CPL herstelt — €${cpl7d} (7d) maar €${recent} (${win}) terug op baseline.`,
+  },
+  manual_override: {
+    en: (reason: string, daysLeft: number) =>
+      `Manual override · ${daysLeft}d left — ${reason}`,
+    nl: (reason: string, daysLeft: number) =>
+      `Handmatige override · nog ${daysLeft}d — ${reason}`,
+  },
+  ai_adjustment: {
+    en: (reason: string, confidencePct: number, baseInsight: string) =>
+      `AI adjustment (${confidencePct}% match) — ${reason} · rules said: ${baseInsight}`,
+    nl: (reason: string, confidencePct: number, baseInsight: string) =>
+      `AI bijstelling (${confidencePct}% match) — ${reason} · regels zeiden: ${baseInsight}`,
   },
   recent_window_label: {
     en: (n: 1 | 2 | 3) => `last ${n}d`,
@@ -296,6 +376,25 @@ export function categorize(
   locale: CategorizeLocale = "en",
   extras?: CategorizeExtras,
 ): { category: WatchCategory; insight: string } {
+  // Manual override beats every rules-based check below — that's the entire
+  // point of the override system. The state-route already filters out
+  // time-expired overrides; we additionally check the KPI snapshot here so
+  // the override releases the moment the data the CM was looking at has
+  // moved beyond ruis (the 25% threshold defined in knowledge/campaigns.md).
+  // We do NOT re-categorize on snapshot drift — we just step aside and let
+  // the rules verdict take over.
+  if (extras?.manualOverride && overrideStillFitsKpi(extras.manualOverride.kpiSnapshot, kpi)) {
+    const m = extras.manualOverride
+    const daysLeft = Math.max(
+      0,
+      Math.ceil((new Date(m.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)),
+    )
+    return {
+      category: m.category,
+      insight: INSIGHT_STRINGS.manual_override[locale](m.reason, daysLeft),
+    }
+  }
+
   if (kpi?.rlAccountNoCampaign) {
     return { category: "no-data", insight: INSIGHT_STRINGS.rl_no_campaign[locale] }
   }
@@ -395,6 +494,32 @@ export function categorize(
         category: "watch",
         insight: INSIGHT_STRINGS.cpl_recovering[locale](cpl2, recentCpl2, win),
       }
+    }
+  }
+
+  // AI adjustment — applied last, only when no hard manual override is active
+  // (the early return above handles that case). The cron computes per client
+  // whether the team has consistently overridden similar situations in the
+  // past 30d and stashes a suggestion in extras. When confidence is high
+  // enough we apply it; otherwise the rules verdict stands.
+  //
+  // This is the "learning" half of the feedback loop: every time a CM hits
+  // the Move button, the audit log grows. The next cron tick feeds the new
+  // examples into the AI which may now recognise the same pattern on a
+  // different client — surfacing the suggested bucket without any human
+  // intervention. The more overrides logged, the better the suggestions get.
+  if (
+    extras?.aiAdjustment &&
+    extras.aiAdjustment.confidence >= AI_ADJUSTMENT_MIN_CONFIDENCE &&
+    extras.aiAdjustment.suggestedCategory !== category
+  ) {
+    return {
+      category: extras.aiAdjustment.suggestedCategory,
+      insight: INSIGHT_STRINGS.ai_adjustment[locale](
+        extras.aiAdjustment.reason,
+        Math.round(extras.aiAdjustment.confidence * 100),
+        insight,
+      ),
     }
   }
 
