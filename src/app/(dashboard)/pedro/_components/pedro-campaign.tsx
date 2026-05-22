@@ -81,10 +81,22 @@ type ClaudeCtx = {
    *  4-5x faster, ~10x cheaper, no quality drop for schema'd output.
    *  Defaults to "sonnet" for reasoning-heavy stages. */
   model?: "sonnet" | "haiku";
+  /** Called with each text delta as Claude streams. The cumulative full
+   *  text so far is passed alongside the delta so prose stages can drive
+   *  a state setter directly without managing their own buffer. JSON
+   *  stages don't pass this - they need the final text to parse. */
+  onDelta?: (delta: string, fullSoFar: string) => void;
 };
 
 type ClaudeResult = { text: string; stopReason: string | null };
 
+/**
+ * Consumes the streaming SSE response from /api/pedro/claude. The route
+ * only speaks SSE, so prose stages can render progressively via onDelta
+ * and JSON stages just await the final text. The route's `done` event
+ * carries the canonical full text + stop_reason, so we don't have to
+ * trust concatenated deltas for correctness.
+ */
 async function callClaudeRaw(
   prompt: string,
   maxTokens: number,
@@ -92,7 +104,7 @@ async function callClaudeRaw(
 ): Promise<ClaudeResult> {
   const res = await fetch("/api/pedro/claude", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
     body: JSON.stringify({
       prompt,
       maxTokens,
@@ -107,17 +119,52 @@ async function callClaudeRaw(
   // Vercel 504 / gateway errors return HTML, not JSON — guard before parsing
   // so the catch block surfaces a meaningful message instead of "Unexpected
   // token < in JSON".
-  const raw = await res.text();
-  let data: { text?: string; error?: string; stopReason?: string | null } = {};
-  try {
-    data = raw ? JSON.parse(raw) : {};
-  } catch {
+  if (!res.body) {
+    // No stream body at all = gateway/edge swallowed the response. Try
+    // to surface whatever error text we can.
+    const raw = await res.text().catch(() => "");
     throw new Error(`HTTP ${res.status}: ${raw.slice(0, 200) || res.statusText}`);
   }
-  if (!res.ok || data.error) {
-    throw new Error(data.error || `HTTP ${res.status}: ${res.statusText}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+  let canonicalText = "";
+  let stopReason: string | null = null;
+  let pendingError: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nlIdx: number;
+    while ((nlIdx = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nlIdx).trim();
+      buffer = buffer.slice(nlIdx + 1);
+      if (!line.startsWith("data:")) continue;
+      const payloadRaw = line.slice(5).trim();
+      if (!payloadRaw) continue;
+      let payload: { type?: string; delta?: string; text?: string; stopReason?: string | null; message?: string };
+      try {
+        payload = JSON.parse(payloadRaw);
+      } catch {
+        continue;
+      }
+      if (payload.type === "text" && typeof payload.delta === "string") {
+        fullText += payload.delta;
+        ctx?.onDelta?.(payload.delta, fullText);
+      } else if (payload.type === "done") {
+        canonicalText = typeof payload.text === "string" ? payload.text : fullText;
+        stopReason = payload.stopReason ?? null;
+      } else if (payload.type === "error") {
+        pendingError = payload.message ?? "Pedro stream error";
+      }
+    }
   }
-  return { text: data.text ?? "", stopReason: data.stopReason ?? null };
+
+  if (pendingError) throw new Error(pendingError);
+  return { text: canonicalText || fullText, stopReason };
 }
 
 /**
@@ -845,6 +892,10 @@ export function Campaign({
     setScript("");
     setScriptSkipped(false);
     try {
+      // onDelta streams the script into the textarea live so the CM
+      // sees video 1/2/3 appear as Claude writes them, instead of a
+      // 30-60s spinner. parseScriptText runs once at the end on the
+      // canonical full text.
       const res = sanitizeOutput(await callClaude(
         buildScriptPrompt({
           brief,
@@ -853,12 +904,18 @@ export function Campaign({
           huisstijl: huisstijlCtx(),
         }),
         1500,
-        { clientId: selectedClientId, stage: "script" }
+        {
+          clientId: selectedClientId,
+          stage: "script",
+          onDelta: (_d, full) => setScript(sanitizeOutput(full)),
+        }
       ));
       setScript(res);
       setScriptVideos(parseScriptText(res));
-    } catch {
-      showToast("Fout bij genereren script");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Pedro script failed:", e);
+      showToast(`Fout bij genereren script: ${msg}`);
     }
     setScriptLoading(false);
   }
@@ -919,6 +976,13 @@ export function Campaign({
         previousManusRef: previousManusReference(clientDB),
       });
 
+      // Streaming prefix — master prompt + divider + heading. As
+      // Claude's creative descriptions stream in we keep prepending
+      // this prefix so the CM sees the full Manus brief assembling
+      // top-to-bottom. The warning block + final assembly run once at
+      // the end.
+      const streamPrefix = `${masterPrompt}\n\n---\n\n## CREATIVES VOOR DEZE CAMPAGNE\n\n`;
+
       // Section 2: Ask Claude to generate only the creative descriptions.
       // 4000 max tokens (was 2500) — at qty=5+ the creatives section
       // routinely cut off mid-creative. Auto-retry at 8000 covers qty=10
@@ -935,7 +999,11 @@ export function Campaign({
           previousManusRef: previousManusReference(clientDB),
         }),
         4000,
-        { clientId: selectedClientId, stage: "creatives" }
+        {
+          clientId: selectedClientId,
+          stage: "creatives",
+          onDelta: (_d, full) => setManusPrompt(streamPrefix + sanitizeOutput(full)),
+        }
       ));
 
       // Pre-validate: check for common issues before showing
@@ -977,7 +1045,9 @@ ${creativeDescriptions}`;
     try {
       // 2500 max tokens (was 1200) — long Lovable prompts with social
       // proof + form + FAQ sections were truncating silently. callClaude
-      // now auto-retries at 5000 if 2500 still hits the cap.
+      // now auto-retries at 5000 if 2500 still hits the cap. onDelta
+      // streams the Lovable prompt into the output box so the CM can
+      // start reading the hero copy before the form spec lands.
       const res = sanitizeOutput(await callClaude(
         buildLpPrompt({
           brief,
@@ -993,7 +1063,11 @@ ${creativeDescriptions}`;
           utmStr,
         }),
         2500,
-        { clientId: selectedClientId, stage: "lp" }
+        {
+          clientId: selectedClientId,
+          stage: "lp",
+          onDelta: (_d, full) => setLpPrompt(sanitizeOutput(full)),
+        }
       ));
       setLpPrompt(res);
     } catch (e) {
