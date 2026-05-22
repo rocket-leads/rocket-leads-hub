@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { RefreshCw, BarChart3, MessageSquare, Settings2, Sparkles } from "lucide-react"
+import { RefreshCw, BarChart3, MessageSquare, Settings2, Sparkles, CreditCard } from "lucide-react"
 import { CampaignsTab } from "./campaigns-tab"
 import { BillingTab } from "./billing-tab"
 import { ClientSettingsTab } from "./client-settings-tab"
@@ -102,14 +102,13 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
   // one click away when they want to act. Per Roy's plan: surface the
   // activity view as the primary CRM-style canvas for one client.
   const [conversationsView, setConversationsView] = useState<ConversationsView>("timeline")
-  // Default to Billing when the user has billing access (the more frequently
-  // touched view); fall back to Settings when they don't.
-  const [adminView, setAdminView] = useState<AdminView>(
-    access.canViewBilling ? "billing" : "settings",
-  )
+  // Default to Settings on the left so admin lands on metadata first
+  // (Roy 2026-05-22 reorder: Settings ↔ Billing). When the user has
+  // billing access, the strip still shows Billing on the right.
+  const [adminView, setAdminView] = useState<AdminView>("settings")
 
-  // If the user's billing access changes (eg. role promotion mid-session),
-  // re-seed adminView so we don't try to render Billing without access.
+  // If the user's billing access changes (eg. role promotion mid-session)
+  // and they're on the (now-missing) billing tab, fall back to settings.
   useEffect(() => {
     if (!access.canViewBilling && adminView === "billing") setAdminView("settings")
   }, [access.canViewBilling, adminView])
@@ -254,23 +253,35 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
         <PedroTab mondayItemId={client.mondayItemId} clientName={client.name} />
       )}
 
-      {/* ADMIN — Billing + per-client Settings */}
+      {/* ADMIN — per-client Settings + Billing.
+          Uses the platform's standard TopTabs strip so Admin's sub-nav
+          reads the same as Pedro / Inbox / Settings etc. — Roy 2026-05-22
+          asked for "dezelfde kast als alle andere" instead of the
+          segmented-pill switcher which felt like a different design
+          system. Order: Settings (left, always available) → Billing
+          (right, gated on access). */}
       {activeGroup === "admin" && (
         <div className="space-y-4">
-          <SegmentedTabs<AdminView>
-            items={[
+          <TopTabs<AdminView>
+            tabs={[
+              { id: "settings" as const, label: t("client.tab.sub.settings", locale), icon: Settings2 },
               ...(access.canViewBilling
                 ? [{
                     id: "billing" as const,
                     label: t("client.tab.sub.billing", locale),
+                    icon: CreditCard,
                     ...(hasOverdueInvoice ? { dot: "red" as const } : {}),
                   }]
                 : []),
-              { id: "settings" as const, label: t("client.tab.sub.settings", locale) },
             ]}
             value={adminView}
             onChange={setAdminView}
+            className="mb-2"
           />
+
+          {adminView === "settings" && (
+            <ClientSettingsTab client={client} />
+          )}
 
           {adminView === "billing" && (
             access.canViewBilling ? (
@@ -282,10 +293,6 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
                 initialNextAdBudgetInvoiceDate={hubBilling?.nextAdBudgetInvoiceDate ?? null}
               />
             ) : <NoAccess />
-          )}
-
-          {adminView === "settings" && (
-            <ClientSettingsTab client={client} />
           )}
         </div>
       )}
