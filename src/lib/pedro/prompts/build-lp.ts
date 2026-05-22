@@ -28,6 +28,10 @@ export type LpPromptArgs = {
   pixelId?: string
   webhookUrl?: string
   utmStr?: string
+  /** Free-text steering from the CM — e.g. "minder klaagverhaal,
+   *  meer urgentie", "korter onder de fold". Layered on top of the
+   *  standard prompt. */
+  steering?: string
 }
 
 export function buildLpPrompt(args: LpPromptArgs): string {
@@ -60,7 +64,7 @@ LP config:
 - Meta Pixel ID: ${pixel}
 - Zapier Webhook: ${webhook}
 - UTM: ${utm}
-
+${args.steering ? `\nExtra steering van de campaign manager (laat dit zwaar wegen): ${args.steering}\n` : ""}
 BELANGRIJK: De landingspagina moet een ALGEMENE, overkoepelende benadering hebben die aansluit op ALLE geselecteerde angles. Niet focussen op één angle maar de kernboodschap zo formuleren dat bezoekers vanuit elke invalshoek (${angleNames}) zich herkennen in de pagina.
 
 Specificeer hero sectie (breed ingestoken), pijnpunten, aanbod+USP's${formProofSection}${longExtras}.

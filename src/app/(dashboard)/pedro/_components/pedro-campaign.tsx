@@ -447,6 +447,10 @@ export function Campaign({
   const [scriptVideos, setScriptVideos] = useState<ScriptVideo[]>([]);
   const [scriptLoading, setScriptLoading] = useState(false);
   const [scriptSkipped, setScriptSkipped] = useState(false);
+  // Steering note (added 2026-05-22): CM can layer free-text guidance
+  // on top of the standard prompt before regenerating. Same pattern as
+  // angles + creatives.
+  const [scriptSteering, setScriptSteering] = useState("");
 
   // Step 4: Creatives
   const [qty, setQty] = useState(3);
@@ -471,11 +475,13 @@ export function Campaign({
   const [lpPrompt, setLpPrompt] = useState("");
   const [lpLoading, setLpLoading] = useState(false);
   const [showLpCard, setShowLpCard] = useState(false);
+  const [lpSteering, setLpSteering] = useState("");
 
   // Step 6: Ad copy (last - uses LP context)
   const [adCopy, setAdCopy] = useState<AdCopy | null>(null);
   const [adCopyLoading, setAdCopyLoading] = useState(false);
   const [copyTab, setCopyTab] = useState<"primary" | "headlines" | "desc">("primary");
+  const [adCopySteering, setAdCopySteering] = useState("");
 
   // Client database
   const [clientDB, setClientDB] = useState<ClientData | null>(null);
@@ -1037,6 +1043,7 @@ export function Campaign({
           anglesStr: anglesStr(),
           styleRef: styleRef(),
           huisstijl: huisstijlCtx(),
+          steering: scriptSteering.trim() || undefined,
         },
         {
           clientId: selectedClientId,
@@ -1204,6 +1211,7 @@ ${creativeDescriptions}`;
           pixelId,
           webhookUrl,
           utmStr,
+          steering: lpSteering.trim() || undefined,
         },
         {
           clientId: selectedClientId,
@@ -1258,6 +1266,7 @@ ${creativeDescriptions}`;
           creativesContext: manusPrompt || undefined,
           styleRef: styleRef(),
           huisstijl: huisstijlCtx(),
+          steering: adCopySteering.trim() || undefined,
         },
         { clientId: selectedClientId }
       );
@@ -2084,9 +2093,16 @@ ${creativeDescriptions}`;
                 </div>
               </div>
 
+              <input
+                type="text"
+                value={scriptSteering}
+                onChange={(e) => setScriptSteering(e.target.value)}
+                placeholder="Optionele steering bij regenereren (bv. 'harder confronterend', 'minder cliché')"
+                className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-3"
+              />
               <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                 <div className="flex items-center gap-2">
-                  <button className="pedro-btn-ghost text-[11px]" onClick={() => doScript()}>↻ Opnieuw</button>
+                  <button className="pedro-btn-ghost text-[11px]" onClick={() => doScript()}>↻ Opnieuw{scriptSteering.trim() ? " met steering" : ""}</button>
                   <button className="pedro-btn-ghost text-[11px]" onClick={downloadScriptDocx}>↓ Download .docx</button>
                 </div>
                 <button
@@ -2451,8 +2467,15 @@ ${creativeDescriptions}`;
               ) : lpPrompt ? (
                 <>
                   <OutputBlock content={lpPrompt} />
+                  <input
+                    type="text"
+                    value={lpSteering}
+                    onChange={(e) => setLpSteering(e.target.value)}
+                    placeholder="Optionele steering bij regenereren (bv. 'meer urgentie', 'korter onder de fold')"
+                    className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-3"
+                  />
                   <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-                    <button className="pedro-btn-ghost text-[11px]" onClick={() => doLP()}>↻ Opnieuw</button>
+                    <button className="pedro-btn-ghost text-[11px]" onClick={() => doLP()}>↻ Opnieuw{lpSteering.trim() ? " met steering" : ""}</button>
                     <button
                       className="pedro-btn-primary"
                       onClick={() =>
@@ -2524,8 +2547,15 @@ ${creativeDescriptions}`;
               {copyTab === "headlines" && <OutputBlock content={adCopy.headlines} />}
               {copyTab === "desc" && <OutputBlock content={adCopy.beschrijving} />}
 
+              <input
+                type="text"
+                value={adCopySteering}
+                onChange={(e) => setAdCopySteering(e.target.value)}
+                placeholder="Optionele steering bij regenereren (bv. 'korter, scherper', 'minder corporate')"
+                className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-3"
+              />
               <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-                <button className="pedro-btn-ghost text-[11px]" onClick={() => doAdCopy()}>↻ Opnieuw</button>
+                <button className="pedro-btn-ghost text-[11px]" onClick={() => doAdCopy()}>↻ Opnieuw{adCopySteering.trim() ? " met steering" : ""}</button>
                 <div className="flex gap-2 flex-wrap">
                   <button
                     className="pedro-btn-teal text-[11px] disabled:opacity-60"

@@ -19,10 +19,17 @@ export type ScriptPromptArgs = {
   anglesStr: string
   styleRef?: string
   huisstijl?: string
+  /** Free-text steering from the CM — e.g. "harder confronterend",
+   *  "minder cliché, meer concrete cijfers". Layered on top of the
+   *  standard prompt. */
+  steering?: string
 }
 
 export function buildScriptPrompt(args: ScriptPromptArgs): string {
   const { brief } = args
+  const steeringBlock = args.steering
+    ? `\n\nExtra steering van de campaign manager (laat dit zwaar wegen): ${args.steering}`
+    : ""
   return `Jij bent Pedro, senior campaign manager bij Rocket Leads. Schrijf 2 UGC-stijl video ad scripts.
 
 Client: ${brief.bedrijf} (${brief.sector})
@@ -31,7 +38,7 @@ Aanbod: ${brief.aanbod}
 USP's: ${brief.usps}
 Geselecteerde angles:
 ${args.anglesStr}
-Extra hooks CM: ${brief.hooksExtra || "geen"}
+Extra hooks CM: ${brief.hooksExtra || "geen"}${steeringBlock}
 
 REGELS:
 - Video 1 en Video 2 moeten STERK VERSCHILLENDE psychologische triggers gebruiken (bv. urgentie vs. social proof, pijn vs. ambitie, angst vs. nieuwsgierigheid)
