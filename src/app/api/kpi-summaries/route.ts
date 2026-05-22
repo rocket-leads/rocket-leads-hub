@@ -76,17 +76,22 @@ function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+// Last 7 days INCLUDING today (Roy 2026-05-22). Was previously
+// "yesterday + 6 days back" but leads landing during the day stayed
+// invisible until the next morning's cron. Today is included even
+// though Meta's intraday spend is partial — freshness > stability.
 function getLast7DaysRange() {
   const end = new Date()
-  end.setDate(end.getDate() - 1) // yesterday
   const start = new Date(end)
-  start.setDate(start.getDate() - 6) // 7 days total
+  start.setDate(start.getDate() - 6) // 7 days total, today inclusive
   return { startDate: fmtDate(start), endDate: fmtDate(end) }
 }
 
+// Previous 7 days = the week immediately BEFORE the current window.
+// end = today - 7, start = today - 13.
 function getPrevious7DaysRange() {
   const end = new Date()
-  end.setDate(end.getDate() - 8) // day before the current 7-day window
+  end.setDate(end.getDate() - 7)
   const start = new Date(end)
   start.setDate(start.getDate() - 6) // 7 days total
   return { startDate: fmtDate(start), endDate: fmtDate(end) }

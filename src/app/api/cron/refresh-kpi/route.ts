@@ -31,17 +31,24 @@ function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+// Last 7 days INCLUDING today. Roy 2026-05-22: shifted from
+// "yesterday + 6 days back" to "today + 6 days back" so leads that
+// land during the day are visible immediately in the Watch List.
+// Trade-off: today's spend/CPL is partial until Meta closes the day
+// (~24h settling), so CPL on the 7d window may dip mid-day then
+// recover by tomorrow morning. Acceptable because freshness > stability.
 function getLast7DaysRange() {
   const end = new Date()
-  end.setDate(end.getDate() - 1)
   const start = new Date(end)
   start.setDate(start.getDate() - 6)
   return { startDate: fmtDate(start), endDate: fmtDate(end) }
 }
 
+// Previous 7 days = the week immediately BEFORE the current window.
+// With end = today (inclusive), prev end is today - 7.
 function getPrevious7DaysRange() {
   const end = new Date()
-  end.setDate(end.getDate() - 8)
+  end.setDate(end.getDate() - 7)
   const start = new Date(end)
   start.setDate(start.getDate() - 6)
   return { startDate: fmtDate(start), endDate: fmtDate(end) }
