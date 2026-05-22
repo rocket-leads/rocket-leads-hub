@@ -406,6 +406,18 @@ export function Campaign({
   const [regenAngleSet, setRegenAngleSet] = useState<Set<number>>(new Set());
   const [regenAngleSteering, setRegenAngleSteering] = useState("");
   const [regenAnglesLoading, setRegenAnglesLoading] = useState(false);
+  // Parallel-mode generation (#5a): fires script (optional) + creatives +
+  // lp in parallel, then ad-copy. CM can launch the whole back-half from
+  // a single button on the angles save bar instead of stepping through
+  // 4 spinners.
+  type ParallelStage = "idle" | "running" | "done" | "skipped" | "error";
+  const [parallelRunning, setParallelRunning] = useState(false);
+  const [parallelProgress, setParallelProgress] = useState<{
+    script: ParallelStage;
+    creatives: ParallelStage;
+    lp: ParallelStage;
+    adCopy: ParallelStage;
+  }>({ script: "idle", creatives: "idle", lp: "idle", adCopy: "idle" });
 
   // Step 3: Script (optional)
   const [script, setScript] = useState("");
@@ -985,8 +997,8 @@ export function Campaign({
 • Geen filters, geen logo's op kleding, schone achtergrond
 • Bestanden benoemen: Hook 1, Hook 2 etc. in map "Video 1" of "Video 2"`;
 
-  async function doScript() {
-    goTo(3);
+  async function doScript(opts?: { skipNav?: boolean }) {
+    if (!opts?.skipNav) goTo(3);
     setScriptLoading(true);
     setScript("");
     setScriptSkipped(false);
@@ -1058,7 +1070,10 @@ export function Campaign({
   // Master prompt + per-creative description prompt live in
   // `@/lib/pedro/prompts/build-creatives`.
 
-  async function doCreative() {
+  async function doCreative(_opts?: { skipNav?: boolean }) {
+    // doCreative doesn't navigate by default (creatives is step 4 and
+    // the CM stays on that step) — opts is accepted for symmetry with
+    // the other handlers and future-proofing parallel mode.
     setManusLoading(true);
     setManusPrompt("");
     try {
@@ -1139,7 +1154,7 @@ ${creativeDescriptions}`;
   }
 
   // ── Step 5: LP (uses brief + angle + script if not skipped) ──
-  async function doLP() {
+  async function doLP(_opts?: { skipNav?: boolean }) {
     setShowLpCard(true);
     setLpLoading(true);
     setLpPrompt("");
@@ -1179,21 +1194,25 @@ ${creativeDescriptions}`;
   }
 
   // ── Step 6: Ad copy (uses brief + angle + script + LP headline/CTA) ──
-  async function doAdCopy() {
+  async function doAdCopy(opts?: { skipNav?: boolean }) {
     // Save the LP draft as a new version on the way to ad-copy — only
     // when the LP changed since the last save. Skip-when-unchanged is
-    // shared with every other Pedro save (saveIfChanged helper).
+    // shared with every other Pedro save (saveIfChanged helper). In
+    // parallel mode we keep this save running because LP just finished
+    // and needs to be on disk before ad-copy ships.
     if (selectedClientId && lpPrompt) {
       const r = await saveIfChanged({
         clientId: selectedClientId,
         stage: "lp",
         data: { stijl, lengte, pixelId, webhookUrl, utmStr, lpPrompt },
       });
-      if (r.saved) showToast(`✓ LP opgeslagen als v${r.versionNumber}`);
-      else if (r.reason === "unchanged") showToast(`LP v${r.versionNumber} ongewijzigd`);
+      if (!opts?.skipNav) {
+        if (r.saved) showToast(`✓ LP opgeslagen als v${r.versionNumber}`);
+        else if (r.reason === "unchanged") showToast(`LP v${r.versionNumber} ongewijzigd`);
+      }
     }
 
-    goTo(6);
+    if (!opts?.skipNav) goTo(6);
     setAdCopyLoading(true);
     setAdCopy(null);
     setCopyTab("primary");
@@ -1225,6 +1244,67 @@ ${creativeDescriptions}`;
       showToast(`Fout bij genereren ad copy: ${msg}`);
     }
     setAdCopyLoading(false);
+  }
+
+  // ── Parallel: fire the back-half stages in one click ──
+  // Sequence:
+  //   1. Optional script (await — creatives + lp use scriptCtx when
+  //      present, so we need it before they start)
+  //   2. Parallel: creatives + lp (independent of each other)
+  //   3. Ad-copy (depends on lpPrompt, so wait until lp resolves)
+  // Each stage tracked in parallelProgress so the CM sees per-stage
+  // status without losing the per-stage spinners that streaming drives.
+  async function generateAllRestParallel() {
+    if (parallelRunning) return;
+    if (selectedAngles.length === 0) {
+      showToast("Selecteer eerst ≥1 angle");
+      return;
+    }
+    setParallelRunning(true);
+    setParallelProgress({
+      script: scriptSkipped ? "skipped" : "running",
+      creatives: "running",
+      lp: "running",
+      adCopy: "idle",
+    });
+
+    // 1. Script first (if not skipped) so its context flows into creatives + lp.
+    if (!scriptSkipped) {
+      try {
+        await doScript({ skipNav: true });
+        setParallelProgress((p) => ({ ...p, script: "done" }));
+      } catch (e) {
+        console.error("[pedro:parallel] script failed", e);
+        setParallelProgress((p) => ({ ...p, script: "error" }));
+        // Continue anyway — creatives + lp can run without script context.
+      }
+    }
+
+    // 2. Creatives + LP in parallel.
+    const [creativesResult, lpResult] = await Promise.allSettled([
+      doCreative({ skipNav: true }),
+      doLP({ skipNav: true }),
+    ]);
+    setParallelProgress((p) => ({
+      ...p,
+      creatives: creativesResult.status === "fulfilled" ? "done" : "error",
+      lp: lpResult.status === "fulfilled" ? "done" : "error",
+    }));
+
+    // 3. Ad-copy depends on lpPrompt being in state.
+    setParallelProgress((p) => ({ ...p, adCopy: "running" }));
+    try {
+      await doAdCopy({ skipNav: true });
+      setParallelProgress((p) => ({ ...p, adCopy: "done" }));
+    } catch (e) {
+      console.error("[pedro:parallel] ad-copy failed", e);
+      setParallelProgress((p) => ({ ...p, adCopy: "error" }));
+    }
+
+    setParallelRunning(false);
+    showToast("✓ Alle stages gegenereerd");
+    // Navigate to ad-copy step so the CM lands on the final output.
+    goTo(6);
   }
 
   // ── Reset ──
@@ -1777,25 +1857,76 @@ ${creativeDescriptions}`;
               )}
 
               {angles.length > 0 && (
-                <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-                  <div className="flex items-center gap-3">
-                    <button className="pedro-btn-ghost text-[11px]" onClick={doAngles} disabled={anglesLoading || regenAnglesLoading}>↻ Nieuwe angles</button>
-                    <span className="text-[11px] text-muted-foreground/60">{selectedAngles.length}/5 geselecteerd</span>
+                <>
+                  <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
+                    <div className="flex items-center gap-3">
+                      <button className="pedro-btn-ghost text-[11px]" onClick={doAngles} disabled={anglesLoading || regenAnglesLoading || parallelRunning}>↻ Nieuwe angles</button>
+                      <span className="text-[11px] text-muted-foreground/60">{selectedAngles.length}/5 geselecteerd</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="pedro-btn-ghost text-[11px] h-8 px-3"
+                        disabled={selectedAngles.length < 1 || parallelRunning}
+                        onClick={generateAllRestParallel}
+                        title="Genereer script, creatives, LP en ad copy in één keer (parallel waar mogelijk)"
+                      >
+                        🚀 Genereer alle stages
+                      </button>
+                      <button
+                        className="pedro-btn-primary"
+                        disabled={selectedAngles.length < 1 || parallelRunning}
+                        onClick={() =>
+                          saveStageAndContinue({
+                            stage: "angles",
+                            data: selectedAngles,
+                            nextSection: "script",
+                          })
+                        }
+                      >
+                        Opslaan &amp; naar script ({selectedAngles.length} angle{selectedAngles.length !== 1 ? "s" : ""}) →
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    className="pedro-btn-primary"
-                    disabled={selectedAngles.length < 1}
-                    onClick={() =>
-                      saveStageAndContinue({
-                        stage: "angles",
-                        data: selectedAngles,
-                        nextSection: "script",
-                      })
-                    }
-                  >
-                    Opslaan &amp; naar script ({selectedAngles.length} angle{selectedAngles.length !== 1 ? "s" : ""}) →
-                  </button>
-                </div>
+
+                  {/* Parallel-mode progress panel — only renders during a
+                      "Genereer alle stages" run. Shows per-stage state so
+                      the CM can see what's still in flight without
+                      stepping into each tab. */}
+                  {parallelRunning || Object.values(parallelProgress).some((s) => s !== "idle") ? (
+                    <div className="mt-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+                      <div className="text-[11px] font-medium text-primary mb-2">
+                        {parallelRunning ? "Alle stages aan het genereren…" : "Parallel run voltooid"}
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {([
+                          ["script", "Script"],
+                          ["creatives", "Creatives"],
+                          ["lp", "LP"],
+                          ["adCopy", "Ad copy"],
+                        ] as const).map(([key, label]) => {
+                          const status = parallelProgress[key];
+                          const icon =
+                            status === "done" ? "✓" :
+                            status === "error" ? "✗" :
+                            status === "skipped" ? "—" :
+                            status === "running" ? "⟳" :
+                            "·";
+                          const tone =
+                            status === "done" ? "text-emerald-500" :
+                            status === "error" ? "text-red-500" :
+                            status === "running" ? "text-primary" :
+                            "text-muted-foreground/50";
+                          return (
+                            <div key={key} className="flex items-center gap-1.5 text-[11px]">
+                              <span className={`tabular-nums ${tone} ${status === "running" ? "animate-pulse" : ""}`}>{icon}</span>
+                              <span className={status === "done" ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               )}
             </>
           )}
@@ -1884,7 +2015,7 @@ ${creativeDescriptions}`;
 
               <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                 <div className="flex items-center gap-2">
-                  <button className="pedro-btn-ghost text-[11px]" onClick={doScript}>↻ Opnieuw</button>
+                  <button className="pedro-btn-ghost text-[11px]" onClick={() => doScript()}>↻ Opnieuw</button>
                   <button className="pedro-btn-ghost text-[11px]" onClick={downloadScriptDocx}>↓ Download .docx</button>
                 </div>
                 <button
@@ -1910,7 +2041,7 @@ ${creativeDescriptions}`;
                 <button className="pedro-btn-ghost" onClick={skipScript}>
                   Overslaan →
                 </button>
-                <button className="pedro-btn-primary" onClick={doScript}>
+                <button className="pedro-btn-primary" onClick={() => doScript()}>
                   Genereer scripts
                 </button>
               </div>
@@ -2111,7 +2242,7 @@ ${creativeDescriptions}`;
               />
               <div className="flex items-center justify-between">
                 <div className="text-[11px] text-muted-foreground/60">Stap 4 van 6</div>
-                <button className="pedro-btn-primary" onClick={doCreative} disabled={manusLoading}>
+                <button className="pedro-btn-primary" onClick={() => doCreative()} disabled={manusLoading}>
                   {manusLoading ? "Genereren..." : manusPrompt ? "↻ Regenereer met steering" : "Genereer Manus prompt"}
                 </button>
               </div>
@@ -2139,7 +2270,7 @@ ${creativeDescriptions}`;
                   <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                     <div className="flex items-center gap-2">
                       <button className="pedro-btn-primary text-[11px]" onClick={() => { navigator.clipboard.writeText(manusPrompt); showToast("Prompt gekopieerd"); }}>Kopieer prompt</button>
-                      <button className="pedro-btn-ghost text-[11px]" onClick={doCreative}>Opnieuw genereren</button>
+                      <button className="pedro-btn-ghost text-[11px]" onClick={() => doCreative()}>Opnieuw genereren</button>
                       <button className="pedro-btn-ghost text-[11px]" onClick={downloadBrandMD}>Brand MD</button>
                     </div>
                     <button
@@ -2237,7 +2368,7 @@ ${creativeDescriptions}`;
 
             <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
               <div className="text-[11px] text-muted-foreground/60">Stap 5 van 6</div>
-              <button className="pedro-btn-primary" onClick={doLP}>Genereer Lovable prompt →</button>
+              <button className="pedro-btn-primary" onClick={() => doLP()}>Genereer Lovable prompt →</button>
             </div>
           </Card>
 
@@ -2250,8 +2381,8 @@ ${creativeDescriptions}`;
                 <>
                   <OutputBlock content={lpPrompt} />
                   <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-                    <button className="pedro-btn-ghost text-[11px]" onClick={doLP}>↻ Opnieuw</button>
-                    <button className="pedro-btn-primary" onClick={doAdCopy}>Opslaan &amp; naar ad copy →</button>
+                    <button className="pedro-btn-ghost text-[11px]" onClick={() => doLP()}>↻ Opnieuw</button>
+                    <button className="pedro-btn-primary" onClick={() => doAdCopy()}>Opslaan &amp; naar ad copy →</button>
                   </div>
                 </>
               ) : null}
@@ -2312,7 +2443,7 @@ ${creativeDescriptions}`;
               {copyTab === "desc" && <OutputBlock content={adCopy.beschrijving} />}
 
               <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-                <button className="pedro-btn-ghost text-[11px]" onClick={doAdCopy}>↻ Opnieuw</button>
+                <button className="pedro-btn-ghost text-[11px]" onClick={() => doAdCopy()}>↻ Opnieuw</button>
                 <div className="flex gap-2">
                   <button className="pedro-btn-ghost text-[11px]" onClick={generateAndDownloadClientMD}>Client MD</button>
                   <button className="pedro-btn-ghost text-[11px]" onClick={resetAll}>+ Nieuwe campagne</button>

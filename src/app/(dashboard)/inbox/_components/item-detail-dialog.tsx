@@ -21,6 +21,13 @@ type Props = {
   users: InboxUser[]
   onClose: () => void
   onChanged: () => void
+  /** Layout mode. `overlay` (default) is the original right-side slide-over
+   *  with a backdrop — used on narrow viewports where the list can't fit
+   *  alongside the detail. `docked` renders inline as a column inside a
+   *  flex split, with no portal/backdrop, so the list stays interactive
+   *  next to the open ticket. The body content is identical in both modes;
+   *  only the outer shell differs. */
+  mode?: "overlay" | "docked"
 }
 
 const TASK_STATUS_OPTIONS: Array<{ value: TaskStatus; label: string; cls: string }> = [
@@ -98,7 +105,7 @@ function fmtDateTime(iso: string): string {
   })
 }
 
-export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChanged }: Props) {
+export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChanged, mode = "overlay" }: Props) {
   const queryClient = useQueryClient()
   const [commentBody, setCommentBody] = useState("")
   const [submittingComment, setSubmittingComment] = useState(false)
@@ -364,39 +371,20 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
     }
   }
 
-  return (
-    <DialogPrimitive.Root open onOpenChange={(o) => !o && onClose()}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Backdrop
-          onClick={onClose}
-          className={cn(
-            "fixed inset-0 isolate z-50 bg-black/40 backdrop-blur-sm",
-            "cursor-pointer transition-colors hover:bg-black/55",
-            "duration-100 ease-out",
-            "data-open:animate-in data-open:fade-in-0",
-            "data-closed:animate-out data-closed:fade-out-0",
-          )}
-        />
-        <DialogPrimitive.Popup
-          className={cn(
-            // Right-side slide panel, ~35% wide on desktop. Roy: same
-            // pattern as the Clients slide-over, but narrower because tasks
-            // are denser than full client detail pages.
-            "fixed inset-y-0 right-0 z-50 w-full sm:w-[80%] md:w-[55%] lg:w-[40%] xl:w-[35%] max-w-[640px]",
-            "bg-background shadow-2xl ring-1 ring-foreground/10 outline-none",
-            "flex flex-col",
-            "duration-[120ms] ease-out",
-            "data-open:animate-in data-open:slide-in-from-right",
-            "data-closed:animate-out data-closed:slide-out-to-right",
-          )}
-        >
-          <DialogPrimitive.Close
-            className="absolute top-4 right-4 z-10 h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors outline-none"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </DialogPrimitive.Close>
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+  // Inner content is identical in both modes — only the surrounding shell
+  // (portal+backdrop vs inline column) differs. Defined once and passed to
+  // the right wrapper below to keep edits painless.
+  const body = (
+    <>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute top-4 right-4 z-10 h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors outline-none"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
         {detailQuery.isLoading || !item ? (
           <div className="py-12 flex items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
