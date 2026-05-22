@@ -353,11 +353,15 @@ function SourceTag({ sources }: { sources: FieldSource[] | undefined }) {
 // ── Main Component ──
 // Sections map to steps internally for backwards compatibility
 type SectionName = "brief" | "angles" | "script" | "creatives" | "lp" | "ad-copy";
+// Reordered 2026-05-22 (Roy): LP comes BEFORE creatives because LP
+// defines the kernboodschap, creatives align headlines to the LP
+// hero, and ad copy aligns to both. Earlier order had creatives before
+// LP which inverted the dependency.
 const SECTION_TO_STEP: Record<SectionName, number> = {
-  brief: 1, angles: 2, script: 3, creatives: 4, lp: 5, "ad-copy": 6,
+  brief: 1, angles: 2, script: 3, lp: 4, creatives: 5, "ad-copy": 6,
 };
 const STEP_TO_SECTION: Record<number, SectionName> = {
-  1: "brief", 2: "angles", 3: "script", 4: "creatives", 5: "lp", 6: "ad-copy",
+  1: "brief", 2: "angles", 3: "script", 4: "lp", 5: "creatives", 6: "ad-copy",
 };
 
 export function Campaign({
@@ -1122,6 +1126,8 @@ export function Campaign({
       // creativesSteering, when set, is layered on top of the standard
       // prompt — used to iterate ("alle creatives in pattern-interrupt
       // variant F", "minder generieke headlines, meer concrete cijfers").
+      // lpContext makes headlines + CTA align to the LP hero — LP now
+      // runs BEFORE creatives in the pipeline (Roy 2026-05-22).
       const creativeDescriptions = sanitizeOutput(await callPedro(
         "creatives",
         {
@@ -1132,6 +1138,7 @@ export function Campaign({
           driveLink,
           brandStyle,
           scriptContext: scriptCtx(),
+          lpContext: lpPrompt || undefined,
           previousManusRef: previousManusReference(clientDB),
           steering: creativesSteering.trim() || undefined,
         },
@@ -1238,7 +1245,9 @@ ${creativeDescriptions}`;
     try {
       // Server defaults to Haiku + 1200 max_tokens for ad-copy. Text
       // fields post-sanitized after parse so smart quotes from Claude
-      // don't leak into Meta copy.
+      // don't leak into Meta copy. creativesContext makes the copy
+      // align to the visual headlines/CTA of the Manus prompt — Roy
+      // 2026-05-22: ad copy should match BOTH LP en creatives, not LP only.
       const parsed = await callPedroJson<AdCopy, "ad-copy">(
         "ad-copy",
         {
@@ -1246,6 +1255,7 @@ ${creativeDescriptions}`;
           anglesStr: anglesStr(),
           scriptContext: scriptCtx(),
           lpPrompt,
+          creativesContext: manusPrompt || undefined,
           styleRef: styleRef(),
           huisstijl: huisstijlCtx(),
         },
@@ -1265,14 +1275,14 @@ ${creativeDescriptions}`;
     setAdCopyLoading(false);
   }
 
-  // ── Parallel: fire the back-half stages in one click ──
-  // Sequence:
-  //   1. Optional script (await — creatives + lp use scriptCtx when
-  //      present, so we need it before they start)
-  //   2. Parallel: creatives + lp (independent of each other)
-  //   3. Ad-copy (depends on lpPrompt, so wait until lp resolves)
-  // Each stage tracked in parallelProgress so the CM sees per-stage
-  // status without losing the per-stage spinners that streaming drives.
+  // ── Sequential: fire the deliverables one after another ──
+  // After the 2026-05-22 reorder (LP before Creatives), every
+  // deliverable now depends on the previous one's output:
+  //   Script (optional, await) → LP (await) → Creatives (await) → Ad copy
+  // No true parallelism is possible anymore because each stage feeds the
+  // next. Streaming masks the wall-clock cost — each stage's text
+  // appears progressively in its own tab. parallelProgress still tracks
+  // per-stage status so the CM sees what's in flight.
   async function generateAllRestParallel() {
     if (parallelRunning) return;
     if (selectedAngles.length === 0) {
@@ -1282,41 +1292,50 @@ ${creativeDescriptions}`;
     setParallelRunning(true);
     setParallelProgress({
       script: scriptSkipped ? "skipped" : "running",
-      creatives: "running",
-      lp: "running",
+      lp: "idle",
+      creatives: "idle",
       adCopy: "idle",
     });
 
-    // 1. Script first (if not skipped) so its context flows into creatives + lp.
+    // 1. Script first (if not skipped) so its context flows into LP + creatives.
     if (!scriptSkipped) {
       try {
         await doScript({ skipNav: true });
         setParallelProgress((p) => ({ ...p, script: "done" }));
       } catch (e) {
-        console.error("[pedro:parallel] script failed", e);
+        console.error("[pedro:sequence] script failed", e);
         setParallelProgress((p) => ({ ...p, script: "error" }));
-        // Continue anyway — creatives + lp can run without script context.
+        // Continue anyway — LP can run without script context.
       }
     }
 
-    // 2. Creatives + LP in parallel.
-    const [creativesResult, lpResult] = await Promise.allSettled([
-      doCreative({ skipNav: true }),
-      doLP({ skipNav: true }),
-    ]);
-    setParallelProgress((p) => ({
-      ...p,
-      creatives: creativesResult.status === "fulfilled" ? "done" : "error",
-      lp: lpResult.status === "fulfilled" ? "done" : "error",
-    }));
+    // 2. LP — feeds creatives + ad copy.
+    setParallelProgress((p) => ({ ...p, lp: "running" }));
+    try {
+      await doLP({ skipNav: true });
+      setParallelProgress((p) => ({ ...p, lp: "done" }));
+    } catch (e) {
+      console.error("[pedro:sequence] lp failed", e);
+      setParallelProgress((p) => ({ ...p, lp: "error" }));
+    }
 
-    // 3. Ad-copy depends on lpPrompt being in state.
+    // 3. Creatives — uses LP context (headlines align to LP hero).
+    setParallelProgress((p) => ({ ...p, creatives: "running" }));
+    try {
+      await doCreative({ skipNav: true });
+      setParallelProgress((p) => ({ ...p, creatives: "done" }));
+    } catch (e) {
+      console.error("[pedro:sequence] creatives failed", e);
+      setParallelProgress((p) => ({ ...p, creatives: "error" }));
+    }
+
+    // 4. Ad copy — uses LP + creatives context.
     setParallelProgress((p) => ({ ...p, adCopy: "running" }));
     try {
       await doAdCopy({ skipNav: true });
       setParallelProgress((p) => ({ ...p, adCopy: "done" }));
     } catch (e) {
-      console.error("[pedro:parallel] ad-copy failed", e);
+      console.error("[pedro:sequence] ad-copy failed", e);
       setParallelProgress((p) => ({ ...p, adCopy: "error" }));
     }
 
@@ -1952,8 +1971,8 @@ ${creativeDescriptions}`;
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {([
                           ["script", "Script"],
-                          ["creatives", "Creatives"],
                           ["lp", "LP"],
+                          ["creatives", "Creatives"],
                           ["adCopy", "Ad copy"],
                         ] as const).map(([key, label]) => {
                           const status = parallelProgress[key];
@@ -2076,11 +2095,11 @@ ${creativeDescriptions}`;
                     saveStageAndContinue({
                       stage: "script",
                       data: { script_text: script, script_videos: scriptVideos },
-                      nextSection: "creatives",
+                      nextSection: "lp",
                     })
                   }
                 >
-                  Opslaan &amp; naar creatives →
+                  Opslaan &amp; naar LP →
                 </button>
               </div>
             </>
@@ -2103,8 +2122,8 @@ ${creativeDescriptions}`;
         </>
       )}
 
-      {/* ── STEP 4: Creatives ── */}
-      {step === 4 && (
+      {/* ── STEP 5: Creatives (was step 4 before LP/Creatives swap) ── */}
+      {step === 5 && (
         <>
           <StageActionBar
             clientId={selectedClientId}
@@ -2118,7 +2137,7 @@ ${creativeDescriptions}`;
                 <div className="font-heading font-semibold text-base tracking-tight">Creatives configuratie</div>
                 <div className="text-xs text-muted-foreground mt-[3px]">Aantal, formaat en client content</div>
               </div>
-              <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(3)}>← Terug</button>
+              <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(4)}>← Terug naar LP</button>
             </div>
 
             {/* Qty */}
@@ -2293,7 +2312,7 @@ ${creativeDescriptions}`;
                 className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
               />
               <div className="flex items-center justify-between">
-                <div className="text-xs text-muted-foreground">Stap 4 van 6</div>
+                <div className="text-xs text-muted-foreground">Stap 5 van 6</div>
                 <button className="pedro-btn-primary" onClick={() => doCreative()} disabled={manusLoading}>
                   {manusLoading ? "Genereren..." : manusPrompt ? "↻ Regenereer met steering" : "Genereer Manus prompt"}
                 </button>
@@ -2331,11 +2350,11 @@ ${creativeDescriptions}`;
                         saveStageAndContinue({
                           stage: "creatives",
                           data: { qty, formats, driveLink, brandbookName, huisstijl, manusPrompt },
-                          nextSection: "lp",
+                          nextSection: "ad-copy",
                         })
                       }
                     >
-                      Opslaan &amp; naar landingspagina →
+                      Opslaan &amp; naar ad copy →
                     </button>
                   </div>
                 </>
@@ -2345,8 +2364,8 @@ ${creativeDescriptions}`;
         </>
       )}
 
-      {/* ── STEP 5: LP ── */}
-      {step === 5 && (
+      {/* ── STEP 4: LP (was step 5 before LP/Creatives swap) ── */}
+      {step === 4 && (
         <>
           <StageActionBar
             clientId={selectedClientId}
@@ -2360,7 +2379,7 @@ ${creativeDescriptions}`;
                 <div className="font-heading font-semibold text-base tracking-tight">Landingspagina configuratie</div>
                 <div className="text-xs text-muted-foreground mt-[3px]">Stijl, lengte, tracking &amp; technisch</div>
               </div>
-              <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(4)}>← Terug</button>
+              <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(3)}>← Terug naar script</button>
             </div>
 
             {/* Stijl */}
@@ -2419,7 +2438,7 @@ ${creativeDescriptions}`;
             </div>
 
             <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-              <div className="text-xs text-muted-foreground">Stap 5 van 6</div>
+              <div className="text-xs text-muted-foreground">Stap 4 van 6</div>
               <button className="pedro-btn-primary" onClick={() => doLP()}>Genereer Lovable prompt →</button>
             </div>
           </Card>
@@ -2434,7 +2453,18 @@ ${creativeDescriptions}`;
                   <OutputBlock content={lpPrompt} />
                   <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                     <button className="pedro-btn-ghost text-[11px]" onClick={() => doLP()}>↻ Opnieuw</button>
-                    <button className="pedro-btn-primary" onClick={() => doAdCopy()}>Opslaan &amp; naar ad copy →</button>
+                    <button
+                      className="pedro-btn-primary"
+                      onClick={() =>
+                        saveStageAndContinue({
+                          stage: "lp",
+                          data: { stijl, lengte, pixelId, webhookUrl, utmStr, lpPrompt },
+                          nextSection: "creatives",
+                        })
+                      }
+                    >
+                      Opslaan &amp; naar creatives →
+                    </button>
                   </div>
                 </>
               ) : null}
@@ -2456,7 +2486,7 @@ ${creativeDescriptions}`;
           <div className="flex items-start justify-between mb-5">
             <div>
               <div className="font-heading font-semibold text-base tracking-tight">Ad copy</div>
-              <div className="text-xs text-muted-foreground mt-[3px]">Meta &amp; Instagram advertentieteksten - afgestemd op de LP</div>
+              <div className="text-xs text-muted-foreground mt-[3px]">Meta &amp; Instagram advertentieteksten - afgestemd op LP + creatives</div>
             </div>
             <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(5)}>← Terug</button>
           </div>

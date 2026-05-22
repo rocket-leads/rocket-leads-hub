@@ -53,9 +53,13 @@ const PHASE_SHAPE = [
     id: "deliverables",
     labelKey: "pedro.phase.deliverables" as const,
     tabs: [
+      // Order matters: LP defines the kernboodschap, creatives follow
+      // (headlines align to LP hero), ad copy aligns to BOTH so the
+      // creative + LP + copy all read as one campaign. Roy 2026-05-22:
+      // earlier flow had creatives before LP which inverted the dependency.
       { id: "script" as const, labelKey: "pedro.tab.script" as const, icon: Video },
-      { id: "creatives" as const, labelKey: "pedro.tab.creatives" as const, icon: ImageIcon },
       { id: "lp" as const, labelKey: "pedro.tab.lp" as const, icon: FileCode },
+      { id: "creatives" as const, labelKey: "pedro.tab.creatives" as const, icon: ImageIcon },
       { id: "ad-copy" as const, labelKey: "pedro.tab.ad_copy" as const, icon: Megaphone },
     ],
   },

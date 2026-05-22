@@ -21,16 +21,29 @@ export type AdCopyPromptArgs = {
   scriptContext?: string
   /** First ~600 chars of the LP prompt — used to align ad-copy to LP. */
   lpPrompt?: string
+  /** First ~600 chars of the Manus creatives prompt — added 2026-05-22.
+   *  Ad copy now reads both LP + creatives so the headlines + primary
+   *  text match the visual promise the user clicks through on Meta. */
+  creativesContext?: string
   /** Style reference from existing Rocket Leads Meta ads. */
   styleRef?: string
   /** Huisstijl block. */
   huisstijl?: string
+  /** Free-text steering from the CM — e.g. "korter, scherper",
+   *  "minder corporate". Layered on top of the standard prompt. */
+  steering?: string
 }
 
 export function buildAdCopyPrompt(args: AdCopyPromptArgs): string {
   const { brief } = args
   const lpContext = args.lpPrompt
     ? `\nLandingspagina context (match hierop!):\n${args.lpPrompt.substring(0, 600)}`
+    : ""
+  const creativesContext = args.creativesContext
+    ? `\nCreatives context (headlines + primary text MOETEN aansluiten op deze visuele richting):\n${args.creativesContext.substring(0, 600)}`
+    : ""
+  const steeringBlock = args.steering
+    ? `\n\nExtra steering van de campaign manager (laat dit zwaar wegen): ${args.steering}`
     : ""
 
   return `Jij bent Pedro, senior campaign manager bij Rocket Leads. Schrijf Meta advertentieteksten.
@@ -41,9 +54,9 @@ Aanbod: ${brief.aanbod}
 USP's: ${brief.usps}
 Geselecteerde angles:
 ${args.anglesStr}
-Extra hooks CM: ${brief.hooksExtra || "geen"}${args.scriptContext ?? ""}${lpContext}
+Extra hooks CM: ${brief.hooksExtra || "geen"}${args.scriptContext ?? ""}${lpContext}${creativesContext}${steeringBlock}
 
-BELANGRIJK: De ad copy moet EXACT aansluiten op de landingspagina. Gebruik dezelfde kernboodschap, voordelen en CTA zodat de bezoeker na het klikken op de ad precies vindt wat beloofd werd.
+BELANGRIJK: De ad copy moet EXACT aansluiten op zowel de landingspagina als de visuele creatives. Gebruik dezelfde kernboodschap, voordelen, headlines en CTA zodat de bezoeker - vanaf de scroll-stoppende creative tot na de klik op de LP - één consistent verhaal beleeft.
 
 Schrijf copy die alle geselecteerde angles dekt - wissel per variant van invalshoek:
 1. Primaire tekst variant A (120-150 woorden, angle 1 als leidraad, conversational, CTA)
