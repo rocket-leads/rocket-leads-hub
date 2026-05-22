@@ -3,11 +3,12 @@
 import { useState, useEffect, useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
+import { useHubMutation } from "@/lib/mutations/use-hub-mutation"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Check, ChevronDown, Loader2 } from "lucide-react"
+import { Check, ChevronDown, Loader2, HelpCircle } from "lucide-react"
 import type { MondayClient, MondayUser } from "@/lib/integrations/monday"
 import type {
   PersonFieldKey,
@@ -81,30 +82,35 @@ export function ClientInformationPanel({ client }: Props) {
           fieldKey="client_board_id"
           value={client.clientBoardId}
           label="Monday client board ID"
+          help="Per-client lead board. Unblocks: lead counts, UTM table, lead-status sentiment in Watch List + Pedro. Without it, KPIs fall back to Meta-only and Pedro flags missing CRM data."
         />
         <SimpleField
           mondayItemId={client.mondayItemId}
           fieldKey="meta_ad_account_id"
           value={client.metaAdAccountId}
           label="Meta ad account ID"
+          help="Ad account used for Spend / CPL / CTR / per-ad performance. Unblocks: Campaigns tab, Top Ads, Pedro creative insights. Without it, the Performance Overview shows no ad metrics."
         />
         <SimpleField
           mondayItemId={client.mondayItemId}
           fieldKey="stripe_customer_id"
           value={client.stripeCustomerId}
           label="Stripe customer ID"
+          help="Customer in Stripe used for invoices + payment status. Unblocks: Billing tab, overdue/open invoice banners, finance flows. Without it, the Payment banner stays hidden."
         />
         <SimpleField
           mondayItemId={client.mondayItemId}
           fieldKey="trengo_contact_id"
           value={client.trengoContactId}
           label="Trengo contact ID"
+          help="Trengo contact behind this client. Unblocks: Conversations → Inbox + Timeline, client-sentiment signals in Pedro. Without it, the client's WhatsApp/email threads stay invisible to the Hub."
         />
         <SimpleField
           mondayItemId={client.mondayItemId}
           fieldKey="google_drive_id"
           value={client.googleDriveId}
           label="Google Drive ID"
+          help="Folder ID where creatives, scripts and assets live. Unblocks: quick-link shortcuts on the client page. Cosmetic only — nothing in the data pipeline depends on it."
         />
       </Section>
     </div>
@@ -126,17 +132,23 @@ type SimpleFieldProps = {
   value: string
   label: string
   type?: "text" | "number"
+  help?: string
 }
 
-function SimpleField({ mondayItemId, fieldKey, value, label, type = "text" }: SimpleFieldProps) {
+function SimpleField({ mondayItemId, fieldKey, value, label, type = "text", help }: SimpleFieldProps) {
   const router = useRouter()
-  const queryClient = useQueryClient()
   const [draft, setDraft] = useState(value)
   const [savedFlash, setSavedFlash] = useState(false)
 
   useEffect(() => setDraft(value), [value])
 
-  const mutation = useMutation({
+  // CLIENT_DETAIL group invalidates client-detail + clients-overview +
+  // watchlist + kpi-summaries — all the surfaces that show this row's
+  // Monday data. Central catalogue means a new surface reading
+  // `["client-detail", id]` doesn't need to chase down every mutation
+  // site to make sure its data updates.
+  const mutation = useHubMutation({
+    invalidates: ["CLIENT_DETAIL"],
     mutationFn: async (next: string) => {
       const res = await fetch(`/api/clients/${mondayItemId}`, {
         method: "PATCH",
@@ -152,12 +164,6 @@ function SimpleField({ mondayItemId, fieldKey, value, label, type = "text" }: Si
     onSuccess: () => {
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 1500)
-      // The slide-over and clients-table both read this client through React
-      // Query. router.refresh() alone only re-runs server components — it
-      // doesn't touch the React Query cache, so the panel keeps showing the
-      // pre-edit value until staleTime expires (60s). Force a refetch.
-      void queryClient.invalidateQueries({ queryKey: ["client-detail", mondayItemId] })
-      void queryClient.invalidateQueries({ queryKey: ["clients-overview"] })
       router.refresh()
     },
   })
@@ -167,7 +173,18 @@ function SimpleField({ mondayItemId, fieldKey, value, label, type = "text" }: Si
 
   return (
     <div className="grid grid-cols-[160px_1fr_auto] gap-3 items-center">
-      <Label className="text-[12px] text-muted-foreground">{label}</Label>
+      <Label className="text-[12px] text-muted-foreground inline-flex items-center gap-1.5">
+        {label}
+        {help && (
+          <span
+            title={help}
+            className="inline-flex text-muted-foreground/50 hover:text-muted-foreground cursor-help"
+            aria-label={`What does ${label} control?`}
+          >
+            <HelpCircle className="h-3 w-3" />
+          </span>
+        )}
+      </Label>
       <Input
         type={type}
         value={draft}

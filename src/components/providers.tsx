@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { useState } from "react"
+import { useRealtimeInvalidation } from "@/lib/realtime/use-realtime-invalidation"
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -16,5 +17,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
       })
   )
 
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={queryClient}>
+      <RealtimeBridge />
+      {children}
+    </QueryClientProvider>
+  )
+}
+
+/** Mounted inside QueryClientProvider so `useQueryClient()` resolves. The
+ *  hook subscribes to the Hub broadcast channel and invalidates matching
+ *  React Query keys whenever the server pushes an event. */
+function RealtimeBridge() {
+  useRealtimeInvalidation()
+  return null
 }
