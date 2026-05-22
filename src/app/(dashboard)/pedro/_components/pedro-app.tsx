@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
-import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw, Users } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw, Users, Plus, Pencil } from "lucide-react"
 import { PhasedTopTabs, type TabPhase } from "@/components/ui/phased-top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
@@ -170,6 +171,65 @@ export function PedroApp({ clients }: Props) {
   const requestedAuto = searchParams.get("auto") === "1"
   const needsClient = CLIENT_REQUIRED_SECTIONS.has(section)
 
+  // ── Campaign mode (Roy 2026-05-22) ─────────────────────────────
+  // Two paths into Pedro:
+  //   "optimize"  → load the latest saved versions, let the CM edit /
+  //                 regenerate individual stages. Default when the client
+  //                 already has a saved campaign.
+  //   "new"       → wipe the working state and start from a blank brief.
+  //                 Existing saved versions stay in the DB; the next
+  //                 saves create v.N+1 rows on top.
+  type CampaignMode = "optimize" | "new"
+  const [campaignMode, setCampaignMode] = useState<CampaignMode>("new")
+  // Bumps to force-remount Campaign + Research on a "Nieuwe campagne"
+  // click so component-internal state (brief, angles, etc.) resets to
+  // the blank-form defaults instead of carrying the previous campaign.
+  const [resetKey, setResetKey] = useState(0)
+
+  // Saved-versions count for the selected client — drives the "v.N"
+  // badge + the default mode when a client is picked.
+  type SavedVersion = { stage: string; version_number: number; saved_at: string }
+  const savedVersionsQuery = useQuery({
+    queryKey: ["pedro-app-saved-versions", selectedClientId],
+    queryFn: async (): Promise<SavedVersion[]> => {
+      if (!selectedClientId) return []
+      const res = await fetch(`/api/pedro/saved-versions?clientId=${encodeURIComponent(selectedClientId)}`)
+      if (!res.ok) return []
+      const data = await res.json()
+      return (data?.versions ?? []) as SavedVersion[]
+    },
+    enabled: !!selectedClientId,
+    staleTime: 30_000,
+  })
+  const hasSavedCampaign = (savedVersionsQuery.data?.length ?? 0) > 0
+  const latestVersion = savedVersionsQuery.data?.reduce((max, v) => Math.max(max, v.version_number), 0) ?? 0
+
+  // Default mode flips with the client: returning client with saved
+  // campaign → optimize, brand-new client → new.
+  useEffect(() => {
+    if (!selectedClientId) return
+    if (savedVersionsQuery.isLoading) return
+    setCampaignMode(hasSavedCampaign ? "optimize" : "new")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId, hasSavedCampaign, savedVersionsQuery.isLoading])
+
+  const switchToNewCampaign = useCallback(() => {
+    if (hasSavedCampaign) {
+      const ok = window.confirm(
+        `Nieuwe campagne starten voor deze klant?\n\nDe vorige (v.${latestVersion}) blijft bewaard — nieuwe stages worden opgeslagen als v.${latestVersion + 1}.`,
+      )
+      if (!ok) return
+    }
+    setCampaignMode("new")
+    setResetKey((k) => k + 1)
+    setSection("brief")
+  }, [hasSavedCampaign, latestVersion])
+
+  const switchToOptimize = useCallback(() => {
+    setCampaignMode("optimize")
+    setResetKey((k) => k + 1)
+  }, [])
+
   return (
     <div className="pedro-root">
       <PageHeader
@@ -204,10 +264,64 @@ export function PedroApp({ clients }: Props) {
           {selectedClient && (
             <span className="shrink-0 text-xs text-muted-foreground hidden md:inline">
               {selectedClient.boardType === "onboarding" ? t("pedro.picker.onboarding", locale) : t("pedro.picker.live", locale)}
-              {selectedClient.hasSavedCampaign ? t("pedro.picker.saved", locale) : ""}
             </span>
           )}
         </div>
+
+        {/* Campaign mode switcher — appears only when a client is selected.
+            Detects whether this client has a saved campaign and defaults
+            to Optimize / New accordingly. The pill is always shown so
+            the CM can flip intent at any moment. */}
+        {selectedClient && (
+          <div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between gap-3 flex-wrap">
+            <div className="inline-flex items-center gap-2 text-xs">
+              {hasSavedCampaign ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium text-[11px]">
+                    Campagne v.{latestVersion}
+                  </span>
+                  <span className="text-muted-foreground">opgeslagen voor deze klant</span>
+                </>
+              ) : (
+                <>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium text-[11px]">
+                    Geen campagne
+                  </span>
+                  <span className="text-muted-foreground">nog niets opgeslagen voor deze klant</span>
+                </>
+              )}
+            </div>
+            <div className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-muted/40 p-0.5">
+              <button
+                type="button"
+                onClick={switchToOptimize}
+                disabled={!hasSavedCampaign}
+                className={`inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-md transition-colors ${
+                  campaignMode === "optimize"
+                    ? "bg-card text-foreground shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]"
+                    : "text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-muted-foreground"
+                }`}
+                title={hasSavedCampaign ? "Bewerk de bestaande campagne, regenereer losse deliverables" : "Geen bestaande campagne om te optimaliseren"}
+              >
+                <Pencil className="h-3 w-3" />
+                Optimaliseer
+              </button>
+              <button
+                type="button"
+                onClick={switchToNewCampaign}
+                className={`inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-md transition-colors ${
+                  campaignMode === "new"
+                    ? "bg-card text-foreground shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                title={hasSavedCampaign ? `Start vers — vorige (v.${latestVersion}) blijft bewaard` : "Start een nieuwe campagne vanaf brief"}
+              >
+                <Plus className="h-3 w-3" />
+                Nieuwe campagne
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <PhasedTopTabs<Section> phases={PHASES} value={section} onChange={setSection} className="mb-6" />
@@ -217,6 +331,7 @@ export function PedroApp({ clients }: Props) {
           <NoClientSelected />
         ) : section === "research" ? (
           <Research
+            key={`research-${selectedClientId}-${resetKey}`}
             clientId={selectedClientId}
             clientName={selectedClient?.name ?? ""}
             onContinue={() => setSection("angles")}
@@ -230,12 +345,18 @@ export function PedroApp({ clients }: Props) {
           />
         ) : (
           <Campaign
+            // Remount key bumps when the CM switches campaign mode so
+            // Campaign's internal state (brief, angles, deliverables)
+            // resets to defaults instead of carrying the previous
+            // mode's state.
+            key={`campaign-${selectedClientId}-${resetKey}`}
             section={section as CampaignSection}
             setSection={(s) => setSection(s)}
             clients={clients}
             selectedClientId={selectedClientId}
             selectedClientName={selectedClient?.name ?? ""}
             onSelectClient={(id, _name) => setSelectedClientId(id)}
+            campaignMode={campaignMode}
           />
         )}
       </div>

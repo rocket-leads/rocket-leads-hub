@@ -371,6 +371,7 @@ export function Campaign({
   selectedClientId,
   selectedClientName,
   onSelectClient,
+  campaignMode = "optimize",
 }: {
   section: SectionName
   /** Widened to allow Campaign to navigate out to the Research tab, which
@@ -383,6 +384,11 @@ export function Campaign({
   /** When the user picks a different client from inside the brief, propagate
    *  to the global picker (still rendered up top). */
   onSelectClient: (clientId: string, clientName: string) => void
+  /** "optimize" loads the latest saved versions of every stage so the
+   *  CM can edit / regenerate individual deliverables. "new" skips the
+   *  saved-version load and starts with a blank brief (auto-brief still
+   *  runs if available). Roy 2026-05-22. */
+  campaignMode?: "optimize" | "new"
 }) {
   const step = SECTION_TO_STEP[section] || 1;
   const setStep = (n: number) => setSection(STEP_TO_SECTION[n] || "brief");
@@ -611,6 +617,14 @@ export function Campaign({
     setAutoBriefSource(null);
     setImportStatus(null);
     setBriefSources({});
+
+    // "Nieuwe campagne" mode: skip both saved-versions + draft load,
+    // jump straight to auto-brief. Existing saved versions stay in the
+    // DB but don't populate the form. CM starts from a blank brief.
+    if (campaignMode === "new") {
+      void runAutoBrief(clientId, clientName);
+      return;
+    }
 
     // Fetch draft + saved versions in parallel
     let draftState: Record<string, unknown> | null = null;
