@@ -32,6 +32,47 @@ import type {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const TARGETS_BOARD_ID = "3762696870"
+
+// In-process cache for the raw Targets board items. The board is huge (full lead
+// history across all clients) and pagination dominates the wall-clock time of
+// /api/targets/monday — a cold fetch is ~3min while the per-range aggregation
+// loop afterwards is sub-second. The items are identical regardless of date
+// range, so caching them in memory lets range-switching reuse the same fetch.
+//
+// TTL is intentionally short (5 min) so freshly-created leads or status changes
+// surface within a refresh-button click. The Supabase per-range cache layer in
+// the route handler covers longer windows.
+type TargetsBoardItem = Awaited<ReturnType<typeof fetchAllItems>>[number]
+let targetsBoardCache: { items: TargetsBoardItem[]; fetchedAt: number; inflight: Promise<TargetsBoardItem[]> | null } = {
+  items: [],
+  fetchedAt: 0,
+  inflight: null,
+}
+const TARGETS_BOARD_TTL_MS = 5 * 60 * 1000
+/** Drop the in-process Targets board items cache — used by the refresh button to
+ *  guarantee the next read paginates fresh from Monday. */
+export function invalidateTargetsBoardItems(): void {
+  targetsBoardCache = { items: [], fetchedAt: 0, inflight: null }
+}
+async function getTargetsBoardItems(token: string): Promise<TargetsBoardItem[]> {
+  const fresh = Date.now() - targetsBoardCache.fetchedAt < TARGETS_BOARD_TTL_MS && targetsBoardCache.items.length > 0
+  if (fresh) return targetsBoardCache.items
+  // Coalesce concurrent cold fetches — if two requests land while the board is
+  // being paginated, both await the same promise instead of triggering two
+  // 3-minute parallel scrapes against Monday.
+  if (targetsBoardCache.inflight) return targetsBoardCache.inflight
+  const promise = fetchAllItems(TARGETS_BOARD_ID, token)
+    .then((items) => {
+      targetsBoardCache = { items, fetchedAt: Date.now(), inflight: null }
+      return items
+    })
+    .catch((err) => {
+      targetsBoardCache = { ...targetsBoardCache, inflight: null }
+      throw err
+    })
+  targetsBoardCache.inflight = promise
+  return promise
+}
 const META_AD_ACCOUNT_ID = "act_701293097368776"
 const META_GRAPH_VERSION = "v20.0"
 const HQ_COSTS_MONTHLY = 5000
@@ -208,7 +249,48 @@ export async function fetchMondayTargets(
   closerFilter?: string | null,
 ): Promise<MondayTargetsByCountry> {
   const token = await getMondayToken()
-  const allItems = await fetchAllItems(TARGETS_BOARD_ID, token)
+  // Kick off Stripe NB cross-check in parallel with the Monday board fetch — the two are
+  // independent (Stripe results only join back at the fuzzy-matching step below) so there's
+  // no reason to serialize them. Was the dominant wall-clock cost on this endpoint.
+  const stripeCrossCheckPromise = (async (): Promise<{
+    stripeNewBusinessRevenue: number
+    stripeNewBusinessInvoices: StripeNewBusinessInvoice[]
+  }> => {
+    try {
+      const stripe = await getStripe()
+      const overrides = await loadInvoiceOverrides()
+      const breakdown = await buildInvoiceBreakdown(stripe, startDate, endDate, overrides)
+      const stripeNewBusinessRevenue = breakdown.serviceFeeNewBusiness.invoiced
+
+      // Aggregate per invoice: a single invoice can contribute multiple line items in
+      // `details`. Sum line amounts under the same invoiceId (positive only — credits
+      // are handled by the aggregate above) and emit one row per invoice for the UI.
+      const byInvoice = new Map<string, StripeNewBusinessInvoice>()
+      for (const d of breakdown.details) {
+        if (d.category !== "service_fee" || d.subCategory !== "new_business") continue
+        if (d.amount <= 0) continue // credits land as negative; surface only positive lines
+        const existing = byInvoice.get(d.invoiceId)
+        if (existing) {
+          existing.amount += d.amount
+        } else {
+          byInvoice.set(d.invoiceId, {
+            customerName: d.customerName ?? "Unknown",
+            invoiceNumber: d.invoiceNumber,
+            date: d.date,
+            amount: d.amount,
+            hostedUrl: d.hostedUrl ?? null,
+            matched: false, // filled in below after the fuzzy pairing
+          })
+        }
+      }
+      const stripeNewBusinessInvoices = [...byInvoice.values()].sort((a, b) => b.amount - a.amount)
+      return { stripeNewBusinessRevenue, stripeNewBusinessInvoices }
+    } catch (err) {
+      console.warn("[fetchMondayTargets] Stripe NB cross-check failed:", err instanceof Error ? err.message : String(err))
+      return { stripeNewBusinessRevenue: 0, stripeNewBusinessInvoices: [] }
+    }
+  })()
+  const allItems = await getTargetsBoardItems(token)
   // Today (UTC, YYYY-MM-DD) — used to split closer appointments into past vs future.
   const todayStr = new Date().toISOString().slice(0, 10)
   const filter = closerFilter?.trim() || null
@@ -379,44 +461,10 @@ export async function fetchMondayTargets(
     }
   }
 
-  // Stripe cross-check: pull NB invoices for the period so the UI can flag a gap
-  // between Monday-tracked deals and Stripe-invoiced new business. We INTENTIONALLY
-  // do NOT override `closedRevenue` — that stays Monday-based so the funnel (deals
-  // → revenue) reads from one source. Stripe is shown alongside as a sanity check.
-  // Country attribution is unavailable in Stripe, so only the "all" bucket is filled.
-  let stripeNewBusinessRevenue = 0
-  let stripeNewBusinessInvoices: StripeNewBusinessInvoice[] = []
-  try {
-    const stripe = await getStripe()
-    const overrides = await loadInvoiceOverrides()
-    const breakdown = await buildInvoiceBreakdown(stripe, startDate, endDate, overrides)
-    stripeNewBusinessRevenue = breakdown.serviceFeeNewBusiness.invoiced
-
-    // Aggregate per invoice: a single invoice can contribute multiple line items in
-    // `details`. Sum line amounts under the same invoiceId (positive only — credits
-    // are handled by the aggregate above) and emit one row per invoice for the UI.
-    const byInvoice = new Map<string, StripeNewBusinessInvoice>()
-    for (const d of breakdown.details) {
-      if (d.category !== "service_fee" || d.subCategory !== "new_business") continue
-      if (d.amount <= 0) continue // credits land as negative; surface only positive lines
-      const existing = byInvoice.get(d.invoiceId)
-      if (existing) {
-        existing.amount += d.amount
-      } else {
-        byInvoice.set(d.invoiceId, {
-          customerName: d.customerName ?? "Unknown",
-          invoiceNumber: d.invoiceNumber,
-          date: d.date,
-          amount: d.amount,
-          hostedUrl: d.hostedUrl ?? null,
-          matched: false, // filled in below after the fuzzy pairing
-        })
-      }
-    }
-    stripeNewBusinessInvoices = [...byInvoice.values()].sort((a, b) => b.amount - a.amount)
-  } catch (err) {
-    console.warn("[fetchMondayTargets] Stripe NB cross-check failed:", err instanceof Error ? err.message : String(err))
-  }
+  // Stripe NB cross-check was kicked off in parallel at the top of this function.
+  // Result is country-agnostic — only the "all" bucket gets it. Independent of the
+  // Monday aggregation; only joins back via the fuzzy matcher below.
+  const { stripeNewBusinessRevenue, stripeNewBusinessInvoices } = await stripeCrossCheckPromise
 
   // Bidirectional fuzzy matching between Monday closed deals and Stripe NB invoices.
   // Greedy — sort all candidate pairs by similarity, claim the highest first, never let
@@ -650,16 +698,26 @@ async function buildInvoiceBreakdown(
   }
 
   // New-business detection: a customer with no earlier (non-draft/non-void) invoice is "new" this period.
+  // Parallelized with a worker pool (concurrency 5) — the previous sequential loop was the
+  // dominant cost on /api/targets/monday, ~300ms × N customers serialized end-to-end.
   const customerIds = [...new Set(allInvoices.map((inv) => inv.customer as string).filter(Boolean))]
   const isNewBusinessCustomer = new Map<string, boolean>()
-  for (const customerId of customerIds) {
-    const earlier = await stripe.invoices.list({
-      customer: customerId,
-      created: { lt: startTs },
-      limit: 1,
-    })
-    const hasEarlier = earlier.data.some((inv) => inv.status !== "draft" && inv.status !== "void")
-    isNewBusinessCustomer.set(customerId, !hasEarlier)
+  {
+    const queue = [...customerIds]
+    async function worker() {
+      while (queue.length > 0) {
+        const customerId = queue.shift()
+        if (!customerId) return
+        const earlier = await stripe.invoices.list({
+          customer: customerId,
+          created: { lt: startTs },
+          limit: 1,
+        })
+        const hasEarlier = earlier.data.some((inv) => inv.status !== "draft" && inv.status !== "void")
+        isNewBusinessCustomer.set(customerId, !hasEarlier)
+      }
+    }
+    await Promise.all(Array.from({ length: 5 }, worker))
   }
 
   // For each "new" customer, identify the FIRST invoice they had in this period —

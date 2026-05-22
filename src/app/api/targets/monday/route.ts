@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { cachedHistoricalMonth, getRangeCalendarMonth, isPastCalendarMonth, readCache, writeCache } from "@/lib/cache"
-import { fetchMondayTargets, getMtdRange } from "@/lib/targets/fetchers"
+import { fetchMondayTargets, getMtdRange, invalidateTargetsBoardItems } from "@/lib/targets/fetchers"
 import type { MondayTargetsByCountry } from "@/types/targets"
 
 // Cached entries from before the closers shape existed (qualifiedCalls / upcomingCalls /
@@ -79,7 +79,28 @@ export async function GET(request: Request) {
     }
   }
 
+  // Arbitrary current-period ranges (e.g. "Last 7 days", "1 May – 18 May") miss both
+  // the MTD warm cache above and the historical-month cache. Without this, every load
+  // of a custom range pays the full Monday board fetch + Stripe cross-check (~5–10s).
+  // A short-TTL keyed cache makes repeat loads of the same range instant — and since
+  // multiple users typically land on the same default windows, the second visitor is
+  // free even when the first paid for it.
+  const rangeCacheKey = `targets_monday:${startDate}:${endDate}`
+  const RANGE_CACHE_TTL_MS = 5 * 60 * 1000
+  if (!closer && !forceRefresh) {
+    const cached = await readCache<MondayTargetsByCountry>(rangeCacheKey, RANGE_CACHE_TTL_MS)
+    if (cached && hasFreshSchema(cached)) {
+      return NextResponse.json(cached, {
+        headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
+      })
+    }
+  }
+
   try {
+    // Refresh button explicitly wants fresh data — bust the in-process board items
+    // cache so this request re-paginates from Monday instead of reusing the items
+    // a previous request warmed.
+    if (forceRefresh) invalidateTargetsBoardItems()
     console.log("[targets/monday] live fetch:", { startDate, endDate, closer })
     const result = await fetchMondayTargets(startDate, endDate, closer)
     // Refresh the cron cache when this is the current MTD range, so the next
@@ -87,6 +108,10 @@ export async function GET(request: Request) {
     // Only when no closer filter is active — the cache stores team-wide data.
     if (!closer && startDate === mtd.startDate && endDate === mtd.endDate) {
       void writeCache("targets_marketing_monday", result)
+    }
+    // Also warm the per-range cache so subsequent loads of the same window are instant.
+    if (!closer) {
+      void writeCache(rangeCacheKey, result)
     }
     // Filtered responses must not be cached at any layer — switching closers
     // cycles through them quickly and a stale slice would silently lie. The
