@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw, Link2Off, Clock, BellOff, UserCog, ListTodo, Trash2, Inbox as InboxIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SourcePill } from "./source-pill"
+import { ActionIconButton } from "@/components/ui/action-icon-button"
 import type { InboxItem, TaskStatus } from "@/types/inbox"
 
 export type RowUser = { id: string; name: string | null; email: string }
@@ -509,14 +510,14 @@ function RowActions({
     <div className="flex items-center gap-1 shrink-0" onClick={stop}>
       {isActive ? (
         <>
-          <ActionButton
+          <ActionIconButton
             tone="success"
             label="Mark done"
             onClick={() => onAction("done")}
             icon={<Check className="h-4 w-4" />}
           />
           {isSnoozed ? (
-            <ActionButton
+            <ActionIconButton
               tone="muted"
               label={`Snoozed until ${formatSnoozeLabel(item.snoozedUntil!)} — click to wake`}
               onClick={() => onAction("unsnooze")}
@@ -532,7 +533,7 @@ function RowActions({
               onPick={(assigneeId) => onAction({ type: "reassign", assigneeId })}
             />
           )}
-          <ActionButton
+          <ActionIconButton
             tone="danger"
             label="Delete"
             onClick={() => {
@@ -544,7 +545,7 @@ function RowActions({
           />
         </>
       ) : (
-        <ActionButton
+        <ActionIconButton
           tone="muted"
           label="Reopen"
           onClick={() => onAction("reopen")}
@@ -612,7 +613,7 @@ function ReassignButton({
 
   return (
     <div className="relative" ref={ref}>
-      <ActionButton
+      <ActionIconButton
         tone="muted"
         label="Reassign"
         onClick={() => setOpen((s) => !s)}
@@ -720,7 +721,7 @@ function SnoozeButton({ onPick }: { onPick: (untilIso: string) => void }) {
 
   return (
     <div className="relative" ref={ref}>
-      <ActionButton
+      <ActionIconButton
         tone="muted"
         label="Snooze"
         onClick={() => setOpen((s) => !s)}
@@ -836,41 +837,5 @@ function parseCustomSnooze(input: string): string | null {
   return null
 }
 
-function ActionButton({
-  tone,
-  label,
-  onClick,
-  icon,
-}: {
-  tone: "success" | "danger" | "muted"
-  label: string
-  onClick: () => void
-  icon: React.ReactNode
-}) {
-  // Roy's feedback: "icons wil ik groter en meer opvallend, moet gewoon
-  // duidelijker." Always-on background tint so the buttons aren't
-  // ghost-actions on hover, plus a step up in icon + button size.
-  const cls = {
-    success:
-      "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-700 dark:hover:text-emerald-300 border-emerald-500/20 hover:border-emerald-500/40",
-    danger:
-      "bg-muted/50 text-muted-foreground hover:bg-red-500/15 hover:text-red-600 dark:hover:text-red-400 border-border hover:border-red-500/40",
-    muted:
-      "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground border-border",
-  }[tone]
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className={cn(
-        "h-9 w-9 inline-flex items-center justify-center rounded-md border transition-colors",
-        cls,
-      )}
-    >
-      {icon}
-    </button>
-  )
-}
+// ActionButton moved to src/components/ui/action-icon-button.tsx so the
+// co-pilot bell + future row surfaces share one source of chrome.

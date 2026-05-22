@@ -1,25 +1,40 @@
-import { NextRequest, NextResponse } from "next/server"
+import { after, NextRequest, NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { loadUserMappingsContext, filterClientsByContext } from "@/lib/clients/filter"
+import { broadcastInvalidate } from "@/lib/realtime/broadcast"
 import {
   COPILOT_TOOLS,
   type CopilotAction,
-  type CopilotParseResult,
 } from "@/lib/copilot/tools"
 import { enrichTaskBody } from "@/lib/copilot/enrich"
 import type { CopilotPageContext } from "@/lib/copilot/context"
 
-// Two Haiku round-trips (intent + enrichment) + Hub context fetch. Worst-
-// case ~10-12s; 30s ceiling leaves plenty of headroom.
-export const maxDuration = 30
+/**
+ * Co-pilot async queue.
+ *
+ * The user types a command and hits Enter — this endpoint inserts a
+ * `pending` row into copilot_drafts and returns the id IMMEDIATELY so
+ * the command bar can close (no spinner).
+ *
+ * The actual work (tool-use parse + Hub-context enrichment, 5-10s)
+ * happens in an `after()` callback which keeps the serverless function
+ * alive past the response. When the draft is ready, the row flips to
+ * `ready` and we broadcast a React Query invalidation so the bell
+ * badge bumps without polling.
+ *
+ * Roy 2026-05-22: "I don't want to wait every time I want to dispatch
+ * a task" — this endpoint is the fix for that.
+ */
+
+export const maxDuration = 60
 
 const anthropic = new Anthropic()
 
-type ParseRequestBody = {
+type QueueRequest = {
   input: string
   context: CopilotPageContext
 }
@@ -31,54 +46,108 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id || !session.user.role) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+  const userId = session.user.id
+  const userRole = session.user.role
+  const sessionUserName = session.user.name ?? session.user.email ?? "Me"
 
-  let body: ParseRequestBody
+  let body: QueueRequest
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
-
   const input = body.input?.trim()
   if (!input) {
     return NextResponse.json({ error: "input is required" }, { status: 400 })
   }
 
   const supabase = await createAdminClient()
-  const [usersResult, clientsCache] = await Promise.all([
-    supabase
-      .from("users")
-      .select("id, name, email, role")
-      .order("name", { ascending: true, nullsFirst: false }),
-    readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
-      "monday_boards",
-      60 * 60 * 1000,
-    ),
-  ])
 
-  if (usersResult.error) {
-    return NextResponse.json({ error: usersResult.error.message }, { status: 500 })
+  // Insert the pending draft up-front so the user can navigate away
+  // immediately. The id is the contract the UI uses to find this draft
+  // again once the background work completes.
+  const { data: draftRow, error: insertErr } = await supabase
+    .from("copilot_drafts")
+    .insert({
+      user_id: userId,
+      input,
+      status: "pending",
+    })
+    .select("id")
+    .single()
+
+  if (insertErr || !draftRow) {
+    return NextResponse.json(
+      { error: insertErr?.message ?? "Failed to queue draft" },
+      { status: 500 },
+    )
   }
-  const users: UserRow[] = (usersResult.data ?? []) as UserRow[]
 
-  const boards = clientsCache ?? (await fetchBothBoards())
-  const mappingsContext = await loadUserMappingsContext(session.user.id, session.user.role)
-  const visibleClients = [
-    ...filterClientsByContext(boards.onboarding, mappingsContext),
-    ...filterClientsByContext(boards.current, mappingsContext),
-  ]
-
-  const today = new Date().toISOString().slice(0, 10)
-
-  const systemPrompt = buildSystemPrompt({
-    today,
-    sessionUser: { id: session.user.id, name: session.user.name ?? session.user.email ?? "Me" },
-    users,
-    clients: visibleClients,
-    pageContext: body.context,
+  // Process in background — the response below returns immediately.
+  // `after()` is Next.js 15+ stable and keeps the serverless function
+  // running past the response so the parse + enrich finishes even when
+  // the user closes the tab.
+  after(async () => {
+    await processDraft({
+      draftId: draftRow.id,
+      userId,
+      userRole,
+      sessionUserName,
+      input,
+      pageContext: body.context,
+      supabase,
+    })
   })
 
+  return NextResponse.json({ draftId: draftRow.id, status: "pending" }, { status: 202 })
+}
+
+async function processDraft(args: {
+  draftId: string
+  userId: string
+  userRole: string
+  sessionUserName: string
+  input: string
+  pageContext: CopilotPageContext
+  supabase: Awaited<ReturnType<typeof createAdminClient>>
+}) {
+  const { draftId, userId, userRole, sessionUserName, input, pageContext, supabase } = args
+
   try {
+    // Pull rosters in parallel — same data the sync endpoint loaded.
+    const [usersResult, clientsCache] = await Promise.all([
+      supabase
+        .from("users")
+        .select("id, name, email, role")
+        .order("name", { ascending: true, nullsFirst: false }),
+      readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+        "monday_boards",
+        60 * 60 * 1000,
+      ),
+    ])
+
+    if (usersResult.error) {
+      throw new Error(`users fetch: ${usersResult.error.message}`)
+    }
+    const users: UserRow[] = (usersResult.data ?? []) as UserRow[]
+
+    const boards = clientsCache ?? (await fetchBothBoards())
+    const mappingsContext = await loadUserMappingsContext(userId, userRole)
+    const visibleClients = [
+      ...filterClientsByContext(boards.onboarding, mappingsContext),
+      ...filterClientsByContext(boards.current, mappingsContext),
+    ]
+
+    const today = new Date().toISOString().slice(0, 10)
+
+    const systemPrompt = buildSystemPrompt({
+      today,
+      sessionUser: { id: userId, name: sessionUserName },
+      users,
+      clients: visibleClients,
+      pageContext,
+    })
+
     const message = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
@@ -90,32 +159,22 @@ export async function POST(req: NextRequest) {
 
     const toolUse = message.content.find((c) => c.type === "tool_use")
     if (!toolUse || toolUse.type !== "tool_use") {
-      // Model chose not to call a tool — typically means it needs clarification
-      // or the input wasn't actionable. Return its text as a clarify message.
       const text = message.content.find((c) => c.type === "text")
       const msg =
         text?.type === "text"
           ? text.text.trim()
           : "Ik begrijp niet helemaal wat je wilt. Kun je het iets specifieker formuleren?"
-      const result: CopilotParseResult = { ok: false, reason: "clarify", message: msg }
-      return NextResponse.json(result)
+      await markFailed(supabase, draftId, msg)
+      return
     }
 
     const action = normalizeAction(toolUse.name, toolUse.input as Record<string, unknown>)
     if (!action) {
-      const result: CopilotParseResult = {
-        ok: false,
-        reason: "error",
-        message: `Unknown tool '${toolUse.name}'.`,
-      }
-      return NextResponse.json(result)
+      await markFailed(supabase, draftId, `Unknown tool '${toolUse.name}'.`)
+      return
     }
 
-    // Enrichment pass: when the action is a task tied to a real client,
-    // pull the canonical Hub context bundle (KPI + Monday + Trengo + Pedro
-    // insight + meetings + inbox events) and ask Haiku to rewrite the body
-    // with citations. The original (echoed) body is the fallback if context
-    // is unavailable.
+    // Enrichment pass — only for task creation with a real client.
     let sourcesUsed: string[] = []
     if (action.type === "create_task" && action.clientId) {
       const client = visibleClients.find((c) => c.mondayItemId === action.clientId)
@@ -138,17 +197,44 @@ export async function POST(req: NextRequest) {
     }
 
     const summary = describeAction(action, users, visibleClients)
-    const result: CopilotParseResult = { ok: true, action, summary, sourcesUsed }
-    return NextResponse.json(result)
+
+    await supabase
+      .from("copilot_drafts")
+      .update({
+        status: "ready",
+        draft_action: action,
+        summary,
+        sources_used: sourcesUsed,
+        ready_at: new Date().toISOString(),
+      })
+      .eq("id", draftId)
+
+    // Bump every open tab's bell badge.
+    await broadcastInvalidate(["copilot-drafts"])
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Parse failed"
-    console.error("Copilot parse error:", msg)
-    return NextResponse.json(
-      { ok: false, reason: "error", message: msg } satisfies CopilotParseResult,
-      { status: 500 },
-    )
+    const msg = e instanceof Error ? e.message : "Processing failed"
+    console.error("[copilot/queue] processDraft failed:", msg)
+    await markFailed(supabase, draftId, msg)
   }
 }
+
+async function markFailed(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  draftId: string,
+  error: string,
+) {
+  await supabase
+    .from("copilot_drafts")
+    .update({
+      status: "failed",
+      error,
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", draftId)
+  await broadcastInvalidate(["copilot-drafts"])
+}
+
+// ─── Helpers (mirrors the legacy /api/copilot/parse route) ─────────────────
 
 function buildSystemPrompt(args: {
   today: string

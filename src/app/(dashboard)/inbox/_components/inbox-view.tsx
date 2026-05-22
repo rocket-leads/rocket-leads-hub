@@ -36,7 +36,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { InboxListRow, type RowAction } from "./inbox-list-row"
 import { ComposerDialog } from "./composer-dialog"
 import { ItemDetailDialog } from "./item-detail-dialog"
-import { ChatPane, ThreadView } from "./chat-pane"
+import { ChatPane, ThreadView, SourceIcon, fmtRelative } from "./chat-pane"
 import type { ChatThreadSummary } from "@/lib/inbox/fetchers"
 import { CommunicationTab } from "@/app/(dashboard)/clients/[id]/_components/communication-tab"
 import { MeetingsTab } from "@/app/(dashboard)/clients/[id]/_components/meetings-tab"
@@ -677,12 +677,12 @@ export function InboxView({
   const isNowTab = activeTab === "now"
 
   // Unified detail surface: every tab (Now / Tasks / Updates / Client Inbox)
-  // opens its detail inline as a 50/50 split inside the tab's content
-  // area on xl+. The list compresses to the left half, the detail renders
-  // in the right half, no gap, merged borders — email-client style. Below
-  // xl, ItemDetailDialog falls back to its overlay slide-over and the list
-  // stays full-width. The helpers below enforce "only one detail open at
-  // a time" so the right column always knows which surface to render.
+  // opens its detail as a right-side slide-in panel on xl+ screens. The
+  // list area compresses on the left so the AM can keep jumping from row
+  // to row without closing the open ticket — no inline grid recompute =
+  // no layout shake when switching tickets. Below xl, ItemDetailDialog
+  // falls back to its modal slide-over with backdrop.
+  const showDockedPane = detailItem !== null || selectedThread !== null
 
   // Close helpers. Opening a task closes any open thread and vice versa
   // (one detail surface at a time) so the user never has two open detail
@@ -701,12 +701,11 @@ export function InboxView({
     setSelectedThread(null)
   }
 
-  /** Right column of the inline 50/50 split. Picks the surface based on
+  /** Content of the docked slide-in panel. Picks the surface based on
    *  what's open: a Task/Update detail (ItemDetailDialog) or a chat thread
    *  (ThreadView). Mutually exclusive — see openDetailItem / openThread.
-   *  Returns null when neither is open so callers can decide whether to
-   *  render the split at all. */
-  function renderInlineDetail(): React.ReactNode {
+   *  The wrapping <aside> below provides positioning + slide-in animation. */
+  function renderDockedContent(): React.ReactNode {
     if (detailItem) {
       return (
         <ItemDetailDialog
@@ -716,55 +715,42 @@ export function InboxView({
           onClose={closeDock}
           onChanged={refreshAll}
           mode="docked"
-          mergedLeftEdge
         />
       )
     }
     if (selectedThread) {
       return (
-        <ThreadView
-          thread={selectedThread}
-          users={users}
-          onMakeTaskFromMessage={openComposerFromChat}
-          onReplied={() => {
-            queryClient.invalidateQueries({ queryKey: ["inbox-threads", "external"] })
-            queryClient.invalidateQueries({
-              queryKey: ["inbox-thread", selectedThread.threadKey],
-            })
-          }}
-          mergedLeftEdge
-        />
+        <div className="relative flex h-full flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
+          <button
+            type="button"
+            onClick={closeDock}
+            aria-label="Close"
+            className="absolute top-4 right-4 z-10 h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors outline-none"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ThreadView
+              thread={selectedThread}
+              users={users}
+              onMakeTaskFromMessage={openComposerFromChat}
+              onReplied={() => {
+                queryClient.invalidateQueries({ queryKey: ["inbox-threads", "external"] })
+                queryClient.invalidateQueries({
+                  queryKey: ["inbox-thread", selectedThread.threadKey],
+                })
+              }}
+            />
+          </div>
+        </div>
       )
     }
     return null
   }
 
-  /** Wrap a tab's list area in the 50/50 inline-detail split when a detail
-   *  is open. The list stays on the left and the detail renders on the
-   *  right with no gap, mirroring the Client Inbox layout. Below xl the
-   *  list is shown full-width and ItemDetailDialog falls back to its
-   *  overlay slide-over (rendered separately at the bottom of the view).
-   *
-   *  `allowThread` is opt-in per tab — Tasks/Updates only want the task
-   *  detail surface, while Now also surfaces chat threads inline.
-   *
-   *  Height calc uses `dvh` so mobile browser chrome doesn't push the
-   *  panel below the fold. 400px offset covers the page header, inbox
-   *  H1, main tabs, filter sub-tabs, source chips and quick-add bar —
-   *  the chrome above the list on Tasks/Updates. */
-  function withInlineDetail(list: React.ReactNode, allowThread: boolean): React.ReactNode {
-    const right = detailItem || (allowThread && selectedThread) ? renderInlineDetail() : null
-    if (!right) return list
-    return (
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-0 xl:h-[calc(100dvh-400px)] xl:min-h-[500px]">
-        <div className="xl:overflow-y-auto xl:pr-3 space-y-1.5 min-w-0">{list}</div>
-        <div className="hidden xl:block min-w-0">{right}</div>
-      </div>
-    )
-  }
-
   return (
-    <div className="space-y-6">
+    <div className="flex gap-6 items-start">
+      <div className={cn("flex-1 min-w-0 space-y-6", showDockedPane && "xl:max-w-[calc(100%-560px)]")}>
       <div className="flex items-end justify-between gap-4">
         <h1 className="font-heading text-[28px] font-semibold tracking-tight leading-tight text-foreground">{t("inbox.title", locale)}</h1>
         <div className="flex items-center gap-2">
@@ -851,12 +837,9 @@ export function InboxView({
             }}
             onJumpToTab={(tab) => setActiveTab(tab)}
             onOpenItem={openDetailItem}
-            // Chat click opens the thread IN the Now tab's right column
-            // (no tab switch) so the AM never loses context. Same email-
-            // client split as Tasks/Updates/Client Inbox — Roy: gelijke UX
-            // voor alle ticket-typen.
+            // Chat click opens the thread in the page-level slide-in aside
+            // — same UX as Tasks/Updates. No tab switch, no layout shake.
             onOpenThread={openThread}
-            inlineDetail={renderInlineDetail()}
           />
         )}
 
@@ -880,22 +863,21 @@ export function InboxView({
               currentUserId={currentUser.id}
               onCreated={refreshAll}
             />
-            {withInlineDetail(
-              tasksQuery.isLoading ? (
-                <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
-              ) : tasks.length === 0 ? (
-                <EmptyState
-                  text={
-                    taskFilter === "all"
-                      ? t("inbox.empty.tasks_none", locale)
-                      : t("inbox.empty.tasks_filtered", locale, {
-                          filter: (TASK_FILTERS.find((f) => f.id === taskFilter)?.label ?? "").toLowerCase(),
-                          assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
-                        })
-                  }
-                  onCreate={() => openComposer("task")}
-                />
-              ) : (
+            {tasksQuery.isLoading ? (
+              <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
+            ) : tasks.length === 0 ? (
+              <EmptyState
+                text={
+                  taskFilter === "all"
+                    ? t("inbox.empty.tasks_none", locale)
+                    : t("inbox.empty.tasks_filtered", locale, {
+                        filter: (TASK_FILTERS.find((f) => f.id === taskFilter)?.label ?? "").toLowerCase(),
+                        assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
+                      })
+                }
+                onCreate={() => openComposer("task")}
+              />
+            ) : (
               <GroupedTasks
                 tasks={tasks}
                 showClient={!lockedClient}
@@ -971,8 +953,6 @@ export function InboxView({
                   }
                 }}
               />
-              ),
-              false,
             )}
           </>
         )}
@@ -1009,25 +989,24 @@ export function InboxView({
               currentUserId={currentUser.id}
               onCreated={refreshAll}
             />
-            {withInlineDetail(
-              updatesQuery.isLoading ? (
-                <EmptyState text={t("inbox.empty.updates_loading", locale)} />
-              ) : updates.length === 0 ? (
-                <EmptyState
-                  text={
-                    updateFilter === "all"
-                      ? t("inbox.empty.updates_none", locale)
-                      : t("inbox.empty.updates_filtered", locale, {
-                          filter:
-                            updateFilter === "unread"
-                              ? t("inbox.update.filter.unread_lower", locale)
-                              : t("inbox.update.filter.read_lower", locale),
-                          assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
-                        })
-                  }
-                  onCreate={() => openComposer("update")}
-                />
-              ) : (
+            {updatesQuery.isLoading ? (
+              <EmptyState text={t("inbox.empty.updates_loading", locale)} />
+            ) : updates.length === 0 ? (
+              <EmptyState
+                text={
+                  updateFilter === "all"
+                    ? t("inbox.empty.updates_none", locale)
+                    : t("inbox.empty.updates_filtered", locale, {
+                        filter:
+                          updateFilter === "unread"
+                            ? t("inbox.update.filter.unread_lower", locale)
+                            : t("inbox.update.filter.read_lower", locale),
+                        assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
+                      })
+                }
+                onCreate={() => openComposer("update")}
+              />
+            ) : (
               <GroupedUpdates
                 updates={updates}
                 showClient={!lockedClient}
@@ -1078,8 +1057,6 @@ export function InboxView({
                   }
                 }}
               />
-              ),
-              false,
             )}
           </>
         )}
@@ -1140,11 +1117,9 @@ export function InboxView({
         }}
       />
 
-      {/* Below-xl fallback: a Task/Update detail is shown as the original
-          right-side slide-over with a backdrop. The xl+ docked surface is
-          rendered inline inside each tab's content area (see Tasks /
-          Updates / Now branches above) — single visual language across all
-          tabs, list on the left, detail on the right, no floating panels. */}
+      {/* Below-xl fallback: a Task/Update detail still uses the original
+          right-side slide-over with a backdrop. On xl+ the docked aside
+          below renders alongside the list (slide-in panel, no backdrop). */}
       {detailItem && (
         <div className="xl:hidden">
           <ItemDetailDialog
@@ -1159,6 +1134,25 @@ export function InboxView({
       )}
 
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      </div>
+
+      {/* Docked slide-in aside — xl+ only. Sibling of the inbox content
+          column so the list visibly compresses (rather than being hidden
+          under a floating panel). Sticky positioning + own internal scroll
+          so the detail follows the page as the user scrolls the list.
+          Slide-in animation on mount via tailwindcss-animate. */}
+      {showDockedPane && (
+        <aside
+          className={cn(
+            "hidden xl:block shrink-0 w-[540px] self-stretch",
+            "animate-in slide-in-from-right duration-150 ease-out",
+          )}
+        >
+          <div className="sticky top-[72px] h-[calc(100vh-96px)]">
+            {renderDockedContent()}
+          </div>
+        </aside>
+      )}
     </div>
   )
 }
@@ -2985,7 +2979,6 @@ function NowFeed({
   onJumpToTab,
   onOpenItem,
   onOpenThread,
-  inlineDetail,
 }: {
   currentUserId: string
   users: InboxUser[]
@@ -2997,13 +2990,9 @@ function NowFeed({
    *  the AM can drill into the relevant queue from the Now summary. */
   onJumpToTab: (tab: "tasks" | "updates" | "client-inbox") => void
   onOpenItem: (item: InboxItem) => void
-  /** Open a chat thread in the right column of the Now tab (no tab switch).
-   *  Roy: unified UX — any ticket opens to the right of where it was
-   *  clicked, never a tab jump. */
+  /** Open a chat thread. The parent renders ThreadView in the page-level
+   *  slide-in aside — same UX as Tasks/Updates. No tab switch. */
   onOpenThread: (thread: ChatThreadSummary) => void
-  /** Right-column content for the 50/50 split. Null when no detail is
-   *  open; the sections list then takes full width. */
-  inlineDetail: React.ReactNode
 }) {
   const locale = useLocale()
   const POLL_MS = 15 * 1000
@@ -3172,7 +3161,7 @@ function NowFeed({
           icon={CalendarDays}
           label={t("inbox.now.section.today", locale)}
           count={today.length}
-          tone="amber"
+          tone="muted"
         >
           {today.map((item) => (
             <InboxListRow
@@ -3192,7 +3181,7 @@ function NowFeed({
           icon={InboxIcon}
           label={t("inbox.now.section.unread_inbox", locale)}
           count={unreadFeed.length}
-          tone="sky"
+          tone="muted"
         >
           {unreadFeed.map((entry) =>
             entry.kind === "update" ? (
@@ -3217,22 +3206,12 @@ function NowFeed({
     </div>
   )
 
-  // Body: either the sections list (when nothing is open) or a 50/50 grid
-  // mirroring the email-client split used by Client Inbox / Tasks / Updates.
-  // Below xl the detail surface falls back to the overlay slide-over, so we
-  // render the sections list full-width.
-  //
-  // Height calc on Now is more aggressive (~360px) than the Tasks/Updates
-  // split because the summary cards above the body eat an extra row of
-  // vertical space — without it the right column would end well before
-  // the page bottom while the left list scrolled past it.
+  // Body: sections list (full width). When the AM opens a ticket the
+  // parent (inbox-view) renders the page-level slide-in aside alongside —
+  // the list area itself shrinks via the outer flex layout, no inline
+  // grid recompute (no layout shake when jumping between rows).
   const body =
-    inlineDetail ? (
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-0 xl:h-[calc(100dvh-360px)] xl:min-h-[500px]">
-        <div className="xl:overflow-y-auto xl:pr-3 min-w-0">{sectionsList}</div>
-        <div className="hidden xl:block min-w-0">{inlineDetail}</div>
-      </div>
-    ) : totalCount === 0 && loading ? (
+    totalCount === 0 && loading ? (
       <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
     ) : totalCount === 0 ? (
       <div className="border border-dashed border-border/60 rounded-lg p-12 text-center bg-card/30">
@@ -3421,50 +3400,74 @@ function NowChatCard({
   onOpen: () => void
   openLabel: string
 }) {
+  // Mirrors the visual structure of ThreadRow in Client Inbox so chat
+  // tickets read identically across the inbox — Roy: "geen dubbel
+  // tekstwolkje en CLIENT chip; gewoon WhatsApp-icoontje zoals bij
+  // Client Inbox". Card wrapper (border + bg) is kept here because in Now
+  // the row sits inline with task/update cards, where the eye expects a
+  // card; inside Client Inbox the same content sits in a single outer
+  // list card with dividers between rows.
+  const isUnread = thread.unreadCount > 0
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
       title={openLabel}
-      className="group relative w-full text-left rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all pl-6 pr-5 py-4 overflow-hidden"
+      className="group relative w-full text-left rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all px-4 py-3 overflow-hidden cursor-pointer"
     >
-      {/* Emerald rail — the "Client" type colour. Matches the type rail
-          system used by InboxListRow for Tasks (violet) and Updates (sky),
-          so the three kinds form one consistent visual language across
-          the Now feed and the individual tabs. */}
-      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />
-      <div className="flex items-start gap-3">
-        <span className="h-9 w-9 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-          <MessageCircle className="h-4 w-4" />
-        </span>
+      {/* Left-edge unread bar — same convention as ThreadRow in Client
+          Inbox. Hairline (w-0.5) so it doesn't compete with row content. */}
+      {isUnread && (
+        <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-primary" aria-hidden />
+      )}
+      <div className="flex items-start gap-2.5">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Type chip — symmetric with the Task/Update chips on
-                InboxListRow. Stays "Client" rather than "Chat" because
-                that's what Roy refers to this lane as ("client inbox
-                tickets"); reads naturally next to the client name. */}
-            <span
-              className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0"
-              title="Client"
-            >
-              <MessageCircle className="h-3 w-3" />
-              Client
-            </span>
-            <span className="text-[15px] font-semibold truncate">
-              {thread.clientName ?? thread.primaryName}
-            </span>
-            {thread.clientName && thread.clientName !== thread.primaryName && (
-              <span className="text-xs text-muted-foreground/80">via {thread.primaryName}</span>
+          <div className="flex items-start justify-between gap-2 mb-0.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <SourceIcon thread={thread} />
+              <span
+                className={cn(
+                  "text-sm truncate",
+                  isUnread ? "font-semibold text-foreground" : "font-medium text-foreground/90",
+                )}
+              >
+                {thread.primaryName}
+              </span>
+              {/* No ChannelBadge here — SourceIcon already encodes the
+                  channel (WhatsApp brand, email icon, Slack purple, …)
+                  so repeating "WhatsApp" as a text pill is dubbel-op. */}
+            </div>
+            {thread.unreadCount > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums shrink-0">
+                {thread.unreadCount}
+              </span>
             )}
-            <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 tabular-nums">
-              {thread.unreadCount} unread
-            </span>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground/90 line-clamp-2">
-            {thread.latestPreview}
+          {thread.clientName && (
+            <p className="text-[10px] text-muted-foreground/70 truncate mb-1">
+              {thread.clientName}
+            </p>
+          )}
+          <p
+            className={cn(
+              "text-[11px] truncate leading-snug",
+              isUnread ? "text-foreground/80" : "text-muted-foreground/80",
+            )}
+          >
+            {thread.latestPreview || <span className="italic">No preview</span>}
+          </p>
+          <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+            {fmtRelative(thread.latestAt)}
           </p>
         </div>
       </div>
-    </button>
+    </div>
   )
 }

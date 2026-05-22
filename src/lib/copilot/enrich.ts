@@ -98,26 +98,44 @@ ${contextBlock}
 
 ═══ INSTRUCTIES ═══
 
-Schrijf een task body (3-6 regels, Nederlands, geen markdown, geen bullets) die uitlegt WAAROM deze taak nu nodig is, met SPECIFIEKE cijfers en quotes uit de context hierboven:
+Schrijf een task body die scanbaar is in 5 seconden. Gebruik DEZE EXACTE structuur:
 
-1. EERSTE regel = de hoofdreden met een concreet getal of feit (bijv. "CPL gestegen van €23 (prev 7d) naar €38 (7d), +65%")
-2. TWEEDE regel (en evt. derde) = ondersteunende observaties uit andere bronnen — citeer letterlijk waar relevant ("Klant zei via WhatsApp (datum): '...'" of "Pedro AI Note (datum): '...'")
-3. LAATSTE regel (optioneel) = wat de assignee concreet moet doen om de instructie van de gebruiker uit te voeren
+Waarom:
+• [hoofdreden — concrete getal met tijdvenster label, bijv. "CPL €38 (7d) vs €23 (prev 7d), +65%"]
+• [ondersteunende observatie uit Pedro / Monday / Trengo — citeer letterlijk met datum]
+• [evt. derde bullet, max 4 in deze sectie]
 
-VERPLICHT:
-- Label élk getal met tijdvenster: (7d) / (14d) / (30d) / (prev 7d) / (all-time)
-- Citeer bronnen letterlijk wanneer je een claim uit Monday/Trengo/Pedro overneemt
-- Gebruik ALLEEN cijfers/quotes die in de context hierboven staan
-- Houd het bondig — 3-6 regels max, lopende tekst met newlines
+Volgende stap:
+• [wat de assignee concreet moet doen]
+• [evt. tweede bullet]
+
+REGELS:
+- Gebruik LETTERLIJK de "•" karakter voor bullets (NIET "-", NIET "*", NIET "1.")
+- Lege regel tussen "Waarom:" sectie en "Volgende stap:" sectie
+- Section labels eindigen met ":" en staan op een eigen regel
+- Elk getal MOET een tijdvenster label krijgen: (7d) / (14d) / (30d) / (prev 7d) / (all-time)
+- Citeer Pedro / Monday / Trengo letterlijk wanneer relevant, mét datum
+- Gebruik ALLEEN cijfers/quotes uit de context hierboven — niets verzinnen
+- Houd elke bullet kort: max 20 woorden
 
 VERBODEN:
-- Geen verzonnen cijfers
+- Geen markdown headers (#, ##), bold (**), of italic (*)
 - Geen budget-verhoging adviezen (klanten zitten op vast budget)
-- Geen markdown headers, bullets of bold
 - Geen "Hi [naam]" — dit is een inbox taak, geen mail
 - Niet de taak titel herhalen
+- Geen "Waarom:" of "Volgende stap:" zonder bullets eronder
 
-Geef ALLEEN de body terug. Geen JSON, geen wrapping, geen preamble.`
+Geef ALLEEN de body terug. Geen JSON, geen wrapping, geen preamble.
+
+VOORBEELD output (vorm — niet inhoud kopiëren):
+Waarom:
+• CPL €38 (7d) vs €23 (prev 7d), +65% — well boven 25% noise threshold
+• Pedro AI Note (2026-05-19): "Photo 2 | Pricelist heeft 6/8 'geen budget' replies"
+• Monday updates (14d) bevestigen patroon op UTM photo-2-pricelist
+
+Volgende stap:
+• Pauzeer Photo 2 | Pricelist en push budget naar Video 3 | Subsidie
+• Lanceer 3 nieuwe varianten op subsidie-angle deze week`
 
   try {
     const message = await anthropic.messages.create({

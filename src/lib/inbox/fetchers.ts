@@ -645,6 +645,47 @@ function deriveThreadName(threadKey: string, fallback: string): string {
   return fallback
 }
 
+/**
+ * Best-effort extractor for the recipient name from an outbound greeting.
+ *
+ * Roy: our outbound WhatsApp templates always open with "Ha {Name}, ..."
+ * (or "Hoi", "Hi", "Hallo", "Hey"). For threads where the lead hasn't
+ * replied yet, the Trengo contact is just our own WhatsApp Business
+ * display ("Team") and `author_name_cached` doesn't carry the real
+ * recipient — so the inbox list showed "Team" for every row. By parsing
+ * the greeting we can surface the actual recipient ("Patrick") without
+ * waiting on a manual contact-to-client link.
+ *
+ * Conservative regex: requires a capitalised first letter, length 2–30,
+ * optionally a second word, followed by a punctuation/newline terminator.
+ * Returns null on no match so callers can fall back cleanly.
+ */
+const GREETING_RE =
+  /^\s*(?:Ha|Hoi|Hi|Hallo|Hey|Hé)\s+([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\-']{1,29}(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ\-']{1,29})?)\s*[,!.\n]/
+function extractRecipientFromGreeting(body: string | null | undefined): string | null {
+  if (!body) return null
+  const match = body.match(GREETING_RE)
+  if (!match) return null
+  const captured = match[1].trim()
+  // Reject obvious non-names that occasionally slip through ("There",
+  // "Everyone", etc.). Tiny stop-list — we'd rather miss-match and show
+  // the generic name than confidently assign the wrong recipient.
+  const STOP = new Set([
+    "there", "everyone", "team", "all", "guys", "people", "iedereen", "team",
+  ])
+  if (STOP.has(captured.toLowerCase())) return null
+  return captured
+}
+
+/** True when the resolved thread display name is the WhatsApp Business
+ *  account's own display ("Team") or our generic fallback. Used as the
+ *  trigger to fall back to greeting extraction. */
+function isGenericThreadName(name: string): boolean {
+  if (name === "Team" || name === "Unknown") return true
+  if (/^team\b/i.test(name)) return true
+  return false
+}
+
 export async function listChatThreads(
   userId: string,
   role: Role,
@@ -734,7 +775,23 @@ export async function listChatThreads(
     )
     const fallbackName =
       externalAuthor?.author_name_cached ?? latest.author_name_cached ?? "Unknown"
-    const primaryName = deriveThreadName(threadKey, fallbackName)
+    let primaryName = deriveThreadName(threadKey, fallbackName)
+
+    // If the resolved name is the generic "Team" (our WhatsApp Business
+    // display for outbound-only threads), try to surface the actual
+    // recipient by parsing the templated greeting in any message body in
+    // this thread. We walk through threadRows (DESC by created_at) so the
+    // most-recently-sent greeting wins on the off-chance there are
+    // multiple outbound openings. Roy: no more "Team / Team / Team" rows.
+    if (isGenericThreadName(primaryName)) {
+      for (const r of threadRows) {
+        const candidate = extractRecipientFromGreeting(r.body)
+        if (candidate) {
+          primaryName = candidate
+          break
+        }
+      }
+    }
     const clientName = latest.client_id
       ? clientMap.get(latest.client_id)?.name ?? null
       : null

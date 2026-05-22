@@ -730,19 +730,13 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
   )
 
   if (mode === "docked") {
-    // Docked variant: rendered inline inside the inbox layout as a flex
-    // column. No portal, no backdrop — the list stays interactive next to
-    // the open ticket. Parent owns positioning (sticky/height); we only
-    // own the background + border so the pane looks like a card. When
-    // `mergedLeftEdge` is set, the left side butts up against the list so
-    // the radius + border on that edge are removed.
+    // Docked variant: a self-contained card filling its parent. The parent
+    // (page-level aside in inbox-view) owns positioning, slide-in
+    // animation and viewport height; this component just renders the
+    // bordered card. No backdrop — the list next to the aside stays
+    // interactive, so the AM can jump from row to row without closing.
     return (
-      <div
-        className={cn(
-          "relative flex h-full flex-col border border-border bg-background shadow-sm overflow-hidden",
-          mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl",
-        )}
-      >
+      <div className="relative flex h-full flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
         {body}
       </div>
     )

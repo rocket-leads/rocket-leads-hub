@@ -281,19 +281,15 @@ export function ChatPane({
           height regardless of screen size, and prevents the prior "sidebar
           stops halfway down the page" UX bug. The 280px subtraction covers
           page header + main tabs + filter tabs + spacing.
-          In docked-detail mode (xl+ Client Inbox) the grid flips to a 50/50
-          split with no gap — Roy wants the list + thread view to read as
-          one continuous panel (email-client style), not two floating boxes.
-          The merged-edge styling (no rounded inside corners, single shared
-          border) is owned by the children's wrappers below. */}
+          In docked-detail mode the right column is dropped entirely — the
+          thread list takes the full width here, and the selected thread's
+          ThreadView is rendered by the parent (inbox-view) inside its
+          page-level slide-in aside. Same UX as Tasks/Updates/Now: list on
+          the left, slide-in detail on the right, no inline column shifts. */}
       <div
         className={cn(
           "grid grid-cols-1 h-[calc(100vh-280px)] min-h-[500px]",
-          dockedDetail
-            ? // 50/50 split, no gap — children handle the border seam.
-              "lg:grid-cols-2 gap-0"
-            : // Legacy internal split with breathing room.
-              "lg:grid-cols-[360px_1fr] gap-4",
+          dockedDetail ? "" : "lg:grid-cols-[360px_1fr] gap-4",
         )}
       >
         <ThreadList
@@ -308,15 +304,15 @@ export function ChatPane({
           onClearSelection={clearSelection}
           onMarkThread={markThread}
           scope={scope}
-          mergedRightEdge={dockedDetail}
         />
-        <ThreadView
-          thread={selected}
-          onReplied={refresh}
-          users={users}
-          onMakeTaskFromMessage={onMakeTaskFromMessage}
-          mergedLeftEdge={dockedDetail}
-        />
+        {!dockedDetail && (
+          <ThreadView
+            thread={selected}
+            onReplied={refresh}
+            users={users}
+            onMakeTaskFromMessage={onMakeTaskFromMessage}
+          />
+        )}
       </div>
 
       {selectedKeys.size > 0 && (
@@ -545,7 +541,10 @@ function ThreadRow({
               >
                 {thread.primaryName}
               </span>
-              <ChannelBadge thread={thread} />
+              {/* No ChannelBadge here — the SourceIcon already encodes the
+                  channel (WhatsApp brand, email mail icon, Slack purple,
+                  …) so repeating the channel name as a text pill was
+                  pure visual noise. Roy: dubbel-op. */}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {/* Hover-revealed mark read/unread toggle. Stops propagation so
@@ -573,9 +572,13 @@ function ThreadRow({
               )}
             </div>
           </div>
-          {(thread.clientName || thread.channelName) && (
+          {/* Subtitle line: only show the client name when the thread is
+              actually linked. Previously fell back to `channelName` which
+              is just the channel owner ("Roy Vosters") for our setup —
+              repeats info the AM already knows and clutters the row. */}
+          {thread.clientName && (
             <p className="text-[10px] text-muted-foreground/70 truncate mb-1">
-              {thread.clientName ?? thread.channelName}
+              {thread.clientName}
             </p>
           )}
           <p
@@ -2510,7 +2513,7 @@ function MakeTaskInlineButton({ onClick }: { onClick: () => void }) {
  *  (brand-green logo) vs email (blue mail) vs other Trengo channels (cyan
  *  chat) so it's instantly clear which medium a thread came in on — Roy's
  *  spec. Slack and Monday keep their existing single-icon treatment. */
-function SourceIcon({ thread }: { thread: ChatThreadSummary }) {
+export function SourceIcon({ thread }: { thread: ChatThreadSummary }) {
   if (thread.source === "trengo") {
     if (thread.channelKind === "whatsapp") {
       return (
@@ -2538,7 +2541,7 @@ function SourceIcon({ thread }: { thread: ChatThreadSummary }) {
 
 /** Compact text badge showing the channel medium. Sits next to the icon in
  *  the row + header so users can see "WhatsApp" / "Email" without hovering. */
-function ChannelBadge({ thread }: { thread: ChatThreadSummary }) {
+export function ChannelBadge({ thread }: { thread: ChatThreadSummary }) {
   if (thread.source !== "trengo" || !thread.channelKind || thread.channelKind === "other") {
     return null
   }
@@ -2556,7 +2559,7 @@ function ChannelBadge({ thread }: { thread: ChatThreadSummary }) {
 
 // --- Date helpers --------------------------------------------------------
 
-function fmtRelative(iso: string): string {
+export function fmtRelative(iso: string): string {
   const d = new Date(iso)
   const now = new Date()
   const diffMs = now.getTime() - d.getTime()

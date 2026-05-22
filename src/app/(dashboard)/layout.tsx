@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/sidebar"
 import { Providers } from "@/components/providers"
 import { ClientSearch } from "@/components/client-search"
 import { CommandBar } from "@/components/copilot/command-bar"
+import { NotificationBell } from "@/components/copilot/notification-bell"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,6 +18,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               client slide-over (z-50) so the panel still covers it. */}
           <header className="sticky top-0 z-40 flex h-14 items-center justify-end gap-2 px-8 bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/65">
             <CommandBar />
+            <NotificationBell />
             <ClientSearch />
           </header>
           {/* Page padding rhythm: pt-2 (header gives breathing room) and pb-10

@@ -147,3 +147,23 @@ export type CopilotParseResult =
   | CopilotParseSuccess
   | CopilotParseClarify
   | CopilotParseError
+
+/** Lifecycle of a draft as stored in copilot_drafts. */
+export type CopilotDraftStatus = "pending" | "ready" | "approved" | "dismissed" | "failed"
+
+/** Shape returned by /api/copilot/drafts (camelCased from the DB row). */
+export type CopilotDraft = {
+  id: string
+  input: string
+  status: CopilotDraftStatus
+  /** Null while status='pending' or if processing failed before tool-use returned. */
+  draftAction: CopilotAction | null
+  /** Null while status='pending'. */
+  summary: string | null
+  sourcesUsed: string[]
+  /** Populated when status='failed'. */
+  error: string | null
+  createdAt: string
+  readyAt: string | null
+  completedAt: string | null
+}
