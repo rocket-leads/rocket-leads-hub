@@ -402,9 +402,12 @@ input[type="number"] {
   height: auto;
   min-height: 4.5rem;
   padding: 0.5rem 0.875rem;
-  resize: none; /* Auto-grow handles sizing — no drag handle */
+  /* !important needed because browser default ships resize: vertical on
+     <textarea> and was winning the cascade despite the more-specific
+     selector. */
+  resize: none !important;
   line-height: 1.5;
-  field-sizing: content; /* Chromium + Safari: auto-grow to content */
+  field-sizing: content; /* Chromium + Safari 17.4+: auto-grow to content */
 }
 .pedro-root input:focus-visible,
 .pedro-root textarea:focus-visible,
