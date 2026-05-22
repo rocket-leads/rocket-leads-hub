@@ -48,8 +48,10 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
   const queryKey = ["campaigns", mondayItemId]
 
   // Optimistically flip the selection in the React Query cache so the
-  // UI updates instantly, then fire the POST in the background.
+  // UI updates instantly. Returns the snapshot so the mutation can roll
+  // back on failure without losing concurrent edits the user made.
   function applyOptimistic(targetIds: Set<string>, isSelected: boolean) {
+    const previous = queryClient.getQueryData<{ campaigns: CampaignWithSelection[] }>(queryKey)
     queryClient.setQueryData<{ campaigns: CampaignWithSelection[] }>(queryKey, (old) => {
       if (!old) return old
       return {
@@ -59,36 +61,84 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         ),
       }
     })
+    return previous
   }
 
-  function toggleCampaign(campaign: CampaignWithSelection) {
+  // Roy 2026-05-22 bug: clicking a campaign sometimes appeared to
+  // un-click itself. Two reasons combined:
+  //
+  //   1. The GET response carried a `Cache-Control: s-maxage=60`
+  //      header so the refetch after a POST occasionally served the
+  //      pre-click cached body — overwriting the optimistic state.
+  //   2. The POST handler never checked Supabase's upsert error, so a
+  //      silent constraint / RLS failure returned ok:true while the
+  //      DB hadn't actually written — and the next GET read the OLD
+  //      state, again overwriting the optimistic UI.
+  //
+  // Both server-side issues are fixed. On this client side we also
+  // stop blindly refetching after every toggle: the optimistic update
+  // IS the source of truth for the row's selected flag, and the GET
+  // only adds server-computed extras (auto-select rows, isSuggested
+  // badges) that don't change on each individual click. We still
+  // surface the error path so a failed POST visibly rolls back.
+  async function postSelection(
+    targets: Array<{ campaignId: string; campaignName: string; isSelected: boolean }>,
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const res = await fetch(`/api/clients/${mondayItemId}/campaigns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          targets.length === 1
+            ? targets[0]
+            : { campaigns: targets },
+        ),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        return { ok: false, error: data?.error ?? `HTTP ${res.status}` }
+      }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Network error" }
+    }
+  }
+
+  async function toggleCampaign(campaign: CampaignWithSelection) {
     const next = !campaign.isSelected
-    applyOptimistic(new Set([campaign.id]), next)
-    void fetch(`/api/clients/${mondayItemId}/campaigns`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        campaignId: campaign.id,
-        campaignName: campaign.name,
-        isSelected: next,
-      }),
-    }).finally(onSelectionChange)
+    const snapshot = applyOptimistic(new Set([campaign.id]), next)
+    const result = await postSelection([
+      { campaignId: campaign.id, campaignName: campaign.name, isSelected: next },
+    ])
+    if (!result.ok) {
+      // Roll back the cache to the pre-click snapshot so the UI matches
+      // server truth. Without this the optimistic flip would persist
+      // until a manual refresh.
+      if (snapshot) queryClient.setQueryData(queryKey, snapshot)
+      console.error("[campaign-selector] toggle failed:", result.error)
+      return
+    }
+    // Notify the parent so it can refresh sibling queries (KPIs etc.)
+    // that depend on which campaigns are tracked.
+    onSelectionChange()
   }
 
-  function bulkSetSelection(targets: CampaignWithSelection[], isSelected: boolean) {
+  async function bulkSetSelection(targets: CampaignWithSelection[], isSelected: boolean) {
     if (targets.length === 0) return
-    applyOptimistic(new Set(targets.map((c) => c.id)), isSelected)
-    void fetch(`/api/clients/${mondayItemId}/campaigns`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        campaigns: targets.map((c) => ({
-          campaignId: c.id,
-          campaignName: c.name,
-          isSelected,
-        })),
-      }),
-    }).finally(onSelectionChange)
+    const snapshot = applyOptimistic(new Set(targets.map((c) => c.id)), isSelected)
+    const result = await postSelection(
+      targets.map((c) => ({
+        campaignId: c.id,
+        campaignName: c.name,
+        isSelected,
+      })),
+    )
+    if (!result.ok) {
+      if (snapshot) queryClient.setQueryData(queryKey, snapshot)
+      console.error("[campaign-selector] bulk toggle failed:", result.error)
+      return
+    }
+    onSelectionChange()
   }
 
   const { selectedAll, availableAll, inactiveCount } = useMemo(() => {

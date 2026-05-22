@@ -160,15 +160,23 @@ export async function GET(
     ...newCampaignIdsForCurrentClient,
   ])
 
-  return NextResponse.json({
-    campaigns: campaigns.map((c) => ({
-      ...c,
-      isSelected: selectedSet.has(c.id),
-      isSuggested: suggestedIdsForCurrentClient.has(c.id),
-    })),
-  }, {
-    headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
-  })
+  return NextResponse.json(
+    {
+      campaigns: campaigns.map((c) => ({
+        ...c,
+        isSelected: selectedSet.has(c.id),
+        isSuggested: suggestedIdsForCurrentClient.has(c.id),
+      })),
+    },
+    {
+      // No edge/CDN caching here. This GET has side effects (auto-select
+      // matcher upserts into client_campaigns) AND its response is keyed
+      // on user-specific Supabase state. Caching it caused user toggles to
+      // appear to revert when a recently-cached response served back stale
+      // selection state after a POST. Roy 2026-05-22.
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+    },
+  )
 }
 
 export async function POST(
@@ -195,15 +203,23 @@ export async function POST(
 
   if (!client) return NextResponse.json({ error: "Client not found in Supabase — visit the client page first to sync" }, { status: 404 })
 
-  await supabase.from("client_campaigns").upsert(
+  // Earlier version didn't check the upsert error and always returned
+  // ok:true, so a silent constraint / RLS failure would let the client's
+  // refetch undo the optimistic UI update. Now we surface the error so
+  // the client can rollback instead of getting a false positive.
+  const { error: upsertError } = await supabase.from("client_campaigns").upsert(
     items.map((it) => ({
       client_id: client.id,
       meta_campaign_id: it.campaignId,
       campaign_name: it.campaignName,
       is_selected: it.isSelected,
     })),
-    { onConflict: "client_id,meta_campaign_id" }
+    { onConflict: "client_id,meta_campaign_id" },
   )
+  if (upsertError) {
+    console.error("[campaigns POST] upsert failed:", upsertError)
+    return NextResponse.json({ error: upsertError.message }, { status: 500 })
+  }
 
   // Clear the stale `rlAccountNoCampaign` flag for this client so the overview
   // updates without waiting for the next cron tick. Cheap no-op for non-RL
