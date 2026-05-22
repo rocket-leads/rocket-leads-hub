@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { Check, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -63,18 +64,53 @@ type TrengoChannelOption = {
 type Props = {
   users: User[]
   currentUserId: string
-  mondayPeople: string[]
-  fathomTeamMembers: FathomTeamMember[]
-  trengoChannels: TrengoChannelOption[]
 }
 
 const NONE = "__none__"
 const UNSET_LABEL = "—"
 
-export function UsersTab({ users: initial, currentUserId, mondayPeople, fathomTeamMembers, trengoChannels }: Props) {
+export function UsersTab({ users: initial, currentUserId }: Props) {
   const locale = useLocale()
   const [users, setUsers] = useState(initial)
   const [error, setError] = useState<string | null>(null)
+
+  // Trengo channels + Fathom team members + Monday people are fetched
+  // client-side so the rest of Settings paints immediately. Dropdowns
+  // render disabled until their respective queries resolve. The
+  // monday-clients query is shared with ClientsTab so it dedupes when
+  // both tabs are visited in one session.
+  const mondayClientsQuery = useQuery<{ clients: unknown[]; mondayPeople: string[] }>({
+    queryKey: ["admin-monday-clients"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin/settings/monday-clients")
+      if (!r.ok) throw new Error("Failed to load Monday clients")
+      return r.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+  const mondayPeople = mondayClientsQuery.data?.mondayPeople ?? []
+
+  const trengoChannelsQuery = useQuery<{ channels: TrengoChannelOption[] }>({
+    queryKey: ["admin-trengo-channels"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin/trengo-channels")
+      if (!r.ok) throw new Error("Failed to load Trengo channels")
+      return r.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+  const trengoChannels = trengoChannelsQuery.data?.channels ?? []
+
+  const fathomQuery = useQuery<{ members: FathomTeamMember[] }>({
+    queryKey: ["admin-fathom-team-members"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin/fathom-team-members")
+      if (!r.ok) throw new Error("Failed to load Fathom team members")
+      return r.json()
+    },
+    staleTime: 24 * 60 * 60 * 1000,
+  })
+  const fathomTeamMembers = fathomQuery.data?.members ?? []
 
   // Invite form state
   const [inviteFirstName, setInviteFirstName] = useState("")

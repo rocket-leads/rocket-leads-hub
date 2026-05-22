@@ -3,14 +3,15 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, LayoutDashboard } from "lucide-react"
+import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home } from "lucide-react"
 
 // Note: lucide's `Receipt` ships with a $ glyph baked into the SVG. Roy
 // flagged it as off-brand for a Hub that talks Euros — we use `CreditCard`
 // here so the nav-level Billing icon stays currency-agnostic and visually
 // quiet, matching the abstract style of the rest of the sidebar items
-// (Users, Inbox, Megaphone, Target, etc.).
-const ICONS = { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, LayoutDashboard }
+// (Users, Inbox, Megaphone, Target, etc.). Home uses lucide's `Home`
+// (literal house glyph) per Roy's 2026-05-21 ask.
+const ICONS = { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home }
 
 type NavItem = { href: string; label: string; icon: keyof typeof ICONS }
 
@@ -76,9 +77,6 @@ export function SidebarNavLinks({ items, invoicesToSendCount = 0, healthSummary 
 
   return (
     <nav className="flex-1 px-3 space-y-0.5">
-      <p className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-[0.15em] px-3 mb-2">
-        Platform
-      </p>
       {items.map(({ href, label, icon }) => {
         const Icon = ICONS[icon]
         const active = pathname.startsWith(href)
@@ -93,13 +91,13 @@ export function SidebarNavLinks({ items, invoicesToSendCount = 0, healthSummary 
           <Link
             key={href}
             href={href}
-            className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150 ${
+            className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-[15px] transition-colors duration-150 ${
               active
                 ? "bg-primary/10 text-primary font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                : "text-foreground/75 hover:text-foreground hover:bg-muted/60"
             }`}
           >
-            <Icon className={`h-4 w-4 transition-colors ${active ? "text-primary" : "text-muted-foreground/70 group-hover:text-foreground"}`} />
+            <Icon className={`h-[18px] w-[18px] transition-colors ${active ? "text-primary" : "text-foreground/60 group-hover:text-foreground"}`} />
             {label}
             {isInbox && <InboxBadge />}
             {isBilling && invoicesToSendCount > 0 && (

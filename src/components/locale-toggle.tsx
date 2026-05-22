@@ -86,9 +86,9 @@ export function LocaleToggle({ initialLocale }: Props) {
       aria-label={t("locale.label", locale)}
       title={t("locale.label", locale)}
       suppressHydrationWarning
-      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-all disabled:opacity-50"
+      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors duration-150 disabled:opacity-50"
     >
-      <Languages className="h-3.5 w-3.5" />
+      <Languages className="h-4 w-4 text-muted-foreground/70" />
       {mounted ? targetLabel : t("locale.label", locale)}
     </button>
   )

@@ -617,7 +617,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 {draftNeedsConnect && (
                   <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 mb-2 text-xs">
                     Connect your Trengo account first.{" "}
-                    <Link href="/account" className="underline font-medium">
+                    <Link href="/settings?tab=me" className="underline font-medium">
                       Go to My Account
                     </Link>
                   </div>
@@ -667,7 +667,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 {needsConnect && (
                   <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 mb-2 text-xs">
                     Connect your {needsConnect} account first.{" "}
-                    <Link href="/account" className="underline font-medium">
+                    <Link href="/settings?tab=me" className="underline font-medium">
                       Go to My Account
                     </Link>
                   </div>

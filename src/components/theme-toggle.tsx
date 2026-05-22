@@ -53,9 +53,9 @@ export function ThemeToggle() {
       aria-label={label}
       title={label}
       suppressHydrationWarning
-      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-all"
+      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors duration-150"
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className="h-4 w-4 text-muted-foreground/70" />
       {mounted ? label : fallback}
     </button>
   )

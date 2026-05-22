@@ -1,10 +1,8 @@
-import { auth, signOut } from "@/lib/auth"
+import { auth } from "@/lib/auth"
 import Link from "next/link"
 import Image from "next/image"
-import { LogOut } from "lucide-react"
 import { SidebarNavLinks } from "./sidebar-nav-links"
-import { ThemeToggle } from "./theme-toggle"
-import { LocaleToggle } from "./locale-toggle"
+import { UserMenu } from "./user-menu"
 import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-platform-tokens"
 import { readCache } from "@/lib/cache"
 import type { MondayClient } from "@/lib/integrations/monday"
@@ -12,6 +10,8 @@ import { mondayStatusToHub } from "@/lib/clients/status"
 import { fetchHealthSummary, HEALTHY_SUMMARY, type HealthSummary } from "@/lib/observability/health-summary"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
+import { createAdminClient } from "@/lib/supabase/server"
+import { MONDAY_ROLE_LABELS, type MondayRole } from "@/app/(dashboard)/settings/types"
 
 const REQUIRED_PLATFORMS: Platform[] = ["slack", "trengo", "monday"]
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -26,13 +26,16 @@ export async function Sidebar() {
   // flips them. Watch List is pulled out below for finance (they don't
   // action campaigns); Billing stays in the shared section so finance,
   // members and admins all see invoice scheduling.
-  const HOME = { href: "/home", label: t("nav.home", locale), icon: "LayoutDashboard" as const }
+  //
+  // Order matches Roy's preferred flow (2026-05-21): Home → Watch List →
+  // Inbox → Alle Clients → Pedro → Meetings → Targets → Billing → Settings.
+  const HOME = { href: "/home", label: t("nav.home", locale), icon: "Home" as const }
   const WATCH_LIST = { href: "/watchlist", label: t("nav.watch_list", locale), icon: "Eye" as const }
   const SHARED_NAV = [
-    { href: "/clients", label: t("nav.clients", locale), icon: "Users" as const },
     { href: "/inbox", label: t("nav.inbox", locale), icon: "Inbox" as const },
-    { href: "/meetings", label: t("nav.meetings", locale), icon: "Video" as const },
+    { href: "/clients", label: t("nav.clients", locale), icon: "Users" as const },
     { href: "/pedro", label: t("nav.pedro", locale), icon: "Megaphone" as const },
+    { href: "/meetings", label: t("nav.meetings", locale), icon: "Video" as const },
     { href: "/targets", label: t("nav.targets", locale), icon: "Target" as const },
     { href: "/billing", label: t("nav.billing", locale), icon: "CreditCard" as const },
   ] as const
@@ -111,6 +114,35 @@ export async function Sidebar() {
     ? `My Account — ${missingPlatforms} platform${missingPlatforms === 1 ? "" : "s"} not connected (Slack, Trengo, Monday)`
     : "My Account — connect Slack, Trengo, Monday"
 
+  // Job-function label shown in the sidebar user trigger. Resolution order:
+  //   admin   → "Owner" (one per workspace, top of hierarchy)
+  //   finance → "Finance" (org-level, no Monday person column)
+  //   else    → MONDAY_ROLE_LABELS[monday_role] from user_column_mappings
+  //   else    → "Member"
+  let userFunction = "Member"
+  if (session?.user?.id) {
+    if (isAdmin) {
+      userFunction = "Owner"
+    } else if (isFinance) {
+      userFunction = "Finance"
+    } else {
+      try {
+        const supabase = await createAdminClient()
+        const { data } = await supabase
+          .from("user_column_mappings")
+          .select("monday_column_role")
+          .eq("user_id", session.user.id)
+          .maybeSingle()
+        const role = data?.monday_column_role as MondayRole | undefined
+        if (role && MONDAY_ROLE_LABELS[role]) {
+          userFunction = MONDAY_ROLE_LABELS[role]
+        }
+      } catch {
+        // Fall back to "Member" silently — never block the sidebar render.
+      }
+    }
+  }
+
   // Admin-only health dot on the Settings nav. Lit when any cron has errored
   // in the last 24h or any integration token is invalid. Cheap two-query
   // probe — best-effort, never blocks the sidebar render.
@@ -121,23 +153,24 @@ export async function Sidebar() {
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-sidebar-border bg-sidebar flex flex-col">
-      {/* Logo */}
-      <div className="px-5 pt-6 pb-5">
+      {/* Logo — sized to herMon's brand-mark scale per Roy's 2026-05-21 ask:
+          read as a brand block, not a footnote. */}
+      <div className="px-5 pt-7 pb-6">
         <Link href={isFinance ? "/billing" : "/watchlist"} className="block">
           <Image
             src="/logos/logo-white-purple.svg"
             alt="Rocket Leads"
-            width={140}
-            height={36}
-            className="h-7 w-auto hidden dark:block"
+            width={200}
+            height={52}
+            className="h-10 w-auto hidden dark:block"
             priority
           />
           <Image
             src="/logos/logo-full-black.svg"
             alt="Rocket Leads"
-            width={140}
-            height={36}
-            className="h-7 w-auto block dark:hidden"
+            width={200}
+            height={52}
+            className="h-10 w-auto block dark:hidden"
             priority
           />
         </Link>
@@ -150,49 +183,21 @@ export async function Sidebar() {
         healthSummary={isAdmin ? healthSummary : null}
       />
 
-      {/* User section */}
+      {/* User section — collapsed to just the avatar + name. Locale, theme,
+          Settings + Sign out live behind a popover that opens on click. */}
       <div className="mt-auto border-t border-sidebar-border p-3">
-        <div className="mb-1">
-          <LocaleToggle initialLocale={locale} />
-        </div>
-        <div className="mb-1">
-          <ThemeToggle />
-        </div>
-        <Link
-          href="/account"
-          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors group"
-          title={accountTitle}
-        >
-          <div className="relative">
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary/25 to-primary/10 flex items-center justify-center text-[11px] font-semibold text-primary ring-1 ring-primary/15">
-              {session?.user.name?.[0]?.toUpperCase() ?? session?.user.email?.[0]?.toUpperCase() ?? "?"}
-            </div>
-            {missingPlatforms > 0 && (
-              <span
-                aria-label={`${missingPlatforms} platform${missingPlatforms === 1 ? "" : "s"} not connected`}
-                className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-sidebar"
-              />
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium leading-tight truncate group-hover:text-foreground transition-colors">{session?.user.name ?? t("account.user_fallback", locale)}</p>
-            <p className="text-[11px] text-muted-foreground/70 truncate">{session?.user.email}</p>
-          </div>
-        </Link>
-        <form
-          action={async () => {
-            "use server"
-            await signOut({ redirectTo: "/auth/signin" })
-          }}
-        >
-          <button
-            type="submit"
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/60 transition-colors"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            {t("account.sign_out", locale)}
-          </button>
-        </form>
+        <UserMenu
+          initialLocale={locale}
+          userName={session?.user.name ?? t("account.user_fallback", locale)}
+          userFunction={userFunction}
+          userInitial={
+            session?.user.name?.[0]?.toUpperCase() ??
+            session?.user.email?.[0]?.toUpperCase() ??
+            "?"
+          }
+          missingPlatforms={missingPlatforms}
+          accountTitle={accountTitle}
+        />
       </div>
     </aside>
   )

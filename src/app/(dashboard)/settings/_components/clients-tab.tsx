@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { ChevronDown, Search } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { ChevronDown, Loader2, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ClientInformationPanel } from "@/components/client-information-panel"
 import { mondayStatusToHub, statusLabelI18n, statusTone, type ClientStatus } from "@/lib/clients/status"
@@ -11,7 +12,10 @@ import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 
 type Props = {
-  clients: MondayClient[]
+  /** Optional pre-warmed clients list. When omitted, the tab fetches its
+   *  own snapshot via `/api/admin/settings/monday-clients` so the parent
+   *  page doesn't have to block on Monday's GraphQL pagination. */
+  clients?: MondayClient[]
 }
 
 /** Tabs shown above the clients list. Onboarding lives on the dedicated
@@ -19,11 +23,26 @@ type Props = {
  *  here — Live is the default because that's what 95% of edits target. */
 const STATUS_TABS: ClientStatus[] = ["live", "on_hold", "churned"]
 
-export function ClientsTab({ clients }: Props) {
+export function ClientsTab({ clients: clientsProp }: Props) {
   const locale = useLocale()
   const [statusFilter, setStatusFilter] = useState<ClientStatus>("live")
   const [search, setSearch] = useState("")
   const [openId, setOpenId] = useState<string | null>(null)
+
+  // Tab-local fetch — only fires when no pre-warmed list was passed. Shared
+  // queryKey with UsersTab's mondayPeople query so the two tabs dedupe.
+  const clientsQuery = useQuery<{ clients: MondayClient[]; mondayPeople: string[] }>({
+    queryKey: ["admin-monday-clients"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin/settings/monday-clients")
+      if (!r.ok) throw new Error("Failed to load Monday clients")
+      return r.json()
+    },
+    enabled: !clientsProp,
+    staleTime: 5 * 60 * 1000,
+  })
+  const clients = clientsProp ?? clientsQuery.data?.clients ?? []
+  const isLoadingClients = !clientsProp && clientsQuery.isLoading
 
   // Pre-compute Hub status per client once so the tab counts and the list
   // share the same classification — no chance of a count saying "5 churned"
@@ -108,6 +127,12 @@ export function ClientsTab({ clients }: Props) {
           className="pl-8 h-8 text-sm"
         />
       </div>
+
+      {isLoadingClients && (
+        <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 px-1">
+          <Loader2 className="h-3 w-3 animate-spin" /> Loading clients…
+        </div>
+      )}
 
       <div className="space-y-2">
         {filtered.map(({ client, hubStatus }) => {

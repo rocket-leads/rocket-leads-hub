@@ -1,43 +1,16 @@
-import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
-import { listUserPlatformConnections } from "@/lib/inbox/user-platform-tokens"
-import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
-import { MyAccount } from "./_components/my-account"
-import { PageHeader } from "@/components/ui/page-header"
 
+// /account merged into /settings on 2026-05-21. Slack OAuth callbacks still
+// land here briefly with ?slack_error=... — forward those through so the Me
+// tab can surface the error inline.
 export default async function AccountPage({
   searchParams,
 }: {
   searchParams: Promise<{ slack_error?: string; slack?: string }>
 }) {
-  const session = await auth()
-  if (!session?.user?.id) redirect("/auth/signin")
-
-  const [connections, trengoChannelIds, params] = await Promise.all([
-    listUserPlatformConnections(session.user.id),
-    getUserTrengoChannelIds(session.user.id),
-    searchParams,
-  ])
-
-  // Map by platform for quick lookup in the UI.
-  const connectionMap = Object.fromEntries(connections.map((c) => [c.platform, c]))
-
-  return (
-    <div>
-      <PageHeader
-        title="My Account"
-        subtitle="Connect your personal Slack, Trengo and Monday accounts so replies sent through the Hub appear from you, not from a system bot."
-      />
-
-      <MyAccount
-        userName={session.user.name ?? session.user.email}
-        userEmail={session.user.email}
-        slack={connectionMap.slack ?? null}
-        trengo={connectionMap.trengo ?? null}
-        monday={connectionMap.monday ?? null}
-        trengoChannelIds={trengoChannelIds}
-        slackError={params.slack_error ?? null}
-      />
-    </div>
-  )
+  const params = await searchParams
+  const qs = new URLSearchParams({ tab: "me" })
+  if (params.slack_error) qs.set("slack_error", params.slack_error)
+  if (params.slack) qs.set("slack", params.slack)
+  redirect(`/settings?${qs.toString()}`)
 }

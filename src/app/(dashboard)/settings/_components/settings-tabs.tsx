@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { KeyRound, Database, Users, Bell, Building2, Inbox as InboxIcon, Sparkles } from "lucide-react"
+import { useMemo } from "react"
+import { KeyRound, Database, Users, Bell, Building2, Inbox as InboxIcon, Sparkles, UserCircle2, Activity } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
+import { useUrlState } from "@/lib/use-url-state"
 import { ApiTokensTab } from "./api-tokens-tab"
 import { BoardConfigTab } from "./board-config-tab"
 import { UsersTab } from "./users-tab"
@@ -13,21 +14,30 @@ import { NotificationsTab } from "./notifications-tab"
 import { ClientsTab } from "./clients-tab"
 import { InboxAutomationTab } from "./inbox-tab"
 import { PedroSettingsTab } from "./pedro-tab"
-import type { MondayClient } from "@/lib/integrations/monday"
+import { MeTab, type MeTabData } from "./me-tab"
+import { HealthTab } from "./health-tab"
 import type { InboxAutomationRules } from "../types"
 
-type SettingsTabId = "clients" | "tokens" | "board" | "users" | "notifications" | "inbox" | "pedro"
+type SettingsTabId =
+  | "me"
+  | "clients"
+  | "tokens"
+  | "board"
+  | "users"
+  | "notifications"
+  | "inbox"
+  | "pedro"
+  | "health"
 
-type Props = {
+type AdminProps = {
+  isAdmin: true
+  initialTab: SettingsTabId
+  meTab: MeTabData
   tokenStatuses: React.ComponentProps<typeof ApiTokensTab>["statuses"]
   boardConfig: React.ComponentProps<typeof BoardConfigTab>["config"]
   defaultBoardConfig: React.ComponentProps<typeof BoardConfigTab>["defaults"]
   users: React.ComponentProps<typeof UsersTab>["users"]
   currentUserId: string
-  mondayPeople: string[]
-  fathomTeamMembers: React.ComponentProps<typeof UsersTab>["fathomTeamMembers"]
-  trengoChannels: React.ComponentProps<typeof UsersTab>["trengoChannels"]
-  clients: MondayClient[]
   inboxAutomationRules: InboxAutomationRules
   notifications: {
     slackConnected: boolean
@@ -38,64 +48,87 @@ type Props = {
   }
 }
 
-export function SettingsTabs({
-  tokenStatuses,
-  boardConfig,
-  defaultBoardConfig,
-  users,
-  currentUserId,
-  mondayPeople,
-  fathomTeamMembers,
-  trengoChannels,
-  clients,
-  inboxAutomationRules,
-  notifications,
-}: Props) {
-  const [activeTab, setActiveTab] = useState<SettingsTabId>("clients")
+type MeOnlyProps = {
+  isAdmin: false
+  initialTab: SettingsTabId
+  meTab: MeTabData
+}
+
+type Props = AdminProps | MeOnlyProps
+
+const ALL_TAB_IDS: SettingsTabId[] = [
+  "me",
+  "clients",
+  "tokens",
+  "board",
+  "users",
+  "notifications",
+  "inbox",
+  "pedro",
+  "health",
+]
+
+export function SettingsTabs(props: Props) {
+  const { isAdmin, initialTab, meTab } = props
+  // useUrlState keeps the active tab in the URL so the back button + bookmarks
+  // + "send me this view" links all work. The server already passed
+  // `initialTab` in for the initial render — useUrlState then takes over for
+  // any in-session tab changes.
+  const [rawTab, setActiveTab] = useUrlState("tab", initialTab)
+  const activeTab: SettingsTabId = ALL_TAB_IDS.includes(rawTab as SettingsTabId)
+    ? (rawTab as SettingsTabId)
+    : initialTab
   const locale = useLocale()
 
-  // Tabs are rebuilt per render so labels flip with the locale toggle. The
-  // icon + id pair stay the same; just the label is dictionary-driven.
-  const tabs: TopTab<SettingsTabId>[] = useMemo(
-    () => [
-      { id: "clients", label: t("settings.tab.clients", locale), icon: Building2 },
-      { id: "tokens", label: t("settings.tab.tokens", locale), icon: KeyRound },
-      { id: "board", label: t("settings.tab.board", locale), icon: Database },
+  // Tabs are rebuilt per render so labels flip with the locale toggle. Me is
+  // always first; admin tabs only show for admins. Visual ordering follows
+  // the Me / Team / System grouping even though TopTabs renders a flat row.
+  const tabs: TopTab<SettingsTabId>[] = useMemo(() => {
+    const base: TopTab<SettingsTabId>[] = [
+      { id: "me", label: t("settings.tab.me", locale), icon: UserCircle2 },
+    ]
+    if (!isAdmin) return base
+    return [
+      ...base,
+      // Team
       { id: "users", label: t("settings.tab.users", locale), icon: Users },
       { id: "notifications", label: t("settings.tab.notifications", locale), icon: Bell },
+      // System
+      { id: "clients", label: t("settings.tab.clients", locale), icon: Building2 },
       { id: "inbox", label: t("settings.tab.inbox", locale), icon: InboxIcon },
       { id: "pedro", label: t("settings.tab.pedro", locale), icon: Sparkles },
-    ],
-    [locale],
-  )
+      { id: "board", label: t("settings.tab.board", locale), icon: Database },
+      { id: "tokens", label: t("settings.tab.tokens", locale), icon: KeyRound },
+      { id: "health", label: t("settings.tab.health", locale), icon: Activity },
+    ]
+  }, [locale, isAdmin])
 
   return (
     <div className="mt-6 space-y-6">
       <TopTabs<SettingsTabId> tabs={tabs} value={activeTab} onChange={setActiveTab} />
 
-      {activeTab === "clients" && <ClientsTab clients={clients} />}
-      {activeTab === "tokens" && <ApiTokensTab statuses={tokenStatuses} />}
-      {activeTab === "board" && <BoardConfigTab config={boardConfig} defaults={defaultBoardConfig} />}
-      {activeTab === "users" && (
-        <UsersTab
-          users={users}
-          currentUserId={currentUserId}
-          mondayPeople={mondayPeople}
-          fathomTeamMembers={fathomTeamMembers}
-          trengoChannels={trengoChannels}
-        />
+      {activeTab === "me" && <MeTab data={meTab} />}
+
+      {isAdmin && activeTab === "clients" && <ClientsTab />}
+      {isAdmin && activeTab === "tokens" && <ApiTokensTab statuses={props.tokenStatuses} />}
+      {isAdmin && activeTab === "board" && (
+        <BoardConfigTab config={props.boardConfig} defaults={props.defaultBoardConfig} />
       )}
-      {activeTab === "notifications" && (
+      {isAdmin && activeTab === "users" && (
+        <UsersTab users={props.users} currentUserId={props.currentUserId} />
+      )}
+      {isAdmin && activeTab === "notifications" && (
         <NotificationsTab
-          slackConnected={notifications.slackConnected}
-          recipients={notifications.recipients}
-          teamChannelId={notifications.teamChannelId}
-          salesChannelId={notifications.salesChannelId}
-          closers={notifications.closers}
+          slackConnected={props.notifications.slackConnected}
+          recipients={props.notifications.recipients}
+          teamChannelId={props.notifications.teamChannelId}
+          salesChannelId={props.notifications.salesChannelId}
+          closers={props.notifications.closers}
         />
       )}
-      {activeTab === "inbox" && <InboxAutomationTab rules={inboxAutomationRules} />}
-      {activeTab === "pedro" && <PedroSettingsTab />}
+      {isAdmin && activeTab === "inbox" && <InboxAutomationTab rules={props.inboxAutomationRules} />}
+      {isAdmin && activeTab === "pedro" && <PedroSettingsTab />}
+      {isAdmin && activeTab === "health" && <HealthTab />}
     </div>
   )
 }

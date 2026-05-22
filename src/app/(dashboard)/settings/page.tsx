@@ -9,24 +9,59 @@ import {
 } from "./types"
 import { ApiHealthBar } from "./_components/api-health-bar"
 import { PageHeader } from "@/components/ui/page-header"
-import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { getSlackChannels } from "@/lib/slack"
-import { fetchFathomTeamMembers, type FathomTeamMember } from "@/lib/integrations/fathom"
-import {
-  fetchTrengoChannels,
-  isEmailChannelType,
-  isWhatsAppChannelType,
-} from "@/lib/integrations/trengo"
-import { cachedFetch, readCache } from "@/lib/cache"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
+import { listUserPlatformConnections } from "@/lib/inbox/user-platform-tokens"
+import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ tab?: string; slack_error?: string; slack?: string }>
+}) {
   const session = await auth()
-  if (!session || session.user.role !== "admin") redirect("/watchlist")
+  if (!session?.user?.id) redirect("/auth/signin")
+  const isAdmin = session.user.role === "admin"
+  const params = (await searchParams) ?? {}
+
+  const locale = await getUserLocale(session.user.id)
+
+  // Me tab — every signed-in user can see this. Lightweight: just their own
+  // platform connections + Trengo channel subscriptions.
+  const [meConnections, meTrengoChannelIds] = await Promise.all([
+    listUserPlatformConnections(session.user.id),
+    getUserTrengoChannelIds(session.user.id),
+  ])
+  const meConnectionMap = Object.fromEntries(meConnections.map((c) => [c.platform, c]))
+  const meTab = {
+    userName: session.user.name ?? session.user.email,
+    userEmail: session.user.email,
+    slack: meConnectionMap.slack ?? null,
+    trengo: meConnectionMap.trengo ?? null,
+    monday: meConnectionMap.monday ?? null,
+    trengoChannelIds: meTrengoChannelIds,
+    slackError: params.slack_error ?? null,
+  }
+
+  // Non-admins only see the Me tab — skip every heavy admin fetch below.
+  if (!isAdmin) {
+    return (
+      <div>
+        <PageHeader
+          title={t("settings.title", locale)}
+          subtitle={t("settings.subtitle", locale)}
+        />
+        <SettingsTabs
+          isAdmin={false}
+          initialTab={params.tab === "me" ? "me" : "me"}
+          meTab={meTab}
+        />
+      </div>
+    )
+  }
 
   const supabase = await createAdminClient()
-  const locale = await getUserLocale(session.user.id)
 
   const [
     { data: tokens },
@@ -46,69 +81,17 @@ export default async function SettingsPage() {
     getSlackChannels(),
   ])
 
-  // Two heavy data sources stayed in SSR: Monday boards (cron-warmed,
-  // sub-second from cache) and Fathom team members (24h cache, only 1-2s
-  // on the once-a-day cold path).
+  // Trengo channels, Fathom team members, Monday boards + mondayPeople and
+  // targets closer-names all moved to client useQuery on a per-tab basis:
   //
-  // The third — `targets_closer_names` — used to run here too but the
-  // underlying `fetchAllItems("3762696870")` paginates the whole targets
-  // board (1000s of leads, 5-10s cold) and was blocking the Board Config
-  // tab loading even though closers are only used in the Notifications
-  // tab. NotificationsTab now fetches it client-side via useQuery from
-  // /api/admin/settings/closer-names, so opening Settings no longer waits
-  // on Monday's targets-board pagination.
-  const ACTIVE_STATUSES = new Set(["Kick off", "In development", "Live"])
-
-  const [boards, fathomTeamMembers, trengoChannels] = await Promise.all([
-    (async () => {
-      try {
-        const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
-          "monday_boards",
-          60 * 60 * 1000,
-        )
-        if (cached) return cached
-        return await fetchBothBoards()
-      } catch {
-        return { onboarding: [] as MondayClient[], current: [] as MondayClient[] }
-      }
-    })(),
-    cachedFetch<FathomTeamMember[]>(
-      "fathom_team_members",
-      () => fetchFathomTeamMembers(),
-      24 * 60 * 60 * 1000,
-    ).catch(() => [] as FathomTeamMember[]),
-    fetchTrengoChannels().catch(() => []),
-  ])
-
-  // Strip the full channel record to just the fields the UsersTab dropdowns
-  // need — keeps SSR payload + client bundle lean and decoupled from any
-  // Trengo type churn. Pre-tag with isEmail / isWa so the UI doesn't need
-  // to re-classify on every render.
-  const trengoChannelOptions = trengoChannels
-    .filter((c) => isEmailChannelType(c.type) || isWhatsAppChannelType(c.type))
-    .map((c) => ({
-      id: c.id,
-      name: c.name ?? c.title ?? c.email_address ?? c.phone ?? `#${c.id}`,
-      type: c.type,
-      isEmail: isEmailChannelType(c.type),
-      isWa: isWhatsAppChannelType(c.type),
-    }))
-
-  // Closer-names list starts empty; NotificationsTab hydrates it via
-  // useQuery on mount. Keeping the variable here so the rest of the page
-  // wiring (notifications.closers mapping below) stays the same shape.
+  //   - /api/admin/trengo-channels       (Users tab)
+  //   - /api/admin/fathom-team-members   (Users tab)
+  //   - /api/admin/settings/monday-clients (Clients tab + Users tab share)
+  //   - /api/admin/settings/closer-names (Notifications tab)
+  //
+  // Settings now paints in ~200ms with just Supabase data; heavy external
+  // calls only fire when their tab is opened.
   const closerNames: string[] = []
-
-  const allClients = [...boards.onboarding, ...boards.current]
-  const mondayPeople: string[] = (() => {
-    const names = new Set<string>()
-    for (const c of allClients) {
-      if (!ACTIVE_STATUSES.has(c.campaignStatus)) continue
-      if (c.accountManager) names.add(c.accountManager)
-      if (c.campaignManager) names.add(c.campaignManager)
-    }
-    return Array.from(names).sort()
-  })()
 
   const tokenStatuses = Object.fromEntries(
     (tokens ?? []).map((t) => [t.service, { is_valid: t.is_valid, last_verified: t.last_verified }])
@@ -156,14 +139,6 @@ export default async function SettingsPage() {
       <PageHeader
         title={t("settings.title", locale)}
         subtitle={t("settings.subtitle", locale)}
-        actions={
-          <a
-            href="/settings/health"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/60 bg-card text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
-          >
-            {t("settings.health_link", locale)}
-          </a>
-        }
       />
 
       <ApiHealthBar />
@@ -205,15 +180,26 @@ export default async function SettingsPage() {
 
         return (
           <SettingsTabs
+            isAdmin={true}
+            initialTab={
+              params.tab === "me" ||
+              params.tab === "users" ||
+              params.tab === "notifications" ||
+              params.tab === "clients" ||
+              params.tab === "inbox" ||
+              params.tab === "pedro" ||
+              params.tab === "board" ||
+              params.tab === "tokens" ||
+              params.tab === "health"
+                ? params.tab
+                : "clients"
+            }
+            meTab={meTab}
             tokenStatuses={tokenStatuses}
             boardConfig={boardConfig}
             defaultBoardConfig={defaultBoardConfig}
             users={usersWithMapping}
             currentUserId={session.user.id}
-            mondayPeople={mondayPeople}
-            fathomTeamMembers={fathomTeamMembers}
-            trengoChannels={trengoChannelOptions}
-            clients={allClients}
             inboxAutomationRules={inboxAutomationRules}
             notifications={{
               slackConnected: !!tokenStatuses.slack?.is_valid,
