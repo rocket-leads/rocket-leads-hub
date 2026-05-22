@@ -92,9 +92,20 @@ async function callClaude(
       stage: ctx?.stage ?? undefined,
     }),
   });
-  const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data.text;
+  // Vercel 504 / gateway errors return HTML, not JSON — guard before parsing
+  // so the catch block surfaces a meaningful message instead of "Unexpected
+  // token < in JSON".
+  const raw = await res.text();
+  let data: { text?: string; error?: string } = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    throw new Error(`HTTP ${res.status}: ${raw.slice(0, 200) || res.statusText}`);
+  }
+  if (!res.ok || data.error) {
+    throw new Error(data.error || `HTTP ${res.status}: ${res.statusText}`);
+  }
+  return data.text ?? "";
 }
 
 function sanitizeOutput(text: string): string {
@@ -893,8 +904,10 @@ ${warningBlock}
 ${creativeDescriptions}`;
 
       setManusPrompt(fullOutput);
-    } catch {
-      showToast("Fout bij genereren creative prompt");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Pedro creative prompt failed:", e);
+      showToast(`Fout bij genereren creative prompt: ${msg}`);
     }
     setManusLoading(false);
   }
@@ -923,8 +936,10 @@ ${creativeDescriptions}`;
         { clientId: selectedClientId, stage: "lp" }
       ));
       setLpPrompt(res);
-    } catch {
-      showToast("Fout bij genereren LP prompt");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Pedro LP prompt failed:", e);
+      showToast(`Fout bij genereren LP prompt: ${msg}`);
     }
     setLpLoading(false);
   }
@@ -962,8 +977,10 @@ ${creativeDescriptions}`;
         { clientId: selectedClientId, stage: "ad-copy" }
       ));
       setAdCopy(parseJSON<AdCopy>(res));
-    } catch {
-      showToast("Fout bij genereren ad copy");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("Pedro ad copy failed:", e);
+      showToast(`Fout bij genereren ad copy: ${msg}`);
     }
     setAdCopyLoading(false);
   }

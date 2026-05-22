@@ -10,6 +10,12 @@ import { crossClientExamplesBlock } from "@/lib/pedro/cross-client-examples"
 // the hub (watchlist, refresh-cache) uses.
 const anthropic = new Anthropic()
 
+// Pedro stages can take 30-60s on Sonnet 4 with the full knowledge-base
+// system prompt + past-campaign context + 2500 output tokens (creatives).
+// Without this Vercel kills the function at 10s and the client sees a
+// HTML 504 page instead of JSON.
+export const maxDuration = 120
+
 const VALID_STAGES: PedroStage[] = ["brief", "angles", "script", "creatives", "lp", "ad-copy"]
 
 // Stages where same-vertical RL winners help most. Brief is omitted —
