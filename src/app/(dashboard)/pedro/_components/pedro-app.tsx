@@ -104,19 +104,8 @@ export function PedroApp({ clients }: Props) {
   const searchParams = useSearchParams()
   const locale = useLocale()
 
-  const PHASES: TabPhase<Section>[] = useMemo(
-    () =>
-      PHASE_SHAPE.map((phase) => ({
-        id: phase.id,
-        label: t(phase.labelKey, locale),
-        tabs: phase.tabs.map((tab) => ({
-          id: tab.id,
-          label: t(tab.labelKey, locale),
-          icon: tab.icon,
-        })),
-      })),
-    [locale],
-  )
+  // PHASES is built further down after savedVersionsQuery resolves
+  // (needs the `done` status per tab). Placeholder until that block.
 
   const initialSection: Section = (() => {
     const tab = searchParams.get("tab")
@@ -229,6 +218,28 @@ export function PedroApp({ clients }: Props) {
     setCampaignMode("optimize")
     setResetKey((k) => k + 1)
   }, [])
+
+  // Build the tab bar AFTER savedVersionsQuery resolves so we know
+  // which stages have a ✓ done marker. In "new" mode we skip the
+  // markers — existing saved versions belong to the previous campaign
+  // and would mislead the CM into thinking the fresh one is partway
+  // done.
+  const PHASES: TabPhase<Section>[] = useMemo(() => {
+    const savedStages = new Set<string>()
+    if (campaignMode === "optimize") {
+      for (const v of savedVersionsQuery.data ?? []) savedStages.add(v.stage)
+    }
+    return PHASE_SHAPE.map((phase) => ({
+      id: phase.id,
+      label: t(phase.labelKey, locale),
+      tabs: phase.tabs.map((tab) => ({
+        id: tab.id,
+        label: t(tab.labelKey, locale),
+        icon: tab.icon,
+        done: savedStages.has(tab.id),
+      })),
+    }))
+  }, [locale, campaignMode, savedVersionsQuery.data])
 
   return (
     <div className="pedro-root">

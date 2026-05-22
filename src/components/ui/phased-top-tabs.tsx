@@ -13,8 +13,13 @@ export type PhasedTopTab<T extends string = string> = {
   label: string
   icon?: LucideIcon
   count?: number
-  dot?: "red" | "amber"
+  dot?: "red" | "amber" | "green"
   accent?: TabAccent
+  /** When true, marks this tab as "completed" — a small green check
+   *  appears next to the label. Used by Pedro to surface "Brief saved",
+   *  "Angles saved", etc. so the CM can see at-a-glance how far the
+   *  current campaign is. */
+  done?: boolean
 }
 
 /**
@@ -92,14 +97,18 @@ export function PhasedTopTabs<T extends string>({
           {phases.map((phase, phaseIdx) => (
             <Fragment key={phase.id}>
               {phaseIdx > 0 && (
-                <span className="self-stretch w-px bg-border/60 mx-2 mb-[14px]" aria-hidden />
+                // Tall vertical divider — explicit visual break between
+                // phases. Roy 2026-05-22: phase boundaries were too
+                // subtle; the eye should immediately see "this is a new
+                // section, not just another tab".
+                <span className="self-stretch w-px bg-border mx-3 mb-[10px]" aria-hidden />
               )}
               <div className="flex flex-col">
-                <span className="px-5 text-[10px] uppercase tracking-[0.15em] text-muted-foreground/55 font-semibold mb-0.5">
+                <span className="px-5 text-[10px] uppercase tracking-[0.18em] text-foreground/55 font-semibold mb-1">
                   {phase.label}
                 </span>
                 <div className="flex items-center">
-                  {phase.tabs.map(({ id, label, icon: Icon, count, dot, accent }) => (
+                  {phase.tabs.map(({ id, label, icon: Icon, count, dot, accent, done }) => (
                     <TabButton
                       key={id}
                       id={id}
@@ -108,6 +117,7 @@ export function PhasedTopTabs<T extends string>({
                       count={count}
                       dot={dot}
                       accent={accent}
+                      done={done}
                       active={value === id}
                       onClick={() => onChange(id)}
                     />
@@ -130,6 +140,7 @@ function TabButton<T extends string>({
   count,
   dot,
   accent,
+  done,
   active,
   onClick,
 }: {
@@ -137,8 +148,9 @@ function TabButton<T extends string>({
   label: string
   Icon?: LucideIcon
   count?: number
-  dot?: "red" | "amber"
+  dot?: "red" | "amber" | "green"
   accent?: TabAccent
+  done?: boolean
   active: boolean
   onClick: () => void
 }) {
@@ -165,13 +177,24 @@ function TabButton<T extends string>({
             <span
               className={cn(
                 "absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-background",
-                dot === "red" ? "bg-red-500" : "bg-amber-500",
+                dot === "red" ? "bg-red-500" : dot === "amber" ? "bg-amber-500" : "bg-emerald-500",
               )}
             />
           )}
         </span>
       )}
       {label}
+      {done && !active && (
+        <span
+          className="ml-0.5 inline-flex items-center justify-center text-emerald-500 dark:text-emerald-400"
+          aria-label="opgeslagen"
+          title="Opgeslagen voor deze klant"
+        >
+          <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2.5 6.5l2.5 2.5 4.5-5" />
+          </svg>
+        </span>
+      )}
       {typeof count === "number" && (
         <span
           className={cn(
