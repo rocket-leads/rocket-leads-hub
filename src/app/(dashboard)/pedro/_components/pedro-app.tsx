@@ -2,18 +2,20 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
-import { useQuery } from "@tanstack/react-query"
-import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw, Users, Plus, Pencil } from "lucide-react"
-import { PhasedTopTabs, type TabPhase } from "@/components/ui/phased-top-tabs"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, RefreshCw, Users } from "lucide-react"
+import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { ClientPicker } from "./client-picker"
+import { CampaignPicker } from "./campaign-picker"
 import { Campaign } from "./pedro-campaign"
 import { Research } from "./pedro-research"
 import { PedroRefresh } from "./pedro-refresh"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { PedroClient } from "../page"
+import type { PedroCampaign } from "@/app/api/pedro/campaigns/route"
 
 // Pedro is split into three conceptual phases (Roy 2026-05-22):
 //
@@ -160,86 +162,162 @@ export function PedroApp({ clients }: Props) {
   const requestedAuto = searchParams.get("auto") === "1"
   const needsClient = CLIENT_REQUIRED_SECTIONS.has(section)
 
-  // ── Campaign mode (Roy 2026-05-22) ─────────────────────────────
-  // Two paths into Pedro:
-  //   "optimize"  → load the latest saved versions, let the CM edit /
-  //                 regenerate individual stages. Default when the client
-  //                 already has a saved campaign.
-  //   "new"       → wipe the working state and start from a blank brief.
-  //                 Existing saved versions stay in the DB; the next
-  //                 saves create v.N+1 rows on top.
-  type CampaignMode = "optimize" | "new"
-  const [campaignMode, setCampaignMode] = useState<CampaignMode>("new")
-  // Bumps to force-remount Campaign + Research on a "Nieuwe campagne"
-  // click so component-internal state (brief, angles, etc.) resets to
-  // the blank-form defaults instead of carrying the previous campaign.
+  // ── Campaign selection (Roy 2026-05-23) ────────────────────────
+  // Per client there can be multiple named campaigns (different
+  // audiences / TOV strategies, possibly running in parallel). The
+  // picker shows the most-recently-used one by default but the CM can
+  // flip to any older campaign to keep building on it. "Nieuwe
+  // campagne" creates a fresh container — old work stays addressable
+  // via the picker.
+  const queryClient = useQueryClient()
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null)
+  // Bumps to force-remount Campaign + Research on a campaign switch so
+  // component-internal state (brief, angles, etc.) resets to the
+  // newly-selected campaign's data instead of carrying the previous.
   const [resetKey, setResetKey] = useState(0)
 
-  // Saved-versions count for the selected client — drives the "v.N"
-  // badge + the default mode when a client is picked.
-  type SavedVersion = { stage: string; version_number: number; saved_at: string }
-  const savedVersionsQuery = useQuery({
-    queryKey: ["pedro-app-saved-versions", selectedClientId],
-    queryFn: async (): Promise<SavedVersion[]> => {
+  const campaignsQuery = useQuery({
+    queryKey: ["pedro-campaigns", selectedClientId],
+    queryFn: async (): Promise<PedroCampaign[]> => {
       if (!selectedClientId) return []
-      const res = await fetch(`/api/pedro/saved-versions?clientId=${encodeURIComponent(selectedClientId)}`)
+      const res = await fetch(`/api/pedro/campaigns?clientId=${encodeURIComponent(selectedClientId)}`)
       if (!res.ok) return []
       const data = await res.json()
-      return (data?.versions ?? []) as SavedVersion[]
+      return (data?.campaigns ?? []) as PedroCampaign[]
     },
     enabled: !!selectedClientId,
     staleTime: 30_000,
   })
-  const hasSavedCampaign = (savedVersionsQuery.data?.length ?? 0) > 0
-  const latestVersion = savedVersionsQuery.data?.reduce((max, v) => Math.max(max, v.version_number), 0) ?? 0
 
-  // Default mode flips with the client: returning client with saved
-  // campaign → optimize, brand-new client → new.
+  const campaigns = campaignsQuery.data ?? []
+  const selectedCampaign = campaigns.find((c) => c.id === selectedCampaignId) ?? null
+  const selectedCampaignNumber = selectedCampaign?.campaign_number ?? null
+
+  // Auto-select the most-recently-used campaign whenever the client
+  // changes (or the list resolves for the first time). Most-recent =
+  // first in the list (the API orders by last_used_at desc).
   useEffect(() => {
-    if (!selectedClientId) return
-    if (savedVersionsQuery.isLoading) return
-    setCampaignMode(hasSavedCampaign ? "optimize" : "new")
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClientId, hasSavedCampaign, savedVersionsQuery.isLoading])
-
-  const switchToNewCampaign = useCallback(() => {
-    if (hasSavedCampaign) {
-      const ok = window.confirm(
-        `Nieuwe campagne starten voor deze klant?\n\nDe vorige (v.${latestVersion}) blijft bewaard — nieuwe stages worden opgeslagen als v.${latestVersion + 1}.`,
-      )
-      if (!ok) return
+    if (!selectedClientId) {
+      setSelectedCampaignId(null)
+      return
     }
-    setCampaignMode("new")
-    setResetKey((k) => k + 1)
-    setSection("brief")
-  }, [hasSavedCampaign, latestVersion])
+    if (campaignsQuery.isLoading) return
+    if (selectedCampaignId && campaigns.some((c) => c.id === selectedCampaignId)) return
+    setSelectedCampaignId(campaigns[0]?.id ?? null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId, campaignsQuery.isLoading, campaigns.length])
 
-  const switchToOptimize = useCallback(() => {
-    setCampaignMode("optimize")
-    setResetKey((k) => k + 1)
+  // Touch last_used_at when the CM actively selects a campaign so the
+  // picker default tracks "where the team was last". Best-effort —
+  // don't block the UI on the PATCH.
+  const touchCampaign = useCallback((id: string) => {
+    void fetch(`/api/pedro/campaigns/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ touch: true }),
+    }).catch(() => undefined)
   }, [])
 
-  // Build the tab bar AFTER savedVersionsQuery resolves so we know
-  // which stages have a ✓ done marker. In "new" mode we skip the
-  // markers — existing saved versions belong to the previous campaign
-  // and would mislead the CM into thinking the fresh one is partway
-  // done.
-  const PHASES: TabPhase<Section>[] = useMemo(() => {
+  const handleSelectCampaign = useCallback(
+    (c: PedroCampaign) => {
+      if (c.id === selectedCampaignId) return
+      setSelectedCampaignId(c.id)
+      setResetKey((k) => k + 1)
+      touchCampaign(c.id)
+    },
+    [selectedCampaignId, touchCampaign],
+  )
+
+  const handleCreateCampaign = useCallback(
+    async (name: string) => {
+      if (!selectedClientId) return
+      const res = await fetch("/api/pedro/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: selectedClientId, name: name || undefined }),
+      })
+      if (!res.ok) return
+      const json = await res.json()
+      const created = json.campaign as PedroCampaign | undefined
+      await queryClient.invalidateQueries({ queryKey: ["pedro-campaigns", selectedClientId] })
+      if (created) {
+        setSelectedCampaignId(created.id)
+        setResetKey((k) => k + 1)
+        setSection("brief")
+      }
+    },
+    [selectedClientId, queryClient],
+  )
+
+  const handleRenameCampaign = useCallback(
+    async (c: PedroCampaign, newName: string) => {
+      const res = await fetch(`/api/pedro/campaigns/${c.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      })
+      if (!res.ok) return
+      await queryClient.invalidateQueries({ queryKey: ["pedro-campaigns", selectedClientId] })
+    },
+    [queryClient, selectedClientId],
+  )
+
+  const handleArchiveCampaign = useCallback(
+    async (c: PedroCampaign) => {
+      const res = await fetch(`/api/pedro/campaigns/${c.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived: true }),
+      })
+      if (!res.ok) return
+      // If we archived the active one, fall back to the next most-recent.
+      if (c.id === selectedCampaignId) {
+        const fallback = campaigns.find((x) => x.id !== c.id) ?? null
+        setSelectedCampaignId(fallback?.id ?? null)
+        setResetKey((k) => k + 1)
+      }
+      await queryClient.invalidateQueries({ queryKey: ["pedro-campaigns", selectedClientId] })
+    },
+    [queryClient, selectedCampaignId, campaigns, selectedClientId],
+  )
+
+  // Saved-versions list for the *currently selected* campaign — drives
+  // the ✓ done markers on the tab bar so the CM sees per-campaign
+  // progress, not a cross-campaign smear.
+  type SavedVersion = { stage: string; version_number: number; saved_at: string }
+  const savedVersionsQuery = useQuery({
+    queryKey: ["pedro-app-saved-versions", selectedClientId, selectedCampaignNumber],
+    queryFn: async (): Promise<SavedVersion[]> => {
+      if (!selectedClientId || selectedCampaignNumber == null) return []
+      const res = await fetch(
+        `/api/pedro/saved-versions?clientId=${encodeURIComponent(selectedClientId)}&campaignNumber=${selectedCampaignNumber}`,
+      )
+      if (!res.ok) return []
+      const data = await res.json()
+      return (data?.versions ?? []) as SavedVersion[]
+    },
+    enabled: !!selectedClientId && selectedCampaignNumber != null,
+    staleTime: 30_000,
+  })
+
+  // Flat tab list — phases (Voorbereiding / Deliverables / Tools) were
+  // dropped as part of the Hub-wide design uniformization (Roy 2026-05-23):
+  // every other dashboard page uses a single TopTabs strip without grouped
+  // sub-headers, so Pedro now matches. The PHASE_SHAPE structure is kept
+  // as the source order — flattening preserves the original tab sequence
+  // (Brief → Research → Angles → Script → LP → Creatives → Ad copy → Refresh).
+  const TABS: TopTab<Section>[] = useMemo(() => {
     const savedStages = new Set<string>()
-    if (campaignMode === "optimize") {
-      for (const v of savedVersionsQuery.data ?? []) savedStages.add(v.stage)
-    }
-    return PHASE_SHAPE.map((phase) => ({
-      id: phase.id,
-      label: t(phase.labelKey, locale),
-      tabs: phase.tabs.map((tab) => ({
+    for (const v of savedVersionsQuery.data ?? []) savedStages.add(v.stage)
+    return PHASE_SHAPE.flatMap((phase) =>
+      phase.tabs.map((tab) => ({
         id: tab.id,
         label: t(tab.labelKey, locale),
         icon: tab.icon,
         done: savedStages.has(tab.id),
       })),
-    }))
-  }, [locale, campaignMode, savedVersionsQuery.data])
+    )
+  }, [locale, savedVersionsQuery.data])
 
   return (
     <div className="pedro-root">
@@ -254,13 +332,12 @@ export function PedroApp({ clients }: Props) {
         }
       />
 
-      {/* Sticky client picker — single source of truth across all tabs */}
+      {/* Sticky client picker — single source of truth across all tabs.
+          The "ACTIVE CLIENT" ribbon label was dropped 2026-05-23 — no
+          other Hub page hangs an uppercase ribbon between header and tabs,
+          and the picker itself is self-explanatory. */}
       <div className="mb-5 rounded-2xl border border-border/60 bg-card p-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
         <div className="flex items-center gap-3">
-          <div className="shrink-0 inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-            <Users className="h-3 w-3" />
-            {t("pedro.picker.active_client", locale)}
-          </div>
           <div className="flex-1">
             <ClientPicker
               clients={clients}
@@ -279,72 +356,43 @@ export function PedroApp({ clients }: Props) {
           )}
         </div>
 
-        {/* Campaign mode switcher — appears only when a client is selected.
-            Detects whether this client has a saved campaign and defaults
-            to Optimize / New accordingly. The pill is always shown so
-            the CM can flip intent at any moment. */}
+        {/* Per-client campaign picker. Each campaign is its own named
+            container (different audience / TOV / launch). Defaults to
+            the most-recently-used one; CM can switch to any previous
+            one or create a new one inline. */}
         {selectedClient && (
           <div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between gap-3 flex-wrap">
-            <div className="inline-flex items-center gap-2 text-xs">
-              {hasSavedCampaign ? (
-                <>
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium text-[11px]">
-                    Campagne v.{latestVersion}
-                  </span>
-                  <span className="text-muted-foreground">opgeslagen voor deze klant</span>
-                </>
-              ) : (
-                <>
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium text-[11px]">
-                    Geen campagne
-                  </span>
-                  <span className="text-muted-foreground">nog niets opgeslagen voor deze klant</span>
-                </>
-              )}
+            <div className="text-xs text-muted-foreground">
+              {campaignsQuery.isLoading
+                ? "Campagnes laden…"
+                : campaigns.length === 0
+                  ? "Nog geen campagne voor deze klant — maak er één aan om te starten."
+                  : `${campaigns.length} ${campaigns.length === 1 ? "campagne" : "campagnes"} voor deze klant`}
             </div>
-            <div className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-muted/40 p-0.5">
-              <button
-                type="button"
-                onClick={switchToOptimize}
-                disabled={!hasSavedCampaign}
-                className={`inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-md transition-colors ${
-                  campaignMode === "optimize"
-                    ? "bg-card text-foreground shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]"
-                    : "text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-muted-foreground"
-                }`}
-                title={hasSavedCampaign ? "Bewerk de bestaande campagne, regenereer losse deliverables" : "Geen bestaande campagne om te optimaliseren"}
-              >
-                <Pencil className="h-3 w-3" />
-                Optimaliseer
-              </button>
-              <button
-                type="button"
-                onClick={switchToNewCampaign}
-                className={`inline-flex items-center gap-1.5 h-7 px-2.5 text-xs font-medium rounded-md transition-colors ${
-                  campaignMode === "new"
-                    ? "bg-card text-foreground shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                title={hasSavedCampaign ? `Start vers — vorige (v.${latestVersion}) blijft bewaard` : "Start een nieuwe campagne vanaf brief"}
-              >
-                <Plus className="h-3 w-3" />
-                Nieuwe campagne
-              </button>
-            </div>
+            <CampaignPicker
+              campaigns={campaigns}
+              selectedId={selectedCampaignId}
+              loading={campaignsQuery.isLoading}
+              onSelect={handleSelectCampaign}
+              onCreate={handleCreateCampaign}
+              onRename={handleRenameCampaign}
+              onArchive={handleArchiveCampaign}
+            />
           </div>
         )}
       </div>
 
-      <PhasedTopTabs<Section> phases={PHASES} value={section} onChange={setSection} className="mb-6" />
+      <TopTabs<Section> tabs={TABS} value={section} onChange={setSection} className="mb-6" />
 
       <div>
         {needsClient && !selectedClientId ? (
           <NoClientSelected />
         ) : section === "research" ? (
           <Research
-            key={`research-${selectedClientId}-${resetKey}`}
+            key={`research-${selectedClientId}-${selectedCampaignId}-${resetKey}`}
             clientId={selectedClientId}
             clientName={selectedClient?.name ?? ""}
+            campaignNumber={selectedCampaignNumber ?? 1}
             onContinue={() => setSection("angles")}
           />
         ) : section === "refresh" ? (
@@ -356,18 +404,21 @@ export function PedroApp({ clients }: Props) {
           />
         ) : (
           <Campaign
-            // Remount key bumps when the CM switches campaign mode so
-            // Campaign's internal state (brief, angles, deliverables)
-            // resets to defaults instead of carrying the previous
-            // mode's state.
-            key={`campaign-${selectedClientId}-${resetKey}`}
+            // Remount key bumps when the CM switches campaign so the
+            // Campaign component re-loads from the new campaign's
+            // saved state instead of carrying the previous one.
+            key={`campaign-${selectedClientId}-${selectedCampaignId}-${resetKey}`}
             section={section as CampaignSection}
             setSection={(s) => setSection(s)}
             clients={clients}
             selectedClientId={selectedClientId}
             selectedClientName={selectedClient?.name ?? ""}
             onSelectClient={(id, _name) => setSelectedClientId(id)}
-            campaignMode={campaignMode}
+            campaignNumber={selectedCampaignNumber ?? 1}
+            // "New" mode = the active campaign has no saved versions yet
+            // (just created, blank form). Otherwise we load whatever's
+            // saved for that campaign.
+            campaignMode={(savedVersionsQuery.data?.length ?? 0) === 0 ? "new" : "optimize"}
           />
         )}
       </div>

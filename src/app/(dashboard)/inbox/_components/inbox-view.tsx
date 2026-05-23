@@ -30,6 +30,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
+import { PageHeader } from "@/components/ui/page-header"
 import { cn } from "@/lib/utils"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
@@ -761,76 +762,82 @@ export function InboxView({
           dockSplit5050 && "xl:max-w-[calc(50%-12px)]",
         )}
       >
-      <div className="flex items-end justify-between gap-4">
-        <h1 className="font-heading text-[28px] font-semibold tracking-tight leading-tight text-foreground">{t("inbox.title", locale)}</h1>
-        <div className="flex items-center gap-2">
-          {!isChatTab && !isClientOnlyTab && (
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setSearchQuery("")
-                    e.currentTarget.blur()
-                  }
-                }}
-                placeholder={t("inbox.search.placeholder", locale)}
-                className="h-8 w-56 rounded-md border border-input bg-background pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-              />
-              {searchQuery && (
-                <DismissButton
-                  size="xs"
-                  onClick={() => setSearchQuery("")}
-                  label={t("inbox.search.clear", locale)}
-                  stopPropagation={false}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2"
+      {/* Migrated to PageHeader 2026-05-23 — drops the bespoke 28px h1 so
+          /inbox opens with the same visual rhythm as every other dashboard
+          page (24px title, right-aligned actions row). Search input + Plus
+          button + shortcut help live in the actions slot. */}
+      <PageHeader
+        title={t("inbox.title", locale)}
+        actions={
+          <>
+            {!isChatTab && !isClientOnlyTab && (
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setSearchQuery("")
+                      e.currentTarget.blur()
+                    }
+                  }}
+                  placeholder={t("inbox.search.placeholder", locale)}
+                  className="h-8 w-56 rounded-md border border-input bg-background pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 />
-              )}
-            </div>
-          )}
-          {!lockedClient && (
-            // Filter toggle styled as a secondary affordance (outline) so it
-            // never collides visually with the primary action button (purple
-            // "New update" / "New task") sitting right next to it. Active
-            // state is signalled by a subtle primary-tinted background +
-            // border, not by switching to the full primary fill — Roy: two
-            // identical purple buttons next to each other made it unclear
-            // which one was the action vs. the filter.
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setAssignedToMe(!assignedToMe)}
-              className={cn(
-                assignedToMe &&
-                  "bg-primary/10 border-primary/30 text-primary hover:bg-primary/15 hover:text-primary",
-              )}
-            >
-              {assignedToMe ? t("inbox.filter.assigned_to_me", locale) : t("inbox.filter.all", locale)}
-            </Button>
-          )}
-          {!isChatTab && !isClientOnlyTab && !isNowTab && (
-            <Button size="sm" onClick={() => openComposer(activeTab === "tasks" ? "task" : "update")}>
-              <Plus className="h-4 w-4" />
-              {activeTab === "tasks" ? t("inbox.action.new_task", locale) : t("inbox.action.new_update", locale)}
-            </Button>
-          )}
-          {!isChatTab && !isClientOnlyTab && (
-            <button
-              type="button"
-              onClick={() => setShortcutsOpen(true)}
-              title={t("inbox.action.shortcuts", locale)}
-              aria-label={t("inbox.action.shortcuts", locale)}
-              className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-input text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
-            >
-              ?
-            </button>
-          )}
-        </div>
-      </div>
+                {searchQuery && (
+                  <DismissButton
+                    size="xs"
+                    onClick={() => setSearchQuery("")}
+                    label={t("inbox.search.clear", locale)}
+                    stopPropagation={false}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2"
+                  />
+                )}
+              </div>
+            )}
+            {!lockedClient && (
+              // Filter toggle styled as a secondary affordance (outline) so it
+              // never collides visually with the primary action button (purple
+              // "New update" / "New task") sitting right next to it. Active
+              // state is signalled by a subtle primary-tinted background +
+              // border, not by switching to the full primary fill — Roy: two
+              // identical purple buttons next to each other made it unclear
+              // which one was the action vs. the filter.
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAssignedToMe(!assignedToMe)}
+                className={cn(
+                  assignedToMe &&
+                    "bg-primary/10 border-primary/30 text-primary hover:bg-primary/15 hover:text-primary",
+                )}
+              >
+                {assignedToMe ? t("inbox.filter.assigned_to_me", locale) : t("inbox.filter.all", locale)}
+              </Button>
+            )}
+            {!isChatTab && !isClientOnlyTab && !isNowTab && (
+              <Button size="sm" onClick={() => openComposer(activeTab === "tasks" ? "task" : "update")}>
+                <Plus className="h-4 w-4" />
+                {activeTab === "tasks" ? t("inbox.action.new_task", locale) : t("inbox.action.new_update", locale)}
+              </Button>
+            )}
+            {!isChatTab && !isClientOnlyTab && (
+              <button
+                type="button"
+                onClick={() => setShortcutsOpen(true)}
+                title={t("inbox.action.shortcuts", locale)}
+                aria-label={t("inbox.action.shortcuts", locale)}
+                className="h-8 w-8 inline-flex items-center justify-center rounded-md border border-input text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              >
+                ?
+              </button>
+            )}
+          </>
+        }
+      />
 
       <TopTabs<MainTab> tabs={mainTabs} value={activeTab} onChange={setActiveTab} />
 

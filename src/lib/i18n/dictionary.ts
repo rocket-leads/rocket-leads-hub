@@ -589,7 +589,7 @@ export const DICTIONARY = {
 
   // ─── Pedro page ───────────────────────────────────────────────────────
   "pedro.title": { nl: "Pedro", en: "Pedro" },
-  "pedro.subtitle": { nl: "Build-modus — genereer brief, research, angles, scripts, creatives, landingspagina en ad copy voor de geselecteerde klant. Voor per-klant inzichten op één plek, open de Pedro-tab in het klant-paneel.", en: "Build mode — generate brief, research, angles, scripts, creatives, landing page and ad copy for the selected client. For per-client insights in one place, open the Pedro tab inside the client panel." },
+  "pedro.subtitle": { nl: "Genereer brief, angles, scripts en creatives voor één klant.", en: "Generate brief, angles, scripts and creatives for one client." },
   "pedro.status.online": { nl: "Online", en: "Online" },
   "pedro.picker.active_client": { nl: "Actieve klant", en: "Active client" },
   "pedro.picker.onboarding": { nl: "Onboarding", en: "Onboarding" },

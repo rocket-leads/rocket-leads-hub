@@ -19,6 +19,10 @@ export type TopTab<T extends string = string> = {
   dot?: "red" | "amber"
   /** Active-state accent. Defaults to `primary` when unset. */
   accent?: TabAccent
+  /** When true, a small green check appears next to the label. Used by
+   *  Pedro to surface "Brief saved", "Angles saved", etc. so the CM can
+   *  see at-a-glance how far the current campaign is. */
+  done?: boolean
 }
 
 /** Maps `TabAccent` to the Tailwind classes used on the active tab. Single
@@ -79,7 +83,7 @@ export function TopTabs<T extends string>({
   return (
     <div className={cn("flex items-center justify-between border-b border-border/40", className)}>
       <div className="flex items-center gap-0">
-        {tabs.map(({ id, label, icon: Icon, count, dot, accent }) => {
+        {tabs.map(({ id, label, icon: Icon, count, dot, accent, done }) => {
           const active = value === id
           const palette = ACCENT_CLASSES[accent ?? "primary"]
           return (
@@ -111,6 +115,17 @@ export function TopTabs<T extends string>({
                 </span>
               )}
               {label}
+              {done && !active && (
+                <span
+                  className="ml-0.5 inline-flex items-center justify-center text-emerald-500 dark:text-emerald-400"
+                  aria-label="opgeslagen"
+                  title="Opgeslagen voor deze klant"
+                >
+                  <svg viewBox="0 0 12 12" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2.5 6.5l2.5 2.5 4.5-5" />
+                  </svg>
+                </span>
+              )}
               {typeof count === "number" && (
                 <span
                   className={cn(

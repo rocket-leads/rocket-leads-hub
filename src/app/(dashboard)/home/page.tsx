@@ -15,6 +15,7 @@ import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { WatchlistClientState } from "@/app/api/watchlist/state/route"
 import type { InboxItem } from "@/types/inbox"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeader } from "@/components/ui/page-header"
 import { ActionBlock } from "./_components/action-block"
 import { InboxBlock } from "./_components/inbox-block"
 import { BillingBlock } from "./_components/billing-block"
@@ -193,28 +194,26 @@ async function HomeData() {
 
   return (
     <div className="space-y-6">
-      {/* Header — /home is the "Today" landing. Greeting on top, today's date,
-          then a one-line framing ("here's what needs your attention today")
-          so the user reads the page as a daily-focus surface, not a generic
-          dashboard. */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-[28px] font-semibold tracking-tight leading-tight text-foreground">
-            {t("home.greeting.morning", locale, { name: firstName })}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1.5">
-            {formatDate(new Date().toISOString(), locale)} · {t("home.subtitle", locale)}
-          </p>
-        </div>
-        {lastKpiRefreshAt && (
-          <span
-            className="text-xs text-muted-foreground mt-2 tabular-nums shrink-0"
-            title={new Date(lastKpiRefreshAt).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB")}
-          >
-            {t("home.updated_prefix", locale, { ago: formatTimeAgo(lastKpiRefreshAt, locale) })}
-          </span>
-        )}
-      </div>
+      {/* Header — /home is the "Today" landing. Greeting as the page title,
+          today's date + one-line framing as the subtitle, refresh timestamp
+          on the right. Migrated to the canonical PageHeader (2026-05-23) so
+          the Home page opens with the same visual rhythm as every other
+          dashboard surface (24px title, muted subtitle, right-aligned
+          actions). */}
+      <PageHeader
+        title={t("home.greeting.morning", locale, { name: firstName })}
+        subtitle={`${formatDate(new Date().toISOString(), locale)} · ${t("home.subtitle", locale)}`}
+        actions={
+          lastKpiRefreshAt ? (
+            <span
+              className="text-xs text-muted-foreground tabular-nums"
+              title={new Date(lastKpiRefreshAt).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB")}
+            >
+              {t("home.updated_prefix", locale, { ago: formatTimeAgo(lastKpiRefreshAt, locale) })}
+            </span>
+          ) : null
+        }
+      />
 
       {/* Weekly update drafts banner — self-hides when count is zero, so on
           most days this is invisible. Mondays after 06:00 UTC it shows
