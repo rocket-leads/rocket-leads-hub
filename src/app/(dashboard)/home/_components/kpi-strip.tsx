@@ -1,57 +1,7 @@
-import { cn } from "@/lib/utils"
-import { ArrowDown, ArrowUp, Minus } from "lucide-react"
+import { KpiTile, type KpiValueTone } from "@/components/ui/kpi-tile"
 import { t } from "@/lib/i18n/t"
 import { formatCurrency } from "@/lib/i18n/format"
 import type { Locale } from "@/lib/i18n/types"
-
-type Status = "good" | "warn" | "bad" | "neutral"
-
-function Card({
-  label,
-  value,
-  subtitle,
-  status,
-  trend,
-}: {
-  label: string
-  value: string
-  subtitle: string
-  status: Status
-  trend?: "up" | "down" | "flat"
-}) {
-  // Traffic-light: bad red, warn amber, good green. Neutral keeps the default
-  // text color so cards without a verdict don't fight for attention.
-  const valueColor =
-    status === "good"
-      ? "text-emerald-500"
-      : status === "warn"
-        ? "text-amber-500"
-        : status === "bad"
-          ? "text-red-500"
-          : "text-foreground"
-  const TrendIcon = trend === "up" ? ArrowUp : trend === "down" ? ArrowDown : Minus
-  const trendColor =
-    trend === "up"
-      ? "text-red-500"
-      : trend === "down"
-        ? "text-emerald-500"
-        : "text-muted-foreground/40"
-  // Visual chrome aligned to the KpiTile primitive: rounded-2xl, border-border/60,
-  // 11px uppercase label, font-heading hero number with tabular-nums for column
-  // alignment when stacked in a strip.
-  return (
-    <div className="bg-card rounded-2xl px-5 py-5 border border-border/60 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] flex flex-col gap-3 h-full">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-muted-foreground">{label}</span>
-        {trend && <TrendIcon className={cn("h-4 w-4", trendColor)} strokeWidth={2.5} />}
-      </div>
-      <span className={cn("font-heading text-[28px] font-bold leading-none tracking-tight tabular-nums", valueColor)}>
-        {value}
-      </span>
-      <span className="text-xs text-muted-foreground leading-snug">{subtitle}</span>
-    </div>
-  )
-}
 
 function fmtMrrCompact(v: number, locale: Locale): string {
   // Compact card-friendly form ("€61k" / "€2.5k") — falls back to the
@@ -83,23 +33,14 @@ export function KpiStrip({
   locale: Locale
 }) {
   // Action — bad whenever > 0. Trend up = more action than yesterday (red);
-  // trend down = fewer (green).
-  const actionStatus: Status = actionCount === 0 ? "neutral" : "bad"
-  const actionTrend: "up" | "down" | "flat" =
-    actionDelta > 0 ? "up" : actionDelta < 0 ? "down" : "flat"
-  const actionDeltaText =
-    actionDelta === 0
-      ? t("home.kpi.action.eq_yesterday", locale)
-      : actionDelta > 0
-        ? t("home.kpi.action.delta_pos", locale, { n: actionDelta })
-        : t("home.kpi.action.delta_neg", locale, { n: actionDelta })
+  // trend down = fewer (green). goodWhen="down" so positive delta = red.
+  const actionTone: KpiValueTone = actionCount === 0 ? "neutral" : "bad"
 
-  // Inbox zero is a win — colour it green when achieved, red when there's
-  // still stuff on the user's plate.
-  const inboxStatus: Status = unreadInboxCount > 0 ? "bad" : "good"
+  // Inbox zero is a win — green when achieved, red when stuff on the plate.
+  const inboxTone: KpiValueTone = unreadInboxCount > 0 ? "bad" : "good"
 
   // Health zones — full traffic light: <50 red, 50-74 amber, ≥75 green.
-  const healthStatus: Status =
+  const healthTone: KpiValueTone =
     healthScore == null
       ? "neutral"
       : healthScore < 50
@@ -110,37 +51,52 @@ export function KpiStrip({
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      <Card
+      <KpiTile
         label={t("home.kpi.action.label", locale)}
         value={`${actionCount}`}
-        subtitle={actionDeltaText}
-        status={actionStatus}
-        trend={actionTrend}
+        valueTone={actionTone}
+        trend={
+          actionDelta === 0
+            ? undefined
+            : {
+                pct: actionDelta,
+                label:
+                  actionDelta > 0
+                    ? t("home.kpi.action.delta_pos", locale, { n: actionDelta })
+                    : t("home.kpi.action.delta_neg", locale, { n: actionDelta }),
+                goodWhen: "down",
+              }
+        }
+        sub={
+          actionDelta === 0
+            ? t("home.kpi.action.eq_yesterday", locale)
+            : undefined
+        }
       />
-      <Card
+      <KpiTile
         label={t("home.kpi.inbox.label", locale)}
         value={`${unreadInboxCount}`}
-        subtitle={
+        valueTone={inboxTone}
+        sub={
           unreadInboxCount === 0
             ? t("home.kpi.inbox.zero", locale)
             : t("home.kpi.inbox.subtitle", locale)
         }
-        status={inboxStatus}
       />
-      <Card
+      <KpiTile
         label={t("home.kpi.health.label", locale)}
         value={healthScore == null ? "—" : `${healthScore}%`}
-        subtitle={
+        valueTone={healthTone}
+        sub={
           healthScore == null
             ? t("home.kpi.health.no_scope", locale)
             : t("home.kpi.health.target", locale)
         }
-        status={healthStatus}
       />
-      <Card
+      <KpiTile
         label={t("home.kpi.mrr.label", locale)}
         value={fmtMrrCompact(teamMrr, locale)}
-        subtitle={
+        sub={
           teamMrrClientCount === 0
             ? t("home.kpi.mrr.no_agreements", locale)
             : t(
@@ -149,7 +105,6 @@ export function KpiStrip({
                 { n: teamMrrClientCount },
               )
         }
-        status="neutral"
       />
     </div>
   )

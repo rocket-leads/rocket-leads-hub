@@ -1,9 +1,7 @@
 "use client"
 
 import { memo } from "react"
-import { ArrowDown, ArrowUp, Minus } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Skeleton } from "@/components/ui/skeleton"
+import { KpiTile, type KpiValueTone } from "@/components/ui/kpi-tile"
 import { formatCurrencyDecimal, formatPercent, safeDivide } from "@/lib/targets/formatters"
 import { deriveTargets } from "@/lib/targets/calculations"
 import { useLocale } from "@/lib/i18n/client"
@@ -11,30 +9,6 @@ import { t } from "@/lib/i18n/t"
 import type { MondayTargetsData, MetaTargetsData, TargetsConfig } from "@/types/targets"
 
 type Status = "good" | "bad" | "neutral"
-
-interface PillarCardProps {
-  label: string
-  value: string
-  subtitle: string
-  status: Status
-  trendIcon?: "up" | "down" | "flat"
-}
-
-function PillarCard({ label, value, subtitle, status, trendIcon }: PillarCardProps) {
-  const valueColor = status === "good" ? "text-green-500" : status === "bad" ? "text-red-500" : "text-foreground"
-  const Trend = trendIcon === "up" ? ArrowUp : trendIcon === "down" ? ArrowDown : Minus
-  const trendColor = trendIcon === "up" ? "text-green-500" : trendIcon === "down" ? "text-red-500" : "text-muted-foreground/40"
-  return (
-    <div className="bg-card rounded-lg p-5 border border-border/40 flex flex-col gap-2 h-full">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{label}</span>
-        {trendIcon && <Trend className={cn("h-3.5 w-3.5", trendColor)} strokeWidth={2.5} />}
-      </div>
-      <span className={cn("text-3xl font-bold font-mono leading-none tracking-tight", valueColor)}>{value}</span>
-      <span className="text-xs text-muted-foreground leading-relaxed">{subtitle}</span>
-    </div>
-  )
-}
 
 interface Props {
   monday: MondayTargetsData | null
@@ -49,11 +23,7 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-card rounded-lg p-5 border border-border/40">
-            <Skeleton className="h-3 w-20 mb-3" />
-            <Skeleton className="h-8 w-24 mb-3" />
-            <Skeleton className="h-3 w-28" />
-          </div>
+          <KpiTile key={i} label="" value="" loading />
         ))}
       </div>
     )
@@ -76,11 +46,11 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
   const showUpRateTarget = derived.showUpRate
   const convRateTarget = derived.convRate
 
+  // Tone-only signal across all pillars — same convention as Watchlist's KPI
+  // strip (the tone-coloured number IS the visual cue; no separate arrow).
+
   // ── 1. CBC (Cost per Booked Call) — the lead-volume driver ──
   const cbcStatus: Status = (cbcTarget === 0 || calls < 4) ? "neutral" : cbc <= cbcTarget ? "good" : "bad"
-  const cbcTrend: PillarCardProps["trendIcon"] = (cbcTarget === 0 || calls < 4)
-    ? "flat"
-    : cbc <= cbcTarget * 0.95 ? "up" : cbc > cbcTarget * 1.05 ? "down" : "flat"
   const cbcSubtitle = cbcTarget > 0
     ? t("targets.pillar.cbc.with_target", locale, { target: formatCurrencyDecimal(cbcTarget), calls: String(calls) })
     : calls > 0
@@ -89,9 +59,6 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
 
   // ── 2. Qualification Rate — audience match ──
   const qualStatus: Status = (qualRateTarget === 0 || calls < 4) ? "neutral" : qualRate >= qualRateTarget ? "good" : "bad"
-  const qualTrend: PillarCardProps["trendIcon"] = (qualRateTarget === 0 || calls < 4)
-    ? "flat"
-    : qualRate >= qualRateTarget * 1.05 ? "up" : qualRate < qualRateTarget * 0.95 ? "down" : "flat"
   const qualSubtitle = qualRateTarget > 0
     ? t("targets.pillar.qual.with_target", locale, { target: formatPercent(qualRateTarget), qualified: String(qualified), calls: String(calls) })
     : calls > 0
@@ -100,9 +67,6 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
 
   // ── 3. Show-up Rate — lead warmth & reminders ──
   const showUpStatus: Status = (showUpRateTarget === 0 || qualified < 4) ? "neutral" : showUpRate >= showUpRateTarget ? "good" : "bad"
-  const showUpTrend: PillarCardProps["trendIcon"] = (showUpRateTarget === 0 || qualified < 4)
-    ? "flat"
-    : showUpRate >= showUpRateTarget * 1.05 ? "up" : showUpRate < showUpRateTarget * 0.95 ? "down" : "flat"
   const showUpSubtitle = showUpRateTarget > 0
     ? t("targets.pillar.showup.with_target", locale, { target: formatPercent(showUpRateTarget), taken: String(taken), qualified: String(qualified) })
     : qualified > 0
@@ -111,9 +75,6 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
 
   // ── 4. Conversion Rate — sales team ──
   const convStatus: Status = (convRateTarget === 0 || taken < 4) ? "neutral" : convRate >= convRateTarget ? "good" : "bad"
-  const convTrend: PillarCardProps["trendIcon"] = (convRateTarget === 0 || taken < 4)
-    ? "flat"
-    : convRate >= convRateTarget * 1.05 ? "up" : convRate < convRateTarget * 0.95 ? "down" : "flat"
   const convSubtitle = convRateTarget > 0
     ? t("targets.pillar.conv.with_target", locale, { target: formatPercent(convRateTarget), deals: String(deals), taken: String(taken) })
     : taken > 0
@@ -122,33 +83,29 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      <PillarCard
+      <KpiTile
         label={t("targets.pillar.cbc", locale)}
         value={calls > 0 ? formatCurrencyDecimal(cbc) : "—"}
-        subtitle={cbcSubtitle}
-        status={cbcStatus}
-        trendIcon={cbcTrend}
+        valueTone={cbcStatus as KpiValueTone}
+        sub={cbcSubtitle}
       />
-      <PillarCard
+      <KpiTile
         label={t("targets.pillar.qual", locale)}
         value={calls > 0 ? formatPercent(qualRate) : "—"}
-        subtitle={qualSubtitle}
-        status={qualStatus}
-        trendIcon={qualTrend}
+        valueTone={qualStatus as KpiValueTone}
+        sub={qualSubtitle}
       />
-      <PillarCard
+      <KpiTile
         label={t("targets.pillar.showup", locale)}
         value={qualified > 0 ? formatPercent(showUpRate) : "—"}
-        subtitle={showUpSubtitle}
-        status={showUpStatus}
-        trendIcon={showUpTrend}
+        valueTone={showUpStatus as KpiValueTone}
+        sub={showUpSubtitle}
       />
-      <PillarCard
+      <KpiTile
         label={t("targets.pillar.conv", locale)}
         value={taken > 0 ? formatPercent(convRate) : "—"}
-        subtitle={convSubtitle}
-        status={convStatus}
-        trendIcon={convTrend}
+        valueTone={convStatus as KpiValueTone}
+        sub={convSubtitle}
       />
     </div>
   )

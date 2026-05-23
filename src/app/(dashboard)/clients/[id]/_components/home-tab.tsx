@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { KpiTile } from "@/components/ui/kpi-tile"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import { useClientDateRange } from "@/app/(dashboard)/clients/[id]/_hooks/use-client-date-range"
 import { categorizeHealthVsBaseline, type WatchCategory } from "@/lib/watchlist/categorize"
@@ -170,25 +171,14 @@ function KpiCard({
   windowLabel?: string
   loading?: boolean
 }) {
-  // Chrome aligned to the KpiTile primitive: rounded-2xl border-border/60 +
-  // px-5 py-4 + 11px uppercase label + 26px hero number with tabular-nums.
   return (
-    <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
-      <div className="flex items-center gap-2 mb-3">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground/70 font-medium">
-          {label}
-          {windowLabel && (
-            <span className="text-muted-foreground/40 font-normal"> · {windowLabel}</span>
-          )}
-        </span>
-      </div>
-      {loading ? (
-        <Skeleton className="h-7 w-24" />
-      ) : (
-        <p className="font-heading text-[26px] font-bold tracking-tight tabular-nums leading-none">{value}</p>
-      )}
-    </div>
+    <KpiTile
+      label={label}
+      icon={<Icon />}
+      windowLabel={windowLabel}
+      value={value}
+      loading={loading}
+    />
   )
 }
 

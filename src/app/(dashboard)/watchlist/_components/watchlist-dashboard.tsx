@@ -7,10 +7,11 @@ import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusPill } from "@/components/ui/status-pill"
-import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb, ListTodo, Loader2, ArrowRightLeft } from "lucide-react"
+import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
+import { KpiTile, type KpiValueTone } from "@/components/ui/kpi-tile"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import type { MondayClient } from "@/lib/integrations/monday"
@@ -832,61 +833,20 @@ function BucketAge({
 
 // --- Summary Header ---
 //
-// Targets-page-style summary: 4 KPI cards in a row + a Key Insights / Optimisation
-// Proposal pair underneath. Each block uses the exact same card primitives (`bg-card
-// rounded-lg p-5 border border-border/40`) and typography conventions as
-// `targets/_components/hero-pillars.tsx` and `targets/_components/marketing-insights.tsx`
-// so the watchlist feels like a first-class part of the same dashboard family.
+// Watchlist KPI summary uses the canonical KpiTile primitive — same
+// chrome, label, value typography and tone-system as Home, Targets and
+// the Client home tab. Roy 2026-05-23: "structuur en fonts moeten overal
+// hetzelfde". WatchlistKpiCard + WatchlistKpiSkeletons were removed in
+// favour of the shared component so any future tweak to KpiTile lands
+// across all surfaces at once.
 
 type WatchlistKpiStatus = "good" | "warn" | "bad" | "neutral"
-
-function WatchlistKpiCard({
-  label,
-  value,
-  subtitle,
-  status,
-  trendIcon,
-}: {
-  label: string
-  value: string
-  subtitle: string
-  status: WatchlistKpiStatus
-  trendIcon?: "up" | "down" | "flat"
-}) {
-  // Health-style traffic light: red (<50) / amber (50-74) / green (≥75).
-  // Neutral falls through to the default text color so cards without a
-  // verdict (e.g. "no clients in scope") don't get coloured at all.
-  const valueColor =
-    status === "good"
-      ? "text-green-500"
-      : status === "warn"
-        ? "text-amber-400"
-        : status === "bad"
-          ? "text-red-500"
-          : "text-foreground"
-  const Trend = trendIcon === "up" ? ArrowUp : trendIcon === "down" ? ArrowDown : Minus
-  const trendColor = trendIcon === "up" ? "text-green-500" : trendIcon === "down" ? "text-red-500" : "text-muted-foreground/40"
-  return (
-    <div className="bg-card rounded-lg p-5 border border-border/40 flex flex-col gap-2 h-full">
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{label}</span>
-        {trendIcon && <Trend className={cn("h-3.5 w-3.5", trendColor)} strokeWidth={2.5} />}
-      </div>
-      <span className={cn("text-3xl font-bold font-mono leading-none tracking-tight", valueColor)}>{value}</span>
-      <span className="text-xs text-muted-foreground leading-relaxed">{subtitle}</span>
-    </div>
-  )
-}
 
 function WatchlistKpiSkeletons() {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="bg-card rounded-lg p-5 border border-border/40">
-          <Skeleton className="h-3 w-20 mb-3" />
-          <Skeleton className="h-8 w-24 mb-3" />
-          <Skeleton className="h-3 w-28" />
-        </div>
+        <KpiTile key={i} label="" value="" loading />
       ))}
     </div>
   )
@@ -1584,11 +1544,11 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
                   : "good"
 
           // Card 2 — vs 7d avg. Cron-fed, so it stays "—" on the very first day after
-          // deploy and starts being meaningful from day 3 or 4 onwards.
+          // deploy and starts being meaningful from day 3 or 4 onwards. The hero value
+          // itself ("+19pp" / "-8pp") already conveys direction; no separate trend icon
+          // is rendered — the tone-coloured number is the visual signal.
           const avg7d = healthScore7dAvg
           const delta7d = avg7d != null ? healthScore - avg7d : null
-          const trend7d: "up" | "down" | "flat" | undefined =
-            delta7d == null ? undefined : delta7d > 1 ? "up" : delta7d < -1 ? "down" : "flat"
           const status7d: WatchlistKpiStatus =
             delta7d == null ? "neutral" : delta7d > 1 ? "good" : delta7d < -1 ? "bad" : "neutral"
           const value7d = delta7d == null
@@ -1621,30 +1581,27 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
 
           return (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <WatchlistKpiCard
+              <KpiTile
                 label={t("watchlist.kpi.health.label", locale)}
                 value={total === 0 ? "—" : `${healthScore}%`}
-                subtitle={total === 0 ? t("watchlist.kpi.health.no_scope", locale) : t("watchlist.kpi.health.target", locale)}
-                status={scoreStatus}
+                valueTone={scoreStatus as KpiValueTone}
+                sub={total === 0 ? t("watchlist.kpi.health.no_scope", locale) : t("watchlist.kpi.health.target", locale)}
               />
-              <WatchlistKpiCard
+              <KpiTile
                 label={t("watchlist.kpi.vs_avg.label", locale)}
                 value={value7d}
-                subtitle={subtitle7d}
-                status={status7d}
-                trendIcon={trend7d}
+                valueTone={status7d as KpiValueTone}
+                sub={subtitle7d}
               />
-              <WatchlistKpiCard
+              <KpiTile
                 label={t("watchlist.kpi.healthy.label", locale)}
                 value={valueHealthy}
-                subtitle={subtitleHealthy}
-                status="neutral"
+                sub={subtitleHealthy}
               />
-              <WatchlistKpiCard
+              <KpiTile
                 label={t("watchlist.kpi.avg_cpl.label", locale)}
                 value={valueCpl}
-                subtitle={subtitleCpl}
-                status="neutral"
+                sub={subtitleCpl}
               />
             </div>
           )

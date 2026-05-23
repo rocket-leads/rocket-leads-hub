@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { CheckCircle2, AlertCircle, AlertTriangle, Clock, Loader2, Database } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { KpiTile, type KpiValueTone } from "@/components/ui/kpi-tile"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { formatTimeAgo } from "@/lib/i18n/format"
@@ -339,22 +340,13 @@ function SummaryCard({
   subtitle: string
   status: CardStatus
 }) {
-  const valueColor =
-    status === "good"
-      ? "text-green-500"
-      : status === "warn"
-        ? "text-amber-400"
-        : status === "bad"
-          ? "text-red-500"
-          : "text-foreground"
   return (
-    <div className="bg-card rounded-lg p-5 border border-border/40 flex flex-col gap-2">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{label}</span>
-      <span className={cn("text-3xl font-bold font-mono leading-none tracking-tight", valueColor)}>
-        {value}
-      </span>
-      <span className="text-xs text-muted-foreground leading-relaxed">{subtitle}</span>
-    </div>
+    <KpiTile
+      label={label}
+      value={value}
+      valueTone={status as KpiValueTone}
+      sub={subtitle}
+    />
   )
 }
 

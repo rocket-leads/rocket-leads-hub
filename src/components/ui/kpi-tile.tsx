@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils"
 import { Skeleton } from "./skeleton"
 
 type Trend = {
-  /** Signed percentage (+12.5 → "+12.5%", -8 → "-8%"). 0 renders as neutral. */
+  /** Signed percentage (+12.5 → "+12.5%", -8 → "-8%"). 0 renders as neutral.
+   *  Used to derive tone + auto-format the chip label. */
   pct: number
   /** Optional one-line interpretation under the number (eg. "Trending up this
    *  week", "Stable", "Lowest since launch"). Pure text, no logic. */
@@ -11,11 +12,30 @@ type Trend = {
   /** Override the up/down direction inferred from `pct` sign. Use when the
    *  metric's "good" direction is reversed (eg. CPL — down is good). */
   goodWhen?: "up" | "down"
+  /** Override the auto-formatted "+12.5%" chip text. Use when the delta is
+   *  an absolute count instead of a percentage (eg. "+2 vs yesterday"). The
+   *  sign of `pct` still drives the tone. */
+  label?: string
 }
+
+/**
+ * Optional tinting of the hero number. Use sparingly — only when the metric
+ * has a verdict that benefits from a glance-level color (action count = red
+ * when > 0, health score = green/amber/red against target). Default
+ * `neutral` keeps the value in the standard foreground color.
+ */
+export type KpiValueTone = "good" | "warn" | "bad" | "neutral"
 
 type Props = {
   /** Small uppercased label above the number (Flow + herMon both do this). */
   label: string
+  /** Optional icon rendered to the left of the label (e.g. €, %, 🎯). Lucide
+   *  icon component or a custom node — kept tiny (12px) so it sits next to
+   *  the 11px label without throwing the visual weight off. */
+  icon?: React.ReactNode
+  /** Optional tiny suffix on the label line — e.g. "7d", "MTD". Same muted
+   *  treatment as the label so it reads as a window qualifier. */
+  windowLabel?: string
   /** The hero number. Pre-formatted string so the component stays
    *  formatting-agnostic (euro, %, count, time). */
   value: React.ReactNode
@@ -24,8 +44,17 @@ type Props = {
   sub?: React.ReactNode
   /** Optional period-over-period trend chip + caption. */
   trend?: Trend
+  /** Optional traffic-light tinting for the value (default: neutral). */
+  valueTone?: KpiValueTone
   loading?: boolean
   className?: string
+}
+
+const VALUE_TONE_CLASSES: Record<KpiValueTone, string> = {
+  good: "text-emerald-500",
+  warn: "text-amber-500",
+  bad: "text-red-500",
+  neutral: "text-foreground",
 }
 
 function fmtPct(pct: number): string {
@@ -42,7 +71,7 @@ function fmtPct(pct: number): string {
  * `goodWhen` override. Without `goodWhen`, up=good (revenue, leads). With
  * `goodWhen="down"`, the convention flips (CPL, CPA, churn).
  */
-export function KpiTile({ label, value, sub, trend, loading, className }: Props) {
+export function KpiTile({ label, icon, windowLabel, value, sub, trend, valueTone = "neutral", loading, className }: Props) {
   // Decide tone: a metric where "up is bad" (eg. CPL) needs to flip the chip.
   const isPositive = trend
     ? (trend.goodWhen === "down" ? trend.pct < 0 : trend.pct > 0)
@@ -60,8 +89,16 @@ export function KpiTile({ label, value, sub, trend, loading, className }: Props)
       )}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground/70 font-medium">
+        <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground/70 font-medium">
+          {icon && (
+            <span className="inline-flex items-center text-muted-foreground/60 [&_svg]:h-3.5 [&_svg]:w-3.5">
+              {icon}
+            </span>
+          )}
           {label}
+          {windowLabel && (
+            <span className="text-muted-foreground/40 font-normal normal-case">· {windowLabel}</span>
+          )}
         </span>
         {trend && (
           <span
@@ -77,7 +114,7 @@ export function KpiTile({ label, value, sub, trend, loading, className }: Props)
             ) : isNegative ? (
               <TrendingDown className="h-3 w-3" />
             ) : null}
-            {fmtPct(trend.pct)}
+            {trend.label ?? fmtPct(trend.pct)}
           </span>
         )}
       </div>
@@ -85,7 +122,12 @@ export function KpiTile({ label, value, sub, trend, loading, className }: Props)
       {loading ? (
         <Skeleton className="h-8 w-24" />
       ) : (
-        <p className="font-heading text-[26px] font-bold tracking-tight tabular-nums leading-none text-foreground">
+        <p
+          className={cn(
+            "font-heading text-[26px] font-bold tracking-tight tabular-nums leading-none",
+            VALUE_TONE_CLASSES[valueTone],
+          )}
+        >
           {value}
         </p>
       )}
