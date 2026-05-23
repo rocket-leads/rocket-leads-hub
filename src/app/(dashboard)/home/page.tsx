@@ -466,6 +466,9 @@ async function fetchTodayMeetings(): Promise<TodayMeeting[]> {
     const { data } = await supabase
       .from("meetings")
       .select(`${MEETING_ROW_COLUMNS}, clients(name, monday_item_id)`)
+      // Sales calls are ingested for the Targets dashboard insight loop
+      // (2026-05-23) but should not pollute the daily meetings block.
+      .neq("meeting_type", "sales")
       .gte("scheduled_at", startOfDay.toISOString())
       .lte("scheduled_at", endOfDay.toISOString())
       .order("scheduled_at", { ascending: true })

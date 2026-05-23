@@ -42,7 +42,6 @@ export async function POST(req: NextRequest) {
   let inserted = 0
   let deduped = 0
   let skippedTeam = 0
-  let skippedSales = 0
   let errored = 0
 
   try {
@@ -71,9 +70,6 @@ export async function POST(req: NextRequest) {
         case "skipped_team":
           skippedTeam++
           break
-        case "skipped_sales":
-          skippedSales++
-          break
       }
     }
   } catch (e) {
@@ -82,7 +78,7 @@ export async function POST(req: NextRequest) {
         ok: false,
         step: "fetch_or_ingest",
         error: e instanceof Error ? e.message : "Fathom fetch/ingest failed",
-        partial: { fetched, inserted, deduped, skippedTeam, skippedSales, errored },
+        partial: { fetched, inserted, deduped, skippedTeam, errored },
       },
       { status: 500 },
     )
@@ -105,7 +101,7 @@ export async function POST(req: NextRequest) {
         ok: false,
         step: "match",
         error: e instanceof Error ? e.message : "Matcher failed",
-        ingest: { fetched, inserted, deduped, skippedTeam, skippedSales, errored },
+        ingest: { fetched, inserted, deduped, skippedTeam, errored },
       },
       { status: 500 },
     )
@@ -124,7 +120,6 @@ export async function POST(req: NextRequest) {
       inserted,
       deduped,
       skipped_team: skippedTeam,
-      skipped_sales: skippedSales,
       errored,
     },
     match: matchSummary,

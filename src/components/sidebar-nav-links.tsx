@@ -36,18 +36,6 @@ export type NavItem = {
   badgeTitle?: string
 }
 
-/** Marker entry that renders a horizontal rule + extra spacing between
- *  two nav sections. Lets the sidebar visually group the "tools" stack
- *  (Home / Watch list / All campaigns / Pedro) above the "admin
- *  stack" (Billing / Targets / Settings) without needing two separate
- *  <nav> elements. */
-export type NavDivider = { kind: "divider" }
-
-export type NavEntry = NavItem | NavDivider
-
-function isDivider(e: NavEntry): e is NavDivider {
-  return (e as NavDivider).kind === "divider"
-}
 
 type BadgeCounts = { unreadUpdates: number; openTasks: number; unreadChats: number }
 
@@ -84,7 +72,7 @@ type HealthDotSummary = {
 }
 
 type Props = {
-  items: NavEntry[]
+  items: NavItem[]
   /** Admin-only health probe. Lights up the Settings dot when crons errored
    *  or integration tokens went invalid. Null = non-admin (no dot rendered). */
   healthSummary?: HealthDotSummary | null
@@ -138,7 +126,15 @@ function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClic
   const isInbox = item.href === "/inbox"
   const isSettings = item.href === "/settings"
 
-  const active = pathname === item.href || pathname.startsWith(item.href + "/")
+  // Parent rows of a group (e.g. Pedro) never get the strong active
+  // highlight — even when their own href matches the current path —
+  // because that would compete with the active child's purple glow.
+  // They use the subtle `isParentSection` treatment instead.
+  // Roy 2026-05-23: clicking Pedro must light up the On-board child
+  // instantly, not the parent itself.
+  const active =
+    !isParentSection &&
+    (pathname === item.href || pathname.startsWith(item.href + "/"))
 
   const showHealthDot = isSettings && healthSummary?.needsAttention === true
   const healthDotTitle = showHealthDot ? buildHealthDotTitle(healthSummary) : undefined
@@ -256,17 +252,20 @@ export function SidebarNavLinks({ items, healthSummary = null }: Props) {
 
   return (
     <nav className="flex-1 px-3 space-y-0.5">
-      {items.map((entry, idx) => {
-        if (isDivider(entry)) {
-          return (
-            <div key={`divider-${idx}`} className="my-3 mx-3 h-px bg-border/60" />
-          )
-        }
-        const item = entry
+      {items.map((item) => {
         const hasChildren = !!item.children?.length
+        // A parent row reads as "section selected" whenever the current
+        // pathname matches the parent's own href OR any of its children's
+        // hrefs. We check children explicitly (not just parent.startsWith)
+        // because parents now link directly to their default child
+        // (Pedro → /pedro/onboard) instead of a shared prefix.
         const isParentSection =
           hasChildren &&
-          (pathname === item.href || pathname.startsWith(item.href + "/"))
+          (pathname === item.href ||
+            pathname.startsWith(item.href + "/") ||
+            (item.children ?? []).some(
+              (c) => pathname === c.href || pathname.startsWith(c.href + "/"),
+            ))
         const open = hasChildren ? isExpanded(item) : false
 
         return (

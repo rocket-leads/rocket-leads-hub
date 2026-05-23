@@ -25,6 +25,10 @@ export default async function MeetingsPage() {
   const { data: rawMeetings } = await supabase
     .from("meetings")
     .select(MEETING_ROW_COLUMNS)
+    // Sales calls are ingested for the Targets dashboard insight loop but
+    // hidden from the team meetings overview — they aren't actionable as
+    // "linked client meetings".
+    .neq("meeting_type", "sales")
     .gte("scheduled_at", cutoff)
     .order("scheduled_at", { ascending: false, nullsFirst: false })
     .limit(300)

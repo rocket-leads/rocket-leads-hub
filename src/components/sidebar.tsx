@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth"
 import Link from "next/link"
 import Image from "next/image"
-import { SidebarNavLinks, type NavEntry, type NavItem } from "./sidebar-nav-links"
+import { SidebarNavLinks, type NavItem } from "./sidebar-nav-links"
 import { UserMenu } from "./user-menu"
 import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-platform-tokens"
 import { readCache } from "@/lib/cache"
@@ -55,6 +55,11 @@ export async function Sidebar() {
         .select("id", { count: "exact", head: true })
         .ilike("recorded_by_email", session.user.email)
         .in("link_status", ["unlinked", "suggested", "prospect"])
+        // Sales calls are intentionally ingested without a client link (matched
+        // later if the deal closes). Excluding them keeps the AM unmatched-
+        // meetings badge limited to genuinely actionable kick-offs / evals
+        // that need a human to confirm the client mapping.
+        .neq("meeting_type", "sales")
       unmatchedMeetingsCount = count ?? 0
     } catch {
       // Silent.
@@ -125,7 +130,12 @@ export async function Sidebar() {
   const HOME: NavItem = { href: "/home", label: t("nav.home", locale), icon: "Home" }
   const WATCH_LIST: NavItem = { href: "/watchlist", label: t("nav.watch_list", locale), icon: "Eye" }
   const PEDRO: NavItem = {
-    href: "/pedro",
+    // Link Pedro directly to its default child instead of /pedro (which
+    // would server-redirect to /pedro/onboard). The redirect hop delays
+    // the purple "active" highlight on On-board by one round-trip; going
+    // straight to /pedro/onboard gives an instant active state.
+    // Roy 2026-05-23.
+    href: "/pedro/onboard",
     label: t("nav.pedro", locale),
     icon: "Megaphone",
     children: pedroChildren,
@@ -149,7 +159,7 @@ export async function Sidebar() {
     PEDRO,
   ]
 
-  // ── Bottom group: ops / admin stack, separated by a divider ──
+  // ── Bottom group: ops / admin stack ──
   // Targets stays visible to everyone (the page itself gates its finance
   // tab to admin+finance — Roy 2026-05-23). Billing visible to admin +
   // finance + member today per current policy. Settings stays admin-only.
@@ -169,11 +179,7 @@ export async function Sidebar() {
 
   const bottomGroup: NavItem[] = [BILLING, TARGETS, ...(isAdmin ? [SETTINGS] : [])]
 
-  const allItems: NavEntry[] = [
-    ...TOP_GROUP,
-    { kind: "divider" },
-    ...bottomGroup,
-  ]
+  const allItems: NavItem[] = [...TOP_GROUP, ...bottomGroup]
 
   // Count missing platform connections so we can flag the avatar with a dot.
   // Replies-as-self require Slack/Trengo/Monday tokens per user — if any are

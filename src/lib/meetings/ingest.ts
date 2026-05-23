@@ -13,7 +13,6 @@ export type IngestResult =
   | { ok: true; status: "inserted"; recording_id: string; meeting_type: string; link_status: string; matched?: { clientId: string; strategy: string } }
   | { ok: true; status: "deduped"; recording_id: string }
   | { ok: true; status: "skipped_team"; recording_id: string; team: string | null }
-  | { ok: true; status: "skipped_sales"; recording_id: string }
   | { ok: false; status: "error"; error: string }
 
 /**
@@ -49,15 +48,14 @@ export async function ingestFathomMeeting(
     return { ok: true, status: "skipped_team", recording_id: recordingId, team }
   }
 
-  // Sales meetings are deliberately not stored at ingest. We only need them
-  // once a deal converts to a client — at that point the matcher pulls the
-  // call from Fathom by attendee email and links it to the client. Storing
-  // every sales call up front would clutter the meetings overview with
-  // recordings that may never become clients (most sales calls don't close).
+  // Sales meetings used to be skipped at ingest ("most don't close, would
+  // clutter the meetings overview"). 2026-05-23: changed to ingest them so
+  // the Targets dashboard can pull recent sales-call transcripts when sales
+  // funnel metrics (conversion / show-up / qual rate) go off-track and surface
+  // the dominant theme via LLM. Sales rows are filtered out of the standard
+  // meetings UI surfaces (home block, /pedro/meetings, client meetings tab)
+  // by adding meeting_type != 'sales' filters at the query layer.
   const meetingType = classifyMeetingType(payload)
-  if (meetingType === "sales") {
-    return { ok: true, status: "skipped_sales", recording_id: recordingId }
-  }
 
   const { data: existing } = await supabase
     .from("meetings")
