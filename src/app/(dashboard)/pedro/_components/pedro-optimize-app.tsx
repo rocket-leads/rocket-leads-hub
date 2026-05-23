@@ -2,24 +2,38 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
-import { Users } from "lucide-react"
+import { Users, Compass, Video, ImageIcon, Megaphone } from "lucide-react"
+import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { ClientPicker } from "./client-picker"
-import { PedroRefresh } from "./pedro-refresh"
+import { AnglesRefresh } from "./angles-refresh"
+import { ScriptRefresh } from "./script-refresh"
+import { CreativeRefresh } from "./creative-refresh"
+import { AdCopyRefresh } from "./ad-copy-refresh"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { PedroClient } from "./types"
 
 // Pedro Optimize — the "iterate on a live campaign" entry point.
 //
-// Today this is exactly the creative-refresh tool: pick a Live client,
-// Pedro reads Meta performance and proposes iterations on the winners
-// in the same hook/angle/format DNA. The page is intentionally its own
-// route (Roy 2026-05-23, split from the unified Pedro page) so a future
-// "what do you want to optimize? creatives / funnel / ads / opvolging"
-// picker has somewhere to land without pushing the on-board flow off
-// the screen.
+// Roy 2026-05-23: Optimize used to only do creative refresh. Now it has
+// four tabs that mirror the deliverables tabs in Onboard — Angles,
+// Video Scripts, Creatives, Ad Copy — so the CM can refresh any stage
+// without having to re-do the on-board flow from scratch. Each tab
+// reads live Meta performance and proposes new variants in that stage's
+// shape.
+type Section = "angles" | "script" | "creatives" | "ad-copy"
+
+const TAB_SHAPE: Array<{ id: Section; labelKey: Parameters<typeof t>[0]; icon: typeof Compass }> = [
+  { id: "angles", labelKey: "pedro.tab.angles", icon: Compass },
+  { id: "script", labelKey: "pedro.tab.script", icon: Video },
+  { id: "creatives", labelKey: "pedro.tab.creatives", icon: ImageIcon },
+  { id: "ad-copy", labelKey: "pedro.tab.ad_copy", icon: Megaphone },
+]
+
+const VALID_SECTIONS = new Set<Section>(["angles", "script", "creatives", "ad-copy"])
+
 const CLIENT_STORAGE_KEY = "pedro.selectedClientId"
 
 type Props = { clients: PedroClient[] }
@@ -30,6 +44,25 @@ export function PedroOptimizeApp({ clients }: Props) {
 
   const urlClientId = searchParams.get("clientId")
   const autoStart = searchParams.get("auto") === "1"
+
+  // Tab seed: ?tab=X in the URL wins on first load (Watch List "Ask Pedro"
+  // can deep-link to a specific stage). Otherwise default to Creatives
+  // since that's what Optimize did exclusively before tabs shipped — keeps
+  // the existing muscle memory.
+  const initialSection: Section = (() => {
+    const tab = searchParams.get("tab")
+    if (tab && VALID_SECTIONS.has(tab as Section)) return tab as Section
+    return "creatives"
+  })()
+
+  const [section, setSection] = useState<Section>(initialSection)
+
+  useEffect(() => {
+    const tab = searchParams.get("tab")
+    if (tab && VALID_SECTIONS.has(tab as Section)) {
+      setSection(tab as Section)
+    }
+  }, [searchParams])
 
   // Shared storage key with the on-board app so a client picked in one
   // tab carries to the other — the AM almost always wants the same
@@ -61,6 +94,16 @@ export function PedroOptimizeApp({ clients }: Props) {
   const selectedClient = useMemo(
     () => clients.find((c) => c.id === selectedClientId) ?? null,
     [clients, selectedClientId],
+  )
+
+  const TABS: TopTab<Section>[] = useMemo(
+    () =>
+      TAB_SHAPE.map((tab) => ({
+        id: tab.id,
+        label: t(tab.labelKey, locale),
+        icon: tab.icon,
+      })),
+    [locale],
   )
 
   return (
@@ -96,13 +139,39 @@ export function PedroOptimizeApp({ clients }: Props) {
         </div>
       </div>
 
+      <TopTabs<Section> tabs={TABS} value={section} onChange={setSection} className="mb-6" />
+
       {selectedClientId ? (
-        <PedroRefresh
-          clients={clients}
-          selectedClientId={selectedClientId}
-          selectedClientName={selectedClient?.name ?? ""}
-          autoStart={autoStart}
-        />
+        <>
+          {section === "angles" && (
+            <AnglesRefresh
+              selectedClientId={selectedClientId}
+              selectedClientName={selectedClient?.name ?? ""}
+              autoStart={autoStart}
+            />
+          )}
+          {section === "script" && (
+            <ScriptRefresh
+              selectedClientId={selectedClientId}
+              selectedClientName={selectedClient?.name ?? ""}
+              autoStart={autoStart}
+            />
+          )}
+          {section === "creatives" && (
+            <CreativeRefresh
+              selectedClientId={selectedClientId}
+              selectedClientName={selectedClient?.name ?? ""}
+              autoStart={autoStart}
+            />
+          )}
+          {section === "ad-copy" && (
+            <AdCopyRefresh
+              selectedClientId={selectedClientId}
+              selectedClientName={selectedClient?.name ?? ""}
+              autoStart={autoStart}
+            />
+          )}
+        </>
       ) : (
         <NoClientSelected />
       )}

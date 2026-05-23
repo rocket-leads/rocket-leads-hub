@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
-import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers, Rocket, Wrench } from "lucide-react"
+import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers, Rocket, Wrench, ChevronRight } from "lucide-react"
 
 // Note: lucide's `Receipt` ships with a $ glyph baked into the SVG. Roy
 // flagged it as off-brand for a Hub that talks Euros — we use `CreditCard`
@@ -123,13 +123,17 @@ type RowProps = {
    *  the active child. */
   isParentSection?: boolean
   /** Side-effect to run when this row is clicked, in addition to the
-   *  Link's navigation. Used by parent rows to force their children
-   *  open whenever the user clicks them — Roy 2026-05-23: no separate
-   *  chevron, one click area, always expand. */
+   *  Link's navigation. Used by parent rows to toggle their children
+   *  open/closed on the same click that navigates. */
   onClick?: () => void
+  /** Renders a chevron on the right of the row that rotates to indicate
+   *  open/closed state. Visual only — the whole row is the click target.
+   *  Roy 2026-05-23: chevron-down when expanded, chevron-right when
+   *  collapsed (matches herMon's sidebar pattern). */
+  chevron?: { open: boolean }
 }
 
-function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClick }: RowProps) {
+function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClick, chevron }: RowProps) {
   const Icon = ICONS[item.icon]
   const isInbox = item.href === "/inbox"
   const isSettings = item.href === "/settings"
@@ -167,23 +171,35 @@ function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClic
         />
       )}
       <span className="truncate">{item.label}</span>
-      {isInbox && <InboxBadge />}
-      {badgeCount > 0 && (
-        <span
-          className="ml-auto rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary"
-          title={item.badgeTitle}
-          aria-label={item.badgeTitle ?? `${badgeCount}`}
-        >
-          {badgeCount > 99 ? "99+" : badgeCount}
-        </span>
-      )}
-      {showHealthDot && (
-        <span
-          className="ml-auto h-2 w-2 rounded-full bg-red-500 animate-pulse"
-          title={healthDotTitle}
-          aria-label={healthDotTitle}
-        />
-      )}
+      {/* Spacer pushes any trailing chips/dot/chevron to the right edge.
+          Using a single ml-auto spacer (instead of putting ml-auto on the
+          first trailing element) so badge + chevron can sit side-by-side
+          on parent rows like Pedro without stealing each other's space. */}
+      <span className="ml-auto inline-flex items-center gap-1.5">
+        {isInbox && <InboxBadge />}
+        {badgeCount > 0 && (
+          <span
+            className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary"
+            title={item.badgeTitle}
+            aria-label={item.badgeTitle ?? `${badgeCount}`}
+          >
+            {badgeCount > 99 ? "99+" : badgeCount}
+          </span>
+        )}
+        {showHealthDot && (
+          <span
+            className="h-2 w-2 rounded-full bg-red-500 animate-pulse"
+            title={healthDotTitle}
+            aria-label={healthDotTitle}
+          />
+        )}
+        {chevron && (
+          <ChevronRight
+            className={`h-3.5 w-3.5 text-foreground/40 transition-transform duration-150 ${chevron.open ? "rotate-90" : ""}`}
+            aria-hidden="true"
+          />
+        )}
+      </span>
     </Link>
   )
 }
@@ -222,13 +238,17 @@ export function SidebarNavLinks({ items, healthSummary = null }: Props) {
     return expanded[item.href]
   }
 
-  function forceExpand(item: NavItem) {
+  function toggleExpand(item: NavItem) {
     setExpanded((prev) => {
-      const next = { ...prev, [item.href]: true }
+      const currentOpen =
+        item.href in prev
+          ? prev[item.href]
+          : pathname === item.href || pathname.startsWith(item.href + "/")
+      const next = { ...prev, [item.href]: !currentOpen }
       try {
         window.localStorage.setItem(EXPAND_STORAGE_KEY, JSON.stringify(next))
       } catch {
-        // Ignore quota / disabled storage — open still works in-session.
+        // Ignore quota / disabled storage — toggle still works in-session.
       }
       return next
     })
@@ -256,7 +276,8 @@ export function SidebarNavLinks({ items, healthSummary = null }: Props) {
               pathname={pathname}
               healthSummary={healthSummary}
               isParentSection={hasChildren ? isParentSection : false}
-              onClick={hasChildren ? () => forceExpand(item) : undefined}
+              onClick={hasChildren ? () => toggleExpand(item) : undefined}
+              chevron={hasChildren ? { open } : undefined}
             />
             {hasChildren && open && (
               <div className="mt-0.5 mb-1 space-y-0.5">

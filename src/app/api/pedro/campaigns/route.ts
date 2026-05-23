@@ -38,6 +38,56 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = await createAdminClient()
+
+  // ── Self-heal: enforce the invariant "every saved version / draft has
+  // a campaign". Roy 2026-05-23: spotted a client (Financial Planner)
+  // showing "v5" in the stage bar while the campaign picker said "no
+  // campaign yet". Causes: (a) initial backfill in the migration didn't
+  // run yet on this DB, or (b) saves happened on a client whose
+  // pedro_campaigns row was archived/deleted manually. Either way,
+  // versions without campaigns are nonsense — auto-create the
+  // corresponding "Campagne N" row so the picker always reflects reality. ──
+  const [{ data: savedTuples }, { data: draftTuples }] = await Promise.all([
+    supabase
+      .from("pedro_stage_versions")
+      .select("campaign_number")
+      .eq("client_id", clientId),
+    supabase
+      .from("pedro_client_state")
+      .select("campaign_number")
+      .eq("client_id", clientId),
+  ])
+
+  const referencedNumbers = new Set<number>()
+  for (const r of savedTuples ?? []) {
+    if (typeof r.campaign_number === "number") referencedNumbers.add(r.campaign_number)
+  }
+  for (const r of draftTuples ?? []) {
+    if (typeof r.campaign_number === "number") referencedNumbers.add(r.campaign_number)
+  }
+
+  if (referencedNumbers.size > 0) {
+    const { data: existing } = await supabase
+      .from("pedro_campaigns")
+      .select("campaign_number")
+      .eq("client_id", clientId)
+    const existingNumbers = new Set((existing ?? []).map((r) => r.campaign_number))
+    const missing = Array.from(referencedNumbers).filter((n) => !existingNumbers.has(n))
+    if (missing.length > 0) {
+      // Bulk-insert the missing campaign rows. `Campagne N` is the default
+      // name — the CM can rename via the picker's pencil. last_used_at /
+      // created_at default to now() which is fine; the saved-versions /
+      // draft history isn't retroactively dated.
+      await supabase.from("pedro_campaigns").insert(
+        missing.map((n) => ({
+          client_id: clientId,
+          campaign_number: n,
+          name: `Campagne ${n}`,
+        })),
+      )
+    }
+  }
+
   let query = supabase
     .from("pedro_campaigns")
     .select("id, client_id, campaign_number, name, notes, created_by, created_at, last_used_at, archived_at")
