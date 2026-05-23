@@ -48,7 +48,11 @@ export async function loadPedroClients(opts: {
       supabase
         .from("meetings")
         .select("client_id, meeting_type")
-        .in("client_id", ids),
+        .in("client_id", ids)
+        // Pedro picker only cares about kick-offs / evals signalling client
+        // engagement. Sales calls (historical, matched post-deal) would
+        // inflate the meetings count without indicating client engagement.
+        .neq("meeting_type", "sales"),
       supabase
         .from("pedro_client_state")
         .select("client_id")
