@@ -34,6 +34,9 @@ type LatestVersion = {
 type Props = {
   clientId: string | null
   stage: SaveStage
+  /** Pedro campaign scope — saves land under this campaign_number.
+   *  Defaults to 1 for back-compat. */
+  campaignNumber?: number
   /** Function returning the current draft data to snapshot. Called when
    *  the user clicks "Save final version". */
   getCurrentData: () => unknown
@@ -50,15 +53,15 @@ function fmtDate(iso: string, locale: Locale): string {
   })
 }
 
-export function StageActionBar({ clientId, stage, getCurrentData, busy }: Props) {
+export function StageActionBar({ clientId, stage, campaignNumber = 1, getCurrentData, busy }: Props) {
   const locale = useLocale()
   const [latest, setLatest] = useState<LatestVersion>(null)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; msg: string } | null>(null)
 
-  // Load the latest saved version for this (client, stage). Reloads
-  // when client changes so switching clients shows the right version
-  // count. Silent on failure.
+  // Load the latest saved version for this (client, stage, campaign).
+  // Reloads when client OR campaign changes so switching either shows
+  // the right version count. Silent on failure.
   useEffect(() => {
     if (!clientId) {
       setLatest(null)
@@ -68,7 +71,7 @@ export function StageActionBar({ clientId, stage, getCurrentData, busy }: Props)
     void (async () => {
       try {
         const res = await fetch(
-          `/api/pedro/saved-versions?clientId=${encodeURIComponent(clientId)}&stage=${encodeURIComponent(stage)}`,
+          `/api/pedro/saved-versions?clientId=${encodeURIComponent(clientId)}&stage=${encodeURIComponent(stage)}&campaignNumber=${campaignNumber}`,
         )
         if (!res.ok) return
         const data = await res.json()
@@ -82,7 +85,7 @@ export function StageActionBar({ clientId, stage, getCurrentData, busy }: Props)
     return () => {
       cancelled = true
     }
-  }, [clientId, stage])
+  }, [clientId, stage, campaignNumber])
 
   async function handleSave() {
     if (!clientId) return
@@ -91,6 +94,7 @@ export function StageActionBar({ clientId, stage, getCurrentData, busy }: Props)
     const r = await saveIfChanged({
       clientId,
       stage,
+      campaignNumber,
       data: getCurrentData(),
     })
     if (r.saved) {

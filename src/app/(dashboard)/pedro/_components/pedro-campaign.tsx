@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { parseScriptText, generateScriptDocx, type ScriptVideo } from "@/lib/pedro/generate-script-docx";
 import { clientSlug, buildClientMD, parseClientMD, type ClientData, type ClientCampaign } from "@/lib/pedro/client-database";
-import type { PedroClient } from "../page";
+import type { PedroClient } from "./types";
 import { StageActionBar } from "./stage-action-bar";
 import { Button } from "@/components/ui/button";
 import { saveIfChanged } from "@/lib/pedro/save-if-changed";
@@ -372,6 +372,7 @@ export function Campaign({
   selectedClientId,
   selectedClientName,
   onSelectClient,
+  campaignNumber = 1,
   campaignMode = "optimize",
 }: {
   section: SectionName
@@ -385,6 +386,10 @@ export function Campaign({
   /** When the user picks a different client from inside the brief, propagate
    *  to the global picker (still rendered up top). */
   onSelectClient: (clientId: string, clientName: string) => void
+  /** Active Pedro campaign number — all saves on this mount land under
+   *  this campaign. Defaults to 1 for back-compat with single-campaign
+   *  clients. Roy 2026-05-23. */
+  campaignNumber?: number
   /** "optimize" loads the latest saved versions of every stage so the
    *  CM can edit / regenerate individual deliverables. "new" skips the
    *  saved-version load and starts with a blank brief (auto-brief still
@@ -635,7 +640,7 @@ export function Campaign({
     try {
       const [stateRes, versionsRes] = await Promise.all([
         fetch(`/api/pedro/client-state?clientId=${encodeURIComponent(clientId)}`),
-        fetch(`/api/pedro/saved-versions?clientId=${encodeURIComponent(clientId)}`),
+        fetch(`/api/pedro/saved-versions?clientId=${encodeURIComponent(clientId)}&campaignNumber=${campaignNumber}`),
       ]);
       if (stateRes.ok) {
         const sd = await stateRes.json();
@@ -825,6 +830,7 @@ export function Campaign({
     const result = await saveIfChanged({
       clientId: selectedClientId,
       stage: args.stage,
+      campaignNumber,
       data: args.data,
     });
     if (result.saved) {
@@ -923,7 +929,7 @@ export function Campaign({
     if (selectedClientId) {
       try {
         const verRes = await fetch(
-          `/api/pedro/saved-versions?clientId=${encodeURIComponent(selectedClientId)}&stage=research`,
+          `/api/pedro/saved-versions?clientId=${encodeURIComponent(selectedClientId)}&stage=research&campaignNumber=${campaignNumber}`,
         );
         if (verRes.ok) {
           const verData = await verRes.json();
@@ -1253,6 +1259,7 @@ ${creativeDescriptions}`;
       const r = await saveIfChanged({
         clientId: selectedClientId,
         stage: "lp",
+        campaignNumber,
         data: { stijl, lengte, pixelId, webhookUrl, utmStr, lpPrompt },
       });
       if (!opts?.skipNav) {
@@ -1602,6 +1609,7 @@ ${creativeDescriptions}`;
         <StageActionBar
           clientId={selectedClientId}
           stage="brief"
+          campaignNumber={campaignNumber}
           getCurrentData={() => brief}
           busy={autoFilling}
         />
@@ -1827,6 +1835,7 @@ ${creativeDescriptions}`;
         <StageActionBar
           clientId={selectedClientId}
           stage="angles"
+          campaignNumber={campaignNumber}
           getCurrentData={() => selectedAngles}
           busy={anglesLoading}
         />
@@ -2035,6 +2044,7 @@ ${creativeDescriptions}`;
         <StageActionBar
           clientId={selectedClientId}
           stage="script"
+          campaignNumber={campaignNumber}
           getCurrentData={() => ({ script_text: script, script_videos: scriptVideos })}
           busy={scriptLoading}
         />
@@ -2158,6 +2168,7 @@ ${creativeDescriptions}`;
           <StageActionBar
             clientId={selectedClientId}
             stage="creatives"
+            campaignNumber={campaignNumber}
             getCurrentData={() => ({ qty, formats, driveLink, brandbookName, huisstijl, manusPrompt })}
             busy={manusLoading}
           />
@@ -2399,6 +2410,7 @@ ${creativeDescriptions}`;
           <StageActionBar
             clientId={selectedClientId}
             stage="lp"
+            campaignNumber={campaignNumber}
             getCurrentData={() => ({ stijl, lengte, pixelId, webhookUrl, utmStr, lpPrompt })}
             busy={lpLoading}
           />
@@ -2514,6 +2526,7 @@ ${creativeDescriptions}`;
         <StageActionBar
           clientId={selectedClientId}
           stage="ad-copy"
+          campaignNumber={campaignNumber}
           getCurrentData={() => adCopy}
           busy={adCopyLoading}
         />

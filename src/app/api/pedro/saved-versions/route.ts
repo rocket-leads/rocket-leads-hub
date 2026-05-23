@@ -128,5 +128,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Touch the campaign so the picker's "most recent" sort stays
+  // accurate, AND backfill a default-named pedro_campaigns row when
+  // none exists yet (covers legacy saves on campaign_number=1 that
+  // pre-date the campaigns table). Best-effort: failure doesn't block
+  // the save response since the stage version is already on disk.
+  const nowIso = new Date().toISOString()
+  const { data: touched } = await supabase
+    .from("pedro_campaigns")
+    .update({ last_used_at: nowIso })
+    .eq("client_id", clientId)
+    .eq("campaign_number", campaignNumber)
+    .select("id")
+    .maybeSingle<{ id: string }>()
+
+  if (!touched) {
+    await supabase
+      .from("pedro_campaigns")
+      .insert({
+        client_id: clientId,
+        campaign_number: campaignNumber,
+        name: `Campagne ${campaignNumber}`,
+        created_by: session.user.id ?? null,
+        last_used_at: nowIso,
+      })
+  }
+
   return NextResponse.json({ version: inserted })
 }

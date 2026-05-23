@@ -79,6 +79,10 @@ type ResearchProps = {
   /** Display name of the active client — used to default the klantnaam
    *  field and label saved entries. */
   clientName: string
+  /** Active Pedro campaign number — research saves are scoped per
+   *  campaign so different campaigns for the same client can hold
+   *  different research snapshots. Defaults to 1 for back-compat. */
+  campaignNumber?: number
   /** Optional sector pre-fill when the user arrives from Brief — saves
    *  re-typing what's already in the brief. */
   defaultBranche?: string
@@ -86,7 +90,7 @@ type ResearchProps = {
   onContinue?: () => void
 }
 
-export function Research({ clientId, clientName, defaultBranche, onContinue }: ResearchProps) {
+export function Research({ clientId, clientName, campaignNumber = 1, defaultBranche, onContinue }: ResearchProps) {
   const [branche, setBranche] = useState(defaultBranche ?? "");
   const [klantnaam, setKlantnaam] = useState(clientName);
 
@@ -323,6 +327,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
       <StageActionBar
         clientId={clientId}
         stage="research"
+        campaignNumber={campaignNumber}
         getCurrentData={() => ({
           branche,
           klantnaam,
@@ -586,6 +591,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
                     const r = await saveIfChanged({
                       clientId,
                       stage: "research",
+                      campaignNumber,
                       data: { branche, klantnaam, doelgroep, propositie, extraContext, research: result },
                     });
                     if (r.saved) showToast(`✓ Opgeslagen als v${r.versionNumber}`);

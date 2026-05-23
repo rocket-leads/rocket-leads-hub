@@ -52,15 +52,22 @@ export async function saveIfChanged(args: {
   clientId: string | null
   stage: SaveStage
   data: unknown
+  /** Pedro campaign scope. Defaults to 1 for backwards compatibility
+   *  with call sites that haven't been campaign-aware yet (Roy
+   *  2026-05-23 added named campaigns; old single-campaign clients
+   *  remain on campaign_number=1 indefinitely). */
+  campaignNumber?: number
 }): Promise<SaveResult> {
   if (!args.clientId) return { saved: false, reason: "no_client" }
 
-  // 1. Fetch latest version for this stage. If anything goes wrong here
-  // we don't block the save — fall through to POST.
+  const campaignNumber = args.campaignNumber ?? 1
+
+  // 1. Fetch latest version for this stage+campaign. If anything goes
+  // wrong here we don't block the save — fall through to POST.
   let latest: { version_number: number; data: unknown } | null = null
   try {
     const res = await fetch(
-      `/api/pedro/saved-versions?clientId=${encodeURIComponent(args.clientId)}&stage=${encodeURIComponent(args.stage)}`,
+      `/api/pedro/saved-versions?clientId=${encodeURIComponent(args.clientId)}&stage=${encodeURIComponent(args.stage)}&campaignNumber=${campaignNumber}`,
     )
     if (res.ok) {
       const json = await res.json()
@@ -85,6 +92,7 @@ export async function saveIfChanged(args: {
         clientId: args.clientId,
         stage: args.stage,
         data: args.data,
+        campaignNumber,
       }),
     })
     if (!res.ok) {
