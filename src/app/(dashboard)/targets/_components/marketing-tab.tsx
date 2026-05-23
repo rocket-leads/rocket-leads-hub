@@ -17,6 +17,7 @@ import { MarketingInsights } from "./marketing-insights"
 import { PulseBanner } from "./pulse-banner"
 import { HeroPillars } from "./hero-pillars"
 import { cn } from "@/lib/utils"
+import { DismissButton } from "@/components/ui/dismiss-button"
 import { formatCurrencyDecimal, safeDivide } from "@/lib/targets/formatters"
 import { deriveTargets } from "@/lib/targets/calculations"
 import type { CountryKey, DateRange, StripeNewBusinessInvoice, ClosedDeal } from "@/types/targets"
@@ -374,7 +375,7 @@ function StripeGapModal({
                 {t("targets.stripe.subtitle", locale)}
               </p>
             </div>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl leading-none shrink-0">×</button>
+            <DismissButton onClick={onClose} stopPropagation={false} />
           </div>
           <div className="grid grid-cols-3 gap-3 mt-4 text-xs">
             <div>

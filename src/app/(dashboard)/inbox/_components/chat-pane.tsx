@@ -29,6 +29,7 @@ import {
   ListTodo,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DismissButton } from "@/components/ui/dismiss-button"
 import { cn } from "@/lib/utils"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import type { ChatScope, ChatThreadSummary, ChatMessage } from "@/lib/inbox/fetchers"
@@ -2416,15 +2417,7 @@ function AttachmentChip({
       <span className="text-[11px] text-foreground/80 truncate flex-1 min-w-0">
         {attachment.clientName}
       </span>
-      <button
-        type="button"
-        onClick={onRemove}
-        title="Remove"
-        aria-label="Remove attachment"
-        className="h-4 w-4 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-      >
-        <X className="h-3 w-3" />
-      </button>
+      <DismissButton size="xs" onClick={onRemove} label="Remove attachment" stopPropagation={false} />
     </div>
   )
 }

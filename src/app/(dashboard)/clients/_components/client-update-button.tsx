@@ -11,7 +11,6 @@ import {
   MessageCircle,
   AlertCircle,
   Plus,
-  X,
 } from "lucide-react"
 import {
   Dialog,
@@ -22,6 +21,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { DismissButton } from "@/components/ui/dismiss-button"
 import { cn } from "@/lib/utils"
 import type { ClientUpdateResponse } from "@/app/api/clients/[id]/client-update/route"
 import {
@@ -233,20 +233,21 @@ export function ActionsBlock({ parts, setParts, inputsDisabled }: PreviewProps) 
                 ariaLabel={`Actie ${i + 1}`}
               />
             </div>
-            <button
-              type="button"
+            <DismissButton
+              size="xs"
               onClick={() =>
                 setParts({
                   ...parts,
                   actions: parts.actions.filter((_, idx) => idx !== i),
                 })
               }
-              disabled={inputsDisabled}
-              title="Verwijder"
-              className="opacity-0 group-hover:opacity-100 text-muted-foreground/50 hover:text-red-500 transition-all p-0.5 disabled:opacity-30 shrink-0"
-            >
-              <X className="h-3 w-3" />
-            </button>
+              label="Verwijder"
+              stopPropagation={false}
+              className={cn(
+                "opacity-0 group-hover:opacity-100 transition-all hover:text-red-500",
+                inputsDisabled && "opacity-30 pointer-events-none",
+              )}
+            />
           </li>
         ))}
       </ul>

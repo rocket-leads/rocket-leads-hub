@@ -180,3 +180,43 @@ Repo: `https://github.com/royvosters/rocket-leads-hub`
 - No TypeScript `any` — use proper types
 - API routes always check `auth()` first and return 401 if no session
 - Server components fetch data directly; client components use React Query
+
+## UI Patterns — Buttons & Containers
+
+These are house rules to keep new code aligned with the rest of the Hub.
+Roy 2026-05-22 audit pass set the canonical patterns; deviating requires
+a real reason.
+
+### Button components (one of these three, never raw `<button>`)
+
+| Use case | Component | Notes |
+|---|---|---|
+| Page CTAs, dialog actions, form submits, toolbars | `<Button>` (`src/components/ui/button.tsx`) | Variants: `default`, `outline`/`secondary`, `ghost`, `destructive`, `link`. Sizes: `xs` (h-7), `sm` (h-9), `default` (h-10), `lg` (h-11), plus icon variants. |
+| Per-row actions (done/dismiss/edit/reassign/snooze/create-task) | `<ActionIconButton>` (`src/components/ui/action-icon-button.tsx`) | Icon-only by default (36×36). Pass `showLabel` for chip mode (icon+text, still h-9). Three tones: `success`/`danger`/`muted`. Optional `state="done"\|"error"` for transient post-action feedback. |
+| X-close on panels, dialogs, sheets, banners, inline chip-remove, search clear | `<DismissButton>` (`src/components/ui/dismiss-button.tsx`) | Size `default` (h-9 w-9, for container close) or `xs` (h-5 w-5, for inline value clear). Always lucide `<X>`, ghost variant. |
+
+**Raw `<button>` is only acceptable for:** popover menu items inside a
+dropdown, rich-text editor toolbar formatting buttons, and pill-selector
+toggle chips (where the visual pattern is intentionally distinct). Don't
+roll a new button.
+
+### Detail-view containers (which surface opens which way)
+
+Two patterns coexist, sized to **content density**, not to taste:
+
+| Content type | Container | Width | Behaviour |
+|---|---|---|---|
+| Rich detail with multiple tabs (client detail: Campaigns / Billing / Communication / Settings) | Modal overlay slide-over (`DialogPrimitive` from `@base-ui/react/dialog`, slide-in-from-right) | 70% (max 1500px) | Backdrop blocks list interaction; user closes to return. Needed because the tabs need horizontal real estate. |
+| Single-stream detail (inbox task/update, chat thread on xl+) | Inline docked side-pane (sibling `<aside>` in flex layout) | 540px (Tasks/Updates) or 50% (Client Inbox chat) | No backdrop; list stays interactive next to the open detail. |
+| Decision-required modal (Create task, Approve draft, Confirm action) | Centered `<Dialog>` | sm/md sized | Modal, returns to caller on close. |
+| Contextual micro-edit (1-2 fields, e.g. status pill, AM/CM picker) | `<Popover>` | Auto | Anchored to trigger, click-outside closes. |
+| Bulk mass-edit (Settings tables, Hub Billing/Agreement table) | Inline edit inside the row/cell | n/a | No new container. |
+
+**The decision tree:** Does the surface need >1 tab of content? → overlay
+70%. Single stream? → inline dock. One-off decision? → centered Dialog.
+One-field tweak? → Popover. Mass-edit a table? → inline.
+
+Floating bulk-action bars (inbox multi-select) keep their own designed
+pattern (rounded-xl pill toolbar at the bottom) but use the same `h-9
+rounded-md` chip chrome as the rest of the Hub. They are not detail
+containers and don't fit the table above.

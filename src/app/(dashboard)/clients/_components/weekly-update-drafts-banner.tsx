@@ -4,7 +4,6 @@ import { useState, useMemo, useEffect, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Sparkles,
-  X,
   Send,
   Loader2,
   Check,
@@ -13,6 +12,7 @@ import {
   SkipForward,
   RefreshCw,
 } from "lucide-react"
+import { DismissButton } from "@/components/ui/dismiss-button"
 
 /** Official WhatsApp brand glyph (speech bubble + phone). Lucide doesn't
  *  ship brand logos, so we inline it. Renders crisply at any size; pass
@@ -411,14 +411,7 @@ function WeeklyUpdateQueueSheet({
             >
               <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
             </button>
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="rounded-md p-1 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors"
-              aria-label="Close"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <DismissButton onClick={() => onOpenChange(false)} stopPropagation={false} />
           </div>
         </header>
 
@@ -437,14 +430,13 @@ function WeeklyUpdateQueueSheet({
                   className="w-full pl-8 pr-8 py-1.5 rounded-md border border-border/60 bg-background text-sm outline-none focus:border-violet-500/50 placeholder:text-muted-foreground/40"
                 />
                 {search && (
-                  <button
-                    type="button"
+                  <DismissButton
+                    size="xs"
                     onClick={() => setSearch("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground p-0.5"
-                    aria-label="Clear search"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+                    label="Clear search"
+                    stopPropagation={false}
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
+                  />
                 )}
               </div>
             </div>

@@ -19,6 +19,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
 import { Card, CardContent } from "@/components/ui/card"
+import { DismissButton } from "@/components/ui/dismiss-button"
 import { MEETING_TYPE_LABELS, type MeetingRow } from "@/lib/meetings/types"
 
 export type ClientOption = { id: string; name: string }
@@ -348,13 +349,7 @@ function ClientPicker({
           placeholder="Search client by name…"
           className="flex-1 h-7 text-xs bg-transparent outline-none"
         />
-        <button
-          type="button"
-          onClick={onCancel}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <X className="h-3 w-3" />
-        </button>
+        <DismissButton size="xs" onClick={onCancel} label="Cancel" stopPropagation={false} />
       </div>
       <div className="max-h-48 overflow-y-auto">
         {filtered.length === 0 ? (

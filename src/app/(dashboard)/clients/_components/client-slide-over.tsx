@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { ArrowLeft, Search, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ClientHeader } from "@/app/(dashboard)/clients/[id]/_components/client-header"
 import { ClientTabs } from "@/app/(dashboard)/clients/[id]/_components/client-tabs"
@@ -175,9 +176,16 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
             "data-closed:animate-out data-closed:slide-out-to-right",
           )}
         >
-          {/* Close button */}
+          {/* Close button — canonical: Button ghost size=icon-sm + lucide X. */}
           <DialogPrimitive.Close
-            className="absolute top-4 right-4 z-10 h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors outline-none"
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="absolute top-3 right-3 z-10 text-muted-foreground hover:text-foreground"
+                aria-label="Close"
+              />
+            }
           >
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>

@@ -5,6 +5,7 @@ import { parseScriptText, generateScriptDocx, type ScriptVideo } from "@/lib/ped
 import { clientSlug, buildClientMD, parseClientMD, type ClientData, type ClientCampaign } from "@/lib/pedro/client-database";
 import type { PedroClient } from "../page";
 import { StageActionBar } from "./stage-action-bar";
+import { Button } from "@/components/ui/button";
 import { saveIfChanged } from "@/lib/pedro/save-if-changed";
 import {
   anglesString,
@@ -1663,8 +1664,9 @@ ${creativeDescriptions}`;
               onChange={(e) => setWebsiteUrl(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && analyzeWebsite()}
             />
-            <button
-              className="pedro-btn-ghost whitespace-nowrap shrink-0"
+            <Button
+              variant="outline"
+              className="whitespace-nowrap shrink-0"
               onClick={analyzeWebsite}
               disabled={websiteAnalyzing}
             >
@@ -1674,7 +1676,7 @@ ${creativeDescriptions}`;
                   Analyseren...
                 </span>
               ) : "🔍 Analyseer website"}
-            </button>
+            </Button>
           </div>
 
           {/* Brand colors result -- editable swatches */}
@@ -1805,8 +1807,7 @@ ${creativeDescriptions}`;
 
           <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
             <div className="text-xs text-muted-foreground">Stap 1 van 6</div>
-            <button
-              className="pedro-btn-primary"
+            <Button
               onClick={() =>
                 saveStageAndContinue({ stage: "brief", data: brief, nextSection: "research" })
               }
@@ -1814,7 +1815,7 @@ ${creativeDescriptions}`;
               title={!brief.bedrijf || !brief.aanbod ? "Vul minimaal bedrijfsnaam en aanbod in" : undefined}
             >
               Opslaan &amp; naar research →
-            </button>
+            </Button>
           </div>
         </Card>
         </>
@@ -1835,7 +1836,7 @@ ${creativeDescriptions}`;
               <div className="font-heading font-semibold text-base tracking-tight">Marketing angles</div>
               <div className="text-xs text-muted-foreground mt-[3px]">Selecteer 1 of meerdere angles om mee te testen</div>
             </div>
-            <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(1)}>← Terug</button>
+            <Button variant="outline" size="xs" onClick={() => goTo(1)}>← Terug</Button>
           </div>
 
           {anglesLoading ? (
@@ -1845,13 +1846,12 @@ ${creativeDescriptions}`;
               <p className="text-sm text-muted-foreground max-w-md">
                 Pedro genereert 5 marketing angles op basis van de brief en (indien beschikbaar) de meest recente research voor deze klant.
               </p>
-              <button
-                className="pedro-btn-primary"
+              <Button
                 onClick={doAngles}
                 disabled={!brief.bedrijf || !brief.aanbod}
               >
                 Pedro, genereer angles →
-              </button>
+              </Button>
             </div>
           ) : (
             <>
@@ -1929,15 +1929,16 @@ ${creativeDescriptions}`;
                     className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug resize-none placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
                   />
                   <div className="flex items-center gap-2">
-                    <button
-                      className="pedro-btn-primary text-[11px] h-7 px-3 disabled:opacity-50"
+                    <Button
+                      size="xs"
                       disabled={regenAnglesLoading}
                       onClick={regenerateSelectedAngles}
                     >
                       {regenAnglesLoading ? "Regenereren…" : `↻ Regenereer ${regenAngleSet.size} geselecteerd${regenAngleSet.size === 1 ? "e angle" : "e angles"}`}
-                    </button>
-                    <button
-                      className="pedro-btn-ghost text-[11px] h-7 px-2"
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="xs"
                       onClick={() => {
                         setRegenAngleSet(new Set());
                         setRegenAngleSteering("");
@@ -1945,7 +1946,7 @@ ${creativeDescriptions}`;
                       disabled={regenAnglesLoading}
                     >
                       Annuleer
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1954,20 +1955,20 @@ ${creativeDescriptions}`;
                 <>
                   <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                     <div className="flex items-center gap-3">
-                      <button className="pedro-btn-ghost text-[11px]" onClick={doAngles} disabled={anglesLoading || regenAnglesLoading || parallelRunning}>↻ Nieuwe angles</button>
+                      <Button variant="outline" size="xs" onClick={doAngles} disabled={anglesLoading || regenAnglesLoading || parallelRunning}>↻ Nieuwe angles</Button>
                       <span className="text-[11px] text-muted-foreground/60">{selectedAngles.length}/5 geselecteerd</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        className="pedro-btn-ghost text-[11px] h-8 px-3"
+                      <Button
+                        variant="outline"
+                        size="sm"
                         disabled={selectedAngles.length < 1 || parallelRunning}
                         onClick={generateAllRestParallel}
                         title="Genereer script, creatives, LP en ad copy in één keer (parallel waar mogelijk)"
                       >
                         🚀 Genereer alle deliverables
-                      </button>
-                      <button
-                        className="pedro-btn-primary"
+                      </Button>
+                      <Button
                         disabled={selectedAngles.length < 1 || parallelRunning}
                         onClick={() =>
                           saveStageAndContinue({
@@ -1978,7 +1979,7 @@ ${creativeDescriptions}`;
                         }
                       >
                         Opslaan &amp; naar script ({selectedAngles.length} angle{selectedAngles.length !== 1 ? "s" : ""}) →
-                      </button>
+                      </Button>
                     </div>
                   </div>
 
@@ -2046,7 +2047,7 @@ ${creativeDescriptions}`;
               </div>
               <div className="text-xs text-muted-foreground mt-[3px]">UGC-stijl voor Meta video ads (60 sec)</div>
             </div>
-            <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(2)}>← Terug</button>
+            <Button variant="outline" size="xs" onClick={() => goTo(2)}>← Terug</Button>
           </div>
 
           {scriptLoading ? (
@@ -2116,11 +2117,10 @@ ${creativeDescriptions}`;
               />
               <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                 <div className="flex items-center gap-2">
-                  <button className="pedro-btn-ghost text-[11px]" onClick={() => doScript()}>↻ Opnieuw{scriptSteering.trim() ? " met steering" : ""}</button>
-                  <button className="pedro-btn-ghost text-[11px]" onClick={downloadScriptDocx}>↓ Download .docx</button>
+                  <Button variant="outline" size="xs" onClick={() => doScript()}>↻ Opnieuw{scriptSteering.trim() ? " met steering" : ""}</Button>
+                  <Button variant="outline" size="xs" onClick={downloadScriptDocx}>↓ Download .docx</Button>
                 </div>
-                <button
-                  className="pedro-btn-primary"
+                <Button
                   onClick={() =>
                     saveStageAndContinue({
                       stage: "script",
@@ -2130,7 +2130,7 @@ ${creativeDescriptions}`;
                   }
                 >
                   Opslaan &amp; naar LP →
-                </button>
+                </Button>
               </div>
             </>
           ) : (
@@ -2139,12 +2139,12 @@ ${creativeDescriptions}`;
                 Genereer 2 video scripts met verschillende angles, of sla deze stap over.
               </div>
               <div className="flex gap-3">
-                <button className="pedro-btn-ghost" onClick={skipScript}>
+                <Button variant="outline" onClick={skipScript}>
                   Overslaan →
-                </button>
-                <button className="pedro-btn-primary" onClick={() => doScript()}>
+                </Button>
+                <Button onClick={() => doScript()}>
                   Genereer scripts
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -2167,16 +2167,16 @@ ${creativeDescriptions}`;
                 <div className="font-heading font-semibold text-base tracking-tight">Creatives configuratie</div>
                 <div className="text-xs text-muted-foreground mt-[3px]">Aantal, formaat en client content</div>
               </div>
-              <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(4)}>← Terug naar LP</button>
+              <Button variant="outline" size="xs" onClick={() => goTo(4)}>← Terug naar LP</Button>
             </div>
 
             {/* Qty */}
             <div className="bg-muted/40 border border-border/60 rounded-lg p-[1rem_1.125rem] mb-3">
               <div className="font-heading font-semibold text-[11.5px] text-primary uppercase tracking-[0.9px] mb-3">Aantal creatives</div>
               <div className="flex items-center gap-[10px]">
-                <button className="w-7 h-7 rounded-md bg-card border border-border/60 text-foreground text-[15px] flex items-center justify-center cursor-pointer transition-all hover:border-primary hover:text-primary" onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
+                <Button variant="outline" size="icon-xs" onClick={() => setQty(Math.max(1, qty - 1))} aria-label="Decrease">−</Button>
                 <div className="font-heading font-bold text-lg min-w-[22px] text-center">{qty}</div>
-                <button className="w-7 h-7 rounded-md bg-card border border-border/60 text-foreground text-[15px] flex items-center justify-center cursor-pointer transition-all hover:border-primary hover:text-primary" onClick={() => setQty(Math.min(6, qty + 1))}>+</button>
+                <Button variant="outline" size="icon-xs" onClick={() => setQty(Math.min(6, qty + 1))} aria-label="Increase">+</Button>
                 <span className="text-[11.5px] text-muted-foreground/60 ml-1">creatives</span>
               </div>
             </div>
@@ -2343,9 +2343,9 @@ ${creativeDescriptions}`;
               />
               <div className="flex items-center justify-between">
                 <div className="text-xs text-muted-foreground">Stap 5 van 6</div>
-                <button className="pedro-btn-primary" onClick={() => doCreative()} disabled={manusLoading}>
+                <Button onClick={() => doCreative()} disabled={manusLoading}>
                   {manusLoading ? "Genereren..." : manusPrompt ? "↻ Regenereer met steering" : "Genereer Manus prompt"}
-                </button>
+                </Button>
               </div>
             </div>
           </Card>
@@ -2370,12 +2370,11 @@ ${creativeDescriptions}`;
                   </div>
                   <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
                     <div className="flex items-center gap-2">
-                      <button className="pedro-btn-primary text-[11px]" onClick={() => { navigator.clipboard.writeText(manusPrompt); showToast("Prompt gekopieerd"); }}>Kopieer prompt</button>
-                      <button className="pedro-btn-ghost text-[11px]" onClick={() => doCreative()}>Opnieuw genereren</button>
-                      <button className="pedro-btn-ghost text-[11px]" onClick={downloadBrandMD}>Brand MD</button>
+                      <Button size="xs" onClick={() => { navigator.clipboard.writeText(manusPrompt); showToast("Prompt gekopieerd"); }}>Kopieer prompt</Button>
+                      <Button variant="outline" size="xs" onClick={() => doCreative()}>Opnieuw genereren</Button>
+                      <Button variant="outline" size="xs" onClick={downloadBrandMD}>Brand MD</Button>
                     </div>
-                    <button
-                      className="pedro-btn-primary"
+                    <Button
                       onClick={() =>
                         saveStageAndContinue({
                           stage: "creatives",
@@ -2385,7 +2384,7 @@ ${creativeDescriptions}`;
                       }
                     >
                       Opslaan &amp; naar ad copy →
-                    </button>
+                    </Button>
                   </div>
                 </>
               ) : null}
@@ -2409,7 +2408,7 @@ ${creativeDescriptions}`;
                 <div className="font-heading font-semibold text-base tracking-tight">Landingspagina configuratie</div>
                 <div className="text-xs text-muted-foreground mt-[3px]">Stijl, lengte, tracking &amp; technisch</div>
               </div>
-              <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(3)}>← Terug naar script</button>
+              <Button variant="outline" size="xs" onClick={() => goTo(3)}>← Terug naar script</Button>
             </div>
 
             {/* Stijl */}
@@ -2469,7 +2468,7 @@ ${creativeDescriptions}`;
 
             <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
               <div className="text-xs text-muted-foreground">Stap 4 van 6</div>
-              <button className="pedro-btn-primary" onClick={() => doLP()}>Genereer Lovable prompt →</button>
+              <Button onClick={() => doLP()}>Genereer Lovable prompt →</Button>
             </div>
           </Card>
 
@@ -2489,9 +2488,8 @@ ${creativeDescriptions}`;
                     className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-3"
                   />
                   <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-                    <button className="pedro-btn-ghost text-[11px]" onClick={() => doLP()}>↻ Opnieuw{lpSteering.trim() ? " met steering" : ""}</button>
-                    <button
-                      className="pedro-btn-primary"
+                    <Button variant="outline" size="xs" onClick={() => doLP()}>↻ Opnieuw{lpSteering.trim() ? " met steering" : ""}</Button>
+                    <Button
                       onClick={() =>
                         saveStageAndContinue({
                           stage: "lp",
@@ -2501,7 +2499,7 @@ ${creativeDescriptions}`;
                       }
                     >
                       Opslaan &amp; naar creatives →
-                    </button>
+                    </Button>
                   </div>
                 </>
               ) : null}
@@ -2525,7 +2523,7 @@ ${creativeDescriptions}`;
               <div className="font-heading font-semibold text-base tracking-tight">Ad copy</div>
               <div className="text-xs text-muted-foreground mt-[3px]">Meta &amp; Instagram advertentieteksten - afgestemd op LP + creatives</div>
             </div>
-            <button className="pedro-btn-ghost text-[11px]" onClick={() => goTo(5)}>← Terug</button>
+            <Button variant="outline" size="xs" onClick={() => goTo(5)}>← Terug</Button>
           </div>
 
           {adCopyLoading ? (
@@ -2569,18 +2567,19 @@ ${creativeDescriptions}`;
                 className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-3"
               />
               <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
-                <button className="pedro-btn-ghost text-[11px]" onClick={() => doAdCopy()}>↻ Opnieuw{adCopySteering.trim() ? " met steering" : ""}</button>
+                <Button variant="outline" size="xs" onClick={() => doAdCopy()}>↻ Opnieuw{adCopySteering.trim() ? " met steering" : ""}</Button>
                 <div className="flex gap-2 flex-wrap">
-                  <button
-                    className="pedro-btn-teal text-[11px] disabled:opacity-60"
+                  <Button
+                    size="xs"
                     onClick={saveClientDeliverable}
                     disabled={deliverableSaving || !selectedClientId}
                     title="Bundel alle opgeslagen stages tot één client deliverable .md en sla op aan de klant"
+                    className="bg-emerald-500 text-white hover:bg-emerald-600 dark:hover:bg-emerald-400"
                   >
                     {deliverableSaving ? "Opslaan…" : "📄 Sla op als client deliverable"}
-                  </button>
-                  <button className="pedro-btn-ghost text-[11px]" onClick={generateAndDownloadClientMD}>Client MD download</button>
-                  <button className="pedro-btn-ghost text-[11px]" onClick={resetAll}>+ Nieuwe campagne</button>
+                  </Button>
+                  <Button variant="outline" size="xs" onClick={generateAndDownloadClientMD}>Client MD download</Button>
+                  <Button variant="outline" size="xs" onClick={resetAll}>+ Nieuwe campagne</Button>
                 </div>
               </div>
             </>

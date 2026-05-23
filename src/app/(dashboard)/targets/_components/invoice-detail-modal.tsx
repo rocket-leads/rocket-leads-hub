@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X, ArrowUpDown } from "lucide-react"
+import { ArrowUpDown } from "lucide-react"
+import { DismissButton } from "@/components/ui/dismiss-button"
 import { useQueryClient } from "@tanstack/react-query"
 import { formatCurrency } from "@/lib/targets/formatters"
 import { cn } from "@/lib/utils"
@@ -130,9 +131,7 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
             <h2 className="text-base font-semibold text-foreground">{title}</h2>
             <span className="text-xs text-muted-foreground">{details.length} line items</span>
           </div>
-          <button onClick={onClose} className="h-8 w-8 rounded-md hover:bg-muted flex items-center justify-center transition-colors">
-            <X className="h-4 w-4" />
-          </button>
+          <DismissButton onClick={onClose} stopPropagation={false} />
         </div>
 
         {/* Summary */}

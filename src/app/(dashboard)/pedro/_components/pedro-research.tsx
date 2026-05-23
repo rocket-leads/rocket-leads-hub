@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { Button } from "@/components/ui/button";
 import { StageActionBar } from "./stage-action-bar";
 import { saveIfChanged } from "@/lib/pedro/save-if-changed";
 
@@ -359,9 +360,9 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
                 className="!text-[12px]"
                 style={{ maxWidth: 280 }}
               />
-              <button className="pedro-btn-ghost text-[11px]" onClick={loadLibrary} disabled={libraryLoading}>
+              <Button variant="outline" size="sm" onClick={loadLibrary} disabled={libraryLoading}>
                 {libraryLoading ? "..." : "↻ Herlaad"}
-              </button>
+              </Button>
             </div>
 
             {library.length === 0 ? (
@@ -482,9 +483,9 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
           <div className="text-[11px] text-muted-foreground/60">
             Pedro analyseert winnende ad-patronen in deze branche
           </div>
-          <button className="pedro-btn-primary" onClick={runResearch} disabled={loading}>
+          <Button onClick={runResearch} disabled={loading}>
             {loading ? "Onderzoeken..." : "Start research →"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -513,11 +514,11 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
             </div>
             <div className="flex items-center gap-2">
               {!savedId && (
-                <button className="pedro-btn-primary text-[12px]" onClick={saveResearch} disabled={saving}>
+                <Button size="sm" onClick={saveResearch} disabled={saving}>
                   {saving ? "Opslaan..." : "💾 Opslaan in bibliotheek"}
-                </button>
+                </Button>
               )}
-              <button className="pedro-btn-ghost text-[11px]" onClick={downloadResearchMD}>↓ Download .md</button>
+              <Button variant="outline" size="sm" onClick={downloadResearchMD}>↓ Download .md</Button>
             </div>
           </div>
 
@@ -579,8 +580,7 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
               <p className="text-xs text-muted-foreground/60 italic max-w-md">
                 Tab-nav bovenin slaat niet op
               </p>
-              <button
-                type="button"
+              <Button
                 onClick={async () => {
                   if (clientId && result) {
                     const r = await saveIfChanged({
@@ -594,11 +594,10 @@ export function Research({ clientId, clientName, defaultBranche, onContinue }: R
                   onContinue();
                 }}
                 disabled={!result}
-                className="pedro-btn-primary"
                 title={!result ? "Genereer eerst research" : undefined}
               >
                 {clientId && result ? "Opslaan & naar angles →" : "Naar angles →"}
-              </button>
+              </Button>
             </div>
           )}
         </>

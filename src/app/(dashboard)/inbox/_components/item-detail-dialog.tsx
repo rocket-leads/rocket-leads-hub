@@ -8,6 +8,7 @@ import { Trash2, Send, Calendar, AlertCircle, Loader2, Mail, MessageSquare, Hash
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { DismissButton } from "@/components/ui/dismiss-button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import type { InboxComment, InboxItem, InboxKind, InboxSource, TaskStatus } from "@/types/inbox"
@@ -382,14 +383,10 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
   // the right wrapper below to keep edits painless.
   const body = (
     <>
-      <button
-        type="button"
+      <DismissButton
         onClick={onClose}
-        aria-label="Close"
-        className="absolute top-4 right-4 z-10 h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors outline-none"
-      >
-        <X className="h-4 w-4" />
-      </button>
+        className="absolute top-3 right-3 z-10"
+      />
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
         {detailQuery.isLoading || !item ? (
           <div className="py-12 flex items-center justify-center">

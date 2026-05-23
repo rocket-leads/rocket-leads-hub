@@ -29,6 +29,7 @@ import {
   Activity,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DismissButton } from "@/components/ui/dismiss-button"
 import { cn } from "@/lib/utils"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
@@ -721,14 +722,10 @@ export function InboxView({
     if (selectedThread) {
       return (
         <div className="relative flex h-full flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
-          <button
-            type="button"
+          <DismissButton
             onClick={closeDock}
-            aria-label="Close"
-            className="absolute top-4 right-4 z-10 h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors outline-none"
-          >
-            <X className="h-4 w-4" />
-          </button>
+            className="absolute top-3 right-3 z-10"
+          />
           <div className="flex-1 min-h-0 overflow-hidden">
             <ThreadView
               thread={selectedThread}
@@ -748,9 +745,22 @@ export function InboxView({
     return null
   }
 
+  // Roy 2026-05-22: Client Inbox tab needs a true 50/50 split (thread list |
+  // chat conversation) instead of the default "main column 1fr + 540px dock"
+  // ratio used by Tasks/Updates. On chat the conversation pane IS the work,
+  // not a side-detail of the list. Other tabs keep the original layout where
+  // the list dominates and the detail is a slide-in.
+  const dockSplit5050 = isChatTab && showDockedPane
+
   return (
     <div className="flex gap-6 items-start">
-      <div className={cn("flex-1 min-w-0 space-y-6", showDockedPane && "xl:max-w-[calc(100%-560px)]")}>
+      <div
+        className={cn(
+          "flex-1 min-w-0 space-y-6",
+          showDockedPane && !dockSplit5050 && "xl:max-w-[calc(100%-560px)]",
+          dockSplit5050 && "xl:max-w-[calc(50%-12px)]",
+        )}
+      >
       <div className="flex items-end justify-between gap-4">
         <h1 className="font-heading text-[28px] font-semibold tracking-tight leading-tight text-foreground">{t("inbox.title", locale)}</h1>
         <div className="flex items-center gap-2">
@@ -772,14 +782,13 @@ export function InboxView({
                 className="h-8 w-56 rounded-md border border-input bg-background pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               />
               {searchQuery && (
-                <button
-                  type="button"
+                <DismissButton
+                  size="xs"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 inline-flex items-center justify-center"
-                  aria-label={t("inbox.search.clear", locale)}
-                >
-                  <X className="h-3 w-3" />
-                </button>
+                  label={t("inbox.search.clear", locale)}
+                  stopPropagation={false}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2"
+                />
               )}
             </div>
           )}
@@ -1144,7 +1153,10 @@ export function InboxView({
       {showDockedPane && (
         <aside
           className={cn(
-            "hidden xl:block shrink-0 w-[540px] self-stretch",
+            "hidden xl:block shrink-0 self-stretch",
+            // 50/50 on the Client Inbox tab (chat IS the work); fixed 540px
+            // on Tasks/Updates where the detail is a side-pane of the list.
+            dockSplit5050 ? "xl:w-[calc(50%-12px)]" : "w-[540px]",
             "animate-in slide-in-from-right duration-150 ease-out",
           )}
         >
@@ -1223,8 +1235,14 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
               Keyboard shortcuts
             </DialogPrimitive.Title>
             <DialogPrimitive.Close
-              className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              aria-label="Close"
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label="Close"
+                />
+              }
             >
               <X className="h-4 w-4" />
             </DialogPrimitive.Close>
@@ -2292,6 +2310,16 @@ function GroupedTasks({
  * because it can't be undone — Cancel is the soft alternative for
  * "this isn't relevant" without losing the audit trail.
  */
+/** Shared chrome for the floating bulk-action bars (Tasks + Updates). Roy
+ *  2026-05-22: "bulk bar mag eigen pattern blijven maar moet wel in dezelfde
+ *  huisstijl — minder rond, dikker, iets meer vierkant." So: rounded-xl
+ *  container (was rounded-full), h-9 px-3 rounded-md chip buttons (was h-7
+ *  px-3 rounded-full), same coloured hover tints as before. */
+const BULK_BAR_CHIP =
+  "h-9 inline-flex items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors"
+const BULK_BAR_CONTAINER =
+  "fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-xl border border-border bg-popover shadow-lg px-2 py-1.5"
+
 function BulkActionBar({
   count,
   onClear,
@@ -2306,15 +2334,15 @@ function BulkActionBar({
   users?: InboxUser[]
 }) {
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-full border border-border bg-popover shadow-lg px-2 py-1.5">
+    <div className={BULK_BAR_CONTAINER}>
       <span className="text-xs font-medium px-2 tabular-nums">
         {count} geselecteerd
       </span>
-      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <span className="h-5 w-px bg-border/60" aria-hidden />
       <button
         type="button"
         onClick={() => onBulk("done")}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+        className={cn(BULK_BAR_CHIP, "hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400")}
         title="Markeer geselecteerde taken als done"
       >
         <Check className="h-3.5 w-3.5" />
@@ -2332,17 +2360,17 @@ function BulkActionBar({
       <button
         type="button"
         onClick={onDelete}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-red-500/15 hover:text-red-500 transition-colors"
+        className={cn(BULK_BAR_CHIP, "hover:bg-red-500/15 hover:text-red-500")}
         title="Verwijder geselecteerde taken — dit kan niet ongedaan worden"
       >
         <Trash2 className="h-3.5 w-3.5" />
         Delete
       </button>
-      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <span className="h-5 w-px bg-border/60" aria-hidden />
       <button
         type="button"
         onClick={onClear}
-        className="text-[11px] text-muted-foreground hover:text-foreground px-2"
+        className="h-9 inline-flex items-center text-[11px] text-muted-foreground hover:text-foreground px-2 rounded-md hover:bg-muted/50 transition-colors"
         title="Selectie wissen"
       >
         Clear
@@ -2400,7 +2428,7 @@ function BulkReassignButton({
       <button
         type="button"
         onClick={() => setOpen((s) => !s)}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-muted/60 transition-colors"
+        className={cn(BULK_BAR_CHIP, "hover:bg-muted/60")}
         title="Reassign geselecteerde taken"
       >
         <UserCog className="h-3.5 w-3.5" />
@@ -2484,7 +2512,7 @@ function BulkSnoozeButton({ onPick }: { onPick: (until: string) => void }) {
       <button
         type="button"
         onClick={() => setOpen((s) => !s)}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-muted/60 transition-colors"
+        className={cn(BULK_BAR_CHIP, "hover:bg-muted/60")}
         title="Snooze geselecteerde taken"
       >
         <Clock className="h-3.5 w-3.5" />
@@ -2815,15 +2843,15 @@ function UpdateBulkActionBar({
   onDelete: () => void
 }) {
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 inline-flex items-center gap-1 rounded-full border border-border bg-popover shadow-lg px-2 py-1.5">
+    <div className={BULK_BAR_CONTAINER}>
       <span className="text-xs font-medium px-2 tabular-nums">
         {count} geselecteerd
       </span>
-      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <span className="h-5 w-px bg-border/60" aria-hidden />
       <button
         type="button"
         onClick={() => onBulk("read")}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+        className={cn(BULK_BAR_CHIP, "hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400")}
         title="Markeer geselecteerde updates als gelezen"
       >
         <Check className="h-3.5 w-3.5" />
@@ -2832,7 +2860,7 @@ function UpdateBulkActionBar({
       <button
         type="button"
         onClick={() => onBulk("make_task")}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+        className={cn(BULK_BAR_CHIP, "hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400")}
         title="Create tasks from selected updates"
       >
         <ListTodo className="h-3.5 w-3.5" />
@@ -2841,17 +2869,17 @@ function UpdateBulkActionBar({
       <button
         type="button"
         onClick={onDelete}
-        className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium hover:bg-red-500/15 hover:text-red-500 transition-colors"
+        className={cn(BULK_BAR_CHIP, "hover:bg-red-500/15 hover:text-red-500")}
         title="Verwijder geselecteerde updates — dit kan niet ongedaan worden"
       >
         <Trash2 className="h-3.5 w-3.5" />
         Delete
       </button>
-      <span className="h-4 w-px bg-border/60" aria-hidden />
+      <span className="h-5 w-px bg-border/60" aria-hidden />
       <button
         type="button"
         onClick={onClear}
-        className="text-[11px] text-muted-foreground hover:text-foreground px-2"
+        className="h-9 inline-flex items-center text-[11px] text-muted-foreground hover:text-foreground px-2 rounded-md hover:bg-muted/50 transition-colors"
         title="Selectie wissen"
       >
         Clear

@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Check, Search, X } from "lucide-react"
+import { Check, Search } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import { DismissButton } from "@/components/ui/dismiss-button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
@@ -366,14 +367,13 @@ function ClientCombobox({
           className={cn(SELECT_CLS, "pl-9 pr-9")}
         />
         {value && (
-          <button
-            type="button"
+          <DismissButton
+            size="xs"
             onClick={clear}
-            className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted/60 inline-flex items-center justify-center"
-            aria-label={t("inbox.composer.action.clear", locale)}
-          >
-            <X className="h-3 w-3" />
-          </button>
+            label={t("inbox.composer.action.clear", locale)}
+            stopPropagation={false}
+            className="absolute right-2 top-1/2 -translate-y-1/2"
+          />
         )}
       </div>
 

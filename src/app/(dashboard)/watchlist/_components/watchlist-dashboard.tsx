@@ -10,6 +10,7 @@ import { StatusPill } from "@/components/ui/status-pill"
 import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, ArrowUp, ArrowDown, Minus, Lightbulb, ListTodo, Loader2, ArrowRightLeft } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
+import { ActionIconButton } from "@/components/ui/action-icon-button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import type { MondayClient } from "@/lib/integrations/monday"
@@ -452,42 +453,18 @@ function CreateTaskButton({
         ? errorMsg ?? t("watchlist.row.create_task_failed", locale)
         : t("watchlist.row.create_task_tooltip", locale, { cm: campaignManager ?? "" })
 
-  const baseCls =
-    "shrink-0 inline-flex items-center gap-1 h-7 px-2 text-[11px] font-medium rounded-md border transition-colors disabled:cursor-not-allowed"
-  const stateCls =
-    lastResult === "done"
-      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-      : lastResult === "error"
-        ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400"
-        : hasCm
-          ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/15"
-          : "border-border/40 bg-muted/30 text-muted-foreground/40"
-
   return (
     <>
-      <button
-        type="button"
-        onClick={handleClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") handleClick(e)
-          else e.stopPropagation()
-        }}
+      <ActionIconButton
+        tone="muted"
+        label={t("watchlist.row.create_task", locale)}
+        showLabel
         disabled={!hasCm}
-        title={tooltip}
-        className={cn(baseCls, stateCls)}
-      >
-        {lastResult === "done" ? (
-          <>
-            <Check className="h-3 w-3" />
-            {t("watchlist.row.create_task", locale)}
-          </>
-        ) : (
-          <>
-            <ListTodo className="h-3 w-3" />
-            {t("watchlist.row.create_task", locale)}
-          </>
-        )}
-      </button>
+        state={lastResult}
+        tooltip={tooltip}
+        icon={lastResult === "done" ? <Check className="h-3.5 w-3.5" /> : <ListTodo className="h-3.5 w-3.5" />}
+        onClick={(e) => handleClick(e)}
+      />
       {/* Dialog stays mounted so Base UI's body-scroll-lock cleanup
           can run when `open` flips to false. Unmounting via
           `{open && <Dialog>}` skips the cleanup and leaves

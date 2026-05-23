@@ -301,70 +301,16 @@ input[type="number"] {
   color: var(--primary);
 }
 
-/* ── Pedro (Campaign Manager) — hub-aligned button + form helpers ──
-   Pedro started as Mike's standalone Tailwind v3 app. The CSS below
-   re-implements the small button + form primitives Mike used (.pedro-btn-*
-   and bare <input>/<textarea> inside .pedro-root) so they read 1:1 with
-   the rest of the platform's shadcn surface — same h-10, same rounded-lg,
-   same focus ring — without having to convert every Mike tag to <Button>
-   / <Input>. New code in Pedro should prefer the proper components
-   (Button, Input, AutoTextarea) over these classes. */
+/* ── Pedro (Campaign Manager) — form helpers ──
+   Pedro was migrated to use the shared <Button> primitive directly
+   (2026-05-22). Only the form-field shim remains so bare <input>/
+   <textarea> tags inside .pedro-root still look like proper Input /
+   AutoTextarea components without having to convert every Mike tag. */
 
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
-
-.pedro-btn-primary,
-.pedro-btn-ghost,
-.pedro-btn-teal {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  height: 2.5rem; /* h-10 — matches shadcn Button size="default" */
-  padding: 0 1rem; /* px-4 */
-  border-radius: 0.5rem; /* rounded-lg */
-  font-family: var(--font-inter), "Inter", sans-serif;
-  font-weight: 500;
-  font-size: 0.875rem;
-  line-height: 1;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background-color 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
-  border: 1px solid transparent;
-}
-.pedro-btn-primary:disabled,
-.pedro-btn-ghost:disabled,
-.pedro-btn-teal:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-.pedro-btn-primary {
-  background: var(--primary);
-  color: var(--primary-foreground);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-.pedro-btn-primary:hover { background: color-mix(in srgb, var(--primary) 92%, black); }
-
-.pedro-btn-ghost {
-  background: var(--card);
-  color: var(--foreground);
-  border-color: var(--border);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-.pedro-btn-ghost:hover {
-  background: color-mix(in srgb, var(--muted) 40%, transparent);
-}
-
-.pedro-btn-teal {
-  background: #10b981; /* emerald-500 */
-  color: #ffffff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-.pedro-btn-teal:hover { background: #059669; }
 
 /* Form fields scoped to .pedro-root mirror shadcn Input + AutoTextarea
    styling exactly — same h-10, rounded-lg, padding, focus ring — so

@@ -377,10 +377,13 @@ function EmailChipInput({
 
   return (
     <span className="flex-1 min-w-0 inline-flex items-center flex-wrap gap-1">
+      {/* Recipient chips: chunkier than the row's dense chrome — email
+          context is the centre of attention so the chips earn the visual
+          weight. h-7 chip + h-4 hit-area X = comfortable click target. */}
       {value.map((email, i) => (
         <span
           key={`${email}-${i}`}
-          className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground/80"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/60 h-7 pl-2 pr-1 text-[12px] font-medium text-foreground/90"
         >
           {email}
           <button
@@ -388,9 +391,9 @@ function EmailChipInput({
             onClick={() => removeAt(i)}
             disabled={disabled}
             aria-label={`Remove ${email}`}
-            className="text-muted-foreground hover:text-foreground"
+            className="h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
           >
-            <X className="h-2.5 w-2.5" />
+            <X className="h-3 w-3" />
           </button>
         </span>
       ))}

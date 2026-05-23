@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Calendar, MessageCircle, AlertCircle, Check, X, RotateCcw, Link2Off, Clock, BellOff, UserCog, ListTodo, Trash2, Inbox as InboxIcon } from "lucide-react"
+import { Calendar, MessageCircle, AlertCircle, Check, RotateCcw, Link2Off, Clock, BellOff, UserCog, ListTodo, Trash2, Inbox as InboxIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SourcePill } from "./source-pill"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
@@ -344,24 +344,23 @@ export function InboxListRow({
         {/* Tasks keep right-side actions; update toggles live in the leading checkbox. */}
         {!isUpdate && onAction && <RowActions item={item} onAction={onAction} users={users} />}
 
-        {/* Updates get a single hover-revealed "Make task" button — closes the
-            loop on the Phase D vision: any inbox item can become an actionable
-            task in one click. Hover-only so the row stays uncluttered for the
-            (most common) read-and-move-on flow. */}
+        {/* Updates get a single hover-revealed "Create task" button — closes
+            the loop on the Phase D vision: any inbox item can become an
+            actionable task in one click. Hover-only so the row stays
+            uncluttered for the (most common) read-and-move-on flow. */}
         {isUpdate && onAction && (
-          <button
-            type="button"
+          <ActionIconButton
+            tone="muted"
+            label="Create task"
+            tooltip="Create task from this update"
+            showLabel
+            icon={<ListTodo className="h-3.5 w-3.5" />}
             onClick={(e) => {
               e.stopPropagation()
               onAction("make_task")
             }}
-            title="Create task from this update"
-            aria-label="Create task from this update"
-            className="opacity-60 group-hover:opacity-100 transition-opacity h-9 px-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 text-xs font-medium text-muted-foreground hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-500/30 shrink-0"
-          >
-            <ListTodo className="h-3.5 w-3.5" />
-            Create task
-          </button>
+            className="opacity-60 group-hover:opacity-100 transition-opacity hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-500/30"
+          />
         )}
       </div>
     </div>

@@ -18,6 +18,7 @@ import {
   disconnectMyPlatform,
   saveMyTrengoChannels,
 } from "../actions"
+import { Button } from "@/components/ui/button"
 import type { UserPlatformConnection, Platform } from "@/lib/inbox/user-platform-tokens"
 
 type Props = {
@@ -132,29 +133,28 @@ function SlackCard({
       connectedAt={connection?.connectedAt}
     >
       {connection ? (
-        <button
-          type="button"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={disconnect}
           disabled={pending !== null}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
         >
-          {pending === "disconnecting" ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <X className="h-3.5 w-3.5" />
-          )}
+          {pending === "disconnecting" ? <Loader2 className="animate-spin" /> : <X />}
           Disconnect
-        </button>
+        </Button>
       ) : (
-        // Server-side redirect to Slack OAuth — using an <a> tag (not a button)
-        // so the browser does a full navigation rather than fetch.
-        <a
-          href="/api/auth/slack/start"
-          className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
+        // Server-side redirect to Slack OAuth — using a plain <a> (not next/link)
+        // so the browser does a full navigation rather than client-side route.
+        <Button
+          size="sm"
+          render={
+            // eslint-disable-next-line @next/next/no-html-link-for-pages
+            <a href="/api/auth/slack/start" />
+          }
         >
-          <ExternalLink className="h-3.5 w-3.5" />
+          <ExternalLink />
           Connect Slack
-        </a>
+        </Button>
       )}
       {error && <p className="text-[11px] text-destructive mt-2">{error}</p>}
     </PlatformCard>
@@ -263,19 +263,15 @@ function TokenInputCard({
     >
       {connection ? (
         <div className="flex items-center gap-2">
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={disconnect}
             disabled={pending !== null}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
           >
-            {pending === "disconnecting" ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <X className="h-3.5 w-3.5" />
-            )}
+            {pending === "disconnecting" ? <Loader2 className="animate-spin" /> : <X />}
             Disconnect
-          </button>
+          </Button>
           <a
             href={helpUrl}
             target="_blank"
@@ -784,23 +780,19 @@ function BrowserNotificationsCard() {
           <div className="flex items-center gap-2">
             {subscribed ? (
               <>
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={disable}
                   disabled={busy}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/60 transition-colors disabled:opacity-60"
                 >
-                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+                  {busy ? <Loader2 className="animate-spin" /> : <X />}
                   Uitschakelen
-                </button>
-                <button
-                  type="button"
-                  onClick={sendTestPush}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted/60 transition-colors"
-                >
-                  <Bell className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="outline" size="sm" onClick={sendTestPush}>
+                  <Bell />
                   Stuur test
-                </button>
+                </Button>
               </>
             ) : (
               <button
