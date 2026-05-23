@@ -16,6 +16,7 @@ type Field = { key: keyof TargetsConfig; label: string; prefix?: string; suffix?
 const MARKETING_FIELDS: Field[] = [
   { key: "deals", label: "Deals" },
   { key: "revenue", label: "Revenue", prefix: "€" },
+  { key: "cpOptIn", label: "Max Cost per Opt-in", prefix: "€", step: "0.01" },
   { key: "cbc", label: "Max Cost per Booked Call", prefix: "€", step: "0.01" },
   { key: "cqc", label: "Max Cost per Qualified Call", prefix: "€", step: "0.01" },
   { key: "ctc", label: "Max Cost per Taken Call", prefix: "€", step: "0.01" },
@@ -44,7 +45,7 @@ const SECTIONS = [
 
 const EMPTY_CONFIG: TargetsConfig = {
   deals: 0, revenue: 0,
-  cbc: 0, cqc: 0, ctc: 0, cpd: 0,
+  cpOptIn: 0, cbc: 0, cqc: 0, ctc: 0, cpd: 0,
   serviceFeeRevenue: 0, teamCosts: 0, profitMargin: 0,
   mrr: 0, newBusiness: 0, activeCustomers: 0, serviceFeePerCustomer: 0, maxChurnRate: 0,
 }
@@ -159,6 +160,18 @@ function DerivedMarketingTargets({ values }: { values: TargetsConfig }) {
       formula: "deals × max CPD",
       value: derived.adSpend > 0 ? formatCurrency(derived.adSpend) : "—",
       available: derived.adSpend > 0,
+    },
+    {
+      label: "Target Opt-ins",
+      formula: "ad spend ÷ max cost per opt-in",
+      value: derived.optIns > 0 ? String(Math.round(derived.optIns)) : "—",
+      available: derived.optIns > 0,
+    },
+    {
+      label: "Appointment Booking Rate",
+      formula: "max cost per opt-in ÷ max CBC",
+      value: derived.bookingRate > 0 ? formatPercent(derived.bookingRate) : "—",
+      available: derived.bookingRate > 0,
     },
     {
       label: "Qualification Rate",

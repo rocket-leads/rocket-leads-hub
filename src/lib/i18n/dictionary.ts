@@ -25,11 +25,13 @@ type LocalizedString = Record<Locale, string>
 export const DICTIONARY = {
   // ─── Sidebar nav ──────────────────────────────────────────────────────
   "nav.home": { nl: "Home", en: "Home" },
-  "nav.watch_list": { nl: "Watch List", en: "Watch List" }, // brand term
-  "nav.clients": { nl: "Alle Clients", en: "All Clients" },
+  "nav.watch_list": { nl: "Watch list", en: "Watch list" }, // brand term
+  "nav.clients": { nl: "Alle campagnes", en: "All campaigns" },
   "nav.inbox": { nl: "Inbox", en: "Inbox" },
   "nav.meetings": { nl: "Meetings", en: "Meetings" },
   "nav.pedro": { nl: "Pedro", en: "Pedro" },
+  "nav.pedro_onboard": { nl: "On-board", en: "On-board" },
+  "nav.pedro_optimize": { nl: "Optimize", en: "Optimize" },
   "nav.insights": { nl: "Insights", en: "Insights" },
   "nav.targets": { nl: "Targets", en: "Targets" },
   "nav.billing": { nl: "Facturatie", en: "Billing" },
@@ -663,6 +665,9 @@ export const DICTIONARY = {
   "targets.kpi.not_updated": { nl: "{n} niet bijgewerkt", en: "{n} not updated" },
   "targets.kpi.not_updated_title": { nl: "{n} van deze afgelopen afspraken staan nog op Qualified / Gepland status. Geteld als taken zodat de conversion rate niet gespeeld wordt, maar gemarkeerd zodat closers hun statussen bijwerken.", en: "{n} of these past appointments are still in Qualified / Gepland status. Counted as taken so the conversion rate isn't gamed, but flagged so closers update their statuses." },
   "targets.kpi.target_of": { nl: "{value} van {target}", en: "{value} of {target}" },
+  "targets.kpi.opt_ins": { nl: "Opt-ins", en: "Opt-ins" },
+  "targets.kpi.cost_per_opt_in": { nl: "Kosten per opt-in", en: "Cost per opt-in" },
+  "targets.kpi.appointment_booking_rate": { nl: "Appointment Booking Rate", en: "Appointment Booking Rate" },
 
   // Stripe gap modal (admin drilldown)
   "targets.stripe.title": { nl: "Monday vs Stripe — Revenue cross-check", en: "Monday vs Stripe — Revenue cross-check" },

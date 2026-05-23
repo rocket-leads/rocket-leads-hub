@@ -1,13 +1,14 @@
 import { auth } from "@/lib/auth"
 import Link from "next/link"
 import Image from "next/image"
-import { SidebarNavLinks } from "./sidebar-nav-links"
+import { SidebarNavLinks, type NavEntry, type NavItem } from "./sidebar-nav-links"
 import { UserMenu } from "./user-menu"
 import { listUserPlatformConnections, type Platform } from "@/lib/inbox/user-platform-tokens"
 import { readCache } from "@/lib/cache"
 import type { MondayClient } from "@/lib/integrations/monday"
 import { mondayStatusToHub } from "@/lib/clients/status"
 import { fetchHealthSummary, HEALTHY_SUMMARY, type HealthSummary } from "@/lib/observability/health-summary"
+import { fetchSetupChecklist, type SetupChecklist, EMPTY_CHECKLIST } from "@/lib/observability/setup-checklist"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
 import { createAdminClient } from "@/lib/supabase/server"
@@ -22,32 +23,156 @@ export async function Sidebar() {
   const isFinance = !!session?.user.isFinance
   const locale = await getUserLocale(session?.user?.id)
 
-  // Nav labels resolved through the dictionary so the language switch
-  // flips them. Watch List is pulled out below for finance (they don't
-  // action campaigns); Billing stays in the shared section so finance,
-  // members and admins all see invoice scheduling.
-  //
-  // Order matches Roy's preferred flow (2026-05-21): Home → Watch List →
-  // Inbox → Alle Clients → Pedro → Meetings → Targets → Billing → Settings.
-  const HOME = { href: "/home", label: t("nav.home", locale), icon: "Home" as const }
-  const WATCH_LIST = { href: "/watchlist", label: t("nav.watch_list", locale), icon: "Eye" as const }
-  const SHARED_NAV = [
-    { href: "/inbox", label: t("nav.inbox", locale), icon: "Inbox" as const },
-    { href: "/clients", label: t("nav.clients", locale), icon: "Users" as const },
-    { href: "/pedro", label: t("nav.pedro", locale), icon: "Megaphone" as const },
-    { href: "/insights", label: t("nav.insights", locale), icon: "Layers" as const },
-    { href: "/meetings", label: t("nav.meetings", locale), icon: "Video" as const },
-    { href: "/targets", label: t("nav.targets", locale), icon: "Target" as const },
-    { href: "/billing", label: t("nav.billing", locale), icon: "CreditCard" as const },
-  ] as const
+  // ── Per-user Monday role (drives the AM-only meeting badge) ──
+  // Resolve once early so we can branch on AM for the unmatched-meetings
+  // count below without a second round-trip.
+  let mondayRole: MondayRole | null = null
+  if (session?.user?.id && !isAdmin && !isFinance) {
+    try {
+      const supabase = await createAdminClient()
+      const { data } = await supabase
+        .from("user_column_mappings")
+        .select("monday_column_role")
+        .eq("user_id", session.user.id)
+        .maybeSingle()
+      mondayRole = (data?.monday_column_role as MondayRole | undefined) ?? null
+    } catch {
+      // Silent — never block the sidebar render.
+    }
+  }
+  const isAccountManager = mondayRole === "account_manager"
 
-  const allItems = [
+  // ── Unmatched-meeting badge (Pedro parent + Meetings child) ──
+  // Only AMs see this — they're the ones who need to confirm/match Fathom
+  // recordings to clients. Counts meetings recorded by the current user
+  // whose link_status still needs human action. Roy 2026-05-23.
+  let unmatchedMeetingsCount = 0
+  if (isAccountManager && session?.user?.email) {
+    try {
+      const supabase = await createAdminClient()
+      const { count } = await supabase
+        .from("meetings")
+        .select("id", { count: "exact", head: true })
+        .ilike("recorded_by_email", session.user.email)
+        .in("link_status", ["unlinked", "suggested", "prospect"])
+      unmatchedMeetingsCount = count ?? 0
+    } catch {
+      // Silent.
+    }
+  }
+
+  // ── Billing "due today" badge ──
+  // Replaces the previous "due this week" finance-only badge. Roy wants a
+  // narrower signal: an invoice that needs to go out TODAY. Visible to
+  // anyone who has the Billing nav (admin + finance + member today, per
+  // current access policy). Reads the same monday_boards cache as before
+  // so zero extra DB queries.
+  let invoicesDueTodayCount = 0
+  if (isAdmin || isFinance) {
+    try {
+      const boards = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+        "monday_boards",
+      )
+      if (boards) {
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const todayMs = today.getTime()
+        const all = [...boards.onboarding, ...boards.current]
+        const seenCustomers = new Set<string>()
+        let count = 0
+        for (const c of all) {
+          if (!DATE_RE.test(c.nextInvoiceDate)) continue
+          const status = mondayStatusToHub(c.campaignStatus, c.boardType)
+          if (status !== "live" && status !== "onboarding") continue
+          const d = new Date(c.nextInvoiceDate)
+          d.setHours(0, 0, 0, 0)
+          // Strict today match — overdue invoices show on the Billing page
+          // itself; the sidebar badge only fires the day a fresh invoice
+          // is due so it functions as a daily nudge, not a backlog count.
+          if (d.getTime() !== todayMs) continue
+          if (c.stripeCustomerId) {
+            if (seenCustomers.has(c.stripeCustomerId)) continue
+            seenCustomers.add(c.stripeCustomerId)
+          }
+          count++
+        }
+        invoicesDueTodayCount = count
+      }
+    } catch {
+      // Silent — a missing cache shouldn't break the sidebar.
+    }
+  }
+
+  // ── Pedro children (Meetings child gets the unmatched badge) ──
+  const pedroChildren: NavItem[] = [
+    { href: "/pedro/onboard", label: t("nav.pedro_onboard", locale), icon: "Rocket" },
+    { href: "/pedro/optimize", label: t("nav.pedro_optimize", locale), icon: "Wrench" },
+    { href: "/pedro/insights", label: t("nav.insights", locale), icon: "Layers" },
+    {
+      href: "/pedro/meetings",
+      label: t("nav.meetings", locale),
+      icon: "Video",
+      ...(unmatchedMeetingsCount > 0
+        ? {
+            badge: unmatchedMeetingsCount,
+            badgeTitle: `${unmatchedMeetingsCount} unmatched meeting${unmatchedMeetingsCount === 1 ? "" : "s"} need linking to a client`,
+          }
+        : {}),
+    },
+  ]
+
+  // ── Top group: navigational tools ──
+  const HOME: NavItem = { href: "/home", label: t("nav.home", locale), icon: "Home" }
+  const WATCH_LIST: NavItem = { href: "/watchlist", label: t("nav.watch_list", locale), icon: "Eye" }
+  const PEDRO: NavItem = {
+    href: "/pedro",
+    label: t("nav.pedro", locale),
+    icon: "Megaphone",
+    children: pedroChildren,
+    // The badge on the Pedro parent mirrors the Meetings child count so
+    // the AM still sees it when the Pedro group is collapsed in their
+    // mental model — the children are visually nested but the parent
+    // chip is the at-a-glance signal.
+    ...(unmatchedMeetingsCount > 0
+      ? {
+          badge: unmatchedMeetingsCount,
+          badgeTitle: `${unmatchedMeetingsCount} unmatched meeting${unmatchedMeetingsCount === 1 ? "" : "s"} need linking to a client`,
+        }
+      : {}),
+  }
+
+  const TOP_GROUP: NavItem[] = [
     HOME,
     ...(isFinance ? [] : [WATCH_LIST]),
-    ...SHARED_NAV,
-    ...(isAdmin
-      ? [{ href: "/settings", label: t("nav.settings", locale), icon: "Settings" as const }]
-      : []),
+    { href: "/inbox", label: t("nav.inbox", locale), icon: "Inbox" },
+    { href: "/clients", label: t("nav.clients", locale), icon: "Users" },
+    PEDRO,
+  ]
+
+  // ── Bottom group: ops / admin stack, separated by a divider ──
+  // Targets stays visible to everyone (the page itself gates its finance
+  // tab to admin+finance — Roy 2026-05-23). Billing visible to admin +
+  // finance + member today per current policy. Settings stays admin-only.
+  const BILLING: NavItem = {
+    href: "/billing",
+    label: t("nav.billing", locale),
+    icon: "CreditCard",
+    ...(invoicesDueTodayCount > 0
+      ? {
+          badge: invoicesDueTodayCount,
+          badgeTitle: `${invoicesDueTodayCount} invoice${invoicesDueTodayCount === 1 ? "" : "s"} to send today`,
+        }
+      : {}),
+  }
+  const TARGETS: NavItem = { href: "/targets", label: t("nav.targets", locale), icon: "Target" }
+  const SETTINGS: NavItem = { href: "/settings", label: t("nav.settings", locale), icon: "Settings" }
+
+  const bottomGroup: NavItem[] = [BILLING, TARGETS, ...(isAdmin ? [SETTINGS] : [])]
+
+  const allItems: NavEntry[] = [
+    ...TOP_GROUP,
+    { kind: "divider" },
+    ...bottomGroup,
   ]
 
   // Count missing platform connections so we can flag the avatar with a dot.
@@ -64,53 +189,6 @@ export async function Sidebar() {
     }
   }
 
-  // For finance users, surface a numeric badge on the Billing nav showing how
-  // many invoices need to go out this week (overdue + today + through Sunday)
-  // — same "Due this week" window the Billing page uses. Reads the existing
-  // `monday_boards` cache the cron writes — zero extra DB queries during
-  // sidebar render. Lag is at most one cron tick.
-  let invoicesToSendCount = 0
-  if (isFinance) {
-    try {
-      const boards = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
-        "monday_boards",
-      )
-      if (boards) {
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const todayMs = today.getTime()
-        const dayMs = 24 * 60 * 60 * 1000
-        const dayOfWeek = today.getDay() // 0 = Sun
-        const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek
-        const endOfThisWeekMs = todayMs + daysUntilSunday * dayMs
-        const all = [...boards.onboarding, ...boards.current]
-
-        // Walk the eligible rows once, deduping by Stripe customer so
-        // multi-campaign clients (B2B + B2C sharing one customer) count as
-        // a single invoice — matching the Billing-page tab badge logic.
-        // Rows without a Stripe customer count individually (we'll still
-        // need to handle them, even if grouping isn't possible).
-        const seenCustomers = new Set<string>()
-        let count = 0
-        for (const c of all) {
-          if (!DATE_RE.test(c.nextInvoiceDate)) continue
-          const status = mondayStatusToHub(c.campaignStatus, c.boardType)
-          if (status !== "live" && status !== "onboarding") continue
-          const d = new Date(c.nextInvoiceDate)
-          d.setHours(0, 0, 0, 0)
-          if (d.getTime() > endOfThisWeekMs) continue
-          if (c.stripeCustomerId) {
-            if (seenCustomers.has(c.stripeCustomerId)) continue
-            seenCustomers.add(c.stripeCustomerId)
-          }
-          count++
-        }
-        invoicesToSendCount = count
-      }
-    } catch {
-      // Silent — a missing cache shouldn't break the sidebar.
-    }
-  }
   const accountTitle = missingPlatforms > 0
     ? `My Account — ${missingPlatforms} platform${missingPlatforms === 1 ? "" : "s"} not connected (Slack, Trengo, Monday)`
     : "My Account — connect Slack, Trengo, Monday"
@@ -126,31 +204,33 @@ export async function Sidebar() {
       userFunction = "Owner"
     } else if (isFinance) {
       userFunction = "Finance"
-    } else {
-      try {
-        const supabase = await createAdminClient()
-        const { data } = await supabase
-          .from("user_column_mappings")
-          .select("monday_column_role")
-          .eq("user_id", session.user.id)
-          .maybeSingle()
-        const role = data?.monday_column_role as MondayRole | undefined
-        if (role && MONDAY_ROLE_LABELS[role]) {
-          userFunction = MONDAY_ROLE_LABELS[role]
-        }
-      } catch {
-        // Fall back to "Member" silently — never block the sidebar render.
-      }
+    } else if (mondayRole && MONDAY_ROLE_LABELS[mondayRole]) {
+      userFunction = MONDAY_ROLE_LABELS[mondayRole]
     }
   }
 
-  // Admin-only health dot on the Settings nav. Lit when any cron has errored
-  // in the last 24h or any integration token is invalid. Cheap two-query
-  // probe — best-effort, never blocks the sidebar render.
+  // Admin-only Settings dot. Drives off the union of (a) infra health
+  // probe (cron errors / invalid tokens) and (b) the setup checklist
+  // (missing API tokens / board config / column mappings). Either of
+  // those needing attention lights the dot so the admin notices.
   let healthSummary: HealthSummary = HEALTHY_SUMMARY
+  let checklist: SetupChecklist = EMPTY_CHECKLIST
   if (isAdmin) {
-    healthSummary = await fetchHealthSummary()
+    ;[healthSummary, checklist] = await Promise.all([
+      fetchHealthSummary(),
+      fetchSetupChecklist(),
+    ])
   }
+  const combinedNeedsAttention =
+    healthSummary.needsAttention || checklist.incompleteCount > 0
+  const combinedDot = isAdmin
+    ? {
+        needsAttention: combinedNeedsAttention,
+        recentErrors: healthSummary.recentErrors,
+        invalidIntegrations: healthSummary.invalidIntegrations,
+        incompleteCount: checklist.incompleteCount,
+      }
+    : null
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-sidebar-border bg-sidebar flex flex-col">
@@ -180,8 +260,7 @@ export async function Sidebar() {
       {/* Navigation */}
       <SidebarNavLinks
         items={allItems}
-        invoicesToSendCount={invoicesToSendCount}
-        healthSummary={isAdmin ? healthSummary : null}
+        healthSummary={combinedDot}
       />
 
       {/* User section — collapsed to just the avatar + name. Locale, theme,

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { cachedHistoricalMonth, getRangeCalendarMonth, isPastCalendarMonth, readCache, writeCache } from "@/lib/cache"
-import { fetchMondayTargets, getMtdRange, invalidateTargetsBoardItems } from "@/lib/targets/fetchers"
+import { fetchMondayTargets, getMtdRange, invalidateTargetsBoardItems, invalidateOptInsBoardItems } from "@/lib/targets/fetchers"
 import type { MondayTargetsByCountry } from "@/types/targets"
 
 // Cached entries from before the closers shape existed (qualifiedCalls / upcomingCalls /
@@ -17,6 +17,10 @@ function hasFreshSchema(cached: MondayTargetsByCountry | null): boolean {
   if (!cached?.all) return false
   if (!("stripeNewBusinessRevenue" in cached.all)) return false
   if (!Array.isArray(cached.all.closedDeals)) return false
+  // optIns added 2026-05-23 — entries written before that don't have the
+  // field; serving them back would render the new tiles as 0 instead of
+  // triggering a refetch with the new value.
+  if (typeof cached.all.optIns !== "number") return false
 
   const closers = cached.all.closers
   if (!Array.isArray(closers)) return false
@@ -98,9 +102,12 @@ export async function GET(request: Request) {
 
   try {
     // Refresh button explicitly wants fresh data — bust the in-process board items
-    // cache so this request re-paginates from Monday instead of reusing the items
+    // caches so this request re-paginates from Monday instead of reusing the items
     // a previous request warmed.
-    if (forceRefresh) invalidateTargetsBoardItems()
+    if (forceRefresh) {
+      invalidateTargetsBoardItems()
+      invalidateOptInsBoardItems()
+    }
     console.log("[targets/monday] live fetch:", { startDate, endDate, closer })
     const result = await fetchMondayTargets(startDate, endDate, closer)
     // Refresh the cron cache when this is the current MTD range, so the next

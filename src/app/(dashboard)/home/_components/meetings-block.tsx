@@ -49,7 +49,7 @@ export function MeetingsBlock({
       title={t("home.block.meetings.title", locale)}
       icon={<Video className="h-4 w-4 text-primary" />}
       count={totalCount}
-      footerHref="/meetings"
+      footerHref="/pedro/meetings"
       footerLabel={t("home.block.meetings.cta", locale)}
       empty={items.length === 0}
       emptyMessage={t("home.block.meetings.empty", locale)}
@@ -71,7 +71,7 @@ export function MeetingsBlock({
           // meeting is linked) > Fathom share URL > /meetings page.
           const href = m.mondayItemId
             ? `/clients?client=${encodeURIComponent(m.mondayItemId)}`
-            : m.shareUrl ?? "/meetings"
+            : m.shareUrl ?? "/pedro/meetings"
           const isExternal = !m.mondayItemId && !!m.shareUrl
 
           return (

@@ -313,7 +313,7 @@ export function PedroSettingsTab() {
                   </div>
                   {f.clientId && (
                     <Link
-                      href={`/pedro?tab=brief&clientId=${f.clientId}`}
+                      href={`/pedro/onboard?tab=brief&clientId=${f.clientId}`}
                       className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
                     >
                       {t("settings.pedro.fires.open", locale)} <ExternalLink className="h-3 w-3" />

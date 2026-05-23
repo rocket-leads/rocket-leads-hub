@@ -73,6 +73,13 @@ export function MarketingTab() {
   const qualified = m?.qualifiedCalls ?? 0
   const taken = m?.takenCalls ?? 0
   const deals = m?.deals ?? 0
+  // Opt-ins lives on a separate Monday board with no country attribution.
+  // The fetcher populates the value only on the "all" bucket, so we show
+  // the tile only when the user is on the All-countries view — under a
+  // country filter the value would always be 0 and the cost-per number
+  // meaningless.
+  const optIns = country === "all" ? m?.optIns ?? 0 : 0
+  const cpOptIn = country === "all" ? safeDivide(spend, optIns) : 0
   // Closer dropdown options come from the FULL closers list (the backend keeps
   // it complete regardless of the filter so this dropdown always lists every
   // option). Everything else under "Breakdown" — closers table + insights and
@@ -85,10 +92,17 @@ export function MarketingTab() {
   }, [m?.closers, closer, closerActive])
   const notUpdatedTotal = closersForBreakdown.reduce((s, c) => s + c.notUpdated, 0)
   const loading = data.mondayLoading || data.metaLoading
+  // True while every Monday-driven tile is rendering MTD-range numbers as
+  // placeholder for the still-loading selected range. Surface as a small
+  // amber pill on each affected tile so the user can tell the value isn't
+  // authoritative yet.
+  const mondayMtdPlaceholder = data.mondayShowingMtdFallback
 
-  // Volume targets (calls/qualified/taken) are derived from ad-spend (= deals × cpd)
-  // divided by the relevant cost ceiling. Only deals & revenue come straight from Settings.
+  // Volume targets (opt-ins/calls/qualified/taken) are derived from ad-spend
+  // (= deals × cpd) divided by the relevant cost ceiling. Only deals & revenue
+  // come straight from Settings. Booking rate target = cpOptIn / cbc.
   const derivedT = deriveTargets(tgt)
+  const prOptIns = derivedT.optIns > 0 ? Math.round(proRata(derivedT.optIns, range)) : undefined
   const prCalls = derivedT.calls > 0 ? Math.round(proRata(derivedT.calls, range)) : undefined
   const prQualified = derivedT.qualifiedCalls > 0 ? Math.round(proRata(derivedT.qualifiedCalls, range)) : undefined
   const prTaken = derivedT.takenCalls > 0 ? Math.round(proRata(derivedT.takenCalls, range)) : undefined
@@ -96,6 +110,13 @@ export function MarketingTab() {
 
   // Ad spend target = pro-rata of (deals × cpd)
   const prSpend = derivedT.adSpend > 0 ? Math.round(proRata(derivedT.adSpend, range)) : undefined
+
+  // Appointment booking rate = booked calls / opt-ins. Target is a ratio (not
+  // pro-rata-able) — cpOptIn / cbc from Settings. The actual value uses live
+  // calls / optIns. Both are only meaningful on the "all" country view since
+  // opt-ins has no country attribution.
+  const bookingRate = optIns > 0 ? (calls / optIns) * 100 : 0
+  const bookingRateTarget = derivedT.bookingRate > 0 ? derivedT.bookingRate * 100 : undefined
 
   // Ratios group from calculations
   const ratiosGroup = kpiGroups.find((g) => g.title === "Ratios")
@@ -226,19 +247,33 @@ export function MarketingTab() {
             />
           </div>
 
-          {/* Volume row: Booked | Qualified | Taken | Deals */}
-          <div className="grid grid-cols-4 gap-2">
+          {/* Volume + Cost + Ratio funnel — left column carries the opt-in
+              metrics (volume / cost / booking rate), the remaining 4 columns
+              are the existing booked → qualified → taken → deals funnel.
+              Opt-in metrics are country-agnostic; they hide off "all" but the
+              4-col remainder still renders so country filters keep working. */}
+          {/* Row 1: Opt-ins | Booked | Qualified | Taken | Deals */}
+          <div className={cn("grid gap-2", country === "all" ? "grid-cols-5" : "grid-cols-4") }>
+            {country === "all" && (
+              <KpiCard
+                label={t("targets.kpi.opt_ins", locale)}
+                value={optIns} formatted={String(optIns)}
+                target={prOptIns}
+                targetFormatted={prOptIns != null ? t("targets.kpi.target_of", locale, { value: String(optIns), target: String(prOptIns) }) : undefined}
+                variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
+              />
+            )}
             <KpiCard
               label="Booked Calls" value={calls} formatted={String(calls)}
               target={prCalls}
               targetFormatted={prCalls != null ? t("targets.kpi.target_of", locale, { value: String(calls), target: String(prCalls) }) : undefined}
-              variant="volume" isLoading={data.mondayLoading}
+              variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
               label="Qualified Calls" value={qualified} formatted={String(qualified)}
               target={prQualified}
               targetFormatted={prQualified != null ? t("targets.kpi.target_of", locale, { value: String(qualified), target: String(prQualified) }) : undefined}
-              variant="volume" isLoading={data.mondayLoading}
+              variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
               label="Taken Calls" value={taken} formatted={String(taken)}
@@ -246,45 +281,55 @@ export function MarketingTab() {
               targetFormatted={prTaken != null ? t("targets.kpi.target_of", locale, { value: String(taken), target: String(prTaken) }) : undefined}
               notice={notUpdatedTotal > 0 ? t("targets.kpi.not_updated", locale, { n: String(notUpdatedTotal) }) : undefined}
               noticeTitle={notUpdatedTotal > 0 ? t("targets.kpi.not_updated_title", locale, { n: String(notUpdatedTotal) }) : undefined}
-              variant="volume" isLoading={data.mondayLoading}
+              variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
               label="Deals" value={deals} formatted={String(deals)}
               target={prDeals}
               targetFormatted={prDeals != null ? t("targets.kpi.target_of", locale, { value: String(deals), target: String(prDeals) }) : undefined}
-              variant="volume" isLoading={data.mondayLoading}
+              variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
           </div>
 
-          {/* Cost-per row: CBC | CQC | CTC | CPD */}
-          <div className="grid grid-cols-4 gap-2">
+          {/* Row 2: Cost per Opt-in | CBC | CQC | CTC | CPD */}
+          <div className={cn("grid gap-2", country === "all" ? "grid-cols-5" : "grid-cols-4") }>
+            {country === "all" && (
+              <KpiCard
+                label={t("targets.kpi.cost_per_opt_in", locale)}
+                value={cpOptIn}
+                formatted={formatCurrencyDecimal(cpOptIn)}
+                target={tgt?.cpOptIn || undefined}
+                targetFormatted={tgt?.cpOptIn ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(cpOptIn), target: formatCurrencyDecimal(tgt.cpOptIn) }) : undefined}
+                variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
+              />
+            )}
             <KpiCard
               label="CBC" value={safeDivide(spend, calls)}
               formatted={formatCurrencyDecimal(safeDivide(spend, calls))}
               target={tgt?.cbc || undefined}
               targetFormatted={tgt?.cbc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, calls)), target: formatCurrencyDecimal(tgt.cbc) }) : undefined}
-              variant="cost" isLoading={loading}
+              variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
               label="CQC" value={safeDivide(spend, qualified)}
               formatted={formatCurrencyDecimal(safeDivide(spend, qualified))}
               target={tgt?.cqc || undefined}
               targetFormatted={tgt?.cqc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, qualified)), target: formatCurrencyDecimal(tgt.cqc) }) : undefined}
-              variant="cost" isLoading={loading}
+              variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
               label="CTC" value={safeDivide(spend, taken)}
               formatted={formatCurrencyDecimal(safeDivide(spend, taken))}
               target={tgt?.ctc || undefined}
               targetFormatted={tgt?.ctc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, taken)), target: formatCurrencyDecimal(tgt.ctc) }) : undefined}
-              variant="cost" isLoading={loading}
+              variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
               label="CPD" value={safeDivide(spend, deals)}
               formatted={formatCurrencyDecimal(safeDivide(spend, deals))}
               target={tgt?.cpd || undefined}
               targetFormatted={tgt?.cpd ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, deals)), target: formatCurrencyDecimal(tgt.cpd) }) : undefined}
-              variant="cost" isLoading={loading}
+              variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
           </div>
         </div>
@@ -292,9 +337,24 @@ export function MarketingTab() {
         {ratiosGroup && (
           <div className="pt-1">
             <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2 px-1">{ratiosGroup.title}</h3>
-            <div className="grid grid-cols-4 gap-2">
+            {/* Row 3 (ratios): Appointment Booking Rate | qualRate | showUpRate | convRate | roas */}
+            <div className={cn("grid gap-2", country === "all" ? "grid-cols-5" : "grid-cols-4") }>
+              {country === "all" && (
+                <KpiCard
+                  label={t("targets.kpi.appointment_booking_rate", locale)}
+                  value={bookingRate}
+                  formatted={`${bookingRate.toFixed(1)}%`}
+                  target={bookingRateTarget}
+                  targetFormatted={bookingRateTarget != null ? t("targets.kpi.target_of", locale, { value: `${bookingRate.toFixed(1)}%`, target: `${bookingRateTarget.toFixed(0)}%` }) : undefined}
+                  variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
+                />
+              )}
               {ratiosGroup.kpis.map((kpi) => (
-                <KpiCard key={kpi.label} {...kpi} />
+                // Ratios mix Monday volume with Meta spend; when Monday is
+                // serving MTD as placeholder the ratio is partially wrong
+                // (MTD leads ÷ selected-range spend) — flag it so the CM
+                // doesn't trust the number yet.
+                <KpiCard key={kpi.label} {...kpi} isMtdPlaceholder={mondayMtdPlaceholder} />
               ))}
             </div>
           </div>

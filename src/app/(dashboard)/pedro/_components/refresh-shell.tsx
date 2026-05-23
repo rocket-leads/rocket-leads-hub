@@ -1,59 +1,22 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Sparkles, RefreshCw, TrendingUp, TrendingDown, Minus, AlertTriangle, Copy, Check } from "lucide-react"
-import type { PedroClient } from "./types"
+import type { RefreshEnvelope } from "@/lib/pedro/refresh-shared"
 
 /**
- * Pedro's first optimisation stage — Creative Refresh.
+ * Shared UI shell for every per-stage Pedro refresh component
+ * (angles-refresh, script-refresh, creative-refresh, ad-copy-refresh).
  *
- * The CM picks a Live client + a window (default 30d), Pedro reads live
- * Meta performance via /api/pedro/creative-refresh, finds winners, and
- * proposes 3 iterations per winner in the same hook/angle/format DNA.
+ * Each stage component supplies:
+ *  - `endpoint` — the /api/pedro/*-refresh URL
+ *  - `title` + `description` — what shows in the header card
+ *  - `renderProposals(envelope)` — stage-specific renderer for the proposals
+ *    when mode === "iterate-winners"
  *
- * No budget recommendations, no copy-pasting losers — per the principles
- * baked into knowledge/campaigns.md and the system prompt.
+ * Everything else (window picker, generate button, stats grid, summary
+ * banner, no-winners path, warnings, regenerate) is handled here.
  */
-
-type Proposal = {
-  basedOnAd: { adId: string; adName: string; cpl: number | null; verdict: string }
-  preserve: { hook: string; angle: string; format: string }
-  variants: Array<{
-    label: string
-    newHook: string
-    scriptOutline: string
-    primaryCopySnippet: string
-    why: string
-  }>
-}
-
-type RefreshResponse =
-  | {
-      mode: "iterate-winners"
-      clientId: string
-      clientName: string
-      window: { start: string; end: string; days: number }
-      stats: {
-        totalSpend: number
-        totalLeads: number
-        avgCpl: number | null
-        avgCtr: number | null
-        winnerCount: number
-        loserCount: number
-      }
-      trend: { spendDeltaPct: number | null; leadsDeltaPct: number | null; cplDeltaPct: number | null }
-      proposals: Proposal[]
-      summary: string
-      warnings: string[]
-    }
-  | {
-      mode: "no-winners"
-      clientId: string
-      clientName: string
-      window: { start: string; end: string; days: number }
-      summary: string
-      warnings: string[]
-    }
 
 const WINDOW_OPTIONS = [
   { value: 7, label: "7 dagen" },
@@ -85,7 +48,6 @@ function StatBlock({
   label: string
   value: string
   trend?: number | null
-  /** "up" = positive trend is good (leads), "down" = negative is good (CPL). */
   goodIs?: "up" | "down"
 }) {
   let trendColor = "text-muted-foreground"
@@ -110,7 +72,8 @@ function StatBlock({
   )
 }
 
-function CopyButton({ text }: { text: string }) {
+/** Tiny copy-to-clipboard button used by every per-stage proposal card. */
+export function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   return (
     <button
@@ -132,34 +95,32 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
-type Props = {
-  clients: PedroClient[]
-  /** Driven by the global Pedro picker at the top of the page. */
+type Props<TProposal> = {
+  endpoint: string
+  title: string
+  description: string
   selectedClientId: string | null
   selectedClientName: string
-  /** When true, fire generate() automatically once the client is set. */
   autoStart?: boolean
+  /** Renders the iterate-winners proposals. Receives the parsed envelope. */
+  renderProposals: (env: Extract<RefreshEnvelope<TProposal>, { mode: "iterate-winners" }>) => ReactNode
 }
 
-export function PedroRefresh({ clients, selectedClientId, selectedClientName, autoStart }: Props) {
-  // Refresh only makes sense for Live or already-onboarded clients.
-  // Other onboarding-board clients have no performance data yet.
-  // We keep this filter for the data fetch — if the global picker has
-  // a non-Live client, the empty/error states on the API will surface.
-  // (Picker filtering is now PedroApp's concern.)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _liveClients = useMemo(
-    () => clients.filter((c) => c.boardType === "current" || c.hasSavedCampaign),
-    [clients],
-  )
-
+export function RefreshShell<TProposal>({
+  endpoint,
+  title,
+  description,
+  selectedClientId,
+  selectedClientName,
+  autoStart,
+  renderProposals,
+}: Props<TProposal>) {
   const [days, setDays] = useState<number>(30)
   const [loading, setLoading] = useState(false)
-  const [data, setData] = useState<RefreshResponse | null>(null)
+  const [data, setData] = useState<RefreshEnvelope<TProposal> | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Reset output state whenever the active client changes externally
-  // (global picker swap → start fresh).
+  // Reset output state whenever the active client changes externally.
   useEffect(() => {
     setData(null)
     setError(null)
@@ -171,7 +132,7 @@ export function PedroRefresh({ clients, selectedClientId, selectedClientName, au
     setError(null)
     setData(null)
     try {
-      const res = await fetch("/api/pedro/creative-refresh", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clientId: selectedClientId, days }),
@@ -180,17 +141,15 @@ export function PedroRefresh({ clients, selectedClientId, selectedClientName, au
       if (!res.ok || json.error) {
         setError(json.error || `HTTP ${res.status}`)
       } else {
-        setData(json as RefreshResponse)
+        setData(json as RefreshEnvelope<TProposal>)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Onbekende fout")
     }
     setLoading(false)
-  }, [selectedClientId, days])
+  }, [selectedClientId, days, endpoint])
 
-  // Auto-fire when arriving via URL (?clientId=X&auto=1 — e.g. the Watch
-  // List "Ask Pedro" button). Only once per mount, only when explicitly
-  // requested. Otherwise the CM has to click "Genereer" themselves.
+  // Auto-fire when arriving via URL (?auto=1). Only once per mount.
   const autoFiredRef = useRef(false)
   useEffect(() => {
     if (autoFiredRef.current) return
@@ -205,12 +164,8 @@ export function PedroRefresh({ clients, selectedClientId, selectedClientName, au
       {/* Picker + window + generate */}
       <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04),0_1px_3px_-1px_rgb(0_0_0_/_0.04)] dark:shadow-[0_1px_2px_0_rgb(0_0_0_/_0.3)]">
         <div className="mb-4">
-          <div className="font-heading font-semibold text-[15px] tracking-tight">
-            Creative refresh
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            Pedro leest live Meta performance, vindt winners en stelt 3 iteraties per winner voor — zelfde DNA, frisse executie.
-          </div>
+          <div className="font-heading font-semibold text-[15px] tracking-tight">{title}</div>
+          <div className="text-xs text-muted-foreground mt-1">{description}</div>
         </div>
 
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 mb-3">
@@ -245,7 +200,6 @@ export function PedroRefresh({ clients, selectedClientId, selectedClientName, au
             </button>
           ))}
         </div>
-
       </div>
 
       {/* Loading */}
@@ -268,7 +222,7 @@ export function PedroRefresh({ clients, selectedClientId, selectedClientName, au
         </div>
       )}
 
-      {/* Result */}
+      {/* No-winners result */}
       {data && data.mode === "no-winners" && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 space-y-2">
           <div className="font-heading font-semibold text-[14px] tracking-tight">
@@ -283,9 +237,9 @@ export function PedroRefresh({ clients, selectedClientId, selectedClientName, au
         </div>
       )}
 
+      {/* Iterate-winners result */}
       {data && data.mode === "iterate-winners" && (
         <>
-          {/* Stats grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatBlock
               label={`Spend ${data.window.days}d`}
@@ -310,7 +264,6 @@ export function PedroRefresh({ clients, selectedClientId, selectedClientName, au
             />
           </div>
 
-          {/* Pedro's summary */}
           {data.summary && (
             <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
               <div className="flex items-start gap-2">
@@ -320,73 +273,12 @@ export function PedroRefresh({ clients, selectedClientId, selectedClientName, au
             </div>
           )}
 
-          {/* Proposals */}
           {data.proposals.length === 0 ? (
             <div className="rounded-2xl border border-border/60 bg-card p-5 text-sm text-muted-foreground">
               Pedro vond winners maar gaf geen proposals terug. Probeer opnieuw of kies een ander window.
             </div>
           ) : (
-            <div className="space-y-4">
-              {data.proposals.map((p, i) => (
-                <div
-                  key={`${p.basedOnAd.adId}-${i}`}
-                  className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]"
-                >
-                  <div className="flex items-start justify-between mb-4 gap-3">
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-emerald-600 dark:text-emerald-400 font-semibold mb-1">
-                        Itereren op winner
-                      </div>
-                      <div className="font-heading font-semibold text-[15px] tracking-tight truncate">
-                        {p.basedOnAd.adName}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        CPL {p.basedOnAd.cpl != null ? `€${p.basedOnAd.cpl.toFixed(2)}` : "—"}
-                        {" · "}
-                        Behoud: {p.preserve.hook} / {p.preserve.angle} / {p.preserve.format}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {p.variants.map((v, vi) => (
-                      <div
-                        key={vi}
-                        className="rounded-lg border border-border/60 bg-background p-4 space-y-2"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="font-heading font-semibold text-sm">{v.label}</div>
-                          <CopyButton
-                            text={`Hook: ${v.newHook}\n\nScript outline:\n${v.scriptOutline}\n\nPrimary copy:\n${v.primaryCopySnippet}`}
-                          />
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
-                            Hook
-                          </div>
-                          <div className="text-sm text-foreground">{v.newHook}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
-                            Script outline
-                          </div>
-                          <div className="text-sm text-foreground whitespace-pre-line">{v.scriptOutline}</div>
-                        </div>
-                        <div>
-                          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
-                            Primary copy
-                          </div>
-                          <div className="text-sm text-foreground">{v.primaryCopySnippet}</div>
-                        </div>
-                        <div className="text-xs text-muted-foreground italic pt-1 border-t border-border/40">
-                          Waarom: {v.why}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+            renderProposals(data)
           )}
 
           {data.warnings.length > 0 && (

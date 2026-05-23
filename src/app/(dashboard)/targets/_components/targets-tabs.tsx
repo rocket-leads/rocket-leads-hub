@@ -21,7 +21,7 @@ type TargetsTabId = "marketing" | "finance" | "delivery" | "settings"
 /** Query key prefixes belonging to the targets dashboard — used by the refresh button to scope invalidation. */
 const TARGETS_QUERY_PREFIXES = ["targets-monday", "targets-meta", "targets-finance", "targets-costs", "targets-delivery", "targets-config"] as const
 
-function TargetsTabsInner({ isAdmin }: { isAdmin: boolean }) {
+function TargetsTabsInner({ isAdmin, canSeeFinance }: { isAdmin: boolean; canSeeFinance: boolean }) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const queryClient = useQueryClient()
@@ -35,7 +35,9 @@ function TargetsTabsInner({ isAdmin }: { isAdmin: boolean }) {
     { id: "delivery", label: t("targets.tab.delivery", locale), icon: Users },
     { id: "finance", label: t("targets.tab.finance", locale), icon: CreditCard },
   ]
-  const mainTabs = ALL_MAIN_TABS.filter((tab) => isAdmin || tab.id !== "finance")
+  // Finance tab is admin+finance (Roy 2026-05-23). Marketing + Delivery
+  // stay visible to everyone.
+  const mainTabs = ALL_MAIN_TABS.filter((tab) => canSeeFinance || tab.id !== "finance")
   const validIds = new Set<string>([...mainTabs.map((tab) => tab.id), ...(isAdmin ? ["settings"] : [])])
   const tabParam = searchParams.get("tab") ?? ""
   const activeTab: TargetsTabId = (validIds.has(tabParam) ? tabParam : "marketing") as TargetsTabId
@@ -67,7 +69,7 @@ function TargetsTabsInner({ isAdmin }: { isAdmin: boolean }) {
       await Promise.allSettled([
         fetch(`/api/targets/monday?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" }),
         fetch(`/api/targets/meta?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" }),
-        ...(isAdmin ? [fetch(`/api/targets/finance?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" })] : []),
+        ...(canSeeFinance ? [fetch(`/api/targets/finance?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" })] : []),
         ...(isAdmin ? [fetch(`/api/targets/costs?year=${year}&month=${month}&refresh=1`, { cache: "no-store" })] : []),
         fetch(`/api/targets/delivery?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" }),
       ])
@@ -119,14 +121,14 @@ function TargetsTabsInner({ isAdmin }: { isAdmin: boolean }) {
       />
 
       {activeTab === "marketing" && <MarketingTab />}
-      {activeTab === "finance" && isAdmin && <FinanceTab />}
+      {activeTab === "finance" && canSeeFinance && <FinanceTab />}
       {activeTab === "delivery" && <DeliveryTab />}
       {activeTab === "settings" && isAdmin && <SettingsTab />}
     </div>
   )
 }
 
-export function TargetsTabs({ isAdmin }: { isAdmin: boolean }) {
+export function TargetsTabs({ isAdmin, canSeeFinance }: { isAdmin: boolean; canSeeFinance: boolean }) {
   return (
     <Suspense fallback={
       <div className="space-y-6">
@@ -137,7 +139,7 @@ export function TargetsTabs({ isAdmin }: { isAdmin: boolean }) {
         </div>
       </div>
     }>
-      <TargetsTabsInner isAdmin={isAdmin} />
+      <TargetsTabsInner isAdmin={isAdmin} canSeeFinance={canSeeFinance} />
     </Suspense>
   )
 }

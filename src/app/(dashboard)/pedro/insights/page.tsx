@@ -1,22 +1,20 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/ui/page-header"
-import { PedroInsights } from "@/app/(dashboard)/pedro/_components/pedro-insights"
+import { PedroInsights } from "../_components/pedro-insights"
 
 /**
- * Insights — agency-wide pattern browser, formerly a tab inside Pedro.
+ * Pedro · Insights — agency-wide pattern browser.
  *
- * Moved out of Pedro (2026-05-22): Pedro is the per-client build flow
- * (Voorbereiding → Deliverables) plus the per-client Refresh tool.
- * Insights has no client picker and shows portfolio-level data, so it
- * conceptually doesn't belong in the Pedro tab strip. Its own
- * top-level page makes the "agency-wide" framing immediate.
- *
+ * Sits under /pedro as a nested tab (Roy 2026-05-23 sidebar tab-shift).
  * Data comes from `pedro_vertical_patterns` (refreshed nightly by the
  * `refresh-pedro-patterns` cron). The page is read-only — no actions,
  * no client selection, just exploration.
  */
-export default async function InsightsPage() {
+export const dynamic = "force-dynamic"
+export const metadata = { title: "Pedro · Insights — Rocket Leads Hub" }
+
+export default async function PedroInsightsPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
 

@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers, Rocket, Wrench } from "lucide-react"
 
 // Note: lucide's `Receipt` ships with a $ glyph baked into the SVG. Roy
 // flagged it as off-brand for a Hub that talks Euros — we use `CreditCard`
@@ -11,9 +12,42 @@ import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home
 // quiet, matching the abstract style of the rest of the sidebar items
 // (Users, Inbox, Megaphone, Target, etc.). Home uses lucide's `Home`
 // (literal house glyph) per Roy's 2026-05-21 ask.
-const ICONS = { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers }
+const ICONS = { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers, Rocket, Wrench }
 
-type NavItem = { href: string; label: string; icon: keyof typeof ICONS }
+type IconKey = keyof typeof ICONS
+
+export type NavItem = {
+  href: string
+  label: string
+  icon: IconKey
+  /** Optional nested items rendered indented under the parent. When a child
+   *  route is active, the parent gets a subtle "section active" treatment
+   *  and the matching child gets the strong active highlight. Children
+   *  show whenever the parent route is active or after the user has
+   *  clicked the parent at least once (state persisted to localStorage).
+   *  Roy 2026-05-23: no chevron, no toggle — single click area, always
+   *  expand. */
+  children?: NavItem[]
+  /** Numeric badge rendered on the right side of the row. Used by Pedro
+   *  (unmatched meetings) and Billing (invoices due today). 0 hides. */
+  badge?: number
+  /** Tooltip for the badge so the user knows what it counts without
+   *  having to click through. */
+  badgeTitle?: string
+}
+
+/** Marker entry that renders a horizontal rule + extra spacing between
+ *  two nav sections. Lets the sidebar visually group the "tools" stack
+ *  (Home / Watch list / All campaigns / Pedro) above the "admin
+ *  stack" (Billing / Targets / Settings) without needing two separate
+ *  <nav> elements. */
+export type NavDivider = { kind: "divider" }
+
+export type NavEntry = NavItem | NavDivider
+
+function isDivider(e: NavEntry): e is NavDivider {
+  return (e as NavDivider).kind === "divider"
+}
 
 type BadgeCounts = { unreadUpdates: number; openTasks: number; unreadChats: number }
 
@@ -43,14 +77,14 @@ type HealthDotSummary = {
   needsAttention: boolean
   recentErrors: number
   invalidIntegrations: number
+  /** Number of incomplete setup-checklist items (missing API tokens,
+   *  board config, user mappings). Distinct from the runtime probe
+   *  numbers so the tooltip can call them out separately. */
+  incompleteCount: number
 }
 
 type Props = {
-  items: NavItem[]
-  /** Clients with an invoice due this week (overdue + today + through Sunday)
-   *  — same "Due this week" window the Billing page uses. Drives the numeric
-   *  badge next to Billing. Finance-only; non-finance users always see 0. */
-  invoicesToSendCount?: number
+  items: NavEntry[]
   /** Admin-only health probe. Lights up the Settings dot when crons errored
    *  or integration tokens went invalid. Null = non-admin (no dot rendered). */
   healthSummary?: HealthDotSummary | null
@@ -59,6 +93,11 @@ type Props = {
 function buildHealthDotTitle(summary: HealthDotSummary | null): string {
   if (!summary) return ""
   const parts: string[] = []
+  if (summary.incompleteCount > 0) {
+    parts.push(
+      `${summary.incompleteCount} setup item${summary.incompleteCount === 1 ? "" : "s"} to complete`,
+    )
+  }
   if (summary.recentErrors > 0) {
     parts.push(`${summary.recentErrors} cron error${summary.recentErrors === 1 ? "" : "s"} in last 24h`)
   }
@@ -68,55 +107,171 @@ function buildHealthDotTitle(summary: HealthDotSummary | null): string {
     )
   }
   return parts.length > 0
-    ? `${parts.join(" · ")} — open Settings → Health`
-    : "Settings → Health"
+    ? `${parts.join(" · ")} — open Settings`
+    : "Settings"
 }
 
-export function SidebarNavLinks({ items, invoicesToSendCount = 0, healthSummary = null }: Props) {
+type RowProps = {
+  item: NavItem
+  pathname: string
+  healthSummary: HealthDotSummary | null
+  /** Nested children get a left-indent + smaller leading dot in lieu of an
+   *  icon. Parents render their lucide icon. */
+  indent?: boolean
+  /** Parent active = a child route is the current path. We want the parent
+   *  to read as "section selected" but not steal the strong highlight from
+   *  the active child. */
+  isParentSection?: boolean
+  /** Side-effect to run when this row is clicked, in addition to the
+   *  Link's navigation. Used by parent rows to force their children
+   *  open whenever the user clicks them — Roy 2026-05-23: no separate
+   *  chevron, one click area, always expand. */
+  onClick?: () => void
+}
+
+function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClick }: RowProps) {
+  const Icon = ICONS[item.icon]
+  const isInbox = item.href === "/inbox"
+  const isSettings = item.href === "/settings"
+
+  const active = pathname === item.href || pathname.startsWith(item.href + "/")
+
+  const showHealthDot = isSettings && healthSummary?.needsAttention === true
+  const healthDotTitle = showHealthDot ? buildHealthDotTitle(healthSummary) : undefined
+  const badgeCount = item.badge ?? 0
+
+  const baseClasses =
+    "group flex items-center gap-3 rounded-lg text-[15px] transition-colors duration-150"
+  const sizing = indent ? "pl-9 pr-3 py-1.5 text-[14px]" : "px-3 py-2"
+  const stateClasses = active
+    ? "bg-primary/10 text-primary font-medium"
+    : isParentSection
+      ? "text-foreground hover:bg-muted/60"
+      : "text-foreground/75 hover:text-foreground hover:bg-muted/60"
+
+  return (
+    <Link href={item.href} onClick={onClick} className={`${baseClasses} ${sizing} ${stateClasses}`}>
+      {indent ? (
+        <span
+          className={`h-1.5 w-1.5 rounded-full transition-colors ${
+            active ? "bg-primary" : "bg-foreground/25 group-hover:bg-foreground/50"
+          }`}
+        />
+      ) : (
+        <Icon
+          className={`h-[18px] w-[18px] transition-colors ${
+            active || isParentSection
+              ? "text-primary"
+              : "text-foreground/60 group-hover:text-foreground"
+          }`}
+        />
+      )}
+      <span className="truncate">{item.label}</span>
+      {isInbox && <InboxBadge />}
+      {badgeCount > 0 && (
+        <span
+          className="ml-auto rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary"
+          title={item.badgeTitle}
+          aria-label={item.badgeTitle ?? `${badgeCount}`}
+        >
+          {badgeCount > 99 ? "99+" : badgeCount}
+        </span>
+      )}
+      {showHealthDot && (
+        <span
+          className="ml-auto h-2 w-2 rounded-full bg-red-500 animate-pulse"
+          title={healthDotTitle}
+          aria-label={healthDotTitle}
+        />
+      )}
+    </Link>
+  )
+}
+
+const EXPAND_STORAGE_KEY = "sidebar.expandedGroups"
+
+export function SidebarNavLinks({ items, healthSummary = null }: Props) {
   const pathname = usePathname()
+
+  // Per-parent expanded state. Persisted to localStorage so the user's
+  // preference survives reloads. Default for any group not yet in
+  // storage: expanded when on a route inside it, collapsed otherwise.
+  // Clicking the parent always sets this to true (Roy 2026-05-23:
+  // single click area, always expand — no separate chevron toggle).
+  // SSR-safe: initialise empty, hydrate from localStorage in effect.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(EXPAND_STORAGE_KEY)
+      if (raw) setExpanded(JSON.parse(raw))
+    } catch {
+      // Ignore parse failures — fall back to defaults.
+    }
+    setHydrated(true)
+  }, [])
+
+  function isExpanded(item: NavItem): boolean {
+    // Before hydration, render the SSR-stable default (expanded if the
+    // current route is inside the group). After hydration, prefer the
+    // explicit user choice if they've ever clicked this group.
+    if (!hydrated || !(item.href in expanded)) {
+      return pathname === item.href || pathname.startsWith(item.href + "/")
+    }
+    return expanded[item.href]
+  }
+
+  function forceExpand(item: NavItem) {
+    setExpanded((prev) => {
+      const next = { ...prev, [item.href]: true }
+      try {
+        window.localStorage.setItem(EXPAND_STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        // Ignore quota / disabled storage — open still works in-session.
+      }
+      return next
+    })
+  }
 
   return (
     <nav className="flex-1 px-3 space-y-0.5">
-      {items.map(({ href, label, icon }) => {
-        const Icon = ICONS[icon]
-        const active = pathname.startsWith(href)
-        const isInbox = href === "/inbox"
-        const isBilling = href === "/billing"
-        const isSettings = href === "/settings"
-        const showHealthDot = isSettings && healthSummary?.needsAttention === true
-        const healthDotTitle = showHealthDot
-          ? buildHealthDotTitle(healthSummary)
-          : undefined
+      {items.map((entry, idx) => {
+        if (isDivider(entry)) {
+          return (
+            <div key={`divider-${idx}`} className="my-3 mx-3 h-px bg-border/60" />
+          )
+        }
+        const item = entry
+        const hasChildren = !!item.children?.length
+        const isParentSection =
+          hasChildren &&
+          (pathname === item.href || pathname.startsWith(item.href + "/"))
+        const open = hasChildren ? isExpanded(item) : false
+
         return (
-          <Link
-            key={href}
-            href={href}
-            className={`group flex items-center gap-3 px-3 py-2 rounded-lg text-[15px] transition-colors duration-150 ${
-              active
-                ? "bg-primary/10 text-primary font-medium"
-                : "text-foreground/75 hover:text-foreground hover:bg-muted/60"
-            }`}
-          >
-            <Icon className={`h-[18px] w-[18px] transition-colors ${active ? "text-primary" : "text-foreground/60 group-hover:text-foreground"}`} />
-            {label}
-            {isInbox && <InboxBadge />}
-            {isBilling && invoicesToSendCount > 0 && (
-              <span
-                className="ml-auto rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-primary"
-                title={`${invoicesToSendCount} invoice${invoicesToSendCount === 1 ? "" : "s"} to send this week`}
-                aria-label={`${invoicesToSendCount} invoices to send this week`}
-              >
-                {invoicesToSendCount > 99 ? "99+" : invoicesToSendCount}
-              </span>
+          <div key={item.href}>
+            <NavRow
+              item={item}
+              pathname={pathname}
+              healthSummary={healthSummary}
+              isParentSection={hasChildren ? isParentSection : false}
+              onClick={hasChildren ? () => forceExpand(item) : undefined}
+            />
+            {hasChildren && open && (
+              <div className="mt-0.5 mb-1 space-y-0.5">
+                {item.children!.map((child) => (
+                  <NavRow
+                    key={child.href}
+                    item={child}
+                    pathname={pathname}
+                    healthSummary={healthSummary}
+                    indent
+                  />
+                ))}
+              </div>
             )}
-            {showHealthDot && (
-              <span
-                className="ml-auto h-2 w-2 rounded-full bg-red-500 animate-pulse"
-                title={healthDotTitle}
-                aria-label={healthDotTitle}
-              />
-            )}
-          </Link>
+          </div>
         )
       })}
     </nav>

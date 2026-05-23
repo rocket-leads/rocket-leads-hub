@@ -1,10 +1,15 @@
 // ─── Configurable targets ───
 
 export interface TargetsConfig {
-  // Marketing / Sales — volume targets for booked / qualified / taken calls are derived
-  // from (deals × cpd) ÷ {cbc, cqc, ctc}; ratios are derived from the cost ladder.
+  // Marketing / Sales — volume targets for opt-ins / booked / qualified / taken calls are
+  // derived from (deals × cpd) ÷ {cpOptIn, cbc, cqc, ctc}; ratios are derived from the
+  // cost ladder (e.g. appointment booking rate = cpOptIn / cbc).
   deals: number
   revenue: number
+  /** Max cost per opt-in (€) — top-of-funnel form submission. Derives the
+   *  opt-ins volume target (adSpend / cpOptIn) and the appointment booking
+   *  rate target (cpOptIn / cbc). */
+  cpOptIn: number
   cbc: number
   cqc: number
   ctc: number
@@ -26,6 +31,10 @@ export interface TargetsConfig {
 
 export interface MondayTargetsData {
   leads: number
+  /** Top-of-funnel opt-ins from a separate Monday board (form submissions
+   *  before they become qualified leads). Counted on date_created within the
+   *  period. Has no country attribution — only populated on the "all" bucket. */
+  optIns: number
   calls: number
   qualifiedCalls: number
   rejections: number

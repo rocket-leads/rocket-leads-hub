@@ -31,9 +31,14 @@ function getProRataTarget(monthlyTarget: number, range: DateRange): number {
  */
 export interface DerivedTargets {
   adSpend: number
+  /** Opt-ins volume target = adSpend / cpOptIn. */
+  optIns: number
   calls: number
   qualifiedCalls: number
   takenCalls: number
+  /** Min appointment booking rate (booked / opt-ins) — derived as
+   *  cpOptIn / cbc. E.g. €5 opt-in × €25 booked → 20% target rate. */
+  bookingRate: number
   qualRate: number
   showUpRate: number
   convRate: number
@@ -42,17 +47,19 @@ export interface DerivedTargets {
 
 export function deriveTargets(t: TargetsConfig | null | undefined): DerivedTargets {
   if (!t) {
-    return { adSpend: 0, calls: 0, qualifiedCalls: 0, takenCalls: 0, qualRate: 0, showUpRate: 0, convRate: 0, roas: 0 }
+    return { adSpend: 0, optIns: 0, calls: 0, qualifiedCalls: 0, takenCalls: 0, bookingRate: 0, qualRate: 0, showUpRate: 0, convRate: 0, roas: 0 }
   }
   const adSpend = t.deals > 0 && t.cpd > 0 ? t.deals * t.cpd : 0
+  const optIns = adSpend > 0 && t.cpOptIn > 0 ? adSpend / t.cpOptIn : 0
   const calls = adSpend > 0 && t.cbc > 0 ? adSpend / t.cbc : 0
   const qualifiedCalls = adSpend > 0 && t.cqc > 0 ? adSpend / t.cqc : 0
   const takenCalls = adSpend > 0 && t.ctc > 0 ? adSpend / t.ctc : 0
+  const bookingRate = t.cpOptIn > 0 && t.cbc > 0 ? t.cpOptIn / t.cbc : 0
   const qualRate = t.cbc > 0 && t.cqc > 0 ? t.cbc / t.cqc : 0
   const showUpRate = t.cqc > 0 && t.ctc > 0 ? t.cqc / t.ctc : 0
   const convRate = t.ctc > 0 && t.cpd > 0 ? t.ctc / t.cpd : 0
   const roas = t.revenue > 0 && adSpend > 0 ? t.revenue / adSpend : 0
-  return { adSpend, calls, qualifiedCalls, takenCalls, qualRate, showUpRate, convRate, roas }
+  return { adSpend, optIns, calls, qualifiedCalls, takenCalls, bookingRate, qualRate, showUpRate, convRate, roas }
 }
 
 export function calculateKpiGroups(

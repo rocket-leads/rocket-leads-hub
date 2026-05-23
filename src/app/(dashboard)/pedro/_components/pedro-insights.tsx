@@ -89,7 +89,12 @@ function StatTile({ label, value, hint }: { label: string; value: string | numbe
 export function PedroInsights() {
   const { data, isLoading, error } = useQuery<Response>({
     queryKey: ["pedro-insights"],
-    queryFn: () => fetch("/api/pedro/insights").then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch("/api/pedro/insights")
+      const json = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(json?.error || `Request failed (${r.status})`)
+      return json
+    },
     staleTime: 5 * 60 * 1000,
   })
 

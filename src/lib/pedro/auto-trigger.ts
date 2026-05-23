@@ -166,7 +166,7 @@ export async function triggerKickoffBriefIfEligible(
       "",
       `Open Pedro → kies "${meta.clientName}" → de brief is pre-filled. Bewerk waar nodig en run angles.`,
       "",
-      `[→ Open in Pedro](/pedro?tab=brief&clientId=${meeting.client_id})`,
+      `[→ Open in Pedro](/pedro/onboard?tab=brief&clientId=${meeting.client_id})`,
     ]
       .filter((l): l is string => l !== null)
       .join("\n")
@@ -341,9 +341,13 @@ export async function triggerEvalDigestIfEligible(
 
     // ── 6. Compose task body ──
     const tab = SUGGESTED_ACTION_TO_TAB[digest.suggestedAction]
-    const deepLink = tab
-      ? `/pedro?tab=${tab}&clientId=${meeting.client_id}${tab === "refresh" ? "&auto=1" : ""}`
-      : `/pedro?tab=brief&clientId=${meeting.client_id}`
+    // tab === "refresh" → optimize route (no tab param needed); other tabs
+    // are sections inside the on-board flow.
+    const deepLink = tab === "refresh"
+      ? `/pedro/optimize?clientId=${meeting.client_id}&auto=1`
+      : tab
+        ? `/pedro/onboard?tab=${tab}&clientId=${meeting.client_id}`
+        : `/pedro/onboard?tab=brief&clientId=${meeting.client_id}`
 
     const severityBadge =
       digest.severity === "high"

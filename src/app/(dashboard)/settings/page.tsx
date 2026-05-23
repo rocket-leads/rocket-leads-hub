@@ -8,12 +8,14 @@ import {
   type MondayRole,
 } from "./types"
 import { ApiHealthBar } from "./_components/api-health-bar"
+import { SetupChecklistBanner } from "./_components/setup-checklist-banner"
 import { PageHeader } from "@/components/ui/page-header"
 import { getSlackChannels } from "@/lib/slack"
 import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
 import { listUserPlatformConnections } from "@/lib/inbox/user-platform-tokens"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
+import { fetchSetupChecklist } from "@/lib/observability/setup-checklist"
 
 export default async function SettingsPage({
   searchParams,
@@ -71,6 +73,7 @@ export default async function SettingsPage({
     { data: closerMappingsRows },
     { data: automationRulesRow },
     slackChannels,
+    setupChecklist,
   ] = await Promise.all([
     supabase.from("api_tokens").select("service, is_valid, last_verified"),
     supabase.from("settings").select("value").eq("key", "board_config").single(),
@@ -79,6 +82,7 @@ export default async function SettingsPage({
     supabase.from("closer_slack_mappings").select("monday_person_name, slack_user_id"),
     supabase.from("settings").select("value").eq("key", "inbox_automation_rules").maybeSingle(),
     getSlackChannels(),
+    fetchSetupChecklist(),
   ])
 
   // Trengo channels, Fathom team members, Monday boards + mondayPeople and
@@ -142,6 +146,8 @@ export default async function SettingsPage({
       />
 
       <ApiHealthBar />
+
+      <SetupChecklistBanner items={setupChecklist.items} />
 
       {(() => {
         // Index Monday mappings by user_id — UI now enforces one mapping per user.

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { MeetingCard } from "@/app/(dashboard)/meetings/_components/meeting-card"
+import { MeetingCard } from "@/app/(dashboard)/pedro/meetings/_components/meeting-card"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { MeetingRow } from "@/lib/meetings/types"

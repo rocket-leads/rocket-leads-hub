@@ -73,6 +73,57 @@ async function getTargetsBoardItems(token: string): Promise<TargetsBoardItem[]> 
   targetsBoardCache.inflight = promise
   return promise
 }
+
+// ─── Opt-ins board (separate from the targets / leads board) ───────────────
+//
+// Opt-ins = top-of-funnel form submissions before they're qualified into a
+// lead row on the targets board. Each item has a `date4` column carrying its
+// creation date — counting items with date4 in [startDate, endDate] gives the
+// period's opt-in volume. Pair with ad spend → cost per opt-in.
+//
+// The board is small relative to the targets board (only form submissions,
+// not the full lead history) but we cache it the same way for symmetry and
+// so range-switching on the Marketing tab stays instant.
+const OPT_INS_BOARD_ID = "6488483465"
+const OPT_INS_DATE_COLUMN = "date4"
+let optInsBoardCache: { items: TargetsBoardItem[]; fetchedAt: number; inflight: Promise<TargetsBoardItem[]> | null } = {
+  items: [],
+  fetchedAt: 0,
+  inflight: null,
+}
+export function invalidateOptInsBoardItems(): void {
+  optInsBoardCache = { items: [], fetchedAt: 0, inflight: null }
+}
+async function getOptInsBoardItems(token: string): Promise<TargetsBoardItem[]> {
+  const fresh = Date.now() - optInsBoardCache.fetchedAt < TARGETS_BOARD_TTL_MS && optInsBoardCache.items.length > 0
+  if (fresh) return optInsBoardCache.items
+  if (optInsBoardCache.inflight) return optInsBoardCache.inflight
+  const promise = fetchAllItems(OPT_INS_BOARD_ID, token)
+    .then((items) => {
+      optInsBoardCache = { items, fetchedAt: Date.now(), inflight: null }
+      return items
+    })
+    .catch((err) => {
+      optInsBoardCache = { ...optInsBoardCache, inflight: null }
+      throw err
+    })
+  optInsBoardCache.inflight = promise
+  return promise
+}
+
+/** Count items on the opt-ins board whose `date4` column lands in
+ *  [startDate, endDate]. Used by fetchMondayTargets to populate the
+ *  per-period opt-ins KPI on the Marketing tab. */
+async function countOptInsInRange(token: string, startDate: string, endDate: string): Promise<number> {
+  const items = await getOptInsBoardItems(token)
+  let n = 0
+  for (const item of items) {
+    const raw = getColumnValue(item, OPT_INS_DATE_COLUMN)
+    const day = parseDate(raw)
+    if (day && day >= startDate && day <= endDate) n++
+  }
+  return n
+}
 const META_AD_ACCOUNT_ID = "act_701293097368776"
 const META_GRAPH_VERSION = "v20.0"
 const HQ_COSTS_MONTHLY = 5000
@@ -290,6 +341,14 @@ export async function fetchMondayTargets(
       return { stripeNewBusinessRevenue: 0, stripeNewBusinessInvoices: [] }
     }
   })()
+  // Opt-ins lives on a separate Monday board — kick it off in parallel with
+  // the targets board fetch and the Stripe cross-check. Failure logs and
+  // returns 0 so a missing-board / access issue degrades to "no opt-ins
+  // surfaced" rather than failing the whole Marketing tab.
+  const optInsPromise = countOptInsInRange(token, startDate, endDate).catch((err) => {
+    console.warn("[fetchMondayTargets] opt-ins board fetch failed:", err instanceof Error ? err.message : String(err))
+    return 0
+  })
   const allItems = await getTargetsBoardItems(token)
   // Today (UTC, YYYY-MM-DD) — used to split closer appointments into past vs future.
   const todayStr = new Date().toISOString().slice(0, 10)
@@ -465,6 +524,7 @@ export async function fetchMondayTargets(
   // Result is country-agnostic — only the "all" bucket gets it. Independent of the
   // Monday aggregation; only joins back via the fuzzy matcher below.
   const { stripeNewBusinessRevenue, stripeNewBusinessInvoices } = await stripeCrossCheckPromise
+  const optInsCount = await optInsPromise
 
   // Bidirectional fuzzy matching between Monday closed deals and Stripe NB invoices.
   // Greedy — sort all candidate pairs by similarity, claim the highest first, never let
@@ -520,6 +580,8 @@ export async function fetchMondayTargets(
       weekly,
       industries,
       closers,
+      // Opt-ins board has no country attribution — populate only on "all".
+      optIns: k === "all" ? optInsCount : 0,
       stripeNewBusinessRevenue: k === "all" ? stripeNewBusinessRevenue : 0,
       stripeNewBusinessInvoices: k === "all" ? stripeNewBusinessInvoices : [],
       closedDeals: k === "all" ? [...closedDealsAll].sort((x, y) => y.dealValue - x.dealValue) : [],

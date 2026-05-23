@@ -193,14 +193,14 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Link
-              href={`/pedro?tab=brief&clientId=${mondayItemId}`}
+              href={`/pedro/onboard?tab=brief&clientId=${mondayItemId}`}
               className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
             >
               <Sparkles className="h-3.5 w-3.5" />
               {t("client.pedro.action.open", locale)}
             </Link>
             <Link
-              href={`/pedro?tab=refresh&clientId=${mondayItemId}&auto=1`}
+              href={`/pedro/optimize?clientId=${mondayItemId}&auto=1`}
               className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md border border-border text-foreground hover:bg-accent transition-colors"
               title={t("client.pedro.action.refresh_title", locale)}
             >
@@ -264,7 +264,7 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
             <div className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
               {t("client.pedro.refresh.empty_lead", locale)}{" "}
               <Link
-                href={`/pedro?tab=refresh&clientId=${mondayItemId}&auto=1`}
+                href={`/pedro/optimize?clientId=${mondayItemId}&auto=1`}
                 className="text-primary hover:underline"
               >
                 {t("client.pedro.refresh.empty_cta", locale)}
@@ -355,7 +355,7 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
 
           <div className="mt-4 pt-3 border-t border-border/40 text-center">
             <Link
-              href={`/pedro?tab=refresh&clientId=${mondayItemId}`}
+              href={`/pedro/optimize?clientId=${mondayItemId}`}
               className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
               {t("client.pedro.refresh.open_full", locale)} <ExternalLink className="h-3 w-3" />
@@ -542,7 +542,7 @@ function SavedVersionTimeline({ mondayItemId }: { mondayItemId: string }) {
         {versions.length === 0 ? (
           <div className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
             {t("client.pedro.versions.empty_lead", locale)}{" "}
-            <Link href={`/pedro?tab=brief&clientId=${mondayItemId}`} className="text-primary hover:underline">
+            <Link href={`/pedro/onboard?tab=brief&clientId=${mondayItemId}`} className="text-primary hover:underline">
               {t("client.pedro.versions.empty_cta", locale)}
             </Link>
           </div>

@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from "react"
 import { ChevronDown, Search, Sparkles, Check } from "lucide-react"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
-import type { PedroClient } from "../page"
+import type { PedroClient } from "./types"
 
 type Props = {
   clients: PedroClient[]

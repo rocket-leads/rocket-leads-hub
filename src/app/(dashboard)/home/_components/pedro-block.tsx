@@ -36,7 +36,7 @@ export function PedroBlock({
       title={t("home.block.pedro.title", locale)}
       icon={<Megaphone className="h-4 w-4 text-violet-400" />}
       count={totalCount}
-      footerHref="/pedro?tab=knowledge"
+      footerHref="/pedro/insights"
       footerLabel={t("home.block.pedro.cta", locale)}
       empty={items.length === 0}
       emptyMessage={t("home.block.pedro.empty", locale)}
@@ -45,7 +45,7 @@ export function PedroBlock({
         {items.map((item) => (
           <li key={item.id}>
             <Link
-              href={`/pedro?tab=knowledge&proposalId=${item.id}`}
+              href={`/pedro/insights?proposalId=${item.id}`}
               className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors group"
             >
               <span className="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-violet-400 shrink-0" />

@@ -22,6 +22,10 @@ interface KpiCardProps {
   notice?: string
   /** Tooltip text shown on hover of the notice chip */
   noticeTitle?: string
+  /** True when the value shown is from the MTD placeholder, not the user's
+   *  actual selected range. UI surfaces a small "MTD" pill + tones the value
+   *  to muted so the user can tell it's a placeholder. */
+  isMtdPlaceholder?: boolean
   variant: "cost" | "volume" | "neutral"
   isLoading: boolean
   error?: string | null
@@ -60,7 +64,7 @@ function getBarColor(variant: string, value: number, target: number): string {
 // Because of those extra features it stays its own component instead of
 // being a wrapper around KpiTile.
 export const KpiCard = memo(function KpiCard({
-  label, value, formatted, target, targetFormatted, expected, expectedFormatted, isEstimated, notice, noticeTitle, variant,
+  label, value, formatted, target, targetFormatted, expected, expectedFormatted, isEstimated, notice, noticeTitle, isMtdPlaceholder, variant,
   isLoading, error, onRetry,
 }: KpiCardProps) {
   if (isLoading) {
@@ -105,6 +109,14 @@ export const KpiCard = memo(function KpiCard({
           {label}
         </span>
         <div className="flex items-center gap-1 shrink-0">
+          {isMtdPlaceholder && (
+            <span
+              title="Showing MTD numbers while your selected range loads"
+              className="text-[8px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 animate-pulse"
+            >
+              MTD
+            </span>
+          )}
           {notice && (
             <span
               title={noticeTitle}
@@ -120,8 +132,13 @@ export const KpiCard = memo(function KpiCard({
           )}
         </div>
       </div>
+      {/* MTD placeholder used to dim the value to text-muted-foreground/60
+          but Roy 2026-05-23: "die moeten wel zwart" — the small MTD pill in
+          the top-right is enough signal on its own, the headline number
+          should stay in the brand foreground so the page doesn't read as
+          a sea of grey while the real range loads. */}
       <p className={cn(
-        "font-heading text-[26px] font-bold tracking-tight tabular-nums leading-none",
+        "font-heading text-[26px] font-bold tracking-tight tabular-nums leading-none transition-colors",
         colorClass || "text-foreground",
       )}>
         {formatted}
