@@ -1,6 +1,9 @@
 import { auth } from "@/lib/auth"
 import { NextRequest, NextResponse } from "next/server"
-import { fetchTrengoChannels, type TrengoChannel } from "@/lib/integrations/trengo"
+import {
+  deriveTrengoChannelDisplayName,
+  fetchTrengoChannels,
+} from "@/lib/integrations/trengo"
 
 /**
  * GET /api/integrations/trengo/channels
@@ -41,40 +44,6 @@ const TYPE_LABELS: Record<string, "Email" | "WhatsApp"> = {
   whatsapp_business: "WhatsApp",
 }
 
-// Trengo's `name` is usually the type literal (e.g. "Email", "Wa_business"),
-// not the user-given label — that lives in `title` (matches what shows in the
-// Trengo settings sidebar). For default channels where `title` is also the
-// generic type, `display_name` carries the routable identifier (email address
-// for Email, phone number for Voice).
-const GENERIC_TITLES = new Set([
-  "email",
-  "wa_business",
-  "whatsapp",
-  "sms",
-  "voip",
-  "voice",
-  "chat",
-  "telegram",
-  "facebook",
-  "instagram",
-  "custom",
-  "playground",
-])
-
-function deriveDisplayName(c: TrengoChannel): string {
-  const title = typeof c.title === "string" ? c.title.trim() : ""
-  const displayName = typeof c.display_name === "string" ? c.display_name.trim() : ""
-  const name = typeof c.name === "string" ? c.name.trim() : ""
-
-  // Title matches Trengo's sidebar label — preferred when it's specific.
-  if (title && !GENERIC_TITLES.has(title.toLowerCase())) return title
-  // Fall through to display_name when title is generic — has the address/phone.
-  if (displayName) return displayName
-  if (title) return title
-  if (name) return name
-  return `Channel ${c.id}`
-}
-
 export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) {
@@ -103,7 +72,7 @@ export async function GET(req: NextRequest) {
       .map((c) => ({
         id: c.id,
         type: TYPE_LABELS[c.type] ?? c.type,
-        name: deriveDisplayName(c),
+        name: deriveTrengoChannelDisplayName(c),
       }))
       .sort((a, b) => {
         // Group by type label first so Email/WhatsApp sit together, then

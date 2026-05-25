@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { fetchTrengoChannels, isEmailChannelType, isWhatsAppChannelType } from "@/lib/integrations/trengo"
+import {
+  deriveTrengoChannelDisplayName,
+  fetchTrengoChannels,
+  isEmailChannelType,
+  isWhatsAppChannelType,
+} from "@/lib/integrations/trengo"
 import { safeFetch } from "@/lib/safe-fetch"
 
 /**
@@ -31,7 +36,11 @@ export async function GET() {
     .filter((c) => isEmailChannelType(c.type) || isWhatsAppChannelType(c.type))
     .map((c) => ({
       id: c.id,
-      name: c.name ?? c.title ?? c.email_address ?? c.phone ?? `#${c.id}`,
+      // Trengo returns `name: "Email"` for every email channel — useless
+      // when picking between multiple. deriveTrengoChannelDisplayName
+      // falls through to display_name / email_address so dropdowns
+      // actually show "support@…" instead of "Email".
+      name: deriveTrengoChannelDisplayName(c),
       type: c.type,
       isEmail: isEmailChannelType(c.type),
       isWa: isWhatsAppChannelType(c.type),

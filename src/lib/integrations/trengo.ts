@@ -307,6 +307,47 @@ export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
   return [...data.data].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
 }
 
+/**
+ * Trengo's `/channels` returns `name` as the channel-TYPE literal
+ * ("Email", "Wa_business") for most channels — useless for picking
+ * between several email channels in a dropdown. The user-given label
+ * lives in `title` (Trengo sidebar), and for default channels that
+ * sidebar label is also generic — the actual routable identifier
+ * (email address / phone) sits in `display_name`.
+ *
+ * Single source of truth so admin + per-user channel listings agree.
+ */
+const GENERIC_TRENGO_TITLES = new Set([
+  "email",
+  "wa_business",
+  "whatsapp",
+  "sms",
+  "voip",
+  "voice",
+  "chat",
+  "telegram",
+  "facebook",
+  "instagram",
+  "custom",
+  "playground",
+])
+
+export function deriveTrengoChannelDisplayName(c: TrengoChannel): string {
+  const title = typeof c.title === "string" ? c.title.trim() : ""
+  const displayName = typeof c.display_name === "string" ? c.display_name.trim() : ""
+  const emailAddress = typeof c.email_address === "string" ? c.email_address.trim() : ""
+  const phone = typeof c.phone === "string" ? c.phone.trim() : ""
+  const name = typeof c.name === "string" ? c.name.trim() : ""
+
+  if (title && !GENERIC_TRENGO_TITLES.has(title.toLowerCase())) return title
+  if (displayName) return displayName
+  if (emailAddress) return emailAddress
+  if (phone) return phone
+  if (title) return title
+  if (name) return name
+  return `Channel ${c.id}`
+}
+
 /** Email-specific channel metadata exposed by `GET /channels`. We surface
  *  the signature + sender info to the email composer so the AM gets the same
  *  signature Trengo's web UI uses, without us having to maintain a Hub-side
