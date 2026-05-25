@@ -420,10 +420,19 @@ export async function getInboxBadgeCounts(
   // Build the chat visibility query in the same shape as listChatThreads:
   // channel-subscription narrowing always applies (admins included), then
   // role-based access on top for non-admins.
+  //
+  // Scope filter: the only chat tab in the UI is "Klanten Inbox" which is
+  // hard-wired to scope="external". Slack-ingested events land at
+  // scope="internal" and have no place to be read — the Team Inbox tab is
+  // intentionally hidden (see inbox-view.tsx comment near line 618). Without
+  // this filter, internal events accumulate forever and inflate the badge
+  // (Roy 2026-05-23: Danny's tab showed "274" while all 24 client conversations
+  // were read — the 274 were ghost Slack rows).
   let chatQuery = supabase
     .from("inbox_events")
     .select("id", { count: "exact", head: true })
     .not("thread_key", "is", null)
+    .eq("scope", "external")
     .eq("status", "unread")
 
   const channelIds = await getUserTrengoChannelIds(userId)
