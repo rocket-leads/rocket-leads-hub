@@ -27,11 +27,6 @@ export default auth((req: NextAuthRequest) => {
     return NextResponse.redirect(new URL("/watchlist", req.url))
   }
 
-  // Protect /settings — admin only
-  if (pathname.startsWith("/settings") && req.auth.user?.role !== "admin") {
-    return NextResponse.redirect(new URL("/watchlist", req.url))
-  }
-
   return NextResponse.next()
 })
 
