@@ -145,6 +145,21 @@
   html {
     @apply font-sans;
   }
+  /* Tailwind v4 dropped the legacy `cursor: pointer` default on
+   * interactive elements (buttons, ARIA roles). Roy 2026-05-23:
+   * everything clickable should feel clickable on hover, not "static",
+   * so the user is never unsure whether a hit target is live. Disabled
+   * elements stay on the default arrow cursor so the affordance still
+   * reads as "not actionable right now". */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]),
+  summary {
+    cursor: pointer;
+  }
 }
 
 /* Shimmer loading animation */
