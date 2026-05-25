@@ -2,7 +2,6 @@ import type { Metadata } from "next"
 import { cookies } from "next/headers"
 import { Inter } from "next/font/google"
 import localFont from "next/font/local"
-import Script from "next/script"
 import { DEFAULT_LOCALE, isLocale } from "@/lib/i18n/types"
 import "./globals.css"
 
@@ -76,13 +75,18 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* beforeInteractive runs before React hydrates — covers the cold-start
-            case where there's no cookie and the SSR class is "light" by default
-            but the user's OS prefers dark. Next.js inlines this so it's a sync
-            block, no paint flash. */}
-        <Script id="theme-init" strategy="beforeInteractive">
-          {themeInitScript}
-        </Script>
+        {/* Raw <script dangerouslySetInnerHTML> — NOT <Script> from next/script.
+            Next.js 16 only supports next/script for external src= URLs; using
+            it for inline content triggers a "script tag inside React component
+            won't execute" warning. The canonical App-Router pattern for inline
+            theme bootstrap is the raw script tag (same as next-themes). Runs
+            synchronously before React hydrates so the cold-start case (no
+            cookie, OS prefers dark, SSR class is "light") is corrected before
+            paint — no white flash. */}
+        <script
+          id="theme-init"
+          dangerouslySetInnerHTML={{ __html: themeInitScript }}
+        />
       </head>
       <body className="min-h-screen bg-background text-foreground">{children}</body>
     </html>

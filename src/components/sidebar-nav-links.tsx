@@ -269,7 +269,12 @@ export function SidebarNavLinks({ items, healthSummary = null }: Props) {
         const open = hasChildren ? isExpanded(item) : false
 
         return (
-          <div key={item.href}>
+          // Prefix the keys so the outer "group" div and any inner child
+          // NavRow can share an href without colliding in React's key
+          // accounting (Pedro parent now links to /pedro/onboard, which
+          // is also the On-board child's href — without prefixes React's
+          // dev-mode duplicate-key warning fires).
+          <div key={`group-${item.href}`}>
             <NavRow
               item={item}
               pathname={pathname}
@@ -282,7 +287,7 @@ export function SidebarNavLinks({ items, healthSummary = null }: Props) {
               <div className="mt-0.5 mb-1 space-y-0.5">
                 {item.children!.map((child) => (
                   <NavRow
-                    key={child.href}
+                    key={`child-${child.href}`}
                     item={child}
                     pathname={pathname}
                     healthSummary={healthSummary}
