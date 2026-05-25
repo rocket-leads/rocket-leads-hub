@@ -54,7 +54,9 @@ import { NextRequest, NextResponse } from "next/server"
  * Failure modes (all surface as JSON errors so the composer can render them):
  *   - No Trengo contact linked on the Monday item → 400, "no_trengo_contact"
  *   - AM has no WhatsApp template registered → 400, "no_wa_template"
- *   - Contact has zero Trengo tickets ever → 400, "no_active_conversation"
+ *   - WhatsApp send with no existing WA ticket → 400, "no_channel_match"
+ *     (email sends auto-bootstrap a new ticket; WhatsApp can't without an
+ *     existing approved channel + template)
  *   - User hasn't connected Trengo → 401, "needs_connect"
  */
 
@@ -330,17 +332,14 @@ export async function POST(
     const conversations = await fetchConversations(client.trengoContactId).catch(
       () => [] as TrengoConversation[],
     )
-    if (conversations.length === 0) {
-      return NextResponse.json(
-        {
-          error: "no_active_conversation",
-          message:
-            "Deze klant heeft nog geen enkel gesprek in Trengo. Start eerst handmatig een gesprek zodat er een contact-ticket bestaat, en probeer dan opnieuw.",
-        },
-        { status: 400 },
-      )
-    }
 
+    // No early return on `conversations.length === 0` here — for email
+    // sends we bootstrap a brand-new email ticket a few lines down (the
+    // exact reason that fallback was built). Bailing out before it could
+    // run meant weekly-update sends to clients without a pre-existing
+    // Trengo ticket failed with "geen gesprek in Trengo" even though the
+    // bootstrap path was designed to handle that case. Roy 2026-05-23.
+    //
     // Strict channel-type matching — no silent fallback to `conversations[0]`
     // because that's exactly how the email-into-WA-ticket bug used to land.
     let ticket = sendAsEmail
