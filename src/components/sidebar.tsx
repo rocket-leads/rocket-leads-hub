@@ -162,7 +162,10 @@ export async function Sidebar() {
   // ── Bottom group: ops / admin stack ──
   // Targets stays visible to everyone (the page itself gates its finance
   // tab to admin+finance — Roy 2026-05-23). Billing visible to admin +
-  // finance + member today per current policy. Settings stays admin-only.
+  // finance + member today per current policy. Settings is visible to
+  // everyone — non-admins land on the Me tab (personal account: platform
+  // connections, notifications, Trengo channel subscriptions); the page
+  // itself hides admin-only tabs.
   const BILLING: NavItem = {
     href: "/billing",
     label: t("nav.billing", locale),
@@ -177,7 +180,7 @@ export async function Sidebar() {
   const TARGETS: NavItem = { href: "/targets", label: t("nav.targets", locale), icon: "Target" }
   const SETTINGS: NavItem = { href: "/settings", label: t("nav.settings", locale), icon: "Settings" }
 
-  const bottomGroup: NavItem[] = [BILLING, TARGETS, ...(isAdmin ? [SETTINGS] : [])]
+  const bottomGroup: NavItem[] = [BILLING, TARGETS, SETTINGS]
 
   const allItems: NavItem[] = [...TOP_GROUP, ...bottomGroup]
 

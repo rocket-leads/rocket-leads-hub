@@ -75,9 +75,12 @@ export function SettingsTabs(props: Props) {
   // `initialTab` in for the initial render — useUrlState then takes over for
   // any in-session tab changes.
   const [rawTab, setActiveTab] = useUrlState("tab", initialTab)
-  const activeTab: SettingsTabId = ALL_TAB_IDS.includes(rawTab as SettingsTabId)
+  const resolvedTab: SettingsTabId = ALL_TAB_IDS.includes(rawTab as SettingsTabId)
     ? (rawTab as SettingsTabId)
     : initialTab
+  // Non-admins only have the Me tab. A direct URL like /settings?tab=users
+  // would otherwise leave the page blank (admin tab content is gated below).
+  const activeTab: SettingsTabId = isAdmin ? resolvedTab : "me"
   const locale = useLocale()
 
   // Tabs are rebuilt per render so labels flip with the locale toggle. Me is
