@@ -1,9 +1,10 @@
 // ─── Configurable targets ───
 
 export interface TargetsConfig {
-  // Marketing / Sales — volume targets for opt-ins / booked / qualified / taken calls are
-  // derived from (deals × cpd) ÷ {cpOptIn, cbc, cqc, ctc}; ratios are derived from the
-  // cost ladder (e.g. appointment booking rate = cpOptIn / cbc).
+  // Marketing / Sales — volume targets for opt-ins / booked / taken calls are
+  // derived from (deals × cpd) ÷ {cpOptIn, cbc, ctc}; ratios are derived from
+  // the cost ladder (booking rate = cpOptIn / cbc, show-up rate = cbc / ctc).
+  // 2026-05-27: qualification stage dropped — cqc removed.
   deals: number
   revenue: number
   /** Max cost per opt-in (€) — top-of-funnel form submission. Derives the
@@ -11,7 +12,6 @@ export interface TargetsConfig {
    *  rate target (cpOptIn / cbc). */
   cpOptIn: number
   cbc: number
-  cqc: number
   ctc: number
   cpd: number
   // Finance — net profit € and max total costs € are derived from serviceFeeRevenue × profitMargin
@@ -32,14 +32,19 @@ export interface TargetsConfig {
 export interface MondayTargetsData {
   leads: number
   /** Top-of-funnel opt-ins from a separate Monday board (form submissions
-   *  before they become qualified leads). Counted on date_created within the
+   *  before they become booked calls). Counted on date_created within the
    *  period. Has no country attribution — only populated on the "all" bucket. */
   optIns: number
+  /** Total booked calls in the period (every lead row with date_created in range). */
   calls: number
-  qualifiedCalls: number
-  rejections: number
+  /** Subset of booked calls that did NOT happen because the lead canceled
+   *  before the call (4 status variants including "Not interested"). */
+  cancellations: number
+  /** Subset of booked calls where the lead didn't show up. */
   noShows: number
+  /** Subset of booked calls that actually took place (Deal/Signed/No-deal-*). */
   takenCalls: number
+  /** Closed-positive subset of taken (Deal + Signed). */
   deals: number
   closedRevenue: number
   totalItems: number
@@ -108,7 +113,6 @@ export interface CloserData {
 export interface WeeklyData {
   weekStart: string
   calls: number
-  qualified: number
   taken: number
   deals: number
   revenue: number

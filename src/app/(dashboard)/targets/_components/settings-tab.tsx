@@ -18,7 +18,6 @@ const MARKETING_FIELDS: Field[] = [
   { key: "revenue", label: "Revenue", prefix: "€" },
   { key: "cpOptIn", label: "Max Cost per Opt-in", prefix: "€", step: "0.01" },
   { key: "cbc", label: "Max Cost per Booked Call", prefix: "€", step: "0.01" },
-  { key: "cqc", label: "Max Cost per Qualified Call", prefix: "€", step: "0.01" },
   { key: "ctc", label: "Max Cost per Taken Call", prefix: "€", step: "0.01" },
   { key: "cpd", label: "Max Cost per Deal", prefix: "€", step: "0.01" },
 ]
@@ -45,7 +44,7 @@ const SECTIONS = [
 
 const EMPTY_CONFIG: TargetsConfig = {
   deals: 0, revenue: 0,
-  cpOptIn: 0, cbc: 0, cqc: 0, ctc: 0, cpd: 0,
+  cpOptIn: 0, cbc: 0, ctc: 0, cpd: 0,
   serviceFeeRevenue: 0, teamCosts: 0, profitMargin: 0,
   mrr: 0, newBusiness: 0, activeCustomers: 0, serviceFeePerCustomer: 0, maxChurnRate: 0,
 }
@@ -174,14 +173,8 @@ function DerivedMarketingTargets({ values }: { values: TargetsConfig }) {
       available: derived.bookingRate > 0,
     },
     {
-      label: "Qualification Rate",
-      formula: "max CBC ÷ max CQC",
-      value: derived.qualRate > 0 ? formatPercent(derived.qualRate) : "—",
-      available: derived.qualRate > 0,
-    },
-    {
       label: "Show-up Rate",
-      formula: "max CQC ÷ max CTC",
+      formula: "max CBC ÷ max CTC",
       value: derived.showUpRate > 0 ? formatPercent(derived.showUpRate) : "—",
       available: derived.showUpRate > 0,
     },

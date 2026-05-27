@@ -17,6 +17,7 @@ import { MarketingInsights } from "./marketing-insights"
 import { PulseBanner } from "./pulse-banner"
 import { HeroPillars } from "./hero-pillars"
 import { cn } from "@/lib/utils"
+import { AlertTriangle } from "lucide-react"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { formatCurrencyDecimal, safeDivide } from "@/lib/targets/formatters"
 import { deriveTargets } from "@/lib/targets/calculations"
@@ -69,8 +70,20 @@ export function MarketingTab() {
   // `t(key, locale)` lookup imported above.
   const tgt = targets ?? null
   const spend = meta?.spend ?? 0
+  // When Meta data is missing (token failed, account empty, fetch errored)
+  // every cost-per metric reads as €0.00 with a green progress bar — looks
+  // like "we're killing it" but actually means "we have no data". Treat
+  // spend=0 as "no meta signal" so the cost cards render `—` instead of a
+  // misleading green zero. `data.metaError` and `data.metaLoading === false`
+  // both feed this check via the upstream hook.
+  const hasMetaSpend = !data.metaLoading && spend > 0
+  const fmtCost = (formatted: string) => (hasMetaSpend ? formatted : "—")
   const calls = m?.calls ?? 0
-  const qualified = m?.qualifiedCalls ?? 0
+  // Qualification stage dropped 2026-05-27 — the funnel is now Opt-in →
+  // Booked → Taken → Deal. cancellations + noShows expose how many booked
+  // calls didn't happen; the rest are taken.
+  const cancellations = m?.cancellations ?? 0
+  const noShows = m?.noShows ?? 0
   const taken = m?.takenCalls ?? 0
   const deals = m?.deals ?? 0
   // Opt-ins lives on a separate Monday board with no country attribution.
@@ -98,13 +111,13 @@ export function MarketingTab() {
   // authoritative yet.
   const mondayMtdPlaceholder = data.mondayShowingMtdFallback
 
-  // Volume targets (opt-ins/calls/qualified/taken) are derived from ad-spend
-  // (= deals × cpd) divided by the relevant cost ceiling. Only deals & revenue
-  // come straight from Settings. Booking rate target = cpOptIn / cbc.
+  // Volume targets (opt-ins/calls/taken) are derived from ad-spend (= deals
+  // × cpd) divided by the relevant cost ceiling. Only deals & revenue come
+  // straight from Settings. Booking rate target = cpOptIn / cbc. Show-up
+  // rate target = cbc / ctc.
   const derivedT = deriveTargets(tgt)
   const prOptIns = derivedT.optIns > 0 ? Math.round(proRata(derivedT.optIns, range)) : undefined
   const prCalls = derivedT.calls > 0 ? Math.round(proRata(derivedT.calls, range)) : undefined
-  const prQualified = derivedT.qualifiedCalls > 0 ? Math.round(proRata(derivedT.qualifiedCalls, range)) : undefined
   const prTaken = derivedT.takenCalls > 0 ? Math.round(proRata(derivedT.takenCalls, range)) : undefined
   const prDeals = tgt?.deals ? Math.round(proRata(tgt.deals, range)) : undefined
 
@@ -248,12 +261,12 @@ export function MarketingTab() {
           </div>
 
           {/* Volume + Cost + Ratio funnel — left column carries the opt-in
-              metrics (volume / cost / booking rate), the remaining 4 columns
-              are the existing booked → qualified → taken → deals funnel.
-              Opt-in metrics are country-agnostic; they hide off "all" but the
-              4-col remainder still renders so country filters keep working. */}
-          {/* Row 1: Opt-ins | Booked | Qualified | Taken | Deals */}
-          <div className={cn("grid gap-2", country === "all" ? "grid-cols-5" : "grid-cols-4") }>
+              metrics (volume / cost / booking rate), the remaining 3 columns
+              are the booked → taken → deals funnel. Qualification stage
+              dropped 2026-05-27. Opt-in metrics are country-agnostic; they
+              hide off "all" so the 3-col remainder still renders cleanly. */}
+          {/* Row 1: Opt-ins | Booked | Taken | Deals */}
+          <div className={cn("grid gap-2", country === "all" ? "grid-cols-4" : "grid-cols-3") }>
             {country === "all" && (
               <KpiCard
                 label={t("targets.kpi.opt_ins", locale)}
@@ -267,12 +280,6 @@ export function MarketingTab() {
               label="Booked Calls" value={calls} formatted={String(calls)}
               target={prCalls}
               targetFormatted={prCalls != null ? t("targets.kpi.target_of", locale, { value: String(calls), target: String(prCalls) }) : undefined}
-              variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
-            />
-            <KpiCard
-              label="Qualified Calls" value={qualified} formatted={String(qualified)}
-              target={prQualified}
-              targetFormatted={prQualified != null ? t("targets.kpi.target_of", locale, { value: String(qualified), target: String(prQualified) }) : undefined}
               variant="volume" isLoading={data.mondayLoading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
@@ -291,54 +298,67 @@ export function MarketingTab() {
             />
           </div>
 
-          {/* Row 2: Cost per Opt-in | CBC | CQC | CTC | CPD */}
-          <div className={cn("grid gap-2", country === "all" ? "grid-cols-5" : "grid-cols-4") }>
+          {/* Row 2: Cost per Opt-in | CBC | CTC | CPD. CQC removed
+              2026-05-27 (qualification stage dropped). When Meta spend is
+              missing we render `—` via fmtCost() rather than a misleading
+              €0.00 green tile — and drop the target so the progress bar
+              doesn't suggest we're on track at zero. */}
+          <div className={cn("grid gap-2", country === "all" ? "grid-cols-4" : "grid-cols-3") }>
             {country === "all" && (
               <KpiCard
                 label={t("targets.kpi.cost_per_opt_in", locale)}
-                value={cpOptIn}
-                formatted={formatCurrencyDecimal(cpOptIn)}
-                target={tgt?.cpOptIn || undefined}
-                targetFormatted={tgt?.cpOptIn ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(cpOptIn), target: formatCurrencyDecimal(tgt.cpOptIn) }) : undefined}
+                value={hasMetaSpend ? cpOptIn : null}
+                formatted={fmtCost(formatCurrencyDecimal(cpOptIn))}
+                target={hasMetaSpend ? tgt?.cpOptIn || undefined : undefined}
+                targetFormatted={hasMetaSpend && tgt?.cpOptIn ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(cpOptIn), target: formatCurrencyDecimal(tgt.cpOptIn) }) : undefined}
                 variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
               />
             )}
             <KpiCard
-              label="CBC" value={safeDivide(spend, calls)}
-              formatted={formatCurrencyDecimal(safeDivide(spend, calls))}
-              target={tgt?.cbc || undefined}
-              targetFormatted={tgt?.cbc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, calls)), target: formatCurrencyDecimal(tgt.cbc) }) : undefined}
+              label="CBC" value={hasMetaSpend ? safeDivide(spend, calls) : null}
+              formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, calls)))}
+              target={hasMetaSpend ? tgt?.cbc || undefined : undefined}
+              targetFormatted={hasMetaSpend && tgt?.cbc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, calls)), target: formatCurrencyDecimal(tgt.cbc) }) : undefined}
               variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
-              label="CQC" value={safeDivide(spend, qualified)}
-              formatted={formatCurrencyDecimal(safeDivide(spend, qualified))}
-              target={tgt?.cqc || undefined}
-              targetFormatted={tgt?.cqc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, qualified)), target: formatCurrencyDecimal(tgt.cqc) }) : undefined}
+              label="CTC" value={hasMetaSpend ? safeDivide(spend, taken) : null}
+              formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, taken)))}
+              target={hasMetaSpend ? tgt?.ctc || undefined : undefined}
+              targetFormatted={hasMetaSpend && tgt?.ctc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, taken)), target: formatCurrencyDecimal(tgt.ctc) }) : undefined}
               variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
             <KpiCard
-              label="CTC" value={safeDivide(spend, taken)}
-              formatted={formatCurrencyDecimal(safeDivide(spend, taken))}
-              target={tgt?.ctc || undefined}
-              targetFormatted={tgt?.ctc ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, taken)), target: formatCurrencyDecimal(tgt.ctc) }) : undefined}
-              variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
-            />
-            <KpiCard
-              label="CPD" value={safeDivide(spend, deals)}
-              formatted={formatCurrencyDecimal(safeDivide(spend, deals))}
-              target={tgt?.cpd || undefined}
-              targetFormatted={tgt?.cpd ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, deals)), target: formatCurrencyDecimal(tgt.cpd) }) : undefined}
+              label="CPD" value={hasMetaSpend ? safeDivide(spend, deals) : null}
+              formatted={fmtCost(formatCurrencyDecimal(safeDivide(spend, deals)))}
+              target={hasMetaSpend ? tgt?.cpd || undefined : undefined}
+              targetFormatted={hasMetaSpend && tgt?.cpd ? t("targets.kpi.target_of", locale, { value: formatCurrencyDecimal(safeDivide(spend, deals)), target: formatCurrencyDecimal(tgt.cpd) }) : undefined}
               variant="cost" isLoading={loading} isMtdPlaceholder={mondayMtdPlaceholder}
             />
           </div>
+
+          {/* Surface a one-line warning when Meta data is missing so the CM
+              knows the `—` cost cells aren't "all good zeros" but a real fetch
+              issue worth investigating (probably a Meta token / API hiccup —
+              the cron now refuses to cache empty results so a retry usually
+              fixes it). Errors flow through this banner too. */}
+          {!data.metaLoading && !hasMetaSpend && (
+            <div className="text-[11px] text-amber-600 dark:text-amber-400 px-1 inline-flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" />
+              {data.metaError
+                ? `Meta data niet geladen: ${data.metaError}`
+                : "Meta ad spend = 0 voor deze periode. Cost-per metrics zijn niet betrouwbaar tot Meta data refreshed."}
+            </div>
+          )}
         </div>
 
         {ratiosGroup && (
           <div className="pt-1">
             <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 mb-2 px-1">{ratiosGroup.title}</h3>
-            {/* Row 3 (ratios): Appointment Booking Rate | qualRate | showUpRate | convRate | roas */}
-            <div className={cn("grid gap-2", country === "all" ? "grid-cols-5" : "grid-cols-4") }>
+            {/* Row 3 (ratios): Booking Rate | Show-up Rate | Conv Rate | ROAS.
+                Qualification Rate dropped 2026-05-27 along with the qualification
+                stage in the funnel. */}
+            <div className={cn("grid gap-2", country === "all" ? "grid-cols-4" : "grid-cols-3") }>
               {country === "all" && (
                 <KpiCard
                   label={t("targets.kpi.appointment_booking_rate", locale)}
@@ -357,6 +377,26 @@ export function MarketingTab() {
                 <KpiCard key={kpi.label} {...kpi} isMtdPlaceholder={mondayMtdPlaceholder} />
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Booked-call drop-off transparency — surface the no-show + cancellation
+            counts that account for "Booked − Taken" so the CM knows where the
+            funnel is leaking, and the open-pending count from the past-
+            appointment-not-updated logic. Mention is plain-text, single row;
+            ratios already cover the meaningful KPIs. */}
+        {(noShows > 0 || cancellations > 0 || notUpdatedTotal > 0) && (
+          <div className="pt-1 text-[11px] text-muted-foreground px-1">
+            <span className="font-medium">Booked − Taken breakdown:</span>{" "}
+            {noShows > 0 && <span>{noShows} no-show{noShows === 1 ? "" : "s"}</span>}
+            {noShows > 0 && (cancellations > 0 || notUpdatedTotal > 0) && <span> · </span>}
+            {cancellations > 0 && <span>{cancellations} cancellation{cancellations === 1 ? "" : "s"}</span>}
+            {cancellations > 0 && notUpdatedTotal > 0 && <span> · </span>}
+            {notUpdatedTotal > 0 && (
+              <span className="text-amber-600 dark:text-amber-400">
+                {notUpdatedTotal} past appointment{notUpdatedTotal === 1 ? "" : "s"} not yet updated by closer (empty sales outcome)
+              </span>
+            )}
           </div>
         )}
       </section>

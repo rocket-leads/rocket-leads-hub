@@ -36,7 +36,7 @@ export interface PulseResult {
 
 const HINTS = {
   cbc: { good: "Ad efficiency healthy", bad: "Creatives or audience need rework" },
-  qual: { good: "ICP fit looks right", bad: "Wrong audience reached" },
+  booking: { good: "Opt-ins converting into calls", bad: "Calendar / follow-up friction" },
   showUp: { good: "Leads are showing up", bad: "Reminders or scheduling issue" },
   conv: { good: "Sales team converting well", bad: "Sales or proposition issue" },
 } as const
@@ -56,20 +56,22 @@ export function calculatePulse(
 
   const derived = deriveTargets(targets)
   const spend = meta.spend
+  const optIns = monday.optIns
   const calls = monday.calls
-  const qualified = monday.qualifiedCalls
   const taken = monday.takenCalls
   const deals = monday.deals
   const revenue = monday.closedRevenue
 
   const cbc = safeDivide(spend, calls)
-  const qualRate = safeDivide(qualified, calls)
-  const showUpRate = safeDivide(taken, qualified)
+  // 2026-05-27: qualification pillar dropped — booking rate (Booked/Opt-ins)
+  // takes its place and show-up rate uses booked as denominator.
+  const bookingRate = safeDivide(calls, optIns)
+  const showUpRate = safeDivide(taken, calls)
   const convRate = safeDivide(deals, taken)
 
   const cbcCheck = spend > 0 && targets.cbc > 0 && calls > 3 ? cbc <= targets.cbc : null
-  const qualCheck = calls > 3 && derived.qualRate > 0 ? qualRate >= derived.qualRate : null
-  const showUpCheck = qualified > 3 && derived.showUpRate > 0 ? showUpRate >= derived.showUpRate : null
+  const bookingCheck = optIns > 3 && derived.bookingRate > 0 ? bookingRate >= derived.bookingRate : null
+  const showUpCheck = calls > 3 && derived.showUpRate > 0 ? showUpRate >= derived.showUpRate : null
   const convCheck = taken > 3 && derived.convRate > 0 ? convRate >= derived.convRate : null
 
   const pillars: PillarStatus[] = [
@@ -81,17 +83,17 @@ export function calculatePulse(
       target: targets.cbc > 0 ? formatCurrencyDecimal(targets.cbc) : "—",
     },
     {
-      name: "Qualification Rate",
-      onTrack: qualCheck,
-      hint: qualCheck === true ? HINTS.qual.good : HINTS.qual.bad,
-      metric: calls > 0 ? formatPercent(qualRate) : "—",
-      target: derived.qualRate > 0 ? formatPercent(derived.qualRate) : "—",
+      name: "Booking Rate",
+      onTrack: bookingCheck,
+      hint: bookingCheck === true ? HINTS.booking.good : HINTS.booking.bad,
+      metric: optIns > 0 ? formatPercent(bookingRate) : "—",
+      target: derived.bookingRate > 0 ? formatPercent(derived.bookingRate) : "—",
     },
     {
       name: "Show-up Rate",
       onTrack: showUpCheck,
       hint: showUpCheck === true ? HINTS.showUp.good : HINTS.showUp.bad,
-      metric: qualified > 0 ? formatPercent(showUpRate) : "—",
+      metric: calls > 0 ? formatPercent(showUpRate) : "—",
       target: derived.showUpRate > 0 ? formatPercent(derived.showUpRate) : "—",
     },
     {

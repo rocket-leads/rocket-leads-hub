@@ -103,8 +103,15 @@ export function useDateRange() {
 
   const presets: QuickPreset[] = useMemo(() => [
     {
+      // MTD intentionally ends TODAY (not yesterday). Server-side getMtdRange()
+      // also uses today, so the UI key matches the cron-warmed cache exactly
+      // and the page renders instantly from cache instead of paying a live
+      // Meta + Monday fetch every load. Intraday partial spend is fine here
+      // — MTD is meant to be a running "this month so far" view. The other
+      // rolling-window presets stay at yesterday because they're comparison
+      // baselines where partial-day data would skew the ratio.
       label: "MTD",
-      getRange: () => ({ startDate: startOfMonth(new Date()), endDate: yesterday() }),
+      getRange: () => ({ startDate: startOfMonth(new Date()), endDate: new Date() }),
     },
     {
       label: "Last 7 Days",

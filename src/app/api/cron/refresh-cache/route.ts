@@ -535,7 +535,19 @@ export async function GET(req: NextRequest) {
       console.error("[cron] targets monday failed:", mondayResult.reason)
     }
     if (metaResult.status === "fulfilled") {
-      targetsWrites.push(writeCache("targets_marketing_meta", metaResult.value))
+      // Sanity check: don't overwrite the warm cache with an all-zero result.
+      // Meta has been known to return `{data: []}` on transient issues (token
+      // hiccup, account-level rate limit) which used to silently cache as
+      // "€0 spend everywhere" until the next cron tick — that was the cause
+      // of the "MTD targets won't load" reports. Preserve the previous cache
+      // instead and surface the empty fetch as a warning.
+      const total = metaResult.value.all
+      const hasAnySignal = (total?.spend ?? 0) > 0 || (total?.impressions ?? 0) > 0 || (total?.clicks ?? 0) > 0
+      if (hasAnySignal) {
+        targetsWrites.push(writeCache("targets_marketing_meta", metaResult.value))
+      } else {
+        console.warn("[cron] targets meta returned empty (spend=0, impressions=0) — keeping previous cache instead of poisoning with zeros")
+      }
     } else {
       console.error("[cron] targets meta failed:", metaResult.reason)
     }

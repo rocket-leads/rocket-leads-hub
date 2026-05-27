@@ -39,11 +39,12 @@ interface Insight {
 
 // ─── The 4 root-cause pillars ───────────────────────────────────────────────
 // 1. CBC (creatives, targeting, ad testing)
-// 2. Qualification Rate (ICP, messaging, lead form filtering)
-// 3. Show-up Rate (reminders, lead warmth, scheduling)
+// 2. Booking Rate (Booked / Opt-ins — funnel conversion at the top)
+// 3. Show-up Rate (Taken / Booked — reminders, lead warmth, scheduling)
 // 4. Conversion Rate (sales quality, proposition, closability)
 //
 // CPD and ROAS are OUTCOMES of these 4. Never cite CPD/ROAS as a root cause.
+// Qualification Rate was dropped 2026-05-27 along with the qualification stage.
 
 interface PillarStatus {
   name: string
@@ -60,8 +61,8 @@ function generateInsights(
 ): Insight[] {
   const insights: Insight[] = []
   const spend = meta.spend
+  const optIns = m.optIns
   const calls = m.calls
-  const qualified = m.qualifiedCalls
   const taken = m.takenCalls
   const deals = m.deals
   const revenue = m.closedRevenue
@@ -71,29 +72,31 @@ function generateInsights(
   const prDeals = Math.round(proRata(t.deals, range))
 
   const cbc = safeDivide(spend, calls)
-  const qualRate = safeDivide(qualified, calls)
-  const showUpRate = safeDivide(taken, qualified)
+  // 2026-05-27: pillars switched — qualification gone, booking rate
+  // (booked / opt-ins) takes its place; show-up uses booked as denominator.
+  const bookingRate = safeDivide(calls, optIns)
+  const showUpRate = safeDivide(taken, calls)
   const conversionRate = safeDivide(deals, taken)
   const roas = safeDivide(revenue, spend)
   const avgDealValue = deals > 0 ? revenue / deals : 0
   const expectedDealValue = t.deals > 0 && t.revenue > 0 ? t.revenue / t.deals : 0
   const callsOnTrack = prCalls > 0 && calls >= prCalls
 
-  // Ratio targets derived from the cost ladder (cbc / cqc / ctc / cpd)
-  const qualRateTarget = derived.qualRate
+  // Ratio targets derived from the cost ladder (cbc / ctc / cpd) + cpOptIn
+  const bookingRateTarget = derived.bookingRate
   const showUpRateTarget = derived.showUpRate
   const convRateTarget = derived.convRate
   const roasTarget = derived.roas
 
   // Evaluate the 4 pillars (a pillar with no target is treated as on-track / skipped)
   const cbcOnTrack = t.cbc > 0 ? cbc <= t.cbc : true
-  const qualOnTrack = calls > 3 && qualRateTarget > 0 ? qualRate >= qualRateTarget : true
-  const showUpOnTrack = qualified > 3 && showUpRateTarget > 0 ? showUpRate >= showUpRateTarget : true
+  const bookingOnTrack = optIns > 3 && bookingRateTarget > 0 ? bookingRate >= bookingRateTarget : true
+  const showUpOnTrack = calls > 3 && showUpRateTarget > 0 ? showUpRate >= showUpRateTarget : true
   const convOnTrack = taken > 3 && convRateTarget > 0 ? conversionRate >= convRateTarget : true
 
   const pillars: PillarStatus[] = [
     { name: "CBC", onTrack: cbcOnTrack, value: formatCurrencyDecimal(cbc), target: t.cbc > 0 ? formatCurrencyDecimal(t.cbc) : "—" },
-    { name: "Qualification Rate", onTrack: qualOnTrack, value: formatPercent(qualRate), target: qualRateTarget > 0 ? formatPercent(qualRateTarget) : "—" },
+    { name: "Booking Rate", onTrack: bookingOnTrack, value: formatPercent(bookingRate), target: bookingRateTarget > 0 ? formatPercent(bookingRateTarget) : "—" },
     { name: "Show-up Rate", onTrack: showUpOnTrack, value: formatPercent(showUpRate), target: showUpRateTarget > 0 ? formatPercent(showUpRateTarget) : "—" },
     { name: "Conversion Rate", onTrack: convOnTrack, value: formatPercent(conversionRate), target: convRateTarget > 0 ? formatPercent(convRateTarget) : "—" },
   ]
@@ -163,29 +166,30 @@ function generateInsights(
 function generateProposals(insights: Insight[], m: MondayTargetsData, meta: MetaTargetsData, t: TargetsConfig, range: DateRange): string[] {
   const proposals: string[] = []
   const spend = meta.spend
+  const optIns = m.optIns
   const calls = m.calls
-  const qualified = m.qualifiedCalls
   const taken = m.takenCalls
   const deals = m.deals
   const revenue = m.closedRevenue
+  const noShows = m.noShows
+  const cancellations = m.cancellations
   const cbc = safeDivide(spend, calls)
-  const qualRate = safeDivide(qualified, calls)
-  const showUpRate = safeDivide(taken, qualified)
+  const bookingRate = safeDivide(calls, optIns)
+  const showUpRate = safeDivide(taken, calls)
   const conversionRate = safeDivide(deals, taken)
   const avgDealValue = deals > 0 ? revenue / deals : 0
   const expectedDealValue = t.deals > 0 && t.revenue > 0 ? t.revenue / t.deals : 0
   const derived = deriveTargets(t)
   const prCalls = derived.calls > 0 ? Math.round(proRata(derived.calls, range)) : 0
-  const noShows = qualified - taken
 
-  // Ratio targets derived from the cost ladder
-  const qualRateTarget = derived.qualRate
+  // Ratio targets derived from the cost ladder + cpOptIn
+  const bookingRateTarget = derived.bookingRate
   const showUpRateTarget = derived.showUpRate
   const convRateTarget = derived.convRate
 
   const cbcOffTrack = t.cbc > 0 && cbc > t.cbc
-  const qualOffTrack = calls > 3 && qualRateTarget > 0 && qualRate < qualRateTarget
-  const showUpOffTrack = qualified > 3 && showUpRateTarget > 0 && showUpRate < showUpRateTarget
+  const bookingOffTrack = optIns > 3 && bookingRateTarget > 0 && bookingRate < bookingRateTarget
+  const showUpOffTrack = calls > 3 && showUpRateTarget > 0 && showUpRate < showUpRateTarget
   const convOffTrack = taken > 3 && convRateTarget > 0 && conversionRate < convRateTarget
   const spendIssue = !cbcOffTrack && prCalls > 0 && calls < prCalls
   const dealValueIssue = deals > 0 && expectedDealValue > 0 && avgDealValue < expectedDealValue * 0.8
@@ -201,14 +205,15 @@ function generateProposals(insights: Insight[], m: MondayTargetsData, meta: Meta
     proposals.push(`Scale ad spend from ${formatCurrencyDecimal(spend)} to ~${formatCurrencyDecimal(neededSpend)}. CBC is proven at ${formatCurrencyDecimal(cbc)} — the only gap between ${calls} and ${prCalls} booked calls is budget.`)
   }
 
-  // ── Pillar 2: Qualification Rate ──
-  if (qualOffTrack) {
-    proposals.push(`Qualification rate is ${formatPercent(qualRate)} (target: ${formatPercent(qualRateTarget)}) — we're reaching people who don't match the ICP. Refine ad messaging to speak directly to the ideal customer profile, use industry-specific angles, and add qualifying questions to the lead form.`)
+  // ── Pillar 2: Booking Rate (Booked / Opt-ins) ──
+  if (bookingOffTrack) {
+    proposals.push(`Booking rate is ${formatPercent(bookingRate)} — only ${calls} of ${optIns} opt-ins booked a call (target: ${formatPercent(bookingRateTarget)}). The opt-in → booked dropoff is the bottleneck. Check the calendar flow (friction, available slots), follow-up timing on opt-ins who didn't book, and whether the form-to-calendar handoff is smooth.`)
   }
 
-  // ── Pillar 3: Show-up Rate ──
+  // ── Pillar 3: Show-up Rate (Taken / Booked) ──
   if (showUpOffTrack) {
-    proposals.push(`Show-up rate is ${formatPercent(showUpRate)} — ${noShows} no-shows from ${qualified} qualified leads. WhatsApp reminders are already active — audit their delivery timing and open rates. Consider a personal confirmation call 2h before the appointment, and check if leads can book too far ahead (reducing urgency).`)
+    const dropOff = noShows + cancellations
+    proposals.push(`Show-up rate is ${formatPercent(showUpRate)} — ${dropOff} booked calls didn't happen (${noShows} no-show${noShows === 1 ? "" : "s"}, ${cancellations} cancellation${cancellations === 1 ? "" : "s"}). WhatsApp reminders are already active — audit their delivery timing and open rates. Consider a personal confirmation call 2h before the appointment, and check if leads can book too far ahead (reducing urgency).`)
   }
 
   // ── Pillar 4: Conversion Rate ──
@@ -222,7 +227,7 @@ function generateProposals(insights: Insight[], m: MondayTargetsData, meta: Meta
   }
 
   // ── Everything on track ──
-  if (!cbcOffTrack && !qualOffTrack && !showUpOffTrack && !convOffTrack && !spendIssue && !dealValueIssue) {
+  if (!cbcOffTrack && !bookingOffTrack && !showUpOffTrack && !convOffTrack && !spendIssue && !dealValueIssue) {
     proposals.push("All 4 pillars and deal value are on track. Iterate on winning creatives — same direction, fresh executions to stay ahead of ad fatigue.")
     proposals.push("Test a secondary marketing angle alongside the winner to build pipeline diversification for next month.")
   }

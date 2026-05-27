@@ -30,19 +30,22 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
   }
 
   const spend = meta.spend
+  const optIns = monday.optIns
   const calls = monday.calls
-  const qualified = monday.qualifiedCalls
   const taken = monday.takenCalls
   const deals = monday.deals
 
   const cbc = safeDivide(spend, calls)
-  const qualRate = safeDivide(qualified, calls)
-  const showUpRate = safeDivide(taken, qualified)
+  // 2026-05-27: qualification stage dropped — pillar #2 is now Booking Rate
+  // (Booked / Opt-ins) and Show-up Rate denominator switched from qualified
+  // calls to booked calls (Taken / Booked).
+  const bookingRate = safeDivide(calls, optIns)
+  const showUpRate = safeDivide(taken, calls)
   const convRate = safeDivide(deals, taken)
 
   const derived = deriveTargets(targets ?? null)
   const cbcTarget = targets?.cbc ?? 0
-  const qualRateTarget = derived.qualRate
+  const bookingRateTarget = derived.bookingRate
   const showUpRateTarget = derived.showUpRate
   const convRateTarget = derived.convRate
 
@@ -57,20 +60,20 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
     ? t("targets.pillar.cbc.no_target", locale, { calls: String(calls) })
     : t("targets.pillar.cbc.none_yet", locale)
 
-  // ── 2. Qualification Rate — audience match ──
-  const qualStatus: Status = (qualRateTarget === 0 || calls < 4) ? "neutral" : qualRate >= qualRateTarget ? "good" : "bad"
-  const qualSubtitle = qualRateTarget > 0
-    ? t("targets.pillar.qual.with_target", locale, { target: formatPercent(qualRateTarget), qualified: String(qualified), calls: String(calls) })
-    : calls > 0
-    ? t("targets.pillar.qual.no_target", locale, { qualified: String(qualified), calls: String(calls) })
+  // ── 2. Booking Rate — opt-in → booked conversion ──
+  const bookingStatus: Status = (bookingRateTarget === 0 || optIns < 4) ? "neutral" : bookingRate >= bookingRateTarget ? "good" : "bad"
+  const bookingSubtitle = bookingRateTarget > 0
+    ? `${String(calls)} of ${String(optIns)} opt-ins · target ${formatPercent(bookingRateTarget)}`
+    : optIns > 0
+    ? `${String(calls)} of ${String(optIns)} opt-ins`
     : "—"
 
-  // ── 3. Show-up Rate — lead warmth & reminders ──
-  const showUpStatus: Status = (showUpRateTarget === 0 || qualified < 4) ? "neutral" : showUpRate >= showUpRateTarget ? "good" : "bad"
+  // ── 3. Show-up Rate — booked → taken conversion ──
+  const showUpStatus: Status = (showUpRateTarget === 0 || calls < 4) ? "neutral" : showUpRate >= showUpRateTarget ? "good" : "bad"
   const showUpSubtitle = showUpRateTarget > 0
-    ? t("targets.pillar.showup.with_target", locale, { target: formatPercent(showUpRateTarget), taken: String(taken), qualified: String(qualified) })
-    : qualified > 0
-    ? t("targets.pillar.showup.no_target", locale, { taken: String(taken), qualified: String(qualified) })
+    ? `${String(taken)} of ${String(calls)} booked · target ${formatPercent(showUpRateTarget)}`
+    : calls > 0
+    ? `${String(taken)} of ${String(calls)} booked`
     : "—"
 
   // ── 4. Conversion Rate — sales team ──
@@ -90,14 +93,14 @@ export const HeroPillars = memo(function HeroPillars({ monday, meta, targets, is
         sub={cbcSubtitle}
       />
       <KpiTile
-        label={t("targets.pillar.qual", locale)}
-        value={calls > 0 ? formatPercent(qualRate) : "—"}
-        valueTone={qualStatus as KpiValueTone}
-        sub={qualSubtitle}
+        label="Booking Rate"
+        value={optIns > 0 ? formatPercent(bookingRate) : "—"}
+        valueTone={bookingStatus as KpiValueTone}
+        sub={bookingSubtitle}
       />
       <KpiTile
         label={t("targets.pillar.showup", locale)}
-        value={qualified > 0 ? formatPercent(showUpRate) : "—"}
+        value={calls > 0 ? formatPercent(showUpRate) : "—"}
         valueTone={showUpStatus as KpiValueTone}
         sub={showUpSubtitle}
       />

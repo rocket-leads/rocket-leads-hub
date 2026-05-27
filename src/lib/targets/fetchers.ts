@@ -129,14 +129,42 @@ const META_GRAPH_VERSION = "v20.0"
 const HQ_COSTS_MONTHLY = 5000
 const MONTH_NAMES_NL = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
 
+// Targets-board lead-status buckets — used to slice the booked-calls funnel
+// into "actually happened" (taken), "didn't happen" (no-show / cancellation)
+// and "still pending" (notUpdated). Roy 2026-05-27: qualification dropped
+// from the funnel entirely; the pipeline is now Opt-in → Booked → Taken →
+// Deal, with show-up rate computed as Taken / (Taken + NoShow + Cancellations).
+//
+// Status labels follow the *current* targets-board options. Old labels
+// (DEAL, No deal/FU, No deal, Lead cancelation, Gepland) are kept in the
+// same buckets so historical items still count correctly until the board is
+// fully migrated to the new naming.
 const STATUS_MAP = {
-  qualified: ["Qualified", "No show", "No deal/FU", "No deal", "DEAL"],
-  taken: ["No deal/FU", "No deal", "DEAL"],
-  deals: ["DEAL"],
-  rejections: ["Not interested", "Lead cancelation"],
+  /** Call actually happened. Outcome may be positive (Deal/Signed) or
+   *  negative (No deal X variants — call took place, just didn't close). */
+  taken: [
+    "Deal", "Signed",
+    "No deal follow up", "No deal not interested", "No deal unqualified",
+    // Back-compat with the pre-2026-05-27 status labels:
+    "DEAL", "No deal/FU", "No deal",
+  ],
+  /** Closed-positive subset of taken. */
+  deals: ["Deal", "Signed", "DEAL"],
+  /** Booked but didn't show up. */
   noShows: ["No show"],
-  /** Past-appointment statuses that mean the closer hasn't processed the call yet — excluded from show-up rate. */
-  notUpdated: ["Qualified", "Gepland"],
+  /** Lead canceled BEFORE the call — different from "No deal not interested"
+   *  which means the call DID happen and they then said no. "Not interested"
+   *  here is the standalone cancel-status (lead pulled out before the call).
+   *  Old label "Lead cancelation" stays in this bucket for historical items. */
+  cancellations: [
+    "Cancelled", "Cancelled/TBR", "Cancelled No deal", "Not interested",
+    // Back-compat:
+    "Lead cancelation",
+  ],
+  /** Past-appointment statuses that mean the closer hasn't processed the call
+   *  yet. Counted as taken in the rates so closers can't game it by leaving
+   *  things un-updated, but surfaced as a separate "X not updated" warning. */
+  notUpdated: ["Planned", "Qualified", "Gepland"],
 }
 
 const AD_BUDGET_KEYWORDS = [
@@ -358,14 +386,14 @@ export async function fetchMondayTargets(
   // Per-country accumulators
   type CloserAcc = { qualifiedCalls: number; upcomingCalls: number; takenCalls: number; notUpdated: number; deals: number; revenue: number }
   type Acc = {
-    leads: number; calls: number; qualifiedCalls: number; rejections: number; noShows: number;
+    leads: number; calls: number; cancellations: number; noShows: number;
     takenCalls: number; deals: number; closedRevenue: number; totalItems: number;
     industryMap: Record<string, { deals: number; revenue: number }>;
     closerMap: Record<string, CloserAcc>;
   }
   const acc: Record<CountryKey, Acc> = {} as Record<CountryKey, Acc>
   for (const k of COUNTRY_KEYS) {
-    acc[k] = { leads: 0, calls: 0, qualifiedCalls: 0, rejections: 0, noShows: 0, takenCalls: 0, deals: 0, closedRevenue: 0, totalItems: 0, industryMap: {}, closerMap: {} }
+    acc[k] = { leads: 0, calls: 0, cancellations: 0, noShows: 0, takenCalls: 0, deals: 0, closedRevenue: 0, totalItems: 0, industryMap: {}, closerMap: {} }
   }
   // Per-deal list (only populated for "all") so the gap modal can show every Monday-side
   // deal alongside the Stripe-side invoices.
@@ -379,11 +407,11 @@ export async function fetchMondayTargets(
     d.setDate(d.getDate() - i * 7)
     targetWeeks.add(d.toISOString().split("T")[0])
   }
-  type WeekRow = { calls: number; qualified: number; taken: number; deals: number; revenue: number }
+  type WeekRow = { calls: number; taken: number; deals: number; revenue: number }
   const weeklyMaps: Record<CountryKey, Record<string, WeekRow>> = {} as Record<CountryKey, Record<string, WeekRow>>
   for (const k of COUNTRY_KEYS) {
     weeklyMaps[k] = {}
-    for (const ws of targetWeeks) weeklyMaps[k][ws] = { calls: 0, qualified: 0, taken: 0, deals: 0, revenue: 0 }
+    for (const ws of targetWeeks) weeklyMaps[k][ws] = { calls: 0, taken: 0, deals: 0, revenue: 0 }
   }
 
   // Helper: add to "all" + specific country bucket
@@ -409,9 +437,13 @@ export async function fetchMondayTargets(
 
     if (includeInTopLevel && isInRange(datumCreated, startDate, endDate)) {
       addTo(country, (a) => { a.leads++; a.calls++ })
-      if (STATUS_MAP.rejections.includes(status)) addTo(country, (a) => a.rejections++)
-      if (STATUS_MAP.qualified.includes(status)) addTo(country, (a) => a.qualifiedCalls++)
+      // Booked-calls funnel slicing — replaces the old qualified/rejections
+      // counters (2026-05-27: qualification stage dropped from the dashboard).
+      // Booked = total items; Taken = call happened; NoShow + Cancellation =
+      // call did not happen; Planned/Qualified open = still pending outcome
+      // (counted as taken in rates via the past-appointment block below).
       if (STATUS_MAP.noShows.includes(status)) addTo(country, (a) => a.noShows++)
+      if (STATUS_MAP.cancellations.includes(status)) addTo(country, (a) => a.cancellations++)
     }
     if (includeInTopLevel && isInRange(datumAfspraak, startDate, endDate)) {
       if (STATUS_MAP.taken.includes(status)) {
@@ -506,7 +538,6 @@ export async function fetchMondayTargets(
         const ws = getMondayOfWeek(datumCreated)
         if (targetWeeks.has(ws)) {
           addWeek(country, ws, (w) => { w.calls++ })
-          if (STATUS_MAP.qualified.includes(status)) addWeek(country, ws, (w) => w.qualified++)
         }
       }
       if (datumAfspraak) {
@@ -624,6 +655,15 @@ export async function fetchMetaTargets(startDate: string, endDate: string): Prom
   while (nextUrl) {
     const resp: Response = await fetch(nextUrl)
     const data: { data?: Array<{ campaign_name?: string; spend?: string; impressions?: string; clicks?: string }>; paging?: { next?: string }; error?: { message?: string } } = await resp.json()
+    // Previously only checked `data.error`; a non-200 with a different error
+    // shape (token expired, rate-limited, etc.) slipped through and silently
+    // returned zeros — the cron then cached the zeros and the Targets page
+    // showed "all 0 spend" the rest of the day. Always throw on !ok so the
+    // failure is surfaced via the route's catch block instead of poisoning
+    // the cache.
+    if (!resp.ok) {
+      throw new Error(`Meta API ${resp.status}: ${data.error?.message ?? resp.statusText ?? "unknown error"}`)
+    }
     if (data.error) throw new Error(data.error.message || "Meta API error")
 
     for (const row of data.data ?? []) {
