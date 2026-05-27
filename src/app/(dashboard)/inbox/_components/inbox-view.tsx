@@ -31,6 +31,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { PageHeader } from "@/components/ui/page-header"
+import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { cn } from "@/lib/utils"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
@@ -709,15 +710,23 @@ export function InboxView({
    *  The wrapping <aside> below provides positioning + slide-in animation. */
   function renderDockedContent(): React.ReactNode {
     if (detailItem) {
+      // ErrorBoundary scoped to the docked detail pane only. Before this,
+      // a render error inside ItemDetailDialog (e.g. a Monday update with
+      // a body large/odd enough to bork the layout) tore down the entire
+      // /inbox page, showing Chrome's "page couldn't load" instead of a
+      // recoverable inline error. resetKey=item.id wipes the stuck error
+      // when the user clicks a different row.
       return (
-        <ItemDetailDialog
-          itemId={detailItem.id}
-          currentUser={currentUser}
-          users={users}
-          onClose={closeDock}
-          onChanged={refreshAll}
-          mode="docked"
-        />
+        <ErrorBoundary label="this inbox item" resetKey={detailItem.id}>
+          <ItemDetailDialog
+            itemId={detailItem.id}
+            currentUser={currentUser}
+            users={users}
+            onClose={closeDock}
+            onChanged={refreshAll}
+            mode="docked"
+          />
+        </ErrorBoundary>
       )
     }
     if (selectedThread) {
@@ -1138,14 +1147,16 @@ export function InboxView({
           below renders alongside the list (slide-in panel, no backdrop). */}
       {detailItem && (
         <div className="xl:hidden">
-          <ItemDetailDialog
-            itemId={detailItem.id}
-            currentUser={currentUser}
-            users={users}
-            onClose={closeDock}
-            onChanged={refreshAll}
-            mode="overlay"
-          />
+          <ErrorBoundary label="this inbox item" resetKey={detailItem.id}>
+            <ItemDetailDialog
+              itemId={detailItem.id}
+              currentUser={currentUser}
+              users={users}
+              onClose={closeDock}
+              onChanged={refreshAll}
+              mode="overlay"
+            />
+          </ErrorBoundary>
         </div>
       )}
 

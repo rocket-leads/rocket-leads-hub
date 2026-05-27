@@ -59,13 +59,26 @@ function renderMentions(
   users: InboxUser[],
   currentUserId: string,
 ): React.ReactNode {
+  // Defensive guard: a sufficiently long body or one with hundreds of
+  // `@` patterns (e.g. a pasted email thread, log dump) would create
+  // thousands of React nodes here and could contribute to a renderer
+  // crash. Beyond ~10K chars, fall back to plain text.
+  if (body.length > 10_000) return body
   // Same regex as the backend mention resolver — keep them in sync so
   // visual styling matches what the server actually fans out to.
   const re = /@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g
   const out: React.ReactNode[] = []
   let lastIdx = 0
   let key = 0
+  const MAX_MENTIONS = 200
+  let mentionCount = 0
   for (const match of body.matchAll(re)) {
+    if (++mentionCount > MAX_MENTIONS) {
+      // Stop chip-rendering past the cap; emit the remainder as plain text.
+      out.push(body.slice(lastIdx))
+      lastIdx = body.length
+      break
+    }
     const idx = match.index ?? 0
     if (idx > lastIdx) out.push(body.slice(lastIdx, idx))
     const captured = match[1].trim()
@@ -1468,6 +1481,16 @@ function EditableBody({
     )
   }
 
+  // Defensive cap: a single Monday update body of 100k+ chars (pasted email
+  // thread, oversized log dump) was crashing Chrome's renderer with
+  // RESULT_CODE_KILLED_BAD_MESSAGE / "This page couldn't load" — `whitespace-
+  // pre-wrap` on a multi-MB string with no breakable whitespace blows up
+  // layout. Slice for display; the full body still lives server-side and the
+  // editing textarea pulls the untrimmed value when the user opens it.
+  const MAX_DISPLAY_CHARS = 20_000
+  const truncated = value.length > MAX_DISPLAY_CHARS
+  const displayValue = truncated ? value.slice(0, MAX_DISPLAY_CHARS) : value
+
   return (
     <button
       type="button"
@@ -1476,9 +1499,16 @@ function EditableBody({
       title="Click to edit"
     >
       {value ? (
-        <span className="text-sm whitespace-pre-wrap text-foreground/90 leading-relaxed block">
-          {value}
-        </span>
+        <>
+          <span className="text-sm whitespace-pre-wrap text-foreground/90 leading-relaxed block">
+            {displayValue}
+          </span>
+          {truncated && (
+            <span className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+              … {value.length.toLocaleString()} chars total — body truncated for display. Click to edit and see the full text.
+            </span>
+          )}
+        </>
       ) : (
         <span className="text-xs text-muted-foreground/50 italic inline-flex items-center gap-1.5">
           <Pencil className="h-3 w-3" />
