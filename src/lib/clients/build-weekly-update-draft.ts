@@ -1,6 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById, type MondayClient } from "@/lib/integrations/monday"
 import { fetchTrengoContact } from "@/lib/integrations/trengo"
+import {
+  fetchOverdueInvoices,
+  type OverdueInvoice,
+} from "@/lib/integrations/stripe"
 import { parsePedroBody } from "@/lib/pedro/insights/types"
 import {
   fetchKpisForWindow,
@@ -219,13 +223,18 @@ export async function buildWeeklyUpdateDraft(args: {
           .catch(() => null)
 
   // Always resolve the weekly template for WhatsApp. Email skips it.
-  const [kpi, pedro, waTemplate, hubUser] = await Promise.all([
+  // Overdue invoices fire in parallel — best-effort, [] on any Stripe
+  // failure so the rest of the pipeline still produces a draft.
+  const [kpi, pedro, waTemplate, hubUser, overdueInvoices] = await Promise.all([
     kpiPromise,
     loadPedroBody(args.mondayItemId),
     isEmail
       ? Promise.resolve({ name: null as string | null, source: "none" as const })
       : resolveWeeklyUpdateTemplate({ userId: amUserId, mondayItemId: args.mondayItemId }),
     loadHubUserName(amUserId),
+    client.stripeCustomerId
+      ? fetchOverdueInvoices(client.stripeCustomerId).catch(() => [] as OverdueInvoice[])
+      : Promise.resolve([] as OverdueInvoice[]),
   ])
 
   // AM first name for the email sign-off + WhatsApp preview. Prefer
@@ -248,6 +257,11 @@ export async function buildWeeklyUpdateDraft(args: {
     kpi,
     pedro,
     weekLabel: formatWeekLabel(weekRange.startDate, weekRange.endDate),
+    overdueInvoices: overdueInvoices.map((inv) => ({
+      amountDue: inv.amountDue,
+      hostedUrl: inv.hostedUrl,
+      number: inv.number,
+    })),
   })
 
   // Fetch the Trengo contact (best-effort) so the dialog can render the

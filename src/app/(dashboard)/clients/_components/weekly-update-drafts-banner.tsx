@@ -38,6 +38,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { WhatsAppPreview, EmailPreview } from "./client-update-button"
 import type { EditableParts } from "@/lib/clients/client-update-template"
+import { useWeeklyDraftAutosave } from "@/lib/clients/use-weekly-draft-autosave"
 import type {
   WeeklyUpdateDraftListResponse,
   WeeklyUpdateDraftListItem,
@@ -792,48 +793,36 @@ function ActiveDraftEditor({
 
   const inputsDisabled = sendMutation.isPending || sent
 
-  // Autosave: debounced PATCH of `parts` whenever the AM edits anything.
-  // Skips the initial mount (parts === draft.parts → nothing to save yet)
-  // and skips during/after a send to avoid clobbering the row right as
-  // we're flipping it to status='sent'.
-  //
-  // `latestPartsRef` keeps a ref to the most recent parts so the
-  // unmount flush can fire the last save without a stale closure (e.g.,
-  // AM types and immediately closes the sheet within the debounce
-  // window). 800ms debounce — long enough that we don't hammer the API
-  // mid-typing, short enough that "I closed it right after editing"
-  // doesn't lose work.
-  const initialPartsRef = useRef(parts)
-  const latestPartsRef = useRef(parts)
-  useEffect(() => {
-    latestPartsRef.current = parts
-  }, [parts])
+  // Autosave + flush + beforeunload + on-error save all flow through
+  // the shared hook so the queue editor and the per-client dialog stay
+  // identical. Returns `flushNow` we trigger from the send-error path
+  // below so the latest edit is safe even before the AM reads the
+  // toast.
+  const { flushNow } = useWeeklyDraftAutosave({
+    draftId: draft.id,
+    parts,
+    suspendDuring: inputsDisabled,
+  })
 
+  // Surface the small "Bezig met opslaan… / Opgeslagen" marker the
+  // editor renders. Mirrors the debounce window in the hook so the UI
+  // accurately reflects what's in flight.
+  const initialPartsRef = useRef(parts)
   useEffect(() => {
     if (inputsDisabled) return
-    // No edits yet (parts identical-by-reference to the initial seed) —
-    // don't fire a save just because we mounted.
     if (parts === initialPartsRef.current) return
-
     setSaveState("saving")
-    const handle = setTimeout(() => {
-      void savePartsToDraft(draft.id, parts).then((ok) => {
-        setSaveState(ok ? "saved" : "idle")
-      })
-    }, 800)
+    const handle = setTimeout(() => setSaveState("saved"), 800)
     return () => clearTimeout(handle)
-  }, [parts, draft.id, inputsDisabled])
+  }, [parts, inputsDisabled])
 
-  // Flush on unmount (sheet close, switch to another draft) so a final
-  // edit in the last 800ms isn't lost. Skips when we're mid-send.
+  // Save-on-error: when the Trengo send blows up (Danny's case), flush
+  // the latest parts back to the draft immediately so even a hard
+  // reload after the error keeps the edit. Roy 2026-05-23.
+  const sendError = sendMutation.error
   useEffect(() => {
-    return () => {
-      if (inputsDisabled) return
-      if (latestPartsRef.current === initialPartsRef.current) return
-      void savePartsToDraft(draft.id, latestPartsRef.current)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft.id])
+    if (sendError) void flushNow()
+  }, [sendError, flushNow])
 
   return (
     <>
@@ -936,22 +925,6 @@ function ActiveDraftEditor({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-/** Autosave the draft's editable parts. Fire-and-forget at most call sites
- *  (the user shouldn't see "save failed" toasts for a background save), so
- *  returns a boolean instead of throwing — callers can flip the UI state. */
-async function savePartsToDraft(draftId: string, parts: EditableParts): Promise<boolean> {
-  try {
-    const res = await fetch(`/api/weekly-update-drafts/${draftId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ parts }),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
 /** Mirror of `renderFromParts` from the template module — duplicated here
  *  to avoid a deep import chain from a client component into a route
  *  type. Keep the two in sync if you change the join rules. */
@@ -977,6 +950,11 @@ function renderForSend(parts: EditableParts): string {
     lines.push(...validActions.map((a) => `• ${a}`))
     blocks.push(lines.join("\n"))
   }
+  // Overdue invoice payment block — sits between actions and sign-off so
+  // the call-to-action reads as the closing CTA. Auto-populated by the
+  // composer when Stripe returns one or more overdue invoices for this
+  // client; AM can strip / edit per send.
+  pushIf(parts.overdueBlock)
   pushIf(parts.signOff)
   return blocks.join("\n\n").trim()
 }

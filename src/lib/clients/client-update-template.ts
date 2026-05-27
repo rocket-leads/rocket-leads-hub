@@ -132,6 +132,13 @@ export type EditableParts = {
    *  again is redundant. Defaults to `Groetjes,` (or empty) and the AM can
    *  customise. Empty for WhatsApp (template handles sign-off). */
   signOff: string
+  /** Auto-populated when the client has one or more overdue Stripe
+   *  invoices: a short "betaal hier" block listing each invoice with its
+   *  amount + Stripe-hosted payment URL. Empty string when there's
+   *  nothing overdue. AM can edit / strip per send. Lives BEFORE the
+   *  actions section so the call-to-action reads naturally as part of
+   *  the closing context. Roy 2026-05-23. */
+  overdueBlock: string
 }
 
 export type ComposedUpdate = {
@@ -216,7 +223,40 @@ function buildKpiBlock(kpi: KpiSummary | null, channel: Channel): string {
   return lines.join("\n")
 }
 
+/** Build the "betaal hier" block listing each overdue invoice with its
+ *  Stripe-hosted payment URL. Returns "" when there's nothing overdue
+ *  (or when every overdue invoice somehow lacks a hosted URL, which
+ *  shouldn't happen but we don't want a header with no links).
+ *
+ *  WhatsApp keeps a tight one-line-per-invoice layout — Trengo strips
+ *  most formatting. Email uses the same shape; HTML rendering of the
+ *  URL is up to Trengo's email pipeline.
+ */
+function buildOverdueBlock(invoices: OverdueInvoiceForBlock[] | undefined): string {
+  if (!invoices || invoices.length === 0) return ""
+  const usable = invoices.filter((i) => !!i.hostedUrl)
+  if (usable.length === 0) return ""
+  const header = usable.length === 1
+    ? "⚠️ Openstaande factuur — je kunt direct betalen via deze link:"
+    : "⚠️ Openstaande facturen — je kunt direct betalen via onderstaande links:"
+  const lines = [header]
+  for (const inv of usable) {
+    const label = inv.number ? `Factuur ${inv.number}` : "Factuur"
+    lines.push(`• ${label} — ${fmtEur(inv.amountDue)}: ${inv.hostedUrl}`)
+  }
+  return lines.join("\n")
+}
+
 // ─── Compose initial parts ───────────────────────────────────────────────
+
+/** Subset of OverdueInvoice the composer cares about. Loose shape so
+ *  callers can pass either the Stripe helper's result or a stub from
+ *  tests without coupling to the integrations module. */
+export type OverdueInvoiceForBlock = {
+  amountDue: number
+  hostedUrl: string | null
+  number: string | null
+}
 
 export type ComposeInput = {
   firstName: string
@@ -242,6 +282,12 @@ export type ComposeInput = {
    *  variants. Lets the AM see the precise window the KPIs cover so
    *  "afgelopen week" can never mean "rolling 7d". */
   weekLabel?: string
+  /** Overdue invoices for this client (Stripe `status: open` with
+   *  `due_date < now`). When non-empty, the composer auto-populates
+   *  `overdueBlock` with a payment-link list so the client can settle
+   *  directly from the message. Empty / omitted → no block, AM's
+   *  weekly update stays clean. Roy 2026-05-23. */
+  overdueInvoices?: OverdueInvoiceForBlock[]
 }
 
 /** Build the initial draft. Picks a weekly intro variant + pre-renders KPI
@@ -336,6 +382,7 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
       actions,
       subject,
       signOff,
+      overdueBlock: buildOverdueBlock(input.overdueInvoices),
     },
   }
 }
@@ -367,6 +414,11 @@ export function renderFromParts(parts: EditableParts): string {
     for (const a of validActions) actionLines.push(`• ${a}`)
     blocks.push(actionLines.join("\n"))
   }
+
+  // Overdue invoices sit between actions and sign-off — they're a
+  // call-to-action so reading order is: what happened → what we're
+  // doing → please settle these → sign off.
+  if (parts.overdueBlock?.trim()) blocks.push(parts.overdueBlock.trim())
 
   if (parts.signOff?.trim()) blocks.push(parts.signOff.trim())
 
@@ -440,11 +492,32 @@ export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
   // Actions: each is its own sentence/question. Drop bullet markers,
   // ensure trailing punctuation, join with single spaces so they read
   // as a flowing paragraph.
-  const actionsInline = sanitizeForWaParam(
-    (parts.actions ?? [])
-      .map((a) => String(a ?? "").trim().replace(/^[•\-*]\s*/, ""))
+  //
+  // Overdue invoices ride along in the same slot: WhatsApp HSM templates
+  // only have 5 body variables, and Meta does not allow URLs in template
+  // params for most categories — we therefore inline them into the action
+  // paragraph so they land somewhere visible. The "betaal hier" sentence
+  // + URLs come AFTER the actions so the optimisation actions read first
+  // and the payment ask is the closing CTA. Empty overdue block adds
+  // nothing.
+  const overdueInline = sanitizeForWaParam(
+    String(parts.overdueBlock ?? "")
+      .split("\n")
+      .map((line) => line.replace(/^\s*[•\-*]\s*/, "").trim())
       .filter(Boolean)
       .map(finishSentence)
+      .join(" "),
+  )
+  const actionsInline = sanitizeForWaParam(
+    [
+      (parts.actions ?? [])
+        .map((a) => String(a ?? "").trim().replace(/^[•\-*]\s*/, ""))
+        .filter(Boolean)
+        .map(finishSentence)
+        .join(" "),
+      overdueInline,
+    ]
+      .filter(Boolean)
       .join(" "),
   )
 

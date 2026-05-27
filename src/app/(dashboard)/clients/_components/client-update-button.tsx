@@ -28,6 +28,7 @@ import {
   renderFromParts,
   type EditableParts,
 } from "@/lib/clients/client-update-template"
+import { useWeeklyDraftAutosave } from "@/lib/clients/use-weekly-draft-autosave"
 
 type Props = {
   mondayItemId: string
@@ -358,6 +359,22 @@ export function WhatsAppPreview({
           <ActionsBlock parts={parts} setParts={setParts} inputsDisabled={inputsDisabled} />
         </div>
 
+        {/* Overdue invoices block — auto-populated by the composer when
+            the client has open Stripe invoices past their due date. Each
+            invoice ships a hosted Stripe payment URL so the customer can
+            settle straight from the WhatsApp message. Editable so the AM
+            can strip / shorten per send; empty when nothing's overdue,
+            in which case we collapse the row entirely. */}
+        {(parts.overdueBlock?.length ?? 0) > 0 && (
+          <InlineTextarea
+            value={parts.overdueBlock}
+            onChange={(v) => setParts({ ...parts, overdueBlock: v })}
+            placeholder=""
+            disabled={inputsDisabled}
+            ariaLabel="Openstaande facturen"
+          />
+        )}
+
         {/* Sign-off: template body has "Groetjes,\n<AM>". Two separate
             paragraphs so the line break is unambiguous. */}
         <div className="pt-1 space-y-0">
@@ -409,6 +426,9 @@ export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) 
       for (const a of validActions) lines.push(`• ${a}`)
       blocks.push(lines.join("\n"))
     }
+    // Overdue invoices block — payment links appear before the sign-off
+    // so the call-to-action reads as the closing CTA.
+    if (parts.overdueBlock?.trim()) blocks.push(parts.overdueBlock.trim())
     if (parts.signOff?.trim()) blocks.push(parts.signOff.trim())
     return blocks.join("\n\n").trim()
   }, [parts])
@@ -445,9 +465,12 @@ export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) 
         </div>
 
         {/* Body — single free-text textarea. Edits are stored entirely on
-            `parts.conclusion`; opener/intro/kpiBlock/actions/signOff get
-            blanked so renderFromParts emits exactly what the AM typed.
-            For the send, `conclusion` becomes the whole email body. */}
+            `parts.conclusion`; opener/intro/kpiBlock/actions/signOff +
+            overdueBlock all get blanked so renderFromParts emits exactly
+            what the AM typed (any overdue payment links the composer
+            seeded will already be merged into `body` here and end up
+            inside the conclusion). For the send, `conclusion` becomes
+            the whole email body. */}
         <textarea
           ref={bodyRef}
           value={body}
@@ -461,6 +484,7 @@ export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) 
               actionsHeader: "",
               actions: [],
               signOff: "",
+              overdueBlock: "",
             })
           }
           disabled={inputsDisabled}
@@ -688,6 +712,21 @@ export function ClientUpdateDialog({
   const isSending = send.isPending
   const inputsDisabled = isSending || sent
   const isEmail = channel === "email"
+
+  // Autosave the latest edits back to the cron-generated draft (if any)
+  // so an AM never loses work when Trengo errors mid-send, the dialog
+  // is closed mid-edit, or the page is hard-reloaded. No-op for ad-hoc
+  // sends (no `draftSeed.draftId` → nothing to write to). Roy 2026-05-23
+  // after Danny lost edits on a failed send.
+  const { flushNow } = useWeeklyDraftAutosave({
+    draftId: draftSeed?.draftId ?? null,
+    parts,
+    suspendDuring: inputsDisabled,
+  })
+  const sendErrorObj = send.error
+  useEffect(() => {
+    if (sendErrorObj) void flushNow()
+  }, [sendErrorObj, flushNow])
   // For WhatsApp the AM's HSM template is required (Meta won't accept free
   // text outside the 24h window, and we route ALL outbound via template).
   // For email no template is needed — Trengo handles the email channel

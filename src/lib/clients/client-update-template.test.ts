@@ -366,6 +366,7 @@ describe("partsToWeeklyUpdateParams — V2 multi-variable template mapping", () 
     actions: ["Nieuwe varianten testen", "Doelgroep verfijnen"],
     subject: "",
     signOff: "",
+    overdueBlock: "",
   }
 
   it("returns exactly 5 params in slot order", () => {
@@ -439,6 +440,7 @@ describe("partsToWeeklyUpdateParams — V2 multi-variable template mapping", () 
       actions: [],
       subject: "",
       signOff: "",
+      overdueBlock: "",
     }
     const out = partsToWeeklyUpdateParams(blank)
     expect(out).toHaveLength(5)

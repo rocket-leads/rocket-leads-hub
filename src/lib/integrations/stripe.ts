@@ -188,6 +188,68 @@ export async function fetchBillingSummary(customerId: string): Promise<BillingSu
   return { customerId, outstanding, status }
 }
 
+/** Single overdue invoice, pre-trimmed to what the weekly-update block needs:
+ *  the amount the client still owes, the Stripe-hosted payment page so they
+ *  can settle directly, and a human-readable invoice label. */
+export type OverdueInvoice = {
+  id: string
+  number: string | null
+  amountDue: number
+  dueDate: number | null
+  hostedUrl: string | null
+}
+
+/**
+ * Every still-open invoice past its due date for the given customer.
+ * Sorted oldest-first so the message lists them in escalation order
+ * (most overdue at the top).
+ *
+ * Used by the weekly-update composer to always include a "betaal hier"
+ * block when a client has overdue invoices — Roy 2026-05-23: AMs were
+ * not consistently chasing these themselves, so it goes in the update
+ * by default with one payment link per invoice.
+ *
+ * Best-effort: returns [] on any Stripe failure so the rest of the
+ * weekly-update pipeline still runs.
+ */
+export async function fetchOverdueInvoices(
+  customerId: string,
+): Promise<OverdueInvoice[]> {
+  try {
+    const stripe = await getStripe()
+    const now = Math.floor(Date.now() / 1000)
+
+    const out: OverdueInvoice[] = []
+    let startingAfter: string | undefined
+    let hasMore = true
+    while (hasMore) {
+      const page = await stripe.invoices.list({
+        customer: customerId,
+        status: "open",
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      })
+      for (const inv of page.data) {
+        if (!inv.due_date || inv.due_date >= now) continue
+        out.push({
+          id: inv.id ?? "",
+          number: inv.number,
+          amountDue: inv.amount_due / 100,
+          dueDate: inv.due_date ?? null,
+          hostedUrl: inv.hosted_invoice_url ?? null,
+        })
+      }
+      hasMore = page.has_more
+      startingAfter = page.data[page.data.length - 1]?.id
+      if (!startingAfter) break
+    }
+    out.sort((a, b) => (a.dueDate ?? 0) - (b.dueDate ?? 0))
+    return out
+  } catch {
+    return []
+  }
+}
+
 // Keywords that identify ad budget line items on Stripe invoices
 const AD_BUDGET_KEYWORDS = [
   "advertentiebudget",
