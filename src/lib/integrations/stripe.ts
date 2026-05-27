@@ -420,15 +420,114 @@ export type CreateInvoiceResult = {
   invoicePdf: string | null
 }
 
+/** Preview snapshot for the Finance approval screen — fetched read-only
+ *  from Stripe (customer + tax IDs) and computed locally from the form's
+ *  line items. NO draft is created; Stripe sees nothing until the user
+ *  approves and the actual send fires. All amounts in EUR. */
+export type InvoiceDraftPreview = {
+  customer: {
+    name: string | null
+    email: string | null
+    address: {
+      line1: string | null
+      line2: string | null
+      postal_code: string | null
+      city: string | null
+      country: string | null
+    } | null
+    taxExempt: "none" | "exempt" | "reverse" | null
+    /** All registered tax IDs for this customer (BTW, VAT, etc.). One entry
+     *  per ID — Stripe allows multiples. Used by the preview to show "BTW
+     *  NL123456789" so finance can verify the right number is on the invoice. */
+    taxIds: Array<{ type: string; value: string }>
+  }
+  /** Period suffix appended to each line description on the actual invoice
+   *  (e.g. "(3 Jun – 2 Jul 2026)"). Null when there's no cycle yet. */
+  periodLabel: string | null
+  lineItems: Array<{ description: string; amount: number }>
+  subtotal: number
+  /** Mirror of what the actual send will charge. Currently always 0 — Stripe
+   *  automatic_tax is not enabled on these invoices, so VAT isn't added even
+   *  for customers without a BTW number. The dialog shows a warning when
+   *  tax=0 AND the customer has no tax ID so Finance can flag the gap. */
+  tax: number
+  total: number
+  daysUntilDue: number
+}
+
+/**
+ * Read-only preview for the Finance approval screen. Fetches the Stripe
+ * customer + tax IDs (no mutation) and computes the line-item totals from
+ * the form input so Finance can verify recipient + amounts + BTW status
+ * BEFORE anything touches Stripe. No draft is created; nothing exists in
+ * Stripe until the actual send fires after approval.
+ *
+ * Tax handling note: Stripe `automatic_tax` is not enabled on the actual
+ * send, so the customer is always charged `subtotal` only (BTW = €0). The
+ * preview mirrors that reality and the dialog flags the case where a
+ * non-BTW customer should arguably get charged BG VAT but doesn't.
+ */
+export async function fetchInvoicePreview(input: CreateInvoiceInput): Promise<InvoiceDraftPreview> {
+  const items = input.items.filter((i) => i.description.trim() && i.amountEuro > 0)
+  if (items.length === 0) {
+    throw new Error("At least one line item with a description and amount is required.")
+  }
+
+  const stripe = await getStripe()
+  const daysUntilDue = Math.max(0, Math.trunc(input.daysUntilDue ?? 7))
+  const period = resolveBillingPeriod(input.cycleStartDate ?? null)
+
+  const [customer, taxIds] = await Promise.all([
+    stripe.customers.retrieve(input.customerId),
+    stripe.customers.listTaxIds(input.customerId, { limit: 10 }),
+  ])
+  if (customer.deleted) {
+    throw new Error("Stripe customer is deleted")
+  }
+
+  const lineItems = items.map((item) => ({
+    description: period ? `${item.description.trim()} (${period.label})` : item.description.trim(),
+    amount: item.amountEuro,
+  }))
+  const subtotal = lineItems.reduce((sum, l) => sum + l.amount, 0)
+  // Matches what the actual send will charge — no automatic_tax means no
+  // BTW row on the customer-facing invoice. Surface this 1-to-1 so Finance
+  // doesn't see one number on preview and a different one on the receipt.
+  const tax = 0
+  const total = subtotal + tax
+
+  return {
+    customer: {
+      name: customer.name ?? null,
+      email: customer.email ?? null,
+      address: customer.address
+        ? {
+            line1: customer.address.line1 ?? null,
+            line2: customer.address.line2 ?? null,
+            postal_code: customer.address.postal_code ?? null,
+            city: customer.address.city ?? null,
+            country: customer.address.country ?? null,
+          }
+        : null,
+      taxExempt: (customer.tax_exempt as "none" | "exempt" | "reverse" | null) ?? null,
+      taxIds: (taxIds.data ?? []).map((t) => ({
+        type: t.type,
+        value: t.value ?? "",
+      })),
+    },
+    periodLabel: period?.label ?? null,
+    lineItems,
+    subtotal,
+    tax,
+    total,
+    daysUntilDue,
+  }
+}
+
 /**
  * Create + finalize + send a Stripe invoice for a customer in one shot.
- * Mirrors the manual workflow finance currently does in the Stripe dashboard:
- *   1. New draft invoice with `collection_method: 'send_invoice'`.
- *   2. One invoice-item per line.
- *   3. Finalize → status moves from draft to open.
- *   4. Send → email goes out via Stripe's hosted template.
- *
- * Best-effort cleanup on failure: if any step after `invoices.create` errors,
+ * Mirrors the manual workflow finance does in the Stripe dashboard. Best-
+ * effort cleanup on failure: if any step after `invoices.create` errors,
  * the draft is voided so it doesn't sit in Stripe forever as half-built.
  */
 export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<CreateInvoiceResult> {
@@ -440,13 +539,8 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
   const stripe = await getStripe()
   const currency = (input.currency ?? "eur").toLowerCase()
   const daysUntilDue = Math.max(0, Math.trunc(input.daysUntilDue ?? 7))
-
-  // Resolve the billing period once. Empty cycle → no period block on the
-  // line items + no period suffix; Stripe accepts invoices without periods
-  // (it just won't render the "Period:" row in the hosted invoice).
   const period = resolveBillingPeriod(input.cycleStartDate ?? null)
 
-  // 1. Draft.
   const draft = await stripe.invoices.create({
     customer: input.customerId,
     collection_method: "send_invoice",
@@ -454,12 +548,10 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
     currency,
     auto_advance: false,
   })
-
   if (!draft.id) throw new Error("Stripe did not return an invoice id")
   const invoiceId = draft.id
 
   try {
-    // 2. Line items — must use cents, Stripe truncates fractional cents.
     for (const item of items) {
       const description = period
         ? `${item.description.trim()} (${period.label})`
@@ -470,15 +562,12 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
         amount: Math.round(item.amountEuro * 100),
         currency,
         description,
-        // Stripe renders this as "Period: <start> – <end>" on the hosted
-        // invoice + the PDF. Skipped entirely when we don't have a cycle.
         ...(period
           ? { period: { start: period.unixStart, end: period.unixEnd } }
           : {}),
       })
     }
 
-    // 3. Finalize and 4. send.
     await stripe.invoices.finalizeInvoice(invoiceId)
     const sent = await stripe.invoices.sendInvoice(invoiceId)
 
@@ -493,9 +582,9 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
   } catch (e) {
     // Roll back the draft so half-built invoices don't pile up.
     try {
-      await stripe.invoices.voidInvoice(invoiceId)
+      await stripe.invoices.del(invoiceId)
     } catch {
-      // Best-effort — if we can't void it the draft will still need manual cleanup.
+      // Best-effort — if we can't delete it the draft will still need manual cleanup.
     }
     throw e
   }

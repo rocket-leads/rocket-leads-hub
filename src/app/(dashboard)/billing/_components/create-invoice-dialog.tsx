@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, Plus, Trash2, ExternalLink, Check } from "lucide-react"
+import { Loader2, Plus, Trash2, ExternalLink, Check, ChevronLeft, AlertCircle } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import type { InvoiceDraftPreview } from "@/lib/integrations/stripe"
 
 type LineItemDraft = {
   id: string
@@ -68,18 +69,7 @@ function suffixFromSiblings(name: string, allNames: string[]): string {
   return suffix || name
 }
 
-/** Build the default line items based on what the agreement says.
- *
- *  Single-campaign path: service fee + (when via RL) ad budget, both labelled
- *  with the current month.
- *
- *  Multi-campaign path (`siblings`): one fee + one ad-budget per sibling that
- *  has a non-zero amount, each suffixed with the campaign's distinguishing
- *  name part. e.g. for an O2 Plus group:
- *    "Service fee — B2B — May 2026"
- *    "Advertising budget — B2B — May 2026"
- *    "Service fee — B2C — May 2026"
- *  Finance can still edit / add / remove lines before sending. */
+/** Build the default line items based on what the agreement says. */
 function buildInitialItems(
   fee: number,
   adBudget: number,
@@ -123,12 +113,35 @@ function buildInitialItems(
   return items
 }
 
+/** Map Stripe's `tax_id.type` enum to a short human label finance can
+ *  recognise. Falls back to the raw enum when we haven't seen a particular
+ *  region yet — the actual VAT number value next to it carries the meaning. */
+function taxIdLabel(type: string): string {
+  switch (type) {
+    case "eu_vat": return "BTW"
+    case "nl_btw": return "BTW"
+    case "be_vat": return "BTW"
+    case "de_vat": return "VAT"
+    case "gb_vat": return "VAT"
+    case "us_ein": return "EIN"
+    default: return type.toUpperCase().replace(/_/g, " ")
+  }
+}
+
 /**
- * Confirmation dialog launched from the Billing page's "Create invoice" button.
- * Pre-fills line items from the agreement, shows the line-item totals, and on
- * Send pushes a draft → finalize → send chain through Stripe via
- * POST /api/clients/[id]/create-invoice. After success, refreshes the page so
- * the new "open" invoice surfaces in the Stripe payment-state cache.
+ * Two-step confirmation dialog launched from the Billing page's "Create
+ * invoice" button.
+ *
+ * State machine: edit → preview → success
+ *
+ * 1. **edit**    — line-item form. "Preview" POSTs `action: preview` which
+ *    is a READ-ONLY Stripe call (customer + tax IDs only) — no draft is
+ *    created, nothing exists in Stripe until the actual send fires.
+ * 2. **preview** — Finance reviews recipient + line items + BTW status.
+ *    Two paths: "Confirm & send" → one-shot draft + finalize + email
+ *    (action: send) | "Back to edit" → return to edit (no Stripe call,
+ *    no cleanup needed since preview never created anything).
+ * 3. **success** — same chip + Close + "View in Stripe" the old flow had.
  */
 export function CreateInvoiceDialog({
   mondayItemId,
@@ -144,10 +157,12 @@ export function CreateInvoiceDialog({
   const [items, setItems] = useState<LineItemDraft[]>(() =>
     buildInitialItems(fee, adBudget, usesRocketLeadsAdAccount, siblingCampaigns),
   )
-  // 7 days = standard Rocket Leads payment term.
   const [daysUntilDue, setDaysUntilDue] = useState<string>("7")
-  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // State machine — exactly one of these is the active state.
+  const [step, setStep] = useState<"edit" | "previewing" | "preview" | "sending" | "success">("edit")
+  const [preview, setPreview] = useState<InvoiceDraftPreview | null>(null)
   const [success, setSuccess] = useState<{ number: string | null; hostedUrl: string | null } | null>(null)
 
   const total = useMemo(
@@ -160,10 +175,7 @@ export function CreateInvoiceDialog({
   )
 
   function addItem() {
-    setItems((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), description: "", amountEuro: "" },
-    ])
+    setItems((prev) => [...prev, { id: crypto.randomUUID(), description: "", amountEuro: "" }])
   }
 
   function removeItem(id: string) {
@@ -174,7 +186,9 @@ export function CreateInvoiceDialog({
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)))
   }
 
-  async function send() {
+  /** Reads the form, validates, then asks the server for a preview (no
+   *  Stripe mutation). Successful response advances to the preview state. */
+  async function fetchPreview() {
     setError(null)
     const cleaned = items
       .map((i) => ({
@@ -192,12 +206,65 @@ export function CreateInvoiceDialog({
       return
     }
 
-    setSubmitting(true)
+    setStep("previewing")
     try {
       const res = await fetch(`/api/clients/${mondayItemId}/create-invoice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: cleaned, daysUntilDue: days }),
+        body: JSON.stringify({ action: "preview", items: cleaned, daysUntilDue: days }),
+      })
+      const data = (await res.json().catch(() => ({}))) as
+        | (InvoiceDraftPreview & { ok: true })
+        | { ok?: false; error?: string }
+      if (!res.ok || !("ok" in data) || data.ok !== true) {
+        const errMsg = "error" in data && data.error ? data.error : "Failed to build invoice preview"
+        setError(errMsg)
+        setStep("edit")
+        return
+      }
+      const { ok: _ok, ...previewData } = data
+      void _ok
+      setPreview(previewData as InvoiceDraftPreview)
+      setStep("preview")
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to build invoice preview")
+      setStep("edit")
+    }
+  }
+
+  function backToEdit() {
+    // No Stripe cleanup needed — preview was read-only.
+    setPreview(null)
+    setStep("edit")
+  }
+
+  /** Sends the invoice atomically (server-side: create draft → finalize →
+   *  email + post-send cache refreshes). Triggered from the preview screen
+   *  after Finance has approved the recipient + amounts + BTW. */
+  async function sendInvoice() {
+    setError(null)
+    const cleaned = items
+      .map((i) => ({
+        description: i.description.trim(),
+        amountEuro: Number(i.amountEuro),
+      }))
+      .filter((i) => i.description && Number.isFinite(i.amountEuro) && i.amountEuro > 0)
+    if (cleaned.length === 0) {
+      setError("Add at least one line item with a description and amount.")
+      return
+    }
+    const days = Number(daysUntilDue)
+    if (!Number.isFinite(days) || days < 0 || days > 90) {
+      setError("Due date must be between 0 and 90 days from today.")
+      return
+    }
+
+    setStep("sending")
+    try {
+      const res = await fetch(`/api/clients/${mondayItemId}/create-invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send", items: cleaned, daysUntilDue: days }),
       })
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean
@@ -207,25 +274,34 @@ export function CreateInvoiceDialog({
       }
       if (!res.ok || !data.ok) {
         setError(data.error ?? "Failed to send invoice")
+        setStep("preview")
         return
       }
       setSuccess({ number: data.number ?? null, hostedUrl: data.hostedUrl ?? null })
+      setStep("success")
       router.refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send invoice")
-    } finally {
-      setSubmitting(false)
+      setStep("preview")
     }
   }
 
+  const inFlight = step === "previewing" || step === "sending"
+
   return (
-    <Dialog open onOpenChange={(o) => !o && !submitting && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && !inFlight && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Send invoice — {clientName}</DialogTitle>
+          <DialogTitle>
+            {step === "preview" || step === "sending"
+              ? `Review invoice — ${clientName}`
+              : step === "success"
+                ? `Invoice sent — ${clientName}`
+                : `Create invoice — ${clientName}`}
+          </DialogTitle>
         </DialogHeader>
 
-        {success ? (
+        {step === "success" && success ? (
           <div className="space-y-3 py-2">
             <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-2">
               <Check className="h-4 w-4" />
@@ -246,7 +322,130 @@ export function CreateInvoiceDialog({
               <Button size="sm" onClick={onClose}>Close</Button>
             </div>
           </div>
+        ) : step === "preview" || step === "sending" ? (
+          // Preview screen — the actual customer-facing invoice as Stripe
+          // sees it before we finalize. Finance's last chance to catch a
+          // wrong customer, wrong BTW number, missing line, etc.
+          <div className="space-y-4">
+            {/* Customer block */}
+            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2.5 text-xs">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-1.5">Recipient</p>
+              <p className="font-medium text-sm text-foreground">{preview?.customer.name ?? "(no name)"}</p>
+              {preview?.customer.email && (
+                <p className="text-muted-foreground">{preview.customer.email}</p>
+              )}
+              {preview?.customer.address && (
+                <p className="text-muted-foreground mt-0.5">
+                  {[
+                    preview.customer.address.line1,
+                    preview.customer.address.line2,
+                    [preview.customer.address.postal_code, preview.customer.address.city].filter(Boolean).join(" "),
+                    preview.customer.address.country,
+                  ].filter(Boolean).join(", ")}
+                </p>
+              )}
+              {preview && preview.customer.taxIds.length > 0 && (
+                <p className="text-muted-foreground mt-1">
+                  {preview.customer.taxIds.map((t, i) => (
+                    <span key={i} className="mr-2">
+                      <span className="text-foreground/70 font-medium">{taxIdLabel(t.type)}</span> {t.value}
+                    </span>
+                  ))}
+                </p>
+              )}
+              {preview && preview.customer.taxIds.length === 0 && (
+                <p className="mt-1 inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+                  <AlertCircle className="h-3 w-3" />
+                  No tax ID on file for this customer
+                </p>
+              )}
+            </div>
+
+            {/* Line items as Stripe will render them */}
+            <div className="rounded-md border border-border/60">
+              <div className="px-3 py-2 border-b border-border/60 bg-muted/20">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium">Line items</p>
+              </div>
+              <div className="divide-y divide-border/40">
+                {preview?.lineItems.map((line, idx) => (
+                  <div key={idx} className="flex items-start justify-between gap-3 px-3 py-2 text-sm">
+                    <span className="text-foreground/90 leading-snug">{line.description}</span>
+                    <span className="tabular-nums shrink-0 text-foreground">{fmtEuro(line.amount)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="px-3 py-2 border-t border-border/60 space-y-1 text-sm">
+                {/* BTW row is ALWAYS rendered (even at 0%) so Finance sees
+                    the tax situation explicitly. The note below explains why
+                    it's 0% — reverse-charge with a valid BTW ID is fine,
+                    "no BTW + no tax ID" is a real red flag worth catching. */}
+                {(() => {
+                  const subtotal = preview?.subtotal ?? 0
+                  const tax = preview?.tax ?? 0
+                  const total = preview?.total ?? 0
+                  // Effective rate from what Stripe will actually charge —
+                  // single source of truth so the % matches the € amount.
+                  const ratePct = subtotal > 0 ? Math.round((tax / subtotal) * 1000) / 10 : 0
+                  const rateLabel = ratePct === 0 ? "0%" : `${ratePct.toFixed(ratePct % 1 === 0 ? 0 : 1)}%`
+                  const hasTaxId = (preview?.customer.taxIds.length ?? 0) > 0
+                  return (
+                    <>
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>Subtotal (excl. BTW)</span>
+                        <span className="tabular-nums">{fmtEuro(subtotal)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-muted-foreground">
+                        <span>BTW ({rateLabel})</span>
+                        <span className="tabular-nums">{fmtEuro(tax)}</span>
+                      </div>
+                      <div className="flex items-center justify-between font-semibold pt-1 border-t border-border/40">
+                        <span>Total</span>
+                        <span className="tabular-nums">{fmtEuro(total)}</span>
+                      </div>
+                      {/* BTW interpretation — keeps Finance from having to
+                          read Stripe internals to know whether 0% is correct. */}
+                      {tax === 0 && hasTaxId && (
+                        <p className="text-[11px] text-muted-foreground/80 pt-1.5">
+                          Reverse charge — klant heeft een geldig BTW-nummer, geen BTW gerekend.
+                        </p>
+                      )}
+                      {tax === 0 && !hasTaxId && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1.5 inline-flex items-start gap-1">
+                          <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                          <span>Geen BTW gerekend en de klant heeft géén BTW-nummer op file — verifieer of dit klopt (volgens beleid moet hier 20% BG VAT op).</span>
+                        </p>
+                      )}
+                    </>
+                  )
+                })()}
+                {preview?.daysUntilDue != null && (
+                  <p className="text-[11px] text-muted-foreground/70 pt-1">
+                    Due in {preview.daysUntilDue} day{preview.daysUntilDue === 1 ? "" : "s"} from today.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {error && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                {error}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2">
+              <Button variant="ghost" size="sm" onClick={backToEdit} disabled={inFlight}>
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Back to edit
+              </Button>
+              <Button size="sm" onClick={sendInvoice} disabled={inFlight}>
+                {step === "sending" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Confirm &amp; send
+              </Button>
+            </div>
+          </div>
         ) : (
+          // Edit screen — same line-item form as before, but the primary
+          // action now creates a Stripe draft and transitions to preview.
           <div className="space-y-4">
             <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
               <p>
@@ -254,8 +453,8 @@ export function CreateInvoiceDialog({
                 <span className="font-mono">{stripeCustomerId}</span>
               </p>
               <p>
-                Double-check the line items below — clicking Send creates a real
-                Stripe invoice and emails it to the customer.
+                Add or edit line items, then click Preview to review the actual
+                invoice as the customer would see it before sending.
               </p>
             </div>
 
@@ -267,7 +466,7 @@ export function CreateInvoiceDialog({
                     value={item.description}
                     onChange={(e) => patchItem(item.id, { description: e.target.value })}
                     placeholder="Description"
-                    disabled={submitting}
+                    disabled={inFlight}
                     className="h-8 text-sm"
                   />
                   <div className="relative">
@@ -280,7 +479,7 @@ export function CreateInvoiceDialog({
                       value={item.amountEuro}
                       onChange={(e) => patchItem(item.id, { amountEuro: e.target.value })}
                       placeholder="0.00"
-                      disabled={submitting}
+                      disabled={inFlight}
                       className="h-8 pl-5 text-sm tabular-nums"
                     />
                   </div>
@@ -288,7 +487,7 @@ export function CreateInvoiceDialog({
                     size="icon-sm"
                     variant="ghost"
                     onClick={() => removeItem(item.id)}
-                    disabled={submitting || items.length === 1}
+                    disabled={inFlight || items.length === 1}
                     title={items.length === 1 ? "At least one line item is required" : "Remove line"}
                     className="text-muted-foreground hover:text-destructive"
                   >
@@ -297,7 +496,7 @@ export function CreateInvoiceDialog({
                   </Button>
                 </div>
               ))}
-              <Button size="sm" variant="ghost" onClick={addItem} disabled={submitting}>
+              <Button size="sm" variant="ghost" onClick={addItem} disabled={inFlight}>
                 <Plus className="h-3.5 w-3.5" />
                 Add line
               </Button>
@@ -313,12 +512,12 @@ export function CreateInvoiceDialog({
                   max={90}
                   value={daysUntilDue}
                   onChange={(e) => setDaysUntilDue(e.target.value)}
-                  disabled={submitting}
+                  disabled={inFlight}
                   className="h-8 tabular-nums"
                 />
               </div>
               <div className="text-right">
-                <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-medium">Total</p>
+                <p className="text-[11px] text-muted-foreground/70 uppercase tracking-wider font-medium">Subtotal</p>
                 <p className="text-xl font-semibold tabular-nums">{fmtEuro(total)}</p>
               </div>
             </div>
@@ -330,12 +529,12 @@ export function CreateInvoiceDialog({
             )}
 
             <div className="flex items-center justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={onClose} disabled={submitting}>
+              <Button variant="ghost" size="sm" onClick={onClose} disabled={inFlight}>
                 Cancel
               </Button>
-              <Button size="sm" onClick={send} disabled={submitting}>
-                {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Send invoice
+              <Button size="sm" onClick={fetchPreview} disabled={inFlight}>
+                {step === "previewing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Preview
               </Button>
             </div>
           </div>

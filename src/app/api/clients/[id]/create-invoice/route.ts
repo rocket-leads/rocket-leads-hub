@@ -3,9 +3,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import {
   createAndSendInvoice,
+  fetchInvoicePreview,
   fetchAllRecentInvoices,
   fetchBillingSummary,
   type BillingSummary,
+  type InvoiceDraftPreview,
   type PastInvoice,
 } from "@/lib/integrations/stripe"
 import { fetchBothBoards } from "@/lib/integrations/monday"
@@ -16,34 +18,39 @@ import { ADMIN_LABELS } from "@/lib/clients/administration"
 import { readCache, writeCache } from "@/lib/cache"
 
 /**
- * Send a Stripe invoice for a client straight from the Hub. Open to anyone
- * with a Hub session — billing flows are visible to finance / members /
- * admins (same trust level as opening /billing).
+ * Two-step Finance approval flow for sending a Stripe invoice from the Hub.
  *
- * The body is the user-confirmed line items; we don't fabricate amounts on
- * the server because finance is expected to double-check them in the dialog
- * before pressing Send. We DO re-resolve the Stripe customer id from the
- * Monday item id so a stale client-side state can't be tricked into sending
- * an invoice to the wrong customer.
+ *   1. `action: "preview"` — read-only fetch of the Stripe customer +
+ *      tax IDs, paired with form-side line-item totals. NO draft is
+ *      created; Stripe sees nothing until the user approves and sends.
+ *   2. `action: "send"` — atomic draft → finalize → email via Stripe's
+ *      hosted template, followed by all post-send refreshes (cycle
+ *      advance, Monday admin stamp, billing-summary + past-invoices
+ *      cache rebuild). On send failure the draft is voided automatically.
  *
- * After a successful send, this also:
- *   1. Advances the client's `cycle_start_date` by one month (the derived
- *      invoice date follows automatically via the edit pipeline + sibling
- *      sync, so multi-campaign clients all roll forward together).
- *   2. Refreshes the Stripe `billing_summaries` cache for this customer so
- *      the parent row's "Open · €X" pill flips to "Paid up" / new outstanding
- *      without waiting for the hourly cron.
- *   3. Refreshes the global `past_invoices` cache so the just-sent invoice
- *      shows up under the Past tab on next render.
+ * Legacy callers (no `action` field) get treated as `send` for backward-
+ * compat, since the previous behaviour was one-shot create+send.
  *
- * Each post-send step is best-effort — if any fails, the invoice still went
- * out and finance can hit the Refresh button manually. We log + continue
- * rather than returning an error after a successful Stripe send.
+ * Open to anyone with a Hub session — billing flows are visible to
+ * finance / members / admins (same trust level as opening /billing). We
+ * re-resolve the Stripe customer id from the Monday item id on every
+ * action so a stale client-side state can't redirect the invoice.
  */
-type Body = {
+type PreviewBody = {
+  action: "preview"
+  items: Array<{ description?: string; amountEuro?: number | string }>
+  daysUntilDue?: number
+}
+type SendBody = {
+  action: "send"
+  items: Array<{ description?: string; amountEuro?: number | string }>
+  daysUntilDue?: number
+}
+type LegacyBody = {
   items?: Array<{ description?: string; amountEuro?: number | string }>
   daysUntilDue?: number
 }
+type Body = PreviewBody | SendBody | LegacyBody
 
 export async function POST(
   req: NextRequest,
@@ -63,13 +70,9 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  if (!Array.isArray(body.items) || body.items.length === 0) {
-    return NextResponse.json({ error: "items[] is required" }, { status: 400 })
-  }
-
   // Server-side authoritative customer id — pulled from Supabase by the
-  // Monday item id rather than trusted from the request, so a tampered client
-  // state can't redirect the invoice.
+  // Monday item id rather than trusted from the request, so a tampered
+  // client state can't redirect the invoice.
   const supabase = await createAdminClient()
   const { data: client } = await supabase
     .from("clients")
@@ -87,25 +90,47 @@ export async function POST(
     )
   }
 
-  // Coerce numeric amounts coming from JSON (could be string from form input).
-  const items = body.items.map((i) => ({
+  const action = "action" in body ? body.action : "send"
+
+  // Items + due-days are validated the same way for preview and send.
+  const rawItems = (body as { items?: Array<{ description?: string; amountEuro?: number | string }> }).items
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return NextResponse.json({ error: "items[] is required" }, { status: 400 })
+  }
+  const items = rawItems.map((i) => ({
     description: String(i.description ?? "").trim(),
     amountEuro: typeof i.amountEuro === "string" ? Number(i.amountEuro) : Number(i.amountEuro ?? 0),
   }))
-
   if (items.some((i) => !Number.isFinite(i.amountEuro))) {
     return NextResponse.json({ error: "Invalid line item amount" }, { status: 400 })
   }
 
+  // ── action: preview ─ read-only fetch + local totals, no Stripe mutation ─
+  if (action === "preview") {
+    let preview: InvoiceDraftPreview
+    try {
+      preview = await fetchInvoicePreview({
+        customerId: client.stripe_customer_id,
+        items,
+        daysUntilDue: body.daysUntilDue,
+        cycleStartDate: (client.cycle_start_date as string | null) ?? null,
+      })
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Failed to build invoice preview" },
+        { status: 500 },
+      )
+    }
+    return NextResponse.json({ ok: true, ...preview })
+  }
+
+  // ── action: send ─ create + finalize + email + post-send refreshes ──
   let result: Awaited<ReturnType<typeof createAndSendInvoice>>
   try {
     result = await createAndSendInvoice({
       customerId: client.stripe_customer_id,
       items,
       daysUntilDue: body.daysUntilDue,
-      // Pass the current cycle so Stripe stamps the line items with the
-      // period this invoice covers ("26 May – 25 Jun 2026"). Falls back to
-      // no period block when the row has no cycle yet.
       cycleStartDate: (client.cycle_start_date as string | null) ?? null,
     })
   } catch (e) {
@@ -148,11 +173,6 @@ export async function POST(
   }
 
   // 1a. Refresh the Monday boards cache when we just wrote a new cycle.
-  // updateClientField mirrors to Supabase + syncs siblings, but the
-  // `monday_boards` cache (read by the Billing page on next render) is only
-  // refreshed by the hourly cron + the manual Refresh button. Without this,
-  // the user would still see the old cycle/invoice date on `router.refresh()`
-  // — making it look like nothing changed even though the invoice went out.
   if (cycleWritten) {
     try {
       const { onboarding, current } = await fetchBothBoards()
@@ -182,8 +202,6 @@ export async function POST(
   }
 
   // 3. Refresh past_invoices so the just-sent invoice appears under Past tab.
-  // Full re-fetch (180-day window) — single Stripe API call, ~1-2s. Cheaper
-  // than reasoning about how to splice a single new invoice into the cache.
   try {
     const pastInvoices: PastInvoice[] = await fetchAllRecentInvoices(180)
     await writeCache("past_invoices", pastInvoices)
