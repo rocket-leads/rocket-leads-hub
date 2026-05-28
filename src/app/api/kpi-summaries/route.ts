@@ -33,6 +33,13 @@ export type KpiSummary = {
    * from "Monday CRM connected but empty".
    */
   mondayCrmConnected?: boolean
+  /** True when the Meta insights fetch threw / errored for this client during this
+   *  cron run. Distinguishes "Meta reports €0 spend" (legitimate) from "Meta is down"
+   *  (data-unknown) — downstream categorize() skips its live-but-dark trigger when
+   *  this is true so a Meta outage doesn't blanket every Live client into Action and
+   *  poison the watchlist_client_state table that the morning Slack digest reads.
+   *  Only set on the cron-written cache entries; never present on live-fetch responses. */
+  metaFetchFailed?: boolean
   /**
    * Per-day spend & leads for the trailing 14 days, sorted oldest → newest. Used to render
    * inline sparklines in the Watch List. Days with no Meta activity are filled with zeros so

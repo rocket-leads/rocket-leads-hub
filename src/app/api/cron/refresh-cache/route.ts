@@ -235,9 +235,20 @@ export async function GET(req: NextRequest) {
           type MondayResult = { ok: boolean; items: MondayItems }
 
           // One 365d Meta fetch covers all date-range queries we'll ever need.
+          // metaFetchFailed mirrors the `monday.ok` pattern — a Meta outage used
+          // to silently produce zero-spend rows for every client, which then
+          // tripped `detectLiveButDark` for every Live client and blanket-flagged
+          // them as Action in `watchlist_client_state`. Tracking the failure
+          // lets the categorizer + state writer treat "no data" differently
+          // from "data shows zero".
+          let metaFetchFailed = false
           const [dailyInsights, monday] = await Promise.all([
             shouldFetchMeta
-              ? fetchMetaInsightsDaily(client.metaAdAccountId, dailyHistoryRange.startDate, dailyHistoryRange.endDate).catch(() => [])
+              ? fetchMetaInsightsDaily(client.metaAdAccountId, dailyHistoryRange.startDate, dailyHistoryRange.endDate).catch((e) => {
+                  console.error("Meta fetch failed for", client.metaAdAccountId, e instanceof Error ? e.message : e)
+                  metaFetchFailed = true
+                  return []
+                })
               : Promise.resolve([]),
             client.clientBoardId
               ? fetchClientBoardItems(client.clientBoardId)
@@ -312,6 +323,7 @@ export async function GET(req: NextRequest) {
               prevPeriodReliable,
               ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
               ...(metaFallback ? { metaFallback: true } : {}),
+              ...(metaFetchFailed ? { metaFetchFailed: true } : {}),
               mondayCrmConnected: monday.ok,
               ...(dailyTrend ? { dailyTrend } : {}),
             } as KpiSummary,

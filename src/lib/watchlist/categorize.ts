@@ -285,6 +285,12 @@ export function detectLiveButDark(
   extras: CategorizeExtras | undefined,
 ): boolean {
   if (!extras || extras.clientStatus !== "live") return false
+  // If the Meta fetch failed for this client during the most recent cron, we
+  // genuinely don't know whether the client is dark — every dailyTrend day
+  // would be 0 simply because we have no data. Treating that as "dark"
+  // blanket-flagged every Live client as Action on the Meta outage of
+  // 2026-05-28 and the morning Slack digest reported 47 action / 0 healthy.
+  if (kpi?.metaFetchFailed) return false
   const trend = kpi?.dailyTrend
   if (!trend || trend.length === 0) return false
   const last = trend[trend.length - 1]
@@ -572,9 +578,19 @@ export async function updateWatchlistClientState(
 
   const upserts: Array<{ monday_item_id: string; category: string; prev_category: string | null; since_date: string; updated_at: string }> = []
   const nowIso = new Date().toISOString()
+  let skippedDueToMetaFailure = 0
 
   for (const client of clients) {
     const kpi = kpiSummaries[client.mondayItemId]
+    // Skip clients whose Meta fetch failed this run — categorize() would have
+    // forced them into the "no-data" or live-but-dark paths with zero-spend
+    // input that doesn't reflect reality, and the resulting state write would
+    // poison the morning Slack digest the next time it reads this table.
+    // Preserve the prior categorization until the next successful fetch.
+    if (kpi?.metaFetchFailed) {
+      skippedDueToMetaFailure++
+      continue
+    }
     const clientStatus = statusByClient?.get(client.mondayItemId) ?? null
     // categorize() takes a full MondayClient; only `metaAdAccountId` and `mondayItemId`
     // are read, so a minimal cast is safe here.
@@ -591,6 +607,12 @@ export async function updateWatchlistClientState(
     } else if (prev.category !== category) {
       upserts.push({ monday_item_id: client.mondayItemId, category, prev_category: prev.category, since_date: today, updated_at: nowIso })
     }
+  }
+
+  if (skippedDueToMetaFailure > 0) {
+    console.warn(
+      `[watchlist_client_state] skipped ${skippedDueToMetaFailure}/${clients.length} client state writes — Meta fetch failed for those clients. Prior state preserved.`,
+    )
   }
 
   if (upserts.length === 0) return { written: 0 }
