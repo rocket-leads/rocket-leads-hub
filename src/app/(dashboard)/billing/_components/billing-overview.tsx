@@ -183,27 +183,24 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
       continue
     }
 
-    // "Needs attention" — a Live client with no recent invoice sent AND
-    // either a past invoice date or no invoice date at all. Surfaces the
-    // ProSteal-class issues Roy flagged 2026-06-03: campaign is live, finance
-    // think the invoice went out (or there was never a cycle date), but no
-    // Stripe activity. Either finance forgot to send OR the cycle never got
-    // set up — both need a human to look. Live-only because onboarding /
-    // on-hold / churned legitimately have no invoice date or no recent send.
+    // "Needs attention" — Live client without a `cycleStartDate` filled in.
+    // The cycle drives `nextInvoiceDate` (cycle - 7d); without it there's
+    // nothing to bucket against and nothing to auto-advance after a send,
+    // so finance has to manually set one before any of the other flows
+    // work. Different problem from Overdue (which is "cycle is set, date
+    // has passed"), so they belong in separate buckets. Roy 2026-06-03.
     const isLive = group.primary.campaignStatus === "live"
-    const hasRecentInvoice = group.primary.paymentStatus === "open" || group.primary.paymentStatus === "overdue"
-    const invoiceDate = new Date(group.primary.nextInvoiceDate)
-    const invoiceDateValid = !Number.isNaN(invoiceDate.getTime())
-    invoiceDate.setHours(0, 0, 0, 0)
-    const invoiceDatePast = invoiceDateValid && invoiceDate.getTime() < todayMs
-    if (isLive && !hasRecentInvoice && (!invoiceDateValid || invoiceDatePast)) {
+    const cycleStart = group.primary.cycleStartDate
+    const cycleMissing = !cycleStart || Number.isNaN(new Date(cycleStart).getTime())
+    if (isLive && cycleMissing) {
       buckets.needs_attention.push(group)
       continue
     }
 
-    const d = invoiceDate
-    if (!invoiceDateValid) continue // no date and not Live → nothing to bucket on
-    const ms = d.getTime()
+    const invoiceDate = new Date(group.primary.nextInvoiceDate)
+    if (Number.isNaN(invoiceDate.getTime())) continue // no usable date and not flagged above → nothing to bucket
+    invoiceDate.setHours(0, 0, 0, 0)
+    const ms = invoiceDate.getTime()
     if (ms < todayMs) buckets.overdue.push(group)
     else if (ms === todayMs) buckets.today.push(group)
     else if (ms <= endOfThisWeek) buckets.this_week.push(group)
@@ -212,10 +209,10 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
   }
 
   const all: Bucket[] = [
-    // Needs attention sits at the top — these are the "something's broken"
-    // cases (live client, past or missing invoice date, nothing sent).
-    // Red + alert tone so finance can't miss it.
-    { key: "needs_attention", label: "Needs attention", hint: "Live client · invoice date past or missing · no recent invoice sent", tone: "text-red-500", groups: buckets.needs_attention },
+    // Needs attention sits at the top — Live clients without a cycle start
+    // date set. Nothing else can run (invoice date can't derive, auto-
+    // advance after send has no anchor) until finance fills it in.
+    { key: "needs_attention", label: "Needs attention", hint: "Live client · no cycle start date set", tone: "text-red-500", groups: buckets.needs_attention },
     { key: "hold", label: "On hold", hint: "Manually parked by finance", tone: "text-violet-500", groups: buckets.hold },
     { key: "overdue", label: "Overdue", hint: "Past their next-invoice date", tone: "text-red-500", groups: buckets.overdue },
     { key: "today", label: "Today", hint: "Send today", tone: "text-amber-500", groups: buckets.today },
