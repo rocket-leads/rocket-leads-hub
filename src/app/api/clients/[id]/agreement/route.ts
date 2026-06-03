@@ -56,6 +56,32 @@ export async function PUT(
 
   try {
     await saveAgreement(mondayItemId, body, session.user.id)
+
+    // Mirror the displayed fee + ad_budget back to Monday so the two surfaces
+    // never drift. See the PATCH branch below for the rationale + risk model.
+    try {
+      await updateClientField(mondayItemId, {
+        fieldKey: "service_fee",
+        value: String(agreementMonthly(body)),
+      })
+    } catch (e) {
+      console.error(
+        `[agreement PUT] Monday service_fee write-back failed for ${mondayItemId}:`,
+        e instanceof Error ? e.message : e,
+      )
+    }
+    try {
+      await updateClientField(mondayItemId, {
+        fieldKey: "ad_budget",
+        value: String(body.ad_budget),
+      })
+    } catch (e) {
+      console.error(
+        `[agreement PUT] Monday ad_budget write-back failed for ${mondayItemId}:`,
+        e instanceof Error ? e.message : e,
+      )
+    }
+
     return NextResponse.json({ ok: true })
   } catch (e) {
     return NextResponse.json(
@@ -145,6 +171,42 @@ export async function PATCH(
     }
 
     await saveAgreement(mondayItemId, next, session.user.id)
+
+    // Mirror the Hub-side change back to Monday's `service_fee` / `ad_budget`
+    // columns so the two surfaces match 1:1. The Hub agreement model is richer
+    // (platforms / follow-up / etc.) than Monday's single-number columns, but
+    // the *displayed total* on the Billing page is what finance + AMs see in
+    // Monday too, so writing `agreementMonthly(next)` for the fee field and
+    // `next.ad_budget` directly for the ad-budget field keeps them in lockstep.
+    //
+    // Best-effort: a Monday API hiccup logs + continues; the agreement is
+    // already saved in Supabase (which is what the Hub renders from), so the
+    // user-visible change went through.
+    if (body.field === "fee") {
+      try {
+        await updateClientField(mondayItemId, {
+          fieldKey: "service_fee",
+          value: String(agreementMonthly(next)),
+        })
+      } catch (e) {
+        console.error(
+          `[agreement] Monday service_fee write-back failed for ${mondayItemId}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    } else {
+      try {
+        await updateClientField(mondayItemId, {
+          fieldKey: "ad_budget",
+          value: String(next.ad_budget),
+        })
+      } catch (e) {
+        console.error(
+          `[agreement] Monday ad_budget write-back failed for ${mondayItemId}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
 
     // Setting an ad budget > 0 on a client that's not on the RL ad account
     // implies "RL is now invoicing for ads", which only makes sense if the ads

@@ -119,7 +119,7 @@ export type UpcomingInvoice = {
 }
 
 type Bucket = {
-  key: "hold" | "overdue" | "today" | "this_week" | "next_week"
+  key: "needs_attention" | "hold" | "overdue" | "today" | "this_week" | "next_week"
   label: string
   hint: string
   tone: string
@@ -157,6 +157,7 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
   const endOfNextWeek = endOfThisWeek + 7 * dayMs
 
   const buckets: Record<Bucket["key"], BillingGroup[]> = {
+    needs_attention: [],
     hold: [],
     overdue: [],
     today: [],
@@ -181,8 +182,27 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
       buckets.hold.push(group)
       continue
     }
-    const d = new Date(group.primary.nextInvoiceDate)
-    d.setHours(0, 0, 0, 0)
+
+    // "Needs attention" — a Live client with no recent invoice sent AND
+    // either a past invoice date or no invoice date at all. Surfaces the
+    // ProSteal-class issues Roy flagged 2026-06-03: campaign is live, finance
+    // think the invoice went out (or there was never a cycle date), but no
+    // Stripe activity. Either finance forgot to send OR the cycle never got
+    // set up — both need a human to look. Live-only because onboarding /
+    // on-hold / churned legitimately have no invoice date or no recent send.
+    const isLive = group.primary.campaignStatus === "live"
+    const hasRecentInvoice = group.primary.paymentStatus === "open" || group.primary.paymentStatus === "overdue"
+    const invoiceDate = new Date(group.primary.nextInvoiceDate)
+    const invoiceDateValid = !Number.isNaN(invoiceDate.getTime())
+    invoiceDate.setHours(0, 0, 0, 0)
+    const invoiceDatePast = invoiceDateValid && invoiceDate.getTime() < todayMs
+    if (isLive && !hasRecentInvoice && (!invoiceDateValid || invoiceDatePast)) {
+      buckets.needs_attention.push(group)
+      continue
+    }
+
+    const d = invoiceDate
+    if (!invoiceDateValid) continue // no date and not Live → nothing to bucket on
     const ms = d.getTime()
     if (ms < todayMs) buckets.overdue.push(group)
     else if (ms === todayMs) buckets.today.push(group)
@@ -192,6 +212,10 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
   }
 
   const all: Bucket[] = [
+    // Needs attention sits at the top — these are the "something's broken"
+    // cases (live client, past or missing invoice date, nothing sent).
+    // Red + alert tone so finance can't miss it.
+    { key: "needs_attention", label: "Needs attention", hint: "Live client · invoice date past or missing · no recent invoice sent", tone: "text-red-500", groups: buckets.needs_attention },
     { key: "hold", label: "On hold", hint: "Manually parked by finance", tone: "text-violet-500", groups: buckets.hold },
     { key: "overdue", label: "Overdue", hint: "Past their next-invoice date", tone: "text-red-500", groups: buckets.overdue },
     { key: "today", label: "Today", hint: "Send today", tone: "text-amber-500", groups: buckets.today },

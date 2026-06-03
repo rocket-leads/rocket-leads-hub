@@ -163,7 +163,7 @@ export function CreateInvoiceDialog({
   // State machine — exactly one of these is the active state.
   const [step, setStep] = useState<"edit" | "previewing" | "preview" | "sending" | "success">("edit")
   const [preview, setPreview] = useState<InvoiceDraftPreview | null>(null)
-  const [success, setSuccess] = useState<{ number: string | null; hostedUrl: string | null } | null>(null)
+  const [success, setSuccess] = useState<{ number: string | null; hostedUrl: string | null; warnings: string[] } | null>(null)
 
   const total = useMemo(
     () =>
@@ -270,6 +270,7 @@ export function CreateInvoiceDialog({
         ok?: boolean
         number?: string | null
         hostedUrl?: string | null
+        postSendWarnings?: string[]
         error?: string
       }
       if (!res.ok || !data.ok) {
@@ -277,7 +278,11 @@ export function CreateInvoiceDialog({
         setStep("preview")
         return
       }
-      setSuccess({ number: data.number ?? null, hostedUrl: data.hostedUrl ?? null })
+      setSuccess({
+        number: data.number ?? null,
+        hostedUrl: data.hostedUrl ?? null,
+        warnings: data.postSendWarnings ?? [],
+      })
       setStep("success")
       router.refresh()
     } catch (e) {
@@ -307,6 +312,26 @@ export function CreateInvoiceDialog({
               <Check className="h-4 w-4" />
               Invoice {success.number ?? "draft"} sent to the customer.
             </div>
+
+            {/* Post-send Monday sync warnings — surfaced so finance knows when
+                the admin column / invoice date didn't auto-update and a manual
+                touch in Monday is needed. Without this, ProSteal-style issues
+                (Stripe send OK, Monday status stuck on "Overdue", invoice date
+                not advanced) silently rot until someone notices. */}
+            {success.warnings.length > 0 && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                <p className="font-medium inline-flex items-center gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  Stripe send went through, but Monday didn't fully sync:
+                </p>
+                <ul className="list-disc pl-5 space-y-0.5">
+                  {success.warnings.map((w, idx) => (
+                    <li key={idx}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="flex items-center justify-end gap-2">
               {success.hostedUrl && (
                 <a

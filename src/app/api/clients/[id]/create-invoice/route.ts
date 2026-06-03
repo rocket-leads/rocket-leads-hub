@@ -140,14 +140,26 @@ export async function POST(
     )
   }
 
-  // ---- Post-send actions (best effort) ----
+  // ---- Post-send actions (best effort, but surfaced) ----
+  // 2026-06-03: Roy reported ProSteal got an invoice sent from Hub but the
+  // Monday admin status stayed "Overdue" and the invoice date didn't advance.
+  // Likely cause: one of these Monday writes silently failed (Monday API
+  // hiccup) — the previous code logged + continued, so finance had no way to
+  // know which sync step didn't take. Collect any failure as a warning and
+  // include it in the response so the dialog can surface it on the success
+  // screen + finance can manually fix Monday before walking away.
+  const postSendWarnings: string[] = []
 
   // 0. Stamp the Monday "Administration" column to "Invoice send". Per Roy's
   // 2026-05-19 spec this is the one auto-target allowed to overwrite ANY
   // existing value (incl. Discuss first / Debt collection agencies) because
-  // "Stripe shipped the invoice" is an objective fact. Best-effort: a Monday
-  // write failure doesn't block the rest of the post-send flow.
-  await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
+  // "Stripe shipped the invoice" is an objective fact.
+  const adminWritten = await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
+  if (!adminWritten) {
+    postSendWarnings.push(
+      "Monday admin status could not be set to 'Invoice send' — update manually.",
+    )
+  }
 
   // 1. Advance cycle by one month. Skip when the row has no cycle yet —
   // there's nothing to advance and the next-render bucket is unaffected.
@@ -164,12 +176,19 @@ export async function POST(
         })
         cycleWritten = true
       } catch (e) {
-        console.error(
-          `[create-invoice] cycle advance failed for ${mondayItemId}:`,
-          e instanceof Error ? e.message : e,
+        const msg = e instanceof Error ? e.message : String(e)
+        console.error(`[create-invoice] cycle advance failed for ${mondayItemId}:`, msg)
+        postSendWarnings.push(
+          `Monday invoice date could not advance to ${newCycle} — update manually. (${msg})`,
         )
       }
     }
+  } else {
+    // No cycle yet means we won't advance one — surface it so finance can
+    // backfill the cycle date in Monday if they expected the auto-advance.
+    postSendWarnings.push(
+      "Client has no cycle date in Monday — invoice date won't auto-advance until one is set.",
+    )
   }
 
   // 1a. Refresh the Monday boards cache when we just wrote a new cycle.
@@ -220,5 +239,10 @@ export async function POST(
     // Silent — this is just a UI hint, not load-bearing.
   }
 
-  return NextResponse.json({ ok: true, ...result, newCycleStartDate: newCycle })
+  return NextResponse.json({
+    ok: true,
+    ...result,
+    newCycleStartDate: newCycle,
+    postSendWarnings,
+  })
 }
