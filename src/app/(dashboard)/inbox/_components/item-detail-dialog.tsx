@@ -15,6 +15,7 @@ import type { InboxComment, InboxItem, InboxKind, InboxSource, TaskStatus } from
 import type { CurrentUser, InboxUser } from "./inbox-view"
 import { LinkTrengoContactDialog } from "./link-trengo-dialog"
 import { SourcePill } from "./source-pill"
+import { TimelineTab } from "@/app/(dashboard)/clients/[id]/_components/timeline-tab"
 
 type Props = {
   itemId: string
@@ -611,6 +612,17 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               </div>
             )}
 
+            {/* Client timeline — collapsible section under tasks + updates so
+                the AM/CM can see the recent Monday updates, Trengo/Slack chats,
+                and meetings around this client without leaving the dialog. Roy
+                2026-05-28: "een soort timeline van de klant inladen waar alle
+                Monday-updates en clientcommunicaties staan. Dan heb je iets
+                meer context." Only renders when the item is linked to a client
+                — there's nothing meaningful to scope to on unlinked items. */}
+            {(isTask || isUpdate) && item.clientId && (
+              <ClientTimelineSection clientId={item.clientId} />
+            )}
+
             {hasDraft && (
               <div className="border-t border-border/40 pt-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 mb-2 inline-flex items-center gap-1.5">
@@ -1171,6 +1183,49 @@ function CommentThread({
  *   - update  → blue (informational)
  *   - chat    → muted (we rarely render this — chat lives in Client/Team Inbox)
  */
+/** Collapsible "Client timeline" section rendered under the task / update
+ *  detail. Wraps the canonical TimelineTab (same data source as the client
+ *  detail page's Timeline tab) so the AM/CM doesn't have to navigate away
+ *  to see recent Monday updates, Trengo / Slack chats, and meetings around
+ *  the current item's client.
+ *
+ *  Default-collapsed: timeline can be heavy (full client history) and the
+ *  user opens the inbox item for the item itself first — context is on
+ *  demand. Toggle is local state; closing the dialog resets it on next open. */
+function ClientTimelineSection({ clientId }: { clientId: string }) {
+  // Default open — Roy wants the timeline visible as a scroll-down second
+  // section, not hidden behind a click. The chevron stays as an escape hatch
+  // for when the panel feels too busy on small viewports.
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="border-t border-border/40 pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center justify-between w-full text-left group"
+      >
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground/40 inline-flex items-center gap-1.5">
+          <MessagesSquare className="h-3 w-3" />
+          Client timeline
+        </span>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        // TimelineTab renders its own filter chips + grouped entries. Wrap
+        // in a top-margin so the heading and content don't crash together.
+        <div className="mt-3">
+          <TimelineTab mondayItemId={clientId} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function KindBanner({
   kind,
   source,
