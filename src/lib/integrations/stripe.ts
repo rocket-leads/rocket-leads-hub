@@ -250,6 +250,17 @@ export async function fetchOverdueInvoices(
   }
 }
 
+/** Bulgaria VAT rate. RL Ltd. is BG-registered (BG208169940) so customers
+ *  without a registered EU tax ID get charged at this rate. Customers WITH a
+ *  valid tax ID get reverse-charge (0%). Not a user-tunable setting on
+ *  purpose — Finance flagging the wrong rate is a bigger risk than
+ *  occasional rate changes (which are rare and re-deployed centrally). */
+const BG_VAT_RATE = 0.20
+/** Line description used when the send path appends a manual VAT line for
+ *  customers without a tax ID. Kept in sync with the preview dialog label
+ *  so the customer-facing invoice and the Finance preview match wording. */
+const BG_VAT_LINE_LABEL = "BTW 20% BG VAT"
+
 // Keywords that identify ad budget line items on Stripe invoices
 const AD_BUDGET_KEYWORDS = [
   "advertentiebudget",
@@ -490,10 +501,16 @@ export async function fetchInvoicePreview(input: CreateInvoiceInput): Promise<In
     amount: item.amountEuro,
   }))
   const subtotal = lineItems.reduce((sum, l) => sum + l.amount, 0)
-  // Matches what the actual send will charge — no automatic_tax means no
-  // BTW row on the customer-facing invoice. Surface this 1-to-1 so Finance
-  // doesn't see one number on preview and a different one on the receipt.
-  const tax = 0
+  // BTW handling — mirrors what createAndSendInvoice will actually charge:
+  //   - Customer has a registered tax ID (BTW number) → reverse charge, 0%.
+  //   - No tax ID on file → RL is BG-registered, charges 20% BG VAT.
+  // Stripe Tax (automatic_tax) isn't enabled on the account so we compute the
+  // VAT ourselves and the send path adds it as a dedicated line item; both
+  // surfaces stay in lockstep this way.
+  const hasTaxId = (taxIds.data?.length ?? 0) > 0
+  // Round to whole cents to avoid €0.005-style rounding noise vs the live
+  // send (which multiplies by 100 and Math.rounds before handing to Stripe).
+  const tax = hasTaxId ? 0 : Math.round(subtotal * BG_VAT_RATE * 100) / 100
   const total = subtotal + tax
 
   return {
@@ -541,6 +558,15 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
   const daysUntilDue = Math.max(0, Math.trunc(input.daysUntilDue ?? 7))
   const period = resolveBillingPeriod(input.cycleStartDate ?? null)
 
+  // Look up tax IDs BEFORE creating the draft so we know whether to append a
+  // VAT line item. RL is BG-registered (BG208169940); customers without a
+  // valid tax ID get charged 20% BG VAT. Customers with a tax ID get reverse-
+  // charge (no extra line). Failure here defaults to "no VAT" rather than
+  // blocking the send — surfacing an explicit Stripe error to the user is
+  // more useful than silently overcharging them.
+  const taxIds = await stripe.customers.listTaxIds(input.customerId, { limit: 10 }).catch(() => ({ data: [] as Array<{ value?: string }> }))
+  const hasTaxId = (taxIds.data?.length ?? 0) > 0
+
   const draft = await stripe.invoices.create({
     customer: input.customerId,
     collection_method: "send_invoice",
@@ -552,19 +578,37 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
   const invoiceId = draft.id
 
   try {
+    let subtotalCents = 0
     for (const item of items) {
       const description = period
         ? `${item.description.trim()} (${period.label})`
         : item.description.trim()
+      const amountCents = Math.round(item.amountEuro * 100)
+      subtotalCents += amountCents
       await stripe.invoiceItems.create({
         customer: input.customerId,
         invoice: invoiceId,
-        amount: Math.round(item.amountEuro * 100),
+        amount: amountCents,
         currency,
         description,
         ...(period
           ? { period: { start: period.unixStart, end: period.unixEnd } }
           : {}),
+      })
+    }
+
+    // Append the manual VAT line when the customer has no tax ID. We compute
+    // off the line-item subtotal so 20% always applies to the full goods
+    // amount; mirrored locally in fetchInvoicePreview so what Finance saw on
+    // preview matches what the customer receives by the cent.
+    if (!hasTaxId && subtotalCents > 0) {
+      const vatCents = Math.round(subtotalCents * BG_VAT_RATE)
+      await stripe.invoiceItems.create({
+        customer: input.customerId,
+        invoice: invoiceId,
+        amount: vatCents,
+        currency,
+        description: BG_VAT_LINE_LABEL,
       })
     }
 

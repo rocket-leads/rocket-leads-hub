@@ -354,9 +354,14 @@ export function CreateInvoiceDialog({
                 </p>
               )}
               {preview && preview.customer.taxIds.length === 0 && (
-                <p className="mt-1 inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
-                  <AlertCircle className="h-3 w-3" />
-                  No tax ID on file for this customer
+                // Switched from amber-warning to a quieter info chip 2026-06-03:
+                // the send path now auto-applies 20% BG VAT when there's no
+                // tax ID (see stripe.ts) so this isn't a "Finance forgot
+                // something" alarm anymore — it's just context for the BTW row
+                // below. Amber stays on the BTW interpretation note where the
+                // policy choice actually surfaces.
+                <p className="mt-1 inline-flex items-center gap-1 text-muted-foreground/70 font-medium">
+                  No tax ID on file — 20% BG VAT will be added below.
                 </p>
               )}
             </div>
@@ -402,11 +407,22 @@ export function CreateInvoiceDialog({
                         <span>Total</span>
                         <span className="tabular-nums">{fmtEuro(total)}</span>
                       </div>
-                      {/* BTW interpretation — keeps Finance from having to
-                          read Stripe internals to know whether 0% is correct. */}
+                      {/* BTW interpretation — explains the rate Finance sees so
+                          the % isn't a black box. Three possible cases:
+                          - Has tax ID + 0% → reverse charge (correct).
+                          - No tax ID + 20% auto-applied → policy default; the
+                            send path adds a "BTW 20% BG VAT" line item so the
+                            customer sees the same breakdown.
+                          - No tax ID + 0% (legacy) → can happen on a malformed
+                            input; flagged amber as a manual-check signal. */}
                       {tax === 0 && hasTaxId && (
                         <p className="text-[11px] text-muted-foreground/80 pt-1.5">
                           Reverse charge — klant heeft een geldig BTW-nummer, geen BTW gerekend.
+                        </p>
+                      )}
+                      {tax > 0 && !hasTaxId && (
+                        <p className="text-[11px] text-muted-foreground/80 pt-1.5">
+                          20% BG VAT automatisch toegepast — klant heeft geen BTW-nummer op file. Komt als losse regel op de factuur.
                         </p>
                       )}
                       {tax === 0 && !hasTaxId && (

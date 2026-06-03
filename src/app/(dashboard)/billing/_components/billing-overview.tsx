@@ -443,7 +443,13 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
               mondayItemId={primary.mondayItemId}
               field="ad_budget"
               value={primary.usesRocketLeadsAdAccount ? primary.adBudget : 0}
-              editable={primary.usesRocketLeadsAdAccount}
+              // Always editable, even for clients running on their own ad account.
+              // Roy 2026-06-03: typing an amount here implies "RL is now invoicing
+              // for ad budget" which only makes sense if ads run through the RL ad
+              // account. The PATCH handler auto-flips meta_ad_account_id to the RL
+              // account when this field transitions from 0/empty → > 0 for a client
+              // not already on RL — so a single edit moves them over without the
+              // user having to also touch the ad-account field separately.
               placeholder={primary.usesRocketLeadsAdAccount ? "0" : "—"}
             />
           )}
@@ -538,7 +544,8 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
                 mondayItemId={sib.mondayItemId}
                 field="ad_budget"
                 value={sib.usesRocketLeadsAdAccount ? sib.adBudget : 0}
-                editable={sib.usesRocketLeadsAdAccount}
+                // Sibling-row cells follow the same edit-always rule as the
+                // primary row above (see comment there).
                 placeholder={sib.usesRocketLeadsAdAccount ? "0" : "—"}
               />
             </TableCell>

@@ -6,6 +6,9 @@ import {
   saveAgreement,
   type Agreement,
 } from "@/lib/clients/agreement"
+import { fetchClientById } from "@/lib/integrations/monday"
+import { updateClientField } from "@/lib/clients/edit"
+import { isRocketLeadsAdAccount, ROCKET_LEADS_AD_ACCOUNT_ID } from "@/lib/clients/ad-account"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
@@ -142,6 +145,33 @@ export async function PATCH(
     }
 
     await saveAgreement(mondayItemId, next, session.user.id)
+
+    // Setting an ad budget > 0 on a client that's not on the RL ad account
+    // implies "RL is now invoicing for ads", which only makes sense if the ads
+    // run through OUR account. Auto-flip the Monday ad-account column to the
+    // RL ad account so the client's pages + downstream KPI flows know to use
+    // the shared account from now on. Best-effort: a failure here doesn't roll
+    // back the agreement update (saving the amount is the load-bearing change;
+    // the ad-account flip is a convenience).
+    let flippedAdAccount = false
+    if (body.field === "ad_budget" && body.value > 0) {
+      try {
+        const client = await fetchClientById(mondayItemId)
+        if (client && !isRocketLeadsAdAccount(client.metaAdAccountId)) {
+          await updateClientField(mondayItemId, {
+            fieldKey: "meta_ad_account_id",
+            value: ROCKET_LEADS_AD_ACCOUNT_ID,
+          })
+          flippedAdAccount = true
+        }
+      } catch (e) {
+        console.error(
+          `[agreement] auto-flip meta_ad_account_id failed for ${mondayItemId}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
     // Return the resulting displayed values so the caller can confirm what was
     // saved without a separate fetch — useful when "fee" gets rewritten via
     // platform_fees.meta and the client's optimistic value might mismatch.
@@ -149,6 +179,7 @@ export async function PATCH(
       ok: true,
       fee: agreementMonthly(next),
       ad_budget: next.ad_budget,
+      flippedAdAccount,
     })
   } catch (e) {
     return NextResponse.json(
