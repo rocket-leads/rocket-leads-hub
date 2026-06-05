@@ -379,14 +379,11 @@ export function CreateInvoiceDialog({
                 </p>
               )}
               {preview && preview.customer.taxIds.length === 0 && (
-                // Switched from amber-warning to a quieter info chip 2026-06-03:
-                // the send path now auto-applies 20% BG VAT when there's no
-                // tax ID (see stripe.ts) so this isn't a "Finance forgot
-                // something" alarm anymore — it's just context for the BTW row
-                // below. Amber stays on the BTW interpretation note where the
-                // policy choice actually surfaces.
+                // Stripe `automatic_tax` handles the 20% BG VAT on send (no
+                // tax ID → BG origin default rate). This is just a heads-up
+                // for Finance so the BTW row below isn't a surprise.
                 <p className="mt-1 inline-flex items-center gap-1 text-muted-foreground/70 font-medium">
-                  No tax ID on file — 20% BG VAT will be added below.
+                  No tax ID on file — Stripe will charge 20% BG VAT.
                 </p>
               )}
             </div>
@@ -433,13 +430,14 @@ export function CreateInvoiceDialog({
                         <span className="tabular-nums">{fmtEuro(total)}</span>
                       </div>
                       {/* BTW interpretation — explains the rate Finance sees so
-                          the % isn't a black box. Three possible cases:
-                          - Has tax ID + 0% → reverse charge (correct).
-                          - No tax ID + 20% auto-applied → policy default; the
-                            send path adds a "BTW 20% BG VAT" line item so the
-                            customer sees the same breakdown.
-                          - No tax ID + 0% (legacy) → can happen on a malformed
-                            input; flagged amber as a manual-check signal. */}
+                          the % isn't a black box. Stripe `automatic_tax`
+                          drives the actual send; preview rules mirror that:
+                          - Has tax ID → reverse charge, 0%.
+                          - No tax ID → 20% BG VAT (BG origin default).
+                          The legacy "0% + no tax ID" case is no longer
+                          possible — Stripe will always apply the BG rate when
+                          there's no valid tax ID — but we keep an amber
+                          fallback in case the local mirror ever diverges. */}
                       {tax === 0 && hasTaxId && (
                         <p className="text-[11px] text-muted-foreground/80 pt-1.5">
                           Reverse charge — klant heeft een geldig BTW-nummer, geen BTW gerekend.
@@ -447,13 +445,13 @@ export function CreateInvoiceDialog({
                       )}
                       {tax > 0 && !hasTaxId && (
                         <p className="text-[11px] text-muted-foreground/80 pt-1.5">
-                          20% BG VAT automatisch toegepast — klant heeft geen BTW-nummer op file. Komt als losse regel op de factuur.
+                          20% BG VAT — Stripe rekent dit automatisch op de factuur (geen losse regel, wel zichtbaar als BTW-totaal).
                         </p>
                       )}
                       {tax === 0 && !hasTaxId && (
                         <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1.5 inline-flex items-start gap-1">
                           <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
-                          <span>Geen BTW gerekend en de klant heeft géén BTW-nummer op file — verifieer of dit klopt (volgens beleid moet hier 20% BG VAT op).</span>
+                          <span>Preview-mismatch: Stripe past 20% BG VAT toe op send. Controleer de definitieve factuur na verzenden.</span>
                         </p>
                       )}
                     </>
