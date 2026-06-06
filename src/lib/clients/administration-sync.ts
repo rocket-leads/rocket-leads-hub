@@ -42,7 +42,7 @@ export type AdminSyncInput = {
  * Precedence (top wins):
  *   1. campaign on hold              → Unholt
  *   2. Stripe says overdue           → Overdue
- *   3. Stripe says open              → Invoice send
+ *   3. Stripe says open              → Invoice sent
  *   4. cycle date reached + no Stripe open invoice → Send invoice
  *   5. Stripe says complete          → Payments complete
  *
@@ -108,26 +108,31 @@ export async function reconcileAdministrationForClient(
 /**
  * Force-write a target label, bypassing the auto-overwrite rules. Used by
  * event-driven callers that know the truth — e.g. after a successful Stripe
- * `createAndSendInvoice` we KNOW the admin should be "Invoice send", no
+ * `createAndSendInvoice` we KNOW the admin should be "Invoice sent", no
  * reason to consult Stripe state again.
  *
- * Same best-effort error handling as the reconcile variant.
+ * Returns `{ ok: true }` on success or `{ ok: false, error }` with the
+ * underlying Monday error message — callers surface it to finance so they
+ * know whether the column is unmapped, the label is unknown, the token's
+ * scope is wrong, etc. (Previously this returned a bare boolean and the
+ * real reason only showed up in server logs.)
  */
 export async function setAdministration(
   mondayItemId: string,
   target: AdminLabel,
-): Promise<boolean> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await updateClientField(mondayItemId, {
       fieldKey: "administration",
       label: target,
     })
-    return true
+    return { ok: true }
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
     console.error(
       `[admin-sync] force-write failed for ${mondayItemId} (${target}):`,
-      e instanceof Error ? e.message : e,
+      msg,
     )
-    return false
+    return { ok: false, error: msg }
   }
 }

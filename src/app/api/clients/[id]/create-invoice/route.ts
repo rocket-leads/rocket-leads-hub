@@ -150,14 +150,14 @@ export async function POST(
   // screen + finance can manually fix Monday before walking away.
   const postSendWarnings: string[] = []
 
-  // 0. Stamp the Monday "Administration" column to "Invoice send". Per Roy's
+  // 0. Stamp the Monday "Administration" column to "Invoice sent". Per Roy's
   // 2026-05-19 spec this is the one auto-target allowed to overwrite ANY
   // existing value (incl. Discuss first / Debt collection agencies) because
   // "Stripe shipped the invoice" is an objective fact.
-  const adminWritten = await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
-  if (!adminWritten) {
+  const adminResult = await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
+  if (!adminResult.ok) {
     postSendWarnings.push(
-      "Monday admin status could not be set to 'Invoice send' — update manually.",
+      `Monday admin status could not be set to 'Invoice sent' — update manually. (${adminResult.error})`,
     )
   }
 

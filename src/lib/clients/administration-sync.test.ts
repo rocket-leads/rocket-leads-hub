@@ -50,7 +50,7 @@ describe("targetAdminStatus", () => {
     expect(targetAdminStatus(input)).toBe(ADMIN_LABELS.overdue)
   })
 
-  it("returns Invoice send when Stripe has an open invoice", () => {
+  it("returns Invoice sent when Stripe has an open invoice", () => {
     const input = makeInput({ stripe: { status: "open" } })
     expect(targetAdminStatus(input)).toBe(ADMIN_LABELS.invoiceSend)
   })
@@ -97,7 +97,7 @@ describe("targetAdminStatus", () => {
 })
 
 describe("shouldAutoWriteAdministration", () => {
-  it("Invoice send always overwrites (Roy: Stripe shipping is objective fact)", () => {
+  it("Invoice sent always overwrites (Roy: Stripe shipping is objective fact)", () => {
     expect(
       shouldAutoWriteAdministration(ADMIN_LABELS.discussFirst, ADMIN_LABELS.invoiceSend),
     ).toBe(true)
@@ -109,7 +109,7 @@ describe("shouldAutoWriteAdministration", () => {
     ).toBe(true)
   })
 
-  it("non-Invoice-send targets do NOT overwrite manual flags", () => {
+  it("non-Invoice-sent targets do NOT overwrite manual flags", () => {
     expect(
       shouldAutoWriteAdministration(ADMIN_LABELS.discussFirst, ADMIN_LABELS.overdue),
     ).toBe(false)
@@ -153,7 +153,7 @@ describe("shouldAutoWriteAdministration", () => {
 
   it("case-insensitive on the current value (Monday case drift shouldn't trigger writes)", () => {
     expect(
-      shouldAutoWriteAdministration("INVOICE SEND", ADMIN_LABELS.invoiceSend),
+      shouldAutoWriteAdministration("INVOICE SENT", ADMIN_LABELS.invoiceSend),
     ).toBe(false)
     expect(
       shouldAutoWriteAdministration("discuss first", ADMIN_LABELS.overdue),

@@ -15,7 +15,7 @@ export const ADMIN_LABELS = {
   paymentsComplete: "Payments complete",
   onHold: "On hold",
   sendInvoice: "Send invoice",
-  invoiceSend: "Invoice send",
+  invoiceSend: "Invoice sent",
   discussFirst: "Discuss first",
   overdue: "Overdue",
   debtCollection: "Debt collection agencies",
@@ -53,7 +53,7 @@ const TONE_BY_LABEL: Record<AdminLabel, AdministrationTone> = {
  * auto-sync should casually overwrite. Stripe's "open invoice" signal is
  * the ONE exception: it represents an objective fact ("invoice has been
  * sent") that supersedes any in-progress flag, so the auto-sync for
- * `Invoice send` is allowed to overwrite these. Every other auto-target
+ * `Invoice sent` is allowed to overwrite these. Every other auto-target
  * (Overdue / Payments complete / Send invoice / Unholt) leaves them alone.
  */
 const MANUAL_LABELS_LOWER: ReadonlySet<string> = new Set([
@@ -119,7 +119,7 @@ export function administrationToneClass(tone: AdministrationTone): string {
  * Decide whether an auto-sync should overwrite the current admin value.
  *
  * Rule (per Roy 2026-05-19):
- *   - `Invoice send` ALWAYS overwrites — "Stripe shipped the invoice" is an
+ *   - `Invoice sent` ALWAYS overwrites — "Stripe shipped the invoice" is an
  *     objective fact that wins over any flag (incl. Discuss first / Debt
  *     collection agencies).
  *   - Any other target leaves the manual workflow flags alone (Discuss first,
