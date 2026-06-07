@@ -223,9 +223,12 @@ export async function buildWeeklyUpdateDraft(args: {
           .catch(() => null)
 
   // Always resolve the weekly template for WhatsApp. Email skips it.
-  // Overdue invoices fire in parallel — best-effort, [] on any Stripe
-  // failure so the rest of the pipeline still produces a draft.
-  const [kpi, pedro, waTemplate, hubUser, overdueInvoices] = await Promise.all([
+  // Overdue invoices + Trengo contact fire in parallel too — best-effort,
+  // null / [] on failure so the rest of the pipeline still produces a draft.
+  // (The Trengo contact used to be fetched sequentially AFTER this block,
+  // adding 200-800 ms of dialog open latency on top of the slowest call.
+  // Moving it into the all-batch shaves that off the user-visible wait.)
+  const [kpi, pedro, waTemplate, hubUser, overdueInvoices, trengoContact] = await Promise.all([
     kpiPromise,
     loadPedroBody(args.mondayItemId),
     isEmail
@@ -235,6 +238,9 @@ export async function buildWeeklyUpdateDraft(args: {
     client.stripeCustomerId
       ? fetchOverdueInvoices(client.stripeCustomerId).catch(() => [] as OverdueInvoice[])
       : Promise.resolve([] as OverdueInvoice[]),
+    client.trengoContactId
+      ? fetchTrengoContact(client.trengoContactId).catch(() => null)
+      : Promise.resolve(null),
   ])
 
   // AM first name for the email sign-off + WhatsApp preview. Prefer
@@ -263,15 +269,6 @@ export async function buildWeeklyUpdateDraft(args: {
       number: inv.number,
     })),
   })
-
-  // Fetch the Trengo contact (best-effort) so the dialog can render the
-  // outgoing email / phone for verification before the AM clicks Send.
-  // Cheap: shared 5-min trengoFetch cache + parallel with the rest of
-  // the pipeline. A missing contact / failed fetch falls back to nulls
-  // — the dialog handles those gracefully (just no "To:" label).
-  const trengoContact = client.trengoContactId
-    ? await fetchTrengoContact(client.trengoContactId)
-    : null
 
   return {
     parts: composed.parts,

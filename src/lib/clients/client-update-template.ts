@@ -190,6 +190,40 @@ function cplDeltaBullet(kpi: KpiSummary | null): string {
   return `• Verschil met vorige week: ${abs}% ${direction}`
 }
 
+/** Strip artefacts that make Pedro's conclusion contradict the KPI bullets
+ *  above it in the client-facing weekly update:
+ *
+ *  - `(7d)` / `(14d)` / `(prev 7d)` / `(30d)` / `(all-time)` window labels.
+ *    These are CM-internal and the AI prompt already forbids them in
+ *    client output, but Haiku violates it often enough that we need a
+ *    post-processing backstop.
+ *
+ *  - "... naar €12,71" specific CPL claims. Pedro's conclusion was
+ *    generated against the rolling 7d window from the daily cron; the
+ *    KPI bullets show last week's Mon-Sun window. Those two CPLs almost
+ *    always differ, so a sentence like "CPL is flink gedaald naar €12,71"
+ *    appearing right under "Kosten per lead: €8,46" reads as a
+ *    contradiction to the client. Stripping the trailing "naar €X,XX"
+ *    leaves the directional sentiment ("CPL is flink gedaald.") intact
+ *    while removing the conflicting number.
+ *
+ *  Used only when injecting Pedro's conclusion into the client-facing
+ *  weekly update — the watch list / CM views still get the original
+ *  text because CMs DO want the precise window labels.
+ */
+function sanitizePedroConclusionForClient(s: string): string {
+  return s
+    // Strip "(7d)" / "(14d)" / "(prev 7d)" / "(30d)" / "(all-time)" tags.
+    .replace(/\s*\((?:prev\s+)?(?:\d+d|all-time)\)/gi, "")
+    // Strip trailing "naar €X,XX" / "naar €X.XX" CPL specifics. Tolerates
+    // optional thousands separator and 0-2 decimals.
+    .replace(/\s+naar\s+€\s?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?/gi, "")
+    // Collapse the double-space / orphan-comma cases the strips can create.
+    .replace(/\s+([.,!?])/g, "$1")
+    .replace(/ {2,}/g, " ")
+    .trim()
+}
+
 function trendSentenceFor(kpi: KpiSummary | null): string {
   if (!kpi) return ""
   if (!kpi.prevCpl || kpi.prevPeriodReliable === false) return ""
@@ -341,7 +375,9 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
   // experienced them as one block and editing across two fields was
   // awkward. They're now merged here; trendSentence stays empty on
   // EditableParts so the rendered output isn't duplicated.
-  const pedroConclusion = input.pedro?.conclusion?.trim() ?? ""
+  const pedroConclusion = sanitizePedroConclusionForClient(
+    input.pedro?.conclusion?.trim() ?? "",
+  )
   const trendLine = trendSentenceFor(input.kpi)
   const bodyConclusion = pedroConclusion || defaultConclusion(input.kpi)
   const conclusion = noSignal

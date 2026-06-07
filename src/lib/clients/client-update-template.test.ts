@@ -241,6 +241,31 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
     expect(parts.actionsHeader).toBe("")
   })
 
+  it("strips window labels and mismatched-CPL claims from Pedro's conclusion before injecting", () => {
+    // Pedro generates its conclusion against the rolling 7d window from the
+    // daily cron, but the weekly update bullets show last week's Mon-Sun.
+    // The two CPLs almost never match, so a line like "CPL is flink gedaald
+    // naar €12,71 (7d)" appearing under a "Kosten per lead: €8,46" bullet
+    // reads as a contradiction. The template sanitises both the "(7d)" tag
+    // AND the specific "naar €X,XX" claim so only the directional sentiment
+    // ("CPL is flink gedaald") flows through.
+    const pedro: PedroInsightBody = {
+      conclusion: "CPL is flink gedaald naar €12,71 (7d). Nieuwe creatives doen het goed.",
+      actions: ["Iteratie op winnaar testen"],
+    }
+    const out = composeInitialParts({
+      firstName: "Bram",
+      clientId: "ms-veranda",
+      kpi: { adSpend: 245, leads: 29, cpl: 8.46, prevCpl: 14.0, prevPeriodReliable: true },
+      pedro,
+      now: MONDAY_WEEK_20,
+    })
+    expect(out.parts.conclusion).not.toMatch(/\(7d\)/i)
+    expect(out.parts.conclusion).not.toMatch(/€\s?12[.,]71/)
+    expect(out.parts.conclusion).toContain("CPL is flink gedaald")
+    expect(out.parts.conclusion).toContain("Nieuwe creatives doen het goed")
+  })
+
   it("Pedro wins over defaults when present", () => {
     const { parts } = composeInitialParts({
       firstName: "Bram",

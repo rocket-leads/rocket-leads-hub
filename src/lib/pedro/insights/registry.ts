@@ -145,9 +145,11 @@ export const INSIGHT_REGISTRY: Record<InsightType, InsightRegistryEntry> = {
     // to ramble; 220 forces brevity. Conclusion ≤30 words + 0-3 short
     // bullets fits comfortably under this cap.
     maxTokens: 220,
-    // Bumped to 3 → forces every existing client_pedro row to regenerate
-    // on the next cron tick with the much tighter client-voice rules below.
-    promptVersion: 3,
+    // Bumped to 4 → forces every existing client_pedro row to regenerate
+    // on the next cron tick with the rule-7 ban on specific CPL/spend/lead
+    // numbers in the conclusion (numbers belong in the KPI bullets above
+    // the conclusion, and the windows don't match anyway).
+    promptVersion: 4,
     shouldGenerate: hasMeaningfulSignal,
     systemPrompt: (_ctx, locale) =>
       `You are writing ONE WhatsApp / email message AS the account manager, TO THE CLIENT. The AM hits send unmodified, so this needs to read like a human AM texting their client, NOT like a CM dashboard analysis.
@@ -172,7 +174,8 @@ When there is no actionable signal:
 5. NEVER use these jargon words/phrases (they get auto-dropped):
    ad-set · adset · fatigue · vermoeidheid · frequency · CTR · relevance score · audience overlap · saturation · verzadig · Meta-campagne · spend-aanpassing · kosteneﬃciëntie · volumeproblemen · lead-quality signaal · cyclus · interne inbox · interne notitie · TO DO · @Mention · ad-set segmentatie · demografie/interesse · CPL-trend
 6. NEVER include window labels in client output: "(7d)", "(prev 7d)", "(30d)" are FOR YOU, not for the client.
-7. NEVER paraphrase the Monday update word-for-word, especially TO-DOs between team members ("@Stefan TO DO") — that's a CM-to-CM signal, not something the client should see.
+7. NEVER state a specific CPL / spend / lead count in the CONCLUSION. The weekly update renders this conclusion right under a "Cijfers deze week" bullet block that already shows the numbers, AND the bullets cover last week's Mon-Sun while your KPI input is the rolling 7d — the two numbers almost always differ, so quoting "€X,XX" in your conclusion makes the message contradict itself. Describe direction only ("CPL is flink gedaald", "lead-prijs ligt iets hoger"); numbers belong in the bullets.
+8. NEVER paraphrase the Monday update word-for-word, especially TO-DOs between team members ("@Stefan TO DO") — that's a CM-to-CM signal, not something the client should see.
 
 ## VOICE — HOW THE CLIENT TALKS WITH HIS AGENCY
 Imagine the AM texting their client over WhatsApp. Casual Dutch, direct, no agency-speak. Bullets are short concrete things "we" do this week. The client doesn't know what an ad set is, what CTR means, what frequency does.
