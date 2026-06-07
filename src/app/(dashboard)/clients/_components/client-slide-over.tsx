@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { startTransition, useEffect, useMemo, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
@@ -78,10 +78,37 @@ const OPTIMISTIC_ACCESS: ClientAccess = {
 }
 
 export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview, allClients, onSelectClient }: Props) {
-  const open = !!clientId
   const pathname = usePathname()
   const locale = useLocale()
   const backLabel = t(backLabelKeyForPath(pathname), locale)
+
+  // Optimistic + deferred close. `onClose` runs `router.replace` in the
+  // parent to clear the `?client=` param; on the watchlist (1.6k LOC,
+  // 44 hooks) and clients overview, that re-evaluates `useSearchParams`
+  // and triggers a full parent re-render — 100-500ms of main-thread
+  // work. That re-render competes with the 120ms close animation, so
+  // the slide-over felt frozen and the page underneath felt sluggish
+  // even though it was already mounted and didn't need new data.
+  //
+  // Two parts to the fix:
+  //   1. Flip a local `userClosed` flag the instant the user clicks so
+  //      the panel starts animating out regardless of what the parent
+  //      is doing. Reset whenever `clientId` changes so reopening
+  //      (deep link / quick-switch) goes through the open animation
+  //      cleanly.
+  //   2. Run the parent's URL update inside `startTransition` so React
+  //      treats it as low-priority. The close animation gets the main
+  //      thread on its own; the URL + parent re-render happens after,
+  //      where the user can no longer feel it.
+  const [userClosed, setUserClosed] = useState(false)
+  useEffect(() => {
+    setUserClosed(false)
+  }, [clientId])
+  const open = !!clientId && !userClosed
+  const handleClose = () => {
+    setUserClosed(true)
+    startTransition(() => onClose())
+  }
 
   const detailQuery = useQuery<ClientDetailResponse>({
     queryKey: ["client-detail", clientId],
@@ -112,7 +139,7 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
     function onKey(e: KeyboardEvent) {
       if (!open) return
       if (e.key === "Escape") {
-        onClose()
+        handleClose()
         return
       }
       if (e.key === "ArrowLeft") {
@@ -124,18 +151,19 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
           tag === "SELECT" ||
           target?.isContentEditable === true
         if (isEditable) return
-        onClose()
+        handleClose()
       }
     }
     if (open) window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onClose])
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+    <DialogPrimitive.Root open={open} onOpenChange={(next) => { if (!next) handleClose() }}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop
-          onClick={onClose}
+          onClick={handleClose}
           className={cn(
             "fixed inset-0 isolate z-50 bg-black/40 backdrop-blur-sm",
             // Click-to-dismiss + a clear cursor + a subtle hover-darken so the
@@ -158,7 +186,7 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
             closing the panel. */}
         <SlideOverNavHeader
           backLabel={backLabel}
-          onBack={onClose}
+          onBack={handleClose}
           clients={allClients}
           currentId={clientId}
           onSelectClient={onSelectClient}

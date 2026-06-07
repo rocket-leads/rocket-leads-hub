@@ -1164,13 +1164,11 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [router, pathname, searchParams])
 
-  // Lock body scroll while the slide-over is open.
-  useEffect(() => {
-    if (!selectedClientId) return
-    const original = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => { document.body.style.overflow = original }
-  }, [selectedClientId])
+  // Body scroll lock is handled by Base UI's Dialog inside ClientSlideOver.
+  // The previous manual `body.style.overflow` lock here fought with Base UI's:
+  // if Base UI ran first, `original` captured "hidden" and the cleanup
+  // restored it back to "hidden" — leaving the page unscrollable until
+  // a hard refresh. Removed 2026-06-07.
 
   const [cmFilter, setCmFilter] = useState("All")
   const [isRefreshing, setIsRefreshing] = useState(false)

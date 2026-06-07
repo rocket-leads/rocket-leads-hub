@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { RefreshCw, Users, Sparkles } from "lucide-react"
@@ -62,16 +62,10 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [router, pathname, searchParams])
 
-  // Lock body scroll while the panel is open so the page behind doesn't move
-  // when the user scrolls inside the panel.
-  useEffect(() => {
-    if (!selectedClientId) return
-    const original = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.body.style.overflow = original
-    }
-  }, [selectedClientId])
+  // Body scroll lock is handled by Base UI's Dialog inside ClientSlideOver —
+  // the previous manual lock here raced with Base UI's and could capture
+  // `original = "hidden"`, leaving the page unscrollable on close. Removed
+  // 2026-06-07.
 
   const [showAll, setShowAll] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
