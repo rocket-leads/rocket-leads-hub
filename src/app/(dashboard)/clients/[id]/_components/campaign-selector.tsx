@@ -229,8 +229,8 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
             "Geen campagnes geselecteerd — alle spend telt mee in KPI's."
           ) : (
             `${selected.length} ${
-              selected.length === 1 ? "campagne" : "campagnes"
-            } voedt momenteel de KPI's voor deze klant.`
+              selected.length === 1 ? "campagne voedt" : "campagnes voeden"
+            } momenteel de KPI's voor deze klant.`
           )
         ) : available.length === 0 && q ? (
           "Geen beschikbare campagne matcht je zoekopdracht."
