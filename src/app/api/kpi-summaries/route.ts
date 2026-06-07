@@ -414,16 +414,13 @@ async function loadSelectedCampaigns(
   const clientIds = Object.values(itemToClientId)
   if (clientIds.length === 0) return result
 
-  const { data: campaignRows } = await supabase
-    .from("client_campaigns")
-    .select("client_id, meta_campaign_id")
-    .in("client_id", clientIds)
-    .eq("is_selected", true)
+  const { fetchSelectedCampaignRows } = await import("@/lib/clients/selected-campaigns")
+  const campaignRows = await fetchSelectedCampaignRows(supabase, clientIds)
 
   const clientIdToMondayItem = Object.fromEntries(
     Object.entries(itemToClientId).map(([k, v]) => [v, k]),
   )
-  for (const row of campaignRows ?? []) {
+  for (const row of campaignRows) {
     const mondayItemId = clientIdToMondayItem[row.client_id]
     if (!mondayItemId) continue
     if (!result[mondayItemId]) result[mondayItemId] = new Set()

@@ -44,14 +44,14 @@ async function loadSelectedCampaigns(
   const map: SelectedCampaignsByClient = {}
   if (clientIds.length === 0) return { map, itemToClientId }
 
-  const { data: campRows } = await supabase
-    .from("client_campaigns")
-    .select("client_id, meta_campaign_id")
-    .in("client_id", clientIds)
-    .eq("is_selected", true)
+  const { fetchSelectedCampaignRows } = await import("@/lib/clients/selected-campaigns")
+  const campRows = await fetchSelectedCampaignRows(supabase, clientIds)
+  const clientIdToItem = Object.fromEntries(
+    Object.entries(itemToClientId).map(([k, v]) => [v, k]),
+  )
 
-  for (const r of campRows ?? []) {
-    const itemId = Object.keys(itemToClientId).find((k) => itemToClientId[k] === r.client_id)
+  for (const r of campRows) {
+    const itemId = clientIdToItem[r.client_id]
     if (!itemId) continue
     if (!map[itemId]) map[itemId] = new Set()
     map[itemId].add(r.meta_campaign_id)

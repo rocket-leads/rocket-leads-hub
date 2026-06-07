@@ -169,17 +169,16 @@ export async function GET(req: NextRequest) {
     const clientIds = Object.values(itemToClientId)
     const selectedByMondayItemId: Record<string, Set<string>> = {}
     if (clientIds.length > 0) {
-      const { data: campaignRows } = await supabase
-        .from("client_campaigns")
-        .select("client_id, meta_campaign_id")
-        .in("client_id", clientIds)
-        .eq("is_selected", true)
-      for (const row of campaignRows ?? []) {
-        const mondayItemId = Object.keys(itemToClientId).find((k) => itemToClientId[k] === row.client_id)
-        if (mondayItemId) {
-          if (!selectedByMondayItemId[mondayItemId]) selectedByMondayItemId[mondayItemId] = new Set()
-          selectedByMondayItemId[mondayItemId].add(row.meta_campaign_id)
-        }
+      const { fetchSelectedCampaignRows } = await import("@/lib/clients/selected-campaigns")
+      const campaignRows = await fetchSelectedCampaignRows(supabase, clientIds)
+      const clientIdToMondayItem = Object.fromEntries(
+        Object.entries(itemToClientId).map(([k, v]) => [v, k]),
+      )
+      for (const row of campaignRows) {
+        const mondayItemId = clientIdToMondayItem[row.client_id]
+        if (!mondayItemId) continue
+        if (!selectedByMondayItemId[mondayItemId]) selectedByMondayItemId[mondayItemId] = new Set()
+        selectedByMondayItemId[mondayItemId].add(row.meta_campaign_id)
       }
     }
 
