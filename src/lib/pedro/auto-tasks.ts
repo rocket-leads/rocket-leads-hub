@@ -1,5 +1,7 @@
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { WatchCategory } from "@/lib/watchlist/categorize"
+import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
+import { billingErrorTemplateMessageNL } from "@/lib/clients/billing-health"
 
 /**
  * Pedro background co-pilot — anti-spam decision logic.
@@ -320,6 +322,148 @@ export function decideLiveButDarkTask(input: LiveButDarkInput): LiveButDarkDecis
 export function decideAutoCloseLiveButDark(consecutiveDarkDays: number): AutoCloseDecision {
   if (consecutiveDarkDays === 0) {
     return { close: true, reason: "Pedro auto-resolved — ad spend resumed." }
+  }
+  return { close: false }
+}
+
+// ─── Billing-health decision (AM-routed) ────────────────────────────────
+//
+// `computeBillingHealth` produces a verdict combining (a) Meta's direct
+// `account_status` signal and (b) the indirect "severe underspend" heuristic
+// (spend << expected weekly budget). When the verdict flags an issue, the
+// AM needs to nudge the client — Meta only fixes when the client logs into
+// Business Manager and updates their payment method.
+//
+// Different from live-but-dark: dark catches "zero spend at all"; billing
+// catches the upstream cause (payment problem) and partial-spend cases
+// before they degrade into full stop. They can co-exist on the same client
+// — billing-health is the early warning, dark is the late warning. Per-user
+// cap is shared so the AM isn't double-pinged.
+//
+// Body is the Dutch template message from `billingErrorTemplateMessageNL`
+// so the AM can hit send unmodified. Roy's "AM never opens Pedro thinking"
+// principle.
+
+/** Marker for billing-health auto-tasks. Distinct from PEDRO_TASK_MARKER
+ *  (CPL spike) and PEDRO_LIVE_BUT_DARK_MARKER (no spend) so dedup queries
+ *  can target the billing signal independently. */
+export const PEDRO_BILLING_HEALTH_MARKER = "pedro_billing_health_v1"
+
+export type BillingHealthSkipReason =
+  | "no_issue"
+  | "no_am_assignee"
+  | "open_task_exists"
+  | "recently_closed"
+  | "assignee_at_cap"
+
+export type BillingHealthTaskInput = {
+  client: MondayClient
+  /** Verdict from `computeBillingHealth` — null when no cached verdict
+   *  exists (eligibility filter didn't run for this client, fetch failed). */
+  verdict: BillingHealthVerdict | null
+  /** Hub user_id of the Account Manager — null when no AM mapping. */
+  assigneeUserId: string | null
+  /** Most recent billing-health task for this client (any status). */
+  existingTask: ExistingPedroTask | null
+  /** Open Pedro tasks for the assignee — shared cap across all markers. */
+  openTasksForAssignee: number
+  /** ISO timestamp the cron snapshot was taken. */
+  now: string
+}
+
+export type BillingHealthTaskDecision =
+  | {
+      action: "create"
+      title: string
+      body: string
+      assigneeUserId: string
+      sourceRef: {
+        marker: string
+        trigger: string
+        severity: BillingHealthVerdict["severity"]
+        reason: BillingHealthVerdict["reason"]
+      }
+    }
+  | { action: "skip"; reason: BillingHealthSkipReason }
+
+export function decideBillingHealthTask(
+  input: BillingHealthTaskInput,
+): BillingHealthTaskDecision {
+  if (!input.verdict || !input.verdict.hasIssue) {
+    return { action: "skip", reason: "no_issue" }
+  }
+
+  if (!input.assigneeUserId) {
+    return { action: "skip", reason: "no_am_assignee" }
+  }
+
+  if (input.existingTask) {
+    const status = input.existingTask.status
+    if (status === "open" || status === "in_progress") {
+      return { action: "skip", reason: "open_task_exists" }
+    }
+    if (status === "done" && input.existingTask.completedAt) {
+      const closedMs = new Date(input.existingTask.completedAt).getTime()
+      const nowMs = new Date(input.now).getTime()
+      const daysSinceClose = (nowMs - closedMs) / 86_400_000
+      if (daysSinceClose < RECENT_CLOSED_DEDUP_DAYS) {
+        return { action: "skip", reason: "recently_closed" }
+      }
+    }
+  }
+
+  if (input.openTasksForAssignee >= MAX_OPEN_PEDRO_TASKS_PER_USER) {
+    return { action: "skip", reason: "assignee_at_cap" }
+  }
+
+  // Title differs per severity so the inbox row reads at a glance whether
+  // this is a confirmed Meta-side error or a "looks like" underspend.
+  const severityLabel =
+    input.verdict.severity === "billing_error"
+      ? "billing error confirmed"
+      : "severe underspend (likely billing)"
+  const title = `Pedro: ${input.client.name} — ${severityLabel}`
+
+  // Body = the pre-baked Dutch client message + a one-liner for the AM
+  // explaining where the signal came from. Roy's pattern: AM reads the
+  // body, copies the bottom block, hits send to the client.
+  const clientMsg = billingErrorTemplateMessageNL({
+    clientFirstName: input.client.firstName?.trim() || input.client.name,
+    verdict: input.verdict,
+  })
+  const body = [
+    `Pedro flagged a payment problem on ${input.client.name}'s Meta ad account.`,
+    `Signal: ${input.verdict.label}`,
+    ``,
+    `Suggested WhatsApp / email to the client (copy as-is or tweak):`,
+    `---`,
+    clientMsg,
+  ].join("\n")
+
+  return {
+    action: "create",
+    title,
+    body,
+    assigneeUserId: input.assigneeUserId,
+    sourceRef: {
+      marker: PEDRO_BILLING_HEALTH_MARKER,
+      trigger: "billing_health_v1",
+      severity: input.verdict.severity,
+      reason: input.verdict.reason,
+    },
+  }
+}
+
+/**
+ * Auto-close billing-health tasks once the verdict clears (Meta status
+ * back to Active AND spend back at plan). Conservative: any lingering
+ * issue keeps the task open.
+ */
+export function decideAutoCloseBillingHealth(
+  verdict: BillingHealthVerdict | null,
+): AutoCloseDecision {
+  if (!verdict || !verdict.hasIssue) {
+    return { close: true, reason: "Pedro auto-resolved — Meta billing health back to OK." }
   }
   return { close: false }
 }

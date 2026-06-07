@@ -103,6 +103,31 @@ function fmtBillingBlock(ctx: ClientAiContext): string {
   return `BILLING: outstanding €${ctx.billing.outstanding} · status ${ctx.billing.status}`
 }
 
+function fmtBillingHealthBlock(ctx: ClientAiContext): string {
+  const bh = ctx.billingHealth
+  if (!bh) return ""
+  if (!bh.hasIssue) {
+    // Only mention "ok" health when there's a Meta record at all — gives
+    // the model confidence to NOT mention billing in the conclusion.
+    return bh.metaHealth ? `META BILLING HEALTH: OK (account status: ${bh.metaHealth.accountStatusLabel})` : ""
+  }
+  // Issue present — this is the most important block in the prompt. The
+  // system prompt has explicit instructions to LEAD with this signal.
+  const expected = bh.expectedWeeklyBudget != null ? `€${bh.expectedWeeklyBudget.toFixed(0)}` : "n/a"
+  const ratio = bh.spendRatio != null ? `${(bh.spendRatio * 100).toFixed(0)}% of plan` : "n/a"
+  const headline =
+    bh.severity === "billing_error"
+      ? `META BILLING HEALTH: ⚠ BILLING ERROR DETECTED`
+      : `META BILLING HEALTH: ⚠ SEVERE UNDERSPEND — likely billing error`
+  return [
+    headline,
+    `  Reason: ${bh.reason}`,
+    `  Meta account status: ${bh.metaHealth?.accountStatusLabel ?? "unknown"}`,
+    `  Spend (7d): €${bh.actualSpendLast7d.toFixed(0)} · Expected weekly: ${expected} · Ratio: ${ratio}`,
+    `  → THIS OVERRIDES CPL/TREND ANALYSIS. The message must be about the billing problem, not optimisation.`,
+  ].join("\n")
+}
+
 function fmtDataAvailability(ctx: ClientAiContext): string {
   return [
     `DATA AVAILABILITY:`,
@@ -117,6 +142,10 @@ function fmtDataAvailability(ctx: ClientAiContext): string {
 function buildContextBlock(ctx: ClientAiContext): string {
   const blocks = [
     fmtDataAvailability(ctx),
+    // Billing-health goes first so a payment problem is the most-prominent
+    // signal in the prompt — the system instructions tell the model to lead
+    // with this when `hasIssue` is true.
+    fmtBillingHealthBlock(ctx),
     fmtKpiBlock(ctx),
     fmtRecentBlock(ctx),
     fmtMondayBlock(ctx),
@@ -145,11 +174,10 @@ export const INSIGHT_REGISTRY: Record<InsightType, InsightRegistryEntry> = {
     // to ramble; 220 forces brevity. Conclusion ≤30 words + 0-3 short
     // bullets fits comfortably under this cap.
     maxTokens: 220,
-    // Bumped to 4 → forces every existing client_pedro row to regenerate
-    // on the next cron tick with the rule-7 ban on specific CPL/spend/lead
-    // numbers in the conclusion (numbers belong in the KPI bullets above
-    // the conclusion, and the windows don't match anyway).
-    promptVersion: 4,
+    // Bumped to 5 → every client_pedro row regenerates with the billing-
+    // health override block. A flagged billing issue now leads the message
+    // instead of being buried under CPL analysis.
+    promptVersion: 5,
     shouldGenerate: hasMeaningfulSignal,
     systemPrompt: (_ctx, locale) =>
       `You are writing ONE WhatsApp / email message AS the account manager, TO THE CLIENT. The AM hits send unmodified, so this needs to read like a human AM texting their client, NOT like a CM dashboard analysis.
@@ -176,6 +204,20 @@ When there is no actionable signal:
 6. NEVER include window labels in client output: "(7d)", "(prev 7d)", "(30d)" are FOR YOU, not for the client.
 7. NEVER state a specific CPL / spend / lead count in the CONCLUSION. The weekly update renders this conclusion right under a "Cijfers deze week" bullet block that already shows the numbers, AND the bullets cover last week's Mon-Sun while your KPI input is the rolling 7d — the two numbers almost always differ, so quoting "€X,XX" in your conclusion makes the message contradict itself. Describe direction only ("CPL is flink gedaald", "lead-prijs ligt iets hoger"); numbers belong in the bullets.
 8. NEVER paraphrase the Monday update word-for-word, especially TO-DOs between team members ("@Stefan TO DO") — that's a CM-to-CM signal, not something the client should see.
+
+## BILLING OVERRIDE — HIGHEST PRIORITY
+If the context contains "META BILLING HEALTH: ⚠ BILLING ERROR DETECTED" or "META BILLING HEALTH: ⚠ SEVERE UNDERSPEND", the message is ENTIRELY about that billing problem. IGNORE every other signal (CPL trends, Monday updates, recent windows). The conclusion explains the billing issue in casual Dutch and asks the client to fix their payment method. Actions are concrete steps for the client, not for the AM.
+
+Tone for billing-error conclusion (pick one direction; keep it ≤30 words):
+- "Hé, ik zag dat er een betaalprobleem in je Meta account staat. Daardoor draaien de campagnes op halve kracht. Kun je vandaag je betaalmethode updaten in Business Manager?"
+- "We hebben deze week veel minder kunnen draaien omdat er een betaalfout in je ad account staat. Kun je even kijken of je creditcard nog geldig is?"
+
+Billing actions — these go IN the actions array, addressed to the CLIENT:
+✔ "Even inloggen in Meta Business Manager."
+✔ "Betaalmethode of creditcard updaten."
+✔ "Laat het me weten als het is gelukt, dan zet ik de campagnes weer aan."
+
+After a billing override the actions array MUST contain only client-facing fix-steps. NO "wij testen nieuwe varianten" or any optimisation work — those don't matter until the account pays again.
 
 ## VOICE — HOW THE CLIENT TALKS WITH HIS AGENCY
 Imagine the AM texting their client over WhatsApp. Casual Dutch, direct, no agency-speak. Bullets are short concrete things "we" do this week. The client doesn't know what an ad set is, what CTR means, what frequency does.

@@ -12,12 +12,17 @@ import {
   decideAutoClose,
   decideLiveButDarkTask,
   decideAutoCloseLiveButDark,
+  decideBillingHealthTask,
+  decideAutoCloseBillingHealth,
   PEDRO_TASK_MARKER,
   PEDRO_LIVE_BUT_DARK_MARKER,
+  PEDRO_BILLING_HEALTH_MARKER,
   type DecideInput,
   type SkipReason,
   type LiveButDarkSkipReason,
+  type BillingHealthSkipReason,
 } from "@/lib/pedro/auto-tasks"
+import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
 
 /**
  * Pedro background co-pilot — daily auto-task generation + auto-close.
@@ -90,7 +95,13 @@ export async function GET(req: NextRequest) {
     // spend tasks, AM-routed). The dedup map is keyed per-marker so a
     // single client can carry one of each. The per-assignee cap counts
     // BOTH so an individual user isn't bombarded.
-    const [pedroTaskFetch, darkTaskFetch] = await Promise.all([
+    // Three markers live under this cron: PEDRO_TASK_MARKER (CPL-spike,
+    // CM-routed), PEDRO_LIVE_BUT_DARK_MARKER (no-spend, AM-routed), and
+    // PEDRO_BILLING_HEALTH_MARKER (Meta payment problem / severe
+    // underspend, AM-routed). Dedup maps are per-marker so a single client
+    // can carry one of each; per-assignee cap counts all three so an
+    // individual user isn't bombarded.
+    const [pedroTaskFetch, darkTaskFetch, billingTaskFetch] = await Promise.all([
       supabase
         .from("inbox_events")
         .select("id, client_id, assignee_id, status, completed_at, source_ref")
@@ -103,9 +114,16 @@ export async function GET(req: NextRequest) {
         .eq("source", "automation")
         .eq("kind", "task")
         .contains("source_ref", { marker: PEDRO_LIVE_BUT_DARK_MARKER }),
+      supabase
+        .from("inbox_events")
+        .select("id, client_id, assignee_id, status, completed_at, source_ref")
+        .eq("source", "automation")
+        .eq("kind", "task")
+        .contains("source_ref", { marker: PEDRO_BILLING_HEALTH_MARKER }),
     ])
     const pedroTaskRows = pedroTaskFetch.data
     const darkTaskRows = darkTaskFetch.data
+    const billingTaskRows = billingTaskFetch.data
 
     type PedroTaskRow = {
       id: string
@@ -154,15 +172,40 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const billingTasks = (billingTaskRows ?? []) as PedroTaskRow[]
+
+    // Latest billing-health task per client — independent dedup from the
+    // CPL-spike and live-but-dark markers, same "open beats closed"
+    // preference.
+    const latestBillingTaskByClient = new Map<string, PedroTaskRow>()
+    for (const t of billingTasks) {
+      const existing = latestBillingTaskByClient.get(t.client_id)
+      if (!existing) {
+        latestBillingTaskByClient.set(t.client_id, t)
+        continue
+      }
+      const existingActive = existing.status === "open" || existing.status === "in_progress"
+      const candidateActive = t.status === "open" || t.status === "in_progress"
+      if (candidateActive && !existingActive) {
+        latestBillingTaskByClient.set(t.client_id, t)
+      }
+    }
+
     // Count of OPEN Pedro tasks per assignee — feeds the per-user cap.
-    // Sums BOTH markers so a single user isn't slammed when both signals
-    // happen to fire at once.
+    // Sums ALL THREE markers so a single user isn't slammed when multiple
+    // signals happen to fire at once.
     const openCountByAssignee = new Map<string, number>()
-    for (const t of [...pedroTasks, ...darkTasks]) {
+    for (const t of [...pedroTasks, ...darkTasks, ...billingTasks]) {
       if (t.status === "open" || t.status === "in_progress") {
         openCountByAssignee.set(t.assignee_id, (openCountByAssignee.get(t.assignee_id) ?? 0) + 1)
       }
     }
+
+    // Billing-health verdict cache, written by refresh-cache cron after
+    // its Meta-account fan-out. Empty {} when no eligible clients ran
+    // (cold cache, very first deploy).
+    const billingHealthCache =
+      (await readCache<Record<string, BillingHealthVerdict>>("meta_billing_health")) ?? {}
 
     // CM Monday-name → Hub user_id mapping. Pedro tasks are assigned to
     // the campaign manager when one is mapped; falls back to AM, then
@@ -344,6 +387,89 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ─── 2c. Billing-health decision pass — AM-routed ──────────────────
+    //
+    // Reads the `meta_billing_health` cache that refresh-cache populates
+    // (Meta `account_status` + actual-spend-vs-expected-weekly verdict).
+    // Each issue verdict converts into one AM-routed task carrying the
+    // pre-baked Dutch client message — the AM can hit send to the client
+    // without re-typing.
+
+    const billingCreated: Array<{
+      client: string
+      assignee: string
+      severity: string
+      reason: string
+    }> = []
+    const billingSkipped: Record<BillingHealthSkipReason, number> = {
+      no_issue: 0,
+      no_am_assignee: 0,
+      open_task_exists: 0,
+      recently_closed: 0,
+      assignee_at_cap: 0,
+    }
+
+    for (const client of liveClients) {
+      const verdict = billingHealthCache[client.mondayItemId] ?? null
+      // Skip the silent "no verdict / no issue" cases early. The decider
+      // would skip them with `no_issue` too but counting them buries the
+      // real signal — there are 5-10 problem clients vs ~100 healthy.
+      if (!verdict || !verdict.hasIssue) {
+        continue
+      }
+
+      const amUserId = amByName.get(client.accountManager) ?? null
+      const existingTask = latestBillingTaskByClient.get(client.mondayItemId)
+
+      const decision = decideBillingHealthTask({
+        client,
+        verdict,
+        assigneeUserId: amUserId,
+        existingTask: existingTask
+          ? { status: existingTask.status, completedAt: existingTask.completed_at }
+          : null,
+        openTasksForAssignee: amUserId
+          ? openCountByAssignee.get(amUserId) ?? 0
+          : 0,
+        now: nowIso,
+      })
+
+      if (decision.action === "skip") {
+        billingSkipped[decision.reason]++
+        continue
+      }
+
+      try {
+        await supabase.from("inbox_events").insert({
+          kind: "task",
+          client_id: client.mondayItemId,
+          author_id: decision.assigneeUserId,
+          assignee_id: decision.assigneeUserId,
+          title: decision.title,
+          body: decision.body,
+          status: "open",
+          priority: "high",
+          source: "automation",
+          source_ref: decision.sourceRef,
+        })
+        billingCreated.push({
+          client: client.name,
+          assignee: decision.assigneeUserId,
+          severity: decision.sourceRef.severity,
+          reason: decision.sourceRef.reason,
+        })
+        openCountByAssignee.set(
+          decision.assigneeUserId,
+          (openCountByAssignee.get(decision.assigneeUserId) ?? 0) + 1,
+        )
+      } catch (e) {
+        console.error(
+          `[pedro-auto-tasks] billing-health insert failed for ${client.name}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
     // ─── 3. Auto-close pass — close tasks whose client left Action ─────
 
     const liveClientById = new Map(liveClients.map((c) => [c.mondayItemId, c]))
@@ -409,6 +535,36 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ─── 3c. Auto-close billing-health tasks when the verdict clears ──
+
+    let billingAutoClosed = 0
+    for (const t of billingTasks) {
+      if (t.status !== "open" && t.status !== "in_progress") continue
+      // Verdict null OR no-issue → safe to close. Same conservative bar
+      // as the dark close: we only resolve when the underlying signal
+      // is gone, never on a borderline severity dip.
+      const verdict = billingHealthCache[t.client_id] ?? null
+      const decision = decideAutoCloseBillingHealth(verdict)
+      if (!decision.close) continue
+
+      try {
+        await supabase
+          .from("inbox_events")
+          .update({
+            status: "done",
+            completed_at: nowIso,
+            body: appendAutoCloseNote(t, decision.reason),
+          })
+          .eq("id", t.id)
+        billingAutoClosed++
+      } catch (e) {
+        console.error(
+          `[pedro-auto-tasks] billing-health auto-close failed for task ${t.id}:`,
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
     const metrics = {
       durationMs: Date.now() - startedAt,
       liveClients: liveClients.length,
@@ -417,6 +573,9 @@ export async function GET(req: NextRequest) {
       darkCreated: darkCreated.length,
       darkAutoClosed,
       darkSkipped,
+      billingCreated: billingCreated.length,
+      billingAutoClosed,
+      billingSkipped,
       ...skipped,
     }
     await tracker.ok(metrics)
@@ -426,6 +585,7 @@ export async function GET(req: NextRequest) {
       ...metrics,
       created: created.slice(0, 10),
       darkCreatedSample: darkCreated.slice(0, 10),
+      billingCreatedSample: billingCreated.slice(0, 10),
     })
   } catch (e) {
     console.error("[pedro-auto-tasks] fatal:", e instanceof Error ? e.message : e)

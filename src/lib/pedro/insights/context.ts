@@ -7,6 +7,7 @@ import type { ClientContext as MondayTrengoContext } from "@/lib/watchlist/colle
 import { collectClientContext } from "@/lib/watchlist/collect-context"
 import { agreementMonthly, normalizeAgreement, type Agreement } from "@/lib/clients/agreement"
 import { getRecentSignal, type RecentSignal } from "@/lib/watchlist/categorize"
+import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
 
 /**
  * Single canonical context bundle for ALL Hub AI insights. Replaces the
@@ -40,6 +41,8 @@ export type AiContextSources = {
   agreement: boolean
   /** True when a billing summary exists for the client's Stripe customer. */
   billing: boolean
+  /** True when a Meta ad-account billing-health verdict is cached. */
+  billingHealth: boolean
 }
 
 export type FathomMeetingContext = {
@@ -84,6 +87,12 @@ export type ClientAiContext = {
   agreement: { agreement: Agreement; monthly: number } | null
   /** Stripe payment state. Null when no Stripe customer or cache miss. */
   billing: BillingSummary | null
+  /** Meta ad-account billing-health verdict. Null when no Meta account or
+   *  cache miss. When `hasIssue` is true, EVERY downstream surface (Pedro
+   *  prompt, Watch List, auto-tasks) should lead with this — a billing
+   *  problem makes CPL trends meaningless ("CPL high but only €50 spent
+   *  because the card got declined"). */
+  billingHealth: BillingHealthVerdict | null
   /** Which sources actually contributed — drives the sources_used audit on pedro_insights. */
   sources: AiContextSources
   /** ISO timestamp the bundle was assembled (so debug surfaces can show "as of X"). */
@@ -110,6 +119,7 @@ export async function collectClientAiContext(
   const [
     kpiCache,
     billingCache,
+    billingHealthCache,
     mondayTrengo,
     fathomMeetings,
     inboxEvents,
@@ -117,6 +127,7 @@ export async function collectClientAiContext(
   ] = await Promise.all([
     readCache<Record<string, KpiSummary>>("kpi_summaries").then((c) => c ?? {}),
     readCache<Record<string, BillingSummary>>("billing_summaries").then((c) => c ?? {}),
+    readCache<Record<string, BillingHealthVerdict>>("meta_billing_health").then((c) => c ?? {}),
     safe(() => collectClientContext(client), null as MondayTrengoContext | null),
     safe(() => fetchFathomMeetingsForClient(supabase, client.mondayItemId), []),
     safe(() => fetchInboxEventsForClient(supabase, client.mondayItemId), []),
@@ -125,6 +136,7 @@ export async function collectClientAiContext(
 
   const kpi = kpiCache[client.mondayItemId] ?? null
   const billing = client.stripeCustomerId ? billingCache[client.stripeCustomerId] ?? null : null
+  const billingHealth = billingHealthCache[client.mondayItemId] ?? null
   const recent = kpi ? getRecentSignal(kpi) : null
 
   const sources: AiContextSources = {
@@ -136,6 +148,7 @@ export async function collectClientAiContext(
     inboxEvents: inboxEvents.length > 0,
     agreement: agreementBundle !== null,
     billing: billing !== null,
+    billingHealth: billingHealth !== null,
   }
 
   return {
@@ -148,6 +161,7 @@ export async function collectClientAiContext(
     inboxEvents,
     agreement: agreementBundle,
     billing,
+    billingHealth,
     sources,
     collectedAt,
   }

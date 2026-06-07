@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchBothBoards } from "@/lib/integrations/monday"
-import { fetchMetaInsightsDaily } from "@/lib/integrations/meta"
+import { fetchMetaInsightsDaily, fetchAdAccountHealth } from "@/lib/integrations/meta"
+import { computeBillingHealth, type BillingHealthVerdict } from "@/lib/clients/billing-health"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import type { DailyRollup, KpiDailyCache, KpiDailyClientData } from "@/app/api/kpi-summaries/route"
 import { isPrevPeriodReliable } from "@/app/api/kpi-summaries/route"
@@ -189,18 +190,16 @@ export async function GET(req: NextRequest) {
     const selectedByMondayItemId: Record<string, Set<string>> = {}
 
     if (clientIds.length > 0) {
-      const { data: campaignRows } = await supabase
-        .from("client_campaigns")
-        .select("client_id, meta_campaign_id")
-        .in("client_id", clientIds)
-        .eq("is_selected", true)
-
-      for (const row of campaignRows ?? []) {
-        const mondayItemId = Object.keys(itemToClientId).find((k) => itemToClientId[k] === row.client_id)
-        if (mondayItemId) {
-          if (!selectedByMondayItemId[mondayItemId]) selectedByMondayItemId[mondayItemId] = new Set()
-          selectedByMondayItemId[mondayItemId].add(row.meta_campaign_id)
-        }
+      const { fetchSelectedCampaignRows } = await import("@/lib/clients/selected-campaigns")
+      const campaignRows = await fetchSelectedCampaignRows(supabase, clientIds)
+      const clientIdToMondayItem = Object.fromEntries(
+        Object.entries(itemToClientId).map(([k, v]) => [v, k]),
+      )
+      for (const row of campaignRows) {
+        const mondayItemId = clientIdToMondayItem[row.client_id]
+        if (!mondayItemId) continue
+        if (!selectedByMondayItemId[mondayItemId]) selectedByMondayItemId[mondayItemId] = new Set()
+        selectedByMondayItemId[mondayItemId].add(row.meta_campaign_id)
       }
     }
 
@@ -418,6 +417,85 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // 3c. Meta ad-account billing-health bake. Pulls account_status +
+    // disable_reason from the AdAccount node for every Live client with a
+    // Meta account, combines with their monthly ad budget from
+    // client_agreements, and writes a single `meta_billing_health` map
+    // keyed by mondayItemId. Powers the Watch List billing-issue
+    // override, the Pedro billing-aware prompt, and the AM auto-task.
+    //
+    // Runs after the KPI early-write so a Meta /AdAccount outage doesn't
+    // poison KPI data. Failures per-client are tracked but the cron
+    // continues — we cache an "ok: false fetch" record so the categorizer
+    // can preserve prior verdicts.
+    const billingHealthEligible = allClients.filter(
+      (c) => c.metaAdAccountId && c.campaignStatus === "Live",
+    )
+    const billingHealthByClient: Record<string, BillingHealthVerdict> = {}
+
+    if (billingHealthEligible.length > 0) {
+      // One round-trip to grab agreement.ad_budget for every eligible client.
+      // Map client_agreements (keyed by client_id) back to mondayItemId via
+      // the itemToClientId table we built in step 2.
+      const eligibleClientIds = billingHealthEligible
+        .map((c) => itemToClientId[c.mondayItemId])
+        .filter(Boolean)
+      const agreementByMondayId: Record<string, number | null> = {}
+      if (eligibleClientIds.length > 0) {
+        const { data: agreementRows } = await supabase
+          .from("client_agreements")
+          .select("client_id, ad_budget")
+          .in("client_id", eligibleClientIds)
+        const reverseMap: Record<string, string> = {}
+        for (const [mid, cid] of Object.entries(itemToClientId)) reverseMap[cid] = mid
+        for (const row of agreementRows ?? []) {
+          const mid = reverseMap[row.client_id]
+          if (mid) agreementByMondayId[mid] = typeof row.ad_budget === "number" ? row.ad_budget : null
+        }
+      }
+
+      const BILLING_HEALTH_BATCH = 8
+      const billingHealthStartedAt = Date.now()
+      for (let i = 0; i < billingHealthEligible.length; i += BILLING_HEALTH_BATCH) {
+        const batch = billingHealthEligible.slice(i, i + BILLING_HEALTH_BATCH)
+        const elapsedSec = ((Date.now() - billingHealthStartedAt) / 1000).toFixed(0)
+        console.log(
+          `[refresh-cache] billing-health batch ${Math.floor(i / BILLING_HEALTH_BATCH) + 1}/${Math.ceil(billingHealthEligible.length / BILLING_HEALTH_BATCH)} — ${i}/${billingHealthEligible.length} done — ${elapsedSec}s elapsed`,
+        )
+        const results = await Promise.allSettled(
+          batch.map(async (client) => {
+            const metaHealth = await fetchAdAccountHealth(client.metaAdAccountId!)
+            const kpi = kpiSummaries[client.mondayItemId]
+            const daysWithSpend = (kpi?.dailyTrend ?? []).slice(-7).filter((d) => d.spend > 0).length
+            const verdict = computeBillingHealth({
+              metaHealth,
+              monthlyAdBudget: agreementByMondayId[client.mondayItemId] ?? null,
+              actualSpendLast7d: kpi?.adSpend ?? 0,
+              daysWithSpendLast7d: daysWithSpend,
+            })
+            return { mondayItemId: client.mondayItemId, verdict }
+          }),
+        )
+        for (const r of results) {
+          if (r.status === "fulfilled") {
+            billingHealthByClient[r.value.mondayItemId] = r.value.verdict
+          }
+        }
+      }
+
+      console.log(
+        `[refresh-cache] billing-health done — ${Object.keys(billingHealthByClient).length}/${billingHealthEligible.length} verdicts (${Object.values(billingHealthByClient).filter((v) => v.hasIssue).length} flagged)`,
+      )
+      try {
+        await writeCache("meta_billing_health", billingHealthByClient)
+      } catch (e) {
+        console.error(
+          "[refresh-cache] meta_billing_health write failed:",
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
     // 4. Compute billing summaries in batches of 10
     const customerIds = allClients.map((c) => c.stripeCustomerId).filter(Boolean)
     const billingSummaries: Record<string, BillingSummary> = {}
@@ -492,6 +570,7 @@ export async function GET(req: NextRequest) {
         const kpi = kpiSummaries[client.mondayItemId]
         const { category } = categorize(client, kpi, "en", {
           clientStatus: statusByClient.get(client.mondayItemId) ?? null,
+          billingHealth: billingHealthByClient[client.mondayItemId] ?? null,
         })
         if (category !== "action" && category !== "watch" && category !== "good") continue
         const cmKey = client.campaignManager || "_unassigned"
@@ -519,7 +598,13 @@ export async function GET(req: NextRequest) {
     // transition date — the same helper is used by the kpi-summaries `?force=1` path so
     // a manual refresh from the UI also populates state without waiting for cron.
     try {
-      await updateWatchlistClientState(supabase, allClients, kpiSummaries, statusByClient)
+      await updateWatchlistClientState(
+        supabase,
+        allClients,
+        kpiSummaries,
+        statusByClient,
+        billingHealthByClient,
+      )
     } catch (e) {
       console.error("Watchlist state update failed:", e instanceof Error ? e.message : e)
     }

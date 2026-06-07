@@ -185,6 +185,103 @@ export function aggregateMetaDailyByDate(daily: MetaDailyInsight[]): Array<{ dat
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date))
 }
 
+// ─── Ad account billing health ───────────────────────────────────────────
+//
+// Detects billing/payment problems at the ad-account level. Meta exposes
+// these on the AdAccount node itself — `account_status` is the canonical
+// signal (1=active, anything else means something is wrong), `disable_reason`
+// gives the why (UNSETTLED, UNPAID, etc.), `funding_source_details` shows
+// the current payment method.
+//
+// We don't poll campaign-level `effective_status` because (a) campaign
+// pauses are intentional 95% of the time and (b) the live-but-dark
+// detector already catches the symptom (Live status + no spend).
+// Account-level status catches the ROOT CAUSE before a campaign even pauses
+// — Meta sometimes reduces delivery before pausing entirely.
+
+/** Meta `account_status` numeric → label + actionable flag. Sourced from
+ *  https://developers.facebook.com/docs/marketing-api/reference/ad-account.
+ *  `isBilling` marks the statuses that mean "payment problem" (vs. e.g.
+ *  closed-on-purpose which isn't actionable from our side). */
+export const META_ACCOUNT_STATUS: Record<
+  number,
+  { label: string; isBilling: boolean }
+> = {
+  1: { label: "Active", isBilling: false },
+  2: { label: "Disabled", isBilling: true },
+  3: { label: "Unsettled", isBilling: true },
+  7: { label: "Pending risk review", isBilling: false },
+  8: { label: "Pending settlement", isBilling: true },
+  9: { label: "In grace period", isBilling: true },
+  100: { label: "Pending closure", isBilling: false },
+  101: { label: "Closed", isBilling: false },
+  201: { label: "Any active", isBilling: false },
+  202: { label: "Any closed", isBilling: false },
+}
+
+export type MetaAdAccountHealth = {
+  adAccountId: string
+  /** Raw Meta numeric status. Null when the fetch returned no value. */
+  accountStatus: number | null
+  /** Human-readable label for `accountStatus`. */
+  accountStatusLabel: string
+  /** True for the statuses that signal a payment problem the AM can fix
+   *  (disabled / unsettled / pending settlement / grace period). False
+   *  for "active" and for "closed on purpose" states. */
+  isBillingIssue: boolean
+  /** Meta's `disable_reason` numeric — gives detail on WHY a disabled
+   *  account is disabled. 0 = not disabled. */
+  disableReason: number | null
+  /** Funding source label as Meta returns it ("Visa **** 1234",
+   *  "PayPal user@x.com", etc). Empty string when not exposed. */
+  fundingSourceLabel: string
+  /** ISO timestamp when we fetched this. */
+  fetchedAt: string
+}
+
+/** Fetch ad-account-level health (status + disable reason + funding source).
+ *  Returns null when the request fails entirely (don't poison the cache with
+ *  a fake "active" record); caller is expected to preserve prior state in
+ *  that case, same pattern as the KPI fetch's `metaFetchFailed`. */
+export async function fetchAdAccountHealth(
+  adAccountId: string,
+): Promise<MetaAdAccountHealth | null> {
+  const token = await getToken()
+  const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
+  const url = `${META_API_BASE}/${accountId}?fields=account_status,disable_reason,funding_source_details&access_token=${token}`
+
+  const res = await fetch(url, { cache: "no-store" })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    console.error(
+      `[meta] account-health fetch failed for ${adAccountId}: ${res.status} ${text.slice(0, 200)}`,
+    )
+    return null
+  }
+  const json = (await res.json()) as {
+    account_status?: number
+    disable_reason?: number
+    funding_source_details?: {
+      display_string?: string
+      type?: number
+    }
+  }
+
+  const statusNum = typeof json.account_status === "number" ? json.account_status : null
+  const statusMeta = statusNum != null ? META_ACCOUNT_STATUS[statusNum] : undefined
+
+  return {
+    adAccountId,
+    accountStatus: statusNum,
+    accountStatusLabel: statusMeta?.label ?? (statusNum != null ? `Unknown (${statusNum})` : "Unknown"),
+    isBillingIssue: statusMeta?.isBilling ?? false,
+    disableReason:
+      typeof json.disable_reason === "number" && json.disable_reason > 0 ? json.disable_reason : null,
+    fundingSourceLabel: json.funding_source_details?.display_string ?? "",
+    fetchedAt: new Date().toISOString(),
+  }
+}
+
 export type MetaAdDetail = {
   adId: string
   adName: string

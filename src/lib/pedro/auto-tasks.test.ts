@@ -2,13 +2,18 @@ import { describe, it, expect } from "vitest"
 import {
   decideForClient,
   decideAutoClose,
+  decideBillingHealthTask,
+  decideAutoCloseBillingHealth,
   ACTION_TASK_THRESHOLD,
   MAX_OPEN_PEDRO_TASKS_PER_USER,
   RECENT_CLOSED_DEDUP_DAYS,
   PEDRO_TASK_MARKER,
+  PEDRO_BILLING_HEALTH_MARKER,
   type DecideInput,
+  type BillingHealthTaskInput,
 } from "./auto-tasks"
 import type { MondayClient } from "@/lib/integrations/monday"
+import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
 
 /**
  * Anti-spam invariants — every guardrail in decideForClient gets a
@@ -266,5 +271,167 @@ describe("decideAutoClose", () => {
   it("closes when the client dropped to no-data", () => {
     const d = decideAutoClose("no-data")
     expect(d.close).toBe(true)
+  })
+})
+
+// ─── Billing-health task — guardrails ───────────────────────────────────
+
+describe("decideBillingHealthTask — guardrails", () => {
+  function verdict(overrides: Partial<BillingHealthVerdict> = {}): BillingHealthVerdict {
+    return {
+      hasIssue: true,
+      severity: "billing_error",
+      reason: "ACCOUNT_DISABLED",
+      label: "Meta account: Disabled",
+      expectedWeeklyBudget: 462,
+      actualSpendLast7d: 50,
+      spendRatio: 0.11,
+      metaHealth: {
+        adAccountId: "act_999",
+        accountStatus: 2,
+        accountStatusLabel: "Disabled",
+        isBillingIssue: true,
+        disableReason: 1,
+        fundingSourceLabel: "Visa **** 1234",
+        fetchedAt: "2026-05-09T11:00:00Z",
+      },
+      ...overrides,
+    }
+  }
+
+  function billingInput(overrides: Partial<BillingHealthTaskInput> = {}): BillingHealthTaskInput {
+    return {
+      client: makeClient(),
+      verdict: verdict(),
+      assigneeUserId: "user-am-1",
+      existingTask: null,
+      openTasksForAssignee: 0,
+      now: NOW_ISO,
+      ...overrides,
+    }
+  }
+
+  it("skips when no verdict is available (cache miss / fetch failed)", () => {
+    const d = decideBillingHealthTask(billingInput({ verdict: null }))
+    expect(d).toEqual({ action: "skip", reason: "no_issue" })
+  })
+
+  it("skips when verdict is healthy (hasIssue=false)", () => {
+    const d = decideBillingHealthTask(
+      billingInput({
+        verdict: verdict({ hasIssue: false, severity: "ok", reason: "NONE" }),
+      }),
+    )
+    expect(d).toEqual({ action: "skip", reason: "no_issue" })
+  })
+
+  it("skips when no AM mapping (no fallback to phantom user)", () => {
+    const d = decideBillingHealthTask(billingInput({ assigneeUserId: null }))
+    expect(d).toEqual({ action: "skip", reason: "no_am_assignee" })
+  })
+
+  it("skips when an open billing task already exists (no re-nagging)", () => {
+    const d = decideBillingHealthTask(
+      billingInput({ existingTask: { status: "open", completedAt: null } }),
+    )
+    expect(d).toEqual({ action: "skip", reason: "open_task_exists" })
+  })
+
+  it("skips when a billing task was closed within the recently-closed window", () => {
+    // Closed 2 days ago — still within RECENT_CLOSED_DEDUP_DAYS (7)
+    const closedAt = "2026-05-07T12:00:00Z"
+    const d = decideBillingHealthTask(
+      billingInput({ existingTask: { status: "done", completedAt: closedAt } }),
+    )
+    expect(d).toEqual({ action: "skip", reason: "recently_closed" })
+  })
+
+  it("creates when the previous billing task closed > 7 days ago (re-eligible)", () => {
+    const closedAt = "2026-04-25T12:00:00Z" // 14 days before NOW_ISO
+    const d = decideBillingHealthTask(
+      billingInput({ existingTask: { status: "done", completedAt: closedAt } }),
+    )
+    expect(d.action).toBe("create")
+  })
+
+  it("skips at the per-assignee cap (shared across markers)", () => {
+    const d = decideBillingHealthTask(
+      billingInput({ openTasksForAssignee: MAX_OPEN_PEDRO_TASKS_PER_USER }),
+    )
+    expect(d).toEqual({ action: "skip", reason: "assignee_at_cap" })
+  })
+
+  it("create payload — title flags billing_error vs severe_underspend distinctly", () => {
+    const errorTask = decideBillingHealthTask(billingInput())
+    expect(errorTask.action).toBe("create")
+    if (errorTask.action !== "create") throw new Error("expected create")
+    expect(errorTask.title).toMatch(/billing error confirmed/i)
+
+    const underspendTask = decideBillingHealthTask(
+      billingInput({
+        verdict: verdict({
+          severity: "severe_underspend",
+          reason: "UNDERSPEND_SEVERE",
+          label: "Underspending — €50 spent vs €462 expected",
+        }),
+      }),
+    )
+    expect(underspendTask.action).toBe("create")
+    if (underspendTask.action !== "create") throw new Error("expected create")
+    expect(underspendTask.title).toMatch(/severe underspend/i)
+  })
+
+  it("create payload — body embeds the Dutch client-facing message verbatim", () => {
+    const d = decideBillingHealthTask(billingInput())
+    if (d.action !== "create") throw new Error("expected create")
+    // The pre-baked Dutch template starts with "Hé {firstName}," and
+    // mentions "betaalprobleem" — both are the AM's hint that they can
+    // copy-paste the bottom block straight to the client.
+    expect(d.body).toContain("Hé Test")
+    expect(d.body).toContain("betaalprobleem")
+    expect(d.body).toContain("Meta Business Manager")
+  })
+
+  it("create payload — sourceRef carries the verdict severity + reason for filtering", () => {
+    const d = decideBillingHealthTask(billingInput())
+    if (d.action !== "create") throw new Error("expected create")
+    expect(d.sourceRef.marker).toBe(PEDRO_BILLING_HEALTH_MARKER)
+    expect(d.sourceRef.severity).toBe("billing_error")
+    expect(d.sourceRef.reason).toBe("ACCOUNT_DISABLED")
+  })
+})
+
+describe("decideAutoCloseBillingHealth — only closes when verdict clears", () => {
+  it("closes when there is no verdict at all (Meta data gone)", () => {
+    const d = decideAutoCloseBillingHealth(null)
+    expect(d.close).toBe(true)
+  })
+
+  it("closes when verdict went healthy (hasIssue=false)", () => {
+    const d = decideAutoCloseBillingHealth({
+      hasIssue: false,
+      severity: "ok",
+      reason: "NONE",
+      label: "Meta account: Active",
+      expectedWeeklyBudget: 462,
+      actualSpendLast7d: 450,
+      spendRatio: 0.97,
+      metaHealth: null,
+    })
+    expect(d.close).toBe(true)
+  })
+
+  it("does NOT close while the issue is still active", () => {
+    const d = decideAutoCloseBillingHealth({
+      hasIssue: true,
+      severity: "billing_error",
+      reason: "ACCOUNT_DISABLED",
+      label: "Meta account: Disabled",
+      expectedWeeklyBudget: 462,
+      actualSpendLast7d: 0,
+      spendRatio: 0,
+      metaHealth: null,
+    })
+    expect(d.close).toBe(false)
   })
 })

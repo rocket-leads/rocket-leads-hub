@@ -27,6 +27,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { createAdminClient } from "@/lib/supabase/server"
 import type { ClientStatus } from "@/lib/clients/status"
+import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
 
 export type WatchCategory = "action" | "watch" | "good" | "no-data"
 
@@ -50,6 +51,14 @@ export type CategorizeExtras = {
    *  client whether the team would likely have moved this row based on
    *  precedent, and stashes the suggestion here. */
   aiAdjustment?: AiAdjustmentExtras | null
+  /** Meta ad-account billing-health verdict. When `hasIssue` is true, the
+   *  categorizer short-circuits to `action` with a billing-specific
+   *  insight — this fires ABOVE every other check (manual override
+   *  excepted) because a payment problem makes CPL/CPA/spend signals
+   *  noise. The whole reason Roy wants this is that a billing error
+   *  reads as "high CPL" in the existing rules and gets the wrong
+   *  recommendation. */
+  billingHealth?: BillingHealthVerdict | null
 }
 
 export type ManualOverrideExtras = {
@@ -112,6 +121,14 @@ function overrideStillFitsKpi(
  *  clients always sort above CPL-spike severity in Action Needed. The
  *  number is intentionally well above realistic spend × CPL-delta scores. */
 export const LIVE_BUT_DARK_SEVERITY_FLOOR = 10_000
+
+/** Severity floor for billing-health issues — set above the live-but-dark
+ *  floor so a confirmed billing problem (Meta API explicit signal) sorts
+ *  above "no spend yesterday" cases in Action Needed. A billing error
+ *  affects the whole account, not just one campaign — it's the most
+ *  urgent class of signal we have. */
+export const BILLING_ERROR_SEVERITY_FLOOR = 50_000
+export const BILLING_UNDERSPEND_SEVERITY_FLOOR = 20_000
 
 /** Locale-bound insight strings for categorize(). Inlined here rather than
  *  routed through the global dictionary so this foundational module stays
@@ -205,6 +222,22 @@ const INSIGHT_STRINGS = {
   live_but_dark: {
     en: "Live but no spend yesterday — campaign likely paused in Meta.",
     nl: "Live maar geen spend gisteren — campagne staat waarschijnlijk uit in Meta.",
+  },
+  billing_error_direct: {
+    en: (statusLabel: string, spend: string, expected: string | null) =>
+      expected
+        ? `Billing error — Meta account: ${statusLabel}. €${spend} spent (7d) vs €${expected} expected. Contact client.`
+        : `Billing error — Meta account: ${statusLabel}. €${spend} spent (7d). Contact client.`,
+    nl: (statusLabel: string, spend: string, expected: string | null) =>
+      expected
+        ? `Betaalfout — Meta account: ${statusLabel}. €${spend} uitgegeven (7d) vs €${expected} verwacht. Klant contacten.`
+        : `Betaalfout — Meta account: ${statusLabel}. €${spend} uitgegeven (7d). Klant contacten.`,
+  },
+  billing_error_underspend: {
+    en: (spend: string, expected: string, pct: string) =>
+      `Severe underspend — €${spend} spent (7d) vs €${expected} expected (${pct}% of plan). Likely billing error — contact client.`,
+    nl: (spend: string, expected: string, pct: string) =>
+      `Forse onderbesteding — €${spend} uitgegeven (7d) vs €${expected} verwacht (${pct}% van plan). Waarschijnlijk betaalfout — klant contacten.`,
   },
   // ─── HomeTab Health-vs-baseline strings ──────────────────────────────
   // Selected window vs 30d baseline. Always carries both window labels so
@@ -349,6 +382,16 @@ export function getThresholds(adSpend7d: number): { watchPct: number; actionPct:
  * now — see the file header for context on the appointment-data reliability gap.
  */
 export function severityScore(kpi: KpiSummary, extras?: CategorizeExtras): number {
+  // Billing issues outrank everything else — Meta API has directly told
+  // us (or the underspend math strongly implies) the account isn't
+  // paying. Sort above live-but-dark because billing-error explains the
+  // dark case too and is more specific.
+  if (extras?.billingHealth?.hasIssue) {
+    return extras.billingHealth.severity === "billing_error"
+      ? BILLING_ERROR_SEVERITY_FLOOR
+      : BILLING_UNDERSPEND_SEVERITY_FLOOR
+  }
+
   // Live-but-dark gets a fixed floor so it sorts above CPL-spike severity in
   // Action Needed. The CPL math below would otherwise score 0 (no spend
   // yesterday means tiny spend on the day that matters), pushing these
@@ -407,6 +450,44 @@ export function categorize(
 
   if (!client.metaAdAccountId) {
     return { category: "no-data", insight: INSIGHT_STRINGS.no_meta_account[locale] }
+  }
+
+  // Billing-health override — fires above every KPI-based check because a
+  // payment problem makes CPL/CPA/spend signals meaningless. Roy's
+  // example: €50 spend on a €2k/mo budget reads as "high CPL" in the
+  // CPL-rule below, but the real story is "card got declined, contact
+  // client". Two flavours:
+  //   - "billing_error"  → Meta API directly reports account_status=
+  //     disabled/unsettled/grace-period. Hard signal.
+  //   - "severe_underspend" → 7d spend <40% of expected weekly budget
+  //     with ≥3 active days. Soft signal but typically a billing issue
+  //     Meta hasn't labelled at the account level yet (declined card on
+  //     a single campaign, expired payment method, etc).
+  if (extras?.billingHealth?.hasIssue && kpi) {
+    const bh = extras.billingHealth
+    const spend = kpi.adSpend.toFixed(0)
+    const expected = bh.expectedWeeklyBudget != null ? bh.expectedWeeklyBudget.toFixed(0) : null
+
+    if (bh.severity === "billing_error" && bh.metaHealth) {
+      return {
+        category: "action",
+        insight: INSIGHT_STRINGS.billing_error_direct[locale](
+          bh.metaHealth.accountStatusLabel,
+          spend,
+          expected,
+        ),
+      }
+    }
+    if (bh.severity === "severe_underspend" && expected != null && bh.spendRatio != null) {
+      return {
+        category: "action",
+        insight: INSIGHT_STRINGS.billing_error_underspend[locale](
+          spend,
+          expected,
+          (bh.spendRatio * 100).toFixed(0),
+        ),
+      }
+    }
   }
 
   // Live-but-dark fires BEFORE the no-spend-no-leads no-data check, because a
@@ -560,6 +641,10 @@ export async function updateWatchlistClientState(
    *  override in categorize(). When absent, behaviour matches the previous
    *  implementation exactly (no live-but-dark flag, no false alarms). */
   statusByClient?: Map<string, ClientStatus | null>,
+  /** Per-client billing-health verdicts (keyed by mondayItemId). When
+   *  provided, enables the billing-issue override in categorize() so
+   *  the state-table directly reflects payment problems as `action`. */
+  billingHealthByClient?: Record<string, BillingHealthVerdict>,
 ): Promise<{ written: number }> {
   if (clients.length === 0) return { written: 0 }
 
@@ -592,13 +677,14 @@ export async function updateWatchlistClientState(
       continue
     }
     const clientStatus = statusByClient?.get(client.mondayItemId) ?? null
+    const billingHealth = billingHealthByClient?.[client.mondayItemId] ?? null
     // categorize() takes a full MondayClient; only `metaAdAccountId` and `mondayItemId`
     // are read, so a minimal cast is safe here.
     const { category } = categorize(
       client as MondayClient,
       kpi,
       "en",
-      statusByClient ? { clientStatus } : undefined,
+      statusByClient || billingHealth ? { clientStatus, billingHealth } : undefined,
     )
     const prev = existing.get(client.mondayItemId)
 

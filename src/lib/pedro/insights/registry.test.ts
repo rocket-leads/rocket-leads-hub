@@ -50,6 +50,7 @@ function makeMinimalContext(overrides: Partial<ClientAiContext> = {}): ClientAiC
     inboxEvents: [],
     agreement: null,
     billing: null,
+    billingHealth: null,
     sources: {
       kpi: false,
       recentWindow: false,
@@ -59,6 +60,7 @@ function makeMinimalContext(overrides: Partial<ClientAiContext> = {}): ClientAiC
       inboxEvents: false,
       agreement: false,
       billing: false,
+      billingHealth: false,
     },
     collectedAt: new Date().toISOString(),
     ...overrides,
@@ -84,6 +86,7 @@ function makeRichContext(): ClientAiContext {
       inboxEvents: true,
       agreement: true,
       billing: true,
+      billingHealth: false,
     },
     mondayTrengo: {
       mondayUpdates: "Lead statuses: deal: 4, geen budget: 2",
