@@ -153,7 +153,7 @@ describe("shouldAutoWriteAdministration", () => {
 
   it("case-insensitive on the current value (Monday case drift shouldn't trigger writes)", () => {
     expect(
-      shouldAutoWriteAdministration("INVOICE SENT", ADMIN_LABELS.invoiceSend),
+      shouldAutoWriteAdministration("INVOICE SENT (UNPAID)", ADMIN_LABELS.invoiceSend),
     ).toBe(false)
     expect(
       shouldAutoWriteAdministration("discuss first", ADMIN_LABELS.overdue),

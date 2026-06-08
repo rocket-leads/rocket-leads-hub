@@ -11,23 +11,40 @@
  * the Monday column in sync manually.
  */
 
+// Labels must match the Monday "Administration" column option list EXACTLY
+// (case-sensitive) — Monday rejects `change_column_value` with a label that
+// isn't in the column's option set. The exact strings below were extracted
+// from a 2026-06-08 Monday API error message that listed every valid option,
+// so they're authoritative. If finance edits the option list in Monday, this
+// constant has to be updated in lockstep or all writes start failing again.
+//
+// Notable quirks finance owns (do NOT silently "fix" the typos here):
+//   - "Invoice sent (unpaid)" — the trailing "(unpaid)" is part of the
+//     label so finance can distinguish from "Payments complete".
+//   - "Partialy Paid" — yes, finance spelled it that way in Monday; we
+//     mirror the typo exactly so the write succeeds.
+//   - "Debt collection agency" — singular, not plural.
 export const ADMIN_LABELS = {
   paymentsComplete: "Payments complete",
   onHold: "On hold",
   sendInvoice: "Send invoice",
-  invoiceSend: "Invoice sent",
+  invoiceSend: "Invoice sent (unpaid)",
+  partiallyPaid: "Partialy Paid",
   discussFirst: "Discuss first",
   overdue: "Overdue",
-  debtCollection: "Debt collection agencies",
+  debtCollection: "Debt collection agency",
 } as const
 
 export type AdminLabel = (typeof ADMIN_LABELS)[keyof typeof ADMIN_LABELS]
 
-/** The seven canonical Monday options finance picks from, in the order the
- *  popover renders them. Keep "Payments complete" last as the resting state. */
+/** The canonical Monday options finance picks from, in the order the
+ *  popover renders them. Keep "Payments complete" last as the resting
+ *  state. "Partialy Paid" sits between sent + complete on the cash-flow
+ *  timeline. */
 export const ADMIN_OPTIONS: AdminLabel[] = [
   ADMIN_LABELS.sendInvoice,
   ADMIN_LABELS.invoiceSend,
+  ADMIN_LABELS.partiallyPaid,
   ADMIN_LABELS.overdue,
   ADMIN_LABELS.discussFirst,
   ADMIN_LABELS.onHold,
@@ -41,6 +58,9 @@ export type AdministrationTone = "neutral" | "warn" | "danger" | "success" | "mu
 const TONE_BY_LABEL: Record<AdminLabel, AdministrationTone> = {
   [ADMIN_LABELS.paymentsComplete]: "success",
   [ADMIN_LABELS.invoiceSend]: "warn",
+  // Partial paid is on the road to complete — leans positive but not
+  // there yet, so "warn" (yellow) like Invoice sent rather than success.
+  [ADMIN_LABELS.partiallyPaid]: "warn",
   [ADMIN_LABELS.sendInvoice]: "neutral",
   [ADMIN_LABELS.discussFirst]: "neutral",
   [ADMIN_LABELS.onHold]: "muted",
