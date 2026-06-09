@@ -37,6 +37,8 @@ import type { ChatScope, ChatThreadSummary, ChatMessage } from "@/lib/inbox/fetc
 import type { InboxUser } from "./inbox-view"
 import { EmailComposer } from "./email-composer"
 import { ClientUpdateButton } from "@/app/(dashboard)/clients/_components/client-update-button"
+import type { TrengoIdentity } from "@/app/api/inbox/trengo-identity/route"
+import { AlertTriangle, UserCheck } from "lucide-react"
 
 type Props = {
   scope: ChatScope
@@ -315,6 +317,8 @@ export function ChatPane({
       <TopTabs<ChatFilter> tabs={filterTabs} value={filter} onChange={setFilter} />
 
       {underTabsSlot}
+
+      <TrengoIdentityBanner />
 
       {/* Sized to fill the viewport below the page chrome instead of being
           locked to 640px — keeps the thread list and chat pane equal in
@@ -2772,4 +2776,113 @@ function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) 
   }, [key, value])
 
   return [value, setValue]
+}
+
+/**
+ * Diagnostic banner — Roy 2026-06-09: surfaces "as whom does this user
+ * actually send in Trengo" + "which channels are they subscribed to".
+ *
+ * Three problem states get a visible warning row above the thread list:
+ *   1. Personal Trengo token not connected → can't send as self. Clear
+ *      CTA to /account.
+ *   2. Token connected but Trengo /me 401/4xx → token was revoked or
+ *      pasted wrong. Same CTA: re-connect.
+ *   3. Channel subscriptions missing email entries → explains the
+ *      "I see no emails in my inbox" complaint. CTA to /account to
+ *      pick the right channels.
+ *
+ * Healthy state shows a subtle "Sending as <name>" pill so the user
+ * knows their identity is wired through. No banner when both halves
+ * (token + channels) are fully healthy.
+ */
+function TrengoIdentityBanner() {
+  const { data } = useQuery<TrengoIdentity>({
+    queryKey: ["trengo-identity"],
+    queryFn: () => fetch("/api/inbox/trengo-identity").then((r) => r.json()),
+    // Identity rarely changes mid-session; once a minute is plenty.
+    staleTime: 60 * 1000,
+    refetchInterval: 60 * 1000,
+  })
+
+  if (!data) return null
+
+  // --- Problem states (red/amber banners) ---------------------------------
+
+  if (!data.connected) {
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs">
+        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
+        <div className="flex-1">
+          <p className="font-medium text-amber-700 dark:text-amber-400">
+            Trengo niet gekoppeld
+          </p>
+          <p className="text-muted-foreground/80 mt-0.5">
+            Je persoonlijke Trengo API token is niet ingesteld. Zonder dat kunnen Hub-sends niet als jou worden verstuurd.{" "}
+            <Link href="/account" className="text-primary underline hover:no-underline">
+              Koppel Trengo in /account
+            </Link>
+            .
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (data.error) {
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/5 px-3 py-2 text-xs">
+        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-red-500" />
+        <div className="flex-1">
+          <p className="font-medium text-red-700 dark:text-red-400">
+            Trengo token werkt niet
+          </p>
+          <p className="text-muted-foreground/80 mt-0.5">
+            {data.error}.{" "}
+            <Link href="/account" className="text-primary underline hover:no-underline">
+              Vernieuw je token in /account
+            </Link>
+            .
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // --- Channel coverage warning (mild, doesn't block sends) ---------------
+
+  const missingChannelTypes: string[] = []
+  if (!data.hasEmail) missingChannelTypes.push("Email")
+  if (!data.hasWhatsapp) missingChannelTypes.push("WhatsApp")
+
+  // --- Healthy state: small "Sending as X" pill ---------------------------
+  const identityName =
+    data.trengoUser?.full_name?.trim() || data.trengoUser?.email || `Trengo user ${data.trengoUser?.id ?? ""}`
+
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-1.5 text-[11px]">
+      <div className="flex items-center gap-1.5 text-muted-foreground/80">
+        <UserCheck className="h-3 w-3 text-emerald-500" />
+        <span>
+          Verstuurt vanuit Trengo als <span className="font-medium text-foreground">{identityName}</span>
+        </span>
+        {data.channels.length > 0 && (
+          <span className="text-muted-foreground/50">
+            · {data.channels.length} {data.channels.length === 1 ? "channel" : "channels"} (
+            {data.channels.filter((c) => c.type === "whatsapp").length} WA,{" "}
+            {data.channels.filter((c) => c.type === "email").length} email)
+          </span>
+        )}
+      </div>
+      {missingChannelTypes.length > 0 && (
+        <Link
+          href="/account"
+          className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 hover:underline"
+          title={`Geen ${missingChannelTypes.join(" + ")}-channel(s) geabonneerd — daarom mis je ze in de inbox`}
+        >
+          <AlertTriangle className="h-3 w-3" />
+          Geen {missingChannelTypes.join(" / ")} channels — koppel ze in /account
+        </Link>
+      )}
+    </div>
+  )
 }
