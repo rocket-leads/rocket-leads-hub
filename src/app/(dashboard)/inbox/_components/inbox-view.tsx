@@ -80,14 +80,13 @@ type Props = {
 type MainTab = "now" | "tasks" | "updates" | "client-inbox" | "meetings"
 type UpdateFilter = "all" | UpdateStatus
 /**
- * Task filters cover the active lifecycle (All / Open / In progress / Done)
- * plus a dedicated Snoozed tab so parked items remain visible to the user.
- * Without it, snoozed tasks vanish from every view until the snooze clock
- * expires — which felt like things were silently dropped. Cancelled tasks
- * remain archived (no tab); Cancel is the "soft delete with audit trail"
- * path and Bulk Delete is the hard remove.
+ * Task filters are intentionally bare: only "All" and "Open". Roy 2026-06-09:
+ * "Bezig" / "Klaar" / "Snoozed" cluttered the strip without earning their
+ * keep — the AM lands on Tasks to see what's still to do, not to manage
+ * lifecycle states. Stale persisted values (in_progress / done / snoozed
+ * from the v2 key) fall back to "open" via the v3 key bump below.
  */
-type TaskFilter = "all" | "open" | "in_progress" | "done" | "snoozed"
+type TaskFilter = "all" | "open"
 
 /** Secondary filter strip on Tasks: narrow by source. "all" shows everything;
  *  the chip strip below TASK_FILTERS only renders chips for sources that
@@ -111,32 +110,36 @@ const TASK_SOURCE_LABEL_KEYS: Record<InboxSource, DictionaryKey> = {
  *  per-render useMemo can rebuild the array when the locale flips without
  *  re-allocating icons on every state change. */
 const UPDATE_FILTER_SHAPE = [
+  // Roy 2026-06-09: "Lees" / read chip removed. The AM wants two views:
+  // everything (alles) and what still needs reading (ongelezen). A
+  // read-only filter was effectively an archive trip — never used in
+  // practice, just took space.
   { id: "all" as const, labelKey: "inbox.update.filter.all" as const, icon: LayoutList },
   { id: "unread" as const, labelKey: "inbox.update.filter.unread" as const, icon: Mail },
-  { id: "read" as const, labelKey: "inbox.update.filter.read" as const, icon: MailOpen },
 ]
 
 const TASK_FILTER_SHAPE = [
-  // "All" goes first to mirror the Updates strip (All / Unread / Read).
-  // Roy: consistency across tabs — a user scanning the filter row should
-  // find the same anchor option in the same position regardless of which
-  // tab they're on.
+  // Roy 2026-06-09: collapsed to "All" + "Open" — Bezig / Klaar /
+  // Snoozed were never the AM's anchor view. Same minimalism as the
+  // Updates strip above; consistent positions across tabs.
   { id: "all" as const, labelKey: "inbox.task.filter.all" as const, icon: LayoutList },
   { id: "open" as const, labelKey: "inbox.task.filter.open" as const, icon: Circle },
-  { id: "in_progress" as const, labelKey: "inbox.task.filter.in_progress" as const, icon: Clock },
-  { id: "done" as const, labelKey: "inbox.task.filter.done" as const, icon: CircleCheck },
-  { id: "snoozed" as const, labelKey: "inbox.task.filter.snoozed" as const, icon: BellOff },
 ]
 
 const ALL_UPDATE_STATUSES: UpdateStatus[] = ["unread", "read"]
 // "All" excludes cancelled tasks — they're archived state and shouldn't
 // clutter the active list. If a user explicitly needs to find a cancelled
 // task, the row still exists in the DB; we'd add a dedicated Archive view
-// when the need actually shows up.
+// when the need actually shows up. in_progress + done remain part of the
+// "All" status query even though the explicit chips were removed (Roy:
+// "alles" still means "everything that's not cancelled").
 const VISIBLE_TASK_STATUSES: TaskStatus[] = ["open", "in_progress", "done"]
 
-const DEFAULT_UPDATE_FILTER: UpdateFilter = "all"
-const DEFAULT_TASK_FILTER: TaskFilter = "all"
+// Defaults flipped from "all" → "unread"/"open" so the AM lands on the
+// pressing-attention view first. The "All" chip is still one click away
+// when they want to scan the full queue.
+const DEFAULT_UPDATE_FILTER: UpdateFilter = "unread"
+const DEFAULT_TASK_FILTER: TaskFilter = "open"
 
 export function InboxView({
   currentUser,
@@ -172,14 +175,16 @@ export function InboxView({
     true,
   )
   const [updateFilter, setUpdateFilter] = usePersistedState<UpdateFilter>(
-    // v2 key — defaults shifted from "unread"/"open" to "all". Bumping the
-    // key resets returning users so they land on the new default instead of
-    // a stale persisted value from before the change.
-    "inbox.updateFilter.v2",
+    // v3 key — chips collapsed to All + Unread, default flipped to Unread.
+    // Bump resets returning users carrying a stale "read" or "all" choice
+    // from v2 onto the new default.
+    "inbox.updateFilter.v3",
     DEFAULT_UPDATE_FILTER,
   )
   const [taskFilter, setTaskFilter] = usePersistedState<TaskFilter>(
-    "inbox.taskFilter.v2",
+    // v3 key — chips collapsed to All + Open, default flipped to Open.
+    // Same rationale as the Updates bump above.
+    "inbox.taskFilter.v3",
     DEFAULT_TASK_FILTER,
   )
   const [taskSourceFilter, setTaskSourceFilter] = usePersistedState<TaskSourceFilter>(
@@ -214,18 +219,18 @@ export function InboxView({
     [updateFilter],
   )
   const taskStatuses = useMemo(() => {
+    // "All" returns the full visible set (open + in_progress + done — cancelled
+    // is the only archive bucket excluded). "Open" filters down to just the
+    // open-status rows the AM hasn't started yet.
     if (taskFilter === "all") return VISIBLE_TASK_STATUSES
-    // Snoozed view: tasks are still "open" or "in_progress" status-wise, the
-    // snoozed_until clock is what hides them. Surface both so the user sees
-    // everything they've parked, regardless of which workflow stage.
-    if (taskFilter === "snoozed") return ["open", "in_progress"] as TaskStatus[]
-    return [taskFilter]
+    return [taskFilter] as TaskStatus[]
   }, [taskFilter])
 
-  // When the user opens the Snoozed filter we flip the API param from
-  // "active" (default — hide snoozed) to "snoozed" (show only snoozed).
-  const taskSnoozeMode: "active" | "snoozed" =
-    taskFilter === "snoozed" ? "snoozed" : "active"
+  // Always request the "active" (non-snoozed) set. Snoozed tasks are
+  // surfaced by the dedicated Snoozed task action; they don't need their
+  // own filter view since they'll pop back into Open once their clock
+  // expires.
+  const taskSnoozeMode: "active" | "snoozed" = "active"
 
   const buildUrl = (kind: "update" | "task", statuses: string[]) => {
     const params = new URLSearchParams({ kind })
@@ -779,7 +784,12 @@ export function InboxView({
         title={t("inbox.title", locale)}
         actions={
           <>
-            {!isChatTab && !isClientOnlyTab && (
+            {/* Search bar lives on every inbox tab — Roy 2026-06-09 wants
+                cross-tab parity so they can scan for a conversation by name
+                or message text from any view. The Meetings sub-tab (lockedClient
+                only) is the one exception; it has its own search inside the
+                MeetingsTab component. */}
+            {activeTab !== "meetings" && (
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
                 <input
@@ -860,6 +870,7 @@ export function InboxView({
               updates: tabBadge?.unreadUpdates ?? 0,
               chats: tabBadge?.unreadChats ?? 0,
             }}
+            searchQuery={searchQuery}
             onJumpToTab={(tab) => setActiveTab(tab)}
             onOpenItem={openDetailItem}
             // Chat click opens the thread in the page-level slide-in aside
@@ -1107,6 +1118,7 @@ export function InboxView({
                   dockedDetail
                   selectedThreadKey={selectedThread?.threadKey ?? null}
                   onSelectedChange={(t) => setSelectedThread(t)}
+                  searchQuery={searchQuery}
                 />
               </div>
               <div className="xl:hidden">
@@ -1114,6 +1126,7 @@ export function InboxView({
                   scope="external"
                   users={users}
                   onMakeTaskFromMessage={openComposerFromChat}
+                  searchQuery={searchQuery}
                 />
               </div>
             </>
@@ -2927,6 +2940,29 @@ function filterByQuery(items: InboxItem[], query: string): InboxItem[] {
   })
 }
 
+/** Free-text search across chat thread summaries. Same AND semantics as
+ *  filterByQuery so a single search input feels consistent across tabs.
+ *  Matches the contact name, the linked client name, and the latest message
+ *  preview — Roy 2026-06-09 wants "zoeken op naam én bericht". Full message
+ *  history isn't loaded for the summary list, so a hit inside an older
+ *  message still requires opening the thread (acceptable for v1; a
+ *  server-side full-text endpoint can come later). */
+function filterChatsByQuery(threads: ChatThreadSummary[], query: string): ChatThreadSummary[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return threads
+  const words = q.split(/\s+/).filter(Boolean)
+  return threads.filter((th) => {
+    const haystack = [
+      th.primaryName ?? "",
+      th.clientName ?? "",
+      th.latestPreview ?? "",
+    ]
+      .join(" ")
+      .toLowerCase()
+    return words.every((w) => haystack.includes(w))
+  })
+}
+
 /**
  * Compact chip strip below the Tasks status filter — narrow tasks to a
  * single source (Trengo / Monday / Automation / Watchlist / etc). Helps
@@ -3022,6 +3058,7 @@ function NowFeed({
   currentUserId,
   users,
   summary,
+  searchQuery,
   onJumpToTab,
   onOpenItem,
   onOpenThread,
@@ -3032,6 +3069,10 @@ function NowFeed({
    *  Wired to the same `inbox-badge` query the main tabs use, so the cards
    *  and the tab counters never disagree. */
   summary: { tasks: number; updates: number; chats: number }
+  /** Live search text from the inbox toolbar. Empty string = no filter.
+   *  Applied client-side to the already-loaded sections so a single
+   *  search field works across every tab without per-tab handling. */
+  searchQuery: string
   /** Click handler for the jump-cards. Switches the parent's activeTab so
    *  the AM can drill into the relevant queue from the Now summary. */
   onJumpToTab: (tab: "tasks" | "updates" | "client-inbox") => void
@@ -3068,6 +3109,21 @@ function NowFeed({
     staleTime: 10 * 1000,
   })
 
+  // Second updates fetch — read + unread, for the right-column "Alle updates"
+  // feed. Roy 2026-06-09: the Now tab is the start screen, and the left side
+  // (overdue + unread) is what needs action; the right side is the full
+  // update stream for context-scanning. Two queries kept separate so the
+  // left side stays fast and the right is a wider catch-all.
+  const allUpdatesQuery = useQuery<{ items: InboxItem[] }>({
+    queryKey: ["inbox-now", "updates-all", currentUserId],
+    queryFn: () =>
+      fetch(`/api/inbox?kind=update&assignedToMe=true&statuses=unread,read`).then((r) =>
+        r.json(),
+      ),
+    refetchInterval: POLL_MS,
+    staleTime: 10 * 1000,
+  })
+
   const chatsQuery = useQuery<{ threads: ChatThreadSummary[] }>({
     queryKey: ["inbox-now", "chats"],
     queryFn: () => fetch(`/api/inbox/threads?scope=external`).then((r) => r.json()),
@@ -3087,7 +3143,7 @@ function NowFeed({
   }, [todayStart])
 
   const { overdue, today } = useMemo(() => {
-    const all = tasksQuery.data?.items ?? []
+    const all = filterByQuery(tasksQuery.data?.items ?? [], searchQuery)
     const o: InboxItem[] = []
     const t: InboxItem[] = []
     for (const item of all) {
@@ -3098,16 +3154,18 @@ function NowFeed({
       // Future tasks intentionally excluded — they belong in the Tasks tab.
     }
     return { overdue: o, today: t }
-  }, [tasksQuery.data, todayStart, tomorrowStart])
+  }, [tasksQuery.data, todayStart, tomorrowStart, searchQuery])
 
-  const unreadUpdates = updatesQuery.data?.items ?? []
-  const unreadChats = useMemo(
-    () =>
-      (chatsQuery.data?.threads ?? [])
-        .filter((tt) => tt.unreadCount > 0)
-        .sort((a, b) => b.latestAt.localeCompare(a.latestAt)),
-    [chatsQuery.data],
+  const unreadUpdates = useMemo(
+    () => filterByQuery(updatesQuery.data?.items ?? [], searchQuery),
+    [updatesQuery.data, searchQuery],
   )
+  const unreadChats = useMemo(() => {
+    const all = (chatsQuery.data?.threads ?? [])
+      .filter((tt) => tt.unreadCount > 0)
+      .sort((a, b) => b.latestAt.localeCompare(a.latestAt))
+    return filterChatsByQuery(all, searchQuery)
+  }, [chatsQuery.data, searchQuery])
 
   // Combined "Unread inbox" feed — interleave unread updates + unread chat
   // threads, sorted by most-recent activity. Roy: one consolidated section
@@ -3133,6 +3191,14 @@ function NowFeed({
     entries.sort((a, b) => b.sortKey.localeCompare(a.sortKey))
     return entries
   }, [unreadUpdates, unreadChats])
+
+  // Right-column "Alle updates" — read + unread, sorted newest-first, no
+  // overdue / today bucketing. Filtered through the same searchQuery so a
+  // single field works across both columns.
+  const allUpdates = useMemo(() => {
+    const filtered = filterByQuery(allUpdatesQuery.data?.items ?? [], searchQuery)
+    return [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }, [allUpdatesQuery.data, searchQuery])
 
   const totalCount = overdue.length + today.length + unreadFeed.length
 
@@ -3252,11 +3318,49 @@ function NowFeed({
     </div>
   )
 
-  // Body: sections list (full width). When the AM opens a ticket the
-  // parent (inbox-view) renders the page-level slide-in aside alongside —
-  // the list area itself shrinks via the outer flex layout, no inline
-  // grid recompute (no layout shake when jumping between rows).
-  const body =
+  // Right column — "Alle updates" feed, scrollable inside its own panel
+  // so the left "what needs attention" column doesn't have to compete with
+  // a giant scroll list. Always rendered (even empty) so the two-column
+  // layout doesn't collapse on quiet days — that would re-train the eye
+  // to look full-width and the next busy day would feel cramped.
+  const allUpdatesPane = (
+    <div className="rounded-lg border border-border/60 bg-card/30 flex flex-col">
+      <div className="px-3 py-2 border-b border-border/60 flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {t("inbox.now.all_updates", locale)}
+        </span>
+        <span className="text-[11px] tabular-nums text-muted-foreground/60">
+          {allUpdates.length}
+        </span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+        {allUpdatesQuery.isLoading && allUpdates.length === 0 ? (
+          <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
+        ) : allUpdates.length === 0 ? (
+          <div className="text-center text-xs text-muted-foreground/70 py-8">
+            {t("inbox.now.all_updates_empty", locale)}
+          </div>
+        ) : (
+          allUpdates.map((item) => (
+            <InboxListRow
+              key={`au-${item.id}`}
+              item={item}
+              showClient
+              onClick={() => onOpenItem(item)}
+              users={users}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  )
+
+  // Body — two columns on xl+: left = pressing-attention sections (overdue,
+  // today, unread), right = full updates stream. Below xl falls back to
+  // single column with the right pane stacking under the left so the layout
+  // still works on narrow viewports. Roy 2026-06-09: don't flip this — left
+  // = unread is the anchor; right = all updates is context.
+  const leftColumn =
     totalCount === 0 && loading ? (
       <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
     ) : totalCount === 0 ? (
@@ -3273,7 +3377,10 @@ function NowFeed({
   return (
     <div className="space-y-5 pb-12">
       {summaryCards}
-      {body}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="min-w-0">{leftColumn}</div>
+        <div className="min-w-0 max-h-[calc(100vh-260px)]">{allUpdatesPane}</div>
+      </div>
     </div>
   )
 }

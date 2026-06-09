@@ -60,10 +60,19 @@ type Props = {
    *  split layout where ChatPane manages selection itself. */
   selectedThreadKey?: string | null
   onSelectedChange?: (thread: ChatThreadSummary | null) => void
+  /** Free-text search applied to the thread list. Matches the contact
+   *  name, the linked client name, and the latest preview. Empty string =
+   *  no filter. Driven from the inbox-level toolbar search input so the
+   *  same field works across Tasks / Updates / Now / Client Inbox. */
+  searchQuery?: string
 }
 
 type MarkAction = "mark_read" | "mark_unread"
-type ChatFilter = "all" | "unread" | "read"
+// Roy 2026-06-09: "Read" filter dropped. The Client Inbox AM only ever
+// wants "what's still red" (unread) and "everything" — a Read-only
+// filter was never the anchor view. Same minimalism as the Updates
+// strip in inbox-view.
+type ChatFilter = "all" | "unread"
 
 /**
  * Two-pane chat view for the Team Inbox / Client Inbox tabs.
@@ -90,6 +99,7 @@ export function ChatPane({
   dockedDetail,
   selectedThreadKey,
   onSelectedChange,
+  searchQuery = "",
 }: Props) {
   const queryClient = useQueryClient()
   // Selection state. Always lives in `selectedInternal`; in docked mode we
@@ -126,20 +136,36 @@ export function ChatPane({
     [threadsQuery.data?.threads],
   )
 
-  // Tab counts come off the unfiltered set — flipping to "Read" shouldn't
+  // Tab counts come off the unfiltered set — flipping to "Unread" shouldn't
   // make the Unread tab claim "0 unread" when there are still unread items
   // hiding behind the filter.
   const tabCounts = useMemo(() => {
     let unread = 0
     for (const t of threads) if (t.unreadCount > 0) unread += 1
-    return { all: threads.length, unread, read: threads.length - unread }
+    return { all: threads.length, unread }
   }, [threads])
 
   const filteredThreads = useMemo(() => {
-    if (filter === "all") return threads
-    if (filter === "unread") return threads.filter((t) => t.unreadCount > 0)
-    return threads.filter((t) => t.unreadCount === 0)
-  }, [threads, filter])
+    const base = filter === "all" ? threads : threads.filter((t) => t.unreadCount > 0)
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return base
+    // AND semantics across whitespace-separated words, same as the
+    // inbox-level filterByQuery — keeps a single search field feeling
+    // consistent across every tab. Matches contact + client name +
+    // latest preview. Older messages aren't loaded for the summary, so
+    // a hit inside an earlier message still requires opening the thread.
+    const words = q.split(/\s+/).filter(Boolean)
+    return base.filter((th) => {
+      const haystack = [
+        th.primaryName ?? "",
+        th.clientName ?? "",
+        th.latestPreview ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+      return words.every((w) => haystack.includes(w))
+    })
+  }, [threads, filter, searchQuery])
 
   // Drop selections for threads that are no longer in the visible list (filter
   // change, claimed in Trengo, etc.) so the bulk bar count stays honest.
@@ -270,7 +296,6 @@ export function ChatPane({
   const filterTabs: TopTab<ChatFilter>[] = [
     { id: "all", label: "All conversations", icon: LayoutList, count: tabCounts.all },
     { id: "unread", label: "Unread", icon: Mail, count: tabCounts.unread },
-    { id: "read", label: "Read", icon: MailOpen, count: tabCounts.read },
   ]
 
   return (
@@ -374,17 +399,15 @@ function ThreadList({
 
   if (threads.length === 0) {
     // Filtered-empty messaging shifts based on which tab the user is on so
-    // "0 read" doesn't look like a sync failure when they're on Read mode.
+    // "0 unread" doesn't look like a sync failure when they're on Unread mode.
     const baseCopy =
       scope === "external" ? "client conversations" : "team conversations"
     const empty =
       filter === "unread"
         ? `No unread ${baseCopy}.`
-        : filter === "read"
-          ? `No read ${baseCopy}.`
-          : scope === "external"
-            ? "No client conversations yet."
-            : "No team conversations yet."
+        : scope === "external"
+          ? "No client conversations yet."
+          : "No team conversations yet."
     const sub =
       filter === "all"
         ? scope === "external"
@@ -2582,10 +2605,11 @@ function fmtTime(iso: string): string {
  *  hook in src/lib). Falls back to "all" if storage is blocked or the
  *  persisted JSON is corrupt. */
 function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) => void] {
-  // v2 key — default flipped from "unread" to "all" so every inbox subtab
-  // opens on the same baseline view. Bumping the key resets returning users.
-  const key = `inbox.chatFilter.v2.${scope}`
-  const [value, setValue] = useState<ChatFilter>("all")
+  // v3 key — "Read" filter removed entirely, default flipped back to
+  // "unread" so the AM lands on what still needs action. Bumping resets
+  // returning users carrying a stale "read" choice from v2.
+  const key = `inbox.chatFilter.v3.${scope}`
+  const [value, setValue] = useState<ChatFilter>("unread")
   const hydratedRef = useRef(false)
 
   useEffect(() => {
@@ -2593,7 +2617,7 @@ function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) 
       const raw = localStorage.getItem(key)
       if (raw !== null) {
         const parsed = JSON.parse(raw) as ChatFilter
-        if (parsed === "all" || parsed === "unread" || parsed === "read") {
+        if (parsed === "all" || parsed === "unread") {
           setValue(parsed)
         }
       }
