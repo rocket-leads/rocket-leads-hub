@@ -136,17 +136,44 @@ export function computeTrend(
 }
 
 /**
- * Compact per-ad table Claude can read quickly — one line per ad with
- * verdict + key numbers. Sorted by spend desc so the highest-impact ads
- * lead. Truncates to top N to keep prompt token cost predictable.
+ * Compact per-ad table Claude can read — one block per ad with verdict +
+ * numbers + the actual primary copy (body) and creative type. The body
+ * is the single biggest signal for understanding what the client sells
+ * and who they're talking to; without it Pedro has to guess from the
+ * ad name alone (which led to the Zumex B2C-smoothie hallucination —
+ * Roy flagged 2026-06-09).
+ *
+ * Body is trimmed to BODY_CHAR_LIMIT to keep prompt cost predictable
+ * (~150 tokens per ad worst-case). HTML/whitespace normalised.
  */
+const BODY_CHAR_LIMIT = 500
+
+function normalizeAdBody(body: string | undefined | null): string {
+  if (!body) return ""
+  return body
+    .replace(/<[^>]*>/g, " ") // strip HTML tags
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, BODY_CHAR_LIMIT)
+}
+
 export function renderAdsForPrompt(ads: ScoredAd[], topN = 12): string {
   const sorted = [...ads].sort((a, b) => b.spend - a.spend).slice(0, topN)
   if (sorted.length === 0) return "Geen actieve ads in dit window."
-  const lines = sorted.map((a) => {
+  const blocks = sorted.map((a) => {
     const cpl = a.cpl != null ? `€${a.cpl.toFixed(2)}` : "—"
     const ctr = a.ctr.toFixed(2)
-    return `[${a.verdict.toUpperCase().padEnd(7)}] "${a.adName}" — €${a.spend.toFixed(0)} spend, ${a.leads} leads, CPL ${cpl}, CTR ${ctr}% — ${a.reason}`
+    const body = normalizeAdBody(a.body)
+    const creativeType = a.creativeType ?? "unknown"
+    const header = `[${a.verdict.toUpperCase().padEnd(7)}] "${a.adName}" (${creativeType}) — €${a.spend.toFixed(0)} spend, ${a.leads} leads, CPL ${cpl}, CTR ${ctr}% — ${a.reason}`
+    const bodyLine = body
+      ? `  Primary copy: "${body}${body.length === BODY_CHAR_LIMIT ? "…" : ""}"`
+      : `  Primary copy: (not available)`
+    return `${header}\n${bodyLine}`
   })
-  return lines.join("\n")
+  return blocks.join("\n\n")
 }

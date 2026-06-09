@@ -47,10 +47,61 @@ export async function GET(
       stats?: unknown
       trend?: unknown
       summary?: string
-      proposals?: unknown[]
+      proposals?: Array<{
+        basedOnAd?: unknown
+        preserve?: unknown
+        variants?: Array<{ adName?: string; [k: string]: unknown }>
+      }>
       warnings?: string[]
     }
     const env = (data.envelope ?? {}) as Envelope
+
+    // Enrich envelope variants with their pedro_variants row id +
+    // image status flags so the UI can call generate-image / upload /
+    // launch endpoints without an extra round-trip per variant.
+    const { data: variantRows } = await supabase
+      .from("pedro_variants")
+      .select(
+        "id, ad_name, image_storage_path, image_provider, image_model, image_generated_at, image_prompt, meta_ad_id, meta_ad_launched_at",
+      )
+      .eq("refresh_id", data.id)
+    type VariantRow = {
+      id: string
+      ad_name: string
+      image_storage_path: string | null
+      image_provider: string | null
+      image_model: string | null
+      image_generated_at: string | null
+      image_prompt: string | null
+      meta_ad_id: string | null
+      meta_ad_launched_at: string | null
+    }
+    const byAdName = new Map<string, VariantRow>()
+    for (const r of (variantRows ?? []) as VariantRow[]) {
+      byAdName.set(r.ad_name, r)
+    }
+
+    const enrichedProposals = (env.proposals ?? []).map((p) => ({
+      ...p,
+      variants: (p.variants ?? []).map((v) => {
+        const dbRow = v.adName ? byAdName.get(v.adName) : undefined
+        return {
+          ...v,
+          // Variant DB id — required for image gen / upload / launch endpoints.
+          variantId: dbRow?.id ?? null,
+          image: dbRow?.image_storage_path
+            ? {
+                provider: dbRow.image_provider,
+                model: dbRow.image_model,
+                generatedAt: dbRow.image_generated_at,
+                hasImage: true,
+              }
+            : { hasImage: false, imagePrompt: dbRow?.image_prompt ?? (v.imagePrompt as string | undefined) ?? null },
+          metaAdId: dbRow?.meta_ad_id ?? null,
+          launchedAt: dbRow?.meta_ad_launched_at ?? null,
+        }
+      }),
+    }))
 
     // Reconstruct the same response shape as POST /creative-refresh so the
     // UI doesn't need a separate render path for live vs historical.
@@ -66,7 +117,7 @@ export async function GET(
       },
       stats: env.stats ?? {},
       trend: env.trend ?? {},
-      proposals: env.proposals ?? [],
+      proposals: enrichedProposals,
       summary: env.summary ?? "",
       warnings: env.warnings ?? [],
       // Status flags for the inbox/drive save buttons — UI shows

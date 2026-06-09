@@ -1,7 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
-import { cachedFetch } from "@/lib/cache"
+import { cachedFetch, readCache, writeCache } from "@/lib/cache"
+import type { ResolvedEntity } from "./resolved-entity"
 
 const MONDAY_API_URL = "https://api.monday.com/v2"
 
@@ -372,6 +373,280 @@ export type MondayLeadItem = {
   dealValue: number
   utm: string
   dateDeal: string
+}
+
+/**
+ * Lightweight Monday board metadata for the picker. Just enough to render
+ * the row + a discriminator the AM can use to pick the right board:
+ * board name, workspace, item count. We deliberately don't fetch columns
+ * here — that'd make the search 10× slower for no UX gain.
+ */
+type MondayBoardSummary = {
+  id: string
+  name: string
+  workspaceName: string | null
+  itemsCount: number | null
+  state: string
+}
+
+// Bumped v1 → v2 when the picker scope was narrowed to the "Client Dashboard"
+// workspace. The v1 cache held boards from EVERY workspace the token could
+// see, which surfaced internal / template / archive-bucket boards as picker
+// candidates — exactly the noise that was breaking the link experience.
+const ALL_BOARDS_CACHE_KEY = "monday_all_boards_v2"
+const ALL_BOARDS_TTL_MS = 5 * 60 * 1000
+const WORKSPACE_ID_CACHE_KEY = "monday_client_dashboards_workspace_id_v1"
+const WORKSPACE_ID_TTL_MS = 24 * 60 * 60 * 1000
+
+// Name-match for the per-client lead boards workspace. Roy 2026-06-09:
+// "Ik wil dat je de workspace client dashboard aanhoudt" — only boards in
+// this workspace should be offered as link candidates. Case-insensitive,
+// tolerates "Dashboard"/"Dashboards"/extra whitespace so a future rename
+// like "Client Dashboards 3.0" doesn't silently empty the picker.
+const CLIENT_DASHBOARDS_WORKSPACE_NAME_PATTERN = /client\s*dashboards?/i
+
+/**
+ * Look up the Monday workspace ID for the "Client Dashboard" workspace.
+ * Cached 24 hours — workspaces basically never change. The picker scopes
+ * its boards query to this workspace so the AM only sees per-client lead
+ * boards as link candidates, not internal/template/legacy boards.
+ *
+ * Returns null when no workspace matches the name pattern. Callers should
+ * treat null as "filter not applied" and fall back to the unfiltered set
+ * (with a logged warning) — better to show too many options than to ship
+ * an empty picker if the workspace gets renamed.
+ */
+async function findClientDashboardsWorkspaceId(): Promise<string | null> {
+  // Cached shape is `{ id }` (not the raw string|null) so the cache_store
+  // `data` column — which has a NOT NULL constraint — can safely hold a
+  // "we checked, nothing matched" result without re-querying every 5 minutes.
+  const cached = await readCache<{ id: string | null }>(
+    WORKSPACE_ID_CACHE_KEY,
+    WORKSPACE_ID_TTL_MS,
+  )
+  if (cached) return cached.id
+
+  const token = await getToken()
+  // Monday's `workspaces` query is picky about parameters:
+  //   - omit `state` entirely → defaults to "active" anyway, but explicit
+  //     `state: active` errors on some plans with "Field 'state' doesn't exist"
+  //   - `limit` is required on newer schema versions, 100 covers any realistic
+  //     workspace count
+  const query = `
+    query GetWorkspaces {
+      workspaces(limit: 100) {
+        id
+        name
+      }
+    }
+  `
+  const data = await gql(query, {}, token)
+  const workspaces = (data.workspaces ?? []) as Array<{ id: string; name: string }>
+  const match = workspaces.find((w) => CLIENT_DASHBOARDS_WORKSPACE_NAME_PATTERN.test(w.name))
+  const id = match?.id ?? null
+
+  // Cache wrapped so null is storable. 24h TTL on the "not found" case
+  // gives the picker time to fall back to unfiltered while Roy figures out
+  // whether the workspace got renamed.
+  await writeCache(WORKSPACE_ID_CACHE_KEY, { id })
+  if (!id) {
+    // Log the actual workspace names so we can see what to match against
+    // next time — the regex `/client\s*dashboards?/i` clearly missed; this
+    // tells us whether the workspace is named "Klanten" / "Active Clients"
+    // / something else entirely.
+    const names = workspaces.map((w) => `"${w.name}"`).join(", ")
+    console.warn(
+      `[monday] Client Dashboard workspace not found. ` +
+        `Searched ${workspaces.length} workspaces: ${names}. ` +
+        `Board picker will fall back to unfiltered.`,
+    )
+  }
+  return id
+}
+
+/**
+ * Pull the active boards inside the "Client Dashboard" workspace. ~200
+ * boards per page, capped at 5 pages — that workspace has well under 1000
+ * boards today. Cached for 5 minutes so per-keystroke search in the picker
+ * doesn't fan out into a Monday API call each time.
+ *
+ * Workspace filter falls back to "all accessible boards" if discovery fails
+ * (renamed workspace, token without workspace access, etc.) — the picker
+ * stays usable, just noisier.
+ *
+ * `state: active` filters out archived/deleted boards which the picker
+ * should never offer as a destination — leftover archived boards were one
+ * of the main reasons broken board IDs were getting linked.
+ */
+async function fetchAllAccessibleBoards(): Promise<MondayBoardSummary[]> {
+  const cached = await readCache<MondayBoardSummary[]>(ALL_BOARDS_CACHE_KEY, ALL_BOARDS_TTL_MS)
+  if (cached) return cached
+
+  const workspaceId = await findClientDashboardsWorkspaceId()
+  const token = await getToken()
+  // Two query variants — workspace-scoped (primary) and unfiltered (fallback).
+  // GraphQL doesn't let us pass `workspace_ids: null` to mean "no filter",
+  // so we branch the query string.
+  // Monday's `workspace_ids` arg is `[ID]` (nullable list items), not `[ID!]` —
+  // passing the non-null variant errors with "Variable type mismatch". Same for
+  // dropping `state: active` (default anyway, and explicit value is rejected on
+  // some account schemas). `order_by: used_at` is kept — it's the order_by that
+  // makes the cold-open list show "boards I actually touch" first.
+  const scopedQuery = `
+    query GetBoards($page: Int!, $workspaceIds: [ID]) {
+      boards(limit: 200, page: $page, order_by: used_at, workspace_ids: $workspaceIds) {
+        id
+        name
+        state
+        items_count
+        workspace { name }
+      }
+    }
+  `
+  const unscopedQuery = `
+    query GetBoards($page: Int!) {
+      boards(limit: 200, page: $page, order_by: used_at) {
+        id
+        name
+        state
+        items_count
+        workspace { name }
+      }
+    }
+  `
+  const out: MondayBoardSummary[] = []
+  for (let page = 1; page <= 5; page++) {
+    const data = workspaceId
+      ? await gql(scopedQuery, { page, workspaceIds: [workspaceId] }, token)
+      : await gql(unscopedQuery, { page }, token)
+    const boards = (data.boards ?? []) as Array<{
+      id: string
+      name: string
+      state: string
+      items_count: number | null
+      workspace: { name: string } | null
+    }>
+    if (boards.length === 0) break
+    for (const b of boards) {
+      // Server-side state filter removed (schema-incompat on some accounts),
+      // so filter client-side — archived/deleted boards must never appear as
+      // link candidates in the picker.
+      if (b.state !== "active") continue
+      out.push({
+        id: b.id,
+        name: b.name,
+        state: b.state,
+        itemsCount: b.items_count ?? null,
+        workspaceName: b.workspace?.name ?? null,
+      })
+    }
+    if (boards.length < 200) break
+  }
+
+  await writeCache(ALL_BOARDS_CACHE_KEY, out)
+  return out
+}
+
+function toResolvedBoard(b: MondayBoardSummary): ResolvedEntity {
+  const subParts: string[] = []
+  if (b.workspaceName) subParts.push(b.workspaceName)
+  if (typeof b.itemsCount === "number") subParts.push(`${b.itemsCount} items`)
+  return {
+    id: b.id,
+    name: b.name,
+    subline: subParts.length > 0 ? subParts.join(" · ") : undefined,
+  }
+}
+
+/**
+ * Search Monday boards by name for the ConnectedEntity picker.
+ *
+ * Monday's `boards` GraphQL query has no name-filter parameter, so we fetch
+ * the full accessible boards list (cached 5 minutes) and filter client-side.
+ * The cache flips the per-keystroke cost from "Monday API roundtrip" to
+ * "in-memory substring match" which is the only thing that makes a debounced
+ * search picker feel snappy here.
+ *
+ * Ranking: exact-prefix matches before substring matches, then alphabetical.
+ * The AM almost always types the start of the company name first — that's
+ * the entry that should land at the top.
+ */
+export async function searchMondayBoards(
+  query: string,
+  limit = 10,
+): Promise<ResolvedEntity[]> {
+  const boards = await fetchAllAccessibleBoards()
+  const trimmed = query.trim().toLowerCase()
+  const cap = Math.min(Math.max(limit, 1), 25)
+
+  if (trimmed.length === 0) {
+    // Cold-open: most-recently-used boards (order_by: used_at) so the
+    // top of the list is "boards you actually touch", not the alphabetical
+    // A-list of every legacy board ever created.
+    return boards.slice(0, cap).map(toResolvedBoard)
+  }
+
+  type Scored = { board: MondayBoardSummary; rank: number }
+  const scored: Scored[] = []
+  for (const b of boards) {
+    const name = b.name.toLowerCase()
+    if (name.startsWith(trimmed)) {
+      scored.push({ board: b, rank: 0 })
+    } else if (name.includes(trimmed)) {
+      scored.push({ board: b, rank: 1 })
+    }
+  }
+  scored.sort((a, b) => a.rank - b.rank || a.board.name.localeCompare(b.board.name))
+  return scored.slice(0, cap).map((s) => toResolvedBoard(s.board))
+}
+
+/**
+ * Resolve a single Monday board ID to its ResolvedEntity. Used by the
+ * always-on verification on the picker trigger — every time a Client
+ * Information panel renders, the stored `client_board_id` is round-tripped
+ * to confirm the board still exists + the token still has access. Catches
+ * the "board got archived in Monday but the ID is still set" failure mode
+ * that's been silently breaking KPIs.
+ *
+ * Returns null when:
+ *   - the ID doesn't match any board (Monday returns empty array)
+ *   - the board exists but is archived/deleted (state !== "active")
+ * Throws on transport/auth errors so the picker shows "couldn't verify"
+ * instead of "definitely broken".
+ */
+export async function resolveMondayBoard(id: string): Promise<ResolvedEntity | null> {
+  const trimmed = id.trim()
+  if (!trimmed) return null
+  const token = await getToken()
+  const query = `
+    query GetBoard($boardId: ID!) {
+      boards(ids: [$boardId]) {
+        id
+        name
+        state
+        items_count
+        workspace { name }
+      }
+    }
+  `
+  const data = await gql(query, { boardId: trimmed }, token)
+  const board = (data.boards ?? [])[0] as
+    | {
+        id: string
+        name: string
+        state: string
+        items_count: number | null
+        workspace: { name: string } | null
+      }
+    | undefined
+  if (!board || board.state !== "active") return null
+  return toResolvedBoard({
+    id: board.id,
+    name: board.name,
+    state: board.state,
+    itemsCount: board.items_count ?? null,
+    workspaceName: board.workspace?.name ?? null,
+  })
 }
 
 export async function fetchClientBoardItems(

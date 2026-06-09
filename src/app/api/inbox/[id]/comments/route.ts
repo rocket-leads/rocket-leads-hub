@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getInboxItem, listInboxComments } from "@/lib/inbox/fetchers"
-import { mirrorCommentToMonday } from "@/lib/inbox/monday-mirror"
 import { sendPushToUser } from "@/lib/notifications/push"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -113,25 +112,6 @@ export async function POST(
       }
     }
   }
-
-  // Mirror to Monday as a reply under the parent's mirrored update.
-  mirrorCommentToMonday({
-    clientId: item.clientId,
-    parentMondayUpdateId: item.mondayUpdateId,
-    parentTitle: item.title,
-    authorName: session.user.name ?? session.user.email,
-    body: text,
-    actorUserId: session.user.id,
-  })
-    .then(async (mondayUpdateId) => {
-      if (mondayUpdateId) {
-        await supabase
-          .from("inbox_comments")
-          .update({ monday_update_id: mondayUpdateId })
-          .eq("id", data.id)
-      }
-    })
-    .catch((e) => console.error("Inbox comment mirror failed:", e))
 
   return NextResponse.json({ id: data.id }, { status: 201 })
 }

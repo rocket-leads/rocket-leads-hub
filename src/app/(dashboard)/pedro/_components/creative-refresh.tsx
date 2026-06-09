@@ -3,6 +3,7 @@
 import { ImageIcon, Copy } from "lucide-react"
 import { useState } from "react"
 import { RefreshShell, CopyButton } from "./refresh-shell"
+import { VariantImagePanel } from "./variant-image-panel"
 import { cn } from "@/lib/utils"
 
 type CreativeVariant = {
@@ -16,7 +17,13 @@ type CreativeVariant = {
   newHook: string
   scriptOutline: string
   primaryCopySnippet: string
+  /** English visual brief for image-gen. Stored on pedro_variants. */
+  imagePrompt?: string
   why: string
+  /** From enriched envelope — pedro_variants row id, lets image
+   *  generate/upload endpoints target this specific variant. */
+  variantId?: string | null
+  image?: { hasImage: boolean; provider?: string | null; model?: string | null; generatedAt?: string | null; imagePrompt?: string | null }
 }
 
 type CreativeProposal = {
@@ -133,6 +140,24 @@ export function CreativeRefresh({ selectedClientId, selectedClientName, autoStar
                       </div>
                       <div className="text-sm text-foreground">{v.primaryCopySnippet}</div>
                     </div>
+                    {/* Image generation panel — sits between copy and "Waarom".
+                        Sluit de loop tussen Pedro's text proposal en de
+                        echte ad creative. Roy 2026-06-09. */}
+                    <VariantImagePanel
+                      variantId={v.variantId ?? null}
+                      adName={v.adName}
+                      initialImagePrompt={v.image?.imagePrompt ?? v.imagePrompt ?? null}
+                      initialImage={
+                        v.image
+                          ? {
+                              hasImage: v.image.hasImage,
+                              provider: v.image.provider,
+                              model: v.image.model,
+                              generatedAt: v.image.generatedAt,
+                            }
+                          : undefined
+                      }
+                    />
                     <div className="text-xs text-muted-foreground italic pt-1 border-t border-border/40">
                       Waarom: {v.why}
                     </div>

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { mirrorItemToMonday } from "@/lib/inbox/monday-mirror"
 import {
   renderCreativeRefreshMarkdown,
   renderRefreshTitle,
@@ -13,8 +12,7 @@ import {
  *
  * Creates a Hub `update` assigned to the current user with the refresh
  * rendered as markdown in the body. Lands in the AM's personal Updates
- * inbox, searchable forever, also mirrored to Monday via the existing
- * mirror so the team's transition-period workflow still sees it.
+ * inbox, searchable forever — Hub-canonical, no external mirror.
  *
  * Idempotent: if the refresh already carries `saved_to_inbox_event_id`,
  * return that event id rather than creating a duplicate.
@@ -126,32 +124,6 @@ export async function POST(
       .from("pedro_refreshes")
       .update({ saved_to_inbox_event_id: inserted.id })
       .eq("id", refreshRow.id)
-
-    // Mirror to Monday (best-effort, non-blocking — same pattern the
-    // global Hub inbox uses).
-    mirrorItemToMonday({
-      kind: "update",
-      clientId: refreshRow.client_id,
-      title,
-      body,
-      authorName: session.user.name ?? "Pedro",
-      assigneeName: session.user.name ?? "Pedro",
-      actorUserId: session.user.id,
-    })
-      .then(async (mondayUpdateId) => {
-        if (mondayUpdateId) {
-          await supabase
-            .from("inbox_events")
-            .update({ monday_update_id: mondayUpdateId })
-            .eq("id", inserted.id)
-        }
-      })
-      .catch((e) =>
-        console.error(
-          "[pedro/refreshes/save-to-inbox] Monday mirror failed:",
-          e instanceof Error ? e.message : e,
-        ),
-      )
 
     return NextResponse.json({
       inboxEventId: inserted.id,

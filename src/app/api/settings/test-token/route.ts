@@ -131,6 +131,30 @@ async function testFathom(token: string): Promise<TestResult> {
   }
 }
 
+async function testGemini(token: string): Promise<TestResult> {
+  // Cheapest validity probe: list models. A 200 means the key exists +
+  // the v1beta API is reachable; per-model errors come later at use time.
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(token.trim())}`,
+    )
+    if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { models?: Array<{ name?: string }> }
+      const imageCapable = (data.models ?? []).filter((m) =>
+        (m.name ?? "").includes("image"),
+      ).length
+      return {
+        ok: true,
+        message: `Connected to Gemini (${data.models?.length ?? 0} models, ${imageCapable} image-capable)`,
+      }
+    }
+    const text = await res.text().catch(() => "")
+    return { ok: false, message: `Gemini HTTP ${res.status}: ${text.slice(0, 160) || res.statusText}` }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Connection failed" }
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session || session.user.role !== "admin") {
@@ -167,6 +191,7 @@ export async function POST(req: NextRequest) {
     case "slack": result = await testSlack(token); break
     case "google_drive": result = await testGoogleDrive(token); break
     case "fathom": result = await testFathom(token); break
+    case "gemini": result = await testGemini(token); break
     default: return NextResponse.json({ ok: false, message: "Unknown service" })
   }
 

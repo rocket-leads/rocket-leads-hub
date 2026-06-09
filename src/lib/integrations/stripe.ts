@@ -1,6 +1,7 @@
 import Stripe from "stripe"
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
+import type { ResolvedEntity } from "./resolved-entity"
 
 async function getStripe(): Promise<Stripe> {
   const supabase = await createAdminClient()
@@ -329,6 +330,83 @@ export async function fetchInvoicedAdBudget(customerId: string): Promise<AdBudge
 
   lineItems.sort((a, b) => b.date - a.date)
   return { totalInvoiced, lineItems }
+}
+
+/**
+ * Search Stripe customers by name/email for the ConnectedEntity picker.
+ * Uses Stripe's `customers.search` with a query that matches against `name`
+ * or `email` substrings — that's the cheapest API for "find the customer
+ * the AM is trying to link". Falls back to `customers.list` (alphabetical)
+ * for an empty query so the picker has something to show on first open.
+ *
+ * Returns at most `limit` results in unified ResolvedEntity shape so the
+ * picker is service-agnostic. The `subline` carries the discriminator the
+ * human actually uses to disambiguate: email + last invoice date. Stripe's
+ * "John Doe" collisions are the main reason this whole layer exists.
+ */
+export async function searchStripeCustomers(
+  query: string,
+  limit = 10,
+): Promise<ResolvedEntity[]> {
+  const stripe = await getStripe()
+  const trimmed = query.trim()
+  const cap = Math.min(Math.max(limit, 1), 25)
+
+  let customers: Stripe.Customer[] = []
+  if (trimmed.length === 0) {
+    // Cold-open: alphabetical first page so the picker isn't blank. AMs
+    // type to filter — this is just the placeholder list.
+    const page = await stripe.customers.list({ limit: cap })
+    customers = page.data
+  } else {
+    // Stripe search syntax: substring match on name OR email. Quoted to be
+    // safe with names containing spaces or special chars. We don't worry
+    // about injection — Stripe parses this server-side and only against
+    // our own customer set.
+    const escaped = trimmed.replace(/'/g, "\\'")
+    const params = `name~'${escaped}' OR email~'${escaped}'`
+    const res = await stripe.customers.search({ query: params, limit: cap })
+    customers = res.data
+  }
+
+  return customers.map(toResolvedCustomer)
+}
+
+/**
+ * Resolve a single Stripe customer ID to a ResolvedEntity for the inline
+ * "currently linked to X" display next to the ConnectedEntity. Returns
+ * null on any not-found or deleted state so the caller can render the
+ * "broken link" UI. Throws on auth/transport failures so the caller can
+ * distinguish "Stripe is down" from "ID doesn't resolve".
+ */
+export async function resolveStripeCustomer(id: string): Promise<ResolvedEntity | null> {
+  const trimmed = id.trim()
+  if (!trimmed) return null
+  const stripe = await getStripe()
+  try {
+    const customer = await stripe.customers.retrieve(trimmed)
+    if (customer.deleted) return null
+    return toResolvedCustomer(customer as Stripe.Customer)
+  } catch (e) {
+    // Stripe throws on unknown IDs — surface that as null (the "broken
+    // link" state). Any other error bubbles up; the API route turns it
+    // into a 500 so the picker shows "couldn't verify" instead of
+    // "definitely broken".
+    if (e instanceof Stripe.errors.StripeError && e.code === "resource_missing") {
+      return null
+    }
+    throw e
+  }
+}
+
+function toResolvedCustomer(c: Stripe.Customer): ResolvedEntity {
+  const subParts: string[] = []
+  if (c.email) subParts.push(c.email)
+  return {
+    id: c.id,
+    name: c.name ?? c.email ?? c.id,
+    subline: subParts.length > 0 ? subParts.join(" · ") : undefined,
+  }
 }
 
 export async function fetchBillingData(customerId: string): Promise<BillingData> {

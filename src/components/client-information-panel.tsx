@@ -14,6 +14,7 @@ import type {
   PersonFieldKey,
   SimpleFieldKey,
 } from "@/lib/clients/edit"
+import { ConnectedEntity } from "@/components/connected-entity"
 
 type Props = { client: MondayClient }
 
@@ -77,40 +78,50 @@ export function ClientInformationPanel({ client }: Props) {
       </Section>
 
       <Section title="Identifiers">
-        <SimpleField
+        <ConnectedEntity
           mondayItemId={client.mondayItemId}
           fieldKey="client_board_id"
           value={client.clientBoardId}
-          label="Monday client board ID"
+          label="Monday client board"
+          service="monday-board"
+          companyName={client.companyName || client.name}
           help="Per-client lead board. Unblocks: lead counts, UTM table, lead-status sentiment in Watch List + Pedro. Without it, KPIs fall back to Meta-only and Pedro flags missing CRM data."
         />
-        <SimpleField
+        <ConnectedEntity
           mondayItemId={client.mondayItemId}
           fieldKey="meta_ad_account_id"
           value={client.metaAdAccountId}
-          label="Meta ad account ID"
+          label="Meta ad account"
+          service="meta-ad-account"
+          companyName={client.companyName || client.name}
           help="Ad account used for Spend / CPL / CTR / per-ad performance. Unblocks: Campaigns tab, Top Ads, Pedro creative insights. Without it, the Performance Overview shows no ad metrics."
         />
-        <SimpleField
+        <ConnectedEntity
           mondayItemId={client.mondayItemId}
           fieldKey="stripe_customer_id"
           value={client.stripeCustomerId}
-          label="Stripe customer ID"
+          label="Stripe customer"
+          service="stripe-customer"
+          companyName={client.companyName || client.name}
           help="Customer in Stripe used for invoices + payment status. Unblocks: Billing tab, overdue/open invoice banners, finance flows. Without it, the Payment banner stays hidden."
         />
-        <SimpleField
+        <ConnectedEntity
           mondayItemId={client.mondayItemId}
           fieldKey="trengo_contact_id"
           value={client.trengoContactId}
-          label="Trengo contact ID"
+          label="Trengo contact"
+          service="trengo-contact"
+          companyName={client.companyName || client.name}
           help="Trengo contact behind this client. Unblocks: Conversations → Inbox + Timeline, client-sentiment signals in Pedro. Without it, the client's WhatsApp/email threads stay invisible to the Hub."
         />
-        <SimpleField
+        <ConnectedEntity
           mondayItemId={client.mondayItemId}
           fieldKey="google_drive_id"
           value={client.googleDriveId}
-          label="Google Drive ID"
-          help="Folder ID where creatives, scripts and assets live. Unblocks: quick-link shortcuts on the client page. Cosmetic only — nothing in the data pipeline depends on it."
+          label="Google Drive folder"
+          service="drive-folder"
+          companyName={client.companyName || client.name}
+          help="Folder ID where creatives, scripts and assets live. Unblocks: quick-link shortcuts on the client page + Pedro deliverable drop-target. Without it, file pushes from the Hub have nowhere to land."
         />
       </Section>
     </div>

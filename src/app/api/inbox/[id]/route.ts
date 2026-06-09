@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getInboxItem, listInboxComments } from "@/lib/inbox/fetchers"
-import { mirrorStatusChangeToMonday } from "@/lib/inbox/monday-mirror"
 import { sendPushToUser } from "@/lib/notifications/push"
 import type { TaskStatus, UpdateInboxItemInput, UpdateStatus } from "@/types/inbox"
 import { NextRequest, NextResponse } from "next/server"
@@ -170,19 +169,6 @@ export async function PATCH(
       url: "/inbox",
       tag: `inbox-task-${id}`,
     }).catch((e) => console.error("Reassign push send failed:", e))
-  }
-
-  // Mirror task status changes to Monday (done/cancelled only — see helper)
-  if (patch.status && item.kind === "task") {
-    mirrorStatusChangeToMonday({
-      kind: item.kind,
-      clientId: item.clientId,
-      parentMondayUpdateId: item.mondayUpdateId,
-      parentTitle: item.title,
-      newStatus: patch.status,
-      actorName: session.user.name ?? session.user.email,
-      actorUserId: session.user.id,
-    }).catch((e) => console.error("Inbox status-change mirror failed:", e))
   }
 
   return NextResponse.json({ ok: true })

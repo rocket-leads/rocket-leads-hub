@@ -334,35 +334,28 @@ export async function POST(req: NextRequest) {
 
   // Route classified tasks/updates to the AM responsible for this client.
   // Falls back to HQ when the contact isn't linked or the AM isn't mapped.
-  let assigneeId =
+  const assigneeId =
     (clientRow?.monday_item_id
       ? await resolveClientAssignee(clientRow.monday_item_id)
       : null) ?? hq.id
 
-  // Roy 2026-06-09 — CM Mentions tab feeder.
+  // Roy 2026-06-09 — @-mention fan-out (Updates tab, not a dedicated tab).
   //
   // Trengo internal notes (NOTE events) are how the team @-mentions a
-  // teammate inside a conversation. When a CM is mentioned, we want the
-  // chat row to surface in their dedicated Mentions tab — that's gated on
-  // `assignee_id = mentioned_user`. Override the AM-routed assignee above
-  // with the first matching Hub user we find in the note body.
-  //
-  // Mention parser is best-effort: it strips HTML (Trengo notes can
-  // contain rich text) and runs the same `@FirstName` regex the comments
-  // route uses, then resolves via case-insensitive name lookup in
-  // `users`. Self-mentions are skipped by matching against the note's
-  // own author_name (so an AM writing "@Roy" doesn't ping themselves
-  // when their name happens to match). First-match wins — chat rows
-  // have a single assignee column, multi-mention fan-out would dup the
-  // message.
-  if (payload.eventType === "NOTE") {
-    const mentionedId = await resolveFirstMentionedHubUser(
-      supabase,
-      payload.messageBody,
-      payload.authorName,
-    )
-    if (mentionedId) assigneeId = mentionedId
-  }
+  // teammate. We resolve mentions AFTER inserting the chat row below and
+  // emit one `kind: "update"` inbox_event per mentioned Hub user so the
+  // mention lands in their Updates tab. The chat row itself stays
+  // assigned to the client AM — no reassignment, no separate "Mentions"
+  // tab. Roy: "doe maar gewoon bij de updates, want de meeste mentions
+  // zijn updates."
+  const mentionedUserIds =
+    payload.eventType === "NOTE"
+      ? await resolveMentionedHubUserIds(
+          supabase,
+          payload.messageBody,
+          payload.authorName,
+        )
+      : []
 
   // Classify with AI. Defaults to chat on uncertainty.
   const classification = await classifyInboxMessage({
@@ -458,41 +451,79 @@ export async function POST(req: NextRequest) {
   }
   if (inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
 
+  // Fan out @-mentions in internal notes to the mentioned users' Updates
+  // tab. One `kind: "update"` row per mentioned Hub user with a body
+  // preview of the note + a source_ref pointing back to the chat row, so
+  // the mention is visible even for users (like CMs) who don't see the
+  // Client Inbox at all. Best-effort — a failed update insert mustn't
+  // tank the webhook response.
+  if (mentionedUserIds.length > 0 && inserted?.id) {
+    const titlePrefix = `${payload.authorName} mentioned you`
+    const noteTextPlain = payload.messageBody
+      .replace(/<\/?[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")
+      .trim()
+    const bodyPreview =
+      noteTextPlain.length > 240 ? noteTextPlain.slice(0, 237) + "…" : noteTextPlain
+    const conversationLabel = clientRow?.name ?? payload.contactName ?? "conversation"
+    for (const mentionedId of mentionedUserIds) {
+      const { error: mentionErr } = await supabase
+        .from("inbox_events")
+        .insert({
+          kind: "update",
+          client_id: clientRow?.monday_item_id ?? "",
+          author_id: hq.id,
+          assignee_id: mentionedId,
+          title: `${titlePrefix} in ${conversationLabel}`,
+          body: bodyPreview,
+          status: "unread",
+          source: "trengo",
+          source_ref: {
+            trengo_mention_in_chat_event_id: inserted.id,
+            trengo_mention_in_thread_key: `trengo:contact:${payload.contactId}`,
+          },
+          author_kind: "rl_team",
+          author_name_cached: payload.authorName,
+          classify_method: "manual",
+          created_at_src: payload.createdAtSrc,
+        })
+      if (mentionErr) {
+        console.error("Trengo mention update insert failed:", mentionErr.message)
+      }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     classified: classification.kind,
     confidence: classification.confidence,
     reason: classification.reason,
     clientLinked: !!clientRow,
+    mentionFanout: mentionedUserIds.length,
   })
 }
 
 // --- Mention resolver ----------------------------------------------------
 
 /**
- * Trengo internal notes are how the team @-mentions a teammate. When a
- * mention lands on a Hub user, we want the chat row to surface in their
- * dedicated Mentions tab (CMs) or be discoverable as "you were
- * @-mentioned" for AMs. Both gate on `assignee_id = mentioned_user`, so
- * this helper rewrites the assignee at insert-time.
+ * Resolve every Hub user @-mentioned in a Trengo internal note. We fan
+ * out one `kind: "update"` row per mentioned user so the mention surfaces
+ * in their Updates tab (Roy 2026-06-09 — no dedicated Mentions tab).
  *
  * Best-effort parsing — Trengo notes can be HTML-rich, so we strip tags
  * first, then run the same `@FirstName` regex the comments path uses.
  * Lookup matches case-insensitively against `users.name` on first-name
  * OR full-name. Self-mentions are skipped by matching the captured
  * mention against the note's own `authorName` (the Trengo poster).
- *
- * Returns the FIRST matched Hub user id, or null when nothing matches.
- * First-match: chat rows have a single assignee column, fanning out per
- * mention would dup the message and inflate badges; v1 prioritises the
- * first name in the body, which is also the most-prominent in Trengo's
- * rendered note (Trengo lists mentions inline at the top).
+ * Duplicates are deduped (`@Roy ... @Roy` → one id).
  */
-async function resolveFirstMentionedHubUser(
+async function resolveMentionedHubUserIds(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   body: string,
   authorName: string | null,
-): Promise<string | null> {
+): Promise<string[]> {
   // Strip HTML — Trengo notes can be rich text. Removing tags leaves the
   // visible @-mention text intact (mentions render as `<span>@Roy</span>`
   // or similar; the inner text survives).
@@ -503,10 +534,11 @@ async function resolveFirstMentionedHubUser(
   const matches = Array.from(
     text.matchAll(/@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g),
   )
-  if (matches.length === 0) return null
+  if (matches.length === 0) return []
 
-  // Preserve regex order so the FIRST mention in the note wins. Dedupe by
-  // lowercase to avoid pinging the same person twice on `@Roy ... @Roy`.
+  // Dedupe by lowercase to avoid pinging the same person twice on
+  // `@Roy ... @Roy`. Preserve regex order so the first mention is
+  // processed first (rarely matters since we return a set anyway).
   const seen = new Set<string>()
   const names: string[] = []
   for (const m of matches) {
@@ -516,19 +548,20 @@ async function resolveFirstMentionedHubUser(
     seen.add(key)
     names.push(n)
   }
-  if (names.length === 0) return null
+  if (names.length === 0) return []
 
   const { data: rows } = await supabase
     .from("users")
     .select("id, name")
     .not("name", "is", null)
-  if (!rows || rows.length === 0) return null
+  if (!rows || rows.length === 0) return []
 
   // Self-mention filter — match against the note's poster name. We compare
   // first names because Trengo's author_name is usually a full name and the
   // @-mention is typically the first name. Lower-cased on both sides.
   const authorFirstNameLower = (authorName ?? "").trim().toLowerCase().split(/\s+/)[0] ?? ""
 
+  const ids = new Set<string>()
   for (const name of names) {
     const needle = name.toLowerCase()
     if (needle && needle === authorFirstNameLower) continue
@@ -537,9 +570,9 @@ async function resolveFirstMentionedHubUser(
       if (!userName) continue
       const firstName = userName.split(/\s+/)[0]
       if (firstName === needle || userName === needle) {
-        return row.id as string
+        ids.add(row.id as string)
       }
     }
   }
-  return null
+  return Array.from(ids)
 }

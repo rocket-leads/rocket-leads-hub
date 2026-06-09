@@ -279,21 +279,35 @@ export async function listInboxItems(
   // Tasks/Updates already enforce the strict assignee filter above and don't
   // need this broader OR clause. Keeping it would silently re-open the
   // self-authored / "anything on my clients" leak we just closed.
+  //
+  // Role-split (Roy 2026-06-09 — isolation pass):
+  //   - admin: sees everything (no filter)
+  //   - AM / other: client-access + Trengo channel subscription path stays
+  //     (they own client conversations and need the wide view)
+  //   - cm_only: chat rows ONLY when they authored or are explicitly
+  //     assigned. No bulk visibility via client access or channel
+  //     subscription. CMs work assignment-driven, not access-driven —
+  //     @-mentions reach them as kind=update rows; client-conversation
+  //     hand-offs reach them via assignee_id. Anything else is noise.
   const isTaskOrUpdate = filters.kind === "task" || filters.kind === "update"
   if (!filters.clientId && !isTaskOrUpdate) {
-    const allowed = await getAllowedClientIds(userId, role)
-    if (allowed !== "all") {
-      const ids = allowed
-      const channelIds = await getUserTrengoChannelIds(userId)
-      // Always allow author/assignee on the item; otherwise require client access
-      // OR a Trengo channel subscription match. PostgREST `or` with nested
-      // `in.(...)` — IDs are numeric so no quoting is needed.
-      const inClause = ids.length > 0 ? `,client_id.in.(${ids.join(",")})` : ""
-      const channelClause =
-        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+    const audienceRole = await resolveInboxAudienceRole(userId, role)
+    if (audienceRole === "cm_only") {
       query = query.or(
-        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+        `author_id.eq.${userId},assignee_id.eq.${userId}`,
       )
+    } else if (audienceRole !== "admin") {
+      const allowed = await getAllowedClientIds(userId, role)
+      if (allowed !== "all") {
+        const ids = allowed
+        const channelIds = await getUserTrengoChannelIds(userId)
+        const inClause = ids.length > 0 ? `,client_id.in.(${ids.join(",")})` : ""
+        const channelClause =
+          channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+        query = query.or(
+          `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+        )
+      }
     }
   }
 
@@ -449,16 +463,9 @@ export async function getInboxBadgeCounts(
   openTasks: number
   unreadChats: number
   /** True when the Client Inbox tab should be visible for this user.
-   *  Hidden for cm_only users with no unread chat assigned to them; the
-   *  AM/CM distinction comes from user_column_mappings (see
-   *  resolveInboxAudienceRole). Roy 2026-06-09: Client Inbox isn't a
-   *  CM workflow — they only need it when they're @-mentioned. */
+   *  Hidden for cm_only users with no unread chat assigned to them.
+   *  AMs / admins always see it. Roy 2026-06-09. */
   showClientInbox: boolean
-  /** Unread chat rows directly assigned to this user. For cm_only users
-   *  this doubles as the "mention indicator" — any value > 0 means they
-   *  have a chat-substrate event that surfaces in the Client Inbox.
-   *  Used to gate the tab open. */
-  clientInboxMentionCount: number
 }> {
   const supabase = await createAdminClient()
 
@@ -466,10 +473,11 @@ export async function getInboxBadgeCounts(
   // Active = snoozed_until IS NULL OR has already passed.
   const nowIso = new Date().toISOString()
 
-  // Build the chat visibility query in the same shape as listChatThreads:
-  // channel-subscription narrowing always applies (admins included), then
-  // role-based access on top for non-admins.
-  //
+  // Resolve the audience role first — the chat visibility query branches on
+  // it. CMs see chat rows only when explicitly assigned; AMs/admins keep
+  // the channel-subscription + client-access path.
+  const audienceRole = await resolveInboxAudienceRole(userId, role)
+
   // Scope filter: the only chat tab in the UI is "Klanten Inbox" which is
   // hard-wired to scope="external". Slack-ingested events land at
   // scope="internal" and have no place to be read — the Team Inbox tab is
@@ -484,22 +492,30 @@ export async function getInboxBadgeCounts(
     .eq("scope", "external")
     .eq("status", "unread")
 
-  const channelIds = await getUserTrengoChannelIds(userId)
-  if (channelIds.length > 0) {
+  if (audienceRole === "cm_only") {
+    // CM-only: strict assignee/author — no channel-sub, no client-access.
     chatQuery = chatQuery.or(
-      `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+      `author_id.eq.${userId},assignee_id.eq.${userId}`,
     )
-  }
-
-  if (role !== "admin") {
-    const allowed = await getAllowedClientIds(userId, role)
-    if (allowed !== "all") {
-      const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
-      const channelClause =
-        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+  } else {
+    // AM / admin / other: channel-subscription narrowing always applies,
+    // then role-based access on top for non-admins.
+    const channelIds = await getUserTrengoChannelIds(userId)
+    if (channelIds.length > 0) {
       chatQuery = chatQuery.or(
-        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+        `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
       )
+    }
+    if (role !== "admin") {
+      const allowed = await getAllowedClientIds(userId, role)
+      if (allowed !== "all") {
+        const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+        const channelClause =
+          channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+        chatQuery = chatQuery.or(
+          `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+        )
+      }
     }
   }
 
@@ -509,21 +525,7 @@ export async function getInboxBadgeCounts(
     `trengo_assignee_user_id.is.null,source.neq.trengo`,
   )
 
-  // Mention-style chat count: unread chat-substrate rows where THIS user is
-  // the direct assignee. Used by the cm_only gate below — when a CM has
-  // chat rows pinned to them (typically via Trengo internal-note @-mention
-  // or hand-routing), they get the tab visible with those rows under
-  // Unread. AMs and admins ignore this number; their visibility comes
-  // from the main chatQuery above.
-  const mentionChatQueryRes = supabase
-    .from("inbox_events")
-    .select("id", { count: "exact", head: true })
-    .not("thread_key", "is", null)
-    .eq("scope", "external")
-    .eq("status", "unread")
-    .eq("assignee_id", userId)
-
-  const [updatesRes, tasksRes, chatsRes, mentionChatsRes, audienceRole] = await Promise.all([
+  const [updatesRes, tasksRes, chatsRes] = await Promise.all([
     supabase
       .from("inbox_events")
       .select("id", { count: "exact", head: true })
@@ -542,24 +544,20 @@ export async function getInboxBadgeCounts(
       .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`)
       .is("thread_key", null),
     chatQuery,
-    mentionChatQueryRes,
-    resolveInboxAudienceRole(userId, role),
   ])
 
-  const clientInboxMentionCount = mentionChatsRes.count ?? 0
-  // Visibility rule (Roy 2026-06-09):
-  //   - admin / AM / other → tab always visible
-  //   - cm_only → tab hidden UNLESS they have a chat row directly
-  //     assigned to them (mention / hand-routed conversation)
+  const unreadChats = chatsRes.count ?? 0
+  // For CMs, unreadChats is already the strict assignee count — same
+  // signal that previously drove `clientInboxMentionCount`. Tab opens
+  // when they have any assigned chat row to handle.
   const showClientInbox =
-    audienceRole !== "cm_only" || clientInboxMentionCount > 0
+    audienceRole !== "cm_only" || unreadChats > 0
 
   return {
     unreadUpdates: updatesRes.count ?? 0,
     openTasks: tasksRes.count ?? 0,
-    unreadChats: chatsRes.count ?? 0,
+    unreadChats,
     showClientInbox,
-    clientInboxMentionCount,
   }
 }
 
@@ -774,7 +772,6 @@ export async function listChatThreads(
   userId: string,
   role: Role,
   scope: ChatScope,
-  opts: { mentionsOnly?: boolean } = {},
 ): Promise<ChatThreadSummary[]> {
   const supabase = await createAdminClient()
 
@@ -788,43 +785,39 @@ export async function listChatThreads(
     // because we group post-hoc. 1k is generous for now.
     .limit(1000)
 
-  // Mentions-only path (CM Mentions tab): strip every visibility path
-  // except `assignee_id = userId`. The CM sees nothing except threads
-  // where they were explicitly @-mentioned or hand-routed via the
-  // assignee column. Skips channel subscription + client-access logic
-  // entirely; the unassigned-Trengo gate still applies so claimed
-  // tickets don't surface.
-  if (opts.mentionsOnly) {
-    query = query.eq("assignee_id", userId)
-    query = query.or(`trengo_assignee_user_id.is.null,source.neq.trengo`)
-    const { data, error } = await query
-    if (error) throw new Error(`Failed to list mention threads: ${error.message}`)
-    return groupAndDecorateChatRows(
-      ((data ?? []) as unknown as RawChatRow[]).filter((r) => r.thread_key),
-    )
-  }
-
-  // Trengo channel subscriptions ALWAYS narrow the Client Inbox down to the
-  // user's chosen channels — applies to admins too. Without this, an admin
-  // sees every Trengo conversation in the workspace regardless of which
-  // channels they actually want to follow. Non-Trengo events bypass this
-  // filter via `source.neq.trengo`.
-  const channelIds = await getUserTrengoChannelIds(userId)
-  if (channelIds.length > 0) {
+  // CM-only audience: chat rows are visible ONLY when the CM is explicitly
+  // assigned or authored the row. No channel-subscription path, no client-
+  // access bulk visibility. The Client Inbox tab is also hidden for CMs by
+  // default — this gate is the source of truth for the rare case where the
+  // tab does open (hand-routed conversation).
+  const audienceRole = await resolveInboxAudienceRole(userId, role)
+  if (audienceRole === "cm_only") {
     query = query.or(
-      `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+      `author_id.eq.${userId},assignee_id.eq.${userId}`,
     )
-  }
-
-  if (role !== "admin") {
-    const allowed = await getAllowedClientIds(userId, role)
-    if (allowed !== "all") {
-      const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
-      const channelClause =
-        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+  } else {
+    // Trengo channel subscriptions ALWAYS narrow the Client Inbox down to the
+    // user's chosen channels — applies to admins too. Without this, an admin
+    // sees every Trengo conversation in the workspace regardless of which
+    // channels they actually want to follow. Non-Trengo events bypass this
+    // filter via `source.neq.trengo`.
+    const channelIds = await getUserTrengoChannelIds(userId)
+    if (channelIds.length > 0) {
       query = query.or(
-        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+        `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
       )
+    }
+
+    if (role !== "admin") {
+      const allowed = await getAllowedClientIds(userId, role)
+      if (allowed !== "all") {
+        const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+        const channelClause =
+          channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+        query = query.or(
+          `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+        )
+      }
     }
   }
 

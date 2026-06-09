@@ -1,7 +1,6 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { listInboxItems } from "@/lib/inbox/fetchers"
-import { mirrorItemToMonday } from "@/lib/inbox/monday-mirror"
 import { sendPushToUser } from "@/lib/notifications/push"
 import type {
   CreateInboxItemInput,
@@ -87,11 +86,7 @@ export async function POST(req: NextRequest) {
       source: body.source ?? "manual",
       source_ref: body.sourceRef ?? null,
     })
-    .select(`
-      id, client_id, kind, title, body,
-      author:users!inbox_items_author_id_fkey(name, email),
-      assignee:users!inbox_items_assignee_id_fkey(name, email)
-    `)
+    .select("id, title")
     .single()
 
   if (error || !data) {
@@ -101,50 +96,17 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Mirror to Monday — best-effort, don't block the response on it.
-  type Row = {
-    id: string
-    client_id: string
-    kind: InboxKind
-    title: string
-    body: string | null
-    author: { name: string | null; email: string } | null
-    assignee: { name: string | null; email: string } | null
-  }
-  const row = data as unknown as Row
-  const authorName = row.author?.name ?? row.author?.email ?? "Unknown"
-  const assigneeName = row.assignee?.name ?? row.assignee?.email ?? "Unknown"
-
   // Push notification: notify the assignee about a new task on their plate.
   // Skip self-assigned items (you don't ping yourself when creating a task
   // for yourself). Updates are noisier; only push for tasks for now.
   if (body.kind === "task" && body.assigneeId !== session.user.id) {
     sendPushToUser(body.assigneeId, {
       title: "Nieuwe taak op je naam",
-      body: row.title.length > 120 ? row.title.slice(0, 117) + "…" : row.title,
+      body: data.title.length > 120 ? data.title.slice(0, 117) + "…" : data.title,
       url: "/inbox",
-      tag: `inbox-task-${row.id}`,
+      tag: `inbox-task-${data.id}`,
     }).catch((e) => console.error("Inbox-create push failed:", e))
   }
 
-  mirrorItemToMonday({
-    kind: row.kind,
-    clientId: row.client_id,
-    title: row.title,
-    body: row.body,
-    authorName,
-    assigneeName,
-    actorUserId: session.user.id,
-  })
-    .then(async (mondayUpdateId) => {
-      if (mondayUpdateId) {
-        await supabase
-          .from("inbox_events")
-          .update({ monday_update_id: mondayUpdateId })
-          .eq("id", row.id)
-      }
-    })
-    .catch((e) => console.error("Inbox Monday mirror failed:", e))
-
-  return NextResponse.json({ id: row.id }, { status: 201 })
+  return NextResponse.json({ id: data.id }, { status: 201 })
 }

@@ -1,6 +1,7 @@
 import { google } from "googleapis"
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
+import type { ResolvedEntity } from "./resolved-entity"
 
 let cachedAuth: { value: InstanceType<typeof google.auth.GoogleAuth>; expiresAt: number } | null = null
 
@@ -134,6 +135,139 @@ export async function listFolderFiles(folderId: string): Promise<DriveFile[]> {
   } while (pageToken)
 
   return files
+}
+
+/**
+ * Format `modifiedTime` (ISO8601) as a short relative label for the picker
+ * subline ("modified 3d ago"). Keeps things tight in the row — anything
+ * past a year is rendered as the year only.
+ */
+function relativeModifiedLabel(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const ms = new Date(iso).getTime()
+  if (Number.isNaN(ms)) return null
+  const diffSec = Math.floor((Date.now() - ms) / 1000)
+  if (diffSec < 60) return "modified just now"
+  if (diffSec < 3600) return `modified ${Math.floor(diffSec / 60)}m ago`
+  if (diffSec < 86400) return `modified ${Math.floor(diffSec / 3600)}h ago`
+  if (diffSec < 30 * 86400) return `modified ${Math.floor(diffSec / 86400)}d ago`
+  if (diffSec < 365 * 86400) return `modified ${Math.floor(diffSec / (30 * 86400))}mo ago`
+  return `modified in ${new Date(ms).getFullYear()}`
+}
+
+type DriveFolderSummary = {
+  id: string
+  name: string
+  modifiedTime: string | null
+  trashed: boolean
+}
+
+function toResolvedDriveFolder(f: DriveFolderSummary): ResolvedEntity {
+  const subParts: string[] = []
+  const modLabel = relativeModifiedLabel(f.modifiedTime)
+  if (modLabel) subParts.push(modLabel)
+  return {
+    id: f.id,
+    name: f.name,
+    subline: subParts.length > 0 ? subParts.join(" · ") : undefined,
+    // Trashed folders are resolvable but unusable as a link target; flag
+    // loudly so the AM can fix before it silently breaks file creation.
+    status: f.trashed ? "error" : "ok",
+    statusLabel: f.trashed ? "In trash" : undefined,
+  }
+}
+
+/**
+ * Search Drive folders by name for the ConnectedEntity picker.
+ *
+ * Uses `files.list` with a server-side `name contains` filter — Drive
+ * supports this natively so we don't have to do client-side substring
+ * matching. Scopes to folders the service account can see (it's been
+ * shared in as Editor or Viewer); workspace folders the service account
+ * has no access to won't appear, which is the correct behavior — those
+ * aren't link candidates anyway.
+ *
+ * Empty query returns the most-recently-modified folders so cold-open
+ * shows "folders I actually use", not the alphabetical A-list.
+ */
+export async function searchDriveFolders(
+  query: string,
+  limit = 10,
+): Promise<ResolvedEntity[]> {
+  const trimmed = query.trim()
+  const cap = Math.min(Math.max(limit, 1), 25)
+  const auth = await getAuth()
+  const drive = google.drive({ version: "v3", auth })
+
+  // Drive's `q` filter accepts a mix of clauses joined with `and`. Escape
+  // single quotes in the name fragment so a folder called "Roy's Tests"
+  // doesn't break the query string.
+  const escaped = trimmed.replace(/'/g, "\\'")
+  const clauses = [
+    "mimeType = 'application/vnd.google-apps.folder'",
+    "trashed = false",
+  ]
+  if (escaped.length > 0) clauses.push(`name contains '${escaped}'`)
+  const q = clauses.join(" and ")
+
+  const res = await drive.files.list({
+    q,
+    fields: "files(id, name, modifiedTime, trashed)",
+    pageSize: cap,
+    orderBy: "modifiedTime desc",
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  })
+
+  const folders: DriveFolderSummary[] = (res.data.files ?? []).map((f) => ({
+    id: f.id ?? "",
+    name: f.name ?? f.id ?? "",
+    modifiedTime: f.modifiedTime ?? null,
+    trashed: f.trashed === true,
+  }))
+  return folders.map(toResolvedDriveFolder)
+}
+
+/**
+ * Resolve a single Drive folder ID to its ResolvedEntity. Returns null
+ * when the folder doesn't exist or the service account has no access —
+ * both are "broken link" from the Hub's perspective; the AM needs to
+ * either fix the ID or share the folder. Throws on transport/auth
+ * failures so the picker shows "couldn't verify" instead of "broken".
+ */
+export async function resolveDriveFolder(id: string): Promise<ResolvedEntity | null> {
+  const trimmed = id.trim()
+  if (!trimmed) return null
+  const auth = await getAuth()
+  const drive = google.drive({ version: "v3", auth })
+  try {
+    const res = await drive.files.get({
+      fileId: trimmed,
+      fields: "id, name, mimeType, modifiedTime, trashed",
+      supportsAllDrives: true,
+    })
+    const f = res.data
+    if (!f.id) return null
+    if (f.mimeType !== "application/vnd.google-apps.folder") {
+      // It's a real file ID but not a folder — wrong link, treat as broken
+      // so the picker prompts a correction rather than silently accepting
+      // a file ID where the rest of the Hub expects a folder.
+      return null
+    }
+    return toResolvedDriveFolder({
+      id: f.id,
+      name: f.name ?? f.id,
+      modifiedTime: f.modifiedTime ?? null,
+      trashed: f.trashed === true,
+    })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    // Drive throws "File not found" (404) for both missing files AND
+    // files the service account has no access to. Both are "broken link"
+    // from the Hub's perspective.
+    if (/not found|404|file not found/i.test(msg)) return null
+    throw e
+  }
 }
 
 export async function getFileContent(fileId: string, mimeType: string): Promise<string> {

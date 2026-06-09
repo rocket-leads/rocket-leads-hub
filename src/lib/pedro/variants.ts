@@ -48,6 +48,9 @@ export async function fanOutVariantsToTable(args: {
         hook: v.newHook || null,
         script_outline: v.scriptOutline || null,
         primary_copy_snippet: v.primaryCopySnippet || null,
+        // Stored on initial fan-out so the CM can "Genereer image"
+        // without an extra round-trip to fetch the prompt back.
+        image_prompt: v.imagePrompt || null,
         outcome: "pending",
       })
     }

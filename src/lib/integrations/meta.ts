@@ -1,5 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
+import { readCache, writeCache } from "@/lib/cache"
+import type { ResolvedEntity } from "./resolved-entity"
 
 const META_API_BASE = "https://graph.facebook.com/v20.0"
 
@@ -77,6 +79,191 @@ async function fetchAllPages<T>(
   }
 
   return results
+}
+
+/**
+ * Lightweight Meta ad account summary for the ConnectedEntity picker. Just
+ * enough to render the row + discriminate similar names: account id, business
+ * name (for agency-managed accounts that share the same company name across
+ * multiple accounts), status code.
+ */
+type MetaAdAccountSummary = {
+  /** Full account ID including `act_` prefix — that's what Meta returns and
+   *  what every other Meta function in this file expects as input. */
+  id: string
+  /** ID minus the `act_` prefix for display. Stored separately so we don't
+   *  have to slice on render every keystroke. */
+  numericId: string
+  name: string
+  businessName: string | null
+  accountStatus: number | null
+}
+
+const META_AD_ACCOUNTS_CACHE_KEY = "meta_ad_accounts_v1"
+const META_AD_ACCOUNTS_TTL_MS = 5 * 60 * 1000
+
+/**
+ * Pull every ad account the Meta token can see. Paginated via the
+ * `paging.next` cursor that `fetchAllPages` already follows. Cached for 5
+ * minutes so per-keystroke search in the picker doesn't fan out into Meta
+ * Graph API calls each time.
+ *
+ * Field set deliberately minimal — adding `funding_source_details` here
+ * would make this call 3× slower for no UX gain. Status alone covers the
+ * "this account is disabled, don't pick it" case.
+ */
+async function fetchAllAccessibleAdAccounts(): Promise<MetaAdAccountSummary[]> {
+  const cached = await readCache<MetaAdAccountSummary[]>(
+    META_AD_ACCOUNTS_CACHE_KEY,
+    META_AD_ACCOUNTS_TTL_MS,
+  )
+  if (cached) return cached
+
+  const token = await getToken()
+  const fields = "id,account_id,name,business_name,account_status"
+  const url = `${META_API_BASE}/me/adaccounts?fields=${fields}&limit=200&access_token=${token}`
+  type Raw = {
+    id: string
+    account_id: string
+    name: string
+    business_name: string | null
+    account_status: number | null
+  }
+  const raw = await fetchAllPages<Raw>(url)
+  const out: MetaAdAccountSummary[] = raw.map((r) => ({
+    id: r.id,
+    numericId: r.account_id ?? r.id.replace(/^act_/, ""),
+    name: r.name ?? r.id,
+    businessName: r.business_name ?? null,
+    accountStatus: typeof r.account_status === "number" ? r.account_status : null,
+  }))
+
+  await writeCache(META_AD_ACCOUNTS_CACHE_KEY, out)
+  return out
+}
+
+function toResolvedAdAccount(a: MetaAdAccountSummary): ResolvedEntity {
+  const subParts: string[] = []
+  if (a.businessName) subParts.push(a.businessName)
+  const statusMeta = a.accountStatus != null ? META_ACCOUNT_STATUS[a.accountStatus] : undefined
+  if (statusMeta && a.accountStatus !== 1) subParts.push(statusMeta.label)
+  // Status flag drives the red/amber pill in the picker row. Active = ok;
+  // billing problems = error (loud); everything else = warning (mostly
+  // visual: "this account exists but isn't ready to run ads").
+  const status: ResolvedEntity["status"] =
+    a.accountStatus === 1
+      ? "ok"
+      : statusMeta?.isBilling
+        ? "error"
+        : statusMeta
+          ? "warning"
+          : undefined
+  return {
+    id: a.id,
+    name: a.name,
+    subline: subParts.length > 0 ? subParts.join(" · ") : undefined,
+    status,
+    statusLabel: statusMeta?.label,
+  }
+}
+
+/**
+ * Search Meta ad accounts by name for the ConnectedEntity picker.
+ *
+ * Meta's `/me/adaccounts` endpoint has no name-filter parameter, so we
+ * fetch all accessible accounts (cached 5 minutes) and substring-match
+ * client-side. Ranks active-with-prefix-match first, active-substring next,
+ * everything else last — so the AM doesn't end up linking a Disabled
+ * account when a same-named Active one exists.
+ *
+ * Match scope: name OR business_name OR raw numeric ID. The numeric-ID
+ * match is for the rare case where the AM has the act_… string copied from
+ * Meta Business Manager and just wants to paste-and-confirm.
+ */
+export async function searchMetaAdAccounts(
+  query: string,
+  limit = 10,
+): Promise<ResolvedEntity[]> {
+  const accounts = await fetchAllAccessibleAdAccounts()
+  const trimmed = query.trim().toLowerCase()
+  const cap = Math.min(Math.max(limit, 1), 25)
+
+  if (trimmed.length === 0) {
+    // Cold-open: active accounts first, then everything else, alphabetical
+    // within each group. The agency typically has 50-200 ad accounts; the
+    // archived/disabled tail should never be the first thing in the picker.
+    return accounts
+      .slice()
+      .sort((a, b) => {
+        const aActive = a.accountStatus === 1 ? 0 : 1
+        const bActive = b.accountStatus === 1 ? 0 : 1
+        return aActive - bActive || a.name.localeCompare(b.name)
+      })
+      .slice(0, cap)
+      .map(toResolvedAdAccount)
+  }
+
+  type Scored = { account: MetaAdAccountSummary; rank: number }
+  const scored: Scored[] = []
+  for (const a of accounts) {
+    const name = a.name.toLowerCase()
+    const biz = a.businessName?.toLowerCase() ?? ""
+    const idMatch = a.numericId === trimmed || a.id === trimmed
+    const isActive = a.accountStatus === 1
+    let rank: number | null = null
+    if (idMatch) rank = 0
+    else if (name.startsWith(trimmed)) rank = isActive ? 1 : 3
+    else if (name.includes(trimmed) || biz.includes(trimmed)) rank = isActive ? 2 : 4
+    if (rank !== null) scored.push({ account: a, rank })
+  }
+  scored.sort((a, b) => a.rank - b.rank || a.account.name.localeCompare(b.account.name))
+  return scored.slice(0, cap).map((s) => toResolvedAdAccount(s.account))
+}
+
+/**
+ * Resolve a single Meta ad account ID to its ResolvedEntity. Used by the
+ * always-on verification on the picker trigger — catches the "ad account
+ * got disabled by Meta but the ID is still set" case that's been silently
+ * breaking the Performance Overview for weeks at a time.
+ *
+ * Accepts `act_…`, plain numeric, or numeric-with-leading-zero forms. Returns
+ * null when Meta says the account doesn't exist or the token has no access.
+ * Throws on other transport/auth failures so the picker shows "couldn't
+ * verify" instead of "definitely broken".
+ */
+export async function resolveMetaAdAccount(id: string): Promise<ResolvedEntity | null> {
+  const trimmed = id.trim()
+  if (!trimmed) return null
+  const token = await getToken()
+  const accountId = trimmed.startsWith("act_") ? trimmed : `act_${trimmed}`
+  const fields = "id,account_id,name,business_name,account_status"
+  const url = `${META_API_BASE}/${accountId}?fields=${fields}&access_token=${token}`
+
+  const res = await fetch(url, { cache: "no-store" })
+  if (res.status === 400 || res.status === 404) {
+    // 400 covers "Invalid OAuth access token" (treat as broken so the AM
+    // knows the link's dead) and "Object does not exist". 404 is the
+    // straightforward "no such account" — also broken.
+    return null
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Meta API error ${res.status}: ${text.slice(0, 200)}`)
+  }
+  const raw = (await res.json()) as {
+    id: string
+    account_id: string
+    name: string
+    business_name: string | null
+    account_status: number | null
+  }
+  return toResolvedAdAccount({
+    id: raw.id,
+    numericId: raw.account_id ?? raw.id.replace(/^act_/, ""),
+    name: raw.name ?? raw.id,
+    businessName: raw.business_name ?? null,
+    accountStatus: typeof raw.account_status === "number" ? raw.account_status : null,
+  })
 }
 
 export async function fetchMetaCampaigns(adAccountId: string): Promise<MetaCampaign[]> {

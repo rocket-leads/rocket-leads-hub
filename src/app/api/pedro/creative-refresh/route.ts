@@ -277,6 +277,7 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
           "newHook": "een nieuwe opener-zin in NL die in dezelfde DNA past",
           "scriptOutline": "3-5 bullet points van de script-flow (in NL)",
           "primaryCopySnippet": "primary text opener van max 60 woorden (in NL)",
+          "imagePrompt": "ENGLISH visual brief van max 80 woorden voor de image-gen (Gemini Nano Banana Pro). Beschrijf: scene/setting, subject, mood, lighting, brand-style (refer to reference: 'in the same brand style as the reference'), eventuele on-image tekst overlay (wees specifiek over de exacte tekst), aspect ratio context. NIET de gehele Dutch hook overnemen — translate/condense to visual cues. Schrijf in English voor model fidelity.",
           "why": "1 zin: waarom deze variatie de DNA van [adName] respecteert maar fris is"
         }
       ]
@@ -414,6 +415,43 @@ Genereer 1-3 proposals (1 per winner, max 3). Per proposal: 3 varianten. Alle te
     console.error("[pedro/creative-refresh] persist error:", e instanceof Error ? e.message : e)
   }
 
+  // Stitch variant ids back into the response so the UI can call
+  // generate-image / upload-image / launch endpoints immediately on
+  // a fresh refresh — no reload needed. Best-effort: if the lookup
+  // fails the UI just hides the per-variant image affordances until
+  // the next reload (which reads from refreshes/[id] with the join).
+  let enrichedProposals: typeof responseProposals = responseProposals
+  if (refreshId) {
+    try {
+      const { data: variantRows } = await supabase
+        .from("pedro_variants")
+        .select("id, ad_name")
+        .eq("refresh_id", refreshId)
+      const byAdName = new Map<string, string>()
+      for (const r of (variantRows ?? []) as Array<{ id: string; ad_name: string }>) {
+        byAdName.set(r.ad_name, r.id)
+      }
+      enrichedProposals = responseProposals.map((p) => ({
+        ...p,
+        variants: p.variants.map((v) => ({
+          ...v,
+          variantId: byAdName.get(v.adName) ?? null,
+          image: {
+            hasImage: false,
+            imagePrompt: v.imagePrompt ?? null,
+          },
+          metaAdId: null,
+          launchedAt: null,
+        })) as typeof p.variants,
+      }))
+    } catch (e) {
+      console.error(
+        "[pedro/creative-refresh] enrich variant ids failed (continuing without):",
+        e instanceof Error ? e.message : e,
+      )
+    }
+  }
+
   return NextResponse.json({
     mode: "iterate-winners",
     refreshId,
@@ -422,7 +460,7 @@ Genereer 1-3 proposals (1 per winner, max 3). Per proposal: 3 varianten. Alle te
     window: { ...cur, days },
     stats: envelope.stats,
     trend,
-    proposals: responseProposals,
+    proposals: enrichedProposals,
     summary: responseSummary,
     warnings,
   })

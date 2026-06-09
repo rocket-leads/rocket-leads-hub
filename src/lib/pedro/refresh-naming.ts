@@ -74,6 +74,9 @@ export type NamedVariant = {
   newHook: string
   scriptOutline: string
   primaryCopySnippet: string
+  /** English visual brief for the image-gen call (Gemini Nano Banana
+   *  Pro). Pedro writes this; the CM optionally edits before regen. */
+  imagePrompt: string
   why: string
 }
 
@@ -105,6 +108,7 @@ export function assignAdNamesToVariants(
     newHook?: unknown
     scriptOutline?: unknown
     primaryCopySnippet?: unknown
+    imagePrompt?: unknown
     why?: unknown
   }>,
   nextByFormat: Record<AdFormatHint, number>,
@@ -124,6 +128,7 @@ export function assignAdNamesToVariants(
       newHook: typeof v.newHook === "string" ? v.newHook : "",
       scriptOutline: typeof v.scriptOutline === "string" ? v.scriptOutline : "",
       primaryCopySnippet: typeof v.primaryCopySnippet === "string" ? v.primaryCopySnippet : "",
+      imagePrompt: typeof v.imagePrompt === "string" ? v.imagePrompt : "",
       why: typeof v.why === "string" ? v.why : "",
     })
   }

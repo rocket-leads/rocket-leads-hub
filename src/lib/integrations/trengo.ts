@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
+import type { ResolvedEntity } from "./resolved-entity"
 
 let cachedToken: { value: string; expiresAt: number } | null = null
 
@@ -485,6 +486,82 @@ export async function fetchTrengoContact(
   } catch {
     return null
   }
+}
+
+/**
+ * Map a raw Trengo contact to the unified ResolvedEntity. The subline
+ * carries phone + email so the AM can disambiguate same-named contacts —
+ * "Brian Verheij" alone is useless when a company has separate WhatsApp,
+ * email, and billing contacts each named differently, which is exactly the
+ * scenario Roy flagged as the Trengo blind spot.
+ *
+ * Returns ok status for now; once we add archive detection / last-message
+ * staleness later we can flip a contact to "warning" when it hasn't seen
+ * activity in months.
+ */
+function toResolvedTrengoContact(c: TrengoContact): ResolvedEntity {
+  const subParts: string[] = []
+  if (c.phone) subParts.push(c.phone)
+  if (c.email) subParts.push(c.email)
+  const displayName = c.full_name ?? c.name ?? c.email ?? c.phone ?? String(c.id)
+  return {
+    id: String(c.id),
+    name: displayName,
+    subline: subParts.length > 0 ? subParts.join(" · ") : undefined,
+  }
+}
+
+/**
+ * Search Trengo contacts by name/email/phone for the ConnectedEntity picker.
+ *
+ * Uses Trengo's native `/contacts?term=<query>` substring search — no
+ * client-side cache needed because the workspace contact count (10k+) is
+ * too large to keep in memory and Trengo's search is fast enough on
+ * single round-trip. Empty query returns the first page (most-recently-
+ * created) so the picker isn't blank on cold-open.
+ *
+ * Roy 2026-06-09: this is the hardest field to verify by ID alone because
+ * companies often have several Trengo contacts (WhatsApp / email / billing
+ * person) and only one of them is the "right" one for the Hub. Multi-
+ * contact support (`trengo_contact_ids jsonb`) is planned as a follow-up;
+ * this single-contact picker covers ~90% of cases.
+ */
+export async function searchTrengoContacts(
+  query: string,
+  limit = 10,
+): Promise<ResolvedEntity[]> {
+  const trimmed = query.trim()
+  const cap = Math.min(Math.max(limit, 1), 25)
+  const path = trimmed.length === 0 ? `/contacts` : `/contacts?term=${encodeURIComponent(trimmed)}`
+
+  type Page = {
+    data?: TrengoContact[]
+  } & { [key: string]: unknown }
+  // Trengo's contact list endpoint returns either `{data: […]}` or a bare
+  // array depending on workspace plan / API version. Cover both shapes.
+  const raw = await trengoFetch<Page | TrengoContact[]>(path)
+  const contacts = Array.isArray(raw) ? raw : (raw.data ?? [])
+  return contacts.slice(0, cap).map(toResolvedTrengoContact)
+}
+
+/**
+ * Resolve a single Trengo contact ID to its ResolvedEntity. Used by the
+ * always-on verification on the picker trigger — without this, a typo'd
+ * trengo_contact_id silently breaks the per-client Inbox + Timeline tabs
+ * with no visible signal in the panel.
+ *
+ * Returns null on 404 / not-found / archived; throws on auth/transport
+ * failures so the picker shows "couldn't verify" rather than "definitely
+ * broken".
+ */
+export async function resolveTrengoContact(
+  id: string,
+): Promise<ResolvedEntity | null> {
+  const trimmed = id.trim()
+  if (!trimmed) return null
+  const contact = await fetchTrengoContact(trimmed)
+  if (!contact) return null
+  return toResolvedTrengoContact(contact)
 }
 
 /**

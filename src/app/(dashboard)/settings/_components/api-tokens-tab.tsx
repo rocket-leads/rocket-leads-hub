@@ -29,6 +29,7 @@ const SERVICES = [
   { id: "slack", label: "Slack", description: "Bot User OAuth Token (starts with xoxb-) from your Slack App" },
   { id: "fathom", label: "Fathom", description: "API key from Fathom → Settings → API Access. Webhook secret goes in FATHOM_WEBHOOK_SECRET env var." },
   { id: "heygen", label: "Heygen", description: "API key from Heygen → Settings → API. Used by Pedro's avatar pipeline (provider-pluggable). Optional — leave blank until avatar actuation is wired." },
+  { id: "gemini", label: "Google Gemini", description: "API key from aistudio.google.com/apikey. Used by Pedro for image generation (Nano Banana Pro / gemini-3-pro-image)." },
 ]
 
 function StatusDot({ status, locale }: { status: ServiceStatus | undefined; locale: Locale }) {
