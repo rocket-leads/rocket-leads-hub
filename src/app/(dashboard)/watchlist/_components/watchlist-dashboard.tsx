@@ -78,21 +78,58 @@ function fmtCurrency(v: number): string {
  */
 
 /** Meta brand mark — inline SVG so the icon survives Lucide not shipping
- *  a Meta logo. Single-colour `currentColor` fill so the surrounding
- *  button can tone it via Tailwind text classes (muted by default,
- *  Meta-blue `#0866FF` on hover). Roy 2026-06-09. */
+ *  a Meta logo. Compact infinity-loop path adapted from the simple-icons
+ *  Meta glyph, with `currentColor` fill so the surrounding button can
+ *  tone it via Tailwind text classes (muted by default, Meta-blue
+ *  `#0866FF` on hover). Roy 2026-06-09. */
 function MetaLogo({ className }: { className?: string }) {
   return (
     <svg
-      viewBox="0 0 287.56 191"
+      viewBox="0 0 24 24"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
       className={className}
       fill="currentColor"
     >
-      <path d="M31.06,126c0,11,2.41,19.41,5.56,24.51A19,19,0,0,0,53.19,160c8.1,0,15.51-2,29.79-21.76,11.44-15.83,24.92-38,34-52L132.4,62.78c10.67-16.39,23-34.61,37.14-47C181.18,6.6,193.88,0,206.66,0c21.46,0,41.9,12.43,57.55,35.74C281.32,61.27,289.56,93.42,289.56,126.61c0,19.74-3.89,34.24-10.51,45.7C272.66,183.4,260,191,245.62,191V160c12.31,0,15.38-11.31,15.38-24.26,0-18.45-4.3-38.92-13.78-53.56-6.72-10.39-15.43-16.74-25-16.74-10.38,0-18.74,7.83-28.13,21.79-5,7.41-10.11,16.45-15.88,26.65l-7.45,13.21C159.4,148.13,150.85,162.26,140,167.95c-7.13,3.75-14,5.05-21,5.05-21.49,0-43-13.62-43-50.49,0-30.46,16.31-67.61,40.94-87.46C107.65,17.32,118.49,15,128.43,15c19.36,0,34.86,9.69,50.78,30.21l-18.91,29.6c-12-15.65-22.86-22.82-32.51-22.82-9.21,0-17.41,4.84-23.93,12.18C84.18,80.91,76,99.27,76,124.36V126Z" />
+      <path d="M22.295 9.7c-.96-1.97-2.81-3.18-4.85-3.18-1.6 0-3.07.7-4.39 2.07-.86.9-1.69 2.1-2.51 3.4-.83-1.3-1.66-2.5-2.52-3.4-1.32-1.37-2.79-2.07-4.39-2.07-2.04 0-3.89 1.21-4.85 3.18-.69 1.37-.69 3.23 0 4.6.96 1.97 2.81 3.18 4.85 3.18 1.6 0 3.07-.7 4.39-2.07.86-.9 1.69-2.1 2.51-3.4.82 1.3 1.65 2.5 2.51 3.4 1.32 1.37 2.79 2.07 4.39 2.07 2.04 0 3.89-1.21 4.85-3.18.69-1.37.69-3.23 0-4.6zM7.62 12c-.61.95-1.21 1.78-1.79 2.39-.76.79-1.49 1.18-2.21 1.18-.96 0-1.79-.55-2.27-1.51-.34-.67-.34-1.69 0-2.36.48-.96 1.31-1.51 2.27-1.51.72 0 1.45.39 2.21 1.18.58.61 1.18 1.44 1.79 2.39v.24zm12.93 2.06c-.48.96-1.31 1.51-2.27 1.51-.72 0-1.45-.39-2.21-1.18-.58-.61-1.18-1.44-1.79-2.39.61-.95 1.21-1.78 1.79-2.39.76-.79 1.49-1.18 2.21-1.18.96 0 1.79.55 2.27 1.51.34.67.34 1.69 0 2.36z" />
     </svg>
   )
+}
+
+/** Open a URL in a background tab — i.e. new tab opens but focus stays
+ *  on the current page. Browsers don't expose a clean API for this:
+ *  `window.open()` foreground/background is browser-dependent and most
+ *  refuse to honour `blur()`/`focus()` shims for security reasons.
+ *
+ *  The most reliable cross-browser trick is to synthesise a
+ *  Ctrl+Click (Win/Linux) / Cmd+Click (Mac) on an off-DOM anchor —
+ *  modifier-key clicks on `target="_blank"` links are the canonical
+ *  user gesture for "open in background" and Chromium / Firefox both
+ *  treat synthetic dispatches the same as the real keystroke for this
+ *  case. Falls back to a plain `window.open()` if the dispatch fails. */
+function openInBackgroundTab(url: string): void {
+  try {
+    const a = document.createElement("a")
+    a.href = url
+    a.target = "_blank"
+    a.rel = "noopener noreferrer"
+    a.style.display = "none"
+    document.body.appendChild(a)
+    a.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: false,
+        cancelable: true,
+        view: window,
+        button: 0,
+        ctrlKey: true,
+        metaKey: true,
+        shiftKey: false,
+      }),
+    )
+    a.remove()
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer")
+  }
 }
 
 function MoveButton({
@@ -1038,28 +1075,23 @@ function WatchSection({
                       Hidden when the client has no Meta ad account.
                       Roy 2026-06-09. */}
                   {client.metaAdAccountId ? (
-                    <a
-                      href={`https://business.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
                         e.nativeEvent.stopImmediatePropagation?.()
-                        const url = `https://business.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId}`
-                        const w = window.open(url, "_blank", "noopener,noreferrer")
-                        if (w) {
-                          try { w.blur() } catch {}
-                          window.focus()
-                        }
+                        openInBackgroundTab(
+                          `https://business.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId}`,
+                        )
                       }}
                       title={t("watchlist.row.open_ads_manager", locale)}
                       aria-label={t("watchlist.row.open_ads_manager", locale)}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 text-muted-foreground/60 hover:border-[#0866FF]/40 hover:bg-[#0866FF]/10 hover:text-[#0866FF] transition-colors"
                     >
                       <MetaLogo className="h-3.5 w-3.5" />
-                    </a>
+                    </button>
                   ) : (
                     <span aria-hidden />
                   )}
