@@ -334,10 +334,35 @@ export async function POST(req: NextRequest) {
 
   // Route classified tasks/updates to the AM responsible for this client.
   // Falls back to HQ when the contact isn't linked or the AM isn't mapped.
-  const assigneeId =
+  let assigneeId =
     (clientRow?.monday_item_id
       ? await resolveClientAssignee(clientRow.monday_item_id)
       : null) ?? hq.id
+
+  // Roy 2026-06-09 — CM Mentions tab feeder.
+  //
+  // Trengo internal notes (NOTE events) are how the team @-mentions a
+  // teammate inside a conversation. When a CM is mentioned, we want the
+  // chat row to surface in their dedicated Mentions tab — that's gated on
+  // `assignee_id = mentioned_user`. Override the AM-routed assignee above
+  // with the first matching Hub user we find in the note body.
+  //
+  // Mention parser is best-effort: it strips HTML (Trengo notes can
+  // contain rich text) and runs the same `@FirstName` regex the comments
+  // route uses, then resolves via case-insensitive name lookup in
+  // `users`. Self-mentions are skipped by matching against the note's
+  // own author_name (so an AM writing "@Roy" doesn't ping themselves
+  // when their name happens to match). First-match wins — chat rows
+  // have a single assignee column, multi-mention fan-out would dup the
+  // message.
+  if (payload.eventType === "NOTE") {
+    const mentionedId = await resolveFirstMentionedHubUser(
+      supabase,
+      payload.messageBody,
+      payload.authorName,
+    )
+    if (mentionedId) assigneeId = mentionedId
+  }
 
   // Classify with AI. Defaults to chat on uncertainty.
   const classification = await classifyInboxMessage({
@@ -440,4 +465,81 @@ export async function POST(req: NextRequest) {
     reason: classification.reason,
     clientLinked: !!clientRow,
   })
+}
+
+// --- Mention resolver ----------------------------------------------------
+
+/**
+ * Trengo internal notes are how the team @-mentions a teammate. When a
+ * mention lands on a Hub user, we want the chat row to surface in their
+ * dedicated Mentions tab (CMs) or be discoverable as "you were
+ * @-mentioned" for AMs. Both gate on `assignee_id = mentioned_user`, so
+ * this helper rewrites the assignee at insert-time.
+ *
+ * Best-effort parsing — Trengo notes can be HTML-rich, so we strip tags
+ * first, then run the same `@FirstName` regex the comments path uses.
+ * Lookup matches case-insensitively against `users.name` on first-name
+ * OR full-name. Self-mentions are skipped by matching the captured
+ * mention against the note's own `authorName` (the Trengo poster).
+ *
+ * Returns the FIRST matched Hub user id, or null when nothing matches.
+ * First-match: chat rows have a single assignee column, fanning out per
+ * mention would dup the message and inflate badges; v1 prioritises the
+ * first name in the body, which is also the most-prominent in Trengo's
+ * rendered note (Trengo lists mentions inline at the top).
+ */
+async function resolveFirstMentionedHubUser(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  body: string,
+  authorName: string | null,
+): Promise<string | null> {
+  // Strip HTML — Trengo notes can be rich text. Removing tags leaves the
+  // visible @-mention text intact (mentions render as `<span>@Roy</span>`
+  // or similar; the inner text survives).
+  const text = body
+    .replace(/<\/?[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/g, "&")
+  const matches = Array.from(
+    text.matchAll(/@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g),
+  )
+  if (matches.length === 0) return null
+
+  // Preserve regex order so the FIRST mention in the note wins. Dedupe by
+  // lowercase to avoid pinging the same person twice on `@Roy ... @Roy`.
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const m of matches) {
+    const n = m[1].trim()
+    const key = n.toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    names.push(n)
+  }
+  if (names.length === 0) return null
+
+  const { data: rows } = await supabase
+    .from("users")
+    .select("id, name")
+    .not("name", "is", null)
+  if (!rows || rows.length === 0) return null
+
+  // Self-mention filter — match against the note's poster name. We compare
+  // first names because Trengo's author_name is usually a full name and the
+  // @-mention is typically the first name. Lower-cased on both sides.
+  const authorFirstNameLower = (authorName ?? "").trim().toLowerCase().split(/\s+/)[0] ?? ""
+
+  for (const name of names) {
+    const needle = name.toLowerCase()
+    if (needle && needle === authorFirstNameLower) continue
+    for (const row of rows) {
+      const userName = (row.name as string | null)?.toLowerCase() ?? ""
+      if (!userName) continue
+      const firstName = userName.split(/\s+/)[0]
+      if (firstName === needle || userName === needle) {
+        return row.id as string
+      }
+    }
+  }
+  return null
 }
