@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ClientHeader } from "@/app/(dashboard)/clients/[id]/_components/client-header"
 import { ClientTabs } from "@/app/(dashboard)/clients/[id]/_components/client-tabs"
+import { ClientQuickAdd } from "@/app/(dashboard)/clients/_components/client-quick-add"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { DictionaryKey } from "@/lib/i18n/dictionary"
@@ -279,13 +280,22 @@ function SlideOverContent({
     <>
       <ClientHeader client={client} canViewBilling={access.canViewBilling} />
       <div className="mt-4">
-        <ClientTabs
-          client={client}
-          supabaseClientId={supabaseClientId}
-          access={access}
-          hubBilling={hubBilling}
-          currentUser={currentUser}
+        {/* Quick-add bar — Monday-parity compose, sits above the tabs so
+            it's reachable from every view. Roy 2026-06-09. */}
+        <ClientQuickAdd
+          mondayItemId={client.mondayItemId}
+          clientName={client.companyName || client.name}
+          currentUser={{ id: currentUser.id, name: currentUser.name }}
         />
+        <div className="mt-4">
+          <ClientTabs
+            client={client}
+            supabaseClientId={supabaseClientId}
+            access={access}
+            hubBilling={hubBilling}
+            currentUser={currentUser}
+          />
+        </div>
       </div>
     </>
   )
