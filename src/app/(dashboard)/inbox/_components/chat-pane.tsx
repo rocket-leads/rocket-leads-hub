@@ -27,6 +27,7 @@ import {
   ShieldAlert,
   ChevronDown,
   ListTodo,
+  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
@@ -66,6 +67,12 @@ type Props = {
    *  no filter. Driven from the inbox-level toolbar search input so the
    *  same field works across Tasks / Updates / Now / Client Inbox. */
   searchQuery?: string
+  /** Slot rendered DIRECTLY under the All/Unread filter strip. Roy
+   *  2026-06-09: the inbox-level search input lives here on the Client
+   *  Inbox tab so it visually sits beneath the sub-filter chips, same
+   *  as on Tasks/Updates. ChatPane stays unaware of what the slot
+   *  contains — just renders it in the right slot. */
+  underTabsSlot?: React.ReactNode
 }
 
 type MarkAction = "mark_read" | "mark_unread"
@@ -101,6 +108,7 @@ export function ChatPane({
   selectedThreadKey,
   onSelectedChange,
   searchQuery = "",
+  underTabsSlot,
 }: Props) {
   const queryClient = useQueryClient()
   // Selection state. Always lives in `selectedInternal`; in docked mode we
@@ -295,13 +303,18 @@ export function ChatPane({
   }
 
   const filterTabs: TopTab<ChatFilter>[] = [
-    { id: "all", label: "All conversations", icon: LayoutList, count: tabCounts.all },
+    // Roy 2026-06-09: Unread on the LEFT (anchor / default), All on the
+    // RIGHT (scan-everything fallback) — mirrors the Tasks + Updates
+    // strips so the chip positions feel consistent across tabs.
     { id: "unread", label: "Unread", icon: Mail, count: tabCounts.unread },
+    { id: "all", label: "All conversations", icon: LayoutList, count: tabCounts.all },
   ]
 
   return (
     <div className="space-y-4">
       <TopTabs<ChatFilter> tabs={filterTabs} value={filter} onChange={setFilter} />
+
+      {underTabsSlot}
 
       {/* Sized to fill the viewport below the page chrome instead of being
           locked to 640px — keeps the thread list and chat pane equal in
@@ -715,6 +728,90 @@ function ChatBulkActionBar({
 }
 
 // --- Thread view (right pane) --------------------------------------------
+
+/** Pedro-draft prefill button — fetches the client's current `client_pedro`
+ *  insight on click and inserts the `conclusion` into the reply textarea.
+ *  Appends to the existing draft when the textarea isn't empty, so the AM
+ *  can keep what they already wrote.
+ *
+ *  Renders only for client-facing replies (skipped for internal notes and
+ *  when the thread has no linked client). When Pedro has nothing for this
+ *  client the button stays present but disabled with a tooltip — the
+ *  absence is informative ("Pedro has no draft yet"), not a UI gap. */
+function PedroDraftButton({
+  clientId,
+  onInsert,
+  disabled,
+}: {
+  clientId: string
+  onInsert: (text: string) => void
+  disabled?: boolean
+}) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function load() {
+    if (loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/clients/${encodeURIComponent(clientId)}/pedro-insights`)
+      if (!res.ok) throw new Error("Pedro draft niet beschikbaar")
+      const data = (await res.json()) as {
+        insights?: { client_pedro?: { body?: string } }
+      }
+      const raw = data.insights?.client_pedro?.body
+      if (!raw) {
+        setError("Pedro heeft nog geen concept voor deze klant")
+        return
+      }
+      let conclusion: string | null = null
+      try {
+        const parsed = JSON.parse(raw) as { conclusion?: string }
+        conclusion = typeof parsed.conclusion === "string" ? parsed.conclusion.trim() : null
+      } catch {
+        // Body wasn't JSON — fall back to using the raw text.
+        conclusion = raw.trim()
+      }
+      if (!conclusion) {
+        setError("Geen bruikbaar concept gevonden")
+        return
+      }
+      onInsert(conclusion)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kon Pedro draft niet laden")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={load}
+        disabled={disabled || loading}
+        title="Voeg Pedro's huidige concept-bericht toe aan de reply"
+        className={cn(
+          "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium",
+          "border border-border bg-card text-muted-foreground",
+          "hover:bg-muted hover:text-foreground transition-colors",
+          "disabled:opacity-50 disabled:cursor-not-allowed",
+        )}
+      >
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Sparkles className="h-3.5 w-3.5" />
+        )}
+        Pedro draft
+      </button>
+      {error && (
+        <span className="text-[11px] text-muted-foreground/70">{error}</span>
+      )}
+    </div>
+  )
+}
 
 /** Renders the selected thread's messages + composer in a self-contained
  *  card. Pass `thread=null` to show the "Select a conversation" placeholder.
@@ -1646,6 +1743,25 @@ function ThreadMessages({
               </Button>
             </div>
           ) : !isEmailMode ? (
+          <>
+          {/* Pedro draft chip — only for client-facing replies on a linked
+              client. Renders just above the textarea so the AM sees it
+              before they start typing. Click = append Pedro's current
+              conclusion to the draft (or set it when the textarea is
+              empty). Roy 2026-06-09. */}
+          {!isInternal && thread.clientId && (
+            <div className="mb-1.5">
+              <PedroDraftButton
+                clientId={thread.clientId}
+                disabled={sending}
+                onInsert={(text) => {
+                  setReply((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${text}` : text))
+                  // Focus the textarea so the AM can keep editing.
+                  setTimeout(() => textareaRef.current?.focus(), 0)
+                }}
+              />
+            </div>
+          )}
           <div className="relative flex items-end gap-2">
             <textarea
               ref={textareaRef}
@@ -1792,6 +1908,7 @@ function ThreadMessages({
               </div>
             )}
           </div>
+          </>
           ) : null}
         </div>
       )}

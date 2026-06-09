@@ -110,20 +110,20 @@ const TASK_SOURCE_LABEL_KEYS: Record<InboxSource, DictionaryKey> = {
  *  per-render useMemo can rebuild the array when the locale flips without
  *  re-allocating icons on every state change. */
 const UPDATE_FILTER_SHAPE = [
-  // Roy 2026-06-09: "Lees" / read chip removed. The AM wants two views:
-  // everything (alles) and what still needs reading (ongelezen). A
-  // read-only filter was effectively an archive trip — never used in
-  // practice, just took space.
-  { id: "all" as const, labelKey: "inbox.update.filter.all" as const, icon: LayoutList },
+  // Roy 2026-06-09: pressing-attention chip ("Ongelezen") sits LEFT so
+  // it's the AM's anchor; "Alles" sits RIGHT as the scan-everything
+  // fallback. "Lees" / read chip removed entirely — never the anchor
+  // view, just took space.
   { id: "unread" as const, labelKey: "inbox.update.filter.unread" as const, icon: Mail },
+  { id: "all" as const, labelKey: "inbox.update.filter.all" as const, icon: LayoutList },
 ]
 
 const TASK_FILTER_SHAPE = [
-  // Roy 2026-06-09: collapsed to "All" + "Open" — Bezig / Klaar /
-  // Snoozed were never the AM's anchor view. Same minimalism as the
-  // Updates strip above; consistent positions across tabs.
-  { id: "all" as const, labelKey: "inbox.task.filter.all" as const, icon: LayoutList },
+  // Roy 2026-06-09: "Open" on the LEFT as the anchor, "Alles" on the
+  // RIGHT as the catch-all. Bezig / Klaar / Snoozed dropped — same
+  // minimalism as the Updates strip; consistent positions across tabs.
   { id: "open" as const, labelKey: "inbox.task.filter.open" as const, icon: Circle },
+  { id: "all" as const, labelKey: "inbox.task.filter.all" as const, icon: LayoutList },
 ]
 
 const ALL_UPDATE_STATUSES: UpdateStatus[] = ["unread", "read"]
@@ -767,6 +767,39 @@ export function InboxView({
   // the list dominates and the detail is a slide-in.
   const dockSplit5050 = isChatTab && showDockedPane
 
+  // Shared full-width search input — Roy 2026-06-09 wants it RIGHT UNDER the
+  // sub-filter chip strip on every tab, spanning the full content width. Same
+  // controlled state across all tabs so a query typed on Tasks carries over if
+  // the user flips to Updates/Now/Client Inbox without re-typing.
+  const searchBar = (
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
+      <input
+        ref={searchInputRef}
+        type="text"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setSearchQuery("")
+            e.currentTarget.blur()
+          }
+        }}
+        placeholder={t("inbox.search.placeholder", locale)}
+        className="w-full h-9 rounded-md border border-input bg-background pl-9 pr-9 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+      />
+      {searchQuery && (
+        <DismissButton
+          size="xs"
+          onClick={() => setSearchQuery("")}
+          label={t("inbox.search.clear", locale)}
+          stopPropagation={false}
+          className="absolute right-2 top-1/2 -translate-y-1/2"
+        />
+      )}
+    </div>
+  )
+
   return (
     <div className="flex gap-6 items-start">
       <div
@@ -784,39 +817,6 @@ export function InboxView({
         title={t("inbox.title", locale)}
         actions={
           <>
-            {/* Search bar lives on every inbox tab — Roy 2026-06-09 wants
-                cross-tab parity so they can scan for a conversation by name
-                or message text from any view. The Meetings sub-tab (lockedClient
-                only) is the one exception; it has its own search inside the
-                MeetingsTab component. */}
-            {activeTab !== "meetings" && (
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60 pointer-events-none" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      setSearchQuery("")
-                      e.currentTarget.blur()
-                    }
-                  }}
-                  placeholder={t("inbox.search.placeholder", locale)}
-                  className="h-8 w-56 rounded-md border border-input bg-background pl-8 pr-7 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                />
-                {searchQuery && (
-                  <DismissButton
-                    size="xs"
-                    onClick={() => setSearchQuery("")}
-                    label={t("inbox.search.clear", locale)}
-                    stopPropagation={false}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2"
-                  />
-                )}
-              </div>
-            )}
             {!lockedClient && (
               // Filter toggle styled as a secondary affordance (outline) so it
               // never collides visually with the primary action button (purple
@@ -860,8 +860,16 @@ export function InboxView({
 
       <TopTabs<MainTab> tabs={mainTabs} value={activeTab} onChange={setActiveTab} />
 
+      {/* Shared full-width search input — Roy 2026-06-09: lives DIRECTLY
+          UNDER the sub-filter strip on every tab so the chip strip and
+          search field read as one unit. Rendered as a JSX variable below
+          inside each tab block. The Meetings sub-tab is the one exception
+          (it has its own search inside MeetingsTab). */}
+
       <div className="space-y-4">
         {activeTab === "now" && !lockedClient && (
+          <>
+          {searchBar}
           <NowFeed
             currentUserId={currentUser.id}
             users={users}
@@ -877,6 +885,7 @@ export function InboxView({
             // — same UX as Tasks/Updates. No tab switch, no layout shake.
             onOpenThread={openThread}
           />
+          </>
         )}
 
         {activeTab === "tasks" && (
@@ -886,6 +895,7 @@ export function InboxView({
               value={taskFilter}
               onChange={setTaskFilter}
             />
+            {searchBar}
             <TaskSourceChips
               value={taskSourceFilter}
               onChange={setTaskSourceFilter}
@@ -1000,6 +1010,7 @@ export function InboxView({
               value={updateFilter}
               onChange={setUpdateFilter}
             />
+            {searchBar}
             <TaskSourceChips
               value={updateSourceFilter}
               onChange={setUpdateSourceFilter}
@@ -1119,6 +1130,7 @@ export function InboxView({
                   selectedThreadKey={selectedThread?.threadKey ?? null}
                   onSelectedChange={(t) => setSelectedThread(t)}
                   searchQuery={searchQuery}
+                  underTabsSlot={searchBar}
                 />
               </div>
               <div className="xl:hidden">
@@ -1127,6 +1139,7 @@ export function InboxView({
                   users={users}
                   onMakeTaskFromMessage={openComposerFromChat}
                   searchQuery={searchQuery}
+                  underTabsSlot={searchBar}
                 />
               </div>
             </>
