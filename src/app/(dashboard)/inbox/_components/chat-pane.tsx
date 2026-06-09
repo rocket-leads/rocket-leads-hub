@@ -35,6 +35,7 @@ import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import type { ChatScope, ChatThreadSummary, ChatMessage } from "@/lib/inbox/fetchers"
 import type { InboxUser } from "./inbox-view"
 import { EmailComposer } from "./email-composer"
+import { ClientUpdateButton } from "@/app/(dashboard)/clients/_components/client-update-button"
 
 type Props = {
   scope: ChatScope
@@ -1352,9 +1353,26 @@ function ThreadMessages({
             />
           )}
         </div>
-        <span className="text-[11px] text-muted-foreground/60 tabular-nums shrink-0">
-          {thread.totalCount} {thread.totalCount === 1 ? "message" : "messages"}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Quick "Generate update" — only when the thread is linked to a
+              Hub client. Opens the existing weekly-update dialog scoped
+              to this client so the AM can fire off a short data-driven
+              check-in without leaving the conversation. Roy 2026-06-09:
+              the dialog already picks Trengo channel + handles WA / email
+              routing, so threading from the Client Inbox is just a matter
+              of passing the right mondayItemId. (Adaptive 7/14/30-day
+              window selection is on the follow-up list — current MVP
+              reuses the same 7-day cadence the dialog already does.) */}
+          {thread.clientId && thread.clientName && (
+            <ClientUpdateButton
+              mondayItemId={thread.clientId}
+              clientName={thread.clientName}
+            />
+          )}
+          <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+            {thread.totalCount} {thread.totalCount === 1 ? "message" : "messages"}
+          </span>
+        </div>
       </div>
 
       {/* Messages */}
