@@ -370,7 +370,15 @@ export async function POST(req: NextRequest) {
   // automation / manual rows). The classifier output is still computed
   // because it drives the auto-draft trigger below, but it no longer
   // determines where the row appears.
-  const status = "unread"
+  //
+  // Roy 2026-06-09: only INBOUND messages from the contact count as
+  // "unread". OUTBOUND (we replied) and NOTE (internal note) land as
+  // "read" — they're our own writes, nothing the AM needs to action.
+  // The "Nieuwe inbox" / Now feed pulls unread chats, so without this
+  // every outbound reply ghosted in as a fresh inbox item. @-mentions
+  // in internal notes still notify mentioned users via the fan-out below
+  // (separate kind=update rows, independent of this status).
+  const status = payload.authorKind === "client" ? "unread" : "read"
   const priority = null
 
   const titlePreview =
