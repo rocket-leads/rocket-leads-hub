@@ -9,7 +9,7 @@ import {
   type KeyboardEvent,
 } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Loader2, Send, AtSign, CheckSquare, MessageSquare } from "lucide-react"
+import { Loader2, Send, CheckSquare, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
@@ -196,10 +196,6 @@ export function ClientQuickAdd({ mondayItemId, clientName, currentUser }: Props)
     }
   }
 
-  const assigneeLabel = resolvedAssignee
-    ? resolvedAssignee.name?.split(/\s+/)[0] || resolvedAssignee.email.split("@")[0]
-    : `mezelf (${currentUser.name.split(/\s+/)[0]})`
-
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm p-3">
       <div className="flex items-start gap-2">
@@ -225,30 +221,16 @@ export function ClientQuickAdd({ mondayItemId, clientName, currentUser }: Props)
             )}
             disabled={posting}
           />
-          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1">
-                <span
-                  className={cn(
-                    "inline-block h-1.5 w-1.5 rounded-full",
-                    kind === "task" ? "bg-amber-500" : "bg-emerald-500",
-                  )}
-                />
-                {kind === "task" ? "Taak" : "Update"}
-              </span>
-              <span className="text-muted-foreground/40">·</span>
-              <span className="inline-flex items-center gap-1">
-                <AtSign className="h-3 w-3" />
-                naar {assigneeLabel}
-              </span>
+          {(justPosted || error) && (
+            <div className="mt-1 flex items-center justify-end gap-2 text-[11px] text-muted-foreground">
+              {justPosted && !error && (
+                <span className="text-emerald-600">
+                  {justPosted === "task" ? "Taak geplaatst" : "Update geplaatst"}
+                </span>
+              )}
+              {error && <span className="text-destructive">{error}</span>}
             </div>
-            {justPosted && !error && (
-              <span className="text-emerald-600">
-                {justPosted === "task" ? "Taak geplaatst" : "Update geplaatst"}
-              </span>
-            )}
-            {error && <span className="text-destructive">{error}</span>}
-          </div>
+          )}
         </div>
         <button
           type="button"

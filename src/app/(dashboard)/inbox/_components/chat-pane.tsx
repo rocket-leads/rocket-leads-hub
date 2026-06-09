@@ -38,7 +38,7 @@ import type { InboxUser } from "./inbox-view"
 import { EmailComposer } from "./email-composer"
 import { ClientUpdateButton } from "@/app/(dashboard)/clients/_components/client-update-button"
 import type { TrengoIdentity } from "@/app/api/inbox/trengo-identity/route"
-import { AlertTriangle, UserCheck } from "lucide-react"
+import { AlertTriangle } from "lucide-react"
 
 type Props = {
   scope: ChatScope
@@ -75,12 +75,6 @@ type Props = {
    *  as on Tasks/Updates. ChatPane stays unaware of what the slot
    *  contains — just renders it in the right slot. */
   underTabsSlot?: React.ReactNode
-  /** When true, the thread list is scoped to `assignee_id = current_user`
-   *  via `?mentionsOnly=true` on the threads API. Used by the CM Mentions
-   *  tab so a campaign manager only sees chats where they've been
-   *  explicitly @-mentioned or hand-routed — never the wider client
-   *  conversation feed. Roy 2026-06-09. */
-  mentionsOnly?: boolean
 }
 
 type MarkAction = "mark_read" | "mark_unread"
@@ -117,7 +111,6 @@ export function ChatPane({
   onSelectedChange,
   searchQuery = "",
   underTabsSlot,
-  mentionsOnly = false,
 }: Props) {
   const queryClient = useQueryClient()
   // Selection state. Always lives in `selectedInternal`; in docked mode we
@@ -139,14 +132,9 @@ export function ChatPane({
   const [filter, setFilter] = usePersistedChatFilter(scope)
 
   const threadsQuery = useQuery<{ threads: ChatThreadSummary[] }>({
-    // Keys include mentionsOnly so the Mentions tab and Client Inbox tab
-    // don't share a cache — otherwise switching between them would briefly
-    // show the wrong scope of threads.
-    queryKey: ["inbox-threads", scope, { mentionsOnly }],
+    queryKey: ["inbox-threads", scope],
     queryFn: () =>
-      fetch(
-        `/api/inbox/threads?scope=${scope}${mentionsOnly ? "&mentionsOnly=true" : ""}`,
-      ).then((r) => r.json()),
+      fetch(`/api/inbox/threads?scope=${scope}`).then((r) => r.json()),
     // Poll every 5s while the inbox tab is in focus so newly-arrived
     // messages bubble in without a manual refresh. React Query auto-pauses
     // refetching when the window blurs (refetchIntervalInBackground=false
@@ -2862,48 +2850,25 @@ function TrengoIdentityBanner() {
   }
 
   // --- Channel coverage warning (mild, doesn't block sends) ---------------
+  // Roy 2026-06-09: the green "Verstuurt vanuit Trengo als <name>" pill was
+  // removed — once Trengo is wired, no news is good news. Only the
+  // actionable missing-channel warning survives so the "where are my emails?"
+  // failure mode still has a CTA.
 
   const missingChannelTypes: string[] = []
   if (!data.hasEmail) missingChannelTypes.push("Email")
   if (!data.hasWhatsapp) missingChannelTypes.push("WhatsApp")
 
-  // --- Healthy state: small status pill ----------------------------------
-  // When we resolved the Trengo identity, show "Sending as <name>". When
-  // we couldn't (Trengo's v2 API doesn't have a stable "who am I" route —
-  // see the route comment for the candidate-endpoint walk), the pill falls
-  // back to a neutral "Trengo connected" since the token IS validated.
-  const identityName =
-    data.trengoUser?.full_name?.trim() || data.trengoUser?.email || null
+  if (missingChannelTypes.length === 0) return null
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-1.5 text-[11px]">
-      <div className="flex items-center gap-1.5 text-muted-foreground/80">
-        <UserCheck className="h-3 w-3 text-emerald-500" />
-        {identityName ? (
-          <span>
-            Verstuurt vanuit Trengo als <span className="font-medium text-foreground">{identityName}</span>
-          </span>
-        ) : (
-          <span>Trengo connected</span>
-        )}
-        {data.channels.length > 0 && (
-          <span className="text-muted-foreground/50">
-            · {data.channels.length} {data.channels.length === 1 ? "channel" : "channels"} (
-            {data.channels.filter((c) => c.type === "whatsapp").length} WA,{" "}
-            {data.channels.filter((c) => c.type === "email").length} email)
-          </span>
-        )}
-      </div>
-      {missingChannelTypes.length > 0 && (
-        <Link
-          href="/account"
-          className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 hover:underline"
-          title={`Geen ${missingChannelTypes.join(" + ")}-channel(s) geabonneerd — daarom mis je ze in de inbox`}
-        >
-          <AlertTriangle className="h-3 w-3" />
-          Geen {missingChannelTypes.join(" / ")} channels — koppel ze in /account
-        </Link>
-      )}
-    </div>
+    <Link
+      href="/account"
+      className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400 hover:underline"
+      title={`Geen ${missingChannelTypes.join(" + ")}-channel(s) geabonneerd — daarom mis je ze in de inbox`}
+    >
+      <AlertTriangle className="h-3 w-3" />
+      Geen {missingChannelTypes.join(" / ")} channels — koppel ze in /account
+    </Link>
   )
 }
