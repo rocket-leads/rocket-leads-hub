@@ -774,6 +774,7 @@ export async function listChatThreads(
   userId: string,
   role: Role,
   scope: ChatScope,
+  opts: { mentionsOnly?: boolean } = {},
 ): Promise<ChatThreadSummary[]> {
   const supabase = await createAdminClient()
 
@@ -786,6 +787,22 @@ export async function listChatThreads(
     // Cap the raw row pull — threads with hundreds of messages still surface
     // because we group post-hoc. 1k is generous for now.
     .limit(1000)
+
+  // Mentions-only path (CM Mentions tab): strip every visibility path
+  // except `assignee_id = userId`. The CM sees nothing except threads
+  // where they were explicitly @-mentioned or hand-routed via the
+  // assignee column. Skips channel subscription + client-access logic
+  // entirely; the unassigned-Trengo gate still applies so claimed
+  // tickets don't surface.
+  if (opts.mentionsOnly) {
+    query = query.eq("assignee_id", userId)
+    query = query.or(`trengo_assignee_user_id.is.null,source.neq.trengo`)
+    const { data, error } = await query
+    if (error) throw new Error(`Failed to list mention threads: ${error.message}`)
+    return groupAndDecorateChatRows(
+      ((data ?? []) as unknown as RawChatRow[]).filter((r) => r.thread_key),
+    )
+  }
 
   // Trengo channel subscriptions ALWAYS narrow the Client Inbox down to the
   // user's chosen channels — applies to admins too. Without this, an admin
@@ -819,10 +836,25 @@ export async function listChatThreads(
   const { data, error } = await query
   if (error) throw new Error(`Failed to list chat threads: ${error.message}`)
 
-  const rows = ((data ?? []) as unknown as RawChatRow[]).filter((r) => r.thread_key)
+  return groupAndDecorateChatRows(
+    ((data ?? []) as unknown as RawChatRow[]).filter((r) => r.thread_key),
+  )
+}
 
-  // Group by thread_key. Newest event wins for the summary fields since rows
-  // are already ordered by created_at DESC.
+/**
+ * Group raw chat-substrate rows into per-thread summaries. Shared between
+ * the full-visibility path (`listChatThreads` default) and the mentions-
+ * only path (CM Mentions tab) so both produce the same thread shape.
+ *
+ * Rows are expected to be pre-filtered by visibility AND ordered
+ * `created_at DESC` (newest first) by the caller — same contract the
+ * inline grouping used before the extraction.
+ */
+async function groupAndDecorateChatRows(
+  rows: RawChatRow[],
+): Promise<ChatThreadSummary[]> {
+  // Group by thread_key. Newest event wins for the summary fields since
+  // rows are already ordered by created_at DESC.
   const byThread = new Map<string, { rows: RawChatRow[] }>()
   for (const row of rows) {
     const key = row.thread_key as string

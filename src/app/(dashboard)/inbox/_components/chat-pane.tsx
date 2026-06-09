@@ -75,6 +75,12 @@ type Props = {
    *  as on Tasks/Updates. ChatPane stays unaware of what the slot
    *  contains — just renders it in the right slot. */
   underTabsSlot?: React.ReactNode
+  /** When true, the thread list is scoped to `assignee_id = current_user`
+   *  via `?mentionsOnly=true` on the threads API. Used by the CM Mentions
+   *  tab so a campaign manager only sees chats where they've been
+   *  explicitly @-mentioned or hand-routed — never the wider client
+   *  conversation feed. Roy 2026-06-09. */
+  mentionsOnly?: boolean
 }
 
 type MarkAction = "mark_read" | "mark_unread"
@@ -111,6 +117,7 @@ export function ChatPane({
   onSelectedChange,
   searchQuery = "",
   underTabsSlot,
+  mentionsOnly = false,
 }: Props) {
   const queryClient = useQueryClient()
   // Selection state. Always lives in `selectedInternal`; in docked mode we
@@ -132,8 +139,14 @@ export function ChatPane({
   const [filter, setFilter] = usePersistedChatFilter(scope)
 
   const threadsQuery = useQuery<{ threads: ChatThreadSummary[] }>({
-    queryKey: ["inbox-threads", scope],
-    queryFn: () => fetch(`/api/inbox/threads?scope=${scope}`).then((r) => r.json()),
+    // Keys include mentionsOnly so the Mentions tab and Client Inbox tab
+    // don't share a cache — otherwise switching between them would briefly
+    // show the wrong scope of threads.
+    queryKey: ["inbox-threads", scope, { mentionsOnly }],
+    queryFn: () =>
+      fetch(
+        `/api/inbox/threads?scope=${scope}${mentionsOnly ? "&mentionsOnly=true" : ""}`,
+      ).then((r) => r.json()),
     // Poll every 5s while the inbox tab is in focus so newly-arrived
     // messages bubble in without a manual refresh. React Query auto-pauses
     // refetching when the window blurs (refetchIntervalInBackground=false

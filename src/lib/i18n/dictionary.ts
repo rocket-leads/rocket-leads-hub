@@ -395,6 +395,9 @@ export const DICTIONARY = {
   "inbox.tab.tasks": { nl: "Taken", en: "Tasks" },
   "inbox.tab.updates": { nl: "Updates", en: "Updates" },
   "inbox.tab.client_inbox": { nl: "Klanten Inbox", en: "Client Inbox" },
+  // Roy 2026-06-09: CMs see "Mentions" instead of Client Inbox — scoped
+  // to chats where they were explicitly @-mentioned or hand-routed.
+  "inbox.tab.mentions": { nl: "Mentions", en: "Mentions" },
   "inbox.tab.meetings": { nl: "Meetings", en: "Meetings" },
 
   // Now-feed section labels + empty state

@@ -77,7 +77,7 @@ type Props = {
   lockedClient?: LockedClient
 }
 
-type MainTab = "now" | "tasks" | "updates" | "client-inbox" | "meetings"
+type MainTab = "now" | "tasks" | "updates" | "client-inbox" | "mentions" | "meetings"
 type UpdateFilter = "all" | UpdateStatus
 /**
  * Task filters are intentionally bare: only "All" and "Open". Roy 2026-06-09:
@@ -646,19 +646,22 @@ export function InboxView({
     ? tabBadge.unreadUpdates + tabBadge.openTasks + tabBadge.unreadChats
     : undefined
   // Roy 2026-06-09: CMs don't get Client Inbox by default — it's an AM
-  // workflow. Server returns `showClientInbox=false` for cm_only users
-  // unless they have an @-mention or hand-routed chat assigned to them,
-  // in which case the tab pops back with the mention count as badge.
-  // Default to `true` so the tab stays visible while the badge query is
-  // resolving — beats flickering it in/out on every reload.
+  // workflow. They get a dedicated "Mentions" tab instead, scoped strictly
+  // to chats where they're @-mentioned or hand-routed. The server signals
+  // CM-only via `showClientInbox=false` on the badge; the UI then swaps
+  // Client Inbox out for Mentions.
+  //
+  // Defaults to true (= treat as non-CM) while the badge query resolves,
+  // so the layout doesn't flicker between the two states on every reload.
   const showClientInboxTab = tabBadge?.showClientInbox ?? true
-  // Tab badge count: for cm_only users with a mention, show the mention
-  // count (the single conversation they care about), not the workspace-
-  // wide `unreadChats`. AMs / admins keep the full count.
-  const clientInboxBadge =
-    tabBadge?.showClientInbox === true && (tabBadge.clientInboxMentionCount ?? 0) > 0 && (tabBadge?.unreadChats ?? 0) === 0
-      ? tabBadge.clientInboxMentionCount
-      : tabBadge?.unreadChats ?? 0
+  const isCmAudience = tabBadge?.showClientInbox === false || (tabBadge?.showClientInbox === true && (tabBadge?.clientInboxMentionCount ?? 0) > 0 && (tabBadge?.unreadChats ?? 0) === 0)
+  // CM-only users (with or without active mentions) get a permanent
+  // Mentions tab so they always have a discoverable place to land.
+  // Detected via the same server signal: server returns
+  // showClientInbox=false for CMs with zero mentions, OR true with a
+  // populated mention count. AMs / admins skip this branch.
+  const showMentionsTab = isCmAudience
+  const mentionsBadge = tabBadge?.clientInboxMentionCount ?? 0
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
         { id: "tasks", label: t("inbox.tab.tasks", locale), icon: ListTodo, count: tasks.length, accent: "violet" as const },
@@ -696,29 +699,48 @@ export function InboxView({
           count: tabBadge?.unreadUpdates ?? updates.length,
           accent: "sky" as const,
         },
-        ...(showClientInboxTab
+        ...(showMentionsTab
           ? [
               {
-                id: "client-inbox" as const,
-                label: t("inbox.tab.client_inbox", locale),
+                id: "mentions" as const,
+                label: t("inbox.tab.mentions", locale),
                 icon: MessageCircle,
-                count: clientInboxBadge,
+                count: mentionsBadge,
                 accent: "emerald" as const,
               },
             ]
-          : []),
+          : showClientInboxTab
+            ? [
+                {
+                  id: "client-inbox" as const,
+                  label: t("inbox.tab.client_inbox", locale),
+                  icon: MessageCircle,
+                  count: tabBadge?.unreadChats ?? 0,
+                  accent: "emerald" as const,
+                },
+              ]
+            : []),
       ]
 
-  // Auto-redirect if the user lands on Client Inbox while the tab is
-  // hidden (cm_only with no mention) — sends them back to Now so they're
-  // not stuck on an inaccessible tab.
+  // Auto-redirect when the active tab disappears from the strip:
+  //   - On Client Inbox while we're rendering a Mentions tab (CM audience)
+  //     → flip to Mentions (CM workflow).
+  //   - On Mentions while we're rendering Client Inbox (audience changed
+  //     from CM to AM in the live session, edge case) → flip to Client
+  //     Inbox.
+  // Falls back to Now when neither tab applies (cm_only with no mentions
+  // — server hides everything).
   useEffect(() => {
-    if (activeTab === "client-inbox" && !showClientInboxTab && !lockedClient) {
-      setActiveTab("now")
+    if (lockedClient) return
+    if (activeTab === "client-inbox" && !showClientInboxTab) {
+      setActiveTab(showMentionsTab ? "mentions" : "now")
     }
-  }, [activeTab, showClientInboxTab, lockedClient])
+    if (activeTab === "mentions" && !showMentionsTab) {
+      setActiveTab(showClientInboxTab ? "client-inbox" : "now")
+    }
+  }, [activeTab, showClientInboxTab, showMentionsTab, lockedClient])
 
-  const isChatTab = activeTab === "client-inbox"
+  const isChatTab = activeTab === "client-inbox" || activeTab === "mentions"
   const isClientOnlyTab = activeTab === "meetings" || (!!lockedClient && activeTab === "client-inbox")
   // Now tab is read-only triage — it shows what needs attention but doesn't
   // own the composer/search affordances those belong to (those live in the
@@ -1185,6 +1207,34 @@ export function InboxView({
               </div>
             </>
           )
+        )}
+
+        {activeTab === "mentions" && !lockedClient && (
+          <>
+            <div className="hidden xl:block">
+              <ChatPane
+                scope="external"
+                users={users}
+                onMakeTaskFromMessage={openComposerFromChat}
+                dockedDetail
+                selectedThreadKey={selectedThread?.threadKey ?? null}
+                onSelectedChange={(t) => setSelectedThread(t)}
+                searchQuery={searchQuery}
+                underTabsSlot={searchBar}
+                mentionsOnly
+              />
+            </div>
+            <div className="xl:hidden">
+              <ChatPane
+                scope="external"
+                users={users}
+                onMakeTaskFromMessage={openComposerFromChat}
+                searchQuery={searchQuery}
+                underTabsSlot={searchBar}
+                mentionsOnly
+              />
+            </div>
+          </>
         )}
 
         {activeTab === "meetings" && lockedClient && (
