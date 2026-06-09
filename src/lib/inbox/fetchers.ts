@@ -407,10 +407,59 @@ export async function listInboxComments(itemId: string): Promise<InboxComment[]>
  * sidebar number lines up with the per-thread unread counts. Snoozed tasks
  * are excluded to keep the badge silent while the user has parked them.
  */
+/**
+ * Per-user Monday role mapping → "what kind of relationship does this Hub
+ * user have with clients". Drives the Client Inbox tab visibility (CM-only
+ * users don't get the tab unless they have an unread chat directly
+ * assigned to them — i.e. a mention).
+ *
+ * Returns:
+ *   - "admin"            Hub role is "admin" → always sees everything
+ *   - "am"               Mapped as account_manager (with or without CM)
+ *                        → sees Client Inbox by default (AM owns client
+ *                        conversations)
+ *   - "cm_only"          Mapped as campaign_manager ONLY → hidden unless
+ *                        they have an unread chat assigned to them
+ *   - "other"            No relevant mapping → default behaviour
+ */
+export type InboxAudienceRole = "admin" | "am" | "cm_only" | "other"
+
+export async function resolveInboxAudienceRole(
+  userId: string,
+  hubRole: Role,
+): Promise<InboxAudienceRole> {
+  if (hubRole === "admin") return "admin"
+  const supabase = await createAdminClient()
+  const { data } = await supabase
+    .from("user_column_mappings")
+    .select("monday_column_role")
+    .eq("user_id", userId)
+    .in("monday_column_role", ["account_manager", "campaign_manager"])
+  const roles = new Set((data ?? []).map((r) => r.monday_column_role as string))
+  if (roles.has("account_manager")) return "am"
+  if (roles.has("campaign_manager")) return "cm_only"
+  return "other"
+}
+
 export async function getInboxBadgeCounts(
   userId: string,
   role: Role = "member",
-): Promise<{ unreadUpdates: number; openTasks: number; unreadChats: number }> {
+): Promise<{
+  unreadUpdates: number
+  openTasks: number
+  unreadChats: number
+  /** True when the Client Inbox tab should be visible for this user.
+   *  Hidden for cm_only users with no unread chat assigned to them; the
+   *  AM/CM distinction comes from user_column_mappings (see
+   *  resolveInboxAudienceRole). Roy 2026-06-09: Client Inbox isn't a
+   *  CM workflow — they only need it when they're @-mentioned. */
+  showClientInbox: boolean
+  /** Unread chat rows directly assigned to this user. For cm_only users
+   *  this doubles as the "mention indicator" — any value > 0 means they
+   *  have a chat-substrate event that surfaces in the Client Inbox.
+   *  Used to gate the tab open. */
+  clientInboxMentionCount: number
+}> {
   const supabase = await createAdminClient()
 
   // Snoozed tasks shouldn't ping the sidebar — that's the point of snoozing.
@@ -460,7 +509,21 @@ export async function getInboxBadgeCounts(
     `trengo_assignee_user_id.is.null,source.neq.trengo`,
   )
 
-  const [updatesRes, tasksRes, chatsRes] = await Promise.all([
+  // Mention-style chat count: unread chat-substrate rows where THIS user is
+  // the direct assignee. Used by the cm_only gate below — when a CM has
+  // chat rows pinned to them (typically via Trengo internal-note @-mention
+  // or hand-routing), they get the tab visible with those rows under
+  // Unread. AMs and admins ignore this number; their visibility comes
+  // from the main chatQuery above.
+  const mentionChatQueryRes = supabase
+    .from("inbox_events")
+    .select("id", { count: "exact", head: true })
+    .not("thread_key", "is", null)
+    .eq("scope", "external")
+    .eq("status", "unread")
+    .eq("assignee_id", userId)
+
+  const [updatesRes, tasksRes, chatsRes, mentionChatsRes, audienceRole] = await Promise.all([
     supabase
       .from("inbox_events")
       .select("id", { count: "exact", head: true })
@@ -479,12 +542,24 @@ export async function getInboxBadgeCounts(
       .or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`)
       .is("thread_key", null),
     chatQuery,
+    mentionChatQueryRes,
+    resolveInboxAudienceRole(userId, role),
   ])
+
+  const clientInboxMentionCount = mentionChatsRes.count ?? 0
+  // Visibility rule (Roy 2026-06-09):
+  //   - admin / AM / other → tab always visible
+  //   - cm_only → tab hidden UNLESS they have a chat row directly
+  //     assigned to them (mention / hand-routed conversation)
+  const showClientInbox =
+    audienceRole !== "cm_only" || clientInboxMentionCount > 0
 
   return {
     unreadUpdates: updatesRes.count ?? 0,
     openTasks: tasksRes.count ?? 0,
     unreadChats: chatsRes.count ?? 0,
+    showClientInbox,
+    clientInboxMentionCount,
   }
 }
 

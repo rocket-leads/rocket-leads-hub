@@ -282,7 +282,21 @@ export function InboxView({
   // stay in sync. Only used in global mode; the locked-client view keeps
   // its existing local-derived counts because the badge endpoint isn't
   // client-scoped.
-  const badgeQuery = useQuery<{ unreadUpdates: number; openTasks: number; unreadChats: number }>({
+  const badgeQuery = useQuery<{
+    unreadUpdates: number
+    openTasks: number
+    unreadChats: number
+    /** Roy 2026-06-09: CMs don't get the Client Inbox tab by default —
+     *  it's an AM workflow. The server flips this to true when a CM
+     *  (i.e. user mapped only as campaign_manager) has at least one
+     *  unread chat row assigned to them (an @-mention or hand-routed
+     *  conversation). AMs / admins always get true. */
+    showClientInbox?: boolean
+    /** Unread chat rows directly pinned to this user. For cm_only users
+     *  this is the count rendered in the Client Inbox tab badge so they
+     *  only see the mention-relevant rows, not the full feed. */
+    clientInboxMentionCount?: number
+  }>({
     queryKey: ["inbox-badge"],
     queryFn: () => fetch("/api/inbox/badge").then((r) => r.json()),
     refetchInterval: LIST_REFETCH_MS,
@@ -631,6 +645,20 @@ export function InboxView({
   const nowCount = tabBadge
     ? tabBadge.unreadUpdates + tabBadge.openTasks + tabBadge.unreadChats
     : undefined
+  // Roy 2026-06-09: CMs don't get Client Inbox by default — it's an AM
+  // workflow. Server returns `showClientInbox=false` for cm_only users
+  // unless they have an @-mention or hand-routed chat assigned to them,
+  // in which case the tab pops back with the mention count as badge.
+  // Default to `true` so the tab stays visible while the badge query is
+  // resolving — beats flickering it in/out on every reload.
+  const showClientInboxTab = tabBadge?.showClientInbox ?? true
+  // Tab badge count: for cm_only users with a mention, show the mention
+  // count (the single conversation they care about), not the workspace-
+  // wide `unreadChats`. AMs / admins keep the full count.
+  const clientInboxBadge =
+    tabBadge?.showClientInbox === true && (tabBadge.clientInboxMentionCount ?? 0) > 0 && (tabBadge?.unreadChats ?? 0) === 0
+      ? tabBadge.clientInboxMentionCount
+      : tabBadge?.unreadChats ?? 0
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
         { id: "tasks", label: t("inbox.tab.tasks", locale), icon: ListTodo, count: tasks.length, accent: "violet" as const },
@@ -668,14 +696,27 @@ export function InboxView({
           count: tabBadge?.unreadUpdates ?? updates.length,
           accent: "sky" as const,
         },
-        {
-          id: "client-inbox",
-          label: t("inbox.tab.client_inbox", locale),
-          icon: MessageCircle,
-          count: tabBadge?.unreadChats ?? 0,
-          accent: "emerald" as const,
-        },
+        ...(showClientInboxTab
+          ? [
+              {
+                id: "client-inbox" as const,
+                label: t("inbox.tab.client_inbox", locale),
+                icon: MessageCircle,
+                count: clientInboxBadge,
+                accent: "emerald" as const,
+              },
+            ]
+          : []),
       ]
+
+  // Auto-redirect if the user lands on Client Inbox while the tab is
+  // hidden (cm_only with no mention) — sends them back to Now so they're
+  // not stuck on an inaccessible tab.
+  useEffect(() => {
+    if (activeTab === "client-inbox" && !showClientInboxTab && !lockedClient) {
+      setActiveTab("now")
+    }
+  }, [activeTab, showClientInboxTab, lockedClient])
 
   const isChatTab = activeTab === "client-inbox"
   const isClientOnlyTab = activeTab === "meetings" || (!!lockedClient && activeTab === "client-inbox")
