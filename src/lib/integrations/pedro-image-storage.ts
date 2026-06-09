@@ -60,10 +60,10 @@ export type UploadResult = {
 }
 
 /**
- * Upload a JPEG or PNG blob to the bucket under the canonical path. If
- * a prior image exists for the same variant we delete it first so a
- * regenerate doesn't leak storage. Returns the storage path the caller
- * should persist on the `pedro_variants` row.
+ * Upload a JPEG or PNG blob to the bucket under the canonical slot
+ * path. Per-slot cleanup so re-generating slot 0 never wipes slots 1+.
+ *
+ * Path layout: `<clientId>/<variantId>/p<position>/<timestamp>.<ext>`
  *
  * Width/height are best-effort: passed in by the caller when known
  * (Gemini returns the dimensions in the model response). For manual
@@ -73,6 +73,9 @@ export type UploadResult = {
 export async function uploadVariantImage(args: {
   clientId: string
   variantId: string
+  /** Slot index (0-9). Each slot has its own storage prefix so they
+   *  can be regenerated/replaced independently. */
+  position: number
   bytes: Buffer
   contentType: "image/jpeg" | "image/png"
   width?: number | null
@@ -81,25 +84,24 @@ export async function uploadVariantImage(args: {
   await ensureBucket()
   const supabase = await createAdminClient()
 
-  // Delete prior images for this variant so storage stays clean.
-  // Best-effort — failure here doesn't block the upload.
+  const slotPrefix = `${args.clientId}/${args.variantId}/p${args.position}`
+
+  // Delete prior images for this specific slot only.
   try {
-    const { data: existing } = await supabase.storage
-      .from(BUCKET)
-      .list(`${args.clientId}/${args.variantId}`)
+    const { data: existing } = await supabase.storage.from(BUCKET).list(slotPrefix)
     if (existing && existing.length > 0) {
-      const paths = existing.map((f) => `${args.clientId}/${args.variantId}/${f.name}`)
+      const paths = existing.map((f) => `${slotPrefix}/${f.name}`)
       await supabase.storage.from(BUCKET).remove(paths)
     }
   } catch (e) {
     console.error(
-      "[pedro-image-storage] prior-image cleanup failed (continuing):",
+      "[pedro-image-storage] prior-slot cleanup failed (continuing):",
       e instanceof Error ? e.message : e,
     )
   }
 
   const ext = args.contentType === "image/png" ? "png" : "jpg"
-  const path = `${args.clientId}/${args.variantId}/${Date.now()}.${ext}`
+  const path = `${slotPrefix}/${Date.now()}.${ext}`
 
   const { error: uploadErr } = await supabase.storage
     .from(BUCKET)

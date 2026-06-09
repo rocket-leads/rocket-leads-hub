@@ -35,6 +35,7 @@ export async function loadPedroClients(opts: {
         name: c.companyName || c.name,
         status: c.campaignStatus || "",
         boardType: c.boardType,
+        googleDriveId: c.googleDriveId ?? "",
       }))
       .filter((c) => c.id && c.name)
 

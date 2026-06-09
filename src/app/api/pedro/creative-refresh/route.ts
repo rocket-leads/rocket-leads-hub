@@ -22,6 +22,9 @@ import {
 } from "@/lib/pedro/refresh-naming"
 import { fanOutVariantsToTable } from "@/lib/pedro/variants"
 import { pastVariantsContextBlock } from "@/lib/pedro/past-variants-context"
+import { buildCreativeRefreshContext } from "@/lib/pedro/creative-refresh-context"
+import { fetchClientById } from "@/lib/integrations/monday"
+import { analyzeAdsParallel } from "@/lib/pedro/ad-creative-vision"
 
 // Creative refresh: full knowledge base + per-ad performance render +
 // past-campaign context + 4000 output tokens. Routinely 40-90s on
@@ -128,6 +131,96 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
     return NextResponse.json({ error: "Geen Meta ad account voor deze klant" }, { status: 400 })
   }
 
+  // ── 1b. Hard brief gate (Roy 2026-06-09) ──
+  // Without a baseline brief Pedro hallucinates business models — the
+  // Zumex B2C smoothie flop showed this. Same completion bar as Pedro
+  // Onboard: brief counts as filled when `bedrijf` AND `aanbod` are
+  // both non-empty (see pedro-campaign.tsx:1822). 409 + structured
+  // body lets the UI catch and open the inline brief modal without
+  // bouncing the user to /pedro/onboard.
+  //
+  // Sources we consider valid:
+  //   1. pedro_client_state.brief — live draft, primary source
+  //   2. pedro_stage_versions (stage='brief') — saved snapshots
+  // If only #2 has it (e.g. CM saved via Onboard's "Save final version"
+  // but never updated the live draft), we lazy-sync into client_state
+  // so subsequent runs hit the fast path + every other Pedro feature
+  // sees it too.
+  {
+    const [briefRowRes, versionRowRes] = await Promise.all([
+      supabase
+        .from("pedro_client_state")
+        .select("brief, campaign_number")
+        .eq("client_id", clientId)
+        .order("campaign_number", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ brief: Record<string, unknown> | null; campaign_number: number }>(),
+      supabase
+        .from("pedro_stage_versions")
+        .select("data, campaign_number")
+        .eq("client_id", clientId)
+        .eq("stage", "brief")
+        .order("saved_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ data: Record<string, unknown> | null; campaign_number: number }>(),
+    ])
+
+    let brief = briefRowRes.data?.brief ?? null
+    const versionBrief = versionRowRes.data?.data ?? null
+
+    const isComplete = (b: Record<string, unknown> | null) => {
+      const bedrijf = typeof b?.bedrijf === "string" ? b.bedrijf.trim() : ""
+      const aanbod = typeof b?.aanbod === "string" ? b.aanbod.trim() : ""
+      return bedrijf.length > 0 && aanbod.length > 0
+    }
+
+    // Lazy sync: live draft is empty/incomplete but a saved version
+    // exists — promote it. Best-effort; if the upsert fails the gate
+    // still blocks below.
+    if (!isComplete(brief) && isComplete(versionBrief)) {
+      try {
+        await supabase
+          .from("pedro_client_state")
+          .upsert(
+            {
+              client_id: clientId,
+              campaign_number: versionRowRes.data?.campaign_number ?? 1,
+              brief: versionBrief,
+            },
+            { onConflict: "client_id,campaign_number" },
+          )
+        brief = versionBrief
+      } catch (e) {
+        console.error(
+          "[creative-refresh] brief lazy-sync failed:",
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
+    if (!isComplete(brief)) {
+      const bedrijf = typeof brief?.bedrijf === "string" ? brief.bedrijf.trim() : ""
+      const aanbod = typeof brief?.aanbod === "string" ? brief.aanbod.trim() : ""
+      return NextResponse.json(
+        {
+          error: "Brief ontbreekt voor deze klant — vul eerst de creative briefing in.",
+          requires_brief: true,
+          clientId,
+          clientName: client.name,
+          // Echo back whichever brief we found (live draft OR latest
+          // saved version) so the modal prefills whatever's there
+          // rather than starting blank.
+          current_brief: brief ?? versionBrief ?? null,
+          missing_fields: [
+            ...(!bedrijf ? ["bedrijf"] : []),
+            ...(!aanbod ? ["aanbod"] : []),
+          ],
+        },
+        { status: 409 },
+      )
+    }
+  }
+
   // ── 2. Pull current + prior windows in parallel (cached) ──
   const cur = dateRange(days)
   const prior = priorRange(days)
@@ -193,19 +286,63 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
     .maybeSingle<{ brief: { sector?: string } | null }>()
   const currentSector = stateRow?.brief?.sector ?? ""
 
-  const [pastCreatives, pastBrief, crossClient, pastVariants] = await Promise.all([
+  // Fetch the full MondayClient row so the context composer can pull
+  // Drive folder id, account manager, etc. Best-effort: if Monday is
+  // unreachable we still build a context block from the other sources.
+  const mondayClient = await fetchClientById(clientId).catch(() => null)
+
+  const [pastCreatives, pastBrief, crossClient, pastVariants, clientContext] = await Promise.all([
     pastContextForStage(clientId, "creatives", 2).catch(() => ""),
     pastContextForStage(clientId, "brief", 1).catch(() => ""),
     currentSector
       ? crossClientExamplesBlock(supabase, clientId, currentSector, 4).catch(() => "")
       : Promise.resolve(""),
     pastVariantsContextBlock(supabase, clientId).catch(() => ""),
+    mondayClient
+      ? buildCreativeRefreshContext(mondayClient).catch((e) => {
+          console.error(
+            "[creative-refresh] context build failed:",
+            e instanceof Error ? e.message : e,
+          )
+          return null
+        })
+      : Promise.resolve(null),
   ])
 
+  if (clientContext) {
+    console.log(
+      `[creative-refresh] context sources for ${clientId}:`,
+      JSON.stringify(clientContext.sources),
+      `chars=${clientContext.charCount}`,
+    )
+  }
+
   // Compact the winners + a few losers (so Claude sees what NOT to copy).
-  const winnersBlock = renderAdsForPrompt(winners, 5)
-  const losersBlock = renderAdsForPrompt(losers, 3)
-  const allAdsBlock = renderAdsForPrompt(scored, 10)
+  // Vision analysis for the ads that actually drive the proposal —
+  // top 5 winners + top 3 losers. Cache-first: re-analyzing an ad
+  // never costs us a second Haiku call. Roy 2026-06-09: zonder dit
+  // ziet Pedro alleen ad-namen + getallen en hallucineert hij DNA.
+  const visionTargets = [
+    ...winners.slice(0, 5),
+    ...losers.slice(0, 3),
+  ]
+    .filter((a) => a.adId && a.thumbnailUrl)
+    .map((a) => ({
+      adId: a.adId,
+      adName: a.adName,
+      thumbnailUrl: a.thumbnailUrl,
+      clientId,
+    }))
+  const visionByAdId = await analyzeAdsParallel(supabase, visionTargets).catch(
+    () => new Map<string, string>(),
+  )
+  console.log(
+    `[creative-refresh] vision analyses for ${clientId}: ${visionByAdId.size}/${visionTargets.length} ads`,
+  )
+
+  const winnersBlock = renderAdsForPrompt(winners, 5, visionByAdId)
+  const losersBlock = renderAdsForPrompt(losers, 3, visionByAdId)
+  const allAdsBlock = renderAdsForPrompt(scored, 10, visionByAdId)
 
   const trendLine = (() => {
     const parts: string[] = []
@@ -220,6 +357,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
 KLANT: ${client.name} (Monday item ${clientId})
 WINDOW: laatste ${days} dagen (${cur.start} → ${cur.end})
 
+${clientContext?.block ?? "CLIENT CONTEXT: niet beschikbaar — wees expliciet voorzichtig met aannames over wat klant verkoopt of wie de doelgroep is."}
+
 ACCOUNT STATS:
 - Total spend: €${stats.totalSpend.toFixed(0)}, ${stats.totalLeads} leads
 - Account avg CPL: ${stats.avgCpl != null ? `€${stats.avgCpl.toFixed(2)}` : "—"}
@@ -227,7 +366,7 @@ ACCOUNT STATS:
 - Active ads (≥€10 spend): ${stats.activeAdCount}
 - Trend vs prior ${days}d: ${trendLine}
 
-WINNERS (sorted by spend, top 5):
+WINNERS (sorted by spend, top 5 — primary copy bodies included):
 ${winnersBlock}
 
 LOSERS (top 3 by spend — these are NOT to copy):
@@ -241,10 +380,17 @@ ${crossClient}
 ${pastVariants}
 OPDRACHT:
 Voor ELKE winner uit de WINNERS lijst (max 3 winners om scope behapbaar te houden):
-- Identificeer de DNA: wat is de hook-stijl, de marketing angle, het format.
-- Stel 3 nieuwe variaties voor die in dezelfde richting itereren — zelfde hook-categorie, zelfde angle, zelfde format. Verse executies, nieuwe openers, andere B-roll, frisse CTA.
+- Identificeer de DNA OP BASIS VAN: (a) primary copy + headline + description + CTA, (b) de "Visual" beschrijving van de thumbnail (subject, setting, on-image tekst, mood, kleuren), (c) creative type (image/video/dynamic).
+- Stel 3 nieuwe variaties voor die in dezelfde richting itereren — zelfde hook-categorie, zelfde angle, zelfde format, zelfde visuele wereld. Verse executies, nieuwe openers, andere B-roll, frisse CTA.
 - Geen kopie van bestaande ads (zie "Eerdere creatives" hierboven).
 - Geen kopie van losers — die hebben juist NIET gewerkt.
+
+GROUND-TRUTH REGEL (Roy 2026-06-09):
+- Je proposals MOETEN gebaseerd zijn op de CLIENT CONTEXT + WINNERS primary copy + WINNERS Visual. Speculeer NOOIT over wat de klant verkoopt of wie de doelgroep is op basis van alleen de bedrijfsnaam of ad-naam.
+- De ad-NAAM ("Tosti's", "Pricelist", etc.) is een interne label en NIET een aanwijzing voor de productinhoud. Negeer de naam als signaal voor product/doelgroep en leid alles af van de bodies/Visual.
+- Als CLIENT CONTEXT en WINNERS primary copy elkaar tegenspreken, vertrouw op de WINNERS bodies + Visual (die werken bewezen).
+- Als beide afwezig of dun zijn: zeg dat expliciet in je summary ("context dun, voorzichtig met aannames") en blijf bij wat de ad-namen suggereren — geen invented productverhalen.
+- B2B vs B2C: leid dit AF van de ad bodies, Visual, en briefing, niet uit aannames over de branche.
 
 PRINCIPES (knowledge/campaigns.md):
 - Een winnende ad is geen rustpunt maar een signaal. Verdubbelen op winnaars met nieuwe iteraties.
@@ -277,7 +423,7 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
           "newHook": "een nieuwe opener-zin in NL die in dezelfde DNA past",
           "scriptOutline": "3-5 bullet points van de script-flow (in NL)",
           "primaryCopySnippet": "primary text opener van max 60 woorden (in NL)",
-          "imagePrompt": "ENGLISH visual brief van max 80 woorden voor de image-gen (Gemini Nano Banana Pro). Beschrijf: scene/setting, subject, mood, lighting, brand-style (refer to reference: 'in the same brand style as the reference'), eventuele on-image tekst overlay (wees specifiek over de exacte tekst), aspect ratio context. NIET de gehele Dutch hook overnemen — translate/condense to visual cues. Schrijf in English voor model fidelity.",
+          "imagePrompt": "ENGLISH visual brief van max 100 woorden voor de image-gen (Gemini Nano Banana Pro). Gemini krijgt straks tot 3 reference images: (a) de winner ad thumbnail (DNA), en (b) 1-2 echte client photos uit hun Drive folder (echt product, echte locatie, echte brand-style). Beschrijf: scene/setting, subject, mood, lighting, eventuele on-image tekst overlay (wees specifiek over de exacte tekst). Verwijs naar de references zo: 'using the client's product visible in the reference photos' / 'in the same brand style as the references' / 'matching the lighting and color palette from the reference photos'. Beschrijf NIET het hele beeld vanaf nul — leun op de references voor look-and-feel en specificeer alleen wat ANDERS moet. NIET de gehele Dutch hook overnemen — translate/condense to visual cues. Schrijf in English voor model fidelity.",
           "why": "1 zin: waarom deze variatie de DNA van [adName] respecteert maar fris is"
         }
       ]

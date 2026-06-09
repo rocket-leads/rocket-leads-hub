@@ -161,7 +161,16 @@ function normalizeAdBody(body: string | undefined | null): string {
     .slice(0, BODY_CHAR_LIMIT)
 }
 
-export function renderAdsForPrompt(ads: ScoredAd[], topN = 12): string {
+/** Optional per-ad visual descriptions, keyed by adId. When passed,
+ *  rendered as a "Visual:" line so Pedro knows what's IN the creative
+ *  — not just what's written. */
+export type AdVisionMap = Map<string, string>
+
+export function renderAdsForPrompt(
+  ads: ScoredAd[],
+  topN = 12,
+  visionByAdId?: AdVisionMap,
+): string {
   const sorted = [...ads].sort((a, b) => b.spend - a.spend).slice(0, topN)
   if (sorted.length === 0) return "Geen actieve ads in dit window."
   const blocks = sorted.map((a) => {
@@ -170,10 +179,25 @@ export function renderAdsForPrompt(ads: ScoredAd[], topN = 12): string {
     const body = normalizeAdBody(a.body)
     const creativeType = a.creativeType ?? "unknown"
     const header = `[${a.verdict.toUpperCase().padEnd(7)}] "${a.adName}" (${creativeType}) — €${a.spend.toFixed(0)} spend, ${a.leads} leads, CPL ${cpl}, CTR ${ctr}% — ${a.reason}`
-    const bodyLine = body
-      ? `  Primary copy: "${body}${body.length === BODY_CHAR_LIMIT ? "…" : ""}"`
-      : `  Primary copy: (not available)`
-    return `${header}\n${bodyLine}`
+    const lines: string[] = [header]
+    if (a.title) lines.push(`  Headline: "${a.title.slice(0, 200)}"`)
+    if (body) {
+      lines.push(`  Primary copy: "${body}${body.length === BODY_CHAR_LIMIT ? "…" : ""}"`)
+    } else {
+      lines.push(`  Primary copy: (not available)`)
+    }
+    if (a.description) lines.push(`  Description: "${a.description.slice(0, 200)}"`)
+    if (a.callToActionType) lines.push(`  CTA button: ${a.callToActionType}`)
+    if (a.linkUrl) lines.push(`  Landing page: ${a.linkUrl.slice(0, 100)}`)
+    if (a.assetFeedSummary) {
+      // Dynamic-creative variation pool — indent so the prompt stays readable.
+      lines.push(`  Dynamic variations:\n${a.assetFeedSummary.split("\n").map((l) => `    ${l}`).join("\n")}`)
+    }
+    const vision = visionByAdId?.get(a.adId)
+    if (vision) {
+      lines.push(`  Visual (Haiku analysis of thumbnail): ${vision}`)
+    }
+    return lines.join("\n")
   })
   return blocks.join("\n\n")
 }

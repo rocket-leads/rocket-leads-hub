@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
-import { Users, Compass, Video, ImageIcon, Megaphone } from "lucide-react"
+import { Users, Compass, Video, ImageIcon, Megaphone, FolderOpen } from "lucide-react"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
@@ -141,6 +141,20 @@ export function PedroOptimizeApp({ clients }: Props) {
               hideAutoFill
             />
           </div>
+          {/* Drive folder shortcut — verify which client photos are
+              available before/after image-gen. Roy 2026-06-09. */}
+          {selectedClient?.googleDriveId && (
+            <a
+              href={`https://drive.google.com/drive/folders/${selectedClient.googleDriveId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors"
+              title="Open de Drive folder van deze klant in een nieuw tab"
+            >
+              <FolderOpen className="h-4 w-4" />
+              Drive
+            </a>
+          )}
           {selectedClient && (
             <span className="shrink-0 text-xs text-muted-foreground hidden md:inline">
               {selectedClient.boardType === "onboarding" ? t("pedro.picker.onboarding", locale) : t("pedro.picker.live", locale)}

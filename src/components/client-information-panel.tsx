@@ -96,6 +96,10 @@ export function ClientInformationPanel({ client }: Props) {
           companyName={client.companyName || client.name}
           help="Ad account used for Spend / CPL / CTR / per-ad performance. Unblocks: Campaigns tab, Top Ads, Pedro creative insights. Without it, the Performance Overview shows no ad metrics."
         />
+        <FacebookPageIdField
+          mondayItemId={client.mondayItemId}
+          help="OPTIONEEL — Pedro gebruikt standaard de page van de winning ad (zelfde pixel + UTM-consistency). Vul hier alleen iets in als je nieuwe ads onder een ANDERE page wil plaatsen, of als de winner geen page_id heeft (komt voor bij sommige dynamic-creative ads)."
+        />
         <ConnectedEntity
           mondayItemId={client.mondayItemId}
           fieldKey="stripe_customer_id"
@@ -207,6 +211,122 @@ function SimpleField({ mondayItemId, fieldKey, value, label, type = "text", help
         disabled={mutation.isPending}
         className="h-8 text-sm font-mono"
       />
+      <div className="flex items-center gap-1.5 min-w-[64px] justify-end">
+        {mutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        {savedFlash && !mutation.isPending && (
+          <Check className="h-3.5 w-3.5 text-emerald-500" />
+        )}
+        {canSave && !savedFlash && (
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => mutation.mutate(draft)}>
+            Save
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Pure-Supabase field for Facebook Page ID — bypasses the Monday
+ *  mirror entirely because Page IDs aren't a Monday column. Same UX
+ *  as SimpleField (debounced inline edit, save flash) but loads + writes
+ *  via /api/clients/[id]/meta-push-config. Roy 2026-06-09. */
+function FacebookPageIdField({
+  mondayItemId,
+  help,
+}: {
+  mondayItemId: string
+  help?: string
+}) {
+  const router = useRouter()
+  const [loaded, setLoaded] = useState(false)
+  const [value, setValue] = useState("")
+  const [draft, setDraft] = useState("")
+  const [savedFlash, setSavedFlash] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Lazy load on mount.
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/clients/${mondayItemId}/meta-push-config`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return
+        const v = (json.facebookPageId as string | undefined) ?? ""
+        setValue(v)
+        setDraft(v)
+        setLoaded(true)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [mondayItemId])
+
+  const mutation = useHubMutation({
+    invalidates: ["CLIENT_DETAIL"],
+    mutationFn: async (next: string) => {
+      const res = await fetch(`/api/clients/${mondayItemId}/meta-push-config`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ facebookPageId: next }),
+      })
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(err.error ?? "Failed to update")
+      }
+      return next
+    },
+    onError: (err) => {
+      setDraft(value)
+      setError(err instanceof Error ? err.message : "Save failed")
+    },
+    onSuccess: (saved) => {
+      setValue(saved)
+      setError(null)
+      setSavedFlash(true)
+      setTimeout(() => setSavedFlash(false), 1500)
+      router.refresh()
+    },
+  })
+
+  const isDirty = draft !== value
+  const canSave = isDirty && !mutation.isPending && loaded
+
+  return (
+    <div className="grid grid-cols-[160px_1fr_auto] gap-3 items-center">
+      <Label className="text-[12px] text-muted-foreground inline-flex items-center gap-1.5">
+        FB Page (override)
+        {help && (
+          <span
+            title={help}
+            className="inline-flex text-muted-foreground/50 hover:text-muted-foreground cursor-help"
+            aria-label="What does Facebook Page ID control?"
+          >
+            <HelpCircle className="h-3 w-3" />
+          </span>
+        )}
+      </Label>
+      <div className="flex flex-col gap-1">
+        <Input
+          type="text"
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setError(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && canSave) mutation.mutate(draft)
+            if (e.key === "Escape") setDraft(value)
+          }}
+          disabled={mutation.isPending || !loaded}
+          placeholder={loaded ? "bv. 102347823498234" : "Laden..."}
+          className="h-8 text-sm font-mono"
+        />
+        {error && <span className="text-[11px] text-red-600 dark:text-red-400">{error}</span>}
+      </div>
       <div className="flex items-center gap-1.5 min-w-[64px] justify-end">
         {mutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         {savedFlash && !mutation.isPending && (

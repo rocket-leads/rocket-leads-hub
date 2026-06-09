@@ -28,31 +28,59 @@ export async function GET(
 
   try {
     const supabase = await createAdminClient()
-    const { data: row, error } = await supabase
+    const { data: variantRow, error: vErr } = await supabase
       .from("pedro_variants")
-      .select(
-        "image_storage_path, image_provider, image_model, image_generated_at, image_prompt",
-      )
+      .select("id, image_prompt, hook, primary_copy_snippet")
       .eq("id", variantId)
-      .maybeSingle()
-    if (error) throw error
-    if (!row) return NextResponse.json({ error: "Variant not found" }, { status: 404 })
+      .maybeSingle<{
+        id: string
+        image_prompt: string | null
+        hook: string | null
+        primary_copy_snippet: string | null
+      }>()
+    if (vErr) throw vErr
+    if (!variantRow) return NextResponse.json({ error: "Variant not found" }, { status: 404 })
 
-    if (!row.image_storage_path) {
-      return NextResponse.json({
-        hasImage: false,
-        imagePrompt: row.image_prompt ?? null,
-      })
+    // Pull all slots for this variant. Even slots that haven't been
+    // generated yet count — the UI shows empty slots so the CM knows
+    // they can fill them.
+    const { data: slotRows, error: sErr } = await supabase
+      .from("pedro_variant_images")
+      .select("position, storage_path, provider, model, generated_at")
+      .eq("variant_id", variantId)
+      .order("position", { ascending: true })
+    if (sErr) throw sErr
+
+    type SlotRow = {
+      position: number
+      storage_path: string | null
+      provider: string | null
+      model: string | null
+      generated_at: string | null
     }
 
-    const signedUrl = await getVariantImageSignedUrl(row.image_storage_path)
+    const signedSlots = await Promise.all(
+      ((slotRows ?? []) as SlotRow[]).map(async (s) => {
+        const signedUrl = s.storage_path
+          ? await getVariantImageSignedUrl(s.storage_path)
+          : null
+        return {
+          position: s.position,
+          hasImage: !!s.storage_path,
+          signedUrl,
+          provider: s.provider,
+          model: s.model,
+          generatedAt: s.generated_at,
+        }
+      }),
+    )
+
     return NextResponse.json({
-      hasImage: true,
-      signedUrl,
-      provider: row.image_provider,
-      model: row.image_model,
-      generatedAt: row.image_generated_at,
-      imagePrompt: row.image_prompt ?? null,
+      hasAnyImage: signedSlots.some((s) => s.hasImage),
+      slots: signedSlots,
+      imagePrompt: variantRow.image_prompt,
+      hook: variantRow.hook,
+      primaryCopySnippet: variantRow.primary_copy_snippet,
     })
   } catch (e) {
     console.error("[pedro/variant-image] failed:", e instanceof Error ? e.message : e)

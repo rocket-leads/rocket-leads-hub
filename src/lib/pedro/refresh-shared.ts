@@ -60,7 +60,7 @@ export type RefreshEnvelope<TProposal> =
   | {
       mode: "iterate-winners"
       /** Row id in `pedro_refreshes` — null when persistence failed. UI
-       *  uses this to power the Save-to-Inbox / Save-to-Drive buttons. */
+       *  uses this to trigger the auto-Drive-save + (future) Meta push. */
       refreshId?: string | null
       clientId: string
       clientName: string
@@ -70,6 +70,12 @@ export type RefreshEnvelope<TProposal> =
       proposals: TProposal[]
       summary: string
       warnings: string[]
+      /** Drive auto-save: set on historical loads where it's already
+       *  been saved. Fresh refreshes have these null and trigger the
+       *  auto-save effect. Roy 2026-06-09: Drive replaces the
+       *  manual save buttons. */
+      savedToDriveFileId?: string | null
+      savedToDriveUrl?: string | null
     }
   | {
       mode: "no-winners"

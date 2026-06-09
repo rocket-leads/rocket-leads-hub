@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
+import { BUCKET } from "@/lib/integrations/pedro-image-storage"
 
 /**
  * GET /api/pedro/refreshes/[id]
@@ -9,6 +10,21 @@ import { createAdminClient } from "@/lib/supabase/server"
  * the live `creative-refresh` POST returns. The RefreshHistoryPanel calls
  * this when the AM clicks a row, then feeds the result into the existing
  * RefreshShell render path. No regeneration, no Anthropic call.
+ *
+ * DELETE /api/pedro/refreshes/[id]
+ *
+ * Deletes a refresh + cascades to its pedro_variants rows (via FK ON
+ * DELETE CASCADE). Also cleans up any generated/uploaded images from
+ * Supabase Storage so a botched refresh doesn't leave orphans.
+ *
+ * NOT touched on delete (intentional):
+ *   - Inbox events saved via /save-to-inbox — the markdown lives in
+ *     the inbox row itself, AM may still want to read it.
+ *   - Drive files exported via /save-to-drive — same logic, plus the
+ *     CM may have already shared the Drive link with someone.
+ *
+ * Roy 2026-06-09: voor foutieve refreshes die het learning-loop
+ * vervuilen.
  */
 
 export async function GET(
@@ -133,6 +149,92 @@ export async function GET(
     )
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to load refresh" },
+      { status: 500 },
+    )
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const { id } = await params
+
+  try {
+    const supabase = await createAdminClient()
+
+    // 1. Read the refresh + its variants so we can collect storage
+    //    paths BEFORE the cascade fires (variant rows + their paths
+    //    are gone after the parent delete).
+    const { data: refreshRow, error: readErr } = await supabase
+      .from("pedro_refreshes")
+      .select("id, client_id")
+      .eq("id", id)
+      .maybeSingle()
+    if (readErr) throw readErr
+    if (!refreshRow) {
+      return NextResponse.json({ error: "Refresh not found" }, { status: 404 })
+    }
+
+    const { data: variants } = await supabase
+      .from("pedro_variants")
+      .select("id, client_id, image_storage_path")
+      .eq("refresh_id", id)
+
+    // 2. Best-effort image cleanup. Per variant: remove the specific
+    //    image file (if stored) — same path the upload helper writes.
+    //    Failures are logged but don't block the row delete.
+    const storagePaths = (variants ?? [])
+      .map((v) => v.image_storage_path)
+      .filter((p): p is string => typeof p === "string" && p.length > 0)
+    let storageRemoved = 0
+    if (storagePaths.length > 0) {
+      try {
+        const { data: removed, error: storageErr } = await supabase.storage
+          .from(BUCKET)
+          .remove(storagePaths)
+        if (storageErr) {
+          console.error(
+            "[pedro/refreshes/:id DELETE] storage cleanup partial fail:",
+            storageErr.message,
+          )
+        }
+        storageRemoved = removed?.length ?? 0
+      } catch (e) {
+        console.error(
+          "[pedro/refreshes/:id DELETE] storage cleanup threw:",
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
+    // 3. Delete the refresh row. CASCADE on pedro_variants.refresh_id
+    //    removes all child variants (and through them, all learning-loop
+    //    pedro_variants outcome data tied to this refresh).
+    const { error: deleteErr } = await supabase
+      .from("pedro_refreshes")
+      .delete()
+      .eq("id", id)
+    if (deleteErr) throw deleteErr
+
+    return NextResponse.json({
+      deleted: true,
+      refreshId: id,
+      variantsRemoved: variants?.length ?? 0,
+      imagesRemoved: storageRemoved,
+    })
+  } catch (e) {
+    console.error(
+      "[pedro/refreshes/:id DELETE] failed:",
+      e instanceof Error ? e.message : e,
+    )
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Delete failed" },
       { status: 500 },
     )
   }

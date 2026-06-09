@@ -10,4 +10,8 @@ export type PedroClient = {
   hasKickoff: boolean
   hasEval: boolean
   hasSavedCampaign: boolean
+  /** Google Drive folder id from Monday. Used by the "Open Drive" link
+   *  in Pedro Optimize so the CM can verify which photos are actually
+   *  available before/after generating images. Empty when missing. */
+  googleDriveId: string
 }

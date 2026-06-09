@@ -9,137 +9,225 @@ import {
   ExternalLink,
   AlertTriangle,
   ImageIcon,
+  Plus,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
- * VariantImagePanel — per-variant image generation UX.
+ * VariantImagePanel — 3-slot image gallery per variant.
  *
- * Sits inside each CreativeRefresh variant card. Three states:
- *   - no image yet → "Genereer image" + "Of upload eigen"
- *   - generating  → spinner + "Pedro pakt de winner als referentie..."
- *   - image ready → thumbnail + "Regenereer" + "Vervang" + "Open" + edit-prompt
+ * Roy 2026-06-09: bij elke "Genereer image"-klik krijgt de CM 3
+ * varianten naast elkaar zodat hij meteen de beste kan kiezen. Per
+ * slot kan hij regenereren of een eigen foto uploaden zonder de
+ * andere slots aan te raken.
  *
- * The variantId comes from the enriched envelope (see
- * /api/pedro/refreshes/[id]/route.ts and the POST response of
- * /api/pedro/creative-refresh). Components on legacy refreshes without
- * variant ids render a disabled "Save eerst opnieuw" hint.
- *
- * Roy 2026-06-09.
+ * Server contract:
+ *   GET  /api/pedro/variants/[id]/image         → { slots, imagePrompt, hook, primaryCopySnippet }
+ *   POST /api/pedro/variants/[id]/generate-image
+ *     body: { position?, slots?, promptOverride? }
+ *     - position absent → generate all 3
+ *     - position N      → regen just slot N
+ *   POST /api/pedro/variants/[id]/upload-image (multipart, ?position=N)
  */
+
+type SlotState = {
+  position: number
+  hasImage: boolean
+  signedUrl: string | null
+  provider: string | null
+  model: string | null
+  generatedAt: string | null
+}
+
+type GenerateReferences = {
+  winnerThumbnail: boolean
+  clientPhotos: number
+  clientPhotoNames?: string[]
+}
+
+const SLOT_COUNT = 3
 
 type Props = {
   variantId: string | null
   adName: string
+  /** Initial image prompt from the refresh envelope. */
   initialImagePrompt: string | null
-  initialImage?: {
-    hasImage: boolean
-    provider?: string | null
-    model?: string | null
-    generatedAt?: string | null
-  }
-}
-
-type ImageState = {
-  hasImage: boolean
-  signedUrl?: string
-  provider?: string | null
-  model?: string | null
-  generatedAt?: string | null
-  imagePrompt?: string | null
+  /** Whether this variant has at least one image already (from envelope
+   *  enrichment). When true, we trigger a fresh GET to load all slot
+   *  states + signed URLs on mount. */
+  initialHasImage: boolean
 }
 
 export function VariantImagePanel({
   variantId,
   adName,
   initialImagePrompt,
-  initialImage,
+  initialHasImage,
 }: Props) {
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [image, setImage] = useState<ImageState>({
-    hasImage: initialImage?.hasImage ?? false,
-    provider: initialImage?.provider,
-    model: initialImage?.model,
-    generatedAt: initialImage?.generatedAt,
-    imagePrompt: initialImagePrompt,
-  })
-  const [busy, setBusy] = useState<null | "generating" | "uploading">(null)
+  const [slots, setSlots] = useState<SlotState[]>(() =>
+    Array.from({ length: SLOT_COUNT }, (_, i) => ({
+      position: i,
+      hasImage: false,
+      signedUrl: null,
+      provider: null,
+      model: null,
+      generatedAt: null,
+    })),
+  )
+  const [imagePrompt, setImagePrompt] = useState<string | null>(initialImagePrompt)
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [slotBusy, setSlotBusy] = useState<Record<number, "generating" | "uploading" | null>>({})
   const [error, setError] = useState<string | null>(null)
   const [editingPrompt, setEditingPrompt] = useState(false)
   const [promptDraft, setPromptDraft] = useState(initialImagePrompt ?? "")
+  const [references, setReferences] = useState<GenerateReferences | null>(null)
 
-  // Fetch current image state lazily: when the component mounts AND the
-  // initialImage said hasImage=true (we have the row but not the signed
-  // URL yet because the parent endpoint doesn't sign). Single round-trip.
+  // Lazy-load slot states on mount if variant already has at least one
+  // image (from the envelope enrichment). Single round-trip.
   useEffect(() => {
-    if (!variantId || !image.hasImage || image.signedUrl) return
+    if (!variantId || !initialHasImage) return
     let cancelled = false
     fetch(`/api/pedro/variants/${variantId}/image`)
       .then((r) => r.json())
       .then((json) => {
-        if (cancelled) return
-        if (json.hasImage) {
-          setImage((prev) => ({
-            ...prev,
-            hasImage: true,
-            signedUrl: json.signedUrl ?? undefined,
-            provider: json.provider ?? prev.provider,
-            model: json.model ?? prev.model,
-            generatedAt: json.generatedAt ?? prev.generatedAt,
-            imagePrompt: json.imagePrompt ?? prev.imagePrompt,
-          }))
+        if (cancelled || !Array.isArray(json.slots)) return
+        // Merge — keep empty slots for positions the server didn't return.
+        setSlots((prev) =>
+          prev.map((p) => {
+            const found = (json.slots as SlotState[]).find((s) => s.position === p.position)
+            return found ?? p
+          }),
+        )
+        if (json.imagePrompt) {
+          setImagePrompt(json.imagePrompt)
+          setPromptDraft(json.imagePrompt)
         }
       })
       .catch(() => {
-        // Best-effort. UI just hides the preview if the signed URL didn't load.
+        /* best-effort */
       })
     return () => {
       cancelled = true
     }
-  }, [variantId, image.hasImage, image.signedUrl])
+  }, [variantId, initialHasImage])
 
-  const handleGenerate = useCallback(async () => {
-    if (!variantId || busy) return
-    setBusy("generating")
+  const setSlotBusyAt = useCallback((pos: number, state: "generating" | "uploading" | null) => {
+    setSlotBusy((prev) => ({ ...prev, [pos]: state }))
+  }, [])
+
+  const generateAll = useCallback(async () => {
+    if (!variantId || bulkBusy) return
+    setBulkBusy(true)
     setError(null)
     try {
-      const body: { promptOverride?: string } = {}
+      const reqBody: { promptOverride?: string; slots: number } = { slots: SLOT_COUNT }
       if (editingPrompt && promptDraft.trim()) {
-        body.promptOverride = promptDraft.trim()
+        reqBody.promptOverride = promptDraft.trim()
       }
       const res = await fetch(`/api/pedro/variants/${variantId}/generate-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(reqBody),
       })
       const json = await res.json()
       if (!res.ok || json.error) {
         throw new Error(json.error || `HTTP ${res.status}`)
       }
-      setImage({
-        hasImage: true,
-        signedUrl: json.signedUrl,
-        provider: "gemini",
-        model: json.model,
-        generatedAt: new Date().toISOString(),
-        imagePrompt: body.promptOverride ?? image.imagePrompt,
-      })
+      type GenSlot = {
+        position: number
+        ok: boolean
+        signedUrl?: string
+        provider?: string
+        model?: string
+        error?: string
+      }
+      if (Array.isArray(json.slots)) {
+        setSlots((prev) =>
+          prev.map((p) => {
+            const gen = (json.slots as GenSlot[]).find((g) => g.position === p.position)
+            if (!gen || !gen.ok) return p
+            return {
+              position: p.position,
+              hasImage: true,
+              signedUrl: gen.signedUrl ?? null,
+              provider: gen.provider ?? "gemini",
+              model: gen.model ?? null,
+              generatedAt: new Date().toISOString(),
+            }
+          }),
+        )
+      }
+      if (json.references) setReferences(json.references)
+      if (reqBody.promptOverride) setImagePrompt(reqBody.promptOverride)
       setEditingPrompt(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generatie mislukt")
     } finally {
-      setBusy(null)
+      setBulkBusy(false)
     }
-  }, [variantId, busy, editingPrompt, promptDraft, image.imagePrompt])
+  }, [variantId, bulkBusy, editingPrompt, promptDraft])
 
-  const handleUpload = useCallback(
-    async (file: File) => {
-      if (!variantId || busy) return
-      setBusy("uploading")
+  const regenerateSlot = useCallback(
+    async (position: number) => {
+      if (!variantId) return
+      setSlotBusyAt(position, "generating")
+      setError(null)
+      try {
+        const res = await fetch(`/api/pedro/variants/${variantId}/generate-image`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ position }),
+        })
+        const json = await res.json()
+        if (!res.ok || json.error) {
+          throw new Error(json.error || `HTTP ${res.status}`)
+        }
+        type GenSlot = {
+          position: number
+          ok: boolean
+          signedUrl?: string
+          provider?: string
+          model?: string
+          error?: string
+        }
+        const gen = Array.isArray(json.slots)
+          ? (json.slots as GenSlot[]).find((g) => g.position === position)
+          : undefined
+        if (gen && gen.ok) {
+          setSlots((prev) =>
+            prev.map((p) =>
+              p.position === position
+                ? {
+                    position,
+                    hasImage: true,
+                    signedUrl: gen.signedUrl ?? null,
+                    provider: gen.provider ?? "gemini",
+                    model: gen.model ?? null,
+                    generatedAt: new Date().toISOString(),
+                  }
+                : p,
+            ),
+          )
+        }
+        if (json.references) setReferences(json.references)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Generatie mislukt")
+      } finally {
+        setSlotBusyAt(position, null)
+      }
+    },
+    [variantId, setSlotBusyAt],
+  )
+
+  const uploadToSlot = useCallback(
+    async (position: number, file: File) => {
+      if (!variantId) return
+      setSlotBusyAt(position, "uploading")
       setError(null)
       try {
         const formData = new FormData()
         formData.append("file", file)
+        formData.append("position", String(position))
         const res = await fetch(`/api/pedro/variants/${variantId}/upload-image`, {
           method: "POST",
           body: formData,
@@ -148,21 +236,27 @@ export function VariantImagePanel({
         if (!res.ok || json.error) {
           throw new Error(json.error || `HTTP ${res.status}`)
         }
-        setImage({
-          hasImage: true,
-          signedUrl: json.signedUrl,
-          provider: "manual_upload",
-          model: null,
-          generatedAt: new Date().toISOString(),
-          imagePrompt: image.imagePrompt,
-        })
+        setSlots((prev) =>
+          prev.map((p) =>
+            p.position === position
+              ? {
+                  position,
+                  hasImage: true,
+                  signedUrl: json.signedUrl ?? null,
+                  provider: "manual_upload",
+                  model: null,
+                  generatedAt: new Date().toISOString(),
+                }
+              : p,
+          ),
+        )
       } catch (e) {
         setError(e instanceof Error ? e.message : "Upload mislukt")
       } finally {
-        setBusy(null)
+        setSlotBusyAt(position, null)
       }
     },
-    [variantId, busy, image.imagePrompt],
+    [variantId, setSlotBusyAt],
   )
 
   if (!variantId) {
@@ -173,159 +267,118 @@ export function VariantImagePanel({
     )
   }
 
+  const filledCount = slots.filter((s) => s.hasImage).length
+
   return (
     <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold inline-flex items-center gap-1">
           <ImageIcon className="h-3 w-3" />
-          Image
+          Images ({filledCount}/{SLOT_COUNT})
         </div>
-        {image.provider && (
-          <div className="text-[10px] text-muted-foreground/70">
-            {image.provider === "manual_upload"
-              ? "Eigen upload"
-              : `Gemini${image.model ? ` · ${image.model.replace("gemini-", "").replace("-preview", "")}` : ""}`}
-          </div>
-        )}
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
+          {filledCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingPrompt((v) => !v)
+                if (!editingPrompt) setPromptDraft(imagePrompt ?? "")
+              }}
+              disabled={bulkBusy}
+              className={cn(
+                "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors",
+                editingPrompt
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+              )}
+            >
+              {editingPrompt ? "Sluit prompt" : "Bewerk prompt"}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Preview */}
-      {image.hasImage && image.signedUrl && (
-        <div className="relative rounded-md overflow-hidden border border-border bg-background">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={image.signedUrl}
-            alt={adName}
-            className="w-full aspect-square object-cover"
-          />
-          <a
-            href={image.signedUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="absolute top-1.5 right-1.5 inline-flex items-center gap-1 rounded-md bg-background/90 backdrop-blur px-1.5 py-0.5 text-[10px] text-foreground hover:bg-background shadow-sm"
-            title="Open op volledige grootte"
-          >
-            <ExternalLink className="h-3 w-3" />
-          </a>
+      {/* References — shown after a generate */}
+      {references && (
+        <div className="text-[11px] text-muted-foreground/80 flex flex-wrap gap-x-1.5 gap-y-0.5 items-center">
+          <span className="text-muted-foreground/60">References:</span>
+          {references.winnerThumbnail && (
+            <span className="inline-flex items-center gap-0.5">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-sky-500" />
+              winner ad
+            </span>
+          )}
+          {references.clientPhotos > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5"
+              title={references.clientPhotoNames?.join("\n") ?? ""}
+            >
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              {references.clientPhotos} klant-foto{references.clientPhotos === 1 ? "" : "'s"} uit Drive
+            </span>
+          )}
+          {!references.winnerThumbnail && references.clientPhotos === 0 && (
+            <span className="text-amber-600 dark:text-amber-400">
+              alleen prompt (geen winner thumb of Drive-foto's gevonden)
+            </span>
+          )}
         </div>
       )}
 
-      {/* Prompt editor (collapsible) */}
-      {(editingPrompt || (!image.hasImage && image.imagePrompt)) && (
+      {/* Editable prompt textarea */}
+      {editingPrompt && (
         <div className="space-y-1">
           <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-            Image prompt
+            Image prompt — geldt voor de volgende "Genereer 3 images" klik
           </div>
           <textarea
             value={promptDraft}
             onChange={(e) => setPromptDraft(e.target.value)}
             rows={3}
-            disabled={busy !== null}
+            disabled={bulkBusy}
             className="w-full text-xs rounded-md border border-border bg-background px-2 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-none disabled:opacity-50"
-            placeholder="Bijv. 'Modern interior with new wooden floor, family enjoying coffee, brand teal accent, on-image text BESPAAR €400 PER MAAND in bold white'"
+            placeholder="Edit de visual brief..."
           />
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex flex-wrap gap-1.5">
-        {!image.hasImage ? (
-          <>
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-            >
-              {busy === "generating" ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Sparkles className="h-3 w-3" />
-              )}
-              {busy === "generating" ? "Pedro tekent..." : "Genereer image"}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) handleUpload(f)
-                e.target.value = ""
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border bg-card text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
-            >
-              {busy === "uploading" ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Upload className="h-3 w-3" />
-              )}
-              {busy === "uploading" ? "Uploaden..." : "Upload eigen"}
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={handleGenerate}
-              disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border bg-card text-xs font-medium hover:bg-accent disabled:opacity-50 transition-colors"
-            >
-              {busy === "generating" ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3 w-3" />
-              )}
-              Regenereer
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setEditingPrompt((v) => !v)
-                if (!editingPrompt) setPromptDraft(image.imagePrompt ?? "")
-              }}
-              disabled={busy !== null}
-              className={cn(
-                "inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium transition-colors disabled:opacity-50",
-                editingPrompt
-                  ? "border border-primary/40 bg-primary/10 text-primary"
-                  : "border border-border bg-card text-foreground hover:bg-accent",
-              )}
-            >
-              {editingPrompt ? "Sluit prompt" : "Bewerk prompt"}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) handleUpload(f)
-                e.target.value = ""
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={busy !== null}
-              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border bg-card text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
-            >
-              {busy === "uploading" ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Upload className="h-3 w-3" />
-              )}
-              Vervang
-            </button>
-          </>
+      {/* Bulk generate button — primary action */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={generateAll}
+          disabled={bulkBusy}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+        >
+          {bulkBusy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5" />
+          )}
+          {bulkBusy
+            ? "Pedro tekent 3 varianten…"
+            : filledCount > 0
+              ? `Genereer 3 nieuwe images`
+              : `Genereer 3 images`}
+        </button>
+        {bulkBusy && (
+          <span className="text-[11px] text-muted-foreground">~30-60s</span>
         )}
+      </div>
+
+      {/* Slot grid */}
+      <div className="grid grid-cols-3 gap-2">
+        {slots.map((s) => (
+          <SlotCard
+            key={s.position}
+            slot={s}
+            adName={adName}
+            busy={slotBusy[s.position] ?? null}
+            onRegen={() => regenerateSlot(s.position)}
+            onUpload={(file) => uploadToSlot(s.position, file)}
+            disabled={bulkBusy}
+          />
+        ))}
       </div>
 
       {error && (
@@ -334,6 +387,118 @@ export function VariantImagePanel({
           {error}
         </div>
       )}
+    </div>
+  )
+}
+
+function SlotCard({
+  slot,
+  adName,
+  busy,
+  onRegen,
+  onUpload,
+  disabled,
+}: {
+  slot: SlotState
+  adName: string
+  busy: "generating" | "uploading" | null
+  onRegen: () => void
+  onUpload: (file: File) => void
+  disabled: boolean
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const isBusy = busy !== null
+  const slotLabel = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"][slot.position] ?? `${slot.position + 1}`
+
+  return (
+    <div className="relative rounded-md border border-border/60 bg-background overflow-hidden">
+      {/* Slot label badge */}
+      <div className="absolute top-1 left-1 z-10 inline-flex items-center justify-center h-5 w-5 rounded-full bg-background/90 backdrop-blur text-[10px] font-bold text-muted-foreground shadow-sm">
+        {slotLabel}
+      </div>
+
+      {/* Image / placeholder */}
+      <div className="relative aspect-square bg-muted/40">
+        {slot.hasImage && slot.signedUrl ? (
+          <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={slot.signedUrl}
+              alt={`${adName} — variant ${slotLabel}`}
+              className={cn("w-full h-full object-cover", isBusy && "opacity-40")}
+            />
+            <a
+              href={slot.signedUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="absolute top-1 right-1 inline-flex items-center justify-center h-5 w-5 rounded-md bg-background/90 backdrop-blur text-muted-foreground hover:bg-background hover:text-foreground shadow-sm"
+              title="Open op volledige grootte"
+            >
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          </>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/40">
+            {isBusy ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Plus className="h-5 w-5" />
+            )}
+          </div>
+        )}
+
+        {/* Busy overlay */}
+        {isBusy && slot.hasImage && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex border-t border-border/60 divide-x divide-border/40 text-[11px]">
+        <button
+          type="button"
+          onClick={onRegen}
+          disabled={isBusy || disabled}
+          title={slot.hasImage ? "Regenereer alleen deze slot" : "Genereer alleen deze slot"}
+          className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
+        >
+          {busy === "generating" ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : slot.hasImage ? (
+            <RefreshCw className="h-3 w-3" />
+          ) : (
+            <Sparkles className="h-3 w-3" />
+          )}
+          {slot.hasImage ? "Regen" : "AI"}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) onUpload(f)
+            e.target.value = ""
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isBusy || disabled}
+          title="Upload eigen foto voor deze slot"
+          className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
+        >
+          {busy === "uploading" ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Upload className="h-3 w-3" />
+          )}
+          Upload
+        </button>
+      </div>
     </div>
   )
 }

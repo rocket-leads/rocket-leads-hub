@@ -473,6 +473,13 @@ export type MetaAdDetail = {
   adId: string
   adName: string
   adsetName: string
+  /** Campaign id this ad sits in. Used by Push-to-Meta to discover
+   *  the winner's parent campaign so a new ad set lands in the right
+   *  place. Roy 2026-06-09. */
+  campaignId: string
+  /** Ad set id this ad sits in. Used as the clone-template for new
+   *  ad set config (budget / targeting / placement). */
+  adsetId: string
   status: string
   spend: number
   impressions: number
@@ -480,9 +487,32 @@ export type MetaAdDetail = {
   ctr: number
   cpc: number
   leads: number
+  /** Primary copy — long text body. */
   body: string
+  /** Headline / title shown above the body. Empty when ad has no title
+   *  (rare; mostly dynamic/asset-feed ads or pre-2020 setups). */
+  title: string
+  /** Description / link description shown below the title. */
+  description: string
+  /** Call-to-action button label as Meta reports it
+   *  ("LEARN_MORE", "GET_OFFER", "CONTACT_US", etc.). */
+  callToActionType: string
+  /** Landing-page URL the click goes to. Empty for non-link ads (e.g.
+   *  pure brand video views). */
+  linkUrl: string
   creativeType: "video" | "image" | "dynamic" | "unknown"
   thumbnailUrl: string
+  /** Higher-res image URL when available — better signal for vision
+   *  analysis than the squashed thumbnail. */
+  imageUrl: string
+  /** Facebook Page ID the ad is posted under. Pedro Push-to-Meta uses
+   *  this so the new ad lands on the same page as the winner — no
+   *  per-client config needed. Roy 2026-06-09. */
+  pageId: string
+  /** Roy 2026-06-09: dynamic creatives carry multiple variations under
+   *  `asset_feed_spec`. Stringified summary of the variation pool so
+   *  Pedro can see which messages worked at all. */
+  assetFeedSummary: string
 }
 
 export async function fetchMetaAdDetails(
@@ -495,10 +525,11 @@ export async function fetchMetaAdDetails(
   const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
   const timeRange = encodeURIComponent(JSON.stringify({ since: startDate, until: endDate }))
 
-  const url = `${META_API_BASE}/${accountId}/insights?fields=ad_id,ad_name,adset_name,campaign_id,spend,impressions,clicks,ctr,cpc,actions&level=ad&time_range=${timeRange}&limit=200&access_token=${token}`
+  const url = `${META_API_BASE}/${accountId}/insights?fields=ad_id,ad_name,adset_id,adset_name,campaign_id,spend,impressions,clicks,ctr,cpc,actions&level=ad&time_range=${timeRange}&limit=200&access_token=${token}`
   const insightsData = await fetchAllPages<{
     ad_id: string
     ad_name: string
+    adset_id: string
     adset_name: string
     campaign_id: string
     spend: string
@@ -514,32 +545,143 @@ export async function fetchMetaAdDetails(
     : insightsData
 
   const adIds = filtered.map((d) => d.ad_id).filter(Boolean)
-  const creativeMap = new Map<string, { body: string; creativeType: MetaAdDetail["creativeType"]; thumbnailUrl: string }>()
+  type CreativeExtras = {
+    body: string
+    title: string
+    description: string
+    callToActionType: string
+    linkUrl: string
+    creativeType: MetaAdDetail["creativeType"]
+    thumbnailUrl: string
+    imageUrl: string
+    assetFeedSummary: string
+    pageId: string
+  }
+  const creativeMap = new Map<string, CreativeExtras>()
 
   if (adIds.length > 0) {
     for (let i = 0; i < adIds.length; i += 50) {
       const batch = adIds.slice(i, i + 50)
-      const adsUrl = `${META_API_BASE}/?ids=${batch.join(",")}&fields=creative{body,object_type,thumbnail_url}&access_token=${token}`
+      // Roy 2026-06-09: expanded field set so Pedro sees full copy
+      // package — title + description + CTA + landing-page URL +
+      // dynamic variations — not just the body. Critical for
+      // creative-refresh to iterate in real DNA instead of guessing.
+      const adsUrl = `${META_API_BASE}/?ids=${batch.join(",")}&fields=creative{body,title,object_type,thumbnail_url,image_url,link_url,call_to_action_type,object_story_spec,asset_feed_spec}&access_token=${token}`
       try {
         const res: Response = await fetch(adsUrl, { next: { revalidate: 300 } })
         if (res.ok) {
           const json = await res.json()
           for (const [adId, adData] of Object.entries(json)) {
-            const creative = (adData as { creative?: { data?: { body?: string; object_type?: string; thumbnail_url?: string } } }).creative?.data
+            type RawCreative = {
+              body?: string
+              title?: string
+              object_type?: string
+              thumbnail_url?: string
+              image_url?: string
+              link_url?: string
+              call_to_action_type?: string
+              object_story_spec?: {
+                page_id?: string
+                link_data?: {
+                  message?: string
+                  name?: string
+                  description?: string
+                  link?: string
+                  call_to_action?: { type?: string; value?: { link?: string } }
+                }
+                video_data?: {
+                  message?: string
+                  title?: string
+                  description?: string
+                  call_to_action?: { type?: string; value?: { link?: string } }
+                }
+              }
+              asset_feed_spec?: {
+                bodies?: Array<{ text?: string }>
+                titles?: Array<{ text?: string }>
+                descriptions?: Array<{ text?: string }>
+                call_to_action_types?: string[]
+                link_urls?: Array<{ website_url?: string }>
+              }
+            }
+            const creative = (adData as { creative?: { data?: RawCreative } }).creative?.data
+            const oss = creative?.object_story_spec
+            const link = oss?.link_data
+            const vid = oss?.video_data
+            const feed = creative?.asset_feed_spec
+
+            // Fallback chain: top-level → object_story_spec → asset_feed first item
+            const body =
+              creative?.body
+              || link?.message
+              || vid?.message
+              || feed?.bodies?.[0]?.text
+              || ""
+            const title =
+              creative?.title
+              || link?.name
+              || vid?.title
+              || feed?.titles?.[0]?.text
+              || ""
+            const description =
+              link?.description
+              || vid?.description
+              || feed?.descriptions?.[0]?.text
+              || ""
+            const callToActionType =
+              creative?.call_to_action_type
+              || link?.call_to_action?.type
+              || vid?.call_to_action?.type
+              || feed?.call_to_action_types?.[0]
+              || ""
+            const linkUrl =
+              creative?.link_url
+              || link?.link
+              || link?.call_to_action?.value?.link
+              || vid?.call_to_action?.value?.link
+              || feed?.link_urls?.[0]?.website_url
+              || ""
+
             let creativeType: MetaAdDetail["creativeType"] = "unknown"
             const objectType = (creative?.object_type ?? "").toUpperCase()
             if (objectType.includes("VIDEO")) creativeType = "video"
             else if (objectType.includes("PHOTO") || objectType.includes("IMAGE") || objectType.includes("LINK")) creativeType = "image"
 
             const adName = filtered.find((d) => d.ad_id === adId)?.ad_name ?? ""
-            if (/dynamic|dyn\b|flexible/i.test(adName) || objectType.includes("DYNAMIC")) {
+            const hasAssetFeed = (feed?.bodies?.length ?? 0) > 1 || (feed?.titles?.length ?? 0) > 1
+            if (/dynamic|dyn\b|flexible/i.test(adName) || objectType.includes("DYNAMIC") || hasAssetFeed) {
               creativeType = "dynamic"
             }
 
+            // Summarise dynamic variation pool so Pedro can read "this
+            // dynamic ad rotates across these messages" rather than just
+            // seeing the first variation.
+            let assetFeedSummary = ""
+            if (feed) {
+              const parts: string[] = []
+              if (feed.bodies && feed.bodies.length > 1) {
+                parts.push(`Bodies (${feed.bodies.length}): ` + feed.bodies.slice(0, 5).map((b) => `"${(b.text ?? "").slice(0, 80)}"`).join(" | "))
+              }
+              if (feed.titles && feed.titles.length > 1) {
+                parts.push(`Titles (${feed.titles.length}): ` + feed.titles.slice(0, 5).map((t) => `"${(t.text ?? "").slice(0, 60)}"`).join(" | "))
+              }
+              if (feed.descriptions && feed.descriptions.length > 1) {
+                parts.push(`Descriptions (${feed.descriptions.length}): ` + feed.descriptions.slice(0, 3).map((dsc) => `"${(dsc.text ?? "").slice(0, 60)}"`).join(" | "))
+              }
+              assetFeedSummary = parts.join("\n")
+            }
+
             creativeMap.set(adId, {
-              body: creative?.body ?? "",
+              body,
+              title,
+              description,
+              callToActionType,
+              linkUrl,
               creativeType,
               thumbnailUrl: creative?.thumbnail_url ?? "",
+              imageUrl: creative?.image_url ?? "",
+              assetFeedSummary,
+              pageId: oss?.page_id ?? "",
             })
           }
         }
@@ -556,6 +698,8 @@ export async function fetchMetaAdDetails(
       adId: d.ad_id,
       adName: d.ad_name,
       adsetName: d.adset_name,
+      campaignId: d.campaign_id,
+      adsetId: d.adset_id,
       status: "ACTIVE",
       spend: parseFloat(d.spend ?? "0"),
       impressions: parseInt(d.impressions ?? "0", 10),
@@ -564,8 +708,15 @@ export async function fetchMetaAdDetails(
       cpc: parseFloat(d.cpc ?? "0"),
       leads,
       body: creative?.body ?? "",
+      title: creative?.title ?? "",
+      description: creative?.description ?? "",
+      callToActionType: creative?.callToActionType ?? "",
+      linkUrl: creative?.linkUrl ?? "",
       creativeType: creative?.creativeType ?? "unknown",
       thumbnailUrl: creative?.thumbnailUrl ?? "",
+      imageUrl: creative?.imageUrl ?? "",
+      assetFeedSummary: creative?.assetFeedSummary ?? "",
+      pageId: creative?.pageId ?? "",
     }
   })
 }

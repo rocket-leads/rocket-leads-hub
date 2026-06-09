@@ -105,6 +105,187 @@ export type DriveFile = {
   modifiedTime: string
 }
 
+export type DriveImageRef = {
+  id: string
+  name: string
+  mimeType: "image/jpeg" | "image/png"
+  modifiedTime: string
+  bytes: Buffer
+}
+
+/**
+ * Pull up to `limit` real client photos from the Drive folder for use
+ * as reference images in image generation. Recurses one subfolder
+ * level (most RL client folders nest "Foto's" / "Creatives" / "Brand"
+ * subfolders).
+ *
+ * Smart selection (Roy 2026-06-09): instead of dumb "most recent",
+ * score each candidate on:
+ *   - Folder relevance: subfolders named brand/style/product/photo/asset
+ *     score higher; subfolders named legal/contract/invoice score lower
+ *   - Filename keyword match against the optional `topicHints` (e.g.
+ *     the variant's topicLabel)
+ *   - File-size healthy range (skip icons + huge raws)
+ *   - Recent modification as tiebreaker
+ *
+ * Why this matters: Gemini Nano Banana Pro produces dramatically
+ * better ad creatives when its references are visually relevant to
+ * what the variant tries to depict. A random recent invoice scan vs
+ * an on-brand product shot is the difference between hallucinated and
+ * grounded output.
+ *
+ * Skips:
+ *  - Files under 10 KB (likely icons/logos, not photography)
+ *  - Files over 8 MB (Gemini base64 payload blows up — most ad
+ *    creatives fit comfortably under this)
+ */
+export async function getFolderImages(
+  folderId: string,
+  limit = 2,
+  topicHints: string[] = [],
+): Promise<DriveImageRef[]> {
+  if (!folderId?.trim()) return []
+  const auth = await getAuth()
+  const drive = google.drive({ version: "v3", auth })
+
+  type FileMeta = {
+    id: string
+    name: string
+    folderName: string | null
+    mimeType: string
+    modifiedTime: string
+    size: number
+  }
+
+  // Scoring tables. Higher = more likely to be the kind of photo we
+  // want as a Gemini reference. Negative = avoid.
+  const FOLDER_BONUS_RE = /(brand|style|product|foto|photo|asset|creative|shoot|content|imagery|merk|huisstijl|logo)/i
+  const FOLDER_PENALTY_RE = /(invoice|factuur|contract|nda|legal|signed|admin|signed|verklaring|wedstrijd|rapport)/i
+  // Topic hints: tokens from the variant's topicLabel (e.g. "Subsidie",
+  // "Voor/na"). Filename matches give a bonus.
+  const hintTokens = topicHints
+    .flatMap((h) => h.toLowerCase().split(/[\s/_\-,.]+/))
+    .filter((t) => t.length >= 3)
+
+  function scoreFile(f: FileMeta): number {
+    let score = 0
+    // Folder name signal — strongest.
+    if (f.folderName) {
+      if (FOLDER_BONUS_RE.test(f.folderName)) score += 50
+      if (FOLDER_PENALTY_RE.test(f.folderName)) score -= 80
+    }
+    // Filename keyword match against topic.
+    const lcName = f.name.toLowerCase()
+    for (const t of hintTokens) {
+      if (lcName.includes(t)) score += 25
+    }
+    // Generic "product/photo/brand" keyword in filename = mild bonus
+    // even without folder hit (loose folders are normal at RL).
+    if (FOLDER_BONUS_RE.test(f.name)) score += 10
+    // Size sweet spot: 200KB - 4MB (real photography, not logos/raws).
+    if (f.size >= 200 * 1024 && f.size <= 4 * 1024 * 1024) score += 5
+    // Recency tiebreaker — 365d max, scaled.
+    const ageDays = (Date.now() - Date.parse(f.modifiedTime)) / 86_400_000
+    if (Number.isFinite(ageDays) && ageDays >= 0) {
+      score += Math.max(0, 30 - ageDays / 12) // ~0 at 1 year, ~30 at today
+    }
+    return score
+  }
+
+  // 1. Find candidate folders: the root + immediate child folders.
+  //    Drive's `q` doesn't do recursive matches so we expand one level.
+  const folderQueue: Array<{ id: string; name: string | null }> = [
+    { id: folderId.trim(), name: null },
+  ]
+  try {
+    const subfolders = await drive.files.list({
+      q: `'${folderId.trim()}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+      fields: "files(id, name)",
+      pageSize: 25,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    })
+    for (const sf of subfolders.data.files ?? []) {
+      if (sf.id) folderQueue.push({ id: sf.id, name: sf.name ?? null })
+    }
+  } catch {
+    // Sub-folder enumeration is best-effort; we can still find images
+    // in the root.
+  }
+
+  // 2. List image files in every candidate folder, merged.
+  const allImages: FileMeta[] = []
+  for (const f of folderQueue) {
+    try {
+      const res = await drive.files.list({
+        q: `'${f.id}' in parents and (mimeType = 'image/jpeg' or mimeType = 'image/png') and trashed = false`,
+        fields: "files(id, name, mimeType, modifiedTime, size)",
+        pageSize: 50,
+        orderBy: "modifiedTime desc",
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      })
+      for (const fl of res.data.files ?? []) {
+        if (!fl.id || !fl.name || !fl.mimeType || !fl.modifiedTime) continue
+        const size = typeof fl.size === "string" ? parseInt(fl.size, 10) : 0
+        allImages.push({
+          id: fl.id,
+          name: fl.name,
+          folderName: f.name,
+          mimeType: fl.mimeType,
+          modifiedTime: fl.modifiedTime,
+          size: Number.isFinite(size) ? size : 0,
+        })
+      }
+    } catch {
+      // Per-folder listing failures don't break the whole thing.
+    }
+  }
+
+  if (allImages.length === 0) return []
+
+  // 3. Filter + score-sort. Score-first beats recency-only.
+  const MIN_BYTES = 10 * 1024 // 10 KB
+  const MAX_BYTES = 8 * 1024 * 1024 // 8 MB
+  const usable = allImages
+    .filter((f) => f.size === 0 || (f.size >= MIN_BYTES && f.size <= MAX_BYTES))
+    .map((f) => ({ file: f, score: scoreFile(f) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((s) => s.file)
+
+  // 4. Download each image's bytes. Sequential so a fat file doesn't
+  //    OOM the function; with limit=2 the latency is fine.
+  const results: DriveImageRef[] = []
+  for (const meta of usable) {
+    try {
+      const dl = await drive.files.get(
+        { fileId: meta.id, alt: "media", supportsAllDrives: true },
+        { responseType: "arraybuffer" },
+      )
+      const bytes = Buffer.from(dl.data as ArrayBuffer)
+      // Defensive size cap — sometimes Drive returns size=0 in metadata
+      // but the actual download is huge. Skip rather than blow up Gemini.
+      if (bytes.length > MAX_BYTES) continue
+      const mimeType: "image/jpeg" | "image/png" =
+        meta.mimeType === "image/png" ? "image/png" : "image/jpeg"
+      results.push({
+        id: meta.id,
+        name: meta.name,
+        mimeType,
+        modifiedTime: meta.modifiedTime,
+        bytes,
+      })
+    } catch (e) {
+      console.error(
+        `[google-drive] image download failed for ${meta.name}:`,
+        e instanceof Error ? e.message : e,
+      )
+    }
+  }
+  return results
+}
+
 export async function listFolderFiles(folderId: string): Promise<DriveFile[]> {
   const auth = await getAuth()
   const drive = google.drive({ version: "v3", auth })

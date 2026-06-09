@@ -16,12 +16,20 @@ import {
   ChevronDown,
   Loader2,
   ExternalLink,
+  Trash2,
 } from "lucide-react"
 import type { RefreshEnvelope } from "@/lib/pedro/refresh-shared"
 import { cn } from "@/lib/utils"
 import type { RefreshHistoryRow } from "@/app/api/pedro/refreshes/route"
+import { BriefRequiredModal } from "./brief-required-modal"
 
 export type RefreshStage = "creatives" | "angles" | "script" | "ad_copy"
+
+type BriefRequiredPayload = {
+  clientId: string
+  clientName: string
+  currentBrief: Record<string, unknown> | null
+}
 
 /**
  * Shared UI shell for every per-stage Pedro refresh component
@@ -143,6 +151,10 @@ export function RefreshShell<TProposal>({
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<RefreshEnvelope<TProposal> | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Brief-gate state. When the route returns 409 with requires_brief,
+  // we open the modal instead of surfacing an error. After save, the
+  // modal calls back into generate() to retry the original refresh.
+  const [briefRequired, setBriefRequired] = useState<BriefRequiredPayload | null>(null)
 
   // Reset output state whenever the active client changes externally.
   useEffect(() => {
@@ -155,6 +167,7 @@ export function RefreshShell<TProposal>({
     setLoading(true)
     setError(null)
     setData(null)
+    setBriefRequired(null)
     try {
       const res = await fetch(endpoint, {
         method: "POST",
@@ -162,7 +175,16 @@ export function RefreshShell<TProposal>({
         body: JSON.stringify({ clientId: selectedClientId, days }),
       })
       const json = await res.json()
-      if (!res.ok || json.error) {
+      // 409 + requires_brief → open the brief modal instead of erroring.
+      // The route returned everything we need to prefill (clientName,
+      // current_brief) — no extra round-trip.
+      if (res.status === 409 && json?.requires_brief) {
+        setBriefRequired({
+          clientId: String(json.clientId ?? selectedClientId),
+          clientName: String(json.clientName ?? selectedClientName),
+          currentBrief: (json.current_brief as Record<string, unknown> | null) ?? null,
+        })
+      } else if (!res.ok || json.error) {
         setError(json.error || `HTTP ${res.status}`)
       } else {
         setData(json as RefreshEnvelope<TProposal>)
@@ -171,7 +193,7 @@ export function RefreshShell<TProposal>({
       setError(e instanceof Error ? e.message : "Onbekende fout")
     }
     setLoading(false)
-  }, [selectedClientId, days, endpoint])
+  }, [selectedClientId, selectedClientName, days, endpoint])
 
   // Auto-fire when arriving via URL (?auto=1). Only once per mount.
   const autoFiredRef = useRef(false)
@@ -206,6 +228,23 @@ export function RefreshShell<TProposal>({
 
   return (
     <div className="max-w-[1060px] space-y-5">
+      {/* Brief gate modal — opens when creative-refresh returns 409 +
+          requires_brief. After save, the modal calls back into
+          generate() to auto-retry the refresh. Roy 2026-06-09: zonder
+          baseline brief hallucineert Pedro de business model. */}
+      {briefRequired && (
+        <BriefRequiredModal
+          clientId={briefRequired.clientId}
+          clientName={briefRequired.clientName}
+          currentBrief={briefRequired.currentBrief}
+          onSaved={() => {
+            setBriefRequired(null)
+            // Auto-retry the original refresh once the brief is in place.
+            void generate()
+          }}
+          onCancel={() => setBriefRequired(null)}
+        />
+      )}
       {/* History panel — collapsed by default, expanding shows past
           refresh runs for this client. Click on a row → loads that
           refresh back into the result view (no Anthropic call). Roy
@@ -355,12 +394,14 @@ export function RefreshShell<TProposal>({
               <RefreshCw className="h-3.5 w-3.5" />
               Genereer opnieuw
             </button>
-            {/* Save actions — both endpoints are idempotent so re-clicking
-                returns the existing inbox/Drive reference without dupes. */}
+            {/* Drive auto-save status. Inbox is intentionally removed
+                (Roy 2026-06-09 — Drive is the canonical persistence
+                target; inbox added noise without much value). */}
             {data.refreshId && (
-              <SaveActions
+              <DriveAutoSave
                 refreshId={data.refreshId}
                 clientName={data.clientName}
+                initialDriveUrl={data.savedToDriveUrl ?? null}
               />
             )}
           </div>
@@ -370,142 +411,103 @@ export function RefreshShell<TProposal>({
   )
 }
 
-// ─── Save actions (inbox + Drive) ───────────────────────────────────────
+// ─── Drive auto-save status ─────────────────────────────────────────────
 
-function SaveActions({
+/** Auto-saves the refresh to the client's Drive folder when it first
+ *  lands (no button click required). Idempotent on the server side, so
+ *  re-triggering for the same refreshId just returns the existing
+ *  file URL.
+ *
+ *  Historical loads that already carry `initialDriveUrl` skip the
+ *  call entirely and just show the "Open in Drive" link.
+ *
+ *  Roy 2026-06-09. */
+function DriveAutoSave({
   refreshId,
   clientName,
+  initialDriveUrl,
 }: {
   refreshId: string
   clientName: string
+  initialDriveUrl: string | null
 }) {
   type SaveState = "idle" | "saving" | "saved" | "error"
-  const [inboxState, setInboxState] = useState<SaveState>("idle")
-  const [inboxMsg, setInboxMsg] = useState<string | null>(null)
-  const [driveState, setDriveState] = useState<SaveState>("idle")
-  const [driveUrl, setDriveUrl] = useState<string | null>(null)
-  const [driveMsg, setDriveMsg] = useState<string | null>(null)
+  const [state, setState] = useState<SaveState>(initialDriveUrl ? "saved" : "idle")
+  const [url, setUrl] = useState<string | null>(initialDriveUrl)
+  const [msg, setMsg] = useState<string | null>(null)
+  // Track which refresh ids we already attempted in this mount so the
+  // effect doesn't double-fire on re-renders (React StrictMode dev
+  // would otherwise trigger two saves on the same id).
+  const attemptedRef = useRef<Set<string>>(new Set())
 
-  async function saveToInbox() {
-    setInboxState("saving")
-    setInboxMsg(null)
-    try {
-      const res = await fetch(
-        `/api/pedro/refreshes/${encodeURIComponent(refreshId)}/save-to-inbox`,
-        { method: "POST" },
-      )
-      const json = await res.json()
-      if (!res.ok || json.error) {
-        setInboxState("error")
-        setInboxMsg(json.error || `HTTP ${res.status}`)
-        return
-      }
-      setInboxState("saved")
-      setInboxMsg(json.alreadySaved ? "Al opgeslagen" : "Opgeslagen in je Updates inbox")
-    } catch (e) {
-      setInboxState("error")
-      setInboxMsg(e instanceof Error ? e.message : "Onbekende fout")
+  useEffect(() => {
+    if (initialDriveUrl) {
+      setState("saved")
+      setUrl(initialDriveUrl)
+      return
     }
-  }
+    if (attemptedRef.current.has(refreshId)) return
+    attemptedRef.current.add(refreshId)
 
-  async function saveToDrive() {
-    setDriveState("saving")
-    setDriveMsg(null)
-    try {
-      const res = await fetch(
-        `/api/pedro/refreshes/${encodeURIComponent(refreshId)}/save-to-drive`,
-        { method: "POST" },
-      )
-      const json = await res.json()
-      if (!res.ok || json.error) {
-        setDriveState("error")
-        setDriveMsg(json.error || `HTTP ${res.status}`)
-        return
-      }
-      setDriveState("saved")
-      setDriveUrl(json.url ?? null)
-      setDriveMsg(json.alreadySaved ? "Al in Drive" : `Geplaatst in ${clientName} Drive folder`)
-    } catch (e) {
-      setDriveState("error")
-      setDriveMsg(e instanceof Error ? e.message : "Onbekende fout")
-    }
-  }
+    setState("saving")
+    setMsg(null)
+    fetch(`/api/pedro/refreshes/${encodeURIComponent(refreshId)}/save-to-drive`, {
+      method: "POST",
+    })
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok || json.error) {
+          setState("error")
+          setMsg(json.error || `HTTP ${res.status}`)
+          return
+        }
+        setState("saved")
+        setUrl(json.url ?? null)
+        setMsg(json.alreadySaved ? "Al in Drive" : `Bewaard in ${clientName} Drive folder`)
+      })
+      .catch((e) => {
+        setState("error")
+        setMsg(e instanceof Error ? e.message : "Drive save mislukt")
+      })
+  }, [refreshId, clientName, initialDriveUrl])
 
-  return (
-    <>
-      <button
-        type="button"
-        onClick={saveToInbox}
-        disabled={inboxState === "saving" || inboxState === "saved"}
-        className={cn(
-          "inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md transition-colors disabled:cursor-default",
-          inboxState === "saved"
-            ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-            : "border border-border bg-card text-foreground hover:bg-accent",
-        )}
+  if (state === "saved" && url) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15 transition-colors"
+        title={msg ?? "Bewaard in Drive"}
       >
-        {inboxState === "saving" ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : inboxState === "saved" ? (
-          <Check className="h-3.5 w-3.5" />
-        ) : (
-          <Inbox className="h-3.5 w-3.5" />
-        )}
-        {inboxState === "saved" ? "In je inbox" : "Bewaar in mijn inbox"}
-      </button>
+        <ExternalLink className="h-3.5 w-3.5" />
+        Open in Drive
+      </a>
+    )
+  }
 
-      {driveState === "saved" && driveUrl ? (
-        <a
-          href={driveUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15 transition-colors"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          Open in Drive
-        </a>
-      ) : (
-        <button
-          type="button"
-          onClick={saveToDrive}
-          disabled={driveState === "saving"}
-          className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-border bg-card text-foreground hover:bg-accent transition-colors disabled:opacity-50"
-        >
-          {driveState === "saving" ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <CloudUpload className="h-3.5 w-3.5" />
-          )}
-          Bewaar in Drive
-        </button>
-      )}
+  if (state === "saving") {
+    return (
+      <span className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Bewaren in Drive…
+      </span>
+    )
+  }
 
-      {(inboxMsg || driveMsg) && (
-        <div className="w-full flex flex-col gap-1 mt-1">
-          {inboxMsg && (
-            <div
-              className={cn(
-                "text-xs",
-                inboxState === "error" ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
-              )}
-            >
-              {inboxMsg}
-            </div>
-          )}
-          {driveMsg && (
-            <div
-              className={cn(
-                "text-xs",
-                driveState === "error" ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
-              )}
-            >
-              {driveMsg}
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  )
+  if (state === "error") {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium text-red-600 dark:text-red-400"
+        title={msg ?? "Drive save mislukt"}
+      >
+        <AlertTriangle className="h-3.5 w-3.5" />
+        Drive save mislukt
+      </span>
+    )
+  }
+
+  return null
 }
 
 // ─── History panel ──────────────────────────────────────────────────────
@@ -525,6 +527,8 @@ function RefreshHistoryPanel({
   const [rows, setRows] = useState<RefreshHistoryRow[] | null>(null)
   const [open, setOpen] = useState(false)
   const [loadingList, setLoadingList] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // Refetch when the active client OR stage changes — history is
   // scoped to both.
@@ -579,44 +583,97 @@ function RefreshHistoryPanel({
       </button>
       {open && rows && rows.length > 0 && (
         <div className="border-t border-border/60 divide-y divide-border/40">
-          {rows.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => onPick(r.id)}
-              className="w-full text-left px-4 py-2.5 hover:bg-accent/40 transition-colors flex items-start gap-3"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{r.generatedAt.slice(0, 10)}</span>
-                  <span>·</span>
-                  <span>
-                    {r.windowDays}d ({r.windowStart} → {r.windowEnd})
-                  </span>
-                  <span>·</span>
-                  <span>{r.proposalCount} proposal{r.proposalCount === 1 ? "" : "s"}</span>
-                  {r.savedToInbox && (
-                    <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
-                      <Inbox className="h-3 w-3" />
-                      inbox
-                    </span>
-                  )}
-                  {r.savedToDrive && (
-                    <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
-                      <CloudUpload className="h-3 w-3" />
-                      drive
-                    </span>
-                  )}
-                </div>
-                {r.summarySnippet && (
-                  <div className="text-sm text-foreground/80 truncate mt-0.5">
-                    {r.summarySnippet}
-                  </div>
+          {deleteError && (
+            <div className="px-4 py-2 text-xs text-red-600 dark:text-red-400 bg-red-500/5 border-b border-red-500/20">
+              {deleteError}
+            </div>
+          )}
+          {rows.map((r) => {
+            const isDeleting = deletingId === r.id
+            return (
+              <div
+                key={r.id}
+                className={cn(
+                  "group flex items-stretch hover:bg-accent/40 transition-colors",
+                  isDeleting && "opacity-50 pointer-events-none",
                 )}
+              >
+                <button
+                  type="button"
+                  onClick={() => onPick(r.id)}
+                  className="flex-1 min-w-0 text-left px-4 py-2.5 flex items-start gap-3"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{r.generatedAt.slice(0, 10)}</span>
+                      <span>·</span>
+                      <span>
+                        {r.windowDays}d ({r.windowStart} → {r.windowEnd})
+                      </span>
+                      <span>·</span>
+                      <span>{r.proposalCount} proposal{r.proposalCount === 1 ? "" : "s"}</span>
+                      {r.savedToInbox && (
+                        <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+                          <Inbox className="h-3 w-3" />
+                          inbox
+                        </span>
+                      )}
+                      {r.savedToDrive && (
+                        <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+                          <CloudUpload className="h-3 w-3" />
+                          drive
+                        </span>
+                      )}
+                    </div>
+                    {r.summarySnippet && (
+                      <div className="text-sm text-foreground/80 truncate mt-0.5">
+                        {r.summarySnippet}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-xs text-primary shrink-0 mt-0.5">Laad</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const confirmed = window.confirm(
+                      "Verwijder deze refresh?\n\nAlle gegenereerde varianten en hun images worden ook gewist. Bewaarde inbox-updates en Drive-bestanden blijven intact.",
+                    )
+                    if (!confirmed) return
+                    setDeletingId(r.id)
+                    setDeleteError(null)
+                    try {
+                      const res = await fetch(
+                        `/api/pedro/refreshes/${encodeURIComponent(r.id)}`,
+                        { method: "DELETE" },
+                      )
+                      if (!res.ok) {
+                        const json = await res.json().catch(() => ({}))
+                        throw new Error(json.error || `HTTP ${res.status}`)
+                      }
+                      // Optimistic remove from the list. The /refreshes
+                      // GET will re-fetch on next mount; for now we just
+                      // splice locally so the row disappears.
+                      setRows((prev) => (prev ? prev.filter((row) => row.id !== r.id) : prev))
+                    } catch (e) {
+                      setDeleteError(e instanceof Error ? e.message : "Verwijderen mislukt")
+                    } finally {
+                      setDeletingId(null)
+                    }
+                  }}
+                  disabled={isDeleting}
+                  title="Verwijder deze refresh + alle gegenereerde varianten"
+                  className="shrink-0 inline-flex items-center justify-center w-10 px-2 text-muted-foreground/50 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/5 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-100"
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </button>
               </div>
-              <span className="text-xs text-primary shrink-0 mt-0.5">Laad</span>
-            </button>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

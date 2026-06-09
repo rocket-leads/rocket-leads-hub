@@ -48,6 +48,15 @@ export async function POST(
       )
     }
 
+    // Slot index from `?position=N` or form field `position`. Default 0
+    // (slot A) for backwards compat with single-image callers.
+    const positionRaw =
+      req.nextUrl.searchParams.get("position") ?? formData.get("position")?.toString()
+    const position = Math.max(
+      0,
+      Math.min(9, Math.floor(positionRaw ? parseInt(positionRaw, 10) : 0)),
+    )
+
     const supabase = await createAdminClient()
     const { data: variantRow } = await supabase
       .from("pedro_variants")
@@ -64,25 +73,31 @@ export async function POST(
     const uploaded = await uploadVariantImage({
       clientId: variantRow.client_id,
       variantId: variantRow.id,
+      position,
       bytes,
       contentType: mime,
     })
 
     const { error: updateErr } = await supabase
-      .from("pedro_variants")
-      .update({
-        image_storage_path: uploaded.storagePath,
-        image_provider: "manual_upload",
-        image_model: null,
-        image_generated_at: new Date().toISOString(),
-      })
-      .eq("id", variantRow.id)
+      .from("pedro_variant_images")
+      .upsert(
+        {
+          variant_id: variantRow.id,
+          position,
+          storage_path: uploaded.storagePath,
+          provider: "manual_upload",
+          model: null,
+          generated_at: new Date().toISOString(),
+        },
+        { onConflict: "variant_id,position" },
+      )
     if (updateErr) throw updateErr
 
     const signedUrl = await getVariantImageSignedUrl(uploaded.storagePath)
 
     return NextResponse.json({
       variantId: variantRow.id,
+      position,
       storagePath: uploaded.storagePath,
       signedUrl,
       provider: "manual_upload",

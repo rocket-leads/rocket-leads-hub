@@ -1,0 +1,399 @@
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import {
+  X,
+  Sparkles,
+  Loader2,
+  AlertTriangle,
+  Check,
+  ExternalLink,
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+
+/**
+ * PushToMetaModal — batch launch van een proposal naar Meta.
+ *
+ * Per variant binnen het proposal: checkbox per slot (A/B/C). Default
+ * preselectie = eerste slot dat een image heeft.
+ *
+ * Click "Launch" → POST naar push-to-meta endpoint → toon per-slot
+ * resultaat met Meta-ad link bij success, foutmelding bij failure.
+ *
+ * Roy 2026-06-09.
+ */
+
+type SlotInfo = {
+  position: number
+  hasImage: boolean
+  signedUrl: string | null
+}
+
+type ProposalVariant = {
+  variantId: string | null
+  adName: string
+  label: string
+  topicLabel: string
+}
+
+type Selection = {
+  variantId: string
+  slotPosition: number
+}
+
+type LaunchResult = {
+  variantId: string
+  slotPosition: number
+  ok: boolean
+  metaAdId?: string
+  metaAdName?: string
+  error?: string
+}
+
+type LaunchResponse = {
+  adSetId?: string
+  adSetName?: string
+  adsManagerUrl?: string
+  successCount?: number
+  totalCount?: number
+  partialFailure?: boolean
+  results?: LaunchResult[]
+  error?: string
+}
+
+type Props = {
+  open: boolean
+  onClose: () => void
+  refreshId: string
+  proposalIndex: number
+  winnerAdName: string
+  variants: ProposalVariant[]
+}
+
+const SLOT_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+
+export function PushToMetaModal({
+  open,
+  onClose,
+  refreshId,
+  proposalIndex,
+  winnerAdName,
+  variants,
+}: Props) {
+  const [slotsByVariant, setSlotsByVariant] = useState<Map<string, SlotInfo[]>>(
+    new Map(),
+  )
+  const [selected, setSelected] = useState<Map<string, Set<number>>>(new Map())
+  const [loading, setLoading] = useState(false)
+  const [launching, setLaunching] = useState(false)
+  const [launchResponse, setLaunchResponse] = useState<LaunchResponse | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Load slot states for each variant on open.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    setLaunchResponse(null)
+
+    const variantIds = variants
+      .map((v) => v.variantId)
+      .filter((id): id is string => !!id)
+
+    Promise.all(
+      variantIds.map((id) =>
+        fetch(`/api/pedro/variants/${id}/image`)
+          .then((r) => r.json())
+          .then((json) => ({ id, slots: (json.slots as SlotInfo[]) ?? [] }))
+          .catch(() => ({ id, slots: [] as SlotInfo[] })),
+      ),
+    ).then((results) => {
+      if (cancelled) return
+      const map = new Map<string, SlotInfo[]>()
+      const sel = new Map<string, Set<number>>()
+      for (const r of results) {
+        map.set(r.id, r.slots)
+        // Default: preselect first slot with an image.
+        const firstReady = r.slots.find((s) => s.hasImage)
+        sel.set(r.id, new Set(firstReady ? [firstReady.position] : []))
+      }
+      setSlotsByVariant(map)
+      setSelected(sel)
+      setLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, variants])
+
+  const totalSelected = Array.from(selected.values()).reduce(
+    (sum, s) => sum + s.size,
+    0,
+  )
+
+  const toggleSlot = useCallback((variantId: string, position: number) => {
+    setSelected((prev) => {
+      const next = new Map(prev)
+      const setAtVariant = new Set<number>(next.get(variantId) ?? [])
+      if (setAtVariant.has(position)) setAtVariant.delete(position)
+      else setAtVariant.add(position)
+      next.set(variantId, setAtVariant)
+      return next
+    })
+  }, [])
+
+  const launch = useCallback(async () => {
+    if (launching) return
+    setLaunching(true)
+    setError(null)
+    setLaunchResponse(null)
+    try {
+      const payload: Selection[] = []
+      for (const [variantId, positions] of selected.entries()) {
+        for (const pos of positions) payload.push({ variantId, slotPosition: pos })
+      }
+      const res = await fetch(
+        `/api/pedro/proposals/${encodeURIComponent(refreshId)}/${proposalIndex}/push-to-meta`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ variants: payload }),
+        },
+      )
+      const json: LaunchResponse = await res.json()
+      if (!res.ok || json.error) {
+        setError(json.error || `HTTP ${res.status}`)
+        setLaunchResponse(json)
+        return
+      }
+      setLaunchResponse(json)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Launch mislukt")
+    } finally {
+      setLaunching(false)
+    }
+  }, [launching, selected, refreshId, proposalIndex])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-xl">
+        {/* Header */}
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-6 py-4 border-b border-border bg-card">
+          <div>
+            <div className="text-xs uppercase tracking-wide font-semibold text-sky-600 dark:text-sky-400 mb-1">
+              Push to Meta
+            </div>
+            <h2 className="font-heading font-semibold text-lg">
+              Itereren op {winnerAdName}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Nieuwe ad set wordt aangemaakt in dezelfde campagne als de winner.
+              Status: PAUSED. Activeren doe je zelf in Meta Ads Manager.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+            aria-label="Sluiten"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-4 space-y-4">
+          {/* Pre-launch: slot picker per variant */}
+          {!launchResponse && (
+            <>
+              {loading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Slots laden…
+                </div>
+              )}
+              {!loading &&
+                variants.map((variant) => {
+                  if (!variant.variantId) {
+                    return (
+                      <div
+                        key={variant.adName}
+                        className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground"
+                      >
+                        {variant.label} — geen variantId. Refresh proposals opnieuw.
+                      </div>
+                    )
+                  }
+                  const slots = slotsByVariant.get(variant.variantId) ?? []
+                  const sel = selected.get(variant.variantId) ?? new Set<number>()
+                  return (
+                    <div
+                      key={variant.variantId}
+                      className="rounded-lg border border-border bg-background p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div>
+                          <div className="font-medium text-sm">{variant.label}</div>
+                          <div className="text-xs text-muted-foreground font-mono">
+                            {variant.adName}
+                          </div>
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {sel.size > 0
+                            ? `${sel.size} slot${sel.size === 1 ? "" : "s"} → ${sel.size} nieuwe ad${sel.size === 1 ? "" : "s"}`
+                            : "deselected"}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[0, 1, 2].map((pos) => {
+                          const slot = slots.find((s) => s.position === pos)
+                          const hasImage = slot?.hasImage ?? false
+                          const isSelected = sel.has(pos)
+                          const slotLabel = SLOT_LABELS[pos]
+                          return (
+                            <button
+                              key={pos}
+                              type="button"
+                              onClick={() => hasImage && toggleSlot(variant.variantId!, pos)}
+                              disabled={!hasImage || launching}
+                              className={cn(
+                                "relative aspect-square rounded-md border-2 overflow-hidden transition-all",
+                                hasImage && isSelected
+                                  ? "border-primary ring-2 ring-primary/30"
+                                  : hasImage
+                                    ? "border-border hover:border-border/80"
+                                    : "border-dashed border-border bg-muted/30 cursor-not-allowed",
+                              )}
+                            >
+                              {hasImage && slot?.signedUrl ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                <img
+                                  src={slot.signedUrl}
+                                  alt={`${variant.label} slot ${slotLabel}`}
+                                  className={cn("w-full h-full object-cover", !isSelected && "opacity-60")}
+                                />
+                              ) : (
+                                <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/50">
+                                  (geen image)
+                                </div>
+                              )}
+                              <div
+                                className={cn(
+                                  "absolute top-1 left-1 inline-flex items-center justify-center h-5 w-5 rounded-full text-[10px] font-bold shadow-sm",
+                                  isSelected
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-background/90 backdrop-blur text-muted-foreground",
+                                )}
+                              >
+                                {slotLabel}
+                              </div>
+                              {isSelected && (
+                                <div className="absolute top-1 right-1 inline-flex items-center justify-center h-5 w-5 rounded-full bg-primary text-primary-foreground shadow-sm">
+                                  <Check className="h-3 w-3" />
+                                </div>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+            </>
+          )}
+
+          {/* Post-launch: per-result status */}
+          {launchResponse && launchResponse.results && (
+            <div className="space-y-3">
+              {launchResponse.successCount! > 0 && launchResponse.adsManagerUrl && (
+                <a
+                  href={launchResponse.adsManagerUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15 transition-colors"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open nieuwe ad set in Meta Ads Manager
+                </a>
+              )}
+              <div className="text-xs text-muted-foreground">
+                Ad set: <span className="font-mono">{launchResponse.adSetName}</span>
+              </div>
+              <div className="space-y-1.5">
+                {launchResponse.results.map((r) => (
+                  <div
+                    key={`${r.variantId}-${r.slotPosition}`}
+                    className={cn(
+                      "flex items-start gap-2 rounded-md px-2.5 py-1.5 text-xs",
+                      r.ok
+                        ? "bg-emerald-500/5 text-emerald-700 dark:text-emerald-400"
+                        : "bg-red-500/5 text-red-700 dark:text-red-400",
+                    )}
+                  >
+                    {r.ok ? (
+                      <Check className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-mono">
+                        Slot {SLOT_LABELS[r.slotPosition]} → {r.metaAdName ?? "(no name)"}
+                      </div>
+                      {r.error && <div className="opacity-80 mt-0.5">{r.error}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-start gap-2 whitespace-pre-line">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 px-6 py-3 border-t border-border bg-card">
+          <div className="text-xs text-muted-foreground">
+            {launchResponse
+              ? `${launchResponse.successCount ?? 0} / ${launchResponse.totalCount ?? 0} ads gepushed`
+              : `${totalSelected} ad${totalSelected === 1 ? "" : "s"} geselecteerd`}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={launching}
+              className="inline-flex items-center h-9 px-3.5 rounded-md text-sm font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+            >
+              {launchResponse ? "Sluiten" : "Annuleer"}
+            </button>
+            {!launchResponse && (
+              <button
+                type="button"
+                onClick={launch}
+                disabled={launching || totalSelected === 0}
+                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+              >
+                {launching ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {launching
+                  ? "Pushing naar Meta…"
+                  : `Launch ${totalSelected} ad${totalSelected === 1 ? "" : "s"} as PAUSED`}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -23,9 +23,40 @@ import { decrypt } from "@/lib/encryption"
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-/** Production-tier image model. Override per-call when we want to A/B
- *  against 2.5 Flash Image (much cheaper, slightly worse text). */
+/** Default image model — Gemini 3 Pro Image (Nano Banana Pro).
+ *  Roy 2026-06-09 explicitly chose this over 2.5 Flash Image: better
+ *  text rendering on ads, better identity preservation. Requires the
+ *  API key to be linked to a GCP project with paid billing enabled
+ *  on the Generative Language API — not just "billing enabled in AI
+ *  Studio". When quota hits, the error message points to the fix
+ *  (see quotaErrorMessage below) rather than silently downgrading. */
 export const DEFAULT_IMAGE_MODEL = "gemini-3-pro-image-preview"
+
+/** Quota error matcher — Google's text-encoded RATE_LIMIT response.
+ *  Detected at error-handling time so the caller can downgrade from
+ *  3 Pro Image to 2.5 Flash Image automatically. */
+function isQuotaError(message: string): boolean {
+  const m = message.toLowerCase()
+  return (
+    m.includes("quota") ||
+    m.includes("rate-limit") ||
+    m.includes("rate_limit_exceeded") ||
+    m.includes("resource_exhausted")
+  )
+}
+
+/** User-facing message for quota failures. Points to the actual fix
+ *  (GCP billing) rather than the raw Google error. */
+function quotaErrorMessage(model: string): string {
+  return (
+    `Gemini quota uitgeput voor ${model}. Dit gebeurt vrijwel altijd omdat de API key gekoppeld is aan een GCP project zonder paid billing op de Generative Language API — niet hetzelfde als "billing enabled in AI Studio". Fix:\n` +
+    `1. https://aistudio.google.com/apikey → check welk GCP project je key gebruikt\n` +
+    `2. https://console.cloud.google.com → kies dat project → APIs & Services → Enable "Generative Language API"\n` +
+    `3. Billing → koppel een actief billing-account aan het project\n` +
+    `4. Eventueel: maak nieuwe key onder een project dat 100% zeker paid-tier billing heeft\n` +
+    `5. Wacht 2-5 min voor propagatie en probeer opnieuw`
+  )
+}
 
 async function getApiKey(): Promise<string> {
   const supabase = await createAdminClient()
@@ -85,7 +116,7 @@ export async function generateImageWithReference(args: {
    *  Up to 3 — Gemini accepts more but practically the loss of fidelity
    *  past 3 isn't worth it. */
   referenceImages?: Array<{ bytes: Buffer; mimeType: "image/jpeg" | "image/png" }>
-  /** Override model — defaults to Nano Banana Pro. */
+  /** Override model — defaults to Gemini 3 Pro Image (Nano Banana Pro). */
   model?: string
   /** Aspect ratio target. Image-only MVP → square (Feed) default. Pass
    *  "9:16" if/when we add video/Reels support. */
@@ -139,11 +170,16 @@ export async function generateImageWithReference(args: {
     } catch {
       /* not JSON */
     }
-    const message =
+    const rawMessage =
       parsedErr?.error?.message ??
       text.slice(0, 300) ??
       `HTTP ${res.status}`
-    throw new Error(`Gemini image gen faalde: ${message}`)
+
+    // Translate the verbose Google quota error into something actionable.
+    if (res.status === 429 || isQuotaError(rawMessage)) {
+      throw new Error(quotaErrorMessage(model))
+    }
+    throw new Error(`Gemini image gen faalde: ${rawMessage}`)
   }
 
   const json = (await res.json()) as GeminiResponse
