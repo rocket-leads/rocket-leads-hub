@@ -2854,17 +2854,25 @@ function TrengoIdentityBanner() {
   if (!data.hasEmail) missingChannelTypes.push("Email")
   if (!data.hasWhatsapp) missingChannelTypes.push("WhatsApp")
 
-  // --- Healthy state: small "Sending as X" pill ---------------------------
+  // --- Healthy state: small status pill ----------------------------------
+  // When we resolved the Trengo identity, show "Sending as <name>". When
+  // we couldn't (Trengo's v2 API doesn't have a stable "who am I" route —
+  // see the route comment for the candidate-endpoint walk), the pill falls
+  // back to a neutral "Trengo connected" since the token IS validated.
   const identityName =
-    data.trengoUser?.full_name?.trim() || data.trengoUser?.email || `Trengo user ${data.trengoUser?.id ?? ""}`
+    data.trengoUser?.full_name?.trim() || data.trengoUser?.email || null
 
   return (
     <div className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-1.5 text-[11px]">
       <div className="flex items-center gap-1.5 text-muted-foreground/80">
         <UserCheck className="h-3 w-3 text-emerald-500" />
-        <span>
-          Verstuurt vanuit Trengo als <span className="font-medium text-foreground">{identityName}</span>
-        </span>
+        {identityName ? (
+          <span>
+            Verstuurt vanuit Trengo als <span className="font-medium text-foreground">{identityName}</span>
+          </span>
+        ) : (
+          <span>Trengo connected</span>
+        )}
         {data.channels.length > 0 && (
           <span className="text-muted-foreground/50">
             · {data.channels.length} {data.channels.length === 1 ? "channel" : "channels"} (

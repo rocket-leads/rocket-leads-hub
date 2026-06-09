@@ -105,23 +105,77 @@ export async function GET() {
     })
   }
 
-  // Ask Trengo who this token actually represents. When this returns
-  // "Roy Vosters" for an AM other than Roy → smoking gun that the
-  // workspace admin token got pasted into their /account instead of
-  // their personal one.
-  let trengoUser: TrengoIdentity["trengoUser"] = null
+  // Two-step token validation:
+  //
+  //   (a) Validate the token via /v2/channels — a known-good endpoint we
+  //       already use elsewhere. A 401/403 here is the unambiguous "token
+  //       rejected" signal; a 200 means the token works regardless of
+  //       whether we can resolve the user identity.
+  //
+  //   (b) Probe candidate identity endpoints. Trengo's v2 API doesn't
+  //       have a documented "who am I" route — different generations of
+  //       the product have exposed `/me`, `/users/me`, `/profile`, etc.,
+  //       and most have been quietly removed or moved. We try the known
+  //       candidates and use the first 200 with a parseable user object.
+  //       A failure here is informational, NOT an error — the token is
+  //       valid (validated in step a), we just can't print "Sending as
+  //       <name>". The smoking-gun comparison (admin vs personal token)
+  //       still works when an endpoint DOES respond.
   let error: string | null = null
+  let trengoUser: TrengoIdentity["trengoUser"] = null
+
+  // Step (a) — validate.
   try {
-    const res = await fetch("https://app.trengo.com/api/v2/users/me", {
+    const validateRes = await fetch("https://app.trengo.com/api/v2/channels?per_page=1", {
       headers: { Authorization: `Bearer ${userToken}`, Accept: "application/json" },
       cache: "no-store",
     })
-    if (!res.ok) {
-      const text = await res.text().catch(() => "")
-      error = `Trengo /me ${res.status}: ${text.slice(0, 200) || "rejected"}`
-    } else {
+    if (!validateRes.ok) {
+      const text = await validateRes.text().catch(() => "")
+      error = `Trengo token rejected (${validateRes.status}): ${text.slice(0, 200) || "no body"}`
+      return NextResponse.json<TrengoIdentity>({
+        connected: true,
+        trengoUser: null,
+        channelIds,
+        channels,
+        hasEmail,
+        hasWhatsapp,
+        error,
+      })
+    }
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e)
+    return NextResponse.json<TrengoIdentity>({
+      connected: true,
+      trengoUser: null,
+      channelIds,
+      channels,
+      hasEmail,
+      hasWhatsapp,
+      error,
+    })
+  }
+
+  // Step (b) — best-effort identity probe. Trengo's /v2 docs don't list a
+  // canonical "me" route; we walk through the candidates we've seen in the
+  // wild and stop at the first that returns a user object. None is
+  // guaranteed to work — the banner falls back to a neutral "Trengo
+  // connected" pill when every candidate 404s.
+  const candidatePaths = ["/v2/me", "/v2/profile", "/v2/users/me", "/v2/agents/me"]
+  for (const path of candidatePaths) {
+    try {
+      const res = await fetch(`https://app.trengo.com/api${path}`, {
+        headers: { Authorization: `Bearer ${userToken}`, Accept: "application/json" },
+        cache: "no-store",
+      })
+      if (!res.ok) continue
       const json = (await res.json()) as
-        | { id?: number; full_name?: string; email?: string; data?: { id?: number; full_name?: string; email?: string } }
+        | {
+            id?: number
+            full_name?: string
+            email?: string
+            data?: { id?: number; full_name?: string; email?: string }
+          }
       const inner = (json.data ?? json) as { id?: number; full_name?: string; email?: string }
       if (inner?.id) {
         trengoUser = {
@@ -129,12 +183,11 @@ export async function GET() {
           full_name: inner.full_name ?? null,
           email: inner.email ?? null,
         }
-      } else {
-        error = "Trengo /me returned no id"
+        break
       }
+    } catch {
+      // probe failed — move on. Token already validated above.
     }
-  } catch (e) {
-    error = e instanceof Error ? e.message : String(e)
   }
 
   return NextResponse.json<TrengoIdentity>({
