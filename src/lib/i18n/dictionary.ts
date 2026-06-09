@@ -418,10 +418,12 @@ export const DICTIONARY = {
   "inbox.task.filter.all": { nl: "Alles", en: "All" },
   "inbox.task.filter.snoozed": { nl: "Snoozed", en: "Snoozed" },
 
-  // Update status filters
+  // Update status filters — same vocabulary as Tasks ("Open" / "Alles")
+  // so the sub-tab strip reads identically across kinds. The chip id
+  // still maps to the underlying DB status (`unread`) — only the label
+  // changed. Roy 2026-06-09.
   "inbox.update.filter.all": { nl: "Alle updates", en: "All updates" },
-  "inbox.update.filter.unread": { nl: "Ongelezen", en: "Unread" },
-  "inbox.update.filter.read": { nl: "Gelezen", en: "Read" },
+  "inbox.update.filter.open": { nl: "Open", en: "Open" },
 
   // Empty states
   "inbox.empty.tasks_loading": { nl: "Taken laden…", en: "Loading tasks…" },
@@ -432,9 +434,10 @@ export const DICTIONARY = {
   "inbox.empty.updates_none": { nl: "Nog geen updates.", en: "No updates yet." },
   "inbox.empty.updates_filtered": { nl: "Geen {filter} updates{assigned}.", en: "No {filter} updates{assigned}." },
 
-  // Update filter labels used inside empty-state strings (lowercase)
-  "inbox.update.filter.unread_lower": { nl: "ongelezen", en: "unread" },
-  "inbox.update.filter.read_lower": { nl: "gelezen", en: "read" },
+  // Update filter label used inside empty-state strings (lowercase). Only
+  // the "open" branch is reachable: the "all" filter routes to the
+  // generic `updates_none` empty state instead.
+  "inbox.update.filter.open_lower": { nl: "open", en: "open" },
 
   // Source pill labels (brand names stay as plain strings — these are
   // the ones that actually translate)

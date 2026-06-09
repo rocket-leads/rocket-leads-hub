@@ -208,16 +208,6 @@ export function InboxListRow({
           </button>
         )}
 
-        {/* Updates get a leading checkbox so the read/unread toggle is the
-            primary affordance — click it to mark read, click again to unmark.
-            Tasks keep their right-side Done/Cancel/Reopen actions instead. */}
-        {isUpdate && onAction && (
-          <UpdateCheckbox
-            checked={!isUnread}
-            onToggle={() => onAction(isUnread ? "read" : "unread")}
-          />
-        )}
-
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             {/* Type chip — small icon+label next to the title so the row's
@@ -341,27 +331,10 @@ export function InboxListRow({
           </div>
         </div>
 
-        {/* Tasks keep right-side actions; update toggles live in the leading checkbox. */}
-        {!isUpdate && onAction && <RowActions item={item} onAction={onAction} users={users} />}
-
-        {/* Updates get a single hover-revealed "Create task" button — closes
-            the loop on the Phase D vision: any inbox item can become an
-            actionable task in one click. Hover-only so the row stays
-            uncluttered for the (most common) read-and-move-on flow. */}
-        {isUpdate && onAction && (
-          <ActionIconButton
-            tone="muted"
-            label="Create task"
-            tooltip="Create task from this update"
-            showLabel
-            icon={<ListTodo className="h-3.5 w-3.5" />}
-            onClick={(e) => {
-              e.stopPropagation()
-              onAction("make_task")
-            }}
-            className="opacity-60 group-hover:opacity-100 transition-opacity hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-500/30"
-          />
-        )}
+        {/* Unified right-side action set — renders the same Done / Reopen
+            chrome for both Tasks and Updates. Kind-specific extras (Snooze
+            for tasks, Make-task for updates) are wired inside RowActions. */}
+        {onAction && <RowActions item={item} onAction={onAction} users={users} />}
       </div>
     </div>
   )
@@ -460,36 +433,6 @@ function RowTitle({
   )
 }
 
-function UpdateCheckbox({
-  checked,
-  onToggle,
-}: {
-  checked: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={checked}
-      title={checked ? "Mark as unread" : "Mark as read"}
-      aria-label={checked ? "Mark as unread" : "Mark as read"}
-      onClick={(e) => {
-        e.stopPropagation()
-        onToggle()
-      }}
-      className={cn(
-        "h-5 w-5 shrink-0 rounded-full border-2 inline-flex items-center justify-center mt-0.5 transition-all",
-        checked
-          ? "bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600"
-          : "border-muted-foreground/40 hover:border-foreground hover:bg-muted/40",
-      )}
-    >
-      {checked && <Check className="h-3 w-3" strokeWidth={3} />}
-    </button>
-  )
-}
-
 function RowActions({
   item,
   onAction,
@@ -500,11 +443,22 @@ function RowActions({
   users?: RowUser[]
 }) {
   const stop = (e: React.MouseEvent) => e.stopPropagation()
-  const isActive = item.status === "open" || item.status === "in_progress"
+  const isUpdate = item.kind === "update"
+  // "Active" = the row still needs the user's attention. Tasks use
+  // open/in_progress; updates use unread. Both render the same green
+  // check button on the right (Roy 2026-06-09 — the inbox affordance
+  // should be identical across kinds, only the DB enum differs).
+  const isActive = isUpdate
+    ? item.status === "unread"
+    : item.status === "open" || item.status === "in_progress"
   const isSnoozed = !!item.snoozedUntil && new Date(item.snoozedUntil).getTime() > Date.now()
+  // Kind-specific status verbs — same UI, different underlying value.
+  // Done flips status to "read" for updates, "done" for tasks. Reopen
+  // does the inverse. The status check above already routes to the
+  // right branch; this just picks the value to PATCH.
+  const doneAction: RowAction = isUpdate ? "read" : "done"
+  const reopenAction: RowAction = isUpdate ? "unread" : "reopen"
 
-  // Updates handle their read/unread toggle via the leading checkbox in the
-  // row itself, so this component only ever renders the task action buttons.
   return (
     <div className="flex items-center gap-1 shrink-0" onClick={stop}>
       {isActive ? (
@@ -512,18 +466,33 @@ function RowActions({
           <ActionIconButton
             tone="success"
             label="Mark done"
-            onClick={() => onAction("done")}
+            onClick={() => onAction(doneAction)}
             icon={<Check className="h-4 w-4" />}
           />
-          {isSnoozed ? (
+          {/* Tasks-only: snooze. The API rejects snoozedUntil for non-task
+              kinds, so we never offer the affordance on updates. */}
+          {!isUpdate && (
+            isSnoozed ? (
+              <ActionIconButton
+                tone="muted"
+                label={`Snoozed until ${formatSnoozeLabel(item.snoozedUntil!)} — click to wake`}
+                onClick={() => onAction("unsnooze")}
+                icon={<BellOff className="h-4 w-4" />}
+              />
+            ) : (
+              <SnoozeButton onPick={(until) => onAction({ type: "snooze", until })} />
+            )
+          )}
+          {/* Updates-only: convert to a task. Same affordance the standalone
+              hover button used to be — now lives inline with the rest of
+              the action set so the right-side cluster is consistent. */}
+          {isUpdate && (
             <ActionIconButton
               tone="muted"
-              label={`Snoozed until ${formatSnoozeLabel(item.snoozedUntil!)} — click to wake`}
-              onClick={() => onAction("unsnooze")}
-              icon={<BellOff className="h-4 w-4" />}
+              label="Make task"
+              onClick={() => onAction("make_task")}
+              icon={<ListTodo className="h-4 w-4" />}
             />
-          ) : (
-            <SnoozeButton onPick={(until) => onAction({ type: "snooze", until })} />
           )}
           {users && users.length > 0 && (
             <ReassignButton
@@ -536,7 +505,7 @@ function RowActions({
             tone="danger"
             label="Delete"
             onClick={() => {
-              if (window.confirm("Permanently delete this task?")) {
+              if (window.confirm(`Permanently delete this ${isUpdate ? "update" : "task"}?`)) {
                 onAction("delete")
               }
             }}
@@ -547,7 +516,7 @@ function RowActions({
         <ActionIconButton
           tone="muted"
           label="Reopen"
-          onClick={() => onAction("reopen")}
+          onClick={() => onAction(reopenAction)}
           icon={<RotateCcw className="h-4 w-4" />}
         />
       )}

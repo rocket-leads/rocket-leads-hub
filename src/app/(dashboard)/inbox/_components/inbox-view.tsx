@@ -7,7 +7,6 @@ import {
   Inbox as InboxIcon,
   ListTodo,
   LayoutList,
-  Mail,
   MailOpen,
   Circle,
   Clock,
@@ -110,11 +109,11 @@ const TASK_SOURCE_LABEL_KEYS: Record<InboxSource, DictionaryKey> = {
  *  per-render useMemo can rebuild the array when the locale flips without
  *  re-allocating icons on every state change. */
 const UPDATE_FILTER_SHAPE = [
-  // Roy 2026-06-09: pressing-attention chip ("Ongelezen") sits LEFT so
-  // it's the AM's anchor; "Alles" sits RIGHT as the scan-everything
-  // fallback. "Lees" / read chip removed entirely — never the anchor
-  // view, just took space.
-  { id: "unread" as const, labelKey: "inbox.update.filter.unread" as const, icon: Mail },
+  // Roy 2026-06-09: Updates use the same "Open" / "Alles" chips as Tasks
+  // so the inbox affordance reads identically across kinds. The chip id
+  // still maps to the DB status (`unread`) — only the rendered label +
+  // icon changed to match the Tasks strip.
+  { id: "unread" as const, labelKey: "inbox.update.filter.open" as const, icon: Circle },
   { id: "all" as const, labelKey: "inbox.update.filter.all" as const, icon: LayoutList },
 ]
 
@@ -1077,10 +1076,7 @@ export function InboxView({
                   updateFilter === "all"
                     ? t("inbox.empty.updates_none", locale)
                     : t("inbox.empty.updates_filtered", locale, {
-                        filter:
-                          updateFilter === "unread"
-                            ? t("inbox.update.filter.unread_lower", locale)
-                            : t("inbox.update.filter.read_lower", locale),
+                        filter: t("inbox.update.filter.open_lower", locale),
                         assigned: assignedToMe ? t("inbox.empty.tasks_assigned_suffix", locale) : "",
                       })
                 }
