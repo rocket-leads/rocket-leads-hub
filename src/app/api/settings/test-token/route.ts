@@ -88,44 +88,83 @@ async function testSlack(token: string): Promise<TestResult> {
 }
 
 async function testTrengo(token: string): Promise<TestResult> {
+  // Roy 2026-06-09: previous version returned on the FIRST endpoint's
+  // verdict — which broke when `/users` returned 403 (admin scope only) on
+  // app-integration tokens that worked fine for /contacts + /channels +
+  // /tickets. Order endpoints from least-strict to most-strict, and only
+  // hard-fail on 401 (auth itself is invalid) or after all endpoints fail.
+  // 403/HTML/transient on any one endpoint → keep trying.
   const trimmed = token.trim()
-  const endpoints = ["/users", "/labels", "/channels", "/teams"]
+  const endpoints = ["/channels", "/labels", "/teams", "/users"]
+  let lastError = ""
   for (const endpoint of endpoints) {
     try {
       const res = await fetch(`https://app.trengo.com/api/v2${endpoint}`, {
         headers: { Authorization: `Bearer ${trimmed}`, Accept: "application/json" },
       })
+      if (res.ok) return { ok: true, message: `Trengo connected (via ${endpoint})` }
+      // 401 = auth itself is bad — decisive across every endpoint.
+      if (res.status === 401) {
+        const data = await res.json().catch(() => ({})) as { message?: string; error?: string }
+        return {
+          ok: false,
+          message: `Trengo HTTP 401: ${data.message ?? data.error ?? "Unauthorized"}`,
+        }
+      }
+      // 403 / non-JSON / 5xx → record + keep trying the other endpoints.
       const contentType = res.headers.get("content-type") ?? ""
       if (contentType.includes("application/json")) {
-        const data = await res.json()
-        if (res.ok) return { ok: true, message: `Trengo connected (via ${endpoint})` }
-        return { ok: false, message: `Trengo HTTP ${res.status}: ${data.message ?? data.error ?? JSON.stringify(data).slice(0, 100)}` }
-      }
-      // First HTML response: log status + snippet for diagnosis
-      const body = await res.text().catch(() => "")
-      return {
-        ok: false,
-        message: `Trengo HTTP ${res.status} on ${endpoint} — non-JSON (content-type: ${contentType || "none"}). First 80 chars: ${body.slice(0, 80)}`,
+        const data = await res.json().catch(() => ({})) as { message?: string; error?: string }
+        lastError = `${endpoint} HTTP ${res.status}: ${data.message ?? data.error ?? "unknown"}`
+      } else {
+        const body = await res.text().catch(() => "")
+        lastError = `${endpoint} HTTP ${res.status} non-JSON: ${body.slice(0, 80)}`
       }
     } catch (e) {
-      return { ok: false, message: `Fetch error: ${e instanceof Error ? e.message : String(e)}` }
+      lastError = `${endpoint} fetch error: ${e instanceof Error ? e.message : String(e)}`
     }
   }
-  return { ok: false, message: "All Trengo endpoints failed" }
+  return { ok: false, message: `All Trengo endpoints failed — last: ${lastError}` }
 }
 
 async function testFathom(token: string): Promise<TestResult> {
+  // Roy 2026-06-09: /team_members requires the team-admin scope on the
+  // API key. Lower-scope keys return 403 there but work fine on /meetings,
+  // which is what the Hub actually uses day-to-day. Same fallback chain
+  // as the cron's checkFathom — if /meetings succeeds, the token is valid
+  // for our usage even if /team_members would 403.
+  const key = token.trim()
   try {
-    const res = await fetch("https://api.fathom.ai/external/v1/team_members", {
-      headers: { "X-Api-Key": token.trim(), Accept: "application/json" },
+    const tm = await fetch("https://api.fathom.ai/external/v1/team_members", {
+      headers: { "X-Api-Key": key, Accept: "application/json" },
     })
-    if (res.ok) {
-      const data = await res.json().catch(() => ({})) as { items?: Array<{ name?: string }> }
+    if (tm.ok) {
+      const data = await tm.json().catch(() => ({})) as { items?: Array<{ name?: string }> }
       const count = data.items?.length ?? 0
       return { ok: true, message: `Connected to Fathom (${count} team member${count === 1 ? "" : "s"} visible)` }
     }
-    const text = await res.text().catch(() => "")
-    return { ok: false, message: `Fathom HTTP ${res.status}: ${text.slice(0, 120) || res.statusText}` }
+    if (tm.status === 401) {
+      return { ok: false, message: `Fathom HTTP 401: token unauthorized` }
+    }
+    if (tm.status === 403) {
+      // Scope-mismatch on /team_members — try /meetings before giving up.
+      const mt = await fetch("https://api.fathom.ai/external/v1/meetings?limit=1", {
+        headers: { "X-Api-Key": key, Accept: "application/json" },
+      })
+      if (mt.ok) {
+        return {
+          ok: true,
+          message: `Connected to Fathom via /meetings (key lacks team-admin scope, but that's fine)`,
+        }
+      }
+      const text = await mt.text().catch(() => "")
+      return {
+        ok: false,
+        message: `Fathom HTTP ${mt.status} on /meetings (also 403 on /team_members): ${text.slice(0, 120) || mt.statusText}`,
+      }
+    }
+    const text = await tm.text().catch(() => "")
+    return { ok: false, message: `Fathom HTTP ${tm.status}: ${text.slice(0, 120) || tm.statusText}` }
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Connection failed" }
   }
