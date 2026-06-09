@@ -7,7 +7,7 @@ import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusPill } from "@/components/ui/status-pill"
-import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft, Megaphone } from "lucide-react"
+import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
@@ -76,6 +76,25 @@ function fmtCurrency(v: number): string {
  * Click handling mirrors CreateTaskButton: stopPropagation so the row's
  * slide-over doesn't open at the same time.
  */
+
+/** Meta brand mark — inline SVG so the icon survives Lucide not shipping
+ *  a Meta logo. Single-colour `currentColor` fill so the surrounding
+ *  button can tone it via Tailwind text classes (muted by default,
+ *  Meta-blue `#0866FF` on hover). Roy 2026-06-09. */
+function MetaLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 287.56 191"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+    >
+      <path d="M31.06,126c0,11,2.41,19.41,5.56,24.51A19,19,0,0,0,53.19,160c8.1,0,15.51-2,29.79-21.76,11.44-15.83,24.92-38,34-52L132.4,62.78c10.67-16.39,23-34.61,37.14-47C181.18,6.6,193.88,0,206.66,0c21.46,0,41.9,12.43,57.55,35.74C281.32,61.27,289.56,93.42,289.56,126.61c0,19.74-3.89,34.24-10.51,45.7C272.66,183.4,260,191,245.62,191V160c12.31,0,15.38-11.31,15.38-24.26,0-18.45-4.3-38.92-13.78-53.56-6.72-10.39-15.43-16.74-25-16.74-10.38,0-18.74,7.83-28.13,21.79-5,7.41-10.11,16.45-15.88,26.65l-7.45,13.21C159.4,148.13,150.85,162.26,140,167.95c-7.13,3.75-14,5.05-21,5.05-21.49,0-43-13.62-43-50.49,0-30.46,16.31-67.61,40.94-87.46C107.65,17.32,118.49,15,128.43,15c19.36,0,34.86,9.69,50.78,30.21l-18.91,29.6c-12-15.65-22.86-22.82-32.51-22.82-9.21,0-17.41,4.84-23.93,12.18C84.18,80.91,76,99.27,76,124.36V126Z" />
+    </svg>
+  )
+}
+
 function MoveButton({
   mondayItemId,
   clientName,
@@ -999,22 +1018,47 @@ function WatchSection({
                     locale={locale}
                   />
 
-                  {/* Open the Meta Ads Manager for this client in a NEW
-                      tab — leaves the watchlist intact so the CM can
-                      bounce between rows without losing scroll position
-                      or the open detail dialog. Hidden when the client
-                      has no Meta ad account configured. Roy 2026-06-09. */}
+                  {/* Open the Meta Ads Manager for this client in a
+                      BACKGROUND tab. Two things to handle:
+                      (a) The row has its own onClick that opens the
+                          slide-over. Plain bubbling via stopPropagation
+                          isn't always enough across React's synthetic
+                          system, so we also pre-empt the row at
+                          mousedown + run nativeEvent.stopImmediatePropagation
+                          on click. preventDefault is mandatory — the
+                          anchor would otherwise navigate before our
+                          custom open logic fires.
+                      (b) Browsers don't expose a clean "open new tab
+                          but keep focus" API. window.open() + the
+                          blur/focus shim is the best-effort approach
+                          Chrome/Edge honour; Safari sometimes ignores
+                          it. The link still has target=_blank so middle-
+                          click / Cmd-click stays as a guaranteed
+                          background-open fallback.
+                      Hidden when the client has no Meta ad account.
+                      Roy 2026-06-09. */}
                   {client.metaAdAccountId ? (
                     <a
                       href={`https://business.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        e.nativeEvent.stopImmediatePropagation?.()
+                        const url = `https://business.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId}`
+                        const w = window.open(url, "_blank", "noopener,noreferrer")
+                        if (w) {
+                          try { w.blur() } catch {}
+                          window.focus()
+                        }
+                      }}
                       title={t("watchlist.row.open_ads_manager", locale)}
                       aria-label={t("watchlist.row.open_ads_manager", locale)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 text-muted-foreground/60 hover:border-blue-500/40 hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 text-muted-foreground/60 hover:border-[#0866FF]/40 hover:bg-[#0866FF]/10 hover:text-[#0866FF] transition-colors"
                     >
-                      <Megaphone className="h-3.5 w-3.5" />
+                      <MetaLogo className="h-3.5 w-3.5" />
                     </a>
                   ) : (
                     <span aria-hidden />
