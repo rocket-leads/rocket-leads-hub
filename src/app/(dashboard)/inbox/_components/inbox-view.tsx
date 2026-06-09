@@ -3155,21 +3155,6 @@ function NowFeed({
     staleTime: 10 * 1000,
   })
 
-  // Second updates fetch — read + unread, for the right-column "Alle updates"
-  // feed. Roy 2026-06-09: the Now tab is the start screen, and the left side
-  // (overdue + unread) is what needs action; the right side is the full
-  // update stream for context-scanning. Two queries kept separate so the
-  // left side stays fast and the right is a wider catch-all.
-  const allUpdatesQuery = useQuery<{ items: InboxItem[] }>({
-    queryKey: ["inbox-now", "updates-all", currentUserId],
-    queryFn: () =>
-      fetch(`/api/inbox?kind=update&assignedToMe=true&statuses=unread,read`).then((r) =>
-        r.json(),
-      ),
-    refetchInterval: POLL_MS,
-    staleTime: 10 * 1000,
-  })
-
   const chatsQuery = useQuery<{ threads: ChatThreadSummary[] }>({
     queryKey: ["inbox-now", "chats"],
     queryFn: () => fetch(`/api/inbox/threads?scope=external`).then((r) => r.json()),
@@ -3237,14 +3222,6 @@ function NowFeed({
     entries.sort((a, b) => b.sortKey.localeCompare(a.sortKey))
     return entries
   }, [unreadUpdates, unreadChats])
-
-  // Right-column "Alle updates" — read + unread, sorted newest-first, no
-  // overdue / today bucketing. Filtered through the same searchQuery so a
-  // single field works across both columns.
-  const allUpdates = useMemo(() => {
-    const filtered = filterByQuery(allUpdatesQuery.data?.items ?? [], searchQuery)
-    return [...filtered].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-  }, [allUpdatesQuery.data, searchQuery])
 
   const totalCount = overdue.length + today.length + unreadFeed.length
 
@@ -3364,49 +3341,13 @@ function NowFeed({
     </div>
   )
 
-  // Right column — "Alle updates" feed, scrollable inside its own panel
-  // so the left "what needs attention" column doesn't have to compete with
-  // a giant scroll list. Always rendered (even empty) so the two-column
-  // layout doesn't collapse on quiet days — that would re-train the eye
-  // to look full-width and the next busy day would feel cramped.
-  const allUpdatesPane = (
-    <div className="rounded-lg border border-border/60 bg-card/30 flex flex-col">
-      <div className="px-3 py-2 border-b border-border/60 flex items-center justify-between">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {t("inbox.now.all_updates", locale)}
-        </span>
-        <span className="text-[11px] tabular-nums text-muted-foreground/60">
-          {allUpdates.length}
-        </span>
-      </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-        {allUpdatesQuery.isLoading && allUpdates.length === 0 ? (
-          <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
-        ) : allUpdates.length === 0 ? (
-          <div className="text-center text-xs text-muted-foreground/70 py-8">
-            {t("inbox.now.all_updates_empty", locale)}
-          </div>
-        ) : (
-          allUpdates.map((item) => (
-            <InboxListRow
-              key={`au-${item.id}`}
-              item={item}
-              showClient
-              onClick={() => onOpenItem(item)}
-              users={users}
-            />
-          ))
-        )}
-      </div>
-    </div>
-  )
-
-  // Body — two columns on xl+: left = pressing-attention sections (overdue,
-  // today, unread), right = full updates stream. Below xl falls back to
-  // single column with the right pane stacking under the left so the layout
-  // still works on narrow viewports. Roy 2026-06-09: don't flip this — left
-  // = unread is the anchor; right = all updates is context.
-  const leftColumn =
+  // Body — single column of "what needs attention right now": overdue
+  // tasks, today's tasks, and the interleaved unread updates + unread
+  // chats feed. Roy 2026-06-09: read items are out of scope for Now —
+  // anything already-read isn't open and shouldn't compete for screen
+  // real estate here. The Updates tab is where you go to scan the
+  // history; Now is strictly the to-do queue.
+  const mainColumn =
     totalCount === 0 && loading ? (
       <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
     ) : totalCount === 0 ? (
@@ -3423,10 +3364,7 @@ function NowFeed({
   return (
     <div className="space-y-5 pb-12">
       {summaryCards}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="min-w-0">{leftColumn}</div>
-        <div className="min-w-0 max-h-[calc(100vh-260px)]">{allUpdatesPane}</div>
-      </div>
+      <div className="min-w-0">{mainColumn}</div>
     </div>
   )
 }

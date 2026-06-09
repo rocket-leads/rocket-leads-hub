@@ -410,11 +410,6 @@ export const DICTIONARY = {
   "inbox.now.section.unread_inbox": { nl: "Nieuwe inbox", en: "Unread inbox" },
   "inbox.now.empty": { nl: "Alles bij. Geen urgente items op dit moment.", en: "All caught up. No urgent items right now." },
   "inbox.now.chat.open": { nl: "Open in Klanten Inbox", en: "Open in Client Inbox" },
-  // Right-column "Alle updates" feed on the Now tab — full update stream
-  // for context-scanning alongside the left column's pressing-attention
-  // sections.
-  "inbox.now.all_updates": { nl: "Alle updates", en: "All updates" },
-  "inbox.now.all_updates_empty": { nl: "Geen updates om te tonen.", en: "No updates to show." },
 
   // Task status filters
   "inbox.task.filter.open": { nl: "Open", en: "Open" },
