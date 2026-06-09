@@ -7,7 +7,7 @@ import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusPill } from "@/components/ui/status-pill"
-import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft, Megaphone } from "lucide-react"
+import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft, Megaphone } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
@@ -17,8 +17,10 @@ import { cn } from "@/lib/utils"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { WatchlistStateResponse } from "@/app/api/watchlist/state/route"
-import type { WatchlistNarrativeResponse, WatchlistInsight } from "@/app/api/watchlist/narrative/route"
-import type { WatchlistScoreHistoryResponse } from "@/app/api/watchlist/score-history/route"
+// Watchlist narrative + score-history queries were removed 2026-06-09 —
+// the Key Insights / Optimisation Proposals panels and the "vs 7d avg"
+// KPI card they fed are gone. The endpoints stay live for cron / admin
+// usage; this view just doesn't call them anymore.
 import { categorize as sharedCategorize, severityScore as sharedSeverityScore, type WatchCategory as SharedWatchCategory } from "@/lib/watchlist/categorize"
 import { buildSignature, suggestAiAdjustment } from "@/lib/watchlist/learning"
 import type { RecentOverridesResponse } from "@/app/api/watchlist/recent-overrides/route"
@@ -856,88 +858,6 @@ function WatchlistKpiSkeletons() {
   )
 }
 
-const INSIGHT_ICON: Record<"positive" | "warning" | "critical", { icon: typeof CheckCircle2; color: string }> = {
-  positive: { icon: CheckCircle2, color: "text-green-500" },
-  warning:  { icon: AlertCircle,  color: "text-yellow-500" },
-  critical: { icon: AlertOctagon, color: "text-red-500" },
-}
-
-function WatchlistInsightsAndProposals({
-  insights,
-  proposals,
-  isLoading,
-  locale,
-}: {
-  insights: WatchlistInsight[]
-  proposals: string[]
-  isLoading: boolean
-  locale: Locale
-}) {
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {Array.from({ length: 2 }).map((_, idx) => (
-          <div key={idx} className="bg-card rounded-lg p-5 border border-border/40">
-            <Skeleton className="h-4 w-32 mb-4" />
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-      {/* Key Insights */}
-      <div className="bg-card rounded-lg p-5 border border-border/40">
-        <div className="flex items-center gap-2 mb-4">
-          <Lightbulb className="h-3.5 w-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t("watchlist.insights.title", locale)}</h3>
-        </div>
-        <div className="space-y-3">
-          {insights.length === 0 ? (
-            <p className="text-sm text-muted-foreground leading-relaxed">{t("watchlist.insights.empty", locale)}</p>
-          ) : (
-            insights.map((insight, i) => {
-              const { icon: Icon, color } = INSIGHT_ICON[insight.type]
-              return (
-                <div key={i} className="flex items-start gap-2.5">
-                  <Icon className={cn("h-4 w-4 shrink-0 mt-px", color)} strokeWidth={2.25} />
-                  <p className="text-sm text-foreground leading-relaxed">{insight.text}</p>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Optimisation Proposal */}
-      <div className="bg-card rounded-lg p-5 border border-border/40">
-        <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t("watchlist.proposals.title", locale)}</h3>
-        </div>
-        <div className="space-y-3">
-          {proposals.length === 0 ? (
-            <p className="text-sm text-muted-foreground leading-relaxed">{t("watchlist.proposals.empty", locale)}</p>
-          ) : (
-            proposals.map((proposal, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <span className="text-xs font-mono font-medium text-muted-foreground/60 shrink-0 mt-[3px] tabular-nums w-5">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <p className="text-sm text-foreground leading-relaxed">{proposal}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // --- Watch Section ---
 
 function WatchSection({
@@ -1395,35 +1315,6 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     return totals
   }, [filteredClients, stateQuery.data, today])
 
-  // 7-day rolling history for the "vs 7d avg" KPI card. Cron writes one snapshot per
-  // day; here we read the trailing 14 to compute a 7d average score per filter scope.
-  const scoreHistoryQuery = useQuery<WatchlistScoreHistoryResponse>({
-    queryKey: ["watchlist-score-history"],
-    queryFn: () => fetch("/api/watchlist/score-history").then((r) => r.json()),
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  })
-
-  const healthScore7dAvg = useMemo(() => {
-    const history = scoreHistoryQuery.data?.history ?? {}
-    const scopeKey = cmFilter === "All" ? "_all" : cmFilter
-    const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-    const cutoffStr = sevenDaysAgo.toISOString().slice(0, 10)
-    const todayStr = today
-    const scores: number[] = []
-    for (const [date, snap] of Object.entries(history)) {
-      // Strict 7-day window: dates after cutoff and before today (exclusive of today
-      // so the comparison isn't "today vs 7-day avg-incl-today").
-      if (date <= cutoffStr || date >= todayStr) continue
-      const totals = snap[scopeKey]
-      if (!totals) continue
-      const t = totals.action + totals.watch + totals.good
-      if (t > 0) scores.push((totals.good / t) * 100)
-    }
-    if (scores.length === 0) return null
-    return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-  }, [scoreHistoryQuery.data, cmFilter, today])
-
   // Average CPL across all currently-live clients (action + watch + good). Computed as
   // SUM(spend) / SUM(leads) so the metric is weighted by spend — a single high-spend
   // client doesn't get drowned out by many low-spend clients with extreme CPLs.
@@ -1439,44 +1330,10 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     return totalLeads > 0 ? totalSpend / totalLeads : null
   }, [categorized])
 
-  // AI narrative — recomputes when the filter scope changes. Rate-limited via 1h cache key
-  // server-side so a CM scrolling through filters doesn't blow the LLM budget.
-  const narrativePayload = useMemo(() => {
-    const totals = {
-      action: categorized.action.length,
-      watch: categorized.watch.length,
-      good: categorized.good.length,
-      noData: categorized.noData.length,
-    }
-    const allBuckets = [...categorized.action, ...categorized.watch, ...categorized.good]
-    return {
-      scope: cmFilter,
-      totals,
-      totalsYesterday: yesterdayTotals,
-      clients: allBuckets.map((c) => ({
-        id: c.client.mondayItemId,
-        name: c.client.name,
-        category: c.category as "action" | "watch" | "good",
-        insight: c.insight,
-        daysInBucket: c.daysInBucket,
-        isNewToday: c.isNewToday,
-        prevCategory: c.prevCategory,
-      })),
-    }
-  }, [categorized, yesterdayTotals, cmFilter])
-
-  const narrativeQuery = useQuery<WatchlistNarrativeResponse>({
-    queryKey: ["watchlist-narrative", cmFilter, today, narrativePayload.totals.action, narrativePayload.totals.watch, narrativePayload.totals.good],
-    queryFn: () =>
-      fetch("/api/watchlist/narrative", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(narrativePayload),
-      }).then((r) => r.json()),
-    enabled: !kpiQuery.isLoading && !stateQuery.isLoading && narrativePayload.clients.length > 0,
-    staleTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  })
+  // AI narrative (Key Insights + Optimisation Proposals) was removed
+  // 2026-06-09 — Roy: nobody read it on the watchlist. The narrative
+  // endpoint stays so the cron + admin debug surfaces can still hit
+  // it; we just don't fetch it from this dashboard anymore.
 
   // AI Note column was removed per Roy's directive (Watch List home →
   // Watch List 2026-05-14). The /api/watchlist-summaries call and the
@@ -1583,22 +1440,12 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
                   ? "warn"
                   : "good"
 
-          // Card 2 — vs 7d avg. Cron-fed, so it stays "—" on the very first day after
-          // deploy and starts being meaningful from day 3 or 4 onwards. The hero value
-          // itself ("+19pp" / "-8pp") already conveys direction; no separate trend icon
-          // is rendered — the tone-coloured number is the visual signal.
-          const avg7d = healthScore7dAvg
-          const delta7d = avg7d != null ? healthScore - avg7d : null
-          const status7d: WatchlistKpiStatus =
-            delta7d == null ? "neutral" : delta7d > 1 ? "good" : delta7d < -1 ? "bad" : "neutral"
-          const value7d = delta7d == null
-            ? "—"
-            : delta7d === 0
-              ? "0pp"
-              : `${delta7d > 0 ? "+" : ""}${delta7d}pp`
-          const subtitle7d = avg7d == null
-            ? t("watchlist.kpi.vs_avg.building", locale)
-            : t("watchlist.kpi.vs_avg.subtitle", locale, { avg: avg7d })
+          // "vs 7d avg" KPI card removed 2026-06-09 — Roy: the
+          // delta-vs-rolling-average card wasn't being read. The
+          // headline Health card already conveys current state; a
+          // separate "vs 7d" delta added noise without driving
+          // decisions. The score-history endpoint stays live for
+          // crons / admin debug.
 
           // Card 3 — Healthy clients ratio. Always neutral status (it's a fact, not a verdict).
           const valueHealthy = total === 0 ? "—" : `${categorized.good.length}/${total}`
@@ -1620,18 +1467,12 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
               )
 
           return (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <KpiTile
                 label={t("watchlist.kpi.health.label", locale)}
                 value={total === 0 ? "—" : `${healthScore}%`}
                 valueTone={scoreStatus as KpiValueTone}
                 sub={total === 0 ? t("watchlist.kpi.health.no_scope", locale) : t("watchlist.kpi.health.target", locale)}
-              />
-              <KpiTile
-                label={t("watchlist.kpi.vs_avg.label", locale)}
-                value={value7d}
-                valueTone={status7d as KpiValueTone}
-                sub={subtitle7d}
               />
               <KpiTile
                 label={t("watchlist.kpi.healthy.label", locale)}
@@ -1648,14 +1489,9 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         })()
       )}
 
-      {/* Key Insights + Optimisation Proposal — same component contract as the Targets
-          page MarketingInsights so the visual rhythm is identical. */}
-      <WatchlistInsightsAndProposals
-        insights={narrativeQuery.data?.insights ?? []}
-        proposals={narrativeQuery.data?.proposals ?? []}
-        isLoading={narrativeQuery.isLoading || narrativeQuery.isFetching}
-        locale={locale}
-      />
+      {/* Key Insights + Optimisation Proposal panels removed 2026-06-09 —
+          per Roy nobody read them on the watchlist; the AI commentary
+          still surfaces inside the slide-over opened on row click. */}
 
       {/* Sections */}
       <div className="space-y-6">
