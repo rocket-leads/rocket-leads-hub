@@ -6,7 +6,14 @@ import { writeCache } from "@/lib/cache"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { startCronRun } from "@/lib/observability/cron-runs"
-import { isPrevPeriodReliable } from "@/app/api/kpi-summaries/route"
+import {
+  isPrevPeriodReliable,
+  aggregateBaseline,
+  getBaseline30dRange,
+  getBaseline90dRange,
+  BASELINE_30D_MIN_DAYS,
+  BASELINE_90D_MIN_DAYS,
+} from "@/app/api/kpi-summaries/route"
 import type { KpiSummary, KpiDailyCache, KpiDailyClientData, DailyRollup } from "@/app/api/kpi-summaries/route"
 
 /**
@@ -293,6 +300,24 @@ export async function GET(req: NextRequest) {
           ).length
           const prevPeriodReliable = isPrevPeriodReliable(prevStartDate, prevEndDate, prevDaysWithActivity, prevAdSpend)
 
+          // 30d + 90d structural baselines — drive Watch List categorize().
+          const baseline30dRange = getBaseline30dRange(startDate)
+          const baseline90dRange = getBaseline90dRange(startDate)
+          const b30 = aggregateBaseline(
+            days,
+            baseline30dRange.startDate,
+            baseline30dRange.endDate,
+            monday.ok,
+            BASELINE_30D_MIN_DAYS,
+          )
+          const b90 = aggregateBaseline(
+            days,
+            baseline90dRange.startDate,
+            baseline90dRange.endDate,
+            monday.ok,
+            BASELINE_90D_MIN_DAYS,
+          )
+
           const sparkSlice = days.slice(-SPARKLINE_DAYS)
           const dailyTrend = shouldFetchMeta
             ? sparkSlice.map((d) => ({
@@ -317,6 +342,14 @@ export async function GET(req: NextRequest) {
               cpl,
               prevCpl,
               prevPeriodReliable,
+              baselineCpl: b30.cpl,
+              baselineLeads: b30.leads,
+              baselineSpend: b30.spend,
+              baselineReliable: b30.reliable,
+              longBaselineCpl: b90.cpl,
+              longBaselineLeads: b90.leads,
+              longBaselineSpend: b90.spend,
+              longBaselineReliable: b90.reliable,
               ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
               ...(metaFallback ? { metaFallback: true } : {}),
               mondayCrmConnected: monday.ok,

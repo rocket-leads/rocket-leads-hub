@@ -555,6 +555,300 @@ describe("severityScore — live-but-dark floor", () => {
   })
 })
 
+// ─── 30d baseline + 90d drift (Roy 2026-06-09 ZoomX bug) ─────────────────
+
+import { isBaselineDrifted, resolveBaselineCpl } from "./categorize"
+
+describe("categorize — 30d baseline preferred over prev-7d", () => {
+  it("uses 30d baseline when present and reliable, ignores prev-7d", () => {
+    // 7d CPL is +50% vs prev-7d (would be Action) but only +5% vs 30d (Good).
+    // The 30d wins.
+    const result = categorize(
+      makeClient(),
+      makeKpi({
+        adSpend: 700,
+        leads: 20,
+        cpl: 35,
+        prevCpl: 23, // +52% would trigger Action under old logic
+        baselineCpl: 33.5, // +4.5% vs 30d → stable / good
+        baselineLeads: 100,
+        baselineSpend: 3350,
+        baselineReliable: true,
+      }),
+    )
+    expect(result.category).toBe("good")
+  })
+
+  it("falls back to prev-7d when 30d baseline is missing", () => {
+    const result = categorize(
+      makeClient(),
+      makeKpi({ adSpend: 700, leads: 14, cpl: 50, prevCpl: 30 }),
+    )
+    expect(result.category).toBe("action")
+  })
+
+  it("falls back to prev-7d when 30d baseline exists but is flagged unreliable", () => {
+    const result = categorize(
+      makeClient(),
+      makeKpi({
+        adSpend: 700,
+        leads: 14,
+        cpl: 50,
+        prevCpl: 30,
+        baselineCpl: 30,
+        baselineReliable: false, // freshly-launched, baseline too sparse
+      }),
+    )
+    expect(result.category).toBe("action")
+  })
+
+  it("labels insight with '30d baseline' when 30d is used", () => {
+    const result = categorize(
+      makeClient(),
+      makeKpi({
+        adSpend: 700,
+        leads: 14,
+        cpl: 50,
+        prevCpl: 30,
+        baselineCpl: 30,
+        baselineReliable: true,
+      }),
+    )
+    expect(result.insight).toMatch(/30d baseline/)
+  })
+})
+
+describe("isBaselineDrifted — 30d vs 90d cross-check", () => {
+  it("flags drifted when 30d is ≥25% above 90d", () => {
+    expect(
+      isBaselineDrifted({
+        adSpend: 700,
+        leads: 20,
+        cpl: 50,
+        prevCpl: 50,
+        baselineCpl: 50,
+        longBaselineCpl: 38, // 50/38 = 1.32 > 1.25 → drifted
+        longBaselineReliable: true,
+      } as KpiSummary),
+    ).toBe(true)
+  })
+
+  it("does NOT flag drifted when 30d is within 25% of 90d", () => {
+    expect(
+      isBaselineDrifted({
+        adSpend: 700,
+        leads: 20,
+        cpl: 50,
+        prevCpl: 50,
+        baselineCpl: 50,
+        longBaselineCpl: 45, // 50/45 = 1.11 < 1.25 → not drifted
+        longBaselineReliable: true,
+      } as KpiSummary),
+    ).toBe(false)
+  })
+
+  it("does NOT flag drifted when 90d data is missing or unreliable", () => {
+    expect(
+      isBaselineDrifted({
+        adSpend: 700,
+        leads: 20,
+        cpl: 50,
+        prevCpl: 50,
+        baselineCpl: 50,
+        // longBaselineCpl absent → no signal
+      } as KpiSummary),
+    ).toBe(false)
+    expect(
+      isBaselineDrifted({
+        adSpend: 700,
+        leads: 20,
+        cpl: 50,
+        prevCpl: 50,
+        baselineCpl: 50,
+        longBaselineCpl: 30,
+        longBaselineReliable: false,
+      } as KpiSummary),
+    ).toBe(false)
+  })
+})
+
+describe("categorize — drift blocks recovery-demote (ZoomX scenario)", () => {
+  // The exact case Roy reported: 7d €95, 30d baseline €50, 90d long-baseline
+  // €30. Recent 2d back at €50 (recovered to 30d). Under old logic this would
+  // have demoted to Watch. Under new logic the drifted 30d baseline blocks
+  // the demote — the client is structurally off-track, not just noisy.
+  it("stays Action when last-1-3d recovered to a drifted-high 30d baseline", () => {
+    const dailyTrend = [
+      ...constantTrend(11, 80, 1), // older days: bad CPL drove the 7d signal
+      ...constantTrend(3, 50, 1), // last 3 days: back at 30d baseline (€50)
+    ]
+    const kpi = makeKpi({
+      adSpend: 700,
+      leads: 7, // 7d CPL = 100, prev / baseline ignored vs new baselineCpl
+      cpl: 100,
+      prevCpl: 50, // not used when baselineCpl reliable
+      baselineCpl: 50, // 30d baseline
+      baselineLeads: 60,
+      baselineSpend: 3000,
+      baselineReliable: true,
+      longBaselineCpl: 30, // 90d long baseline — drift ratio 50/30 = 1.67
+      longBaselineLeads: 200,
+      longBaselineSpend: 6000,
+      longBaselineReliable: true,
+      dailyTrend,
+    })
+    const result = categorize(makeClient(), kpi)
+    expect(result.category).toBe("action")
+    expect(result.insight).toMatch(/structurally off-track/i)
+    expect(result.insight).toMatch(/30d/)
+    expect(result.insight).toMatch(/90d/)
+  })
+
+  it("DOES demote to Watch when 30d baseline is NOT drifted", () => {
+    // Same recovery pattern but the 30d baseline matches the 90d — no drift,
+    // recovery is genuine.
+    const dailyTrend = [
+      ...constantTrend(11, 80, 1),
+      ...constantTrend(3, 50, 1),
+    ]
+    const kpi = makeKpi({
+      adSpend: 700,
+      leads: 7,
+      cpl: 100,
+      prevCpl: 50,
+      baselineCpl: 50,
+      baselineLeads: 60,
+      baselineSpend: 3000,
+      baselineReliable: true,
+      longBaselineCpl: 48, // close to 30d — no drift
+      longBaselineLeads: 200,
+      longBaselineSpend: 9600,
+      longBaselineReliable: true,
+      dailyTrend,
+    })
+    const result = categorize(makeClient(), kpi)
+    expect(result.category).toBe("watch")
+    expect(result.insight).toMatch(/recovered/i)
+  })
+
+  it("Dutch insight when drift blocks the demote", () => {
+    const dailyTrend = [
+      ...constantTrend(11, 80, 1),
+      ...constantTrend(3, 50, 1),
+    ]
+    const kpi = makeKpi({
+      adSpend: 700,
+      leads: 7,
+      cpl: 100,
+      prevCpl: 50,
+      baselineCpl: 50,
+      baselineLeads: 60,
+      baselineSpend: 3000,
+      baselineReliable: true,
+      longBaselineCpl: 30,
+      longBaselineLeads: 200,
+      longBaselineSpend: 6000,
+      longBaselineReliable: true,
+      dailyTrend,
+    })
+    const result = categorize(makeClient(), kpi, "nl")
+    expect(result.category).toBe("action")
+    expect(result.insight).toMatch(/structureel off-track/i)
+  })
+})
+
+describe("severityScore — drift blocks recovery dampener", () => {
+  it("does NOT halve the score when 30d baseline is drifted high", () => {
+    // Without drift block this would halve the score (recovery dampener).
+    // With drift block, the full Action severity stays.
+    const dailyTrend = [
+      ...constantTrend(11, 80, 1),
+      ...constantTrend(3, 50, 1),
+    ]
+    const kpi = makeKpi({
+      adSpend: 1000,
+      leads: 10,
+      cpl: 100,
+      prevCpl: 50,
+      baselineCpl: 50,
+      baselineLeads: 60,
+      baselineSpend: 3000,
+      baselineReliable: true,
+      longBaselineCpl: 30,
+      longBaselineLeads: 200,
+      longBaselineSpend: 6000,
+      longBaselineReliable: true,
+      dailyTrend,
+    })
+    // CPL +100% vs baseline → max(100/30, 1) = 3.33×, 1000 × 3.33 = ~3333.
+    const score = severityScore(kpi)
+    expect(score).toBeGreaterThan(3000)
+  })
+
+  it("halves the score when recent recovered AND baseline isn't drifted", () => {
+    const dailyTrend = [
+      ...constantTrend(11, 80, 1),
+      ...constantTrend(3, 50, 1),
+    ]
+    const kpi = makeKpi({
+      adSpend: 1000,
+      leads: 10,
+      cpl: 100,
+      prevCpl: 50,
+      baselineCpl: 50,
+      baselineLeads: 60,
+      baselineSpend: 3000,
+      baselineReliable: true,
+      longBaselineCpl: 48, // not drifted
+      longBaselineLeads: 200,
+      longBaselineSpend: 9600,
+      longBaselineReliable: true,
+      dailyTrend,
+    })
+    const score = severityScore(kpi)
+    // Same base score (1000 × 3.33 = 3333) but halved due to recovery → ~1667.
+    expect(score).toBeLessThan(2000)
+    expect(score).toBeGreaterThan(1500)
+  })
+})
+
+describe("resolveBaselineCpl", () => {
+  it("prefers 30d baseline when present and reliable", () => {
+    const r = resolveBaselineCpl({
+      adSpend: 100,
+      leads: 5,
+      cpl: 20,
+      prevCpl: 25,
+      baselineCpl: 22,
+      baselineReliable: true,
+    } as KpiSummary)
+    expect(r?.cpl).toBe(22)
+    expect(r?.kind).toBe("long")
+  })
+
+  it("falls back to prev-7d when 30d baseline is missing", () => {
+    const r = resolveBaselineCpl({
+      adSpend: 100,
+      leads: 5,
+      cpl: 20,
+      prevCpl: 25,
+    } as KpiSummary)
+    expect(r?.cpl).toBe(25)
+    expect(r?.kind).toBe("short")
+  })
+
+  it("returns null when both baselines are unusable", () => {
+    expect(
+      resolveBaselineCpl({
+        adSpend: 100,
+        leads: 5,
+        cpl: 20,
+        prevCpl: 0,
+      } as KpiSummary),
+    ).toBeNull()
+  })
+})
+
 // ─── categorizeHealthVsBaseline (Home tab Health card) ─────────────────────
 
 import { categorizeHealthVsBaseline } from "./categorize"

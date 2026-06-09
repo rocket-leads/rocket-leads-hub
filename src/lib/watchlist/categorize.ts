@@ -8,6 +8,14 @@
 //   - good     : healthy — has leads, CPL stable or improving
 //   - no-data  : nothing actionable to compute (no spend & no leads, or no Meta account)
 //
+// Baseline: we compare current 7d against the structural 30d baseline (days 8-37 back).
+// Roy 2026-06-09: switched from prev-7d because chronic problems were invisible — a
+// client running at €50 CPL for a month had a prev-7d baseline of €50, so a week at
+// €95 looked like a spike that "recovered" the moment the last 2 days returned to €50.
+// The €50 baseline was itself the problem; the 30d window catches that, and the 90d
+// long baseline acts as a drift cross-check (if the 30d itself drifted high, the
+// recovery demote is blocked — the client is structurally off-track, not just noisy).
+//
 // CPA (cost per appointment) is intentionally excluded from this signal path — Monday
 // appointment data is too sparse / inconsistent right now and was producing noisy flips.
 // CPA is still computed and stored on the KPI summary for future use; just not driving
@@ -22,6 +30,12 @@
 // two flips on top of the 7d verdict:
 //   - action + recovery   → watch  ("CPL spiked but recovered to baseline — monitor")
 //   - good   + fresh spike → watch  ("CPL spiking last 1-3d while 7d still calm")
+// The recovery demote is BLOCKED when the 30d baseline is itself drifted high vs 90d
+// — recovery to a structurally-bad baseline isn't recovery, it's "back to still bad."
+//
+// Fallback: when baselineCpl is missing (older cached entries, or live-fetch path that
+// didn't compute baselines) we fall back to prevCpl. Categorize() never crashes; worst
+// case is a single cron tick of pre-baseline behaviour until the cache rewrites.
 
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
@@ -154,16 +168,20 @@ const INSIGHT_STRINGS = {
     nl: (spend: string) => `€${spend} uitgegeven, 0 leads (7d)`,
   },
   cpl_up: {
-    en: (pct: string, cpl: string, prev: string) =>
-      `CPL up ${pct}% — €${cpl} (7d) vs €${prev} (prev 7d)`,
-    nl: (pct: string, cpl: string, prev: string) =>
-      `CPL omhoog ${pct}% — €${cpl} (7d) vs €${prev} (vorige 7d)`,
+    en: (pct: string, cpl: string, prev: string, baseLabel: string) =>
+      `CPL up ${pct}% — €${cpl} (7d) vs €${prev} (${baseLabel} baseline)`,
+    nl: (pct: string, cpl: string, prev: string, baseLabel: string) =>
+      `CPL omhoog ${pct}% — €${cpl} (7d) vs €${prev} (${baseLabel} baseline)`,
   },
   cpl_rising: {
-    en: (pct: string, cpl: string, prev: string) =>
-      `CPL rising ${pct}% — €${cpl} (7d) from €${prev} (prev 7d)`,
-    nl: (pct: string, cpl: string, prev: string) =>
-      `CPL stijgt ${pct}% — €${cpl} (7d) van €${prev} (vorige 7d)`,
+    en: (pct: string, cpl: string, prev: string, baseLabel: string) =>
+      `CPL rising ${pct}% — €${cpl} (7d) from €${prev} (${baseLabel} baseline)`,
+    nl: (pct: string, cpl: string, prev: string, baseLabel: string) =>
+      `CPL stijgt ${pct}% — €${cpl} (7d) van €${prev} (${baseLabel} baseline)`,
+  },
+  baseline_label: {
+    en: (kind: "long" | "short") => (kind === "long" ? "30d" : "prev 7d"),
+    nl: (kind: "long" | "short") => (kind === "long" ? "30d" : "vorige 7d"),
   },
   cpl_dropped: {
     en: (pct: string, cpl: string) => `CPL dropped ${pct}% to €${cpl} (7d)`,
@@ -186,16 +204,25 @@ const INSIGHT_STRINGS = {
     nl: "Loopt — nog geen leads (7d)",
   },
   cpl_recovered: {
-    en: (cpl7d: string, recent: string, win: string, baseline: string) =>
-      `CPL recovered — €${cpl7d} (7d) but €${recent} (${win}) ≈ €${baseline} (prev 7d) baseline. Monitor.`,
-    nl: (cpl7d: string, recent: string, win: string, baseline: string) =>
-      `CPL hersteld — €${cpl7d} (7d) maar €${recent} (${win}) ≈ €${baseline} (vorige 7d) baseline. Monitoren.`,
+    en: (cpl7d: string, recent: string, win: string, baseline: string, baseLabel: string) =>
+      `CPL recovered — €${cpl7d} (7d) but €${recent} (${win}) ≈ €${baseline} (${baseLabel} baseline). Monitor.`,
+    nl: (cpl7d: string, recent: string, win: string, baseline: string, baseLabel: string) =>
+      `CPL hersteld — €${cpl7d} (7d) maar €${recent} (${win}) ≈ €${baseline} (${baseLabel} baseline). Monitoren.`,
+  },
+  /** Fired when last-1-3d returned to the 30d baseline BUT the 30d itself is
+   *  drifted high vs 90d — the "recovery" isn't real, the client is
+   *  structurally off-track. Stays Action instead of demoting to Watch. */
+  cpl_recovered_but_drifted: {
+    en: (cpl7d: string, recent: string, win: string, baseline: string, longBaseline: string, driftPct: string) =>
+      `CPL recovered to drifted baseline — €${cpl7d} (7d), €${recent} (${win}) ≈ €${baseline} (30d) but 30d is ${driftPct}% above €${longBaseline} (90d). Structurally off-track.`,
+    nl: (cpl7d: string, recent: string, win: string, baseline: string, longBaseline: string, driftPct: string) =>
+      `CPL terug op gedrifte baseline — €${cpl7d} (7d), €${recent} (${win}) ≈ €${baseline} (30d) maar 30d ligt ${driftPct}% boven €${longBaseline} (90d). Structureel off-track.`,
   },
   fresh_spike: {
-    en: (recent: string, win: string, baseline: string, cpl7d: string) =>
-      `Fresh CPL spike — €${recent} (${win}) vs €${baseline} (prev 7d). 7d avg still €${cpl7d}.`,
-    nl: (recent: string, win: string, baseline: string, cpl7d: string) =>
-      `Verse CPL spike — €${recent} (${win}) vs €${baseline} (vorige 7d). 7d gemiddelde nog €${cpl7d}.`,
+    en: (recent: string, win: string, baseline: string, cpl7d: string, baseLabel: string) =>
+      `Fresh CPL spike — €${recent} (${win}) vs €${baseline} (${baseLabel} baseline). 7d avg still €${cpl7d}.`,
+    nl: (recent: string, win: string, baseline: string, cpl7d: string, baseLabel: string) =>
+      `Verse CPL spike — €${recent} (${win}) vs €${baseline} (${baseLabel} baseline). 7d gemiddelde nog €${cpl7d}.`,
   },
   cpl_recovering: {
     en: (cpl7d: string, recent: string, win: string) =>
@@ -349,12 +376,51 @@ export function getRecentSignal(kpi: KpiSummary): RecentSignal | null {
   return null
 }
 
-/** Recent CPL within 25% of the prev-7d baseline = recovered. */
+/** Recent CPL within 25% of the baseline = recovered. */
 const RECOVERY_RATIO = 1.25
-/** Recent CPL ≥1.5× prev-7d baseline while 7d hasn't tripped Watch yet = fresh spike. */
+/** Recent CPL ≥1.5× baseline while 7d hasn't tripped Watch yet = fresh spike. */
 const FRESH_SPIKE_RATIO = 1.5
 /** Min spend in the recent window before we'll promote good → watch on a fresh spike. */
 const FRESH_SPIKE_MIN_SPEND = 30
+
+/** 30d baseline ≥1.25× 90d long-baseline ⇒ structurally drifted high — the
+ *  client has been off-track for weeks, not just last week. Mirrors the 25%
+ *  noise threshold used everywhere else. */
+const BASELINE_DRIFT_RATIO = 1.25
+
+/**
+ * Resolve which baseline CPL to compare against. Prefers the 30d structural
+ * baseline (added 2026-06-09) when present + reliable; falls back to prev-7d
+ * for back-compat with older cached entries and the live-fetch path that
+ * doesn't compute long baselines.
+ *
+ * Returns null when neither is usable — caller treats that as "no trend
+ * available, default to good if there are leads."
+ */
+export function resolveBaselineCpl(
+  kpi: KpiSummary,
+): { cpl: number; kind: "long" | "short" } | null {
+  if (kpi.baselineCpl && kpi.baselineCpl > 0 && kpi.baselineReliable !== false) {
+    return { cpl: kpi.baselineCpl, kind: "long" }
+  }
+  if (kpi.prevCpl > 0) {
+    return { cpl: kpi.prevCpl, kind: "short" }
+  }
+  return null
+}
+
+/**
+ * True when the 30d baseline is itself materially worse than the 90d long
+ * baseline — a "recovery to 30d" verdict shouldn't release the action flag
+ * because the 30d is degraded. Returns false when long-baseline data is
+ * missing or unreliable (no signal, no blocker).
+ */
+export function isBaselineDrifted(kpi: KpiSummary): boolean {
+  if (!kpi.baselineCpl || kpi.baselineCpl <= 0) return false
+  if (!kpi.longBaselineCpl || kpi.longBaselineCpl <= 0) return false
+  if (kpi.longBaselineReliable === false) return false
+  return kpi.baselineCpl >= kpi.longBaselineCpl * BASELINE_DRIFT_RATIO
+}
 
 /**
  * Tiered Watch/Action thresholds based on actual 7d ad spend. Smaller accounts have
@@ -401,12 +467,16 @@ export function severityScore(kpi: KpiSummary, extras?: CategorizeExtras): numbe
   const spend = kpi.adSpend
   if (spend > 50 && kpi.leads === 0) return spend * 3
 
-  const cplPct = kpi.prevCpl > 0 ? Math.abs((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
+  const baseline = resolveBaselineCpl(kpi)
+  const cplPct = baseline ? Math.abs((kpi.cpl - baseline.cpl) / baseline.cpl) * 100 : 0
   let score = spend * Math.max(cplPct / 30, 1)
 
-  if (kpi.prevCpl > 0) {
+  // Recovery dampener only fires when the baseline isn't itself drifted high
+  // — a drifted-baseline "recovery" is recovery-to-still-bad, not real
+  // recovery, so don't sink severity in that case.
+  if (baseline && !isBaselineDrifted(kpi)) {
     const recent = getRecentSignal(kpi)
-    if (recent && recent.recentCpl <= kpi.prevCpl * RECOVERY_RATIO) {
+    if (recent && recent.recentCpl <= baseline.cpl * RECOVERY_RATIO) {
       score *= 0.5
     }
   }
@@ -513,25 +583,30 @@ export function categorize(
 
   // CPL is the only trend driving categorization for now. CPA branches were removed
   // because appointment data is too sparse to be a reliable signal — see file header.
-  const hasCplTrend = kpi.cpl > 0 && kpi.prevCpl > 0
-  const cplPct = hasCplTrend ? ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : 0
+  // Baseline = 30d structural (preferred) with prev-7d fallback for back-compat.
+  const baseline = resolveBaselineCpl(kpi)
+  const hasCplTrend = kpi.cpl > 0 && baseline != null
+  const baselineCplValue = baseline?.cpl ?? 0
+  const baselineLabel = INSIGHT_STRINGS.baseline_label[locale](baseline?.kind ?? "long")
+  const cplPct = hasCplTrend ? ((kpi.cpl - baselineCplValue) / baselineCplValue) * 100 : 0
   const { watchPct, actionPct } = getThresholds(kpi.adSpend)
 
   const cpl2 = kpi.cpl.toFixed(2)
-  const prevCpl2 = kpi.prevCpl.toFixed(2)
+  const baselineCpl2 = baselineCplValue.toFixed(2)
   const cplPctAbs = Math.abs(cplPct).toFixed(0)
   const cplPctSigned = cplPct.toFixed(0)
 
-  // Compute the 7d-only verdict first; the recent-window override flips it afterwards.
+  // Compute the 7d-vs-baseline verdict first; the recent-window override flips it
+  // afterwards.
   let category: WatchCategory
   let insight: string
 
   if (hasCplTrend && cplPct >= actionPct) {
     category = "action"
-    insight = INSIGHT_STRINGS.cpl_up[locale](cplPctSigned, cpl2, prevCpl2)
+    insight = INSIGHT_STRINGS.cpl_up[locale](cplPctSigned, cpl2, baselineCpl2, baselineLabel)
   } else if (hasCplTrend && cplPct >= watchPct) {
     category = "watch"
-    insight = INSIGHT_STRINGS.cpl_rising[locale](cplPctSigned, cpl2, prevCpl2)
+    insight = INSIGHT_STRINGS.cpl_rising[locale](cplPctSigned, cpl2, baselineCpl2, baselineLabel)
   } else if (kpi.leads > 0) {
     category = "good"
     const parts: string[] = []
@@ -552,31 +627,55 @@ export function categorize(
   // Recent-window override — the shortest trustworthy window beats the 7d verdict.
   // We only flip on a recovery (action → watch) or a fresh spike (good → watch);
   // watch stays watch in both directions because it's already the "monitor" bucket.
+  //
+  // BUT: when the 30d baseline is itself drifted high vs the 90d long baseline,
+  // a "recovery to baseline" is recovery-to-still-bad, not real recovery — we
+  // block the action→watch demote and replace the insight with the drift call-out.
+  // Roy 2026-06-09 case: ZoomX at €50 CPL for a month, spike to €95 last 7d,
+  // last 2d back to €50. Old logic: demote to Watch. New logic: stays Action
+  // because €50 baseline is structurally elevated vs the longer-term norm.
   const recent = getRecentSignal(kpi)
-  if (recent && kpi.prevCpl > 0) {
-    const recentVsPrev = recent.recentCpl / kpi.prevCpl
+  if (recent && baseline) {
+    const recentVsBaseline = recent.recentCpl / baseline.cpl
     const win = INSIGHT_STRINGS.recent_window_label[locale](recent.windowDays)
     const recentCpl2 = recent.recentCpl.toFixed(2)
+    const drifted = isBaselineDrifted(kpi)
 
-    if (category === "action" && recentVsPrev <= RECOVERY_RATIO) {
+    if (category === "action" && recentVsBaseline <= RECOVERY_RATIO) {
+      if (drifted && kpi.longBaselineCpl && kpi.baselineCpl) {
+        // Recovery to a drifted baseline isn't recovery — stays Action with a
+        // drift-aware insight so the CM sees why the demote was suppressed.
+        const driftPct = (((kpi.baselineCpl - kpi.longBaselineCpl) / kpi.longBaselineCpl) * 100).toFixed(0)
+        return {
+          category: "action",
+          insight: INSIGHT_STRINGS.cpl_recovered_but_drifted[locale](
+            cpl2,
+            recentCpl2,
+            win,
+            baselineCpl2,
+            kpi.longBaselineCpl.toFixed(2),
+            driftPct,
+          ),
+        }
+      }
       return {
         category: "watch",
-        insight: INSIGHT_STRINGS.cpl_recovered[locale](cpl2, recentCpl2, win, prevCpl2),
+        insight: INSIGHT_STRINGS.cpl_recovered[locale](cpl2, recentCpl2, win, baselineCpl2, baselineLabel),
       }
     }
 
     if (
       category === "good" &&
-      recentVsPrev >= FRESH_SPIKE_RATIO &&
+      recentVsBaseline >= FRESH_SPIKE_RATIO &&
       recent.recentSpend >= FRESH_SPIKE_MIN_SPEND
     ) {
       return {
         category: "watch",
-        insight: INSIGHT_STRINGS.fresh_spike[locale](recentCpl2, win, prevCpl2, cpl2),
+        insight: INSIGHT_STRINGS.fresh_spike[locale](recentCpl2, win, baselineCpl2, cpl2, baselineLabel),
       }
     }
 
-    if (category === "watch" && recentVsPrev <= RECOVERY_RATIO) {
+    if (category === "watch" && recentVsBaseline <= RECOVERY_RATIO) {
       return {
         category: "watch",
         insight: INSIGHT_STRINGS.cpl_recovering[locale](cpl2, recentCpl2, win),

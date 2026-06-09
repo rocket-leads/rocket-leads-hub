@@ -5,7 +5,14 @@ import { fetchMetaInsightsDaily, fetchAdAccountHealth } from "@/lib/integrations
 import { computeBillingHealth, type BillingHealthVerdict } from "@/lib/clients/billing-health"
 import { fetchClientBoardItems } from "@/lib/integrations/monday"
 import type { DailyRollup, KpiDailyCache, KpiDailyClientData } from "@/app/api/kpi-summaries/route"
-import { isPrevPeriodReliable } from "@/app/api/kpi-summaries/route"
+import {
+  isPrevPeriodReliable,
+  aggregateBaseline,
+  getBaseline30dRange,
+  getBaseline90dRange,
+  BASELINE_30D_MIN_DAYS,
+  BASELINE_90D_MIN_DAYS,
+} from "@/app/api/kpi-summaries/route"
 import { categorize, updateWatchlistClientState } from "@/lib/watchlist/categorize"
 import { mondayStatusToHub, type ClientStatus } from "@/lib/clients/status"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
@@ -294,6 +301,27 @@ export async function GET(req: NextRequest) {
           ).length
           const prevPeriodReliable = isPrevPeriodReliable(prevStartDate, prevEndDate, prevDaysWithActivity, prevAdSpend)
 
+          // 30d + 90d structural baselines — drive Watch List categorize().
+          // Both windows END the day before the current 7d starts so a fresh
+          // CPL spike doesn't pollute its own baseline (vs prev-7d which has
+          // the same property but is too short to detect chronic problems).
+          const baseline30dRange = getBaseline30dRange(startDate)
+          const baseline90dRange = getBaseline90dRange(startDate)
+          const b30 = aggregateBaseline(
+            days,
+            baseline30dRange.startDate,
+            baseline30dRange.endDate,
+            monday.ok,
+            BASELINE_30D_MIN_DAYS,
+          )
+          const b90 = aggregateBaseline(
+            days,
+            baseline90dRange.startDate,
+            baseline90dRange.endDate,
+            monday.ok,
+            BASELINE_90D_MIN_DAYS,
+          )
+
           // 14d sparkline = trailing 14 entries of the dense rollup. Per-day leads use
           // Monday count when CRM is connected and that day has any, else fall back to Meta.
           const sparkSlice = days.slice(-SPARKLINE_DAYS)
@@ -320,6 +348,14 @@ export async function GET(req: NextRequest) {
               cpl,
               prevCpl,
               prevPeriodReliable,
+              baselineCpl: b30.cpl,
+              baselineLeads: b30.leads,
+              baselineSpend: b30.spend,
+              baselineReliable: b30.reliable,
+              longBaselineCpl: b90.cpl,
+              longBaselineLeads: b90.leads,
+              longBaselineSpend: b90.spend,
+              longBaselineReliable: b90.reliable,
               ...(isRlNoCampaign ? { rlAccountNoCampaign: true } : {}),
               ...(metaFallback ? { metaFallback: true } : {}),
               ...(metaFetchFailed ? { metaFetchFailed: true } : {}),

@@ -23,6 +23,36 @@ export type KpiSummary = {
    * we don't regress until the cron rewrites the cache.
    */
   prevPeriodReliable?: boolean
+  /**
+   * 30d structural baseline — the 30 days immediately BEFORE the current 7d
+   * window (days 8-37 back from today). Drives Watch List bucketing instead
+   * of prev-7d because prev-7d is too short to detect chronic problems:
+   * a client running at €50 CPL for a month has a prev-7d baseline of €50,
+   * so a week at €50 looks "stable" against the bad baseline. The 30d window
+   * smooths weekly noise without losing the absolute quality signal.
+   *
+   * Optional for back-compat with older cached entries — categorize() falls
+   * back to prevCpl when missing.
+   */
+  baselineCpl?: number
+  baselineLeads?: number
+  baselineSpend?: number
+  /** True when the 30d baseline has ≥15 days of activity (spend or Monday
+   *  leads) — enough density to trust the average. Below that, fall back to
+   *  prevCpl. */
+  baselineReliable?: boolean
+  /**
+   * 90d long baseline — drift cross-check for the 30d baseline. When the
+   * 30d itself is materially above the 90d (structurally degraded for a
+   * month+), the Watch List blocks the action→watch recovery demote and
+   * flags "structurally off-track" in the insight. Without this, a chronic
+   * problem just hovers in Watch forever.
+   */
+  longBaselineCpl?: number
+  longBaselineLeads?: number
+  longBaselineSpend?: number
+  /** True when 90d baseline has ≥45 days of activity. */
+  longBaselineReliable?: boolean
   /** True when client uses RL ad account but has no campaigns selected — data should be ignored */
   rlAccountNoCampaign?: boolean
   /** True when leads come from Meta `actions` because Monday returned no usable data */
@@ -105,6 +135,41 @@ function getPrevious7DaysRange() {
 }
 
 /**
+ * 30d structural baseline — the 30 days IMMEDIATELY BEFORE the given current
+ * window's start date. Non-overlapping by design: a fresh CPL spike doesn't
+ * pollute its own baseline. Watch List categorize() reads this instead of
+ * prev-7d.
+ *
+ * `currentStartDate`: the first day of the current 7d window. Pass
+ * "2026-06-09" for a window of [2026-06-03, 2026-06-09] (today inclusive)
+ * and the baseline becomes [2026-05-04, 2026-06-02].
+ */
+export function getBaseline30dRange(currentStartDate?: string) {
+  const end = currentStartDate
+    ? new Date(currentStartDate + "T00:00:00Z")
+    : new Date()
+  end.setUTCDate(end.getUTCDate() - 1) // day before current window starts
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - 29) // 30 days total
+  return { startDate: fmtDate(start), endDate: fmtDate(end) }
+}
+
+/**
+ * 90d long baseline — drift cross-check for the 30d. Same end-anchor as the
+ * 30d (day before current start) so the long baseline excludes the current
+ * window too.
+ */
+export function getBaseline90dRange(currentStartDate?: string) {
+  const end = currentStartDate
+    ? new Date(currentStartDate + "T00:00:00Z")
+    : new Date()
+  end.setUTCDate(end.getUTCDate() - 1)
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - 89) // 90 days total
+  return { startDate: fmtDate(start), endDate: fmtDate(end) }
+}
+
+/**
  * For a given range, return the same-length range immediately before it.
  * Used to compute period-over-period CPL/CPA deltas for any date filter.
  */
@@ -123,6 +188,39 @@ function getPreviousRange(startDate: string, endDate: string): { startDate: stri
 // import paths (`@/app/api/kpi-summaries/route`) keep working.
 export { isPrevPeriodReliable, PREV_PERIOD_COVERAGE_THRESHOLD } from "@/lib/clients/kpi-window"
 import { isPrevPeriodReliable } from "@/lib/clients/kpi-window"
+
+/**
+ * Aggregate spend / leads / CPL for an arbitrary historical window from a
+ * dense per-day rollup. Used to compute 30d + 90d baselines without
+ * re-fetching Meta or Monday. metaFallback logic matches the existing window
+ * aggregation: when Monday reports 0 leads but Meta has them, treat Meta as
+ * the source of truth.
+ *
+ * `minDaysWithActivity` is the reliability threshold — when fewer than this
+ * many days in the window had spend or Monday leads, the baseline is too
+ * sparse to trust and callers fall back to the shorter-window comparison.
+ */
+export function aggregateBaseline(
+  days: DailyRollup[],
+  startDate: string,
+  endDate: string,
+  mondayCrmConnected: boolean,
+  minDaysWithActivity: number,
+): { spend: number; leads: number; cpl: number; reliable: boolean } {
+  const slice = days.filter((d) => d.date >= startDate && d.date <= endDate)
+  const spend = slice.reduce((s, d) => s + d.spend, 0)
+  const mondayLeadsTotal = mondayCrmConnected ? slice.reduce((s, d) => s + d.mondayLeads, 0) : 0
+  const metaLeadsTotal = slice.reduce((s, d) => s + d.metaLeads, 0)
+  const leads = mondayLeadsTotal === 0 && metaLeadsTotal > 0 ? metaLeadsTotal : mondayLeadsTotal
+  const cpl = leads > 0 ? spend / leads : 0
+  const daysWithActivity = slice.filter(
+    (d) => d.spend > 0 || (mondayCrmConnected && d.mondayLeads > 0),
+  ).length
+  return { spend, leads, cpl, reliable: daysWithActivity >= minDaysWithActivity && spend > 0 }
+}
+
+export const BASELINE_30D_MIN_DAYS = 15
+export const BASELINE_90D_MIN_DAYS = 45
 
 /**
  * Aggregate per-day rollups for one client into a KpiSummary for the given window.
@@ -162,12 +260,40 @@ function aggregateDailyToSummary(
   ).length
   const prevPeriodReliable = isPrevPeriodReliable(prevStartDate, prevEndDate, prevDaysWithActivity, prevAdSpend)
 
+  // 30d + 90d baselines for Watch List categorize(). Both end the day before
+  // the current 7d window starts (non-overlapping). Reliability gate keeps
+  // freshly-launched clients out of the baseline-driven verdict.
+  const baseline30dRange = getBaseline30dRange(startDate)
+  const baseline90dRange = getBaseline90dRange(startDate)
+  const b30 = aggregateBaseline(
+    daily.days,
+    baseline30dRange.startDate,
+    baseline30dRange.endDate,
+    daily.mondayCrmConnected,
+    BASELINE_30D_MIN_DAYS,
+  )
+  const b90 = aggregateBaseline(
+    daily.days,
+    baseline90dRange.startDate,
+    baseline90dRange.endDate,
+    daily.mondayCrmConnected,
+    BASELINE_90D_MIN_DAYS,
+  )
+
   return {
     adSpend,
     leads,
     cpl,
     prevCpl,
     prevPeriodReliable,
+    baselineCpl: b30.cpl,
+    baselineLeads: b30.leads,
+    baselineSpend: b30.spend,
+    baselineReliable: b30.reliable,
+    longBaselineCpl: b90.cpl,
+    longBaselineLeads: b90.leads,
+    longBaselineSpend: b90.spend,
+    longBaselineReliable: b90.reliable,
     ...(daily.rlAccountNoCampaign ? { rlAccountNoCampaign: true } : {}),
     ...(metaFallback ? { metaFallback: true } : {}),
     mondayCrmConnected: daily.mondayCrmConnected,
