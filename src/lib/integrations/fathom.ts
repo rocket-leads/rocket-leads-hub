@@ -33,8 +33,23 @@ async function fathomFetch<T>(path: string, retries = 3): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = await fetch(url, {
       headers: { "X-Api-Key": token, Accept: "application/json" },
-      next: { revalidate: 300 },
+      // No Next.js fetch cache: a stale 4xx parked in the Data Cache for
+      // 5 minutes (the old `next: { revalidate: 300 }` setting) made
+      // every Fathom call look like the token had expired even after
+      // the issue cleared. Auth-bearing API responses aren't worth ISR-
+      // caching anyway — Fathom data changes per call. Roy 2026-06-09.
+      cache: "no-store",
     })
+
+    // 401 / 403 → auth failed. Bust the in-memory token cache so the
+    // NEXT call re-reads from Supabase (covers the "Roy rotated the key
+    // in /settings but the module-level cachedToken still holds the
+    // old value for 5 more minutes" footgun).
+    if (res.status === 401 || res.status === 403) {
+      clearFathomTokenCache()
+      const text = await res.text().catch(() => "")
+      throw new Error(`Fathom API error ${res.status}: ${text.slice(0, 200) || res.statusText}`)
+    }
 
     if (res.status === 429 && attempt < retries) {
       const retryAfter = parseInt(res.headers.get("retry-after") ?? "", 10)

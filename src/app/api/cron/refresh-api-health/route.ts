@@ -78,18 +78,45 @@ async function checkTrengo(token: string): Promise<boolean> {
   return false
 }
 
-async function checkFathom(token: string): Promise<boolean> {
-  try {
-    const res = await fetch("https://api.fathom.ai/external/v1/team_members", {
-      headers: { "X-Api-Key": token, Accept: "application/json" },
-    })
-    return res.ok
-  } catch {
-    return false
+/**
+ * Roy 2026-06-09: the previous one-shot check was flagging the Fathom
+ * token as invalid whenever Fathom rate-limited (429) or hiccuped (5xx),
+ * which then surfaced in /settings as "Fathom token expired" until the
+ * next cron tick an hour later. Distinguish the failure modes:
+ *
+ *   - 401 / 403         → token is genuinely invalid. Flag it.
+ *   - 429 / 5xx / fetch → transient. Try up to two more times with
+ *                         backoff; if every attempt is transient,
+ *                         return `null` so the cron preserves the
+ *                         previous is_valid value (no false negative).
+ *   - 2xx               → ok.
+ */
+async function checkFathom(token: string): Promise<boolean | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt))
+    try {
+      const res = await fetch("https://api.fathom.ai/external/v1/team_members", {
+        headers: { "X-Api-Key": token, Accept: "application/json" },
+        cache: "no-store",
+      })
+      if (res.ok) return true
+      if (res.status === 401 || res.status === 403) return false
+      // 429 / 5xx / anything else → retry
+    } catch {
+      // network blip → retry
+    }
   }
+  return null
 }
 
-const checkers: Record<(typeof SERVICES)[number], (token: string) => Promise<boolean>> = {
+/** A checker returns boolean for a decisive verdict (token works or
+ *  doesn't), or `null` when the call hit a transient failure (429 /
+ *  5xx / network) and the cron should preserve the previous
+ *  is_valid value rather than write a false negative. Only Fathom
+ *  uses the `null` path today; the other services' checkers are
+ *  still single-try since Roy hasn't flagged false-positive trouble
+ *  on those. */
+const checkers: Record<(typeof SERVICES)[number], (token: string) => Promise<boolean | null>> = {
   monday: checkMonday,
   meta: checkMeta,
   stripe: checkStripe,
@@ -142,13 +169,27 @@ export async function GET(req: NextRequest) {
           return
         }
 
-        const ok = await checkers[service](token)
+        const result = await checkers[service](token)
         const previous = previousValidity.get(service)
-        summary[service] = { ok, flipped: previous !== undefined && previous !== ok }
+
+        // result === null → transient (Fathom 429/5xx/network blip).
+        // Preserve the previous is_valid so we don't flip the UI to
+        // "broken" on a temporary outage. Stamp last_verified so the
+        // "last checked" timestamp doesn't go stale.
+        if (result === null) {
+          summary[service] = { ok: previous ?? false, flipped: false }
+          await supabase
+            .from("api_tokens")
+            .update({ last_verified: checkedAt })
+            .eq("service", service)
+          return
+        }
+
+        summary[service] = { ok: result, flipped: previous !== undefined && previous !== result }
 
         await supabase
           .from("api_tokens")
-          .update({ is_valid: ok, last_verified: checkedAt })
+          .update({ is_valid: result, last_verified: checkedAt })
           .eq("service", service)
       }),
     )
