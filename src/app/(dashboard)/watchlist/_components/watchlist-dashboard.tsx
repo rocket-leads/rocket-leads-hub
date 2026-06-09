@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusPill } from "@/components/ui/status-pill"
@@ -77,24 +78,10 @@ function fmtCurrency(v: number): string {
  * slide-over doesn't open at the same time.
  */
 
-/** Meta brand mark — canonical infinity-glyph path from simple-icons,
- *  rendered with `currentColor` fill so the surrounding button can tone
- *  it via Tailwind text classes (muted by default, Meta-blue `#0866FF`
- *  on hover). Lucide doesn't ship a Meta icon, so the path lives here
- *  inline. Roy 2026-06-09. */
-function MetaLogo({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      className={className}
-      fill="currentColor"
-    >
-      <path d="M11.9974 0c2.1213 0 4.0413.6353 5.7596 1.906 1.7184 1.2707 2.9899 3.0042 3.815 5.2002.825 2.196 1.2378 4.6014 1.2378 7.2168 0 1.7184-.198 3.2697-.594 4.654-.396 1.3842-.972 2.4944-1.728 3.3303-.756.836-1.6815 1.2538-2.7762 1.2538-.8014 0-1.518-.187-2.1496-.5608-.6317-.3738-1.1956-.8851-1.6917-1.534-.4961-.6487-.9407-1.3854-1.334-2.21-.3933-.8244-.7448-1.6788-1.0545-2.5631-.3097-.8843-.5947-1.7472-.8552-2.5887-.2604-.8415-.503-1.5996-.7277-2.2746-.2247-.6749-.4488-1.2293-.6722-1.6632-.2233-.4339-.4615-.7546-.7146-.962-.253-.2076-.5435-.3113-.8712-.3113-.5258 0-.9785.226-1.358.678-.3796.452-.6705 1.0413-.8728 1.7678-.2024.7265-.3035 1.4995-.3035 2.319 0 1.0316.1518 1.8995.4554 2.6037.3036.7042.7237 1.2381 1.2605 1.6017.5367.3637 1.146.5455 1.8281.5455.6334 0 1.2103-.1396 1.7307-.4187.5204-.279.9979-.6655 1.4324-1.1594.4346-.494.835-1.0648 1.2013-1.7127.366-.6478.7039-1.3486 1.0136-2.1023.3098-.7537.5947-1.5372.855-2.3506.2602-.8132.5026-1.6126.7272-2.398.2247-.7855.4424-1.5298.6534-2.2329.211-.7031.4243-1.3296.6398-1.8794.2156-.5497.4429-.998.682-1.3447.2391-.3467.5024-.6063.79-.7789.2875-.1725.6097-.2588.9665-.2588.7128 0 1.3552.1939 1.927.5816.5719.3877 1.0626.917 1.4724 1.588.4097.671.7407 1.4466.993 2.327.2522.8804.4374 1.829.5556 2.846.1182 1.017.1774 2.06.1774 3.129 0 1.0735-.0628 2.1043-.1885 3.0923-.1256.9881-.3251 1.8762-.5983 2.6645-.2733.7882-.6266 1.4503-1.06 1.986-.4333.5357-.9532.9421-1.5596 1.219-.6063.277-1.319.4154-2.1379.4154-.9415 0-1.81-.1856-2.6055-.5567-.7955-.371-1.5043-.9201-2.1266-1.6474-.6223-.7272-1.1577-1.6294-1.6064-2.7068-.4486-1.0773-.799-2.336-1.0512-3.7762-.2522-1.4402-.3783-3.0792-.3783-4.917 0-1.4708.1187-2.8163.3561-4.0364.2374-1.2202.5887-2.273 1.0541-3.1583.4653-.8854 1.0388-1.6121 1.7205-2.1802C7.0244 1.3252 7.7913.8847 8.6552.5743 9.519.264 10.4738 0 11.9974 0z" />
-    </svg>
-  )
-}
+// Meta logo is loaded straight from /public/logos/brands/meta.svg via
+// <Image>, same asset client-header.tsx uses for its "Open Meta Ads
+// Manager" quick-link button. Single source of truth so any future logo
+// update only needs to touch /public/logos.
 
 function MoveButton({
   mondayItemId,
@@ -1040,26 +1027,37 @@ function WatchSection({
                       Roy 2026-06-09. */}
                   {client.metaAdAccountId ? (
                     <a
-                      href={`https://business.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId}`}
+                      href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId.replace("act_", "")}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
-                        // Block the row's onClick (slide-over) but DON'T
+                        // Stop the row's onClick (slide-over) but DON'T
                         // preventDefault — let the anchor navigate
-                        // natively. Browsers handle target=_blank
-                        // foreground/background based on user gesture
-                        // (Cmd-/Ctrl-/middle-click = background;
-                        // plain click = foreground). No JS shim works
-                        // around that reliably in modern Chrome.
+                        // natively. Foreground/background on
+                        // target="_blank" is a browser-level decision
+                        // tied to the user's gesture (plain click =
+                        // foreground; Cmd-/Ctrl-/middle-click =
+                        // background). Chrome 91+ blocks every JS
+                        // workaround we tried (synthetic modifier
+                        // dispatches, window.open + blur/focus shims)
+                        // for anti-malware reasons, so we land on
+                        // honest browser behaviour.
                         e.stopPropagation()
                         e.nativeEvent.stopImmediatePropagation?.()
                       }}
                       title={t("watchlist.row.open_ads_manager", locale)}
                       aria-label={t("watchlist.row.open_ads_manager", locale)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 text-muted-foreground/60 hover:border-[#0866FF]/40 hover:bg-[#0866FF]/10 hover:text-[#0866FF] transition-colors"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 hover:border-[#0866FF]/40 hover:bg-[#0866FF]/10 transition-colors"
                     >
-                      <MetaLogo className="h-3.5 w-3.5" />
+                      <Image
+                        src="/logos/brands/meta.svg"
+                        alt=""
+                        width={14}
+                        height={14}
+                        className="h-3.5 w-3.5 object-contain"
+                        unoptimized
+                      />
                     </a>
                   ) : (
                     <span aria-hidden />
