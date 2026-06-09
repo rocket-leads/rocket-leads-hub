@@ -195,7 +195,7 @@ export const DICTIONARY = {
 
   // Create-task quick action (replaces AI Note column on Watch List home)
   "watchlist.row.create_task": { nl: "Taak aanmaken", en: "Create task" },
-  "watchlist.row.open_ads_manager": { nl: "Open Meta Ads Manager in nieuw tabblad", en: "Open Meta Ads Manager in a new tab" },
+  "watchlist.row.open_ads_manager": { nl: "Open Meta Ads Manager (⌘/Ctrl-klik voor achtergrond-tab)", en: "Open Meta Ads Manager (⌘/Ctrl-click for background tab)" },
   "watchlist.row.create_task_tooltip": { nl: "Maak direct een taak aan voor {cm} (de campaign manager van deze klant)", en: "Create a task assigned to {cm} (this client's campaign manager) in one click" },
   "watchlist.row.create_task_no_cm_tooltip": { nl: "Geen campaign manager ingesteld voor deze klant", en: "No campaign manager set for this client" },
   "watchlist.row.create_task_title": { nl: "Watch List: {client} — actie nodig", en: "Watch List: {client} — action needed" },
@@ -397,9 +397,6 @@ export const DICTIONARY = {
   "inbox.tab.tasks": { nl: "Taken", en: "Tasks" },
   "inbox.tab.updates": { nl: "Updates", en: "Updates" },
   "inbox.tab.client_inbox": { nl: "Klanten Inbox", en: "Client Inbox" },
-  // Roy 2026-06-09: CMs see "Mentions" instead of Client Inbox — scoped
-  // to chats where they were explicitly @-mentioned or hand-routed.
-  "inbox.tab.mentions": { nl: "Mentions", en: "Mentions" },
   "inbox.tab.meetings": { nl: "Meetings", en: "Meetings" },
 
   // Now-feed section labels + empty state
