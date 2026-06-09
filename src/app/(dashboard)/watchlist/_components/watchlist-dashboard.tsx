@@ -7,7 +7,7 @@ import Link from "next/link"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusPill } from "@/components/ui/status-pill"
-import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft } from "lucide-react"
+import { RefreshCw, AlertCircle, AlertOctagon, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft, Megaphone } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
@@ -271,7 +271,11 @@ function MoveDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+      <DialogContent
+        className="sm:max-w-md"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
+      >
         <DialogHeader>
           <DialogTitle>{t("watchlist.move.dialog_title", locale)} — {clientName}</DialogTitle>
           <DialogDescription className="text-xs">
@@ -974,7 +978,7 @@ function WatchSection({
               Insight, Spend, Leads, CPL, and one Create-task quick action.
               AI Note / Appts / 14d CPL sparkline / Ask Pedro all removed
               (rolled into the slide-over which opens on row click). */}
-          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
+          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.client", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.insight", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.spend", locale)}</span>
@@ -982,6 +986,7 @@ function WatchSection({
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.cpl", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.create_task", locale)}</span>
             <span className="text-[13px] text-foreground/80 font-semibold sr-only">{t("watchlist.col.move", locale)}</span>
+            <span className="text-[13px] text-foreground/80 font-semibold sr-only">{t("watchlist.col.ads_manager", locale)}</span>
           </div>
 
           {/* Rows */}
@@ -995,12 +1000,28 @@ function WatchSection({
                   tabIndex={0}
                   onClick={() => onSelectClient(id)}
                   onKeyDown={(e) => {
+                    // Skip when the keypress comes from an input / textarea /
+                    // contenteditable. React synthetic events bubble through
+                    // portals, so a Space pressed inside a portal-mounted
+                    // dialog textarea (Move dialog, Create-task dialog) still
+                    // reaches this handler — and preventDefault would block
+                    // the literal space character from appearing in the
+                    // field. Roy 2026-06-09.
+                    const tag = (e.target as HTMLElement | null)?.tagName
+                    if (
+                      tag === "INPUT" ||
+                      tag === "TEXTAREA" ||
+                      tag === "SELECT" ||
+                      (e.target as HTMLElement | null)?.isContentEditable
+                    ) {
+                      return
+                    }
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault()
                       onSelectClient(id)
                     }
                   }}
-                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
+                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
                 >
                   {/* Client */}
                   <div className="min-w-0">
@@ -1057,6 +1078,27 @@ function WatchSection({
                     manualOverride={manualOverride}
                     locale={locale}
                   />
+
+                  {/* Open the Meta Ads Manager for this client in a NEW
+                      tab — leaves the watchlist intact so the CM can
+                      bounce between rows without losing scroll position
+                      or the open detail dialog. Hidden when the client
+                      has no Meta ad account configured. Roy 2026-06-09. */}
+                  {client.metaAdAccountId ? (
+                    <a
+                      href={`https://business.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      title={t("watchlist.row.open_ads_manager", locale)}
+                      aria-label={t("watchlist.row.open_ads_manager", locale)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 text-muted-foreground/60 hover:border-blue-500/40 hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                    >
+                      <Megaphone className="h-3.5 w-3.5" />
+                    </a>
+                  ) : (
+                    <span aria-hidden />
+                  )}
                 </div>
               </div>
             )

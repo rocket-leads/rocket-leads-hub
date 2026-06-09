@@ -165,6 +165,7 @@ export const DICTIONARY = {
   "watchlist.col.cpl_14d": { nl: "14d CPL", en: "14d CPL" },
   "watchlist.col.create_task": { nl: "Taak", en: "Task" },
   "watchlist.col.move": { nl: "Verplaats", en: "Move" },
+  "watchlist.col.ads_manager": { nl: "Ads Manager", en: "Ads Manager" },
 
   // Move (override) — manually moves a client between Action / Watch / Good
   "watchlist.move.tooltip": { nl: "Verplaats deze klant naar een andere bucket", en: "Move this client to a different bucket" },
@@ -194,6 +195,7 @@ export const DICTIONARY = {
 
   // Create-task quick action (replaces AI Note column on Watch List home)
   "watchlist.row.create_task": { nl: "Taak aanmaken", en: "Create task" },
+  "watchlist.row.open_ads_manager": { nl: "Open Meta Ads Manager in nieuw tabblad", en: "Open Meta Ads Manager in a new tab" },
   "watchlist.row.create_task_tooltip": { nl: "Maak direct een taak aan voor {cm} (de campaign manager van deze klant)", en: "Create a task assigned to {cm} (this client's campaign manager) in one click" },
   "watchlist.row.create_task_no_cm_tooltip": { nl: "Geen campaign manager ingesteld voor deze klant", en: "No campaign manager set for this client" },
   "watchlist.row.create_task_title": { nl: "Watch List: {client} — actie nodig", en: "Watch List: {client} — action needed" },
