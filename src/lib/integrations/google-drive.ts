@@ -18,13 +18,83 @@ async function getAuth() {
 
   const keyJson = JSON.parse(decrypt(data.token_encrypted))
 
+  // Scopes: `drive.readonly` for the existing knowledge-base ingest, plus
+  // `drive.file` so we can write Pedro refresh deliverables INTO folders
+  // the service account was already given Editor access to. `drive.file`
+  // is the narrower of the two write scopes — it only authorises files
+  // the service account itself creates, which is exactly what we want
+  // (no risk of clobbering an existing client file by accident).
+  //
+  // Folder share precondition: the client's Drive folder must be shared
+  // with the service account email as Editor for write to succeed.
+  // Without it, createMarkdownFile() returns a 403 which the calling
+  // endpoint surfaces to the AM ("Drive folder must be shared as Editor").
   const auth = new google.auth.GoogleAuth({
     credentials: keyJson,
-    scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+    scopes: [
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/drive.file",
+    ],
   })
 
   cachedAuth = { value: auth, expiresAt: Date.now() + 30 * 60 * 1000 }
   return auth
+}
+
+export type CreatedDriveFile = {
+  id: string
+  webViewLink: string
+  name: string
+}
+
+/**
+ * Create a plain Markdown file inside the given Drive folder.
+ *
+ * Roy 2026-06-09: Pedro refresh deliverables push here so the CM can find
+ * them in the client's existing Drive folder without manually exporting.
+ *
+ * Permission failures surface as a thrown error with a hint about the
+ * Editor share — the caller wraps this so the AM sees an actionable
+ * message instead of a stack trace.
+ */
+export async function createMarkdownFile(args: {
+  folderId: string
+  name: string
+  contentMarkdown: string
+}): Promise<CreatedDriveFile> {
+  const auth = await getAuth()
+  const drive = google.drive({ version: "v3", auth })
+
+  try {
+    const res = await drive.files.create({
+      requestBody: {
+        name: args.name.endsWith(".md") ? args.name : `${args.name}.md`,
+        parents: [args.folderId],
+        mimeType: "text/markdown",
+      },
+      media: {
+        mimeType: "text/markdown",
+        body: args.contentMarkdown,
+      },
+      fields: "id, name, webViewLink",
+      supportsAllDrives: true,
+    })
+    const data = res.data
+    if (!data.id) throw new Error("Drive create returned no file id")
+    return {
+      id: data.id,
+      name: data.name ?? args.name,
+      webViewLink: data.webViewLink ?? `https://drive.google.com/file/d/${data.id}/view`,
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (/permission|forbidden|insufficient|insufficientFilePermissions/i.test(msg)) {
+      throw new Error(
+        "Drive folder is niet als Editor gedeeld met het service-account. Open de folder, kies Share, en geef het service-account-emailadres Editor-rechten.",
+      )
+    }
+    throw e
+  }
 }
 
 export type DriveFile = {

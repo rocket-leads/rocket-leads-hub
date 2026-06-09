@@ -14,6 +14,14 @@ import {
 import { loadPedroSystemPrompt } from "@/lib/pedro/knowledge"
 import { pastContextForStage } from "@/lib/pedro/past-campaigns"
 import { crossClientExamplesBlock } from "@/lib/pedro/cross-client-examples"
+import {
+  assignAdNamesToVariants,
+  getMaxAdNumberByFormat,
+  type AdFormatHint,
+  type NamedProposal,
+} from "@/lib/pedro/refresh-naming"
+import { fanOutVariantsToTable } from "@/lib/pedro/variants"
+import { pastVariantsContextBlock } from "@/lib/pedro/past-variants-context"
 
 // Creative refresh: full knowledge base + per-ad performance render +
 // past-campaign context + 4000 output tokens. Routinely 40-90s on
@@ -38,24 +46,14 @@ export const maxDuration = 120
 
 const anthropic = new Anthropic()
 
-type Proposal = {
-  /** Which existing ad we're iterating on. */
-  basedOnAd: { adId: string; adName: string; cpl: number | null; verdict: string }
-  /** Same DNA as the winner — hook category, angle, format. */
-  preserve: { hook: string; angle: string; format: string }
-  /** What the new variant changes from the original. */
-  variants: Array<{
-    label: string
-    newHook: string
-    scriptOutline: string
-    primaryCopySnippet: string
-    why: string
-  }>
-}
+type Proposal = NamedProposal
 
 type RefreshResponse =
   | {
       mode: "iterate-winners"
+      /** Row id in pedro_refreshes — null when persistence failed; UI uses
+       *  this to power Save-to-Inbox / Save-to-Drive (no id = no save). */
+      refreshId: string | null
       clientId: string
       clientName: string
       window: { start: string; end: string; days: number }
@@ -195,12 +193,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
     .maybeSingle<{ brief: { sector?: string } | null }>()
   const currentSector = stateRow?.brief?.sector ?? ""
 
-  const [pastCreatives, pastBrief, crossClient] = await Promise.all([
+  const [pastCreatives, pastBrief, crossClient, pastVariants] = await Promise.all([
     pastContextForStage(clientId, "creatives", 2).catch(() => ""),
     pastContextForStage(clientId, "brief", 1).catch(() => ""),
     currentSector
       ? crossClientExamplesBlock(supabase, clientId, currentSector, 4).catch(() => "")
       : Promise.resolve(""),
+    pastVariantsContextBlock(supabase, clientId).catch(() => ""),
   ])
 
   // Compact the winners + a few losers (so Claude sees what NOT to copy).
@@ -239,6 +238,7 @@ ${allAdsBlock}
 ${pastCreatives}
 ${pastBrief}
 ${crossClient}
+${pastVariants}
 OPDRACHT:
 Voor ELKE winner uit de WINNERS lijst (max 3 winners om scope behapbaar te houden):
 - Identificeer de DNA: wat is de hook-stijl, de marketing angle, het format.
@@ -272,6 +272,8 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
       "variants": [
         {
           "label": "Variant A — korte beschrijvende naam",
+          "formatHint": "Photo" | "Video",
+          "topicLabel": "kort thema-label in NL, max 4 woorden, bv. 'Subsidie savings', 'Voor/na transformatie', 'Pijnpunt opener'. Geen jaartal, geen datum.",
           "newHook": "een nieuwe opener-zin in NL die in dezelfde DNA past",
           "scriptOutline": "3-5 bullet points van de script-flow (in NL)",
           "primaryCopySnippet": "primary text opener van max 60 woorden (in NL)",
@@ -281,6 +283,10 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
     }
   ]
 }
+
+NAMING — de CM moet de ad straks 1:1 in Meta zetten met onze conventie:
+- formatHint: erf van de winner. Was de winner een "Photo X | …" → variant is "Photo". Was het een "Video X | …" → variant is "Video". Geen mixing.
+- topicLabel: dit wordt het laatste deel van de ad-naam ("Photo 7 | <topicLabel>"). Houd 'm kort en herkenbaar — bij voorkeur de angle of het hook-thema. Geen klantnamen, geen datums. Pedro genereert ALLEEN het topic-deel; het systeem voegt het volgnummer toe.
 
 Genereer 1-3 proposals (1 per winner, max 3). Per proposal: 3 varianten. Alle tekst NL. Geen datums.`
 
@@ -312,68 +318,54 @@ Genereer 1-3 proposals (1 per winner, max 3). Per proposal: 3 varianten. Alle te
     )
   }
 
-  const responseProposals = Array.isArray(parsed.proposals) ? parsed.proposals : []
+  const rawProposals = Array.isArray(parsed.proposals) ? parsed.proposals : []
   const responseSummary = parsed.summary ?? ""
 
-  // ── 5. Save the refresh into the latest pedro_client_state row's
-  // creatives.refreshes[] array. Read-merge-write so we don't clobber the
-  // existing creatives blob (qty/formats/manusPrompt etc. from onboarding
-  // stage). Tolerant: any read/write failure is silently ignored — the
-  // proposals are still returned to the UI, just not persisted. ──
-  try {
-    const { data: existing } = await supabase
-      .from("pedro_client_state")
-      .select("campaign_number, creatives")
-      .eq("client_id", clientId)
-      .order("campaign_number", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    const campaignNumber = existing?.campaign_number ?? 1
-    const existingCreatives = (existing?.creatives ?? {}) as Record<string, unknown>
-    const existingRefreshes = Array.isArray(existingCreatives.refreshes)
-      ? (existingCreatives.refreshes as unknown[])
-      : []
-
-    const newRefresh = {
-      generatedAt: new Date().toISOString(),
-      window: { ...cur, days },
-      stats: {
-        totalSpend: stats.totalSpend,
-        totalLeads: stats.totalLeads,
-        avgCpl: stats.avgCpl,
-        avgCtr: stats.avgCtr,
-        winnerCount: winners.length,
-        loserCount: losers.length,
+  // ── 5. Assign canonical RL ad names to every variant. ──
+  // The CM copies these 1:1 into Meta so the UTM later ties incoming
+  // leads back to the exact Pedro-generated variant. Without this step
+  // there's no learning loop. Numbers start from max(existing)+1 per
+  // format and increment across all variants in this refresh so two
+  // Photo variants never collide.
+  //
+  // We derive the format pool from the FULL ad list (winners + losers
+  // + non-tested), not just winners — otherwise we could pick a number
+  // that's already used by a loser ad that's still in the account.
+  const allAdNames = adsRaw.map((a) => a.adName).filter((n): n is string => !!n)
+  const maxByFormat = getMaxAdNumberByFormat(allAdNames)
+  const nextByFormat: Record<AdFormatHint, number> = {
+    Photo: maxByFormat.Photo + 1,
+    Video: maxByFormat.Video + 1,
+  }
+  const responseProposals: Proposal[] = []
+  for (const rawProposal of rawProposals as Array<Partial<Proposal>>) {
+    const variantsIn = Array.isArray(rawProposal.variants) ? rawProposal.variants : []
+    const namedVariants = assignAdNamesToVariants(
+      variantsIn as Parameters<typeof assignAdNamesToVariants>[0],
+      nextByFormat,
+    )
+    responseProposals.push({
+      basedOnAd: {
+        adId: rawProposal.basedOnAd?.adId ?? "",
+        adName: rawProposal.basedOnAd?.adName ?? "",
+        cpl: rawProposal.basedOnAd?.cpl ?? null,
+        verdict: rawProposal.basedOnAd?.verdict ?? "winner",
       },
-      trend,
-      summary: responseSummary,
-      proposals: responseProposals,
-    }
-
-    // Cap at 20 historical refreshes so the jsonb doesn't grow unbounded.
-    const merged = [newRefresh, ...existingRefreshes].slice(0, 20)
-
-    await supabase
-      .from("pedro_client_state")
-      .upsert(
-        {
-          client_id: clientId,
-          campaign_number: campaignNumber,
-          creatives: { ...existingCreatives, refreshes: merged },
-        },
-        { onConflict: "client_id,campaign_number" },
-      )
-  } catch (e) {
-    // Persistence is best-effort; the user still gets the proposals.
-    console.error("Pedro creative-refresh persist error:", e)
+      preserve: {
+        hook: rawProposal.preserve?.hook ?? "",
+        angle: rawProposal.preserve?.angle ?? "",
+        format: rawProposal.preserve?.format ?? "",
+      },
+      variants: namedVariants,
+    })
   }
 
-  return NextResponse.json({
-    mode: "iterate-winners",
-    clientId,
-    clientName: client.name,
-    window: { ...cur, days },
+  // ── 6. Persist to pedro_refreshes. Replaces the old
+  // pedro_client_state.creatives.refreshes[] write — flat table makes
+  // history queries + inbox/Drive linking trivial. Failure is logged
+  // but doesn't block the response: the CM still gets proposals. ──
+  let refreshId: string | null = null
+  const envelope = {
     stats: {
       totalSpend: stats.totalSpend,
       totalLeads: stats.totalLeads,
@@ -382,6 +374,53 @@ Genereer 1-3 proposals (1 per winner, max 3). Per proposal: 3 varianten. Alle te
       winnerCount: winners.length,
       loserCount: losers.length,
     },
+    trend,
+    summary: responseSummary,
+    proposals: responseProposals,
+    warnings,
+  }
+  try {
+    const { data: insertRow, error } = await supabase
+      .from("pedro_refreshes")
+      .insert({
+        client_id: clientId,
+        stage: "creatives",
+        generated_by: session.user.id,
+        window_start: cur.start,
+        window_end: cur.end,
+        window_days: days,
+        envelope,
+      })
+      .select("id")
+      .single()
+    if (error) throw error
+    refreshId = insertRow?.id ?? null
+
+    // Fan-out variants into the flat `pedro_variants` table. Each row
+    // becomes a learning target: sync-pedro-variants cron will later
+    // match `ad_name` against live Meta ads and stamp an outcome
+    // (winner/loser/neutral). The next refresh prompt reads back from
+    // here as the LEARNING block, so Pedro can repeat what worked.
+    if (refreshId) {
+      await fanOutVariantsToTable({
+        supabase,
+        refreshId,
+        clientId,
+        stage: "creatives",
+        proposals: responseProposals,
+      })
+    }
+  } catch (e) {
+    console.error("[pedro/creative-refresh] persist error:", e instanceof Error ? e.message : e)
+  }
+
+  return NextResponse.json({
+    mode: "iterate-winners",
+    refreshId,
+    clientId,
+    clientName: client.name,
+    window: { ...cur, days },
+    stats: envelope.stats,
     trend,
     proposals: responseProposals,
     summary: responseSummary,

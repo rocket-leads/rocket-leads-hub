@@ -1,8 +1,27 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { Sparkles, RefreshCw, TrendingUp, TrendingDown, Minus, AlertTriangle, Copy, Check } from "lucide-react"
+import {
+  Sparkles,
+  RefreshCw,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  AlertTriangle,
+  Copy,
+  Check,
+  Inbox,
+  CloudUpload,
+  History,
+  ChevronDown,
+  Loader2,
+  ExternalLink,
+} from "lucide-react"
 import type { RefreshEnvelope } from "@/lib/pedro/refresh-shared"
+import { cn } from "@/lib/utils"
+import type { RefreshHistoryRow } from "@/app/api/pedro/refreshes/route"
+
+export type RefreshStage = "creatives" | "angles" | "script" | "ad_copy"
 
 /**
  * Shared UI shell for every per-stage Pedro refresh component
@@ -97,6 +116,10 @@ export function CopyButton({ text }: { text: string }) {
 
 type Props<TProposal> = {
   endpoint: string
+  /** Stage discriminator — drives the history panel + save endpoints.
+   *  Same enum as `pedro_refreshes.stage`. Default `creatives` for
+   *  backwards compatibility with components that haven't passed it yet. */
+  stage?: RefreshStage
   title: string
   description: string
   selectedClientId: string | null
@@ -108,6 +131,7 @@ type Props<TProposal> = {
 
 export function RefreshShell<TProposal>({
   endpoint,
+  stage = "creatives",
   title,
   description,
   selectedClientId,
@@ -159,8 +183,41 @@ export function RefreshShell<TProposal>({
     void generate()
   }, [autoStart, selectedClientId, generate])
 
+  // Load a historical refresh into the result view (no Anthropic call).
+  // Re-uses the same renderer pipeline; UI doesn't distinguish live vs
+  // historical past this point.
+  const loadHistorical = useCallback(async (refreshId: string) => {
+    setLoading(true)
+    setError(null)
+    setData(null)
+    try {
+      const res = await fetch(`/api/pedro/refreshes/${encodeURIComponent(refreshId)}`)
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setError(json.error || `HTTP ${res.status}`)
+      } else {
+        setData(json as RefreshEnvelope<TProposal>)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Onbekende fout")
+    }
+    setLoading(false)
+  }, [])
+
   return (
     <div className="max-w-[1060px] space-y-5">
+      {/* History panel — collapsed by default, expanding shows past
+          refresh runs for this client. Click on a row → loads that
+          refresh back into the result view (no Anthropic call). Roy
+          2026-06-09: zonder dit voelt elke refresh als wegwerp. */}
+      {selectedClientId && (
+        <RefreshHistoryPanel
+          clientId={selectedClientId}
+          stage={stage}
+          onPick={loadHistorical}
+        />
+      )}
+
       {/* Picker + window + generate */}
       <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04),0_1px_3px_-1px_rgb(0_0_0_/_0.04)] dark:shadow-[0_1px_2px_0_rgb(0_0_0_/_0.3)]">
         <div className="mb-4">
@@ -289,7 +346,7 @@ export function RefreshShell<TProposal>({
             </div>
           )}
 
-          <div>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={generate}
@@ -298,8 +355,269 @@ export function RefreshShell<TProposal>({
               <RefreshCw className="h-3.5 w-3.5" />
               Genereer opnieuw
             </button>
+            {/* Save actions — both endpoints are idempotent so re-clicking
+                returns the existing inbox/Drive reference without dupes. */}
+            {data.refreshId && (
+              <SaveActions
+                refreshId={data.refreshId}
+                clientName={data.clientName}
+              />
+            )}
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+// ─── Save actions (inbox + Drive) ───────────────────────────────────────
+
+function SaveActions({
+  refreshId,
+  clientName,
+}: {
+  refreshId: string
+  clientName: string
+}) {
+  type SaveState = "idle" | "saving" | "saved" | "error"
+  const [inboxState, setInboxState] = useState<SaveState>("idle")
+  const [inboxMsg, setInboxMsg] = useState<string | null>(null)
+  const [driveState, setDriveState] = useState<SaveState>("idle")
+  const [driveUrl, setDriveUrl] = useState<string | null>(null)
+  const [driveMsg, setDriveMsg] = useState<string | null>(null)
+
+  async function saveToInbox() {
+    setInboxState("saving")
+    setInboxMsg(null)
+    try {
+      const res = await fetch(
+        `/api/pedro/refreshes/${encodeURIComponent(refreshId)}/save-to-inbox`,
+        { method: "POST" },
+      )
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setInboxState("error")
+        setInboxMsg(json.error || `HTTP ${res.status}`)
+        return
+      }
+      setInboxState("saved")
+      setInboxMsg(json.alreadySaved ? "Al opgeslagen" : "Opgeslagen in je Updates inbox")
+    } catch (e) {
+      setInboxState("error")
+      setInboxMsg(e instanceof Error ? e.message : "Onbekende fout")
+    }
+  }
+
+  async function saveToDrive() {
+    setDriveState("saving")
+    setDriveMsg(null)
+    try {
+      const res = await fetch(
+        `/api/pedro/refreshes/${encodeURIComponent(refreshId)}/save-to-drive`,
+        { method: "POST" },
+      )
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setDriveState("error")
+        setDriveMsg(json.error || `HTTP ${res.status}`)
+        return
+      }
+      setDriveState("saved")
+      setDriveUrl(json.url ?? null)
+      setDriveMsg(json.alreadySaved ? "Al in Drive" : `Geplaatst in ${clientName} Drive folder`)
+    } catch (e) {
+      setDriveState("error")
+      setDriveMsg(e instanceof Error ? e.message : "Onbekende fout")
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={saveToInbox}
+        disabled={inboxState === "saving" || inboxState === "saved"}
+        className={cn(
+          "inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md transition-colors disabled:cursor-default",
+          inboxState === "saved"
+            ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+            : "border border-border bg-card text-foreground hover:bg-accent",
+        )}
+      >
+        {inboxState === "saving" ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : inboxState === "saved" ? (
+          <Check className="h-3.5 w-3.5" />
+        ) : (
+          <Inbox className="h-3.5 w-3.5" />
+        )}
+        {inboxState === "saved" ? "In je inbox" : "Bewaar in mijn inbox"}
+      </button>
+
+      {driveState === "saved" && driveUrl ? (
+        <a
+          href={driveUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/15 transition-colors"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Open in Drive
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={saveToDrive}
+          disabled={driveState === "saving"}
+          className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-border bg-card text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+        >
+          {driveState === "saving" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <CloudUpload className="h-3.5 w-3.5" />
+          )}
+          Bewaar in Drive
+        </button>
+      )}
+
+      {(inboxMsg || driveMsg) && (
+        <div className="w-full flex flex-col gap-1 mt-1">
+          {inboxMsg && (
+            <div
+              className={cn(
+                "text-xs",
+                inboxState === "error" ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
+              )}
+            >
+              {inboxMsg}
+            </div>
+          )}
+          {driveMsg && (
+            <div
+              className={cn(
+                "text-xs",
+                driveState === "error" ? "text-red-600 dark:text-red-400" : "text-muted-foreground",
+              )}
+            >
+              {driveMsg}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+// ─── History panel ──────────────────────────────────────────────────────
+
+/** Collapsible list of past refresh runs for this client + stage. Click
+ *  a row to load it back into the result view. Empty state stays
+ *  collapsed-but-visible so the AM sees the affordance exists. */
+function RefreshHistoryPanel({
+  clientId,
+  stage,
+  onPick,
+}: {
+  clientId: string
+  stage: RefreshStage
+  onPick: (refreshId: string) => void
+}) {
+  const [rows, setRows] = useState<RefreshHistoryRow[] | null>(null)
+  const [open, setOpen] = useState(false)
+  const [loadingList, setLoadingList] = useState(false)
+
+  // Refetch when the active client OR stage changes — history is
+  // scoped to both.
+  useEffect(() => {
+    let cancelled = false
+    setLoadingList(true)
+    setRows(null)
+    fetch(`/api/pedro/refreshes?clientId=${encodeURIComponent(clientId)}&stage=${stage}&limit=10`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return
+        setRows(Array.isArray(json.refreshes) ? json.refreshes : [])
+      })
+      .catch(() => {
+        if (!cancelled) setRows([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingList(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [clientId, stage])
+
+  const count = rows?.length ?? 0
+
+  // Auto-collapse when there's no history to show (don't waste a row).
+  if (rows !== null && count === 0 && !loadingList) {
+    return null
+  }
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-accent/50 transition-colors"
+      >
+        <div className="flex items-center gap-2 text-sm">
+          <History className="h-4 w-4 text-muted-foreground" />
+          <span className="font-medium">Eerdere refreshes</span>
+          <span className="text-xs text-muted-foreground">
+            {loadingList ? "laden…" : `(${count})`}
+          </span>
+        </div>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && rows && rows.length > 0 && (
+        <div className="border-t border-border/60 divide-y divide-border/40">
+          {rows.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => onPick(r.id)}
+              className="w-full text-left px-4 py-2.5 hover:bg-accent/40 transition-colors flex items-start gap-3"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{r.generatedAt.slice(0, 10)}</span>
+                  <span>·</span>
+                  <span>
+                    {r.windowDays}d ({r.windowStart} → {r.windowEnd})
+                  </span>
+                  <span>·</span>
+                  <span>{r.proposalCount} proposal{r.proposalCount === 1 ? "" : "s"}</span>
+                  {r.savedToInbox && (
+                    <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+                      <Inbox className="h-3 w-3" />
+                      inbox
+                    </span>
+                  )}
+                  {r.savedToDrive && (
+                    <span className="inline-flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+                      <CloudUpload className="h-3 w-3" />
+                      drive
+                    </span>
+                  )}
+                </div>
+                {r.summarySnippet && (
+                  <div className="text-sm text-foreground/80 truncate mt-0.5">
+                    {r.summarySnippet}
+                  </div>
+                )}
+              </div>
+              <span className="text-xs text-primary shrink-0 mt-0.5">Laad</span>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   )

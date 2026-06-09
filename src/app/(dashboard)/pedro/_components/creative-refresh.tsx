@@ -1,10 +1,18 @@
 "use client"
 
-import { ImageIcon } from "lucide-react"
+import { ImageIcon, Copy } from "lucide-react"
+import { useState } from "react"
 import { RefreshShell, CopyButton } from "./refresh-shell"
+import { cn } from "@/lib/utils"
 
 type CreativeVariant = {
   label: string
+  /** Canonical RL ad name — CM copies this 1:1 into Meta. The UTM later
+   *  ties incoming leads back to this exact variant so Pedro can learn
+   *  which generated creatives worked. Roy 2026-06-09. */
+  adName: string
+  formatHint: "Photo" | "Video"
+  topicLabel: string
   newHook: string
   scriptOutline: string
   primaryCopySnippet: string
@@ -15,6 +23,40 @@ type CreativeProposal = {
   basedOnAd: { adId: string; adName: string; cpl: number | null; verdict: string }
   preserve: { hook: string; angle: string; format: string }
   variants: CreativeVariant[]
+}
+
+/** Single-click copy of the canonical ad name — sits next to the variant
+ *  label so it's the first thing the CM sees. The whole point of this
+ *  feature: 1 click → paste into Meta → done. */
+function AdNameChip({ adName }: { adName: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard.writeText(adName)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+      title="Klik om te kopiëren naar je klembord"
+      className={cn(
+        "group inline-flex items-center gap-1.5 max-w-full",
+        "rounded-md border px-2 py-1 text-xs font-mono",
+        "transition-colors",
+        copied
+          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          : "border-border bg-muted/40 text-foreground hover:bg-muted",
+      )}
+    >
+      <Copy
+        className={cn(
+          "h-3 w-3 shrink-0",
+          copied ? "text-emerald-600" : "text-muted-foreground group-hover:text-foreground",
+        )}
+      />
+      <span className="truncate">{copied ? "Gekopieerd" : adName}</span>
+    </button>
+  )
 }
 
 type Props = {
@@ -62,9 +104,17 @@ export function CreativeRefresh({ selectedClientId, selectedClientName, autoStar
                     <div className="flex items-start justify-between gap-2">
                       <div className="font-heading font-semibold text-sm">{v.label}</div>
                       <CopyButton
-                        text={`Hook: ${v.newHook}\n\nScript outline:\n${v.scriptOutline}\n\nPrimary copy:\n${v.primaryCopySnippet}`}
+                        text={`Ad name: ${v.adName}\n\nHook: ${v.newHook}\n\nScript outline:\n${v.scriptOutline}\n\nPrimary copy:\n${v.primaryCopySnippet}`}
                       />
                     </div>
+                    {v.adName && (
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
+                          Ad name
+                        </div>
+                        <AdNameChip adName={v.adName} />
+                      </div>
+                    )}
                     <div>
                       <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
                         Hook

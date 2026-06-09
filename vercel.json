@@ -41,6 +41,10 @@
       "schedule": "0 4 * * *"
     },
     {
+      "path": "/api/cron/sync-pedro-variants",
+      "schedule": "0 8 * * *"
+    },
+    {
       "path": "/api/cron/pedro-knowledge-proposals",
       "schedule": "0 8 * * 1"
     },

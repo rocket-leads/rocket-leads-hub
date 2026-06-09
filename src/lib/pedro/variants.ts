@@ -1,0 +1,111 @@
+import type { createAdminClient } from "@/lib/supabase/server"
+import type { NamedProposal } from "./refresh-naming"
+
+/**
+ * Variant-outcome persistence + scoring for Pedro's learning loop.
+ *
+ * Two halves:
+ *   - `fanOutVariantsToTable` — runs when a refresh persists. Writes one
+ *     row per variant into `pedro_variants`, deduped on
+ *     (client_id, ad_name). This is what makes the sync cron able to
+ *     find the variant later.
+ *   - `scoreVariantOutcome` — pure function the cron calls when a Meta
+ *     match is found. Maps spend/leads/CPL to {winner|loser|neutral}.
+ *
+ * Roy 2026-06-09.
+ */
+
+type Supabase = Awaited<ReturnType<typeof createAdminClient>>
+
+/**
+ * Insert one `pedro_variants` row per variant in the proposals array.
+ * `ON CONFLICT (client_id, ad_name) DO NOTHING` — if the CM somehow
+ * gets two refreshes proposing the same ad_name (shouldn't happen
+ * because the assignAdNamesToVariants helper monotonically increments),
+ * the first writer wins. Errors are caught + logged because the
+ * refresh response should not fail when the learning-loop write fails.
+ */
+export async function fanOutVariantsToTable(args: {
+  supabase: Supabase
+  refreshId: string
+  clientId: string
+  stage: "creatives" | "angles" | "script" | "ad_copy"
+  proposals: NamedProposal[]
+}): Promise<{ inserted: number }> {
+  const rows: Array<Record<string, unknown>> = []
+  for (const [pi, p] of args.proposals.entries()) {
+    for (const [vi, v] of p.variants.entries()) {
+      if (!v.adName) continue
+      rows.push({
+        refresh_id: args.refreshId,
+        client_id: args.clientId,
+        stage: args.stage,
+        ad_name: v.adName,
+        format_hint: v.formatHint,
+        topic_label: v.topicLabel,
+        proposal_index: pi,
+        variant_index: vi,
+        hook: v.newHook || null,
+        script_outline: v.scriptOutline || null,
+        primary_copy_snippet: v.primaryCopySnippet || null,
+        outcome: "pending",
+      })
+    }
+  }
+  if (rows.length === 0) return { inserted: 0 }
+
+  try {
+    const { error } = await args.supabase
+      .from("pedro_variants")
+      .upsert(rows, { onConflict: "client_id,ad_name", ignoreDuplicates: true })
+    if (error) throw error
+    return { inserted: rows.length }
+  } catch (e) {
+    console.error(
+      "[pedro/variants] fan-out failed:",
+      e instanceof Error ? e.message : e,
+    )
+    return { inserted: 0 }
+  }
+}
+
+// ─── Outcome scoring (pure) ─────────────────────────────────────────────
+
+export type VariantOutcomeInput = {
+  /** Spend on the matched Meta ad in the lookback window. */
+  spend: number
+  /** Leads attributed to the ad. */
+  leads: number
+  /** Computed cost-per-lead (or null when leads=0). */
+  cpl: number | null
+  /** Account-wide avg CPL at sync time — gives the verdict context. */
+  accountAvgCpl: number | null
+}
+
+export type VariantOutcome = "winner" | "loser" | "neutral"
+
+/**
+ * Map a Meta-derived variant snapshot to a verdict. Same brackets as
+ * `watchlist/categorize` so the LEARNING block reads consistent with
+ * the Watch List the CM already trusts.
+ *
+ * Edge cases:
+ *  - leads = 0 AND spend > €50 → loser (burning money, no result)
+ *  - account_avg_cpl missing/zero → neutral (no anchor to compare against)
+ *  - leads < 3 → neutral (too noisy to call)
+ */
+export function scoreVariantOutcome(input: VariantOutcomeInput): VariantOutcome {
+  if (input.leads === 0 && input.spend > 50) return "loser"
+  if (input.accountAvgCpl == null || input.accountAvgCpl <= 0) return "neutral"
+  if (input.cpl == null) return "neutral"
+  if (input.leads < 3) return "neutral"
+  if (input.cpl <= 0.7 * input.accountAvgCpl) return "winner"
+  if (input.cpl >= 1.4 * input.accountAvgCpl) return "loser"
+  return "neutral"
+}
+
+/** Days since generation before we mark an unsync'd variant as
+ *  `not_shipped`. Two weeks is enough that "AM will get to it Monday"
+ *  blow-ups don't false-flag; longer than that means the CM either
+ *  forgot or chose not to ship. */
+export const NOT_SHIPPED_AFTER_DAYS = 14

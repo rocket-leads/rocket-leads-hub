@@ -7,6 +7,7 @@ import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { ClientPicker } from "./client-picker"
+import { OptimizeSuggestions } from "./optimize-suggestions"
 import { AnglesRefresh } from "./angles-refresh"
 import { ScriptRefresh } from "./script-refresh"
 import { CreativeRefresh } from "./creative-refresh"
@@ -116,6 +117,15 @@ export function PedroOptimizeApp({ clients }: Props) {
             {t("pedro.status.online", locale)}
           </span>
         }
+      />
+
+      {/* Action Needed strip — top of Optimize so the CM lands on
+          "deze klanten moeten nu". Clicking a chip drops the client into
+          the same selectedClientId state the picker uses, so the tabs
+          below immediately reload for that client. Roy 2026-06-09. */}
+      <OptimizeSuggestions
+        selectedClientId={selectedClientId}
+        onSelect={setSelectedClientId}
       />
 
       <div className="mb-5 rounded-2xl border border-border/60 bg-card p-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">

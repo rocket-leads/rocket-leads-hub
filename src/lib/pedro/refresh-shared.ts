@@ -59,6 +59,9 @@ export type RefreshWindow = { start: string; end: string; days: number }
 export type RefreshEnvelope<TProposal> =
   | {
       mode: "iterate-winners"
+      /** Row id in `pedro_refreshes` — null when persistence failed. UI
+       *  uses this to power the Save-to-Inbox / Save-to-Drive buttons. */
+      refreshId?: string | null
       clientId: string
       clientName: string
       window: RefreshWindow
