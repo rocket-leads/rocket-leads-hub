@@ -5,6 +5,7 @@ import { t } from "@/lib/i18n/t"
 import { BriefEnrichmentStep } from "./steps/brief-enrichment-step"
 import { KickoffLiveStep } from "./steps/kickoff-live-step"
 import { TranscriptLinkStep } from "./steps/transcript-link-step"
+import { WaitOnClientStep } from "./steps/wait-on-client-step"
 import { PlaceholderStep } from "./steps/placeholder-step"
 import type { SerializedStep, WizardClient } from "./wizard-shell"
 
@@ -83,6 +84,8 @@ export function StepRenderer({
           <TranscriptLinkStep {...stepProps} />
         ) : step.action === "brief_enrichment" ? (
           <BriefEnrichmentStep {...stepProps} />
+        ) : step.action === "wait_on_client" ? (
+          <WaitOnClientStep {...stepProps} />
         ) : (
           <PlaceholderStep {...stepProps} />
         )}

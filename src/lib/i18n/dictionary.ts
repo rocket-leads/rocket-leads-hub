@@ -724,6 +724,51 @@ export const DICTIONARY = {
   "onboarding.wizard.enrich.reject": { nl: "Reject", en: "Reject" },
   "onboarding.wizard.enrich.mode.add": { nl: "toevoeging", en: "addition" },
   "onboarding.wizard.enrich.mode.replace": { nl: "correctie", en: "correction" },
+
+  // Stap 4 — wait on client
+  "onboarding.wizard.wait.hint": {
+    nl: "Hub poll't elke minuut. Stap voltooit zichzelf wanneer alle 3 de signalen groen zijn.",
+    en: "Hub polls every minute. Step auto-completes when all 3 signals turn green.",
+  },
+  "onboarding.wizard.wait.refresh": { nl: "Ververs nu", en: "Refresh now" },
+  "onboarding.wizard.wait.loading": { nl: "Status ophalen…", en: "Checking status…" },
+  "onboarding.wizard.wait.all_green": {
+    nl: "Alle 3 signalen groen — stap is automatisch voltooid. Klant kan over naar de campagnemanager.",
+    en: "All 3 signals green — step auto-completed. Client ready for handoff to CM.",
+  },
+
+  "onboarding.wizard.wait.drive.label": { nl: "Content op Drive", en: "Content on Drive" },
+  "onboarding.wizard.wait.drive.files": { nl: "bestanden", en: "files" },
+  "onboarding.wizard.wait.drive.waiting": {
+    nl: "Wachten op upload door klant",
+    en: "Waiting for client upload",
+  },
+  "onboarding.wizard.wait.drive.no_folder": {
+    nl: "Auto-setup heeft de subfolder nog niet vastgelegd — wacht tot Stap 1 setup klaar is.",
+    en: "Auto-setup hasn't captured the subfolder yet — wait until Stap 1 setup completes.",
+  },
+
+  "onboarding.wizard.wait.meta.label": { nl: "Meta Business Manager", en: "Meta Business Manager" },
+  "onboarding.wizard.wait.meta.linked": { nl: "Verbonden", en: "Connected" },
+  "onboarding.wizard.wait.meta.waiting": {
+    nl: "Wachten op partner-acceptatie door klant",
+    en: "Waiting for client to accept partner request",
+  },
+
+  "onboarding.wizard.wait.payment.label": { nl: "Betaling", en: "Payment" },
+  "onboarding.wizard.wait.payment.paid": { nl: "Ontvangen", en: "Received" },
+  "onboarding.wizard.wait.payment.waiting": { nl: "Wachten op betaling", en: "Waiting on payment" },
+  "onboarding.wizard.wait.payment.no_customer": {
+    nl: "Geen Stripe customer gekoppeld",
+    en: "No Stripe customer linked",
+  },
+
+  "onboarding.wizard.wait.skip.hint": {
+    nl: "Klant deed iets buiten Hub om (offline betaald, content via WhatsApp gestuurd)? Skip handmatig.",
+    en: "Client did something out-of-band (paid offline, sent content via WhatsApp)? Skip manually.",
+  },
+  "onboarding.wizard.wait.skip.btn": { nl: "Skip stap", en: "Skip step" },
+
   "onboarding.wizard.kickoff.mark_done": { nl: "Stap voltooien", en: "Mark step done" },
   "onboarding.wizard.kickoff.save_and_continue": { nl: "Opslaan & verder", en: "Save & continue" },
 
