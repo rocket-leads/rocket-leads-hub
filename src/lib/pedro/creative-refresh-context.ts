@@ -2,6 +2,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import { createAdminClient } from "@/lib/supabase/server"
 import { collectClientAiContext, type ClientAiContext } from "./insights/context"
 import { listFolderFiles, getFileContent, type DriveFile } from "@/lib/integrations/google-drive"
+import { resolveVisualStylePolicy } from "./visual-style-policy"
 
 /**
  * Full creative-refresh context composer.
@@ -146,6 +147,59 @@ async function fetchBrief(
   }
 }
 
+/** Per-client brand identity (hex codes + font families) from the most
+ *  recent saved brand_style. Pedro references these by name in image
+ *  prompts so Gemini renders headlines/CTA in brand-consistent colors
+ *  and typefaces. Roy 2026-06-10. */
+async function fetchBrandStyle(
+  mondayItemId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const supabase = await createAdminClient()
+    const { data } = await supabase
+      .from("pedro_client_state")
+      .select("brand_style")
+      .eq("client_id", mondayItemId)
+      .order("campaign_number", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ brand_style: Record<string, unknown> | null }>()
+    return data?.brand_style ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Recent CM iterations on this client's creatives — explicit feedback,
+ *  prompt edits, manual uploads. Pulled into the prompt so Pedro learns
+ *  per-client preferences (logo size, headline format, photo style) and
+ *  needs fewer iterations to land the first-shot output. Roy 2026-06-10
+ *  per knowledge/campaigns.md §Image Creative Principles #5. */
+type FeedbackRow = {
+  feedback_type: "explicit" | "prompt_edit" | "regen" | "upload"
+  feedback_text: string
+  created_at: string
+}
+
+async function fetchCreativeFeedback(
+  mondayItemId: string,
+  limit = 12,
+): Promise<FeedbackRow[]> {
+  try {
+    const supabase = await createAdminClient()
+    const since = new Date(Date.now() - 90 * 86_400_000).toISOString()
+    const { data } = await supabase
+      .from("pedro_creative_feedback")
+      .select("feedback_type, feedback_text, created_at")
+      .eq("client_id", mondayItemId)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(limit)
+    return (data ?? []) as FeedbackRow[]
+  } catch {
+    return []
+  }
+}
+
 function fmtBriefBlock(brief: Record<string, unknown> | null): string {
   if (!brief) return ""
   const fields: Array<[string, string]> = []
@@ -220,6 +274,138 @@ function fmtInboxBlock(ctx: ClientAiContext): string {
   return `HUB INBOX (interne team-notes over deze klant):\n${lines.join("\n")}`
 }
 
+/** Pull the visual-style config out of a brief blob. Returns null when
+ *  the brief is empty or has no visual-style fields (pre-2026-06-10) —
+ *  policy resolver normalises null into defaults. */
+function readVisualStyleConfig(
+  brief: Record<string, unknown> | null,
+): import("./visual-style-policy").VisualStyleConfig | null {
+  if (!brief) return null
+  const out: import("./visual-style-policy").VisualStyleConfig = {}
+  if (
+    brief.visualStyleMode === "website" ||
+    brief.visualStyleMode === "drive_only" ||
+    brief.visualStyleMode === "winning_ad_only" ||
+    brief.visualStyleMode === "custom"
+  ) {
+    out.visualStyleMode = brief.visualStyleMode
+  }
+  if (typeof brief.customStylePrompt === "string") {
+    out.customStylePrompt = brief.customStylePrompt
+  }
+  if (
+    brief.fallbackFontHeading === "inter" ||
+    brief.fallbackFontHeading === "manrope" ||
+    brief.fallbackFontHeading === "plus_jakarta"
+  ) {
+    out.fallbackFontHeading = brief.fallbackFontHeading
+  }
+  const t = brief.websiteToggles as Record<string, unknown> | undefined | null
+  if (t && typeof t === "object") {
+    out.websiteToggles = {
+      useColors: t.useColors !== false,
+      useFonts: t.useFonts !== false,
+      useLookFeel: t.useLookFeel !== false,
+      useLogo: t.useLogo !== false,
+    }
+  }
+  return out
+}
+
+/** Coerce a raw JSONB brand_style blob into the BrandStyle shape. Used
+ *  here only to pass into the visual-style policy resolver — that helper
+ *  is strict about field shapes so we filter unknown values upfront. */
+function coerceBrandStyle(
+  raw: Record<string, unknown> | null,
+): import("./helpers").BrandStyle | null {
+  if (!raw) return null
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined)
+  const verdictRaw = raw.qualityVerdict as Record<string, unknown> | undefined
+  const verdict =
+    verdictRaw && typeof verdictRaw === "object"
+      ? {
+          score: typeof verdictRaw.score === "number" ? verdictRaw.score : 0,
+          axes: {
+            design_quality:
+              typeof (verdictRaw.axes as Record<string, unknown>)?.design_quality === "number"
+                ? ((verdictRaw.axes as Record<string, unknown>).design_quality as number)
+                : null,
+            photo_quality:
+              typeof (verdictRaw.axes as Record<string, unknown>)?.photo_quality === "number"
+                ? ((verdictRaw.axes as Record<string, unknown>).photo_quality as number)
+                : null,
+            brand_consistency:
+              typeof (verdictRaw.axes as Record<string, unknown>)?.brand_consistency === "number"
+                ? ((verdictRaw.axes as Record<string, unknown>).brand_consistency as number)
+                : null,
+            completeness:
+              typeof (verdictRaw.axes as Record<string, unknown>)?.completeness === "number"
+                ? ((verdictRaw.axes as Record<string, unknown>).completeness as number)
+                : null,
+          },
+          flags: Array.isArray(verdictRaw.flags)
+            ? (verdictRaw.flags as unknown[]).filter((f): f is string => typeof f === "string")
+            : [],
+          summary: typeof verdictRaw.summary === "string" ? verdictRaw.summary : "",
+          computedAt:
+            typeof verdictRaw.computedAt === "string" ? verdictRaw.computedAt : "",
+          model: typeof verdictRaw.model === "string" ? verdictRaw.model : "",
+        }
+      : undefined
+  return {
+    primaryColor: str(raw.primaryColor) ?? "",
+    secondaryColor: str(raw.secondaryColor) ?? "",
+    accentColor: str(raw.accentColor),
+    tone: str(raw.tone) ?? "",
+    industry: str(raw.industry) ?? "",
+    brandKeywords: str(raw.brandKeywords) ?? "",
+    visualStyle: str(raw.visualStyle) ?? "",
+    headingFont: str(raw.headingFont),
+    bodyFont: str(raw.bodyFont),
+    logoUrl: str(raw.logoUrl),
+    heroImageUrl: str(raw.heroImageUrl),
+    taglineHeadline: str(raw.taglineHeadline),
+    taglineSubline: str(raw.taglineSubline),
+    qualityVerdict: verdict,
+  }
+}
+
+function fmtBrandStyleBlock(
+  brand: Record<string, unknown> | null,
+  brief: Record<string, unknown> | null,
+): string {
+  // Pure resolver — no DB access, no side effects. Brief carries the CM
+  // controls (mode + toggles + custom prompt + fallback font); brand
+  // carries the scraped fingerprint + its quality verdict.
+  const config = readVisualStyleConfig(brief)
+  const brandStyle = coerceBrandStyle(brand)
+  const policy = resolveVisualStylePolicy(config, brandStyle)
+  if (policy.brandBlockLines.length === 0) return ""
+  return policy.brandBlockLines.join("\n")
+}
+
+function fmtFeedbackBlock(rows: FeedbackRow[]): string {
+  if (rows.length === 0) return ""
+  // Weight: explicit feedback weighs heaviest. Prompt edits are also
+  // strong (CM steered the model away from the default). Upload events
+  // tell Pedro that the AI was UNUSABLE for that variant. Regen is
+  // low-signal (we skip them in the prompt block).
+  const weighted = rows.filter((r) => r.feedback_type !== "regen")
+  if (weighted.length === 0) return ""
+  // Most-recent first, max 8 lines so we stay under ~600 chars.
+  const lines = weighted.slice(0, 8).map((r) => {
+    const date = r.created_at.slice(0, 10)
+    const tag = r.feedback_type === "explicit"
+      ? "CM"
+      : r.feedback_type === "prompt_edit"
+        ? "edit"
+        : "upload"
+    const body = r.feedback_text.replace(/\s+/g, " ").trim().slice(0, 240)
+    return `- [${date} · ${tag}] ${body}`
+  })
+  return `KLANT-FEEDBACK PATRONEN (laatste 90d — Pedro moet ELKE volgende imagePrompt voor deze klant hierop afstemmen; recente feedback wint van oude):\n${lines.join("\n")}`
+}
+
 function fmtDriveBlock(drive: Awaited<ReturnType<typeof fetchDriveContext>>): string {
   if (!drive.folderListed) {
     return drive.error
@@ -254,6 +440,11 @@ export type CreativeRefreshContextResult = {
     inboxEvents: boolean
     drive: boolean
     driveFileCount: number
+    /** Whether brand_style (hex codes + fonts) was injected. */
+    brandStyle: boolean
+    /** Number of weighted CM-feedback rows pulled into the prompt
+     *  (excludes raw regen events). 0 = no feedback loop yet. */
+    feedbackCount: number
   }
   /** Rough char budget — useful to log/track token cost growth. */
   charCount: number
@@ -270,15 +461,25 @@ export type CreativeRefreshContextResult = {
 export async function buildCreativeRefreshContext(
   client: MondayClient,
 ): Promise<CreativeRefreshContextResult> {
-  const [ctx, drive, brief] = await Promise.all([
+  const [ctx, drive, brief, brand, feedback] = await Promise.all([
     collectClientAiContext(client),
     fetchDriveContext(client.googleDriveId ?? ""),
     fetchBrief(client.mondayItemId),
+    fetchBrandStyle(client.mondayItemId),
+    fetchCreativeFeedback(client.mondayItemId, 12),
   ])
 
   const briefBlock = fmtBriefBlock(brief)
+  // Brand block consults the brief for the CM's visual-style config
+  // (mode + toggles + fallback font + custom prompt). When that block
+  // says "fingerprint suppressed (quality <40)" or "Drive only" etc,
+  // the block here changes shape accordingly.
+  const brandBlock = fmtBrandStyleBlock(brand, brief)
+  const feedbackBlock = fmtFeedbackBlock(feedback)
   const sections = [
     briefBlock,
+    brandBlock,
+    feedbackBlock,
     fmtAgreementBlock(ctx),
     fmtMondayUpdatesBlock(ctx),
     fmtFathomBlock(ctx),
@@ -302,6 +503,8 @@ export async function buildCreativeRefreshContext(
       inboxEvents: ctx.sources.inboxEvents,
       drive: drive.folderListed,
       driveFileCount: drive.files.length,
+      brandStyle: brandBlock.length > 0,
+      feedbackCount: feedback.filter((r) => r.feedback_type !== "regen").length,
     },
     charCount: block.length,
   }

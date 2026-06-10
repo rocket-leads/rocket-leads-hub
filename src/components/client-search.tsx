@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
@@ -12,9 +12,12 @@ import type { ClientSearchResult } from "@/app/api/clients/search/route"
  * Global client search — mounted in the dashboard topbar so it's reachable
  * from every page. ⌘K (or Ctrl+K on Windows/Linux) opens it from anywhere.
  *
- * Selecting a result navigates to `/clients?client=<id>` which opens the
- * slide-over panel — same surface the table click triggers, so the user
- * never has to leave their current context to peek at a client.
+ * Selecting a result appends `?client=<id>` to the CURRENT path. The
+ * GlobalClientSlideOver in the dashboard layout picks that up and opens
+ * the panel over wherever the user already is — Pedro, Optimize, Inbox,
+ * Watchlist, etc. — so closing returns them to that page, not to /clients.
+ * Roy 2026-06-10: "ik wil dat, als ik een klant open, deze me opent op het
+ * huidige tabblad. Dus niet altijd gelijk naar alle klanten gaat."
  *
  * Client list is fetched once on first open and cached for the session.
  * Filtering happens client-side so typing is instant; the only network
@@ -22,6 +25,8 @@ import type { ClientSearchResult } from "@/app/api/clients/search/route"
  */
 export function ClientSearch() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const locale = useLocale()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
@@ -94,11 +99,19 @@ export function ClientSearch() {
 
   function navigate(client: ClientSearchResult) {
     setOpen(false)
-    // Same URL the table click uses — keeps the user on whatever page they
-    // were on (slide-over rendered over /watchlist, /inbox, etc. just like
-    // /clients). The router only sees a query-param change so there's no
-    // route remount.
-    router.push(`/clients?client=${encodeURIComponent(client.mondayItemId)}`)
+    // Append `?client=<id>` to the CURRENT path so the GlobalClientSlideOver
+    // opens over the page the user is already on (Pedro, Optimize, Inbox,
+    // …). Previously this pushed to `/clients?client=…` which always
+    // dragged the user back to the All Clients list — even when they only
+    // wanted to peek at one client without losing their place.
+    //
+    // `pathname` may be null during transitions; fall back to /clients so
+    // the search still works in that edge case (the local slide-over there
+    // handles the param).
+    const params = new URLSearchParams(searchParams?.toString() ?? "")
+    params.set("client", client.mondayItemId)
+    const target = `${pathname ?? "/clients"}?${params.toString()}`
+    router.push(target, { scroll: false })
   }
 
   function onInputKeyDown(e: React.KeyboardEvent) {

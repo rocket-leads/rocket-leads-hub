@@ -8,6 +8,9 @@ import {
 } from "@/lib/integrations/gemini"
 import { uploadVariantImage, getVariantImageSignedUrl } from "@/lib/integrations/pedro-image-storage"
 import { getFolderImages, type DriveImageRef } from "@/lib/integrations/google-drive"
+import { rerankDrivePhotos } from "@/lib/pedro/drive-photo-vision"
+import { resolveVisualStylePolicy } from "@/lib/pedro/visual-style-policy"
+import type { BrandStyle } from "@/lib/pedro/helpers"
 
 /**
  * POST /api/pedro/variants/[id]/generate-image
@@ -96,7 +99,15 @@ export async function POST(
     // earlier null-guard into nested function scope).
     const variant = variantRow
 
-    async function fetchWinnerThumbRef(): Promise<Ref | null> {
+    // ── Resolve winner Meta ad details ─────────────────────────────
+    // We need this BEFORE the Drive call so we can pass the winner's
+    // campaign name as `campaignHint` — that's what makes Pedro pick
+    // the right sub-folder under a multi-campaign umbrella (e.g.,
+    // "Zumex" under "Juice Concepts Benelux" instead of Blendtec).
+    async function resolveWinnerDetail(): Promise<{
+      thumbnailUrl: string | null
+      campaignName: string | null
+    } | null> {
       try {
         const { data: refresh } = await supabase
           .from("pedro_refreshes")
@@ -136,9 +147,29 @@ export async function POST(
           end,
         ).catch(() => [])
         const match = ads.find((a) => a.adId === winnerAdId)
-        if (!match?.thumbnailUrl) return null
+        if (!match) return null
 
-        const ref = await fetchReferenceImage(match.thumbnailUrl)
+        return {
+          thumbnailUrl: match.thumbnailUrl ?? null,
+          campaignName: match.campaignName ?? null,
+        }
+      } catch (e) {
+        console.error(
+          "[pedro/generate-image] winner detail resolve failed (continuing):",
+          e instanceof Error ? e.message : e,
+        )
+        return null
+      }
+    }
+
+    const winnerDetail = await resolveWinnerDetail()
+    const winnerCampaignName = winnerDetail?.campaignName ?? null
+
+    async function fetchWinnerThumbRef(): Promise<Ref | null> {
+      const url = winnerDetail?.thumbnailUrl
+      if (!url) return null
+      try {
+        const ref = await fetchReferenceImage(url)
         return ref ? { bytes: ref.bytes, mimeType: ref.mimeType } : null
       } catch (e) {
         console.error(
@@ -158,10 +189,28 @@ export async function POST(
         // Topic hints from the variant: ad-name + topic_label drive the
         // filename-keyword scoring so we pick photos relevant to THIS
         // variant's angle, not just the most recent file in the folder.
-        const hints = [variant.topic_label, variant.ad_name].filter(
+        const topicHints = [variant.topic_label, variant.ad_name].filter(
           (s): s is string => typeof s === "string" && s.length > 0,
         )
-        return await getFolderImages(driveId, 2, hints)
+        return await getFolderImages(driveId, 2, {
+          campaignHint: winnerCampaignName ?? undefined,
+          topicHints,
+          // Vision rerank: Haiku describes each candidate photo (cached
+          // by file_id), then ranks them against the campaign + variant
+          // angle. Lets Pedro "zelf nadenken" over fotokeuze instead of
+          // blindly trusting folder-score order.
+          rerank: async (candidates) =>
+            rerankDrivePhotos(
+              supabase,
+              candidates,
+              {
+                campaignName: winnerCampaignName,
+                topicLabel: variant.topic_label,
+                adName: variant.ad_name,
+              },
+              variant.client_id,
+            ),
+        })
       } catch (e) {
         console.error(
           "[pedro/generate-image] drive-photos fetch failed (continuing):",
@@ -171,9 +220,56 @@ export async function POST(
       }
     }
 
+    // Resolve the visual-style policy from the CM's brief + the scraped
+    // fingerprint quality. Roy 2026-06-10: this is what makes the
+    // "Match Drive folder only" / "Match winning ad only" / "Custom
+    // prompt" modes in the brief actually do something at image-gen
+    // time. Without it, Pedro always used every reference it could
+    // find regardless of the CM's intent.
+    const { data: stateRow } = await supabase
+      .from("pedro_client_state")
+      .select("brief, brand_style")
+      .eq("client_id", variant.client_id)
+      .order("campaign_number", { ascending: false })
+      .limit(1)
+      .maybeSingle<{
+        brief: Record<string, unknown> | null
+        brand_style: Record<string, unknown> | null
+      }>()
+    const briefForPolicy = (stateRow?.brief ?? null) as Record<string, unknown> | null
+    const brandStyleForPolicy = (stateRow?.brand_style ?? null) as Partial<BrandStyle> | null
+    const policy = resolveVisualStylePolicy(
+      briefForPolicy
+        ? {
+            visualStyleMode:
+              briefForPolicy.visualStyleMode === "drive_only" ||
+              briefForPolicy.visualStyleMode === "winning_ad_only" ||
+              briefForPolicy.visualStyleMode === "custom"
+                ? briefForPolicy.visualStyleMode
+                : "website",
+            customStylePrompt:
+              typeof briefForPolicy.customStylePrompt === "string"
+                ? briefForPolicy.customStylePrompt
+                : "",
+            websiteToggles: briefForPolicy.websiteToggles as
+              | { useColors: boolean; useFonts: boolean; useLookFeel: boolean; useLogo: boolean }
+              | undefined,
+            fallbackFontHeading:
+              briefForPolicy.fallbackFontHeading === "manrope" ||
+              briefForPolicy.fallbackFontHeading === "plus_jakarta"
+                ? briefForPolicy.fallbackFontHeading
+                : "inter",
+          }
+        : null,
+      brandStyleForPolicy as BrandStyle | null,
+    )
+
+    // Fetch refs in parallel — but skip the call entirely when the
+    // policy says we won't use that source. Cuts the Meta + Drive
+    // round-trips when they're going to be thrown away anyway.
     const [winnerThumbRef, drivePhotoRefs] = await Promise.all([
-      fetchWinnerThumbRef(),
-      fetchDrivePhotoRefs(),
+      policy.referenceImagePolicy.useWinnerThumbnail ? fetchWinnerThumbRef() : Promise.resolve(null),
+      policy.referenceImagePolicy.useDrivePhotos ? fetchDrivePhotoRefs() : Promise.resolve([]),
     ])
 
     const referenceImages: Ref[] = []
@@ -183,7 +279,7 @@ export async function POST(
     }
 
     console.log(
-      `[pedro/generate-image] refs for ${variant.id}: winner=${winnerThumbRef ? "yes" : "no"}, drive=${drivePhotoRefs.length}${drivePhotoRefs.length > 0 ? ` (${drivePhotoRefs.map((p) => p.name).join(", ")})` : ""}`,
+      `[pedro/generate-image] refs for ${variant.id}: campaign="${winnerCampaignName ?? "(unknown)"}", winner=${winnerThumbRef ? "yes" : "no"}, drive=${drivePhotoRefs.length}${drivePhotoRefs.length > 0 ? ` (${drivePhotoRefs.map((p) => p.name).join(", ")})` : ""}, policy={winner:${policy.referenceImagePolicy.useWinnerThumbnail},drive:${policy.referenceImagePolicy.useDrivePhotos},notice:${policy.notice ? "yes" : "no"}}`,
     )
 
     // Resolve target slots. Default: generate ALL 3 slots in parallel
@@ -286,12 +382,38 @@ export async function POST(
     }
 
     // Persist the prompt override on the variant row so subsequent
-    // regens (any slot) reuse the edited prompt by default.
+    // regens (any slot) reuse the edited prompt by default. Also log
+    // it as a feedback signal so the next creative-refresh prompt sees
+    // what this CM wanted changed — the feedback loop that closes the
+    // iterative knowledge-gap per knowledge/campaigns.md §Image Creative
+    // Principles #5.
     if (body.promptOverride?.trim()) {
+      const newPrompt = body.promptOverride.trim()
+      const previous = variant.image_prompt ?? ""
       await supabase
         .from("pedro_variants")
-        .update({ image_prompt: body.promptOverride.trim() })
+        .update({ image_prompt: newPrompt })
         .eq("id", variant.id)
+      // Only log the edit when it's a real change, not a re-submit of
+      // the same text. Cap the stored text — for prompt edits we keep
+      // the new version (it's the signal of where the CM steered).
+      if (newPrompt !== previous.trim()) {
+        try {
+          await supabase.from("pedro_creative_feedback").insert({
+            client_id: variant.client_id,
+            variant_id: variant.id,
+            refresh_id: variant.refresh_id,
+            feedback_type: "prompt_edit",
+            feedback_text: `[Prompt edit op variant "${variant.ad_name ?? ""}"]\n${newPrompt.slice(0, 1500)}`,
+            created_by_email: session.user.email ?? null,
+          })
+        } catch (e) {
+          console.error(
+            "[pedro/generate-image] feedback log failed (continuing):",
+            e instanceof Error ? e.message : e,
+          )
+        }
+      }
     }
 
     // If literally every slot failed, surface the first error as 502

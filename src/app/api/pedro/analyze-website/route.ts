@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { analyzeWebsiteQuality } from "@/lib/pedro/website-quality";
 
 // ── Color utilities ──
 
@@ -173,6 +174,264 @@ function scoreColorsFromHTML(html: string): ScoredColor[] {
   return Array.from(scored.values()).sort((a, b) => b.score - a.score);
 }
 
+// ── Font extraction ──
+// Pedro references font families in image_prompt so Gemini renders
+// headline overlays in a brand-consistent typeface. We scan CSS for
+// `font-family:` declarations, normalize the quoted family name, and
+// score by where it's declared (heading > body > inline).
+// Roy 2026-06-10.
+
+const GENERIC_FONTS = new Set([
+  "sans-serif",
+  "serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  "system-ui",
+  "ui-sans-serif",
+  "ui-serif",
+  "ui-monospace",
+  "inherit",
+  "initial",
+  "unset",
+  "revert",
+  "ui-rounded",
+  "emoji",
+  "math",
+  "fangsong",
+]);
+
+interface ScoredFont {
+  family: string;
+  score: number;
+  source: string;
+}
+
+function normalizeFontFamily(raw: string): string | null {
+  const trimmed = raw.trim().replace(/^["']+|["']+$/g, "").trim();
+  if (!trimmed) return null;
+  if (GENERIC_FONTS.has(trimmed.toLowerCase())) return null;
+  // Drop CSS custom-property references like `var(--font-heading)`
+  if (/^var\s*\(/i.test(trimmed)) return null;
+  // Reject obvious junk (urls, numbers only)
+  if (/^https?:|^\d+$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+function extractFontFamilies(text: string): { heading: string | null; body: string | null } {
+  const scored = new Map<string, ScoredFont>();
+  function add(family: string, points: number, source: string) {
+    const lc = family.toLowerCase();
+    const existing = scored.get(lc);
+    if (existing) {
+      existing.score += points;
+      if (!existing.source.includes(source)) existing.source += `,${source}`;
+    } else {
+      scored.set(lc, { family, score: points, source });
+    }
+  }
+  function addStack(stack: string, points: number, source: string) {
+    // `font-family: "Inter", "Helvetica Neue", sans-serif;` — take only
+    // the first non-generic name. That's the brand font; the rest is
+    // graceful fallback.
+    const parts = stack.split(",");
+    for (const p of parts) {
+      const fam = normalizeFontFamily(p);
+      if (fam) {
+        add(fam, points, source);
+        return;
+      }
+    }
+  }
+
+  // Headings — these carry brand identity (Clash Grotesk, etc.)
+  const headingRegex = /(?:h[1-3]|\.heading|\.title|\.hero|\.display)\b[^{]*\{[^}]*font-family\s*:\s*([^;}]+)/gi;
+  for (const m of Array.from(text.matchAll(headingRegex))) {
+    addStack(m[1], 60, "heading");
+  }
+
+  // Body / paragraphs — usually the body font (Inter, etc.)
+  const bodyRegex = /(?:\bbody\b|\.body|\.text|\.content|p\b)\s*\{[^}]*font-family\s*:\s*([^;}]+)/gi;
+  for (const m of Array.from(text.matchAll(bodyRegex))) {
+    addStack(m[1], 40, "body");
+  }
+
+  // CSS custom properties named --font-* or --typeface-*
+  const varRegex = /--font[a-z-]*\s*:\s*([^;}]+)/gi;
+  for (const m of Array.from(text.matchAll(varRegex))) {
+    addStack(m[1], 50, "css_var");
+  }
+
+  // Generic font-family declarations (catch-all, lower weight)
+  const generalRegex = /font-family\s*:\s*([^;}"']+)/gi;
+  for (const m of Array.from(text.matchAll(generalRegex))) {
+    addStack(m[1], 5, "general");
+  }
+
+  // Google Fonts <link> imports — strong signal of intentional brand font.
+  const googleRegex = /fonts\.googleapis\.com\/css[^"']*family=([^&"'?]+)/gi;
+  for (const m of Array.from(text.matchAll(googleRegex))) {
+    const families = m[1].split("|");
+    for (const f of families) {
+      const fam = normalizeFontFamily(decodeURIComponent(f).split(":")[0].replace(/\+/g, " "));
+      if (fam) add(fam, 70, "google_fonts");
+    }
+  }
+
+  const ranked = Array.from(scored.values()).sort((a, b) => b.score - a.score);
+  if (ranked.length === 0) return { heading: null, body: null };
+
+  // Prefer heading-sourced font for the heading; body-sourced for body.
+  // Fall back to top-ranked overall when one role isn't distinct.
+  const headingPick = ranked.find((f) => f.source.includes("heading"))
+    ?? ranked.find((f) => f.source.includes("css_var"))
+    ?? ranked.find((f) => f.source.includes("google_fonts"))
+    ?? ranked[0];
+  const bodyPick = ranked.find((f) =>
+    f.source.includes("body") && f.family !== headingPick.family,
+  ) ?? ranked.find((f) => f.family !== headingPick.family) ?? headingPick;
+
+  return {
+    heading: headingPick.family,
+    body: bodyPick.family,
+  };
+}
+
+// ── Logo / hero image / tagline scraping (Roy 2026-06-10) ──
+//
+// Cheap brand-fingerprint additions that piggyback on the existing
+// `analyze-website` HTML fetch. We pass the raw HTML + the resolved base
+// URL into these helpers and they return absolute URLs / trimmed strings,
+// or null when nothing usable was found. Failure is always a soft return
+// — never a thrown — so an exotic site layout never breaks the existing
+// color/font extraction that's the actual gate.
+
+/** Turn a possibly-relative URL into an absolute one against the page
+ *  base. Returns null when the input is empty/unusable. Filters out
+ *  data:/blob: URLs which can't be referenced from a Gemini prompt. */
+function absolutizeUrl(href: string | null | undefined, baseUrl: string): string | null {
+  if (!href) return null
+  const trimmed = href.trim()
+  if (!trimmed) return null
+  if (/^(data|blob|javascript|mailto|tel):/i.test(trimmed)) return null
+  try {
+    return new URL(trimmed, baseUrl).href
+  } catch {
+    return null
+  }
+}
+
+/** Grab a single attribute value by name from a regex-matched tag's
+ *  attribute string. Handles single/double quotes; case-insensitive. */
+function tagAttr(attrString: string, name: string): string | null {
+  const re = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i")
+  const m = attrString.match(re)
+  return m ? (m[2] ?? m[3] ?? null) : null
+}
+
+/**
+ * Logo URL with a 3-tier fallback. Each tier picks the first hit so the
+ * order encodes priority: explicit og:image > apple-touch-icon > favicon
+ * > "logo"-named header img. og:image first because that's what most
+ * brand-aware sites set as the canonical share-able representation.
+ */
+function extractLogoUrl(html: string, baseUrl: string): string | null {
+  // og:image
+  const og = html.match(/<meta[^>]+property\s*=\s*["']og:image["'][^>]*>/i)
+  if (og) {
+    const href = tagAttr(og[0], "content")
+    const abs = absolutizeUrl(href, baseUrl)
+    if (abs) return abs
+  }
+  // apple-touch-icon (always a square, often the brand mark)
+  const apple = html.match(/<link[^>]+rel\s*=\s*["']apple-touch-icon[^"']*["'][^>]*>/i)
+  if (apple) {
+    const href = tagAttr(apple[0], "href")
+    const abs = absolutizeUrl(href, baseUrl)
+    if (abs) return abs
+  }
+  // favicon
+  const fav = html.match(/<link[^>]+rel\s*=\s*["'](?:icon|shortcut icon)["'][^>]*>/i)
+  if (fav) {
+    const href = tagAttr(fav[0], "href")
+    const abs = absolutizeUrl(href, baseUrl)
+    if (abs) return abs
+  }
+  // <img> in header/nav with "logo" anywhere on the tag (class/alt/id)
+  const imgRegex = /<img[^>]*>/gi
+  for (const m of Array.from(html.matchAll(imgRegex))) {
+    const tag = m[0]
+    if (/\blogo\b/i.test(tag)) {
+      const href = tagAttr(tag, "src") ?? tagAttr(tag, "data-src")
+      const abs = absolutizeUrl(href, baseUrl)
+      if (abs) return abs
+    }
+  }
+  return null
+}
+
+/**
+ * Hero image — first reasonably-large content image we can find in the
+ * top of the document, excluding logos. We don't have layout info here
+ * so we approximate "top" with "first occurrence" + skip the first few
+ * tags that match the logo pattern. Good enough as a Pedro reference.
+ *
+ * Skip filters: anything tagged as logo/icon/avatar/sprite, and any
+ * srcset-less `<img>` smaller than 200px declared width — those are
+ * almost always UI chrome rather than brand content.
+ */
+function extractHeroImageUrl(html: string, baseUrl: string, logoUrl: string | null): string | null {
+  const imgRegex = /<img[^>]*>/gi
+  for (const m of Array.from(html.matchAll(imgRegex))) {
+    const tag = m[0]
+    if (/\b(logo|icon|avatar|sprite|favicon)\b/i.test(tag)) continue
+    const widthAttr = tagAttr(tag, "width")
+    const w = widthAttr ? parseInt(widthAttr, 10) : NaN
+    const hasSrcset = /\bsrcset\s*=/i.test(tag)
+    if (!hasSrcset && Number.isFinite(w) && w < 200) continue
+    // Prefer the largest entry from srcset when present; otherwise plain src.
+    const srcset = tagAttr(tag, "srcset")
+    if (srcset) {
+      // "url 1x, url 2x" or "url 320w, url 640w" — pick the last (largest)
+      const lastEntry = srcset.split(",").pop()?.trim().split(/\s+/)[0]
+      const abs = absolutizeUrl(lastEntry, baseUrl)
+      if (abs && abs !== logoUrl) return abs
+    }
+    const href = tagAttr(tag, "src") ?? tagAttr(tag, "data-src")
+    const abs = absolutizeUrl(href, baseUrl)
+    if (abs && abs !== logoUrl) return abs
+  }
+  return null
+}
+
+/**
+ * Tagline — `<h1>` plus the first `<p>` following it (typical hero copy
+ * pattern). Both are stripped of HTML and trimmed. We only return them
+ * when non-trivially short so Pedro's tone-of-voice analysis has
+ * something concrete to work with.
+ */
+function extractTagline(html: string): { headline: string | null; subline: string | null } {
+  const stripTags = (s: string) =>
+    s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()
+  const h1Match = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)
+  const headline = h1Match ? stripTags(h1Match[1]).slice(0, 200) : null
+
+  // First `<p>` after the `<h1>` (or first overall when no h1).
+  let subline: string | null = null
+  if (h1Match && h1Match.index !== undefined) {
+    const after = html.slice(h1Match.index + h1Match[0].length)
+    const pMatch = after.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)
+    if (pMatch) subline = stripTags(pMatch[1]).slice(0, 400)
+  } else {
+    const pMatch = html.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)
+    if (pMatch) subline = stripTags(pMatch[1]).slice(0, 400)
+  }
+  return {
+    headline: headline && headline.length >= 4 ? headline : null,
+    subline: subline && subline.length >= 12 ? subline : null,
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -232,6 +491,37 @@ export async function POST(req: NextRequest) {
 
     // Score all colors
     const scored = scoreColorsFromHTML(fullContent);
+    // Extract fonts in parallel — fail-soft, fonts are nice-to-have.
+    const fonts = extractFontFamilies(fullContent);
+    // Brand-fingerprint additions (Roy 2026-06-10) — also fail-soft so
+    // an exotic site layout never kills the color extraction path.
+    const logoUrl = extractLogoUrl(html, fetchUrl);
+    const heroImageUrl = extractHeroImageUrl(html, fetchUrl, logoUrl);
+    const tagline = extractTagline(html);
+
+    // Run the Haiku quality gate in parallel with the color/font pick
+    // below. ~2-4s vision call; we await right before building the
+    // response so the rest of this handler can keep working on the
+    // synchronous extraction work. Null result = no signal (no image +
+    // no scraped strings) — consuming code falls back to "use everything
+    // by default", same behavior as pre-2026-06-10.
+    const qualityVerdictPromise = analyzeWebsiteQuality({
+      websiteUrl: fetchUrl,
+      primaryColor: scored[0]?.hex,
+      secondaryColor: scored[1]?.hex,
+      headingFont: fonts.heading ?? undefined,
+      bodyFont: fonts.body ?? undefined,
+      logoUrl: logoUrl ?? undefined,
+      heroImageUrl: heroImageUrl ?? undefined,
+      taglineHeadline: tagline.headline ?? undefined,
+      taglineSubline: tagline.subline ?? undefined,
+    }).catch((e) => {
+      console.error(
+        "[analyze-website] quality verdict failed (continuing without):",
+        e instanceof Error ? e.message : e,
+      );
+      return null;
+    });
 
     if (scored.length === 0) {
       return NextResponse.json({
@@ -275,6 +565,10 @@ export async function POST(req: NextRequest) {
       .trim()
       .substring(0, 2000);
 
+    // Await the quality verdict — it ran in parallel with the synchronous
+    // extraction work above so this is usually already resolved.
+    const qualityVerdict = await qualityVerdictPromise;
+
     // Return all extracted colors + top picks
     return NextResponse.json({
       brandStyle: {
@@ -285,6 +579,21 @@ export async function POST(req: NextRequest) {
         industry: "",
         brandKeywords: "",
         visualStyle: "",
+        headingFont: fonts.heading ?? undefined,
+        bodyFont: fonts.body ?? undefined,
+        // Brand-fingerprint additions — Pedro references these in the
+        // Gemini image prompt when the CM has "Look & feel" and/or
+        // "Logo" toggled on. All optional so back-compat with
+        // pre-fingerprint state rows is automatic.
+        logoUrl: logoUrl ?? undefined,
+        heroImageUrl: heroImageUrl ?? undefined,
+        taglineHeadline: tagline.headline ?? undefined,
+        taglineSubline: tagline.subline ?? undefined,
+        // Quality verdict — null when there wasn't enough signal to
+        // score (no hero image, no logo, no tagline). Consuming code
+        // treats null as "fingerprint is fine to use", same default as
+        // pre-2026-06-10.
+        qualityVerdict: qualityVerdict ?? undefined,
       },
       extractedColors: scored.slice(0, 8).map(c => ({
         hex: c.hex,

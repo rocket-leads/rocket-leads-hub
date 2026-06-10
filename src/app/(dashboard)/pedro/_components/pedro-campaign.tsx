@@ -21,6 +21,45 @@ import {
 } from "@/lib/pedro/prompts";
 
 // ── Types ──
+
+/**
+ * Visual-style block (Roy 2026-06-10) — mirrors the same field shape used
+ * by `brief-required-modal.tsx` so the policy resolver
+ * (`src/lib/pedro/visual-style-policy.ts`) accepts either source.
+ *
+ *  - `visualStyleMode`     — broad source picker. "website" enables the
+ *                            toggles; other modes ignore the fingerprint.
+ *  - `customStylePrompt`   — verbatim CM prompt; only used when mode
+ *                            === "custom".
+ *  - `websiteToggles`      — per-element on/off when mode === "website".
+ *                            State preserved across mode switches.
+ *  - `fallbackFontHeading` — standard font Pedro falls back to when the
+ *                            fonts toggle is off OR the site has no
+ *                            usable font OR mode !== "website".
+ */
+type VisualStyleMode = "website" | "drive_only" | "winning_ad_only" | "custom";
+type FallbackFontKey = "inter" | "manrope" | "plus_jakarta";
+
+interface WebsiteToggles {
+  useColors: boolean;
+  useFonts: boolean;
+  useLookFeel: boolean;
+  useLogo: boolean;
+}
+
+const DEFAULT_WEBSITE_TOGGLES: WebsiteToggles = {
+  useColors: true,
+  useFonts: true,
+  useLookFeel: true,
+  useLogo: true,
+};
+
+const FALLBACK_FONT_LABEL: Record<FallbackFontKey, string> = {
+  inter: "Inter (SemiBold/Bold) — universeel, neutraal-modern",
+  manrope: "Manrope (SemiBold) — geometric, friendlier",
+  plus_jakarta: "Plus Jakarta Sans (SemiBold) — modern, iets meer karakter",
+};
+
 interface BriefData {
   bedrijf: string;
   sector: string;
@@ -30,7 +69,26 @@ interface BriefData {
   usps: string;
   hooksAM: string;
   hooksExtra: string;
+  // Visual-style controls (Roy 2026-06-10). Optional in the type so old
+  // brief blobs without them deserialise cleanly; the policy resolver
+  // normalises undefined into defaults.
+  visualStyleMode?: VisualStyleMode;
+  customStylePrompt?: string;
+  websiteToggles?: WebsiteToggles;
+  fallbackFontHeading?: FallbackFontKey;
 }
+
+/** Defaults applied to every fresh brief — kept central so reset / load /
+ *  initial state can't drift. */
+const EMPTY_VISUAL_STYLE: Pick<
+  BriefData,
+  "visualStyleMode" | "customStylePrompt" | "websiteToggles" | "fallbackFontHeading"
+> = {
+  visualStyleMode: "website",
+  customStylePrompt: "",
+  websiteToggles: DEFAULT_WEBSITE_TOGGLES,
+  fallbackFontHeading: "inter",
+};
 
 interface Angle {
   nummer: number;
@@ -53,6 +111,30 @@ interface BrandStyle {
   industry: string;
   brandKeywords: string;
   visualStyle: string;
+  // Roy 2026-06-10 — extended brand fingerprint + Haiku quality verdict.
+  // All optional so old persisted blobs (no fingerprint) deserialise
+  // cleanly. The /api/pedro/analyze-website endpoint fills these in;
+  // the policy resolver in src/lib/pedro/visual-style-policy.ts reads
+  // qualityVerdict to gate fingerprint use in the prompts.
+  headingFont?: string;
+  bodyFont?: string;
+  logoUrl?: string;
+  heroImageUrl?: string;
+  taglineHeadline?: string;
+  taglineSubline?: string;
+  qualityVerdict?: {
+    score: number;
+    axes: {
+      design_quality: number | null;
+      photo_quality: number | null;
+      brand_consistency: number | null;
+      completeness: number | null;
+    };
+    flags: string[];
+    summary: string;
+    computedAt: string;
+    model: string;
+  };
 }
 
 interface ExtractedColor {
@@ -293,18 +375,6 @@ function Card({ active, children }: { active?: boolean; children: React.ReactNod
   );
 }
 
-// Standard field label used across the brief form. Matches the
-// Settings + Client Info + Billing labels (12px, sentence-case, normal
-// weight). Replaces the old 10px uppercase tracking-[0.12em] style
-// that made Pedro feel like a different product.
-function FieldLabel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <label className={`text-xs font-medium text-muted-foreground ${className ?? ""}`}>
-      {children}
-    </label>
-  );
-}
-
 // ── Brief explainability — types + UI helper ──
 // When the auto-brief endpoint fills the form, Pedro tags each field
 // with the input it pulled from (kick-off / eval / Trengo / etc.). The
@@ -368,10 +438,8 @@ const STEP_TO_SECTION: Record<number, SectionName> = {
 export function Campaign({
   section,
   setSection,
-  clients,
   selectedClientId,
   selectedClientName,
-  onSelectClient,
   campaignNumber = 1,
   campaignMode = "optimize",
 }: {
@@ -402,6 +470,7 @@ export function Campaign({
   // Step 1: Brief
   const [brief, setBrief] = useState<BriefData>({
     bedrijf: "", sector: "", doel: "", pijn: "", aanbod: "", usps: "", hooksAM: "", hooksExtra: "",
+    ...EMPTY_VISUAL_STYLE,
   });
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
@@ -634,7 +703,7 @@ export function Campaign({
 
     // Fetch draft + saved versions in parallel
     let draftState: Record<string, unknown> | null = null;
-    let savedByStage = new Map<string, { version_number: number; data: unknown }>();
+    const savedByStage = new Map<string, { version_number: number; data: unknown }>();
     let highestVersion = 0;
 
     try {
@@ -792,7 +861,6 @@ export function Campaign({
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     selectedClientId,
     autoFilling,
@@ -1121,10 +1189,13 @@ export function Campaign({
   // Master prompt + per-creative description prompt live in
   // `@/lib/pedro/prompts/build-creatives`.
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function doCreative(_opts?: { skipNav?: boolean }) {
     // doCreative doesn't navigate by default (creatives is step 4 and
     // the CM stays on that step) — opts is accepted for symmetry with
-    // the other handlers and future-proofing parallel mode.
+    // the other step-driver handlers so the parallel-mode caller can
+    // pass `{ skipNav: true }` without case-checking which function
+    // it's calling.
     setManusLoading(true);
     setManusPrompt("");
     try {
@@ -1208,6 +1279,7 @@ ${creativeDescriptions}`;
   }
 
   // ── Step 5: LP (uses brief + angle + script if not skipped) ──
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function doLP(_opts?: { skipNav?: boolean }) {
     setShowLpCard(true);
     setLpLoading(true);
@@ -1414,7 +1486,7 @@ ${creativeDescriptions}`;
 
   // ── Reset ──
   function resetAll() {
-    setBrief({ bedrijf: "", sector: "", doel: "", pijn: "", aanbod: "", usps: "", hooksAM: "", hooksExtra: "" });
+    setBrief({ bedrijf: "", sector: "", doel: "", pijn: "", aanbod: "", usps: "", hooksAM: "", hooksExtra: "", ...EMPTY_VISUAL_STYLE });
     // Note: clientId is owned by PedroApp; resetting Campaign doesn't clear it.
     setAutoFilling(false); setAutoBriefSource(null); setImportStatus(null);
     setWebsiteUrl(""); setBrandStyle(null); setWebsiteAnalyzing(false); setHuisstijlOverride(false);
@@ -1452,6 +1524,10 @@ ${creativeDescriptions}`;
         usps: parsed.usps || "",
         hooksAM: lastCamp?.hooksAM || "",
         hooksExtra: lastCamp?.hooksExtra || "",
+        // Visual-style block isn't in the legacy MD format; fall back to
+        // defaults so the new controls render with sensible values
+        // instead of undefined-driven UI glitches.
+        ...EMPTY_VISUAL_STYLE,
       });
       if (parsed.website && parsed.website !== "-") setWebsiteUrl(parsed.website);
       if (parsed.drive && parsed.drive !== "-") setDriveLink(parsed.drive);
@@ -1764,6 +1840,16 @@ ${creativeDescriptions}`;
               )}
             </div>
           )}
+
+          {/* Visual-style controls — Roy 2026-06-10. Same field shape as
+              brief-required-modal.tsx so both UIs write identical blobs to
+              pedro_client_state.brief and the policy resolver consumes
+              either source. */}
+          <VisualStyleSection
+            brief={brief}
+            onChange={(patch) => setBrief((prev) => ({ ...prev, ...patch }))}
+            qualitySummary={brandStyle?.qualityVerdict ?? null}
+          />
 
           <div className="h-px bg-border" />
 
@@ -2611,5 +2697,246 @@ ${creativeDescriptions}`;
         <span>{toast}</span>
       </div>
     </div>
+  );
+}
+
+// ── Visual-style section (Roy 2026-06-10) ──────────────────────────────
+//
+// Renders the mode picker + per-element toggles + fallback font selector
+// + custom prompt + Haiku quality verdict banner. The whole block emits
+// a single partial-brief patch up to the parent via `onChange`, which
+// merges it into the brief state — same pattern as updateBrief() but
+// for the structured visual-style sub-tree.
+
+function VisualStyleSection({
+  brief,
+  onChange,
+  qualitySummary,
+}: {
+  brief: BriefData;
+  onChange: (patch: Partial<BriefData>) => void;
+  qualitySummary: {
+    score: number;
+    flags: string[];
+    summary: string;
+  } | null;
+}) {
+  const mode = brief.visualStyleMode ?? "website";
+  const toggles = brief.websiteToggles ?? DEFAULT_WEBSITE_TOGGLES;
+  const fallbackFont = brief.fallbackFontHeading ?? "inter";
+  const customPrompt = brief.customStylePrompt ?? "";
+  const togglesDisabled = mode !== "website";
+
+  function setToggle<K extends keyof WebsiteToggles>(key: K, value: WebsiteToggles[K]) {
+    onChange({ websiteToggles: { ...toggles, [key]: value } });
+  }
+
+  return (
+    <div className="bg-muted/20 border border-border/60 rounded-lg px-4 py-3.5 mt-3 mb-3 space-y-4">
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/80 mb-0.5">
+          Visual style
+        </div>
+        <div className="text-[11px] text-muted-foreground/70 leading-tight">
+          Bepaal waar Pedro de visuele stijl van de creatives op baseert. Per element kun je kiezen of de website-fingerprint meegenomen wordt.
+        </div>
+      </div>
+
+      {/* Quality verdict banner — only shows when we have a Haiku score */}
+      {qualitySummary && (
+        <div
+          className={`rounded-md border px-3 py-2 text-[11px] leading-tight ${
+            qualitySummary.score >= 70
+              ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300"
+              : qualitySummary.score >= 40
+                ? "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300"
+                : "border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300"
+          }`}
+        >
+          <div className="font-medium mb-0.5">
+            Pedro brand-quality score: {qualitySummary.score}/100
+            {qualitySummary.flags.length > 0 && (
+              <span className="ml-2 font-normal opacity-70">
+                · {qualitySummary.flags.join(" · ")}
+              </span>
+            )}
+          </div>
+          <div className="opacity-80">{qualitySummary.summary}</div>
+          <div className="opacity-60 mt-1">
+            {qualitySummary.score >= 70
+              ? "Volledige fingerprint toegestaan per toggles."
+              : qualitySummary.score >= 40
+                ? "Alleen brand colors + fonts worden meegenomen — look & feel en logo onderdrukt."
+                : "Fingerprint uitgeschakeld — Pedro leunt op winner ad + Drive folder."}
+          </div>
+        </div>
+      )}
+
+      <fieldset className="space-y-1.5">
+        <legend className="text-[11px] font-medium text-muted-foreground mb-1">
+          Bron voor visuele stijl
+        </legend>
+        <PedroModeRadio
+          checked={mode === "website"}
+          onChange={() => onChange({ visualStyleMode: "website" })}
+          title="Match website"
+          hint="Pedro leunt op de scraped fingerprint (kleuren, fonts, look & feel, logo)."
+        />
+        <PedroModeRadio
+          checked={mode === "drive_only"}
+          onChange={() => onChange({ visualStyleMode: "drive_only" })}
+          title="Match Drive folder only"
+          hint="Negeer de website. Pedro werkt alleen met de foto's uit de Google Drive folder."
+        />
+        <PedroModeRadio
+          checked={mode === "winning_ad_only"}
+          onChange={() => onChange({ visualStyleMode: "winning_ad_only" })}
+          title="Match winning ad only"
+          hint="Negeer site + Drive. Pedro itereert puur op de stijl van de winning ad."
+        />
+        <PedroModeRadio
+          checked={mode === "custom"}
+          onChange={() => onChange({ visualStyleMode: "custom" })}
+          title="Custom prompt"
+          hint="Schrijf zelf wat Pedro visueel moet aanhouden. Vervangt alle automatische referenties."
+        />
+        {mode === "custom" && (
+          <textarea
+            value={customPrompt}
+            onChange={(e) => onChange({ customStylePrompt: e.target.value })}
+            rows={3}
+            placeholder="Bv. 'cinematic kitchen interior, warm lighting, premium copper accents, no people, magazine-style composition'"
+            className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-y"
+          />
+        )}
+      </fieldset>
+
+      <div
+        className={`rounded-md border border-border/40 bg-background/60 px-3 py-2.5 space-y-2 ${
+          togglesDisabled ? "opacity-60" : ""
+        }`}
+      >
+        <div className="text-[11px] font-medium text-muted-foreground">
+          Van de website — wat Pedro mag meenemen
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          <PedroToggleRow
+            label="Brand colors"
+            checked={toggles.useColors}
+            onChange={(v) => setToggle("useColors", v)}
+            disabled={togglesDisabled}
+          />
+          <PedroToggleRow
+            label="Look & feel (layout vibe)"
+            checked={toggles.useLookFeel}
+            onChange={(v) => setToggle("useLookFeel", v)}
+            disabled={togglesDisabled}
+          />
+          <PedroToggleRow
+            label="Fonts"
+            checked={toggles.useFonts}
+            onChange={(v) => setToggle("useFonts", v)}
+            disabled={togglesDisabled}
+          />
+          <PedroToggleRow
+            label="Logo"
+            checked={toggles.useLogo}
+            onChange={(v) => setToggle("useLogo", v)}
+            disabled={togglesDisabled}
+          />
+        </div>
+        {togglesDisabled && (
+          <p className="text-[10.5px] text-muted-foreground/60 italic">
+            Toggles staan uit omdat de mode hierboven niet &ldquo;Match website&rdquo; is.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-medium text-muted-foreground inline-flex items-center gap-1.5">
+          Fallback font
+          <span className="text-muted-foreground/50">
+            · gebruikt wanneer Fonts uit staat of de site geen bruikbare font heeft
+          </span>
+        </label>
+        <select
+          value={fallbackFont}
+          onChange={(e) =>
+            onChange({ fallbackFontHeading: e.target.value as FallbackFontKey })
+          }
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        >
+          {(Object.keys(FALLBACK_FONT_LABEL) as FallbackFontKey[]).map((k) => (
+            <option key={k} value={k}>
+              {FALLBACK_FONT_LABEL[k]}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function PedroModeRadio({
+  checked,
+  onChange,
+  title,
+  hint,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  title: string;
+  hint: string;
+}) {
+  return (
+    <label
+      className={`flex items-start gap-2.5 rounded-md px-2.5 py-2 cursor-pointer transition-colors ${
+        checked
+          ? "bg-background border border-primary/40"
+          : "hover:bg-background/50 border border-transparent"
+      }`}
+    >
+      <input
+        type="radio"
+        checked={checked}
+        onChange={onChange}
+        className="mt-0.5 accent-primary"
+      />
+      <span className="flex-1 min-w-0">
+        <span className="text-[12.5px] font-medium block leading-tight">{title}</span>
+        <span className="text-[10.5px] text-muted-foreground/70 leading-tight block mt-0.5">
+          {hint}
+        </span>
+      </span>
+    </label>
+  );
+}
+
+function PedroToggleRow({
+  label,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label
+      className={`inline-flex items-center gap-2 text-[12.5px] cursor-pointer select-none ${
+        disabled ? "cursor-not-allowed" : ""
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-primary"
+      />
+      <span>{label}</span>
+    </label>
   );
 }

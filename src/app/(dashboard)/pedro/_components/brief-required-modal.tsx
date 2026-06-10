@@ -20,6 +20,49 @@ import { cn } from "@/lib/utils"
  * Onboard (bedrijf + aanbod non-empty).
  */
 
+/**
+ * Visual style controls — Roy 2026-06-10.
+ *
+ * Two layers of choice for the CM, in order of authority:
+ *   1. `visualStyleMode` (the broad source picker) — where Pedro should
+ *      pull its visual reference from. `website` is the default and
+ *      enables the per-element toggles below; the other three modes
+ *      ignore the website fingerprint entirely.
+ *   2. `websiteToggles` — fine-grained on/off per fingerprint element
+ *      (colors / fonts / look-and-feel / logo). Only consulted when
+ *      mode = "website". Stored regardless of mode so a mode-switch
+ *      doesn't wipe what the CM picked.
+ *
+ * `fallbackFontHeading` kicks in whenever the fonts toggle is off OR the
+ * mode isn't "website" — Pedro then uses a standard, slightly-bold font
+ * (Inter / Manrope / Plus Jakarta Sans) instead of the scraped family.
+ *
+ * `customStylePrompt` is only used when mode = "custom" — verbatim text
+ * the CM wants injected into the Gemini prompt.
+ */
+type VisualStyleMode = "website" | "drive_only" | "winning_ad_only" | "custom"
+type FallbackFontKey = "inter" | "manrope" | "plus_jakarta"
+
+type WebsiteToggles = {
+  useColors: boolean
+  useFonts: boolean
+  useLookFeel: boolean
+  useLogo: boolean
+}
+
+const DEFAULT_WEBSITE_TOGGLES: WebsiteToggles = {
+  useColors: true,
+  useFonts: true,
+  useLookFeel: true,
+  useLogo: true,
+}
+
+const FALLBACK_FONT_LABEL: Record<FallbackFontKey, string> = {
+  inter: "Inter (SemiBold/Bold) — universeel, neutraal-modern",
+  manrope: "Manrope (SemiBold) — geometric, iets friendlier",
+  plus_jakarta: "Plus Jakarta Sans (SemiBold) — modern, iets meer karakter",
+}
+
 type BriefData = {
   bedrijf: string
   sector: string
@@ -29,6 +72,11 @@ type BriefData = {
   usps: string
   hooksAM: string
   hooksExtra: string
+  // — Visual style block (Roy 2026-06-10) —
+  visualStyleMode: VisualStyleMode
+  customStylePrompt: string
+  websiteToggles: WebsiteToggles
+  fallbackFontHeading: FallbackFontKey
 }
 
 const EMPTY_BRIEF: BriefData = {
@@ -40,11 +88,18 @@ const EMPTY_BRIEF: BriefData = {
   usps: "",
   hooksAM: "",
   hooksExtra: "",
+  visualStyleMode: "website",
+  customStylePrompt: "",
+  websiteToggles: DEFAULT_WEBSITE_TOGGLES,
+  fallbackFontHeading: "inter",
 }
 
 /** Map the /auto-brief response shape onto the storage shape. Auto-brief
  *  uses different keys for historical reasons (doelgroep vs doel,
- *  pijnpunten vs pijn, marketingHooks vs hooksAM). */
+ *  pijnpunten vs pijn, marketingHooks vs hooksAM). The visual-style
+ *  block is never sourced from auto-brief — those are CM decisions, not
+ *  business facts — so they always come back as defaults that the merge
+ *  step below will keep from whatever's already in state. */
 function mapAutoBriefToStorage(autoBrief: Record<string, unknown>): BriefData {
   const get = (k: string) =>
     typeof autoBrief[k] === "string" ? (autoBrief[k] as string).trim() : ""
@@ -57,6 +112,32 @@ function mapAutoBriefToStorage(autoBrief: Record<string, unknown>): BriefData {
     usps: get("usps"),
     hooksAM: get("marketingHooks") || get("hooksAM"),
     hooksExtra: get("hooksExtra"),
+    visualStyleMode: "website",
+    customStylePrompt: "",
+    websiteToggles: DEFAULT_WEBSITE_TOGGLES,
+    fallbackFontHeading: "inter",
+  }
+}
+
+/** Helpers for reading the visual-style block out of a partial brief
+ *  echoed back by the gate. Defaults match EMPTY_BRIEF so a brief saved
+ *  before 2026-06-10 (no visual-style fields at all) reads cleanly. */
+function readVisualStyleMode(raw: unknown): VisualStyleMode {
+  return raw === "drive_only" || raw === "winning_ad_only" || raw === "custom"
+    ? raw
+    : "website"
+}
+function readFallbackFont(raw: unknown): FallbackFontKey {
+  return raw === "manrope" || raw === "plus_jakarta" ? raw : "inter"
+}
+function readWebsiteToggles(raw: unknown): WebsiteToggles {
+  if (!raw || typeof raw !== "object") return DEFAULT_WEBSITE_TOGGLES
+  const r = raw as Record<string, unknown>
+  return {
+    useColors: r.useColors !== false,
+    useFonts: r.useFonts !== false,
+    useLookFeel: r.useLookFeel !== false,
+    useLogo: r.useLogo !== false,
   }
 }
 
@@ -92,6 +173,13 @@ export function BriefRequiredModal({
       usps: typeof currentBrief.usps === "string" ? currentBrief.usps : "",
       hooksAM: typeof currentBrief.hooksAM === "string" ? currentBrief.hooksAM : "",
       hooksExtra: typeof currentBrief.hooksExtra === "string" ? currentBrief.hooksExtra : "",
+      visualStyleMode: readVisualStyleMode(currentBrief.visualStyleMode),
+      customStylePrompt:
+        typeof currentBrief.customStylePrompt === "string"
+          ? currentBrief.customStylePrompt
+          : "",
+      websiteToggles: readWebsiteToggles(currentBrief.websiteToggles),
+      fallbackFontHeading: readFallbackFont(currentBrief.fallbackFontHeading),
     }
   })
   const [autoGenerating, setAutoGenerating] = useState(false)
@@ -117,6 +205,9 @@ export function BriefRequiredModal({
       const briefSource = json.brief ?? json
       const mapped = mapAutoBriefToStorage(briefSource)
       // Merge — only fill empty fields, keep what the CM already typed.
+      // Visual-style block is NEVER touched by auto-brief: those are CM
+      // decisions about how Pedro should USE the brief, not facts about
+      // the business.
       setBrief((prev) => ({
         bedrijf: prev.bedrijf || mapped.bedrijf,
         sector: prev.sector || mapped.sector,
@@ -126,6 +217,10 @@ export function BriefRequiredModal({
         usps: prev.usps || mapped.usps,
         hooksAM: prev.hooksAM || mapped.hooksAM,
         hooksExtra: prev.hooksExtra || mapped.hooksExtra,
+        visualStyleMode: prev.visualStyleMode,
+        customStylePrompt: prev.customStylePrompt,
+        websiteToggles: prev.websiteToggles,
+        fallbackFontHeading: prev.fallbackFontHeading,
       }))
       // Source provenance: build a short hint from the meta flags so
       // the CM knows what Pedro looked at.
@@ -202,6 +297,23 @@ export function BriefRequiredModal({
   function setField<K extends keyof BriefData>(key: K, value: BriefData[K]) {
     setBrief((prev) => ({ ...prev, [key]: value }))
   }
+
+  function setWebsiteToggle<K extends keyof WebsiteToggles>(
+    key: K,
+    value: WebsiteToggles[K],
+  ) {
+    setBrief((prev) => ({
+      ...prev,
+      websiteToggles: { ...prev.websiteToggles, [key]: value },
+    }))
+  }
+
+  // Disabling the per-element toggles in non-website modes is purely a
+  // UX cue — the prompt builder reads `visualStyleMode` first and only
+  // consults the toggles when it's "website". State stays editable
+  // (via the data flow) so a mode-flip back to website finds the CM's
+  // last choices intact.
+  const togglesDisabled = brief.visualStyleMode !== "website"
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
@@ -329,6 +441,131 @@ export function BriefRequiredModal({
           />
         </div>
 
+        {/* Visual-style controls — Roy 2026-06-10. Sits below the business
+            brief because these are decisions ABOUT how Pedro uses the
+            brief, not facts about the client. Collapsed look (no header
+            divider above) so it reads as one continuous form. */}
+        <div className="px-6 pb-5">
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-3.5 space-y-4">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground/80 mb-0.5">
+                Visual style
+              </h3>
+              <p className="text-[11px] text-muted-foreground/70">
+                Bepaal welke referentie Pedro pakt voor het visuele DNA van de creatives. Met de toggles eronder kun je per element kiezen of Pedro het meeneemt — handig als de website-stijl op één punt zwak is maar de rest klopt.
+              </p>
+            </div>
+
+            <fieldset className="space-y-1.5">
+              <legend className="text-[11px] font-medium text-muted-foreground mb-1">
+                Bron voor visuele stijl
+              </legend>
+              <ModeRadio
+                checked={brief.visualStyleMode === "website"}
+                onChange={() => setField("visualStyleMode", "website")}
+                title="Match website"
+                hint="Pedro leunt op de scraped fingerprint van hun website (kleuren, fonts, look & feel, logo)."
+              />
+              <ModeRadio
+                checked={brief.visualStyleMode === "drive_only"}
+                onChange={() => setField("visualStyleMode", "drive_only")}
+                title="Match Drive folder only"
+                hint="Negeer de website. Pedro werkt alleen met de foto's in de Google Drive folder van de klant."
+              />
+              <ModeRadio
+                checked={brief.visualStyleMode === "winning_ad_only"}
+                onChange={() => setField("visualStyleMode", "winning_ad_only")}
+                title="Match winning ad only"
+                hint="Negeer site + Drive. Pedro itereert puur op de stijl van de huidige winning ad."
+              />
+              <ModeRadio
+                checked={brief.visualStyleMode === "custom"}
+                onChange={() => setField("visualStyleMode", "custom")}
+                title="Custom prompt"
+                hint="Schrijf zelf wat Pedro visueel moet aanhouden. Vervangt alle automatische referenties."
+              />
+              {brief.visualStyleMode === "custom" && (
+                <textarea
+                  value={brief.customStylePrompt}
+                  onChange={(e) => setField("customStylePrompt", e.target.value)}
+                  rows={3}
+                  placeholder="Bv. 'cinematic kitchen interior, warm lighting, premium copper accents, no people, magazine-style composition'"
+                  className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-y"
+                />
+              )}
+            </fieldset>
+
+            <div
+              className={cn(
+                "rounded-md border border-border/40 bg-background/60 px-3 py-2.5 space-y-2",
+                togglesDisabled && "opacity-60",
+              )}
+            >
+              <div className="text-[11px] font-medium text-muted-foreground">
+                Van de website — wat Pedro mag meenemen
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                <ToggleRow
+                  label="Brand colors"
+                  checked={brief.websiteToggles.useColors}
+                  onChange={(v) => setWebsiteToggle("useColors", v)}
+                  disabled={togglesDisabled}
+                />
+                <ToggleRow
+                  label="Look & feel (layout vibe)"
+                  checked={brief.websiteToggles.useLookFeel}
+                  onChange={(v) => setWebsiteToggle("useLookFeel", v)}
+                  disabled={togglesDisabled}
+                />
+                <ToggleRow
+                  label="Fonts"
+                  checked={brief.websiteToggles.useFonts}
+                  onChange={(v) => setWebsiteToggle("useFonts", v)}
+                  disabled={togglesDisabled}
+                />
+                <ToggleRow
+                  label="Logo"
+                  checked={brief.websiteToggles.useLogo}
+                  onChange={(v) => setWebsiteToggle("useLogo", v)}
+                  disabled={togglesDisabled}
+                />
+              </div>
+              {togglesDisabled && (
+                <p className="text-[10.5px] text-muted-foreground/60 italic">
+                  Toggles staan uit omdat de mode hierboven niet &ldquo;Match website&rdquo; is.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-muted-foreground inline-flex items-center gap-1.5">
+                Fallback font
+                <span className="text-muted-foreground/50">
+                  · gebruikt wanneer Fonts uit staat of de site geen bruikbare font heeft
+                </span>
+              </label>
+              <select
+                value={brief.fallbackFontHeading}
+                onChange={(e) =>
+                  setField(
+                    "fallbackFontHeading",
+                    e.target.value as FallbackFontKey,
+                  )
+                }
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              >
+                {(Object.keys(FALLBACK_FONT_LABEL) as FallbackFontKey[]).map(
+                  (k) => (
+                    <option key={k} value={k}>
+                      {FALLBACK_FONT_LABEL[k]}
+                    </option>
+                  ),
+                )}
+              </select>
+            </div>
+          </div>
+        </div>
+
         {error && (
           <div className="mx-6 mb-3 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -379,6 +616,70 @@ export function BriefRequiredModal({
         </div>
       </div>
     </div>
+  )
+}
+
+function ModeRadio({
+  checked,
+  onChange,
+  title,
+  hint,
+}: {
+  checked: boolean
+  onChange: () => void
+  title: string
+  hint: string
+}) {
+  return (
+    <label
+      className={cn(
+        "flex items-start gap-2.5 rounded-md px-2.5 py-2 cursor-pointer transition-colors",
+        checked ? "bg-background border border-primary/40" : "hover:bg-background/50 border border-transparent",
+      )}
+    >
+      <input
+        type="radio"
+        checked={checked}
+        onChange={onChange}
+        className="mt-0.5 accent-primary"
+      />
+      <span className="flex-1 min-w-0">
+        <span className="text-[12.5px] font-medium block leading-tight">{title}</span>
+        <span className="text-[10.5px] text-muted-foreground/70 leading-tight block mt-0.5">
+          {hint}
+        </span>
+      </span>
+    </label>
+  )
+}
+
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <label
+      className={cn(
+        "inline-flex items-center gap-2 text-[12.5px] cursor-pointer select-none",
+        disabled && "cursor-not-allowed",
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-primary"
+      />
+      <span>{label}</span>
+    </label>
   )
 }
 
