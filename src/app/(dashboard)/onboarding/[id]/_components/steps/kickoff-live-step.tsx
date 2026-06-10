@@ -621,6 +621,177 @@ function ResourceRow({
   )
 }
 
+/**
+ * Brand identity — lives in its own section so the AM can do the
+ * website fingerprint as a discrete step after typing the URL above.
+ * Empty state: just the Analyze button + hint. Loaded state: three
+ * editable hex inputs (primary / secondary / accent) with live color
+ * swatches + a row of extracted swatches the AM can click to override
+ * the auto-pick. Heading/body fonts are display-only. Persists through
+ * the parent's debounced PATCH (same `content` blob as the brief).
+ */
+function BrandIdentitySection({
+  websiteUrl,
+  brandStyle,
+  swatches,
+  analyzing,
+  error,
+  onAnalyze,
+  onUpdateColor,
+  locale,
+}: {
+  websiteUrl: string
+  brandStyle: BrandFingerprint | null
+  swatches: ExtractedColor[]
+  analyzing: boolean
+  error: string | null
+  onAnalyze: () => void
+  onUpdateColor: (
+    field: "primaryColor" | "secondaryColor" | "accentColor",
+    hex: string,
+  ) => void
+  locale: Locale
+}) {
+  const hasUrl = websiteUrl.trim().length > 0
+  return (
+    <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          <Palette className="h-3.5 w-3.5 text-primary" />
+          {t("onboarding.wizard.kickoff.brand.title", locale)}
+        </h3>
+        <Button
+          size="sm"
+          variant={brandStyle ? "outline" : "default"}
+          onClick={onAnalyze}
+          disabled={analyzing || !hasUrl}
+          title={!hasUrl ? t("onboarding.wizard.kickoff.brand.no_url", locale) : undefined}
+          className="gap-1.5"
+        >
+          {analyzing ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5" />
+          )}
+          {analyzing
+            ? t("onboarding.wizard.kickoff.brand.analyzing", locale)
+            : t("onboarding.wizard.kickoff.brand.analyze_btn", locale)}
+        </Button>
+      </div>
+
+      {!brandStyle && (
+        <p className="text-xs text-muted-foreground">
+          {hasUrl
+            ? t("onboarding.wizard.kickoff.brand.analyze_hint", locale)
+            : t("onboarding.wizard.kickoff.brand.no_url", locale)}
+        </p>
+      )}
+
+      {error && (
+        <div className="mt-2 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {error}
+        </div>
+      )}
+
+      {brandStyle && (
+        <div className="space-y-3">
+          {/* Editable hex inputs for the 3 brand colors. Primary always
+              shows; accent only if the analyzer picked one. */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {(["primaryColor", "secondaryColor", "accentColor"] as const).map((field) => {
+              const value = brandStyle[field] ?? ""
+              if (field === "accentColor" && !value) return null
+              const label =
+                field === "primaryColor"
+                  ? t("onboarding.wizard.kickoff.brand.color.primary", locale)
+                  : field === "secondaryColor"
+                    ? t("onboarding.wizard.kickoff.brand.color.secondary", locale)
+                    : t("onboarding.wizard.kickoff.brand.color.accent", locale)
+              return (
+                <Field key={field} label={label}>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="h-9 w-9 shrink-0 rounded-md border border-border/60"
+                      style={{ backgroundColor: value || "transparent" }}
+                    />
+                    <Input
+                      value={value}
+                      onChange={(e) => onUpdateColor(field, e.target.value)}
+                      placeholder="#000000"
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                </Field>
+              )
+            })}
+          </div>
+
+          {/* Display-only font picks. We don't let the AM override here —
+              if the picked font is wrong, the CM tunes it in Pedro. */}
+          {(brandStyle.headingFont || brandStyle.bodyFont) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
+              {brandStyle.headingFont && (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wide block mb-0.5">
+                    {t("onboarding.wizard.kickoff.brand.font.heading", locale)}
+                  </span>
+                  <span className="font-medium text-foreground">{brandStyle.headingFont}</span>
+                </div>
+              )}
+              {brandStyle.bodyFont && (
+                <div>
+                  <span className="text-[10px] uppercase tracking-wide block mb-0.5">
+                    {t("onboarding.wizard.kickoff.brand.font.body", locale)}
+                  </span>
+                  <span className="font-medium text-foreground">{brandStyle.bodyFont}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Quick-pick swatches — top extracted colors with origin tags.
+              Click sets primary, shift-click sets secondary. Same UX as
+              Pedro's brand swatches so the muscle memory transfers. */}
+          {swatches.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+                {t("onboarding.wizard.kickoff.brand.swatches_hint", locale)}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {swatches.slice(0, 8).map((c) => {
+                  const isPrimary = c.hex === brandStyle.primaryColor
+                  const isSecondary = c.hex === brandStyle.secondaryColor
+                  return (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={(e) =>
+                        e.shiftKey
+                          ? onUpdateColor("secondaryColor", c.hex)
+                          : onUpdateColor("primaryColor", c.hex)
+                      }
+                      title={`${c.hex} · ${c.source}`}
+                      className={cn(
+                        "h-7 w-7 rounded-md border-2 transition-transform",
+                        isPrimary
+                          ? "border-emerald-500/60 scale-110"
+                          : isSecondary
+                            ? "border-primary scale-110"
+                            : "border-border/40 hover:scale-105",
+                      )}
+                      style={{ backgroundColor: c.hex }}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
 const textareaCls = cn(
   "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
   "placeholder:text-muted-foreground/50 resize-y",

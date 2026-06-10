@@ -798,11 +798,93 @@ export function Campaign({
         showToast(`Draft geladen ✓`);
       }
     } else {
-      // Fresh client — Pedro auto-fills the brief from hub context.
-      void runAutoBrief(clientId, clientName);
+      // Fresh client — try the onboarding handoff first (AM already
+      // filled brief + brand fingerprint during kick-off). Falls
+      // through to auto-brief when there's nothing collected upstream.
+      void loadFromOnboardingOrAutoBrief(clientId, clientName);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Bridges the onboarding wizard → Pedro. The CM should never have to
+  // re-type what the AM already filled in during kick-off, and Pedro
+  // should reuse the AM's live website-fingerprint instead of re-
+  // extracting colors on first open. Falls through to runAutoBrief
+  // when the handoff has nothing meaningful (e.g. client onboarded
+  // before this split shipped, or AM didn't run the brand step).
+  async function loadFromOnboardingOrAutoBrief(clientId: string, clientName: string) {
+    try {
+      const res = await fetch(
+        `/api/clients/${encodeURIComponent(clientId)}/onboarding/handoff`,
+      );
+      if (res.ok) {
+        const data = (await res.json()) as {
+          available: boolean;
+          brief: {
+            bedrijf: string; sector: string; websiteUrl: string;
+            doelgroep: string; pijnpunten: string; aanbod: string;
+            usps: string; marketingHooks: string; driveLink: string;
+          };
+          /** Only the website fingerprint (colors + fonts + logo / hero /
+           *  tagline). The "soft" Pedro fields — tone, industry,
+           *  brandKeywords, visualStyle — are NOT captured during AM
+           *  kick-off and get seeded with defaults below. */
+          brandStyle: Pick<BrandStyle,
+            | "primaryColor" | "secondaryColor" | "accentColor"
+            | "headingFont" | "bodyFont" | "logoUrl" | "heroImageUrl"
+            | "taglineHeadline" | "taglineSubline"
+          > | null;
+        };
+        if (data.available) {
+          // Same field-name mapping as runAutoBrief (kickoff → Pedro
+          // internal names) so behaviour is identical from the CM's
+          // perspective: brief lands in the right slots, sources
+          // tagged so the UI shows "from onboarding kick-off".
+          const b = data.brief;
+          setBrief((prev) => ({
+            ...prev,
+            bedrijf: b.bedrijf || prev.bedrijf,
+            sector: b.sector || prev.sector,
+            doel: b.doelgroep || prev.doel,
+            pijn: b.pijnpunten || prev.pijn,
+            aanbod: b.aanbod || prev.aanbod,
+            usps: b.usps || prev.usps,
+            hooksAM: b.marketingHooks || prev.hooksAM,
+          }));
+          if (b.websiteUrl) setWebsiteUrl(b.websiteUrl);
+          if (b.driveLink) setDriveLink(b.driveLink);
+          if (data.brandStyle) {
+            // Onboarding only captures the visual fingerprint (colors +
+            // fonts + logo). Pedro's BrandStyle needs `tone / industry /
+            // brandKeywords / visualStyle` too — those are CM-craft
+            // fields. We seed them empty so Pedro renders + auto-saves
+            // a valid blob; the CM fills the soft fields later if needed.
+            setBrandStyle({
+              ...data.brandStyle,
+              tone: "professioneel",
+              industry: "",
+              brandKeywords: "",
+              visualStyle: "",
+            });
+            if (data.brandStyle.primaryColor) {
+              setHuisstijl(
+                `Primary: ${data.brandStyle.primaryColor}, Secondary: ${data.brandStyle.secondaryColor}${data.brandStyle.accentColor ? `, Accent: ${data.brandStyle.accentColor}` : ""}`,
+              );
+            }
+          }
+          setAutoBriefSource("onboarding_kickoff");
+          setImportStatus(
+            `Brief + huisstijl overgenomen uit onboarding kick-off van "${clientName}" — controleer en vul aan.`,
+          );
+          showToast("Onboarding-context overgenomen ✓");
+          return;
+        }
+      }
+    } catch {
+      // Silent — fall through to auto-brief on any error.
+    }
+    void runAutoBrief(clientId, clientName);
+  }
 
   // Watch the prop-driven client and reload Campaign state on change.
   // Track the last-loaded id to avoid re-loading on every render.

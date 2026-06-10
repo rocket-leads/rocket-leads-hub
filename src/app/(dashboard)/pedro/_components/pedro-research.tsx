@@ -13,6 +13,28 @@ interface AdResult {
   insight: string;
 }
 
+/** Competitor surfaced by Pedro's Claude-driven discovery. We persist
+ *  the Apify-scraped ads under `topCompetitorAds` separately. */
+interface CompetitorEntry {
+  name: string;
+  relevance: string;
+  facebookPageUrl?: string | null;
+  websiteUrl?: string | null;
+}
+
+/** One ad row pulled back from `client_competitor_ads`, ordered by
+ *  days_running desc — used as evidence in the insights / example-ads
+ *  blocks above. */
+interface TopCompetitorAd {
+  competitor_name: string;
+  headline: string | null;
+  body: string | null;
+  cta_text: string | null;
+  creative_type: string | null;
+  creative_preview_url: string | null;
+  days_running: number | null;
+}
+
 interface ResearchPayload {
   branche: string;
   doelgroep: string;
@@ -27,7 +49,14 @@ interface ResearchPayload {
   };
   exampleAds: AdResult[];
   recommendations: string[];
+  // Optional: present when the CM ran the unified flow with the Apify
+  // competitor scrape enabled. Legacy entries don't have these.
+  competitors?: CompetitorEntry[];
+  topCompetitorAds?: TopCompetitorAd[];
+  competitorScrapeWarning?: string | null;
 }
+
+type Country = "NL" | "BE" | "DE";
 
 interface SavedResearch {
   id: string;
@@ -131,6 +160,19 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
   const [propositie, setPropositie] = useState("");
   const [extraContext, setExtraContext] = useState("");
 
+  // Unified research adds two CM controls: country (drives both AI
+  // competitor scope AND Apify country filter) and the scrape opt-in
+  // toggle. Defaults to NL + scrape-on when a client is active (the
+  // typical CM context); agency-wide runs default scrape-off so library
+  // entries don't burn Apify credits accidentally.
+  const [country, setCountry] = useState<Country>("NL");
+  const [includeCompetitors, setIncludeCompetitors] = useState<boolean>(Boolean(clientId));
+  useEffect(() => {
+    // When the active client changes, snap the toggle back to default
+    // for the new context (on for client-scoped, off for agency-wide).
+    setIncludeCompetitors(Boolean(clientId));
+  }, [clientId]);
+
   // Sync klantnaam to the global picker when the active client changes.
   useEffect(() => {
     setKlantnaam(clientName);
@@ -192,13 +234,35 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
     setError(null);
     setResult(null);
     setSavedId(null);
-    setProgress("Bezig met onderzoek...");
+
+    // Stepped progress so the CM sees what's happening — the full
+    // pipeline can take 90-180s when scrape is enabled. Each label
+    // matches the phase the route is actually in (timed conservatively
+    // — slightly off is fine; the goal is the CM doesn't think it's
+    // hung).
+    const scrapeOn = includeCompetitors && Boolean(clientId);
+    if (scrapeOn) {
+      setProgress("Concurrenten zoeken...");
+      setTimeout(() => setProgress("Apify scrapet live ads..."), 5000);
+      setTimeout(() => setProgress("Pedro analyseert winnende patronen..."), 45000);
+    } else {
+      setProgress("Pedro doet onderzoek...");
+    }
 
     try {
       const res = await fetch("/api/pedro/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ branche, doelgroep, propositie, extraContext }),
+        body: JSON.stringify({
+          branche,
+          doelgroep,
+          propositie,
+          extraContext,
+          clientId: clientId ?? undefined,
+          country,
+          includeCompetitors: scrapeOn,
+          ownCompanyName: klantnaam || clientName || undefined,
+        }),
       });
       const data = await res.json();
 
@@ -207,7 +271,15 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
         return;
       }
       setResult(data.research);
-      showToast("Research afgerond -- vergeet niet op te slaan");
+      const scrapedCount = data.research?.topCompetitorAds?.length ?? 0;
+      const warning = data.research?.competitorScrapeWarning;
+      if (warning) {
+        showToast(`Research klaar, scrape gaf waarschuwing: ${warning}`);
+      } else if (scrapeOn && scrapedCount > 0) {
+        showToast(`Research klaar -- ${scrapedCount} concurrent ads geanalyseerd`);
+      } else {
+        showToast("Research afgerond -- vergeet niet op te slaan");
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "onbekende fout";
       setError(msg);
@@ -484,9 +556,47 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
+        {/* Competitor-scrape controls — country picker drives both the
+            AI competitor-discovery scope AND the Apify country filter.
+            Toggle defaults on when a client is active, off otherwise. */}
+        <div className="flex items-center gap-3 flex-wrap pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] uppercase tracking-[0.5px] text-muted-foreground/80">Land</label>
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value as Country)}
+              className="!text-[12px] bg-background border border-border/60 rounded-md px-2 py-1 cursor-pointer"
+            >
+              <option value="NL">🇳🇱 NL</option>
+              <option value="BE">🇧🇪 BE</option>
+              <option value="DE">🇩🇪 DE</option>
+            </select>
+          </div>
+
+          <label
+            className={`flex items-center gap-2 text-[12px] cursor-pointer select-none transition-opacity ${
+              clientId ? "" : "opacity-50 cursor-not-allowed"
+            }`}
+            title={clientId ? undefined : "Selecteer eerst een klant om concurrent-scrape te activeren"}
+          >
+            <input
+              type="checkbox"
+              checked={includeCompetitors && Boolean(clientId)}
+              disabled={!clientId}
+              onChange={(e) => setIncludeCompetitors(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <span className="text-muted-foreground">
+              Scrape live concurrent ads <span className="text-[10px] text-muted-foreground/60">(Apify, ~60-120s)</span>
+            </span>
+          </label>
+        </div>
+
+        <div className="flex items-center justify-between pt-3 mt-3">
           <div className="text-[11px] text-muted-foreground/60">
-            Pedro analyseert winnende ad-patronen in deze branche
+            {includeCompetitors && clientId
+              ? "Pedro vindt 5-8 concurrenten, scrapet hun live Meta ads en analyseert winnende patronen"
+              : "Pedro analyseert winnende ad-patronen in deze branche (zonder concurrent scrape)"}
           </div>
           <Button onClick={runResearch} disabled={loading}>
             {loading ? "Onderzoeken..." : "Start research →"}
@@ -526,6 +636,133 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
               <Button variant="outline" size="sm" onClick={downloadResearchMD}>↓ Download .md</Button>
             </div>
           </div>
+
+          {/* Competitors found — Claude-suggested + cross-referenced with
+              the Apify scrape. Shown above Insights because they're the
+              evidence base the rest of the research is grounded in. */}
+          {result.competitors && result.competitors.length > 0 && (
+            <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <div className="font-heading font-semibold text-base tracking-tight">Concurrenten gevonden</div>
+                  <div className="text-[11px] text-muted-foreground/60 mt-0.5">
+                    {result.competitors.length} concurrenten · land: {result.branche ? result.branche : ""}
+                  </div>
+                </div>
+                {result.topCompetitorAds && result.topCompetitorAds.length > 0 && (
+                  <span className="text-[10px] uppercase tracking-[0.5px] text-emerald-500 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    {result.topCompetitorAds.length} live ads
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {result.competitors.map((c, i) => {
+                  // Count how many scraped ads we have per competitor —
+                  // surface the number inline so the CM sees who actually
+                  // delivered material vs. who was a dud lookup.
+                  const adCount = result.topCompetitorAds
+                    ? result.topCompetitorAds.filter((a) => a.competitor_name === c.name).length
+                    : 0;
+                  return (
+                    <div
+                      key={i}
+                      className="bg-muted/40 border border-border/60 rounded-lg p-3 flex flex-col gap-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[13px] font-semibold">{c.name}</div>
+                        {adCount > 0 && (
+                          <span className="text-[10px] text-emerald-500/90 font-medium">
+                            {adCount} ad{adCount === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground leading-[1.5]">{c.relevance}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        {c.facebookPageUrl && (
+                          <a
+                            href={c.facebookPageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-primary hover:underline"
+                          >
+                            Facebook
+                          </a>
+                        )}
+                        {c.websiteUrl && (
+                          <a
+                            href={c.websiteUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-primary hover:underline"
+                          >
+                            Website
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {result.competitorScrapeWarning && (
+                <div className="mt-3 text-[11px] text-amber-500/80 bg-amber-500/10 border border-amber-500/30 rounded-md px-3 py-2">
+                  Scrape-waarschuwing: {result.competitorScrapeWarning}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Top live competitor ads — direct evidence of what's winning
+              right now. Ordered by days_running desc (longer = stronger
+              signal of conversion). */}
+          {result.topCompetitorAds && result.topCompetitorAds.length > 0 && (
+            <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
+              <div className="font-heading font-semibold text-base tracking-tight mb-1">
+                Top live concurrent ads
+              </div>
+              <div className="text-[11px] text-muted-foreground/60 mb-4">
+                Geordend op &quot;days running&quot; -- ads die langer draaien zijn winners
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {result.topCompetitorAds.map((ad, i) => (
+                  <div key={i} className="bg-muted/40 border border-border/60 rounded-lg overflow-hidden">
+                    {ad.creative_preview_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={ad.creative_preview_url}
+                        alt={ad.headline ?? ad.competitor_name}
+                        className="w-full aspect-square object-cover bg-background/40"
+                      />
+                    )}
+                    <div className="p-3">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="text-[10.5px] uppercase tracking-[0.5px] text-primary font-semibold truncate">
+                          {ad.competitor_name}
+                        </div>
+                        {ad.days_running !== null && ad.days_running !== undefined && (
+                          <span className="text-[9.5px] text-emerald-500 font-medium shrink-0">
+                            {ad.days_running}d live
+                          </span>
+                        )}
+                      </div>
+                      {ad.headline && (
+                        <div className="text-[12.5px] font-medium leading-snug mb-1">{ad.headline}</div>
+                      )}
+                      {ad.body && (
+                        <div className="text-[11px] text-muted-foreground leading-[1.5] line-clamp-4 whitespace-pre-wrap">
+                          {ad.body}
+                        </div>
+                      )}
+                      {ad.cta_text && (
+                        <div className="mt-2 inline-flex text-[10px] uppercase tracking-[0.5px] text-foreground bg-background border border-border/60 rounded px-2 py-0.5">
+                          CTA: {ad.cta_text}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Insights */}
           <div className="bg-card border border-border/60 rounded-2xl p-6 mb-5">
@@ -637,6 +874,28 @@ function buildResearchMD(r: ResearchPayload, ctx: { branche: string; klantnaam: 
   if (ctx.propositie) lines.push(`**Propositie:** ${ctx.propositie}`);
   lines.push(`**Datum:** ${new Date().toISOString().split("T")[0]}`);
   lines.push("");
+  // Competitors block — appears above Insights in the MD so the
+  // reader sees the evidence base before the synthesised patterns.
+  if (r.competitors?.length) {
+    lines.push("## Concurrenten");
+    r.competitors.forEach((c) => {
+      lines.push(`- **${c.name}** — ${c.relevance}`);
+      if (c.facebookPageUrl) lines.push(`  - Facebook: ${c.facebookPageUrl}`);
+      if (c.websiteUrl) lines.push(`  - Website: ${c.websiteUrl}`);
+    });
+    lines.push("");
+  }
+  if (r.topCompetitorAds?.length) {
+    lines.push("## Top live concurrent ads");
+    r.topCompetitorAds.forEach((ad, i) => {
+      lines.push(`### ${i + 1}. ${ad.competitor_name}${ad.days_running ? ` (${ad.days_running}d live)` : ""}`);
+      if (ad.headline) lines.push(`**Titel:** ${ad.headline}`);
+      if (ad.body) lines.push(`**Body:** ${ad.body}`);
+      if (ad.cta_text) lines.push(`**CTA:** ${ad.cta_text}`);
+      lines.push("");
+    });
+  }
+
   lines.push("## Insights");
   const sec = (label: string, items: string[]) => {
     if (!items?.length) return;

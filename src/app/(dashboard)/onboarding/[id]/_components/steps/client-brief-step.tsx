@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useMutation } from "@tanstack/react-query"
-import { Sparkles, Save, ArrowRight, Loader2, CheckCircle2, FileText } from "lucide-react"
+import { Sparkles, Save, ArrowRight, Loader2, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { t } from "@/lib/i18n/t"
@@ -21,9 +21,8 @@ type Props = {
 }
 
 /** Persisted shape for this step's `content` blob. The AM edits each
- *  field in place; competitorAnalysis is a separate AI generation that
- *  populates its own field (Phase 1 ships it as a manual textarea while
- *  the AI hook is being built; the UI is wired the same way). */
+ *  field in place. Competitor analysis lives on Pedro's research tab
+ *  (CM craft) since 2026-06-10 — not duplicated here anymore. */
 type BriefContent = {
   brief: {
     bedrijf: string
@@ -37,7 +36,6 @@ type BriefContent = {
     driveLink: string
     source: string
   }
-  concurrentieAnalyse: string
 }
 
 const EMPTY: BriefContent = {
@@ -53,14 +51,14 @@ const EMPTY: BriefContent = {
     driveLink: "",
     source: "",
   },
-  concurrentieAnalyse: "",
 }
 
 /**
  * Client Brief step. Calls Pedro's existing /api/pedro/auto-brief — the
  * same generator the CM's brief tab uses — to produce an AI draft from
- * the kick-off transcript + Trengo + Monday context. AM edits inline,
- * adds competitor analysis, then saves & continues.
+ * the kick-off transcript + Trengo + Monday context. AM edits inline
+ * and saves & continues. Competitor analysis moved to Pedro (CM craft)
+ * as of 2026-06-10 — no longer captured here.
  */
 export function ClientBriefStep({ step, mondayItemId, client, locale, nextKey, onStepSaved }: Props) {
   // Load prior content (revisit case) — render whatever was last saved.
@@ -244,34 +242,6 @@ export function ClientBriefStep({ step, mondayItemId, client, locale, nextKey, o
           placeholder={t("onboarding.wizard.brief.placeholder.marketingHooks", locale)}
         />
       </Field>
-
-      {/* Competitor analysis — separate section because it's its own
-          deliverable in Drive once filled. Phase 1 ships the textarea
-          + a "Generate (AI)" button placeholder so the flow is complete. */}
-      <div className="pt-2 border-t border-border/40">
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <div className="flex items-center gap-2">
-            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-            <h4 className="text-sm font-semibold">
-              {t("onboarding.wizard.brief.field.concurrentieAnalyse", locale)}
-            </h4>
-          </div>
-          <Button size="sm" variant="outline" disabled className="gap-1.5" title="Phase 2">
-            <Sparkles className="h-3.5 w-3.5" />
-            {t("onboarding.wizard.brief.competitor_generate_btn", locale)}
-          </Button>
-        </div>
-        <textarea
-          value={content.concurrentieAnalyse}
-          onChange={(e) => {
-            setTouched(true)
-            setContent((c) => ({ ...c, concurrentieAnalyse: e.target.value }))
-          }}
-          rows={6}
-          className={textareaCls}
-          placeholder={t("onboarding.wizard.brief.placeholder.concurrentieAnalyse", locale)}
-        />
-      </div>
 
       {/* Sticky footer-ish action row */}
       <div className="flex items-center justify-between gap-3 pt-4 border-t border-border/40">
