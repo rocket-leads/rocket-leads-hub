@@ -3,6 +3,7 @@
 import type { Locale } from "@/lib/i18n/types"
 import { t } from "@/lib/i18n/t"
 import { BriefEnrichmentStep } from "./steps/brief-enrichment-step"
+import { HandoffStep } from "./steps/handoff-step"
 import { KickoffLiveStep } from "./steps/kickoff-live-step"
 import { TranscriptLinkStep } from "./steps/transcript-link-step"
 import { WaitOnClientStep } from "./steps/wait-on-client-step"
@@ -86,6 +87,8 @@ export function StepRenderer({
           <BriefEnrichmentStep {...stepProps} />
         ) : step.action === "wait_on_client" ? (
           <WaitOnClientStep {...stepProps} />
+        ) : step.action === "handoff" ? (
+          <HandoffStep {...stepProps} />
         ) : (
           <PlaceholderStep {...stepProps} />
         )}

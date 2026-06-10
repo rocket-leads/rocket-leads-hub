@@ -9,6 +9,9 @@ import {
 import { syncClientToSupabase } from "./sync"
 import { deriveInvoiceDate } from "./billing-cycle"
 import { readCache, writeCache } from "@/lib/cache"
+import { mondayStatusToHub, hubStatusToMondayLabel } from "./status"
+import { resolveWizardState, missingCriticalSteps } from "./onboarding"
+import { fetchStoredSteps } from "./onboarding-state"
 
 const SIMPLE_FIELDS = [
   "company_name",
@@ -115,6 +118,33 @@ export async function updateClientField(
       await syncCycleToSiblings(mondayItemId, update.value, derivedInvoice)
     }
   } else if (STATUS_SET.has(update.fieldKey) && "label" in update) {
+    // Critical-items gate (Onboarding → Live). Fires when an AM (or
+    // any caller) tries to promote a client from "onboarding" Hub
+    // status to "Live". Any critical wizard step still open blocks
+    // the write. Other status transitions (Live → Live re-write,
+    // OnHold → Live, Churned → Live) skip the gate — those clients
+    // already passed it once.
+    if (
+      update.fieldKey === "campaign_status" &&
+      update.label === hubStatusToMondayLabel("live")
+    ) {
+      const snapshot = await fetchClientById(mondayItemId)
+      if (snapshot) {
+        const currentHubStatus = mondayStatusToHub(snapshot.campaignStatus, boardType)
+        if (currentHubStatus === "onboarding") {
+          const stored = await fetchStoredSteps(mondayItemId)
+          const states = resolveWizardState(snapshot, stored)
+          const missing = missingCriticalSteps(states)
+          if (missing.length > 0) {
+            throw new Error(
+              `Cannot promote to Live — ${missing.length} critical onboarding step(s) still open: ` +
+                missing.map((m) => m.key).join(", "),
+            )
+          }
+        }
+      }
+    }
+
     // Empty label clears the status — Monday accepts `{ label: "" }` as a reset.
     await setItemColumnValueRaw(boardType, mondayItemId, update.fieldKey, {
       label: update.label,

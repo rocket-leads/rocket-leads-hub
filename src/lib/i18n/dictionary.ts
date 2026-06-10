@@ -769,6 +769,44 @@ export const DICTIONARY = {
   },
   "onboarding.wizard.wait.skip.btn": { nl: "Skip stap", en: "Skip step" },
 
+  // Stap 5 — handoff to CM
+  "onboarding.wizard.handoff.summary.hint": {
+    nl: "Alle kritieke stappen zijn klaar. Klik op de knop om de klant op Live te zetten en de campagnemanager te alerten.",
+    en: "All critical steps done. Click to flip the client to Live and notify the campaign manager.",
+  },
+  "onboarding.wizard.handoff.summary.cm": { nl: "Campagne manager", en: "Campaign manager" },
+  "onboarding.wizard.handoff.summary.am": { nl: "Account manager", en: "Account manager" },
+  "onboarding.wizard.handoff.summary.drive": { nl: "Drive folder", en: "Drive folder" },
+  "onboarding.wizard.handoff.summary.meta": { nl: "Meta ad account", en: "Meta ad account" },
+  "onboarding.wizard.handoff.summary.stripe": { nl: "Stripe customer", en: "Stripe customer" },
+  "onboarding.wizard.handoff.summary.trengo": { nl: "Trengo contact", en: "Trengo contact" },
+  "onboarding.wizard.handoff.summary.no_cm": {
+    nl: "Geen CM toegewezen",
+    en: "No CM assigned",
+  },
+  "onboarding.wizard.handoff.no_cm_warning": {
+    nl: "Er is nog geen campagnemanager toegewezen op Monday. Zet er één op voordat je handoff doet, anders krijgt niemand de notificatie.",
+    en: "No campaign manager assigned on Monday yet. Assign one before handoff or nobody gets the notification.",
+  },
+  "onboarding.wizard.handoff.cta": { nl: "Klaar voor CM — flip naar Live", en: "Ready for CM — flip to Live" },
+  "onboarding.wizard.handoff.done.title": { nl: "Onboarding voltooid", en: "Onboarding complete" },
+  "onboarding.wizard.handoff.done.body": {
+    nl: "Klant staat op Live sinds {when}. {cm} heeft een Slack-DM gekregen.",
+    en: "Client went Live at {when}. {cm} got a Slack DM.",
+  },
+  "onboarding.wizard.handoff.done.cm_notified": {
+    nl: "CM is gepingd op Slack",
+    en: "CM pinged on Slack",
+  },
+  "onboarding.wizard.handoff.done.cm_not_notified": {
+    nl: "CM-notificatie mislukt",
+    en: "CM notification failed",
+  },
+  "onboarding.wizard.handoff.done.open_client": {
+    nl: "Open klant in Hub",
+    en: "Open client in Hub",
+  },
+
   "onboarding.wizard.kickoff.mark_done": { nl: "Stap voltooien", en: "Mark step done" },
   "onboarding.wizard.kickoff.save_and_continue": { nl: "Opslaan & verder", en: "Save & continue" },
 
