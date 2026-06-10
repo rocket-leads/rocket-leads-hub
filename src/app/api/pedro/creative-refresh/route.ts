@@ -122,7 +122,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
   const supabase = await createAdminClient()
   const { data: client } = await supabase
     .from("clients")
-    .select("monday_item_id, name, meta_ad_account_id")
+    .select("id, monday_item_id, name, meta_ad_account_id")
     .eq("monday_item_id", clientId)
     .maybeSingle()
 
@@ -221,15 +221,38 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
     }
   }
 
+  // Roy 2026-06-10 BUG FIX: respecteer de campaign-selectie uit
+  // `client_campaigns`. Eerder werden ALLE ads in het Meta account
+  // gefetcht, ook als de CM in Beheer maar 1 van de 26 campagnes had
+  // geselecteerd. Resultaat: winners uit niet-gerelateerde campagnes
+  // (Tosti's uit Unox' campagne werd gepakt als Zumex-winner, terwijl
+  // Zumex alleen "RL | Zumex NL | LF" geselecteerd had).
+  const { data: selectedRows } = await supabase
+    .from("client_campaigns")
+    .select("meta_campaign_id")
+    .eq("client_id", client.id)
+    .eq("is_selected", true)
+  const selectedCampaignIds = new Set<string>(
+    (selectedRows ?? [])
+      .map((r) => r.meta_campaign_id as string | null)
+      .filter((id): id is string => !!id),
+  )
+  const campaignFilter = selectedCampaignIds.size > 0 ? selectedCampaignIds : undefined
+
   // ── 2. Pull current + prior windows in parallel (cached) ──
+  // Cache key bevat de campaign-filter hash zodat we niet per ongeluk
+  // een eerder ongefilterd-cached resultaat hergebruiken.
   const cur = dateRange(days)
   const prior = priorRange(days)
+  const filterTag = campaignFilter
+    ? `:cf:${[...selectedCampaignIds].sort().join(",")}`
+    : ""
   const [adsRaw, adsPriorRaw] = await Promise.all([
-    cachedFetch(`pedro_perf:${client.meta_ad_account_id}:${cur.start}:${cur.end}`, () =>
-      fetchMetaAdDetails(client.meta_ad_account_id, cur.start, cur.end),
+    cachedFetch(`pedro_perf:${client.meta_ad_account_id}:${cur.start}:${cur.end}${filterTag}`, () =>
+      fetchMetaAdDetails(client.meta_ad_account_id, cur.start, cur.end, campaignFilter),
     ).catch(() => [] as Awaited<ReturnType<typeof fetchMetaAdDetails>>),
-    cachedFetch(`pedro_perf:${client.meta_ad_account_id}:${prior.start}:${prior.end}`, () =>
-      fetchMetaAdDetails(client.meta_ad_account_id, prior.start, prior.end),
+    cachedFetch(`pedro_perf:${client.meta_ad_account_id}:${prior.start}:${prior.end}${filterTag}`, () =>
+      fetchMetaAdDetails(client.meta_ad_account_id, prior.start, prior.end, campaignFilter),
     ).catch(() => [] as Awaited<ReturnType<typeof fetchMetaAdDetails>>),
   ])
 
@@ -428,7 +451,7 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
           "altHeadlines": ["VERPLICHT: 2 alternatieve headlines in NL, zelfde DNA als de primaire, andere invalshoek (bv. seizoen, ROI, sociale druk). Elke max 35 char. Geen punt op eind. Format: array van 2 strings."],
           "altPrimaryTexts": ["VERPLICHT: 2 alternatieve primary texts in NL, 40-80 woorden, andere opener dan primary. Format: array van 2 strings. Meta draait dynamic creative met deze 3 totaal — varieer hook + bewijs zodat Meta verschillende segmenten kan raken."],
           "linkDescription": "Optionele ~30 char link description in NL (mag lege string zijn). Korte ondersteunende regel onder de headline, niet verplicht.",
-          "imagePrompt": "ENGLISH visual brief van max 120 woorden voor de image-gen (Gemini Nano Banana Pro). Gemini krijgt straks tot 3 reference images: (a) de winner ad thumbnail (DNA), en (b) 1-2 echte client photos uit hun Drive folder (echt product, echte locatie, echte brand-style). Beschrijf: scene/setting, subject, mood, lighting, on-image headline-overlay (zie regels onder). Verwijs naar references zo: 'using the client product visible in the reference photos' / 'in the same brand style as the references' / 'matching the lighting from the reference photos'. Beschrijf NIET het hele beeld vanaf nul — leun op de references. Schrijf in English voor model fidelity. HARDE REGELS (knowledge/campaigns.md §Image Creative Principles): (1) GEEN grote logo's — als logo: klein op product (kassa-display, schort, gevel). (2) GEEN brand-slogans als on-image tekst ('Working on a fresh future' etc) — expliciet: 'Do not render any brand slogan or tagline as on-image text.' (3) De on-image headline-overlay MOET een pijnpunt-vraag/situatie uit doelgroep-perspectief zijn, GEEN product-claim. Quote de exacte Dutch tekst (zelfde als newHook waar mogelijk). (4) Gebruik de BRAND IDENTITY hex codes uit context letterlijk ('primary color #FF6B00 voor accent op headline') en font-namen ('headline in Clash Grotesk style'). (5) Honoreer ALLE KLANT-FEEDBACK PATRONEN uit context — als CM eerder zei 'logo's altijd klein' is dat een wet voor deze klant.",
+          "imagePrompt": "ENGLISH visual brief van max 140 woorden voor de image-gen (Gemini Nano Banana Pro). Gemini krijgt straks tot 3 reference images. Beschrijf: scene/setting, ONE clear subject, mood, lighting, ONE clean on-image headline. Verwijs naar references zo: 'using the client product visible in the reference photos'. Schrijf in English voor model fidelity. \n\nHARDE REGELS — RL is een marketingbureau, deze creatives moeten LEVERBAAR zijn. Bij twijfel = TE WEINIG, niet te veel:\n(A) EXACTLY ONE on-image text element. The exact Dutch headline. NIETS anders. NO badges, NO price labels (€..), NO comparison stickers (LAGE/3x MARGE), NO sticker/sign overlays, NO secondary captions, NO photo captions. The model often duplicates the same badge twice — explicitly forbid: 'Do not duplicate any text element. Render the headline exactly ONCE.'\n(B) Brand handling. NO competing brand names visible (no QualityFry/Blendtec/etc in a Zumex shot). NO large logo. Subtle brand presence only if it occurs naturally on a product surface.\n(C) Typography quality. ONE consistent sans-serif typeface for the whole headline. Even letter spacing. Center-aligned or left-aligned consistently. Sufficient padding around the headline (≥8% of canvas on each side). NO mixed weights within the same line unless explicitly framed. NO outline + fill mixed. Use the BRAND IDENTITY hex codes from context for color accents.\n(D) Composition. Clean photographic background. ONE subject in focus. The headline sits in clear negative space — never on top of busy detail. Resolution must look professional, not collage-y.\n(E) On-image text is the headline. Pijnpunt-vraag/situatie uit doelgroep-perspectief, GEEN product-claim. Use the variant's 'headline' field verbatim where possible.\n(F) Honoreer KLANT-FEEDBACK PATRONEN uit context als wetten.\n\nExplicit deny list (write these as 'NEGATIVE: ...' at the end of the prompt): no badges, no sticker overlays, no price tags, no comparison labels, no duplicated text, no competing brand watermarks, no '€X' price callouts, no '3x'/'2x' multiplier stickers, no before/after split overlays, no mixed fonts.",
           "why": "1 zin: waarom deze variatie de DNA van [adName] respecteert maar fris is"
         }
       ]
@@ -489,6 +512,13 @@ Genereer 1-3 proposals (1 per winner, max 3). Per proposal: 3 varianten. Alle te
     Photo: maxByFormat.Photo + 1,
     Video: maxByFormat.Video + 1,
   }
+  // Roy 2026-06-10: bouw een lookup van adId → ScoredAd zodat we per
+  // proposal de winner's volledige Meta metadata kunnen snapshotten in
+  // de envelope. Dit maakt push-to-meta resilient — de push leest
+  // straks uit deze snapshot ipv een live Meta-lookup, zodat verwijderde
+  // winners de flow niet meer blokkeren.
+  const scoredByAdId = new Map(scored.map((a) => [a.adId, a]))
+
   const responseProposals: Proposal[] = []
   for (const rawProposal of rawProposals as Array<Partial<Proposal>>) {
     const variantsIn = Array.isArray(rawProposal.variants) ? rawProposal.variants : []
@@ -496,12 +526,28 @@ Genereer 1-3 proposals (1 per winner, max 3). Per proposal: 3 varianten. Alle te
       variantsIn as Parameters<typeof assignAdNamesToVariants>[0],
       nextByFormat,
     )
+    const winnerAdId = rawProposal.basedOnAd?.adId ?? ""
+    const winnerAd = winnerAdId ? scoredByAdId.get(winnerAdId) : undefined
+    const snapshot = winnerAd
+      ? {
+          campaignId: winnerAd.campaignId,
+          campaignName: winnerAd.campaignName,
+          adsetId: winnerAd.adsetId,
+          adsetName: winnerAd.adsetName,
+          pageId: winnerAd.pageId,
+          instagramActorId: winnerAd.instagramActorId,
+          leadGenFormId: winnerAd.leadGenFormId,
+          linkUrl: winnerAd.linkUrl,
+          callToActionType: winnerAd.callToActionType,
+        }
+      : undefined
     responseProposals.push({
       basedOnAd: {
-        adId: rawProposal.basedOnAd?.adId ?? "",
+        adId: winnerAdId,
         adName: rawProposal.basedOnAd?.adName ?? "",
         cpl: rawProposal.basedOnAd?.cpl ?? null,
         verdict: rawProposal.basedOnAd?.verdict ?? "winner",
+        ...(snapshot ? { snapshot } : {}),
       },
       preserve: {
         hook: rawProposal.preserve?.hook ?? "",

@@ -48,6 +48,84 @@ export type CreatedDriveFile = {
   name: string
 }
 
+export type CreatedDriveFolder = {
+  id: string
+  webViewLink: string
+  name: string
+}
+
+/**
+ * Create a single Drive folder underneath a parent folder. The parent
+ * MUST be shared as Editor with the service account, otherwise Drive
+ * returns a 403 (same precondition as `createMarkdownFile` above).
+ *
+ * `webViewLink` is the URL the AM shares with the client — it's the
+ * folder's normal Drive URL, opens in browser when clicked.
+ */
+export async function createFolder(args: {
+  parentId: string
+  name: string
+}): Promise<CreatedDriveFolder> {
+  const auth = await getAuth()
+  const drive = google.drive({ version: "v3", auth })
+
+  try {
+    const res = await drive.files.create({
+      requestBody: {
+        name: args.name,
+        parents: [args.parentId],
+        mimeType: "application/vnd.google-apps.folder",
+      },
+      fields: "id, name, webViewLink",
+      supportsAllDrives: true,
+    })
+    const data = res.data
+    if (!data.id) throw new Error("Drive folder create returned no id")
+    return {
+      id: data.id,
+      name: data.name ?? args.name,
+      webViewLink: data.webViewLink ?? `https://drive.google.com/drive/folders/${data.id}`,
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (/permission|forbidden|insufficient|insufficientFilePermissions/i.test(msg)) {
+      throw new Error(
+        "Drive parent folder is niet als Editor gedeeld met het service-account. Open de parent folder, kies Share, en geef het service-account-emailadres Editor-rechten.",
+      )
+    }
+    throw e
+  }
+}
+
+/**
+ * Share a Drive folder with a user email at the requested role. Used by
+ * the onboarding wizard's Stap 1 share-flow: when the AM marks "Share
+ * via Trengo", we grant the client Editor access on the root folder so
+ * they can drop their content in.
+ *
+ * `sendNotificationEmail: false` — we send our own onboarding email
+ * via Trengo with the link, so Drive's auto-email would just be noise.
+ */
+export async function shareFolderWithUser(args: {
+  folderId: string
+  email: string
+  role?: "reader" | "writer" | "commenter"
+}): Promise<void> {
+  const auth = await getAuth()
+  const drive = google.drive({ version: "v3", auth })
+
+  await drive.permissions.create({
+    fileId: args.folderId,
+    sendNotificationEmail: false,
+    supportsAllDrives: true,
+    requestBody: {
+      type: "user",
+      role: args.role ?? "writer",
+      emailAddress: args.email,
+    },
+  })
+}
+
 /**
  * Create a plain Markdown file inside the given Drive folder.
  *
@@ -129,6 +207,51 @@ export type DriveFolderNode = {
   hasImages: boolean
 }
 
+/** Lightweight in-memory cache for listFolderTree results, keyed by
+ *  (rootFolderId, maxDepth, maxFolders). TTL 10 min. Survives across
+ *  requests (Next.js keeps the module in memory) — so subsequent
+ *  ImageSourcesPicker opens for the same client return instant. Roy
+ *  2026-06-10: was 15-25s sequential per open; nu meestal <100ms na de
+ *  eerste call.
+ *
+ *  Map cap = 200 entries so memory usage stays bounded if many clients
+ *  cycle through. LRU eviction kicks in via `lastUsed`. */
+type TreeCacheEntry = {
+  result: DriveFolderNode[]
+  expiresAt: number
+  lastUsed: number
+}
+const TREE_CACHE = new Map<string, TreeCacheEntry>()
+const TREE_CACHE_TTL_MS = 10 * 60 * 1000
+const TREE_CACHE_MAX = 200
+
+function cacheKey(rootFolderId: string, maxDepth: number, maxFolders: number): string {
+  return `${rootFolderId}|d${maxDepth}|m${maxFolders}`
+}
+
+function evictTreeCacheIfNeeded(): void {
+  if (TREE_CACHE.size <= TREE_CACHE_MAX) return
+  const sorted = Array.from(TREE_CACHE.entries()).sort(
+    ([, a], [, b]) => a.lastUsed - b.lastUsed,
+  )
+  const drop = sorted.length - TREE_CACHE_MAX
+  for (let i = 0; i < drop; i++) {
+    TREE_CACHE.delete(sorted[i][0])
+  }
+}
+
+/** Force-invalidate the cache entry for a given root. Use after the CM
+ *  toggles a folder pref so the next picker load reflects fresh state.
+ *  (Pref state itself lives in the DB, so the tree-content cache stays
+ *  valid — but a CM that just toggled wants confidence the UI reflects
+ *  reality, so we invalidate.) */
+export function invalidateFolderTreeCache(rootFolderId: string): void {
+  if (!rootFolderId) return
+  for (const k of TREE_CACHE.keys()) {
+    if (k.startsWith(`${rootFolderId}|`)) TREE_CACHE.delete(k)
+  }
+}
+
 /**
  * Enumerate folders onder een root, tot `maxDepth` niveaus diep. Geeft
  * een platte lijst — caller bouwt zelf een tree-view uit de `path` en
@@ -136,91 +259,143 @@ export type DriveFolderNode = {
  * de CM vóór de Genereer-klik aanvinkt welke folders Pedro mag
  * gebruiken.
  *
+ * Roy 2026-06-10 speedup: per-level parallel BFS in plaats van
+ * sequential. Voor een typische klant (15-30 folders, depth 2) zakte
+ * de wall-time van ~18s naar ~2-3s op cold call. Subsequent picker
+ * opens binnen de 10-min TTL hitten de in-memory cache instant.
+ *
  * Best-effort: failures per folder loggen + door. Cap totaal folder
  * count op `maxFolders` zodat we niet door 500+ folder trees gaan
  * voor 1 picker-call.
- *
- * Roy 2026-06-10.
  */
 export async function listFolderTree(
   rootFolderId: string,
-  options: { maxDepth?: number; maxFolders?: number } = {},
+  options: { maxDepth?: number; maxFolders?: number; bypassCache?: boolean } = {},
 ): Promise<DriveFolderNode[]> {
   const maxDepth = options.maxDepth ?? 2
   const maxFolders = options.maxFolders ?? 60
-  if (!rootFolderId?.trim()) return []
+  const id = rootFolderId?.trim()
+  if (!id) return []
+
+  // ── Cache hit? ──────────────────────────────────────────────────
+  const key = cacheKey(id, maxDepth, maxFolders)
+  const now = Date.now()
+  if (!options.bypassCache) {
+    const cached = TREE_CACHE.get(key)
+    if (cached && cached.expiresAt > now) {
+      cached.lastUsed = now
+      return cached.result
+    }
+  }
 
   const auth = await getAuth()
   const drive = google.drive({ version: "v3", auth })
 
-  type QueueEntry = { id: string; name: string; path: string; depth: number }
-  const queue: QueueEntry[] = [
-    { id: rootFolderId.trim(), name: "(root)", path: "", depth: 0 },
-  ]
-  const visited = new Set<string>([rootFolderId.trim()])
-  const results: DriveFolderNode[] = []
+  type Entry = { id: string; name: string; path: string; depth: number }
+  type FolderProbe = {
+    entry: Entry
+    subfolders: Array<{ id: string; name: string }>
+    hasImages: boolean
+  }
 
-  while (queue.length > 0 && results.length < maxFolders) {
-    const current = queue.shift()!
-    let subfolders: Array<{ id: string; name: string; modifiedTime: string | null }> = []
-    let hasImages = false
+  // List the children of one folder. Returns subfolders + a hasImages
+  // flag (true when at least one jpg/png is direct child). Failures
+  // log + return an empty probe so we don't block the whole tree.
+  async function probe(entry: Entry): Promise<FolderProbe> {
     try {
       const res = await drive.files.list({
-        q: `'${current.id}' in parents and trashed = false and (mimeType = 'application/vnd.google-apps.folder' or mimeType = 'image/jpeg' or mimeType = 'image/png')`,
-        fields: "files(id, name, mimeType, modifiedTime)",
+        q: `'${entry.id}' in parents and trashed = false and (mimeType = 'application/vnd.google-apps.folder' or mimeType = 'image/jpeg' or mimeType = 'image/png')`,
+        fields: "files(id, name, mimeType)",
         pageSize: 200,
         orderBy: "name",
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
       })
+      const subfolders: Array<{ id: string; name: string }> = []
+      let hasImages = false
       for (const f of res.data.files ?? []) {
         if (!f.id || !f.name || !f.mimeType) continue
         if (f.mimeType === "application/vnd.google-apps.folder") {
-          subfolders.push({
-            id: f.id,
-            name: f.name,
-            modifiedTime: f.modifiedTime ?? null,
-          })
+          subfolders.push({ id: f.id, name: f.name })
         } else {
           hasImages = true
         }
       }
+      return { entry, subfolders, hasImages }
     } catch (e) {
       console.error(
-        `[google-drive] listFolderTree per-folder fail (${current.name}):`,
+        `[google-drive] listFolderTree probe fail (${entry.name}):`,
         e instanceof Error ? e.message : e,
       )
+      return { entry, subfolders: [], hasImages: false }
+    }
+  }
+
+  // Per-level parallel BFS. All folders at depth N are probed in
+  // parallel (cap = 12 concurrent so we don't hit Drive rate limits),
+  // then their children become the next level.
+  const visited = new Set<string>([id])
+  const results: DriveFolderNode[] = []
+  let level: Entry[] = [{ id, name: "(root)", path: "", depth: 0 }]
+  const CONCURRENCY = 12
+
+  while (level.length > 0 && results.length < maxFolders) {
+    // Probe this level in parallel batches.
+    const probes: FolderProbe[] = []
+    for (let i = 0; i < level.length; i += CONCURRENCY) {
+      const batch = level.slice(i, i + CONCURRENCY)
+      const settled = await Promise.allSettled(batch.map((e) => probe(e)))
+      for (let j = 0; j < batch.length; j++) {
+        const r = settled[j]
+        if (r.status === "fulfilled") {
+          probes.push(r.value)
+        } else {
+          probes.push({ entry: batch[j], subfolders: [], hasImages: false })
+        }
+      }
     }
 
-    // Skip emitting the root itself — the CM doesn't toggle the root,
-    // they toggle its children.
-    if (current.depth > 0) {
-      results.push({
-        id: current.id,
-        name: current.name,
-        path: current.path,
-        depth: current.depth,
-        modifiedTime: null,
-        hasSubfolders: subfolders.length > 0,
-        hasImages,
-      })
+    // Emit results + collect next level. Skip root from results.
+    const nextLevel: Entry[] = []
+    for (const p of probes) {
+      if (results.length >= maxFolders) break
+      if (p.entry.depth > 0) {
+        results.push({
+          id: p.entry.id,
+          name: p.entry.name,
+          path: p.entry.path,
+          depth: p.entry.depth,
+          modifiedTime: null,
+          hasSubfolders: p.subfolders.length > 0,
+          hasImages: p.hasImages,
+        })
+      }
+      if (p.entry.depth + 1 > maxDepth) continue
+      for (const sub of p.subfolders) {
+        if (visited.has(sub.id)) continue
+        visited.add(sub.id)
+        nextLevel.push({
+          id: sub.id,
+          name: sub.name,
+          path: p.entry.depth === 0 ? sub.name : `${p.entry.path} / ${sub.name}`,
+          depth: p.entry.depth + 1,
+        })
+      }
     }
-
-    if (current.depth + 1 > maxDepth) continue
-    for (const sub of subfolders) {
-      if (visited.has(sub.id)) continue
-      visited.add(sub.id)
-      queue.push({
-        id: sub.id,
-        name: sub.name,
-        path: current.depth === 0 ? sub.name : `${current.path} / ${sub.name}`,
-        depth: current.depth + 1,
-      })
-    }
+    level = nextLevel
   }
 
   // Sort: by path so the tree renders parent-then-children naturally.
   results.sort((a, b) => a.path.localeCompare(b.path, undefined, { sensitivity: "base" }))
+
+  // ── Cache write ─────────────────────────────────────────────────
+  TREE_CACHE.set(key, {
+    result: results,
+    expiresAt: now + TREE_CACHE_TTL_MS,
+    lastUsed: now,
+  })
+  evictTreeCacheIfNeeded()
+
   return results
 }
 

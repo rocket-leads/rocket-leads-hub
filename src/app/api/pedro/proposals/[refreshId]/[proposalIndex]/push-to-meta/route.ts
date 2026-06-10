@@ -11,7 +11,11 @@ import {
   stripInterestTargeting,
   stripPlacementConstraints,
 } from "@/lib/integrations/meta-write"
-import { fetchMetaAdDetails } from "@/lib/integrations/meta"
+import {
+  fetchMetaAdDetails,
+  fetchCampaignAdSets,
+  fetchAdNamesInAccount,
+} from "@/lib/integrations/meta"
 import { getMaxAdNumberByFormat, formatAdName, type AdFormatHint } from "@/lib/pedro/refresh-naming"
 
 /**
@@ -124,9 +128,26 @@ export async function POST(
   // inheritance turned out to be the right default for every case.
 
   // ── 2. Resolve winner uit envelope ──────────────────────────────────
+  // Roy 2026-06-10 v2: snapshot-first architectuur. Bij refresh-time
+  // wordt alle winner-metadata (campaign/adset/page/IG/lead form/link/CTA)
+  // in de envelope opgeslagen. Push leest die snapshot ipv een live
+  // Meta-lookup, zodat verwijderde winners de flow niet meer breken.
+  // Backwards compat: oude refreshes zonder snapshot → val terug op
+  // de oude live-lookup pad.
+  type WinnerSnapshot = {
+    campaignId?: string
+    campaignName?: string
+    adsetId?: string
+    adsetName?: string
+    pageId?: string
+    instagramActorId?: string
+    leadGenFormId?: string
+    linkUrl?: string
+    callToActionType?: string
+  }
   type RefreshEnv = {
     proposals?: Array<{
-      basedOnAd?: { adId?: string; adName?: string }
+      basedOnAd?: { adId?: string; adName?: string; snapshot?: WinnerSnapshot }
       preserve?: { angle?: string; hook?: string; format?: string }
       variants?: Array<{ adName?: string; topicLabel?: string }>
     }>
@@ -141,48 +162,167 @@ export async function POST(
   }
   const winnerAdId = proposal.basedOnAd.adId
   const proposalAngle = proposal.preserve?.angle?.trim() ?? ""
+  const snapshot = proposal.basedOnAd.snapshot
+  const hasCompleteSnapshot =
+    !!snapshot?.campaignId &&
+    !!snapshot.adsetId &&
+    !!snapshot.pageId
 
-  // ── 3. Look up winner's parent campaign + ad set ────────────────────
-  const end = new Date().toISOString().slice(0, 10)
-  const startD = new Date()
-  startD.setDate(startD.getDate() - 90)
-  const start = startD.toISOString().slice(0, 10)
-  const ads = await fetchMetaAdDetails(clientRow.meta_ad_account_id, start, end).catch(() => [])
-  const winnerLive = ads.find((a) => a.adId === winnerAdId)
+  // ── 3. Resolve template source — snapshot-first ─────────────────────
+  // Result type: same shape as MetaAdDetail's relevant subset so the
+  // rest of the route works uniformly.
+  type TemplateSource = {
+    adId: string
+    adName: string
+    adsetId: string
+    adsetName: string
+    campaignId: string
+    campaignName: string
+    pageId: string
+    instagramActorId: string
+    leadGenFormId: string
+    linkUrl: string
+    callToActionType: string
+  }
+  let winnerLive: TemplateSource | undefined
+  let fallbackInfo: {
+    reason: string
+    templateAdId: string
+    templateAdName: string
+    templateAdsetName: string
+  } | null = null
+
+  if (hasCompleteSnapshot) {
+    // Snapshot path — geen live Meta lookup nodig om de template te
+    // resolven. De adset-template (budget/targeting/bid strategy) wordt
+    // straks live opgehaald via fetchAdSetTemplate; als die call faalt
+    // (= adset verwijderd) doen we de campagne-scoped fallback.
+    winnerLive = {
+      adId: winnerAdId,
+      adName: proposal.basedOnAd.adName ?? "",
+      adsetId: snapshot!.adsetId!,
+      adsetName: snapshot!.adsetName ?? "",
+      campaignId: snapshot!.campaignId!,
+      campaignName: snapshot!.campaignName ?? "",
+      pageId: snapshot!.pageId!,
+      instagramActorId: snapshot!.instagramActorId ?? "",
+      leadGenFormId: snapshot!.leadGenFormId ?? "",
+      linkUrl: snapshot!.linkUrl ?? "",
+      callToActionType: snapshot!.callToActionType ?? "",
+    }
+  } else {
+    // Legacy path — refresh has no snapshot. Same as before: live
+    // lookup against last 90d, fall back to most-recent valid ad.
+    const end = new Date().toISOString().slice(0, 10)
+    const startD = new Date()
+    startD.setDate(startD.getDate() - 90)
+    const start = startD.toISOString().slice(0, 10)
+    const ads = await fetchMetaAdDetails(clientRow.meta_ad_account_id, start, end).catch(() => [])
+    const directWinner = ads.find((a) => a.adId === winnerAdId)
+    if (directWinner?.campaignId && directWinner?.adsetId && directWinner.pageId) {
+      winnerLive = directWinner
+    } else {
+      const usable = ads
+        .filter((a) => a.pageId && a.campaignId && a.adsetId && (a.linkUrl || a.leadGenFormId))
+        .sort((a, b) => {
+          const aLead = a.leadGenFormId ? 1 : 0
+          const bLead = b.leadGenFormId ? 1 : 0
+          if (aLead !== bLead) return bLead - aLead
+          if (b.spend !== a.spend) return b.spend - a.spend
+          return b.impressions - a.impressions
+        })
+      winnerLive = usable[0]
+      if (winnerLive) {
+        fallbackInfo = {
+          reason:
+            "Refresh heeft geen snapshot (oude refresh). Winner ad niet meer in Meta — meest-recente bruikbare ad gebruikt als template.",
+          templateAdId: winnerLive.adId,
+          templateAdName: winnerLive.adName,
+          templateAdsetName: winnerLive.adsetName,
+        }
+      }
+    }
+  }
+
   if (!winnerLive?.campaignId || !winnerLive?.adsetId) {
     return NextResponse.json(
       {
         error:
-          "Winner ad niet meer gevonden in Meta (laatste 90d). Mogelijk verwijderd; kies een andere refresh.",
+          "Geen bruikbare template gevonden voor deze refresh. Snapshot ontbreekt én geen recente actieve ad in dit Meta account. Check of de campagne nog leeft in Ads Manager.",
       },
       { status: 404 },
     )
   }
 
-  // Page id = winner's page (zelfde page = zelfde pixel + UTM-consistency).
-  // Roy 2026-06-10: override-pad uitgezet; winner inheritance werkt voor
-  // alle cases zonder handmatige config.
   const pageId = winnerLive.pageId
   if (!pageId) {
     return NextResponse.json(
       {
         error:
-          "Winner ad heeft geen page_id in object_story_spec — gebeurt bij sommige dynamic-creative winners. Kies een andere refresh of pak een andere winning ad als basis.",
+          "Template ad heeft geen page_id (geen object_story_spec). Kies een andere refresh.",
       },
       { status: 400 },
     )
   }
 
-  // ── 4. Pull ad set template + generate new ad set name ─────────────
+  // ── 4. Pull ad set template (budget/targeting/bid strategy) ─────────
+  // Try snapshotted adsetId first. If gone (404 from Meta), look up
+  // another non-deleted ad set in the SAME campaign — much more stable
+  // than falling back to a random ad set elsewhere in the account.
   let adsetTemplate
+  let usedCampaignFallback = false
   try {
     adsetTemplate = await fetchAdSetTemplate(winnerLive.adsetId)
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    // 404-ish: ad set was deleted. Try sibling ad sets in same campaign.
+    if (/not found|404|does not exist|onbekend|invalid/i.test(msg) && winnerLive.campaignId) {
+      try {
+        const siblings = await fetchCampaignAdSets(winnerLive.campaignId)
+        const alive = siblings.find(
+          (s) => s.id !== winnerLive!.adsetId && !/DELETED|ARCHIVED/i.test(s.effectiveStatus),
+        )
+        if (alive) {
+          adsetTemplate = await fetchAdSetTemplate(alive.id)
+          usedCampaignFallback = true
+          fallbackInfo = {
+            reason:
+              "Oorspronkelijke ad set niet meer in Meta — andere ad set uit dezelfde campagne gebruikt als template.",
+            templateAdId: winnerLive.adId,
+            templateAdName: winnerLive.adName,
+            templateAdsetName: alive.name,
+          }
+        } else {
+          return NextResponse.json(
+            {
+              error:
+                "Ad set én alle sibling-adsets in deze campagne zijn verwijderd. Check of de campagne nog actief is in Ads Manager.",
+            },
+            { status: 404 },
+          )
+        }
+      } catch (innerE) {
+        return NextResponse.json(
+          {
+            error: `Ad set niet meer beschikbaar in Meta, en campagne-fallback faalde: ${innerE instanceof Error ? innerE.message : "unknown"}`,
+          },
+          { status: 502 },
+        )
+      }
+    } else {
+      return NextResponse.json(
+        { error: msg || "fetchAdSetTemplate failed" },
+        { status: 502 },
+      )
+    }
+  }
+  if (!adsetTemplate) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "fetchAdSetTemplate failed" },
+      { error: "Geen ad set template kunnen ophalen." },
       { status: 502 },
     )
   }
+  void usedCampaignFallback // tracked via fallbackInfo
 
   // Ad set name — CM-supplied override wins. Default follows Roy's
   // 2026-06-10 NT convention: `NT | {{angle}}`. Falls back to legacy
@@ -252,7 +392,11 @@ export async function POST(
   // ── 6. Compute ad-name numbering ────────────────────────────────────
   // Use existing ads in the account to determine starting number per
   // format. Each selected slot consumes one number from its format's pool.
-  const allAdNames = ads.map((a) => a.adName).filter((n): n is string => !!n)
+  // Roy 2026-06-10 v2: in de snapshot-flow hebben we de adsRaw lijst niet
+  // meer in scope (was deel van de legacy live-lookup). Voor numbering
+  // doen we nu een lightweight name-only fetch — veel goedkoper dan de
+  // volledige fetchMetaAdDetails call die hier voorheen ronddwaalde.
+  const allAdNames = await fetchAdNamesInAccount(clientRow.meta_ad_account_id).catch(() => [])
   const maxByFormat = getMaxAdNumberByFormat(allAdNames)
   const nextByFormat: Record<AdFormatHint, number> = {
     Photo: maxByFormat.Photo + 1,
@@ -438,5 +582,10 @@ export async function POST(
     totalCount: results.length,
     partialFailure: successCount > 0 && successCount < results.length,
     results,
+    // Roy 2026-06-10: wanneer de winner ad uit Meta is verdwenen vallen
+    // we terug op de meest-recente bruikbare ad in het account als
+    // template. UI toont een amber banner zodat de CM weet dat dit is
+    // gebeurd en in Ads Manager kan verifiëren dat de campagne klopt.
+    fallback: fallbackInfo,
   })
 }

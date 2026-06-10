@@ -279,6 +279,68 @@ function isAdBudgetLineItem(description: string | null): boolean {
   return AD_BUDGET_KEYWORDS.some((kw) => lower.includes(kw))
 }
 
+/**
+ * Onboarding payment status — "has this client paid us at least once?"
+ *
+ * Used by the onboarding wizard's Stap 1 live screen so the AM can see
+ * at-a-glance whether the kick-off precondition (per knowledge/process.md
+ * §"Er wordt absoluut niets gedaan voordat de klant heeft betaald") is
+ * met. The AM doesn't progress until `hasPaid=true`.
+ *
+ * "Paid" is satisfied by ANY paid invoice on the Stripe customer.
+ * Cheapest way to check: list invoices with status=paid, limit=1.
+ * Returns timestamp of the most recent paid invoice so the UI can show
+ * "Paid · 5 min ago" / "Paid · 2 days ago" for context.
+ *
+ * Customer ID absent or invalid → `hasPaid: false, lastPaidAt: null`.
+ * That matches Roy's product rule: clients that haven't paid often
+ * aren't in Stripe at all yet, so empty Stripe = "not paid".
+ */
+export type OnboardingPaymentStatus = {
+  hasPaid: boolean
+  /** Unix timestamp (seconds) of the most recent paid invoice. */
+  lastPaidAt: number | null
+  /** Most recent paid invoice amount in main currency unit (EUR). */
+  lastPaidAmount: number | null
+}
+
+export async function fetchOnboardingPaymentStatus(
+  customerId: string | null | undefined,
+): Promise<OnboardingPaymentStatus> {
+  if (!customerId || !customerId.startsWith("cus_")) {
+    return { hasPaid: false, lastPaidAt: null, lastPaidAmount: null }
+  }
+
+  try {
+    const stripe = await getStripe()
+    const res = await stripe.invoices.list({
+      customer: customerId,
+      status: "paid",
+      limit: 1,
+    })
+    const inv = res.data[0]
+    if (!inv) return { hasPaid: false, lastPaidAt: null, lastPaidAmount: null }
+    return {
+      hasPaid: true,
+      lastPaidAt:
+        inv.status_transitions?.paid_at ??
+        inv.created ??
+        null,
+      lastPaidAmount: (inv.amount_paid ?? 0) / 100,
+    }
+  } catch (e) {
+    // Surface as "unknown" rather than "not paid" so a Stripe outage
+    // doesn't make every onboarding wizard say "wachten op betaling".
+    // The wizard treats both the same today (no progression) but the
+    // UI can render a softer "checking…" state on the timed-out path.
+    console.error(
+      `[stripe] fetchOnboardingPaymentStatus failed for ${customerId}:`,
+      e instanceof Error ? e.message : e,
+    )
+    return { hasPaid: false, lastPaidAt: null, lastPaidAmount: null }
+  }
+}
+
 export type AdBudgetInvoiced = {
   totalInvoiced: number
   lineItems: Array<{

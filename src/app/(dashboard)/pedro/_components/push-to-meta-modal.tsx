@@ -59,6 +59,15 @@ type LaunchResponse = {
   partialFailure?: boolean
   results?: LaunchResult[]
   error?: string
+  /** Roy 2026-06-10: wanneer de winner uit Meta is verdwenen vallen we
+   *  terug op de meest-recente bruikbare ad in het account als template
+   *  voor de nieuwe ad set. UI banner informeert de CM. */
+  fallback?: {
+    reason: string
+    templateAdId: string
+    templateAdName: string
+    templateAdsetName: string
+  } | null
 }
 
 type Props = {
@@ -68,9 +77,14 @@ type Props = {
   proposalIndex: number
   winnerAdName: string
   variants: ProposalVariant[]
-  /** Proposal's shared angle (preserve.angle) — used as the default
-   *  segment in the NT ad-set name. CM can override. Roy 2026-06-10. */
+  /** Proposal's shared angle (preserve.angle) — fallback voor de
+   *  default ad-set name als geen headline beschikbaar is. */
   proposalAngle: string
+  /** Variant's on-image headline (Meta headline). Roy 2026-06-10:
+   *  Pedro's gegenereerde of CM-aangepaste headline wint over de
+   *  generieke angle als default ad set name. CM kan altijd nog
+   *  overschrijven in het input veld. */
+  variantHeadline?: string
 }
 
 const SLOT_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
@@ -83,6 +97,7 @@ export function PushToMetaModal({
   winnerAdName,
   variants,
   proposalAngle,
+  variantHeadline,
 }: Props) {
   const [slotsByVariant, setSlotsByVariant] = useState<Map<string, SlotInfo[]>>(
     new Map(),
@@ -93,12 +108,18 @@ export function PushToMetaModal({
   const [launchResponse, setLaunchResponse] = useState<LaunchResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  // Editable ad-set config. Default name = NT | {{angle}} per the
-  // 2026-06-10 RL convention; CM can rewrite to match the headline they
-  // want this ad set to represent. Daily budget is required at launch
-  // (Meta accepts cents, the route converts).
-  const defaultAdsetName = proposalAngle
-    ? `NT | ${proposalAngle}`.slice(0, 200)
+  // Editable ad-set config. Default name priority:
+  //   1. variant headline (Pedro's on-image text, often the strongest
+  //      summary of what the ad set tests) — Roy 2026-06-10.
+  //   2. proposal.preserve.angle (shared theme across the proposal).
+  //   3. Empty NT | placeholder.
+  // CM can always overwrite in the input. Trailing punctuation gets
+  // stripped so "3x hogere marge?" doesn't end up as "NT | 3x hogere
+  // marge?" in the ad set name.
+  const cleanedHeadline = variantHeadline?.replace(/[?!.]+\s*$/, "").trim()
+  const defaultSegment = cleanedHeadline || proposalAngle || ""
+  const defaultAdsetName = defaultSegment
+    ? `NT | ${defaultSegment}`.slice(0, 200)
     : "NT | "
   const [adsetName, setAdsetName] = useState(defaultAdsetName)
   const [dailyBudgetEuros, setDailyBudgetEuros] = useState<string>("")
@@ -132,9 +153,13 @@ export function PushToMetaModal({
       const sel = new Map<string, Set<number>>()
       for (const r of results) {
         map.set(r.id, r.slots)
-        // Default: preselect first slot with an image.
-        const firstReady = r.slots.find((s) => s.hasImage)
-        sel.set(r.id, new Set(firstReady ? [firstReady.position] : []))
+        // Default: preselect ALL slots that have an image. Roy
+        // 2026-06-10: CM wil standaard alle 3 mee, niet alleen de
+        // eerste. CM kan slots deselecteren als hij er één niet wil.
+        const readyPositions = r.slots
+          .filter((s) => s.hasImage)
+          .map((s) => s.position)
+        sel.set(r.id, new Set(readyPositions))
       }
       setSlotsByVariant(map)
       setSelected(sel)
@@ -220,7 +245,13 @@ export function PushToMetaModal({
             <p className="text-xs text-muted-foreground mt-1">
               Eén nieuwe ad set (NT — no interest targeting) wordt aangemaakt in
               dezelfde campagne, met dezelfde geo / leeftijd / placements als de
-              winner. Status: PAUSED. Activeer zelf in Meta Ads Manager.
+              winner.{" "}
+              <span className="font-medium text-amber-700 dark:text-amber-400">
+                Status: PAUSED (= concept).
+              </span>{" "}
+              Niets gaat live, geen euro spend. Verschijnt in Ads Manager onder
+              deze campagne — je controleert + activeert zelf wanneer je klaar
+              bent. Wegklikken / aanpassen in Meta blijft mogelijk.
             </p>
           </div>
           <button
@@ -393,6 +424,21 @@ export function PushToMetaModal({
           {/* Post-launch: per-result status */}
           {launchResponse && launchResponse.results && (
             <div className="space-y-3">
+              {launchResponse.fallback && (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <div className="font-medium">Fallback gebruikt</div>
+                    <div>
+                      {launchResponse.fallback.reason} Template:{" "}
+                      <span className="font-mono">{launchResponse.fallback.templateAdName}</span>
+                      {" "}uit ad set{" "}
+                      <span className="font-mono">{launchResponse.fallback.templateAdsetName}</span>.
+                      Check in Ads Manager of de nieuwe ad set in de juiste campagne staat.
+                    </div>
+                  </div>
+                </div>
+              )}
               {launchResponse.successCount! > 0 && launchResponse.adsManagerUrl && (
                 <a
                   href={launchResponse.adsManagerUrl}
@@ -482,7 +528,7 @@ export function PushToMetaModal({
                 )}
                 {launching
                   ? "Pushing naar Meta…"
-                  : `Launch ad set + ${totalSelected} ad${totalSelected === 1 ? "" : "s"} (PAUSED)`}
+                  : `Maak ad set + ${totalSelected} ad${totalSelected === 1 ? "" : "s"} aan als concept (PAUSED)`}
               </button>
             )}
           </div>

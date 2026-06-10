@@ -21,12 +21,11 @@ import type { DictionaryKey } from "@/lib/i18n/dictionary"
  */
 
 export type WizardActionType =
-  | "kickoff_link"
-  | "drive_setup"
-  | "client_brief"
-  | "onboarding_email"
+  | "kickoff_live"
+  | "transcript_link"
+  | "brief_enrichment"
+  | "competitors"
   | "wait_on_client"
-  | "hub_wiring"
   | "handoff"
 
 export type WizardStep = {
@@ -50,49 +49,59 @@ export type WizardStep = {
   derive?: (c: MondayClient) => boolean
 }
 
+/**
+ * v3 wizard sequence (2026-06-10 reframe):
+ * The wizard is a LIVE tool the AM uses during the kick-off itself,
+ * not a post-kick-off checklist. Stap 1 is the do-everything live
+ * screen: auto-setup (Drive + Meta BM URL + Stripe link) already ran
+ * before the AM opens it, so they have all the resources to share with
+ * the client + Hub-connection pickers to wire Trengo/Stripe/Monday +
+ * a brief template to fill live. After the call, Stap 2-3 enrich the
+ * brief from the Fathom transcript. Stap 4 scrapes competitor ads.
+ * Stap 5 polls client-side completion. Stap 6 hands off to CM.
+ */
 export const WIZARD_STEPS: WizardStep[] = [
   {
-    key: "kickoff_link",
-    labelKey: "onboarding.wizard.step.kickoff_link.label",
-    descriptionKey: "onboarding.wizard.step.kickoff_link.desc",
-    action: "kickoff_link",
+    key: "kickoff_live",
+    labelKey: "onboarding.wizard.step.kickoff_live.label",
+    descriptionKey: "onboarding.wizard.step.kickoff_live.desc",
+    action: "kickoff_live",
     order: 1,
     prerequisites: [],
     critical: true,
   },
   {
-    key: "drive_setup",
-    labelKey: "onboarding.wizard.step.drive_setup.label",
-    descriptionKey: "onboarding.wizard.step.drive_setup.desc",
-    action: "drive_setup",
+    key: "transcript_link",
+    labelKey: "onboarding.wizard.step.transcript_link.label",
+    descriptionKey: "onboarding.wizard.step.transcript_link.desc",
+    action: "transcript_link",
     order: 2,
-    prerequisites: ["kickoff_link"],
-    critical: true,
-    // Hub already mirrors the Drive folder ID off Monday — if it's set,
-    // the AM has either auto-created it via this step or linked one
-    // manually. Either way, this step is satisfied.
-    derive: (c) => Boolean(c.googleDriveId),
+    prerequisites: ["kickoff_live"],
+    // Not critical — wizard doesn't block Live-flip if the transcript
+    // never lands (Fathom hiccup, AM didn't record, etc.). Brief
+    // enrichment becomes a no-op in that case.
+    critical: false,
   },
   {
-    key: "client_brief",
-    labelKey: "onboarding.wizard.step.client_brief.label",
-    descriptionKey: "onboarding.wizard.step.client_brief.desc",
-    action: "client_brief",
+    key: "brief_enrichment",
+    labelKey: "onboarding.wizard.step.brief_enrichment.label",
+    descriptionKey: "onboarding.wizard.step.brief_enrichment.desc",
+    action: "brief_enrichment",
     order: 3,
-    // Brief generation can happen from the kick-off transcript alone;
-    // Drive is required only to *save* the approved brief. We model
-    // both as prerequisites so the rail UI shows the right order.
-    prerequisites: ["kickoff_link", "drive_setup"],
-    critical: true,
+    prerequisites: ["transcript_link"],
+    critical: false,
   },
   {
-    key: "onboarding_email",
-    labelKey: "onboarding.wizard.step.onboarding_email.label",
-    descriptionKey: "onboarding.wizard.step.onboarding_email.desc",
-    action: "onboarding_email",
+    key: "competitors",
+    labelKey: "onboarding.wizard.step.competitors.label",
+    descriptionKey: "onboarding.wizard.step.competitors.desc",
+    action: "competitors",
     order: 4,
-    prerequisites: ["client_brief"],
-    critical: true,
+    // Brief from Stap 1 is enough input — doesn't need transcript
+    // enrichment first. Lets the AM parallelise enrichment + competitor
+    // scraping when time-pressed.
+    prerequisites: ["kickoff_live"],
+    critical: false,
   },
   {
     key: "wait_on_client",
@@ -100,24 +109,15 @@ export const WIZARD_STEPS: WizardStep[] = [
     descriptionKey: "onboarding.wizard.step.wait_on_client.desc",
     action: "wait_on_client",
     order: 5,
-    prerequisites: ["onboarding_email"],
+    prerequisites: ["kickoff_live"],
     critical: true,
-  },
-  {
-    key: "hub_wiring",
-    labelKey: "onboarding.wizard.step.hub_wiring.label",
-    descriptionKey: "onboarding.wizard.step.hub_wiring.desc",
-    action: "hub_wiring",
-    order: 6,
-    prerequisites: ["wait_on_client"],
-    critical: true,
-    // Auto-done once every critical ID is mirrored into Hub. AM may still
-    // open the step to verify, but the rail shows it as green.
+    // Auto-done once every critical client-side action is detected.
+    // Meta IDs auto-wire through the Embedded Signup callback the
+    // moment the client connects (Sprint 6 swap-in); until then the
+    // metaAdAccountId stays empty and this stays open.
     derive: (c) =>
       Boolean(c.metaAdAccountId) &&
       Boolean(c.stripeCustomerId) &&
-      Boolean(c.trengoContactId) &&
-      Boolean(c.clientBoardId) &&
       Boolean(c.googleDriveId),
   },
   {
@@ -125,11 +125,10 @@ export const WIZARD_STEPS: WizardStep[] = [
     labelKey: "onboarding.wizard.step.handoff.label",
     descriptionKey: "onboarding.wizard.step.handoff.desc",
     action: "handoff",
-    order: 7,
-    prerequisites: ["hub_wiring"],
-    // Handoff itself isn't a gate — it's the *consequence* of finishing
-    // the upstream gates. Flipping the client to Live is what the
-    // handoff step ultimately does.
+    order: 6,
+    prerequisites: ["wait_on_client"],
+    // Handoff is the consequence of finishing the upstream gates, not
+    // itself a gate. Flipping the client to Live is what this step does.
     critical: false,
   },
 ]

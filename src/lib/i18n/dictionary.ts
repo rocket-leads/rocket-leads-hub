@@ -572,7 +572,87 @@ export const DICTIONARY = {
   "onboarding.wizard.rail.locked_tooltip": { nl: "Vorige stap eerst afronden", en: "Finish the previous step first" },
   "onboarding.wizard.rail.done_tooltip": { nl: "Voltooid — klik om opnieuw te bekijken", en: "Done — click to revisit" },
 
-  // Step labels (rail) + descriptions (action header)
+  // v3 step labels — the kick-off is now a LIVE tool the AM uses during
+  // the meeting, not a post-meeting checklist.
+  "onboarding.wizard.step.kickoff_live.label": { nl: "Kick-off meeting (live)", en: "Kick-off meeting (live)" },
+  "onboarding.wizard.step.kickoff_live.desc": { nl: "Deel direct vanuit het gesprek de Drive folder, Meta BM link en Stripe link. Vul de brief alvast in terwijl je luistert.", en: "Share Drive, Meta BM link and Stripe link straight from the call. Fill the brief live while you listen." },
+
+  "onboarding.wizard.step.transcript_link.label": { nl: "Transcript koppelen", en: "Link transcript" },
+  "onboarding.wizard.step.transcript_link.desc": { nl: "Fathom-recording wordt automatisch aan deze klant gekoppeld zodra het transcript klaar is.", en: "Fathom recording is auto-linked to this client as soon as the transcript is ready." },
+
+  "onboarding.wizard.step.brief_enrichment.label": { nl: "Brief verrijken (AI)", en: "Enrich brief (AI)" },
+  "onboarding.wizard.step.brief_enrichment.desc": { nl: "AI scant het transcript en stelt extra info voor per veld. Accept / reject per suggestie.", en: "AI scans the transcript and suggests additions per field. Accept / reject per suggestion." },
+
+  "onboarding.wizard.step.competitors.label": { nl: "Concurrentie + winning ads", en: "Competitors + winning ads" },
+  "onboarding.wizard.step.competitors.desc": { nl: "AI vindt concurrenten in dezelfde regio + sector. Apify scrapet hun lopende Meta ads. AM kiest de winners.", en: "AI finds competitors in the same region + sector. Apify scrapes their live Meta ads. AM picks the winners." },
+
+  // KickoffLiveStep chrome
+  "onboarding.wizard.kickoff.setup.running": { nl: "Resources klaarzetten… (Drive folder + links)", en: "Setting up resources… (Drive folder + links)" },
+  "onboarding.wizard.kickoff.setup.retry": { nl: "Opnieuw proberen", en: "Retry" },
+
+  "onboarding.wizard.kickoff.hub_connections.title": { nl: "Hub connections", en: "Hub connections" },
+  "onboarding.wizard.kickoff.picker.trengo": { nl: "Trengo contact", en: "Trengo contact" },
+  "onboarding.wizard.kickoff.picker.stripe": { nl: "Stripe customer", en: "Stripe customer" },
+  "onboarding.wizard.kickoff.picker.monday_board": { nl: "Monday lead-board", en: "Monday lead board" },
+  "onboarding.wizard.kickoff.picker.drive": { nl: "Google Drive folder", en: "Google Drive folder" },
+
+  "onboarding.wizard.kickoff.resources.title": { nl: "Resources — deel met klant", en: "Resources — share with client" },
+  "onboarding.wizard.kickoff.resource.drive": { nl: "Drive folder", en: "Drive folder" },
+  "onboarding.wizard.kickoff.resource.meta_bm": { nl: "Meta Business Manager connect", en: "Meta Business Manager connect" },
+  "onboarding.wizard.kickoff.resource.meta_bm.hint": {
+    nl: "Tijdelijke link totdat Meta App Review goedgekeurd is — leidt klant naar Hub-hosted handleiding.",
+    en: "Placeholder until Meta App Review is approved — sends client to a Hub-hosted guide.",
+  },
+  // Live-status panel (payment indicator + Drive activity + Meta connect)
+  "onboarding.wizard.kickoff.status.title": { nl: "Live status", en: "Live status" },
+  "onboarding.wizard.kickoff.status.payment.label": { nl: "Betaling", en: "Payment" },
+  "onboarding.wizard.kickoff.status.payment.paid": { nl: "Betaald", en: "Paid" },
+  "onboarding.wizard.kickoff.status.payment.unpaid": { nl: "Nog niet betaald", en: "Not paid yet" },
+  "onboarding.wizard.kickoff.status.payment.checking": { nl: "Even checken…", en: "Checking…" },
+  "onboarding.wizard.kickoff.status.payment.no_customer": {
+    nl: "Geen Stripe customer gekoppeld — koppel er één via Hub connections hierboven.",
+    en: "No Stripe customer linked — pick one via Hub connections above.",
+  },
+
+  "onboarding.wizard.kickoff.brief.title": { nl: "Client brief (vul live in)", en: "Client brief (fill live)" },
+  "onboarding.wizard.kickoff.brief.saving": { nl: "Opslaan…", en: "Saving…" },
+  "onboarding.wizard.kickoff.brief.saved": { nl: "Auto-saved", en: "Auto-saved" },
+  "onboarding.wizard.kickoff.brief.needs_fields": {
+    nl: "Vul minimaal 5 velden in voor je verder gaat.",
+    en: "Fill at least 5 fields before continuing.",
+  },
+
+  "onboarding.wizard.kickoff.send_recap": { nl: "Stuur recap (Sprint 2)", en: "Send recap (Sprint 2)" },
+
+  // Stap 2 — transcript link
+  "onboarding.wizard.transcript.hint": {
+    nl: "Selecteer welke recording de kick-off van deze klant was. Fathom kandidaten verschijnen 5-15 min na het einde van de meeting.",
+    en: "Pick the recording that was this client's kick-off. Fathom candidates appear 5-15 min after the meeting ends.",
+  },
+  "onboarding.wizard.transcript.refresh": { nl: "Ververs", en: "Refresh" },
+  "onboarding.wizard.transcript.loading": { nl: "Kandidaten ophalen…", en: "Loading candidates…" },
+  "onboarding.wizard.transcript.empty.title": {
+    nl: "Nog geen recording binnen",
+    en: "No recording yet",
+  },
+  "onboarding.wizard.transcript.empty.body": {
+    nl: "Fathom heeft het transcript nog niet opgeleverd. Wacht 5-15 min na het einde van je meeting en klik dan op Ververs.",
+    en: "Fathom hasn't delivered the transcript yet. Wait 5-15 min after your meeting ends, then click Refresh.",
+  },
+  "onboarding.wizard.transcript.use_this": { nl: "Gebruik deze", en: "Use this" },
+  "onboarding.wizard.transcript.most_likely": { nl: "Meest waarschijnlijk", en: "Most likely" },
+  "onboarding.wizard.transcript.untitled": { nl: "(geen titel)", en: "(untitled)" },
+  "onboarding.wizard.transcript.linked.title": { nl: "Recording gekoppeld", en: "Recording linked" },
+  "onboarding.wizard.transcript.linked.summary_yes": { nl: "Summary aanwezig", en: "Summary present" },
+  "onboarding.wizard.transcript.linked.summary_no": { nl: "Geen summary nog", en: "No summary yet" },
+  "onboarding.wizard.transcript.linked.open_fathom": { nl: "Open in Fathom", en: "Open in Fathom" },
+  "onboarding.wizard.transcript.change": { nl: "Wijzigen", en: "Change" },
+  "onboarding.wizard.kickoff.mark_done": { nl: "Stap voltooien", en: "Mark step done" },
+  "onboarding.wizard.kickoff.save_and_continue": { nl: "Opslaan & verder", en: "Save & continue" },
+
+  // Legacy v2 step labels — referenced nowhere after the v3 refactor,
+  // but kept in the dictionary so a stale browser tab on the old build
+  // doesn't 404 on the lookup until the deploy rolls forward.
   "onboarding.wizard.step.kickoff_link.label": { nl: "Kick-off recording koppelen", en: "Link kick-off recording" },
   "onboarding.wizard.step.kickoff_link.desc": { nl: "Koppel de Fathom-opname van de kick-off aan deze klant.", en: "Link the Fathom kick-off recording to this client." },
 

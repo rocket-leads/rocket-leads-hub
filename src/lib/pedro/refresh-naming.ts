@@ -92,12 +92,48 @@ export type NamedVariant = {
   why: string
 }
 
+/** Snapshot of every Meta-side reference we'll need for a future
+ *  Push-to-Meta call. Captured at refresh-time when the winner is
+ *  guaranteed to exist in Meta, so push doesn't depend on the
+ *  account's current state.
+ *
+ *  Roy 2026-06-10: zonder deze snapshot brak push als de winner ad
+ *  was verwijderd/gearchiveerd uit het 90d window. Met snapshot is
+ *  push 100% deterministisch — alleen de adset-template (budget/
+ *  targeting) wordt nog live opgehaald omdat die kan drift'en. */
+export type WinnerSnapshot = {
+  /** Campaign id van de winner — bepaalt waar de nieuwe ad set komt. */
+  campaignId: string
+  campaignName: string
+  /** Ad set id van de winner — clone-template bron voor budget +
+   *  targeting + bid strategy. */
+  adsetId: string
+  adsetName: string
+  /** Facebook Page id — wordt object_story_spec.page_id op de
+   *  nieuwe creative. */
+  pageId: string
+  /** Connected Instagram account, optional. */
+  instagramActorId: string
+  /** Voor lead-form ads (destination_type ON_AD): de form id zodat de
+   *  CTA value op de nieuwe creative naar dezelfde form wijst. */
+  leadGenFormId: string
+  /** Destination URL voor non-lead-form ads. */
+  linkUrl: string
+  /** CTA label (LEARN_MORE / SIGN_UP / GET_QUOTE etc.) */
+  callToActionType: string
+}
+
 export type NamedProposal = {
   basedOnAd: {
     adId: string
     adName: string
     cpl: number | null
     verdict: string
+    /** Roy 2026-06-10: gesnapshote Meta-metadata. Push-to-Meta leest
+     *  hier vanuit ipv live Meta-lookup, zodat verwijderde winners de
+     *  push niet blokkeren. Oudere refreshes hebben dit niet — push
+     *  valt dan terug op de oude live-lookup pad. */
+    snapshot?: WinnerSnapshot
   }
   preserve: { hook: string; angle: string; format: string }
   variants: NamedVariant[]

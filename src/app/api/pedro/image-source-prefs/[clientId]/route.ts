@@ -157,6 +157,17 @@ type PatchBody = {
     name: string
     path?: string | null
     enabled: boolean
+    /** Roy 2026-06-10: cascade naar subfolders. Wanneer een
+     *  hoofdfolder op uit gaat, sturen we hier alle bekende descendant
+     *  folder ids mee zodat ze in één PATCH dezelfde enabled-state
+     *  krijgen. Idem voor 'aan' — als de parent weer aan gaat, gaan
+     *  alle (eerder met de parent uitgezette) descendants ook aan.
+     *  Lege array = single-folder toggle (oude gedrag). */
+    descendants?: Array<{
+      id: string
+      name: string
+      path?: string | null
+    }>
   }
   /** When set: update the high-level toggles (partial; merged with current). */
   sourcePrefs?: Partial<SourcePrefs>
@@ -184,28 +195,55 @@ export async function PATCH(
 
   const supabase = await createAdminClient()
 
-  // ── Folder toggle ────────────────────────────────────────────────
+  // ── Folder toggle (single + cascade) ─────────────────────────────
   if (body.folder) {
-    const { id, name, path, enabled } = body.folder
+    const { id, name, path, enabled, descendants } = body.folder
     if (!id || typeof name !== "string" || typeof enabled !== "boolean") {
       return NextResponse.json(
         { error: "folder.id, folder.name en folder.enabled zijn verplicht" },
         { status: 400 },
       )
     }
-    try {
-      const { error } = await supabase.from("pedro_drive_folder_prefs").upsert(
-        {
+    const now = new Date().toISOString()
+    const updatedBy = session.user.email ?? null
+    const rows: Array<{
+      client_id: string
+      folder_id: string
+      folder_name: string
+      folder_path: string | null
+      enabled: boolean
+      updated_at: string
+      updated_by_email: string | null
+    }> = [
+      {
+        client_id: clientId,
+        folder_id: id,
+        folder_name: name,
+        folder_path: path ?? null,
+        enabled,
+        updated_at: now,
+        updated_by_email: updatedBy,
+      },
+    ]
+    if (Array.isArray(descendants)) {
+      for (const d of descendants) {
+        if (!d?.id || typeof d.name !== "string") continue
+        if (d.id === id) continue // skip self in case caller included it
+        rows.push({
           client_id: clientId,
-          folder_id: id,
-          folder_name: name,
-          folder_path: path ?? null,
+          folder_id: d.id,
+          folder_name: d.name,
+          folder_path: d.path ?? null,
           enabled,
-          updated_at: new Date().toISOString(),
-          updated_by_email: session.user.email ?? null,
-        },
-        { onConflict: "client_id,folder_id" },
-      )
+          updated_at: now,
+          updated_by_email: updatedBy,
+        })
+      }
+    }
+    try {
+      const { error } = await supabase
+        .from("pedro_drive_folder_prefs")
+        .upsert(rows, { onConflict: "client_id,folder_id" })
       if (error) throw error
     } catch (e) {
       return NextResponse.json(

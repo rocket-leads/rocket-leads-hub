@@ -496,7 +496,41 @@ export async function POST(
         ? `\n\n---\nCM REGEN FEEDBACK (CRITICAL — fix these specifically):\n${fbParts.join("\n")}\n---`
         : ""
 
-    const promptWithFeedback = prompt + feedbackAddendum
+    // RL_QUALITY_RULES — hardcoded suffix appended to EVERY Gemini call,
+    // regardless of what Pedro generated in the variant.image_prompt.
+    // Defense-in-depth: even when Pedro's prompt is verbose or sloppy,
+    // these typography rules ride along so Gemini can't hide behind
+    // ambiguity. Roy 2026-06-10: marketing-agency-leverbaar quality is
+    // the bar. Het screenshot van 3 concurrerende badges + dubbele
+    // "3x MARGE" + mismatched fonts is precies wat dit voorkomt.
+    const RL_QUALITY_RULES = `
+
+---
+NON-NEGOTIABLE RL QUALITY RULES (marketing-agency deliverable quality):
+
+ON-IMAGE TEXT — render EXACTLY the Dutch headline ONCE.
+- No badges. No stickers. No price tags (€..). No "3x"/"2x"/"+15%" multiplier callouts.
+- No comparison labels (LAGE/HOGE, before/after, vs).
+- No secondary captions, no sub-headlines, no photo captions, no watermarks.
+- Do NOT duplicate any text element. Render the headline ONCE in ONE position.
+- If the headline doesn't fit cleanly, simplify the scene — do not break it across boxes.
+
+TYPOGRAPHY — must read as a professionally designed ad.
+- ONE sans-serif typeface across the whole headline (no mixed fonts within a line).
+- Even letter-spacing. Consistent weight. Sharp anti-aliased edges.
+- Minimum 8% canvas padding on all sides around the headline.
+- Headline sits in clean negative space — never on top of visually busy detail.
+- Color: use a single brand-consistent accent OR pure black/white. No mixed fills + outlines.
+
+COMPOSITION.
+- ONE clear photographic subject in focus.
+- Clean background. No collage. No split-screen unless explicitly requested.
+- No competing brand names, logos, or product names from sibling brands.
+- Brand presence only if it naturally occurs on the product (small, in-context).
+
+NEGATIVE: badges, sticker overlays, price tags, comparison labels, duplicated text elements, competing brand watermarks, "€X" price callouts, "Nx" multiplier stickers, before/after split overlays, mixed fonts, mixed text weights, low-resolution rendering, collage-style layouts.`
+
+    const promptWithFeedback = prompt + feedbackAddendum + RL_QUALITY_RULES
     const aspectRatio = variant.format_hint === "Video" ? "9:16" : "1:1"
 
     // Generate all targets in parallel. Each variation gets a small

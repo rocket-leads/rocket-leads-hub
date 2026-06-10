@@ -30,6 +30,12 @@ export const INVALIDATION_GROUPS = {
     ["watchlist-expand"],
     ["kpi-summary-single"],
     ["kpi-summaries"],
+    // Onboarding wizard reads the same Monday-mirrored fields and shows
+    // them in its Hub-connection pickers. Without this, picking a
+    // Trengo/Stripe/Monday board/Drive folder in the wizard updates
+    // Monday + Supabase but the picker UI still shows the old value
+    // until a full page reload. Roy 2026-06-10.
+    ["onboarding-wizard"],
   ],
   /** Per-client billing — invoices, agreement state, payment status. */
   BILLING: [

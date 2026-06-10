@@ -548,6 +548,31 @@ Voorbeelden van feedback die Pedro moet onthouden:
 
 Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om de eerste-versie goed te krijgen. **Iteratie is leerdata, geen kosten-post.**
 
+### 6. Typografie + alignment quality bar — marketing-agency deliverable
+
+> Roy 2026-06-10. Een Zumex generatie kwam terug met 3 concurrerende badges ("LAGE MARGE" / "3x MARGE" twee keer / "€2.50" / "€3.000" / "€5.50" / "€6.00") plus een QualityFry watermerk op een Zumex shot. Dit kunnen wij als bureau niet leveren. Generatieve modellen "vullen" automatisch met badges/labels als de prompt niet expliciet verbiedt. Pedro's image-prompt moet strakke regels meegeven, EN de Hub stamps deze regels hardcoded op elke Gemini-call (defense-in-depth).
+
+**Hard rules — niet onderhandelbaar:**
+
+| # | Regel | Reden |
+|---|---|---|
+| 1 | **EXACTLY ONE on-image text element** — de Dutch headline. Niets anders. | Modellen dupliceren badges; één element verzekert leesbaarheid |
+| 2 | **NO badges, prijslabels (€..), multiplier-stickers (3x/2x), comparison-labels (LAGE/HOGE), watermarks, sub-captions, sticker overlays** | Maakt collage-look, niet professioneel |
+| 3 | **Render headline ONCE, één positie** — never twice, never split across boxes | Modellen herhalen graag dezelfde tekst in 2-3 plekken |
+| 4 | **ONE sans-serif typeface** voor de hele headline. Even letter-spacing. Consistente weight. | Mixed fonts schreeuwen "AI" |
+| 5 | **≥8% canvas padding** rond de headline op alle kanten. Headline in negative space, nooit op visueel drukke detail | Voorkomt overlap met onderwerp |
+| 6 | **Eén kleur** voor de headline (brand accent OR pure zwart/wit). GEEN mixed fill+outline | Mixed treatments lezen amateuristisch |
+| 7 | **Eén foto-subject in focus** — geen split-screen of collage, tenzij expliciet gevraagd | Drukte = onleesbaar in feed |
+| 8 | **Geen concurrerende brand-namen** zichtbaar (geen QualityFry/Blendtec in een Zumex shot) | Confuses brand-attribution |
+| 9 | **Brand-aanwezigheid alleen subtiel + natuurlijk** op productoppervlak (klein, in-context) | Grote logo's verkopen niet |
+
+**Implementatie (Hub side):**
+- Pedro's `imagePrompt` JSON-veld bevat A-F regels per variant.
+- `/api/pedro/variants/[id]/generate-image` plakt een **hardcoded `RL_QUALITY_RULES` suffix** op elke Gemini-call met expliciete `NEGATIVE: …` lijst. Pedro's eigen prompt-output kan dit niet ondermijnen.
+- Bij regen-feedback ("design / styling") krijgt Gemini de specifieke pain-point boven op deze base rules.
+
+**Wat NIET in deze sectie zit:** preferenties die per klant verschillen (logo-grootte, fontkeuze, stock-fotos ja/nee). Die horen in `brand_style` + `pedro_creative_feedback` per klant. Bovenstaande regels gelden voor ALLE klanten zonder uitzondering.
+
 ---
 
 ## Volledige Video Scripts — RL 3.0 Campagnes

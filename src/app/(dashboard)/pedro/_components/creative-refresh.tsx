@@ -340,6 +340,7 @@ function VariantCard({
           proposalIndex={proposalIndex}
           winnerAdName={variant.adName}
           proposalAngle={proposalAngle}
+          variantHeadline={headline}
           variants={[
             {
               variantId,

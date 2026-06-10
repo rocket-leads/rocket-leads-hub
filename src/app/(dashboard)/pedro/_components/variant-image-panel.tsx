@@ -641,10 +641,10 @@ function SlotCard({
           disabled={isBusy || disabled || (slot.hasImage && slot.regenAvailable === false)}
           title={
             slot.hasImage && slot.regenAvailable === false
-              ? "Regen limiet bereikt (max 1× per slot). Upload je eigen afbeelding of regenereer de hele refresh."
+              ? "Customise limiet bereikt (max 1× per slot). Upload je eigen afbeelding of genereer de hele refresh opnieuw."
               : slot.hasImage
-                ? "Regenereer met feedback (max 1× per slot)"
-                : "Genereer alleen deze slot"
+                ? "Pas deze afbeelding aan met gestructureerde feedback (max 1× per slot)"
+                : "Genereer alleen deze slot met AI"
           }
           className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -655,7 +655,7 @@ function SlotCard({
           ) : (
             <Sparkles className="h-3 w-3" />
           )}
-          {slot.hasImage ? "Regen" : "AI"}
+          {slot.hasImage ? "Customise" : "Genereer"}
         </button>
         <input
           ref={fileInputRef}

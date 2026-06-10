@@ -681,17 +681,34 @@ export async function fetchMetaAdDetails(
             // Summarise dynamic variation pool so Pedro can read "this
             // dynamic ad rotates across these messages" rather than just
             // seeing the first variation.
+            // Roy 2026-06-10 BUG FIX: was sliced at 80 chars per body
+            // → primary copy van ~300 chars werd geknipt na 80 → Pedro
+            // zag effectief geen DNA en raadde op de ad-naam alleen.
+            // Nu: per body 800 chars, per title 200, per description
+            // 200. Op één regel per item zodat de prompt scanbaar blijft.
             let assetFeedSummary = ""
             if (feed) {
               const parts: string[] = []
-              if (feed.bodies && feed.bodies.length > 1) {
-                parts.push(`Bodies (${feed.bodies.length}): ` + feed.bodies.slice(0, 5).map((b) => `"${(b.text ?? "").slice(0, 80)}"`).join(" | "))
+              if (feed.bodies && feed.bodies.length > 0) {
+                const lines = feed.bodies.slice(0, 5).map((b, i) => {
+                  const t = (b.text ?? "").replace(/\s+/g, " ").trim()
+                  return `    ${i + 1}. "${t.slice(0, 800)}${t.length > 800 ? "…" : ""}"`
+                })
+                parts.push(`Bodies (${feed.bodies.length} total):\n${lines.join("\n")}`)
               }
-              if (feed.titles && feed.titles.length > 1) {
-                parts.push(`Titles (${feed.titles.length}): ` + feed.titles.slice(0, 5).map((t) => `"${(t.text ?? "").slice(0, 60)}"`).join(" | "))
+              if (feed.titles && feed.titles.length > 0) {
+                const lines = feed.titles.slice(0, 5).map((t, i) => {
+                  const txt = (t.text ?? "").replace(/\s+/g, " ").trim()
+                  return `    ${i + 1}. "${txt.slice(0, 200)}${txt.length > 200 ? "…" : ""}"`
+                })
+                parts.push(`Titles (${feed.titles.length} total):\n${lines.join("\n")}`)
               }
-              if (feed.descriptions && feed.descriptions.length > 1) {
-                parts.push(`Descriptions (${feed.descriptions.length}): ` + feed.descriptions.slice(0, 3).map((dsc) => `"${(dsc.text ?? "").slice(0, 60)}"`).join(" | "))
+              if (feed.descriptions && feed.descriptions.length > 0) {
+                const lines = feed.descriptions.slice(0, 3).map((dsc, i) => {
+                  const t = (dsc.text ?? "").replace(/\s+/g, " ").trim()
+                  return `    ${i + 1}. "${t.slice(0, 200)}${t.length > 200 ? "…" : ""}"`
+                })
+                parts.push(`Descriptions (${feed.descriptions.length} total):\n${lines.join("\n")}`)
               }
               assetFeedSummary = parts.join("\n")
             }
@@ -754,4 +771,65 @@ export async function fetchMetaAdDetails(
       leadGenFormId: creative?.leadGenFormId ?? "",
     }
   })
+}
+
+/**
+ * List ad sets within a campaign — fallback resolver voor Push-to-Meta
+ * wanneer de gesnapshote winner-adset uit Meta is verwijderd, maar de
+ * campagne nog leeft. We pakken de meest-recente niet-DELETED ad set
+ * als template-bron. Roy 2026-06-10.
+ *
+ * Returns id + name + status, sorted by `created_time` desc. Caller
+ * filters non-DELETED en pakt de eerste.
+ */
+export type MetaCampaignAdSet = {
+  id: string
+  name: string
+  status: string
+  effectiveStatus: string
+  createdTime: string
+}
+
+/**
+ * Lightweight listing of ad names in an account. Used by Pedro
+ * Push-to-Meta to compute the next "Photo N | …" / "Video N | …"
+ * number without doing a full insights fetch. Roy 2026-06-10.
+ *
+ * Returns up to ~500 ad names (recent + active). For RL accounts that
+ * usually means full coverage.
+ */
+export async function fetchAdNamesInAccount(adAccountId: string): Promise<string[]> {
+  const token = await getToken()
+  const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
+  const url = `${META_API_BASE}/${accountId}/ads?fields=name&limit=500&access_token=${token}`
+  type Raw = { name?: string }
+  const data = await fetchAllPages<Raw>(url).catch(() => [] as Raw[])
+  return data
+    .map((d) => (typeof d.name === "string" ? d.name.trim() : ""))
+    .filter((n): n is string => n.length > 0)
+}
+
+export async function fetchCampaignAdSets(
+  campaignId: string,
+): Promise<MetaCampaignAdSet[]> {
+  const token = await getToken()
+  const url = `${META_API_BASE}/${campaignId}/adsets?fields=id,name,status,effective_status,created_time&limit=50&access_token=${token}`
+  type Raw = {
+    id?: string
+    name?: string
+    status?: string
+    effective_status?: string
+    created_time?: string
+  }
+  const data = await fetchAllPages<Raw>(url).catch(() => [] as Raw[])
+  return data
+    .filter((d): d is Required<Pick<Raw, "id" | "name">> & Raw => !!d.id && !!d.name)
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      status: d.status ?? "",
+      effectiveStatus: d.effective_status ?? "",
+      createdTime: d.created_time ?? "",
+    }))
+    .sort((a, b) => b.createdTime.localeCompare(a.createdTime))
 }

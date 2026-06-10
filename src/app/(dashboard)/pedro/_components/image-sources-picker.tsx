@@ -100,18 +100,36 @@ export function ImageSourcesPicker({ clientId }: Props) {
     async (folder: FolderRow) => {
       if (!clientId || savingIds.has(folder.id)) return
       const next = !folder.enabled
-      // Optimistic update.
+      // Cascade: gather descendants by path-prefix match. Roy 2026-06-10:
+      // "als ik een hoofdfolder uit zet wil ik alle subfolders ook uit".
+      // Path format is "Parent / Child / Grandchild" — anything that
+      // starts with `${folder.path} / ` is below this folder.
+      const currentFolders = data?.folders ?? []
+      const parentPrefix = folder.path + " / "
+      const descendants = currentFolders.filter(
+        (f) =>
+          f.id !== folder.id &&
+          f.depth > folder.depth &&
+          f.path.startsWith(parentPrefix),
+      )
+      const affectedIds = new Set<string>([folder.id, ...descendants.map((d) => d.id)])
+
+      // Optimistic update across all affected folders.
       setData((prev) =>
         prev
           ? {
               ...prev,
               folders: prev.folders.map((f) =>
-                f.id === folder.id ? { ...f, enabled: next } : f,
+                affectedIds.has(f.id) ? { ...f, enabled: next } : f,
               ),
             }
           : prev,
       )
-      setSavingIds((prev) => new Set(prev).add(folder.id))
+      setSavingIds((prev) => {
+        const out = new Set(prev)
+        for (const id of affectedIds) out.add(id)
+        return out
+      })
       try {
         const res = await fetch(
           `/api/pedro/image-source-prefs/${encodeURIComponent(clientId)}`,
@@ -124,6 +142,11 @@ export function ImageSourcesPicker({ clientId }: Props) {
                 name: folder.name,
                 path: folder.path,
                 enabled: next,
+                descendants: descendants.map((d) => ({
+                  id: d.id,
+                  name: d.name,
+                  path: d.path,
+                })),
               },
             }),
           },
@@ -133,13 +156,13 @@ export function ImageSourcesPicker({ clientId }: Props) {
           throw new Error(json.error || `HTTP ${res.status}`)
         }
       } catch (e) {
-        // Revert on failure.
+        // Revert all affected folders on failure.
         setData((prev) =>
           prev
             ? {
                 ...prev,
                 folders: prev.folders.map((f) =>
-                  f.id === folder.id ? { ...f, enabled: !next } : f,
+                  affectedIds.has(f.id) ? { ...f, enabled: !next } : f,
                 ),
               }
             : prev,
@@ -148,12 +171,12 @@ export function ImageSourcesPicker({ clientId }: Props) {
       } finally {
         setSavingIds((prev) => {
           const out = new Set(prev)
-          out.delete(folder.id)
+          for (const id of affectedIds) out.delete(id)
           return out
         })
       }
     },
-    [clientId, savingIds],
+    [clientId, savingIds, data],
   )
 
   const toggleStock = useCallback(async () => {
@@ -307,6 +330,17 @@ export function ImageSourcesPicker({ clientId }: Props) {
                 <ul className="space-y-0.5 max-h-72 overflow-y-auto">
                   {data.folders.map((f) => {
                     const saving = savingIds.has(f.id)
+                    // Roy 2026-06-10: descendant-lock. Wanneer een
+                    // ancestor uit staat, is deze subfolder effectief
+                    // ook uit (BFS skipt de subtree). UI laat zien dat
+                    // de toggle door de parent gestuurd wordt.
+                    const ancestorOff = data.folders.some(
+                      (other) =>
+                        other.depth < f.depth &&
+                        !other.enabled &&
+                        f.path.startsWith(other.path + " / "),
+                    )
+                    const effectivelyOff = !f.enabled || ancestorOff
                     return (
                       <li
                         key={f.id}
@@ -314,7 +348,7 @@ export function ImageSourcesPicker({ clientId }: Props) {
                         style={{ paddingLeft: `${0.5 + (f.depth - 1) * 0.75}rem` }}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
-                          {f.enabled ? (
+                          {!effectivelyOff ? (
                             <FolderOpen className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                           ) : (
                             <Folder className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
@@ -322,7 +356,9 @@ export function ImageSourcesPicker({ clientId }: Props) {
                           <span
                             className={cn(
                               "text-xs truncate",
-                              f.enabled ? "text-foreground" : "text-muted-foreground/60 line-through",
+                              effectivelyOff
+                                ? "text-muted-foreground/60 line-through"
+                                : "text-foreground",
                             )}
                             title={f.path || f.name}
                           >
@@ -333,28 +369,42 @@ export function ImageSourcesPicker({ clientId }: Props) {
                               📷
                             </span>
                           )}
+                          {ancestorOff && (
+                            <span
+                              className="text-[9px] text-muted-foreground/60 px-1 rounded bg-muted/60 shrink-0"
+                              title="Hoofdmap staat uit — deze subfolder wordt ook geskipt"
+                            >
+                              parent uit
+                            </span>
+                          )}
                         </div>
                         <button
                           type="button"
                           onClick={() => toggleFolder(f)}
-                          disabled={saving}
-                          title={f.enabled ? "Uitzetten — Pedro skipt deze folder" : "Aanzetten"}
+                          disabled={saving || ancestorOff}
+                          title={
+                            ancestorOff
+                              ? "Hoofdmap staat uit — zet eerst de parent aan om deze subfolder afzonderlijk te beheren."
+                              : f.enabled
+                                ? "Uitzetten — Pedro skipt deze folder + alle subfolders"
+                                : "Aanzetten"
+                          }
                           className={cn(
                             "shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] font-medium transition-colors",
-                            f.enabled
+                            !effectivelyOff
                               ? "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
                               : "text-muted-foreground hover:bg-accent",
-                            saving && "opacity-50",
+                            (saving || ancestorOff) && "opacity-50 cursor-not-allowed",
                           )}
                         >
                           {saving ? (
                             <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : f.enabled ? (
+                          ) : !effectivelyOff ? (
                             <Eye className="h-3 w-3" />
                           ) : (
                             <EyeOff className="h-3 w-3" />
                           )}
-                          {f.enabled ? "Aan" : "Uit"}
+                          {!effectivelyOff ? "Aan" : "Uit"}
                         </button>
                       </li>
                     )

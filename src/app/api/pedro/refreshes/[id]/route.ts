@@ -93,24 +93,51 @@ export async function GET(
       meta_ad_launched_at: string | null
     }
     const byAdName = new Map<string, VariantRow>()
+    const variantIds: string[] = []
     for (const r of (variantRows ?? []) as VariantRow[]) {
       byAdName.set(r.ad_name, r)
+      variantIds.push(r.id)
+    }
+
+    // Roy 2026-06-10 BUG FIX: na de 3-slot migratie staan images in
+    // `pedro_variant_images` (per slot een rij), NIET meer in de legacy
+    // `pedro_variants.image_storage_path` kolom. Het oude pad maakte
+    // dat refresh-uit-history altijd `hasImage: false` rapporteerde
+    // → variant-image-panel triggerde geen re-fetch → images leken weg
+    // na page reload (terwijl ze er wél stonden). Nu kijken we naar de
+    // 3-slot tabel als bron van waarheid.
+    const variantHasImage = new Set<string>()
+    if (variantIds.length > 0) {
+      const { data: slotRows } = await supabase
+        .from("pedro_variant_images")
+        .select("variant_id")
+        .in("variant_id", variantIds)
+        .not("storage_path", "is", null)
+      for (const r of (slotRows ?? []) as Array<{ variant_id: string }>) {
+        variantHasImage.add(r.variant_id)
+      }
     }
 
     const enrichedProposals = (env.proposals ?? []).map((p) => ({
       ...p,
       variants: (p.variants ?? []).map((v) => {
         const dbRow = v.adName ? byAdName.get(v.adName) : undefined
+        const hasSlotImage = dbRow ? variantHasImage.has(dbRow.id) : false
+        const hasLegacyImage = !!dbRow?.image_storage_path
+        const hasImage = hasSlotImage || hasLegacyImage
         return {
           ...v,
           // Variant DB id — required for image gen / upload / launch endpoints.
           variantId: dbRow?.id ?? null,
-          image: dbRow?.image_storage_path
+          image: hasImage
             ? {
-                provider: dbRow.image_provider,
-                model: dbRow.image_model,
-                generatedAt: dbRow.image_generated_at,
+                provider: dbRow?.image_provider ?? null,
+                model: dbRow?.image_model ?? null,
+                generatedAt: dbRow?.image_generated_at ?? null,
                 hasImage: true,
+                // Carry the prompt through so the panel can prefill its
+                // "Bewerk prompt" textarea even when the image is loaded.
+                imagePrompt: dbRow?.image_prompt ?? (v.imagePrompt as string | undefined) ?? null,
               }
             : { hasImage: false, imagePrompt: dbRow?.image_prompt ?? (v.imagePrompt as string | undefined) ?? null },
           metaAdId: dbRow?.meta_ad_id ?? null,

@@ -5,7 +5,17 @@ import type { NextAuthRequest } from "next-auth"
 // Webhook endpoints (Slack Events, Trengo, future Monday) authenticate themselves
 // via signed payloads or shared secrets — they never have a session cookie, so
 // they MUST be exempt from the auth redirect that catches the rest of the app.
-const PUBLIC_PATHS = ["/auth/signin", "/api/auth", "/api/cron/", "/api/webhooks/"]
+const PUBLIC_PATHS = [
+  "/auth/signin",
+  "/api/auth",
+  "/api/cron/",
+  "/api/webhooks/",
+  // Client-facing onboarding pages — sent to the client during the
+  // kick-off so they can connect their Meta BM / upload content /
+  // verify payment. No RL login required (and shouldn't be: the
+  // client doesn't have an RL account).
+  "/onboard/",
+]
 
 export default auth((req: NextAuthRequest) => {
   const { pathname } = req.nextUrl
