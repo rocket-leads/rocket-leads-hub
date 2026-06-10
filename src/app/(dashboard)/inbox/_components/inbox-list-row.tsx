@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Calendar, MessageCircle, AlertCircle, Check, RotateCcw, Link2Off, Clock, BellOff, UserCog, ListTodo, Trash2, Inbox as InboxIcon } from "lucide-react"
+import { Calendar, MessageCircle, AlertCircle, Check, RotateCcw, Link2Off, Clock, BellOff, UserCog, ListTodo, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { SourcePill } from "./source-pill"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
@@ -35,20 +35,17 @@ const TASK_STATUS_LABELS: Record<TaskStatus, { label: string; cls: string }> = {
  */
 const KIND_TREATMENT: Record<"task" | "update", {
   rail: string
-  chip: string
-  icon: typeof ListTodo
+  dot: string
   label: string
 }> = {
   task: {
     rail: "bg-violet-500",
-    chip: "bg-violet-500/10 text-violet-600 dark:text-violet-300 border-violet-500/20",
-    icon: ListTodo,
+    dot: "bg-violet-500",
     label: "Task",
   },
   update: {
     rail: "bg-sky-500",
-    chip: "bg-sky-500/10 text-sky-600 dark:text-sky-300 border-sky-500/20",
-    icon: InboxIcon,
+    dot: "bg-sky-500",
     label: "Update",
   },
 }
@@ -118,11 +115,12 @@ export function InboxListRow({
   const taskStatus = !isUpdate ? TASK_STATUS_LABELS[item.status as TaskStatus] : null
   const isHighPriority = item.priority === "high"
   const isCompleted = ["done", "cancelled", "read"].includes(item.status)
-  // Type rail + chip — the at-a-glance "is this a Task or an Update" signal
-  // that Roy specifically asked for. Stored at the kind level so the row
-  // body picks the right colour without a switch statement inline.
+  // Type rail + meta-row dot. The rail is the at-a-glance kind signal in
+  // peripheral vision; the dot+label inside the meta row re-states it in
+  // text form so the kind is still legible if you're scanning straight
+  // down the title column. We stripped the bordered "chip" treatment —
+  // it was visually competing with the title without adding info.
   const kindTreatment = isUpdate ? KIND_TREATMENT.update : KIND_TREATMENT.task
-  const KindIcon = kindTreatment.icon
   // Bulk-select checkbox shown on tasks AND updates when the parent
   // hooks it up. Updates also keep their leading read/unread bubble
   // (which has a different role: per-row read toggle, not bulk select);
@@ -143,7 +141,11 @@ export function InboxListRow({
       }}
       data-inbox-row-id={item.id}
       className={cn(
-        "group relative w-full text-left rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all px-5 py-4 cursor-pointer overflow-hidden",
+        "group relative w-full text-left rounded-xl border border-border/60 bg-card transition-all px-5 py-3.5 cursor-pointer overflow-hidden",
+        // Subtle lift on hover — slightly darker border + soft shadow so
+        // the row feels interactive without a heavy state flip. Faster
+        // duration than the default so the response feels snappy.
+        "hover:border-border hover:bg-muted/30 hover:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.04)] duration-150",
         // Slight inset on the left so the rail (w-1) doesn't collide with
         // the title/checkbox at small viewport widths. The rail itself is
         // absolute-positioned so this padding sits above it.
@@ -210,68 +212,55 @@ export function InboxListRow({
 
         <div className="flex-1 min-w-0">
           {/* Visual hierarchy (Roy 2026-06-10):
-                1. Client name — primary, large, bold. The row's subject:
-                   "what's this row about" reads first as "which client."
-                2. Title — secondary, medium weight, smaller. The "what
-                   happened" line. When no client is present (orphan rows
-                   or per-client locked view), the title is promoted to
-                   primary size since there's nothing else to anchor on.
-                3. Meta row — tiny. TYPE chip + source + status pill +
-                   author→assignee + date + due + comments. All visually
-                   recessed so the eye lands on the client/title first.
-              The left rail still encodes kind colour for peripheral
-              scanning; the TYPE chip in the meta row is redundant
-              encoding but Roy explicitly wanted it kept ("mag klein
-              blijven"). */}
+                1. Client — small bold, 14px. Scannable as the row's
+                   subject, but doesn't outrank the headline.
+                2. Title — 15px bold, the main signal. "What happened."
+                   When there's no client (orphan / locked view) the
+                   title is promoted to 16px to stay the row's anchor.
+                3. Meta — 11px muted. Kind dot, source, status, people,
+                   date, due, comments — all visually recessed.
+              The left rail still carries kind colour for peripheral
+              scanning; the bordered TYPE chip is gone (dot+label only)
+              so it stops competing with the headline. */}
 
-          {/* Row 1 — client name as primary header (or skipped when not
-              applicable; the title then promotes to primary). */}
+          {/* Row 1 — client. Compact, bold; reads as the row's subject. */}
           {showClient && item.isUnlinked && (
-            <div className="flex items-center gap-2 min-w-0 mb-0.5">
+            <div className="flex items-center gap-1.5 min-w-0 mb-0.5">
+              <Link2Off className="h-3.5 w-3.5 text-amber-500/90 dark:text-amber-400 shrink-0" />
               <span
-                className="text-base font-semibold text-amber-500/90 dark:text-amber-400 truncate inline-flex items-center gap-1.5"
+                className="text-sm font-semibold text-amber-500/90 dark:text-amber-400 truncate"
                 title="This Trengo contact isn't linked to a client yet"
               >
-                <Link2Off className="h-4 w-4 shrink-0" />
                 Unlinked contact
               </span>
               {isHighPriority && (
-                <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+                <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
               )}
             </div>
           )}
           {showClient && !item.isUnlinked && item.clientName && item.clientName !== "(unknown)" && (
             <div className="flex items-center gap-2 min-w-0 mb-0.5">
-              <span className="text-base font-semibold text-foreground truncate">
+              <span className="text-sm font-semibold text-foreground/90 truncate">
                 {item.clientName}
               </span>
               {isHighPriority && (
-                <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+                <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
               )}
             </div>
           )}
 
-          {/* Row 2 — title. Size promotes to primary when no client
-              header rendered above (locked-client view, or orphan row
-              without a linked client). */}
+          {/* Row 2 — title. The primary headline of the row. Bold by
+              default; line-through + muted when completed; promotes to
+              16px when no client header is rendered above. */}
           {(() => {
             const hasClientHeader =
               showClient &&
               (item.isUnlinked ||
                 (!!item.clientName && item.clientName !== "(unknown)"))
             const titleClass = cn(
-              "truncate",
-              hasClientHeader ? "text-sm" : "text-base",
-              isUnread || (!hasClientHeader && !isCompleted)
-                ? "font-semibold"
-                : "font-medium",
-              hasClientHeader
-                ? isCompleted
-                  ? "text-muted-foreground"
-                  : "text-foreground/85"
-                : isCompleted
-                  ? "text-muted-foreground"
-                  : "text-foreground",
+              "truncate font-semibold",
+              hasClientHeader ? "text-[15px]" : "text-base",
+              isCompleted ? "text-muted-foreground" : "text-foreground",
               (item.status === "done" || item.status === "cancelled") &&
                 "line-through",
             )
@@ -286,18 +275,20 @@ export function InboxListRow({
             )
           })()}
 
-          {/* Row 3 — meta. Tiny, muted. The TYPE chip lives here (not
-              competing with the title) along with the source pill,
-              task-status pill, and the author/date/due trail. */}
+          {/* Row 3 — meta. Tiny, muted. Kind dot replaces the bordered
+              chip; source + task-status pills still appear but stripped
+              of background fills where possible. People-and-time trail
+              uses very-faint separators so the comma-rhythm doesn't
+              compete visually. */}
           <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground/75 flex-wrap">
             <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md border px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide shrink-0",
-                kindTreatment.chip,
-              )}
+              className="inline-flex items-center gap-1.5 font-medium uppercase tracking-wide text-[10px] text-muted-foreground/80 shrink-0"
               title={kindTreatment.label}
             >
-              <KindIcon className="h-2.5 w-2.5" />
+              <span
+                aria-hidden
+                className={cn("h-1.5 w-1.5 rounded-full", kindTreatment.dot)}
+              />
               {kindTreatment.label}
             </span>
             <SourcePill
@@ -311,20 +302,18 @@ export function InboxListRow({
                 {taskStatus.label}
               </span>
             )}
-            {/* No client appears in meta — it's the row header now.
-                Keep only the people-and-time trail here. */}
             {!showClient && isHighPriority && (
               <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
             )}
-            <span className="text-muted-foreground/40">·</span>
+            <span className="text-muted-foreground/30">·</span>
             <span>{item.authorName}</span>
-            <span className="text-muted-foreground/40">→</span>
+            <span className="text-muted-foreground/30">→</span>
             <span>{item.assigneeName}</span>
-            <span className="text-muted-foreground/40">·</span>
+            <span className="text-muted-foreground/30">·</span>
             <span>{fmtDate(item.createdAt)}</span>
             {item.dueDate && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <span className="text-muted-foreground/30">·</span>
                 <span
                   className={cn(
                     "inline-flex items-center gap-1",
@@ -338,7 +327,7 @@ export function InboxListRow({
             )}
             {item.commentCount > 0 && (
               <>
-                <span className="text-muted-foreground/40">·</span>
+                <span className="text-muted-foreground/30">·</span>
                 <span className="inline-flex items-center gap-1">
                   <MessageCircle className="h-3 w-3" />
                   {item.commentCount}
