@@ -185,13 +185,30 @@ export async function DELETE(
       .from("pedro_variants")
       .select("id, client_id, image_storage_path")
       .eq("refresh_id", id)
+    const variantIds = (variants ?? []).map((v) => v.id)
 
-    // 2. Best-effort image cleanup. Per variant: remove the specific
-    //    image file (if stored) — same path the upload helper writes.
-    //    Failures are logged but don't block the row delete.
-    const storagePaths = (variants ?? [])
+    // Roy 2026-06-10: na de 3-slot migratie staan images in
+    // `pedro_variant_images.storage_path`. Oude `pedro_variants.image_storage_path`
+    // wordt deprecated maar oude refreshes hebben daar nog data — clean
+    // beide om geen orphans achter te laten.
+    const legacyPaths = (variants ?? [])
       .map((v) => v.image_storage_path)
       .filter((p): p is string => typeof p === "string" && p.length > 0)
+
+    let slotPaths: string[] = []
+    if (variantIds.length > 0) {
+      const { data: slotRows } = await supabase
+        .from("pedro_variant_images")
+        .select("storage_path")
+        .in("variant_id", variantIds)
+      slotPaths = (slotRows ?? [])
+        .map((r) => r.storage_path as string | null)
+        .filter((p): p is string => typeof p === "string" && p.length > 0)
+    }
+
+    // Dedupe + bulk-remove. Supabase storage.remove accepts up to 1000
+    // paths per call; we're nowhere near that.
+    const storagePaths = Array.from(new Set([...legacyPaths, ...slotPaths]))
     let storageRemoved = 0
     if (storagePaths.length > 0) {
       try {
@@ -208,6 +225,35 @@ export async function DELETE(
       } catch (e) {
         console.error(
           "[pedro/refreshes/:id DELETE] storage cleanup threw:",
+          e instanceof Error ? e.message : e,
+        )
+      }
+    }
+
+    // 2a. Explicit row cleanup for tables WITHOUT a CASCADE on
+    //     refresh_id (pedro_variant_images cascades on variant_id; the
+    //     variant_id cascade fires when we delete pedro_variants below
+    //     via the pedro_refreshes cascade). Defensive belt-and-braces.
+    if (variantIds.length > 0) {
+      try {
+        await supabase
+          .from("pedro_variant_images")
+          .delete()
+          .in("variant_id", variantIds)
+      } catch (e) {
+        console.error(
+          "[pedro/refreshes/:id DELETE] variant_images cleanup threw (continuing):",
+          e instanceof Error ? e.message : e,
+        )
+      }
+      try {
+        await supabase
+          .from("pedro_creative_feedback")
+          .delete()
+          .eq("refresh_id", id)
+      } catch (e) {
+        console.error(
+          "[pedro/refreshes/:id DELETE] creative_feedback cleanup threw (continuing):",
           e instanceof Error ? e.message : e,
         )
       }

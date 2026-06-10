@@ -105,6 +105,125 @@ export type DriveFile = {
   modifiedTime: string
 }
 
+/** Lightweight folder tree node returned by `listFolderTree`. Used by
+ *  the per-client image-source picker so the CM can toggle whole
+ *  subtrees on/off vóór de Genereer-image klik. Roy 2026-06-10. */
+export type DriveFolderNode = {
+  id: string
+  name: string
+  /** Pad relatief vanaf de root, alleen folder-namen (geen ids).
+   *  Voorbeeld: "Photos / Showroom" — disambiguatie wanneer twee
+   *  subfolders dezelfde naam hebben. Root zelf heeft path="". */
+  path: string
+  /** Depth vanaf de root (0 = root, 1 = direct child, ...). */
+  depth: number
+  /** Indicatief: laatste-gewijzigde timestamp (kan ontbreken voor
+   *  Drives waar het service-account beperkte rechten heeft). */
+  modifiedTime: string | null
+  /** True als deze folder zelf nog subfolders heeft (zodat de UI een
+   *  "expand" affordance kan tonen wanneer we lazy-loaden). */
+  hasSubfolders: boolean
+  /** True als deze folder direct image files bevat (jpg/png). Pure
+   *  container-folders zonder eigen foto's worden nog steeds getoond
+   *  zodat de CM hun subtree kan toggelen. */
+  hasImages: boolean
+}
+
+/**
+ * Enumerate folders onder een root, tot `maxDepth` niveaus diep. Geeft
+ * een platte lijst — caller bouwt zelf een tree-view uit de `path` en
+ * `depth` velden. Bedoeld voor de per-klant Drive folder picker waarin
+ * de CM vóór de Genereer-klik aanvinkt welke folders Pedro mag
+ * gebruiken.
+ *
+ * Best-effort: failures per folder loggen + door. Cap totaal folder
+ * count op `maxFolders` zodat we niet door 500+ folder trees gaan
+ * voor 1 picker-call.
+ *
+ * Roy 2026-06-10.
+ */
+export async function listFolderTree(
+  rootFolderId: string,
+  options: { maxDepth?: number; maxFolders?: number } = {},
+): Promise<DriveFolderNode[]> {
+  const maxDepth = options.maxDepth ?? 2
+  const maxFolders = options.maxFolders ?? 60
+  if (!rootFolderId?.trim()) return []
+
+  const auth = await getAuth()
+  const drive = google.drive({ version: "v3", auth })
+
+  type QueueEntry = { id: string; name: string; path: string; depth: number }
+  const queue: QueueEntry[] = [
+    { id: rootFolderId.trim(), name: "(root)", path: "", depth: 0 },
+  ]
+  const visited = new Set<string>([rootFolderId.trim()])
+  const results: DriveFolderNode[] = []
+
+  while (queue.length > 0 && results.length < maxFolders) {
+    const current = queue.shift()!
+    let subfolders: Array<{ id: string; name: string; modifiedTime: string | null }> = []
+    let hasImages = false
+    try {
+      const res = await drive.files.list({
+        q: `'${current.id}' in parents and trashed = false and (mimeType = 'application/vnd.google-apps.folder' or mimeType = 'image/jpeg' or mimeType = 'image/png')`,
+        fields: "files(id, name, mimeType, modifiedTime)",
+        pageSize: 200,
+        orderBy: "name",
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      })
+      for (const f of res.data.files ?? []) {
+        if (!f.id || !f.name || !f.mimeType) continue
+        if (f.mimeType === "application/vnd.google-apps.folder") {
+          subfolders.push({
+            id: f.id,
+            name: f.name,
+            modifiedTime: f.modifiedTime ?? null,
+          })
+        } else {
+          hasImages = true
+        }
+      }
+    } catch (e) {
+      console.error(
+        `[google-drive] listFolderTree per-folder fail (${current.name}):`,
+        e instanceof Error ? e.message : e,
+      )
+    }
+
+    // Skip emitting the root itself — the CM doesn't toggle the root,
+    // they toggle its children.
+    if (current.depth > 0) {
+      results.push({
+        id: current.id,
+        name: current.name,
+        path: current.path,
+        depth: current.depth,
+        modifiedTime: null,
+        hasSubfolders: subfolders.length > 0,
+        hasImages,
+      })
+    }
+
+    if (current.depth + 1 > maxDepth) continue
+    for (const sub of subfolders) {
+      if (visited.has(sub.id)) continue
+      visited.add(sub.id)
+      queue.push({
+        id: sub.id,
+        name: sub.name,
+        path: current.depth === 0 ? sub.name : `${current.path} / ${sub.name}`,
+        depth: current.depth + 1,
+      })
+    }
+  }
+
+  // Sort: by path so the tree renders parent-then-children naturally.
+  results.sort((a, b) => a.path.localeCompare(b.path, undefined, { sensitivity: "base" }))
+  return results
+}
+
 export type DriveImageRef = {
   id: string
   name: string
@@ -135,6 +254,13 @@ export type GetFolderImagesOptions = {
    *  nadenkt" over fotokeuze (Roy 2026-06-10). On failure (throw or
    *  empty return), original order is preserved. */
   rerank?: (candidates: DriveImageRef[]) => Promise<DriveImageRef[]>
+  /** Folder ids the CM has explicitly toggled OFF for this client (per
+   *  `pedro_drive_folder_prefs`). When the BFS encounters one of these
+   *  the entire subtree is hard-skipped — no enumeration, no download,
+   *  no vision-call. Roy 2026-06-10: dit voorkomt dat we API kosten
+   *  maken aan irrelevante folders zoals 'QualityFree' onder een Zumex
+   *  refresh. */
+  deniedFolderIds?: Set<string>
 }
 
 /**
@@ -180,6 +306,7 @@ export async function getFolderImages(
   const maxFolders = opts.maxFolders ?? 80
   const campaignHint = opts.campaignHint?.trim() ?? ""
   const topicHints = opts.topicHints ?? []
+  const deniedFolderIds = opts.deniedFolderIds ?? new Set<string>()
 
   const auth = await getAuth()
   const drive = google.drive({ version: "v3", auth })
@@ -340,6 +467,10 @@ export async function getFolderImages(
           if (current.depth + 1 > maxDepth) continue
           if (visited.has(f.id)) continue
           visited.add(f.id)
+          // Hard CM-denylist skip — pedro_drive_folder_prefs.enabled=false.
+          // No enumeration, no download, no vision-call for this subtree.
+          // Roy 2026-06-10.
+          if (deniedFolderIds.has(f.id)) continue
           const childScore = scoreFolder(f.name, current.depth + 1)
           // Hard skip subtree if very negative (sibling campaign).
           if (childScore <= -300) continue

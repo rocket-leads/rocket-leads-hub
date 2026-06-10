@@ -74,6 +74,18 @@ export type NamedVariant = {
   newHook: string
   scriptOutline: string
   primaryCopySnippet: string
+  /** Primary Meta headline — pijnpunt-vraag, max ~27 char zichtbaar.
+   *  Pedro genereert vanaf 2026-06-10 een aparte short headline naast
+   *  de hook (de hook is langer en wordt opener van primary text). */
+  headline: string
+  /** 2 extra headlines voor dynamic creative — Meta laat tot 5 toe;
+   *  we leveren er 3 (primary + 2 alts) zodat Meta tests kan draaien. */
+  altHeadlines: string[]
+  /** 2 extra primary text varianten voor dynamic creative. */
+  altPrimaryTexts: string[]
+  /** Optionele link description (~30 char). Mag leeg blijven —
+   *  Roy 2026-06-10. */
+  linkDescription: string
   /** English visual brief for the image-gen call (Gemini Nano Banana
    *  Pro). Pedro writes this; the CM optionally edits before regen. */
   imagePrompt: string
@@ -108,12 +120,30 @@ export function assignAdNamesToVariants(
     newHook?: unknown
     scriptOutline?: unknown
     primaryCopySnippet?: unknown
+    headline?: unknown
+    altHeadlines?: unknown
+    altPrimaryTexts?: unknown
+    linkDescription?: unknown
     imagePrompt?: unknown
     why?: unknown
   }>,
   nextByFormat: Record<AdFormatHint, number>,
 ): NamedVariant[] {
   const result: NamedVariant[] = []
+  // Helper: turn an unknown into a clean string[] of max length, dropping
+  // empties and trimming whitespace. Keeps the JSON parser tolerant when
+  // Pedro returns a single string or skips the field entirely.
+  const asStringArray = (raw: unknown, max: number): string[] => {
+    if (!Array.isArray(raw)) return []
+    const out: string[] = []
+    for (const v of raw) {
+      if (typeof v !== "string") continue
+      const trimmed = v.replace(/\s+/g, " ").trim()
+      if (trimmed) out.push(trimmed)
+      if (out.length >= max) break
+    }
+    return out
+  }
   for (const v of variants) {
     const formatHint: AdFormatHint =
       typeof v.formatHint === "string" && /^video$/i.test(v.formatHint) ? "Video" : "Photo"
@@ -128,6 +158,10 @@ export function assignAdNamesToVariants(
       newHook: typeof v.newHook === "string" ? v.newHook : "",
       scriptOutline: typeof v.scriptOutline === "string" ? v.scriptOutline : "",
       primaryCopySnippet: typeof v.primaryCopySnippet === "string" ? v.primaryCopySnippet : "",
+      headline: typeof v.headline === "string" ? v.headline.trim() : "",
+      altHeadlines: asStringArray(v.altHeadlines, 2),
+      altPrimaryTexts: asStringArray(v.altPrimaryTexts, 2),
+      linkDescription: typeof v.linkDescription === "string" ? v.linkDescription.trim() : "",
       imagePrompt: typeof v.imagePrompt === "string" ? v.imagePrompt : "",
       why: typeof v.why === "string" ? v.why : "",
     })

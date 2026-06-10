@@ -9,6 +9,7 @@ import {
 import { uploadVariantImage, getVariantImageSignedUrl } from "@/lib/integrations/pedro-image-storage"
 import { getFolderImages, type DriveImageRef } from "@/lib/integrations/google-drive"
 import { rerankDrivePhotos } from "@/lib/pedro/drive-photo-vision"
+import { searchPexelsPhotos, deriveStockQueries } from "@/lib/integrations/pexels"
 import { resolveVisualStylePolicy } from "@/lib/pedro/visual-style-policy"
 import type { BrandStyle } from "@/lib/pedro/helpers"
 
@@ -49,6 +50,15 @@ export async function POST(
     /** Override how many slots to fill when position omitted.
      *  Default 3, max 10 (matches the CHECK on pedro_variant_images). */
     slots?: number
+    /** Structured CM feedback voor een regen — gevuld vanuit de
+     *  RegenFeedbackModal. Wordt achter de prompt geplakt en gelogd in
+     *  pedro_creative_feedback. Roy 2026-06-10. */
+    regenFeedback?: {
+      imageFeedback?: string
+      textFeedback?: string
+      designFeedback?: string
+      otherFeedback?: string
+    }
   } = {}
   try {
     body = await req.json()
@@ -180,7 +190,47 @@ export async function POST(
       }
     }
 
-    async function fetchDrivePhotoRefs(): Promise<DriveImageRef[]> {
+    // Load the CM-managed image-source prefs for THIS client. Two
+    // sources of truth:
+    //   - pedro_drive_folder_prefs (rows with enabled=false → hard skip
+    //     subtree in BFS, no vision/Gemini cost on those folders)
+    //   - pedro_client_state.image_source_prefs.useStock (whether to
+    //     pull Pexels stock as an extra source)
+    // Roy 2026-06-10: keuzeproces gebeurt VOOR de Genereer-klik, dus
+    // deze prefs zijn de single source of truth voor wat Pedro mag.
+    async function loadImageSourcePrefs(): Promise<{
+      deniedFolderIds: Set<string>
+      useStock: boolean
+    }> {
+      const out = { deniedFolderIds: new Set<string>(), useStock: false }
+      try {
+        const { data: folderRows } = await supabase
+          .from("pedro_drive_folder_prefs")
+          .select("folder_id, enabled")
+          .eq("client_id", variant.client_id)
+          .eq("enabled", false)
+        for (const r of (folderRows ?? []) as Array<{ folder_id: string; enabled: boolean }>) {
+          if (r.folder_id) out.deniedFolderIds.add(r.folder_id)
+        }
+      } catch {
+        /* best-effort; fall through to empty denylist */
+      }
+      try {
+        const { data: stateRow } = await supabase
+          .from("pedro_client_state")
+          .select("image_source_prefs")
+          .eq("client_id", variant.client_id)
+          .order("campaign_number", { ascending: false })
+          .limit(1)
+          .maybeSingle<{ image_source_prefs: { useStock?: boolean } | null }>()
+        out.useStock = stateRow?.image_source_prefs?.useStock === true
+      } catch {
+        /* keep default */
+      }
+      return out
+    }
+
+    async function fetchDrivePhotoRefs(deniedFolderIds: Set<string>): Promise<DriveImageRef[]> {
       try {
         const { fetchClientById } = await import("@/lib/integrations/monday")
         const mondayClient = await fetchClientById(variant.client_id).catch(() => null)
@@ -195,6 +245,7 @@ export async function POST(
         return await getFolderImages(driveId, 2, {
           campaignHint: winnerCampaignName ?? undefined,
           topicHints,
+          deniedFolderIds,
           // Vision rerank: Haiku describes each candidate photo (cached
           // by file_id), then ranks them against the campaign + variant
           // angle. Lets Pedro "zelf nadenken" over fotokeuze instead of
@@ -214,6 +265,63 @@ export async function POST(
       } catch (e) {
         console.error(
           "[pedro/generate-image] drive-photos fetch failed (continuing):",
+          e instanceof Error ? e.message : e,
+        )
+        return []
+      }
+    }
+
+    // Pexels stock fallback: actief wanneer CM `useStock=true` heeft
+    // staan voor deze klant. Levert max 2 candidates die vervolgens
+    // door dezelfde Haiku rerank lopen. Pedro's Drive-resultaten
+    // hebben prio bij gelijke vision-score (zie referenceImages
+    // assembly hieronder).
+    async function fetchStockRefs(briefSector: string | null): Promise<DriveImageRef[]> {
+      try {
+        const queries = deriveStockQueries({
+          campaignName: winnerCampaignName,
+          topicLabel: variant.topic_label,
+          sector: briefSector,
+        })
+        if (queries.length === 0) return []
+        // Run search queries sequentially — Pexels rate limit is fine
+        // but we want to STOP early as soon as we have enough.
+        const collected = new Map<string, DriveImageRef>()
+        for (const q of queries) {
+          if (collected.size >= 4) break
+          const photos = await searchPexelsPhotos(q, 3).catch(() => [])
+          for (const p of photos) {
+            if (collected.has(p.id)) continue
+            collected.set(p.id, {
+              id: p.id,
+              name: p.name,
+              mimeType: p.mimeType,
+              // No real modifiedTime — use epoch so it doesn't get
+              // an artificial recency bonus in any downstream scorer.
+              modifiedTime: new Date(0).toISOString(),
+              bytes: p.bytes,
+            })
+            if (collected.size >= 4) break
+          }
+        }
+        if (collected.size === 0) return []
+        // Rerank stock candidates the same way as Drive — vision-relevance
+        // scoring against the campaign context. Reuses the same Haiku
+        // cache by file_id ("pexels:<id>" keys).
+        const candidates = Array.from(collected.values())
+        return await rerankDrivePhotos(
+          supabase,
+          candidates,
+          {
+            campaignName: winnerCampaignName,
+            topicLabel: variant.topic_label,
+            adName: variant.ad_name,
+          },
+          variant.client_id,
+        )
+      } catch (e) {
+        console.error(
+          "[pedro/generate-image] stock fetch failed (continuing):",
           e instanceof Error ? e.message : e,
         )
         return []
@@ -264,22 +372,56 @@ export async function POST(
       brandStyleForPolicy as BrandStyle | null,
     )
 
+    // Resolve sector from the brief — used both for stock query
+    // derivation and downstream prompt grounding.
+    const briefSectorRaw = briefForPolicy?.sector
+    const briefSector =
+      typeof briefSectorRaw === "string" ? briefSectorRaw.trim() || null : null
+
+    // Load CM-managed source prefs first (cheap query). Then the heavy
+    // Drive/winner/stock fetches run in parallel, each respecting the
+    // prefs + the visual-style policy.
+    const sourcePrefs = await loadImageSourcePrefs()
+
     // Fetch refs in parallel — but skip the call entirely when the
     // policy says we won't use that source. Cuts the Meta + Drive
     // round-trips when they're going to be thrown away anyway.
-    const [winnerThumbRef, drivePhotoRefs] = await Promise.all([
+    const [winnerThumbRef, drivePhotoRefs, stockRefs] = await Promise.all([
       policy.referenceImagePolicy.useWinnerThumbnail ? fetchWinnerThumbRef() : Promise.resolve(null),
-      policy.referenceImagePolicy.useDrivePhotos ? fetchDrivePhotoRefs() : Promise.resolve([]),
+      policy.referenceImagePolicy.useDrivePhotos
+        ? fetchDrivePhotoRefs(sourcePrefs.deniedFolderIds)
+        : Promise.resolve([] as DriveImageRef[]),
+      // Stock photos only when the CM toggled them on AND the visual
+      // policy allows Drive photos in the first place — same gating
+      // (both are "real photo references").
+      sourcePrefs.useStock && policy.referenceImagePolicy.useDrivePhotos
+        ? fetchStockRefs(briefSector)
+        : Promise.resolve([] as DriveImageRef[]),
     ])
 
+    // Build the reference pool. Order: winner thumbnail first (DNA),
+    // then Drive (real client product), then Stock (generic). Gemini
+    // Nano Banana Pro accepts up to 3 references — we cap at that.
     const referenceImages: Ref[] = []
-    if (winnerThumbRef) referenceImages.push(winnerThumbRef)
+    const referenceNames: Array<{ source: "winner" | "drive" | "stock"; name: string }> = []
+    const REF_CAP = 3
+    if (winnerThumbRef) {
+      referenceImages.push(winnerThumbRef)
+      referenceNames.push({ source: "winner", name: "winner thumbnail" })
+    }
     for (const p of drivePhotoRefs) {
+      if (referenceImages.length >= REF_CAP) break
       referenceImages.push({ bytes: p.bytes, mimeType: p.mimeType })
+      referenceNames.push({ source: "drive", name: p.name })
+    }
+    for (const p of stockRefs) {
+      if (referenceImages.length >= REF_CAP) break
+      referenceImages.push({ bytes: p.bytes, mimeType: p.mimeType })
+      referenceNames.push({ source: "stock", name: p.name })
     }
 
     console.log(
-      `[pedro/generate-image] refs for ${variant.id}: campaign="${winnerCampaignName ?? "(unknown)"}", winner=${winnerThumbRef ? "yes" : "no"}, drive=${drivePhotoRefs.length}${drivePhotoRefs.length > 0 ? ` (${drivePhotoRefs.map((p) => p.name).join(", ")})` : ""}, policy={winner:${policy.referenceImagePolicy.useWinnerThumbnail},drive:${policy.referenceImagePolicy.useDrivePhotos},notice:${policy.notice ? "yes" : "no"}}`,
+      `[pedro/generate-image] refs for ${variant.id}: campaign="${winnerCampaignName ?? "(unknown)"}", winner=${winnerThumbRef ? "yes" : "no"}, drive=${drivePhotoRefs.length}, stock=${stockRefs.length}, used=${referenceImages.length}/${REF_CAP}, prefs={denied:${sourcePrefs.deniedFolderIds.size},stock:${sourcePrefs.useStock}}, policy={winner:${policy.referenceImagePolicy.useWinnerThumbnail},drive:${policy.referenceImagePolicy.useDrivePhotos},notice:${policy.notice ? "yes" : "no"}}`,
     )
 
     // Resolve target slots. Default: generate ALL 3 slots in parallel
@@ -296,6 +438,65 @@ export async function POST(
       targetSlots = Array.from({ length: n }, (_, i) => i)
     }
 
+    // Per-slot regen cap (Roy 2026-06-10): single-slot regens are
+    // limited to 1 per slot to keep credit usage bounded. The
+    // RegenFeedbackModal already gates the click, but the CM could
+    // bypass via direct API call — defense in depth.
+    //
+    // Only enforced on single-slot regen (the "Regen" button path).
+    // Bulk generation of 3-up first-shot has no cap; that's the entry
+    // point. Manual upload also resets the slot (handled in
+    // upload-image route by not touching regen_count).
+    const isSingleSlotRegen = targetSlots.length === 1
+    if (isSingleSlotRegen) {
+      const onlySlot = targetSlots[0]
+      const { data: existing } = await supabase
+        .from("pedro_variant_images")
+        .select("regen_count, storage_path")
+        .eq("variant_id", variant.id)
+        .eq("position", onlySlot)
+        .maybeSingle<{ regen_count: number | null; storage_path: string | null }>()
+      // Only enforce when there's already an image (= this is a re-gen,
+      // not the first-ever gen for this slot). When storage_path is
+      // null, the slot has never had an image, so we let it through
+      // even if regen_count was somehow > 0.
+      if (existing?.storage_path && (existing.regen_count ?? 0) >= 1) {
+        return NextResponse.json(
+          {
+            error:
+              "Regen limiet bereikt voor deze slot (max 1× per slot). Upload je eigen afbeelding of regenereer de hele refresh om opnieuw te beginnen.",
+            regenBlocked: true,
+            position: onlySlot,
+          },
+          { status: 429 },
+        )
+      }
+    }
+
+    // Structured CM feedback uit de RegenFeedbackModal — wordt
+    // achter de prompt geplakt zodat Gemini ZIET wat fout was en
+    // specifiek dat moet fixen. Lege feedback = single-line addendum
+    // weggelaten.
+    const fb = body.regenFeedback ?? {}
+    const fbParts: string[] = []
+    if (fb.imageFeedback?.trim()) {
+      fbParts.push(`IMAGE CONTENT: ${fb.imageFeedback.trim()}`)
+    }
+    if (fb.textFeedback?.trim()) {
+      fbParts.push(`ON-IMAGE TEXT: ${fb.textFeedback.trim()}`)
+    }
+    if (fb.designFeedback?.trim()) {
+      fbParts.push(`DESIGN / STYLE: ${fb.designFeedback.trim()}`)
+    }
+    if (fb.otherFeedback?.trim()) {
+      fbParts.push(`ADDITIONAL CONTEXT: ${fb.otherFeedback.trim()}`)
+    }
+    const feedbackAddendum =
+      fbParts.length > 0
+        ? `\n\n---\nCM REGEN FEEDBACK (CRITICAL — fix these specifically):\n${fbParts.join("\n")}\n---`
+        : ""
+
+    const promptWithFeedback = prompt + feedbackAddendum
     const aspectRatio = variant.format_hint === "Video" ? "9:16" : "1:1"
 
     // Generate all targets in parallel. Each variation gets a small
@@ -306,7 +507,7 @@ export async function POST(
           ? `\n\nVariation focus for this output (#${slot + 1} of ${targetSlots.length}): ${["lead with the product/subject in close-up", "emphasize the environment/setting around the subject", "balance product and people, lifestyle angle"][slot] ?? "fresh angle, different composition than the others"}.`
           : ""
         return generateImageWithReference({
-          prompt: prompt + variationHint,
+          prompt: promptWithFeedback + variationHint,
           referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
           aspectRatio,
         })
@@ -347,6 +548,25 @@ export async function POST(
           height: r.value.height,
         })
 
+        // Roy 2026-06-10: bump regen_count when this was a single-slot
+        // regen (= the CM clicked the "Regen" button after the slot
+        // already had an image). First-shot multi-slot generation
+        // leaves regen_count untouched. We can't atomic-increment via
+        // upsert, so first check the existing row.
+        let nextRegenCount = 0
+        if (isSingleSlotRegen) {
+          const { data: existingSlot } = await supabase
+            .from("pedro_variant_images")
+            .select("storage_path, regen_count")
+            .eq("variant_id", variant.id)
+            .eq("position", slot)
+            .maybeSingle<{ storage_path: string | null; regen_count: number | null }>()
+          // Only count this as a "regen" when there was actually an
+          // image to replace. Otherwise it's effectively a first gen.
+          if (existingSlot?.storage_path) {
+            nextRegenCount = (existingSlot.regen_count ?? 0) + 1
+          }
+        }
         await supabase
           .from("pedro_variant_images")
           .upsert(
@@ -359,6 +579,7 @@ export async function POST(
               generated_at: new Date().toISOString(),
               width: uploaded.width,
               height: uploaded.height,
+              regen_count: nextRegenCount,
             },
             { onConflict: "variant_id,position" },
           )
@@ -378,6 +599,29 @@ export async function POST(
           ok: false,
           error: e instanceof Error ? e.message : "Upload/persist failed",
         })
+      }
+    }
+
+    // Roy 2026-06-10: gestructureerde regen-feedback wordt ook gelogd
+    // in pedro_creative_feedback zodat de VOLGENDE refresh leert
+    // (zelfde mechanisme als prompt-edits). Type=explicit, sterker
+    // signaal dan prompt_edit omdat de CM hier letterlijk in 4 velden
+    // heeft uitgelegd wat fout was.
+    if (fbParts.length > 0) {
+      try {
+        await supabase.from("pedro_creative_feedback").insert({
+          client_id: variant.client_id,
+          variant_id: variant.id,
+          refresh_id: variant.refresh_id,
+          feedback_type: "explicit",
+          feedback_text: `[Regen feedback op variant "${variant.ad_name ?? ""}" slot ${typeof body.position === "number" ? String.fromCharCode(65 + body.position) : "?"}]\n${fbParts.join("\n")}`,
+          created_by_email: session.user.email ?? null,
+        })
+      } catch (e) {
+        console.error(
+          "[pedro/generate-image] regen feedback log failed (continuing):",
+          e instanceof Error ? e.message : e,
+        )
       }
     }
 
@@ -433,11 +677,19 @@ export async function POST(
       provider: "gemini",
       model: DEFAULT_IMAGE_MODEL,
       // Per-source flags so the UI can show "Generated with: winner
-      // thumbnail + 2 client photos" and the CM trusts the output.
+      // thumbnail + 2 client photos + 1 Pexels stock" and the CM trusts
+      // the output. Roy 2026-06-10: split client photos vs stock so the
+      // CM kan zien dat een variant op stock is geleund.
       references: {
         winnerThumbnail: winnerThumbRef !== null,
-        clientPhotos: drivePhotoRefs.length,
-        clientPhotoNames: drivePhotoRefs.map((p) => p.name),
+        clientPhotos: referenceNames.filter((r) => r.source === "drive").length,
+        stockPhotos: referenceNames.filter((r) => r.source === "stock").length,
+        clientPhotoNames: referenceNames
+          .filter((r) => r.source === "drive")
+          .map((r) => r.name),
+        stockPhotoNames: referenceNames
+          .filter((r) => r.source === "stock")
+          .map((r) => r.name),
       },
       hadReference: referenceImages.length > 0,
     })

@@ -9,6 +9,7 @@ import {
   createAdCreative,
   createAd,
   stripInterestTargeting,
+  stripPlacementConstraints,
 } from "@/lib/integrations/meta-write"
 import { fetchMetaAdDetails } from "@/lib/integrations/meta"
 import { getMaxAdNumberByFormat, formatAdName, type AdFormatHint } from "@/lib/pedro/refresh-naming"
@@ -204,10 +205,13 @@ export async function POST(
   }
 
   // Strip ALL interest-based targeting from the cloned template per
-  // Roy 2026-06-10. Geo/age/gender/platforms/locale stay; interests,
-  // behaviors, custom audiences, demographics get wiped. Result: same
-  // audience structure as the winner, "no targeting" inside it.
-  const strippedTargeting = stripInterestTargeting(adsetTemplate.targeting)
+  // Roy 2026-06-10. Geo/age/gender/locale stay; interests, behaviors,
+  // custom audiences, demographics get wiped. THEN strip placement
+  // constraints so Meta defaults to Advantage+ placements (let the
+  // algorithm pick FB feed / IG feed / Reels / Stories etc.).
+  const strippedTargeting = stripPlacementConstraints(
+    stripInterestTargeting(adsetTemplate.targeting),
+  )
 
   // Budget override — CM types daily budget in EUR; Meta wants cents.
   // When omitted, fall back to the winner's daily budget (existing
@@ -259,7 +263,9 @@ export async function POST(
   const variantIds = selections.map((s) => s.variantId)
   const { data: variantRows } = await supabase
     .from("pedro_variants")
-    .select("id, format_hint, topic_label, hook, primary_copy_snippet, ad_name")
+    .select(
+      "id, format_hint, topic_label, hook, primary_copy_snippet, ad_name, headline, alt_headlines, alt_primary_texts, link_description",
+    )
     .in("id", variantIds)
   type VariantRow = {
     id: string
@@ -268,6 +274,10 @@ export async function POST(
     hook: string | null
     primary_copy_snippet: string | null
     ad_name: string | null
+    headline: string | null
+    alt_headlines: string[] | null
+    alt_primary_texts: string[] | null
+    link_description: string | null
   }
   const variantById = new Map<string, VariantRow>()
   for (const v of (variantRows ?? []) as VariantRow[]) variantById.set(v.id, v)
@@ -334,19 +344,42 @@ export async function POST(
         bytes,
         fileName: `${adName}.jpg`,
       })
-      // 8c. Creative — title = first sentence of hook, body = primary copy
-      const title = (variant.hook ?? "").split(/[.!?]\s/)[0]?.slice(0, 80) ?? ""
+      // 8c. Creative — Pedro-generated headline + primary copy +
+      // 2 alt headlines + 2 alt primary texts → asset_feed_spec
+      // dynamic creative. IG actor + lead form id inherit from winner.
+      // url_tags defaults to PEDRO_UTM_TEMPLATE.
+      // Fallback: when Pedro skipped the headline field (older refresh)
+      // we derive from the hook first-sentence so the launch still works.
+      const primaryHeadline =
+        (variant.headline?.trim() || "") ||
+        (variant.hook ?? "").split(/[.!?]\s/)[0]?.slice(0, 80) ||
+        ""
+      const altTitles = Array.isArray(variant.alt_headlines)
+        ? variant.alt_headlines.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+        : []
+      const altBodies = Array.isArray(variant.alt_primary_texts)
+        ? variant.alt_primary_texts.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+        : []
       const { creativeId } = await createAdCreative({
         adAccountId: clientRow.meta_ad_account_id,
         name: adName,
         pageId,
         imageHash,
         body: variant.primary_copy_snippet ?? "",
-        title: title || undefined,
+        title: primaryHeadline || undefined,
+        description: variant.link_description?.trim() || undefined,
         // Inherit link + CTA from winner when available — same destination
         // so UTM tracking keeps working.
         linkUrl: winnerLive.linkUrl || "https://www.facebook.com",
         callToActionType: winnerLive.callToActionType || "LEARN_MORE",
+        // Inherit IG actor + lead-gen form from winner — keeps the new
+        // ad on the same IG account and (for ON_AD lead-form ads) the
+        // same instant form. Roy 2026-06-10.
+        instagramActorId: winnerLive.instagramActorId || undefined,
+        leadGenFormId: winnerLive.leadGenFormId || undefined,
+        // Multi-variant copy → asset_feed_spec for dynamic creative.
+        altTitles: altTitles.length > 0 ? altTitles : undefined,
+        altBodies: altBodies.length > 0 ? altBodies : undefined,
       })
       // 8d. Ad
       const { adId } = await createAd({

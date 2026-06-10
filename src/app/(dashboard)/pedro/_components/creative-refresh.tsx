@@ -1,10 +1,12 @@
 "use client"
 
-import { ImageIcon, Copy, Pencil, Check, X, Loader2, Send } from "lucide-react"
+import { ImageIcon, Copy, Send, Sparkles } from "lucide-react"
 import { useState, useCallback } from "react"
 import { RefreshShell, CopyButton } from "./refresh-shell"
 import { VariantImagePanel } from "./variant-image-panel"
 import { PushToMetaModal } from "./push-to-meta-modal"
+import { ImageSourcesPicker } from "./image-sources-picker"
+import { InlineEditField } from "./inline-edit-field"
 import { cn } from "@/lib/utils"
 
 type CreativeVariant = {
@@ -18,6 +20,13 @@ type CreativeVariant = {
   newHook: string
   scriptOutline: string
   primaryCopySnippet: string
+  /** Full ad-copy package (Roy 2026-06-10) — Pedro genereert nu meteen
+   *  alle Meta tekstvelden zodat Push-to-Meta een complete dynamic
+   *  creative ad kan lanceren zonder handmatige tuning. */
+  headline?: string
+  altHeadlines?: string[]
+  altPrimaryTexts?: string[]
+  linkDescription?: string
   /** English visual brief for image-gen. Stored on pedro_variants. */
   imagePrompt?: string
   why: string
@@ -67,107 +76,129 @@ function AdNameChip({ adName }: { adName: string }) {
   )
 }
 
-/** Per-variant card — owns edit-mode state for hook + primary copy so
- *  the CM can tune the variant before regenerating images. Roy
- *  2026-06-09. */
-function VariantCard({ variant, clientId }: { variant: CreativeVariant; clientId: string | null }) {
-  // Local "live" state that reflects PATCH'd edits. Initial values come
-  // from the proposal envelope. Updates persist through PATCH and stay
-  // in sync until the user refreshes the whole page.
-  const [hook, setHook] = useState(variant.newHook)
+/** Per-variant card — Roy 2026-06-10 overhaul:
+ *  - Geen Bewerk-modus knop meer. Elk tekstveld is click-to-edit
+ *    (InlineEditField) met blur-to-save.
+ *  - Script outline en lange Hook display zijn weg — niet nuttig.
+ *  - De Hook is hernoemd naar "Tekst op afbeelding" en toont de korte
+ *    on-image overlay (= Meta headline) bovenaan. Pedro gebruikt dit
+ *    als overlay-tekst in de imagePrompt.
+ *  - Push naar Meta zit nu OP variant-niveau — één ad set per variant
+ *    met de 3 slots erin. Geen proposal-level bundeling meer.
+ */
+function VariantCard({
+  variant,
+  clientId,
+  refreshId,
+  proposalIndex,
+  proposalAngle,
+}: {
+  variant: CreativeVariant
+  clientId: string | null
+  refreshId: string | null
+  proposalIndex: number
+  proposalAngle: string
+}) {
+  // Local "live" state — InlineEditField writes back via PATCH, success
+  // updates these so the rest of the card (e.g. the CopyButton text)
+  // stays in sync without a full refresh.
+  const [headline, setHeadline] = useState(variant.headline ?? "")
   const [primaryCopy, setPrimaryCopy] = useState(variant.primaryCopySnippet)
-  const [editing, setEditing] = useState(false)
-  const [hookDraft, setHookDraft] = useState(variant.newHook)
-  const [copyDraft, setCopyDraft] = useState(variant.primaryCopySnippet)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [altHeadlines, setAltHeadlines] = useState<string[]>(
+    variant.altHeadlines && variant.altHeadlines.length > 0
+      ? variant.altHeadlines
+      : ["", ""],
+  )
+  const [altPrimaryTexts, setAltPrimaryTexts] = useState<string[]>(
+    variant.altPrimaryTexts && variant.altPrimaryTexts.length > 0
+      ? variant.altPrimaryTexts
+      : ["", ""],
+  )
+  const [linkDescription, setLinkDescription] = useState(variant.linkDescription ?? "")
+  const [pushOpen, setPushOpen] = useState(false)
 
-  const startEdit = useCallback(() => {
-    setHookDraft(hook)
-    setCopyDraft(primaryCopy)
-    setSaveError(null)
-    setEditing(true)
-  }, [hook, primaryCopy])
+  const variantId = variant.variantId ?? null
+  const editable = !!variantId
 
-  const cancelEdit = useCallback(() => {
-    setEditing(false)
-    setSaveError(null)
-  }, [])
-
-  const saveEdits = useCallback(async () => {
-    if (!variant.variantId) {
-      setSaveError("Variant id ontbreekt — refresh de proposals opnieuw.")
-      return
-    }
-    if (saving) return
-    setSaving(true)
-    setSaveError(null)
-    try {
-      const res = await fetch(`/api/pedro/variants/${variant.variantId}`, {
+  const patchVariant = useCallback(
+    async (patch: Record<string, unknown>): Promise<void> => {
+      if (!variantId) {
+        throw new Error("Variant id ontbreekt — refresh de proposals opnieuw.")
+      }
+      const res = await fetch(`/api/pedro/variants/${variantId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          hook: hookDraft,
-          primaryCopySnippet: copyDraft,
-        }),
+        body: JSON.stringify(patch),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok || json.error) {
         throw new Error(json.error || `HTTP ${res.status}`)
       }
-      setHook(hookDraft)
-      setPrimaryCopy(copyDraft)
-      setEditing(false)
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Opslaan mislukt")
-    } finally {
-      setSaving(false)
-    }
-  }, [variant.variantId, saving, hookDraft, copyDraft])
+    },
+    [variantId],
+  )
+
+  // Per-array helpers that update one slot of the alt arrays and PATCH
+  // the whole array (the server treats arrays as atomic).
+  const saveAltHeadline = useCallback(
+    async (idx: number, next: string) => {
+      const updated = [...altHeadlines]
+      while (updated.length <= idx) updated.push("")
+      updated[idx] = next
+      await patchVariant({ altHeadlines: updated })
+      setAltHeadlines(updated)
+    },
+    [altHeadlines, patchVariant],
+  )
+
+  const saveAltPrimary = useCallback(
+    async (idx: number, next: string) => {
+      const updated = [...altPrimaryTexts]
+      while (updated.length <= idx) updated.push("")
+      updated[idx] = next
+      await patchVariant({ altPrimaryTexts: updated })
+      setAltPrimaryTexts(updated)
+    },
+    [altPrimaryTexts, patchVariant],
+  )
+
+  // Ensure we always render 2 alt slots even when empty so the CM can
+  // type into them. (Pedro generates 2, but if a previous refresh only
+  // returned 1, we want the empty slot visible.)
+  const altHeadlineSlots = Array.from(
+    { length: Math.max(2, altHeadlines.length) },
+    (_, i) => altHeadlines[i] ?? "",
+  )
+  const altPrimarySlots = Array.from(
+    { length: Math.max(2, altPrimaryTexts.length) },
+    (_, i) => altPrimaryTexts[i] ?? "",
+  )
 
   return (
-    <div className="rounded-lg border border-border/60 bg-background p-4 space-y-2">
+    <div className="rounded-lg border border-border/60 bg-background p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="font-heading font-semibold text-sm">{variant.label}</div>
         <div className="flex items-center gap-1.5">
-          {!editing ? (
+          {/* Per-variant Push-to-Meta — Roy 2026-06-10: één variant =
+              één ad set met de 3 image slots als ads. CM kan los kiezen
+              welke variant ze willen testen. */}
+          {refreshId && variantId && (
             <button
               type="button"
-              onClick={startEdit}
-              disabled={!variant.variantId}
-              title={variant.variantId ? "Bewerk hook + primary copy" : "Refresh proposals voor bewerk-modus"}
-              className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium border rounded-md text-muted-foreground hover:text-foreground hover:bg-accent border-border transition-colors disabled:opacity-40"
+              onClick={() => setPushOpen(true)}
+              title="Push deze variant als eigen ad set naar Meta (PAUSED)"
+              className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-primary/90 text-primary-foreground text-[11px] font-medium hover:opacity-90 transition-opacity"
             >
-              <Pencil className="h-3 w-3" />
-              Bewerk
+              <Send className="h-3 w-3" />
+              Push naar Meta
             </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={cancelEdit}
-                disabled={saving}
-                className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium border rounded-md text-muted-foreground hover:text-foreground hover:bg-accent border-border transition-colors disabled:opacity-40"
-              >
-                <X className="h-3 w-3" />
-                Annuleer
-              </button>
-              <button
-                type="button"
-                onClick={saveEdits}
-                disabled={saving}
-                className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium border rounded-md bg-primary text-primary-foreground hover:opacity-90 border-transparent transition-opacity disabled:opacity-50"
-              >
-                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                Opslaan
-              </button>
-            </>
           )}
           <CopyButton
-            text={`Ad name: ${variant.adName}\n\nHook: ${hook}\n\nScript outline:\n${variant.scriptOutline}\n\nPrimary copy:\n${primaryCopy}`}
+            text={`Ad name: ${variant.adName}\n\nImage text: ${headline}\n\nPrimary copy:\n${primaryCopy}`}
           />
         </div>
       </div>
+
       {variant.adName && (
         <div>
           <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
@@ -176,65 +207,156 @@ function VariantCard({ variant, clientId }: { variant: CreativeVariant; clientId
           <AdNameChip adName={variant.adName} />
         </div>
       )}
+
+      {/* Image text (= Meta headline) — short pijnpunt-vraag die als
+          overlay op de afbeelding komt. Bovenaan omdat het de meest
+          visueel-zichtbare tekst is. Roy 2026-06-10. */}
       <div>
         <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
-          Hook
+          Tekst op afbeelding (Meta headline)
         </div>
-        {editing ? (
-          <textarea
-            value={hookDraft}
-            onChange={(e) => setHookDraft(e.target.value)}
-            rows={2}
-            disabled={saving}
-            className="w-full text-sm rounded-md border border-border bg-background px-2 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-none disabled:opacity-50"
-          />
-        ) : (
-          <div className="text-sm text-foreground">{hook}</div>
-        )}
+        <InlineEditField
+          value={headline}
+          onSave={async (next) => {
+            await patchVariant({ headline: next })
+            setHeadline(next)
+          }}
+          variant="single"
+          placeholder="(leeg — klik om tekst voor de afbeelding-overlay te typen)"
+          maxLength={80}
+          disabled={!editable}
+          className="text-sm font-medium"
+        />
       </div>
-      <div>
-        <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
-          Script outline
-        </div>
-        <div className="text-sm text-foreground whitespace-pre-line">{variant.scriptOutline}</div>
-      </div>
+
+      {/* Primary copy — de body boven de afbeelding. */}
       <div>
         <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
           Primary copy
         </div>
-        {editing ? (
-          <textarea
-            value={copyDraft}
-            onChange={(e) => setCopyDraft(e.target.value)}
-            rows={4}
-            disabled={saving}
-            className="w-full text-sm rounded-md border border-border bg-background px-2 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-none disabled:opacity-50"
-          />
-        ) : (
-          <div className="text-sm text-foreground">{primaryCopy}</div>
-        )}
+        <InlineEditField
+          value={primaryCopy}
+          onSave={async (next) => {
+            await patchVariant({ primaryCopySnippet: next })
+            setPrimaryCopy(next)
+          }}
+          variant="multi"
+          minRows={3}
+          placeholder="(leeg — klik om primary text te schrijven)"
+          maxLength={1500}
+          disabled={!editable}
+        />
       </div>
-      {saveError && (
-        <div className="text-[11px] text-red-600 dark:text-red-400">{saveError}</div>
-      )}
+
+      {/* Meta dynamic creative pool — alt headlines + alt primary texts.
+          Pedro genereert 2 van elk; Meta roteert ze samen met de
+          primary headline / primary copy. Roy 2026-06-10. */}
+      <div className="rounded-md border border-border/60 bg-muted/15 p-2.5 space-y-3">
+        <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold inline-flex items-center gap-1">
+          <Sparkles className="h-3 w-3" />
+          Meta dynamic creative pool (3 headlines × 3 primary texts)
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/60">
+            Alternatieve headlines
+          </div>
+          {altHeadlineSlots.map((h, i) => (
+            <InlineEditField
+              key={`ah-${i}`}
+              value={h}
+              onSave={(next) => saveAltHeadline(i, next)}
+              variant="single"
+              placeholder={`(alt headline ${i + 1} — klik om te bewerken)`}
+              maxLength={80}
+              allowEmpty
+              disabled={!editable}
+              className="text-xs"
+            />
+          ))}
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/60">
+            Alternatieve primary texts
+          </div>
+          {altPrimarySlots.map((p, i) => (
+            <InlineEditField
+              key={`ap-${i}`}
+              value={p}
+              onSave={(next) => saveAltPrimary(i, next)}
+              variant="multi"
+              minRows={2}
+              placeholder={`(alt primary ${i + 1} — klik om te bewerken)`}
+              maxLength={1500}
+              allowEmpty
+              disabled={!editable}
+              className="text-xs"
+            />
+          ))}
+        </div>
+
+        <div className="space-y-1">
+          <div className="text-[10px] uppercase tracking-[0.1em] text-muted-foreground/60">
+            Link description (optioneel)
+          </div>
+          <InlineEditField
+            value={linkDescription}
+            onSave={async (next) => {
+              await patchVariant({ linkDescription: next })
+              setLinkDescription(next)
+            }}
+            variant="single"
+            placeholder="(leeg — optionele korte ondertitel)"
+            maxLength={200}
+            allowEmpty
+            disabled={!editable}
+            className="text-xs"
+          />
+        </div>
+      </div>
+
       {/* Image generation panel — 3 slots side-by-side per variant.
           Roy 2026-06-09. */}
       <VariantImagePanel
-        variantId={variant.variantId ?? null}
+        variantId={variantId}
         clientId={clientId}
         adName={variant.adName}
         initialImagePrompt={variant.image?.imagePrompt ?? variant.imagePrompt ?? null}
         initialHasImage={variant.image?.hasImage ?? false}
       />
+
       <div className="text-xs text-muted-foreground italic pt-1 border-t border-border/40">
         Waarom: {variant.why}
       </div>
+
+      {/* Push modal scoped to THIS variant — single ad set with up to
+          3 ads (the 3 image slots). Roy 2026-06-10. */}
+      {refreshId && variantId && (
+        <PushToMetaModal
+          open={pushOpen}
+          onClose={() => setPushOpen(false)}
+          refreshId={refreshId}
+          proposalIndex={proposalIndex}
+          winnerAdName={variant.adName}
+          proposalAngle={proposalAngle}
+          variants={[
+            {
+              variantId,
+              adName: variant.adName,
+              label: variant.label,
+              topicLabel: variant.topicLabel,
+            },
+          ]}
+        />
+      )}
     </div>
   )
 }
 
-/** Per-proposal card — owns Push-to-Meta modal state so each proposal
- *  has its own batch launch flow. Roy 2026-06-09. */
+/** Per-proposal card — Roy 2026-06-10: geen Push-to-Meta knop meer op
+ *  dit niveau. Push gaat nu per variant (eigen ad set, eigen ads), zodat
+ *  de CM gericht één invalshoek kan testen ipv altijd alle drie. */
 function ProposalCard({
   proposal,
   refreshId,
@@ -246,68 +368,37 @@ function ProposalCard({
   proposalIndex: number
   clientId: string | null
 }) {
-  const [pushOpen, setPushOpen] = useState(false)
-  const hasVariantsWithIds = proposal.variants.some((v) => v.variantId)
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
-      <div className="flex items-start justify-between mb-4 gap-3">
-        <div className="min-w-0">
-          <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-sky-600 dark:text-sky-400 font-semibold mb-1">
-            <ImageIcon className="h-3 w-3" />
-            Itereren op winner
-          </div>
-          <div className="font-heading font-semibold text-[15px] tracking-tight truncate">
-            {proposal.basedOnAd.adName}
-          </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            CPL {proposal.basedOnAd.cpl != null ? `€${proposal.basedOnAd.cpl.toFixed(2)}` : "—"}
-            {" · "}
-            Behoud: {proposal.preserve.hook} / {proposal.preserve.angle} / {proposal.preserve.format}
-          </div>
+      <div className="mb-4">
+        <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-sky-600 dark:text-sky-400 font-semibold mb-1">
+          <ImageIcon className="h-3 w-3" />
+          Itereren op winner
         </div>
-        {/* Push-to-Meta knop op proposal-niveau: opent modal met variant ×
-            slot multi-select. Disabled tot we een refreshId + variantIds
-            hebben (legacy refreshes hebben geen ids). */}
-        <button
-          type="button"
-          onClick={() => setPushOpen(true)}
-          disabled={!refreshId || !hasVariantsWithIds}
-          title={
-            !refreshId
-              ? "Refresh moet eerst persist'ed zijn"
-              : !hasVariantsWithIds
-                ? "Refresh proposals opnieuw om variant-ids te krijgen"
-                : "Push variants naar Meta als nieuwe ad set (PAUSED)"
-          }
-          className="shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
-        >
-          <Send className="h-3.5 w-3.5" />
-          Push naar Meta
-        </button>
+        <div className="font-heading font-semibold text-[15px] tracking-tight truncate">
+          {proposal.basedOnAd.adName}
+        </div>
+        <div className="text-xs text-muted-foreground mt-0.5">
+          CPL {proposal.basedOnAd.cpl != null ? `€${proposal.basedOnAd.cpl.toFixed(2)}` : "—"}
+          {" · "}
+          Behoud: {proposal.preserve.hook} / {proposal.preserve.angle} / {proposal.preserve.format}
+          {" · "}
+          <span className="text-muted-foreground/80">Push gebeurt per variant onder de afbeeldingen</span>
+        </div>
       </div>
 
       <div className="space-y-3">
         {proposal.variants.map((v, vi) => (
-          <VariantCard key={`${v.variantId ?? v.adName}-${vi}`} variant={v} clientId={clientId} />
+          <VariantCard
+            key={`${v.variantId ?? v.adName}-${vi}`}
+            variant={v}
+            clientId={clientId}
+            refreshId={refreshId}
+            proposalIndex={proposalIndex}
+            proposalAngle={proposal.preserve.angle}
+          />
         ))}
       </div>
-
-      {refreshId && (
-        <PushToMetaModal
-          open={pushOpen}
-          onClose={() => setPushOpen(false)}
-          refreshId={refreshId}
-          proposalIndex={proposalIndex}
-          winnerAdName={proposal.basedOnAd.adName}
-          proposalAngle={proposal.preserve.angle}
-          variants={proposal.variants.map((v) => ({
-            variantId: v.variantId ?? null,
-            adName: v.adName,
-            label: v.label,
-            topicLabel: v.topicLabel,
-          }))}
-        />
-      )}
     </div>
   )
 }
@@ -329,6 +420,10 @@ export function CreativeRefresh({ selectedClientId, selectedClientName, autoStar
       autoStart={autoStart}
       renderProposals={(env) => (
         <div className="space-y-4">
+          {/* Image bronnen picker — keuzeproces VOOR de Genereer-klik.
+              Roy 2026-06-10: voorkomt API kosten aan verkeerde Drive
+              folders en geeft directe controle over stock content. */}
+          <ImageSourcesPicker clientId={selectedClientId} />
           {env.proposals.map((p, i) => (
             <ProposalCard
               key={`${p.basedOnAd.adId}-${i}`}

@@ -14,6 +14,7 @@ import {
   CheckCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { RegenFeedbackModal, type RegenFeedbackPayload } from "./regen-feedback-modal"
 
 /**
  * VariantImagePanel — 3-slot image gallery per variant.
@@ -39,15 +40,22 @@ type SlotState = {
   provider: string | null
   model: string | null
   generatedAt: string | null
+  /** Roy 2026-06-10: max 1 regen per slot. UI gebruikt deze om de
+   *  Regen-knop te disablen + tooltip te tonen. */
+  regenCount?: number
+  regenAvailable?: boolean
 }
 
 type GenerateReferences = {
   winnerThumbnail: boolean
   clientPhotos: number
   clientPhotoNames?: string[]
+  stockPhotos?: number
+  stockPhotoNames?: string[]
 }
 
 const SLOT_COUNT = 3
+const SLOT_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
 
 type Props = {
   variantId: string | null
@@ -217,8 +225,13 @@ export function VariantImagePanel({
     }
   }, [variantId, bulkBusy, editingPrompt, promptDraft])
 
-  const regenerateSlot = useCallback(
-    async (position: number) => {
+  // Single-slot generation. Two flavours:
+  //   - First-time fill (slot is empty)         → direct call, no feedback modal
+  //   - Re-gen (slot already has an image)     → MUST go through RegenFeedbackModal
+  // Roy 2026-06-10: dwingt CM om gestructureerd te zeggen wat anders moet,
+  // anders kost regen veel credits zonder learning.
+  const performSlotGenerate = useCallback(
+    async (position: number, feedback?: RegenFeedbackPayload) => {
       if (!variantId) return
       setSlotBusyAt(position, "generating")
       setError(null)
@@ -226,7 +239,10 @@ export function VariantImagePanel({
         const res = await fetch(`/api/pedro/variants/${variantId}/generate-image`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ position }),
+          body: JSON.stringify({
+            position,
+            regenFeedback: feedback,
+          }),
         })
         const json = await res.json()
         if (!res.ok || json.error) {
@@ -254,6 +270,11 @@ export function VariantImagePanel({
                     provider: gen.provider ?? "gemini",
                     model: gen.model ?? null,
                     generatedAt: new Date().toISOString(),
+                    // After a re-gen of an existing slot, the budget is
+                    // gone. First-time fill doesn't bump regen_count
+                    // server-side; UI mirrors that.
+                    regenCount: feedback ? 1 : (p.regenCount ?? 0),
+                    regenAvailable: feedback ? false : (p.regenAvailable ?? true),
                   }
                 : p,
             ),
@@ -262,11 +283,29 @@ export function VariantImagePanel({
         if (json.references) setReferences(json.references)
       } catch (e) {
         setError(e instanceof Error ? e.message : "Generatie mislukt")
+        throw e // rethrow so the modal sees the failure
       } finally {
         setSlotBusyAt(position, null)
       }
     },
     [variantId, setSlotBusyAt],
+  )
+
+  // State voor de gestructureerde regen-feedback modal.
+  const [regenModalSlot, setRegenModalSlot] = useState<number | null>(null)
+
+  const onSlotActionClick = useCallback(
+    (position: number) => {
+      const slot = slots.find((s) => s.position === position)
+      // Slot already has an image → forced feedback flow.
+      if (slot?.hasImage) {
+        setRegenModalSlot(position)
+        return
+      }
+      // First-time fill → direct call.
+      void performSlotGenerate(position)
+    },
+    [slots, performSlotGenerate],
   )
 
   const uploadToSlot = useCallback(
@@ -494,7 +533,7 @@ export function VariantImagePanel({
             slot={s}
             adName={adName}
             busy={slotBusy[s.position] ?? null}
-            onRegen={() => regenerateSlot(s.position)}
+            onRegen={() => onSlotActionClick(s.position)}
             onUpload={(file) => uploadToSlot(s.position, file)}
             disabled={bulkBusy}
           />
@@ -507,6 +546,25 @@ export function VariantImagePanel({
           {error}
         </div>
       )}
+
+      {/* Structured regen-feedback modal — opens when CM clicks Regen
+          on a slot that already has an image. Roy 2026-06-10. */}
+      <RegenFeedbackModal
+        open={regenModalSlot !== null}
+        onClose={() => setRegenModalSlot(null)}
+        slotLabel={
+          regenModalSlot !== null ? SLOT_LABELS[regenModalSlot] ?? "?" : "?"
+        }
+        hasRegenBudget={
+          regenModalSlot !== null
+            ? slots.find((s) => s.position === regenModalSlot)?.regenAvailable ?? true
+            : true
+        }
+        onSubmit={async (payload) => {
+          if (regenModalSlot === null) return
+          await performSlotGenerate(regenModalSlot, payload)
+        }}
+      />
     </div>
   )
 }
@@ -580,9 +638,15 @@ function SlotCard({
         <button
           type="button"
           onClick={onRegen}
-          disabled={isBusy || disabled}
-          title={slot.hasImage ? "Regenereer alleen deze slot" : "Genereer alleen deze slot"}
-          className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
+          disabled={isBusy || disabled || (slot.hasImage && slot.regenAvailable === false)}
+          title={
+            slot.hasImage && slot.regenAvailable === false
+              ? "Regen limiet bereikt (max 1× per slot). Upload je eigen afbeelding of regenereer de hele refresh."
+              : slot.hasImage
+                ? "Regenereer met feedback (max 1× per slot)"
+                : "Genereer alleen deze slot"
+          }
+          className="flex-1 inline-flex items-center justify-center gap-1 py-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {busy === "generating" ? (
             <Loader2 className="h-3 w-3 animate-spin" />

@@ -46,7 +46,7 @@ export async function GET(
     // they can fill them.
     const { data: slotRows, error: sErr } = await supabase
       .from("pedro_variant_images")
-      .select("position, storage_path, provider, model, generated_at")
+      .select("position, storage_path, provider, model, generated_at, regen_count")
       .eq("variant_id", variantId)
       .order("position", { ascending: true })
     if (sErr) throw sErr
@@ -57,6 +57,7 @@ export async function GET(
       provider: string | null
       model: string | null
       generated_at: string | null
+      regen_count: number | null
     }
 
     const signedSlots = await Promise.all(
@@ -64,6 +65,7 @@ export async function GET(
         const signedUrl = s.storage_path
           ? await getVariantImageSignedUrl(s.storage_path)
           : null
+        const regenCount = s.regen_count ?? 0
         return {
           position: s.position,
           hasImage: !!s.storage_path,
@@ -71,6 +73,10 @@ export async function GET(
           provider: s.provider,
           model: s.model,
           generatedAt: s.generated_at,
+          regenCount,
+          // Roy 2026-06-10: max 1 regen per slot. UI shows the budget
+          // so the CM knows up front whether the Regen button works.
+          regenAvailable: regenCount < 1,
         }
       }),
     )

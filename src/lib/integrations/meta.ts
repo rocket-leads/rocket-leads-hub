@@ -514,6 +514,16 @@ export type MetaAdDetail = {
    *  this so the new ad lands on the same page as the winner — no
    *  per-client config needed. Roy 2026-06-09. */
   pageId: string
+  /** Instagram Actor ID (the connected IG account). When present we
+   *  set it on the new creative so the ad also shows on the right IG
+   *  account; otherwise Meta falls back to using the FB page identity
+   *  on IG which looks off-brand. Roy 2026-06-10. */
+  instagramActorId: string
+  /** Lead-gen form id when the winner is an Instant Form lead ad
+   *  (destination_type ON_AD). Bubbles up from
+   *  `object_story_spec.link_data.call_to_action.value.lead_gen_form_id`.
+   *  Empty when this isn't a lead-form ad. Roy 2026-06-10. */
+  leadGenFormId: string
   /** Roy 2026-06-09: dynamic creatives carry multiple variations under
    *  `asset_feed_spec`. Stringified summary of the variation pool so
    *  Pedro can see which messages worked at all. */
@@ -562,6 +572,8 @@ export async function fetchMetaAdDetails(
     imageUrl: string
     assetFeedSummary: string
     pageId: string
+    instagramActorId: string
+    leadGenFormId: string
   }
   const creativeMap = new Map<string, CreativeExtras>()
 
@@ -588,18 +600,25 @@ export async function fetchMetaAdDetails(
               call_to_action_type?: string
               object_story_spec?: {
                 page_id?: string
+                instagram_actor_id?: string
                 link_data?: {
                   message?: string
                   name?: string
                   description?: string
                   link?: string
-                  call_to_action?: { type?: string; value?: { link?: string } }
+                  call_to_action?: {
+                    type?: string
+                    value?: { link?: string; lead_gen_form_id?: string }
+                  }
                 }
                 video_data?: {
                   message?: string
                   title?: string
                   description?: string
-                  call_to_action?: { type?: string; value?: { link?: string } }
+                  call_to_action?: {
+                    type?: string
+                    value?: { link?: string; lead_gen_form_id?: string }
+                  }
                 }
               }
               asset_feed_spec?: {
@@ -677,6 +696,11 @@ export async function fetchMetaAdDetails(
               assetFeedSummary = parts.join("\n")
             }
 
+            const leadGenFormId =
+              link?.call_to_action?.value?.lead_gen_form_id
+              || vid?.call_to_action?.value?.lead_gen_form_id
+              || ""
+
             creativeMap.set(adId, {
               body,
               title,
@@ -688,6 +712,8 @@ export async function fetchMetaAdDetails(
               imageUrl: creative?.image_url ?? "",
               assetFeedSummary,
               pageId: oss?.page_id ?? "",
+              instagramActorId: oss?.instagram_actor_id ?? "",
+              leadGenFormId,
             })
           }
         }
@@ -724,6 +750,8 @@ export async function fetchMetaAdDetails(
       imageUrl: creative?.imageUrl ?? "",
       assetFeedSummary: creative?.assetFeedSummary ?? "",
       pageId: creative?.pageId ?? "",
+      instagramActorId: creative?.instagramActorId ?? "",
+      leadGenFormId: creative?.leadGenFormId ?? "",
     }
   })
 }

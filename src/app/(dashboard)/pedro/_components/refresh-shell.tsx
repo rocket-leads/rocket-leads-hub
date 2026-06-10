@@ -663,7 +663,7 @@ function RefreshHistoryPanel({
                   }}
                   disabled={isDeleting}
                   title="Verwijder deze refresh + alle gegenereerde varianten"
-                  className="shrink-0 inline-flex items-center justify-center w-10 px-2 text-muted-foreground/50 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/5 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-100"
+                  className="shrink-0 inline-flex items-center justify-center w-10 px-2 text-muted-foreground/60 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/5 transition-colors disabled:opacity-50"
                 >
                   {isDeleting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

@@ -1,0 +1,393 @@
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import {
+  Folder,
+  FolderOpen,
+  Loader2,
+  AlertTriangle,
+  ImageIcon,
+  Eye,
+  EyeOff,
+  Sparkles,
+  Check,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react"
+import { cn } from "@/lib/utils"
+
+/**
+ * ImageSourcesPicker — keuzeproces VOOR de Genereer-image klik.
+ *
+ * Roy 2026-06-10: Pedro's auto-selectie uit Drive maakte verkeerde
+ * keuzes (logo's, sibling-brand foto's). Deze picker laat de CM:
+ *   - per Drive folder een aan/uit toggle zetten (denylist hard skip)
+ *   - Pexels stock content aan/uit zetten
+ * Voordat hij op de Genereer-knop drukt. Geen API kosten meer aan de
+ * verkeerde bronnen.
+ *
+ * State is per-client persistent — ééns instellen, voor altijd opgelost
+ * voor die klant. Geen per-refresh of per-variant state.
+ */
+
+type FolderRow = {
+  id: string
+  name: string
+  path: string
+  depth: number
+  hasSubfolders: boolean
+  hasImages: boolean
+  enabled: boolean
+}
+
+type SourcePrefs = {
+  useStock: boolean
+}
+
+type ApiResponse = {
+  clientId: string
+  driveRootId: string | null
+  driveError: string | null
+  folders: FolderRow[]
+  sourcePrefs: SourcePrefs
+}
+
+type Props = {
+  clientId: string | null
+}
+
+export function ImageSourcesPicker({ clientId }: Props) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [data, setData] = useState<ApiResponse | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
+  const [savingStock, setSavingStock] = useState(false)
+
+  // Load on mount + when client changes.
+  useEffect(() => {
+    if (!clientId) {
+      setData(null)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    fetch(`/api/pedro/image-source-prefs/${encodeURIComponent(clientId)}`)
+      .then(async (r) => {
+        const json = await r.json().catch(() => ({}))
+        if (cancelled) return
+        if (!r.ok) {
+          setError(json.error || `HTTP ${r.status}`)
+          setData(null)
+          return
+        }
+        setData(json as ApiResponse)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : "Laden mislukt")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [clientId])
+
+  const toggleFolder = useCallback(
+    async (folder: FolderRow) => {
+      if (!clientId || savingIds.has(folder.id)) return
+      const next = !folder.enabled
+      // Optimistic update.
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              folders: prev.folders.map((f) =>
+                f.id === folder.id ? { ...f, enabled: next } : f,
+              ),
+            }
+          : prev,
+      )
+      setSavingIds((prev) => new Set(prev).add(folder.id))
+      try {
+        const res = await fetch(
+          `/api/pedro/image-source-prefs/${encodeURIComponent(clientId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              folder: {
+                id: folder.id,
+                name: folder.name,
+                path: folder.path,
+                enabled: next,
+              },
+            }),
+          },
+        )
+        if (!res.ok) {
+          const json = await res.json().catch(() => ({}))
+          throw new Error(json.error || `HTTP ${res.status}`)
+        }
+      } catch (e) {
+        // Revert on failure.
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                folders: prev.folders.map((f) =>
+                  f.id === folder.id ? { ...f, enabled: !next } : f,
+                ),
+              }
+            : prev,
+        )
+        setError(e instanceof Error ? e.message : "Opslaan mislukt")
+      } finally {
+        setSavingIds((prev) => {
+          const out = new Set(prev)
+          out.delete(folder.id)
+          return out
+        })
+      }
+    },
+    [clientId, savingIds],
+  )
+
+  const toggleStock = useCallback(async () => {
+    if (!clientId || !data || savingStock) return
+    const next = !data.sourcePrefs.useStock
+    setData({ ...data, sourcePrefs: { ...data.sourcePrefs, useStock: next } })
+    setSavingStock(true)
+    try {
+      const res = await fetch(
+        `/api/pedro/image-source-prefs/${encodeURIComponent(clientId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourcePrefs: { useStock: next } }),
+        },
+      )
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error || `HTTP ${res.status}`)
+      }
+    } catch (e) {
+      setData((prev) =>
+        prev
+          ? { ...prev, sourcePrefs: { ...prev.sourcePrefs, useStock: !next } }
+          : prev,
+      )
+      setError(e instanceof Error ? e.message : "Opslaan mislukt")
+    } finally {
+      setSavingStock(false)
+    }
+  }, [clientId, data, savingStock])
+
+  if (!clientId) return null
+  if (loading && !data) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground inline-flex items-center gap-2">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        Image bronnen laden…
+      </div>
+    )
+  }
+
+  if (!data) {
+    return error ? (
+      <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-xs text-red-600 dark:text-red-400 inline-flex items-start gap-2">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+        Image bronnen niet beschikbaar: {error}
+      </div>
+    ) : null
+  }
+
+  const enabledCount = data.folders.filter((f) => f.enabled).length
+  const disabledCount = data.folders.length - enabledCount
+  const stockOn = data.sourcePrefs.useStock
+
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      {/* Header — collapsible toggle, always visible. */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-accent/30 transition-colors text-left"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <ImageIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-[0.12em] font-semibold text-muted-foreground/70">
+              Image bronnen voor deze klant
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5 truncate">
+              {data.driveRootId ? (
+                <>
+                  {enabledCount} Drive folder{enabledCount === 1 ? "" : "s"} aan
+                  {disabledCount > 0 ? `, ${disabledCount} uit` : ""}
+                  {" · "}
+                </>
+              ) : (
+                <>Geen Drive folder gekoppeld · </>
+              )}
+              Stock: {stockOn ? "aan" : "uit"}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+          {expanded ? (
+            <>
+              <ChevronDown className="h-3.5 w-3.5" /> Inklappen
+            </>
+          ) : (
+            <>
+              <ChevronRight className="h-3.5 w-3.5" /> Beheer
+            </>
+          )}
+        </div>
+      </button>
+
+      {/* Expanded body — folder list + stock toggle. */}
+      {expanded && (
+        <div className="border-t border-border bg-muted/20">
+          {/* Stock toggle */}
+          <div className="px-4 py-3 border-b border-border/60 flex items-center justify-between gap-3">
+            <div className="flex items-start gap-2 min-w-0">
+              <Sparkles className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium">Pexels stock content</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  Voegt stock-foto&apos;s toe als reference naast Drive. Handig voor
+                  klanten met dunne Drives of service-business zonder product-fotografie.
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={toggleStock}
+              disabled={savingStock}
+              className={cn(
+                "shrink-0 inline-flex items-center justify-center h-7 w-12 rounded-full transition-colors",
+                stockOn
+                  ? "bg-emerald-500"
+                  : "bg-muted border border-border",
+                savingStock && "opacity-50",
+              )}
+              aria-label={stockOn ? "Stock uitzetten" : "Stock aanzetten"}
+            >
+              <div
+                className={cn(
+                  "h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+                  stockOn ? "translate-x-2.5" : "-translate-x-2.5",
+                )}
+              />
+            </button>
+          </div>
+
+          {/* Drive folders */}
+          {data.driveRootId ? (
+            <div className="px-2 py-2">
+              <div className="px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/60 font-semibold">
+                Drive folders ({data.folders.length})
+              </div>
+              {data.driveError && (
+                <div className="px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400 inline-flex items-center gap-1.5">
+                  <AlertTriangle className="h-3 w-3" />
+                  {data.driveError}
+                </div>
+              )}
+              {data.folders.length === 0 ? (
+                <div className="px-2 py-3 text-xs text-muted-foreground">
+                  Geen subfolders gevonden onder de root.
+                </div>
+              ) : (
+                <ul className="space-y-0.5 max-h-72 overflow-y-auto">
+                  {data.folders.map((f) => {
+                    const saving = savingIds.has(f.id)
+                    return (
+                      <li
+                        key={f.id}
+                        className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-accent/40"
+                        style={{ paddingLeft: `${0.5 + (f.depth - 1) * 0.75}rem` }}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {f.enabled ? (
+                            <FolderOpen className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                          ) : (
+                            <Folder className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                          )}
+                          <span
+                            className={cn(
+                              "text-xs truncate",
+                              f.enabled ? "text-foreground" : "text-muted-foreground/60 line-through",
+                            )}
+                            title={f.path || f.name}
+                          >
+                            {f.name}
+                          </span>
+                          {f.hasImages && (
+                            <span className="text-[9px] text-emerald-700/70 dark:text-emerald-400/70 font-medium px-1 rounded bg-emerald-500/10 shrink-0">
+                              📷
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleFolder(f)}
+                          disabled={saving}
+                          title={f.enabled ? "Uitzetten — Pedro skipt deze folder" : "Aanzetten"}
+                          className={cn(
+                            "shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] font-medium transition-colors",
+                            f.enabled
+                              ? "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10"
+                              : "text-muted-foreground hover:bg-accent",
+                            saving && "opacity-50",
+                          )}
+                        >
+                          {saving ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : f.enabled ? (
+                            <Eye className="h-3 w-3" />
+                          ) : (
+                            <EyeOff className="h-3 w-3" />
+                          )}
+                          {f.enabled ? "Aan" : "Uit"}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              <div className="px-2 pt-2 text-[10px] text-muted-foreground/70">
+                Tip: zet sibling-brands (zoals QualityFree onder Juice Concepts) of
+                rommelmap je niet wil gebruiken op &quot;uit&quot;. Geldt
+                permanent voor deze klant.
+              </div>
+            </div>
+          ) : (
+            <div className="px-4 py-3 text-xs text-muted-foreground">
+              Geen Drive folder gekoppeld aan deze klant. Open client-instellingen
+              om een Drive map te koppelen.
+            </div>
+          )}
+
+          {error && (
+            <div className="px-4 py-2 border-t border-border/60 text-[11px] text-red-600 dark:text-red-400 inline-flex items-center gap-1.5">
+              <AlertTriangle className="h-3 w-3" />
+              {error}
+            </div>
+          )}
+          {(savingStock || savingIds.size > 0) && (
+            <div className="px-4 py-2 border-t border-border/60 text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
+              <Check className="h-3 w-3" />
+              Opgeslagen — geldt voor volgende generatie.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

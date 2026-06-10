@@ -51,6 +51,14 @@ export async function fanOutVariantsToTable(args: {
         // Stored on initial fan-out so the CM can "Genereer image"
         // without an extra round-trip to fetch the prompt back.
         image_prompt: v.imagePrompt || null,
+        // Full Meta ad-copy package (Roy 2026-06-10). Pedro now writes
+        // a primary headline + 2 alt headlines + 2 alt primary texts so
+        // Push-to-Meta can launch a complete dynamic-creative ad in one
+        // shot — no manual tuning in Ads Manager.
+        headline: v.headline || null,
+        alt_headlines: v.altHeadlines.length > 0 ? v.altHeadlines : null,
+        alt_primary_texts: v.altPrimaryTexts.length > 0 ? v.altPrimaryTexts : null,
+        link_description: v.linkDescription || null,
         outcome: "pending",
       })
     }

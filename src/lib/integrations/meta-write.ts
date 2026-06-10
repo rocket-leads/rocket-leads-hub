@@ -163,12 +163,39 @@ const TARGETING_INTEREST_FIELDS = [
   "excluded_engagement_specs",
 ] as const
 
+/** Placement-constraint fields stripped to enable Meta's Advantage+
+ *  placements. With all of these absent, Meta auto-selects every
+ *  placement (FB feed, IG feed, IG stories, Reels, Marketplace,
+ *  Audience Network, Messenger). Roy 2026-06-10: "platforms gewoon
+ *  op advantage+ dus Meta laten kiezen." */
+const TARGETING_PLACEMENT_FIELDS = [
+  "publisher_platforms",
+  "facebook_positions",
+  "instagram_positions",
+  "audience_network_positions",
+  "messenger_positions",
+  "device_platforms",
+] as const
+
 export function stripInterestTargeting(
   targeting: Record<string, unknown> | null,
 ): Record<string, unknown> | null {
   if (!targeting) return null
   const stripped: Record<string, unknown> = { ...targeting }
   for (const f of TARGETING_INTEREST_FIELDS) {
+    delete stripped[f]
+  }
+  return stripped
+}
+
+/** Strip placement constraints so Meta defaults to Advantage+
+ *  placements. Use AFTER stripInterestTargeting in the same chain. */
+export function stripPlacementConstraints(
+  targeting: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!targeting) return null
+  const stripped: Record<string, unknown> = { ...targeting }
+  for (const f of TARGETING_PLACEMENT_FIELDS) {
     delete stripped[f]
   }
   return stripped
@@ -334,8 +361,11 @@ export async function createAdSet(args: {
   if (args.template.destinationType) body.destination_type = args.template.destinationType
   if (args.template.promotedObject) body.promoted_object = args.template.promotedObject
   if (args.template.targeting) body.targeting = args.template.targeting
-  if (args.template.startTime) body.start_time = args.template.startTime
-  if (args.template.endTime) body.end_time = args.template.endTime
+  // Roy 2026-06-10: NIET de winner's start_time / end_time overnemen.
+  // De AM stelt het schema in tijdens de pre-launch review in Meta
+  // Ads Manager. Inheriten zou de nieuwe ad set met een verlopen
+  // einddatum kunnen lanceren, of bij een lange-loop winner met een
+  // start ver in het verleden direct activeren.
 
   const json = await postToMeta<{ id?: string }>(
     `${actId(args.adAccountId)}/adsets`,
@@ -347,10 +377,36 @@ export async function createAdSet(args: {
 
 // ─── Write: ad creative ──────────────────────────────────────────────────
 
+/** Standard UTM template Pedro stamps on every new creative. Meta
+ *  resolves the `{{...}}` macros at impression time so each lead comes
+ *  back tagged with the exact campaign / ad set / ad they clicked from.
+ *  Critical for the Pedro learning loop: incoming Monday leads tie back
+ *  to the variant ad_name without manual config per launch.
+ *  Roy 2026-06-10. */
+export const PEDRO_UTM_TEMPLATE =
+  "utm_source=meta&utm_medium={{adset.name}}&utm_campaign={{campaign.name}}&utm_content={{ad.name}}"
+
 /**
- * Create an ad creative bundling: image_hash + body text + headline +
- * page + CTA + link. Per knowledge/campaigns.md the CTA defaults to
- * LEARN_MORE for lead-gen variants; caller can override.
+ * Create an ad creative. Two modes:
+ *
+ *   1. Single-copy creative (legacy) — exactly one body + one title,
+ *      via `object_story_spec.link_data`. Used when caller doesn't
+ *      pass `altBodies` / `altTitles`. Same behavior as pre-2026-06-10.
+ *
+ *   2. Dynamic-creative spec — Meta's `asset_feed_spec`. Used when the
+ *      caller passes 2+ bodies or titles. We pack everything into
+ *      `asset_feed_spec` (Meta tests permutations) PLUS a fallback
+ *      `object_story_spec` so older endpoints can still serve. Roy
+ *      2026-06-10: every Pedro variant ships with 3 headlines + 3
+ *      primary texts so Meta has dynamic-creative pool to optimise.
+ *
+ * Common to both:
+ *  - `instagramActorId` is included when set (otherwise Meta uses FB
+ *    page identity on IG which looks off-brand).
+ *  - `leadGenFormId` is included in the CTA value when the campaign is
+ *    a Lead-Gen instant form (destination_type ON_AD).
+ *  - `urlTags` defaults to PEDRO_UTM_TEMPLATE so every click is tracked
+ *    back to ad name / ad set / campaign.
  */
 export async function createAdCreative(args: {
   adAccountId: string
@@ -362,30 +418,114 @@ export async function createAdCreative(args: {
   description?: string
   linkUrl: string
   callToActionType?: string
+  /** Connected IG account (object_story_spec.instagram_actor_id). */
+  instagramActorId?: string
+  /** Lead-form id for ON_AD instant-form ads. When set, replaces the
+   *  CTA value link with the form id. */
+  leadGenFormId?: string
+  /** 0-N alternative primary texts. When non-empty we switch to
+   *  asset_feed_spec. Roy 2026-06-10: Pedro standard = 2 alts. */
+  altBodies?: string[]
+  /** 0-N alternative headlines. Same trigger condition as altBodies. */
+  altTitles?: string[]
+  /** UTM template for Meta link parameters. Defaults to PEDRO_UTM_TEMPLATE.
+   *  Pass null/empty to opt out. */
+  urlTags?: string | null
 }): Promise<{ creativeId: string }> {
-  const linkData: Record<string, unknown> = {
-    image_hash: args.imageHash,
-    link: args.linkUrl,
-    message: args.body,
-  }
-  if (args.title) linkData.name = args.title
-  if (args.description) linkData.description = args.description
-  if (args.callToActionType) {
-    linkData.call_to_action = {
-      type: args.callToActionType,
-      value: { link: args.linkUrl },
+  // De-duplicate + drop empty strings from the alt arrays so we don't
+  // ship "headline | headline | headline" as 3 identical options.
+  const dedup = (xs: string[]): string[] => {
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const x of xs) {
+      const t = (x ?? "").trim()
+      if (!t) continue
+      const k = t.toLowerCase()
+      if (seen.has(k)) continue
+      seen.add(k)
+      out.push(t)
     }
+    return out
+  }
+  const allBodies = dedup([args.body, ...(args.altBodies ?? [])])
+  const allTitles = dedup([args.title ?? "", ...(args.altTitles ?? [])])
+
+  // Choose CTA value — lead form id wins when present (Meta replaces
+  // the link with the form modal); otherwise the destination link.
+  const ctaValue: Record<string, unknown> = args.leadGenFormId
+    ? { link: args.linkUrl, lead_gen_form_id: args.leadGenFormId }
+    : { link: args.linkUrl }
+  const callToAction = args.callToActionType
+    ? { type: args.callToActionType, value: ctaValue }
+    : null
+
+  const dynamicCreative = allBodies.length > 1 || allTitles.length > 1
+  const urlTags = args.urlTags === undefined ? PEDRO_UTM_TEMPLATE : args.urlTags
+
+  const creativeBody: Record<string, unknown> = {
+    name: args.name,
+  }
+  if (urlTags) creativeBody.url_tags = urlTags
+
+  // Always send object_story_spec — it's required even for asset-feed
+  // creatives as the "fallback" identity (page + IG actor).
+  const objectStorySpec: Record<string, unknown> = {
+    page_id: args.pageId,
+  }
+  if (args.instagramActorId) {
+    objectStorySpec.instagram_actor_id = args.instagramActorId
+  }
+
+  if (dynamicCreative) {
+    // Asset-feed mode — Meta will permute across the arrays. Lead form
+    // creatives ALSO support this since v15+.
+    const assetFeedSpec: Record<string, unknown> = {
+      images: [{ hash: args.imageHash }],
+      bodies: allBodies.map((text) => ({ text })),
+      titles: allTitles.length > 0 ? allTitles.map((text) => ({ text })) : undefined,
+      link_urls: [{ website_url: args.linkUrl }],
+      ad_formats: ["SINGLE_IMAGE"],
+    }
+    if (args.description) {
+      assetFeedSpec.descriptions = [{ text: args.description }]
+    }
+    if (args.callToActionType) {
+      assetFeedSpec.call_to_action_types = [args.callToActionType]
+    }
+    // Strip undefineds so Meta sees a clean payload.
+    for (const k of Object.keys(assetFeedSpec)) {
+      if (assetFeedSpec[k] === undefined) delete assetFeedSpec[k]
+    }
+    creativeBody.asset_feed_spec = assetFeedSpec
+    // Fallback object_story_spec — uses the FIRST body/title so the
+    // creative still has a renderable preview if Meta can't yet permute.
+    const linkData: Record<string, unknown> = {
+      image_hash: args.imageHash,
+      link: args.linkUrl,
+      message: allBodies[0] ?? "",
+    }
+    if (allTitles[0]) linkData.name = allTitles[0]
+    if (args.description) linkData.description = args.description
+    if (callToAction) linkData.call_to_action = callToAction
+    objectStorySpec.link_data = linkData
+    creativeBody.object_story_spec = objectStorySpec
+  } else {
+    // Single-copy creative — classic link_data only.
+    const linkData: Record<string, unknown> = {
+      image_hash: args.imageHash,
+      link: args.linkUrl,
+      message: args.body,
+    }
+    if (args.title) linkData.name = args.title
+    if (args.description) linkData.description = args.description
+    if (callToAction) linkData.call_to_action = callToAction
+    objectStorySpec.link_data = linkData
+    creativeBody.object_story_spec = objectStorySpec
   }
 
   const json = await postToMeta<{ id?: string }>(
     `${actId(args.adAccountId)}/adcreatives`,
-    {
-      name: args.name,
-      object_story_spec: {
-        page_id: args.pageId,
-        link_data: linkData,
-      },
-    },
+    creativeBody,
   )
   if (!json.id) throw new Error("Meta gaf geen creative id terug.")
   return { creativeId: json.id }
