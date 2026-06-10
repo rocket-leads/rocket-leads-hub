@@ -8,6 +8,7 @@ import {
   createAdSet,
   createAdCreative,
   createAd,
+  stripInterestTargeting,
 } from "@/lib/integrations/meta-write"
 import { fetchMetaAdDetails } from "@/lib/integrations/meta"
 import { getMaxAdNumberByFormat, formatAdName, type AdFormatHint } from "@/lib/pedro/refresh-naming"
@@ -45,6 +46,15 @@ export const maxDuration = 180
 
 type Body = {
   variants?: Array<{ variantId?: string; slotPosition?: number }>
+  /** Optional override for the new ad set's name. Default = NT |
+   *  {{angle from proposal.preserve.angle}}. CM types this in the
+   *  modal before launch so they can match it to the headline/angle
+   *  the variants share. Roy 2026-06-10. */
+  adsetName?: string
+  /** Optional override for the new ad set's daily budget in EUROS
+   *  (we convert to cents before sending to Meta). When omitted we
+   *  inherit the winner's adset budget (default behavior). */
+  dailyBudgetEuros?: number
 }
 
 export async function POST(
@@ -96,7 +106,7 @@ export async function POST(
 
   const { data: clientRow } = await supabase
     .from("clients")
-    .select("id, name, meta_ad_account_id, facebook_page_id")
+    .select("id, name, meta_ad_account_id")
     .eq("monday_item_id", refreshRow.client_id)
     .maybeSingle()
   if (!clientRow) {
@@ -108,16 +118,16 @@ export async function POST(
       { status: 400 },
     )
   }
-  // Page ID resolution happens AFTER we fetch the winner (below) — we
-  // default to the page that hosts the winner ad, with the client's
-  // facebook_page_id as optional override. Validating here would be
-  // premature.
+  // Page ID inherits from the winner ad — extracted below from
+  // fetchMetaAdDetails. Roy 2026-06-10: override-field removed; winner
+  // inheritance turned out to be the right default for every case.
 
   // ── 2. Resolve winner uit envelope ──────────────────────────────────
   type RefreshEnv = {
     proposals?: Array<{
       basedOnAd?: { adId?: string; adName?: string }
-      variants?: Array<{ adName?: string }>
+      preserve?: { angle?: string; hook?: string; format?: string }
+      variants?: Array<{ adName?: string; topicLabel?: string }>
     }>
   }
   const envelope = (refreshRow.envelope ?? {}) as RefreshEnv
@@ -129,6 +139,7 @@ export async function POST(
     )
   }
   const winnerAdId = proposal.basedOnAd.adId
+  const proposalAngle = proposal.preserve?.angle?.trim() ?? ""
 
   // ── 3. Look up winner's parent campaign + ad set ────────────────────
   const end = new Date().toISOString().slice(0, 10)
@@ -147,16 +158,15 @@ export async function POST(
     )
   }
 
-  // Page id resolution: winner's page wins (zelfde page = zelfde
-  // pixel + UTM-consistency + geen handmatige config). client.facebook_page_id
-  // overrides als de CM expliciet een andere page wil — bv. een tweede
-  // FB page voor een dochter-merk. Roy 2026-06-09.
-  const pageId = clientRow.facebook_page_id?.trim() || winnerLive.pageId || ""
+  // Page id = winner's page (zelfde page = zelfde pixel + UTM-consistency).
+  // Roy 2026-06-10: override-pad uitgezet; winner inheritance werkt voor
+  // alle cases zonder handmatige config.
+  const pageId = winnerLive.pageId
   if (!pageId) {
     return NextResponse.json(
       {
         error:
-          "Geen page id gevonden. De winner ad heeft geen page_id (object_story_spec leeg — gebeurt bij sommige dynamic-creative ads). Vul handmatig een Facebook Page ID in op het client-info paneel.",
+          "Winner ad heeft geen page_id in object_story_spec — gebeurt bij sommige dynamic-creative winners. Kies een andere refresh of pak een andere winning ad als basis.",
       },
       { status: 400 },
     )
@@ -173,14 +183,50 @@ export async function POST(
     )
   }
 
-  const today = new Date()
-  const dd = String(today.getDate()).padStart(2, "0")
-  const mm = String(today.getMonth() + 1).padStart(2, "0")
-  // Inherit LF/LP from the winner's ad set name (first token) when present;
-  // default LF (Lead Form) per knowledge/campaigns.md.
-  const adsetTokenMatch = winnerLive.adsetName?.match(/^\s*(LF|LP)\b/i)
-  const lfOrLp = adsetTokenMatch ? adsetTokenMatch[1].toUpperCase() : "LF"
-  const newAdsetName = `${lfOrLp} | Open targeting | ${dd}/${mm}`
+  // Ad set name — CM-supplied override wins. Default follows Roy's
+  // 2026-06-10 NT convention: `NT | {{angle}}`. Falls back to legacy
+  // "LF | Open targeting | DD/MM" only when neither override nor angle
+  // is available (e.g. older refreshes with no preserve.angle).
+  const sanitizeAdsetName = (s: string): string =>
+    s.replace(/\s+/g, " ").trim().slice(0, 200)
+
+  const overrideAdsetName = body.adsetName ? sanitizeAdsetName(body.adsetName) : ""
+  let newAdsetName: string
+  if (overrideAdsetName) {
+    newAdsetName = overrideAdsetName
+  } else if (proposalAngle) {
+    newAdsetName = `NT | ${proposalAngle}`.slice(0, 200)
+  } else {
+    const today = new Date()
+    const dd = String(today.getDate()).padStart(2, "0")
+    const mm = String(today.getMonth() + 1).padStart(2, "0")
+    newAdsetName = `NT | Open targeting | ${dd}/${mm}`
+  }
+
+  // Strip ALL interest-based targeting from the cloned template per
+  // Roy 2026-06-10. Geo/age/gender/platforms/locale stay; interests,
+  // behaviors, custom audiences, demographics get wiped. Result: same
+  // audience structure as the winner, "no targeting" inside it.
+  const strippedTargeting = stripInterestTargeting(adsetTemplate.targeting)
+
+  // Budget override — CM types daily budget in EUR; Meta wants cents.
+  // When omitted, fall back to the winner's daily budget (existing
+  // behavior). Minimum sanity: €1/day, max €10000/day.
+  let overrideDailyBudget: string | null = null
+  if (typeof body.dailyBudgetEuros === "number" && Number.isFinite(body.dailyBudgetEuros)) {
+    const eur = Math.max(1, Math.min(10000, body.dailyBudgetEuros))
+    overrideDailyBudget = String(Math.round(eur * 100))
+  }
+
+  // Build the template we'll actually push. When the CM set a daily
+  // budget we ALSO drop lifetime_budget (Meta rejects both at once).
+  const launchTemplate = {
+    ...adsetTemplate,
+    targeting: strippedTargeting,
+    ...(overrideDailyBudget
+      ? { dailyBudget: overrideDailyBudget, lifetimeBudget: null }
+      : {}),
+  }
 
   // ── 5. Create the new ad set (PAUSED) ───────────────────────────────
   let newAdsetId: string
@@ -189,7 +235,7 @@ export async function POST(
       adAccountId: clientRow.meta_ad_account_id,
       campaignId: winnerLive.campaignId,
       name: newAdsetName,
-      template: adsetTemplate,
+      template: launchTemplate,
     })
     newAdsetId = res.adSetId
   } catch (e) {

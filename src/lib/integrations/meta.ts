@@ -477,6 +477,11 @@ export type MetaAdDetail = {
    *  the winner's parent campaign so a new ad set lands in the right
    *  place. Roy 2026-06-09. */
   campaignId: string
+  /** Campaign name (RL convention: "RL | NL | RV | Zumex | LP"). Used
+   *  by Pedro to figure out which campaign/product this winner belongs
+   *  to — drives Drive-folder targeting + image relevance scoring.
+   *  Roy 2026-06-10. */
+  campaignName: string
   /** Ad set id this ad sits in. Used as the clone-template for new
    *  ad set config (budget / targeting / placement). */
   adsetId: string
@@ -525,13 +530,14 @@ export async function fetchMetaAdDetails(
   const accountId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
   const timeRange = encodeURIComponent(JSON.stringify({ since: startDate, until: endDate }))
 
-  const url = `${META_API_BASE}/${accountId}/insights?fields=ad_id,ad_name,adset_id,adset_name,campaign_id,spend,impressions,clicks,ctr,cpc,actions&level=ad&time_range=${timeRange}&limit=200&access_token=${token}`
+  const url = `${META_API_BASE}/${accountId}/insights?fields=ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,ctr,cpc,actions&level=ad&time_range=${timeRange}&limit=200&access_token=${token}`
   const insightsData = await fetchAllPages<{
     ad_id: string
     ad_name: string
     adset_id: string
     adset_name: string
     campaign_id: string
+    campaign_name: string
     spend: string
     impressions: string
     clicks: string
@@ -699,6 +705,7 @@ export async function fetchMetaAdDetails(
       adName: d.ad_name,
       adsetName: d.adset_name,
       campaignId: d.campaign_id,
+      campaignName: d.campaign_name ?? "",
       adsetId: d.adset_id,
       status: "ACTIVE",
       spend: parseFloat(d.spend ?? "0"),

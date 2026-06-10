@@ -60,7 +60,7 @@ export async function POST(
     const supabase = await createAdminClient()
     const { data: variantRow } = await supabase
       .from("pedro_variants")
-      .select("id, client_id")
+      .select("id, client_id, refresh_id, ad_name")
       .eq("id", variantId)
       .maybeSingle()
     if (!variantRow) {
@@ -94,6 +94,27 @@ export async function POST(
     if (updateErr) throw updateErr
 
     const signedUrl = await getVariantImageSignedUrl(uploaded.storagePath)
+
+    // Log the upload as a feedback signal — the CM overrode the AI
+    // output, which means whatever Pedro produced wasn't usable for
+    // this variant. Future creative-refresh prompts for this client
+    // see this and can adjust direction. Best-effort, never blocking.
+    try {
+      await supabase.from("pedro_creative_feedback").insert({
+        client_id: variantRow.client_id,
+        variant_id: variantRow.id,
+        variant_image_position: position,
+        refresh_id: variantRow.refresh_id,
+        feedback_type: "upload",
+        feedback_text: `[CM uploadte eigen image voor variant "${variantRow.ad_name ?? ""}" slot ${String.fromCharCode(65 + position)}]\nAI-output was niet bruikbaar — overrule met handmatige upload.`,
+        created_by_email: session.user.email ?? null,
+      })
+    } catch (e) {
+      console.error(
+        "[pedro/upload-image] feedback log failed (continuing):",
+        e instanceof Error ? e.message : e,
+      )
+    }
 
     return NextResponse.json({
       variantId: variantRow.id,

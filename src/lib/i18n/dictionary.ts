@@ -514,6 +514,141 @@ export const DICTIONARY = {
   "client.onboarding.checklist.creatives_approved": { nl: "Creatives goedgekeurd", en: "Creatives approved" },
   "client.onboarding.checklist.live": { nl: "Campagne live", en: "Campaign live" },
 
+  // Onboarding tasks — extended checklist used by the rich Onboarding panel
+  // and the cross-client /onboarding overview. Each task maps to an entry in
+  // `src/lib/clients/onboarding.ts`. Keep the key naming aligned with the
+  // task `key` field — that's the contract the registry counts on.
+  "client.onboarding.section.hub_setup": { nl: "Hub setup", en: "Hub setup" },
+  "client.onboarding.section.client_access": { nl: "Klanttoegang", en: "Client access" },
+  "client.onboarding.section.content_campaign": { nl: "Content & campagne", en: "Content & campaign" },
+  "client.onboarding.section.go_live": { nl: "Live gaan", en: "Go live" },
+
+  "client.onboarding.task.am_assigned": { nl: "Account manager toegewezen", en: "Account manager assigned" },
+  "client.onboarding.task.cm_assigned": { nl: "Campagne manager toegewezen", en: "Campaign manager assigned" },
+  "client.onboarding.task.setter_assigned": { nl: "Appointment setter toegewezen", en: "Appointment setter assigned" },
+  "client.onboarding.task.monday_board_linked": { nl: "Monday lead-board ID gekoppeld", en: "Monday lead board ID linked" },
+  "client.onboarding.task.meta_account_linked": { nl: "Meta ad account ID gekoppeld", en: "Meta ad account ID linked" },
+  "client.onboarding.task.stripe_linked": { nl: "Stripe customer ID gekoppeld", en: "Stripe customer ID linked" },
+  "client.onboarding.task.trengo_linked": { nl: "Trengo contact gekoppeld", en: "Trengo contact linked" },
+  "client.onboarding.task.drive_linked": { nl: "Google Drive folder gekoppeld", en: "Google Drive folder linked" },
+  "client.onboarding.task.billing_filled": { nl: "Ad budget + service fee ingevuld", en: "Ad budget + service fee filled" },
+
+  "client.onboarding.task.client_brief": { nl: "Client brief opgesteld (website + brand + ICP)", en: "Client brief created (website + brand + ICP)" },
+  "client.onboarding.task.drive_service_account": { nl: "Drive service account toegevoegd als Editor", en: "Drive service account added as Editor" },
+  "client.onboarding.task.client_meta_bm": { nl: "Klant gaf Meta Business Manager toegang", en: "Client granted Meta Business Manager access" },
+  "client.onboarding.task.pixel_and_page": { nl: "Meta pixel + Facebook page gekoppeld", en: "Meta pixel + Facebook page linked" },
+
+  "client.onboarding.task.kickoff_held": { nl: "Kick-off meeting gehouden", en: "Kick-off meeting held" },
+  "client.onboarding.task.marketing_angles": { nl: "Marketing angles gekozen", en: "Marketing angles chosen" },
+  "client.onboarding.task.video_scripts": { nl: "Video scripts geschreven", en: "Video scripts written" },
+  "client.onboarding.task.content_delivered": { nl: "Content geleverd door klant", en: "Content delivered by client" },
+  "client.onboarding.task.landing_page": { nl: "Landingspagina gebouwd", en: "Landing page built" },
+  "client.onboarding.task.creatives_ready": { nl: "Ad copy + creatives klaar", en: "Ad copy + creatives ready" },
+  "client.onboarding.task.client_feedback_done": { nl: "Feedback ronde met klant afgerond", en: "Client feedback round completed" },
+  "client.onboarding.task.zapier_flows": { nl: "Zapier flows actief (lead → WhatsApp/email)", en: "Zapier flows live (lead → WhatsApp/email)" },
+
+  "client.onboarding.task.meta_campaign_built": { nl: "Campagne gebouwd in Meta", en: "Campaign built in Meta" },
+  "client.onboarding.task.campaign_scheduled": { nl: "Campagne ingepland voor go-live", en: "Campaign scheduled for go-live" },
+
+  // Onboarding panel chrome
+  "client.onboarding.panel.title": { nl: "Onboarding", en: "Onboarding" },
+  "client.onboarding.panel.critical_missing": {
+    nl: "Kritieke items ontbreken — klant kan niet Live worden gezet voordat deze gedaan zijn:",
+    en: "Critical items missing — client cannot go Live until these are done:",
+  },
+  "client.onboarding.panel.all_done": { nl: "Klant is klaar om Live te gaan.", en: "Client is ready to go Live." },
+  "client.onboarding.panel.auto_derived": { nl: "Automatisch", en: "Auto" },
+  "client.onboarding.panel.critical_pill": { nl: "Kritiek", en: "Critical" },
+
+  // ─── Onboarding wizard (per-client at /onboarding/[id]) ───────────────
+  // Rail / shell chrome
+  "onboarding.wizard.back_to_overview": { nl: "← Onboarding overzicht", en: "← Onboarding overview" },
+  "onboarding.wizard.subtitle": { nl: "Loop deze stappen door om de klant klaar te zetten voor de campagnemanager.", en: "Walk through these steps to prepare the client for the campaign manager." },
+  "onboarding.wizard.progress": { nl: "Voortgang", en: "Progress" },
+  "onboarding.wizard.loading": { nl: "Wizard laden…", en: "Loading wizard…" },
+  "onboarding.wizard.no_active_step": { nl: "Geen actieve stap — alle stappen zijn voltooid.", en: "No active step — all steps complete." },
+  "onboarding.wizard.step_label": { nl: "Stap", en: "Step" },
+  "onboarding.wizard.critical_pill": { nl: "Kritiek", en: "Critical" },
+  "onboarding.wizard.rail.locked_tooltip": { nl: "Vorige stap eerst afronden", en: "Finish the previous step first" },
+  "onboarding.wizard.rail.done_tooltip": { nl: "Voltooid — klik om opnieuw te bekijken", en: "Done — click to revisit" },
+
+  // Step labels (rail) + descriptions (action header)
+  "onboarding.wizard.step.kickoff_link.label": { nl: "Kick-off recording koppelen", en: "Link kick-off recording" },
+  "onboarding.wizard.step.kickoff_link.desc": { nl: "Koppel de Fathom-opname van de kick-off aan deze klant.", en: "Link the Fathom kick-off recording to this client." },
+
+  "onboarding.wizard.step.drive_setup.label": { nl: "Drive folder", en: "Drive folder" },
+  "onboarding.wizard.step.drive_setup.desc": { nl: "Maak een Drive folder aan voor deze klant en deel hem met het service account.", en: "Create a Drive folder for this client and share it with the service account." },
+
+  "onboarding.wizard.step.client_brief.label": { nl: "Client brief + concurrentie-analyse", en: "Client brief + competitor analysis" },
+  "onboarding.wizard.step.client_brief.desc": { nl: "AI genereert een brief op basis van de kick-off; jij vult aan en keurt goed. Opgeslagen in Drive.", en: "AI drafts a brief from the kick-off; you augment and approve. Saved to Drive." },
+
+  "onboarding.wizard.step.onboarding_email.label": { nl: "Onboarding-email naar klant", en: "Onboarding email to client" },
+  "onboarding.wizard.step.onboarding_email.desc": { nl: "Stuur de klant alles wat ze nodig hebben: Drive URL, Meta BM instructies, content-lijst.", en: "Send the client everything they need: Drive URL, Meta BM instructions, content checklist." },
+
+  "onboarding.wizard.step.wait_on_client.label": { nl: "Wachten op klant", en: "Wait on client" },
+  "onboarding.wizard.step.wait_on_client.desc": { nl: "Klant levert content + Meta BM toegang + betaling. Hub tracked dit automatisch waar mogelijk.", en: "Client delivers content + Meta BM access + payment. Hub tracks this automatically where possible." },
+
+  "onboarding.wizard.step.hub_wiring.label": { nl: "Hub wiring", en: "Hub wiring" },
+  "onboarding.wizard.step.hub_wiring.desc": { nl: "Koppel alle IDs: Meta ad account, Stripe, Trengo, lead-board, pixel + page.", en: "Link every ID: Meta ad account, Stripe, Trengo, lead board, pixel + page." },
+
+  "onboarding.wizard.step.handoff.label": { nl: "Klaar voor CM", en: "Ready for CM" },
+  "onboarding.wizard.step.handoff.desc": { nl: "Markeer klant klaar voor campagnemanager — status flipt naar Live.", en: "Mark client ready for the campaign manager — status flips to Live." },
+
+  // Brief step copy
+  "onboarding.wizard.brief.generate_hint": { nl: "Genereer een AI-draft op basis van kick-off + Trengo + Monday.", en: "Generate an AI draft from kick-off + Trengo + Monday." },
+  "onboarding.wizard.brief.regenerate_hint": { nl: "Opnieuw genereren overschrijft de huidige velden.", en: "Re-generating overwrites the current fields." },
+  "onboarding.wizard.brief.generate_btn": { nl: "Genereer brief", en: "Generate brief" },
+  "onboarding.wizard.brief.regenerate_btn": { nl: "Opnieuw genereren", en: "Re-generate" },
+  "onboarding.wizard.brief.competitor_generate_btn": { nl: "Genereer (AI)", en: "Generate (AI)" },
+  "onboarding.wizard.brief.save_draft": { nl: "Concept opslaan", en: "Save draft" },
+  "onboarding.wizard.brief.approve_and_continue": { nl: "Goedkeuren & verder", en: "Approve & continue" },
+  "onboarding.wizard.brief.save_and_continue": { nl: "Opslaan & verder", en: "Save & continue" },
+
+  "onboarding.wizard.brief.field.bedrijf": { nl: "Bedrijf", en: "Company" },
+  "onboarding.wizard.brief.field.sector": { nl: "Sector", en: "Sector" },
+  "onboarding.wizard.brief.field.websiteUrl": { nl: "Website", en: "Website" },
+  "onboarding.wizard.brief.field.driveLink": { nl: "Drive folder", en: "Drive folder" },
+  "onboarding.wizard.brief.field.doelgroep": { nl: "Doelgroep / ICP", en: "Target audience / ICP" },
+  "onboarding.wizard.brief.field.pijnpunten": { nl: "Pijnpunten", en: "Pain points" },
+  "onboarding.wizard.brief.field.aanbod": { nl: "Aanbod / propositie", en: "Offer / proposition" },
+  "onboarding.wizard.brief.field.usps": { nl: "USPs", en: "USPs" },
+  "onboarding.wizard.brief.field.marketingHooks": { nl: "Marketing hooks / angles", en: "Marketing hooks / angles" },
+  "onboarding.wizard.brief.field.concurrentieAnalyse": { nl: "Concurrentie-analyse", en: "Competitor analysis" },
+
+  "onboarding.wizard.brief.placeholder.doelgroep": { nl: "Wie is de ideale klant? Demografisch, psychografisch, in welke fase…", en: "Who is the ideal client? Demographic, psychographic, what stage…" },
+  "onboarding.wizard.brief.placeholder.pijnpunten": { nl: "Wat houdt deze doelgroep wakker? Welke frustraties / kosten / risico's…", en: "What keeps this audience up at night? Which frustrations / costs / risks…" },
+  "onboarding.wizard.brief.placeholder.aanbod": { nl: "Wat verkoopt de klant precies? Prijs, looptijd, garanties, leveringsmodel…", en: "What does the client sell exactly? Price, term, guarantees, delivery model…" },
+  "onboarding.wizard.brief.placeholder.usps": { nl: "Waarom kiest een lead voor deze klant en niet voor de concurrent?", en: "Why does a lead pick this client over the competitor?" },
+  "onboarding.wizard.brief.placeholder.marketingHooks": { nl: "Concrete invalshoeken voor advertenties. Eén per regel.", en: "Concrete angles for ads. One per line." },
+  "onboarding.wizard.brief.placeholder.concurrentieAnalyse": { nl: "Top 3 concurrenten in regio + branche, hun positionering, hun ads (Meta Ad Library), het gat in de markt.", en: "Top 3 competitors in region + industry, their positioning, their ads (Meta Ad Library), the gap in the market." },
+
+  // Placeholder step copy
+  "onboarding.wizard.placeholder.coming": { nl: "De tools voor deze stap komen er nog aan. Voor nu kun je hem handmatig afvinken.", en: "The tooling for this step is on the way. For now, mark it done manually." },
+  "onboarding.wizard.placeholder.mark_manually": { nl: "Werk gedaan? Markeer als voltooid.", en: "Work done? Mark as complete." },
+  "onboarding.wizard.placeholder.mark_done": { nl: "Markeer voltooid", en: "Mark done" },
+  "onboarding.wizard.placeholder.done_label": { nl: "Voltooid", en: "Done" },
+  "onboarding.wizard.placeholder.undo": { nl: "Ongedaan maken", en: "Undo" },
+
+  // Cross-client overview at /onboarding
+  "nav.onboarding": { nl: "Onboarding", en: "Onboarding" },
+  "onboarding.overview.title": { nl: "Onboarding", en: "Onboarding" },
+  "onboarding.overview.subtitle": {
+    nl: "Klanten die nog niet Live zijn — sorteer op voortgang of dagen sinds start.",
+    en: "Clients not yet Live — sorted by progress or days since start.",
+  },
+  "onboarding.overview.empty": {
+    nl: "Geen klanten in onboarding.",
+    en: "No clients in onboarding.",
+  },
+  "onboarding.overview.col.client": { nl: "Klant", en: "Client" },
+  "onboarding.overview.col.am": { nl: "AM", en: "AM" },
+  "onboarding.overview.col.cm": { nl: "CM", en: "CM" },
+  "onboarding.overview.col.phase": { nl: "Fase", en: "Phase" },
+  "onboarding.overview.col.progress": { nl: "Voortgang", en: "Progress" },
+  "onboarding.overview.col.next": { nl: "Eerstvolgende open taak", en: "Next open task" },
+  "onboarding.overview.col.critical": { nl: "Kritiek open", en: "Critical open" },
+  "onboarding.overview.col.days": { nl: "Dagen", en: "Days" },
+
   // ─── Client detail page ───────────────────────────────────────────────
   // Legacy per-section labels — used by sub-toggles inside the 4 top
   // groups (Performance → Overview vs Campaigns, Admin → Billing vs

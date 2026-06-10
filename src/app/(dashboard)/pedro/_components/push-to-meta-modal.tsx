@@ -68,6 +68,9 @@ type Props = {
   proposalIndex: number
   winnerAdName: string
   variants: ProposalVariant[]
+  /** Proposal's shared angle (preserve.angle) — used as the default
+   *  segment in the NT ad-set name. CM can override. Roy 2026-06-10. */
+  proposalAngle: string
 }
 
 const SLOT_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
@@ -79,6 +82,7 @@ export function PushToMetaModal({
   proposalIndex,
   winnerAdName,
   variants,
+  proposalAngle,
 }: Props) {
   const [slotsByVariant, setSlotsByVariant] = useState<Map<string, SlotInfo[]>>(
     new Map(),
@@ -89,6 +93,16 @@ export function PushToMetaModal({
   const [launchResponse, setLaunchResponse] = useState<LaunchResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Editable ad-set config. Default name = NT | {{angle}} per the
+  // 2026-06-10 RL convention; CM can rewrite to match the headline they
+  // want this ad set to represent. Daily budget is required at launch
+  // (Meta accepts cents, the route converts).
+  const defaultAdsetName = proposalAngle
+    ? `NT | ${proposalAngle}`.slice(0, 200)
+    : "NT | "
+  const [adsetName, setAdsetName] = useState(defaultAdsetName)
+  const [dailyBudgetEuros, setDailyBudgetEuros] = useState<string>("")
+
   // Load slot states for each variant on open.
   useEffect(() => {
     if (!open) return
@@ -96,6 +110,10 @@ export function PushToMetaModal({
     setLoading(true)
     setError(null)
     setLaunchResponse(null)
+    // Reset ad-set inputs each time the modal opens — the proposal /
+    // angle can change between opens.
+    setAdsetName(defaultAdsetName)
+    setDailyBudgetEuros("")
 
     const variantIds = variants
       .map((v) => v.variantId)
@@ -143,8 +161,14 @@ export function PushToMetaModal({
     })
   }, [])
 
+  // Validation: ad-set name non-empty + budget is a parseable positive number.
+  const adsetNameTrimmed = adsetName.trim()
+  const budgetParsed = parseFloat(dailyBudgetEuros.replace(",", "."))
+  const budgetValid = Number.isFinite(budgetParsed) && budgetParsed >= 1
+  const launchReady = adsetNameTrimmed.length > 0 && budgetValid
+
   const launch = useCallback(async () => {
-    if (launching) return
+    if (launching || !launchReady) return
     setLaunching(true)
     setError(null)
     setLaunchResponse(null)
@@ -158,7 +182,11 @@ export function PushToMetaModal({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ variants: payload }),
+          body: JSON.stringify({
+            variants: payload,
+            adsetName: adsetNameTrimmed,
+            dailyBudgetEuros: budgetParsed,
+          }),
         },
       )
       const json: LaunchResponse = await res.json()
@@ -173,7 +201,7 @@ export function PushToMetaModal({
     } finally {
       setLaunching(false)
     }
-  }, [launching, selected, refreshId, proposalIndex])
+  }, [launching, launchReady, selected, refreshId, proposalIndex, adsetNameTrimmed, budgetParsed])
 
   if (!open) return null
 
@@ -190,8 +218,9 @@ export function PushToMetaModal({
               Itereren op {winnerAdName}
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Nieuwe ad set wordt aangemaakt in dezelfde campagne als de winner.
-              Status: PAUSED. Activeren doe je zelf in Meta Ads Manager.
+              Eén nieuwe ad set (NT — no interest targeting) wordt aangemaakt in
+              dezelfde campagne, met dezelfde geo / leeftijd / placements als de
+              winner. Status: PAUSED. Activeer zelf in Meta Ads Manager.
             </p>
           </div>
           <button
@@ -206,9 +235,65 @@ export function PushToMetaModal({
 
         {/* Body */}
         <div className="px-6 py-4 space-y-4">
-          {/* Pre-launch: slot picker per variant */}
+          {/* Pre-launch: ad set config + slot picker per variant */}
           {!launchResponse && (
             <>
+              {/* Ad set config — top-level container. Roy 2026-06-10: NT
+                  ad set with the angle in the name, daily budget editable
+                  per launch. */}
+              <div className="rounded-lg border border-sky-500/40 bg-sky-500/5 p-3 space-y-3">
+                <div className="text-[10px] uppercase tracking-[0.12em] text-sky-700 dark:text-sky-400 font-semibold">
+                  Ad set (NT — no interest targeting)
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2 space-y-1">
+                    <label
+                      htmlFor="pm-adset-name"
+                      className="text-[11px] text-muted-foreground"
+                    >
+                      Ad set name
+                    </label>
+                    <input
+                      id="pm-adset-name"
+                      type="text"
+                      value={adsetName}
+                      onChange={(e) => setAdsetName(e.target.value)}
+                      disabled={launching}
+                      maxLength={200}
+                      placeholder="NT | verse sappen = hogere marges"
+                      className="w-full h-9 px-2.5 text-sm rounded-md border border-border bg-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50 font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="pm-budget"
+                      className="text-[11px] text-muted-foreground"
+                    >
+                      Daily budget (€)
+                    </label>
+                    <input
+                      id="pm-budget"
+                      type="text"
+                      inputMode="decimal"
+                      value={dailyBudgetEuros}
+                      onChange={(e) => setDailyBudgetEuros(e.target.value)}
+                      disabled={launching}
+                      placeholder="25"
+                      className="w-full h-9 px-2.5 text-sm rounded-md border border-border bg-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50 font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="text-[11px] text-muted-foreground/80">
+                  Geo, leeftijd, placements en optimization goal worden 1:1
+                  overgenomen van winner&apos;s ad set. Interests &amp; behaviors
+                  worden weggehaald.
+                </div>
+              </div>
+
+              <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold pt-1">
+                Ads in deze ad set ({totalSelected} geselecteerd)
+              </div>
+
               {loading && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -378,7 +463,16 @@ export function PushToMetaModal({
               <button
                 type="button"
                 onClick={launch}
-                disabled={launching || totalSelected === 0}
+                disabled={launching || totalSelected === 0 || !launchReady}
+                title={
+                  totalSelected === 0
+                    ? "Selecteer minstens één ad slot"
+                    : !adsetNameTrimmed
+                      ? "Ad set name is verplicht"
+                      : !budgetValid
+                        ? "Vul een daily budget in (min €1/dag)"
+                        : ""
+                }
                 className="inline-flex items-center gap-1.5 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
               >
                 {launching ? (
@@ -388,7 +482,7 @@ export function PushToMetaModal({
                 )}
                 {launching
                   ? "Pushing naar Meta…"
-                  : `Launch ${totalSelected} ad${totalSelected === 1 ? "" : "s"} as PAUSED`}
+                  : `Launch ad set + ${totalSelected} ad${totalSelected === 1 ? "" : "s"} (PAUSED)`}
               </button>
             )}
           </div>

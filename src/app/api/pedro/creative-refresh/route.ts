@@ -314,6 +314,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
       `[creative-refresh] context sources for ${clientId}:`,
       JSON.stringify(clientContext.sources),
       `chars=${clientContext.charCount}`,
+      `brand=${clientContext.sources.brandStyle ? "y" : "n"} feedback=${clientContext.sources.feedbackCount}`,
     )
   }
 
@@ -423,7 +424,7 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
           "newHook": "een nieuwe opener-zin in NL die in dezelfde DNA past",
           "scriptOutline": "3-5 bullet points van de script-flow (in NL)",
           "primaryCopySnippet": "primary text opener van max 60 woorden (in NL)",
-          "imagePrompt": "ENGLISH visual brief van max 100 woorden voor de image-gen (Gemini Nano Banana Pro). Gemini krijgt straks tot 3 reference images: (a) de winner ad thumbnail (DNA), en (b) 1-2 echte client photos uit hun Drive folder (echt product, echte locatie, echte brand-style). Beschrijf: scene/setting, subject, mood, lighting, eventuele on-image tekst overlay (wees specifiek over de exacte tekst). Verwijs naar de references zo: 'using the client's product visible in the reference photos' / 'in the same brand style as the references' / 'matching the lighting and color palette from the reference photos'. Beschrijf NIET het hele beeld vanaf nul — leun op de references voor look-and-feel en specificeer alleen wat ANDERS moet. NIET de gehele Dutch hook overnemen — translate/condense to visual cues. Schrijf in English voor model fidelity.",
+          "imagePrompt": "ENGLISH visual brief van max 120 woorden voor de image-gen (Gemini Nano Banana Pro). Gemini krijgt straks tot 3 reference images: (a) de winner ad thumbnail (DNA), en (b) 1-2 echte client photos uit hun Drive folder (echt product, echte locatie, echte brand-style). Beschrijf: scene/setting, subject, mood, lighting, on-image headline-overlay (zie regels onder). Verwijs naar references zo: 'using the client product visible in the reference photos' / 'in the same brand style as the references' / 'matching the lighting from the reference photos'. Beschrijf NIET het hele beeld vanaf nul — leun op de references. Schrijf in English voor model fidelity. HARDE REGELS (knowledge/campaigns.md §Image Creative Principles): (1) GEEN grote logo's — als logo: klein op product (kassa-display, schort, gevel). (2) GEEN brand-slogans als on-image tekst ('Working on a fresh future' etc) — expliciet: 'Do not render any brand slogan or tagline as on-image text.' (3) De on-image headline-overlay MOET een pijnpunt-vraag/situatie uit doelgroep-perspectief zijn, GEEN product-claim. Quote de exacte Dutch tekst (zelfde als newHook waar mogelijk). (4) Gebruik de BRAND IDENTITY hex codes uit context letterlijk ('primary color #FF6B00 voor accent op headline') en font-namen ('headline in Clash Grotesk style'). (5) Honoreer ALLE KLANT-FEEDBACK PATRONEN uit context — als CM eerder zei 'logo's altijd klein' is dat een wet voor deze klant.",
           "why": "1 zin: waarom deze variatie de DNA van [adName] respecteert maar fris is"
         }
       ]

@@ -70,7 +70,7 @@ function AdNameChip({ adName }: { adName: string }) {
 /** Per-variant card — owns edit-mode state for hook + primary copy so
  *  the CM can tune the variant before regenerating images. Roy
  *  2026-06-09. */
-function VariantCard({ variant }: { variant: CreativeVariant }) {
+function VariantCard({ variant, clientId }: { variant: CreativeVariant; clientId: string | null }) {
   // Local "live" state that reflects PATCH'd edits. Initial values come
   // from the proposal envelope. Updates persist through PATCH and stay
   // in sync until the user refreshes the whole page.
@@ -221,6 +221,7 @@ function VariantCard({ variant }: { variant: CreativeVariant }) {
           Roy 2026-06-09. */}
       <VariantImagePanel
         variantId={variant.variantId ?? null}
+        clientId={clientId}
         adName={variant.adName}
         initialImagePrompt={variant.image?.imagePrompt ?? variant.imagePrompt ?? null}
         initialHasImage={variant.image?.hasImage ?? false}
@@ -238,10 +239,12 @@ function ProposalCard({
   proposal,
   refreshId,
   proposalIndex,
+  clientId,
 }: {
   proposal: CreativeProposal
   refreshId: string | null
   proposalIndex: number
+  clientId: string | null
 }) {
   const [pushOpen, setPushOpen] = useState(false)
   const hasVariantsWithIds = proposal.variants.some((v) => v.variantId)
@@ -285,7 +288,7 @@ function ProposalCard({
 
       <div className="space-y-3">
         {proposal.variants.map((v, vi) => (
-          <VariantCard key={`${v.variantId ?? v.adName}-${vi}`} variant={v} />
+          <VariantCard key={`${v.variantId ?? v.adName}-${vi}`} variant={v} clientId={clientId} />
         ))}
       </div>
 
@@ -296,6 +299,7 @@ function ProposalCard({
           refreshId={refreshId}
           proposalIndex={proposalIndex}
           winnerAdName={proposal.basedOnAd.adName}
+          proposalAngle={proposal.preserve.angle}
           variants={proposal.variants.map((v) => ({
             variantId: v.variantId ?? null,
             adName: v.adName,
@@ -331,6 +335,7 @@ export function CreativeRefresh({ selectedClientId, selectedClientName, autoStar
               proposal={p}
               refreshId={env.refreshId ?? null}
               proposalIndex={i}
+              clientId={selectedClientId}
             />
           ))}
         </div>

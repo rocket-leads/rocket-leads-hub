@@ -113,150 +113,275 @@ export type DriveImageRef = {
   bytes: Buffer
 }
 
+export type GetFolderImagesOptions = {
+  /** Max recursion depth (5 = root → 5 levels deep). Default 5. */
+  maxDepth?: number
+  /** Soft cap on the number of folders we'll traverse, to prevent
+   *  pathological cases on huge Drive trees. Default 80. */
+  maxFolders?: number
+  /** Primary campaign / product name (e.g., "Zumex"). Folders matching
+   *  this name get a massive bonus; folders matching SIBLING campaigns
+   *  (the other top-level folders at the root) get a heavy penalty so
+   *  we don't pull a Blendtec photo for a Zumex campaign. */
+  campaignHint?: string
+  /** Secondary hints (variant topic label, ad name). Match in filenames
+   *  for a smaller bonus. */
+  topicHints?: string[]
+  /** Optional async reranker run AFTER bytes are downloaded but BEFORE
+   *  the final slice-to-limit. Receives all candidates (up to 4× limit),
+   *  must return refs sorted by preference (best first). The caller's
+   *  `limit` is then applied to the reranked list. Used by Pedro to do
+   *  Claude vision relevance scoring on the candidates so "Pedro zelf
+   *  nadenkt" over fotokeuze (Roy 2026-06-10). On failure (throw or
+   *  empty return), original order is preserved. */
+  rerank?: (candidates: DriveImageRef[]) => Promise<DriveImageRef[]>
+}
+
 /**
  * Pull up to `limit` real client photos from the Drive folder for use
- * as reference images in image generation. Recurses one subfolder
- * level (most RL client folders nest "Foto's" / "Creatives" / "Brand"
- * subfolders).
+ * as reference images in image generation. Deep BFS up to maxDepth
+ * (default 5), scoring folders by campaign relevance + skipping
+ * sibling-campaign branches.
  *
- * Smart selection (Roy 2026-06-09): instead of dumb "most recent",
- * score each candidate on:
- *   - Folder relevance: subfolders named brand/style/product/photo/asset
- *     score higher; subfolders named legal/contract/invoice score lower
- *   - Filename keyword match against the optional `topicHints` (e.g.
- *     the variant's topicLabel)
- *   - File-size healthy range (skip icons + huge raws)
- *   - Recent modification as tiebreaker
+ * Roy 2026-06-10: oude versie ging maar 1 niveau diep en behandelde
+ * alle siblings als gelijkwaardig. Voor "Juice Concepts Benelux"
+ * (umbrella met Blendtec / XpressChef / Zumex / QualityFry siblings)
+ * leverde dat random foto's uit Blendtec voor een Zumex campagne.
  *
- * Why this matters: Gemini Nano Banana Pro produces dramatically
- * better ad creatives when its references are visually relevant to
- * what the variant tries to depict. A random recent invoice scan vs
- * an on-brand product shot is the difference between hallucinated and
- * grounded output.
+ * Algoritme:
+ *   1. Inspecteer root → identificeer welke siblings de campagne zijn
+ *      (campaignHint match) en welke andere campagnes (= avoid)
+ *   2. BFS door folders. Per folder: score op
+ *      - campagne match (+200, hardest signal)
+ *      - sibling campaign match (-500, skip subtree)
+ *      - generic "brand/style/product/foto" keyword (+50)
+ *      - "invoice/contract/legal" keyword (-80)
+ *   3. Verzamel image files uit folders met positieve score
+ *   4. Sort by file score (folder + filename + size + recency)
+ *   5. Download top `limit` bytes
  *
  * Skips:
- *  - Files under 10 KB (likely icons/logos, not photography)
- *  - Files over 8 MB (Gemini base64 payload blows up — most ad
- *    creatives fit comfortably under this)
+ *  - Files under 10 KB (icons/logos)
+ *  - Files over 8 MB (Gemini payload too big)
+ *  - Trashed folders, video files (already implicit via mime filter)
  */
 export async function getFolderImages(
   folderId: string,
   limit = 2,
-  topicHints: string[] = [],
+  topicHintsOrOptions: string[] | GetFolderImagesOptions = [],
 ): Promise<DriveImageRef[]> {
   if (!folderId?.trim()) return []
+  // Back-compat: positional string[] is the legacy topicHints arg.
+  const opts: GetFolderImagesOptions = Array.isArray(topicHintsOrOptions)
+    ? { topicHints: topicHintsOrOptions }
+    : topicHintsOrOptions
+
+  const maxDepth = opts.maxDepth ?? 5
+  const maxFolders = opts.maxFolders ?? 80
+  const campaignHint = opts.campaignHint?.trim() ?? ""
+  const topicHints = opts.topicHints ?? []
+
   const auth = await getAuth()
   const drive = google.drive({ version: "v3", auth })
+
+  type FolderRef = {
+    id: string
+    name: string
+    depth: number
+    folderScore: number
+  }
 
   type FileMeta = {
     id: string
     name: string
-    folderName: string | null
+    folderName: string
+    folderScore: number
     mimeType: string
     modifiedTime: string
     size: number
   }
 
-  // Scoring tables. Higher = more likely to be the kind of photo we
-  // want as a Gemini reference. Negative = avoid.
+  // Token derivation. Campaign hint is the PRIMARY signal — drives both
+  // positive scoring (campaign match) and which OTHER siblings to avoid.
+  function tokensOf(s: string): string[] {
+    return s
+      .toLowerCase()
+      .split(/[\s/_\-|,.()]+/)
+      .filter((t) => t.length >= 3 && !STOPWORDS.has(t))
+  }
+  const STOPWORDS = new Set([
+    "rl",
+    "the",
+    "and",
+    "for",
+    "ads",
+    "campaign",
+    "campagne",
+    "general",
+    "algemeen",
+    "folder",
+    "main",
+    "old",
+    "new",
+    "temp",
+    "test",
+  ])
+  const campaignTokens = tokensOf(campaignHint)
+  const topicTokens = topicHints.flatMap((h) => tokensOf(h))
+
   const FOLDER_BONUS_RE = /(brand|style|product|foto|photo|asset|creative|shoot|content|imagery|merk|huisstijl|logo)/i
-  const FOLDER_PENALTY_RE = /(invoice|factuur|contract|nda|legal|signed|admin|signed|verklaring|wedstrijd|rapport)/i
-  // Topic hints: tokens from the variant's topicLabel (e.g. "Subsidie",
-  // "Voor/na"). Filename matches give a bonus.
-  const hintTokens = topicHints
-    .flatMap((h) => h.toLowerCase().split(/[\s/_\-,.]+/))
-    .filter((t) => t.length >= 3)
+  const FOLDER_PENALTY_RE = /(invoice|factuur|contract|nda|legal|signed|admin|verklaring|wedstrijd|rapport|finance|tax|hr)/i
+
+  // siblingsBlacklist gets populated from the root's other top-level
+  // children — those are presumed to be OTHER campaigns in the umbrella.
+  const siblingBlacklistTokens = new Set<string>()
+
+  function scoreFolder(name: string, depth: number): number {
+    let score = 0
+    const lcName = name.toLowerCase()
+    // 1. Campaign hit — biggest signal.
+    if (campaignTokens.length > 0) {
+      const hits = campaignTokens.filter((t) => lcName.includes(t)).length
+      if (hits > 0) score += 200 * hits
+    }
+    // 2. Sibling campaign hit — strong negative, will exclude subtree.
+    for (const t of siblingBlacklistTokens) {
+      if (lcName.includes(t)) score -= 500
+    }
+    // 3. Generic asset-folder keywords (brand/photo/product).
+    if (FOLDER_BONUS_RE.test(name)) score += 50
+    // 4. Negative asset folders (legal/invoice/contract).
+    if (FOLDER_PENALTY_RE.test(name)) score -= 80
+    // 5. Light depth penalty so shallower folders win ties.
+    score -= depth * 2
+    return score
+  }
 
   function scoreFile(f: FileMeta): number {
-    let score = 0
-    // Folder name signal — strongest.
-    if (f.folderName) {
-      if (FOLDER_BONUS_RE.test(f.folderName)) score += 50
-      if (FOLDER_PENALTY_RE.test(f.folderName)) score -= 80
-    }
-    // Filename keyword match against topic.
+    let score = f.folderScore
     const lcName = f.name.toLowerCase()
-    for (const t of hintTokens) {
-      if (lcName.includes(t)) score += 25
-    }
-    // Generic "product/photo/brand" keyword in filename = mild bonus
-    // even without folder hit (loose folders are normal at RL).
+    for (const t of topicTokens) if (lcName.includes(t)) score += 25
     if (FOLDER_BONUS_RE.test(f.name)) score += 10
-    // Size sweet spot: 200KB - 4MB (real photography, not logos/raws).
     if (f.size >= 200 * 1024 && f.size <= 4 * 1024 * 1024) score += 5
-    // Recency tiebreaker — 365d max, scaled.
     const ageDays = (Date.now() - Date.parse(f.modifiedTime)) / 86_400_000
     if (Number.isFinite(ageDays) && ageDays >= 0) {
-      score += Math.max(0, 30 - ageDays / 12) // ~0 at 1 year, ~30 at today
+      score += Math.max(0, 20 - ageDays / 12)
     }
     return score
   }
 
-  // 1. Find candidate folders: the root + immediate child folders.
-  //    Drive's `q` doesn't do recursive matches so we expand one level.
-  const folderQueue: Array<{ id: string; name: string | null }> = [
-    { id: folderId.trim(), name: null },
-  ]
+  // ── 1. Identify sibling campaigns at the root ─────────────────────
+  // Look at the immediate children of the root folder. The ones whose
+  // names DON'T match the campaignHint are presumed to be OTHER
+  // campaigns under the same client umbrella (e.g., Blendtec / XpressChef
+  // when Zumex is the active campaign). We blacklist their tokens
+  // (excluding generic asset-folder keywords) so descent into those
+  // subtrees is heavily penalized.
+  let rootChildren: Array<{ id: string; name: string }> = []
   try {
-    const subfolders = await drive.files.list({
+    const res = await drive.files.list({
       q: `'${folderId.trim()}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
       fields: "files(id, name)",
-      pageSize: 25,
+      pageSize: 50,
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     })
-    for (const sf of subfolders.data.files ?? []) {
-      if (sf.id) folderQueue.push({ id: sf.id, name: sf.name ?? null })
-    }
+    rootChildren = (res.data.files ?? [])
+      .filter((f): f is { id: string; name: string } => !!f.id && !!f.name)
+      .map((f) => ({ id: f.id, name: f.name }))
   } catch {
-    // Sub-folder enumeration is best-effort; we can still find images
-    // in the root.
+    /* best-effort */
   }
 
-  // 2. List image files in every candidate folder, merged.
+  if (campaignTokens.length > 0) {
+    for (const child of rootChildren) {
+      const childTokens = tokensOf(child.name)
+      // Skip generic asset-folder names — those are NOT sibling campaigns.
+      if (FOLDER_BONUS_RE.test(child.name)) continue
+      // Tokens that DON'T overlap with campaign tokens → sibling.
+      const overlaps = childTokens.some((t) => campaignTokens.includes(t))
+      if (!overlaps) {
+        for (const t of childTokens) siblingBlacklistTokens.add(t)
+      }
+    }
+  }
+
+  // ── 2. BFS over folders ──────────────────────────────────────────
+  const visited = new Set<string>([folderId.trim()])
+  const queue: FolderRef[] = [
+    {
+      id: folderId.trim(),
+      name: "(root)",
+      depth: 0,
+      folderScore: campaignTokens.length === 0 ? 0 : -10, // mild penalty if root has unrelated stuff
+    },
+  ]
   const allImages: FileMeta[] = []
-  for (const f of folderQueue) {
+  let folderCount = 0
+
+  while (queue.length > 0 && folderCount < maxFolders) {
+    const current = queue.shift()!
+    folderCount++
+
+    // List BOTH subfolders and image files in this folder in one call.
     try {
       const res = await drive.files.list({
-        q: `'${f.id}' in parents and (mimeType = 'image/jpeg' or mimeType = 'image/png') and trashed = false`,
+        q: `'${current.id}' in parents and trashed = false and (mimeType = 'application/vnd.google-apps.folder' or mimeType = 'image/jpeg' or mimeType = 'image/png')`,
         fields: "files(id, name, mimeType, modifiedTime, size)",
-        pageSize: 50,
-        orderBy: "modifiedTime desc",
+        pageSize: 200,
+        orderBy: "name",
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
       })
-      for (const fl of res.data.files ?? []) {
-        if (!fl.id || !fl.name || !fl.mimeType || !fl.modifiedTime) continue
-        const size = typeof fl.size === "string" ? parseInt(fl.size, 10) : 0
-        allImages.push({
-          id: fl.id,
-          name: fl.name,
-          folderName: f.name,
-          mimeType: fl.mimeType,
-          modifiedTime: fl.modifiedTime,
-          size: Number.isFinite(size) ? size : 0,
-        })
+      for (const f of res.data.files ?? []) {
+        if (!f.id || !f.name || !f.mimeType) continue
+        if (f.mimeType === "application/vnd.google-apps.folder") {
+          // Subfolder — score and enqueue if still within depth + not visited.
+          if (current.depth + 1 > maxDepth) continue
+          if (visited.has(f.id)) continue
+          visited.add(f.id)
+          const childScore = scoreFolder(f.name, current.depth + 1)
+          // Hard skip subtree if very negative (sibling campaign).
+          if (childScore <= -300) continue
+          queue.push({
+            id: f.id,
+            name: f.name,
+            depth: current.depth + 1,
+            folderScore: current.folderScore + childScore,
+          })
+        } else if (f.modifiedTime) {
+          const size = typeof f.size === "string" ? parseInt(f.size, 10) : 0
+          allImages.push({
+            id: f.id,
+            name: f.name,
+            folderName: current.name,
+            folderScore: current.folderScore,
+            mimeType: f.mimeType,
+            modifiedTime: f.modifiedTime,
+            size: Number.isFinite(size) ? size : 0,
+          })
+        }
       }
     } catch {
-      // Per-folder listing failures don't break the whole thing.
+      // Per-folder failures don't kill the BFS.
     }
   }
 
   if (allImages.length === 0) return []
 
-  // 3. Filter + score-sort. Score-first beats recency-only.
-  const MIN_BYTES = 10 * 1024 // 10 KB
-  const MAX_BYTES = 8 * 1024 * 1024 // 8 MB
+  // ── 3. Filter + score-sort ──────────────────────────────────────
+  const MIN_BYTES = 10 * 1024
+  const MAX_BYTES = 8 * 1024 * 1024
   const usable = allImages
     .filter((f) => f.size === 0 || (f.size >= MIN_BYTES && f.size <= MAX_BYTES))
     .map((f) => ({ file: f, score: scoreFile(f) }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
+    .slice(0, Math.max(limit * 4, 8)) // keep extras as candidates for vision reranking
     .map((s) => s.file)
 
   // 4. Download each image's bytes. Sequential so a fat file doesn't
   //    OOM the function; with limit=2 the latency is fine.
-  const results: DriveImageRef[] = []
+  const downloaded: DriveImageRef[] = []
   for (const meta of usable) {
     try {
       const dl = await drive.files.get(
@@ -269,7 +394,7 @@ export async function getFolderImages(
       if (bytes.length > MAX_BYTES) continue
       const mimeType: "image/jpeg" | "image/png" =
         meta.mimeType === "image/png" ? "image/png" : "image/jpeg"
-      results.push({
+      downloaded.push({
         id: meta.id,
         name: meta.name,
         mimeType,
@@ -283,7 +408,26 @@ export async function getFolderImages(
       )
     }
   }
-  return results
+
+  // 5. Optional vision rerank — caller passes a callback that scores
+  //    candidates against campaign + variant context. On failure we
+  //    keep the original (folder-score) order.
+  let ordered = downloaded
+  if (opts.rerank && downloaded.length > 1) {
+    try {
+      const reranked = await opts.rerank(downloaded)
+      if (Array.isArray(reranked) && reranked.length > 0) {
+        ordered = reranked
+      }
+    } catch (e) {
+      console.error(
+        "[google-drive] rerank callback failed (continuing with folder-score order):",
+        e instanceof Error ? e.message : e,
+      )
+    }
+  }
+
+  return ordered.slice(0, limit)
 }
 
 export async function listFolderFiles(folderId: string): Promise<DriveFile[]> {

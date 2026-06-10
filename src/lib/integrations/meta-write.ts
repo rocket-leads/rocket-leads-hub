@@ -112,6 +112,68 @@ function actId(adAccountId: string): string {
   return adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
 }
 
+/**
+ * Strip all interest-based targeting from a cloned ad set template,
+ * keeping geo/age/gender/platforms/locale/advantage settings intact.
+ *
+ * Roy 2026-06-10: Pedro launches every new ad set as "NT" (no targeting)
+ * — same audience configuration as the winner, but with all interest
+ * and behavioral targeting removed. Meta Advantage+ takes over from
+ * there. This matches the standard RL play of duplicating a working
+ * ad set and wiping the interests so the algorithm gets full freedom.
+ *
+ * We use a BLOCKLIST (not allowlist) so any new targeting field Meta
+ * adds in future API versions doesn't accidentally make it through —
+ * if we don't recognise it as safe, we strip it. Safe fields = the
+ * structural audience definition (where + who-demographically), not
+ * the interest-graph.
+ */
+const TARGETING_INTEREST_FIELDS = [
+  "interests",
+  "flexible_spec",
+  "behaviors",
+  "exclusions",
+  "connections",
+  "excluded_connections",
+  "custom_audiences",
+  "excluded_custom_audiences",
+  "interest_clusters",
+  "interest_clusters_ids",
+  "relationship_statuses",
+  "education_statuses",
+  "education_majors",
+  "education_schools",
+  "work_employers",
+  "work_positions",
+  "industries",
+  "income",
+  "life_events",
+  "family_statuses",
+  "user_adclusters",
+  "app_install_state",
+  "college_years",
+  "fine_age_levels",
+  "moms",
+  "office_type",
+  "politics",
+  "user_event",
+  "generation",
+  "ethnic_affinity",
+  "engagement_specs",
+  "excluded_engagement_specs",
+] as const
+
+export function stripInterestTargeting(
+  targeting: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!targeting) return null
+  const stripped: Record<string, unknown> = { ...targeting }
+  for (const f of TARGETING_INTEREST_FIELDS) {
+    delete stripped[f]
+  }
+  return stripped
+}
+
 // ─── Read: ad set config clone-template ─────────────────────────────────
 
 /**

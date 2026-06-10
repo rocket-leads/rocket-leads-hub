@@ -500,6 +500,56 @@ Het kiezen van de juiste marketing angle is de belangrijkste stap. Hieronder het
 
 ---
 
+## Image Creative Principles (Pedro + handmatig)
+
+> Roy 2026-06-10. Deze principes gelden voor élke AI-gegenereerde of handmatige static ad. Pedro's image-gen prompt en CM-review beide.
+
+### 1. Logo's klein, of helemaal niet
+
+- **Verbod op grote logo's** die de helft van de afbeelding vullen. Het logo van de klant verkoopt geen ad — de hook doet dat.
+- Subtiele logo-integratie is prima: klein in een hoek, op een product zelf (kassa-display, schort, gevel), of op een receipt/menukaart in beeld. Maakt 'm "echt" zonder de aandacht te kapen.
+- Helemaal géén logo is ook acceptabel — een product zonder branding is vaak sterker dan een product met een 60%-screen logo.
+
+### 2. Géén brand-slogans als visuele tekst
+
+- **Brand-slogans verkopen niet.** "Working on a fresh future", "Better. Faster. Stronger." — dat zijn interne tagline-flexies, geen ad copy.
+- De enige tekst die op de afbeelding mag staan is de **werkelijke hook of headline** van de variant.
+- Pedro mag een brand-slogan opnemen in de IMAGE_PROMPT als referentie naar de visuele stijl, maar moet expliciet verbieden dat hij als overlay-text op de output komt. ("Do not render any brand slogan or tagline as on-image text.")
+
+### 3. Headlines zijn pijnpunt-vragen, geen product-statements
+
+De headline-tekst op een static ad moet de doelgroep **direct in hun pijn raken**, niet een productvoordeel opsommen.
+
+| ❌ Niet | ✅ Wel |
+|---|---|
+| "Verse sappen = hogere marges" | "Krijg je elke dag dezelfde vraag van je gasten: 'Hebben jullie ook verse sappen?'" |
+| "Bespaar tot 40% energie" | "Te hoge energierekening ondanks je beste isolatie?" |
+| "Snelle service, beste prijs" | "Wachten je klanten al weken op die offerte?" |
+
+De vraag/pijn moet **uit de doelgroep zelf komen** — wat ze dénken of zéggen, niet wat wij over hen claimen. Pedro genereert image-prompts mét deze framing: de overlay-tekst op de afbeelding is altijd een pijnpunt-vraag of een herkenbare situatie, nooit een verkoopclaim.
+
+### 4. Brand-kleuren + fonts gestructureerd capturen (per klant verplicht)
+
+- Voor élke klant moeten **brand colors (hex codes)** en **font families** worden vastgelegd voordat Pedro mag genereren. Geslagen op `pedro_client_state.brand_style`.
+- Auto-extractie via `analyze-website`: pakt primary/secondary/accent kleuren + dominant font uit de klant-website. CM verifieert/overrided.
+- Brand kit (PDF/Drive) overschrijft auto-extractie als die er is — verplichte input bij onboarding voor klanten met een brand kit.
+- Pedro's image-prompt verwijst expliciet naar de hex codes ("use #FF6B00 as accent color for the headline overlay") en font ("Sans-serif body in style of Inter / Clash Grotesk").
+- **Geen brand identity vastgelegd = Pedro waarschuwt + valt terug op kleur-extractie uit reference photos**, maar markeert de output als "brand-identity missing".
+
+### 5. Feedback-loop: CM iteraties verbreden Pedro's knowledge base
+
+Elke keer dat een CM een gegenereerde image afkeurt, een prompt aanpast, of opmerkingen toevoegt na een regen-actie wordt dat **opgeslagen per klant** als `pedro_creative_feedback`. Bij de volgende refresh injecteert Pedro die feedback in de image-prompt voor diezelfde klant.
+
+Voorbeelden van feedback die Pedro moet onthouden:
+- "Logo's altijd klein voor deze klant" → Pedro neemt mee in alle volgende prompts voor die klant
+- "Headlines altijd in form van een pijnpunt-vraag uit doelgroep" → preserve dit format
+- "Klant haat stock-photo's met te witte tanden" → vermijd
+- "Klant wil altijd minimaal één persoon in beeld" → bake into prompt
+
+Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om de eerste-versie goed te krijgen. **Iteratie is leerdata, geen kosten-post.**
+
+---
+
 ## Volledige Video Scripts — RL 3.0 Campagnes
 
 > Gebruik als referentie bij het schrijven van nieuwe ad copy of het briefen van video-opnames.

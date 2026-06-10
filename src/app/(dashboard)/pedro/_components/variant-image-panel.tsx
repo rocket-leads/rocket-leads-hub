@@ -10,6 +10,8 @@ import {
   AlertTriangle,
   ImageIcon,
   Plus,
+  MessageSquare,
+  CheckCircle2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -49,6 +51,10 @@ const SLOT_COUNT = 3
 
 type Props = {
   variantId: string | null
+  /** Hub client (Monday item) id. Required for posting explicit
+   *  feedback so Pedro learns per-client preferences. Null = feedback
+   *  button hidden. */
+  clientId: string | null
   adName: string
   /** Initial image prompt from the refresh envelope. */
   initialImagePrompt: string | null
@@ -60,6 +66,7 @@ type Props = {
 
 export function VariantImagePanel({
   variantId,
+  clientId,
   adName,
   initialImagePrompt,
   initialHasImage,
@@ -81,6 +88,49 @@ export function VariantImagePanel({
   const [editingPrompt, setEditingPrompt] = useState(false)
   const [promptDraft, setPromptDraft] = useState(initialImagePrompt ?? "")
   const [references, setReferences] = useState<GenerateReferences | null>(null)
+
+  // Explicit-feedback state — the textarea is the strongest signal Pedro
+  // gets back ("logos altijd klein", "klant haat te witte tanden", etc.).
+  // Stored in `pedro_creative_feedback` and pulled into the next
+  // creative-refresh prompt for THIS client.
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackDraft, setFeedbackDraft] = useState("")
+  const [feedbackBusy, setFeedbackBusy] = useState(false)
+  const [feedbackSaved, setFeedbackSaved] = useState(false)
+  const [feedbackError, setFeedbackError] = useState<string | null>(null)
+
+  const submitFeedback = useCallback(async () => {
+    const text = feedbackDraft.trim()
+    if (!clientId || !text || feedbackBusy) return
+    setFeedbackBusy(true)
+    setFeedbackError(null)
+    try {
+      const res = await fetch("/api/pedro/creative-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId,
+          variantId: variantId ?? undefined,
+          feedbackType: "explicit",
+          feedbackText: `[Variant "${adName}"] ${text}`,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || json.error) {
+        throw new Error(json.error || `HTTP ${res.status}`)
+      }
+      setFeedbackSaved(true)
+      setFeedbackDraft("")
+      setTimeout(() => {
+        setFeedbackSaved(false)
+        setFeedbackOpen(false)
+      }, 1800)
+    } catch (e) {
+      setFeedbackError(e instanceof Error ? e.message : "Opslaan mislukt")
+    } finally {
+      setFeedbackBusy(false)
+    }
+  }, [feedbackDraft, clientId, variantId, adName, feedbackBusy])
 
   // Lazy-load slot states on mount if variant already has at least one
   // image (from the envelope enrichment). Single round-trip.
@@ -277,6 +327,26 @@ export function VariantImagePanel({
           Images ({filledCount}/{SLOT_COUNT})
         </div>
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
+          {clientId && filledCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setFeedbackOpen((v) => !v)
+                setFeedbackError(null)
+              }}
+              disabled={bulkBusy}
+              title="Geef Pedro feedback op deze creative — wordt opgeslagen per klant en gebruikt bij volgende refresh"
+              className={cn(
+                "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors",
+                feedbackOpen
+                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+              )}
+            >
+              <MessageSquare className="h-3 w-3" />
+              {feedbackOpen ? "Sluit feedback" : "Geef feedback"}
+            </button>
+          )}
           {filledCount > 0 && (
             <button
               type="button"
@@ -297,6 +367,56 @@ export function VariantImagePanel({
           )}
         </div>
       </div>
+
+      {/* Feedback textarea — explicit signal that Pedro injects into the
+          next refresh prompt for this client. */}
+      {feedbackOpen && clientId && (
+        <div className="space-y-1 rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400 font-semibold inline-flex items-center gap-1">
+            <MessageSquare className="h-3 w-3" />
+            Feedback voor Pedro (per klant onthouden)
+          </div>
+          <textarea
+            value={feedbackDraft}
+            onChange={(e) => setFeedbackDraft(e.target.value)}
+            rows={2}
+            disabled={feedbackBusy}
+            placeholder='Bijv. "Logo veel te groot — altijd klein of helemaal weg" of "Headline moet vraag uit doelgroep zijn, geen product-claim"'
+            className="w-full text-xs rounded-md border border-border bg-background px-2 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-none disabled:opacity-50"
+          />
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] text-muted-foreground/70">
+              Pedro leest dit terug bij elke volgende refresh van deze klant.
+            </div>
+            <button
+              type="button"
+              onClick={submitFeedback}
+              disabled={feedbackBusy || !feedbackDraft.trim()}
+              className={cn(
+                "inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11px] font-medium transition-colors",
+                feedbackSaved
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                  : "bg-amber-600 text-white hover:bg-amber-700 disabled:bg-muted disabled:text-muted-foreground",
+              )}
+            >
+              {feedbackBusy ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : feedbackSaved ? (
+                <CheckCircle2 className="h-3 w-3" />
+              ) : (
+                <MessageSquare className="h-3 w-3" />
+              )}
+              {feedbackSaved ? "Opgeslagen" : feedbackBusy ? "Opslaan…" : "Opslaan"}
+            </button>
+          </div>
+          {feedbackError && (
+            <div className="text-[11px] text-red-600 dark:text-red-400 inline-flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              {feedbackError}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* References — shown after a generate */}
       {references && (

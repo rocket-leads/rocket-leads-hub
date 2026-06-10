@@ -156,6 +156,11 @@ export async function Sidebar() {
     ...(isFinance ? [] : [WATCH_LIST]),
     { href: "/inbox", label: t("nav.inbox", locale), icon: "Inbox" },
     { href: "/clients", label: t("nav.clients", locale), icon: "Users" },
+    // Finance doesn't run onboarding — hide for them, same rule as Watch List.
+    // Uses ClipboardCheck (not Rocket) to avoid colliding with Pedro → On-board.
+    ...(isFinance
+      ? []
+      : [{ href: "/onboarding", label: t("nav.onboarding", locale), icon: "ClipboardCheck" as const }]),
     PEDRO,
   ]
 
