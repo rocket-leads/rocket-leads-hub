@@ -209,110 +209,127 @@ export function InboxListRow({
         )}
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Type chip — small icon+label next to the title so the row's
-                kind is unmistakable even when the rail is out of peripheral
-                vision (e.g. scanning the title column). Pairs with the
-                left rail for redundant encoding (colour + text + icon),
-                which Roy explicitly asked for: "het moet visueel duidelijker
-                zijn of het gaat om een taak, een update, wat dan ook." */}
+          {/* Visual hierarchy (Roy 2026-06-10):
+                1. Client name — primary, large, bold. The row's subject:
+                   "what's this row about" reads first as "which client."
+                2. Title — secondary, medium weight, smaller. The "what
+                   happened" line. When no client is present (orphan rows
+                   or per-client locked view), the title is promoted to
+                   primary size since there's nothing else to anchor on.
+                3. Meta row — tiny. TYPE chip + source + status pill +
+                   author→assignee + date + due + comments. All visually
+                   recessed so the eye lands on the client/title first.
+              The left rail still encodes kind colour for peripheral
+              scanning; the TYPE chip in the meta row is redundant
+              encoding but Roy explicitly wanted it kept ("mag klein
+              blijven"). */}
+
+          {/* Row 1 — client name as primary header (or skipped when not
+              applicable; the title then promotes to primary). */}
+          {showClient && item.isUnlinked && (
+            <div className="flex items-center gap-2 min-w-0 mb-0.5">
+              <span
+                className="text-base font-semibold text-amber-500/90 dark:text-amber-400 truncate inline-flex items-center gap-1.5"
+                title="This Trengo contact isn't linked to a client yet"
+              >
+                <Link2Off className="h-4 w-4 shrink-0" />
+                Unlinked contact
+              </span>
+              {isHighPriority && (
+                <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+              )}
+            </div>
+          )}
+          {showClient && !item.isUnlinked && item.clientName && item.clientName !== "(unknown)" && (
+            <div className="flex items-center gap-2 min-w-0 mb-0.5">
+              <span className="text-base font-semibold text-foreground truncate">
+                {item.clientName}
+              </span>
+              {isHighPriority && (
+                <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+              )}
+            </div>
+          )}
+
+          {/* Row 2 — title. Size promotes to primary when no client
+              header rendered above (locked-client view, or orphan row
+              without a linked client). */}
+          {(() => {
+            const hasClientHeader =
+              showClient &&
+              (item.isUnlinked ||
+                (!!item.clientName && item.clientName !== "(unknown)"))
+            const titleClass = cn(
+              "truncate",
+              hasClientHeader ? "text-sm" : "text-base",
+              isUnread || (!hasClientHeader && !isCompleted)
+                ? "font-semibold"
+                : "font-medium",
+              hasClientHeader
+                ? isCompleted
+                  ? "text-muted-foreground"
+                  : "text-foreground/85"
+                : isCompleted
+                  ? "text-muted-foreground"
+                  : "text-foreground",
+              (item.status === "done" || item.status === "cancelled") &&
+                "line-through",
+            )
+            return onAction ? (
+              <RowTitle
+                title={item.title}
+                statusClass={titleClass}
+                onSave={(title) => onAction({ type: "rename", title })}
+              />
+            ) : (
+              <span className={titleClass}>{item.title}</span>
+            )
+          })()}
+
+          {/* Row 3 — meta. Tiny, muted. The TYPE chip lives here (not
+              competing with the title) along with the source pill,
+              task-status pill, and the author/date/due trail. */}
+          <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-foreground/75 flex-wrap">
             <span
               className={cn(
-                "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0",
+                "inline-flex items-center gap-1 rounded-md border px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide shrink-0",
                 kindTreatment.chip,
               )}
               title={kindTreatment.label}
             >
-              <KindIcon className="h-3 w-3" />
+              <KindIcon className="h-2.5 w-2.5" />
               {kindTreatment.label}
             </span>
-            {/* SourcePill on the title row, immediately after the type chip.
-                Pairs the categorical labels together (TYPE + SOURCE) and
-                keeps the row's right edge clean for the action button —
-                Roy: previously the Automation/WhatsApp chip sat awkwardly
-                between the metadata row and the Create-task button, which
-                made the row feel crowded on the right side. */}
             <SourcePill
               source={item.source}
               channelKind={item.channelKind}
             />
-            {isHighPriority && (
-              <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
-            )}
-            {onAction ? (
-              // Title is double-click-to-edit on both Tasks and Updates.
-              // Single click still opens the detail dialog (default row
-              // behaviour); double click switches to an inline input.
-              // Server gates non-task updates to author/admin so an
-              // assignee on an Update sees their edit revert via the
-              // optimistic rollback — acceptable noise.
-              <RowTitle
-                title={item.title}
-                statusClass={cn(
-                  "text-[15px] truncate",
-                  isUnread ? "font-semibold" : "font-medium",
-                  item.status === "done" || item.status === "cancelled"
-                    ? "line-through text-muted-foreground"
-                    : "",
-                  item.status === "read" && "text-muted-foreground",
-                )}
-                onSave={(title) => onAction({ type: "rename", title })}
-              />
-            ) : (
-              <span
-                className={cn(
-                  "text-[15px] truncate",
-                  isUnread ? "font-semibold" : "font-medium",
-                  item.status === "done" || item.status === "cancelled" ? "line-through text-muted-foreground" : "",
-                  item.status === "read" && "text-muted-foreground",
-                )}
-              >
-                {item.title}
-              </span>
-            )}
             {taskStatus && (
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${taskStatus.cls}`}>
+              <span
+                className={`text-[10px] px-1.5 py-px rounded-full font-medium ${taskStatus.cls}`}
+              >
                 {taskStatus.label}
               </span>
             )}
-          </div>
-          <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground/80 flex-wrap">
-            {/* Client name — only rendered when there's a real client to
-                show. Unlinked Trengo contacts get a warning chip so the AM
-                knows the item hasn't been mapped yet; the previous
-                "(unknown)" filler fallback is suppressed because it added
-                noise without information ("I have no client" doesn't need
-                to take up a row slot). */}
-            {showClient && item.isUnlinked && (
-              <>
-                <span
-                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-500 dark:text-amber-400 px-1.5 py-0.5 font-medium"
-                  title="This Trengo contact isn't linked to a client yet"
-                >
-                  <Link2Off className="h-3 w-3" />
-                  Unlinked
-                </span>
-                <span>·</span>
-              </>
+            {/* No client appears in meta — it's the row header now.
+                Keep only the people-and-time trail here. */}
+            {!showClient && isHighPriority && (
+              <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
             )}
-            {showClient && !item.isUnlinked && item.clientName && item.clientName !== "(unknown)" && (
-              <>
-                <span className="font-medium">{item.clientName}</span>
-                <span>·</span>
-              </>
-            )}
+            <span className="text-muted-foreground/40">·</span>
             <span>{item.authorName}</span>
-            <span>→</span>
+            <span className="text-muted-foreground/40">→</span>
             <span>{item.assigneeName}</span>
-            <span>·</span>
+            <span className="text-muted-foreground/40">·</span>
             <span>{fmtDate(item.createdAt)}</span>
             {item.dueDate && (
               <>
-                <span>·</span>
+                <span className="text-muted-foreground/40">·</span>
                 <span
-                  className={`inline-flex items-center gap-1 ${
-                    fmtDueDate(item.dueDate).overdue ? "text-red-400" : ""
-                  }`}
+                  className={cn(
+                    "inline-flex items-center gap-1",
+                    fmtDueDate(item.dueDate).overdue && "text-red-400",
+                  )}
                 >
                   <Calendar className="h-3 w-3" />
                   {fmtDueDate(item.dueDate).text}
@@ -321,7 +338,7 @@ export function InboxListRow({
             )}
             {item.commentCount > 0 && (
               <>
-                <span>·</span>
+                <span className="text-muted-foreground/40">·</span>
                 <span className="inline-flex items-center gap-1">
                   <MessageCircle className="h-3 w-3" />
                   {item.commentCount}
