@@ -624,6 +624,31 @@ export const DICTIONARY = {
 
   "onboarding.wizard.kickoff.send_recap": { nl: "Stuur recap (Sprint 2)", en: "Send recap (Sprint 2)" },
 
+  // Brand identity — captured live from the client's website. Pedro
+  // pre-fills its `brand_style` from this when the CM opens the client
+  // for the first time, so colors / fonts never have to be re-entered.
+  "onboarding.wizard.kickoff.brand.title": { nl: "Huisstijl", en: "Brand identity" },
+  "onboarding.wizard.kickoff.brand.analyze_hint": {
+    nl: "Trek primaire, secundaire en accentkleur + lettertypes uit de website. Hexcodes blijven aanpasbaar.",
+    en: "Pull primary, secondary and accent color + fonts from the website. Hex codes stay editable.",
+  },
+  "onboarding.wizard.kickoff.brand.analyze_btn": { nl: "Analyseer website", en: "Analyze website" },
+  "onboarding.wizard.kickoff.brand.analyzing": { nl: "Analyseren…", en: "Analyzing…" },
+  "onboarding.wizard.kickoff.brand.no_url": {
+    nl: "Vul eerst de website URL hierboven in.",
+    en: "Fill the website URL above first.",
+  },
+  "onboarding.wizard.kickoff.brand.color.primary": { nl: "Primair (CTA)", en: "Primary (CTA)" },
+  "onboarding.wizard.kickoff.brand.color.secondary": { nl: "Secundair", en: "Secondary" },
+  "onboarding.wizard.kickoff.brand.color.accent": { nl: "Accent", en: "Accent" },
+  "onboarding.wizard.kickoff.brand.font.heading": { nl: "Heading font", en: "Heading font" },
+  "onboarding.wizard.kickoff.brand.font.body": { nl: "Body font", en: "Body font" },
+  "onboarding.wizard.kickoff.brand.captured_from": { nl: "Uit", en: "From" },
+  "onboarding.wizard.kickoff.brand.swatches_hint": {
+    nl: "Klik een swatch om primair te wijzigen, shift+klik voor secundair.",
+    en: "Click a swatch to set primary, shift+click for secondary.",
+  },
+
   // Stap 2 — transcript link
   "onboarding.wizard.transcript.hint": {
     nl: "Selecteer welke recording de kick-off van deze klant was. Fathom kandidaten verschijnen 5-15 min na het einde van de meeting.",
@@ -647,6 +672,58 @@ export const DICTIONARY = {
   "onboarding.wizard.transcript.linked.summary_no": { nl: "Geen summary nog", en: "No summary yet" },
   "onboarding.wizard.transcript.linked.open_fathom": { nl: "Open in Fathom", en: "Open in Fathom" },
   "onboarding.wizard.transcript.change": { nl: "Wijzigen", en: "Change" },
+
+  // Stap 3 — brief enrichment diff
+  "onboarding.wizard.enrich.start.title": {
+    nl: "AI brief enrichment",
+    en: "AI brief enrichment",
+  },
+  "onboarding.wizard.enrich.start.body": {
+    nl: "AI scant het transcript van de kick-off en stelt per veld additionele info voor. Jij accepteert of weigert per suggestie.",
+    en: "AI scans the kick-off transcript and proposes additions per field. You accept or reject per suggestion.",
+  },
+  "onboarding.wizard.enrich.start.btn": {
+    nl: "Genereer AI suggesties",
+    en: "Generate AI suggestions",
+  },
+  "onboarding.wizard.enrich.regenerate": { nl: "Opnieuw genereren", en: "Re-generate" },
+  "onboarding.wizard.enrich.insufficient": {
+    nl: "Transcript nog te kort of leeg. Wacht tot Fathom het volledige transcript heeft opgeleverd (5-15 min na de meeting).",
+    en: "Transcript still too short or empty. Wait for Fathom to deliver the full transcript (5-15 min after the meeting).",
+  },
+  "onboarding.wizard.enrich.no_suggestions": {
+    nl: "AI vond geen aanvullingen voor je brief. Skip & ga verder.",
+    en: "AI found no additions for your brief. Skip & continue.",
+  },
+  "onboarding.wizard.enrich.diff.hint": {
+    nl: "Per veld: jouw live ingevoerde tekst + AI's voorstel. Accept of reject per veld.",
+    en: "Per field: your live input + AI's proposal. Accept or reject each.",
+  },
+  "onboarding.wizard.enrich.decided_count": {
+    nl: "{decided} / {total} beslist",
+    en: "{decided} / {total} decided",
+  },
+  "onboarding.wizard.enrich.decide_first": {
+    nl: "Beslis eerst per suggestie of je accept of reject klikt.",
+    en: "Decide per suggestion before continuing — accept or reject each.",
+  },
+  "onboarding.wizard.enrich.save_draft": { nl: "Concept opslaan", en: "Save draft" },
+  "onboarding.wizard.enrich.approve_and_continue": {
+    nl: "Goedkeuren & verder",
+    en: "Approve & continue",
+  },
+  "onboarding.wizard.enrich.skip_and_continue": {
+    nl: "Skip & verder",
+    en: "Skip & continue",
+  },
+  "onboarding.wizard.enrich.am_filled": { nl: "Jouw input (live)", en: "Your input (live)" },
+  "onboarding.wizard.enrich.am_empty": { nl: "(leeg gelaten)", en: "(left empty)" },
+  "onboarding.wizard.enrich.ai_add": { nl: "AI voegt toe", en: "AI adds" },
+  "onboarding.wizard.enrich.ai_replace": { nl: "AI corrigeert", en: "AI corrects" },
+  "onboarding.wizard.enrich.accept": { nl: "Accept", en: "Accept" },
+  "onboarding.wizard.enrich.reject": { nl: "Reject", en: "Reject" },
+  "onboarding.wizard.enrich.mode.add": { nl: "toevoeging", en: "addition" },
+  "onboarding.wizard.enrich.mode.replace": { nl: "correctie", en: "correction" },
   "onboarding.wizard.kickoff.mark_done": { nl: "Stap voltooien", en: "Mark step done" },
   "onboarding.wizard.kickoff.save_and_continue": { nl: "Opslaan & verder", en: "Save & continue" },
 

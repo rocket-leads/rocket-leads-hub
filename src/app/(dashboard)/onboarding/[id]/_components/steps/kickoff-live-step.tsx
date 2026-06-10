@@ -14,6 +14,7 @@ import {
   Send,
   Sparkles,
   CircleDollarSign,
+  Palette,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -71,9 +72,37 @@ const EMPTY_BRIEF: BriefDraft = {
   marketingHooks: "",
 }
 
+/** Brand fingerprint captured from the client's website during kick-off.
+ *  Shape mirrors `/api/pedro/analyze-website` output (minus `qualityVerdict`
+ *  which Pedro recomputes anyway) so the handoff endpoint can return this
+ *  straight into Pedro's `brand_style` slot with no remapping. AM may
+ *  override the picked colors via hex inputs or swatch clicks. */
+type BrandFingerprint = {
+  primaryColor: string
+  secondaryColor: string
+  accentColor?: string
+  headingFont?: string
+  bodyFont?: string
+  logoUrl?: string
+  heroImageUrl?: string
+  taglineHeadline?: string
+  taglineSubline?: string
+}
+
+type ExtractedColor = {
+  hex: string
+  score: number
+  source: string
+  luminance: number
+}
+
 type KickoffContent = {
   autoSetup?: AutoSetupResult
   briefDraft?: BriefDraft
+  brandStyle?: BrandFingerprint
+  /** Top-N scored swatches from the website analyzer — kept around so
+   *  the AM can re-pick after the call without re-running the scrape. */
+  brandSwatches?: ExtractedColor[]
   recapSentAt?: string
 }
 
@@ -148,8 +177,62 @@ export function KickoffLiveStep({
   }))
   const [briefDirty, setBriefDirty] = useState(false)
 
+  // ── Brand fingerprint (captured live; primary/secondary/accent
+  // hexes are AM-editable so the website scrape doesn't lock anyone
+  // in if it mis-picks). ──
+  const [brandStyle, setBrandStyle] = useState<BrandFingerprint | null>(
+    () => content.brandStyle ?? null,
+  )
+  const [brandSwatches, setBrandSwatches] = useState<ExtractedColor[]>(
+    () => content.brandSwatches ?? [],
+  )
+  const [brandDirty, setBrandDirty] = useState(false)
+
+  const updateBrandColor = (
+    field: "primaryColor" | "secondaryColor" | "accentColor",
+    hex: string,
+  ) => {
+    setBrandStyle((b) => {
+      if (!b) {
+        return field === "primaryColor"
+          ? { primaryColor: hex, secondaryColor: "" }
+          : { primaryColor: "", secondaryColor: "", [field]: hex }
+      }
+      return { ...b, [field]: hex }
+    })
+    setBrandDirty(true)
+  }
+
+  const analyzeBrand = useMutation({
+    mutationFn: async () => {
+      const url = briefDraft.websiteUrl.trim()
+      if (!url) throw new Error(t("onboarding.wizard.kickoff.brand.no_url", locale))
+      const res = await fetch(`/api/pedro/analyze-website`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error ?? "Brand analysis failed")
+      }
+      return res.json() as Promise<{
+        brandStyle: BrandFingerprint
+        extractedColors?: ExtractedColor[]
+      }>
+    },
+    onSuccess: (data) => {
+      setBrandStyle(data.brandStyle)
+      setBrandSwatches(data.extractedColors ?? [])
+      setBrandDirty(true)
+    },
+  })
+
+  // Debounced persist for both brief edits AND brand-style edits — same
+  // step content blob, so we batch them through one timer. Reads the
+  // freshest local state each fire because `content` may be stale.
   useEffect(() => {
-    if (!briefDirty) return
+    if (!briefDirty && !brandDirty) return
     const handle = setTimeout(() => {
       void fetch(`/api/clients/${mondayItemId}/onboarding`, {
         method: "PATCH",
@@ -157,13 +240,19 @@ export function KickoffLiveStep({
         body: JSON.stringify({
           stepKey: step.key,
           done: false,
-          content: { ...content, briefDraft },
+          content: {
+            ...content,
+            briefDraft,
+            ...(brandStyle ? { brandStyle } : {}),
+            ...(brandSwatches.length > 0 ? { brandSwatches } : {}),
+          },
         }),
       })
       setBriefDirty(false)
+      setBrandDirty(false)
     }, 3000)
     return () => clearTimeout(handle)
-  }, [briefDirty, briefDraft, content, mondayItemId, step.key])
+  }, [briefDirty, brandDirty, briefDraft, brandStyle, brandSwatches, content, mondayItemId, step.key])
 
   const updateBrief = <K extends keyof BriefDraft>(field: K, value: string) => {
     setBriefDraft((b) => ({ ...b, [field]: value }))
@@ -388,6 +477,20 @@ export function KickoffLiveStep({
           />
         </Field>
       </section>
+
+      {/* Brand identity — pulled from the website URL above. Pedro
+          pre-fills its `brand_style` from this so the CM never has to
+          re-extract colors. Hex codes are AM-editable. */}
+      <BrandIdentitySection
+        websiteUrl={briefDraft.websiteUrl}
+        brandStyle={brandStyle}
+        swatches={brandSwatches}
+        analyzing={analyzeBrand.isPending}
+        error={analyzeBrand.isError ? (analyzeBrand.error instanceof Error ? analyzeBrand.error.message : "Failed") : null}
+        onAnalyze={() => analyzeBrand.mutate()}
+        onUpdateColor={updateBrandColor}
+        locale={locale}
+      />
 
       {/* Footer actions */}
       <div className="flex items-center justify-between gap-3 pt-2 border-t border-border/40">

@@ -24,7 +24,6 @@ export type WizardActionType =
   | "kickoff_live"
   | "transcript_link"
   | "brief_enrichment"
-  | "competitors"
   | "wait_on_client"
   | "handoff"
 
@@ -50,15 +49,19 @@ export type WizardStep = {
 }
 
 /**
- * v3 wizard sequence (2026-06-10 reframe):
+ * v3 wizard sequence (2026-06-10 reframe, scope-split 2026-06-10):
  * The wizard is a LIVE tool the AM uses during the kick-off itself,
  * not a post-kick-off checklist. Stap 1 is the do-everything live
  * screen: auto-setup (Drive + Meta BM URL + Stripe link) already ran
  * before the AM opens it, so they have all the resources to share with
  * the client + Hub-connection pickers to wire Trengo/Stripe/Monday +
- * a brief template to fill live. After the call, Stap 2-3 enrich the
- * brief from the Fathom transcript. Stap 4 scrapes competitor ads.
- * Stap 5 polls client-side completion. Stap 6 hands off to CM.
+ * a brief template to fill live + a website brand-fingerprint snapshot
+ * (colors + fonts editable). After the call, Stap 2-3 enrich the brief
+ * from the Fathom transcript. Stap 4 polls client-side completion.
+ * Stap 5 hands off to CM.
+ *
+ * Competitor research moved to Pedro / CM (2026-06-10) — it's CM craft
+ * work and AM was duplicating brief context, see process.md split.
  */
 export const WIZARD_STEPS: WizardStep[] = [
   {
@@ -92,23 +95,11 @@ export const WIZARD_STEPS: WizardStep[] = [
     critical: false,
   },
   {
-    key: "competitors",
-    labelKey: "onboarding.wizard.step.competitors.label",
-    descriptionKey: "onboarding.wizard.step.competitors.desc",
-    action: "competitors",
-    order: 4,
-    // Brief from Stap 1 is enough input — doesn't need transcript
-    // enrichment first. Lets the AM parallelise enrichment + competitor
-    // scraping when time-pressed.
-    prerequisites: ["kickoff_live"],
-    critical: false,
-  },
-  {
     key: "wait_on_client",
     labelKey: "onboarding.wizard.step.wait_on_client.label",
     descriptionKey: "onboarding.wizard.step.wait_on_client.desc",
     action: "wait_on_client",
-    order: 5,
+    order: 4,
     prerequisites: ["kickoff_live"],
     critical: true,
     // Auto-done once every critical client-side action is detected.
@@ -125,7 +116,7 @@ export const WIZARD_STEPS: WizardStep[] = [
     labelKey: "onboarding.wizard.step.handoff.label",
     descriptionKey: "onboarding.wizard.step.handoff.desc",
     action: "handoff",
-    order: 6,
+    order: 5,
     prerequisites: ["wait_on_client"],
     // Handoff is the consequence of finishing the upstream gates, not
     // itself a gate. Flipping the client to Live is what this step does.
