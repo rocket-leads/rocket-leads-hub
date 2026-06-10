@@ -28,6 +28,7 @@ const SERVICES = [
   { id: "google_drive", label: "Google (Drive + Sheets)", description: "Full service account JSON — used for knowledge folder + targets cost sheet" },
   { id: "slack", label: "Slack", description: "Bot User OAuth Token (starts with xoxb-) from your Slack App" },
   { id: "fathom", label: "Fathom", description: "API key from Fathom → Settings → API Access. Webhook secret goes in FATHOM_WEBHOOK_SECRET env var." },
+  { id: "apify", label: "Apify", description: "Personal API token from apify.com/settings/integrations. Used by onboarding wizard for Meta Ad Library scraping." },
   { id: "heygen", label: "Heygen", description: "API key from Heygen → Settings → API. Used by Pedro's avatar pipeline (provider-pluggable). Optional — leave blank until avatar actuation is wired." },
   { id: "gemini", label: "Google Gemini", description: "API key from aistudio.google.com/apikey. Used by Pedro for image generation (Nano Banana Pro / gemini-3-pro-image)." },
 ]

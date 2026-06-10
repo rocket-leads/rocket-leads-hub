@@ -170,6 +170,31 @@ async function testFathom(token: string): Promise<TestResult> {
   }
 }
 
+async function testApify(token: string): Promise<TestResult> {
+  // /users/me is the cheapest probe — returns the token owner without
+  // consuming compute units. 401 on bad token, 200 on good.
+  try {
+    const res = await fetch("https://api.apify.com/v2/users/me", {
+      headers: { Authorization: `Bearer ${token.trim()}`, Accept: "application/json" },
+    })
+    if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as {
+        data?: { username?: string; plan?: { id?: string } }
+      }
+      const username = data.data?.username ?? "user"
+      const plan = data.data?.plan?.id
+      return {
+        ok: true,
+        message: `Connected to Apify as ${username}${plan ? ` (${plan})` : ""}`,
+      }
+    }
+    const text = await res.text().catch(() => "")
+    return { ok: false, message: `Apify HTTP ${res.status}: ${text.slice(0, 160) || res.statusText}` }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Connection failed" }
+  }
+}
+
 async function testGemini(token: string): Promise<TestResult> {
   // Cheapest validity probe: list models. A 200 means the key exists +
   // the v1beta API is reachable; per-model errors come later at use time.
@@ -231,6 +256,7 @@ export async function POST(req: NextRequest) {
     case "google_drive": result = await testGoogleDrive(token); break
     case "fathom": result = await testFathom(token); break
     case "gemini": result = await testGemini(token); break
+    case "apify": result = await testApify(token); break
     default: return NextResponse.json({ ok: false, message: "Unknown service" })
   }
 
