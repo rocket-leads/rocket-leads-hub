@@ -6,8 +6,6 @@ import {
   type FathomMeeting,
 } from "@/lib/integrations/fathom"
 import { matchSingleMeeting } from "@/lib/meetings/matcher"
-import { ingestMeetingActionItems } from "@/lib/meetings/action-items"
-import { triggerKickoffBriefIfEligible, triggerEvalDigestIfEligible } from "@/lib/pedro/auto-trigger"
 
 export type IngestResult =
   | { ok: true; status: "inserted"; recording_id: string; meeting_type: string; link_status: string; matched?: { clientId: string; strategy: string } }
@@ -123,43 +121,14 @@ export async function ingestFathomMeeting(
     }
   }
 
-  // Phase D.1 — fan action items into the inbox. Runs regardless of whether
-  // the matcher linked the meeting: each action item has its own assignee
-  // resolved from fathom_email mapping, so the task can land on the right
-  // person even if the meeting itself isn't yet attached to a client.
-  // Non-fatal: a failure here shouldn't roll back the meeting insert.
-  try {
-    await ingestMeetingActionItems(supabase, inserted.id)
-  } catch (e) {
-    console.error("Action item ingest failed for meeting", inserted.id, e)
-  }
-
-  // Phase 4 (Pedro) — when this is a freshly-ingested kick-off and the
-  // matcher linked it to a client, fire Pedro's auto-trigger so the CM
-  // walks out of the kick-off meeting with a draft brief already waiting
-  // in their inbox. Best-effort + dedupe internally — a re-ingested
-  // kick-off won't double-fire because the trigger checks for an existing
-  // pedro_client_state row before doing anything.
-  if (meetingType === "kick_off" && matched?.clientId) {
-    try {
-      await triggerKickoffBriefIfEligible(supabase, inserted.id)
-    } catch (e) {
-      console.error("Pedro auto-trigger failed for meeting", inserted.id, e)
-    }
-  }
-
-  // Phase 4 (Pedro) — evaluation meetings get a digest. Pedro reads the
-  // transcript against the existing brief + latest refresh and ONLY
-  // creates an inbox task if Claude marks it actionable. Routine evals
-  // produce nothing — keeps the CM's inbox signal-rich. Dedupe via
-  // inbox_events source_ref so re-ingest is safe.
-  if (meetingType === "evaluation" && matched?.clientId) {
-    try {
-      await triggerEvalDigestIfEligible(supabase, inserted.id)
-    } catch (e) {
-      console.error("Pedro eval-trigger failed for meeting", inserted.id, e)
-    }
-  }
+  // Roy 2026-06-10: no automatic task creation from Fathom meetings.
+  // Previously this hook fanned Fathom action_items into inbox tasks
+  // (host bundle + CM + setter), and on kick_off / evaluation meetings
+  // Pedro auto-created brief + digest tasks. Roy explicitly asked to
+  // remove ALL meeting-driven auto-task creation — the team should
+  // decide whether to act on a meeting, not have tasks materialise
+  // unprompted. The meeting itself still lands in the timeline; the
+  // summary + action_items array stay on the row for reference.
 
   return {
     ok: true,
