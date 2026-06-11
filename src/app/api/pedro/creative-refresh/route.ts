@@ -380,16 +380,29 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
   // Roy 2026-06-11 v2: forbidden fallback. Als de source body écht
   // niet beschikbaar is (lege ad, geen dynamic creative), STOP voordat
   // we Claude bellen. Beter een duidelijke 422 dan Pedro die uit
-  // briefing gaat raden en compleet andere angles produceert. Roy
-  // 2026-06-11: "[Primary copy niet beschikbaar - afleiden uit briefing]"
-  // was de fallback die we WILLEN voorkomen.
+  // briefing gaat raden en compleet andere angles produceert.
+  // Roy 2026-06-12: drempel verlaagd van 80 → 20 chars en assetFeedSummary
+  // telt mee voor dynamic creatives. Was te streng - veel legitime
+  // dynamic ads sneuvelden hierop terwijl de bodies WEL beschikbaar
+  // waren via asset_feed_spec. Plus extra diagnostic logging zodat we
+  // kunnen zien WAT Pedro daadwerkelijk ontvangt.
   const sourceBodyLength = (picked.body ?? "").replace(/\s+/g, "").length
   const sourceTitleLength = (picked.title ?? "").replace(/\s+/g, "").length
-  if (sourceBodyLength + sourceTitleLength < 80) {
+  const sourceDescLength = (picked.description ?? "").replace(/\s+/g, "").length
+  const assetFeedLength = (picked.assetFeedSummary ?? "").replace(/\s+/g, "").length
+  const totalSourceLength =
+    sourceBodyLength + sourceTitleLength + sourceDescLength + assetFeedLength
+  console.log(
+    `[creative-refresh] source ad "${picked.adName}" (${picked.adId}) text lengths: body=${sourceBodyLength}, title=${sourceTitleLength}, desc=${sourceDescLength}, assetFeed=${assetFeedLength}, total=${totalSourceLength}, creativeType=${picked.creativeType}`,
+  )
+  if (totalSourceLength < 20) {
+    console.error(
+      `[creative-refresh] REJECT: source ad has no usable text. adId=${picked.adId} adName="${picked.adName}" body="${picked.body?.slice(0, 100)}" title="${picked.title?.slice(0, 100)}"`,
+    )
     return NextResponse.json(
       {
         error:
-          "De gekozen ad heeft geen leesbare primary copy of headline in Meta. Pedro kan niet itereren zonder source tekst. Kies een andere ad, of upload eerst een screenshot zodat de tekst zichtbaar is.",
+          "De gekozen ad heeft geen leesbare tekst in Meta (lege body + lege title + lege description). Mogelijke oorzaken: lege placeholder-ad, video-only zonder copy, of een Meta API access issue. Kies een andere ad.",
         errorCode: "no_source_copy",
       },
       { status: 422 },

@@ -8,8 +8,6 @@ import {
   createAdSet,
   createAdCreative,
   createAd,
-  stripInterestTargeting,
-  stripPlacementConstraints,
 } from "@/lib/integrations/meta-write"
 import {
   fetchMetaAdDetails,
@@ -372,10 +370,12 @@ export async function POST(
   }
   void usedCampaignFallback // tracked via fallbackInfo
 
-  // Ad set name - CM-supplied override wins. Default follows Roy's
-  // 2026-06-10 NT convention: `NT | {{angle}}`. Falls back to legacy
-  // "LF | Open targeting | DD/MM" only when neither override nor angle
-  // is available (e.g. older refreshes with no preserve.angle).
+  // Ad set name - CM-supplied override wins. Default: true Meta-style
+  // duplicate of the winner's ad set name with " - Copy" suffix.
+  // Roy 2026-06-12: stapte af van de NT-naming + interest strips. De
+  // winning ad set is winning vanwege ZIJN targeting; we duplicaten 'm
+  // 1:1 zodat nieuwe ads dezelfde audience reach krijgen ipv vanaf nul
+  // te moeten leren op Advantage+.
   const sanitizeAdsetName = (s: string): string =>
     s.replace(/\s+/g, " ").trim().slice(0, 200)
 
@@ -383,23 +383,21 @@ export async function POST(
   let newAdsetName: string
   if (overrideAdsetName) {
     newAdsetName = overrideAdsetName
+  } else if (winnerLive.adsetName) {
+    newAdsetName = `${winnerLive.adsetName} - Copy`.slice(0, 200)
   } else if (proposalAngle) {
-    newAdsetName = `NT | ${proposalAngle}`.slice(0, 200)
+    newAdsetName = `${proposalAngle} - Copy`.slice(0, 200)
   } else {
     const today = new Date()
     const dd = String(today.getDate()).padStart(2, "0")
     const mm = String(today.getMonth() + 1).padStart(2, "0")
-    newAdsetName = `NT | Open targeting | ${dd}/${mm}`
+    newAdsetName = `Pedro iteratie - ${dd}/${mm}`
   }
 
-  // Strip ALL interest-based targeting from the cloned template per
-  // Roy 2026-06-10. Geo/age/gender/locale stay; interests, behaviors,
-  // custom audiences, demographics get wiped. THEN strip placement
-  // constraints so Meta defaults to Advantage+ placements (let the
-  // algorithm pick FB feed / IG feed / Reels / Stories etc.).
-  const strippedTargeting = stripPlacementConstraints(
-    stripInterestTargeting(adsetTemplate.targeting),
-  )
+  // Roy 2026-06-12: targeting NIET meer strippen. De winning ad set is
+  // winning vanwege deze targeting - die behouden we 1:1 in de duplicate
+  // zodat we niet vanaf nul moeten leren op Advantage+. Eerdere NT-flow
+  // (stripInterestTargeting + stripPlacementConstraints) is verwijderd.
 
   // Budget override - CM types daily budget in EUR; Meta wants cents.
   // When omitted, fall back to the winner's daily budget (existing
@@ -414,7 +412,6 @@ export async function POST(
   // budget we ALSO drop lifetime_budget (Meta rejects both at once).
   const launchTemplate = {
     ...adsetTemplate,
-    targeting: strippedTargeting,
     ...(overrideDailyBudget
       ? { dailyBudget: overrideDailyBudget, lifetimeBudget: null }
       : {}),
