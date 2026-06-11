@@ -4,6 +4,11 @@ import { analyzeWebsiteQuality } from "@/lib/pedro/website-quality";
 import { extractBrandColorsFromImages } from "@/lib/pedro/brand-vision";
 import { extractHomepageImages } from "@/lib/pedro/website-images";
 
+// Roy 2026-06-11: vision palette + quality verdict run in parallel - two
+// Haiku vision calls + multiple image fetches push wall-clock to 6-10s
+// when both succeed. Vercel default of 10s would race; bump to 30s.
+export const maxDuration = 30;
+
 // ── Color utilities ──
 
 function hexToRgb(hex: string): [number, number, number] | null {
@@ -101,6 +106,33 @@ function scoreColorsFromHTML(html: string): ScoredColor[] {
       if (!existing.source.includes(source)) existing.source += ", " + source;
     } else {
       scored.set(hex, { hex, score: points, source, luminance: lum });
+    }
+  }
+
+  // Priority 0 (Roy 2026-06-11): inline SVG logo. Modern sites typically
+  // embed their brand mark as an inline `<svg>` somewhere in the first
+  // ~6000 bytes of HTML (header / nav). Every `fill="#xxx"` /
+  // `stroke="#xxx"` inside that early SVG block is a much stronger brand
+  // signal than CTA scoring, because it's literally the rendered logo
+  // color. Scope to the document head + early body to avoid picking up
+  // colors from inline product/decoration SVGs lower down.
+  const earlyHtml = html.slice(0, 8000)
+  const svgBlocks = Array.from(earlyHtml.matchAll(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi))
+  for (const svgBlock of svgBlocks) {
+    const svg = svgBlock[0]
+    const fillStrokeRegex = /\b(?:fill|stroke)\s*=\s*["']([^"']+)["']/gi
+    for (const fs of Array.from(svg.matchAll(fillStrokeRegex))) {
+      const value = fs[1].trim()
+      if (value === "none" || value === "currentColor" || value === "transparent") continue
+      const colors = extractColors(value)
+      for (const c of colors) addScore(c, 90, "svg_logo")
+    }
+    // Also handle <stop stop-color="..."> in gradient definitions which
+    // are common in brand-mark SVGs.
+    const stopRegex = /\bstop-color\s*=\s*["']([^"']+)["']/gi
+    for (const st of Array.from(svg.matchAll(stopRegex))) {
+      const colors = extractColors(st[1].trim())
+      for (const c of colors) addScore(c, 90, "svg_logo")
     }
   }
 
@@ -332,42 +364,70 @@ function tagAttr(attrString: string, name: string): string | null {
 }
 
 /**
- * Logo URL with a 3-tier fallback. Each tier picks the first hit so the
- * order encodes priority: explicit og:image > apple-touch-icon > favicon
- * > "logo"-named header img. og:image first because that's what most
- * brand-aware sites set as the canonical share-able representation.
+ * Logo URL detector. Priority order (Roy 2026-06-11 - swapped from the
+ * old og:image-first pattern):
+ *
+ *   1. <img> with "logo" in src/class/alt/id (actual brand mark)
+ *   2. apple-touch-icon (always a square, brand-mark-shaped)
+ *   3. favicon
+ *   4. og:image (LAST RESORT)
+ *
+ * Why the swap: og:image is what sites set for social-share cards,
+ * which is OFTEN a hero photograph of the team, office, or product,
+ * NOT the logo. Vision then "sees" the photo and reports skin tones
+ * / sky / plants as brand colors. For TMM Technology: og:image is the
+ * meeting-room hero shot, primary returns as #ee9b00 (skin) and
+ * secondary as #003388 (denim shirt), neither of which is the actual
+ * teal brand color.
+ *
+ * Within tier 1 we also filter URLs that look like content shots
+ * (paths matching /header-/, /hero-/, /team-/, /photo-/, etc.) just
+ * in case a stray `<img class="logo">` slips through with a
+ * misleading class name.
  */
+const CONTENT_PHOTO_PATH_RE = /\/(header|hero|team|photo|foto|banner|cover|portrait|headshot|shoot)/i
+
 function extractLogoUrl(html: string, baseUrl: string): string | null {
-  // og:image
-  const og = html.match(/<meta[^>]+property\s*=\s*["']og:image["'][^>]*>/i)
-  if (og) {
-    const href = tagAttr(og[0], "content")
+  // 1. <img> tagged as a logo. Prefer explicit "logo" in class / alt / id
+  //    over a stray match in src - same regex used to be the lowest tier;
+  //    promoted here because it's the most reliable signal.
+  const imgRegex = /<img[^>]*>/gi
+  for (const m of Array.from(html.matchAll(imgRegex))) {
+    const tag = m[0]
+    // Look for "logo" only in the structural attributes, not the src
+    // path - that lets us skip /header-photo-with-logo.jpg style traps.
+    const cls = tagAttr(tag, "class") ?? ""
+    const alt = tagAttr(tag, "alt") ?? ""
+    const id = tagAttr(tag, "id") ?? ""
+    const looksLikeLogo = /\blogo\b/i.test(`${cls} ${alt} ${id}`)
+    if (!looksLikeLogo) continue
+    const href = tagAttr(tag, "src") ?? tagAttr(tag, "data-src")
     const abs = absolutizeUrl(href, baseUrl)
-    if (abs) return abs
+    if (!abs) continue
+    if (CONTENT_PHOTO_PATH_RE.test(abs)) continue
+    return abs
   }
-  // apple-touch-icon (always a square, often the brand mark)
+  // 2. apple-touch-icon - always square, usually the brand mark.
   const apple = html.match(/<link[^>]+rel\s*=\s*["']apple-touch-icon[^"']*["'][^>]*>/i)
   if (apple) {
     const href = tagAttr(apple[0], "href")
     const abs = absolutizeUrl(href, baseUrl)
     if (abs) return abs
   }
-  // favicon
+  // 3. favicon - lower-res but still the brand mark.
   const fav = html.match(/<link[^>]+rel\s*=\s*["'](?:icon|shortcut icon)["'][^>]*>/i)
   if (fav) {
     const href = tagAttr(fav[0], "href")
     const abs = absolutizeUrl(href, baseUrl)
     if (abs) return abs
   }
-  // <img> in header/nav with "logo" anywhere on the tag (class/alt/id)
-  const imgRegex = /<img[^>]*>/gi
-  for (const m of Array.from(html.matchAll(imgRegex))) {
-    const tag = m[0]
-    if (/\blogo\b/i.test(tag)) {
-      const href = tagAttr(tag, "src") ?? tagAttr(tag, "data-src")
-      const abs = absolutizeUrl(href, baseUrl)
-      if (abs) return abs
-    }
+  // 4. og:image - last resort. Skip when path looks like a content
+  //    photograph (hero/header/team/etc.) - those poison the vision call.
+  const og = html.match(/<meta[^>]+property\s*=\s*["']og:image["'][^>]*>/i)
+  if (og) {
+    const href = tagAttr(og[0], "content")
+    const abs = absolutizeUrl(href, baseUrl)
+    if (abs && !CONTENT_PHOTO_PATH_RE.test(abs)) return abs
   }
   return null
 }
@@ -512,26 +572,30 @@ export async function POST(req: NextRequest) {
     // Vision-based brand color extraction (Roy 2026-06-11). Regex-based
     // CSS scoring routinely picks the wrong color on modern utility-CSS
     // sites where the real brand color sits in an SVG fill or image
-    // overlay. Vision on the logo (+ optional hero) returns the
-    // canonical palette directly and overrides CSS scoring when it
-    // succeeds. We fire it in parallel with the quality verdict so it
-    // adds negligible wall-clock time.
-    const visionPalettePromise =
-      logoUrl || heroImageUrl
-        ? extractBrandColorsFromImages({
-            websiteUrl: fetchUrl,
-            imageUrls: [
-              ...(logoUrl ? [{ url: logoUrl, tier: "logo" as const }] : []),
-              ...(heroImageUrl ? [{ url: heroImageUrl, tier: "hero" as const }] : []),
-            ],
-          }).catch((e) => {
-            console.error(
-              "[analyze-website] vision palette failed (continuing without):",
-              e instanceof Error ? e.message : e,
-            )
-            return null
-          })
-        : Promise.resolve(null)
+    // overlay. Vision on the LOGO returns the canonical palette directly
+    // and overrides CSS scoring when it succeeds.
+    //
+    // Gating: ONLY runs when we have a real logo URL. We deliberately
+    // do not pass the hero photo alone - hero photos give us skin /
+    // sky / plant colors as "primary brand", which is exactly the bug
+    // that Roy hit on TMM Technology where og:image was a meeting-room
+    // photo. The hero IS attached as a secondary reference when a logo
+    // is present, so vision can corroborate, but never alone.
+    const visionPalettePromise = logoUrl
+      ? extractBrandColorsFromImages({
+          websiteUrl: fetchUrl,
+          imageUrls: [
+            { url: logoUrl, tier: "logo" as const },
+            ...(heroImageUrl ? [{ url: heroImageUrl, tier: "hero" as const }] : []),
+          ],
+        }).catch((e) => {
+          console.error(
+            "[analyze-website] vision palette failed (continuing without):",
+            e instanceof Error ? e.message : e,
+          )
+          return null
+        })
+      : Promise.resolve(null)
 
     // Run the Haiku quality gate in parallel with the color/font pick
     // below. ~2-4s vision call; we await right before building the
