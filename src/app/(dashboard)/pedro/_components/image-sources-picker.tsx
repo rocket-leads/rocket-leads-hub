@@ -38,6 +38,10 @@ type FolderRow = {
   hasSubfolders: boolean
   hasImages: boolean
   enabled: boolean
+  /** True voor de klant-root. Picker rendert dit als een speciale
+   *  "Hoofdmap" rij zodat de CM de losse files in de root ook kan
+   *  toggle'n. Roy 2026-06-11. */
+  isRoot?: boolean
 }
 
 type SourcePrefs = {
@@ -360,28 +364,45 @@ export function ImageSourcesPicker({ clientId }: Props) {
               )}
               {data.folders.length === 0 ? (
                 <div className="px-2 py-3 text-xs text-muted-foreground">
-                  Geen subfolders gevonden onder de root.
+                  Geen folders met images gevonden onder de root.
                 </div>
               ) : (
                 <ul className="space-y-0.5 max-h-72 overflow-y-auto">
-                  {data.folders.map((f) => {
+                  {[...data.folders]
+                    .sort((a, b) => {
+                      // Root always first, then by depth, then path
+                      // (alphabetical within a depth level).
+                      if (a.isRoot && !b.isRoot) return -1
+                      if (!a.isRoot && b.isRoot) return 1
+                      if (a.depth !== b.depth) return a.depth - b.depth
+                      return a.path.localeCompare(b.path)
+                    })
+                    .map((f) => {
                     const saving = savingIds.has(f.id)
-                    // Roy 2026-06-10: descendant-lock. Wanneer een
-                    // ancestor uit staat, is deze subfolder effectief
-                    // ook uit (BFS skipt de subtree). UI laat zien dat
-                    // de toggle door de parent gestuurd wordt.
-                    const ancestorOff = data.folders.some(
+                    // Root never has an "ancestor off" state - it's the
+                    // top of the tree. Subfolders inherit only from
+                    // depth>0 parents (which never includes root in the
+                    // cascade because root's path is "" and the prefix
+                    // " / " never matches anything).
+                    const ancestorOff = !f.isRoot && data.folders.some(
                       (other) =>
                         other.depth < f.depth &&
+                        other.depth > 0 &&
                         !other.enabled &&
                         f.path.startsWith(other.path + " / "),
                     )
                     const effectivelyOff = !f.enabled || ancestorOff
+                    const paddingLeft = f.isRoot
+                      ? "0.5rem"
+                      : `${0.5 + (f.depth - 1) * 0.75}rem`
                     return (
                       <li
                         key={f.id}
-                        className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-accent/40"
-                        style={{ paddingLeft: `${0.5 + (f.depth - 1) * 0.75}rem` }}
+                        className={cn(
+                          "flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-accent/40",
+                          f.isRoot && "bg-sky-500/5 border border-sky-500/20",
+                        )}
+                        style={{ paddingLeft }}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           {!effectivelyOff ? (
@@ -395,11 +416,20 @@ export function ImageSourcesPicker({ clientId }: Props) {
                               effectivelyOff
                                 ? "text-muted-foreground/60 line-through"
                                 : "text-foreground",
+                              f.isRoot && "font-semibold",
                             )}
-                            title={f.path || f.name}
+                            title={f.isRoot ? `${f.name} (klantfolder root)` : (f.path || f.name)}
                           >
                             {f.name}
                           </span>
+                          {f.isRoot && (
+                            <span
+                              className="text-[9px] uppercase tracking-wider text-sky-700 dark:text-sky-400 font-semibold px-1.5 rounded bg-sky-500/10 shrink-0"
+                              title="Losse files direct in de klant-folder root"
+                            >
+                              Hoofdmap
+                            </span>
+                          )}
                           {f.hasImages && (
                             <span className="text-[9px] text-emerald-700/70 dark:text-emerald-400/70 font-medium px-1 rounded bg-emerald-500/10 shrink-0">
                               📷

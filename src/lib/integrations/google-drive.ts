@@ -293,6 +293,11 @@ export type DriveFolderNode = {
    *  container-folders zonder eigen foto's worden nog steeds getoond
    *  zodat de CM hun subtree kan toggelen. */
   hasImages: boolean
+  /** True voor de root folder zelf (depth 0). Roy 2026-06-11: veel
+   *  klanten dumpen foto's los in de root, niet in subfolders. De
+   *  picker moet root ook tonen + tog-bel maken, anders zijn die
+   *  files onzichtbaar. */
+  isRoot?: boolean
 }
 
 /** Lightweight in-memory cache for listFolderTree results, keyed by
@@ -419,12 +424,28 @@ export async function listFolderTree(
     }
   }
 
+  // Resolve the root folder's display name so the picker can show e.g.
+  // "TMM Technology" instead of a placeholder when root has loose images.
+  // Roy 2026-06-11. Best-effort - fall back to "Hoofdmap" on failure.
+  let rootDisplayName = "Hoofdmap"
+  try {
+    const meta = await drive.files.get({
+      fileId: id,
+      fields: "name",
+      supportsAllDrives: true,
+    })
+    const fetched = (meta.data.name ?? "").trim()
+    if (fetched) rootDisplayName = fetched
+  } catch {
+    /* keep fallback */
+  }
+
   // Per-level parallel BFS. All folders at depth N are probed in
   // parallel (cap = 12 concurrent so we don't hit Drive rate limits),
   // then their children become the next level.
   const visited = new Set<string>([id])
   const results: DriveFolderNode[] = []
-  let level: Entry[] = [{ id, name: "(root)", path: "", depth: 0 }]
+  let level: Entry[] = [{ id, name: rootDisplayName, path: "", depth: 0 }]
   const CONCURRENCY = 12
 
   while (level.length > 0 && results.length < maxFolders) {
@@ -443,11 +464,30 @@ export async function listFolderTree(
       }
     }
 
-    // Emit results + collect next level. Skip root from results.
+    // Emit results + collect next level. Root is included with
+    // isRoot=true zodat de picker 'm ook kan tonen + togglen. Roy
+    // 2026-06-11: veel klanten zetten foto's direct in de root, niet
+    // in subfolders. Without the root entry, those files are scanned
+    // but invisible to the CM.
     const nextLevel: Entry[] = []
     for (const p of probes) {
       if (results.length >= maxFolders) break
-      if (p.entry.depth > 0) {
+      if (p.entry.depth === 0) {
+        // Root - emit only when it has direct images of its own. A pure
+        // container root (only subfolders) doesn't need a toggle row.
+        if (p.hasImages) {
+          results.push({
+            id: p.entry.id,
+            name: p.entry.name,
+            path: p.entry.path,
+            depth: 0,
+            modifiedTime: null,
+            hasSubfolders: p.subfolders.length > 0,
+            hasImages: p.hasImages,
+            isRoot: true,
+          })
+        }
+      } else {
         results.push({
           id: p.entry.id,
           name: p.entry.name,
@@ -744,6 +784,11 @@ export async function getFolderImages(
             folderScore: current.folderScore + childScore,
           })
         } else if (f.modifiedTime) {
+          // Roy 2026-06-11: the picker now also exposes the root folder
+          // as a togglable entry. When the CM denies the root, we must
+          // skip its DIRECT files but still descend into subfolders.
+          // Subfolder denial is handled separately at the dequeue step.
+          if (deniedFolderIds.has(current.id)) continue
           const size = typeof f.size === "string" ? parseInt(f.size, 10) : 0
           allImages.push({
             id: f.id,
