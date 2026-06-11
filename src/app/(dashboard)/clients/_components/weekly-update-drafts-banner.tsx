@@ -97,10 +97,14 @@ export function WeeklyUpdatesChip() {
         className="inline-flex items-center gap-1.5 h-10 rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-foreground hover:bg-muted/40 hover:text-foreground transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
       >
         {/* Calendar icon + neutral chrome (Roy 2026-06-11): Sparkles +
-            violet read as "AI thing" alongside the AI Co-pilot bar /
-            Bell. Calendar + neutral surfaces this as a scheduled
-            deliverable; AI Bell carries the brand purple instead. */}
-        <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+            violet read as "AI thing" alongside the AI Co-pilot bar.
+            Calendar + neutral surfaces this as a scheduled deliverable;
+            AI Co-pilot carries the brand purple instead.
+            strokeWidth=1.5 thins the glyph so it visually matches the
+            Bell + Search icons next to it (CalendarDays has more
+            interior strokes than Bell, so it reads heavier at the
+            default 2.0). */}
+        <CalendarDays className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
         <span className="tabular-nums">{count}</span>
       </button>
       {sheetOpen && (
