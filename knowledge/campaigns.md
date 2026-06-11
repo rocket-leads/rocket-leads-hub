@@ -573,6 +573,52 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 **Wat NIET in deze sectie zit:** preferenties die per klant verschillen (logo-grootte, fontkeuze, stock-fotos ja/nee). Die horen in `brand_style` + `pedro_creative_feedback` per klant. Bovenstaande regels gelden voor ALLE klanten zonder uitzondering.
 
+### 7. Visual Reference Library (per 2026-06-11)
+
+> Roy 2026-06-11. Tekstuele kwaliteitsregels alleen leveren generieke output - Gemini ankert veel sterker op visuele referenties dan op prescriptief proza. Pedro injecteert daarom per image-generatie 2-3 referenties uit een Drive map met winning ad creatives. Dit tilt de visuele kwaliteit substantieel: composition, lighting, mood, typografie krijgen een echte anker in plaats van te leunen op "use bold typography, high contrast" type instructies die per definitie ambigu zijn.
+
+**Folder structuur — `AD CREATIVES INSPIRATION/`** (in `RL Clients` Drive):
+
+| Subfolder | Wat | Wanneer aan |
+|---|---|---|
+| `Client content/` | Pure klant-foto's. Top tier - meest authentiek, hoogste perceived quality. | Default aan |
+| `Client content + AI/` | Klant-foto's met AI-polish (composition, lighting, retouching). Default landing voor CM-uploads. Top tier. | Default aan |
+| `AI Content/` | Volledig AI-gegenereerd. Goede toevoeging bovenop client content - lichte AI-touch tilt vaak de eindcompositie. | Default aan |
+| `AI Animation/` | AI video/motion. Voor video refresh - nu beperkt gebruikt, klaarliggend voor wanneer Pedro video gaat genereren. | Default aan |
+| `Stock content/` | Stock fallback. Alleen wanneer expliciet gekozen door CM - in lijn met process.md roadblock #2: stock is altijd de laatste optie. | Default UIT |
+
+**Selectie per klant** (CM-controlled):
+- Per klant kan een Campaign Manager via een chip-rij op de Pedro Creative Refresh tab aanvinken welke subfolders meedoen.
+- Default: alle 4 aan behalve Stock. Sommige klanten willen alleen pure client content (geen AI variatie), andere willen juist meer AI lift - dat is per-klant overrideable.
+- Wijziging slaat instant op (per-client persistence in `pedro_inspiration_prefs`).
+
+**Selectie algoritme tijdens generatie**:
+- Pedro pakt 2-3 referenties random uit de aangevinkte mappen.
+- Lichte bias: Client content / Client + AI krijgen ~2× zoveel selectie-gewicht als AI Content / AI Animation - authentieker = vaker doorgegeven aan Gemini.
+- Tenminste 1 referentie uit AI Content of AI Animation komt mee wanneer aangevinkt - die geven stylistische lift.
+- Wanneer geen enkele subfolder is aangevinkt: skip de visual library (geen blokker, refresh werkt zonder).
+
+**Gemini prompt-instructie** (hardcoded suffix bij elke generation met refs):
+```
+You will see N reference images attached. Use these ONLY as a
+composition + lighting + mood + typography reference - DO NOT copy
+specific text, layouts, subjects, or product elements. The goal is
+to match the visual quality bar, not the content.
+```
+
+**Auto-promote feedback loop**:
+- Wanneer een variant succesvol naar Meta gepushed wordt (push-to-Meta success), wordt het beeld automatisch gekopieerd naar `Client content + AI/` als default landing zone. Naam: `{client}-{angle}-{YYYY-MM-DD}.jpg`.
+- CM kan optioneel een andere bestemmingsmap kiezen op upload-moment via een dropdown naast de upload-knop ("Add to inspiration: [folder ▼]"). Default = Client content + AI.
+- Optie "Don't add" voor edge cases (placeholder, test, fix-upload).
+- Later (Phase 2): cron checkt na 14d of de Meta-ad onder account-avg CPL is gebleven - zo niet, archiveer de ref uit de library (verplaatst naar een `archive/` map) om vergiftiging te voorkomen.
+
+**Implementatie locatie**:
+- Drive folder ID configureerbaar in Settings → Pedro tab.
+- Library reader cached subfolder listings (1u TTL) in `src/lib/pedro/visual-reference-library.ts`.
+- Per-client selectie-prefs in `pedro_inspiration_prefs` Supabase tabel.
+- Hook in `/api/pedro/variants/[id]/generate-image` voegt refs toe aan Gemini-call als inline images.
+- Hook in `/api/pedro/proposals/[refreshId]/[proposalIndex]/push-to-meta` doet auto-promote bij success.
+
 ---
 
 ## Volledige Video Scripts - RL 3.0 Campagnes
