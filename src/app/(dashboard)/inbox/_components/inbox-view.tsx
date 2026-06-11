@@ -34,6 +34,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary"
 import { cn } from "@/lib/utils"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
+import { SegmentedTabs } from "@/components/ui/segmented-tabs"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { InboxListRow, type RowAction } from "./inbox-list-row"
 import { ComposerDialog } from "./composer-dialog"
@@ -169,6 +170,15 @@ export function InboxView({
   // else is sticky so a reload doesn't blow away the filter context the AM
   // was working from.
   const [activeTab, setActiveTab] = useState<MainTab>(lockedClient ? "tasks" : "now")
+  // Global inbox scope tabs (AM / admin only). CM users get a single
+  // unscoped view (split) since they only ever see their own assigned
+  // items. Roy 2026-06-11 round 2: AM = links Intern (Taken+Updates
+  // split), rechts Klanten (= oude Client Inbox / Trengo ChatPane).
+  // Default "intern" so the AM lands on Tasks/Updates on first visit.
+  const [globalScope, setGlobalScope] = usePersistedState<"klanten" | "intern">(
+    "inbox.globalScope.v2",
+    "intern",
+  )
   const [assignedToMe, setAssignedToMe] = usePersistedState(
     "inbox.assignedToMe",
     true,
@@ -478,6 +488,14 @@ export function InboxView({
     [queryFilteredUpdates, updateSourceFilter],
   )
 
+  // The Intern tab + CM single-view both show every task/update the
+  // user has visibility on. Roy 2026-06-11 round 2 walked back the
+  // clientId scope filter - "Intern" means tasks + updates regardless
+  // of client linkage, since the Klanten tab is the Trengo Client
+  // Inbox chat view and not a parallel task/update list.
+  const scopedTasks = tasks
+  const scopedUpdates = updates
+
   // Flat ordered list of items as they appear on screen - used by keyboard
   // navigation (j/k) so Down/Up moves through Overdue → Today → Upcoming
   // (or Today → Yesterday → This week → Older for updates) the same way the
@@ -649,6 +667,10 @@ export function InboxView({
   // Defaults to true (= treat as non-CM) while the badge query resolves,
   // so the layout doesn't flicker between the two states on every reload.
   const showClientInboxTab = tabBadge?.showClientInbox ?? true
+  // Pure-CM signal: the badge endpoint returns showClientInbox=false ONLY
+  // for users mapped exclusively as campaign_manager. Used to render the
+  // simpler 1-view global inbox for CMs (Roy 2026-06-11).
+  const isPureCm = tabBadge?.showClientInbox === false
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
         { id: "tasks", label: t("inbox.tab.tasks", locale), icon: ListTodo, count: tasks.length, accent: "violet" as const },
@@ -890,37 +912,187 @@ export function InboxView({
         }
       />
 
-      <TopTabs<MainTab> tabs={mainTabs} value={activeTab} onChange={setActiveTab} />
+      {/* Locked-client (per-client) inbox keeps the multi-tab structure
+          - Tasks / Updates / Klanten Inbox / Meetings are all useful when
+          drilled into one client. */}
+      {lockedClient && (
+        <TopTabs<MainTab> tabs={mainTabs} value={activeTab} onChange={setActiveTab} />
+      )}
 
-      {/* Shared full-width search input - Roy 2026-06-09: lives DIRECTLY
-          UNDER the sub-filter strip on every tab so the chip strip and
-          search field read as one unit. Rendered as a JSX variable below
-          inside each tab block. The Meetings sub-tab is the one exception
-          (it has its own search inside MeetingsTab). */}
+      {/* Global inbox: 2-column split (Taken / Updates). AM + admin get a
+          scope strip on top to flip between Klanten (client-linked) and
+          Intern (no client). CMs go straight into the unscoped split since
+          they only ever see items assigned to them. Roy 2026-06-11:
+          "veel te gecompliceerd". */}
+      {!lockedClient && !isPureCm && (
+        <SegmentedTabs<"klanten" | "intern">
+          items={[
+            { id: "intern", label: t("inbox.scope.intern", locale) },
+            { id: "klanten", label: t("inbox.scope.klanten", locale) },
+          ]}
+          value={globalScope}
+          onChange={setGlobalScope}
+        />
+      )}
 
       <div className="space-y-4">
-        {activeTab === "now" && !lockedClient && (
+        {/* Intern tab (AM/admin) + CM single-view both render the 2-column
+            Taken / Updates split. Klanten tab (AM/admin only) renders the
+            old Trengo Client Inbox below. */}
+        {!lockedClient && (isPureCm || globalScope === "intern") && (
           <>
-          {searchBar}
-          <NowFeed
-            currentUserId={currentUser.id}
-            users={users}
-            summary={{
-              tasks: tabBadge?.openTasks ?? 0,
-              updates: tabBadge?.unreadUpdates ?? 0,
-              chats: tabBadge?.unreadChats ?? 0,
-            }}
-            searchQuery={searchQuery}
-            onJumpToTab={(tab) => setActiveTab(tab)}
-            onOpenItem={openDetailItem}
-            // Chat click opens the thread in the page-level slide-in aside
-            // - same UX as Tasks/Updates. No tab switch, no layout shake.
-            onOpenThread={openThread}
-          />
+            {searchBar}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              {/* Taken column */}
+              <div className="space-y-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h2 className="text-sm font-semibold tracking-tight">{t("inbox.split.tasks", locale)}</h2>
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground/40 tabular-nums">
+                    {scopedTasks.length}
+                  </span>
+                </div>
+                <TopTabs<TaskFilter>
+                  tabs={TASK_FILTERS}
+                  value={taskFilter}
+                  onChange={setTaskFilter}
+                />
+                <QuickAddTaskBar
+                  clients={clients}
+                  users={users}
+                  lockedClient={lockedClient}
+                  currentUserId={currentUser.id}
+                  onCreated={refreshAll}
+                />
+                {tasksQuery.isLoading ? (
+                  <EmptyState text={t("inbox.empty.tasks_loading", locale)} />
+                ) : scopedTasks.length === 0 ? (
+                  <EmptyState
+                    text={t("inbox.empty.tasks_none", locale)}
+                    onCreate={() => openComposer("task")}
+                  />
+                ) : (
+                  <GroupedTasks
+                    tasks={scopedTasks}
+                    showClient={true}
+                    users={users}
+                    focusedItemId={focusedItemId}
+                    onBulkDelete={(ids) => { for (const id of ids) deleteItem(id) }}
+                    onItemClick={openDetailItem}
+                    onAction={(item, action) => {
+                      if (action === "done") {
+                        patchItem(item.id, { status: "done" }, { mode: "remove" })
+                      } else if (action === "delete") {
+                        deleteItem(item.id)
+                      } else if (action === "reopen") {
+                        patchItem(item.id, { status: "open" }, { mode: "mutate", optimisticPatch: { status: "open" } })
+                      } else if (action === "unsnooze") {
+                        patchItem(item.id, { snoozedUntil: null }, { mode: "mutate", optimisticPatch: { snoozedUntil: null } })
+                      } else if (typeof action === "object" && action.type === "snooze") {
+                        patchItem(item.id, { snoozedUntil: action.until }, { mode: "remove" })
+                      } else if (typeof action === "object" && action.type === "reassign") {
+                        const leavingMyView = assignedToMe && action.assigneeId !== currentUser.id
+                        if (leavingMyView) {
+                          patchItem(item.id, { assigneeId: action.assigneeId }, { mode: "remove" })
+                        } else {
+                          const u = users.find((x) => x.id === action.assigneeId)
+                          patchItem(item.id, { assigneeId: action.assigneeId }, {
+                            mode: "mutate",
+                            optimisticPatch: {
+                              assigneeId: action.assigneeId,
+                              assigneeName: u?.name ?? u?.email ?? item.assigneeName,
+                            },
+                          })
+                        }
+                      } else if (typeof action === "object" && action.type === "rename") {
+                        patchItem(item.id, { title: action.title }, { mode: "mutate", optimisticPatch: { title: action.title } })
+                      }
+                    }}
+                  />
+                )}
+              </div>
+              {/* Updates column */}
+              <div className="space-y-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h2 className="text-sm font-semibold tracking-tight">{t("inbox.split.updates", locale)}</h2>
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground/40 tabular-nums">
+                    {scopedUpdates.length}
+                  </span>
+                </div>
+                <TopTabs<UpdateFilter>
+                  tabs={UPDATE_FILTERS}
+                  value={updateFilter}
+                  onChange={setUpdateFilter}
+                />
+                <MarkAllReadBanner
+                  updates={scopedUpdates}
+                  onMarkAll={(ids) => {
+                    for (const id of ids) {
+                      patchItem(id, { status: "read" }, { mode: "mutate", optimisticPatch: { status: "read" } })
+                    }
+                  }}
+                />
+                <QuickAddUpdateBar
+                  clients={clients}
+                  users={users}
+                  lockedClient={lockedClient}
+                  currentUserId={currentUser.id}
+                  onCreated={refreshAll}
+                />
+                {updatesQuery.isLoading ? (
+                  <EmptyState text={t("inbox.empty.updates_loading", locale)} />
+                ) : scopedUpdates.length === 0 ? (
+                  <EmptyState
+                    text={t("inbox.empty.updates_none", locale)}
+                    onCreate={() => openComposer("update")}
+                  />
+                ) : (
+                  <GroupedUpdates
+                    updates={scopedUpdates}
+                    showClient={true}
+                    focusedItemId={focusedItemId}
+                    onItemClick={openDetailItem}
+                    onBulkDelete={(ids) => { for (const id of ids) deleteItem(id) }}
+                    onAction={(item, action) => {
+                      if (action === "read") {
+                        patchItem(item.id, { status: "read" }, { mode: "mutate", optimisticPatch: { status: "read" } })
+                      } else if (action === "unread") {
+                        patchItem(item.id, { status: "unread" }, { mode: "mutate", optimisticPatch: { status: "unread" } })
+                      } else if (action === "make_task") {
+                        const today = new Date().toISOString().slice(0, 10)
+                        patchItem(item.id, { kind: "task", dueDate: today }, { mode: "remove" })
+                      } else if (action === "delete") {
+                        deleteItem(item.id)
+                      } else if (typeof action === "object" && action.type === "rename") {
+                        patchItem(item.id, { title: action.title }, { mode: "mutate", optimisticPatch: { title: action.title } })
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            </div>
           </>
         )}
 
-        {activeTab === "tasks" && (
+        {/* Klanten tab (AM/admin only): the old Trengo Client Inbox.
+            Roy 2026-06-11 round 3: single ChatPane render (no docked-
+            detail variant) so the conversation panel sits naturally
+            next to the list - same flex parent, identical top edge.
+            Layout = 50/50 split (see ChatPane internal grid). */}
+        {!lockedClient && !isPureCm && globalScope === "klanten" && (
+          <ChatPane
+            scope="external"
+            users={users}
+            onMakeTaskFromMessage={openComposerFromChat}
+            searchQuery={searchQuery}
+            underTabsSlot={searchBar}
+          />
+        )}
+
+        {/* Now tab + Tasks/Updates as global tabs removed 2026-06-11.
+            The activeTab branches below only fire in lockedClient
+            (per-client inbox) mode. */}
+
+        {activeTab === "tasks" && lockedClient && (
           <>
             <TopTabs<TaskFilter>
               tabs={TASK_FILTERS}
@@ -928,12 +1100,6 @@ export function InboxView({
               onChange={setTaskFilter}
             />
             {searchBar}
-            <TaskSourceChips
-              value={taskSourceFilter}
-              onChange={setTaskSourceFilter}
-              counts={taskSourceCounts}
-              totalCount={queryFilteredTasks.length}
-            />
             <QuickAddTaskBar
               clients={clients}
               users={users}
@@ -1035,7 +1201,7 @@ export function InboxView({
           </>
         )}
 
-        {activeTab === "updates" && (
+        {activeTab === "updates" && lockedClient && (
           <>
             <TopTabs<UpdateFilter>
               tabs={UPDATE_FILTERS}
@@ -1043,12 +1209,6 @@ export function InboxView({
               onChange={setUpdateFilter}
             />
             {searchBar}
-            <TaskSourceChips
-              value={updateSourceFilter}
-              onChange={setUpdateSourceFilter}
-              counts={updateSourceCounts}
-              totalCount={queryFilteredUpdates.length}
-            />
             <MarkAllReadBanner
               updates={updates}
               onMarkAll={(ids) => {
@@ -1137,42 +1297,11 @@ export function InboxView({
           </>
         )}
 
-        {activeTab === "client-inbox" && (
-          lockedClient ? (
-            <CommunicationTab
-              mondayItemId={lockedClient.id}
-              trengoContactId={lockedClient.trengoContactId ?? null}
-            />
-          ) : (
-            <>
-              {/* Two ChatPane variants behind one tab. On xl+ we render the
-                  docked-detail variant so the selected thread opens in the
-                  right-side dock (same UX as Tasks/Updates). Below xl,
-                  ChatPane keeps its internal 360px|1fr split - there isn't
-                  room for a separate dock at that width. */}
-              <div className="hidden xl:block">
-                <ChatPane
-                  scope="external"
-                  users={users}
-                  onMakeTaskFromMessage={openComposerFromChat}
-                  dockedDetail
-                  selectedThreadKey={selectedThread?.threadKey ?? null}
-                  onSelectedChange={(t) => setSelectedThread(t)}
-                  searchQuery={searchQuery}
-                  underTabsSlot={searchBar}
-                />
-              </div>
-              <div className="xl:hidden">
-                <ChatPane
-                  scope="external"
-                  users={users}
-                  onMakeTaskFromMessage={openComposerFromChat}
-                  searchQuery={searchQuery}
-                  underTabsSlot={searchBar}
-                />
-              </div>
-            </>
-          )
+        {activeTab === "client-inbox" && lockedClient && (
+          <CommunicationTab
+            mondayItemId={lockedClient.id}
+            trengoContactId={lockedClient.trengoContactId ?? null}
+          />
         )}
 
         {activeTab === "meetings" && lockedClient && (

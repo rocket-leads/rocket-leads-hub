@@ -251,25 +251,23 @@ export function ChatPane({
   }
 
   /**
-   * Mark a thread as read AND select it. Slack-default: opening a thread
-   * clears its badge. We optimistically zero the row's `unreadCount` so the
-   * left-pane badge clears immediately, then PATCH the server, then refresh
-   * the sidebar inbox badge so the global count drops too. Failures revert.
+   * Select a thread without marking it read. Roy 2026-06-11 round 3:
+   * "Ik wil niet dat als ik een message read, dat die gelijk van unread
+   * naar all conversations gaat." A row stays Unread until the user
+   * either replies (handled in `refresh()` callback below) or explicitly
+   * marks it read via the per-row checkbox.
    */
   function selectAndMarkRead(thread: ChatThreadSummary) {
     setSelected(thread)
-    if (thread.unreadCount === 0) return
-    markThread(thread, "mark_read")
   }
 
-  // Auto-select the first thread when the list loads, so the empty right pane
-  // doesn't sit there waiting for a click. Also marks it read so the badge
-  // doesn't sit there showing unread for a thread the user is actively viewing.
-  // Skip in docked mode - the parent owns whether/when to open a thread (e.g.
-  // it might want to open the user to an empty list and let them pick).
+  // Auto-select the first thread when the list loads, so the empty right
+  // pane doesn't sit there waiting for a click. Selection only - no
+  // mark-as-read side effect anymore (see comment on selectAndMarkRead).
+  // Skip in docked mode - the parent owns whether/when to open a thread.
   useEffect(() => {
     if (dockedDetail) return
-    if (!selected && threads.length > 0) selectAndMarkRead(threads[0])
+    if (!selected && threads.length > 0) setSelected(threads[0])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, threads, dockedDetail])
 
@@ -302,6 +300,12 @@ export function ChatPane({
     queryClient.invalidateQueries({ queryKey: ["inbox-threads", scope] })
     if (selected) {
       queryClient.invalidateQueries({ queryKey: ["inbox-thread", selected.threadKey] })
+      // Replying counts as "I've dealt with this" - flip the thread to
+      // read so it leaves the Unread filter. Skip when already read so
+      // we don't fire pointless PATCHes. Roy 2026-06-11 round 3.
+      if (selected.unreadCount > 0) {
+        markThread(selected, "mark_read")
+      }
     }
   }
 
@@ -334,7 +338,10 @@ export function ChatPane({
       <div
         className={cn(
           "grid grid-cols-1 h-[calc(100vh-280px)] min-h-[500px]",
-          dockedDetail ? "" : "lg:grid-cols-[360px_1fr] gap-4",
+          // Non-docked = 50/50 split (Roy 2026-06-11 round 3:
+          // "verdeling 50-50, het gesprek is een stuk belangrijker").
+          // Was 360px fixed list which left the conversation cramped.
+          dockedDetail ? "" : "lg:grid-cols-2 gap-4",
         )}
       >
         <ThreadList
@@ -590,20 +597,29 @@ function ThreadRow({
                   pure visual noise. Roy: dubbel-op. */}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Hover-revealed mark read/unread toggle. Stops propagation so
-                  clicking it doesn't switch the active thread. */}
+              {/* Mark read/unread toggle. Always visible when the thread
+                  is unread - Roy 2026-06-11 round 3: opening a thread no
+                  longer auto-marks it read, so the AM needs a one-click
+                  affordance to "I read this, leave it for later" vs.
+                  "klaar, weg uit Unread". Stays hover-only when already
+                  read so the row stays calm. */}
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
                   onMark(isUnread ? "mark_read" : "mark_unread")
                 }}
-                title={isUnread ? "Mark as read" : "Mark as unread"}
-                aria-label={isUnread ? "Mark as read" : "Mark as unread"}
-                className="opacity-0 group-hover:opacity-100 h-6 w-6 inline-flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+                title={isUnread ? "Markeer als gelezen" : "Markeer als ongelezen"}
+                aria-label={isUnread ? "Markeer als gelezen" : "Markeer als ongelezen"}
+                className={cn(
+                  "h-6 w-6 inline-flex items-center justify-center rounded-md transition-all",
+                  isUnread
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                    : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
               >
                 {isUnread ? (
-                  <CheckCheck className="h-3.5 w-3.5" />
+                  <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
                 ) : (
                   <Mail className="h-3.5 w-3.5" />
                 )}

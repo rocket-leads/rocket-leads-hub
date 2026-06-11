@@ -38,13 +38,6 @@ type Props = {
   mergedLeftEdge?: boolean
 }
 
-const TASK_STATUS_OPTIONS: Array<{ value: TaskStatus; label: string; cls: string }> = [
-  { value: "open", label: "Open", cls: "bg-blue-500/10 text-blue-400 border-blue-500/30" },
-  { value: "in_progress", label: "In progress", cls: "bg-amber-500/10 text-amber-400 border-amber-500/30" },
-  { value: "done", label: "Done", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" },
-  { value: "cancelled", label: "Cancelled", cls: "bg-muted text-muted-foreground border-border" },
-]
-
 /**
  * Render a comment body with `@FirstName` patterns highlighted as inline
  * chips. Names that match a Hub user (case-insensitive first-name OR full-
@@ -533,6 +526,8 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               <EditableBody
                 value={item.body ?? ""}
                 onSave={(body) => setMeta({ body: body.trim() ? body : null })}
+                users={users}
+                currentUserId={currentUser.id}
               />
             ) : (
               item.body && (
@@ -546,16 +541,21 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 of the panel now - putting it twice is just clutter. Kept
                 the component definition below in case we need it again. */}
 
-            {/* Update controls */}
+            {/* Update controls - mirror the task Done button (Roy
+                2026-06-11: "Mark as read in het groen met een vinkje,
+                net als bij de taak"). Done = read; reopen state shows
+                a subtle "Markeer als ongelezen" outline button. */}
             {isUpdate && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-end">
                 {item.status === "unread" ? (
                   <Button
-                    size="sm"
+                    size="lg"
                     onClick={() => setStatus("read")}
                     disabled={updatingStatus}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white px-5"
                   >
-                    Mark as read
+                    <Check className="h-5 w-5 mr-2" />
+                    Gelezen
                   </Button>
                 ) : (
                   <Button
@@ -564,42 +564,45 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                     onClick={() => setStatus("unread")}
                     disabled={updatingStatus}
                   >
-                    Mark as unread
+                    Markeer als ongelezen
                   </Button>
                 )}
               </div>
             )}
 
-            {/* Task controls */}
+            {/* Task controls - single prominent action button. Status
+                pill row was removed 2026-06-11 (Roy: "alleen een groot
+                groen vinkje"); flipping back to Open / Reopen lives in
+                the kebab menu on the parent row. Done tasks show a
+                muted "Reopen" affordance so the dialog still has a way
+                back. */}
             {isTask && (
               <div className="space-y-3">
-                <div>
-                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 mb-1.5">Status</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {TASK_STATUS_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => setStatus(opt.value)}
-                        disabled={updatingStatus || item.status === opt.value}
-                        className={cn(
-                          "px-2.5 py-1 rounded-md text-xs font-medium border transition-colors",
-                          item.status === opt.value
-                            ? opt.cls
-                            : "border-border/40 text-muted-foreground hover:text-foreground hover:border-border",
-                        )}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
+                <div className="flex items-center justify-end">
+                  {item.status === "done" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setStatus("open")}
+                      disabled={updatingStatus}
+                    >
+                      Heropen taak
+                    </Button>
+                  ) : (
+                    <Button
+                      size="lg"
+                      onClick={() => setStatus("done")}
+                      disabled={updatingStatus}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white px-5"
+                    >
+                      <Check className="h-5 w-5 mr-2" />
+                      Klaar
+                    </Button>
+                  )}
                 </div>
 
-                {/* Comments - internal team chat per task. Roy: "dan
-                    kunnen we daar ook chats hebben in de specifieke
-                    tasks." Slack-style: avatars, alternating alignment
-                    based on author, empty-state nudge, Enter-to-send
-                    (Shift+Enter for newline), auto-scroll on new. */}
+                {/* Comments - internal team chat per task. Slack-style:
+                    avatars, alternating alignment, Enter-to-send. */}
                 <CommentThread
                   comments={comments}
                   currentUserId={currentUser.id}
@@ -1080,7 +1083,7 @@ function CommentThread({
             const ta = e.currentTarget
             syncMentionState(ta.value, ta.selectionStart ?? 0)
           }}
-          placeholder="Message the team about this task…  Use @ to mention"
+          placeholder="Schrijf een reactie..."
           rows={1}
           className="flex-1 rounded-lg border border-input bg-transparent px-3 py-2 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none min-h-[36px] max-h-32"
           onKeyDown={(e) => {
@@ -1245,7 +1248,6 @@ function KindBanner({
           text: "text-violet-700 dark:text-violet-300",
           icon: ListTodo,
           label: "Task",
-          hint: "Iemand moet hier iets mee doen.",
         }
       : kind === "update"
         ? {
@@ -1254,7 +1256,6 @@ function KindBanner({
             text: "text-blue-700 dark:text-blue-300",
             icon: InboxIcon,
             label: "Update",
-            hint: "Informatie om te weten - geen actie nodig.",
           }
         : {
             bar: "bg-muted-foreground/40",
@@ -1262,10 +1263,11 @@ function KindBanner({
             text: "text-foreground/80",
             icon: MessagesSquare,
             label: "Chat",
-            hint: "Conversation thread.",
           }
   const Icon = tone.icon
 
+  // Hint subtitle ("Iemand moet hier iets mee doen") removed
+  // 2026-06-11 - Roy: kept the label, dropped the explainer.
   return (
     <div
       className={cn(
@@ -1274,16 +1276,11 @@ function KindBanner({
       )}
     >
       <span className={cn("w-1 self-stretch shrink-0", tone.bar)} aria-hidden />
-      <div className="flex-1 min-w-0 py-2.5 pr-3 flex items-center gap-3">
+      <div className="flex-1 min-w-0 py-2 pr-3 flex items-center gap-3">
         <Icon className={cn("h-5 w-5 shrink-0", tone.text)} />
-        <div className="flex-1 min-w-0">
-          <p className={cn("text-sm font-semibold leading-tight", tone.text)}>
-            {tone.label}
-          </p>
-          <p className="text-[11px] text-muted-foreground/80 leading-tight mt-0.5">
-            {tone.hint}
-          </p>
-        </div>
+        <p className={cn("text-sm font-semibold leading-tight flex-1 min-w-0", tone.text)}>
+          {tone.label}
+        </p>
         <ReclassifyControl
           currentKind={kind}
           source={source}
@@ -1481,13 +1478,76 @@ function EditableTitle({
 function EditableBody({
   value,
   onSave,
+  users,
+  currentUserId,
 }: {
   value: string
   onSave: (next: string) => void | Promise<void>
+  users: InboxUser[]
+  currentUserId: string
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const ref = useRef<HTMLTextAreaElement>(null)
+
+  // @-mention picker - mirrors the CommentThread picker so the
+  // description supports the same mention flow Roy uses in comments
+  // (Roy 2026-06-11: "ook @ kunnen gebruiken bij description als om
+  // iemand te mentionen want dat lukt nu niet").
+  const [mentionStart, setMentionStart] = useState<number | null>(null)
+  const [mentionQuery, setMentionQuery] = useState("")
+  const [mentionHighlight, setMentionHighlight] = useState(0)
+  const mentionMatches = useMemo(() => {
+    const q = mentionQuery.trim().toLowerCase()
+    return users
+      .filter((u) => u.id !== currentUserId)
+      .filter((u) => {
+        if (!q) return true
+        const haystack = `${u.name ?? ""} ${u.email}`.toLowerCase()
+        return haystack.includes(q)
+      })
+      .slice(0, 8)
+  }, [users, mentionQuery, currentUserId])
+  useEffect(() => {
+    if (mentionHighlight >= mentionMatches.length) setMentionHighlight(0)
+  }, [mentionMatches.length, mentionHighlight])
+
+  function syncMentionState(nextValue: string, caret: number) {
+    let i = caret - 1
+    while (i >= 0 && /[A-Za-zÀ-ÖØ-öø-ÿ.\-' ]/.test(nextValue[i])) i--
+    if (i >= 0 && nextValue[i] === "@") {
+      const prev = i === 0 ? " " : nextValue[i - 1]
+      if (/\s|^/.test(prev) || i === 0) {
+        const q = nextValue.slice(i + 1, caret)
+        if (q.split(/\s+/).length <= 2) {
+          setMentionStart(i)
+          setMentionQuery(q)
+          return
+        }
+      }
+    }
+    setMentionStart(null)
+    setMentionQuery("")
+  }
+
+  function applyMention(user: InboxUser) {
+    if (mentionStart == null) return
+    const ta = ref.current
+    if (!ta) return
+    const firstName = (user.name ?? user.email).split(/\s+/)[0]
+    const before = draft.slice(0, mentionStart)
+    const after = draft.slice(ta.selectionStart ?? draft.length)
+    const insertion = `@${firstName} `
+    const next = before + insertion + after
+    setDraft(next)
+    setMentionStart(null)
+    setMentionQuery("")
+    requestAnimationFrame(() => {
+      const pos = before.length + insertion.length
+      ta.focus()
+      ta.setSelectionRange(pos, pos)
+    })
+  }
 
   useEffect(() => {
     if (!editing) setDraft(value)
@@ -1515,24 +1575,105 @@ function EditableBody({
 
   if (editing) {
     return (
-      <textarea
-        ref={ref}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault()
-            commit()
-          } else if (e.key === "Escape") {
-            e.preventDefault()
-            cancel()
-          }
-        }}
-        rows={Math.min(Math.max(draft.split("\n").length, 3), 16)}
-        placeholder="Add a description…"
-        className="w-full text-sm bg-background border border-primary/40 rounded-md px-3 py-2 leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 resize-y"
-      />
+      <div className="relative">
+        <textarea
+          ref={ref}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            syncMentionState(e.target.value, e.target.selectionStart ?? 0)
+          }}
+          onKeyUp={(e) => {
+            const ta = e.currentTarget
+            syncMentionState(ta.value, ta.selectionStart ?? 0)
+          }}
+          onClick={(e) => {
+            const ta = e.currentTarget
+            syncMentionState(ta.value, ta.selectionStart ?? 0)
+          }}
+          onBlur={() => {
+            // Delay so a click on a mention suggestion can fire first.
+            setTimeout(() => {
+              if (mentionStart != null) {
+                setMentionStart(null)
+                setMentionQuery("")
+              }
+              commit()
+            }, 120)
+          }}
+          onKeyDown={(e) => {
+            if (mentionStart != null && mentionMatches.length > 0) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault()
+                setMentionHighlight((h) => Math.min(mentionMatches.length - 1, h + 1))
+                return
+              }
+              if (e.key === "ArrowUp") {
+                e.preventDefault()
+                setMentionHighlight((h) => Math.max(0, h - 1))
+                return
+              }
+              if (e.key === "Enter" || e.key === "Tab") {
+                e.preventDefault()
+                applyMention(mentionMatches[mentionHighlight])
+                return
+              }
+              if (e.key === "Escape") {
+                e.preventDefault()
+                setMentionStart(null)
+                setMentionQuery("")
+                return
+              }
+            }
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault()
+              commit()
+            } else if (e.key === "Escape") {
+              e.preventDefault()
+              cancel()
+            }
+          }}
+          rows={Math.min(Math.max(draft.split("\n").length, 3), 16)}
+          placeholder="Beschrijving (gebruik @ om iemand te taggen)..."
+          className="w-full text-sm bg-background border border-primary/40 rounded-md px-3 py-2 leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 resize-y"
+        />
+        {mentionStart != null && mentionMatches.length > 0 && (
+          <div className="absolute top-full mt-1 left-1 right-1 z-20 rounded-md border border-border bg-popover shadow-lg py-1 text-xs max-h-64 overflow-y-auto">
+            {mentionMatches.map((u, i) => {
+              const active = i === mentionHighlight
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    applyMention(u)
+                  }}
+                  onMouseEnter={() => setMentionHighlight(i)}
+                  className={cn(
+                    "w-full text-left px-3 py-1.5 flex items-center gap-2",
+                    active ? "bg-muted/80" : "hover:bg-muted/50",
+                  )}
+                >
+                  <span className="h-5 w-5 shrink-0 rounded-full bg-muted inline-flex items-center justify-center text-[9px] font-semibold text-muted-foreground">
+                    {(u.name?.trim()[0] ?? u.email[0] ?? "?").toUpperCase()}
+                  </span>
+                  <span className="flex-1 truncate">
+                    <span className="font-medium text-foreground/90">
+                      {u.name ?? u.email}
+                    </span>
+                    {u.name && (
+                      <span className="text-muted-foreground/50 ml-1.5 text-[10px]">
+                        {u.email}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -1567,7 +1708,7 @@ function EditableBody({
       ) : (
         <span className="text-xs text-muted-foreground/50 italic inline-flex items-center gap-1.5">
           <Pencil className="h-3 w-3" />
-          Add a description…
+          Geen beschrijving.
         </span>
       )}
     </button>

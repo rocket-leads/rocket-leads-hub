@@ -469,11 +469,15 @@ function RowActions({
     <div className="flex items-center gap-1 shrink-0" onClick={stop}>
       {isActive ? (
         <>
+          {/* Prominent green Done button (Roy 2026-06-11: "een groot
+              groen vinkje" - solid emerald so it reads as THE primary
+              row action; secondary chrome around it stays muted). */}
           <ActionIconButton
             tone="success"
-            label="Mark done"
+            label={isUpdate ? "Markeer als gelezen" : "Markeer als klaar"}
             onClick={() => onAction(doneAction)}
-            icon={<Check className="h-4 w-4" />}
+            icon={<Check className="h-5 w-5" strokeWidth={2.5} />}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white dark:text-white border-emerald-600 hover:border-emerald-700"
           />
           {/* Tasks-only: snooze. The API rejects snoozedUntil for non-task
               kinds, so we never offer the affordance on updates. */}

@@ -782,7 +782,19 @@ export const DICTIONARY = {
     en: "Fill at least 5 fields before continuing.",
   },
 
-  "onboarding.wizard.kickoff.send_recap": { nl: "Stuur recap (Sprint 2)", en: "Send recap (Sprint 2)" },
+  "onboarding.wizard.kickoff.send_recap": { nl: "Stuur recap naar klant", en: "Send recap to client" },
+  "onboarding.wizard.kickoff.send_recap.again": { nl: "Stuur recap opnieuw", en: "Resend recap" },
+
+  // Recap dialog
+  "onboarding.wizard.kickoff.recap.title": { nl: "Post-kick-off recap", en: "Post kick-off recap" },
+  "onboarding.wizard.kickoff.recap.description": {
+    nl: "Template gegenereerd uit het pakket + brief + resources. Edit naar smaak, kopieer naar Trengo, en markeer als verzonden.",
+    en: "Generated from the package + brief + resources. Edit as needed, copy to Trengo, then mark as sent.",
+  },
+  "onboarding.wizard.kickoff.recap.copy": { nl: "Kopieer naar clipboard", en: "Copy to clipboard" },
+  "onboarding.wizard.kickoff.recap.copied": { nl: "Gekopieerd", en: "Copied" },
+  "onboarding.wizard.kickoff.recap.mark_sent": { nl: "Markeer als verzonden", en: "Mark as sent" },
+  "onboarding.wizard.kickoff.recap.sent_at": { nl: "Eerder verzonden op ", en: "Previously sent at " },
 
   // Brand identity - captured live from the client's website. Pedro
   // pre-fills its `brand_style` from this when the CM opens the client
