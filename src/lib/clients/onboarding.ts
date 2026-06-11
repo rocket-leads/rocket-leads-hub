@@ -179,11 +179,13 @@ export function resolveWizardState(
     }
   })
 
-  // Second pass: lock steps whose prereqs aren't all done.
-  for (const s of states) {
-    s.locked = s.prerequisites.some((p) => !doneByKey.get(p))
-  }
-
+  // No locking (Roy 2026-06-11): the wizard never blocks a step on
+  // unfinished predecessors. AM may want to write video scripts before
+  // the transcript lands; the kick-off might start before the klant
+  // uploads content. The `prerequisites` field stays in the registry
+  // as documentation of the natural happy-path order — the UI uses it
+  // only to compute the "current step" suggestion, not to gate
+  // anything. Every step is always clickable + always saveable.
   return states
 }
 

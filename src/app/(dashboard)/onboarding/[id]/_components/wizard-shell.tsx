@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import Link from "next/link"
-import { ArrowLeft, CheckCircle2, Circle, Lock, Loader2 } from "lucide-react"
+import { ArrowLeft, CheckCircle2, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
@@ -170,10 +170,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
                 key={step.key}
                 step={step}
                 active={activeStep?.key === step.key}
-                onClick={() => {
-                  if (step.locked) return
-                  setActiveKey(step.key)
-                }}
+                onClick={() => setActiveKey(step.key)}
                 locale={locale}
               />
             ))}
@@ -213,25 +210,20 @@ function RailItem({
   onClick: () => void
   locale: Locale
 }) {
-  const Icon = step.done ? CheckCircle2 : step.locked ? Lock : Circle
+  // Every step is always clickable (Roy 2026-06-11: no hard locks —
+  // AM may write video scripts before the transcript is in). Done state
+  // still shows green as the visual signal that the step is complete,
+  // but never blocks navigation.
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={step.locked}
       className={cn(
         "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-colors",
         active && "bg-primary/10 text-foreground",
-        !active && !step.locked && "hover:bg-muted/40 text-muted-foreground",
-        step.locked && "opacity-50 cursor-not-allowed text-muted-foreground",
+        !active && "hover:bg-muted/40 text-muted-foreground",
       )}
-      title={
-        step.locked
-          ? t("onboarding.wizard.rail.locked_tooltip", locale)
-          : step.done
-            ? t("onboarding.wizard.rail.done_tooltip", locale)
-            : undefined
-      }
+      title={step.done ? t("onboarding.wizard.rail.done_tooltip", locale) : undefined}
     >
       <span
         className={cn(
@@ -248,7 +240,6 @@ function RailItem({
       <span className={cn("flex-1 truncate", step.done && "line-through text-muted-foreground/70")}>
         {t(step.labelKey, locale)}
       </span>
-      {step.locked && <Icon className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />}
     </button>
   )
 }

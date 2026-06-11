@@ -15,6 +15,8 @@ import {
   Sparkles,
   CircleDollarSign,
   Palette,
+  Plus,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -101,15 +103,16 @@ type Aanbod = NonNullable<KickoffContent["aanbod"]>
 type FormField = { id: string; label: string; isDefault?: boolean }
 type Automations = NonNullable<KickoffContent["automations"]>
 
-// Defaults that match Rocket Leads' standard package: every service
-// off by default (AM ticks what applies), but the lead-form has 3
-// mandatory fields and all 4 automations on — that's the standard
-// Zapier wiring per knowledge/process.md.
+// Defaults match Rocket Leads' standaard HTO pakket per company.md
+// (€3.750 p/m totaal): Meta 1000 · Google 500 · Content 1000 ·
+// Leadopvolging 750. Alleen Meta default ON omdat dat de basis is;
+// AM tickt de rest aan voor het gekozen pakket. Prijzen blijven
+// invulbaar — niet elke klant betaalt het standaard tarief.
 const DEFAULT_AANBOD: Aanbod = {
-  metaAds: { included: true, pricePerMonth: "" },
-  googleAds: { included: false, pricePerMonth: "" },
-  contentShoot: { included: false, pricePerMonth: "" },
-  leadOpvolging: { included: false, pricePerMonth: "" },
+  metaAds: { included: true, pricePerMonth: "1000" },
+  googleAds: { included: false, pricePerMonth: "500" },
+  contentShoot: { included: false, pricePerMonth: "1000" },
+  leadOpvolging: { included: false, pricePerMonth: "750" },
   adBudget: { included: false, pricePerMonth: "" },
 }
 
@@ -166,9 +169,10 @@ type KickoffContent = {
    *  Meta directly). See process.md §"Onboarding Roadblocks" #3. */
   useRlAdAccount?: boolean
   /** What RL delivers, with monthly price per line item. AM tickt
-   *  per service of we het leveren + vult de prijs in. "adBudget"
-   *  zit hier ook in zodat het altijd ingevuld kan worden — los van
-   *  of de klant op z'n eigen ad account of het RL ad account draait. */
+   *  per service of we het leveren + vult de prijs per maand in.
+   *  "adBudget" zit hier ook in zodat het altijd ingevuld kan worden
+   *  — los van of de klant op z'n eigen ad account of het RL ad
+   *  account draait. */
   aanbod?: {
     metaAds?: { included: boolean; pricePerMonth: string }
     googleAds?: { included: boolean; pricePerMonth: string }
@@ -176,6 +180,16 @@ type KickoffContent = {
     leadOpvolging?: { included: boolean; pricePerMonth: string }
     adBudget?: { included: boolean; pricePerMonth: string }
   }
+  /** Eenmalige opstartkosten (default €0). Wordt opgeteld bij de
+   *  eerste-factuur totaal maar niet bij de maandelijkse cyclus. */
+  setupFee?: string
+  /** Facturatie-ritme: 1 = per maand, 2 = per 2 maanden, 3 = per
+   *  kwartaal. Per-service prijzen blijven altijd per-maand; deze
+   *  picker bepaalt alleen wat de totalen-sectie toont en hoeveel
+   *  de eerste factuur is. Sommige klanten betalen kwartaal vooruit
+   *  voor de eerste-maand-gratis HTO-deal — dat wordt los toegepast
+   *  als korting op de prijzen per service, niet via deze cycle. */
+  billingCycle?: 1 | 2 | 3
   /** Lead-form fields the klant's landing page will ask. Hub seeds
    *  the three defaults (naam/telefoon/email); AM adds custom ones
    *  via the "+" button — typically bedrijfsnaam, branche, budget. */
@@ -289,6 +303,19 @@ export function KickoffLiveStep({
     }))
     setBriefDirty(true)
   }
+  const [setupFee, setSetupFee] = useState<string>(() => content.setupFee ?? "0")
+  const [billingCycle, setBillingCycle] = useState<1 | 2 | 3>(
+    () => content.billingCycle ?? 1,
+  )
+
+  // Derived totals.
+  const monthlyTotal = (Object.values(aanbod) as AanbodLine[]).reduce(
+    (sum, line) => (line?.included ? sum + (parseFloat(line.pricePerMonth) || 0) : sum),
+    0,
+  )
+  const cycleTotal = monthlyTotal * billingCycle
+  const setupFeeNum = parseFloat(setupFee) || 0
+  const firstInvoiceTotal = cycleTotal + setupFeeNum
 
   // ── Formulier leads (lead-form fields the LP will collect) ──
   const [formFields, setFormFields] = useState<FormField[]>(
@@ -446,6 +473,8 @@ export function KickoffLiveStep({
             ...content,
             briefDraft,
             aanbod,
+            setupFee,
+            billingCycle,
             formFields,
             automations,
             ...(brandStyle ? { brandStyle } : {}),
@@ -462,6 +491,8 @@ export function KickoffLiveStep({
     brandDirty,
     briefDraft,
     aanbod,
+    setupFee,
+    billingCycle,
     formFields,
     automations,
     brandStyle,
@@ -497,7 +528,6 @@ export function KickoffLiveStep({
     onSuccess: () => onStepSaved(nextKey),
   })
 
-  const briefHasMin = countFilled(briefDraft) >= 5
   const companyName = client.companyName || client.name || ""
 
   return (
@@ -649,6 +679,118 @@ export function KickoffLiveStep({
         />
       </section>
 
+      {/* Aanbod — wat we leveren + prijs per maand + cycle picker. */}
+      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+        <h3 className="text-sm font-semibold mb-1">
+          {t("onboarding.wizard.kickoff.aanbod.title", locale)}
+        </h3>
+        <p className="text-[11px] text-muted-foreground mb-3">
+          {t("onboarding.wizard.kickoff.aanbod.hint", locale)}
+        </p>
+
+        {/* Cycle picker + setup fee — top row */}
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3 mb-3 pb-3 border-b border-border/30">
+          <div className="flex-1">
+            <label className="block text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+              {t("onboarding.wizard.kickoff.aanbod.cycle.label", locale)}
+            </label>
+            <div className="inline-flex rounded-md border border-border bg-background overflow-hidden">
+              {([1, 2, 3] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => {
+                    setBillingCycle(c)
+                    setBriefDirty(true)
+                  }}
+                  className={cn(
+                    "px-3 py-1.5 text-xs transition-colors",
+                    billingCycle === c
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted/50 text-muted-foreground",
+                  )}
+                >
+                  {c === 1
+                    ? t("onboarding.wizard.kickoff.aanbod.cycle.monthly", locale)
+                    : c === 2
+                      ? t("onboarding.wizard.kickoff.aanbod.cycle.two_months", locale)
+                      : t("onboarding.wizard.kickoff.aanbod.cycle.quarterly", locale)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+              {t("onboarding.wizard.kickoff.aanbod.setup_fee.label", locale)}
+            </label>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">€</span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                value={setupFee}
+                onChange={(e) => {
+                  setSetupFee(e.target.value)
+                  setBriefDirty(true)
+                }}
+                placeholder="0"
+                className="h-8 w-24 text-xs"
+              />
+              <span className="text-[10px] text-muted-foreground/70">eenmalig</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Service lines */}
+        <div className="space-y-1.5">
+          {AANBOD_LINES.map(({ key, labelKey }) => {
+            const line = aanbod[key] ?? { included: false, pricePerMonth: "" }
+            return (
+              <AanbodRow
+                key={key}
+                label={t(labelKey as Parameters<typeof t>[0], locale)}
+                included={line.included}
+                pricePerMonth={line.pricePerMonth}
+                onToggle={() => updateAanbodLine(key, { included: !line.included })}
+                onPriceChange={(v) => updateAanbodLine(key, { pricePerMonth: v })}
+              />
+            )
+          })}
+        </div>
+
+        {/* Totals */}
+        <div className="mt-3 pt-3 border-t border-border/30 space-y-1 text-xs">
+          <TotalRow
+            label={t("onboarding.wizard.kickoff.aanbod.totals.per_month", locale)}
+            amount={monthlyTotal}
+          />
+          {billingCycle > 1 && (
+            <TotalRow
+              label={
+                billingCycle === 2
+                  ? t("onboarding.wizard.kickoff.aanbod.totals.per_2_months", locale)
+                  : t("onboarding.wizard.kickoff.aanbod.totals.per_quarter", locale)
+              }
+              amount={cycleTotal}
+              muted
+            />
+          )}
+          {setupFeeNum > 0 && (
+            <TotalRow
+              label={t("onboarding.wizard.kickoff.aanbod.totals.setup_fee", locale)}
+              amount={setupFeeNum}
+              muted
+              suffix="eenmalig"
+            />
+          )}
+          <TotalRow
+            label={t("onboarding.wizard.kickoff.aanbod.totals.first_invoice", locale)}
+            amount={firstInvoiceTotal}
+            bold
+          />
+        </div>
+      </section>
+
       {/* Brief template - fill live during the call */}
       <section className="rounded-xl border border-border/60 bg-card/50 p-4">
         <div className="flex items-center justify-between mb-3">
@@ -739,6 +881,69 @@ export function KickoffLiveStep({
         </Field>
       </section>
 
+      {/* Formulier leads — vragen op de landingspagina. Eerste 3 zijn
+          de standaard (naam/telefoon/email, niet verwijderbaar);
+          AM voegt custom vragen toe via plus-knop. */}
+      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+        <h3 className="text-sm font-semibold mb-1">
+          {t("onboarding.wizard.kickoff.form_fields.title", locale)}
+        </h3>
+        <p className="text-[11px] text-muted-foreground mb-3">
+          {t("onboarding.wizard.kickoff.form_fields.hint", locale)}
+        </p>
+        <div className="space-y-1.5">
+          {formFields.map((field) => (
+            <FormFieldRow
+              key={field.id}
+              field={field}
+              onLabelChange={(label) => updateFormFieldLabel(field.id, label)}
+              onRemove={() => removeFormField(field.id)}
+              addLabel={t("onboarding.wizard.kickoff.form_fields.label_placeholder", locale)}
+            />
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addFormField}
+            className="gap-1.5 mt-2"
+          >
+            <Plus className="h-3 w-3" />
+            {t("onboarding.wizard.kickoff.form_fields.add", locale)}
+          </Button>
+        </div>
+      </section>
+
+      {/* Automations — Zapier flows die afgaan bij een nieuwe lead.
+          Default alles aan want dat is het standaard pakket; AM
+          untickt alleen wat niet geldt. */}
+      <section className="rounded-xl border border-border/60 bg-card/50 p-4">
+        <h3 className="text-sm font-semibold mb-1">
+          {t("onboarding.wizard.kickoff.automations.title", locale)}
+        </h3>
+        <p className="text-[11px] text-muted-foreground mb-3">
+          {t("onboarding.wizard.kickoff.automations.hint", locale)}
+        </p>
+        <div className="space-y-1.5">
+          {AUTOMATION_LINES.map(({ key, labelKey }) => (
+            <label
+              key={key}
+              className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/30 cursor-pointer transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={automations[key] ?? false}
+                onChange={() => toggleAutomation(key)}
+                className="h-4 w-4 rounded border-input accent-primary"
+              />
+              <span className={cn("text-sm", automations[key] ? "text-foreground" : "text-muted-foreground")}>
+                {t(labelKey as Parameters<typeof t>[0], locale)}
+              </span>
+            </label>
+          ))}
+        </div>
+      </section>
+
       {/* Brand identity - pulled from the website URL above. Pedro
           pre-fills its `brand_style` from this so the CM never has to
           re-extract colors. Hex codes are AM-editable. */}
@@ -761,9 +966,8 @@ export function KickoffLiveStep({
         </Button>
         <Button
           onClick={() => markDone.mutate()}
-          disabled={markDone.isPending || !briefHasMin}
+          disabled={markDone.isPending}
           className="gap-1.5"
-          title={!briefHasMin ? t("onboarding.wizard.kickoff.brief.needs_fields", locale) : undefined}
         >
           {markDone.isPending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -933,84 +1137,133 @@ function CheckboxResourceRow({
 }
 
 /**
- * Inline EUR-per-month input bound to Monday's `ad_budget` field. Only
- * mounts when RL ad-account toggle is on — that's when Hub is going to
- * invoice the budget through, so the amount has to be set before the
- * AM can hand off to finance. Saves on blur (no per-keystroke server
- * round-trip).
+ * Eén totaal-regel onderaan de Aanbod sectie. Format: "Label: €X,XXX"
+ * met optioneel een suffix (eenmalig, etc.). Bold variant voor het
+ * eerste-betaling totaal zodat het visueel oppopt.
  */
-function AdBudgetInput({
-  mondayItemId,
-  initialValue,
-  locale,
-  queryClient,
+function TotalRow({
+  label,
+  amount,
+  bold,
+  muted,
+  suffix,
 }: {
-  mondayItemId: string
-  initialValue: string
-  locale: Locale
-  queryClient: ReturnType<typeof useQueryClient>
+  label: string
+  amount: number
+  bold?: boolean
+  muted?: boolean
+  suffix?: string
 }) {
-  const [value, setValue] = useState(initialValue ?? "")
-  const [saved, setSaved] = useState(false)
-
-  const save = useMutation({
-    mutationFn: async (next: string) => {
-      const res = await fetch(`/api/clients/${mondayItemId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fieldKey: "ad_budget", value: next }),
-      })
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string }
-        throw new Error(body.error ?? "Ad budget save failed")
-      }
-      return res.json()
-    },
-    onSuccess: () => {
-      setSaved(true)
-      setTimeout(() => setSaved(false), 1500)
-      queryClient.invalidateQueries({
-        queryKey: ["onboarding-wizard", mondayItemId],
-      })
-    },
-  })
-
-  const handleBlur = () => {
-    const trimmed = value.trim()
-    if (trimmed === (initialValue ?? "").trim()) return
-    save.mutate(trimmed)
-  }
-
   return (
-    <div className="pl-7 pt-2">
-      <label className="block text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
-        {t("onboarding.wizard.kickoff.ad_budget.label", locale)}
-      </label>
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">€</span>
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3",
+        bold && "pt-1.5 mt-1.5 border-t border-border/40 text-sm font-semibold",
+        muted && !bold && "text-muted-foreground",
+      )}
+    >
+      <span>{label}</span>
+      <span className="tabular-nums">
+        €{amount.toLocaleString("nl-NL", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+        {suffix && (
+          <span className="ml-1 text-[10px] text-muted-foreground/70 font-normal">
+            {suffix}
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Eén regel in de Aanbod sectie: checkbox links, label midden, prijs
+ * input rechts (alleen actief wanneer de checkbox aan staat).
+ */
+function AanbodRow({
+  label,
+  included,
+  pricePerMonth,
+  onToggle,
+  onPriceChange,
+}: {
+  label: string
+  included: boolean
+  pricePerMonth: string
+  onToggle: () => void
+  onPriceChange: (v: string) => void
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors",
+        included ? "bg-emerald-500/5" : "hover:bg-muted/30",
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={included}
+        onChange={onToggle}
+        className="h-4 w-4 rounded border-input accent-primary"
+      />
+      <span className={cn("flex-1 text-sm", included ? "text-foreground" : "text-muted-foreground")}>
+        {label}
+      </span>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className="text-xs text-muted-foreground">€</span>
         <Input
           type="number"
           inputMode="numeric"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={handleBlur}
-          placeholder="1500"
-          className="h-8 max-w-[140px]"
+          value={pricePerMonth}
+          onChange={(e) => onPriceChange(e.target.value)}
+          placeholder="0"
+          disabled={!included}
+          className="h-7 w-20 text-xs"
         />
-        <span className="text-xs text-muted-foreground">
-          {t("onboarding.wizard.kickoff.ad_budget.per_month", locale)}
-        </span>
-        {save.isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-        {saved && !save.isPending && <Check className="h-3 w-3 text-emerald-500" />}
+        <span className="text-[10px] text-muted-foreground/70">/mnd</span>
       </div>
-      {save.isError && (
-        <div className="mt-1 text-[11px] text-destructive">
-          {save.error instanceof Error ? save.error.message : "Save failed"}
-        </div>
+    </div>
+  )
+}
+
+/**
+ * Eén veld-rij in de Formulier leads sectie. Default fields tonen
+ * geen verwijder-X (Naam/Telefoon/Email zijn altijd verplicht); custom
+ * fields hebben volledige edit + delete.
+ */
+function FormFieldRow({
+  field,
+  onLabelChange,
+  onRemove,
+  addLabel,
+}: {
+  field: FormField
+  onLabelChange: (v: string) => void
+  onRemove: () => void
+  addLabel: string
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/30 transition-colors">
+      <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+      <Input
+        value={field.label}
+        onChange={(e) => onLabelChange(e.target.value)}
+        readOnly={field.isDefault}
+        placeholder={addLabel}
+        className={cn(
+          "h-7 text-xs flex-1",
+          field.isDefault && "bg-muted/40 cursor-default",
+        )}
+      />
+      {!field.isDefault && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
+          aria-label="Verwijder"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       )}
-      <p className="mt-1 text-[10px] text-muted-foreground/70">
-        {t("onboarding.wizard.kickoff.ad_budget.hint", locale)}
-      </p>
     </div>
   )
 }

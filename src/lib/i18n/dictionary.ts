@@ -448,6 +448,12 @@ export const DICTIONARY = {
   "inbox.tab.client_inbox": { nl: "Klanten Inbox", en: "Client Inbox" },
   "inbox.tab.meetings": { nl: "Meetings", en: "Meetings" },
 
+  // Global inbox scope tabs (AM / admin only) + 2-column split headers
+  "inbox.scope.klanten": { nl: "Klanten", en: "Clients" },
+  "inbox.scope.intern": { nl: "Intern", en: "Internal" },
+  "inbox.split.tasks": { nl: "Taken", en: "Tasks" },
+  "inbox.split.updates": { nl: "Updates", en: "Updates" },
+
   // Now-feed section labels + empty state
   "inbox.now.section.overdue": { nl: "Te laat", en: "Overdue" },
   "inbox.now.section.today": { nl: "Vandaag", en: "Due today" },
@@ -695,6 +701,62 @@ export const DICTIONARY = {
   "onboarding.wizard.kickoff.status.payment.no_customer": {
     nl: "Geen Stripe customer gekoppeld - koppel er één via Hub connections hierboven.",
     en: "No Stripe customer linked - pick one via Hub connections above.",
+  },
+
+  // Aanbod sectie — wat we leveren + prijs per maand
+  "onboarding.wizard.kickoff.aanbod.title": { nl: "Aanbod — wat we leveren", en: "Offer — what we deliver" },
+  "onboarding.wizard.kickoff.aanbod.hint": {
+    nl: "Vink aan wat we leveren en vul de maandelijkse prijs in. Ad budget altijd invullen, ook als de klant op eigen ad account draait.",
+    en: "Tick what we deliver and fill the monthly price. Always fill ad budget, even when the client runs on their own ad account.",
+  },
+  "onboarding.wizard.kickoff.aanbod.meta_ads": { nl: "Meta Ads management", en: "Meta Ads management" },
+  "onboarding.wizard.kickoff.aanbod.google_ads": { nl: "Google Ads management", en: "Google Ads management" },
+  "onboarding.wizard.kickoff.aanbod.content_shoot": { nl: "Content shoot (kwartaal videoshoot + AI avatar)", en: "Content shoot (quarterly videoshoot + AI avatar)" },
+  "onboarding.wizard.kickoff.aanbod.lead_opvolging": { nl: "Lead opvolging", en: "Lead follow-up" },
+  "onboarding.wizard.kickoff.aanbod.ad_budget": { nl: "Ad budget", en: "Ad budget" },
+
+  // Cycle picker + setup fee + totalen
+  "onboarding.wizard.kickoff.aanbod.cycle.label": { nl: "Facturatie ritme", en: "Billing cycle" },
+  "onboarding.wizard.kickoff.aanbod.cycle.monthly": { nl: "Per maand", en: "Monthly" },
+  "onboarding.wizard.kickoff.aanbod.cycle.two_months": { nl: "Per 2 mnd", en: "Per 2 mo" },
+  "onboarding.wizard.kickoff.aanbod.cycle.quarterly": { nl: "Per kwartaal", en: "Quarterly" },
+  "onboarding.wizard.kickoff.aanbod.setup_fee.label": {
+    nl: "Setup fee (optioneel)",
+    en: "Setup fee (optional)",
+  },
+  "onboarding.wizard.kickoff.aanbod.totals.per_month": { nl: "Per maand", en: "Per month" },
+  "onboarding.wizard.kickoff.aanbod.totals.per_2_months": { nl: "Per 2 maanden", en: "Per 2 months" },
+  "onboarding.wizard.kickoff.aanbod.totals.per_quarter": { nl: "Per kwartaal", en: "Per quarter" },
+  "onboarding.wizard.kickoff.aanbod.totals.setup_fee": { nl: "Setup fee", en: "Setup fee" },
+  "onboarding.wizard.kickoff.aanbod.totals.first_invoice": {
+    nl: "Eerste factuur",
+    en: "First invoice",
+  },
+
+  // Formulier leads — landingspagina velden
+  "onboarding.wizard.kickoff.form_fields.title": { nl: "Formulier leads", en: "Lead form fields" },
+  "onboarding.wizard.kickoff.form_fields.hint": {
+    nl: "Vragen op de landingspagina. Naam/telefoon/email zijn standaard; voeg custom vragen toe (bedrijfsnaam, budget, branche, …).",
+    en: "Questions on the landing page. Name/phone/email are default; add custom questions (company name, budget, industry, …).",
+  },
+  "onboarding.wizard.kickoff.form_fields.add": { nl: "Voeg vraag toe", en: "Add question" },
+  "onboarding.wizard.kickoff.form_fields.label_placeholder": { nl: "Bv. Wat is je budget?", en: "E.g. What is your budget?" },
+
+  // Automations — Zapier flows die afgaan op nieuwe lead
+  "onboarding.wizard.kickoff.automations.title": { nl: "Automations", en: "Automations" },
+  "onboarding.wizard.kickoff.automations.hint": {
+    nl: "Standaard alles aan. Untick wat niet van toepassing is. Lead → Monday CRM is altijd nodig voor data.",
+    en: "All on by default. Untick what doesn't apply. Lead → Monday CRM is always needed for data.",
+  },
+  "onboarding.wizard.kickoff.automations.monday": { nl: "Lead → Monday CRM", en: "Lead → Monday CRM" },
+  "onboarding.wizard.kickoff.automations.gmail": { nl: "Lead → Gmail notificatie naar klant", en: "Lead → Gmail notification to client" },
+  "onboarding.wizard.kickoff.automations.wa_client": {
+    nl: "WhatsApp naar klant bij nieuwe lead",
+    en: "WhatsApp to client on new lead",
+  },
+  "onboarding.wizard.kickoff.automations.wa_lead": {
+    nl: "WhatsApp naar lead — bevestiging aanvraag",
+    en: "WhatsApp to lead — request confirmation",
   },
 
   "onboarding.wizard.kickoff.brief.title": { nl: "Client brief (vul live in)", en: "Client brief (fill live)" },

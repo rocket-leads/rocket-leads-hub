@@ -203,9 +203,6 @@ export function BriefEnrichmentStep({
   const usefulFields = FIELD_ORDER.filter(
     (f) => (suggestions[f]?.suggestion ?? "").length > 0,
   )
-  const allDecided =
-    usefulFields.length > 0 &&
-    usefulFields.every((f) => accepted[f] !== undefined)
   const anyAccepted = Object.values(accepted).some((v) => v === true)
 
   return (
@@ -272,13 +269,8 @@ export function BriefEnrichmentStep({
           </Button>
           <Button
             onClick={() => save.mutate({ done: true })}
-            disabled={save.isPending || (usefulFields.length > 0 && !allDecided)}
+            disabled={save.isPending}
             className="gap-1.5"
-            title={
-              usefulFields.length > 0 && !allDecided
-                ? t("onboarding.wizard.enrich.decide_first", locale)
-                : undefined
-            }
           >
             {save.isPending && save.variables?.done === true ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
