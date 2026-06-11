@@ -4,8 +4,6 @@ import { fetchClientById } from "@/lib/integrations/monday"
 import { updateClientField } from "@/lib/clients/edit"
 import { fetchStoredSteps, saveStepState } from "@/lib/clients/onboarding-state"
 import { hubStatusToMondayLabel } from "@/lib/clients/status"
-import { sendDmToHubUser } from "@/lib/slack"
-import { createAdminClient } from "@/lib/supabase/server"
 
 /**
  * GET /api/clients/[id]/onboarding/handoff
@@ -14,9 +12,9 @@ import { createAdminClient } from "@/lib/supabase/server"
  * wizard so Pedro (CM-side) can pre-fill its first-run state without
  * making the CM re-type or re-extract anything.
  *
- * Sources (in fall-through order — first non-empty wins per field):
- *   1. `brief_enrichment` step  — the post-call AI-enriched brief
- *   2. `kickoff_live` step      — the AM's live-call draft
+ * Sources (in fall-through order - first non-empty wins per field):
+ *   1. `brief_enrichment` step  - the post-call AI-enriched brief
+ *   2. `kickoff_live` step      - the AM's live-call draft
  *
  * Brand style is only captured in `kickoff_live` (live website scrape)
  * so there's no enrichment fallback for it.
@@ -27,7 +25,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  * `/api/pedro/analyze-website` response so it drops straight into
  * `pedro_client_state.brand_style`.
  *
- * Returns `{ available: false }` when neither step has content — Pedro
+ * Returns `{ available: false }` when neither step has content - Pedro
  * falls back to its normal auto-brief flow.
  */
 export async function GET(
@@ -41,7 +39,13 @@ export async function GET(
 
   const { id: mondayItemId } = await params
 
-  const stored = await fetchStoredSteps(mondayItemId)
+  // Pull onboarding step state + Monday client metadata in parallel.
+  // Monday gives us the integration presence flags (Drive / Meta /
+  // Stripe / Trengo / lead board) for the Pedro pre-flight checklist.
+  const [stored, client] = await Promise.all([
+    fetchStoredSteps(mondayItemId),
+    fetchClientById(mondayItemId).catch(() => null),
+  ])
   const kickoff = stored.get("kickoff_live")?.content as KickoffContent | null | undefined
   const enriched = stored.get("brief_enrichment")?.content as EnrichmentContent | null | undefined
 
@@ -66,14 +70,29 @@ export async function GET(
   const briefHasAnything = Object.values(brief).some((v) => typeof v === "string" && v.trim().length > 0)
   const available = briefHasAnything || Boolean(brandStyle)
 
+  // Pre-flight presence flags — drive Pedro's "wat heeft AM al
+  // geregeld?" checklist. Booleans only; the UI doesn't need the
+  // actual IDs (it already has them through the Pedro picker for the
+  // signals it cares about per stage).
+  const presence = {
+    brief: briefHasAnything,
+    brandStyle: Boolean(brandStyle),
+    driveFolder: Boolean(client?.googleDriveId),
+    metaAdAccount: Boolean(client?.metaAdAccountId),
+    stripeCustomer: Boolean(client?.stripeCustomerId),
+    trengoContact: Boolean(client?.trengoContactId),
+    clientBoard: Boolean(client?.clientBoardId),
+  }
+
   return NextResponse.json({
     available,
     brief,
     brandStyle,
+    presence,
   })
 }
 
-// ─── Stored step shapes (kept narrow — we only read the fields Pedro
+// ─── Stored step shapes (kept narrow - we only read the fields Pedro
 // actually consumes). Anything else in `content` is left untouched and
 // not surfaced. ────────────────────────────────────────────────────
 
@@ -120,18 +139,19 @@ function pick(a: string | undefined, b: string | undefined): string {
 /**
  * POST /api/clients/[id]/onboarding/handoff
  *
- * Final wizard action — flips the client from Onboarding to Live + pings
+ * Final wizard action - flips the client from Onboarding to Live + pings
  * the CM via Slack DM. Order matters:
  *
  *   1. updateClientField(campaign_status='Live') runs the critical-items
  *      hard-gate inside. Any critical wizard step still open throws and
  *      we return 400 with the message; the AM sees exactly which steps
  *      are blocking the flip instead of a silent partial transition.
- *   2. Best-effort Slack DM to the assigned CM. Errors don't fail the
- *      handoff — the status flip is the only critical side-effect. AM
- *      can DM the CM themselves if Slack hiccups.
- *   3. Persist the handoff step done so the rail flips green and the
+ *   2. Persist the handoff step done so the rail flips green and the
  *      wizard's "current step" pointer rolls off the end.
+ *
+ * No Slack DM / inbox task / automatic notifications (Roy 2026-06-11) —
+ * those brought more noise than value. CM picks the client up by walking
+ * their normal portfolio view.
  */
 export async function POST(
   _req: NextRequest,
@@ -160,35 +180,10 @@ export async function POST(
     return NextResponse.json({ error: msg }, { status: 400 })
   }
 
-  // ── 2. CM notification (best-effort) ──
-  let cmNotified = false
-  let cmNotifyError: string | null = null
-  if (client.campaignManager) {
-    try {
-      const hubUserId = await resolveHubUserIdByName(client.campaignManager)
-      if (hubUserId) {
-        const wizardUrl = `${process.env.HUB_BASE_URL ?? "https://hub.rocketleads.com"}/clients/${mondayItemId}`
-        const message = [
-          `🚀 *${client.companyName || client.name}* is klaar voor jou.`,
-          "",
-          `De AM heeft de onboarding afgerond — klant staat nu op Live. Tijd om de campagne te bouwen.`,
-          "",
-          `→ Open klant in Hub: ${wizardUrl}`,
-        ].join("\n")
-        await sendDmToHubUser(hubUserId, message)
-        cmNotified = true
-      } else {
-        cmNotifyError = `No Hub user matched "${client.campaignManager}"`
-      }
-    } catch (e) {
-      cmNotifyError = e instanceof Error ? e.message : "Slack DM failed"
-      console.error(`[handoff] CM notification failed for ${mondayItemId}:`, cmNotifyError)
-    }
-  } else {
-    cmNotifyError = "No campaign manager assigned"
-  }
-
-  // ── 3. Persist handoff step done ──
+  // ── 2. Persist handoff step done ──
+  // No Slack DM, no inbox task, no notification — just record the
+  // handoff so the rail flips green. CM finds the client via their
+  // normal portfolio view (now that status = Live, it shows up there).
   await saveStepState({
     mondayItemId,
     stepKey: "handoff",
@@ -197,36 +192,9 @@ export async function POST(
       handoffAt: new Date().toISOString(),
       handoffBy: session.user.id,
       cmName: client.campaignManager || null,
-      cmNotified,
-      cmNotifyError,
     },
     userId: session.user.id,
   })
 
-  return NextResponse.json({
-    ok: true,
-    cmNotified,
-    cmNotifyError,
-  })
-}
-
-/**
- * Look up a Hub user by their display name — matched against the
- * `users.name` column case-insensitively. Returns the first match's ID
- * or null. Used by the handoff CM-notify path to translate the AM's
- * Monday-display-name CM into a Slack-DM-able Hub user. Sprint-later
- * upgrade: route via `user_column_mappings.monday_user_id` so the
- * lookup tolerates name renames + duplicates.
- */
-async function resolveHubUserIdByName(displayName: string): Promise<string | null> {
-  const trimmed = displayName.trim()
-  if (!trimmed) return null
-  const supabase = await createAdminClient()
-  const { data } = await supabase
-    .from("users")
-    .select("id, name")
-    .ilike("name", trimmed)
-    .limit(1)
-    .maybeSingle()
-  return data?.id ?? null
+  return NextResponse.json({ ok: true })
 }

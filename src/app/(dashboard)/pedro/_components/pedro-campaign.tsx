@@ -23,17 +23,17 @@ import {
 // ── Types ──
 
 /**
- * Visual-style block (Roy 2026-06-10) — mirrors the same field shape used
+ * Visual-style block (Roy 2026-06-10) - mirrors the same field shape used
  * by `brief-required-modal.tsx` so the policy resolver
  * (`src/lib/pedro/visual-style-policy.ts`) accepts either source.
  *
- *  - `visualStyleMode`     — broad source picker. "website" enables the
+ *  - `visualStyleMode`     - broad source picker. "website" enables the
  *                            toggles; other modes ignore the fingerprint.
- *  - `customStylePrompt`   — verbatim CM prompt; only used when mode
+ *  - `customStylePrompt`   - verbatim CM prompt; only used when mode
  *                            === "custom".
- *  - `websiteToggles`      — per-element on/off when mode === "website".
+ *  - `websiteToggles`      - per-element on/off when mode === "website".
  *                            State preserved across mode switches.
- *  - `fallbackFontHeading` — standard font Pedro falls back to when the
+ *  - `fallbackFontHeading` - standard font Pedro falls back to when the
  *                            fonts toggle is off OR the site has no
  *                            usable font OR mode !== "website".
  */
@@ -55,9 +55,9 @@ const DEFAULT_WEBSITE_TOGGLES: WebsiteToggles = {
 };
 
 const FALLBACK_FONT_LABEL: Record<FallbackFontKey, string> = {
-  inter: "Inter (SemiBold/Bold) — universeel, neutraal-modern",
-  manrope: "Manrope (SemiBold) — geometric, friendlier",
-  plus_jakarta: "Plus Jakarta Sans (SemiBold) — modern, iets meer karakter",
+  inter: "Inter (SemiBold/Bold) - universeel, neutraal-modern",
+  manrope: "Manrope (SemiBold) - geometric, friendlier",
+  plus_jakarta: "Plus Jakarta Sans (SemiBold) - modern, iets meer karakter",
 };
 
 interface BriefData {
@@ -78,7 +78,7 @@ interface BriefData {
   fallbackFontHeading?: FallbackFontKey;
 }
 
-/** Defaults applied to every fresh brief — kept central so reset / load /
+/** Defaults applied to every fresh brief - kept central so reset / load /
  *  initial state can't drift. */
 const EMPTY_VISUAL_STYLE: Pick<
   BriefData,
@@ -111,7 +111,7 @@ interface BrandStyle {
   industry: string;
   brandKeywords: string;
   visualStyle: string;
-  // Roy 2026-06-10 — extended brand fingerprint + Haiku quality verdict.
+  // Roy 2026-06-10 - extended brand fingerprint + Haiku quality verdict.
   // All optional so old persisted blobs (no fingerprint) deserialise
   // cleanly. The /api/pedro/analyze-website endpoint fills these in;
   // the policy resolver in src/lib/pedro/visual-style-policy.ts reads
@@ -171,16 +171,16 @@ type StageName = keyof StageOptionsMap;
 type ClaudeCtx = {
   clientId?: string | null;
   /** "haiku" override for structured-output stages, "sonnet" for prose.
-   *  Server falls back to a sensible per-stage default — set this only
+   *  Server falls back to a sensible per-stage default - set this only
    *  when forcing a different tier than the default. */
   model?: "sonnet" | "haiku";
-  /** Override max_tokens when the per-stage default isn't enough — e.g.
+  /** Override max_tokens when the per-stage default isn't enough - e.g.
    *  the truncation-retry doubles this before re-calling. */
   maxTokens?: number;
   /** Called with each text delta as Claude streams. The cumulative full
    *  text so far is passed alongside the delta so prose stages can drive
    *  a state setter directly without managing their own buffer. JSON
-   *  stages don't pass this — they need the final text to parse. */
+   *  stages don't pass this - they need the final text to parse. */
   onDelta?: (delta: string, fullSoFar: string) => void;
 };
 
@@ -211,7 +211,7 @@ async function callClaudeRaw<S extends StageName>(
       maxTokens: ctx?.maxTokens,
     }),
   });
-  // Vercel 504 / gateway errors return HTML, not JSON — guard before parsing
+  // Vercel 504 / gateway errors return HTML, not JSON - guard before parsing
   // so the catch block surfaces a meaningful message instead of "Unexpected
   // token < in JSON".
   if (!res.body) {
@@ -266,7 +266,7 @@ async function callClaudeRaw<S extends StageName>(
  * Text-stage Pedro call with automatic truncation retry. When the
  * model hits the maxTokens cap (`stop_reason === "max_tokens"`) we
  * retry once with 2x the cap so the CM doesn't end up with a half-
- * generated LP or Manus prompt. One retry is enough — if 2x still
+ * generated LP or Manus prompt. One retry is enough - if 2x still
  * truncates the prompt is unreasonably large and the CM needs to know.
  */
 async function callPedro<S extends StageName>(
@@ -278,10 +278,10 @@ async function callPedro<S extends StageName>(
   if (first.stopReason !== "max_tokens") return first.text;
   const baseTokens = ctx?.maxTokens;
   const retryTokens = baseTokens ? baseTokens * 2 : 4000;
-  console.warn(`[pedro] truncated on stage ${stage} — retrying at ${retryTokens} tokens`);
+  console.warn(`[pedro] truncated on stage ${stage} - retrying at ${retryTokens} tokens`);
   const retry = await callClaudeRaw(stage, options, { ...ctx, maxTokens: retryTokens });
   if (retry.stopReason === "max_tokens") {
-    console.warn(`[pedro] still truncated at ${retryTokens} tokens — returning anyway`);
+    console.warn(`[pedro] still truncated at ${retryTokens} tokens - returning anyway`);
   }
   return retry.text;
 }
@@ -375,7 +375,7 @@ function Card({ active, children }: { active?: boolean; children: React.ReactNod
   );
 }
 
-// ── Brief explainability — types + UI helper ──
+// ── Brief explainability - types + UI helper ──
 // When the auto-brief endpoint fills the form, Pedro tags each field
 // with the input it pulled from (kick-off / eval / Trengo / etc.). The
 // tag below each field surfaces this so the AM can verify provenance
@@ -418,8 +418,78 @@ function SourceTag({ sources }: { sources: FieldSource[] | undefined }) {
   );
 }
 
+/**
+ * Pre-flight checklist — shows what the AM already wired up during
+ * onboarding so the CM knows what they're starting with. Two columns:
+ * "Brief & huisstijl" (Pedro generation inputs) and "Integraties" (the
+ * downstream connections push-to-Meta etc. depend on). Inline compact
+ * card so it doesn't push the brief form below the fold on first paint.
+ */
+function PreflightChecklist({
+  presence,
+}: {
+  presence: {
+    brief: boolean;
+    brandStyle: boolean;
+    driveFolder: boolean;
+    metaAdAccount: boolean;
+    stripeCustomer: boolean;
+    trengoContact: boolean;
+    clientBoard: boolean;
+  };
+}) {
+  // Two-column split: generation-input vs integration. Order matters —
+  // critical for Pedro (brief / brand) first, optional-but-useful
+  // (Trengo) last.
+  const left: Array<{ key: string; label: string; ok: boolean }> = [
+    { key: "brief", label: "Brief uit kick-off", ok: presence.brief },
+    { key: "brandStyle", label: "Huisstijl (kleuren + fonts)", ok: presence.brandStyle },
+    { key: "driveFolder", label: "Google Drive folder", ok: presence.driveFolder },
+  ];
+  const right: Array<{ key: string; label: string; ok: boolean }> = [
+    { key: "metaAdAccount", label: "Meta ad account", ok: presence.metaAdAccount },
+    { key: "stripeCustomer", label: "Stripe customer (betaling)", ok: presence.stripeCustomer },
+    { key: "clientBoard", label: "Monday lead-board", ok: presence.clientBoard },
+    { key: "trengoContact", label: "Trengo contact", ok: presence.trengoContact },
+  ];
+  const Row = ({ ok, label }: { ok: boolean; label: string }) => (
+    <li className="flex items-center gap-2 py-0.5">
+      <span
+        aria-hidden
+        className={
+          ok
+            ? "text-emerald-500 text-[11px]"
+            : "text-amber-500/70 text-[11px]"
+        }
+      >
+        {ok ? "✓" : "•"}
+      </span>
+      <span className={ok ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+    </li>
+  );
+  return (
+    <div className="mt-3 rounded-md border border-border/60 bg-muted/20 px-3.5 py-2.5">
+      <div className="text-[10px] uppercase tracking-[0.5px] text-muted-foreground/70 mb-1.5">
+        Wat AM heeft geleverd tijdens onboarding
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 text-[11.5px]">
+        <ul className="space-y-0">
+          {left.map((r) => (
+            <Row key={r.key} ok={r.ok} label={r.label} />
+          ))}
+        </ul>
+        <ul className="space-y-0">
+          {right.map((r) => (
+            <Row key={r.key} ok={r.ok} label={r.label} />
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 // Shared generation rules + per-stage prompts now live in
-// `@/lib/pedro/prompts` — kept here only as a comment-marker for greppers.
+// `@/lib/pedro/prompts` - kept here only as a comment-marker for greppers.
 
 // ── Main Component ──
 // Sections map to steps internally for backwards compatibility
@@ -454,7 +524,7 @@ export function Campaign({
   /** When the user picks a different client from inside the brief, propagate
    *  to the global picker (still rendered up top). */
   onSelectClient: (clientId: string, clientName: string) => void
-  /** Active Pedro campaign number — all saves on this mount land under
+  /** Active Pedro campaign number - all saves on this mount land under
    *  this campaign. Defaults to 1 for back-compat with single-campaign
    *  clients. Roy 2026-05-23. */
   campaignNumber?: number
@@ -474,12 +544,27 @@ export function Campaign({
   });
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
-  // Auto-brief state — clientId comes from the parent now (global picker).
+  // Auto-brief state - clientId comes from the parent now (global picker).
   const [autoFilling, setAutoFilling] = useState(false);
   const [autoBriefSource, setAutoBriefSource] = useState<string | null>(null);
-  // Per-field provenance from auto-brief — populated when Pedro fills the
+  // Per-field provenance from auto-brief - populated when Pedro fills the
   // brief; surfaces as small "Bron: X" tags below each input field.
   const [briefSources, setBriefSources] = useState<BriefSources>({});
+
+  // Pre-flight checklist — what AM already delivered during onboarding.
+  // Hydrated from /api/clients/[id]/onboarding/handoff. Null while the
+  // request is in flight or no client selected; falsy when the client
+  // never went through the wizard (legacy) so we just don't render the
+  // checklist for them.
+  const [onboardingPresence, setOnboardingPresence] = useState<{
+    brief: boolean;
+    brandStyle: boolean;
+    driveFolder: boolean;
+    metaAdAccount: boolean;
+    stripeCustomer: boolean;
+    trengoContact: boolean;
+    clientBoard: boolean;
+  } | null>(null);
 
   // Website analysis
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -518,7 +603,7 @@ export function Campaign({
 
   // Client deliverable (#5b): the "Deliverable #1" markdown doc that
   // gets stored against the client. Distinct from the in-memory
-  // download flow above — this hits the server, reads the latest
+  // download flow above - this hits the server, reads the latest
   // saved stage versions, and upserts to pedro_deliverables so the
   // client detail page can show + serve it.
   const [deliverableSaving, setDeliverableSaving] = useState(false);
@@ -535,14 +620,25 @@ export function Campaign({
 
   // Step 4: Creatives
   const [qty, setQty] = useState(3);
-  const [formats, setFormats] = useState<string[]>(["Static 1:1 (1080×1080)"]);
+  // Format is locked to Static 1:1 since 2026-06-11 — we always run the
+  // same format, so the picker was just noise. State stays a string[]
+  // so the existing creative-refresh / save call sites don't have to
+  // change shape.
+  const DEFAULT_FORMAT = "Static 1:1 (1080×1080)";
+  const [formats, setFormats] = useState<string[]>([DEFAULT_FORMAT]);
+
+  // Auto-sync qty to selected-angles count whenever the CM (de)selects
+  // an angle. One creative per angle is the actual workflow — making
+  // the user manually keep qty in sync was a foot-gun. Safety: never
+  // set qty to 0 (would break downstream prompts); we keep the previous
+  // value if angles drops to zero (e.g. user is mid-edit).
   const [driveLink, setDriveLink] = useState("");
   const [huisstijl, setHuisstijl] = useState("");
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [brandbookName, setBrandbookName] = useState("");
   const [manusPrompt, setManusPrompt] = useState("");
   const [manusLoading, setManusLoading] = useState(false);
-  // Optional steering note for creatives regenerate — empty string =
+  // Optional steering note for creatives regenerate - empty string =
   // standard regenerate. CM uses this to push iterations in a
   // specific direction without rewriting the whole prompt builder.
   const [creativesSteering, setCreativesSteering] = useState("");
@@ -591,7 +687,7 @@ export function Campaign({
     });
   };
 
-  // Per-call context helpers — every prompt builder takes its context
+  // Per-call context helpers - every prompt builder takes its context
   // as plain strings, so we close over current state here and pass the
   // result in. The builders themselves live in `@/lib/pedro/prompts`.
   const anglesStr = () => anglesString(selectedAngles);
@@ -638,6 +734,18 @@ export function Campaign({
     setHuisstijl(`Primary: ${field === "primaryColor" ? hex : brandStyle.primaryColor}, Secondary: ${field === "secondaryColor" ? hex : brandStyle.secondaryColor}`);
   }
 
+  // ── Auto-sync qty to selected-angles count ──
+  // See the comment near `setQty` above for the why. The effect only
+  // ever raises qty when an angle is added; never lowers it back to 0
+  // (so a transient angle-clear during editing doesn't blow away the
+  // last-known value).
+  useEffect(() => {
+    if (selectedAngles.length > 0 && selectedAngles.length !== qty) {
+      setQty(selectedAngles.length);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAngles.length]);
+
   // ── Auto-fetch Meta RL campaigns on mount (silent) ──
   useEffect(() => {
     if (metaFetched.current) return;
@@ -669,7 +777,7 @@ export function Campaign({
   // ── Hub client coupling: pick a client + load existing state OR AI auto-fill ──
   // Replaces Mike's monday search + kick-off parser. The new flow uses the
   // hub's full context (Monday updates, Fathom transcripts prioritising the
-  // most recent evaluation, Trengo) — see /api/pedro/auto-brief.
+  // most recent evaluation, Trengo) - see /api/pedro/auto-brief.
   //
   // Behaviour: pick a client → load any saved state. If state exists, restore
   // brief/angles/script/etc and DON'T auto-run AI (user can re-trigger via
@@ -679,13 +787,13 @@ export function Campaign({
   // whenever selectedClientId changes (driven by the global picker).
   //
   // Loading priority (Roy's directive 2026-05-09):
-  //   1. Latest SAVED VERSION per stage (pedro_stage_versions) — canonical
-  //   2. DRAFT slot (pedro_client_state) — fallback for stages without v1+
-  //   3. Auto-brief — only when neither exists for this client
+  //   1. Latest SAVED VERSION per stage (pedro_stage_versions) - canonical
+  //   2. DRAFT slot (pedro_client_state) - fallback for stages without v1+
+  //   3. Auto-brief - only when neither exists for this client
   //
   // Why saved-versions first: a returning AM expects "I saved v1, now
   // I want to continue editing v1". Drafts can be stale, partial, or
-  // wiped by experiments — saved versions are the explicit canonical
+  // wiped by experiments - saved versions are the explicit canonical
   // record. Editing then auto-saves to draft until the user explicitly
   // commits a new version (v2, v3, ...).
   const loadClientState = useCallback(async function loadClientState(clientId: string, clientName: string) {
@@ -718,14 +826,14 @@ export function Campaign({
       if (versionsRes.ok) {
         const vd = await versionsRes.json();
         const versions: Array<{ stage: string; version_number: number; data: unknown }> = vd.versions ?? [];
-        // Saved-versions API returns ordered by saved_at desc — take first per stage.
+        // Saved-versions API returns ordered by saved_at desc - take first per stage.
         for (const v of versions) {
           if (!savedByStage.has(v.stage)) savedByStage.set(v.stage, { version_number: v.version_number, data: v.data });
           if (v.version_number > highestVersion) highestVersion = v.version_number;
         }
       }
     } catch {
-      /* silent — fall through to auto-brief */
+      /* silent - fall through to auto-brief */
     }
 
     const hasAnything = !!draftState || savedByStage.size > 0;
@@ -744,7 +852,7 @@ export function Campaign({
       const angles = sv("angles") ?? draftState?.selected_angles;
       if (Array.isArray(angles)) setSelectedAngles(angles as Angle[]);
 
-      // Script — saved version stores { script_text, script_videos }; draft has them as separate columns
+      // Script - saved version stores { script_text, script_videos }; draft has them as separate columns
       const scriptSaved = sv("script") as { script_text?: string; script_videos?: ScriptVideo[] } | undefined;
       if (scriptSaved) {
         if (typeof scriptSaved.script_text === "string") setScript(scriptSaved.script_text);
@@ -780,25 +888,25 @@ export function Campaign({
       const ac = (sv("ad-copy") as AdCopy | undefined) ?? (draftState?.ad_copy as AdCopy | undefined);
       if (ac) setAdCopy(ac);
 
-      // Brand style — only stored in draft
+      // Brand style - only stored in draft
       if (draftState?.brand_style) setBrandStyle(draftState.brand_style as BrandStyle);
       const meta = draftState?.auto_brief_meta as { source?: string } | undefined;
       if (meta?.source) setAutoBriefSource(meta.source);
 
-      // Status message — different copy depending on whether saved versions
+      // Status message - different copy depending on whether saved versions
       // exist (canonical) or only a draft (in-progress).
       if (savedByStage.size > 0) {
         const stages = Array.from(savedByStage.keys()).sort();
         setImportStatus(
-          `Geladen vanuit opgeslagen versie${highestVersion > 1 ? `s (laatst: v${highestVersion})` : " (v1)"} — bewerk en sla op als nieuwe versie. Stages: ${stages.join(", ")}.`,
+          `Geladen vanuit opgeslagen versie${highestVersion > 1 ? `s (laatst: v${highestVersion})` : " (v1)"} - bewerk en sla op als nieuwe versie. Stages: ${stages.join(", ")}.`,
         );
         showToast(`Versie ${highestVersion > 1 ? `tot v${highestVersion}` : "v1"} geladen ✓`);
       } else {
-        setImportStatus(`Draft van "${clientName}" geladen — sla op als versie zodra je tevreden bent.`);
+        setImportStatus(`Draft van "${clientName}" geladen - sla op als versie zodra je tevreden bent.`);
         showToast(`Draft geladen ✓`);
       }
     } else {
-      // Fresh client — try the onboarding handoff first (AM already
+      // Fresh client - try the onboarding handoff first (AM already
       // filled brief + brand fingerprint during kick-off). Falls
       // through to auto-brief when there's nothing collected upstream.
       void loadFromOnboardingOrAutoBrief(clientId, clientName);
@@ -826,15 +934,28 @@ export function Campaign({
             usps: string; marketingHooks: string; driveLink: string;
           };
           /** Only the website fingerprint (colors + fonts + logo / hero /
-           *  tagline). The "soft" Pedro fields — tone, industry,
-           *  brandKeywords, visualStyle — are NOT captured during AM
+           *  tagline). The "soft" Pedro fields - tone, industry,
+           *  brandKeywords, visualStyle - are NOT captured during AM
            *  kick-off and get seeded with defaults below. */
           brandStyle: Pick<BrandStyle,
             | "primaryColor" | "secondaryColor" | "accentColor"
             | "headingFont" | "bodyFont" | "logoUrl" | "heroImageUrl"
             | "taglineHeadline" | "taglineSubline"
           > | null;
+          presence?: {
+            brief: boolean;
+            brandStyle: boolean;
+            driveFolder: boolean;
+            metaAdAccount: boolean;
+            stripeCustomer: boolean;
+            trengoContact: boolean;
+            clientBoard: boolean;
+          };
         };
+        // Always store presence — even when the brief isn't filled yet
+        // (CM may be opening Pedro before AM finished the brief), so the
+        // checklist renders the integration flags from Monday.
+        if (data.presence) setOnboardingPresence(data.presence);
         if (data.available) {
           // Same field-name mapping as runAutoBrief (kickoff → Pedro
           // internal names) so behaviour is identical from the CM's
@@ -851,12 +972,24 @@ export function Campaign({
             usps: b.usps || prev.usps,
             hooksAM: b.marketingHooks || prev.hooksAM,
           }));
+          // Tag every pre-filled field as sourced from the kick-off so
+          // the existing per-field "Bron: kick-off meeting" chip renders
+          // — same UX as runAutoBrief's _sources mapping below.
+          const next: BriefSources = {};
+          if (b.bedrijf) next.bedrijf = ["kickoff_meeting"];
+          if (b.sector) next.sector = ["kickoff_meeting"];
+          if (b.doelgroep) next.doel = ["kickoff_meeting"];
+          if (b.pijnpunten) next.pijn = ["kickoff_meeting"];
+          if (b.aanbod) next.aanbod = ["kickoff_meeting"];
+          if (b.usps) next.usps = ["kickoff_meeting"];
+          if (b.marketingHooks) next.hooksAM = ["kickoff_meeting"];
+          setBriefSources(next);
           if (b.websiteUrl) setWebsiteUrl(b.websiteUrl);
           if (b.driveLink) setDriveLink(b.driveLink);
           if (data.brandStyle) {
             // Onboarding only captures the visual fingerprint (colors +
             // fonts + logo). Pedro's BrandStyle needs `tone / industry /
-            // brandKeywords / visualStyle` too — those are CM-craft
+            // brandKeywords / visualStyle` too - those are CM-craft
             // fields. We seed them empty so Pedro renders + auto-saves
             // a valid blob; the CM fills the soft fields later if needed.
             setBrandStyle({
@@ -874,14 +1007,14 @@ export function Campaign({
           }
           setAutoBriefSource("onboarding_kickoff");
           setImportStatus(
-            `Brief + huisstijl overgenomen uit onboarding kick-off van "${clientName}" — controleer en vul aan.`,
+            `Brief + huisstijl overgenomen uit onboarding kick-off van "${clientName}" - controleer en vul aan.`,
           );
           showToast("Onboarding-context overgenomen ✓");
           return;
         }
       }
     } catch {
-      // Silent — fall through to auto-brief on any error.
+      // Silent - fall through to auto-brief on any error.
     }
     void runAutoBrief(clientId, clientName);
   }
@@ -895,6 +1028,31 @@ export function Campaign({
     lastLoadedClientRef.current = selectedClientId;
     void loadClientState(selectedClientId, selectedClientName);
   }, [selectedClientId, selectedClientName, loadClientState]);
+
+  // Pre-flight presence refetch — runs on every client switch, even when
+  // we're loading from a saved draft (which bypasses handoff in the
+  // load path). Keeps the Brief tab's "AM heeft het volgende geregeld:"
+  // checklist accurate for both fresh and revisit cases.
+  useEffect(() => {
+    if (!selectedClientId) {
+      setOnboardingPresence(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/clients/${encodeURIComponent(selectedClientId)}/onboarding/handoff`,
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && data?.presence) setOnboardingPresence(data.presence);
+      } catch {
+        /* silent — checklist just stays hidden */
+      }
+    })();
+    return () => { cancelled = true };
+  }, [selectedClientId]);
 
   // ── Auto-save: debounced 800ms write of every Pedro deliverable to
   // pedro_client_state. Triggered when any of the 6 stages' output changes.
@@ -911,7 +1069,7 @@ export function Campaign({
   useEffect(() => {
     if (!selectedClientId) return;
     if (autoFilling) return;
-    // First effect run after client-select / auto-fill load is just hydration —
+    // First effect run after client-select / auto-fill load is just hydration -
     // skip writing back. Subsequent runs are real edits.
     if (skipNextSaveRef.current) {
       skipNextSaveRef.current = false;
@@ -936,7 +1094,7 @@ export function Campaign({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       }).catch(() => {
-        /* silent — save retries on next state change */
+        /* silent - save retries on next state change */
       });
     }, 800);
 
@@ -969,7 +1127,7 @@ export function Campaign({
 
   // Save current stage data as a new explicit version, then navigate to
   // the next section. Skips the POST when nothing has changed since the
-  // latest existing version (Roy 2026-05-09 — "geen onnodige versies").
+  // latest existing version (Roy 2026-05-09 - "geen onnodige versies").
   // Tab navigation up top stays as the "navigate without saving" escape
   // hatch.
   async function saveStageAndContinue(args: {
@@ -986,7 +1144,7 @@ export function Campaign({
     if (result.saved) {
       showToast(`✓ Opgeslagen als v${result.versionNumber}`);
     } else if (result.reason === "unchanged") {
-      showToast(`v${result.versionNumber} ongewijzigd — geen nieuwe versie`);
+      showToast(`v${result.versionNumber} ongewijzigd - geen nieuwe versie`);
     }
     setSection(args.nextSection);
   }
@@ -1052,7 +1210,7 @@ export function Campaign({
       if (b.websiteUrl) setWebsiteUrl(b.websiteUrl);
       if (b.driveLink) setDriveLink(b.driveLink);
       setAutoBriefSource(b.source || "");
-      setImportStatus(`Brief auto-gevuld voor "${name}" — controleer en vul aan`);
+      setImportStatus(`Brief auto-gevuld voor "${name}" - controleer en vul aan`);
       showToast("Pedro heeft de brief ingevuld ✓");
     } catch {
       showToast("AI auto-fill mislukt");
@@ -1073,7 +1231,7 @@ export function Campaign({
 
     // Pull the latest research for this client (saved version preferred,
     // falls back to library entry). Adds branche-specific winning patterns
-    // as Claude context — Roy's directive: research feeds angles, niet
+    // as Claude context - Roy's directive: research feeds angles, niet
     // skippen.
     let researchContext = "";
     if (selectedClientId) {
@@ -1091,11 +1249,11 @@ export function Campaign({
             researchContext = `\n\nRESEARCH (laatst opgeslagen voor deze klant):\n` +
               (angles.length ? `Winnende angles in deze branche:\n${angles.map((a: string) => `- ${a}`).join("\n")}\n` : "") +
               (hooks.length ? `Hook-patronen die werken:\n${hooks.map((h: string) => `- ${h}`).join("\n")}\n` : "") +
-              `\nGebruik deze research als inspiratie — varieer er bovenop, kopieer niet.`;
+              `\nGebruik deze research als inspiratie - varieer er bovenop, kopieer niet.`;
           }
         }
       } catch {
-        /* silent — research is optional context */
+        /* silent - research is optional context */
       }
     }
 
@@ -1113,7 +1271,7 @@ export function Campaign({
         { clientId: selectedClientId }
       );
       setAngles(parsed.map((a) => ({ ...a, titel: sanitizeOutput(a.titel), beschrijving: sanitizeOutput(a.beschrijving) })));
-      // Fresh batch — clear any stale regenerate selection.
+      // Fresh batch - clear any stale regenerate selection.
       setRegenAngleSet(new Set());
       setRegenAngleSteering("");
     } catch (e) {
@@ -1274,7 +1432,7 @@ export function Campaign({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function doCreative(_opts?: { skipNav?: boolean }) {
     // doCreative doesn't navigate by default (creatives is step 4 and
-    // the CM stays on that step) — opts is accepted for symmetry with
+    // the CM stays on that step) - opts is accepted for symmetry with
     // the other step-driver handlers so the parallel-mode caller can
     // pass `{ skipNav: true }` without case-checking which function
     // it's calling.
@@ -1293,7 +1451,7 @@ export function Campaign({
         previousManusRef: previousManusReference(clientDB),
       });
 
-      // Streaming prefix — master prompt + divider + heading. As
+      // Streaming prefix - master prompt + divider + heading. As
       // Claude's creative descriptions stream in we keep prepending
       // this prefix so the CM sees the full Manus brief assembling
       // top-to-bottom. The warning block + final assembly run once at
@@ -1301,13 +1459,13 @@ export function Campaign({
       const streamPrefix = `${masterPrompt}\n\n---\n\n## CREATIVES VOOR DEZE CAMPAGNE\n\n`;
 
       // Section 2: Ask Claude to generate only the creative descriptions.
-      // Server defaults to 4000 max tokens for the creatives stage — at
+      // Server defaults to 4000 max tokens for the creatives stage - at
       // qty=5+ the creatives section used to cut off mid-creative.
       // callPedro's auto-retry at 8000 covers qty=10 worst-case.
       // creativesSteering, when set, is layered on top of the standard
-      // prompt — used to iterate ("alle creatives in pattern-interrupt
+      // prompt - used to iterate ("alle creatives in pattern-interrupt
       // variant F", "minder generieke headlines, meer concrete cijfers").
-      // lpContext makes headlines + CTA align to the LP hero — LP now
+      // lpContext makes headlines + CTA align to the LP hero - LP now
       // runs BEFORE creatives in the pipeline (Roy 2026-05-22).
       const creativeDescriptions = sanitizeOutput(await callPedro(
         "creatives",
@@ -1367,7 +1525,7 @@ ${creativeDescriptions}`;
     setLpLoading(true);
     setLpPrompt("");
     try {
-      // Server defaults to 2500 max tokens for LP — was 1200, long
+      // Server defaults to 2500 max tokens for LP - was 1200, long
       // Lovable prompts with social proof + form + FAQ were truncating
       // silently. callPedro auto-retries at 5000 if that still hits.
       // onDelta streams the Lovable prompt into the output box so the
@@ -1404,7 +1562,7 @@ ${creativeDescriptions}`;
 
   // ── Step 6: Ad copy (uses brief + angle + script + LP headline/CTA) ──
   async function doAdCopy(opts?: { skipNav?: boolean }) {
-    // Save the LP draft as a new version on the way to ad-copy — only
+    // Save the LP draft as a new version on the way to ad-copy - only
     // when the LP changed since the last save. Skip-when-unchanged is
     // shared with every other Pedro save (saveIfChanged helper). In
     // parallel mode we keep this save running because LP just finished
@@ -1430,7 +1588,7 @@ ${creativeDescriptions}`;
       // Server defaults to Haiku + 1200 max_tokens for ad-copy. Text
       // fields post-sanitized after parse so smart quotes from Claude
       // don't leak into Meta copy. creativesContext makes the copy
-      // align to the visual headlines/CTA of the Manus prompt — Roy
+      // align to the visual headlines/CTA of the Manus prompt - Roy
       // 2026-05-22: ad copy should match BOTH LP en creatives, not LP only.
       const parsed = await callPedroJson<AdCopy, "ad-copy">(
         "ad-copy",
@@ -1465,7 +1623,7 @@ ${creativeDescriptions}`;
   // deliverable now depends on the previous one's output:
   //   Script (optional, await) → LP (await) → Creatives (await) → Ad copy
   // No true parallelism is possible anymore because each stage feeds the
-  // next. Streaming masks the wall-clock cost — each stage's text
+  // next. Streaming masks the wall-clock cost - each stage's text
   // appears progressively in its own tab. parallelProgress still tracks
   // per-stage status so the CM sees what's in flight.
   async function generateAllRestParallel() {
@@ -1490,11 +1648,11 @@ ${creativeDescriptions}`;
       } catch (e) {
         console.error("[pedro:sequence] script failed", e);
         setParallelProgress((p) => ({ ...p, script: "error" }));
-        // Continue anyway — LP can run without script context.
+        // Continue anyway - LP can run without script context.
       }
     }
 
-    // 2. LP — feeds creatives + ad copy.
+    // 2. LP - feeds creatives + ad copy.
     setParallelProgress((p) => ({ ...p, lp: "running" }));
     try {
       await doLP({ skipNav: true });
@@ -1504,7 +1662,7 @@ ${creativeDescriptions}`;
       setParallelProgress((p) => ({ ...p, lp: "error" }));
     }
 
-    // 3. Creatives — uses LP context (headlines align to LP hero).
+    // 3. Creatives - uses LP context (headlines align to LP hero).
     setParallelProgress((p) => ({ ...p, creatives: "running" }));
     try {
       await doCreative({ skipNav: true });
@@ -1514,7 +1672,7 @@ ${creativeDescriptions}`;
       setParallelProgress((p) => ({ ...p, creatives: "error" }));
     }
 
-    // 4. Ad copy — uses LP + creatives context.
+    // 4. Ad copy - uses LP + creatives context.
     setParallelProgress((p) => ({ ...p, adCopy: "running" }));
     try {
       await doAdCopy({ skipNav: true });
@@ -1538,7 +1696,7 @@ ${creativeDescriptions}`;
 
   // Bake the saved-versions of every stage into a single deliverable
   // markdown and store it as the client's canonical Pedro deliverable.
-  // Distinct from generateAndDownloadClientMD (local snapshot only) —
+  // Distinct from generateAndDownloadClientMD (local snapshot only) -
   // this persists server-side so the client detail page can show + serve it.
   async function saveClientDeliverable() {
     if (!selectedClientId) {
@@ -1780,7 +1938,7 @@ ${creativeDescriptions}`;
           </div>
 
           {/* Auto-fill draait automatisch bij client-select (zie
-              loadClientState). Manual button is dus weggevallen — sticky
+              loadClientState). Manual button is dus weggevallen - sticky
               picker is bovenin Pedro, brief vult zichzelf in. Loading
               state hieronder geeft progress. */}
           {autoFilling && (
@@ -1802,6 +1960,16 @@ ${creativeDescriptions}`;
                 )}
               </div>
             </div>
+          )}
+
+          {/* Pre-flight checklist — what AM already wired up during the
+              kick-off. Rendered only when handoff data resolved, so old
+              clients that never went through the wizard don't see an
+              empty checklist. Mix of brief + integrations because the CM
+              cares about both: brief = generation input, integrations =
+              what can be pushed to (Meta) or referenced (Drive, Trengo). */}
+          {onboardingPresence && (
+            <PreflightChecklist presence={onboardingPresence} />
           )}
 
           {/* Optional: load a previously-saved client .md file (legacy flow) */}
@@ -1923,7 +2091,7 @@ ${creativeDescriptions}`;
             </div>
           )}
 
-          {/* Visual-style controls — Roy 2026-06-10. Same field shape as
+          {/* Visual-style controls - Roy 2026-06-10. Same field shape as
               brief-required-modal.tsx so both UIs write identical blobs to
               pedro_client_state.brief and the policy resolver consumes
               either source. */}
@@ -2053,7 +2221,7 @@ ${creativeDescriptions}`;
                       } ${markedForRegen ? "ring-1 ring-amber-500/50" : ""}`}
                     >
                       <div className="absolute top-[0.875rem] right-[0.875rem] flex items-center gap-1.5">
-                        {/* Regen toggle — separate from the select state so
+                        {/* Regen toggle - separate from the select state so
                             the CM can pre-select an angle for use AND mark
                             it for a wording-refresh in the same gesture. */}
                         <button
@@ -2092,7 +2260,7 @@ ${creativeDescriptions}`;
                 })}
               </div>
 
-              {/* Regenerate-selected panel — only renders when ≥1 marked. */}
+              {/* Regenerate-selected panel - only renders when ≥1 marked. */}
               {regenAngleSet.size > 0 && (
                 <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
                   <div className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
@@ -2101,7 +2269,7 @@ ${creativeDescriptions}`;
                   <textarea
                     value={regenAngleSteering}
                     onChange={(e) => setRegenAngleSteering(e.target.value)}
-                    placeholder="Optionele steering: bv. 'maak ze harder confronterend', 'meer richting AI', 'minder cliché' — laat leeg om Pedro vrij te laten"
+                    placeholder="Optionele steering: bv. 'maak ze harder confronterend', 'meer richting AI', 'minder cliché' - laat leeg om Pedro vrij te laten"
                     rows={2}
                     className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug resize-none placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
                   />
@@ -2160,7 +2328,7 @@ ${creativeDescriptions}`;
                     </div>
                   </div>
 
-                  {/* Parallel-mode progress panel — only renders during a
+                  {/* Parallel-mode progress panel - only renders during a
                       "Genereer alle stages" run. Shows per-stage state so
                       the CM can see what's still in flight without
                       stepping into each tab. */}
@@ -2180,7 +2348,7 @@ ${creativeDescriptions}`;
                           const icon =
                             status === "done" ? "✓" :
                             status === "error" ? "✗" :
-                            status === "skipped" ? "—" :
+                            status === "skipped" ? "-" :
                             status === "running" ? "⟳" :
                             "·";
                           const tone =
@@ -2349,33 +2517,28 @@ ${creativeDescriptions}`;
               <Button variant="outline" size="xs" onClick={() => goTo(4)}>← Terug naar LP</Button>
             </div>
 
-            {/* Qty */}
-            <div className="bg-muted/40 border border-border/60 rounded-lg p-[1rem_1.125rem] mb-3">
-              <div className="font-heading font-semibold text-[11.5px] text-primary uppercase tracking-[0.9px] mb-3">Aantal creatives</div>
-              <div className="flex items-center gap-[10px]">
-                <Button variant="outline" size="icon-xs" onClick={() => setQty(Math.max(1, qty - 1))} aria-label="Decrease">−</Button>
-                <div className="font-heading font-bold text-lg min-w-[22px] text-center">{qty}</div>
-                <Button variant="outline" size="icon-xs" onClick={() => setQty(Math.min(6, qty + 1))} aria-label="Increase">+</Button>
-                <span className="text-[11.5px] text-muted-foreground/60 ml-1">creatives</span>
+            {/* Aantal creatives + formaat — gelocked op de werkelijke
+                workflow (Roy 2026-06-11): één creative per gekozen angle
+                (Pedro genereert N angles → N creatives), formaat altijd
+                Static 1:1 omdat we toch altijd hetzelfde formaat draaien.
+                De qty / formats keuze creëerde alleen ruis. */}
+            <div className="bg-muted/40 border border-border/60 rounded-lg p-[1rem_1.125rem] mb-3 flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="font-heading font-semibold text-[11.5px] text-primary uppercase tracking-[0.9px] mb-1">Output</div>
+                <div className="text-[12.5px] text-foreground">
+                  {selectedAngles.length > 0 ? (
+                    <><span className="font-semibold">{selectedAngles.length}</span> creatives · <span className="text-muted-foreground">één per angle</span></>
+                  ) : (
+                    <span className="text-muted-foreground">Kies eerst angles om te zien hoeveel creatives Pedro maakt.</span>
+                  )}
+                </div>
+                <div className="text-[10.5px] text-muted-foreground/60 mt-0.5">Formaat: Static 1:1 (1080×1080)</div>
               </div>
-            </div>
-
-            {/* Formats */}
-            <div className="bg-muted/40 border border-border/60 rounded-lg p-[1rem_1.125rem] mb-3">
-              <div className="font-heading font-semibold text-[11.5px] text-primary uppercase tracking-[0.9px] mb-3">Formaat</div>
-              <div className="flex flex-wrap gap-[6px]">
-                {allFormats.map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setFormats((prev) => prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f])}
-                    className={`px-[11px] py-1 rounded-[20px] text-[11.5px] font-medium border cursor-pointer transition-all font-inter ${
-                      formats.includes(f) ? "bg-primary/10 border-primary text-primary" : "bg-transparent border-border/60 text-muted-foreground hover:border-primary/40 hover:text-primary"
-                    }`}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
+              {selectedAngles.length > 0 && selectedAngles.length !== qty && (
+                <Button variant="ghost" size="xs" onClick={() => setQty(selectedAngles.length)}>
+                  Sync naar {selectedAngles.length}
+                </Button>
+              )}
             </div>
 
             {/* Huisstijl */}
@@ -2787,7 +2950,7 @@ ${creativeDescriptions}`;
 // Renders the mode picker + per-element toggles + fallback font selector
 // + custom prompt + Haiku quality verdict banner. The whole block emits
 // a single partial-brief patch up to the parent via `onChange`, which
-// merges it into the brief state — same pattern as updateBrief() but
+// merges it into the brief state - same pattern as updateBrief() but
 // for the structured visual-style sub-tree.
 
 function VisualStyleSection({
@@ -2824,7 +2987,7 @@ function VisualStyleSection({
         </div>
       </div>
 
-      {/* Quality verdict banner — only shows when we have a Haiku score */}
+      {/* Quality verdict banner - only shows when we have a Haiku score */}
       {qualitySummary && (
         <div
           className={`rounded-md border px-3 py-2 text-[11px] leading-tight ${
@@ -2848,8 +3011,8 @@ function VisualStyleSection({
             {qualitySummary.score >= 70
               ? "Volledige fingerprint toegestaan per toggles."
               : qualitySummary.score >= 40
-                ? "Alleen brand colors + fonts worden meegenomen — look & feel en logo onderdrukt."
-                : "Fingerprint uitgeschakeld — Pedro leunt op winner ad + Drive folder."}
+                ? "Alleen brand colors + fonts worden meegenomen - look & feel en logo onderdrukt."
+                : "Fingerprint uitgeschakeld - Pedro leunt op winner ad + Drive folder."}
           </div>
         </div>
       )}
@@ -2899,7 +3062,7 @@ function VisualStyleSection({
         }`}
       >
         <div className="text-[11px] font-medium text-muted-foreground">
-          Van de website — wat Pedro mag meenemen
+          Van de website - wat Pedro mag meenemen
         </div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
           <PedroToggleRow
