@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { fetchRecentFathomMeetings, ROCKET_LEADS_TEAMS } from "@/lib/integrations/fathom"
+import { fetchRecentFathomMeetings, ROCKET_LEADS_TEAMS, type FathomMeeting } from "@/lib/integrations/fathom"
 import { ingestFathomMeeting } from "@/lib/meetings/ingest"
 import { runMatcherBatch } from "@/lib/meetings/matcher"
 
@@ -45,17 +45,57 @@ export async function POST(req: NextRequest) {
   let errored = 0
 
   try {
-    // API-side filter on Rocket Leads teams only - typically dozens of
-    // recordings instead of hundreds, well under the pagination cap.
-    // Bumped maxPages to 20 as a safety buffer in case team volume grows.
-    const meetings = await fetchRecentFathomMeetings({
-      createdAfter,
-      teams: [...ROCKET_LEADS_TEAMS],
-      maxPages: 20,
-    })
+    // Two passes against the Fathom API:
+    //   1. team-tagged: meetings whose Fathom team contains a Rocket
+    //      Leads team. The 99% path - most AMs tag their calls.
+    //   2. user-fallback: meetings recorded by any Hub user, regardless
+    //      of team tag. Catches AMs who forget to tag the recording -
+    //      Roy 2026-06-11 explicitly asked for this since the team-only
+    //      pull was missing personal Google Meet sessions from a couple
+    //      of AMs.
+    //
+    // The pulls run in parallel, then we dedupe on `recording_id` so
+    // we don't double-ingest a meeting that's BOTH team-tagged AND
+    // recorded by a Hub user (the common case).
+    const { data: userRows } = await supabase
+      .from("users")
+      .select("email")
+      .not("email", "is", null)
+    const hubEmails = (userRows ?? [])
+      .map((r) => (r.email ?? "").toLowerCase().trim())
+      .filter(Boolean)
+    const allowedEmails = new Set<string>(hubEmails)
+
+    const [teamMeetings, userMeetings] = await Promise.all([
+      fetchRecentFathomMeetings({
+        createdAfter,
+        teams: [...ROCKET_LEADS_TEAMS],
+        maxPages: 20,
+      }),
+      hubEmails.length > 0
+        ? fetchRecentFathomMeetings({
+            createdAfter,
+            recordedByEmails: hubEmails,
+            maxPages: 20,
+          }).catch((e) => {
+            console.error("[backfill] user-fallback fetch failed:", e instanceof Error ? e.message : e)
+            return [] as FathomMeeting[]
+          })
+        : Promise.resolve([] as FathomMeeting[]),
+    ])
+
+    const seenRecordings = new Set<string>()
+    const meetings: FathomMeeting[] = []
+    for (const m of [...teamMeetings, ...userMeetings]) {
+      const key = m.recording_id != null ? String(m.recording_id) : ""
+      if (!key || seenRecordings.has(key)) continue
+      seenRecordings.add(key)
+      meetings.push(m)
+    }
+
     fetched = meetings.length
     for (const m of meetings) {
-      const r = await ingestFathomMeeting(supabase, m)
+      const r = await ingestFathomMeeting(supabase, m, { allowedEmails })
       if (!r.ok) {
         errored++
         continue

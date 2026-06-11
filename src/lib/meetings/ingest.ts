@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import {
   classifyMeetingType,
+  deriveFathomTitle,
+  isGenericFathomTitle,
   isRocketLeadsTeam,
   renderTranscript,
   type FathomMeeting,
@@ -31,6 +33,13 @@ export type IngestResult =
 export async function ingestFathomMeeting(
   supabase: SupabaseClient,
   payload: FathomMeeting,
+  options: {
+    /** Lowercase Hub-user emails. Meetings recorded by these users are
+     *  ingested even when their Fathom team tag isn't a Rocket Leads
+     *  team - covers AMs who forgot to tag the recording to the
+     *  Delivery / Sales team in Fathom. Roy 2026-06-11. */
+    allowedEmails?: Set<string>
+  } = {},
 ): Promise<IngestResult> {
   const recordingId = payload.recording_id != null ? String(payload.recording_id) : ""
   if (!recordingId) {
@@ -38,11 +47,14 @@ export async function ingestFathomMeeting(
   }
 
   // Only ingest recordings whose Fathom team contains "Rocket Leads"
-  // (case-insensitive). Personal calls in other teams (Founder Download,
-  // private teams, externals) are skipped - AMs need to record client work
-  // in a Rocket Leads team for it to land in the Hub.
+  // (case-insensitive) OR whose host is a known Hub user. The second
+  // path catches AMs who forgot to tag their recording to a Rocket
+  // Leads team in Fathom - same human, same workspace, same data.
   const team = payload.recorded_by?.team ?? null
-  if (!isRocketLeadsTeam(team)) {
+  const hostEmail = (payload.recorded_by?.email ?? "").toLowerCase().trim()
+  const teamMatch = isRocketLeadsTeam(team)
+  const hostMatch = !!hostEmail && !!options.allowedEmails?.has(hostEmail)
+  if (!teamMatch && !hostMatch) {
     return { ok: true, status: "skipped_team", recording_id: recordingId, team }
   }
 
@@ -55,12 +67,25 @@ export async function ingestFathomMeeting(
   // by adding meeting_type != 'sales' filters at the query layer.
   const meetingType = classifyMeetingType(payload)
 
+  const derivedTitle = deriveFathomTitle(payload)
+
   const { data: existing } = await supabase
     .from("meetings")
-    .select("id")
+    .select("id, title")
     .eq("fathom_recording_id", recordingId)
     .maybeSingle()
   if (existing) {
+    // Retroactive title fix: if the row landed before the derive-title
+    // logic existed (so its title is still "Impromptu Google Meet
+    // Meeting") AND we have a better one now, upgrade it in place.
+    // Cheap, low-risk - title is descriptive only, no downstream
+    // foreign keys depend on it. Roy 2026-06-11.
+    if (isGenericFathomTitle(existing.title) && derivedTitle && derivedTitle !== existing.title) {
+      await supabase
+        .from("meetings")
+        .update({ title: derivedTitle })
+        .eq("id", existing.id)
+    }
     return { ok: true, status: "deduped", recording_id: recordingId }
   }
 
@@ -87,7 +112,10 @@ export async function ingestFathomMeeting(
       fathom_recording_id: recordingId,
       meeting_type: meetingType,
       link_status: linkStatus,
-      title: payload.title ?? payload.meeting_title ?? null,
+      // Use derived title when Fathom sent a generic one ("Impromptu
+      // Google Meet Meeting"). Falls through to the source title when
+      // it's already meaningful or no client signal is available.
+      title: derivedTitle ?? payload.title ?? payload.meeting_title ?? null,
       scheduled_at: payload.scheduled_start_time ?? null,
       duration_sec: durationSec,
       recording_url: payload.url ?? null,

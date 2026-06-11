@@ -48,7 +48,19 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = await createAdminClient()
-  const result = await ingestFathomMeeting(supabase, payload)
+  // Same Hub-user fallback the admin backfill uses: a webhook delivery
+  // for an AM's personal Google Meet (no team tag) still gets ingested
+  // when the host email matches a Hub user. Roy 2026-06-11.
+  const { data: userRows } = await supabase
+    .from("users")
+    .select("email")
+    .not("email", "is", null)
+  const allowedEmails = new Set<string>(
+    (userRows ?? [])
+      .map((r) => (r.email ?? "").toLowerCase().trim())
+      .filter(Boolean),
+  )
+  const result = await ingestFathomMeeting(supabase, payload, { allowedEmails })
 
   if (!result.ok) {
     console.error("Fathom webhook ingest failed:", result.error)

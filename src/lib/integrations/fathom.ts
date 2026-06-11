@@ -26,6 +26,24 @@ export function clearFathomTokenCache() {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/**
+ * Strip HTML tags + collapse whitespace so an HTML 502 page from
+ * Fathom's edge doesn't dump raw `<html><head>…</title>502 Server
+ * Error…` into the Hub UI (Roy 2026-06-11). Falls back to the original
+ * trimmed string when no tags are present.
+ */
+function cleanErrorBody(raw: string): string {
+  if (!raw) return ""
+  const stripped = raw
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  return stripped.length > 200 ? stripped.slice(0, 200) + "…" : stripped
+}
+
 async function fathomFetch<T>(path: string, retries = 3): Promise<T> {
   const token = await getFathomToken()
   const url = path.startsWith("http") ? path : `${BASE_URL}${path}`
@@ -48,10 +66,14 @@ async function fathomFetch<T>(path: string, retries = 3): Promise<T> {
     if (res.status === 401 || res.status === 403) {
       clearFathomTokenCache()
       const text = await res.text().catch(() => "")
-      throw new Error(`Fathom API error ${res.status}: ${text.slice(0, 200) || res.statusText}`)
+      throw new Error(`Fathom API error ${res.status}: ${cleanErrorBody(text) || res.statusText}`)
     }
 
-    if (res.status === 429 && attempt < retries) {
+    // 429 (rate limit) + transient upstream errors (502/503/504) all
+    // retry with exponential backoff. The 5xx retry was missing before
+    // (Roy 2026-06-11: backfill kept failing on a single Fathom edge
+    // hiccup, even though a re-click 30s later worked).
+    if ((res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) && attempt < retries) {
       const retryAfter = parseInt(res.headers.get("retry-after") ?? "", 10)
       const delay = retryAfter ? retryAfter * 1000 : 2000 * 2 ** attempt
       await sleep(delay)
@@ -60,12 +82,12 @@ async function fathomFetch<T>(path: string, retries = 3): Promise<T> {
 
     if (!res.ok) {
       const text = await res.text().catch(() => "")
-      throw new Error(`Fathom API error ${res.status}: ${text.slice(0, 200) || res.statusText}`)
+      throw new Error(`Fathom API error ${res.status}: ${cleanErrorBody(text) || res.statusText}`)
     }
     return res.json() as Promise<T>
   }
 
-  throw new Error("Fathom API rate limit exceeded after retries")
+  throw new Error("Fathom API: te veel transient errors na meerdere retries")
 }
 
 // ─── Public types ───────────────────────────────────────────────────────────
@@ -289,6 +311,101 @@ export function verifyFathomWebhook(
       return false
     }
   })
+}
+
+// ─── Title derivation ──────────────────────────────────────────────────────
+//
+// Fathom's `title` is whatever the meeting's calendar invite said. For
+// Google Meet quick-starts it's the generic "Impromptu Google Meet Meeting"
+// which is useless for matching + scanning the Meetings overview. When the
+// source title is generic, derive something usable from the external
+// invitee's company domain + meeting date. Roy 2026-06-11.
+
+const GENERIC_TITLE_PATTERNS = [
+  /^impromptu\b/i,
+  /^google meet\b/i,
+  /^zoom meeting\b/i,
+  /^untitled\b/i,
+  /^new meeting\b/i,
+  /^teams meeting\b/i,
+  /^webex meeting\b/i,
+]
+
+export function isGenericFathomTitle(title: string | null | undefined): boolean {
+  if (!title || !title.trim()) return true
+  return GENERIC_TITLE_PATTERNS.some((re) => re.test(title.trim()))
+}
+
+// Strip the most common TLDs so "bloom-online.nl" → "bloom-online", then
+// split on - / _ / . and Title-case each segment → "Bloom Online".
+const TLD_STRIP_RE = /\.(co\.uk|com\.au|nl|com|be|de|fr|es|it|co|io|app|ai|tech|org|net|biz|eu)$/i
+
+export function prettifyEmailDomain(domain: string): string {
+  if (!domain) return ""
+  const lower = domain.toLowerCase().trim()
+  const stripped = lower.replace(TLD_STRIP_RE, "")
+  return stripped
+    .split(/[-_.]/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
+// Domains that belong to RL, well-known calendar/video providers, or
+// generic email hosts - none of those represent the actual client.
+const NON_CLIENT_DOMAINS = new Set([
+  "rocketleads.com",
+  "rocketleads.nl",
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "hotmail.com",
+  "live.com",
+  "yahoo.com",
+  "icloud.com",
+  "me.com",
+  "google.com",
+  "meet.google.com",
+  "zoom.us",
+  "microsoft.com",
+  "teams.microsoft.com",
+])
+
+export function deriveCompanyFromInvitees(invitees: FathomInvitee[] | undefined): string | null {
+  if (!invitees?.length) return null
+  // Prefer the first external invitee whose domain isn't a generic/RL
+  // email host - that's almost always the client side of the call.
+  for (const inv of invitees) {
+    if (!inv.is_external) continue
+    const domain = (inv.email_domain ?? "").toLowerCase().trim()
+    if (!domain) continue
+    if (NON_CLIENT_DOMAINS.has(domain)) continue
+    return prettifyEmailDomain(domain)
+  }
+  return null
+}
+
+function formatMeetingDate(iso: string | null | undefined): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ""
+  return d.toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })
+}
+
+/**
+ * Best-effort meaningful title for a Fathom meeting. Returns the source
+ * title unchanged when it isn't generic; otherwise stitches the
+ * external invitee's company name + the meeting date together (e.g.
+ * "Bloom Online — 4 mei 2026"). Returns `null` when no replacement
+ * could be derived AND the source title was empty.
+ */
+export function deriveFathomTitle(payload: FathomMeeting): string | null {
+  const original = payload.title || payload.meeting_title || null
+  if (!isGenericFathomTitle(original)) return original
+  const company = deriveCompanyFromInvitees(payload.calendar_invitees)
+  if (!company) return original
+  const date = formatMeetingDate(payload.scheduled_start_time)
+  return date ? `${company} — ${date}` : company
 }
 
 // ─── Team filtering ─────────────────────────────────────────────────────────
