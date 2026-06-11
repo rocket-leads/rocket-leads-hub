@@ -1103,6 +1103,45 @@ export const DICTIONARY = {
     en: "Coming next sprint: a tool to enrich the brief with campaign angles, competitors and USPs from a CM perspective.",
   },
 
+  // CM Stap 5 — concurrentie research (Apify foundation)
+  "onboarding.wizard.cm_comp.intro": {
+    nl: "AI vindt concurrenten in dezelfde sector + regio op basis van de brief. Apify scrapet hun lopende Meta ads. Jij vinkt de winners aan — Pedro hergebruikt ze in de angles & creatives stappen.",
+    en: "AI finds competitors in the same sector + region based on the brief. Apify scrapes their live Meta ads. You tick the winners — Pedro reuses them in the angles & creatives steps.",
+  },
+  "onboarding.wizard.cm_comp.find.title": { nl: "Vind concurrenten", en: "Find competitors" },
+  "onboarding.wizard.cm_comp.find.body": {
+    nl: "Op basis van bedrijf, sector en doelgroep uit de brief.",
+    en: "Based on company, sector and audience from the brief.",
+  },
+  "onboarding.wizard.cm_comp.find.btn": { nl: "Vind concurrenten", en: "Find competitors" },
+  "onboarding.wizard.cm_comp.country": { nl: "Land", en: "Country" },
+  "onboarding.wizard.cm_comp.suggested.title": {
+    nl: "{count} concurrenten gevonden",
+    en: "{count} competitors found",
+  },
+  "onboarding.wizard.cm_comp.suggested.body": {
+    nl: "Uncheck wat je niet wil scrapen — Apify rekent per concurrent.",
+    en: "Uncheck what you don't want to scrape — Apify charges per competitor.",
+  },
+  "onboarding.wizard.cm_comp.reset": { nl: "Opnieuw zoeken", en: "Find again" },
+  "onboarding.wizard.cm_comp.scrape.btn": {
+    nl: "Scrape {count} concurrenten",
+    en: "Scrape {count} competitors",
+  },
+  "onboarding.wizard.cm_comp.ads.title": {
+    nl: "{count} ads gevonden",
+    en: "{count} ads found",
+  },
+  "onboarding.wizard.cm_comp.ads.body": {
+    nl: "{selected} geselecteerd. Lang-lopende ads (≥30d) zijn waarschijnlijk winners.",
+    en: "{selected} selected. Long-running ads (≥30d) are likely winners.",
+  },
+  "onboarding.wizard.cm_comp.ads.no_preview": {
+    nl: "Geen preview beschikbaar",
+    en: "No preview available",
+  },
+  "onboarding.wizard.cm_comp.find_more": { nl: "Meer concurrenten vinden", en: "Find more competitors" },
+
   // Sidebar entries Roy 2026-06-11
   "nav.optimize": { nl: "Optimize", en: "Optimize" },
 

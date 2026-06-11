@@ -3,6 +3,7 @@
 import type { Locale } from "@/lib/i18n/types"
 import { t } from "@/lib/i18n/t"
 import { CmBriefStep } from "./steps/cm-brief-step"
+import { CmCompetitorsStep } from "./steps/cm-competitors-step"
 import { CmAnglesStep, CmScriptsStep, CmCreativesStep } from "./steps/cm-pedro-step"
 import { HandoffStep } from "./steps/handoff-step"
 import { KickoffLiveStep } from "./steps/kickoff-live-step"
@@ -98,6 +99,10 @@ export function StepRenderer({
           // Roy 2026-06-11: "ook zonder transcript wil ik dat die client
           // brief daar wordt ingeladen".
           <CmBriefStep {...stepProps} />
+        ) : step.action === "cm_competitors" ? (
+          // Hangt op de bestaande Apify foundation (find→scrape→select).
+          // De CM kiest winning ads die Pedro later kan hergebruiken.
+          <CmCompetitorsStep {...stepProps} />
         ) : step.action === "cm_angles" ? (
           // Thin wrappers around the existing Pedro Refresh components.
           // No fork — same selectedClientId/Name interface; the wizard
@@ -108,10 +113,8 @@ export function StepRenderer({
         ) : step.action === "cm_creatives" ? (
           <CmCreativesStep {...stepProps} />
         ) : (
-          // Remaining CM steps (cm_competitors, cm_landing_page) fall
-          // through to PlaceholderStep. Competitor research kan op de
-          // bestaande Apify foundation; LP heeft nog geen standalone
-          // Pedro component (zit in pedro-campaign.tsx als sub-tab).
+          // cm_landing_page valt nog door — Pedro heeft geen standalone
+          // LP component (zit in pedro-campaign.tsx als sub-tab).
           <PlaceholderStep {...stepProps} />
         )}
       </div>
