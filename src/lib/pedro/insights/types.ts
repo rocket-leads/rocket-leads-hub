@@ -4,18 +4,18 @@
  * cron + facade endpoints fan out to it without further wiring.
  *
  * Conventions:
- *   - watchlist_*  — surfaces on the Watch List page
- *   - client_*     — surfaces on a specific client page
+ *   - watchlist_*  - surfaces on the Watch List page
+ *   - client_*     - surfaces on a specific client page
  *
  * Bumping prompt_version in the registry expires every existing row of
- * that type on the next cron tick — use for prompt changes that should
+ * that type on the next cron tick - use for prompt changes that should
  * regenerate everywhere.
  */
 export const INSIGHT_TYPES = [
   /** The one Pedro insight per client. Body is JSON: `{ conclusion, actions[] }`.
    *  Rendered everywhere AI text used to appear (client detail header, watchlist
    *  row 1-liners, home page action notes) so the user sees a single, consistent
-   *  Pedro voice — no contradictions between surfaces. */
+   *  Pedro voice - no contradictions between surfaces. */
   "client_pedro",
 ] as const
 
@@ -26,7 +26,7 @@ export type InsightSeverity = "high" | "med" | "low" | "info"
 
 /**
  * Parsed shape of `client_pedro.body`. Stored as JSON text in the
- * `pedro_insights.body` column — consumers parse it on read.
+ * `pedro_insights.body` column - consumers parse it on read.
  */
 export type PedroInsightBody = {
   /** 1-2 sentence factual update of the current campaign state. */
@@ -39,7 +39,7 @@ export type PedroInsightBody = {
 /**
  * Words / phrases that turn a "client update" into an "internal CM note" or
  * agency-speak. When an action contains any of these the AM looks bad
- * forwarding it to the client, so we drop the bullet on read — even for
+ * forwarding it to the client, so we drop the bullet on read - even for
  * rows generated under the old prompt version (existing data gets cleaner
  * without waiting for the cron). Patterns are case-insensitive.
  *
@@ -92,7 +92,7 @@ function isInternalAction(action: string): boolean {
     if (re.test(trimmed)) return true
   }
   if (TEAM_NAMES_RE.test(trimmed)) return true
-  // CM-imperative openers — these are how the AI talks to itself, not how
+  // CM-imperative openers - these are how the AI talks to itself, not how
   // the AM talks to the client. Drop them; the prompt asks for first-person
   // alternatives ("We testen …" instead of "Analyseer …").
   if (/^(?:Analyseer|Onderzoek|Herzie|Controleer|Optimaliseer|Audit)\b/i.test(trimmed)) {
@@ -103,7 +103,7 @@ function isInternalAction(action: string): boolean {
 
 /**
  * Robust parser for `client_pedro` body. Falls back to a plain-text
- * conclusion if the model returned non-JSON — keeps the UI working
+ * conclusion if the model returned non-JSON - keeps the UI working
  * while a malformed prompt is being fixed.
  *
  * Models routinely wrap structured output in markdown code fences (```json
@@ -131,7 +131,7 @@ export function parsePedroBody(body: string | null | undefined): PedroInsightBod
               .filter((a): a is string => typeof a === "string" && a.trim().length > 0)
               .map((a) => a.trim())
           : []
-        // Filter out anything that reads as internal CM speech — see the
+        // Filter out anything that reads as internal CM speech - see the
         // function comment above for the rules. Cap at 3 (the prompt asks
         // for max 3; this enforces it even when the model overshoots).
         const cleanActions = rawActions.filter((a) => !isInternalAction(a)).slice(0, 3)
@@ -150,7 +150,7 @@ export function parsePedroBody(body: string | null | undefined): PedroInsightBod
   const direct = tryParse(cleaned)
   if (direct) return direct
 
-  // 2. Substring parse — pick from the first `{` through the last `}`. Covers
+  // 2. Substring parse - pick from the first `{` through the last `}`. Covers
   //    "Here is the JSON:\n{...}" / leading `json\n{...}` shapes that survived
   //    fence stripping.
   const first = cleaned.indexOf("{")
@@ -160,7 +160,7 @@ export function parsePedroBody(body: string | null | undefined): PedroInsightBod
     if (substrParsed) return substrParsed
   }
 
-  // 3. Last resort — treat as plain prose. Keeps the UI alive while the prompt
+  // 3. Last resort - treat as plain prose. Keeps the UI alive while the prompt
   //    is being fixed; the AM sees a (probably ugly) conclusion line but at
   //    least it's not a render failure.
   return { conclusion: cleaned, actions: [] }

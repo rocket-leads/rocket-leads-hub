@@ -14,7 +14,7 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
  * categorize() is the single source of truth shared between the cron
  * (writes the watchlist_client_state table) and the UI (renders the
  * Watch List). A regression here flips every client into the wrong
- * bucket on the next cron tick — the kind of silent, dashboard-wide
+ * bucket on the next cron tick - the kind of silent, dashboard-wide
  * break that's expensive to notice and worse to roll back.
  *
  * Coverage focus: bucket boundaries (action / watch / good / no-data),
@@ -75,7 +75,7 @@ function constantTrend(days: number, spend: number, leads: number) {
 
 // ─── No-data branches ────────────────────────────────────────────────────
 
-describe("categorize — no-data", () => {
+describe("categorize - no-data", () => {
   it("returns no-data with the RL-specific reason when the flag is set", () => {
     const result = categorize(makeClient(), makeKpi({ rlAccountNoCampaign: true }))
     expect(result.category).toBe("no-data")
@@ -102,7 +102,7 @@ describe("categorize — no-data", () => {
 
 // ─── Action: zero-leads-with-spend ───────────────────────────────────────
 
-describe("categorize — zero leads with spend", () => {
+describe("categorize - zero leads with spend", () => {
   it("flips to action when spend > 50 and leads = 0", () => {
     const result = categorize(
       makeClient(),
@@ -113,7 +113,7 @@ describe("categorize — zero leads with spend", () => {
   })
 
   it("does NOT flip to action when spend <= 50 (too small to be a clean signal)", () => {
-    // Spend 40 with 0 leads doesn't meet the threshold — falls through to
+    // Spend 40 with 0 leads doesn't meet the threshold - falls through to
     // the CPL trend logic. With prevCpl=0 the CPL branch evaluates as good.
     const result = categorize(
       makeClient(),
@@ -125,7 +125,7 @@ describe("categorize — zero leads with spend", () => {
 
 // ─── CPL trend bucketing ─────────────────────────────────────────────────
 
-describe("categorize — CPL trend", () => {
+describe("categorize - CPL trend", () => {
   it("good when CPL is stable and there are leads", () => {
     const result = categorize(
       makeClient(),
@@ -177,7 +177,7 @@ describe("categorize — CPL trend", () => {
 
 // ─── Recent-window override ──────────────────────────────────────────────
 
-describe("categorize — recent-window override (action → watch on recovery)", () => {
+describe("categorize - recent-window override (action → watch on recovery)", () => {
   it("demotes action to watch when recent CPL is back at the prev-7d baseline", () => {
     const dailyTrend = [
       ...constantTrend(11, 50, 1), // older days: high CPL drove the 7d signal
@@ -204,12 +204,12 @@ describe("categorize — recent-window override (action → watch on recovery)",
   })
 })
 
-describe("categorize — recent-window override (good → watch on fresh spike)", () => {
+describe("categorize - recent-window override (good → watch on fresh spike)", () => {
   it("promotes good to watch when last 1-3d shows a fresh CPL spike", () => {
     // 7d window must read as "good" so the override is the only thing
-    // pushing this to watch. cpl 14 vs prevCpl 13 is +7.7% — under the
+    // pushing this to watch. cpl 14 vs prevCpl 13 is +7.7% - under the
     // watchPct=10 threshold (mid spend band). dailyTrend is independent
-    // from the 7d totals — its last-3-days slice is what triggers the
+    // from the 7d totals - its last-3-days slice is what triggers the
     // fresh-spike branch.
     const dailyTrend = [
       ...constantTrend(11, 50, 4),
@@ -230,7 +230,7 @@ describe("categorize — recent-window override (good → watch on fresh spike)"
 
 // ─── Locale-aware insight strings ────────────────────────────────────────
 
-describe("categorize — locale-aware insight strings", () => {
+describe("categorize - locale-aware insight strings", () => {
   it("defaults to English when no locale is passed (back-compat for AI prompts)", () => {
     const result = categorize(makeClient(), makeKpi({ adSpend: 100, leads: 0, cpl: 0, prevCpl: 0 }))
     expect(result.insight).toContain("spent")
@@ -258,7 +258,7 @@ describe("categorize — locale-aware insight strings", () => {
     expect(result.insight).toContain("vorige 7d")
   })
 
-  it("Dutch CPL stable phrasing — within +/-10% band", () => {
+  it("Dutch CPL stable phrasing - within +/-10% band", () => {
     const result = categorize(
       makeClient(),
       makeKpi({ adSpend: 700, leads: 20, cpl: 35, prevCpl: 35 }),
@@ -279,13 +279,13 @@ describe("categorize — locale-aware insight strings", () => {
     expect(result.insight).toMatch(/Geen Meta ad account/i)
   })
 
-  it("Dutch 'running — no leads yet' phrasing", () => {
+  it("Dutch 'running - no leads yet' phrasing", () => {
     const result = categorize(
       makeClient(),
       makeKpi({ adSpend: 30, leads: 0, cpl: 0, prevCpl: 0 }),
       "nl",
     )
-    expect(result.insight).toMatch(/Loopt — nog geen leads/i)
+    expect(result.insight).toMatch(/Loopt - nog geen leads/i)
   })
 
   it("Dutch recent-window recovery phrasing", () => {
@@ -306,7 +306,7 @@ describe("categorize — locale-aware insight strings", () => {
 
 // ─── Tiered thresholds ───────────────────────────────────────────────────
 
-describe("getThresholds — tiered by 7d ad spend", () => {
+describe("getThresholds - tiered by 7d ad spend", () => {
   it("uses the small-account band <€250 (15/40)", () => {
     expect(getThresholds(0)).toEqual({ watchPct: 15, actionPct: 40 })
     expect(getThresholds(249.99)).toEqual({ watchPct: 15, actionPct: 40 })
@@ -325,7 +325,7 @@ describe("getThresholds — tiered by 7d ad spend", () => {
 
 // ─── getRecentSignal ─────────────────────────────────────────────────────
 
-describe("getRecentSignal — shortest trustworthy window", () => {
+describe("getRecentSignal - shortest trustworthy window", () => {
   it("returns null when there's no daily trend", () => {
     expect(getRecentSignal(makeKpi())).toBeNull()
   })
@@ -367,7 +367,7 @@ describe("getRecentSignal — shortest trustworthy window", () => {
 
 // ─── severityScore ───────────────────────────────────────────────────────
 
-describe("severityScore — ranks Action/Watch by € impact", () => {
+describe("severityScore - ranks Action/Watch by € impact", () => {
   it("3× multiplier for zero-leads-with-spend (pure waste)", () => {
     const score = severityScore(makeKpi({ adSpend: 200, leads: 0 }))
     expect(score).toBe(600) // 200 × 3
@@ -432,7 +432,7 @@ describe("detectLiveButDark", () => {
     expect(detectLiveButDark(kpi, { clientStatus: "live", now })).toBe(true)
   })
 
-  it("does NOT fire when status is on_hold (manually paused — expected)", () => {
+  it("does NOT fire when status is on_hold (manually paused - expected)", () => {
     const kpi = makeKpi({
       dailyTrend: trendEndingOn(yesterday, [{ spend: 0, leads: 0 }]),
     })
@@ -460,13 +460,13 @@ describe("detectLiveButDark", () => {
     expect(detectLiveButDark(kpi, { clientStatus: "live", now })).toBe(false)
   })
 
-  it("does NOT fire when dailyTrend is missing (kpi cache absent — can't tell)", () => {
+  it("does NOT fire when dailyTrend is missing (kpi cache absent - can't tell)", () => {
     expect(detectLiveButDark(undefined, { clientStatus: "live", now })).toBe(false)
     expect(detectLiveButDark(makeKpi({ dailyTrend: undefined }), { clientStatus: "live", now })).toBe(false)
   })
 
   it("does NOT fire when last dailyTrend entry isn't actually yesterday (stale cron)", () => {
-    // Last entry is two days ago — cron didn't run yesterday, so we don't trust it.
+    // Last entry is two days ago - cron didn't run yesterday, so we don't trust it.
     const twoDaysAgo = "2026-05-16"
     const kpi = makeKpi({
       dailyTrend: trendEndingOn(twoDaysAgo, [{ spend: 0, leads: 0 }]),
@@ -475,7 +475,7 @@ describe("detectLiveButDark", () => {
   })
 })
 
-describe("categorize — live-but-dark override", () => {
+describe("categorize - live-but-dark override", () => {
   const now = new Date("2026-05-18T07:00:00Z")
   const yesterday = "2026-05-17"
 
@@ -503,7 +503,7 @@ describe("categorize — live-but-dark override", () => {
     expect(result.insight).toMatch(/staat waarschijnlijk uit/i)
   })
 
-  it("beats the no-data branch — fires even when 7d spend AND leads are zero", () => {
+  it("beats the no-data branch - fires even when 7d spend AND leads are zero", () => {
     // A client that's been completely off for a week would normally sink into
     // no-data; live-but-dark surfaces it as urgent instead.
     const kpi = makeKpi({
@@ -530,7 +530,7 @@ describe("categorize — live-but-dark override", () => {
   })
 })
 
-describe("severityScore — live-but-dark floor", () => {
+describe("severityScore - live-but-dark floor", () => {
   const now = new Date("2026-05-18T07:00:00Z")
   const yesterday = "2026-05-17"
 
@@ -559,7 +559,7 @@ describe("severityScore — live-but-dark floor", () => {
 
 import { isBaselineDrifted, resolveBaselineCpl } from "./categorize"
 
-describe("categorize — 30d baseline preferred over prev-7d", () => {
+describe("categorize - 30d baseline preferred over prev-7d", () => {
   it("uses 30d baseline when present and reliable, ignores prev-7d", () => {
     // 7d CPL is +50% vs prev-7d (would be Action) but only +5% vs 30d (Good).
     // The 30d wins.
@@ -618,7 +618,7 @@ describe("categorize — 30d baseline preferred over prev-7d", () => {
   })
 })
 
-describe("isBaselineDrifted — 30d vs 90d cross-check", () => {
+describe("isBaselineDrifted - 30d vs 90d cross-check", () => {
   it("flags drifted when 30d is ≥25% above 90d", () => {
     expect(
       isBaselineDrifted({
@@ -672,11 +672,11 @@ describe("isBaselineDrifted — 30d vs 90d cross-check", () => {
   })
 })
 
-describe("categorize — drift blocks recovery-demote (ZoomX scenario)", () => {
+describe("categorize - drift blocks recovery-demote (ZoomX scenario)", () => {
   // The exact case Roy reported: 7d €95, 30d baseline €50, 90d long-baseline
   // €30. Recent 2d back at €50 (recovered to 30d). Under old logic this would
   // have demoted to Watch. Under new logic the drifted 30d baseline blocks
-  // the demote — the client is structurally off-track, not just noisy.
+  // the demote - the client is structurally off-track, not just noisy.
   it("stays Action when last-1-3d recovered to a drifted-high 30d baseline", () => {
     const dailyTrend = [
       ...constantTrend(11, 80, 1), // older days: bad CPL drove the 7d signal
@@ -691,7 +691,7 @@ describe("categorize — drift blocks recovery-demote (ZoomX scenario)", () => {
       baselineLeads: 60,
       baselineSpend: 3000,
       baselineReliable: true,
-      longBaselineCpl: 30, // 90d long baseline — drift ratio 50/30 = 1.67
+      longBaselineCpl: 30, // 90d long baseline - drift ratio 50/30 = 1.67
       longBaselineLeads: 200,
       longBaselineSpend: 6000,
       longBaselineReliable: true,
@@ -705,7 +705,7 @@ describe("categorize — drift blocks recovery-demote (ZoomX scenario)", () => {
   })
 
   it("DOES demote to Watch when 30d baseline is NOT drifted", () => {
-    // Same recovery pattern but the 30d baseline matches the 90d — no drift,
+    // Same recovery pattern but the 30d baseline matches the 90d - no drift,
     // recovery is genuine.
     const dailyTrend = [
       ...constantTrend(11, 80, 1),
@@ -720,7 +720,7 @@ describe("categorize — drift blocks recovery-demote (ZoomX scenario)", () => {
       baselineLeads: 60,
       baselineSpend: 3000,
       baselineReliable: true,
-      longBaselineCpl: 48, // close to 30d — no drift
+      longBaselineCpl: 48, // close to 30d - no drift
       longBaselineLeads: 200,
       longBaselineSpend: 9600,
       longBaselineReliable: true,
@@ -757,7 +757,7 @@ describe("categorize — drift blocks recovery-demote (ZoomX scenario)", () => {
   })
 })
 
-describe("severityScore — drift blocks recovery dampener", () => {
+describe("severityScore - drift blocks recovery dampener", () => {
   it("does NOT halve the score when 30d baseline is drifted high", () => {
     // Without drift block this would halve the score (recovery dampener).
     // With drift block, the full Action severity stays.
@@ -965,7 +965,7 @@ describe("categorizeHealthVsBaseline", () => {
   })
 
   it("respects suppressComparison even when both sides have data", () => {
-    // Used when the user picks a 30d+ range — comparing 30d against 30d is
+    // Used when the user picks a 30d+ range - comparing 30d against 30d is
     // meaningless. The Health card switches to a plain "current CPL" insight.
     const v = categorizeHealthVsBaseline({
       ...baseArgs,
@@ -996,7 +996,7 @@ describe("categorizeHealthVsBaseline", () => {
   })
 })
 
-describe("categorizeHealthVsBaseline — baseline drift cross-check", () => {
+describe("categorizeHealthVsBaseline - baseline drift cross-check", () => {
   const baseArgs = {
     currentWindowLabel: "7d",
     baselineWindowLabel: "30d",
@@ -1006,7 +1006,7 @@ describe("categorizeHealthVsBaseline — baseline drift cross-check", () => {
   it("flags drift when 30d baseline is >25% above 90d, downgrades good→watch", () => {
     // The exact case Roy described: client sat at €55 (90d), drifted to
     // €110 (30d), now recovered to €55 (7d). Naive comparison would say
-    // "down 50% — great!" but we're back to a still-bad number relative
+    // "down 50% - great!" but we're back to a still-bad number relative
     // to the long-term reference. Verdict must reflect that.
     const v = categorizeHealthVsBaseline({
       ...baseArgs,
@@ -1027,7 +1027,7 @@ describe("categorizeHealthVsBaseline — baseline drift cross-check", () => {
   })
 
   it("does NOT flag drift when 30d baseline is in line with 90d (no warning, no downgrade)", () => {
-    // Stable client — both windows agree. The drift cross-check stays
+    // Stable client - both windows agree. The drift cross-check stays
     // silent and we don't reach into the verdict.
     const v = categorizeHealthVsBaseline({
       ...baseArgs,
@@ -1067,7 +1067,7 @@ describe("categorizeHealthVsBaseline — baseline drift cross-check", () => {
   })
 
   it("skips drift detection when long-baseline has insufficient data", () => {
-    // Brand-new client — 90d window is empty, no reliable reference.
+    // Brand-new client - 90d window is empty, no reliable reference.
     // Should behave exactly like the no-long-baseline case.
     const v = categorizeHealthVsBaseline({
       ...baseArgs,
@@ -1087,7 +1087,7 @@ describe("categorizeHealthVsBaseline — baseline drift cross-check", () => {
 
   it("skips drift detection when long-baseline args are not passed at all", () => {
     // Caller didn't opt in (e.g. long window suppressed in HomeTab). Same
-    // result as Option-A-disabled — pure current-vs-baseline verdict.
+    // result as Option-A-disabled - pure current-vs-baseline verdict.
     const v = categorizeHealthVsBaseline({
       currentCpl: 55,
       currentLeads: 10,

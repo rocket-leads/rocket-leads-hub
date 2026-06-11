@@ -15,7 +15,7 @@ export const maxDuration = 120
  *
  * Thin wrapper around `generateAutoBrief` (lib). Same logic is also called
  * from the kick-off auto-trigger when a Fathom kick-off lands without an
- * existing Pedro brief — see src/lib/pedro/auto-trigger.ts.
+ * existing Pedro brief - see src/lib/pedro/auto-trigger.ts.
  */
 export async function POST(req: NextRequest) {
   const session = await auth()

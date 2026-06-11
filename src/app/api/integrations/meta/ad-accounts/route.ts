@@ -8,7 +8,7 @@ import { searchMetaAdAccounts } from "@/lib/integrations/meta"
  * Backs the search list inside <ConnectedEntity service="meta-ad-account">.
  * Meta's `/me/adaccounts` endpoint has no name-filter, so the underlying
  * lib caches the full accessible-accounts list for 5 minutes and substring-
- * matches client-side — see `searchMetaAdAccounts` for ranking details.
+ * matches client-side - see `searchMetaAdAccounts` for ranking details.
  *
  * Cold-open (empty query) returns active accounts first, then everything
  * else, alphabetical within each group.

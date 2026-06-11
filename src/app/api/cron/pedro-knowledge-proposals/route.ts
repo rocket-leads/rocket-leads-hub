@@ -13,7 +13,7 @@ import { startCronRun } from "@/lib/observability/cron-runs"
  * inserted in pedro_knowledge_proposals + an inbox task lands on Roy
  * (admin) to review.
  *
- * Knowledge-file edits are manual. Auto-write is too risky — every
+ * Knowledge-file edits are manual. Auto-write is too risky - every
  * line in campaigns.md is loaded into every Pedro AI call.
  */
 

@@ -56,7 +56,7 @@
   --color-brand-line: #DADEE7;
 }
 
-/* Light mode — Flow-inspired warm cream background so cards float as
+/* Light mode - Flow-inspired warm cream background so cards float as
  * distinct surfaces (cool grey reads as cold + cards blend in). Sidebar
  * stays one shade lighter than the page so the rail visually separates
  * without a heavy border. */
@@ -86,7 +86,7 @@
   --chart-5: #1F2024;
   /* Radius bumped from 0.625rem (10px) to 0.75rem (12px) so Card defaults
    * to ~14px corners (Flow/Linear range) and Buttons hit 10-12px instead
-   * of 8px — softer, more premium feel. Existing rounded-* classes still
+   * of 8px - softer, more premium feel. Existing rounded-* classes still
    * work; only the token-driven radii grow. */
   --radius: 0.75rem;
   --sidebar: #FFFFFF;
@@ -99,7 +99,7 @@
   --sidebar-ring: #8967F3;
 }
 
-/* Dark mode — brand `#222427` family. Background a hair darker than card
+/* Dark mode - brand `#222427` family. Background a hair darker than card
  * so the same "cards float on canvas" hierarchy survives the inversion. */
 .dark {
   --background: #18191C;
@@ -183,7 +183,7 @@ tr[data-slot="table-row"].row-hover:hover {
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
-/* Smooth scrollbar — defaults for nested scroll containers (lists,
+/* Smooth scrollbar - defaults for nested scroll containers (lists,
  * modals, tables). Stays thin so it doesn't clutter inside-card UX. */
 ::-webkit-scrollbar {
   width: 6px;
@@ -200,7 +200,7 @@ tr[data-slot="table-row"].row-hover:hover {
   background: var(--muted-foreground);
 }
 
-/* Page-level scrollbar — Roy wants a clearly visible, grabbable
+/* Page-level scrollbar - Roy wants a clearly visible, grabbable
  * scrollbar on the right of every Hub page so manual scroll-down
  * is obvious. We keep the gutter constant (14px, no hover-induced
  * layout shift) and grow the THUMB itself on hover by shrinking
@@ -230,7 +230,7 @@ html::-webkit-scrollbar-thumb:hover {
 }
 html::-webkit-scrollbar-thumb:active {
   /* While dragging, keep the wide-thumb state pinned regardless of
-   * cursor jitter — the cursor will leave the original gutter as
+   * cursor jitter - the cursor will leave the original gutter as
    * the page scrolls, and we don't want the thumb to snap thin. */
   background-color: var(--muted-foreground);
   border-width: 1px;
@@ -260,7 +260,7 @@ input[type="number"] {
   border-radius: 4px;
 }
 
-/* React Day Picker — match the dashboard's dark theme */
+/* React Day Picker - match the dashboard's dark theme */
 .rdp-rl {
   --rdp-accent-color: var(--primary);
   --rdp-background-color: var(--accent);
@@ -316,7 +316,7 @@ input[type="number"] {
   color: var(--primary);
 }
 
-/* ── Pedro (Campaign Manager) — form helpers ──
+/* ── Pedro (Campaign Manager) - form helpers ──
    Pedro was migrated to use the shared <Button> primitive directly
    (2026-05-22). Only the form-field shim remains so bare <input>/
    <textarea> tags inside .pedro-root still look like proper Input /
@@ -328,7 +328,7 @@ input[type="number"] {
 }
 
 /* Form fields scoped to .pedro-root mirror shadcn Input + AutoTextarea
-   styling exactly — same h-10, rounded-lg, padding, focus ring — so
+   styling exactly - same h-10, rounded-lg, padding, focus ring - so
    the bare <input>/<textarea> tags in Mike's components are visually
    indistinguishable from the proper primitives used elsewhere. The
    manual resize handle on textareas is gone: AutoTextarea handles the
@@ -338,7 +338,7 @@ input[type="number"] {
 .pedro-root textarea,
 .pedro-root select {
   width: 100%;
-  height: 2.5rem; /* h-10 — matches Input */
+  height: 2.5rem; /* h-10 - matches Input */
   padding: 0 0.875rem; /* px-3.5 */
   border-radius: 0.5rem; /* rounded-lg */
   border: 1px solid var(--input) !important;

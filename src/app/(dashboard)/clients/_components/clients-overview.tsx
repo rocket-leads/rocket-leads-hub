@@ -9,7 +9,6 @@ import type { TopTab } from "@/components/ui/top-tabs"
 import { Panel } from "@/components/ui/panel"
 import { ClientsTable } from "./clients-table"
 import { ClientSlideOver } from "./client-slide-over"
-import { WeeklyUpdateDraftsBanner } from "./weekly-update-drafts-banner"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingSummary } from "@/lib/integrations/stripe"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
@@ -62,7 +61,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }, [router, pathname, searchParams])
 
-  // Body scroll lock is handled by Base UI's Dialog inside ClientSlideOver —
+  // Body scroll lock is handled by Base UI's Dialog inside ClientSlideOver -
   // the previous manual lock here raced with Base UI's and could capture
   // `original = "hidden"`, leaving the page unscrollable on close. Removed
   // 2026-06-07.
@@ -70,7 +69,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   const [showAll, setShowAll] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [activeTab, setActiveTab] = useState<"current" | "onboarding">("current")
-  // The All Clients overview is the "is everyone OK?" surface — same
+  // The All Clients overview is the "is everyone OK?" surface - same
   // intent as the Watch List. KPI columns lock to the canonical 7d
   // window so they match Watch List + Home page + Pedro numbers
   // always. The date picker was removed 2026-05 because a stale
@@ -132,7 +131,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  // Last "Client update" send timestamp per Monday item — backs the
+  // Last "Client update" send timestamp per Monday item - backs the
   // green "Geüpdatet vandaag" state + grey caption on the Client update column.
   // 30s stale time so a fresh send by the same user reflects in the table
   // almost immediately when the dialog calls invalidateQueries below.
@@ -142,7 +141,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
     staleTime: 30 * 1000,
   })
 
-  // No startDate/endDate in the POST body — the endpoint falls back to
+  // No startDate/endDate in the POST body - the endpoint falls back to
   // the cron's canonical last-7d window. Same window the Watch List +
   // Home page + Pedro narrative use, so the columns on this table are
   // guaranteed to match every other surface in the app.
@@ -164,7 +163,7 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
   async function handleRefresh() {
     setIsRefreshing(true)
     // Live-fetch Monday and rewrite the `monday_boards` cache BEFORE re-rendering
-    // the server component — otherwise router.refresh() just re-reads the same
+    // the server component - otherwise router.refresh() just re-reads the same
     // stale cache the cron last wrote, and recent Monday edits (renamed status
     // options, new clients, etc.) stay invisible until the next cron tick.
     try {
@@ -189,7 +188,6 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
 
   return (
     <div className="space-y-6">
-      <WeeklyUpdateDraftsBanner />
       <TopTabs<"current" | "onboarding">
         tabs={tabItems}
         value={activeTab}

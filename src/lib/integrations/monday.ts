@@ -49,7 +49,7 @@ export type BoardConfig = {
 
 /**
  * Build the deep-link URL to a Monday item. Monday's item permalink format is
- * `/boards/{boardId}/pulses/{itemId}` — the `/items/{itemId}` shape doesn't
+ * `/boards/{boardId}/pulses/{itemId}` - the `/items/{itemId}` shape doesn't
  * resolve and is what the "Open in Monday" link used to render (404).
  *
  * Returns null when the board ID isn't available; callers should hide the
@@ -86,10 +86,10 @@ export type MondayClient = {
   followUpStatus: string
   /** Raw Monday status label from the onboarding board's "Meta connected" column
    *  (`dup__of_status`). Empty when not set. Tracks whether the client has hooked
-   *  up their Meta Business Manager — distinct from `metaAdAccountId`, which is
+   *  up their Meta Business Manager - distinct from `metaAdAccountId`, which is
    *  the actual ID once known. Only meaningful on the onboarding board. */
   metaConnected: string
-  /** Preferred client contact channel — Monday status label from `contact_channel`
+  /** Preferred client contact channel - Monday status label from `contact_channel`
    *  column. Typically "WhatsApp" / "Email" / "Phone" / "" (unset). Drives the
    *  Client Update composer so AMs see which channel a generated update will land
    *  on without having to flip to Trengo. */
@@ -102,14 +102,14 @@ export type MondayClient = {
   /** Raw Monday status from the "Administration" column (`status_16` on the
    *  current-clients board). Reflects finance's manual bookkeeping on whether
    *  the invoice has been sent / paid / chased. Distinct from
-   *  `BillingSummary.status` (Stripe-derived) — finance considers Monday the
+   *  `BillingSummary.status` (Stripe-derived) - finance considers Monday the
    *  source of truth for the workflow state, not Stripe. Empty when unset
    *  or when the column isn't on the row's board. */
   administration: string
   /** Date the client's new billing cycle starts. Manual source of truth from
    *  Monday's `date3` column. `YYYY-MM-DD` or "" when unset. */
   cycleStartDate: string
-  /** Date finance sends the invoice — always derived as `cycleStartDate - 7d`,
+  /** Date finance sends the invoice - always derived as `cycleStartDate - 7d`,
    *  but stored on Monday in column `date_mm3297df` so the CRM also has it.
    *  `YYYY-MM-DD` or "" when unset. */
   nextInvoiceDate: string
@@ -131,7 +131,7 @@ async function gql(
     body: JSON.stringify({ query, variables }),
     // `bypassCache` is set by the user-facing Refresh path. Without it Next.js
     // would happily serve the same Monday response for 60s even when the
-    // outer `cache_store` cache was explicitly bypassed — making Refresh feel
+    // outer `cache_store` cache was explicitly bypassed - making Refresh feel
     // like it does nothing for up to a minute.
     ...(options.bypassCache ? { cache: "no-store" as const } : { next: { revalidate: 60 } }),
   })
@@ -173,7 +173,7 @@ export async function fetchAllItems(
 
   let lastError: unknown = null
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // Exponential backoff between attempts — 0ms before the first attempt,
+    // Exponential backoff between attempts - 0ms before the first attempt,
     // then ~500ms, ~1s, ~2s, ~4s. Gives Monday time to recover when it's
     // having a slow burst; without this, retrying immediately just hits the
     // same overloaded backend again. Jittered to avoid thundering-herd if
@@ -211,7 +211,7 @@ export async function fetchAllItems(
       const msg = error instanceof Error ? error.message.toLowerCase() : ""
       // Retry on cursor expiry (most common) and on transient 5xx/timeout
       // signatures. Anything else (auth, malformed query, missing board) is
-      // not going to fix itself — fail fast so the caller sees a real error.
+      // not going to fix itself - fail fast so the caller sees a real error.
       const retryable =
         msg.includes("cursor") ||
         msg.includes("timeout") ||
@@ -224,7 +224,7 @@ export async function fetchAllItems(
     }
   }
 
-  // Loop exited without success and without throwing — defensive fallback,
+  // Loop exited without success and without throwing - defensive fallback,
   // surface the last seen error rather than silently returning empty.
   if (lastError) throw lastError
   return []
@@ -245,7 +245,7 @@ function mapItem(
     name: item.name,
     firstName: cv[columns.first_name] ?? "",
     // `company_name` resolves through board config first, then falls back to the literal
-    // "bedrijfsnaam" column ID — the column has the same ID across all three boards, so
+    // "bedrijfsnaam" column ID - the column has the same ID across all three boards, so
     // existing saved configs (without `company_name` set) still pick it up automatically.
     companyName: cv[columns.company_name] ?? cv["bedrijfsnaam"] ?? "",
     accountManager: cv[columns.account_manager] ?? "",
@@ -256,13 +256,13 @@ function mapItem(
     adBudget: cv[columns.ad_budget] ?? "",
     serviceFee: cv[columns.service_fee] ?? "",
     // Same literal-fallback pattern we already use for `bedrijfsnaam` /
-    // `multiple_person_mm1w4j0b` — column IDs are stable across boards, board
+    // `multiple_person_mm1w4j0b` - column IDs are stable across boards, board
     // config can override later if needed.
     followUpFee: cv[columns.follow_up_fee] ?? cv["numbers0__1"] ?? "",
     followUpStatus: cv[columns.follow_up_status] ?? cv["status__1"] ?? "",
     metaConnected: cv[columns.meta_connected] ?? cv["dup__of_status"] ?? "",
     // Defaults reflect the status column IDs configured for both boards
-    // (status_11 on onboarding, status_17 on current — see settings/page.tsx).
+    // (status_11 on onboarding, status_17 on current - see settings/page.tsx).
     contactChannel:
       cv[columns.contact_channel] ?? cv["status_11"] ?? cv["status_17"] ?? "",
     metaAdAccountId: cv[columns.meta_ad_account_id] ?? "",
@@ -270,18 +270,18 @@ function mapItem(
     trengoContactId: cv[columns.trengo_contact_id] ?? "",
     clientBoardId: cv[columns.client_board_id] ?? "",
     googleDriveId: cv[columns.google_drive_id] ?? "",
-    // Falls back to the literal `status_16` column ID — current-clients board
+    // Falls back to the literal `status_16` column ID - current-clients board
     // uses it consistently and existing board_config rows may not have an
     // `administration` mapping yet.
     administration: cv[columns.administration] ?? cv["status_16"] ?? "",
-    // Two-date model — see lib/clients/billing-cycle.ts for the relationship:
+    // Two-date model - see lib/clients/billing-cycle.ts for the relationship:
     //   cycleStartDate   = manual source of truth, Monday `date3`
     //   nextInvoiceDate  = derived (cycle - 7d), stored on Monday `date_mm3297df`
     //
     // Defensive read: legacy board_config rows still have
     // `next_invoice_date: "date3"` (when date3 was the *invoice* column,
     // before the model split). Reading that would surface the cycle date as
-    // the invoice date — the bug Roy is seeing right now. Skip the configured
+    // the invoice date - the bug Roy is seeing right now. Skip the configured
     // mapping when it points at the cycle column, fall through to the new
     // literal id instead.
     cycleStartDate: cv[columns.cycle_start_date] ?? cv["date3"] ?? "",
@@ -330,7 +330,7 @@ let cachedMondayUsers: { value: MondayUser[]; expiresAt: number } | null = null
 /**
  * Fetch the workspace's Monday users. Used by the Hub's client edit UI to
  * power AM/CM/setter dropdowns: the UI shows names but the API call back
- * to Monday needs numeric person IDs. Cached for 15 minutes — Monday
+ * to Monday needs numeric person IDs. Cached for 15 minutes - Monday
  * memberships rarely change. Excludes guests and disabled accounts.
  */
 export async function fetchMondayUsers(): Promise<MondayUser[]> {
@@ -379,7 +379,7 @@ export type MondayLeadItem = {
  * Lightweight Monday board metadata for the picker. Just enough to render
  * the row + a discriminator the AM can use to pick the right board:
  * board name, workspace, item count. We deliberately don't fetch columns
- * here — that'd make the search 10× slower for no UX gain.
+ * here - that'd make the search 10× slower for no UX gain.
  */
 type MondayBoardSummary = {
   id: string
@@ -392,14 +392,14 @@ type MondayBoardSummary = {
 // Bumped v1 → v2 when the picker scope was narrowed to the "Client Dashboard"
 // workspace. The v1 cache held boards from EVERY workspace the token could
 // see, which surfaced internal / template / archive-bucket boards as picker
-// candidates — exactly the noise that was breaking the link experience.
+// candidates - exactly the noise that was breaking the link experience.
 const ALL_BOARDS_CACHE_KEY = "monday_all_boards_v2"
 const ALL_BOARDS_TTL_MS = 5 * 60 * 1000
 const WORKSPACE_ID_CACHE_KEY = "monday_client_dashboards_workspace_id_v1"
 const WORKSPACE_ID_TTL_MS = 24 * 60 * 60 * 1000
 
 // Name-match for the per-client lead boards workspace. Roy 2026-06-09:
-// "Ik wil dat je de workspace client dashboard aanhoudt" — only boards in
+// "Ik wil dat je de workspace client dashboard aanhoudt" - only boards in
 // this workspace should be offered as link candidates. Case-insensitive,
 // tolerates "Dashboard"/"Dashboards"/extra whitespace so a future rename
 // like "Client Dashboards 3.0" doesn't silently empty the picker.
@@ -407,18 +407,18 @@ const CLIENT_DASHBOARDS_WORKSPACE_NAME_PATTERN = /client\s*dashboards?/i
 
 /**
  * Look up the Monday workspace ID for the "Client Dashboard" workspace.
- * Cached 24 hours — workspaces basically never change. The picker scopes
+ * Cached 24 hours - workspaces basically never change. The picker scopes
  * its boards query to this workspace so the AM only sees per-client lead
  * boards as link candidates, not internal/template/legacy boards.
  *
  * Returns null when no workspace matches the name pattern. Callers should
  * treat null as "filter not applied" and fall back to the unfiltered set
- * (with a logged warning) — better to show too many options than to ship
+ * (with a logged warning) - better to show too many options than to ship
  * an empty picker if the workspace gets renamed.
  */
 async function findClientDashboardsWorkspaceId(): Promise<string | null> {
   // Cached shape is `{ id }` (not the raw string|null) so the cache_store
-  // `data` column — which has a NOT NULL constraint — can safely hold a
+  // `data` column - which has a NOT NULL constraint - can safely hold a
   // "we checked, nothing matched" result without re-querying every 5 minutes.
   const cached = await readCache<{ id: string | null }>(
     WORKSPACE_ID_CACHE_KEY,
@@ -451,7 +451,7 @@ async function findClientDashboardsWorkspaceId(): Promise<string | null> {
   await writeCache(WORKSPACE_ID_CACHE_KEY, { id })
   if (!id) {
     // Log the actual workspace names so we can see what to match against
-    // next time — the regex `/client\s*dashboards?/i` clearly missed; this
+    // next time - the regex `/client\s*dashboards?/i` clearly missed; this
     // tells us whether the workspace is named "Klanten" / "Active Clients"
     // / something else entirely.
     const names = workspaces.map((w) => `"${w.name}"`).join(", ")
@@ -466,16 +466,16 @@ async function findClientDashboardsWorkspaceId(): Promise<string | null> {
 
 /**
  * Pull the active boards inside the "Client Dashboard" workspace. ~200
- * boards per page, capped at 5 pages — that workspace has well under 1000
+ * boards per page, capped at 5 pages - that workspace has well under 1000
  * boards today. Cached for 5 minutes so per-keystroke search in the picker
  * doesn't fan out into a Monday API call each time.
  *
  * Workspace filter falls back to "all accessible boards" if discovery fails
- * (renamed workspace, token without workspace access, etc.) — the picker
+ * (renamed workspace, token without workspace access, etc.) - the picker
  * stays usable, just noisier.
  *
  * `state: active` filters out archived/deleted boards which the picker
- * should never offer as a destination — leftover archived boards were one
+ * should never offer as a destination - leftover archived boards were one
  * of the main reasons broken board IDs were getting linked.
  */
 async function fetchAllAccessibleBoards(): Promise<MondayBoardSummary[]> {
@@ -484,13 +484,13 @@ async function fetchAllAccessibleBoards(): Promise<MondayBoardSummary[]> {
 
   const workspaceId = await findClientDashboardsWorkspaceId()
   const token = await getToken()
-  // Two query variants — workspace-scoped (primary) and unfiltered (fallback).
+  // Two query variants - workspace-scoped (primary) and unfiltered (fallback).
   // GraphQL doesn't let us pass `workspace_ids: null` to mean "no filter",
   // so we branch the query string.
-  // Monday's `workspace_ids` arg is `[ID]` (nullable list items), not `[ID!]` —
+  // Monday's `workspace_ids` arg is `[ID]` (nullable list items), not `[ID!]` -
   // passing the non-null variant errors with "Variable type mismatch". Same for
   // dropping `state: active` (default anyway, and explicit value is rejected on
-  // some account schemas). `order_by: used_at` is kept — it's the order_by that
+  // some account schemas). `order_by: used_at` is kept - it's the order_by that
   // makes the cold-open list show "boards I actually touch" first.
   const scopedQuery = `
     query GetBoards($page: Int!, $workspaceIds: [ID]) {
@@ -529,7 +529,7 @@ async function fetchAllAccessibleBoards(): Promise<MondayBoardSummary[]> {
     if (boards.length === 0) break
     for (const b of boards) {
       // Server-side state filter removed (schema-incompat on some accounts),
-      // so filter client-side — archived/deleted boards must never appear as
+      // so filter client-side - archived/deleted boards must never appear as
       // link candidates in the picker.
       if (b.state !== "active") continue
       out.push({
@@ -568,7 +568,7 @@ function toResolvedBoard(b: MondayBoardSummary): ResolvedEntity {
  * search picker feel snappy here.
  *
  * Ranking: exact-prefix matches before substring matches, then alphabetical.
- * The AM almost always types the start of the company name first — that's
+ * The AM almost always types the start of the company name first - that's
  * the entry that should land at the top.
  */
 export async function searchMondayBoards(
@@ -602,7 +602,7 @@ export async function searchMondayBoards(
 
 /**
  * Resolve a single Monday board ID to its ResolvedEntity. Used by the
- * always-on verification on the picker trigger — every time a Client
+ * always-on verification on the picker trigger - every time a Client
  * Information panel renders, the stored `client_board_id` is round-tripped
  * to confirm the board still exists + the token still has access. Catches
  * the "board got archived in Monday but the ID is still set" failure mode
@@ -683,14 +683,14 @@ export async function fetchClientBoardItems(
 export const clientItemCacheKey = (itemId: string) => `monday_client_item:${itemId}`
 
 /**
- * Cached single-client fetch. Backs the slide-over's primary network call —
+ * Cached single-client fetch. Backs the slide-over's primary network call -
  * every slide-over open used to spend 300-800ms (sometimes 2s) waiting on
  * Monday GraphQL before the panel even rendered tabs. A 5-minute TTL keeps
  * the call instant in normal workflow; PATCH bursts the entry so client edits
  * never serve stale data.
  */
 /**
- * Pass `bypassCache: true` after any write to this same item — the 5-minute
+ * Pass `bypassCache: true` after any write to this same item - the 5-minute
  * cached value is stale the moment Monday accepts the change, and serving it
  * back to the caller (typically `updateClientField` patching the
  * `monday_boards` cache) would re-poison the cache with pre-edit data.
@@ -760,7 +760,7 @@ export type MondayItemWithUpdates = {
 }
 
 /**
- * Fetch the recent updates posted directly on a single Monday item — used to pull AM/CM
+ * Fetch the recent updates posted directly on a single Monday item - used to pull AM/CM
  * notes from a client's row in the Current Clients board (board-level commentary), distinct
  * from the per-lead updates in the client's lead board.
  */
@@ -810,22 +810,22 @@ export async function fetchItemUpdates(
 }
 
 /**
- * Fuller version of {@link fetchItemUpdates} used by the timeline backfill —
+ * Fuller version of {@link fetchItemUpdates} used by the timeline backfill -
  * paginates through ALL updates for an item (not just the last 50), returns
  * the Monday update id (stable dedupe key), full ISO timestamps, raw HTML
  * body (for downstream mention parsing), and the creator's Monday user id.
  *
  * Monday's `updates` connection caps `limit` at 100 per page; we walk pages
  * until a short page comes back. Internal safety cap stops us at 50 pages
- * (=5,000 updates) — no real client has more than that.
+ * (=5,000 updates) - no real client has more than that.
  */
 export type ItemUpdateFull = {
-  /** Stable Monday update id — anchor for `source_msg_id` dedupe. */
+  /** Stable Monday update id - anchor for `source_msg_id` dedupe. */
   id: string
   /** Plain-text body (stripped by Monday). Empty when the update was purely
    *  attachment-driven. */
   text: string
-  /** Raw HTML body — used for parsing @-mention anchors during backfill. */
+  /** Raw HTML body - used for parsing @-mention anchors during backfill. */
   body: string
   /** Full ISO timestamp (UTC). */
   createdAt: string
@@ -951,7 +951,7 @@ export async function fetchClientBoardItemsWithUpdates(
 /**
  * Splits the `stripe_customer_id` column value into individual customer IDs.
  * One Monday item can map to multiple Stripe customers (entity changes, alt
- * payment methods, etc.) — we store them comma-separated. Trims, dedupes, and
+ * payment methods, etc.) - we store them comma-separated. Trims, dedupes, and
  * filters empty tokens. Whitespace tolerant.
  */
 export function parseStripeCustomerIds(raw: string | null | undefined): string[] {
@@ -967,7 +967,7 @@ export function parseStripeCustomerIds(raw: string | null | undefined): string[]
 /**
  * Write a single text/simple value to a Monday column on a client board item.
  * `columnKey` is the logical key from board config (e.g. "stripe_customer_id"),
- * not the Monday column ID — we resolve the actual ID per board type from the
+ * not the Monday column ID - we resolve the actual ID per board type from the
  * stored config so callers don't have to know the wiring.
  *
  * Returns a brief reason string when the column key isn't mapped or the GraphQL
@@ -976,7 +976,7 @@ export function parseStripeCustomerIds(raw: string | null | undefined): string[]
 /**
  * Hardcoded fallback Monday column IDs for logical keys that are stable
  * across boards. Lets the write path succeed without forcing every existing
- * `board_config` row to be re-saved through Settings — same pattern the read
+ * `board_config` row to be re-saved through Settings - same pattern the read
  * path uses inline in `mapItem` (e.g. `cv[columns.administration] ?? cv["status_16"]`).
  * Keep entries in lockstep with the corresponding `mapItem` fallbacks.
  */
@@ -1017,7 +1017,7 @@ export async function setItemColumnValue(
  * types that don't accept a flat string: status (`{ label: "Live" }`),
  * person/people (`{ personsAndTeams: [{ id, kind: "person" }] }`), dropdown
  * (`{ labels: ["A"] }`), etc. `columnKey` is resolved via board config like
- * `setItemColumnValue` does — callers pass logical keys, not Monday IDs.
+ * `setItemColumnValue` does - callers pass logical keys, not Monday IDs.
  */
 export async function setItemColumnValueRaw(
   boardType: "onboarding" | "current",
@@ -1050,7 +1050,7 @@ export async function setItemColumnValueRaw(
 /**
  * Post an update on a Monday item. Used by the Hub's inbox-mirror so updates
  * and tasks created in the Hub still surface on the client item's Monday
- * timeline. Returns the new update's ID, or null when the call fails — we
+ * timeline. Returns the new update's ID, or null when the call fails - we
  * don't want a Monday outage to block the Supabase write.
  *
  * Author attribution: when `actorUserId` is provided AND that user has
@@ -1127,7 +1127,7 @@ export async function fetchClientItemUpdates(
 // ─── Webhook management ─────────────────────────────────────────────────
 // Used by the admin tool to register / inspect / remove Monday webhooks for
 // real-time client-mutation sync (status edits, name changes, create, delete).
-// Endpoint: /api/webhooks/monday — see that route for what each event drives.
+// Endpoint: /api/webhooks/monday - see that route for what each event drives.
 
 /** Event types Monday webhooks support that we currently consume.
  *  Adding a new one here is a no-op until the receiver knows what to do with
@@ -1153,7 +1153,7 @@ export type MondayWebhook = {
 
 /**
  * Register a single webhook on a Monday board. Idempotency is the CALLER's
- * problem — Monday happily creates duplicates if you ask twice. The admin
+ * problem - Monday happily creates duplicates if you ask twice. The admin
  * registration endpoint reconciles by listing first and only creating the
  * missing (boardId, event) pairs.
  *
@@ -1190,7 +1190,7 @@ export async function createMondayWebhook(
 /**
  * List existing webhooks on a board so the admin tool can show what's already
  * registered + skip duplicates on re-registration. Returned `url` may be null
- * — Monday doesn't always echo it back depending on app permissions.
+ * - Monday doesn't always echo it back depending on app permissions.
  */
 export async function listMondayWebhooks(boardId: string): Promise<MondayWebhook[]> {
   const token = await getToken()
@@ -1217,7 +1217,7 @@ export async function listMondayWebhooks(boardId: string): Promise<MondayWebhook
         const parsed = JSON.parse(w.config) as { url?: string }
         url = parsed.url ?? null
       } catch {
-        // Some webhook configs aren't JSON — leave url null.
+        // Some webhook configs aren't JSON - leave url null.
       }
     }
     return {

@@ -43,7 +43,7 @@ async function handler() {
   const allClients = [...onboarding, ...current]
   const mondayItemIds = allClients.map((c) => c.mondayItemId)
 
-  // Match Supabase rows that already exist — never insert stub rows.
+  // Match Supabase rows that already exist - never insert stub rows.
   const { data: clientRows } = await supabase
     .from("clients")
     .select("monday_item_id")

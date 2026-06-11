@@ -4,7 +4,7 @@ import { formatCurrency } from "@/lib/i18n/format"
 import type { Locale } from "@/lib/i18n/types"
 
 function fmtMrrCompact(v: number, locale: Locale): string {
-  // Compact card-friendly form ("€61k" / "€2.5k") — falls back to the
+  // Compact card-friendly form ("€61k" / "€2.5k") - falls back to the
   // full Intl-formatted amount for sub-1000 totals so we don't show
   // confusing "€600" rounded values.
   if (v >= 1000) return `€${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k`
@@ -21,7 +21,7 @@ export function KpiStrip({
   locale,
 }: {
   actionCount: number
-  /** Today minus yesterday — positive means more action clients today (bad). */
+  /** Today minus yesterday - positive means more action clients today (bad). */
   actionDelta: number
   unreadInboxCount: number
   /** 0–100, or null when there are no live clients in scope. */
@@ -32,14 +32,14 @@ export function KpiStrip({
   teamMrrClientCount: number
   locale: Locale
 }) {
-  // Action — bad whenever > 0. Trend up = more action than yesterday (red);
+  // Action - bad whenever > 0. Trend up = more action than yesterday (red);
   // trend down = fewer (green). goodWhen="down" so positive delta = red.
   const actionTone: KpiValueTone = actionCount === 0 ? "neutral" : "bad"
 
-  // Inbox zero is a win — green when achieved, red when stuff on the plate.
+  // Inbox zero is a win - green when achieved, red when stuff on the plate.
   const inboxTone: KpiValueTone = unreadInboxCount > 0 ? "bad" : "good"
 
-  // Health zones — full traffic light: <50 red, 50-74 amber, ≥75 green.
+  // Health zones - full traffic light: <50 red, 50-74 amber, ≥75 green.
   const healthTone: KpiValueTone =
     healthScore == null
       ? "neutral"
@@ -85,7 +85,7 @@ export function KpiStrip({
       />
       <KpiTile
         label={t("home.kpi.health.label", locale)}
-        value={healthScore == null ? "—" : `${healthScore}%`}
+        value={healthScore == null ? "-" : `${healthScore}%`}
         valueTone={healthTone}
         sub={
           healthScore == null

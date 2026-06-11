@@ -1,6 +1,6 @@
 import type { MondayLeadItem } from "@/lib/integrations/monday"
 
-// Appointments tracking removed 2026-05 — see knowledge/vision-rocketleads-hub.md.
+// Appointments tracking removed 2026-05 - see knowledge/vision-rocketleads-hub.md.
 // Anything that used to depend on `bookedCalls` / `takenCalls` / `costPerBookedCall`
 // / `costPerTakenCall` / `qrPercent` / `crPercent` either uses deals (independent
 // concept) or has been removed from the UI.
@@ -24,7 +24,7 @@ export type UtmRow = {
 
 // Monday's GraphQL `text` for date columns can include a time component
 // ("2026-05-17 06:50:00") when the column is configured as date+time. A pure
-// lexicographic `dateStr <= end` then fails for items on the end date — the
+// lexicographic `dateStr <= end` then fails for items on the end date - the
 // trailing " 06:50:00" sorts *after* "2026-05-17" and the item drops out of
 // the window. Normalize to the YYYY-MM-DD prefix before comparing.
 function inRange(dateStr: string, start: string, end: string): boolean {

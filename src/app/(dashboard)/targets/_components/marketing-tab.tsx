@@ -28,7 +28,7 @@ import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { DictionaryKey } from "@/lib/i18n/dictionary"
 
-/** Country segmented control. NL/BE/DE are country codes — no translation —
+/** Country segmented control. NL/BE/DE are country codes - no translation -
  *  but "All" / "Other" flip with locale. */
 const COUNTRY_SHAPE: Array<{ key: CountryKey; labelKey: DictionaryKey | null; label: string }> = [
   { key: "all", labelKey: "targets.country.all", label: "All" },
@@ -71,15 +71,15 @@ export function MarketingTab() {
   const tgt = targets ?? null
   const spend = meta?.spend ?? 0
   // When Meta data is missing (token failed, account empty, fetch errored)
-  // every cost-per metric reads as €0.00 with a green progress bar — looks
+  // every cost-per metric reads as €0.00 with a green progress bar - looks
   // like "we're killing it" but actually means "we have no data". Treat
-  // spend=0 as "no meta signal" so the cost cards render `—` instead of a
+  // spend=0 as "no meta signal" so the cost cards render `-` instead of a
   // misleading green zero. `data.metaError` and `data.metaLoading === false`
   // both feed this check via the upstream hook.
   const hasMetaSpend = !data.metaLoading && spend > 0
-  const fmtCost = (formatted: string) => (hasMetaSpend ? formatted : "—")
+  const fmtCost = (formatted: string) => (hasMetaSpend ? formatted : "-")
   const calls = m?.calls ?? 0
-  // Qualification stage dropped 2026-05-27 — the funnel is now Opt-in →
+  // Qualification stage dropped 2026-05-27 - the funnel is now Opt-in →
   // Booked → Taken → Deal. cancellations + noShows expose how many booked
   // calls didn't happen; the rest are taken.
   const cancellations = m?.cancellations ?? 0
@@ -88,15 +88,15 @@ export function MarketingTab() {
   const deals = m?.deals ?? 0
   // Opt-ins lives on a separate Monday board with no country attribution.
   // The fetcher populates the value only on the "all" bucket, so we show
-  // the tile only when the user is on the All-countries view — under a
+  // the tile only when the user is on the All-countries view - under a
   // country filter the value would always be 0 and the cost-per number
   // meaningless.
   const optIns = country === "all" ? m?.optIns ?? 0 : 0
   const cpOptIn = country === "all" ? safeDivide(spend, optIns) : 0
   // Closer dropdown options come from the FULL closers list (the backend keeps
   // it complete regardless of the filter so this dropdown always lists every
-  // option). Everything else under "Breakdown" — closers table + insights and
-  // the notUpdated counter — should reflect the active filter, otherwise the
+  // option). Everything else under "Breakdown" - closers table + insights and
+  // the notUpdated counter - should reflect the active filter, otherwise the
   // KPI cards say "Anel only" while the table below still shows the team.
   const closerActive = closer !== "All"
   const closersForBreakdown = useMemo(() => {
@@ -125,7 +125,7 @@ export function MarketingTab() {
   const prSpend = derivedT.adSpend > 0 ? Math.round(proRata(derivedT.adSpend, range)) : undefined
 
   // Appointment booking rate = booked calls / opt-ins. Target is a ratio (not
-  // pro-rata-able) — cpOptIn / cbc from Settings. The actual value uses live
+  // pro-rata-able) - cpOptIn / cbc from Settings. The actual value uses live
   // calls / optIns. Both are only meaningful on the "all" country view since
   // opt-ins has no country attribution.
   const bookingRate = optIns > 0 ? (calls / optIns) * 100 : 0
@@ -137,7 +137,7 @@ export function MarketingTab() {
   // Closer dropdown options. The backend always returns the full closers list
   // (per-closer aggregation ignores the `closer` filter), so the dropdown stays
   // populated even while a specific closer is selected. Sort alphabetically with
-  // "Unassigned" pinned to the bottom — hidden if there's nothing unassigned.
+  // "Unassigned" pinned to the bottom - hidden if there's nothing unassigned.
   const closerOptions = useMemo(() => {
     const names = (m?.closers ?? [])
       .map((c) => c.closer)
@@ -173,7 +173,7 @@ export function MarketingTab() {
         />
         <FiltersPopover filters={filters} />
         {closerActive && (() => {
-          // Bold the closer name inside the pill text — sentinel split keeps
+          // Bold the closer name inside the pill text - sentinel split keeps
           // the dictionary entry natural ("Filteren op closer: {name}").
           const pillText = t("targets.filter.active_closer", locale, { name: "__CLOSER__" })
           const [before, after] = pillText.split("__CLOSER__")
@@ -218,7 +218,7 @@ export function MarketingTab() {
         </div>
       </div>
 
-      {/* ── SECTION 1 — SUMMARY ── */}
+      {/* ── SECTION 1 - SUMMARY ── */}
       <section className="space-y-3">
         <SectionHeader title={t("targets.section.summary.title", locale)} subtitle={t("targets.section.summary.subtitle", locale)} />
         <PulseBanner monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
@@ -240,14 +240,14 @@ export function MarketingTab() {
         />
       </section>
 
-      {/* ── SECTION 2 — METRICS ── */}
+      {/* ── SECTION 2 - METRICS ── */}
       <section className="space-y-3">
         <SectionHeader title={t("targets.section.metrics.title", locale)} subtitle={t("targets.section.metrics.subtitle", locale)} />
 
         <div className="space-y-2">
           <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 px-1">{t("targets.section.volume_costs", locale)}</h3>
 
-          {/* Ad Spend — full width with target */}
+          {/* Ad Spend - full width with target */}
           <div>
             <KpiCard
               label="Ad Spend"
@@ -260,7 +260,7 @@ export function MarketingTab() {
             />
           </div>
 
-          {/* Volume + Cost + Ratio funnel — left column carries the opt-in
+          {/* Volume + Cost + Ratio funnel - left column carries the opt-in
               metrics (volume / cost / booking rate), the remaining 3 columns
               are the booked → taken → deals funnel. Qualification stage
               dropped 2026-05-27. Opt-in metrics are country-agnostic; they
@@ -300,8 +300,8 @@ export function MarketingTab() {
 
           {/* Row 2: Cost per Opt-in | CBC | CTC | CPD. CQC removed
               2026-05-27 (qualification stage dropped). When Meta spend is
-              missing we render `—` via fmtCost() rather than a misleading
-              €0.00 green tile — and drop the target so the progress bar
+              missing we render `-` via fmtCost() rather than a misleading
+              €0.00 green tile - and drop the target so the progress bar
               doesn't suggest we're on track at zero. */}
           <div className={cn("grid gap-2", country === "all" ? "grid-cols-4" : "grid-cols-3") }>
             {country === "all" && (
@@ -338,8 +338,8 @@ export function MarketingTab() {
           </div>
 
           {/* Surface a one-line warning when Meta data is missing so the CM
-              knows the `—` cost cells aren't "all good zeros" but a real fetch
-              issue worth investigating (probably a Meta token / API hiccup —
+              knows the `-` cost cells aren't "all good zeros" but a real fetch
+              issue worth investigating (probably a Meta token / API hiccup -
               the cron now refuses to cache empty results so a retry usually
               fixes it). Errors flow through this banner too. */}
           {!data.metaLoading && !hasMetaSpend && (
@@ -372,7 +372,7 @@ export function MarketingTab() {
               {ratiosGroup.kpis.map((kpi) => (
                 // Ratios mix Monday volume with Meta spend; when Monday is
                 // serving MTD as placeholder the ratio is partially wrong
-                // (MTD leads ÷ selected-range spend) — flag it so the CM
+                // (MTD leads ÷ selected-range spend) - flag it so the CM
                 // doesn't trust the number yet.
                 <KpiCard key={kpi.label} {...kpi} isMtdPlaceholder={mondayMtdPlaceholder} />
               ))}
@@ -380,7 +380,7 @@ export function MarketingTab() {
           </div>
         )}
 
-        {/* Booked-call drop-off transparency — surface the no-show + cancellation
+        {/* Booked-call drop-off transparency - surface the no-show + cancellation
             counts that account for "Booked − Taken" so the CM knows where the
             funnel is leaking, and the open-pending count from the past-
             appointment-not-updated logic. Mention is plain-text, single row;
@@ -401,7 +401,7 @@ export function MarketingTab() {
         )}
       </section>
 
-      {/* ── SECTION 3 — BREAKDOWN ── */}
+      {/* ── SECTION 3 - BREAKDOWN ── */}
       <section className="space-y-3">
         <SectionHeader title={t("targets.section.breakdown.title", locale)} subtitle={t("targets.section.breakdown.subtitle", locale)} />
 
@@ -448,7 +448,7 @@ function StripeGapModal({
   if (!open) return null
   const gap = stripeRevenue - mondayRevenue
 
-  // Default view = unmatched only — that's the actual gap. Server-side fuzzy pairing
+  // Default view = unmatched only - that's the actual gap. Server-side fuzzy pairing
   // marks `matched: true` on rows that have a counterpart on the other side. Toggle
   // shows the full list if the user wants to verify a specific name.
   const visibleDeals = showAll ? deals : deals.filter((d) => !d.matched)
@@ -523,7 +523,7 @@ function StripeGapModal({
                   <tbody>
                     {visibleDeals.map((d) => (
                       <tr key={d.mondayItemId} className={cn("border-b border-border/20 last:border-0 hover:bg-muted/30", d.matched && "opacity-60")}>
-                        <td className="py-2 px-4 font-mono text-muted-foreground">{d.dateDeal || "—"}</td>
+                        <td className="py-2 px-4 font-mono text-muted-foreground">{d.dateDeal || "-"}</td>
                         <td className="py-2 px-4 truncate max-w-[220px]">
                           <div className="truncate">{d.name}</div>
                           {d.companyName && <div className="text-[10px] text-muted-foreground/70 truncate">{d.companyName}</div>}

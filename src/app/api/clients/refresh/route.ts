@@ -12,7 +12,7 @@ import {
  * On-demand Monday boards refresh for the Clients overview. The Refresh
  * button calls this before `router.refresh()` so the server component reads
  * a freshly-written `monday_boards` cache instead of whatever the cron last
- * left there — without this, renaming a status option in Monday wouldn't
+ * left there - without this, renaming a status option in Monday wouldn't
  * surface in the Hub until the next 30-min cron tick.
  *
  * Lightweight on purpose: live-fetches both boards, writes the cache, done.

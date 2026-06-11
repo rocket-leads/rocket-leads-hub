@@ -6,13 +6,13 @@ import type { DateRange, QuickPreset } from "@/types/targets"
 
 /**
  * Two-layer persistence for the chosen date range:
- *  1. `cachedRange` (module scope) — survives tab switches within a page load, no flash
+ *  1. `cachedRange` (module scope) - survives tab switches within a page load, no flash
  *     when re-mounting the hook because state is read synchronously from this var.
- *  2. `localStorage` — survives full page refreshes. Loaded into module cache on the
+ *  2. `localStorage` - survives full page refreshes. Loaded into module cache on the
  *     first mount of the hook, then kept in sync on every change.
  *
  * Default is **Last 7 Days** across the platform so KPI cards, Pedro insights, and
- * Watch List signals all read the same window — no more "Pedro says stable, dashboard
+ * Watch List signals all read the same window - no more "Pedro says stable, dashboard
  * says spike" because two surfaces drift apart. Targets users who want MTD can flip
  * via the preset; this only changes the cold-start default.
  *
@@ -60,7 +60,7 @@ function writePersistedRange(start: Date, end: Date) {
 }
 
 /**
- * Snapshot read of the cached range — for non-reactive callers like the page-level
+ * Snapshot read of the cached range - for non-reactive callers like the page-level
  * refresh button which just needs "what's the user looking at right now". Falls back
  * to localStorage, then to MTD defaults.
  */
@@ -80,7 +80,7 @@ export function useDateRange() {
 
   // First-mount hydration: SSR and the client's first render both use the MTD default
   // (localStorage isn't available on the server), so we pull the persisted range here
-  // after mount. Only fires when the module cache is still empty for this tab — once
+  // after mount. Only fires when the module cache is still empty for this tab - once
   // hydrated, subsequent uses of the hook in the same page lifecycle skip this path.
   useEffect(() => {
     if (cachedRange) return
@@ -107,7 +107,7 @@ export function useDateRange() {
       // also uses today, so the UI key matches the cron-warmed cache exactly
       // and the page renders instantly from cache instead of paying a live
       // Meta + Monday fetch every load. Intraday partial spend is fine here
-      // — MTD is meant to be a running "this month so far" view. The other
+      // - MTD is meant to be a running "this month so far" view. The other
       // rolling-window presets stay at yesterday because they're comparison
       // baselines where partial-day data would skew the ratio.
       label: "MTD",

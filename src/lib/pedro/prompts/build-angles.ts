@@ -16,7 +16,7 @@ import { GENERATION_RULES, type BriefData, type Angle } from "@/lib/pedro/helper
 
 export type AnglesPromptArgs = {
   brief: BriefData
-  /** Comma/list block from research stage — "Winnende angles in deze branche", "Hook-patronen". Optional. */
+  /** Comma/list block from research stage - "Winnende angles in deze branche", "Hook-patronen". Optional. */
   researchContext?: string
   /** Style reference from existing Rocket Leads Meta ads. Optional. */
   styleRef?: string
@@ -25,11 +25,11 @@ export type AnglesPromptArgs = {
   /** How many angles to generate. Defaults to 5 (full set). When the
    *  CM picks "regenerate selected", this is the count of selected. */
   count?: number
-  /** Existing angles the CM wants to KEEP — used as a "vermijd deze
+  /** Existing angles the CM wants to KEEP - used as a "vermijd deze
    *  invalshoeken, kom met iets anders" block so the regenerated set
    *  doesn't repeat what's already on the board. */
   keepAngles?: Angle[]
-  /** Free-text steering from the CM — e.g. "maak ze harder
+  /** Free-text steering from the CM - e.g. "maak ze harder
    *  confronterend" or "meer richting AI/automatisering". */
   steering?: string
 }
@@ -43,8 +43,8 @@ export function buildAnglesPrompt(args: AnglesPromptArgs): string {
 
   const keepBlock =
     args.keepAngles && args.keepAngles.length > 0
-      ? `\n\nDe volgende angles staan al op het bord. Vermijd deze invalshoeken — kom met iets nieuws dat niet overlapt:\n${args.keepAngles
-          .map((a) => `- "${a.titel}" — ${a.beschrijving}`)
+      ? `\n\nDe volgende angles staan al op het bord. Vermijd deze invalshoeken - kom met iets nieuws dat niet overlapt:\n${args.keepAngles
+          .map((a) => `- "${a.titel}" - ${a.beschrijving}`)
           .join("\n")}`
       : ""
 

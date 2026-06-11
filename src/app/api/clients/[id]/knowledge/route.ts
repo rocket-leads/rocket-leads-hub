@@ -5,7 +5,7 @@ import { listFolderFiles, getFileContent } from "@/lib/integrations/google-drive
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 
-// GET — return cached knowledge for a client
+// GET - return cached knowledge for a client
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -33,7 +33,7 @@ export async function GET(
   return NextResponse.json(knowledge ?? [])
 }
 
-// POST — sync knowledge from Google Drive + Monday updates
+// POST - sync knowledge from Google Drive + Monday updates
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

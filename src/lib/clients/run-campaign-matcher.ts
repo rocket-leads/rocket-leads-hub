@@ -19,7 +19,7 @@ export type MatcherRunResult = {
 /**
  * Auto-assign Rocket Leads-account campaigns to the right client based on the
  * company name segment of `RL | NL | XX | Company | LP`. Runs across the full
- * RL ad account in one pass — used by both the per-client campaigns endpoint
+ * RL ad account in one pass - used by both the per-client campaigns endpoint
  * (where it covers the visible client) and the global refresh endpoint
  * (which fans it out across every RL client without requiring page visits).
  *
@@ -54,7 +54,7 @@ export async function runRocketLeadsCampaignMatcher(
     return { assignedCount: 0, affectedMondayItemIds: [] }
   }
 
-  // Paginated read — Supabase's default 1000-row cap was silently
+  // Paginated read - Supabase's default 1000-row cap was silently
   // truncating the set on shared RL ad accounts with thousands of
   // campaigns + many clients. Missing rows here = the matcher thinks
   // those campaigns are unknown and re-assigns them every hour, which
@@ -124,7 +124,7 @@ export async function runRocketLeadsCampaignMatcher(
  * Invalidate cached KPIs for clients whose campaign selections just changed
  * (auto-matched or manually picked). Removes their entries from both
  * `kpi_daily` AND `kpi_summaries` so the next `/api/kpi-summaries` call
- * falls through to a live fetch for those clients — kpi-summaries was
+ * falls through to a live fetch for those clients - kpi-summaries was
  * extended to live-fetch missing-from-cache clients exactly for this case.
  *
  * Without this, the UI would keep rendering the pre-selection numbers
@@ -133,7 +133,7 @@ export async function runRocketLeadsCampaignMatcher(
  * overview after their campaigns had been linked.
  *
  * Best-effort: a write failure just means the user sees stale numbers
- * until the cron catches up — same fallback as the original flag-clear.
+ * until the cron catches up - same fallback as the original flag-clear.
  */
 export async function invalidateKpiCachesForClients(mondayItemIds: string[]): Promise<void> {
   if (mondayItemIds.length === 0) return

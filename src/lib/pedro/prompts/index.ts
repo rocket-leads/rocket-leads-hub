@@ -14,7 +14,7 @@
  *  - Pure functions = unit-testable without mounting the React tree
  *
  * The component is responsible for assembling context strings via the
- * helpers in ./context — these stay separate so they can be reused
+ * helpers in ./context - these stay separate so they can be reused
  * across multiple builders without circular imports.
  */
 

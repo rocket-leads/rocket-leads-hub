@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * Pedro campaigns — named campaign containers per client.
+ * Pedro campaigns - named campaign containers per client.
  *
  * GET  /api/pedro/campaigns?clientId=X[&includeArchived=1]
  *      → list of campaigns for that client, most-recently-used first.
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   // campaign yet". Causes: (a) initial backfill in the migration didn't
   // run yet on this DB, or (b) saves happened on a client whose
   // pedro_campaigns row was archived/deleted manually. Either way,
-  // versions without campaigns are nonsense — auto-create the
+  // versions without campaigns are nonsense - auto-create the
   // corresponding "Campagne N" row so the picker always reflects reality. ──
   const [{ data: savedTuples }, { data: draftTuples }] = await Promise.all([
     supabase
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
     const missing = Array.from(referencedNumbers).filter((n) => !existingNumbers.has(n))
     if (missing.length > 0) {
       // Bulk-insert the missing campaign rows. `Campagne N` is the default
-      // name — the CM can rename via the picker's pencil. last_used_at /
+      // name - the CM can rename via the picker's pencil. last_used_at /
       // created_at default to now() which is fine; the saved-versions /
       // draft history isn't retroactively dated.
       await supabase.from("pedro_campaigns").insert(

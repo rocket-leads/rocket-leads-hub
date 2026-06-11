@@ -9,7 +9,7 @@ import { safeFetch } from "@/lib/safe-fetch"
  * Settings → Users. Was loaded in Settings SSR; lifted here so the
  * Users tab fetches it on mount and Settings paints immediately.
  *
- * Cached server-side for 24h via `cachedFetch` — Fathom team rosters
+ * Cached server-side for 24h via `cachedFetch` - Fathom team rosters
  * basically don't change. First call after cache expiry is the only
  * slow one (1-2s).
  */

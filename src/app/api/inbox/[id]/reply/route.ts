@@ -10,7 +10,7 @@ import { replyToInboxEvent, NeedsConnectError } from "@/lib/inbox/reply"
  * history in the Hub stays complete.
  *
  * Returns 409 with { needsConnect: "<platform>" } when the user hasn't
- * connected the relevant platform yet — the UI uses that to render a
+ * connected the relevant platform yet - the UI uses that to render a
  * "Connect <platform> first" prompt with a deep-link to /account.
  */
 export async function POST(

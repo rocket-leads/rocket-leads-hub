@@ -24,7 +24,7 @@ export type ClientSearchResult = {
  * page itself.
  *
  * Filtered against the user's column mappings so a member with restricted
- * scope only sees their own clients — admins, finance, and members with no
+ * scope only sees their own clients - admins, finance, and members with no
  * mappings see everything.
  */
 export async function GET() {

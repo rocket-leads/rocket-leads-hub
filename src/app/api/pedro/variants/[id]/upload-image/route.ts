@@ -7,7 +7,7 @@ import { uploadVariantImage, getVariantImageSignedUrl } from "@/lib/integrations
  * POST /api/pedro/variants/[id]/upload-image
  *  body: multipart/form-data with `file` field (image/jpeg or image/png)
  *
- * Manual upload override — when the CM has a real client photo / brand
+ * Manual upload override - when the CM has a real client photo / brand
  * asset that beats the AI-generated one, they upload it here and we
  * treat it identically downstream (Meta launch endpoint doesn't care
  * which source produced it).
@@ -15,7 +15,7 @@ import { uploadVariantImage, getVariantImageSignedUrl } from "@/lib/integrations
  * Roy 2026-06-09.
  */
 
-const MAX_BYTES = 30 * 1024 * 1024 // 30 MB — matches Meta's ad-image cap
+const MAX_BYTES = 30 * 1024 * 1024 // 30 MB - matches Meta's ad-image cap
 
 export async function POST(
   req: NextRequest,
@@ -95,7 +95,7 @@ export async function POST(
 
     const signedUrl = await getVariantImageSignedUrl(uploaded.storagePath)
 
-    // Log the upload as a feedback signal — the CM overrode the AI
+    // Log the upload as a feedback signal - the CM overrode the AI
     // output, which means whatever Pedro produced wasn't usable for
     // this variant. Future creative-refresh prompts for this client
     // see this and can adjust direction. Best-effort, never blocking.
@@ -106,7 +106,7 @@ export async function POST(
         variant_image_position: position,
         refresh_id: variantRow.refresh_id,
         feedback_type: "upload",
-        feedback_text: `[CM uploadte eigen image voor variant "${variantRow.ad_name ?? ""}" slot ${String.fromCharCode(65 + position)}]\nAI-output was niet bruikbaar — overrule met handmatige upload.`,
+        feedback_text: `[CM uploadte eigen image voor variant "${variantRow.ad_name ?? ""}" slot ${String.fromCharCode(65 + position)}]\nAI-output was niet bruikbaar - overrule met handmatige upload.`,
         created_by_email: session.user.email ?? null,
       })
     } catch (e) {

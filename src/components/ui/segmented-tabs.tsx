@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 type Item<T extends string> = {
   id: T
   label: string
-  /** Optional dot — used for "you have something here" affordances
+  /** Optional dot - used for "you have something here" affordances
    *  (eg. overdue invoice on the Billing sub-view). */
   dot?: "red" | "amber"
 }
@@ -18,7 +18,7 @@ type Props<T extends string> = {
 }
 
 /**
- * Pill-style segmented control — for secondary "alternate view" switches
+ * Pill-style segmented control - for secondary "alternate view" switches
  * inside a tab body (eg. Performance → Overview vs Campaigns). Visually
  * lighter than `TopTabs` so the user reads it as "two views of the same
  * thing" rather than "two separate sections of the app".

@@ -15,13 +15,13 @@ import type { MondayClient } from "@/lib/integrations/monday"
 type Props = { client: MondayClient }
 
 /**
- * Per-client onboarding checklist — surfaces the standard "what needs to be
+ * Per-client onboarding checklist - surfaces the standard "what needs to be
  * in place before this client goes live" list from knowledge/process.md as
  * concrete green/grey checks. Renders only for clients on the onboarding
  * board, so live clients don't see a stale onboarding card.
  *
  * Each item is data-driven: filled fields on the Monday item = done. The
- * checklist is read-only here — admins/AMs change the underlying fields in
+ * checklist is read-only here - admins/AMs change the underlying fields in
  * the Settings tab or the Monday board, and the checks flip automatically.
  */
 export function OnboardingChecklist({ client }: Props) {
@@ -38,7 +38,7 @@ export function OnboardingChecklist({ client }: Props) {
   const hasClientBoard = Boolean(client.clientBoardId)
   const hasDrive = Boolean(client.googleDriveId)
 
-  // Phase ordering — derived from PHASE_OPTIONS in status.ts but laid out
+  // Phase ordering - derived from PHASE_OPTIONS in status.ts but laid out
   // chronologically here to drive the "are we past step X" checks for items
   // that don't have a direct boolean field (e.g. content received, ads built).
   const phaseRank: Record<OnboardingPhase, number> = {

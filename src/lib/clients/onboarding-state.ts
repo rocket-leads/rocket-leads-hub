@@ -11,7 +11,7 @@ import type { StoredStepRow } from "./onboarding"
 /**
  * Fetch stored step rows for one client. Returns a Map (task_key →
  * stored row) so the registry's `resolveWizardState` can do O(1) lookups
- * while merging with derived state. Empty map on missing/error — derived
+ * while merging with derived state. Empty map on missing/error - derived
  * steps still resolve fine.
  */
 export async function fetchStoredSteps(
@@ -75,7 +75,7 @@ export async function fetchStoredStepsBulk(
 }
 
 /**
- * Persist a step's state — done flag, optional content blob, completed
+ * Persist a step's state - done flag, optional content blob, completed
  * timestamps. Idempotent: re-saving with the same `done` value only
  * touches `updated_at`. Set `done=false` to revert; `completed_*` are
  * cleared so the audit reflects the latest state.
@@ -98,7 +98,7 @@ export async function saveStepState(args: {
     completed_by: args.done ? args.userId : null,
     updated_at: now,
   }
-  // Only overwrite content when the caller passes it — undefined leaves
+  // Only overwrite content when the caller passes it - undefined leaves
   // the existing blob intact (e.g. AM marks step done without re-writing
   // the brief draft they typed earlier).
   if (args.content !== undefined) payload.content = args.content

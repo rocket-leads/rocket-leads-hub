@@ -19,14 +19,14 @@ const PAST_INVOICES_DAYS = 180
 export const maxDuration = 300
 
 /**
- * Hourly cron — refreshes the `billing_summaries` cache (Stripe payment state
+ * Hourly cron - refreshes the `billing_summaries` cache (Stripe payment state
  * per customer) so the /billing page never shows payment state older than an
  * hour. Finance opens this page constantly and lots of state changes through
  * the day (invoices going out, payments coming in). The full refresh-cache
  * cron at 5:30 AM also touches this cache, but daily isn't enough.
  *
  * Strategy: fetch all clients with a Stripe customer id from the Monday cache,
- * pull each customer's billing summary in parallel (concurrency 5 — see
+ * pull each customer's billing summary in parallel (concurrency 5 - see
  * stripe.ts), merge into the existing cached map, write back. We MERGE
  * instead of replace so a Stripe API hiccup on one customer doesn't wipe its
  * previous summary.
@@ -78,7 +78,7 @@ async function handler(req: NextRequest) {
     // Stripe state + cycle date. Bounded concurrency so we don't hammer Monday
     // when 50+ rows need a write at once; per-row errors are swallowed inside
     // `reconcileAdministrationForClient` so one bad client doesn't kill the
-    // whole pass. Skip Onboarding/Churned — those statuses don't get invoiced
+    // whole pass. Skip Onboarding/Churned - those statuses don't get invoiced
     // anyway so an admin label there would just be noise.
     const today = new Date().toISOString().slice(0, 10)
     const adminTargets = allClients.filter((c) => {

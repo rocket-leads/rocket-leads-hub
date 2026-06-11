@@ -24,13 +24,13 @@ import {
  *
  * Used by the Monday-morning cron (`/api/cron/weekly-update-drafts`) and
  * the interactive Client Update dialog endpoint so both walk identical
- * composition logic — KPI + Pedro lookup, hardcoded `rl_weekly_<voornaam>`
+ * composition logic - KPI + Pedro lookup, hardcoded `rl_weekly_<voornaam>`
  * template resolution, channel detection.
  *
  * WhatsApp path: always uses the V2 multi-variable template
  * (`rl_weekly_<voornaam>`). No env flag, no V1 fallback. If the template
  * isn't approved in Trengo yet, Trengo errors at send-time with a clear
- * "template not found" — better than the old silent V1 fallback which
+ * "template not found" - better than the old silent V1 fallback which
  * hid the misconfiguration.
  *
  * Email path: skips template resolution entirely. Trengo's email endpoint
@@ -137,7 +137,7 @@ async function loadHubUserName(userId: string): Promise<{ name: string | null } 
  * Why: the template (`rl_weekly_<voornaam>`) belongs to the AM, not to
  * whoever happens to be logged in. When Roy (admin) reviews Danny's
  * client in the queue, the WhatsApp message should still go out as
- * Danny's template — that's the slug the Trengo channel has approved
+ * Danny's template - that's the slug the Trengo channel has approved
  * AND the slug whose body contains "Groetjes, Danny".
  *
  * Returns null when the Monday `accountManager` field is empty OR the
@@ -163,7 +163,7 @@ export async function resolveAmUserIdForClient(
 /**
  * Compose a draft for the given client + user. `client` can be passed in
  * when the caller already has the Monday row (cron pre-fetches all clients
- * in one batch — we don't want to re-fetch one-by-one per client).
+ * in one batch - we don't want to re-fetch one-by-one per client).
  *
  * `userId` is the FALLBACK identity for template resolution. The function
  * always tries the client's assigned AM first (via Monday accountManager
@@ -223,7 +223,7 @@ export async function buildWeeklyUpdateDraft(args: {
           .catch(() => null)
 
   // Always resolve the weekly template for WhatsApp. Email skips it.
-  // Overdue invoices + Trengo contact fire in parallel too — best-effort,
+  // Overdue invoices + Trengo contact fire in parallel too - best-effort,
   // null / [] on failure so the rest of the pipeline still produces a draft.
   // (The Trengo contact used to be fetched sequentially AFTER this block,
   // adding 200-800 ms of dialog open latency on top of the slowest call.

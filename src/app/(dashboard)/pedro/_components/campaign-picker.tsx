@@ -15,7 +15,7 @@ import type { PedroCampaign } from "@/app/api/pedro/campaigns/route"
  * or archiving the current one.
  *
  * Defaulting: the picker picks the most-recently-used (`last_used_at
- * desc`) campaign on client switch — touching a campaign through the
+ * desc`) campaign on client switch - touching a campaign through the
  * PATCH endpoint bumps `last_used_at` so just opening one keeps it at
  * the top next time.
  */

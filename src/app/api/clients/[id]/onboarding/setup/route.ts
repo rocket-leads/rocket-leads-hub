@@ -15,7 +15,7 @@ export const maxDuration = 60
  * (TODO) a Stripe payment link. Results land in the kickoff_live step's
  * content so the AM sees ready resources the moment they enter Stap 1.
  *
- * Idempotent — if Drive folder ID is already mirrored from a prior run,
+ * Idempotent - if Drive folder ID is already mirrored from a prior run,
  * the setup reuses it instead of creating duplicates.
  *
  * Triggered by the wizard page on first mount (UI shows "Setting up…"
@@ -38,7 +38,7 @@ export async function POST(
 
     // Persist into kickoff_live step content so the wizard's GET sees
     // the resources next time without re-running setup. We DON'T mark
-    // the step done — the AM still has to fill the brief + share with
+    // the step done - the AM still has to fill the brief + share with
     // the client + payment received before this step counts as complete.
     await saveStepState({
       mondayItemId,

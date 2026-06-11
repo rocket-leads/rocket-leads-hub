@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils"
  *
  * Three tones (semantic, not visual):
  *   - success → primary "approve / done" action (emerald)
- *   - danger  → "delete / dismiss" — muted by default, red on hover
+ *   - danger  → "delete / dismiss" - muted by default, red on hover
  *   - muted   → neutral secondary (snooze, reassign, edit, create-task)
  *
  * Optional `state` slot for transient feedback after an async action:

@@ -26,14 +26,14 @@ export type MetaInsight = {
   campaignId: string
   campaignName: string
   spend: number
-  /** Canonical lead count — prefers `lead`, falls back to max of per-source aliases */
+  /** Canonical lead count - prefers `lead`, falls back to max of per-source aliases */
   leads: number
 }
 
 /**
  * Count leads from a Meta `actions` array. Meta returns the same conversion
  * under multiple aliases (`lead`, `onsite_conversion.lead_grouped`,
- * `leadgen_grouped`, `offsite_conversion.fb_pixel_lead`, ...) — summing all of
+ * `leadgen_grouped`, `offsite_conversion.fb_pixel_lead`, ...) - summing all of
  * them double-counts. Prefer the canonical `lead` total; fall back to the max
  * of the per-source counts when `lead` isn't reported.
  */
@@ -88,7 +88,7 @@ async function fetchAllPages<T>(
  * multiple accounts), status code.
  */
 type MetaAdAccountSummary = {
-  /** Full account ID including `act_` prefix — that's what Meta returns and
+  /** Full account ID including `act_` prefix - that's what Meta returns and
    *  what every other Meta function in this file expects as input. */
   id: string
   /** ID minus the `act_` prefix for display. Stored separately so we don't
@@ -108,7 +108,7 @@ const META_AD_ACCOUNTS_TTL_MS = 5 * 60 * 1000
  * minutes so per-keystroke search in the picker doesn't fan out into Meta
  * Graph API calls each time.
  *
- * Field set deliberately minimal — adding `funding_source_details` here
+ * Field set deliberately minimal - adding `funding_source_details` here
  * would make this call 3× slower for no UX gain. Status alone covers the
  * "this account is disabled, don't pick it" case.
  */
@@ -173,7 +173,7 @@ function toResolvedAdAccount(a: MetaAdAccountSummary): ResolvedEntity {
  * Meta's `/me/adaccounts` endpoint has no name-filter parameter, so we
  * fetch all accessible accounts (cached 5 minutes) and substring-match
  * client-side. Ranks active-with-prefix-match first, active-substring next,
- * everything else last — so the AM doesn't end up linking a Disabled
+ * everything else last - so the AM doesn't end up linking a Disabled
  * account when a same-named Active one exists.
  *
  * Match scope: name OR business_name OR raw numeric ID. The numeric-ID
@@ -222,7 +222,7 @@ export async function searchMetaAdAccounts(
 
 /**
  * Resolve a single Meta ad account ID to its ResolvedEntity. Used by the
- * always-on verification on the picker trigger — catches the "ad account
+ * always-on verification on the picker trigger - catches the "ad account
  * got disabled by Meta but the ID is still set" case that's been silently
  * breaking the Performance Overview for weeks at a time.
  *
@@ -243,7 +243,7 @@ export async function resolveMetaAdAccount(id: string): Promise<ResolvedEntity |
   if (res.status === 400 || res.status === 404) {
     // 400 covers "Invalid OAuth access token" (treat as broken so the AM
     // knows the link's dead) and "Object does not exist". 404 is the
-    // straightforward "no such account" — also broken.
+    // straightforward "no such account" - also broken.
     return null
   }
   if (!res.ok) {
@@ -310,7 +310,7 @@ export type MetaDailyInsight = {
 /**
  * Per-day, per-campaign breakdown via Meta's `time_increment=1`. Use this when you need
  * a daily trend (sparklines, time-series charts). Aggregate with `aggregateMetaDailyToTotals`
- * or `aggregateMetaDailyByDate` to recover totals — saves a separate roundtrip.
+ * or `aggregateMetaDailyByDate` to recover totals - saves a separate roundtrip.
  *
  * Note: Meta omits days with zero activity, so the returned array may be sparser than
  * the requested range. Callers rendering a continuous timeline should fill missing dates.
@@ -375,7 +375,7 @@ export function aggregateMetaDailyByDate(daily: MetaDailyInsight[]): Array<{ dat
 // ─── Ad account billing health ───────────────────────────────────────────
 //
 // Detects billing/payment problems at the ad-account level. Meta exposes
-// these on the AdAccount node itself — `account_status` is the canonical
+// these on the AdAccount node itself - `account_status` is the canonical
 // signal (1=active, anything else means something is wrong), `disable_reason`
 // gives the why (UNSETTLED, UNPAID, etc.), `funding_source_details` shows
 // the current payment method.
@@ -384,7 +384,7 @@ export function aggregateMetaDailyByDate(daily: MetaDailyInsight[]): Array<{ dat
 // pauses are intentional 95% of the time and (b) the live-but-dark
 // detector already catches the symptom (Live status + no spend).
 // Account-level status catches the ROOT CAUSE before a campaign even pauses
-// — Meta sometimes reduces delivery before pausing entirely.
+// - Meta sometimes reduces delivery before pausing entirely.
 
 /** Meta `account_status` numeric → label + actionable flag. Sourced from
  *  https://developers.facebook.com/docs/marketing-api/reference/ad-account.
@@ -416,7 +416,7 @@ export type MetaAdAccountHealth = {
    *  (disabled / unsettled / pending settlement / grace period). False
    *  for "active" and for "closed on purpose" states. */
   isBillingIssue: boolean
-  /** Meta's `disable_reason` numeric — gives detail on WHY a disabled
+  /** Meta's `disable_reason` numeric - gives detail on WHY a disabled
    *  account is disabled. 0 = not disabled. */
   disableReason: number | null
   /** Funding source label as Meta returns it ("Visa **** 1234",
@@ -479,7 +479,7 @@ export type MetaAdDetail = {
   campaignId: string
   /** Campaign name (RL convention: "RL | NL | RV | Zumex | LP"). Used
    *  by Pedro to figure out which campaign/product this winner belongs
-   *  to — drives Drive-folder targeting + image relevance scoring.
+   *  to - drives Drive-folder targeting + image relevance scoring.
    *  Roy 2026-06-10. */
   campaignName: string
   /** Ad set id this ad sits in. Used as the clone-template for new
@@ -492,7 +492,7 @@ export type MetaAdDetail = {
   ctr: number
   cpc: number
   leads: number
-  /** Primary copy — long text body. */
+  /** Primary copy - long text body. */
   body: string
   /** Headline / title shown above the body. Empty when ad has no title
    *  (rare; mostly dynamic/asset-feed ads or pre-2020 setups). */
@@ -507,11 +507,11 @@ export type MetaAdDetail = {
   linkUrl: string
   creativeType: "video" | "image" | "dynamic" | "unknown"
   thumbnailUrl: string
-  /** Higher-res image URL when available — better signal for vision
+  /** Higher-res image URL when available - better signal for vision
    *  analysis than the squashed thumbnail. */
   imageUrl: string
   /** Facebook Page ID the ad is posted under. Pedro Push-to-Meta uses
-   *  this so the new ad lands on the same page as the winner — no
+   *  this so the new ad lands on the same page as the winner - no
    *  per-client config needed. Roy 2026-06-09. */
   pageId: string
   /** Instagram Actor ID (the connected IG account). When present we
@@ -581,10 +581,28 @@ export async function fetchMetaAdDetails(
     for (let i = 0; i < adIds.length; i += 50) {
       const batch = adIds.slice(i, i + 50)
       // Roy 2026-06-09: expanded field set so Pedro sees full copy
-      // package — title + description + CTA + landing-page URL +
-      // dynamic variations — not just the body. Critical for
+      // package - title + description + CTA + landing-page URL +
+      // dynamic variations - not just the body. Critical for
       // creative-refresh to iterate in real DNA instead of guessing.
-      const adsUrl = `${META_API_BASE}/?ids=${batch.join(",")}&fields=creative{body,title,object_type,thumbnail_url,image_url,link_url,call_to_action_type,object_story_spec,asset_feed_spec}&access_token=${token}`
+      //
+      // Roy 2026-06-10: asset_feed_spec.images + link_data.picture
+      // toegevoegd zodat dynamic creatives en link-data ads ook een
+      // image URL teruggeven. Daarvoor stond elke dynamic ad in de
+      // AdPicker met "image unknown". Met deze expansie heeft Meta vaak
+      // wel een url onder asset_feed_spec.images[0].url die we kunnen
+      // gebruiken als thumbnail-fallback.
+      const fieldExpansion = [
+        "body",
+        "title",
+        "object_type",
+        "thumbnail_url",
+        "image_url",
+        "link_url",
+        "call_to_action_type",
+        "object_story_spec",
+        "asset_feed_spec{bodies,titles,descriptions,call_to_action_types,link_urls,images{url,hash}}",
+      ].join(",")
+      const adsUrl = `${META_API_BASE}/?ids=${batch.join(",")}&fields=creative{${fieldExpansion}}&access_token=${token}`
       try {
         const res: Response = await fetch(adsUrl, { next: { revalidate: 300 } })
         if (res.ok) {
@@ -606,6 +624,8 @@ export async function fetchMetaAdDetails(
                   name?: string
                   description?: string
                   link?: string
+                  picture?: string
+                  image_hash?: string
                   call_to_action?: {
                     type?: string
                     value?: { link?: string; lead_gen_form_id?: string }
@@ -615,6 +635,7 @@ export async function fetchMetaAdDetails(
                   message?: string
                   title?: string
                   description?: string
+                  image_url?: string
                   call_to_action?: {
                     type?: string
                     value?: { link?: string; lead_gen_form_id?: string }
@@ -627,6 +648,7 @@ export async function fetchMetaAdDetails(
                 descriptions?: Array<{ text?: string }>
                 call_to_action_types?: string[]
                 link_urls?: Array<{ website_url?: string }>
+                images?: Array<{ url?: string; hash?: string }>
               }
             }
             const creative = (adData as { creative?: { data?: RawCreative } }).creative?.data
@@ -718,6 +740,33 @@ export async function fetchMetaAdDetails(
               || vid?.call_to_action?.value?.lead_gen_form_id
               || ""
 
+            // Roy 2026-06-10: multi-fallback voor thumbnail. Meta
+            // retourneert vaak alleen thumbnail_url voor "klassieke" link
+            // ads; voor dynamic creatives en sommige link_data ads is
+            // het leeg. We proberen:
+            //   1. creative.thumbnail_url      (klassieke ads)
+            //   2. creative.image_url          (sommige link ads)
+            //   3. asset_feed_spec.images[0].url (dynamic creatives, RL standaard)
+            //   4. link_data.picture           (link_data ads waar pic
+            //                                   wel maar thumbnail niet)
+            //   5. video_data.image_url        (video ads - preview frame)
+            // Voor imageUrl (hires): zelfde keten met andere prio.
+            const firstFeedImageUrl = feed?.images?.find((i) => i?.url)?.url ?? ""
+            const resolvedThumbnail =
+              creative?.thumbnail_url
+              || creative?.image_url
+              || firstFeedImageUrl
+              || link?.picture
+              || vid?.image_url
+              || ""
+            const resolvedImageUrl =
+              creative?.image_url
+              || firstFeedImageUrl
+              || creative?.thumbnail_url
+              || link?.picture
+              || vid?.image_url
+              || ""
+
             creativeMap.set(adId, {
               body,
               title,
@@ -725,8 +774,8 @@ export async function fetchMetaAdDetails(
               callToActionType,
               linkUrl,
               creativeType,
-              thumbnailUrl: creative?.thumbnail_url ?? "",
-              imageUrl: creative?.image_url ?? "",
+              thumbnailUrl: resolvedThumbnail,
+              imageUrl: resolvedImageUrl,
               assetFeedSummary,
               pageId: oss?.page_id ?? "",
               instagramActorId: oss?.instagram_actor_id ?? "",
@@ -774,7 +823,7 @@ export async function fetchMetaAdDetails(
 }
 
 /**
- * List ad sets within a campaign — fallback resolver voor Push-to-Meta
+ * List ad sets within a campaign - fallback resolver voor Push-to-Meta
  * wanneer de gesnapshote winner-adset uit Meta is verwijderd, maar de
  * campagne nog leeft. We pakken de meest-recente niet-DELETED ad set
  * als template-bron. Roy 2026-06-10.

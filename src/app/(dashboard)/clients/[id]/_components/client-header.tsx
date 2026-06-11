@@ -9,7 +9,7 @@ import {
   CreditCard,
   ExternalLink,
 } from "lucide-react"
-// BackButton removed — the slide-over now floats a prominent contextual
+// BackButton removed - the slide-over now floats a prominent contextual
 // "Back to Clients / Watch List" button in the dimmed backdrop strip so
 // the inline header version was duplicate chrome.
 import { StatusEditCell } from "@/app/(dashboard)/clients/_components/status-edit-cell"
@@ -37,7 +37,7 @@ function fmtEuro(v: number): string {
 }
 
 function fmtBudget(adBudget: string): string {
-  if (!adBudget) return "—"
+  if (!adBudget) return "-"
   if (adBudget.startsWith("€")) return adBudget
   const n = Number(adBudget.replace(/[^0-9.-]/g, ""))
   if (!isFinite(n) || n === 0) return adBudget
@@ -71,7 +71,7 @@ function summarize(invoices: InvoiceRow[] | undefined): PaymentSummary | null {
 }
 
 function PaymentInline({ summary, locale }: { summary: PaymentSummary | null; locale: Locale }) {
-  if (!summary) return <span className="text-muted-foreground/40">—</span>
+  if (!summary) return <span className="text-muted-foreground/40">-</span>
   if (summary.kind === "complete") {
     return (
       <span className="inline-flex items-center gap-1.5 text-emerald-500 font-medium">
@@ -105,7 +105,7 @@ export function ClientHeader({ client, canViewBilling }: Props) {
   const locale = useLocale()
   const hubStatus = mondayStatusToHub(client.campaignStatus, client.boardType)
 
-  // Same queryKey as the tab notification dot uses — React Query dedupes the fetch.
+  // Same queryKey as the tab notification dot uses - React Query dedupes the fetch.
   const billingQuery = useQuery<Partial<BillingData>>({
     queryKey: ["billing-check", client.mondayItemId],
     queryFn: () =>
@@ -121,7 +121,7 @@ export function ClientHeader({ client, canViewBilling }: Props) {
   // Quick links to the canonical view of this client in each external system.
   // Brand SVGs/PNGs live in /public/logos/brands so the marks render at their
   // real colors (Meta blue, Monday tri-dot, Drive multi-color triangle, etc.)
-  // — closer to what the user sees when they actually visit those tools.
+  // - closer to what the user sees when they actually visit those tools.
   const quickLinks: Array<{ label: string; logo: string; href: string }> = [
     ...(client.metaAdAccountId
       ? [{
@@ -165,13 +165,13 @@ export function ClientHeader({ client, canViewBilling }: Props) {
                   status={hubStatus}
                   readOnly={client.boardType === "onboarding"}
                 />
-                {/* Board type pill — same shape/size as the Live status pill, just a
+                {/* Board type pill - same shape/size as the Live status pill, just a
                     neutral grey + lowercase label so it reads as a passive tag. */}
                 <span className="inline-flex items-center rounded-md px-2.5 py-1 text-[13px] font-medium bg-muted/60 text-muted-foreground">
                   {client.boardType}
                 </span>
               </div>
-              {/* Inline meta row — first name + AM + CM + Budget + Payment, separated
+              {/* Inline meta row - first name + AM + CM + Budget + Payment, separated
                   by middle dots. Replaces the previous separate row below. */}
               <MetaRow
                 firstName={client.firstName}

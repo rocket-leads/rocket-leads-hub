@@ -13,14 +13,14 @@ import { startCronRun } from "@/lib/observability/cron-runs"
 // fresh analyses ready when they start the day. Triggered by Vercel cron.
 export const maxDuration = 300 // 5 minutes (Vercel Pro)
 
-const BATCH_SIZE = 3 // concurrent Anthropic calls — keep modest to avoid rate + timeout limits
+const BATCH_SIZE = 3 // concurrent Anthropic calls - keep modest to avoid rate + timeout limits
 
 function fmt(d: Date) {
   return d.toISOString().slice(0, 10)
 }
 
 function getDateRange(days: number) {
-  // Exclude today — use yesterday as end date (data won't be complete until day ends)
+  // Exclude today - use yesterday as end date (data won't be complete until day ends)
   const end = new Date()
   end.setDate(end.getDate() - 1)
   const start = new Date(end)
@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
     const TIME_BUDGET_MS = 270_000 // stop at 4.5 min to leave room for final response
 
     for (let i = 0; i < eligible.length; i += BATCH_SIZE) {
-      // Time budget check — stop before we hit the Vercel 5 min limit
+      // Time budget check - stop before we hit the Vercel 5 min limit
       if (Date.now() - startTime > TIME_BUDGET_MS) break
 
       const batch = eligible.slice(i, i + BATCH_SIZE)
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
             buildAdDetails(client, selectedCampaignIds),
           ])
 
-          // Skip clients with no signal at all — no spend AND no leads.
+          // Skip clients with no signal at all - no spend AND no leads.
           // Avoids burning Anthropic calls on dormant clients.
           const hasSignal = (kpis7d.adSpend ?? 0) > 0 || (kpis7d.leads ?? 0) > 0
           if (!hasSignal) {

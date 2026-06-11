@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as { template?: unknown }
     if (typeof body.template === "string" && body.template.length > 0) bodyTemplate = body.template
   } catch {
-    // No body — fine
+    // No body - fine
   }
 
   const supabase = await createAdminClient()
@@ -99,11 +99,11 @@ export async function POST(req: NextRequest) {
   try {
     await sendDmToHubUser(
       user.id,
-      `_(team sales channel preview — sent to you only, not to the channel)_\n\n${message}`,
+      `_(team sales channel preview - sent to you only, not to the channel)_\n\n${message}`,
     )
     return NextResponse.json({
       ok: true,
-      message: `Team sales preview sent to your DM — covering ${perCloser.length} closers.`,
+      message: `Team sales preview sent to your DM - covering ${perCloser.length} closers.`,
     })
   } catch (e) {
     return NextResponse.json(

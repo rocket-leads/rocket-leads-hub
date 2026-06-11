@@ -4,12 +4,12 @@ import { parsePedroBody } from "@/lib/pedro/insights/types"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
- * Watchlist AI Notes — facade over pedro_insights.
+ * Watchlist AI Notes - facade over pedro_insights.
  *
  * Post Pedro-v2 unification we read `client_pedro` (JSON body with conclusion +
  * actions) and return just the conclusion sentence as the 1-line note. This
  * guarantees the Watch List 1-liner is aligned with the full Pedro card on the
- * client detail page — they're literally the same generation.
+ * client detail page - they're literally the same generation.
  *
  * The request shape is unchanged so callers (watchlist-dashboard.tsx) don't
  * have to change.

@@ -18,7 +18,7 @@ export type IngestResult =
  *
  * Shared by the webhook receiver (live ingest) and the admin fetch / backfill
  * endpoints (pull-based ingest). All three paths must produce identical rows
- * — keep the logic here, never inline it again at a call site.
+ * - keep the logic here, never inline it again at a call site.
  *
  * Behaviour:
  *  - Dedupe on `fathom_recording_id` (Fathom retries failed deliveries; the
@@ -26,7 +26,7 @@ export type IngestResult =
  *  - Classify `meeting_type` from team + title (stable at ingest time).
  *  - Set `link_status='internal'` when no external attendees, otherwise
  *    `'unlinked'` for the matcher (C.5.b) to pick up.
- *  - Client-matching is NOT done here — that's the matcher's job.
+ *  - Client-matching is NOT done here - that's the matcher's job.
  */
 export async function ingestFathomMeeting(
   supabase: SupabaseClient,
@@ -39,7 +39,7 @@ export async function ingestFathomMeeting(
 
   // Only ingest recordings whose Fathom team contains "Rocket Leads"
   // (case-insensitive). Personal calls in other teams (Founder Download,
-  // private teams, externals) are skipped — AMs need to record client work
+  // private teams, externals) are skipped - AMs need to record client work
   // in a Rocket Leads team for it to land in the Hub.
   const team = payload.recorded_by?.team ?? null
   if (!isRocketLeadsTeam(team)) {
@@ -110,7 +110,7 @@ export async function ingestFathomMeeting(
 
   // Auto-match against clients only when the row landed unlinked (internal
   // calls don't need a client, archived isn't possible at insert time).
-  // Failure to match is non-fatal — the row still exists; user can fix manually.
+  // Failure to match is non-fatal - the row still exists; user can fix manually.
   let matched: { clientId: string; strategy: string } | undefined
   if (linkStatus === "unlinked") {
     try {
@@ -125,7 +125,7 @@ export async function ingestFathomMeeting(
   // Previously this hook fanned Fathom action_items into inbox tasks
   // (host bundle + CM + setter), and on kick_off / evaluation meetings
   // Pedro auto-created brief + digest tasks. Roy explicitly asked to
-  // remove ALL meeting-driven auto-task creation — the team should
+  // remove ALL meeting-driven auto-task creation - the team should
   // decide whether to act on a meeting, not have tasks materialise
   // unprompted. The meeting itself still lands in the timeline; the
   // summary + action_items array stay on the row for reference.

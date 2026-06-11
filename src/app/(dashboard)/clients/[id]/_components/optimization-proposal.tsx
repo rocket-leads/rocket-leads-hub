@@ -99,12 +99,12 @@ function generateKpiInsights(
       insights.push({
         type: "warning",
         title: `CPL trending up +${cplChange.toFixed(0)}% vs 30-day average`,
-        body: `Cost per lead rose from €${fmtNum(kpis30d.costPerLead)} to €${fmtNum(kpis7d.costPerLead)}. Monitor closely — if this continues, prepare new creatives and test different ad copy variations.`,
+        body: `Cost per lead rose from €${fmtNum(kpis30d.costPerLead)} to €${fmtNum(kpis7d.costPerLead)}. Monitor closely - if this continues, prepare new creatives and test different ad copy variations.`,
       })
     } else if (cplChange < -15) {
       insights.push({
         type: "positive",
-        title: `CPL down ${Math.abs(cplChange).toFixed(0)}% — strong performance`,
+        title: `CPL down ${Math.abs(cplChange).toFixed(0)}% - strong performance`,
         body: `Cost per lead dropped to €${fmtNum(kpis7d.costPerLead)} from €${fmtNum(kpis30d.costPerLead)}. The current creatives are performing well. Consider scaling budget by up to 20% per day to capture more of this efficient traffic.`,
       })
     }
@@ -119,13 +119,13 @@ function generateKpiInsights(
     if (volumeChange < -40 && kpis7d.leads < 5) {
       insights.push({
         type: "critical",
-        title: `Lead volume dropped ${Math.abs(volumeChange).toFixed(0)}% — only ${kpis7d.leads} leads in 7 days`,
+        title: `Lead volume dropped ${Math.abs(volumeChange).toFixed(0)}% - only ${kpis7d.leads} leads in 7 days`,
         body: `Daily lead volume went from ${dailyLeads30d.toFixed(1)} to ${dailyLeads7d.toFixed(1)} per day. Check if campaigns are still active and spending. If budget is being spent but leads are down, the creative or landing page may need attention.`,
       })
     } else if (volumeChange < -25) {
       insights.push({
         type: "warning",
-        title: `Lead volume declining — ${Math.abs(volumeChange).toFixed(0)}% fewer leads per day`,
+        title: `Lead volume declining - ${Math.abs(volumeChange).toFixed(0)}% fewer leads per day`,
         body: `Average daily leads dropped from ${dailyLeads30d.toFixed(1)} to ${dailyLeads7d.toFixed(1)}. This could indicate creative fatigue or increased competition. Schedule a creative refresh with new marketing angles.`,
       })
     }
@@ -145,7 +145,7 @@ function generateKpiInsights(
     insights.push({
       type: "positive",
       title: `Strong ROI: ${kpis7d.roi.toFixed(1)}x return on ad spend`,
-      body: `Generating €${fmtNum(kpis7d.revenue)} revenue on €${fmtNum(kpis7d.adSpend)} spend with a cost per deal of €${fmtNum(kpis7d.costPerDeal)}. The funnel is profitable — consider scaling budget by 20% per day.`,
+      body: `Generating €${fmtNum(kpis7d.revenue)} revenue on €${fmtNum(kpis7d.adSpend)} spend with a cost per deal of €${fmtNum(kpis7d.costPerDeal)}. The funnel is profitable - consider scaling budget by 20% per day.`,
     })
   }
 
@@ -164,7 +164,7 @@ function generateKpiInsights(
     }
   }
 
-  // 6. Default — no issues detected
+  // 6. Default - no issues detected
   if (insights.length === 0 && kpis7d.adSpend > 0 && kpis7d.leads > 0) {
     if (has30d) {
       const cplChange = pctChange(kpis7d.costPerLead, kpis30d.costPerLead)
@@ -178,13 +178,13 @@ function generateKpiInsights(
         insights.push({
           type: "action",
           title: "Monthly creative refresh recommended",
-          body: `Campaign is running steadily. Creatives are the most important lever for Meta performance — plan new creatives and test different marketing angles. Even stable campaigns benefit from monthly refreshes.`,
+          body: `Campaign is running steadily. Creatives are the most important lever for Meta performance - plan new creatives and test different marketing angles. Even stable campaigns benefit from monthly refreshes.`,
         })
       }
     } else {
       insights.push({
         type: "action",
-        title: "Building baseline — keep campaigns running",
+        title: "Building baseline - keep campaigns running",
         body: `${kpis7d.leads} leads at €${fmtNum(kpis7d.costPerLead)} CPL in the past 7 days. Not enough historical data yet for trend analysis. Keep running to build a 30-day baseline.`,
       })
     }
@@ -229,7 +229,7 @@ function generateUtmInsights(
   if (scored7d.length <= 2) {
     insights.push({
       type: "action",
-      title: "Low creative diversity — only " + scored7d.length + " active ad(s)",
+      title: "Low creative diversity - only " + scored7d.length + " active ad(s)",
       body: "Best practice is 4-5 active ads per ad set. Add more creatives with different marketing angles and hooks to test against the current ones.",
     })
   }

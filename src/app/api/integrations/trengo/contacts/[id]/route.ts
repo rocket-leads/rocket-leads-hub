@@ -6,15 +6,15 @@ import { resolveTrengoContact } from "@/lib/integrations/trengo"
  * GET /api/integrations/trengo/contacts/[id]
  *
  * Resolves a single Trengo contact ID to its ResolvedEntity. Used by the
- * always-on verification on the picker trigger — without this, a typo'd
+ * always-on verification on the picker trigger - without this, a typo'd
  * trengo_contact_id silently breaks the per-client Inbox + Timeline tabs
  * with no visible signal in the panel, which Roy flagged as the worst of
  * the five identifier blind spots.
  *
  * Response shape:
- *   - 200 { entity: ResolvedEntity }   — happy path
- *   - 200 { entity: null }             — well-formed ID but no such contact, or contact archived (broken link)
- *   - 500                              — Trengo transport/auth failure (couldn't verify)
+ *   - 200 { entity: ResolvedEntity }   - happy path
+ *   - 200 { entity: null }             - well-formed ID but no such contact, or contact archived (broken link)
+ *   - 500                              - Trengo transport/auth failure (couldn't verify)
  */
 export async function GET(
   _req: NextRequest,

@@ -32,9 +32,9 @@ export async function POST() {
   try {
     await sendSlackDm(
       user.slack_user_id,
-      `👋 Hello van de Rocket Leads Hub!\n\nDe Slack integratie werkt — dit DM is verstuurd naar Slack user \`${user.slack_user_id}\` (Hub account ${user.email}).`,
+      `👋 Hello van de Rocket Leads Hub!\n\nDe Slack integratie werkt - dit DM is verstuurd naar Slack user \`${user.slack_user_id}\` (Hub account ${user.email}).`,
     )
-    return NextResponse.json({ ok: true, message: "DM sent — check your Slack." })
+    return NextResponse.json({ ok: true, message: "DM sent - check your Slack." })
   } catch (e) {
     return NextResponse.json(
       { ok: false, message: e instanceof Error ? e.message : "Failed to send" },

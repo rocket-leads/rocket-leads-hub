@@ -49,7 +49,7 @@ export async function GET(
   ])
 
   // Auto-assign new ACTIVE campaigns. Two paths, but BOTH gated by the same
-  // explicit "RL" name filter — campaigns the Rocket Leads team built always
+  // explicit "RL" name filter - campaigns the Rocket Leads team built always
   // start with `RL` in the name. Anything else on the account belongs to the
   // client (their own ads / agency leftovers) and shouldn't get auto-tracked.
   //
@@ -68,7 +68,7 @@ export async function GET(
   let newCampaignIdsForCurrentClient: string[] = []
   // Campaign IDs the matcher thinks belong to the CURRENT client at sub-auto
   // confidence (0.7-0.94). Surfaced as one-click "Suggested" pills in the
-  // selector — auto-assign still requires ≥0.95.
+  // selector - auto-assign still requires ≥0.95.
   const suggestedIdsForCurrentClient = new Set<string>()
 
   if (isRl) {
@@ -84,7 +84,7 @@ export async function GET(
       // CRITICAL: Supabase's default row cap is 1000. On the shared RL ad
       // account with thousands of campaigns + many clients, a plain
       // `.select(...)` truncates and globallyAssigned ends up missing the
-      // rest — which makes the matcher think those campaigns are unknown
+      // rest - which makes the matcher think those campaigns are unknown
       // and re-assign them, undoing user deselections on every page load.
       // Paginate to be safe. Roy 2026-05-22.
       const PAGE = 1000
@@ -118,7 +118,7 @@ export async function GET(
       if (c.status !== "ACTIVE") continue
       if (globallyAssigned.has(c.id)) continue
       // RL-only filter: campaigns we built always carry "RL" in the name (the
-      // `RL | NL | ...` convention). Skip everything else — client-built ads
+      // `RL | NL | ...` convention). Skip everything else - client-built ads
       // shouldn't get auto-tracked.
       if (!hasRlPrefix(c.name)) continue
       const match = matchRocketLeadsCampaign(c.name, candidates)
@@ -142,7 +142,7 @@ export async function GET(
         onConflict: "client_id,meta_campaign_id",
       })
       // Clear the stale `rlAccountNoCampaign` flag for the clients that just
-      // got campaigns assigned — without this, their KPI rows in the overview
+      // got campaigns assigned - without this, their KPI rows in the overview
       // keep showing "No Campaign selected" until the next 30-min cron rewrites
       // `kpi_daily`.
       const assignedClientIds = Array.from(new Set(newRows.map((r) => r.client_id)))
@@ -156,7 +156,7 @@ export async function GET(
       void invalidateKpiCachesForClients(affectedItemIds)
     }
   } else if (clientId) {
-    // Same RL-only filter as the shared-account path above — RL-built campaigns
+    // Same RL-only filter as the shared-account path above - RL-built campaigns
     // get tracked, client's own ads don't (they'd just pollute KPI averages).
     const newActive = campaigns.filter(
       (c) => c.status === "ACTIVE" && !knownIdsForCurrentClient.has(c.id) && hasRlPrefix(c.name),
@@ -221,7 +221,7 @@ export async function POST(
     .eq("monday_item_id", mondayItemId)
     .single()
 
-  if (!client) return NextResponse.json({ error: "Client not found in Supabase — visit the client page first to sync" }, { status: 404 })
+  if (!client) return NextResponse.json({ error: "Client not found in Supabase - visit the client page first to sync" }, { status: 404 })
 
   // Earlier version didn't check the upsert error and always returned
   // ok:true, so a silent constraint / RLS failure would let the client's

@@ -7,12 +7,12 @@ import type { VerticalPatternRow } from "@/lib/pedro/vertical-patterns"
  * GET /api/pedro/insights
  *
  * Returns every entry in pedro_vertical_patterns sorted by sample size
- * desc — verticals with the most data first. Powers the Pedro Insights
+ * desc - verticals with the most data first. Powers the Pedro Insights
  * tab where the team can browse "what works in branche X" without
  * leaving Pedro.
  *
  * Auth: any logged-in hub user. The data is anonymised at write-time
- * (sourceClientName is in the row but never rendered in UI — UI
+ * (sourceClientName is in the row but never rendered in UI - UI
  * deliberately hides it). Admin-vs-member gating not needed.
  */
 export async function GET() {

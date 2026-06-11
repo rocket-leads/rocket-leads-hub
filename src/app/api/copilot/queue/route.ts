@@ -16,7 +16,7 @@ import type { CopilotPageContext } from "@/lib/copilot/context"
 /**
  * Co-pilot async queue.
  *
- * The user types a command and hits Enter — this endpoint inserts a
+ * The user types a command and hits Enter - this endpoint inserts a
  * `pending` row into copilot_drafts and returns the id IMMEDIATELY so
  * the command bar can close (no spinner).
  *
@@ -27,7 +27,7 @@ import type { CopilotPageContext } from "@/lib/copilot/context"
  * badge bumps without polling.
  *
  * Roy 2026-05-22: "I don't want to wait every time I want to dispatch
- * a task" — this endpoint is the fix for that.
+ * a task" - this endpoint is the fix for that.
  */
 
 export const maxDuration = 60
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Process in background — the response below returns immediately.
+  // Process in background - the response below returns immediately.
   // `after()` is Next.js 15+ stable and keeps the serverless function
   // running past the response so the parse + enrich finishes even when
   // the user closes the tab.
@@ -114,7 +114,7 @@ async function processDraft(args: {
   const { draftId, userId, userRole, sessionUserName, input, pageContext, supabase } = args
 
   try {
-    // Pull rosters in parallel — same data the sync endpoint loaded.
+    // Pull rosters in parallel - same data the sync endpoint loaded.
     const [usersResult, clientsCache] = await Promise.all([
       supabase
         .from("users")
@@ -174,7 +174,7 @@ async function processDraft(args: {
       return
     }
 
-    // Enrichment pass — only for task creation with a real client.
+    // Enrichment pass - only for task creation with a real client.
     let sourcesUsed: string[] = []
     if (action.type === "create_task" && action.clientId) {
       const client = visibleClients.find((c) => c.mondayItemId === action.clientId)
@@ -257,7 +257,7 @@ function buildSystemPrompt(args: {
       }. When the user says "this client", "here", "deze klant", they mean this one.`
     : `User is on page ${args.pageContext.pathname}. No specific client is selected.`
 
-  return `You are the Rocket Leads Hub co-pilot. You parse natural-language commands (Dutch or English) into structured tool calls. Always call exactly one tool — never reply with prose unless the input is genuinely ambiguous or unsupported, in which case return a short clarifying question as plain text.
+  return `You are the Rocket Leads Hub co-pilot. You parse natural-language commands (Dutch or English) into structured tool calls. Always call exactly one tool - never reply with prose unless the input is genuinely ambiguous or unsupported, in which case return a short clarifying question as plain text.
 
 Today is ${args.today}. The signed-in user is ${args.sessionUser.name} (id=${args.sessionUser.id}).
 
@@ -275,7 +275,7 @@ ${userRoster}
 CLIENT ROSTER (${args.clients.length} clients):
 ${clientRoster}
 
-Always return tool args with the literal id strings from these rosters — never invent ids.`
+Always return tool args with the literal id strings from these rosters - never invent ids.`
 }
 
 function addDays(isoDate: string, days: number): string {

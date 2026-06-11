@@ -5,9 +5,9 @@ import { createAdminClient } from "@/lib/supabase/server"
 /**
  * POST /api/inbox/threads/{threadKey}/link
  *
- * Body: `{ clientId: string }` — the target client's `monday_item_id`.
+ * Body: `{ clientId: string }` - the target client's `monday_item_id`.
  * Links an unlinked Trengo contact to a Hub client by appending the
- * contact id to `clients.trengo_contact_ids` (TEXT[] — already supports
+ * contact id to `clients.trengo_contact_ids` (TEXT[] - already supports
  * multi-channel) and backfilling existing inbox_events for the thread.
  *
  * Per Roy's spec: appending, not replacing. A client can be reachable on
@@ -108,14 +108,14 @@ export async function POST(
   // Backfill historical inbox_events: every unlinked event in this thread
   // gets the target client_id so the thread shows up under the client's
   // history immediately. We only touch rows that were truly unlinked
-  // (`client_id = ""`) — never overwrite an existing link.
+  // (`client_id = ""`) - never overwrite an existing link.
   const { error: bErr, count } = await supabase
     .from("inbox_events")
     .update({ client_id: clientId }, { count: "exact" })
     .eq("thread_key", threadKey)
     .eq("client_id", "")
   if (bErr) {
-    // Don't fail the response — the link itself succeeded; the backfill
+    // Don't fail the response - the link itself succeeded; the backfill
     // is a nice-to-have. Surface in logs for monitoring.
     console.error("link: backfill failed", bErr)
   }

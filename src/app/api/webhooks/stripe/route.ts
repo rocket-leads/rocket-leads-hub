@@ -3,7 +3,7 @@ import Stripe from "stripe"
 import { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * Stripe webhook receiver — closes the next-invoice loop in seconds instead
+ * Stripe webhook receiver - closes the next-invoice loop in seconds instead
  * of waiting up to 24h for the daily automations cron.
  *
  * When finance sends an invoice in Stripe, Stripe POSTs an `invoice.finalized`
@@ -23,7 +23,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  */
 export const runtime = "nodejs"
 
-// We only need the SDK for `constructEvent` here — signature math, no API
+// We only need the SDK for `constructEvent` here - signature math, no API
 // calls. Pass a placeholder API key; the webhook verification uses the
 // signing secret, not the API key.
 const stripe = new Stripe("sk_placeholder_not_used_for_webhook_verification")
@@ -38,13 +38,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing stripe-signature header" }, { status: 400 })
   }
   if (!webhookSecret) {
-    // Returning 500 — the webhook is reachable but misconfigured. Stripe
+    // Returning 500 - the webhook is reachable but misconfigured. Stripe
     // will retry, which is what we want until env is set up.
     console.error("STRIPE_WEBHOOK_SECRET not configured")
     return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 })
   }
 
-  // Stripe signature verification needs the raw body — never `req.json()`,
+  // Stripe signature verification needs the raw body - never `req.json()`,
   // which mutates whitespace and breaks the HMAC.
   const rawBody = await req.text()
 
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (!HANDLED_EVENTS.has(event.type)) {
-    // 200 OK so Stripe doesn't retry — we've ack'd the event, just nothing
+    // 200 OK so Stripe doesn't retry - we've ack'd the event, just nothing
     // to do for this type.
     return NextResponse.json({ received: true, ignored: event.type })
   }
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
   const invoiceLabel = invoice.number ?? invoice.id
   const sentDate = new Date(invoice.created * 1000).toISOString().slice(0, 10)
   const verbNl = verb === "sent" ? "verstuurd" : "afgerond"
-  const note = `\n\n— Automatisch afgevinkt via Stripe webhook: factuur ${invoiceLabel} ${verbNl} op ${sentDate}.`
+  const note = `\n\n- Automatisch afgevinkt via Stripe webhook: factuur ${invoiceLabel} ${verbNl} op ${sentDate}.`
 
   const completed: string[] = []
   for (const task of openTasks) {

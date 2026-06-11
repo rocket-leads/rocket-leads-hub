@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 const DEFAULT_CACHED_FETCH_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
 /**
- * Read from cache. By default returns data regardless of age — used for
+ * Read from cache. By default returns data regardless of age - used for
  * cron-managed caches (monday_boards, kpi_summaries, etc.) where the cron
  * keeps data fresh and we never want to block on live API calls.
  *
@@ -31,7 +31,7 @@ export async function writeCache(key: string, value: unknown): Promise<void> {
     .from("cache_store")
     .upsert({ key, data: value, updated_at: new Date().toISOString() }, { onConflict: "key" })
   if (error) {
-    // Was previously swallowed — that's how kpi_daily silently disappeared from
+    // Was previously swallowed - that's how kpi_daily silently disappeared from
     // cache_store while the rest of the cron's writes succeeded, leaving
     // /clients to live-fetch Meta + Monday on every page load.
     console.error(`[writeCache] failed to write "${key}":`, error.message)
@@ -40,13 +40,13 @@ export async function writeCache(key: string, value: unknown): Promise<void> {
 }
 
 /**
- * Bulk variant — one Supabase round-trip for many keys. Used by the cron to
+ * Bulk variant - one Supabase round-trip for many keys. Used by the cron to
  * write per-client cache entries (`kpi_daily:<id>`, `client_top_ads:<id>`,
  * etc.) without paying one HTTP per client. Same conflict policy as the
  * single-key writer.
  *
  * `now` defaults to the call moment so all entries written by one batch share
- * an updated_at timestamp — makes "how stale is the per-client cache?" simple
+ * an updated_at timestamp - makes "how stale is the per-client cache?" simple
  * to reason about (read any entry, they're all the same age).
  */
 export async function writeCacheBatch(
@@ -78,7 +78,7 @@ export async function deleteCache(key: string): Promise<void> {
 /**
  * Read cache first, fall back to live fetch when missing or older than ttlMs.
  * Cache writes are fire-and-forget. If the fetcher throws, the error
- * propagates and nothing is cached — callers should handle errors *outside*
+ * propagates and nothing is cached - callers should handle errors *outside*
  * cachedFetch so a transient failure never poisons the cache with an empty
  * result.
  *
@@ -141,7 +141,7 @@ export function getRangeCalendarMonth(startDate: string, endDate: string): { yea
  * `<baseKey>:YYYY-MM`. Pass `forceRefresh: true` to bypass the cache and
  * rewrite it (e.g. when someone backfills a past month in the source sheet).
  *
- * Pass a `validate` predicate to detect stale schema — when an entry was
+ * Pass a `validate` predicate to detect stale schema - when an entry was
  * cached with an older shape (missing newly-added fields). Returning false
  * treats the entry as a cache miss and triggers a fresh fetch + write.
  */

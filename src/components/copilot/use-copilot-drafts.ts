@@ -41,7 +41,7 @@ export function usePatchDraftAction() {
 }
 
 /** Mark a draft approved/dismissed (terminal state). Optimistically
- *  removes the row from the local cache so the UI feels instant —
+ *  removes the row from the local cache so the UI feels instant -
  *  Roy 2026-05-22: "When I press dismiss it doesn't go away directly."
  *  Rolls back on server error; resyncs from server on settle. */
 export function useCompleteDraft() {

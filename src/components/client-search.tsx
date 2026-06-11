@@ -9,13 +9,13 @@ import { t } from "@/lib/i18n/t"
 import type { ClientSearchResult } from "@/app/api/clients/search/route"
 
 /**
- * Global client search — mounted in the dashboard topbar so it's reachable
+ * Global client search - mounted in the dashboard topbar so it's reachable
  * from every page. ⌘K (or Ctrl+K on Windows/Linux) opens it from anywhere.
  *
  * Selecting a result appends `?client=<id>` to the CURRENT path. The
  * GlobalClientSlideOver in the dashboard layout picks that up and opens
- * the panel over wherever the user already is — Pedro, Optimize, Inbox,
- * Watchlist, etc. — so closing returns them to that page, not to /clients.
+ * the panel over wherever the user already is - Pedro, Optimize, Inbox,
+ * Watchlist, etc. - so closing returns them to that page, not to /clients.
  * Roy 2026-06-10: "ik wil dat, als ik een klant open, deze me opent op het
  * huidige tabblad. Dus niet altijd gelijk naar alle klanten gaat."
  *
@@ -51,7 +51,7 @@ export function ClientSearch() {
   }, [clients.length])
 
   // ⌘K / Ctrl+K opens from anywhere; Esc closes. Skip when the user is
-  // typing into another input — otherwise tapping K inside a textarea would
+  // typing into another input - otherwise tapping K inside a textarea would
   // hijack focus.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -102,7 +102,7 @@ export function ClientSearch() {
     // Append `?client=<id>` to the CURRENT path so the GlobalClientSlideOver
     // opens over the page the user is already on (Pedro, Optimize, Inbox,
     // …). Previously this pushed to `/clients?client=…` which always
-    // dragged the user back to the All Clients list — even when they only
+    // dragged the user back to the All Clients list - even when they only
     // wanted to peek at one client without losing their place.
     //
     // `pathname` may be null during transitions; fall back to /clients so

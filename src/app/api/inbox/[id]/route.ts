@@ -45,7 +45,7 @@ export async function PATCH(
   const isAdmin = session.user.role === "admin"
   const isAssignee = item.assigneeId === session.user.id
   // Tasks: the assignee is the person who's actually going to do the work, so
-  // they get the same edit rights as the author — fixing the title, expanding
+  // they get the same edit rights as the author - fixing the title, expanding
   // the body, or sliding the due date is routine triage on a task that landed
   // on you, not authorial overreach. The bulk of our tasks are auto-ingested
   // by the system HQ user (Trengo, Monday, Fathom, automation cron), so
@@ -58,7 +58,7 @@ export async function PATCH(
   // (title, body, due date, priority) are author/admin/assignee.
   const update: Record<string, unknown> = {}
 
-  // Reclassify (Move to Tasks / Updates / Chat) — open to anyone with
+  // Reclassify (Move to Tasks / Updates / Chat) - open to anyone with
   // visibility, since it's a triage operation on a misclassified ingest. We
   // reset status + priority to sane defaults for the new kind so we don't
   // strand cross-enum statuses (e.g. "in_progress" sticking around on an
@@ -70,7 +70,7 @@ export async function PATCH(
     if (patch.kind === item.kind) {
       // No-op kind change; ignore so we don't reset status/priority.
     } else {
-      // Disallow moving Monday/automation/watchlist/manual items to chat —
+      // Disallow moving Monday/automation/watchlist/manual items to chat -
       // they don't have a thread_key so they'd disappear from every view.
       if (patch.kind === "chat" && item.source !== "trengo" && item.source !== "slack") {
         return NextResponse.json(
@@ -85,7 +85,7 @@ export async function PATCH(
         update.priority = "normal"
         update.completed_at = null
       } else {
-        // update or chat — both default to unread, no priority
+        // update or chat - both default to unread, no priority
         update.status = "unread"
         update.priority = null
         update.completed_at = null
@@ -105,13 +105,13 @@ export async function PATCH(
     update.completed_at = isTerminal ? new Date().toISOString() : null
   }
 
-  // Reassignment is open to anyone with visibility — handing a task off is a
+  // Reassignment is open to anyone with visibility - handing a task off is a
   // routine team operation, not an authorial edit. The other metadata edits
   // (title, body, due date, priority) stay author/admin-only because changing
   // them silently after creation can mislead the assignee.
   if (patch.assigneeId !== undefined) update.assignee_id = patch.assigneeId
 
-  // Snooze is also open to anyone with visibility — pushing a task to later
+  // Snooze is also open to anyone with visibility - pushing a task to later
   // is a personal triage move, not an authorial edit. Null wakes it up.
   // Only valid on tasks; ignored on updates (which have their own read flow).
   if (patch.snoozedUntil !== undefined && item.kind === "task") {
@@ -157,7 +157,7 @@ export async function PATCH(
 
   // Push notification on reassignment to a different user. Skip when the new
   // assignee is the actor (you don't notify yourself), and best-effort fail
-  // silently — notification delivery shouldn't block the API response.
+  // silently - notification delivery shouldn't block the API response.
   if (
     patch.assigneeId !== undefined &&
     patch.assigneeId !== item.assigneeId &&
@@ -186,7 +186,7 @@ export async function DELETE(
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   // Tasks: the assignee owns the work and can permanently remove it. Same
-  // policy as the meta-edit widening in PATCH — the AM landed on Roy's
+  // policy as the meta-edit widening in PATCH - the AM landed on Roy's
   // critique that auto-ingested rows with the system HQ user as author
   // were untouchable for non-admins. Updates stay author/admin-only.
   const isAssignee = item.assigneeId === session.user.id

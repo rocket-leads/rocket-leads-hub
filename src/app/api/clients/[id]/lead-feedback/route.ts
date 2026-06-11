@@ -42,7 +42,7 @@ export async function GET(
     return [] as Awaited<ReturnType<typeof fetchClientBoardItemsWithUpdates>>
   })
 
-  // Group updates by UTM — only include items that have updates
+  // Group updates by UTM - only include items that have updates
   const utmMap = new Map<string, UtmFeedback>()
   for (const item of items) {
     const utm = item.utm || "(no UTM)"

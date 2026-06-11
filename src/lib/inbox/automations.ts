@@ -68,7 +68,7 @@ export type AutomationRunResult = {
 /**
  * Options for the automation runner. The cron passes nothing; the manual
  * Run-now trigger from Settings passes `testMode` so tasks land in the admin's
- * own inbox instead of being fanned out to AMs — useful for QA/preview without
+ * own inbox instead of being fanned out to AMs - useful for QA/preview without
  * spamming the team.
  */
 export type RunOptions = {
@@ -143,7 +143,7 @@ function fmtEuro(v: number): string {
  * WhatsApp tone:
  *   - "Hé {voornaam}" or "Hi {voornaam}", 1-3 short sentences
  *   - Punchier, conversational, no formal opener/closer
- *   - Note: outside Trengo's 24h session window, WA needs a template message —
+ *   - Note: outside Trengo's 24h session window, WA needs a template message -
  *     the send-endpoint will guard against that case
  */
 async function draftPaymentReminderMessage(input: {
@@ -163,17 +163,17 @@ async function draftPaymentReminderMessage(input: {
   const systemPrompt = isEmail
     ? `Je schrijft een korte Nederlandse betalingsherinnering per EMAIL voor een Account Manager bij Rocket Leads.
 
-DOEL: De klant vriendelijk attenderen op een openstaande factuur, met de aanname dat het waarschijnlijk over het hoofd is gezien — niet onwil.
+DOEL: De klant vriendelijk attenderen op een openstaande factuur, met de aanname dat het waarschijnlijk over het hoofd is gezien - niet onwil.
 
 STIJL (email):
 - Nederlands
-- Vriendelijk en menselijk, maar niet informeel — "Hallo {voornaam}" of "Beste {voornaam}" als opener
-- Niet té formeel — het is geen incassobureau-brief
+- Vriendelijk en menselijk, maar niet informeel - "Hallo {voornaam}" of "Beste {voornaam}" als opener
+- Niet té formeel - het is geen incassobureau-brief
 - 3-5 zinnen, max ~80 woorden
 - Noem expliciet: factuurnummer, bedrag, hoeveel dagen over tijd (als bekend)
 - Frame: "onze administratie zag dat...", "klein checkje even", "is er ergens iets misgegaan?"
 - Sluit af met dank/vraag, GEEN handtekening (AM tekent zelf via Trengo)
-- Geen "Met vriendelijke groet" — geen formele afsluiting
+- Geen "Met vriendelijke groet" - geen formele afsluiting
 
 OUTPUT: Alleen de berichttekst, geen quotes, geen markdown.`
     : `Je schrijft de body van een korte Nederlandse WhatsApp-betalingsherinnering die via een Trengo template verstuurd wordt.
@@ -182,17 +182,17 @@ CONTEXT: Het template heeft de structuur "Hey {{1}} Groetjes <AM-naam>". Jouw ou
 
 OUTPUT-FORMAT (verplicht): "{voornaam}, {body eindigend op een punt}"
 
-VOORBEELD: "Dietrich, kleine vraag — factuur RL-2026-1234 (€1.250) staat al 4 dagen open. Even checken of er iets is misgegaan?"
-→ Resulteert in WhatsApp-bericht: "Hey Dietrich, kleine vraag — factuur RL-2026-1234 (€1.250) staat al 4 dagen open. Even checken of er iets is misgegaan? Groetjes Roel"
+VOORBEELD: "Dietrich, kleine vraag - factuur RL-2026-1234 (€1.250) staat al 4 dagen open. Even checken of er iets is misgegaan?"
+→ Resulteert in WhatsApp-bericht: "Hey Dietrich, kleine vraag - factuur RL-2026-1234 (€1.250) staat al 4 dagen open. Even checken of er iets is misgegaan? Groetjes Roel"
 
 STIJL:
-- Nederlands, conversationeel — alsof je een appje stuurt
+- Nederlands, conversationeel - alsof je een appje stuurt
 - Begin met de voornaam + komma
 - 1-3 korte zinnen, max ~40 woorden
 - Noem expliciet: factuurnummer, bedrag, en hoe lang het openstaat (als bekend)
 - Frame: "kleine vraag", "zag net dat...", "is er iets misgegaan?"
-- Geen "Hé" of "Hi" als opener — de "Hey" zit al in het template
-- Geen "Groetjes" of handtekening — die zitten al in het template
+- Geen "Hé" of "Hi" als opener - de "Hey" zit al in het template
+- Geen "Groetjes" of handtekening - die zitten al in het template
 - Geen emoji's
 
 OUTPUT: Alleen de body-tekst die in {{1}} komt, geen quotes, geen markdown, geen "Hey" prefix.`
@@ -232,7 +232,7 @@ async function ensurePaymentOverdueTask(
   assigneeId: string,
   testMode: boolean,
 ): Promise<CreatedItem | null> {
-  // Idempotency only matters for real production runs — test runs always
+  // Idempotency only matters for real production runs - test runs always
   // recreate so the admin can iterate on the rule output.
   if (!testMode) {
     const { data: existing } = await supabase
@@ -256,12 +256,12 @@ async function ensurePaymentOverdueTask(
 
   // Smart-inbox v1: pre-draft a friendly Dutch payment reminder so the AM
   // can review-and-send straight from the task detail dialog. We detect the
-  // client's most-active Trengo channel first and tailor tone accordingly —
+  // client's most-active Trengo channel first and tailor tone accordingly -
   // email gets a longer, more formal reminder; WhatsApp gets a punchier
   // "even checken"-appje. Stored alongside `draft_channel` in source_ref so
   // the send-endpoint knows which Trengo channel to target.
   //
-  // Failure to draft is non-fatal — the task still lands, just without the
+  // Failure to draft is non-fatal - the task still lands, just without the
   // pre-filled message; the AM can still close the loop manually.
   let draftMessage: string | null = null
   let draftChannel: "email" | "whatsapp" = "email"
@@ -282,7 +282,7 @@ async function ensurePaymentOverdueTask(
     console.error("Payment reminder AI draft failed:", e)
   }
 
-  const titleCore = `Bel ${client.firstName || client.name} over openstaande factuur — ${fmtEuro(outstanding)}`
+  const titleCore = `Bel ${client.firstName || client.name} over openstaande factuur - ${fmtEuro(outstanding)}`
   const title = testMode ? `[TEST] ${titleCore}` : titleCore
   const bodyParts = [
     `Stripe factuur ${invoice.number ?? invoice.id} staat open.`,
@@ -348,7 +348,7 @@ async function ensurePaymentOverdueTask(
 
 // --- Rule 3: next invoice date arrived ----------------------------------
 
-// (Rule 3 — `next_invoice_due_task` — was removed: finance handles invoicing
+// (Rule 3 - `next_invoice_due_task` - was removed: finance handles invoicing
 // fast enough that the task adds noise. The Billing page surfaces overdue
 // state via a sidebar dot for the finance user instead. Rule 4 below stays
 // to clean up any legacy open tasks once Stripe registers the matching
@@ -366,7 +366,7 @@ async function ensurePaymentOverdueTask(
  *
  * "Fresh" = a non-draft Stripe invoice whose `created` timestamp is at or
  * after the task's `next_invoice_date` minus a 7-day grace window. The grace
- * accounts for finance sending the invoice a few days early — without it,
+ * accounts for finance sending the invoice a few days early - without it,
  * we'd leave the task open even though the work is clearly done.
  */
 async function ensureAutoCompleteInvoiceTasks(
@@ -377,7 +377,7 @@ async function ensureAutoCompleteInvoiceTasks(
   const completed: CreatedItem[] = []
 
   // Pull every still-open next-invoice task. `kind = task` + `status = open`
-  // is the entire universe — we never auto-complete in_progress tasks because
+  // is the entire universe - we never auto-complete in_progress tasks because
   // that would step on someone actively handling it.
   const { data: openTasks } = await supabase
     .from("inbox_events")
@@ -419,7 +419,7 @@ async function ensureAutoCompleteInvoiceTasks(
     const invoiceDateStr = typeof sourceRef.invoiceDate === "string" ? sourceRef.invoiceDate : null
     if (!invoiceDateStr) continue
 
-    // 7-day grace before the due date — covers "Arno sent it a few days early".
+    // 7-day grace before the due date - covers "Arno sent it a few days early".
     const dueMs = new Date(invoiceDateStr).getTime()
     if (Number.isNaN(dueMs)) continue
     const cutoffSec = Math.floor((dueMs - 7 * 24 * 60 * 60 * 1000) / 1000)
@@ -429,7 +429,7 @@ async function ensureAutoCompleteInvoiceTasks(
       billing = await fetchBillingData(client.stripeCustomerId)
     } catch {
       // If Stripe is down or the customer has no invoices, leave the task
-      // alone — it'll get retried tomorrow.
+      // alone - it'll get retried tomorrow.
       continue
     }
 
@@ -439,7 +439,7 @@ async function ensureAutoCompleteInvoiceTasks(
     if (!match) continue
 
     const invoiceCreatedAt = new Date(match.created * 1000).toISOString()
-    const completionNote = `\n\n— Automatisch afgevinkt: Stripe factuur ${match.number ?? match.id} verstuurd op ${invoiceCreatedAt.slice(0, 10)}.`
+    const completionNote = `\n\n- Automatisch afgevinkt: Stripe factuur ${match.number ?? match.id} verstuurd op ${invoiceCreatedAt.slice(0, 10)}.`
 
     const updatedBody = (task.body ?? "") + completionNote
     const updatedSourceRef = {
@@ -452,7 +452,7 @@ async function ensureAutoCompleteInvoiceTasks(
 
     if (testMode) {
       // In test mode we report the would-be auto-completion but don't actually
-      // close the row — admin should be able to keep iterating on the rule
+      // close the row - admin should be able to keep iterating on the rule
       // without losing test tasks.
       completed.push({
         rule: "auto_complete_invoice_tasks",
@@ -502,7 +502,7 @@ async function ensureAutoCompleteInvoiceTasks(
  *
  * Why oldest-survives: the first task usually has the most context (it's the
  * trigger that explains why the work exists). Newer tasks are typically
- * lower-context echoes — a Trengo classification of an existing automation
+ * lower-context echoes - a Trengo classification of an existing automation
  * task, a Fathom action item that mentions a known cron job. Cancelling them
  * is reversible: a human can reopen via the Hub if the model got it wrong.
  *
@@ -588,11 +588,11 @@ async function dedupOverlappingTasks(
 
       const cancelledIds: string[] = []
       if (testMode) {
-        // Don't actually cancel — just record what we would have done.
+        // Don't actually cancel - just record what we would have done.
         cancelledIds.push(...drop.map((d) => d.id))
       } else {
         for (const dup of drop) {
-          const note = `\n\n— Automatisch geannuleerd als duplicaat van "${keep.title}" (id ${keep.id}). Reden: ${group.reason}`
+          const note = `\n\n- Automatisch geannuleerd als duplicaat van "${keep.title}" (id ${keep.id}). Reden: ${group.reason}`
           const sourceRef = (dup.source_ref ?? {}) as Record<string, unknown>
           const { error } = await supabase
             .from("inbox_events")
@@ -649,7 +649,7 @@ Body: ${bodyPreview || "(no body)"}`
     max_tokens: 600,
     system: `You triage duplicate inbox tasks for a marketing agency Hub.
 
-Return groups of tasks that describe the SAME logical action — i.e. doing one
+Return groups of tasks that describe the SAME logical action - i.e. doing one
 of them satisfies all of them. Tasks come from different sources (Trengo
 ingest, Fathom action items, automation cron, manual creates) and the same
 real-world job sometimes shows up multiple times.
@@ -659,7 +659,7 @@ Rules:
   them. "Send invoice for Vlex" + "Stuur Vlex factuur" = duplicate. "Send
   invoice for Vlex" + "Bel Vlex over inhoud van factuur" = NOT duplicate.
 - A Fathom bundle ("Taken uit kick-off call met X") contains multiple
-  underlying items — only call it a duplicate if ALL the work in the bundle
+  underlying items - only call it a duplicate if ALL the work in the bundle
   overlaps with the other task. When in doubt, keep them separate.
 - Be conservative. Confidence ≥0.85 means "I'm sure"; <0.85 means "skip".
 - Output JSON ONLY, no prose. Format:
@@ -680,7 +680,7 @@ Rules:
     .join("\n")
     .trim()
 
-  // Extract JSON safely — model occasionally adds a code fence even when told not to.
+  // Extract JSON safely - model occasionally adds a code fence even when told not to.
   const jsonStart = text.indexOf("{")
   const jsonEnd = text.lastIndexOf("}")
   if (jsonStart === -1 || jsonEnd === -1) return []
@@ -813,7 +813,7 @@ function evaluatePeriod(daily: KpiDailyClientData, period: Period): CplCompariso
 }
 
 /**
- * Reshape a casual AM-tone message ("Hey Roy, lekker bezig — CPL ...")
+ * Reshape a casual AM-tone message ("Hey Roy, lekker bezig - CPL ...")
  * into the format Roy's WA template expects in `{{1}}`:
  *   "{firstName}, {body ending in a period}"
  *
@@ -822,7 +822,7 @@ function evaluatePeriod(daily: KpiDailyClientData, period: Period): CplCompariso
  * Also normalises trailing punctuation to a period since the template signs
  * off with " Groetjes <AM>" and a sentence break reads cleaner there.
  *
- * Pure string transform — deterministic, no AI call. We accept it'll
+ * Pure string transform - deterministic, no AI call. We accept it'll
  * occasionally produce a slightly odd "{firstName}, " when the original
  * message used an unexpected opener; the AM can edit before sending.
  */
@@ -837,7 +837,7 @@ function adaptMessageForWhatsappTemplate(message: string, firstName: string): st
   // If the message lost its leading content for some reason, fall back to
   // generic. Keeps the contract: starts with firstName.
   if (!body) body = "lekker bezig"
-  // Normalise terminal punctuation — the template signs off after this.
+  // Normalise terminal punctuation - the template signs off after this.
   body = body.replace(/[.!?\s]+$/u, "") + "."
   return `${firstName}, ${body}`
 }
@@ -882,13 +882,13 @@ async function generatePositiveSignalMessage(args: {
 
 STIJL-REGELS:
 - Nederlands
-- Informeel maar professioneel — alsof je iemand al even kent
+- Informeel maar professioneel - alsof je iemand al even kent
 - GEEN emoticons of emoji's
 - GEEN formele begroeting of afsluiting (dus geen "Beste X", geen "Met vriendelijke groet", geen handtekening)
-- Begin met "Hey {firstName}" of "Hi {firstName}" — kies wat het best aansluit bij de eerdere tone
+- Begin met "Hey {firstName}" of "Hi {firstName}" - kies wat het best aansluit bij de eerdere tone
 - Kort en krachtig: 2 tot 4 zinnen, max ~50 woorden
 - Concreet: noem de exacte CPL bedragen en het percentage
-- Neutraal-trots: "we hebben de cost per lead weten te verlagen" of "lekker bezig" — niet overdreven
+- Neutraal-trots: "we hebben de cost per lead weten te verlagen" of "lekker bezig" - niet overdreven
 - Geen verkooppraatjes, geen call-to-action, geen vraag terug
 - Het is een delen-van-de-win update, niet een verkoopbericht
 - Gewoon alsof je een appje stuurt`,
@@ -904,7 +904,7 @@ DATA:
 - Daling: ${cmp.dropPct.toFixed(0)}%
 
 EERDERE BERICHTEN VAN ROCKET LEADS NAAR DEZE KLANT (om tone-of-voice te matchen):
-${toneSamples || "(geen eerdere berichten beschikbaar — gebruik standaard informele tone)"}
+${toneSamples || "(geen eerdere berichten beschikbaar - gebruik standaard informele tone)"}
 
 Output: alleen het berichtje zelf, geen quotes, geen toelichting.`,
         },
@@ -959,7 +959,7 @@ async function ensurePositiveCplDropTask(
 
   // Smart-inbox: same channel-detection + draft-channel pattern as the
   // payment reminder rule. The AI generator above always produces a casual
-  // "Hey {firstName}" opener — fine for email, but the WA template already
+  // "Hey {firstName}" opener - fine for email, but the WA template already
   // starts with "Hey ", so for WhatsApp we strip that prefix and reshape into
   // the "{firstName}, body." format the template's {{1}} expects.
   let draftMessage: string | null = message
@@ -979,7 +979,7 @@ async function ensurePositiveCplDropTask(
   const todayStr = new Date().toISOString().slice(0, 10)
   const dropPctRounded = Math.round(cmp.dropPct)
 
-  const titleCore = `Goed nieuws delen — CPL ${client.name} met ${dropPctRounded}% verlaagd (${cmp.period.labelNL})`
+  const titleCore = `Goed nieuws delen - CPL ${client.name} met ${dropPctRounded}% verlaagd (${cmp.period.labelNL})`
   const title = testMode ? `[TEST] ${titleCore}` : titleCore
 
   const bodyParts: string[] = []
@@ -992,7 +992,7 @@ async function ensurePositiveCplDropTask(
   bodyParts.push(
     message,
     "",
-    "— Voorgesteld door automatisering, voel vrij om aan te passen voor je het verstuurt.",
+    "- Voorgesteld door automatisering, voel vrij om aan te passen voor je het verstuurt.",
     "",
     `CPL ${cmp.period.labelNL}: €${cmp.curr.cpl.toFixed(2)} (vs €${cmp.prev.cpl.toFixed(2)} ${cmp.period.prevLabelNL})`,
     `Adspend: ${fmtEuro(cmp.curr.spend)} · Leads: ${cmp.curr.leads}`,
@@ -1105,12 +1105,12 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
 
   // Resolve the finance-role assignee once. In test mode the override wins.
   // In production, if no finance user is configured we skip the rule entirely
-  // rather than falling back to admin — the failure mode of "Roy gets every
+  // rather than falling back to admin - the failure mode of "Roy gets every
   // invoice task" is worse than "task didn't fire and someone notices".
   //
   // Finance is now stored as a value of `monday_column_role` (alongside
   // account_manager / campaign_manager / appointment_setter), not a separate
-  // boolean — see migration 20240022.
+  // boolean - see migration 20240022.
   let financeAssigneeId: string | null = null
   if (rules.auto_complete_invoice_tasks) {
     if (testMode) {
@@ -1135,7 +1135,7 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
   // removed (finance handles invoicing fast enough that the task adds noise),
   // but auto-complete stays so existing open tasks get cleaned up gracefully.
   // Runs in production AND test mode (test mode just won't write back the
-  // completion if the task was [TEST] flagged — see ensureAutoCompleteInvoiceTasks).
+  // completion if the task was [TEST] flagged - see ensureAutoCompleteInvoiceTasks).
   if (rules.auto_complete_invoice_tasks) {
     try {
       const completed = await ensureAutoCompleteInvoiceTasks(
@@ -1152,7 +1152,7 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
     }
   }
 
-  // AI dedup runs LAST — after every other rule has had a chance to create
+  // AI dedup runs LAST - after every other rule has had a chance to create
   // its tasks for this run. That way if the cron creates a "Send invoice"
   // task that overlaps with a Trengo-classified task from earlier, dedup
   // catches it in the same pass instead of leaving the user with a duplicate
@@ -1178,7 +1178,7 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
       continue
     }
 
-    // In test mode the AM mapping isn't strictly required — assignee comes
+    // In test mode the AM mapping isn't strictly required - assignee comes
     // from the override. But we still record the would-be AM in the body for
     // the admin to validate, so we can keep the lookup attempt and let it be
     // null. In real runs, missing AM mapping is a hard skip.
@@ -1195,7 +1195,7 @@ export async function runInboxAutomations(opts?: RunOptions): Promise<Automation
       // Only fire payment-overdue tasks for clients whose campaign is actually
       // Live. Onboarding clients haven't kicked off yet, On Hold clients
       // already have a flag in the system, and Churned clients are out the
-      // door — chasing payments on any of those is noise that floods the AM
+      // door - chasing payments on any of those is noise that floods the AM
       // with reminders for invoices nobody is acting on. Roy's directive after
       // seeing too many reminders for non-live accounts.
       const hubStatus = mondayStatusToHub(client.campaignStatus, client.boardType)

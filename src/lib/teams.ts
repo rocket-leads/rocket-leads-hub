@@ -1,5 +1,5 @@
 /**
- * Delivery teams — single source of truth used by both the Slack team-watchlist
+ * Delivery teams - single source of truth used by both the Slack team-watchlist
  * summary and the Targets/Delivery dashboard.
  *
  * A client (or revenue row) belongs to a team if its account manager OR its

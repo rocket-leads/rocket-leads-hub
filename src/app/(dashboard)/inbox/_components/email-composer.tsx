@@ -38,14 +38,14 @@ type Props = {
   /** Trengo channel id for the email channel this thread belongs to. Drives
    *  the signature lookup (cached server-side for 5 min). */
   channelId: number | null
-  /** Thread key — used to fetch the latest ticket subject for prefill so
+  /** Thread key - used to fetch the latest ticket subject for prefill so
    *  the composer behaves like a normal mail client (Re: <original> with
    *  inline edit). */
   threadKey: string
-  /** Display "To" label — usually the contact's name + email from the
+  /** Display "To" label - usually the contact's name + email from the
    *  thread header. Read-only on reply (Trengo binds it to the ticket). */
   toDisplay: string
-  // Lifted state — owned by the parent so sendReply can read on submit.
+  // Lifted state - owned by the parent so sendReply can read on submit.
   subject: string
   onSubjectChange: (s: string) => void
   cc: string[]
@@ -55,7 +55,7 @@ type Props = {
   htmlBody: string
   onHtmlBodyChange: (html: string) => void
   /** Called with image files pasted into the editor. Wired up by the parent
-   *  to the same upload pipeline that powers the 📎 button — pasting a
+   *  to the same upload pipeline that powers the 📎 button - pasting a
    *  screenshot lands as an attachment. Non-image clipboard contents fall
    *  through to TipTap's normal paste behavior. */
   onPasteFiles?: (files: File[]) => void
@@ -64,14 +64,14 @@ type Props = {
 }
 
 /**
- * Email composer block — rich-text body via TipTap, From display pulled from
+ * Email composer block - rich-text body via TipTap, From display pulled from
  * the channel info, To read-only, CC/BCC collapsed by default with chip
  * inputs, Subject prefilled empty (Trengo auto-fills `Re: <original>` when
  * not provided). Signature is fetched per channel and injected into the
  * editor on first open.
  *
  * Mirrors Trengo's web composer 1:1 so the AM gets parity. Phase 3 of the
- * composer parity work — see docs/trengo-api-audit.md for endpoint details.
+ * composer parity work - see docs/trengo-api-audit.md for endpoint details.
  */
 export function EmailComposer({
   channelId,
@@ -91,7 +91,7 @@ export function EmailComposer({
   const [ccBccExpanded, setCcBccExpanded] = useState(cc.length > 0 || bcc.length > 0)
 
   // Fetch the channel's signature + sender info. Cached 5 min server-side
-  // and idle-time on the client — opening the composer on a hot path
+  // and idle-time on the client - opening the composer on a hot path
   // shouldn't show a flash of "no signature".
   const channelQuery = useQuery<ChannelInfo>({
     queryKey: ["email-channel", channelId],
@@ -102,7 +102,7 @@ export function EmailComposer({
 
   const channel = channelQuery.data ?? null
 
-  // Fetch the latest ticket subject so we can prefill `Re: <original>` —
+  // Fetch the latest ticket subject so we can prefill `Re: <original>` -
   // matches normal mail client UX. AM can edit inline before sending.
   const subjectQuery = useQuery<{ subject: string | null }>({
     queryKey: ["thread-subject", threadKey],
@@ -113,7 +113,7 @@ export function EmailComposer({
   })
 
   // Prefill the subject input ONCE per thread (when the AM hasn't typed
-  // anything yet). Don't stomp manual edits — once subject is non-empty we
+  // anything yet). Don't stomp manual edits - once subject is non-empty we
   // back off forever for this mount.
   const subjectPrefilledRef = useRef(false)
   useEffect(() => {
@@ -142,7 +142,7 @@ export function EmailComposer({
         HTMLAttributes: { class: "underline text-primary" },
       }),
       // Inline images. Required for the auto-injected channel signature to
-      // render — Trengo signatures embed brand graphics as <img src="...">.
+      // render - Trengo signatures embed brand graphics as <img src="...">.
       // Without this extension TipTap silently drops the <img> nodes on
       // setContent and the AM sees text-only signatures.
       Image.configure({
@@ -196,7 +196,7 @@ export function EmailComposer({
   //     signature has loaded. Covers both first-open AND post-send re-fill.
   //   - When parent resets htmlBody to "" (after a send), force-clear the
   //     editor so the next render's emptiness check passes and re-injects.
-  // Trengo placeholders like [agent.first_name] stay literal — Trengo
+  // Trengo placeholders like [agent.first_name] stay literal - Trengo
   // substitutes them server-side at send time.
   useEffect(() => {
     if (!editor) return
@@ -208,7 +208,7 @@ export function EmailComposer({
     }
     if (sig && editor.isEmpty) {
       // Two blank lines ABOVE the signature so the AM has natural room to
-      // type the actual reply. setContent replaces the whole doc — fine
+      // type the actual reply. setContent replaces the whole doc - fine
       // here because we just confirmed isEmpty.
       editor.commands.setContent(`<p></p><p></p>${sig}`)
     }
@@ -220,7 +220,7 @@ export function EmailComposer({
       <div className="border-b border-border/60 divide-y divide-border/60">
         <HeaderRow label="From">
           <span className="text-xs text-foreground/80">
-            {channel ? formatFrom(channel) : channelQuery.isLoading ? "Loading…" : "—"}
+            {channel ? formatFrom(channel) : channelQuery.isLoading ? "Loading…" : "-"}
           </span>
           <button
             type="button"
@@ -284,7 +284,7 @@ function HeaderRow({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
-/** Rich-text formatting toolbar — Bold/Italic/Underline/Strike/H2/Quote/
+/** Rich-text formatting toolbar - Bold/Italic/Underline/Strike/H2/Quote/
  *  Lists/Link/Undo/Redo. Each button calls into the TipTap editor's command
  *  chain and mirrors the active-mark state via `editor.isActive(name)`. */
 function RichTextToolbar({ editor, disabled }: { editor: Editor | null; disabled: boolean }) {
@@ -343,7 +343,7 @@ function promptLink(editor: Editor) {
   editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run()
 }
 
-/** Multi-email chip input — comma/space/Enter splits a typed value into a
+/** Multi-email chip input - comma/space/Enter splits a typed value into a
  *  chip; backspace on empty input removes the last chip; click × on a chip
  *  removes it. No email validation beyond non-empty (Trengo will reject
  *  malformed addresses on send and we surface that error). */
@@ -377,7 +377,7 @@ function EmailChipInput({
 
   return (
     <span className="flex-1 min-w-0 inline-flex items-center flex-wrap gap-1">
-      {/* Recipient chips: chunkier than the row's dense chrome — email
+      {/* Recipient chips: chunkier than the row's dense chrome - email
           context is the centre of attention so the chips earn the visual
           weight. h-7 chip + h-4 hit-area X = comfortable click target. */}
       {value.map((email, i) => (

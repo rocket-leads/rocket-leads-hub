@@ -61,7 +61,7 @@ export async function POST(
   // @-mentions inside comments: when an AM types "@Danny check this out",
   // Danny needs to know about it. Match `@FirstName` patterns against the
   // users.name column, lookup user ids, and fan out:
-  //   - One inbox_event (kind=update) per mentioned user — lands in their
+  //   - One inbox_event (kind=update) per mentioned user - lands in their
   //     Updates tab with the parent task title + the comment text
   //   - A push notification (best-effort, fail silently)
   // Self-mentions are skipped (no point pinging yourself). The author is

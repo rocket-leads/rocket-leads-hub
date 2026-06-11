@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as { template?: unknown }
     if (typeof body.template === "string" && body.template.length > 0) bodyTemplate = body.template
   } catch {
-    // No body — fine
+    // No body - fine
   }
 
   const supabase = await createAdminClient()
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     computeCloserMetrics(items, name, today, yesterday, mStart),
   )
 
-  // Pick the closer to preview — prefer the admin's own mapping, else the most-active.
+  // Pick the closer to preview - prefer the admin's own mapping, else the most-active.
   const ownMapping = (mappingRows ?? []).find((m) => m.slack_user_id === user.slack_user_id)
   let chosen = ownMapping
     ? allMetrics.find((m) => m.closer === ownMapping.monday_person_name) ?? null
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
   try {
     await sendDmToHubUser(
       user.id,
-      `_(personal sales DM preview — rendered for *${chosen.closer}*)_\n\n${message}`,
+      `_(personal sales DM preview - rendered for *${chosen.closer}*)_\n\n${message}`,
     )
     return NextResponse.json({
       ok: true,

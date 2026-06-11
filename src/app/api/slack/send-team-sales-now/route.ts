@@ -23,7 +23,7 @@ import type { TargetsConfig } from "@/types/targets"
 export const maxDuration = 60
 
 /**
- * Admin-only "send now" — posts the team-sales summary to the sales channel
+ * Admin-only "send now" - posts the team-sales summary to the sales channel
  * RIGHT NOW, bypassing the time-of-day guard. Same data + template as the
  * scheduled cron so what gets posted matches what the cron would post when
  * it next fires. Use cases: missed cron, manual re-send after fixing config.
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as { template?: unknown }
     if (typeof body.template === "string" && body.template.length > 0) bodyTemplate = body.template
   } catch {
-    // No body — fine
+    // No body - fine
   }
 
   const channels = await getSlackChannels()
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         ok: false,
         message:
           e instanceof Error
-            ? `Slack post failed: ${e.message}. Common cause: bot isn't a member — invite via /invite @Rocket Leads Hub.`
+            ? `Slack post failed: ${e.message}. Common cause: bot isn't a member - invite via /invite @Rocket Leads Hub.`
             : "Failed to send",
       },
       { status: 500 },

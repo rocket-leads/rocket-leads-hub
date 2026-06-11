@@ -10,10 +10,10 @@ type Props = {
   clients: PedroClient[]
   selectedId: string | null
   onSelect: (clientId: string, clientName: string) => void
-  /** Triggered after a client is picked — Pedro should run AI auto-fill. */
+  /** Triggered after a client is picked - Pedro should run AI auto-fill. */
   onAutoFill: () => void
   loading?: boolean
-  /** When true the AI auto-fill button is hidden — used by the global
+  /** When true the AI auto-fill button is hidden - used by the global
    *  Pedro picker at the top of the page where the brief tab handles
    *  auto-fill on its own. */
   hideAutoFill?: boolean
@@ -93,7 +93,7 @@ export function ClientPicker({ clients, selectedId, onSelect, onAutoFill, loadin
                 filtered.map((c) => {
                   const isSel = c.id === selectedId
                   // Surface the hub-data signals so the AM can tell duplicate
-                  // client rows apart (e.g. two "Financieel Verder"s — one
+                  // client rows apart (e.g. two "Financieel Verder"s - one
                   // with a kick-off transcript, one empty).
                   const signals: { label: string; tone: "primary" | "emerald" | "muted" }[] = []
                   if (c.hasSavedCampaign) signals.push({ label: t("pedro.picker.signal.saved", locale), tone: "primary" })

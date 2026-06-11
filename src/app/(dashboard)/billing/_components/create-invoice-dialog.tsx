@@ -28,7 +28,7 @@ type Props = {
   mondayItemId: string
   stripeCustomerId: string
   clientName: string
-  /** Service fee (e.g. €450). Pre-fills the first line item — used when no
+  /** Service fee (e.g. €450). Pre-fills the first line item - used when no
    *  `siblingCampaigns` is provided (single-campaign client). */
   fee: number
   /** Ad budget. Pre-fills a second line item *only* when the client runs ads
@@ -86,24 +86,24 @@ function buildInitialItems(
       if (sib.fee > 0) {
         items.push({
           id: crypto.randomUUID(),
-          description: `Service fee — ${suffix} — ${monthLabel}`,
+          description: `Service fee - ${suffix} - ${monthLabel}`,
           amountEuro: String(sib.fee),
         })
       }
       if (sib.usesRocketLeadsAdAccount && sib.adBudget > 0) {
         items.push({
           id: crypto.randomUUID(),
-          description: `Advertising budget — ${suffix} — ${monthLabel}`,
+          description: `Advertising budget - ${suffix} - ${monthLabel}`,
           amountEuro: String(sib.adBudget),
         })
       }
     }
   } else {
     if (fee > 0) {
-      items.push({ id: crypto.randomUUID(), description: `Service fee — ${monthLabel}`, amountEuro: String(fee) })
+      items.push({ id: crypto.randomUUID(), description: `Service fee - ${monthLabel}`, amountEuro: String(fee) })
     }
     if (usesRl && adBudget > 0) {
-      items.push({ id: crypto.randomUUID(), description: `Advertising budget — ${monthLabel}`, amountEuro: String(adBudget) })
+      items.push({ id: crypto.randomUUID(), description: `Advertising budget - ${monthLabel}`, amountEuro: String(adBudget) })
     }
   }
 
@@ -115,7 +115,7 @@ function buildInitialItems(
 
 /** Map Stripe's `tax_id.type` enum to a short human label finance can
  *  recognise. Falls back to the raw enum when we haven't seen a particular
- *  region yet — the actual VAT number value next to it carries the meaning. */
+ *  region yet - the actual VAT number value next to it carries the meaning. */
 function taxIdLabel(type: string): string {
   switch (type) {
     case "eu_vat": return "BTW"
@@ -134,14 +134,14 @@ function taxIdLabel(type: string): string {
  *
  * State machine: edit → preview → success
  *
- * 1. **edit**    — line-item form. "Preview" POSTs `action: preview` which
- *    is a READ-ONLY Stripe call (customer + tax IDs only) — no draft is
+ * 1. **edit**    - line-item form. "Preview" POSTs `action: preview` which
+ *    is a READ-ONLY Stripe call (customer + tax IDs only) - no draft is
  *    created, nothing exists in Stripe until the actual send fires.
- * 2. **preview** — Finance reviews recipient + line items + BTW status.
+ * 2. **preview** - Finance reviews recipient + line items + BTW status.
  *    Two paths: "Confirm & send" → one-shot draft + finalize + email
  *    (action: send) | "Back to edit" → return to edit (no Stripe call,
  *    no cleanup needed since preview never created anything).
- * 3. **success** — same chip + Close + "View in Stripe" the old flow had.
+ * 3. **success** - same chip + Close + "View in Stripe" the old flow had.
  */
 export function CreateInvoiceDialog({
   mondayItemId,
@@ -160,7 +160,7 @@ export function CreateInvoiceDialog({
   const [daysUntilDue, setDaysUntilDue] = useState<string>("7")
   const [error, setError] = useState<string | null>(null)
 
-  // State machine — exactly one of these is the active state.
+  // State machine - exactly one of these is the active state.
   const [step, setStep] = useState<"edit" | "previewing" | "preview" | "sending" | "success">("edit")
   const [preview, setPreview] = useState<InvoiceDraftPreview | null>(null)
   const [success, setSuccess] = useState<{ number: string | null; hostedUrl: string | null; warnings: string[] } | null>(null)
@@ -233,7 +233,7 @@ export function CreateInvoiceDialog({
   }
 
   function backToEdit() {
-    // No Stripe cleanup needed — preview was read-only.
+    // No Stripe cleanup needed - preview was read-only.
     setPreview(null)
     setStep("edit")
   }
@@ -299,10 +299,10 @@ export function CreateInvoiceDialog({
         <DialogHeader>
           <DialogTitle>
             {step === "preview" || step === "sending"
-              ? `Review invoice — ${clientName}`
+              ? `Review invoice - ${clientName}`
               : step === "success"
-                ? `Invoice sent — ${clientName}`
-                : `Create invoice — ${clientName}`}
+                ? `Invoice sent - ${clientName}`
+                : `Create invoice - ${clientName}`}
           </DialogTitle>
         </DialogHeader>
 
@@ -313,7 +313,7 @@ export function CreateInvoiceDialog({
               Invoice {success.number ?? "draft"} sent to the customer.
             </div>
 
-            {/* Post-send Monday sync warnings — surfaced so finance knows when
+            {/* Post-send Monday sync warnings - surfaced so finance knows when
                 the admin column / invoice date didn't auto-update and a manual
                 touch in Monday is needed. Without this, ProSteal-style issues
                 (Stripe send OK, Monday status stuck on "Overdue", invoice date
@@ -348,7 +348,7 @@ export function CreateInvoiceDialog({
             </div>
           </div>
         ) : step === "preview" || step === "sending" ? (
-          // Preview screen — the actual customer-facing invoice as Stripe
+          // Preview screen - the actual customer-facing invoice as Stripe
           // sees it before we finalize. Finance's last chance to catch a
           // wrong customer, wrong BTW number, missing line, etc.
           <div className="space-y-4">
@@ -383,7 +383,7 @@ export function CreateInvoiceDialog({
                 // tax ID → BG origin default rate). This is just a heads-up
                 // for Finance so the BTW row below isn't a surprise.
                 <p className="mt-1 inline-flex items-center gap-1 text-muted-foreground/70 font-medium">
-                  No tax ID on file — Stripe will charge 20% BG VAT.
+                  No tax ID on file - Stripe will charge 20% BG VAT.
                 </p>
               )}
             </div>
@@ -404,13 +404,13 @@ export function CreateInvoiceDialog({
               <div className="px-3 py-2 border-t border-border/60 space-y-1 text-sm">
                 {/* BTW row is ALWAYS rendered (even at 0%) so Finance sees
                     the tax situation explicitly. The note below explains why
-                    it's 0% — reverse-charge with a valid BTW ID is fine,
+                    it's 0% - reverse-charge with a valid BTW ID is fine,
                     "no BTW + no tax ID" is a real red flag worth catching. */}
                 {(() => {
                   const subtotal = preview?.subtotal ?? 0
                   const tax = preview?.tax ?? 0
                   const total = preview?.total ?? 0
-                  // Effective rate from what Stripe will actually charge —
+                  // Effective rate from what Stripe will actually charge -
                   // single source of truth so the % matches the € amount.
                   const ratePct = subtotal > 0 ? Math.round((tax / subtotal) * 1000) / 10 : 0
                   const rateLabel = ratePct === 0 ? "0%" : `${ratePct.toFixed(ratePct % 1 === 0 ? 0 : 1)}%`
@@ -429,23 +429,23 @@ export function CreateInvoiceDialog({
                         <span>Total</span>
                         <span className="tabular-nums">{fmtEuro(total)}</span>
                       </div>
-                      {/* BTW interpretation — explains the rate Finance sees so
+                      {/* BTW interpretation - explains the rate Finance sees so
                           the % isn't a black box. Stripe `automatic_tax`
                           drives the actual send; preview rules mirror that:
                           - Has tax ID → reverse charge, 0%.
                           - No tax ID → 20% BG VAT (BG origin default).
                           The legacy "0% + no tax ID" case is no longer
-                          possible — Stripe will always apply the BG rate when
-                          there's no valid tax ID — but we keep an amber
+                          possible - Stripe will always apply the BG rate when
+                          there's no valid tax ID - but we keep an amber
                           fallback in case the local mirror ever diverges. */}
                       {tax === 0 && hasTaxId && (
                         <p className="text-[11px] text-muted-foreground/80 pt-1.5">
-                          Reverse charge — klant heeft een geldig BTW-nummer, geen BTW gerekend.
+                          Reverse charge - klant heeft een geldig BTW-nummer, geen BTW gerekend.
                         </p>
                       )}
                       {tax > 0 && !hasTaxId && (
                         <p className="text-[11px] text-muted-foreground/80 pt-1.5">
-                          20% BG VAT — Stripe rekent dit automatisch op de factuur (geen losse regel, wel zichtbaar als BTW-totaal).
+                          20% BG VAT - Stripe rekent dit automatisch op de factuur (geen losse regel, wel zichtbaar als BTW-totaal).
                         </p>
                       )}
                       {tax === 0 && !hasTaxId && (
@@ -483,7 +483,7 @@ export function CreateInvoiceDialog({
             </div>
           </div>
         ) : (
-          // Edit screen — same line-item form as before, but the primary
+          // Edit screen - same line-item form as before, but the primary
           // action now creates a Stripe draft and transitions to preview.
           <div className="space-y-4">
             <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground space-y-0.5">

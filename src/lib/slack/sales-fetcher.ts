@@ -9,7 +9,7 @@ const MONTH_NAMES_NL = [
 ]
 
 /**
- * Returns YYYY-MM-DD for "now" in Europe/Amsterdam — the calendar date a closer
+ * Returns YYYY-MM-DD for "now" in Europe/Amsterdam - the calendar date a closer
  * would call "today" when they read the 06:00 morning DM.
  */
 export function amsterdamToday(now: Date = new Date()): string {

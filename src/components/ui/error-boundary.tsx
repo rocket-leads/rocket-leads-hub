@@ -4,7 +4,7 @@ import { Component, type ReactNode } from "react"
 import { AlertTriangle, RefreshCw } from "lucide-react"
 
 type Props = {
-  /** Children that may throw — the boundary catches React render errors
+  /** Children that may throw - the boundary catches React render errors
    *  from this subtree only, falling back to the inline UI below instead
    *  of tearing down the whole page. */
   children: ReactNode
@@ -14,7 +14,7 @@ type Props = {
   /** Short label shown above the error message so the user knows which
    *  subtree blew up. Defaults to "this section". */
   label?: string
-  /** When this key changes the boundary auto-resets — useful for "user
+  /** When this key changes the boundary auto-resets - useful for "user
    *  clicked a different row" so the error doesn't stick to the next item. */
   resetKey?: string | number
 }
@@ -23,12 +23,12 @@ type State = { error: Error | null }
 
 /**
  * Tiny error boundary for use around individual panels (inbox detail pane,
- * dialogs, etc.). NOT a global boundary — those belong in the Next.js
+ * dialogs, etc.). NOT a global boundary - those belong in the Next.js
  * error.tsx files. This is for "if THIS panel's render throws, don't take
  * the page down with it."
  *
  * Class component because React still requires componentDidCatch to live
- * on a class. Everything around it is hooks — this is the one exception.
+ * on a class. Everything around it is hooks - this is the one exception.
  */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null }
@@ -47,7 +47,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: { componentStack: string }) {
     // Surface to the browser console so the user can copy/paste it. Avoids
-    // a silent failure — without this the only signal is the fallback card.
+    // a silent failure - without this the only signal is the fallback card.
     console.error("[ErrorBoundary] caught:", error, info.componentStack)
   }
 

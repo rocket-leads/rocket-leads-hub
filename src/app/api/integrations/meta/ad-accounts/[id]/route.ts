@@ -6,14 +6,14 @@ import { resolveMetaAdAccount } from "@/lib/integrations/meta"
  * GET /api/integrations/meta/ad-accounts/[id]
  *
  * Resolves a single Meta ad account ID to its ResolvedEntity. Used by the
- * always-on verification on the picker trigger — catches the "ad account
+ * always-on verification on the picker trigger - catches the "ad account
  * got disabled by Meta but the ID is still set" case that's been silently
  * breaking the Performance Overview for weeks at a time.
  *
  * Response shape:
- *   - 200 { entity: ResolvedEntity }   — happy path
- *   - 200 { entity: null }             — ID is well-formed but no such account, or token has no access (broken link)
- *   - 500                              — Meta transport/auth failure (couldn't verify)
+ *   - 200 { entity: ResolvedEntity }   - happy path
+ *   - 200 { entity: null }             - ID is well-formed but no such account, or token has no access (broken link)
+ *   - 500                              - Meta transport/auth failure (couldn't verify)
  */
 export async function GET(
   _req: NextRequest,

@@ -96,7 +96,7 @@ function toISO(d: Date): string {
 }
 
 function getDateRange(days: number) {
-  // Exclude today — use yesterday as end date (today's data is incomplete)
+  // Exclude today - use yesterday as end date (today's data is incomplete)
   const yesterday = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
   const end = toISO(yesterday)
@@ -369,7 +369,7 @@ export function CampaignAnalysis({ mondayItemId, metaAdAccountId, clientBoardId,
   }, [cacheChecked, isKpiLoading, hasAnyData]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Force-regenerate when the page-level refresh button is clicked.
-  // Skips the initial value (0) — only fires on increments.
+  // Skips the initial value (0) - only fires on increments.
   useEffect(() => {
     if (regenerateSignal === 0) return
     if (loading) return

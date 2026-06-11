@@ -7,11 +7,11 @@ import { runFacebookAdsScraper, type FacebookAdScrapeResult } from "@/lib/integr
  * Brief step (step 3, competitor analysis sub-action).
  *
  * Two-phase flow:
- *   1. `findCompetitors`     — Claude takes the brief (sector, country,
+ *   1. `findCompetitors`     - Claude takes the brief (sector, country,
  *                              ICP, USPs) and proposes 5-8 plausible
  *                              competitors. Each comes with a relevance
  *                              note so the AM understands the pick.
- *   2. `scrapeWinningAds`    — For the AM-confirmed competitors, run the
+ *   2. `scrapeWinningAds`    - For the AM-confirmed competitors, run the
  *                              Apify Facebook Ads Scraper with their
  *                              brand names as search terms, then store
  *                              every returned ad in `client_competitor_ads`
@@ -26,19 +26,19 @@ import { runFacebookAdsScraper, type FacebookAdScrapeResult } from "@/lib/integr
 const anthropic = new Anthropic()
 
 export type CompetitorBriefInput = {
-  /** RL client's own company name — used to exclude self-matches in
+  /** RL client's own company name - used to exclude self-matches in
    *  the AI prompt. */
   ownCompanyName: string
-  /** Country code: NL / BE / DE / … — drives both the AI prompt's
+  /** Country code: NL / BE / DE / … - drives both the AI prompt's
    *  geographic scope and the Apify scraper's country filter. */
   country: string
-  /** From the brief — used by Claude to anchor what "similar
+  /** From the brief - used by Claude to anchor what "similar
    *  competitor" means. */
   sector: string
   doelgroep: string
   aanbod: string
   usps: string
-  /** Optional — extra context (raw competitor analysis text the AM
+  /** Optional - extra context (raw competitor analysis text the AM
    *  may already have typed) so the model doesn't suggest competitors
    *  the AM has already considered. */
   existingNotes?: string
@@ -46,17 +46,17 @@ export type CompetitorBriefInput = {
 
 export type CompetitorSuggestion = {
   name: string
-  /** One-line reason the AI suggested this competitor — surfaced in
+  /** One-line reason the AI suggested this competitor - surfaced in
    *  the UI so the AM can sanity-check before approving. */
   relevance: string
-  /** Best-effort Meta page URL the AI knows about. Often missing —
+  /** Best-effort Meta page URL the AI knows about. Often missing -
    *  we fall back to search-terms in that case. */
   facebookPageUrl?: string
   /** Best-effort general website URL. Informational only. */
   websiteUrl?: string
 }
 
-const FIND_COMPETITORS_SYSTEM = `You are an expert in performance marketing competitor research for the Dutch / Belgian SMB market. Given a Rocket Leads client brief, identify 5-8 plausible direct competitors in the same country and sector. Output JSON only — no prose.
+const FIND_COMPETITORS_SYSTEM = `You are an expert in performance marketing competitor research for the Dutch / Belgian SMB market. Given a Rocket Leads client brief, identify 5-8 plausible direct competitors in the same country and sector. Output JSON only - no prose.
 
 Rules:
 - Only suggest competitors that operate in the specified country.
@@ -73,7 +73,7 @@ Output schema:
 }`
 
 /**
- * Phase 1 — ask Claude for plausible competitors based on the brief.
+ * Phase 1 - ask Claude for plausible competitors based on the brief.
  * Returns 5-8 entries. Caller surfaces these to the AM for approval
  * before kicking off the (paid) Apify scrape.
  */
@@ -115,20 +115,20 @@ Suggest 5-8 direct competitors.`
 }
 
 /**
- * Phase 2 — for an AM-approved set of competitors, run the Apify
+ * Phase 2 - for an AM-approved set of competitors, run the Apify
  * Facebook Ads Scraper and persist every returned ad to
  * `client_competitor_ads`. Returns the number of ads stored per
  * competitor so the UI can show a quick summary ("scraped 47 ads
  * across 5 competitors").
  *
- * Ranking happens in the UI layer — this function stores everything
+ * Ranking happens in the UI layer - this function stores everything
  * raw + `days_running` so the AM can sort/filter in the picker.
  */
 export async function scrapeWinningAds(args: {
   mondayItemId: string
   competitors: CompetitorSuggestion[]
   country: string
-  /** Cap per-competitor — Apify charges per ad scraped. Default 30. */
+  /** Cap per-competitor - Apify charges per ad scraped. Default 30. */
   maxAdsPerCompetitor?: number
 }): Promise<{
   scrapedCount: number
@@ -142,7 +142,7 @@ export async function scrapeWinningAds(args: {
   const perCompetitor: Array<{ name: string; ads: number }> = []
   let total = 0
 
-  // Run per-competitor instead of one big batch — keeps memory bounded
+  // Run per-competitor instead of one big batch - keeps memory bounded
   // and lets a single bad URL not nuke the whole scrape.
   for (const comp of args.competitors) {
     let results: FacebookAdScrapeResult[] = []
@@ -159,7 +159,7 @@ export async function scrapeWinningAds(args: {
         activeOnly: true,
       })
     } catch (e) {
-      // Don't blow up the whole run — record the failure per competitor
+      // Don't blow up the whole run - record the failure per competitor
       // and move on. The UI shows partial results so the AM still gets
       // value from the competitors that did succeed.
       console.error(
@@ -175,7 +175,7 @@ export async function scrapeWinningAds(args: {
       .filter((r): r is NonNullable<ReturnType<typeof mapApifyResultToRow>> => r !== null)
 
     if (rows.length > 0) {
-      // Upsert — re-scraping the same competitor later refreshes
+      // Upsert - re-scraping the same competitor later refreshes
       // `days_running` + `was_active_at_scrape` without duplicating
       // rows (the unique key is monday_item_id + ad_archive_id).
       const { error } = await supabase
@@ -212,7 +212,7 @@ function mapApifyResultToRow(
     ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / (1000 * 60 * 60 * 24)))
     : null
 
-  // Pick the first available creative — Apify nests them differently per
+  // Pick the first available creative - Apify nests them differently per
   // ad format; we surface the primary and stash the rest in
   // `extra_creatives` so a future carousel-aware UI can use them.
   const snap = r.snapshot ?? {}

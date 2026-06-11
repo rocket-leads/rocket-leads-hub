@@ -13,10 +13,10 @@ import { collectClientAiContext } from "@/lib/pedro/insights/context"
  * Fires on the 1st of every month for every Live client. Pedro reads the
  * last 30 days of Meta performance + Monday/Trengo qualitative context,
  * then composes a four-section summary:
- *  1. Winners — what to double down on next month
- *  2. Losers — what to pause / cut
- *  3. Focus — concrete priority for the next 30 days
- *  4. Risks — anything to watch (CPL drift, lead-quality signals, churn)
+ *  1. Winners - what to double down on next month
+ *  2. Losers - what to pause / cut
+ *  3. Focus - concrete priority for the next 30 days
+ *  4. Risks - anything to watch (CPL drift, lead-quality signals, churn)
  *
  * Output lands as a single inbox task per client, assigned to the CM.
  * The intent is "the CM walks in on the 1st, sees Pedro's review queued
@@ -116,7 +116,7 @@ OUTPUT REGELS:
 - Géén padding. Géén "het ziet er goed uit" zonder cijfers erachter.
 - Per sectie: 2-4 bullets, max 1 zin per bullet. Lege array is geldig als er niets te zeggen is.
 - Volg knowledge/campaigns.md kernregels:
-  · ad-fatigue is de default — winners moeten geïtereerd worden, niet "laten lopen"
+  · ad-fatigue is de default - winners moeten geïtereerd worden, niet "laten lopen"
   · budget verhogen is niet de oplossing (vast advertentiebudget)
   · CPL/CPA verandering <25% = ruis, niet rapporteren
   · lead-quality is leidend boven volume
@@ -169,7 +169,7 @@ function renderPerfBlock(
     .slice(0, 5)
 
   const fmtMoney = (n: number) => `€${n.toFixed(2)}`
-  const fmtCpl = (n: number | null) => (n === null ? "—" : `€${n.toFixed(2)}`)
+  const fmtCpl = (n: number | null) => (n === null ? "-" : `€${n.toFixed(2)}`)
 
   const lines: string[] = []
   lines.push(`Account totals (30d): spend ${fmtMoney(stats.totalSpend)}, ${stats.totalLeads} leads, avg CPL ${fmtCpl(stats.avgCpl)}`)
@@ -181,13 +181,13 @@ function renderPerfBlock(
   lines.push("")
   lines.push(`Winners (${winners.length}):`)
   for (const w of winners) {
-    lines.push(`  - "${w.adName}" — ${fmtMoney(w.spend)} spend, ${w.leads} leads, CPL ${fmtCpl(w.cpl)}`)
+    lines.push(`  - "${w.adName}" - ${fmtMoney(w.spend)} spend, ${w.leads} leads, CPL ${fmtCpl(w.cpl)}`)
   }
   if (winners.length === 0) lines.push("  - (geen winners in window)")
   lines.push("")
   lines.push(`Losers (${losers.length}):`)
   for (const l of losers) {
-    lines.push(`  - "${l.adName}" — ${fmtMoney(l.spend)} spend, ${l.leads} leads, CPL ${fmtCpl(l.cpl)} — ${l.reason}`)
+    lines.push(`  - "${l.adName}" - ${fmtMoney(l.spend)} spend, ${l.leads} leads, CPL ${fmtCpl(l.cpl)} - ${l.reason}`)
   }
   if (losers.length === 0) lines.push("  - (geen duidelijke losers)")
 
@@ -214,10 +214,10 @@ function renderQualitativeBlock(ctx: Awaited<ReturnType<typeof collectClientAiCo
     lines.push("")
   }
   if (ctx.billing) {
-    lines.push(`Billing: ${ctx.billing.status} — outstanding ${ctx.billing.outstanding ?? 0}`)
+    lines.push(`Billing: ${ctx.billing.status} - outstanding ${ctx.billing.outstanding ?? 0}`)
   }
   if (lines.length === 0) {
-    return "(Geen Monday/Trengo/Fathom context beschikbaar — Meta-only digest.)"
+    return "(Geen Monday/Trengo/Fathom context beschikbaar - Meta-only digest.)"
   }
   return lines.join("\n")
 }
@@ -227,14 +227,14 @@ function renderTaskBody(client: MondayClient, monthLabel: string, digest: Claude
     items.length === 0 ? "_(niets opvallends)_" : items.map((s) => `- ${s}`).join("\n")
 
   return [
-    `**Pedro maand-review — ${monthLabel}**`,
+    `**Pedro maand-review - ${monthLabel}**`,
     "",
     `> ${digest.headline}`,
     "",
-    "**🏆 Winners — verdubbel hierop:**",
+    "**🏆 Winners - verdubbel hierop:**",
     list(digest.winners),
     "",
-    "**⏸ Losers — pauzeren of vervangen:**",
+    "**⏸ Losers - pauzeren of vervangen:**",
     list(digest.losers),
     "",
     "**🎯 Focus voor de komende 30 dagen:**",
@@ -306,12 +306,12 @@ export async function runMonthlyDigestForClient(
   // CM resolution failure → assignee_id null, but still create the task.
   if (!cmUserId) {
     console.warn(
-      `[pedro/monthly-digest] no CM mapping for "${client.companyName || client.name}" (CM=${client.campaignManager || "—"}); creating unassigned task`,
+      `[pedro/monthly-digest] no CM mapping for "${client.companyName || client.name}" (CM=${client.campaignManager || "-"}); creating unassigned task`,
     )
   }
 
   const body = renderTaskBody(client, monthLabel, digest)
-  const title = `Pedro maand-review ${monthLabel} — ${client.companyName || client.name}`
+  const title = `Pedro maand-review ${monthLabel} - ${client.companyName || client.name}`
 
   try {
     const { data: inserted } = await supabase
@@ -374,7 +374,7 @@ export async function runMonthlyDigestForAllClients(
     errors: [],
   }
 
-  // Live clients only — onboarding/churned shouldn't get a "review last
+  // Live clients only - onboarding/churned shouldn't get a "review last
   // month" task. Same source-of-truth as refresh-pedro-insights.
   const cached = await readCache<{ current: MondayClient[] }>("monday_boards")
   const data = cached ?? (await fetchBothBoards())
@@ -383,7 +383,7 @@ export async function runMonthlyDigestForAllClients(
 
   const { monthYear, label } = previousMonth(now)
 
-  // Sequential — Anthropic is the bottleneck, not Supabase. Avoiding
+  // Sequential - Anthropic is the bottleneck, not Supabase. Avoiding
   // parallel fan-out keeps Claude rate-limit pressure low and the cron
   // log readable. ~30s per client × ~30 clients = ~15 min, well within
   // a 5-min Vercel cron budget after the cron clamp; chunk if it grows.

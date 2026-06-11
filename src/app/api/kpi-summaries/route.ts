@@ -16,7 +16,7 @@ export type KpiSummary = {
   /**
    * True when the prior comparison window was substantially live (≥80% of its
    * days had ad spend or Monday leads, and total spend > 0). When false, the UI
-   * MUST hide CPL change indicators — a freshly-launched client compared
+   * MUST hide CPL change indicators - a freshly-launched client compared
    * against a window where they weren't live yet would otherwise read as a wild
    * +/-100% swing that's purely an artefact of the launch date. Optional for
    * backwards-compat with older cached entries; missing → treat as reliable so
@@ -24,25 +24,25 @@ export type KpiSummary = {
    */
   prevPeriodReliable?: boolean
   /**
-   * 30d structural baseline — the 30 days immediately BEFORE the current 7d
+   * 30d structural baseline - the 30 days immediately BEFORE the current 7d
    * window (days 8-37 back from today). Drives Watch List bucketing instead
    * of prev-7d because prev-7d is too short to detect chronic problems:
    * a client running at €50 CPL for a month has a prev-7d baseline of €50,
    * so a week at €50 looks "stable" against the bad baseline. The 30d window
    * smooths weekly noise without losing the absolute quality signal.
    *
-   * Optional for back-compat with older cached entries — categorize() falls
+   * Optional for back-compat with older cached entries - categorize() falls
    * back to prevCpl when missing.
    */
   baselineCpl?: number
   baselineLeads?: number
   baselineSpend?: number
   /** True when the 30d baseline has ≥15 days of activity (spend or Monday
-   *  leads) — enough density to trust the average. Below that, fall back to
+   *  leads) - enough density to trust the average. Below that, fall back to
    *  prevCpl. */
   baselineReliable?: boolean
   /**
-   * 90d long baseline — drift cross-check for the 30d baseline. When the
+   * 90d long baseline - drift cross-check for the 30d baseline. When the
    * 30d itself is materially above the 90d (structurally degraded for a
    * month+), the Watch List blocks the action→watch recovery demote and
    * flags "structurally off-track" in the insight. Without this, a chronic
@@ -53,7 +53,7 @@ export type KpiSummary = {
   longBaselineSpend?: number
   /** True when 90d baseline has ≥45 days of activity. */
   longBaselineReliable?: boolean
-  /** True when client uses RL ad account but has no campaigns selected — data should be ignored */
+  /** True when client uses RL ad account but has no campaigns selected - data should be ignored */
   rlAccountNoCampaign?: boolean
   /** True when leads come from Meta `actions` because Monday returned no usable data */
   metaFallback?: boolean
@@ -65,7 +65,7 @@ export type KpiSummary = {
   mondayCrmConnected?: boolean
   /** True when the Meta insights fetch threw / errored for this client during this
    *  cron run. Distinguishes "Meta reports €0 spend" (legitimate) from "Meta is down"
-   *  (data-unknown) — downstream categorize() skips its live-but-dark trigger when
+   *  (data-unknown) - downstream categorize() skips its live-but-dark trigger when
    *  this is true so a Meta outage doesn't blanket every Live client into Action and
    *  poison the watchlist_client_state table that the morning Slack digest reads.
    *  Only set on the cron-written cache entries; never present on live-fetch responses. */
@@ -73,7 +73,7 @@ export type KpiSummary = {
   /**
    * Per-day spend & leads for the trailing 14 days, sorted oldest → newest. Used to render
    * inline sparklines in the Watch List. Days with no Meta activity are filled with zeros so
-   * the array length is always exactly the rendered window. Optional — older cache entries
+   * the array length is always exactly the rendered window. Optional - older cache entries
    * may not carry it.
    */
   dailyTrend?: Array<{ date: string; spend: number; leads: number }>
@@ -82,7 +82,7 @@ export type KpiSummary = {
 /**
  * Per-day rollup for one client, written by the daily cron and aggregated on-the-fly by
  * `/api/kpi-summaries` for any requested startDate/endDate. Days are sorted oldest → newest
- * and contain dense entries for the entire DAILY_HISTORY_DAYS window — missing days are
+ * and contain dense entries for the entire DAILY_HISTORY_DAYS window - missing days are
  * filled with zeros so range aggregation is just `.filter(d => d.date >= start && d.date <= end)`.
  */
 export type DailyRollup = {
@@ -116,7 +116,7 @@ function fmtDate(d: Date): string {
 // Last 7 days INCLUDING today (Roy 2026-05-22). Was previously
 // "yesterday + 6 days back" but leads landing during the day stayed
 // invisible until the next morning's cron. Today is included even
-// though Meta's intraday spend is partial — freshness > stability.
+// though Meta's intraday spend is partial - freshness > stability.
 function getLast7DaysRange() {
   const end = new Date()
   const start = new Date(end)
@@ -135,7 +135,7 @@ function getPrevious7DaysRange() {
 }
 
 /**
- * 30d structural baseline — the 30 days IMMEDIATELY BEFORE the given current
+ * 30d structural baseline - the 30 days IMMEDIATELY BEFORE the given current
  * window's start date. Non-overlapping by design: a fresh CPL spike doesn't
  * pollute its own baseline. Watch List categorize() reads this instead of
  * prev-7d.
@@ -155,7 +155,7 @@ export function getBaseline30dRange(currentStartDate?: string) {
 }
 
 /**
- * 90d long baseline — drift cross-check for the 30d. Same end-anchor as the
+ * 90d long baseline - drift cross-check for the 30d. Same end-anchor as the
  * 30d (day before current start) so the long baseline excludes the current
  * window too.
  */
@@ -196,7 +196,7 @@ import { isPrevPeriodReliable } from "@/lib/clients/kpi-window"
  * aggregation: when Monday reports 0 leads but Meta has them, treat Meta as
  * the source of truth.
  *
- * `minDaysWithActivity` is the reliability threshold — when fewer than this
+ * `minDaysWithActivity` is the reliability threshold - when fewer than this
  * many days in the window had spend or Monday leads, the baseline is too
  * sparse to trust and callers fall back to the shorter-window comparison.
  */
@@ -336,7 +336,7 @@ async function fetchSummary(
   prevStartDate: string,
   prevEndDate: string,
   selectedCampaignIds: Set<string>,
-  /** When true, force a fresh fetch from Monday/Meta — skips the Next.js
+  /** When true, force a fresh fetch from Monday/Meta - skips the Next.js
    *  60s fetch cache that otherwise serves stale data on the user-facing
    *  Refresh button. Without this, the route would bypass our own
    *  `kpi_daily:<id>` cache but still get stale upstream API responses. */
@@ -353,7 +353,7 @@ async function fetchSummary(
   // window + its prev range). Without this expansion, picking a custom date
   // range outside the trailing 14 days (e.g. "last month") would return zeros
   // because the Meta call only pulled the recent fortnight. The expansion is
-  // cheap — Meta paginates the daily insights and the route already lives
+  // cheap - Meta paginates the daily insights and the route already lives
   // behind a per-client rate limit.
   const trendRange = getTrendRange()
   const metaFetchStart = prevStartDate < trendRange.startDate ? prevStartDate : trendRange.startDate
@@ -384,7 +384,7 @@ async function fetchSummary(
   // ("2026-05-17 06:50:00"); a naive lex-compare against a YYYY-MM-DD end
   // date drops every item on the end-date because " 06:50:00" sorts after
   // the end-date string. Normalize to the YYYY-MM-DD prefix. Same fix as
-  // calculateKpis() in lib/clients/kpis.ts — this code path was missed
+  // calculateKpis() in lib/clients/kpis.ts - this code path was missed
   // when that one was patched (Roy 2026-05, weekly update showed Mon-Sat
   // instead of Mon-Sun).
   const inMondayDateRange = (rawDate: string, s: string, e: string): boolean => {
@@ -404,7 +404,7 @@ async function fetchSummary(
   const prevAdSpend = prevFiltered.reduce((sum, i) => sum + i.spend, 0)
 
   // Use Monday lead counts when available, otherwise fall back to Meta. We treat "Monday
-  // returned 0 leads in this window while Meta reports leads" the same as a fetch failure —
+  // returned 0 leads in this window while Meta reports leads" the same as a fetch failure -
   // it covers access issues, broken Zapier sync, wrong column mapping, etc. Appointments
   // can only come from Monday CRM, so they always read from `items`.
   const mondayLeads = monday.ok
@@ -423,7 +423,7 @@ async function fetchSummary(
   const cpl = leads > 0 ? adSpend / leads : 0
   const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
 
-  // Coverage check on the prev window — Meta data is sparse (no row for zero-spend
+  // Coverage check on the prev window - Meta data is sparse (no row for zero-spend
   // days), so we collect distinct dates that had spend and union them with Monday
   // lead dates when CRM is connected. Both contribute to "the client was live that
   // day" since either signal proves activity.
@@ -433,7 +433,7 @@ async function fetchSummary(
   }
   if (monday.ok) {
     for (const item of items) {
-      // Normalize the same way as inMondayDateRange — strip the time off
+      // Normalize the same way as inMondayDateRange - strip the time off
       // dateCreated before comparing AND before adding to the set, so a set
       // entry is a clean YYYY-MM-DD that lines up with `d.date` rows above.
       const day = item.dateCreated.match(/(\d{4}-\d{2}-\d{2})/)?.[1]
@@ -450,7 +450,7 @@ async function fetchSummary(
     ? fillTrend(
         metaByDate.map((d) => {
           if (monday.ok) {
-            // Strict equality on the date portion only — Monday's dateCreated
+            // Strict equality on the date portion only - Monday's dateCreated
             // includes a time so the legacy `i.dateCreated === d.date`
             // comparison silently returned 0 for every day.
             const mondayLeadsForDay = items.filter(
@@ -488,7 +488,7 @@ async function fetchSummary(
  * missing from `kpi_daily`) and the cold-start live-fetch at the bottom of POST.
  *
  * Before reading the table, runs the same auto-select pass that
- * `/api/clients/[id]/campaigns` GET does — any ACTIVE non-RL Meta campaign that has
+ * `/api/clients/[id]/campaigns` GET does - any ACTIVE non-RL Meta campaign that has
  * no row yet gets upserted with is_selected=true. Without this, the watchlist's
  * live-fetch (force-refresh, cache miss, brand-new client) keeps filtering by
  * stale selections and reports "No spend or leads (7d)" while the client page
@@ -507,11 +507,11 @@ async function loadSelectedCampaigns(
     .select("id, monday_item_id, meta_ad_account_id")
     .in("monday_item_id", mondayItemIds)
 
-  // Auto-select pass — best-effort; failures here just mean the existing selections
+  // Auto-select pass - best-effort; failures here just mean the existing selections
   // get used as-is, same as if this step didn't exist.
   // Skipped when the caller only needs current selections (e.g. the self-heal
   // lookup just wants to know "does this client have ANY selected campaign?")
-  // — the cron handles auto-selection daily so we don't need to do it on every
+  // - the cron handles auto-selection daily so we don't need to do it on every
   // request, and the Meta fetch makes this the hottest cost in the route.
   if (!options.skipAutoSelect) {
     try {
@@ -556,14 +556,14 @@ async function loadSelectedCampaigns(
 }
 
 /**
- * Detect cached `rlAccountNoCampaign: true` entries that are now stale — i.e. the client
+ * Detect cached `rlAccountNoCampaign: true` entries that are now stale - i.e. the client
  * has selected campaigns in `client_campaigns` but the flag persists in cache.
  *
  * Why this happens: the campaigns POST endpoint runs `invalidateKpiCachesForClients` as
  * fire-and-forget (`void invalidateKpiCachesForClients(...)`) so it doesn't block the
  * response. On Vercel the function execution is killed once the response is sent, and
  * the cache write to `cache_store` can be cut off mid-flight. Result: the user picks
- * campaigns, the page says "saved", but the watchlist keeps showing "RL ad account —
+ * campaigns, the page says "saved", but the watchlist keeps showing "RL ad account -
  * no campaigns selected" until the next 30-min cron rewrites the cache.
  *
  * This helper is the self-heal: cheap Supabase lookup against `client_campaigns`,
@@ -616,7 +616,7 @@ async function batchProcess(
     settled.forEach((result, j) => {
       if (result.status === "fulfilled") {
         results[batch[j].mondayItemId] = result.value.summary
-        // Only persist activity when Monday actually responded — a failed fetch
+        // Only persist activity when Monday actually responded - a failed fetch
         // (e.g. access denied) shouldn't flip a client to inactive.
         if (batch[j].clientBoardId && result.value.mondayOk) {
           activityUpdates.push({ mondayItemId: batch[j].mondayItemId, active: result.value.mondayActive })
@@ -643,7 +643,7 @@ async function batchProcess(
  * callers can ask for any [startDate, endDate] range (e.g., last week's
  * Mon-Sun for the weekly-update queue).
  *
- * Internal call only — assumes admin context. Don't expose without auth.
+ * Internal call only - assumes admin context. Don't expose without auth.
  */
 export async function fetchKpisForWindow(args: {
   clients: ClientInput[]
@@ -692,7 +692,7 @@ export async function POST(req: NextRequest) {
   // Single-client fast path: the slide-over Home tab calls this with exactly one
   // client. Reading the entire monolithic `kpi_daily` blob (1-2MB, all clients)
   // just to extract one entry is the dominant cost of opening a panel. The cron
-  // also writes per-client `kpi_daily:<id>` keys — one Supabase select returns
+  // also writes per-client `kpi_daily:<id>` keys - one Supabase select returns
   // ~25KB and the panel renders within ~50ms instead of waiting for the bulk read
   // and parse. Stays disabled on `?force=1` so the Refresh button still rewarms
   // the canonical 7d cache via live-fetch.
@@ -726,14 +726,14 @@ export async function POST(req: NextRequest) {
         )
       }
     }
-    // Fall through — per-client cache miss or stale flag. Existing logic below
+    // Fall through - per-client cache miss or stale flag. Existing logic below
     // covers it (will read the monolithic blob next, or live-fetch).
   }
 
   // Date-range path: when the caller specifies a window, aggregate from the daily
   // rollup cache. Range is exclusive of today (cache only contains up to yesterday).
   // If the daily cache is empty we fall straight through to a LIVE fetch with the
-  // REQUESTED dates — never to the 7d cache. The old fall-through quietly served
+  // REQUESTED dates - never to the 7d cache. The old fall-through quietly served
   // 7d numbers for any custom range, which looked indistinguishable from a working
   // filter and was the source of "data doesn't change when I change the range".
   if (hasRequestedRange) {
@@ -759,7 +759,7 @@ export async function POST(req: NextRequest) {
           staleSet = await findStaleRlNoCampaign(supabaseShared, flaggedIds)
           if (staleSet.size > 0) {
             console.log(
-              `[kpi-summaries] self-heal (date-range): ${staleSet.size} stale rlAccountNoCampaign entries — routing to live-fetch:`,
+              `[kpi-summaries] self-heal (date-range): ${staleSet.size} stale rlAccountNoCampaign entries - routing to live-fetch:`,
               [...staleSet],
             )
           }
@@ -808,8 +808,8 @@ export async function POST(req: NextRequest) {
         headers: { "Cache-Control": "private, s-maxage=60, stale-while-revalidate=300" },
       })
     }
-    console.log("[kpi-summaries] daily cache empty — live fetch for requested range", body.startDate, body.endDate)
-    // fall through to live fetch (uses the requested dates — see below)
+    console.log("[kpi-summaries] daily cache empty - live fetch for requested range", body.startDate, body.endDate)
+    // fall through to live fetch (uses the requested dates - see below)
   }
 
   // 7d cache shortcut: only valid when the caller didn't ask for a custom range.
@@ -821,7 +821,7 @@ export async function POST(req: NextRequest) {
       const missing: ClientInput[] = []
 
       // Self-heal: any cached entry with `rlAccountNoCampaign: true` whose client now has
-      // selected campaigns is stale (cache invalidation never landed — see helper for the
+      // selected campaigns is stale (cache invalidation never landed - see helper for the
       // backstory). Validate against `client_campaigns` and route stale clients to the
       // live-fetch path below so they get a fresh, flag-free entry.
       const flaggedIds = body.clients
@@ -835,7 +835,7 @@ export async function POST(req: NextRequest) {
           staleSet = await findStaleRlNoCampaign(supabaseShared, flaggedIds)
           if (staleSet.size > 0) {
             console.log(
-              `[kpi-summaries] self-heal: ${staleSet.size} stale rlAccountNoCampaign entries — routing to live-fetch:`,
+              `[kpi-summaries] self-heal: ${staleSet.size} stale rlAccountNoCampaign entries - routing to live-fetch:`,
               [...staleSet],
             )
           }
@@ -855,7 +855,7 @@ export async function POST(req: NextRequest) {
         }
       }
       // Live-fetch missing clients so newly-assigned RL campaigns and
-      // brand-new clients aren't blank — same pattern as the date-range path.
+      // brand-new clients aren't blank - same pattern as the date-range path.
       if (missing.length > 0) {
         try {
           const supabase = supabaseShared ?? (await createAdminClient())
@@ -897,7 +897,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Live fetch — uses the REQUESTED window when provided, otherwise last 7d.
+  // Live fetch - uses the REQUESTED window when provided, otherwise last 7d.
   // Cold-start or `?force=1` for the default view also reaches here.
   const { startDate, endDate } = hasRequestedRange
     ? { startDate: body.startDate!, endDate: body.endDate! }
@@ -912,7 +912,7 @@ export async function POST(req: NextRequest) {
     body.clients.map((c) => c.mondayItemId),
   )
 
-  // `force` reaches here on Refresh-button traffic — pass it through so the
+  // `force` reaches here on Refresh-button traffic - pass it through so the
   // upstream Monday + Meta fetches skip their own 60s caches. Without this,
   // a refresh would bypass the kpi_daily cache but still receive a 60s-stale
   // Monday board, which is exactly the "1 lead in Monday, dashboard says 0
@@ -924,7 +924,7 @@ export async function POST(req: NextRequest) {
 
   // On force-refresh of the DEFAULT (7d) view, merge fresh results into the
   // shared 7d cache so other consumers see the up-to-date numbers. A custom
-  // date range must never write to this cache — it'd serve March numbers as
+  // date range must never write to this cache - it'd serve March numbers as
   // "today's" KPIs to the watchlist and Slack summaries.
   if (force && !hasRequestedRange && Object.keys(summaries).length > 0) {
     const existing = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}

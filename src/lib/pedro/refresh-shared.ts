@@ -11,7 +11,7 @@
  *
  * Roy 2026-05-23: PedroRefresh used to be creative-only. Adding angles,
  * scripts and ad copy as siblings means triplicating ~200 lines of glue.
- * `runPedroRefresh` is that glue extracted once — each route just supplies
+ * `runPedroRefresh` is that glue extracted once - each route just supplies
  * the stage-specific prompt builder and result parser.
  */
 
@@ -59,7 +59,7 @@ export type RefreshWindow = { start: string; end: string; days: number }
 export type RefreshEnvelope<TProposal> =
   | {
       mode: "iterate-winners"
-      /** Row id in `pedro_refreshes` — null when persistence failed. UI
+      /** Row id in `pedro_refreshes` - null when persistence failed. UI
        *  uses this to trigger the auto-Drive-save + (future) Meta push. */
       refreshId?: string | null
       clientId: string
@@ -102,11 +102,11 @@ export type RefreshPromptContext = {
   winners: ScoredAd[]
   losers: ScoredAd[]
   allScored: ScoredAd[]
-  /** Compiled "Eerdere {stage}" block — already trimmed/formatted, drop into prompt verbatim. */
+  /** Compiled "Eerdere {stage}" block - already trimmed/formatted, drop into prompt verbatim. */
   pastStageContext: string
-  /** Compiled past brief block — for tone/USP/ICP continuity. */
+  /** Compiled past brief block - for tone/USP/ICP continuity. */
   pastBriefContext: string
-  /** Compiled cross-client same-vertical winners block — empty when no sector. */
+  /** Compiled cross-client same-vertical winners block - empty when no sector. */
   crossClientContext: string
 }
 
@@ -129,15 +129,15 @@ function priorRange(days: number): { start: string; end: string } {
 
 /**
  * Run the full per-stage refresh pipeline. Returns either:
- *  - { kind: "ok", response } — RefreshEnvelope wrapped result
- *  - { kind: "error", error, status } — pass-through to NextResponse
+ *  - { kind: "ok", response } - RefreshEnvelope wrapped result
+ *  - { kind: "error", error, status } - pass-through to NextResponse
  *
  * The caller (per-stage API route) supplies:
  *  - `stage` (drives past-context lookup)
  *  - `buildPrompt(ctx)` returning the Claude prompt string
  *  - `parseProposals(rawJson)` extracting stage-specific proposals from the
  *    parsed Claude response. Returns `[]` when none.
- *  - `noWinnersSummary(opts)` — copy for the no-winners path (varies per
+ *  - `noWinnersSummary(opts)` - copy for the no-winners path (varies per
  *    stage; e.g. angles says "test a new angle", scripts says "rewrite hooks")
  */
 export async function runPedroRefresh<TProposal>(args: {
@@ -152,7 +152,7 @@ export async function runPedroRefresh<TProposal>(args: {
   noWinnersSummary: (opts: { days: number; stats: ReturnType<typeof computeAccountStats>; loserCount: number }) => string
   /** Optional model override; defaults to Sonnet 4. */
   model?: string
-  /** Optional max tokens override; defaults to 4000 — enough for 3-5 proposals. */
+  /** Optional max tokens override; defaults to 4000 - enough for 3-5 proposals. */
   maxTokens?: number
 }): Promise<{ kind: "ok"; response: RefreshEnvelope<TProposal> } | { kind: "error"; error: string; status: number }> {
   const { clientId, days, stage, buildPrompt, parseProposals, noWinnersSummary } = args
@@ -198,10 +198,10 @@ export async function runPedroRefresh<TProposal>(args: {
     warnings.push("Window-spend is laag (<€100); aanbevelingen zijn richtinggevend.")
   }
   if (stats.totalLeads === 0) {
-    warnings.push("Geen leads in dit window — geen baseline voor verdict.")
+    warnings.push("Geen leads in dit window - geen baseline voor verdict.")
   }
   warnings.push(
-    "Lead-quality (Monday CRM updates per UTM) zit nog niet in deze analyse — winnaars zijn 'goedkoop', niet automatisch 'goed'. Verifieer in Monday voor je itereert.",
+    "Lead-quality (Monday CRM updates per UTM) zit nog niet in deze analyse - winnaars zijn 'goedkoop', niet automatisch 'goed'. Verifieer in Monday voor je itereert.",
   )
 
   const statsBlock: AccountStatsBlock = {
@@ -284,7 +284,7 @@ export async function runPedroRefresh<TProposal>(args: {
   try {
     parsedJson = JSON.parse(cleaned)
   } catch {
-    return { kind: "error", error: "Pedro gaf ongeldig antwoord — probeer opnieuw.", status: 500 }
+    return { kind: "error", error: "Pedro gaf ongeldig antwoord - probeer opnieuw.", status: 500 }
   }
 
   const { summary, proposals } = parseProposals(parsedJson)
@@ -329,15 +329,15 @@ WINDOW: laatste ${ctx.days} dagen (${ctx.window.start} → ${ctx.window.end})
 
 ACCOUNT STATS:
 - Total spend: €${ctx.stats.totalSpend.toFixed(0)}, ${ctx.stats.totalLeads} leads
-- Account avg CPL: ${ctx.stats.avgCpl != null ? `€${ctx.stats.avgCpl.toFixed(2)}` : "—"}
-- Account avg CTR: ${ctx.stats.avgCtr != null ? `${ctx.stats.avgCtr.toFixed(2)}%` : "—"}
+- Account avg CPL: ${ctx.stats.avgCpl != null ? `€${ctx.stats.avgCpl.toFixed(2)}` : "-"}
+- Account avg CTR: ${ctx.stats.avgCtr != null ? `${ctx.stats.avgCtr.toFixed(2)}%` : "-"}
 - Active ads (≥€10 spend): ${ctx.stats.activeAdCount}
 - Trend vs prior ${ctx.days}d: ${trendLine}
 
 WINNERS (sorted by spend, top 5):
 ${winnersBlock}
 
-LOSERS (top 3 by spend — these are NOT to copy):
+LOSERS (top 3 by spend - these are NOT to copy):
 ${losersBlock}
 
 ALLE ADS (top 10 by spend):

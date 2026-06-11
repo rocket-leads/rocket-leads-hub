@@ -55,7 +55,7 @@ export function AgreementSection({ mondayItemId }: Props) {
       }),
   })
 
-  // Local draft — fed by the server fetch on first load and after each save.
+  // Local draft - fed by the server fetch on first load and after each save.
   // Edits stay local until Save, so Discard is a one-click revert.
   const [draft, setDraft] = useState<Agreement | null>(null)
   const [saving, setSaving] = useState(false)
@@ -142,7 +142,7 @@ export function AgreementSection({ mondayItemId }: Props) {
       title={t("client.agreement.title", locale)}
       subtitle={t("client.agreement.subtitle", locale)}
     >
-      {/* Totals — same SummaryCard pattern as the invoices section above */}
+      {/* Totals - same SummaryCard pattern as the invoices section above */}
       <div className="grid grid-cols-2 gap-3">
         <SummaryCard title={t("client.billing.summary.mrr", locale)} value={fmtEuro(mrr)} sub={t("client.billing.summary.mrr.sub", locale)} />
         <SummaryCard title={t("client.billing.summary.ad_budget", locale)} value={fmtEuro(draft.ad_budget)} sub={t("client.billing.summary.ad_budget.sub", locale)} />
@@ -285,7 +285,7 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
 }
 
 /** Matches the toggle pattern used in KpiVisibilityToggle so settings across
- *  the dashboard feel consistent — green when on, muted when off. */
+ *  the dashboard feel consistent - green when on, muted when off. */
 function ToggleSwitch({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
     <button

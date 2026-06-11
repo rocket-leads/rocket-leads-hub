@@ -5,7 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select"
 
 export type FilterConfig = {
-  /** Stable key — used for React mapping. */
+  /** Stable key - used for React mapping. */
   key: string
   /** Section label shown above the dropdown (e.g., "Status"). */
   label: string

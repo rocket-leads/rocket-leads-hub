@@ -13,7 +13,7 @@ export type AgreementSummary = {
  * `monday_item_id` so the Clients overview table (which is keyed off Monday
  * IDs, not Hub UUIDs) can map directly without an extra lookup.
  *
- * Cheap query — single Supabase round-trip with a join — so we don't bother
+ * Cheap query - single Supabase round-trip with a join - so we don't bother
  * with the cron-cache pattern used for Stripe / KPIs. Browser revalidates
  * every minute via the cache-control header.
  */
@@ -35,7 +35,7 @@ export async function GET() {
   const summaries: Record<string, AgreementSummary> = {}
   for (const row of data ?? []) {
     // Supabase typing for the joined `clients!inner` returns it as either a
-    // single row or an array depending on the relationship — handle both.
+    // single row or an array depending on the relationship - handle both.
     const joined = row.clients as
       | { monday_item_id: string }
       | { monday_item_id: string }[]

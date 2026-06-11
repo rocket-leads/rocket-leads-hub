@@ -16,7 +16,6 @@ import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { ClientAccess } from "@/lib/clients/access"
 import type { CurrentUser } from "@/app/(dashboard)/inbox/_components/inbox-view"
-import { mondayStatusToHub } from "@/lib/clients/status"
 import { cn } from "@/lib/utils"
 
 /**
@@ -35,7 +34,7 @@ type ClientDetailResponse = {
   client: MondayClient
   supabaseClientId: string
   access: ClientAccess
-  /** Hub-only billing fields — no Monday column behind them. Optional
+  /** Hub-only billing fields - no Monday column behind them. Optional
    *  because cached placeholder responses (from the boards list) don't
    *  have them; the network refetch fills them in. */
   hubBilling?: {
@@ -49,14 +48,14 @@ type Props = {
   onClose: () => void
   currentUser: CurrentUser
   /** Client object already cached by the parent (clients overview or
-   *  Watch List) — pulled from the same boards-list that drives the
+   *  Watch List) - pulled from the same boards-list that drives the
    *  row the user just clicked. When provided, the slide-over uses it
    *  as React Query placeholder data so the panel renders instantly
    *  (with permissive access flags + empty supabaseClientId) while the
    *  network call refines those two fields in the background.
    *
    *  Without this prop the panel waits for the Monday fetch (~500-
-   *  2000ms) before showing anything — that's the "traag" complaint
+   *  2000ms) before showing anything - that's the "traag" complaint
    *  Roy filed on 2026-05-18. */
   clientPreview?: MondayClient | null
   /** Full clients list for the in-panel quick-switch search. When provided
@@ -68,7 +67,7 @@ type Props = {
 }
 
 // Permissive defaults used while the real access query is still in
-// flight. Matches the experience an admin would have — anything more
+// flight. Matches the experience an admin would have - anything more
 // restrictive risks hiding tabs the user actually has access to and
 // then flashing them in 500ms later. The real values overwrite this
 // as soon as the network response lands.
@@ -86,7 +85,7 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
   // Optimistic + deferred close. `onClose` runs `router.replace` in the
   // parent to clear the `?client=` param; on the watchlist (1.6k LOC,
   // 44 hooks) and clients overview, that re-evaluates `useSearchParams`
-  // and triggers a full parent re-render — 100-500ms of main-thread
+  // and triggers a full parent re-render - 100-500ms of main-thread
   // work. That re-render competes with the 120ms close animation, so
   // the slide-over felt frozen and the page underneath felt sluggish
   // even though it was already mounted and didn't need new data.
@@ -118,7 +117,7 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
     staleTime: 60 * 1000,
     // Placeholder data renders the panel immediately with whatever the
     // parent already had cached. Once the fetch resolves the data is
-    // replaced — `isPlaceholderData` lets the UI tell the two apart if
+    // replaced - `isPlaceholderData` lets the UI tell the two apart if
     // we want to differentiate (currently we don't, it just works).
     placeholderData:
       clientPreview && clientId === clientPreview.mondayItemId
@@ -132,7 +131,7 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
 
   // Keyboard shortcuts: Esc closes (already handled by base-ui via Dialog,
   // but we listen here too so the URL `?client=` param clears). ArrowLeft
-  // also closes — Roy wants "press ← to go back" as a muscle-memory shortcut.
+  // also closes - Roy wants "press ← to go back" as a muscle-memory shortcut.
   // We skip ArrowLeft when the user is typing into an input/textarea so it
   // doesn't hijack normal text-cursor navigation inside the switcher search,
   // task composer, etc.
@@ -169,17 +168,17 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
             "fixed inset-0 isolate z-50 bg-black/40 backdrop-blur-sm",
             // Click-to-dismiss + a clear cursor + a subtle hover-darken so the
             // dim strip on the left reads as interactive instead of dead space.
-            // The hover delta is small on purpose — strong enough to notice on
+            // The hover delta is small on purpose - strong enough to notice on
             // mouse-over but not so loud it competes with the panel content.
             "cursor-pointer transition-colors hover:bg-black/55",
-            // Backdrop fades faster than the panel slides — feels snappier and the
+            // Backdrop fades faster than the panel slides - feels snappier and the
             // panel reads as the leading element of the transition.
             "duration-100 ease-out",
             "data-open:animate-in data-open:fade-in-0",
             "data-closed:animate-out data-closed:fade-out-0",
           )}
         />
-        {/* Floating nav header — sits in the dimmed backdrop strip on the
+        {/* Floating nav header - sits in the dimmed backdrop strip on the
             left of the panel. Always shows a prominent Back button (Roy
             asked for a "big, clearly clickable" affordance); the search
             below it appears whenever the parent passes the client list +
@@ -197,7 +196,7 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
             "fixed inset-y-0 right-0 z-50 w-full lg:w-[70%] max-w-[1500px]",
             "bg-background shadow-2xl ring-1 ring-foreground/10 outline-none",
             "flex flex-col",
-            // 120ms with ease-out matches Linear/Discord feel — fast enough to
+            // 120ms with ease-out matches Linear/Discord feel - fast enough to
             // feel instant on click but long enough that the slide motion still
             // reads as deliberate.
             "duration-[120ms] ease-out",
@@ -205,7 +204,7 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
             "data-closed:animate-out data-closed:slide-out-to-right",
           )}
         >
-          {/* Close button — canonical: Button ghost size=icon-sm + lucide X. */}
+          {/* Close button - canonical: Button ghost size=icon-sm + lucide X. */}
           <DialogPrimitive.Close
             render={
               <Button
@@ -220,7 +219,7 @@ export function ClientSlideOver({ clientId, onClose, currentUser, clientPreview,
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
 
-          {/* Hidden title for accessibility — base-ui requires one */}
+          {/* Hidden title for accessibility - base-ui requires one */}
           <DialogPrimitive.Title className="sr-only">
             Client details
           </DialogPrimitive.Title>
@@ -280,7 +279,7 @@ function SlideOverContent({
     <>
       <ClientHeader client={client} canViewBilling={access.canViewBilling} />
       <div className="mt-4">
-        {/* Quick-add bar — Monday-parity compose, sits above the tabs so
+        {/* Quick-add bar - Monday-parity compose, sits above the tabs so
             it's reachable from every view. Roy 2026-06-09. */}
         <ClientQuickAdd
           mondayItemId={client.mondayItemId}
@@ -307,7 +306,7 @@ function SlideOverContent({
  * underneath. Sits in the dimmed backdrop strip to the left of the panel so
  * it's always reachable without overlapping the client content.
  *
- * The Back button is the primary affordance — Roy explicitly wanted a "big,
+ * The Back button is the primary affordance - Roy explicitly wanted a "big,
  * clearly clickable" return path. The search is secondary: a power-user
  * shortcut to swap clients without leaving the slide-over.
  */
@@ -327,7 +326,7 @@ function SlideOverNavHeader({
   const hasSwitcher = clients && onSelectClient && clients.length > 1
 
   return (
-    // Floating container — `pointer-events-none` lets the backdrop receive
+    // Floating container - `pointer-events-none` lets the backdrop receive
     // clicks (click-to-close still works) while the inner panel re-enables
     // its own events. `stopPropagation` on every interactive child prevents
     // bubble-up to the backdrop.
@@ -336,7 +335,7 @@ function SlideOverNavHeader({
       onClick={(e) => e.stopPropagation()}
     >
       <div className="pointer-events-auto w-full max-w-[420px] flex flex-col gap-2.5">
-        {/* Back button — full-width within the floating panel, centered text,
+        {/* Back button - full-width within the floating panel, centered text,
             ArrowLeft icon so the affordance reads visually before the label. */}
         <button
           type="button"
@@ -354,7 +353,7 @@ function SlideOverNavHeader({
           <span className="text-sm font-medium">{backLabel}</span>
         </button>
 
-        {/* Switcher — only rendered when the parent supplies a client list
+        {/* Switcher - only rendered when the parent supplies a client list
             + selection callback (clients overview + watchlist do; raw
             deep-link contexts may not). */}
         {hasSwitcher && (
@@ -374,7 +373,7 @@ function SlideOverNavHeader({
 /**
  * Quick-switch search bar that floats in the dimmed backdrop strip on the
  * left of the slide-over panel. Lets the user jump from client A to client B
- * without closing the panel, scrolling the table, and reopening — the URL is
+ * without closing the panel, scrolling the table, and reopening - the URL is
  * just rewritten in place and the panel content swaps. Cmd+K (Ctrl+K on
  * non-Mac) focuses the input from anywhere while the panel is open.
  *
@@ -408,17 +407,13 @@ function ClientSwitcher({
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  // Default preview (empty query) is live-only — onboarding/on-hold/churned
-  // clients aren't ones a CM/AM wants to *passively* switch to. But once the
-  // user actively types a query, search spans the full list so they can still
-  // jump to that one on-hold client by name without leaving the panel.
+  // No results until the user starts typing - keeps the dimmed strip
+  // calm. Roy 2026-06-11. Once the query is non-empty, search spans the
+  // full client list (incl. on-hold/onboarding/churned) so the user can
+  // jump to any client by name without leaving the panel.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) {
-      return clients
-        .filter((c) => c.mondayItemId !== currentId && mondayStatusToHub(c.campaignStatus, "current") === "live")
-        .slice(0, 8)
-    }
+    if (!q) return [] as MondayClient[]
     const hits: MondayClient[] = []
     for (const c of clients) {
       if (c.mondayItemId === currentId) continue
@@ -459,7 +454,7 @@ function ClientSwitcher({
   const locale = useLocale()
 
   return (
-    // Inner panel only — the outer floating wrapper lives on
+    // Inner panel only - the outer floating wrapper lives on
     // `SlideOverNavHeader` so the Back button + this switcher share one
     // visual frame.
     <div

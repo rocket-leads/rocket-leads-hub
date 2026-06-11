@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * Migration drift detector — surfaces SQL files that exist in
+ * Migration drift detector - surfaces SQL files that exist in
  * `supabase/migrations/` but haven't been applied to the linked Supabase
  * project. Pairs with the Health tab so we never again ship a feature
  * that silently breaks because nobody ran the migration (see: empty

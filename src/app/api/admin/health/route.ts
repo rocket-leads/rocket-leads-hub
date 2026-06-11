@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  * validity, and the last 24h of errored runs. Powers the Health tab inside
  * Settings (formerly /settings/health). Admin-only.
  *
- * Shape mirrors what the previous server-rendered page consumed — keep this
+ * Shape mirrors what the previous server-rendered page consumed - keep this
  * stable so the client tab stays a thin renderer.
  */
 export async function GET() {

@@ -64,7 +64,7 @@ export function ComposerDialog({
   const [error, setError] = useState<string | null>(null)
 
   // Reset form on open / when defaults change. Due date defaults to today on
-  // every fresh open so the AM doesn't have to type/click — Roy's directive.
+  // every fresh open so the AM doesn't have to type/click - Roy's directive.
   // Pre-fill from chat-derived defaults when present (e.g. "Make task" on a
   // Trengo message); otherwise reset to empty so the standalone toolbar
   // open doesn't inherit stale chat state.
@@ -139,7 +139,7 @@ export function ComposerDialog({
         </DialogHeader>
 
         <div className="space-y-5">
-          {/* Kind switcher — promoted to full-weight segmented control so the
+          {/* Kind switcher - promoted to full-weight segmented control so the
               user immediately sees they're choosing between a one-way Update
               and an actionable Task. */}
           <div className="inline-flex rounded-lg border border-border p-1 text-sm bg-muted/40">
@@ -160,7 +160,7 @@ export function ComposerDialog({
             ))}
           </div>
 
-          {/* Client + Assignee live on the same row when both are needed —
+          {/* Client + Assignee live on the same row when both are needed -
               they're the two "who is this about / who acts" knobs and belong
               together. When the dialog is locked to a client, assignee
               stretches full-width on its own row. */}
@@ -305,7 +305,7 @@ function ClientCombobox({
   }, [open])
 
   const filtered = useMemo(() => {
-    // Sort: live clients first (most-used in practice — those AMs work on
+    // Sort: live clients first (most-used in practice - those AMs work on
     // every day), alphabetical within each group. When the user types, the
     // filter still respects this order so live matches lead the dropdown.
     const sorted = [...clients].sort((a, b) => {

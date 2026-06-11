@@ -96,7 +96,7 @@ export function PedroDeliverableCard({ mondayItemId }: { mondayItemId: string })
     )
   }
 
-  // Empty state — no deliverable saved yet
+  // Empty state - no deliverable saved yet
   if (!deliverable) {
     return (
       <div className="rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] flex items-center justify-between gap-3">
@@ -174,7 +174,7 @@ export function PedroDeliverableCard({ mondayItemId }: { mondayItemId: string })
           </div>
         </div>
 
-        {/* Per-stage version chips — quick provenance scan without opening the doc */}
+        {/* Per-stage version chips - quick provenance scan without opening the doc */}
         <div className="mt-3 flex flex-wrap gap-1.5">
           {stagesIncluded.map(([label, v]) => (
             <span
@@ -186,13 +186,13 @@ export function PedroDeliverableCard({ mondayItemId }: { mondayItemId: string })
               }`}
               title={v != null ? `${label}: opgeslagen versie ${v}` : `${label}: geen versie opgeslagen`}
             >
-              {label}{v != null ? ` v${v}` : " —"}
+              {label}{v != null ? ` v${v}` : " -"}
             </span>
           ))}
         </div>
       </div>
 
-      {/* View modal — inline markdown preview. Pre-wraps the raw .md so
+      {/* View modal - inline markdown preview. Pre-wraps the raw .md so
           the CM sees exactly what the client would get. */}
       {viewOpen && (
         <div

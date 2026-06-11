@@ -20,7 +20,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js"
  * Usage (client):
  *   useRealtimeInvalidation()  // mount once at the root of the app
  *
- * Channel name is intentionally a constant — one channel for everything,
+ * Channel name is intentionally a constant - one channel for everything,
  * filtered client-side by queryKey. Cheaper than a channel per table and
  * easier to scope-creep into.
  */
@@ -30,7 +30,7 @@ let broadcaster: ReturnType<typeof createSupabaseClient> | null = null
 
 function getBroadcaster() {
   if (broadcaster) return broadcaster
-  // Use anon key for broadcasts — they're public-ish (any open Hub tab
+  // Use anon key for broadcasts - they're public-ish (any open Hub tab
   // can listen) and the payload is just a queryKey, no secrets.
   broadcaster = createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,7 +45,7 @@ function getBroadcaster() {
 /**
  * Broadcast a React Query invalidation to every open Hub tab. `queryKey`
  * matches the same array shape you pass to `useQuery({ queryKey: [...] })`.
- * Safe to call from cron routes, webhook receivers, server actions —
+ * Safe to call from cron routes, webhook receivers, server actions -
  * anywhere that mutates data the UI is showing.
  *
  * Failures are swallowed (and logged) so a broken broadcaster never takes

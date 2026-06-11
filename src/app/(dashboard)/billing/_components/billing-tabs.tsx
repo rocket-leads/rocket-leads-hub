@@ -24,7 +24,7 @@ const TABS: TopTab<Tab>[] = [
 ]
 
 /**
- * Tabs wrapper for the Billing page — splits the original "what's coming up"
+ * Tabs wrapper for the Billing page - splits the original "what's coming up"
  * view from the "what already went out" view. Future = the upcoming-invoice
  * timeline finance acts on today; Past = the audit/chase view of everything
  * Stripe has on record (paid + open + overdue + void).
@@ -36,20 +36,20 @@ export function BillingTabs({
 }: {
   futureGroups: BillingGroup[]
   pastInvoices: PastInvoiceRow[]
-  /** Distinct admin labels currently in use across all clients — feeds the
+  /** Distinct admin labels currently in use across all clients - feeds the
    *  Admin column's edit popover so finance can pick any value Monday already
    *  knows about. */
   adminOptions: string[]
 }) {
   const [tab, setTab] = useState<Tab>("future")
   // Tab badges count "what needs action now":
-  //   Future = invoices due this week (overdue + today + through Sunday) —
+  //   Future = invoices due this week (overdue + today + through Sunday) -
   //     same window as the BillingOverview "Due this week" headline.
   //     Counted on GROUPS not rows, so a multi-campaign client = 1 invoice.
   //     Strict overdue alone reads as "0" most days when finance is on top
   //     of things, which makes the badge feel useless; including the
   //     current-week queue surfaces what's actually on their plate.
-  //   Past = Stripe invoices in overdue state — money to chase.
+  //   Past = Stripe invoices in overdue state - money to chase.
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const todayMs = today.getTime()

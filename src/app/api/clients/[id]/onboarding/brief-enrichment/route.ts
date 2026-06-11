@@ -13,7 +13,7 @@ export const maxDuration = 120
  * Runs the AI enrichment pass: takes the AM's live brief from Stap 1 +
  * the Fathom transcript linked in Stap 2 and produces per-field
  * suggestions. The result is persisted as content on the brief_enrichment
- * step row (NOT marked done — the AM still has to accept/reject + save).
+ * step row (NOT marked done - the AM still has to accept/reject + save).
  *
  * Idempotent: re-running re-asks the model. The UI's "Re-generate" knob
  * uses this to retry when the AM thinks the first pass missed things.
@@ -33,7 +33,7 @@ export async function POST(
     const result = await enrichBriefFromTranscript({ mondayItemId })
 
     // Persist suggestions onto the step's content. We don't merge with
-    // a previous `acceptedFields` map — Re-generate replaces from
+    // a previous `acceptedFields` map - Re-generate replaces from
     // scratch, the UI re-applies the AM's accepts on the new payload.
     // Keeping the step `done: false` because the AM still has to
     // approve.

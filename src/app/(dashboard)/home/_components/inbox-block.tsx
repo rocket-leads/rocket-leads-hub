@@ -26,7 +26,7 @@ function kindIcon(kind: InboxItem["kind"]) {
 /**
  * Where to send the user when they click an inbox row on the home page.
  * Tasks + updates land on the matching tab with the row pre-selected via
- * `?id=`. Chat threads (kind === "chat") link to the Client Inbox tab —
+ * `?id=`. Chat threads (kind === "chat") link to the Client Inbox tab -
  * inbox-view doesn't yet resolve a `?id=` to a chat thread, so we land
  * the user on the right tab and let them pick the conversation from the
  * already-loaded list. Better than dumping them into the wrong tab.
@@ -37,7 +37,7 @@ function itemHref(item: InboxItem): string {
 }
 
 /**
- * Inbox Zero celebration state. Picks a rotating motivational line — same
+ * Inbox Zero celebration state. Picks a rotating motivational line - same
  * for everyone for the whole UTC day, changes at midnight UTC. The point is
  * to make Inbox Zero feel like a tiny win you want to keep, not a dead empty
  * state. Server-rendered (deterministic), so no client JS / no flicker.
@@ -68,7 +68,7 @@ export function InboxBlock({
   locale,
 }: {
   items: InboxItem[]
-  /** Includes unread chat messages too — drives the empty-state check so we
+  /** Includes unread chat messages too - drives the empty-state check so we
    *  never flip to "Inbox Zero" while messages are still unread, even if the
    *  preview list (tasks + updates only) happens to be empty. */
   totalCount: number

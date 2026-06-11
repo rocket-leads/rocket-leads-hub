@@ -195,7 +195,7 @@ export const AVAILABLE_VARIABLES: Record<NotificationKey, VariableDoc[]> = {
     { name: "mtd_lines", description: "Aggregated MTD vs targets bullet lines." },
     { name: "month_label", description: "Lowercase Dutch month name." },
     { name: "leaderboard_section", description: "Closer leaderboard block (top 3 by deals, MTD-active closers only), or empty." },
-    { name: "action_items_section", description: ":rotating_light: *Empty call outcomes* header + per-closer breakdown ('2 bij Sebastiaan en 1 bij Anel — checken in Monday'). Empty when all outcomes are logged." },
+    { name: "action_items_section", description: ":rotating_light: *Empty call outcomes* header + per-closer breakdown ('2 bij Sebastiaan en 1 bij Anel - checken in Monday'). Empty when all outcomes are logged." },
     { name: "open_link", description: "Slack link to open the Targets page." },
   ],
   personal_inbox: [
@@ -231,7 +231,7 @@ export function shouldRunNow(config: NotificationConfig, force: boolean): {
   // Vercel cron timing can drift a few seconds in either direction; a strict equality on
   // the hour string previously caused entire days to be skipped when the cron fired
   // 1-2 seconds early. The cron schedule (`0 * * * *`) only fires at minute 0 each hour,
-  // so the ±30-min window around the configured hour overlaps exactly one firing — no
+  // so the ±30-min window around the configured hour overlaps exactly one firing - no
   // double-fire risk.
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Amsterdam",

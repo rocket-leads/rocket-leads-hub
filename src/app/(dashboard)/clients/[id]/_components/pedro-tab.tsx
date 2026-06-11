@@ -160,7 +160,7 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
 
   return (
     <div className="space-y-5">
-      {/* Header card — status + open in Pedro.
+      {/* Header card - status + open in Pedro.
           Mode hint at the bottom clarifies this tab is the *insight-mode*
           per-client surface (status, brief snapshot, refresh history) and
           full build-mode lives on /pedro. */}
@@ -249,7 +249,7 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
         </Card>
       )}
 
-      {/* Saved-version timeline — Pedro's full per-stage history for this client */}
+      {/* Saved-version timeline - Pedro's full per-stage history for this client */}
       <SavedVersionTimeline mondayItemId={mondayItemId} />
 
       {/* Refresh history timeline */}
@@ -316,7 +316,7 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
                         {t("client.pedro.refresh.stat.avg_cpl", locale)}
                       </div>
                       <div className="font-medium tabular-nums">
-                        {r.stats.avgCpl != null ? `€${r.stats.avgCpl.toFixed(2)}` : "—"}
+                        {r.stats.avgCpl != null ? `€${r.stats.avgCpl.toFixed(2)}` : "-"}
                       </div>
                       <TrendCell pct={r.trend.cplDeltaPct} goodIs="down" locale={locale} />
                     </div>
@@ -341,7 +341,7 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
                               {p.basedOnAd.cpl != null && (
                                 <span className="text-muted-foreground"> · CPL €{p.basedOnAd.cpl.toFixed(2)}</span>
                               )}
-                              <span className="text-muted-foreground"> — {t("client.pedro.refresh.variants", locale, { n: String(p.variants.length) })}</span>
+                              <span className="text-muted-foreground"> - {t("client.pedro.refresh.variants", locale, { n: String(p.variants.length) })}</span>
                             </span>
                           </li>
                         ))}
@@ -372,7 +372,7 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Saved-version timeline — cross-stage history of Pedro's explicit
+// Saved-version timeline - cross-stage history of Pedro's explicit
 // "Save naar klant" snapshots for this client. Filterable by stage.
 // Each entry can be expanded to peek at the data, or restored back into
 // the current draft (overwrites pedro_client_state). Restore is the
@@ -418,7 +418,7 @@ function previewForStage(stage: StageId, data: unknown): string {
   if (data == null) return ""
   if (stage === "brief") {
     const b = data as Record<string, string>
-    return [b.bedrijf, b.sector].filter(Boolean).join(" — ").slice(0, 200) || "—"
+    return [b.bedrijf, b.sector].filter(Boolean).join(" - ").slice(0, 200) || "-"
   }
   if (stage === "angles") {
     const arr = data as Array<{ titel?: string }>
@@ -430,9 +430,9 @@ function previewForStage(stage: StageId, data: unknown): string {
   }
   if (stage === "creatives") {
     const c = data as { qty?: number; formats?: string[] }
-    // "X creatives" / "X formats" left as a compact data preview — the labels
+    // "X creatives" / "X formats" left as a compact data preview - the labels
     // here are part of the data shape, not chrome.
-    return `${c.qty ?? "?"} creatives · ${(c.formats ?? []).join(", ") || "—"}`
+    return `${c.qty ?? "?"} creatives · ${(c.formats ?? []).join(", ") || "-"}`
   }
   if (stage === "lp") {
     const l = data as { stijl?: string; lengte?: string }
@@ -444,7 +444,7 @@ function previewForStage(stage: StageId, data: unknown): string {
   }
   if (stage === "research") {
     const r = data as { branche?: string }
-    return r.branche ?? "—"
+    return r.branche ?? "-"
   }
   return ""
 }

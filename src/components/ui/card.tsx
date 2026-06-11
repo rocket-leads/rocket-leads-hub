@@ -3,7 +3,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 /**
- * Hub card surface — Flow-inspired generous padding + soft hairline border.
+ * Hub card surface - Flow-inspired generous padding + soft hairline border.
  *
  * The single-pixel `border-border/60` reads cleaner than the previous
  * `ring-1 ring-foreground/10` (which doubled with the warm background to
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
  * the token bump) so cards sit in the same family as the rest of the
  * Hub's surfaces.
  *
- * `gap-5` and `py-5` are deliberate — Flow's spacing rhythm is one-step-up
+ * `gap-5` and `py-5` are deliberate - Flow's spacing rhythm is one-step-up
  * from shadcn defaults so content has room to breathe. `size="sm"` keeps
  * the previous tighter rhythm for inline / nested cards.
  */

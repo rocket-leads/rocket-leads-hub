@@ -28,7 +28,7 @@ export type LpPromptArgs = {
   pixelId?: string
   webhookUrl?: string
   utmStr?: string
-  /** Free-text steering from the CM — e.g. "minder klaagverhaal,
+  /** Free-text steering from the CM - e.g. "minder klaagverhaal,
    *  meer urgentie", "korter onder de fold". Layered on top of the
    *  standard prompt. */
   steering?: string

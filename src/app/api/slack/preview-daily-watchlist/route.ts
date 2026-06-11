@@ -23,7 +23,7 @@ type ScoreHistory = Record<string, Record<string, { action: number; watch: numbe
 /**
  * Admin-triggered: send the daily watchlist change summary right now, to the
  * calling user only. Useful for testing message format without waiting for the
- * 06:00 cron — and without spamming the team during dev.
+ * 06:00 cron - and without spamming the team during dev.
  */
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as { template?: unknown }
     if (typeof body.template === "string" && body.template.length > 0) bodyTemplate = body.template
   } catch {
-    // No body — fine
+    // No body - fine
   }
 
   const supabase = await createAdminClient()
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
     await sendDmToHubUser(user.id, message)
     return NextResponse.json({
       ok: true,
-      message: `Daily summary sent — covering ${visibleClients.length} live clients.`,
+      message: `Daily summary sent - covering ${visibleClients.length} live clients.`,
     })
   } catch (e) {
     return NextResponse.json(

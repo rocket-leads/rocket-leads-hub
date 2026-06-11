@@ -78,7 +78,7 @@ export function UtmTable({ rows, isLoading }: Props) {
               <TableCell>
                 {row.revenue > 0
                   ? `€${row.revenue.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
-                  : "—"}
+                  : "-"}
               </TableCell>
             </TableRow>
           ))}

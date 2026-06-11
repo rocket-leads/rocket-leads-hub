@@ -27,7 +27,7 @@ export function ScriptRefresh({ selectedClientId, selectedClientName, autoStart 
     <RefreshShell<ScriptProposal>
       endpoint="/api/pedro/script-refresh"
       title="Video script refresh"
-      description="Voor elke winner schrijft Pedro 3 volledige UGC-style scripts (50-70 sec, NL) in dezelfde hook/angle DNA — klaar om te shooten."
+      description="Voor elke winner schrijft Pedro 3 volledige UGC-style scripts (50-70 sec, NL) in dezelfde hook/angle DNA - klaar om te shooten."
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}
@@ -48,7 +48,7 @@ export function ScriptRefresh({ selectedClientId, selectedClientName, autoStart 
                     {p.basedOnAd.adName}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    CPL {p.basedOnAd.cpl != null ? `€${p.basedOnAd.cpl.toFixed(2)}` : "—"}
+                    CPL {p.basedOnAd.cpl != null ? `€${p.basedOnAd.cpl.toFixed(2)}` : "-"}
                     {" · "}
                     Behoud: {p.preserve.hook} / {p.preserve.angle} / {p.preserve.format}
                   </div>

@@ -7,7 +7,7 @@ import { useEffect, useState } from "react"
 import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers, Rocket, Wrench, ClipboardCheck, ChevronRight } from "lucide-react"
 
 // Note: lucide's `Receipt` ships with a $ glyph baked into the SVG. Roy
-// flagged it as off-brand for a Hub that talks Euros — we use `CreditCard`
+// flagged it as off-brand for a Hub that talks Euros - we use `CreditCard`
 // here so the nav-level Billing icon stays currency-agnostic and visually
 // quiet, matching the abstract style of the rest of the sidebar items
 // (Users, Inbox, Megaphone, Target, etc.). Home uses lucide's `Home`
@@ -25,7 +25,7 @@ export type NavItem = {
    *  and the matching child gets the strong active highlight. Children
    *  show whenever the parent route is active or after the user has
    *  clicked the parent at least once (state persisted to localStorage).
-   *  Roy 2026-05-23: no chevron, no toggle — single click area, always
+   *  Roy 2026-05-23: no chevron, no toggle - single click area, always
    *  expand. */
   children?: NavItem[]
   /** Numeric badge rendered on the right side of the row. Used by Pedro
@@ -40,7 +40,7 @@ export type NavItem = {
 type BadgeCounts = { unreadUpdates: number; openTasks: number; unreadChats: number }
 
 function InboxBadge() {
-  // Polled every 60s — cheap (three indexed counts) and good enough for
+  // Polled every 60s - cheap (three indexed counts) and good enough for
   // "I have new items". Chat unread + open tasks + unread updates all add up
   // here so the AM sees one combined "stuff waiting on me" number.
   const { data } = useQuery<BadgeCounts>({
@@ -95,7 +95,7 @@ function buildHealthDotTitle(summary: HealthDotSummary | null): string {
     )
   }
   return parts.length > 0
-    ? `${parts.join(" · ")} — open Settings`
+    ? `${parts.join(" · ")} - open Settings`
     : "Settings"
 }
 
@@ -115,7 +115,7 @@ type RowProps = {
    *  open/closed on the same click that navigates. */
   onClick?: () => void
   /** Renders a chevron on the right of the row that rotates to indicate
-   *  open/closed state. Visual only — the whole row is the click target.
+   *  open/closed state. Visual only - the whole row is the click target.
    *  Roy 2026-05-23: chevron-down when expanded, chevron-right when
    *  collapsed (matches herMon's sidebar pattern). */
   chevron?: { open: boolean }
@@ -127,7 +127,7 @@ function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClic
   const isSettings = item.href === "/settings"
 
   // Parent rows of a group (e.g. Pedro) never get the strong active
-  // highlight — even when their own href matches the current path —
+  // highlight - even when their own href matches the current path -
   // because that would compete with the active child's purple glow.
   // They use the subtle `isParentSection` treatment instead.
   // Roy 2026-05-23: clicking Pedro must light up the On-board child
@@ -209,7 +209,7 @@ export function SidebarNavLinks({ items, healthSummary = null }: Props) {
   // preference survives reloads. Default for any group not yet in
   // storage: expanded when on a route inside it, collapsed otherwise.
   // Clicking the parent always sets this to true (Roy 2026-05-23:
-  // single click area, always expand — no separate chevron toggle).
+  // single click area, always expand - no separate chevron toggle).
   // SSR-safe: initialise empty, hydrate from localStorage in effect.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [hydrated, setHydrated] = useState(false)
@@ -219,7 +219,7 @@ export function SidebarNavLinks({ items, healthSummary = null }: Props) {
       const raw = window.localStorage.getItem(EXPAND_STORAGE_KEY)
       if (raw) setExpanded(JSON.parse(raw))
     } catch {
-      // Ignore parse failures — fall back to defaults.
+      // Ignore parse failures - fall back to defaults.
     }
     setHydrated(true)
   }, [])
@@ -244,7 +244,7 @@ export function SidebarNavLinks({ items, healthSummary = null }: Props) {
       try {
         window.localStorage.setItem(EXPAND_STORAGE_KEY, JSON.stringify(next))
       } catch {
-        // Ignore quota / disabled storage — toggle still works in-session.
+        // Ignore quota / disabled storage - toggle still works in-session.
       }
       return next
     })
@@ -272,7 +272,7 @@ export function SidebarNavLinks({ items, healthSummary = null }: Props) {
           // Prefix the keys so the outer "group" div and any inner child
           // NavRow can share an href without colliding in React's key
           // accounting (Pedro parent now links to /pedro/onboard, which
-          // is also the On-board child's href — without prefixes React's
+          // is also the On-board child's href - without prefixes React's
           // dev-mode duplicate-key warning fires).
           <div key={`group-${item.href}`}>
             <NavRow

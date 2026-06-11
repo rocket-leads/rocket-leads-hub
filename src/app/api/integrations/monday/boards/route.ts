@@ -8,7 +8,7 @@ import { searchMondayBoards } from "@/lib/integrations/monday"
  * Backs the search list inside <ConnectedEntity service="monday-board">.
  * Returns up to `limit` ResolvedEntity rows for the query. Monday's GraphQL
  * has no name-filter on its `boards` query, so search is done in-memory
- * against a 5-minute cached list of all accessible boards — see
+ * against a 5-minute cached list of all accessible boards - see
  * `searchMondayBoards` for the cache + ranking story.
  *
  * Cold-open (empty query) returns the most-recently-used boards so the AM

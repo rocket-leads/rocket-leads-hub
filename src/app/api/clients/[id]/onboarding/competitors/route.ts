@@ -19,12 +19,12 @@ export const maxDuration = 300
  *
  * Two POST modes driven by `action`:
  *
- *   action: "find"   — Phase 1. Body picks up brief context (sector,
+ *   action: "find"   - Phase 1. Body picks up brief context (sector,
  *                      country, ICP, USPs from the wizard step's stored
  *                      content). Claude returns 5-8 competitor suggestions.
  *                      AM reviews + approves, then triggers …
  *
- *   action: "scrape" — Phase 2. Body lists AM-approved competitors plus
+ *   action: "scrape" - Phase 2. Body lists AM-approved competitors plus
  *                      country. Apify scrapes their currently-active ads;
  *                      every result lands in `client_competitor_ads`
  *                      with days-running. The UI fetches the rows back
@@ -68,7 +68,7 @@ export async function POST(
   if (body.action === "find") {
     // Pull the client's display name from Monday so the AI prompt can
     // self-exclude it. Fall back to the bare ID if Monday is briefly
-    // unavailable — the AI still works, just won't filter the self-
+    // unavailable - the AI still works, just won't filter the self-
     // match perfectly.
     const client = await fetchClientById(mondayItemId).catch(() => null)
     try {
@@ -113,7 +113,7 @@ export async function POST(
 }
 
 /**
- * GET — return all scraped ads for this client. UI uses this to render
+ * GET - return all scraped ads for this client. UI uses this to render
  * the picker grid after a scrape completes (or on revisit). Sorted by
  * days_running desc so the strongest "winners" land at the top.
  */
@@ -143,7 +143,7 @@ export async function GET(
 }
 
 /**
- * PATCH — toggle the `selected_by_am` flag on an individual ad. The
+ * PATCH - toggle the `selected_by_am` flag on an individual ad. The
  * UI's "save to Drive" step reads only rows where this is true.
  */
 export async function PATCH(

@@ -13,7 +13,7 @@ const TONES: Record<StatusTone, { dot: string; pill: string }> = {
 
 type Props = {
   tone?: StatusTone
-  /** Set true to drop the colored dot — useful when the pill is already
+  /** Set true to drop the colored dot - useful when the pill is already
    *  visually loud (eg. source badges with an icon). */
   noDot?: boolean
   className?: string
@@ -21,9 +21,9 @@ type Props = {
 }
 
 /**
- * Hub status pill — single source of truth so Live, Onboarding, Paid, Action
+ * Hub status pill - single source of truth so Live, Onboarding, Paid, Action
  * Needed, etc. all read with identical chrome. Pages used to roll their own
- * with hand-picked Tailwind classes — drift between surfaces happened
+ * with hand-picked Tailwind classes - drift between surfaces happened
  * because the same status looked subtly different in three places.
  *
  * Height + padding + radius are fixed so a row of pills in a table line up

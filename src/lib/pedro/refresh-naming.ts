@@ -1,5 +1,5 @@
 /**
- * Pedro refresh — Rocket Leads ad-naming convention.
+ * Pedro refresh - Rocket Leads ad-naming convention.
  *
  * Per knowledge/campaigns.md:
  *   - Campaign:  RL | {{country}} | {{initials}} | {{company}} | {{LF/LP}}
@@ -71,19 +71,25 @@ export type NamedVariant = {
   adName: string
   formatHint: AdFormatHint
   topicLabel: string
+  /** Roy 2026-06-11 ad-picker flow: directe quote uit de source primary
+   *  copy / headline / description die deze variant amplificeert. Pedro
+   *  MOET 'm leveren voor de ad-picker flow, anders mag de variant niet
+   *  bestaan. Empty string voor legacy multi-winner refreshes. Surfaced
+   *  in de UI als bewijs van source-anchoring. */
+  sourceHookQuote: string
   newHook: string
   scriptOutline: string
   primaryCopySnippet: string
-  /** Primary Meta headline — pijnpunt-vraag, max ~27 char zichtbaar.
+  /** Primary Meta headline - pijnpunt-vraag, max ~27 char zichtbaar.
    *  Pedro genereert vanaf 2026-06-10 een aparte short headline naast
    *  de hook (de hook is langer en wordt opener van primary text). */
   headline: string
-  /** 2 extra headlines voor dynamic creative — Meta laat tot 5 toe;
+  /** 2 extra headlines voor dynamic creative - Meta laat tot 5 toe;
    *  we leveren er 3 (primary + 2 alts) zodat Meta tests kan draaien. */
   altHeadlines: string[]
   /** 2 extra primary text varianten voor dynamic creative. */
   altPrimaryTexts: string[]
-  /** Optionele link description (~30 char). Mag leeg blijven —
+  /** Optionele link description (~30 char). Mag leeg blijven -
    *  Roy 2026-06-10. */
   linkDescription: string
   /** English visual brief for the image-gen call (Gemini Nano Banana
@@ -99,17 +105,17 @@ export type NamedVariant = {
  *
  *  Roy 2026-06-10: zonder deze snapshot brak push als de winner ad
  *  was verwijderd/gearchiveerd uit het 90d window. Met snapshot is
- *  push 100% deterministisch — alleen de adset-template (budget/
+ *  push 100% deterministisch - alleen de adset-template (budget/
  *  targeting) wordt nog live opgehaald omdat die kan drift'en. */
 export type WinnerSnapshot = {
-  /** Campaign id van de winner — bepaalt waar de nieuwe ad set komt. */
+  /** Campaign id van de winner - bepaalt waar de nieuwe ad set komt. */
   campaignId: string
   campaignName: string
-  /** Ad set id van de winner — clone-template bron voor budget +
+  /** Ad set id van de winner - clone-template bron voor budget +
    *  targeting + bid strategy. */
   adsetId: string
   adsetName: string
-  /** Facebook Page id — wordt object_story_spec.page_id op de
+  /** Facebook Page id - wordt object_story_spec.page_id op de
    *  nieuwe creative. */
   pageId: string
   /** Connected Instagram account, optional. */
@@ -121,6 +127,10 @@ export type WinnerSnapshot = {
   linkUrl: string
   /** CTA label (LEARN_MORE / SIGN_UP / GET_QUOTE etc.) */
   callToActionType: string
+  /** Supabase Storage path of een handmatig-geüploade screenshot van de
+   *  source ad. Pedro gebruikt 'm als reference image bij image
+   *  generation wanneer Meta's thumbnail leeg is. Roy 2026-06-10. */
+  sourceScreenshotPath?: string
 }
 
 export type NamedProposal = {
@@ -131,7 +141,7 @@ export type NamedProposal = {
     verdict: string
     /** Roy 2026-06-10: gesnapshote Meta-metadata. Push-to-Meta leest
      *  hier vanuit ipv live Meta-lookup, zodat verwijderde winners de
-     *  push niet blokkeren. Oudere refreshes hebben dit niet — push
+     *  push niet blokkeren. Oudere refreshes hebben dit niet - push
      *  valt dan terug op de oude live-lookup pad. */
     snapshot?: WinnerSnapshot
   }
@@ -153,6 +163,7 @@ export function assignAdNamesToVariants(
     label?: unknown
     formatHint?: unknown
     topicLabel?: unknown
+    sourceHookQuote?: unknown
     newHook?: unknown
     scriptOutline?: unknown
     primaryCopySnippet?: unknown
@@ -191,6 +202,8 @@ export function assignAdNamesToVariants(
       formatHint,
       topicLabel: topic || "Untitled",
       adName: formatAdName({ format: formatHint, number, topic }),
+      sourceHookQuote:
+        typeof v.sourceHookQuote === "string" ? v.sourceHookQuote.trim() : "",
       newHook: typeof v.newHook === "string" ? v.newHook : "",
       scriptOutline: typeof v.scriptOutline === "string" ? v.scriptOutline : "",
       primaryCopySnippet: typeof v.primaryCopySnippet === "string" ? v.primaryCopySnippet : "",

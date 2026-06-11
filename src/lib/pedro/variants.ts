@@ -5,11 +5,11 @@ import type { NamedProposal } from "./refresh-naming"
  * Variant-outcome persistence + scoring for Pedro's learning loop.
  *
  * Two halves:
- *   - `fanOutVariantsToTable` — runs when a refresh persists. Writes one
+ *   - `fanOutVariantsToTable` - runs when a refresh persists. Writes one
  *     row per variant into `pedro_variants`, deduped on
  *     (client_id, ad_name). This is what makes the sync cron able to
  *     find the variant later.
- *   - `scoreVariantOutcome` — pure function the cron calls when a Meta
+ *   - `scoreVariantOutcome` - pure function the cron calls when a Meta
  *     match is found. Maps spend/leads/CPL to {winner|loser|neutral}.
  *
  * Roy 2026-06-09.
@@ -19,7 +19,7 @@ type Supabase = Awaited<ReturnType<typeof createAdminClient>>
 
 /**
  * Insert one `pedro_variants` row per variant in the proposals array.
- * `ON CONFLICT (client_id, ad_name) DO NOTHING` — if the CM somehow
+ * `ON CONFLICT (client_id, ad_name) DO NOTHING` - if the CM somehow
  * gets two refreshes proposing the same ad_name (shouldn't happen
  * because the assignAdNamesToVariants helper monotonically increments),
  * the first writer wins. Errors are caught + logged because the
@@ -54,7 +54,7 @@ export async function fanOutVariantsToTable(args: {
         // Full Meta ad-copy package (Roy 2026-06-10). Pedro now writes
         // a primary headline + 2 alt headlines + 2 alt primary texts so
         // Push-to-Meta can launch a complete dynamic-creative ad in one
-        // shot — no manual tuning in Ads Manager.
+        // shot - no manual tuning in Ads Manager.
         headline: v.headline || null,
         alt_headlines: v.altHeadlines.length > 0 ? v.altHeadlines : null,
         alt_primary_texts: v.altPrimaryTexts.length > 0 ? v.altPrimaryTexts : null,
@@ -89,7 +89,7 @@ export type VariantOutcomeInput = {
   leads: number
   /** Computed cost-per-lead (or null when leads=0). */
   cpl: number | null
-  /** Account-wide avg CPL at sync time — gives the verdict context. */
+  /** Account-wide avg CPL at sync time - gives the verdict context. */
   accountAvgCpl: number | null
 }
 

@@ -5,7 +5,7 @@ import { getNotificationConfig, shouldRunNow } from "@/lib/slack/notification-co
 
 /**
  * Admin-only diagnostic for the team-sales cron. Returns exactly what the cron
- * would decide RIGHT NOW — config, time-window check, channel resolution — so
+ * would decide RIGHT NOW - config, time-window check, channel resolution - so
  * we can pinpoint why a daily post failed without trawling Vercel logs.
  *
  * GET /api/slack/diagnose-team-sales

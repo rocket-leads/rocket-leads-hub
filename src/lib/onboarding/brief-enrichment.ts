@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 /**
  * Brief enrichment for the onboarding wizard's Stap 3.
  *
- * Stap 1 (live kick-off) leaves us with the AM's live brief draft — what
+ * Stap 1 (live kick-off) leaves us with the AM's live brief draft - what
  * they typed while talking to the client. Stap 2 (transcript link) wires
  * up the Fathom recording for that same call. Enrichment is the AI pass
  * that reads the full transcript and proposes additions / corrections to
@@ -14,7 +14,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  * Distinct from Pedro's `generateAutoBrief` (lib/pedro/generate-brief.ts)
  * which generates a brief from scratch using Monday + Trengo + recent
  * meetings. Here we narrowly focus on "given X already filled, what does
- * the transcript ADD that the AM missed?" — different prompt, different
+ * the transcript ADD that the AM missed?" - different prompt, different
  * output shape (per-field deltas, not a complete brief).
  */
 
@@ -38,7 +38,7 @@ export type FieldSuggestion = {
   amValue: string
   /** What AI suggests adding to or replacing the AM's value. Empty
    *  string means "AI found nothing useful in the transcript for this
-   *  field" — UI hides the suggestion row entirely in that case. */
+   *  field" - UI hides the suggestion row entirely in that case. */
   suggestion: string
   /** Short rationale citing transcript timestamps where possible so the
    *  AM can verify without re-reading the full transcript. */
@@ -64,7 +64,7 @@ Rules:
 - One key per brief field: bedrijf, sector, websiteUrl, doelgroep, pijnpunten, aanbod, usps, marketingHooks.
 - Per field, return { "suggestion": string, "rationale": string, "mode": "add" | "replace" }.
 - "suggestion" = what to append (mode=add) OR what to fully replace the AM's value with (mode=replace).
-- Empty "suggestion" = no useful addition found in transcript. Use this liberally — don't pad.
+- Empty "suggestion" = no useful addition found in transcript. Use this liberally - don't pad.
 - "mode" defaults to "add". Use "replace" only when the AM clearly got a fact wrong and the client corrected it on the call.
 - "rationale" = ONE short line. Reference the transcript timestamp like [00:14:22] when you can pinpoint where you got it. Skip rationale only when suggestion is empty.
 - For marketingHooks: it's fine to propose 2-3 hooks as bullet points if the client gave you that much material.
@@ -135,7 +135,7 @@ export async function enrichBriefFromTranscript(args: {
   const meetingId = (transcriptRow?.content as { meetingId?: string } | null)?.meetingId
 
   if (!meetingId) {
-    // Stap 2 not done yet — can't enrich without a linked transcript.
+    // Stap 2 not done yet - can't enrich without a linked transcript.
     return {
       suggestions: blankSuggestions(briefDraft),
       insufficientTranscript: true,
@@ -151,7 +151,7 @@ export async function enrichBriefFromTranscript(args: {
 
   const transcript = (meeting?.transcript ?? "").trim()
   if (transcript.length < 300) {
-    // Fathom sometimes ships before the transcript fully renders — wait
+    // Fathom sometimes ships before the transcript fully renders - wait
     // and try again rather than show a misleading "AI found nothing".
     return {
       suggestions: blankSuggestions(briefDraft),
@@ -165,7 +165,7 @@ ${transcript}
 
 ---
 
-AM's LIVE BRIEF (typed during the call — may be incomplete):
+AM's LIVE BRIEF (typed during the call - may be incomplete):
 ${formatBriefForPrompt(briefDraft)}
 
 Propose per-field additions or corrections based on what the transcript reveals beyond the AM's live notes.`

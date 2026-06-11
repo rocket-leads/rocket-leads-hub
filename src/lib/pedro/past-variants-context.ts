@@ -1,7 +1,7 @@
 import type { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * Past-variants context block — the LEARNING half of Pedro's loop.
+ * Past-variants context block - the LEARNING half of Pedro's loop.
  *
  * Reads `pedro_variants` (enriched daily by sync-pedro-variants cron)
  * and renders the client's previous Pedro-generated variants with
@@ -9,7 +9,7 @@ import type { createAdminClient } from "@/lib/supabase/server"
  * instructs Pedro to:
  *   - DOUBLE DOWN on winner directions (same hook style, same topic)
  *   - AVOID loser directions (drop that topic, change hook category)
- *   - REWORK not-shipped variants (those didn't land — figure out why)
+ *   - REWORK not-shipped variants (those didn't land - figure out why)
  *
  * Without this block the loop is open: Pedro proposes, never sees the
  * outcome, repeats mistakes. With it, every refresh gets smarter
@@ -69,7 +69,7 @@ export async function pastVariantsContextBlock(
   }
 
   if (winners.length === 0 && losers.length === 0 && notShipped.length === 0) {
-    // Everything's pending — nothing to learn from yet.
+    // Everything's pending - nothing to learn from yet.
     return ""
   }
 
@@ -81,22 +81,22 @@ export async function pastVariantsContextBlock(
         ? ` (vs account-avg €${r.account_avg_cpl_at_sync.toFixed(2)})`
         : ""
     const hookLine = r.hook ? `\n    Hook was: "${r.hook.replace(/\s+/g, " ").slice(0, 140)}"` : ""
-    return `  - "${r.ad_name}" — ${cplStr}, ${leadsStr}${baseline}${hookLine}`
+    return `  - "${r.ad_name}" - ${cplStr}, ${leadsStr}${baseline}${hookLine}`
   }
 
   const blocks: string[] = []
-  blocks.push(`PAST PEDRO VARIANTS — jouw eerdere proposals voor DEZE klant + uitkomst (laatste ${LOOKBACK_DAYS}d):`)
+  blocks.push(`PAST PEDRO VARIANTS - jouw eerdere proposals voor DEZE klant + uitkomst (laatste ${LOOKBACK_DAYS}d):`)
 
   if (winners.length > 0) {
-    blocks.push(`WINNERS (CPL ≤ 70% van account-gemiddelde, ≥3 leads — herhaal dit DNA):`)
+    blocks.push(`WINNERS (CPL ≤ 70% van account-gemiddelde, ≥3 leads - herhaal dit DNA):`)
     blocks.push(winners.map(renderRow).join("\n"))
   }
   if (losers.length > 0) {
-    blocks.push(`LOSERS (te duur of geen leads — vermijd deze richting):`)
+    blocks.push(`LOSERS (te duur of geen leads - vermijd deze richting):`)
     blocks.push(losers.map(renderRow).join("\n"))
   }
   if (notShipped.length > 0) {
-    blocks.push(`NIET GESHIPT (CM heeft deze niet gebruikt — ad name werd niet gevonden in Meta):`)
+    blocks.push(`NIET GESHIPT (CM heeft deze niet gebruikt - ad name werd niet gevonden in Meta):`)
     blocks.push(
       notShipped
         .slice(0, MAX_PER_OUTCOME)

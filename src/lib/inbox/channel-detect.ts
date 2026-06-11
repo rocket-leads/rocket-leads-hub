@@ -5,12 +5,12 @@ import { fetchConversations } from "@/lib/integrations/trengo"
  * conversations per channel-type. Returns 'email' or 'whatsapp' (the only
  * two we differentiate for now), or null when no Trengo history exists.
  *
- * Heuristic: most recent ~20 conversations weigh equal — channel that owns
+ * Heuristic: most recent ~20 conversations weigh equal - channel that owns
  * the majority wins. Ties go to email (more appropriate for finance + admin
  * comms by default).
  *
  * Failure mode: when Trengo is unreachable we return null so callers default
- * to email-tone — safer than guessing.
+ * to email-tone - safer than guessing.
  *
  * Used by every smart-inbox drafter (payment reminder, CPL drop signal,
  * Fathom follow-up) so the channel pick is consistent across rules.

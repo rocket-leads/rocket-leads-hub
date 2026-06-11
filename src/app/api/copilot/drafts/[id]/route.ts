@@ -7,12 +7,12 @@ import type { CopilotAction, CopilotDraftStatus } from "@/lib/copilot/tools"
 /**
  * Draft mutations. Three transitions the UI cares about:
  *
- *   PATCH { action }                — user edited fields before approving;
+ *   PATCH { action }                - user edited fields before approving;
  *                                     stores the patched action without
  *                                     changing status.
- *   PATCH { status: 'approved' }    — executor ran successfully client-side;
+ *   PATCH { status: 'approved' }    - executor ran successfully client-side;
  *                                     hide from bell.
- *   PATCH { status: 'dismissed' }   — user threw the draft away.
+ *   PATCH { status: 'dismissed' }   - user threw the draft away.
  *
  * The executor runs CLIENT-SIDE (router.push for navigate, fetch to the
  * inbox/pedro routes for the others), so the server here just records
@@ -48,7 +48,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
   const supabase = await createAdminClient()
 
-  // Scope mutations to the owner — RLS would also catch this but the
+  // Scope mutations to the owner - RLS would also catch this but the
   // explicit filter keeps the response code accurate (404 vs 403).
   const patch: Record<string, unknown> = {}
   if (body.action) patch.draft_action = body.action

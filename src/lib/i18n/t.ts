@@ -5,7 +5,7 @@ import type { Locale } from "./types"
  * Translate a dictionary key into the requested locale, with optional
  * `{name}`-style placeholder interpolation.
  *
- * Pure function — no DB / cookie / I/O. Caller resolves the locale and
+ * Pure function - no DB / cookie / I/O. Caller resolves the locale and
  * passes it in. That keeps `t()` callable from server components, client
  * components, AI prompt builders, and tests with the same signature.
  *

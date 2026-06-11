@@ -19,7 +19,7 @@ type Props = {
  * once to hold (parks the client in the "On hold" bucket above Overdue),
  * click again to release (returns to the time-based buckets).
  *
- * Optimistic — flips the icon immediately and rolls back on error. After
+ * Optimistic - flips the icon immediately and rolls back on error. After
  * success, calls `router.refresh()` so the row visibly jumps to its new
  * bucket without the user needing to reload.
  */
@@ -53,8 +53,8 @@ export function BillingHoldToggle({ mondayItemId, held, reason }: Props) {
 
   const title = optimisticHeld
     ? reason
-      ? `On hold: ${reason} — click to release`
-      : "On hold — click to release"
+      ? `On hold: ${reason} - click to release`
+      : "On hold - click to release"
     : "Hold this client (skip invoicing this cycle)"
 
   return (

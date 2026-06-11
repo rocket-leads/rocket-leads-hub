@@ -84,7 +84,7 @@ async function ClientsData({ session, locale }: { session: Session | null; local
 }
 
 export default async function ClientsPage() {
-  // Single auth() + getUserLocale() pair — both child renders reuse these via props.
+  // Single auth() + getUserLocale() pair - both child renders reuse these via props.
   // Previously each ran twice (once in the page, once in ClientsData inner func).
   const session = await auth()
   const locale = await getUserLocale(session?.user?.id)

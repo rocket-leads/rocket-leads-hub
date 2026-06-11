@@ -7,7 +7,6 @@ import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { ClientPicker } from "./client-picker"
-import { OptimizeSuggestions } from "./optimize-suggestions"
 import { AnglesRefresh } from "./angles-refresh"
 import { ScriptRefresh } from "./script-refresh"
 import { CreativeRefresh } from "./creative-refresh"
@@ -16,11 +15,11 @@ import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { PedroClient } from "./types"
 
-// Pedro Optimize — the "iterate on a live campaign" entry point.
+// Pedro Optimize - the "iterate on a live campaign" entry point.
 //
 // Roy 2026-05-23: Optimize used to only do creative refresh. Now it has
-// four tabs that mirror the deliverables tabs in Onboard — Angles,
-// Video Scripts, Creatives, Ad Copy — so the CM can refresh any stage
+// four tabs that mirror the deliverables tabs in Onboard - Angles,
+// Video Scripts, Creatives, Ad Copy - so the CM can refresh any stage
 // without having to re-do the on-board flow from scratch. Each tab
 // reads live Meta performance and proposes new variants in that stage's
 // shape.
@@ -48,7 +47,7 @@ export function PedroOptimizeApp({ clients }: Props) {
 
   // Tab seed: ?tab=X in the URL wins on first load (Watch List "Ask Pedro"
   // can deep-link to a specific stage). Otherwise default to Creatives
-  // since that's what Optimize did exclusively before tabs shipped — keeps
+  // since that's what Optimize did exclusively before tabs shipped - keeps
   // the existing muscle memory.
   const initialSection: Section = (() => {
     const tab = searchParams.get("tab")
@@ -66,7 +65,7 @@ export function PedroOptimizeApp({ clients }: Props) {
   }, [searchParams])
 
   // Shared storage key with the on-board app so a client picked in one
-  // tab carries to the other — the AM almost always wants the same
+  // tab carries to the other - the AM almost always wants the same
   // client across both flows.
   const [selectedClientId, setSelectedClientIdRaw] = useState<string | null>(() => {
     if (urlClientId) return urlClientId
@@ -119,14 +118,9 @@ export function PedroOptimizeApp({ clients }: Props) {
         }
       />
 
-      {/* Action Needed strip — top of Optimize so the CM lands on
-          "deze klanten moeten nu". Clicking a chip drops the client into
-          the same selectedClientId state the picker uses, so the tabs
-          below immediately reload for that client. Roy 2026-06-09. */}
-      <OptimizeSuggestions
-        selectedClientId={selectedClientId}
-        onSelect={setSelectedClientId}
-      />
+      {/* Roy 2026-06-10: Action Needed strip verwijderd uit Pedro. De
+          globale top-bar (search + AI + notificaties) is altijd zichtbaar
+          en biedt dezelfde shortcuts naar klanten die actie nodig hebben. */}
 
       <div className="mb-5 rounded-2xl border border-border/60 bg-card p-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
         <div className="flex items-center gap-3">
@@ -141,7 +135,7 @@ export function PedroOptimizeApp({ clients }: Props) {
               hideAutoFill
             />
           </div>
-          {/* Drive folder shortcut — verify which client photos are
+          {/* Drive folder shortcut - verify which client photos are
               available before/after image-gen. Roy 2026-06-09. */}
           {selectedClient?.googleDriveId && (
             <a

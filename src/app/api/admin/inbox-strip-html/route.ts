@@ -8,7 +8,7 @@ import { stripHtml } from "@/lib/html"
  * ingested before the Monday webhook started stripping at write-time.
  *
  * Targets rows where `title` or `body` still contains tag markup (`<…>`).
- * Idempotent — re-running on already-clean rows is a no-op. Admin-only.
+ * Idempotent - re-running on already-clean rows is a no-op. Admin-only.
  */
 export async function POST() {
   return run()
@@ -26,7 +26,7 @@ async function run() {
   const supabase = await createAdminClient()
 
   // Pull anything that looks HTML-tainted. ilike `%<%` catches `<p>`, `<a `,
-  // `<br`, etc. — same heuristic for both columns.
+  // `<br`, etc. - same heuristic for both columns.
   const { data, error } = await supabase
     .from("inbox_events")
     .select("id, title, body")

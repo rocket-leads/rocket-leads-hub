@@ -14,7 +14,7 @@ import { startCronRun } from "@/lib/observability/cron-runs"
  * within ~1 hour even when nobody visits Settings.
  *
  * Mirrors the validation logic in /api/settings/health (GET handler)
- * but skips the auth gate — replaces it with the cron secret check.
+ * but skips the auth gate - replaces it with the cron secret check.
  * Kept duplicated rather than imported because settings/health is a
  * page-facing route and we don't want a coupling that drags page
  * concerns into the cron run.
@@ -62,16 +62,16 @@ async function checkStripe(token: string): Promise<boolean> {
 async function checkTrengo(token: string): Promise<boolean> {
   // Roy 2026-06-09: previous early-return was flagging the Trengo token as
   // expired even when the app was happily calling /contacts + /channels +
-  // /tickets all day. Root cause: `/users` requires the `admin` scope —
+  // /tickets all day. Root cause: `/users` requires the `admin` scope -
   // app-integration tokens typically don't have that, so it returns 403 on
   // the first endpoint. The old comment assumed "JSON 4xx is decisive" but
   // that's only true for 401 (auth invalid). 403 = scope mismatch on THIS
-  // endpoint, not "token expired" — keep trying the others.
+  // endpoint, not "token expired" - keep trying the others.
   //
   // Verdict semantics now:
   //   - any 2xx          → return true (some endpoint succeeded → token works)
   //   - 401 anywhere     → return false (auth genuinely invalid)
-  //   - 403 / 5xx / etc. → keep trying — endpoint-specific scope failures
+  //   - 403 / 5xx / etc. → keep trying - endpoint-specific scope failures
   //                         must not gate the whole-token verdict
   //   - all failed       → return false (no endpoint reachable with this token)
   for (const endpoint of ["/channels", "/labels", "/users"]) {
@@ -121,7 +121,7 @@ async function checkFathom(token: string): Promise<boolean | null> {
       if (tm.ok) return true
       if (tm.status === 401) return false
       if (tm.status === 403) {
-        // Scope-mismatch on /team_members — try /meetings as a less-strict
+        // Scope-mismatch on /team_members - try /meetings as a less-strict
         // fallback. Same X-Api-Key auth; if /meetings answers ok, the token
         // works for the Hub's actual day-to-day usage.
         const mt = await fetch(
@@ -133,7 +133,7 @@ async function checkFathom(token: string): Promise<boolean | null> {
         )
         if (mt.ok) return true
         if (mt.status === 401 || mt.status === 403) return false
-        // /meetings transient too — fall through to the retry loop
+        // /meetings transient too - fall through to the retry loop
       }
       // 429 / 5xx / anything else → retry
     } catch {

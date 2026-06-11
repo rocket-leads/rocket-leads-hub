@@ -13,7 +13,7 @@ describe("pickInboxZeroMessage", () => {
     expect(pickInboxZeroMessage(now)).toBe(pickInboxZeroMessage(now))
   })
 
-  it("rotates at UTC midnight — different day yields a different index slot", () => {
+  it("rotates at UTC midnight - different day yields a different index slot", () => {
     const day1 = new Date("2026-05-09T23:59:59Z")
     const day2 = new Date("2026-05-10T00:00:00Z")
     // The day index changes, so the picked slot changes (potentially same
@@ -24,7 +24,7 @@ describe("pickInboxZeroMessage", () => {
   })
 
   it("always returns one of the messages from the canonical list", () => {
-    // Spot-check a handful of dates across the year — the picker must
+    // Spot-check a handful of dates across the year - the picker must
     // always land inside the list.
     const samples = [
       new Date("2026-01-01T00:00:00Z"),
@@ -43,7 +43,7 @@ describe("INBOX_ZERO_MESSAGES", () => {
     expect(INBOX_ZERO_MESSAGES.length).toBeGreaterThanOrEqual(10)
   })
 
-  it("contains no duplicates — duplicates make the rotation feel broken", () => {
+  it("contains no duplicates - duplicates make the rotation feel broken", () => {
     const set = new Set(INBOX_ZERO_MESSAGES)
     expect(set.size).toBe(INBOX_ZERO_MESSAGES.length)
   })

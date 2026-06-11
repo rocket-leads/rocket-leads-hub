@@ -21,7 +21,7 @@ import { useQueueCommand } from "./use-copilot-drafts"
  *   4. Server enriches in background (~5-10s)
  *   5. 🔔 bell badge bumps when the draft is ready to approve
  *
- * Navigation commands ("open Vlex Vending") are fast-pathed — those go
+ * Navigation commands ("open Vlex Vending") are fast-pathed - those go
  * through the queue too but quick to land, and the user can still use
  * the bell. We don't try to detect navigate intent client-side; let the
  * LLM classify and let the bell handle approval consistently.
@@ -70,7 +70,7 @@ export function CommandBar() {
     const sp = searchParams ? new URLSearchParams(searchParams.toString()) : null
     const context = buildPageContext(pathname ?? "/", sp)
 
-    // Optimistically close the dialog so the user can keep working —
+    // Optimistically close the dialog so the user can keep working -
     // the actual queue insert happens in parallel.
     setOpen(false)
     setToast(`Working on "${truncate(userInput, 60)}"… Check 🔔 when ready.`)

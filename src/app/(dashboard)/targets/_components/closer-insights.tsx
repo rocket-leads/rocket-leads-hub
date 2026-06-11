@@ -36,7 +36,7 @@ function generateCloserInsights(closers: CloserData[]): Insight[] {
 
   const insights: Insight[] = []
 
-  // Team baselines — Not Updated is folded into takenCalls so the conversion
+  // Team baselines - Not Updated is folded into takenCalls so the conversion
   // rate can't be gamed; show-up rate uses qualifiedCalls (all past) as denom.
   const totalQualified = active.reduce((s, c) => s + c.qualifiedCalls, 0)
   const totalTaken = active.reduce((s, c) => s + c.takenCalls, 0)
@@ -56,14 +56,14 @@ function generateCloserInsights(closers: CloserData[]): Insight[] {
   if (bestShowUp && bestShowUp.rate >= 0.85) {
     insights.push({
       type: "positive",
-      text: `${bestShowUp.closer}: ${formatPercent(bestShowUp.rate)} show-up rate (${bestShowUp.taken}/${bestShowUp.booked}) — strongest on the team.`,
+      text: `${bestShowUp.closer}: ${formatPercent(bestShowUp.rate)} show-up rate (${bestShowUp.taken}/${bestShowUp.booked}) - strongest on the team.`,
     })
   }
   if (worstShowUp && worstShowUp.rate < SHOW_UP_TARGET && worstShowUp.closer !== bestShowUp?.closer) {
     const teamRef = active.length > 1 ? ` and team avg ${formatPercent(teamShowUp)}` : ""
     insights.push({
       type: worstShowUp.rate < 0.6 ? "critical" : "warning",
-      text: `${worstShowUp.closer}: ${formatPercent(worstShowUp.rate)} show-up rate (${worstShowUp.taken}/${worstShowUp.booked}) — below ${formatPercent(SHOW_UP_TARGET)} target${teamRef}. Audit reminder flow & confirmation calls for their leads.`,
+      text: `${worstShowUp.closer}: ${formatPercent(worstShowUp.rate)} show-up rate (${worstShowUp.taken}/${worstShowUp.booked}) - below ${formatPercent(SHOW_UP_TARGET)} target${teamRef}. Audit reminder flow & confirmation calls for their leads.`,
     })
   }
 
@@ -77,14 +77,14 @@ function generateCloserInsights(closers: CloserData[]): Insight[] {
   if (bestConv && bestConv.rate >= 0.4) {
     insights.push({
       type: "positive",
-      text: `${bestConv.closer}: ${formatPercent(bestConv.rate)} conversion (${bestConv.deals}/${bestConv.taken}) — top closer this period.`,
+      text: `${bestConv.closer}: ${formatPercent(bestConv.rate)} conversion (${bestConv.deals}/${bestConv.taken}) - top closer this period.`,
     })
   }
   if (worstConv && worstConv.rate < CONV_TARGET && worstConv.closer !== bestConv?.closer) {
     const teamRef = active.length > 1 ? ` (team avg ${formatPercent(teamConv)})` : ""
     insights.push({
       type: worstConv.rate < 0.15 ? "critical" : "warning",
-      text: `${worstConv.closer}: ${formatPercent(worstConv.rate)} conversion (${worstConv.deals}/${worstConv.taken}) — below ${formatPercent(CONV_TARGET)} target${teamRef}. Sales coaching or proposition review needed.`,
+      text: `${worstConv.closer}: ${formatPercent(worstConv.rate)} conversion (${worstConv.deals}/${worstConv.taken}) - below ${formatPercent(CONV_TARGET)} target${teamRef}. Sales coaching or proposition review needed.`,
     })
   }
 
@@ -100,14 +100,14 @@ function generateCloserInsights(closers: CloserData[]): Insight[] {
       const diff = Math.round((bestDeal.avg / teamAvgDeal - 1) * 100)
       insights.push({
         type: "positive",
-        text: `${bestDeal.closer}: ${formatCurrency(bestDeal.avg)} avg deal — ${diff}% above team avg of ${formatCurrency(teamAvgDeal)}.`,
+        text: `${bestDeal.closer}: ${formatCurrency(bestDeal.avg)} avg deal - ${diff}% above team avg of ${formatCurrency(teamAvgDeal)}.`,
       })
     }
     if (worstDeal && worstDeal.avg < teamAvgDeal * 0.8 && worstDeal.closer !== bestDeal?.closer) {
       const diff = Math.round((1 - worstDeal.avg / teamAvgDeal) * 100)
       insights.push({
         type: "warning",
-        text: `${worstDeal.closer}: ${formatCurrency(worstDeal.avg)} avg deal — ${diff}% below team avg. Steer toward HTO packages or review discounting practices.`,
+        text: `${worstDeal.closer}: ${formatCurrency(worstDeal.avg)} avg deal - ${diff}% below team avg. Steer toward HTO packages or review discounting practices.`,
       })
     }
   }
@@ -119,7 +119,7 @@ function generateCloserInsights(closers: CloserData[]): Insight[] {
   for (const c of sluggish.slice(0, 3)) {
     insights.push({
       type: c.notUpdated >= 6 ? "critical" : "warning",
-      text: `${c.closer}: ${c.notUpdated} past appointments still in Qualified/Gepland — status hasn't been updated, real performance is hidden.`,
+      text: `${c.closer}: ${c.notUpdated} past appointments still in Qualified/Gepland - status hasn't been updated, real performance is hidden.`,
     })
   }
 

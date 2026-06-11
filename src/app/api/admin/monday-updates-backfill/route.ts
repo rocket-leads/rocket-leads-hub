@@ -17,14 +17,14 @@ export const maxDuration = 300
  * POST /api/admin/monday-updates-backfill
  *
  * One-shot historical ingest of EVERY Monday update on every active client
- * into `inbox_events`. Each row lands as a timeline-only entry — kind="chat"
- * + thread_key=null + assignee=system + status="read" — so it surfaces in
+ * into `inbox_events`. Each row lands as a timeline-only entry - kind="chat"
+ * + thread_key=null + assignee=system + status="read" - so it surfaces in
  * the per-client timeline (api/clients/[id]/timeline) without polluting the
  * Inbox tabs or sidebar badges.
  *
  * Why this exists: the Monday webhook only writes rows ingested while it has
  * been running, and only @-mentioned non-chat updates get promoted to Tasks/
- * Updates. Everything else — the bulk of Monday's CRM-side activity log —
+ * Updates. Everything else - the bulk of Monday's CRM-side activity log -
  * was historically dropped. AMs and finance want the full client history
  * available from the Hub without bouncing back to Monday, so this backfills
  * the gap. Forward path: the refactored webhook now also writes timeline-
@@ -39,15 +39,15 @@ export const maxDuration = 300
  *
  * Scope: all clients on the onboarding + current-clients boards whose Hub
  * status resolves to live | onboarding | on_hold. Churned clients are
- * skipped — backfilling their timeline doesn't help, and they often have
+ * skipped - backfilling their timeline doesn't help, and they often have
  * hundreds of stale updates that would just burn API quota.
  *
  * Cost model:
- *   - No Anthropic spend — the backfill never classifies. Promotion to
+ *   - No Anthropic spend - the backfill never classifies. Promotion to
  *     Tasks/Updates is webhook-only (forward-looking).
  *   - Monday API: ~1 query per page of 100 updates per client. A client with
  *     500 updates = 5 queries. With 50+ active clients this is the dominant
- *     cost — concurrency capped at 4 to stay polite to Monday's rate limit.
+ *     cost - concurrency capped at 4 to stay polite to Monday's rate limit.
  *
  * Re-runnable: every step is idempotent. Click again to pick up where a
  * previous run hit the deadline or to ingest updates created between runs.
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createAdminClient()
 
-  // System HQ user — author + (for timeline-only rows) assignee FK target.
+  // System HQ user - author + (for timeline-only rows) assignee FK target.
   // Same pattern as the live webhook.
   const { data: hq } = await supabase
     .from("users")
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   }
   const systemUserId = hq.id as string
 
-  // Source of truth for "which clients to backfill" — same cache the rest
+  // Source of truth for "which clients to backfill" - same cache the rest
   // of the app uses, with a live fallback so a missing cache doesn't block
   // the operation.
   const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
@@ -99,14 +99,14 @@ export async function POST(req: NextRequest) {
   const boards = cached ?? (await fetchBothBoards().catch(() => ({ onboarding: [], current: [] })))
   const allClients = [...boards.onboarding, ...boards.current]
 
-  // Skip Churned — their timeline isn't load-bearing and they often have
+  // Skip Churned - their timeline isn't load-bearing and they often have
   // long-stale histories that would dominate Monday API spend.
   const targets = allClients.filter((c) => {
     const status = mondayStatusToHub(c.campaignStatus, c.boardType)
     return status === "live" || status === "onboarding" || status === "on_hold"
   })
 
-  // Optional caller scoping — e.g. ?onlyClientId=12345 lets finance backfill
+  // Optional caller scoping - e.g. ?onlyClientId=12345 lets finance backfill
   // a single client without burning the whole budget on the rest.
   const onlyClientId = req.nextUrl.searchParams.get("onlyClientId")
   const scoped = onlyClientId
@@ -214,14 +214,14 @@ async function backfillOne(
     }
     if (u.createdAt && seenTimestamps.has(u.createdAt)) {
       // Same Monday update already exists under the legacy webhook
-      // source_msg_id format — don't double-write.
+      // source_msg_id format - don't double-write.
       result.skippedDedupe++
       continue
     }
 
     const text = u.text || stripHtml(u.body).trim()
     if (!text) {
-      // Pure-attachment update with no text body. Skip — there's nothing
+      // Pure-attachment update with no text body. Skip - there's nothing
       // meaningful to render in the timeline and the row would be confusing.
       continue
     }
@@ -232,7 +232,7 @@ async function backfillOne(
       kind: "chat",
       client_id: client.mondayItemId,
       author_id: systemUserId,
-      assignee_id: systemUserId, // timeline-only — no real assignee
+      assignee_id: systemUserId, // timeline-only - no real assignee
       title: titlePreview || `Monday update from ${u.creatorName || "Monday user"}`,
       body: bodyFull,
       status: "read", // never bumps badges
@@ -245,7 +245,7 @@ async function backfillOne(
       author_kind: "rl_team",
       author_external: u.creatorId || null,
       author_name_cached: u.creatorName || null,
-      // No classifier spend on backfill — the historical bulk would be
+      // No classifier spend on backfill - the historical bulk would be
       // expensive and these are timeline-only by definition. The webhook
       // handles forward-looking promotion.
       classify_conf: null,
@@ -272,7 +272,7 @@ async function backfillOne(
 }
 
 /**
- * Bounded-concurrency worker pool — same shape as the cron's pre-warm helper.
+ * Bounded-concurrency worker pool - same shape as the cron's pre-warm helper.
  * Cooperative cancellation via `shouldStop()` so an over-budget run returns
  * partial progress instead of blowing past `maxDuration`.
  */

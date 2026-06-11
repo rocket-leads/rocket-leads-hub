@@ -42,7 +42,7 @@ type RawInboxRow = {
    *  Monday user, or Slack user) since the FK `author_id` always points at the
    *  system HQ account for those events. Manual creates leave it null. */
   author_name_cached: string | null
-  /** External author identifier — the Trengo contact id / Slack user id /
+  /** External author identifier - the Trengo contact id / Slack user id /
    *  Monday user id from the original event. Used by the "Link to client" UX
    *  to know which Trengo contact to attach to a client. */
   author_external: string | null
@@ -66,9 +66,9 @@ type ListFilters = {
   statuses?: string[]
   /**
    * Snooze handling:
-   *  - 'active'  (default for active filters) — hide currently snoozed items
-   *  - 'snoozed' — show ONLY currently snoozed items
-   *  - 'all'     — return both, ignoring snooze state
+   *  - 'active'  (default for active filters) - hide currently snoozed items
+   *  - 'snoozed' - show ONLY currently snoozed items
+   *  - 'all'     - return both, ignoring snooze state
    */
   snoozed?: "active" | "snoozed" | "all"
 }
@@ -77,11 +77,11 @@ type ListFilters = {
  * Build the visibility filter set for a user.
  *
  * Returns "all" for admins (no client filter applied), or the list of Monday
- * item IDs they can see — which is derived from the cached Monday boards plus
+ * item IDs they can see - which is derived from the cached Monday boards plus
  * their user_column_mappings (same logic as Watch List / Clients overview).
  *
  * Items where the user is author or assignee are always visible regardless
- * of this list — that's enforced at query time.
+ * of this list - that's enforced at query time.
  */
 async function getAllowedClientIds(
   userId: string,
@@ -111,7 +111,7 @@ async function getAllowedClientIds(
 /**
  * Returns a map of Monday item ID → Monday client, used to attach client
  * names to inbox items in list responses. Falls back to an empty map if
- * the cache is cold and Monday is unreachable — names will render as
+ * the cache is cold and Monday is unreachable - names will render as
  * "(unknown)" rather than crashing the list.
  */
 async function getMondayClientMap(): Promise<Map<string, MondayClient>> {
@@ -133,7 +133,7 @@ function rowToItem(
   clientMap: Map<string, MondayClient>,
   channelLookup: Map<number, { kind: ChatChannelKind; name: string }>,
 ): InboxItem {
-  // Prefer author_name_cached when set — webhook ingesters store the real
+  // Prefer author_name_cached when set - webhook ingesters store the real
   // Trengo contact / Monday user / Slack user there because the FK author_id
   // is forced to the system HQ account. Manual creates leave it null and
   // fall through to the joined Hub user, which is correct for those rows.
@@ -145,7 +145,7 @@ function rowToItem(
 
   // Trengo events whose contact id isn't on any client.trengo_contact_ids[]
   // land with client_id="". Surface this so the UI can render "Unlinked"
-  // instead of the "(unknown)" fallback — the AM should know to link this
+  // instead of the "(unknown)" fallback - the AM should know to link this
   // contact to the right client. Other sources always have a client_id set.
   const isUnlinked = row.source === "trengo" && (!row.client_id || row.client_id === "")
   const linkedClientName = clientMap.get(row.client_id)?.name
@@ -158,8 +158,8 @@ function rowToItem(
   }
 
   // Defensive HTML strip on title/body. Webhook ingesters strip at write
-  // time (since 2026-05-05), but historical rows from before that fix —
-  // and any future ingest path we forget to wire — would otherwise dump
+  // time (since 2026-05-05), but historical rows from before that fix -
+  // and any future ingest path we forget to wire - would otherwise dump
   // raw `<p><a class="user_mention_editor router">…</a></p>` into the row
   // UI. Cheap to run (regex on a short string) and a no-op when the field
   // is already plain text. We only invoke it when the field actually looks
@@ -222,7 +222,7 @@ export async function listInboxItems(
   if (filters.kind) query = query.eq("kind", filters.kind)
   if (filters.clientId) query = query.eq("client_id", filters.clientId)
 
-  // Tasks/Updates are strictly "for me" — assignee-driven regardless of
+  // Tasks/Updates are strictly "for me" - assignee-driven regardless of
   // the assignedToMe toggle. Without this, an AM saw items they merely
   // authored for someone else (e.g. Roel writing an update on Mike's
   // client → showing up in Roel's own Updates tab) or items they had
@@ -246,7 +246,7 @@ export async function listInboxItems(
   //
   // Rule: discrete tabs (Tasks / Updates) only show events that are NOT
   // part of a chat thread. Trengo/Slack rows live in the chat substrate
-  // exclusively. Promotions still happen — they're just promotions
+  // exclusively. Promotions still happen - they're just promotions
   // INSIDE the substrate (Make-task on a chat row creates a fresh
   // thread-less task; the original chat event stays in the thread).
   if (filters.kind === "task" || filters.kind === "update") {
@@ -261,7 +261,7 @@ export async function listInboxItems(
     else if (filters.kind === "task") query = query.in("status", ["open", "in_progress"])
   }
 
-  // Snooze handling — defaults to hiding snoozed items in "active" task views.
+  // Snooze handling - defaults to hiding snoozed items in "active" task views.
   // PostgREST `or` lets us express "snoozed_until IS NULL OR snoozed_until <= now".
   const snoozeMode = filters.snoozed ?? (filters.kind === "task" ? "active" : "all")
   if (snoozeMode === "active") {
@@ -274,19 +274,19 @@ export async function listInboxItems(
 
   // Visibility for non-Tasks/Updates queries (chat substrate, mixed views,
   // /api/inbox without a kind param). Skip when scoped to a specific client
-  // — the API caller already verified that access — or when caller is admin.
+  // - the API caller already verified that access - or when caller is admin.
   //
   // Tasks/Updates already enforce the strict assignee filter above and don't
   // need this broader OR clause. Keeping it would silently re-open the
   // self-authored / "anything on my clients" leak we just closed.
   //
-  // Role-split (Roy 2026-06-09 — isolation pass):
+  // Role-split (Roy 2026-06-09 - isolation pass):
   //   - admin: sees everything (no filter)
   //   - AM / other: client-access + Trengo channel subscription path stays
   //     (they own client conversations and need the wide view)
   //   - cm_only: chat rows ONLY when they authored or are explicitly
   //     assigned. No bulk visibility via client access or channel
-  //     subscription. CMs work assignment-driven, not access-driven —
+  //     subscription. CMs work assignment-driven, not access-driven -
   //     @-mentions reach them as kind=update rows; client-conversation
   //     hand-offs reach them via assignee_id. Anything else is noise.
   const isTaskOrUpdate = filters.kind === "task" || filters.kind === "update"
@@ -311,7 +311,7 @@ export async function listInboxItems(
     }
   }
 
-  // Unassigned-only Trengo filter — applies to admins and non-admins alike.
+  // Unassigned-only Trengo filter - applies to admins and non-admins alike.
   // Tickets claimed by anyone in Trengo are owned by Trengo's UI, not the
   // Hub. Non-Trengo events bypass this filter entirely.
   query = query.or(
@@ -345,7 +345,7 @@ export async function getInboxItem(
   if (error || !data) return null
   const row = data as unknown as RawInboxRow
 
-  // Unassigned-only Trengo gate — applies to admins and non-admins alike.
+  // Unassigned-only Trengo gate - applies to admins and non-admins alike.
   // Once a teammate claims the ticket in Trengo, it leaves the Hub even if
   // a user previously had access via channel subscription.
   if (row.source === "trengo" && row.trengo_assignee_user_id != null) {
@@ -417,7 +417,7 @@ export async function listInboxComments(itemId: string): Promise<InboxComment[]>
  *
  * Tasks/updates are scoped to assignee_id (mine to do). Chats use the same
  * visibility set as the Client/Team Inbox (channel subscriptions + client
- * access + participant fallback) — counting messages, not threads, so the
+ * access + participant fallback) - counting messages, not threads, so the
  * sidebar number lines up with the per-thread unread counts. Snoozed tasks
  * are excluded to keep the badge silent while the user has parked them.
  */
@@ -425,7 +425,7 @@ export async function listInboxComments(itemId: string): Promise<InboxComment[]>
  * Per-user Monday role mapping → "what kind of relationship does this Hub
  * user have with clients". Drives the Client Inbox tab visibility (CM-only
  * users don't get the tab unless they have an unread chat directly
- * assigned to them — i.e. a mention).
+ * assigned to them - i.e. a mention).
  *
  * Returns:
  *   - "admin"            Hub role is "admin" → always sees everything
@@ -469,22 +469,22 @@ export async function getInboxBadgeCounts(
 }> {
   const supabase = await createAdminClient()
 
-  // Snoozed tasks shouldn't ping the sidebar — that's the point of snoozing.
+  // Snoozed tasks shouldn't ping the sidebar - that's the point of snoozing.
   // Active = snoozed_until IS NULL OR has already passed.
   const nowIso = new Date().toISOString()
 
-  // Resolve the audience role first — the chat visibility query branches on
+  // Resolve the audience role first - the chat visibility query branches on
   // it. CMs see chat rows only when explicitly assigned; AMs/admins keep
   // the channel-subscription + client-access path.
   const audienceRole = await resolveInboxAudienceRole(userId, role)
 
   // Scope filter: the only chat tab in the UI is "Klanten Inbox" which is
   // hard-wired to scope="external". Slack-ingested events land at
-  // scope="internal" and have no place to be read — the Team Inbox tab is
+  // scope="internal" and have no place to be read - the Team Inbox tab is
   // intentionally hidden (see inbox-view.tsx comment near line 618). Without
   // this filter, internal events accumulate forever and inflate the badge
   // (Roy 2026-05-23: Danny's tab showed "274" while all 24 client conversations
-  // were read — the 274 were ghost Slack rows).
+  // were read - the 274 were ghost Slack rows).
   let chatQuery = supabase
     .from("inbox_events")
     .select("id", { count: "exact", head: true })
@@ -493,7 +493,7 @@ export async function getInboxBadgeCounts(
     .eq("status", "unread")
 
   if (audienceRole === "cm_only") {
-    // CM-only: strict assignee/author — no channel-sub, no client-access.
+    // CM-only: strict assignee/author - no channel-sub, no client-access.
     chatQuery = chatQuery.or(
       `author_id.eq.${userId},assignee_id.eq.${userId}`,
     )
@@ -519,7 +519,7 @@ export async function getInboxBadgeCounts(
     }
   }
 
-  // Unassigned-only Trengo gate — exclude tickets currently claimed in Trengo
+  // Unassigned-only Trengo gate - exclude tickets currently claimed in Trengo
   // from the badge so the count matches what the Client Inbox actually shows.
   chatQuery = chatQuery.or(
     `trengo_assignee_user_id.is.null,source.neq.trengo`,
@@ -532,7 +532,7 @@ export async function getInboxBadgeCounts(
       .eq("assignee_id", userId)
       .eq("kind", "update")
       .eq("status", "unread")
-      // Same de-dup as listInboxItems — chat-substrate events are counted
+      // Same de-dup as listInboxItems - chat-substrate events are counted
       // by the chats query below, never by tasks/updates badges.
       .is("thread_key", null),
     supabase
@@ -547,7 +547,7 @@ export async function getInboxBadgeCounts(
   ])
 
   const unreadChats = chatsRes.count ?? 0
-  // For CMs, unreadChats is already the strict assignee count — same
+  // For CMs, unreadChats is already the strict assignee count - same
   // signal that previously drove `clientInboxMentionCount`. Tab opens
   // when they have any assigned chat row to handle.
   const showClientInbox =
@@ -563,7 +563,7 @@ export async function getInboxBadgeCounts(
 
 // --- Chat substrate fetchers (Phase C.7) ----------------------------------
 //
-// Inbox events that carry a thread_key are part of the chat substrate —
+// Inbox events that carry a thread_key are part of the chat substrate -
 // continuous conversation threads from Trengo (per-contact) and Slack
 // (per-DM, per-channel, per-mpim). They live in the Team Inbox / Client
 // Inbox tabs, separate from the discrete Tasks/Updates panes.
@@ -580,7 +580,7 @@ export async function getInboxBadgeCounts(
 export type ChatScope = "external" | "internal"
 
 /** High-level channel medium used to drive the icon/badge in the thread row.
- *  We only differentiate WhatsApp vs email today — voice / chat / social are
+ *  We only differentiate WhatsApp vs email today - voice / chat / social are
  *  bucketed under `other` until we surface them. Null when the thread isn't
  *  Trengo (Slack threads ride a separate icon path). */
 export type ChatChannelKind = "whatsapp" | "email" | "other" | null
@@ -589,15 +589,15 @@ export type ChatThreadSummary = {
   threadKey: string
   scope: ChatScope
   source: InboxSource
-  /** Display name — primary other-party (Trengo contact, Slack channel, etc). */
+  /** Display name - primary other-party (Trengo contact, Slack channel, etc). */
   primaryName: string
   /** Linked Hub client name when client_id is set on any event in the thread. */
   clientName: string | null
-  /** Monday item id of the linked client — surfaced so the chat-pane can
+  /** Monday item id of the linked client - surfaced so the chat-pane can
    *  create tasks/updates against this thread's client without an extra
    *  lookup. Null when the thread isn't linked yet (Trengo "unlinked"). */
   clientId: string | null
-  /** WhatsApp / email / other — drives the icon shown next to the thread.
+  /** WhatsApp / email / other - drives the icon shown next to the thread.
    *  Resolved from Trengo channel id at fetch time so the UI doesn't need
    *  a separate roundtrip. Null for Slack and other non-Trengo sources. */
   channelKind: ChatChannelKind
@@ -613,7 +613,7 @@ export type ChatThreadSummary = {
   latestPreview: string
   /** Most recent message timestamp (uses created_at_src when available). */
   latestAt: string
-  /** Latest event id — used by the reply UI to derive source/thread metadata. */
+  /** Latest event id - used by the reply UI to derive source/thread metadata. */
   latestEventId: string
   totalCount: number
   unreadCount: number
@@ -625,11 +625,11 @@ export type ChatMessage = {
   authorName: string
   authorExternal: string | null
   body: string
-  /** Display-time timestamp — created_at_src when the source provided one. */
+  /** Display-time timestamp - created_at_src when the source provided one. */
   at: string
   source: InboxSource
   status: string
-  /** Team-only annotation (Trengo "internal note") — rendered as a yellow
+  /** Team-only annotation (Trengo "internal note") - rendered as a yellow
    *  bubble in the thread so the AM can tell at a glance what's customer-
    *  visible vs. team chatter. False for all client/external messages. */
   isInternal: boolean
@@ -708,7 +708,7 @@ async function getTrengoChannelLookup(): Promise<
     }
   } catch {
     // If Trengo is briefly unreachable, the chat list still renders without
-    // channel decoration — falling back to the generic chat icon.
+    // channel decoration - falling back to the generic chat icon.
   }
   return map
 }
@@ -734,7 +734,7 @@ function deriveThreadName(threadKey: string, fallback: string): string {
  * (or "Hoi", "Hi", "Hallo", "Hey"). For threads where the lead hasn't
  * replied yet, the Trengo contact is just our own WhatsApp Business
  * display ("Team") and `author_name_cached` doesn't carry the real
- * recipient — so the inbox list showed "Team" for every row. By parsing
+ * recipient - so the inbox list showed "Team" for every row. By parsing
  * the greeting we can surface the actual recipient ("Patrick") without
  * waiting on a manual contact-to-client link.
  *
@@ -750,7 +750,7 @@ function extractRecipientFromGreeting(body: string | null | undefined): string |
   if (!match) return null
   const captured = match[1].trim()
   // Reject obvious non-names that occasionally slip through ("There",
-  // "Everyone", etc.). Tiny stop-list — we'd rather miss-match and show
+  // "Everyone", etc.). Tiny stop-list - we'd rather miss-match and show
   // the generic name than confidently assign the wrong recipient.
   const STOP = new Set([
     "there", "everyone", "team", "all", "guys", "people", "iedereen", "team",
@@ -781,14 +781,14 @@ export async function listChatThreads(
     .not("thread_key", "is", null)
     .eq("scope", scope)
     .order("created_at", { ascending: false })
-    // Cap the raw row pull — threads with hundreds of messages still surface
+    // Cap the raw row pull - threads with hundreds of messages still surface
     // because we group post-hoc. 1k is generous for now.
     .limit(1000)
 
   // CM-only audience: chat rows are visible ONLY when the CM is explicitly
   // assigned or authored the row. No channel-subscription path, no client-
   // access bulk visibility. The Client Inbox tab is also hidden for CMs by
-  // default — this gate is the source of truth for the rare case where the
+  // default - this gate is the source of truth for the rare case where the
   // tab does open (hand-routed conversation).
   const audienceRole = await resolveInboxAudienceRole(userId, role)
   if (audienceRole === "cm_only") {
@@ -797,7 +797,7 @@ export async function listChatThreads(
     )
   } else {
     // Trengo channel subscriptions ALWAYS narrow the Client Inbox down to the
-    // user's chosen channels — applies to admins too. Without this, an admin
+    // user's chosen channels - applies to admins too. Without this, an admin
     // sees every Trengo conversation in the workspace regardless of which
     // channels they actually want to follow. Non-Trengo events bypass this
     // filter via `source.neq.trengo`.
@@ -840,7 +840,7 @@ export async function listChatThreads(
  * only path (CM Mentions tab) so both produce the same thread shape.
  *
  * Rows are expected to be pre-filtered by visibility AND ordered
- * `created_at DESC` (newest first) by the caller — same contract the
+ * `created_at DESC` (newest first) by the caller - same contract the
  * inline grouping used before the extraction.
  */
 async function groupAndDecorateChatRows(
@@ -861,7 +861,7 @@ async function groupAndDecorateChatRows(
 
   // Thread-level unassigned-only gate. The row-level filter on the query
   // already drops claimed events, but historical rows ingested before the
-  // assignee column existed carry NULL — without this pass, those threads
+  // assignee column existed carry NULL - without this pass, those threads
   // would still surface (with stale NULL rows) once a teammate claims the
   // ticket. Drop any thread where at least one event has a non-null Trengo
   // assignee.
@@ -954,11 +954,11 @@ async function groupAndDecorateChatRows(
 /**
  * Mark every unread chat event in a thread as read for the calling user.
  *
- * We only flip rows the user is actually allowed to see — the visibility
+ * We only flip rows the user is actually allowed to see - the visibility
  * filter mirrors `getChatThreadMessages` (channel subscription + client
  * access + participant fallback). Pre-fetching the event ids first keeps the
  * UPDATE simple and avoids any chance of writing through a broken visibility
- * filter — same pattern we use on the thread fetch.
+ * filter - same pattern we use on the thread fetch.
  *
  * Returns the number of rows updated. Idempotent: calling it again on a
  * thread with no unread events is a fast no-op.
@@ -971,7 +971,7 @@ export async function markChatThreadRead(
   const supabase = await createAdminClient()
 
   // If the thread is currently claimed in Trengo, the user shouldn't be able
-  // to mark it read — they shouldn't even be seeing it. Cheap guard.
+  // to mark it read - they shouldn't even be seeing it. Cheap guard.
   const { data: claimedRow } = await supabase
     .from("inbox_events")
     .select("id")
@@ -1023,11 +1023,11 @@ export async function markChatThreadRead(
 }
 
 /**
- * Mark a chat thread "unread" — flip the most recent visible event back to
+ * Mark a chat thread "unread" - flip the most recent visible event back to
  * status='unread' so the thread shows up as unread in the list and bumps the
  * sidebar badge by one. We only touch the latest event (not every read row in
  * the thread) because "unread" is a presentation signal, not a per-message
- * archival state — bringing one event back is enough for the thread to surface
+ * archival state - bringing one event back is enough for the thread to surface
  * with a badge, and avoids quietly resurrecting old reads that were already
  * triaged.
  *
@@ -1042,7 +1042,7 @@ export async function markChatThreadUnread(
 ): Promise<{ updated: number }> {
   const supabase = await createAdminClient()
 
-  // Same claimed-ticket gate as markChatThreadRead — a Trengo-claimed thread
+  // Same claimed-ticket gate as markChatThreadRead - a Trengo-claimed thread
   // shouldn't be mutable from the Hub.
   const { data: claimedRow } = await supabase
     .from("inbox_events")
@@ -1104,7 +1104,7 @@ export async function getChatThreadMessages(
   const supabase = await createAdminClient()
 
   // Hide message history once the Trengo ticket has been claimed by anyone.
-  // Same reasoning as listChatThreads — the Hub doesn't show owned tickets.
+  // Same reasoning as listChatThreads - the Hub doesn't show owned tickets.
   const { data: claimedRow } = await supabase
     .from("inbox_events")
     .select("id")

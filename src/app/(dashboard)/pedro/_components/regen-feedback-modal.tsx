@@ -5,7 +5,7 @@ import { X, Loader2, AlertTriangle, RefreshCw, Sparkles } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
- * RegenFeedbackModal — gestructureerde feedback voordat een slot
+ * RegenFeedbackModal - gestructureerde feedback voordat een slot
  * regenereerd wordt.
  *
  * Roy 2026-06-10: zonder gedwongen onderbouwing klikken CM's eindeloos
@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
  *     volgende refresh learning loop
  *
  * Hard cap: max 1 regen per slot (server enforced via regen_count).
- * Na 1× is regen geblokkeerd — alleen Upload of nieuwe refresh helpt.
+ * Na 1× is regen geblokkeerd - alleen Upload of nieuwe refresh helpt.
  */
 
 export type RegenFeedbackPayload = {
@@ -52,7 +52,7 @@ const FIELDS: Array<{
     key: "imageFeedback",
     label: "Afbeelding (wat staat erop)",
     placeholder:
-      "Bv. 'Verkeerd product — dit is geen Zumex juicer maar een Blendtec blender. Vervang door echte Zumex automaat.'",
+      "Bv. 'Verkeerd product - dit is geen Zumex juicer maar een Blendtec blender. Vervang door echte Zumex automaat.'",
     hint: "Wat staat er nu op de afbeelding dat anders moet? Personen, producten, setting, props.",
   },
   {
@@ -141,7 +141,7 @@ export function RegenFeedbackModal({
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
               Vul minstens één veld in. Hoe specifieker je feedback, hoe beter
-              de aanpassing. Dit telt mee — daarna is de slot dicht (max 1×
+              de aanpassing. Dit telt mee - daarna is de slot dicht (max 1×
               per slot om credits te besparen).
             </p>
           </div>
@@ -162,7 +162,7 @@ export function RegenFeedbackModal({
             <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
               <div>
-                Deze slot is al 1× aangepast — geen credits meer over.
+                Deze slot is al 1× aangepast - geen credits meer over.
                 Upload je eigen afbeelding of genereer de hele refresh
                 opnieuw om met een schone lei te beginnen.
               </div>
@@ -264,5 +264,5 @@ export function feedbackToPromptAddendum(payload: RegenFeedbackPayload): string 
     parts.push(`ADDITIONAL CONTEXT: ${payload.otherFeedback.trim()}`)
   }
   if (parts.length === 0) return ""
-  return `\n\n---\nCM REGEN FEEDBACK (CRITICAL — fix these specifically):\n${parts.join("\n")}\n---`
+  return `\n\n---\nCM REGEN FEEDBACK (CRITICAL - fix these specifically):\n${parts.join("\n")}\n---`
 }

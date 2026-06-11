@@ -32,7 +32,7 @@ export async function loadUserMappingsContext(
 
   if (!mappings || mappings.length === 0) return null
 
-  // Finance is org-level — they need to see everyone for invoicing /
+  // Finance is org-level - they need to see everyone for invoicing /
   // billing context. Treat the same as admin for visibility.
   if ((mappings as UserMapping[]).some((m) => m.monday_column_role === "finance")) {
     return null
@@ -41,7 +41,7 @@ export async function loadUserMappingsContext(
   return mappings as UserMapping[]
 }
 
-/** Pure filter once mappings are loaded — zero round-trips. */
+/** Pure filter once mappings are loaded - zero round-trips. */
 export function filterClientsByContext(
   clients: MondayClient[],
   context: UserMappingsContext,
@@ -64,7 +64,7 @@ export function filterClientsByContext(
 /**
  * Filter clients based on the user's column mappings.
  * - Admins see all clients.
- * - Finance users see all clients (org-wide invoicing/billing scope — can't
+ * - Finance users see all clients (org-wide invoicing/billing scope - can't
  *   do their job with per-client mapping).
  * - Users with no client-level mappings see all clients (no restriction).
  * - Users with AM/CM/Setter mappings only see clients where at least one

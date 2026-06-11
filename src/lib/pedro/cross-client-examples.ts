@@ -9,7 +9,7 @@ import {
 } from "@/lib/pedro/vertical-patterns"
 
 /**
- * Cross-client examples — when Pedro generates angles / scripts / copy
+ * Cross-client examples - when Pedro generates angles / scripts / copy
  * for client X in vertical V, pull 3-5 winning ads from OTHER RL clients
  * in the same vertical and feed them as in-context examples. This is the
  * agency moat: every campaign Pedro touches teaches the next one in the
@@ -21,12 +21,12 @@ import {
  * enough lead volume to be trusted, NOT a leadquality-validated winner.
  *
  * Vertical matching is keyword-overlap on the brief.sector field. Free-
- * text but pragmatic — once we have a structured `clients.vertical` tag
+ * text but pragmatic - once we have a structured `clients.vertical` tag
  * (Phase 5 todo), this helper swaps out trivially.
  */
 
 export type CrossClientWinner = {
-  /** Source RL client (anonymised in the prompt — Pedro should NEVER
+  /** Source RL client (anonymised in the prompt - Pedro should NEVER
    *  surface the client name to other clients' campaigns). */
   sourceClientName: string
   sourceSector: string
@@ -76,7 +76,7 @@ function similarity(a: string, b: string): number {
   for (const t of tokensA) {
     if (tokensB.has(t)) overlap += 1
   }
-  // Jaccard-ish — intersection size over min set size so small overlaps
+  // Jaccard-ish - intersection size over min set size so small overlaps
   // on long sectors still count.
   return overlap / Math.min(tokensA.size, tokensB.size)
 }
@@ -93,7 +93,7 @@ function trim(s: string, max: number): string {
  *  - requires the candidate to have a meta_ad_account_id + a saved
  *    pedro_client_state row with a brief.sector
  *  - sector similarity ≥ 0.4 (at least one matching token after
- *    stopword filtering, weighted by overlap) — gate is intentionally
+ *    stopword filtering, weighted by overlap) - gate is intentionally
  *    loose; we'd rather over-include and let Pedro pick the best
  *  - per candidate: pulls last-30d Meta ads (cachedFetch, 5min), scores
  *    against THAT client's account-avg CPL, takes top-2 winners
@@ -178,7 +178,7 @@ export async function loadCrossClientExamples(
         })
       }
     } catch {
-      // Skip per-candidate failures — don't fail the whole lookup.
+      // Skip per-candidate failures - don't fail the whole lookup.
     }
   }
 
@@ -188,11 +188,11 @@ export async function loadCrossClientExamples(
 
 /**
  * Render winners as an in-context example block for Claude prompts.
- * Returns "" when there are no winners — caller can safely concatenate.
+ * Returns "" when there are no winners - caller can safely concatenate.
  *
  * Anonymisation: source client names are dropped from the prompt body
  * (Claude only sees them in the role context). Pedro must NEVER name
- * other RL clients in output to a different client's campaign — these
+ * other RL clients in output to a different client's campaign - these
  * are inspiration, not attribution.
  */
 export function renderCrossClientExamples(winners: CrossClientWinner[]): string {
@@ -206,9 +206,9 @@ export function renderCrossClientExamples(winners: CrossClientWinner[]): string 
   return `\n\n=== WINNENDE RL ADS UIT ZELFDE BRANCHE ===
 Onderstaand zijn ${winners.length} echte winnende ads van andere RL klanten in een vergelijkbare branche, gekozen op basis van laagste CPL t.o.v. hun account-gemiddelde (laatste 30d).
 
-GEBRUIK ALS INSPIRATIE — NIET ALS BLAUWDRUK:
+GEBRUIK ALS INSPIRATIE - NIET ALS BLAUWDRUK:
 - Patronen herkennen (welke hooks/angles werken in deze niche, welk format) is wat hier nuttig is.
-- Letterlijke kopie is verboden — copyright + iedere klant heeft een eigen tone.
+- Letterlijke kopie is verboden - copyright + iedere klant heeft een eigen tone.
 - Noem NOOIT klantnamen of refereer naar "andere RL klanten" in je output naar deze klant.
 - Lead-quality van deze winners is op CPL-basis, niet op Monday-feedback geverifieerd (zie status note in knowledge/campaigns.md). Zie ze als "goedkoop", niet automatisch "kwalitatief".
 

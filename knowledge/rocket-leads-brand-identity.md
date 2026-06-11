@@ -1,4 +1,4 @@
-# Rocket Leads — Brand Knowledge Base
+# Rocket Leads - Brand Knowledge Base
 ## Module 1: Tone of Voice & Brand Identity
 
 ---
@@ -8,14 +8,14 @@
 **Naam:** Rocket Leads (juridische entiteiten: Rocket Leads Ltd. & Rocket Leads B.V.)
 **Opgericht:** 2018
 **Oprichter:** Roy Vosters
-**Hoofdvestiging (primair, vanaf april 2025):** Rocket Leads Ltd. — 19 Lavele Str., 1000 Sofia, Bulgarije
-**Secundaire vestiging:** Rocket Leads B.V. — Jacob van Lennepkade 155H, 1054 ZL Amsterdam, Nederland (optioneel beschikbaar)
+**Hoofdvestiging (primair, vanaf april 2025):** Rocket Leads Ltd. - 19 Lavele Str., 1000 Sofia, Bulgarije
+**Secundaire vestiging:** Rocket Leads B.V. - Jacob van Lennepkade 155H, 1054 ZL Amsterdam, Nederland (optioneel beschikbaar)
 **Facturatie:** Alle klanten worden gefactureerd vanuit Rocket Leads Ltd. (Bulgarije)
 **Finance e-mail:** Finance@rocketleads.com
 **BTW-nummer:** BG VAT BG208169940
 **Markt:** Nederland & Vlaanderen (primair), actief in 5+ landen
 **Tagline:** *"Your Strategic Partner In Marketing & Sales"* / *"Skyrocket your business"*
-**Positionering:** Marktleider leadgeneratie in Nederland — complete marketing- en salesmachine onder één dak
+**Positionering:** Marktleider leadgeneratie in Nederland - complete marketing- en salesmachine onder één dak
 
 ---
 
@@ -23,9 +23,9 @@
 
 Rocket Leads genereert gekwalificeerde afspraken voor bedrijven via een bewezen 3-stappen framework:
 
-1. **Genereer** — Unieke marketingcampagnes (voornamelijk Meta Ads) trekken de juiste prospects aan
-2. **Automatiseer** — Volledig geautomatiseerd dashboard met WhatsApp- en e-mailautomatisering
-3. **Kwalificeer** — Professionele appointment setters kwalificeren leads voordat ze als afspraak worden doorgezet
+1. **Genereer** - Unieke marketingcampagnes (voornamelijk Meta Ads) trekken de juiste prospects aan
+2. **Automatiseer** - Volledig geautomatiseerd dashboard met WhatsApp- en e-mailautomatisering
+3. **Kwalificeer** - Professionele appointment setters kwalificeren leads voordat ze als afspraak worden doorgezet
 
 **Kernbelofte:** Structureel meer gekwalificeerde afspraken en meer omzet, zonder dat de klant zelf de marketing hoeft te managen.
 
@@ -49,7 +49,7 @@ Rocket Leads genereert gekwalificeerde afspraken voor bedrijven via een bewezen 
 ## 3. Tone of Voice
 
 ### Kernkarakter
-**Direct. Zelfverzekerd. Resultaatgericht. Licht agressief — maar nooit bot.**
+**Direct. Zelfverzekerd. Resultaatgericht. Licht agressief - maar nooit bot.**
 
 Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen tijd verliest aan fluff. Geen corporaat, geen omslachtig, geen onzekerheid.
 
@@ -66,13 +66,13 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 
 ### Vaste stijlprincipes
 
-- **Schrijf in jij/jouw** — directe aanspraak, geen afstand
+- **Schrijf in jij/jouw** - directe aanspraak, geen afstand
 - **Korte zinnen.** Geen lappen tekst.
 - **Bullets voor voordelen,** lopende tekst voor verhaal
-- **Cijfers zijn heilig** — gebruik ze altijd als ze beschikbaar zijn (€75M+, 2.000+ klanten, 100 leads in eerste maand)
-- **Vermijd passieve constructies** — actief, niet lijdend
-- **Geen disclaimers** — Rocket Leads staat achter zijn resultaten
-- **Urgentie is standaard** — we werken met mensen die willen groeien, niet met mensen die twijfelen
+- **Cijfers zijn heilig** - gebruik ze altijd als ze beschikbaar zijn (€75M+, 2.000+ klanten, 100 leads in eerste maand)
+- **Vermijd passieve constructies** - actief, niet lijdend
+- **Geen disclaimers** - Rocket Leads staat achter zijn resultaten
+- **Urgentie is standaard** - we werken met mensen die willen groeien, niet met mensen die twijfelen
 
 ### Toonvoorbeelden
 
@@ -100,7 +100,7 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 
 ---
 
-## 4. Doelgroep (ICP — Ideal Customer Profile)
+## 4. Doelgroep (ICP - Ideal Customer Profile)
 
 **Primaire doelgroep:** Ambitieuze Nederlandse/Vlaamse bedrijfseigenaren die:
 - Willen schalen maar de marketing niet zelf willen of kunnen managen
@@ -133,11 +133,11 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 
 ## 5. Merkwaarden
 
-1. **Resultaat boven alles** — we worden afgerekend op output, niet op inspanning
-2. **Ownership** — we nemen verantwoordelijkheid, we schuiven het niet af
-3. **Snelheid** — we handelen snel, zowel intern als voor klanten
-4. **Expertise** — 8+ jaar, €75M+ bewezen resultaat, geen experimenten met het geld van klanten
-5. **Partnerschap** — niet een leverancier, maar een groeipartner
+1. **Resultaat boven alles** - we worden afgerekend op output, niet op inspanning
+2. **Ownership** - we nemen verantwoordelijkheid, we schuiven het niet af
+3. **Snelheid** - we handelen snel, zowel intern als voor klanten
+4. **Expertise** - 8+ jaar, €75M+ bewezen resultaat, geen experimenten met het geld van klanten
+5. **Partnerschap** - niet een leverancier, maar een groeipartner
 
 ---
 
@@ -154,16 +154,16 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 
 | Naam | Rol |
 |---|---|
-| **Roy Vosters** | Founder & Adviseur — strategisch niveau, AI-implementatie |
-| **Mike** | CEO / Country Manager — front-end (marketing, sales) |
-| **Roel** | CEO / Country Manager — back-end (delivery, finance, operations) |
-| **Stefan** | Campaign Manager — Team 2 |
-| **Danny** | Account Manager — Team 2 |
+| **Roy Vosters** | Founder & Adviseur - strategisch niveau, AI-implementatie |
+| **Mike** | CEO / Country Manager - front-end (marketing, sales) |
+| **Roel** | CEO / Country Manager - back-end (delivery, finance, operations) |
+| **Stefan** | Campaign Manager - Team 2 |
+| **Danny** | Account Manager - Team 2 |
 | **Quintus** | Appointment Setter |
 | **Shanna** | Graphic Designer & Content |
 | **Anel** | Closer (ervaren) |
 | **Jill** | Closer (in ontwikkeling, leert van Roy & Anel) |
-| **Arno** | Finance — facturen, betalingen, cashflow, debiteurenbeheer |
+| **Arno** | Finance - facturen, betalingen, cashflow, debiteurenbeheer |
 
 **Delivery structuur:** 2 teams
 - Team 1: Mike + Roel
@@ -206,5 +206,5 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 
 ---
 
-*Versie 1.0 — Aangemaakt: maart 2026*
+*Versie 1.0 - Aangemaakt: maart 2026*
 *Volgende module: ICP & Doelgroepanalyse*

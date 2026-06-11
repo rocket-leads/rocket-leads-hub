@@ -28,7 +28,7 @@ export function AdCopyRefresh({ selectedClientId, selectedClientName, autoStart 
     <RefreshShell<AdCopyProposal>
       endpoint="/api/pedro/ad-copy-refresh"
       title="Ad copy refresh"
-      description="Voor elke winner schrijft Pedro 3 nieuwe primary text + headline + description varianten — zelfde angle, frisse executie voor de feed."
+      description="Voor elke winner schrijft Pedro 3 nieuwe primary text + headline + description varianten - zelfde angle, frisse executie voor de feed."
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}
@@ -49,7 +49,7 @@ export function AdCopyRefresh({ selectedClientId, selectedClientName, autoStart 
                     {p.basedOnAd.adName}
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    CPL {p.basedOnAd.cpl != null ? `€${p.basedOnAd.cpl.toFixed(2)}` : "—"}
+                    CPL {p.basedOnAd.cpl != null ? `€${p.basedOnAd.cpl.toFixed(2)}` : "-"}
                     {" · "}
                     Behoud: {p.preserve.hook} / {p.preserve.angle} / {p.preserve.format}
                   </div>

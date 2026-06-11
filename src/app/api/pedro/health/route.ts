@@ -5,13 +5,13 @@ import { createAdminClient } from "@/lib/supabase/server"
 /**
  * GET /api/pedro/health
  *
- * Pedro pipeline observability — answers "is the auto-trigger loop
+ * Pedro pipeline observability - answers "is the auto-trigger loop
  * actually firing?". Computes both halves of the funnel from existing
  * data so we don't need a separate log table:
  *
- *  - kick-offs ingested last 7d (denominator) — meetings.meeting_type
+ *  - kick-offs ingested last 7d (denominator) - meetings.meeting_type
  *    + linked client_id
- *  - Pedro auto-fires last 7d (numerator) — inbox_events with
+ *  - Pedro auto-fires last 7d (numerator) - inbox_events with
  *    source='automation' and source_ref->>kind='pedro_kickoff_brief'
  *
  * If a big gap shows up (e.g. 10 kick-offs ingested, 0 Pedro fires)
@@ -30,7 +30,7 @@ export async function GET() {
 
   // ── Kick-offs ingested in the last 7d ──
   // Two buckets: linked (auto-trigger eligible) vs unlinked (matcher
-  // hasn't attached a client yet — these never fire Pedro).
+  // hasn't attached a client yet - these never fire Pedro).
   const { data: kickoffsRaw } = await supabase
     .from("meetings")
     .select("id, client_id, scheduled_at, title")
@@ -44,7 +44,7 @@ export async function GET() {
   const kickoffsUnlinked = kickoffs.filter((m) => !m.client_id)
 
   // ── Evaluation meetings ingested in last 7d (denominator for the
-  // eval-digest funnel — only linked evals are eligible to fire) ──
+  // eval-digest funnel - only linked evals are eligible to fire) ──
   const { data: evalsRaw } = await supabase
     .from("meetings")
     .select("id, client_id, scheduled_at, title")
@@ -134,13 +134,13 @@ export async function GET() {
       kickoffsLinked: kickoffsLinked.length,
       kickoffsUnlinked: kickoffsUnlinked.length,
       pedroFires: fires.length,
-      // Linked kick-offs that didn't get a Pedro fire — could be due to
+      // Linked kick-offs that didn't get a Pedro fire - could be due to
       // an existing pedro_client_state row (CM already started) or a
       // legitimate skip; the surface count flags it for inspection.
       kickoffsWithoutFire: missed.length,
-      // Eval digest funnel — only linked evals can fire, and even then
+      // Eval digest funnel - only linked evals can fire, and even then
       // Claude can mark as routine (actionable: false). Low conversion
-      // is normal — many evals are routine "all good" check-ins.
+      // is normal - many evals are routine "all good" check-ins.
       evalsIngested: evals.length,
       evalsLinked: evalsLinked.length,
       evalDigestsFired: evalDigests.length,
@@ -151,7 +151,7 @@ export async function GET() {
     fires: fires.map((f) => ({
       id: f.id,
       clientId: f.client_id,
-      clientName: f.client_id ? clientNames.get(f.client_id) ?? "?" : "—",
+      clientName: f.client_id ? clientNames.get(f.client_id) ?? "?" : "-",
       title: f.title,
       assignee: f.assignee_id
         ? userNames.get(f.assignee_id)?.name ?? userNames.get(f.assignee_id)?.email ?? "?"
@@ -164,7 +164,7 @@ export async function GET() {
     evalDigests: evalDigests.map((f) => ({
       id: f.id,
       clientId: f.client_id,
-      clientName: f.client_id ? clientNames.get(f.client_id) ?? "?" : "—",
+      clientName: f.client_id ? clientNames.get(f.client_id) ?? "?" : "-",
       title: f.title,
       severity: f.source_ref?.severity ?? "low",
       suggestedAction: f.source_ref?.suggestedAction ?? "no_action",
@@ -178,7 +178,7 @@ export async function GET() {
     missed: missed.map((k) => ({
       meetingId: k.id,
       clientId: k.client_id,
-      clientName: k.client_id ? clientNames.get(k.client_id) ?? "?" : "—",
+      clientName: k.client_id ? clientNames.get(k.client_id) ?? "?" : "-",
       scheduledAt: k.scheduled_at,
       title: k.title,
     })),

@@ -18,9 +18,9 @@ import { BUCKET } from "@/lib/integrations/pedro-image-storage"
  * Supabase Storage so a botched refresh doesn't leave orphans.
  *
  * NOT touched on delete (intentional):
- *   - Inbox events saved via /save-to-inbox — the markdown lives in
+ *   - Inbox events saved via /save-to-inbox - the markdown lives in
  *     the inbox row itself, AM may still want to read it.
- *   - Drive files exported via /save-to-drive — same logic, plus the
+ *   - Drive files exported via /save-to-drive - same logic, plus the
  *     CM may have already shared the Drive link with someone.
  *
  * Roy 2026-06-09: voor foutieve refreshes die het learning-loop
@@ -52,7 +52,7 @@ export async function GET(
     if (!data) return NextResponse.json({ error: "Refresh not found" }, { status: 404 })
 
     // Look up the client name from the clients table so the envelope is
-    // self-contained — same shape the live POST returns.
+    // self-contained - same shape the live POST returns.
     const { data: clientRow } = await supabase
       .from("clients")
       .select("name")
@@ -127,7 +127,7 @@ export async function GET(
         const hasImage = hasSlotImage || hasLegacyImage
         return {
           ...v,
-          // Variant DB id — required for image gen / upload / launch endpoints.
+          // Variant DB id - required for image gen / upload / launch endpoints.
           variantId: dbRow?.id ?? null,
           image: hasImage
             ? {
@@ -163,7 +163,7 @@ export async function GET(
       proposals: enrichedProposals,
       summary: env.summary ?? "",
       warnings: env.warnings ?? [],
-      // Status flags for the inbox/drive save buttons — UI shows
+      // Status flags for the inbox/drive save buttons - UI shows
       // "Already saved" instead of the action button when set.
       savedToInboxEventId: data.saved_to_inbox_event_id ?? null,
       savedToDriveFileId: data.saved_to_drive_file_id ?? null,
@@ -216,7 +216,7 @@ export async function DELETE(
 
     // Roy 2026-06-10: na de 3-slot migratie staan images in
     // `pedro_variant_images.storage_path`. Oude `pedro_variants.image_storage_path`
-    // wordt deprecated maar oude refreshes hebben daar nog data — clean
+    // wordt deprecated maar oude refreshes hebben daar nog data - clean
     // beide om geen orphans achter te laten.
     const legacyPaths = (variants ?? [])
       .map((v) => v.image_storage_path)

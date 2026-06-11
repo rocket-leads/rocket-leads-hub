@@ -24,7 +24,7 @@ const SIMPLE_FIELDS = [
   "client_board_id",
   "google_drive_id",
   "kick_off_date",
-  // The cycle-start drives the invoice date — see updateClientField below for
+  // The cycle-start drives the invoice date - see updateClientField below for
   // the dual-write that keeps Monday's `date_mm3297df` in lockstep with this.
   "cycle_start_date",
   // Kept editable for legacy paths and admin overrides, but the canonical
@@ -36,7 +36,7 @@ const STATUS_FIELDS = ["campaign_status", "country", "contact_channel", "adminis
 
 const PERSON_FIELDS = ["account_manager", "campaign_manager", "appointment_setter"] as const
 
-// Fields that live only in Supabase — no Monday column behind them. Writes go
+// Fields that live only in Supabase - no Monday column behind them. Writes go
 // straight to the `clients` table, no Monday mutation, no cache patch on the
 // `monday_boards` snapshot (which is keyed off Monday columns). See the
 // 20240046 migration for the rationale on `next_ad_budget_invoice_date`.
@@ -51,7 +51,7 @@ export type SupabaseOnlyFieldKey = (typeof SUPABASE_ONLY_FIELDS)[number]
  * Person updates carry both IDs (what Monday needs in the mutation) and
  * the display names (what the cache patch writes in-place). With names in
  * the payload we can skip the read-after-write entirely and avoid Monday's
- * person-column eventual-consistency window — see the comment above
+ * person-column eventual-consistency window - see the comment above
  * `patchCacheWithKnownValue` for the full rationale.
  */
 export type ClientFieldUpdate =
@@ -92,11 +92,11 @@ export async function updateClientField(
   const boardType = client.monday_board_type as "onboarding" | "current"
 
   if (SUPABASE_ONLY_SET.has(update.fieldKey) && "value" in update) {
-    // Hub-only field — no Monday column behind it, so this is a Supabase
+    // Hub-only field - no Monday column behind it, so this is a Supabase
     // write only. We also short-circuit the cache-patch + re-sync that
     // Monday-backed fields go through: the `monday_boards` cache is keyed
     // off Monday columns, and `syncClientToSupabase` re-mirrors only the
-    // Monday-derived fields — neither touches this column.
+    // Monday-derived fields - neither touches this column.
     await writeSupabaseOnlyField(mondayItemId, update.fieldKey as SupabaseOnlyFieldKey, update.value)
     return
   }
@@ -111,10 +111,10 @@ export async function updateClientField(
       await setItemColumnValue(boardType, mondayItemId, "next_invoice_date", derivedInvoice)
       // Sibling sync: if multiple Monday rows share a Stripe customer (e.g.
       // "O2 Plus | B2B" and "O2 Plus | B2C"), they're consolidated into one
-      // invoice at send time — so their cycles HAVE to be in lockstep or
+      // invoice at send time - so their cycles HAVE to be in lockstep or
       // we'd unintentionally produce two separate invoices a few days apart.
       // Propagate the same cycle/invoice dates to every sibling. Errors on
-      // any one sibling don't block the others — finance can rerun later.
+      // any one sibling don't block the others - finance can rerun later.
       await syncCycleToSiblings(mondayItemId, update.value, derivedInvoice)
     }
   } else if (STATUS_SET.has(update.fieldKey) && "label" in update) {
@@ -122,7 +122,7 @@ export async function updateClientField(
     // any caller) tries to promote a client from "onboarding" Hub
     // status to "Live". Any critical wizard step still open blocks
     // the write. Other status transitions (Live → Live re-write,
-    // OnHold → Live, Churned → Live) skip the gate — those clients
+    // OnHold → Live, Churned → Live) skip the gate - those clients
     // already passed it once.
     if (
       update.fieldKey === "campaign_status" &&
@@ -137,7 +137,7 @@ export async function updateClientField(
           const missing = missingCriticalSteps(states)
           if (missing.length > 0) {
             throw new Error(
-              `Cannot promote to Live — ${missing.length} critical onboarding step(s) still open: ` +
+              `Cannot promote to Live - ${missing.length} critical onboarding step(s) still open: ` +
                 missing.map((m) => m.key).join(", "),
             )
           }
@@ -145,12 +145,12 @@ export async function updateClientField(
       }
     }
 
-    // Empty label clears the status — Monday accepts `{ label: "" }` as a reset.
+    // Empty label clears the status - Monday accepts `{ label: "" }` as a reset.
     await setItemColumnValueRaw(boardType, mondayItemId, update.fieldKey, {
       label: update.label,
     })
     // Auto-sync: when the campaign flips to "On hold" the Administration column
-    // should follow as "On hold" too — billing is paused, finance shouldn't be
+    // should follow as "On hold" too - billing is paused, finance shouldn't be
     // chasing a held client. The two columns share the same label by design
     // so finance can scan either one. Single Monday write, same boardType, no
     // extra refetch needed because the cache patch below picks both up.
@@ -174,25 +174,25 @@ export async function updateClientField(
     throw new Error(`Unsupported field update for "${update.fieldKey}"`)
   }
 
-  // Patch the cache with what WE wrote — not with a Monday re-read.
+  // Patch the cache with what WE wrote - not with a Monday re-read.
   //
   // Why this matters: Monday's REST/GraphQL has read-after-write eventual
   // consistency, worst for `people` columns where the column.text join can
   // take 1-2s to settle. If we re-fetch immediately and write that back to
   // the cache, the cache momentarily holds the PRE-edit value. The client's
   // React Query invalidate (fired right after the PATCH returns) then reads
-  // that stale cache and resets the optimistic state to "Unassigned" —
+  // that stale cache and resets the optimistic state to "Unassigned" -
   // exactly Roy's "springt gelijk naar unassigned" symptom.
   //
   // By patching the cache with the value we know we wrote, the next render
   // sees the right thing immediately. The Monday webhook will fire a
   // second-or-so later and patch the cache again with Monday's actual
-  // state — if our write succeeded as expected, that's an identical patch;
+  // state - if our write succeeded as expected, that's an identical patch;
   // if Monday silently rejected something, the webhook's value wins and the
   // UI corrects itself.
   const patchedCachedClient = await patchCacheWithKnownValue(mondayItemId, update)
   if (patchedCachedClient) {
-    // Best-effort Supabase mirror. Errors get swallowed — the per-client
+    // Best-effort Supabase mirror. Errors get swallowed - the per-client
     // sync runs again on the next page view through the existing ensureClientId
     // path so a transient Supabase blip doesn't block the Monday write.
     void syncClientToSupabase(patchedCachedClient).catch((e) => {
@@ -205,7 +205,7 @@ export async function updateClientField(
  * Apply our just-written value directly to the cached client snapshot,
  * skipping the Monday re-fetch race. Returns the patched client so callers
  * can mirror it to Supabase. Returns null when the client isn't in the
- * `monday_boards` cache yet — the cron will pick them up on its next tick.
+ * `monday_boards` cache yet - the cron will pick them up on its next tick.
  */
 async function patchCacheWithKnownValue(
   mondayItemId: string,
@@ -227,7 +227,7 @@ async function patchCacheWithKnownValue(
       // it so there's nothing to patch.
       const prop = SIMPLE_TO_CLIENT_PROP[update.fieldKey as SimpleFieldKey]
       if (prop) (next as Record<string, unknown>)[prop] = update.value
-      // Cycle drives next-invoice — re-derive so the UI shows the linked
+      // Cycle drives next-invoice - re-derive so the UI shows the linked
       // value without waiting for a refresh.
       if (update.fieldKey === "cycle_start_date") {
         next.nextInvoiceDate = deriveInvoiceDate(update.value) ?? ""
@@ -239,7 +239,7 @@ async function patchCacheWithKnownValue(
       const prop = PERSON_TO_CLIENT_PROP[update.fieldKey as PersonFieldKey]
       // personNames is the display value the cell renders. When the caller
       // didn't supply it (legacy callers, scripted edits) we fall back to
-      // an empty string — the webhook will fill it in shortly anyway.
+      // an empty string - the webhook will fill it in shortly anyway.
       if (prop) (next as Record<string, unknown>)[prop] = (update.personNames ?? []).join(", ")
     }
     patched = next
@@ -257,7 +257,7 @@ async function patchCacheWithKnownValue(
     try {
       await writeCache(clientItemCacheKey(mondayItemId), patched)
     } catch {
-      // Per-item cache miss is fine — the next fetchClientById call will
+      // Per-item cache miss is fine - the next fetchClientById call will
       // re-populate it from Monday (post-consistency window).
     }
   }
@@ -286,7 +286,7 @@ const SIMPLE_TO_CLIENT_PROP: Partial<Record<SimpleFieldKey, keyof MondayClient>>
 const STATUS_TO_CLIENT_PROP: Partial<Record<StatusFieldKey, keyof MondayClient>> = {
   campaign_status: "campaignStatus",
   // `country`, `contact_channel`, `administration` aren't on the
-  // MondayClient shape today — they're parsed lazily where needed. If we
+  // MondayClient shape today - they're parsed lazily where needed. If we
   // add them later, mirror them here so the cache patch covers them too.
 }
 
@@ -300,7 +300,7 @@ const PERSON_TO_CLIENT_PROP: Record<PersonFieldKey, keyof MondayClient> = {
  * Patch a single client into the `monday_boards` cache so the next page
  * render sees the up-to-date row without waiting for the daily cron tick.
  * Exported so the Monday webhook receiver can call it when a column changes
- * upstream (status edit in Monday, AM swap, etc.) — same code path the
+ * upstream (status edit in Monday, AM swap, etc.) - same code path the
  * in-Hub edit uses, keeping both edit-paths byte-equivalent.
  */
 export async function patchMondayBoardsCache(refreshed: MondayClient): Promise<void> {
@@ -314,7 +314,7 @@ export async function patchMondayBoardsCache(refreshed: MondayClient): Promise<v
       current: replace(cached.current),
     })
   } catch (e) {
-    // Cache patching is best-effort — a failed write only means the user
+    // Cache patching is best-effort - a failed write only means the user
     // sees stale state until the next cron tick or manual refresh.
     console.error("monday_boards cache patch failed:", e instanceof Error ? e.message : e)
   }
@@ -326,7 +326,7 @@ export async function patchMondayBoardsCache(refreshed: MondayClient): Promise<v
  * (B2B + B2C under one Stripe customer) keep one cadence per billable.
  *
  * Empty string clears the column (DATE → null). Treats anything that isn't
- * `YYYY-MM-DD` as a clear — same convention `syncClientToSupabase` uses for
+ * `YYYY-MM-DD` as a clear - same convention `syncClientToSupabase` uses for
  * the Monday-mirrored dates.
  */
 async function writeSupabaseOnlyField(
@@ -357,7 +357,7 @@ async function writeSupabaseOnlyField(
   const stripeCustomerId = source.stripe_customer_id as string | null
   if (!stripeCustomerId) return
 
-  // Sibling sync — same rationale as `syncCycleToSiblings` for the fee
+  // Sibling sync - same rationale as `syncCycleToSiblings` for the fee
   // cycle. Per-sibling failures are logged but don't bubble up; the
   // primary row is already saved.
   const { error: sibErr } = await supabase
@@ -382,7 +382,7 @@ async function writeSupabaseOnlyField(
  * is excluded by `monday_item_id`. Source-of-truth for "who shares a Stripe
  * customer" is Supabase's mirrored `stripe_customer_id` column on `clients`.
  *
- * Per-sibling failures are logged but don't throw — finance can hit Refresh
+ * Per-sibling failures are logged but don't throw - finance can hit Refresh
  * to re-attempt the sync via a follow-up edit. The target row is already
  * updated by the time we get here.
  */
@@ -393,7 +393,7 @@ async function syncCycleToSiblings(
 ): Promise<void> {
   const supabase = await createAdminClient()
 
-  // Resolve the source's Stripe customer. Empty/null = no siblings to sync —
+  // Resolve the source's Stripe customer. Empty/null = no siblings to sync -
   // the row isn't billable yet, so cycle drift between siblings can't bite.
   const { data: source } = await supabase
     .from("clients")

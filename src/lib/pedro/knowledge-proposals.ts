@@ -15,7 +15,7 @@ import type { VerticalPatternRow } from "@/lib/pedro/vertical-patterns"
  *
  * If new + meaningful, we insert a row in pedro_knowledge_proposals and
  * create a Hub task for Roy. Roy reviews. Knowledge file edits stay
- * MANUAL — auto-write would let drift accumulate unchecked, and the
+ * MANUAL - auto-write would let drift accumulate unchecked, and the
  * knowledge file is loaded into every Pedro AI call so a bad addition
  * has agency-wide blast radius.
  *
@@ -26,7 +26,7 @@ import type { VerticalPatternRow } from "@/lib/pedro/vertical-patterns"
  *
  * Proposal dedupe:
  *  - Skip if a 'pending' or 'accepted' proposal exists for the same
- *    (vertical, pattern_type, title) — don't spam the same idea.
+ *    (vertical, pattern_type, title) - don't spam the same idea.
  */
 
 const anthropic = new Anthropic()
@@ -44,13 +44,13 @@ export type ProposalCandidate = {
 
 /**
  * Find verticals where convergence thresholds are met. Pure function on
- * the patterns rows — caller handles dedupe vs DB.
+ * the patterns rows - caller handles dedupe vs DB.
  */
 export function findCandidates(verticals: VerticalPatternRow[]): ProposalCandidate[] {
   const candidates: ProposalCandidate[] = []
 
   for (const v of verticals) {
-    // Count distinct clients per pattern via the top_winners pool —
+    // Count distinct clients per pattern via the top_winners pool -
     // if Claude says "angle X" 5 times but they all came from one
     // client, that's not convergence, that's one client with a strong
     // pattern.
@@ -93,7 +93,7 @@ export function findCandidates(verticals: VerticalPatternRow[]): ProposalCandida
 
 /**
  * Read knowledge/campaigns.md from disk. Used to feed Claude so it can
- * judge "is this pattern already covered?". Cached in module memory —
+ * judge "is this pattern already covered?". Cached in module memory -
  * the cron is short-lived so cache TTL doesn't matter.
  */
 let cachedKnowledge: string | null = null
@@ -116,7 +116,7 @@ type ClaudeProposalOutput = {
   suggestedAddition: string
   /** 1-line summary used as the proposal title + task title. */
   summary: string
-  /** Why this is worth knowing — one line. */
+  /** Why this is worth knowing - one line. */
   rationale: string
 }
 
@@ -135,7 +135,7 @@ async function askClaudeForProposal(
 
   const prompt = `Je bent Pedro, senior campaign manager bij Rocket Leads. Een patroon convergeert in vertical "${candidate.vertical}":
 
-PATROON: ${candidate.patternType} — "${candidate.patternKey}"
+PATROON: ${candidate.patternType} - "${candidate.patternKey}"
 - Voorkomend in ${candidate.frequency} winnende ads
 - Across ${candidate.contributingClients} verschillende klanten in dezelfde branche
 
@@ -157,12 +157,12 @@ ALLEEN JSON output (geen markdown wrapper, geen code fences):
   "targetSection": "naam van sectie OF '(nieuwe sectie)'",
   "suggestedAddition": "complete markdown blok klaar om te plakken",
   "summary": "1-line beschrijving van het patroon (max 80 chars)",
-  "rationale": "1 zin in NL — waarom Roy dit zou willen toevoegen"
+  "rationale": "1 zin in NL - waarom Roy dit zou willen toevoegen"
 }
 
 Belangrijk:
 - Wees STRENG met "isNew=true". Als knowledge/campaigns.md het patroon al noemt, ook impliciet, → isNew=false.
-- "suggestedAddition" moet drop-in plakbaar zijn — geen placeholder, geen "[VUL IN]".
+- "suggestedAddition" moet drop-in plakbaar zijn - geen placeholder, geen "[VUL IN]".
 - Géén klantnamen. Géén refereren naar specifieke RL klanten.
 - Match Nederlandse stijl van campaigns.md.`
 
@@ -181,7 +181,7 @@ Belangrijk:
 }
 
 /**
- * Find the campaign-manager-like admin user — used as the assignee for
+ * Find the campaign-manager-like admin user - used as the assignee for
  * knowledge proposal review tasks. Falls back to the first admin found.
  */
 async function findReviewerUserId(supabase: SupabaseClient): Promise<string | null> {
@@ -278,7 +278,7 @@ export async function runKnowledgeProposalScan(
       proposal.suggestedAddition,
       "```",
       "",
-      "_Knowledge-base edits zijn handmatig — Roy reviewed → kopieer de bovenstaande markdown handmatig in `knowledge/campaigns.md` als hij akkoord is. Daarna mark deze proposal als `accepted` via de Settings → Pedro tab._",
+      "_Knowledge-base edits zijn handmatig - Roy reviewed → kopieer de bovenstaande markdown handmatig in `knowledge/campaigns.md` als hij akkoord is. Daarna mark deze proposal als `accepted` via de Settings → Pedro tab._",
     ].join("\n")
 
     // Insert proposal
@@ -334,7 +334,7 @@ export async function runKnowledgeProposalScan(
             .eq("id", inserted.id)
         }
       } catch {
-        // Non-fatal — proposal exists in pedro_knowledge_proposals
+        // Non-fatal - proposal exists in pedro_knowledge_proposals
       }
     }
 

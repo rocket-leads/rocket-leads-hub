@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server"
  * a small grey "Laatste update: <date>" caption under the button otherwise.
  *
  * Reads the cached `clients.last_client_update_at` column rather than
- * aggregating `client_updates` on every page load — cheap and indexed.
+ * aggregating `client_updates` on every page load - cheap and indexed.
  *
  * Response shape: see `LastClientUpdatesResponse` below. Monday IDs missing
  * from the map have never been updated; the table cell treats that as

@@ -10,7 +10,7 @@ export type RecentOverridesResponse = {
 /**
  * Last 30 days of overrides across all clients, surfaced as a flat list for
  * the dashboard's learning layer. The dashboard runs `suggestAiAdjustment`
- * against this list for every live client on render — pattern matching
+ * against this list for every live client on render - pattern matching
  * happens client-side so the suggestion updates the moment a new override
  * lands (no cron lag).
  *
@@ -26,7 +26,7 @@ export async function GET() {
   const supabase = await createAdminClient()
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
-  // We pull EVERY override — expired or not — because the learning corpus is
+  // We pull EVERY override - expired or not - because the learning corpus is
   // the full history of CM decisions, not just what's currently active. An
   // expired-by-time override is still a valid signal that "the team made
   // this call when the data looked like X".

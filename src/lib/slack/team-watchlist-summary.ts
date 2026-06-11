@@ -42,8 +42,8 @@ const DAILY_GREETINGS: string[] = [
   "Good morning crew!",
   "Hallo allemaal!",
   "Bonjour amigos!",
-  "Hey team — nieuwe dag, nieuwe kansen 🚀",
-  "Wakker worden — ☕ tijd voor Rocket Leads",
+  "Hey team - nieuwe dag, nieuwe kansen 🚀",
+  "Wakker worden - ☕ tijd voor Rocket Leads",
   "Goeiedag! Lekker bezig vandaag?",
   "Top of the morning!",
   "Olá amigos! ☀️",
@@ -57,11 +57,11 @@ const DAILY_GREETINGS: string[] = [
 const DAY_OF_WEEK_GREETINGS: Record<number, string[]> = {
   1: [
     "Happy Monday team! Nieuwe week 🚀",
-    "Maandag — let's go amigos!",
+    "Maandag - let's go amigos!",
     "Buenos lunes! Een frisse start ☀️",
   ],
   2: ["Happy Tuesday! ☕", "Lekkere dinsdag amigos"],
-  3: ["Happy hump day team 🐪", "Woensdag — halverwege!"],
+  3: ["Happy hump day team 🐪", "Woensdag - halverwege!"],
   4: ["Happy Thursday! ⚡"],
   5: ["Vrijdag amigos! Almost weekend 🎉", "Happy Friday team! ☀️"],
 }
@@ -108,10 +108,10 @@ type TeamWatchlistVars = {
 
 /**
  * Computes the variable bag for the team-wide channel summary. Two rankings:
- *   1. Watch List — campaign-manager teams sorted by health score
- *   2. Revenue — delivery-team revenue MTD sorted by total invoiced
+ *   1. Watch List - campaign-manager teams sorted by health score
+ *   2. Revenue - delivery-team revenue MTD sorted by total invoiced
  *
- * Only the two configured TEAMS are tracked — clients managed by anyone
+ * Only the two configured TEAMS are tracked - clients managed by anyone
  * outside those names are excluded entirely.
  */
 export function computeTeamWatchlistVars(opts: {
@@ -149,7 +149,7 @@ export function computeTeamWatchlistVars(opts: {
   const dayDelta =
     todayScore !== null && yesterdayScore !== null ? todayScore - yesterdayScore : null
 
-  // Team watchlist rows — sorted by health score desc.
+  // Team watchlist rows - sorted by health score desc.
   const teamRows: TeamRow[] = []
   for (const team of TEAMS) {
     const buckets = perTeam.get(team.name)!
@@ -158,7 +158,7 @@ export function computeTeamWatchlistVars(opts: {
   }
   teamRows.sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.total - a.total)
 
-  // Team revenue rows — sum delivery's byAccountManager rows per team.
+  // Team revenue rows - sum delivery's byAccountManager rows per team.
   const amByName = new Map<string, AccountManagerRevenue>()
   for (const am of byAccountManager) amByName.set(am.name, am)
 
@@ -181,7 +181,7 @@ export function computeTeamWatchlistVars(opts: {
   const dayOfWeekUtc = new Date(`${today}T00:00:00Z`).getUTCDay()
   const greeting = pickGreeting(today, dayOfWeekUtc)
 
-  // ── Score line (no bold — template controls bold) ──
+  // ── Score line (no bold - template controls bold) ──
   let score_line = ""
   if (todayScore !== null) {
     const scoreParts: string[] = [`Health score: ${todayScore}%`]
@@ -210,9 +210,9 @@ export function computeTeamWatchlistVars(opts: {
     const block: string[] = ["*Campaign Manager ranking*"]
     teamRows.forEach((row, idx) => {
       const rank = idx + 1
-      const scoreStr = row.score === null ? "—" : `${row.score}%`
+      const scoreStr = row.score === null ? "-" : `${row.score}%`
       block.push(
-        `${medal(rank)} ${row.name} — *${scoreStr}* · 🟢 ${row.buckets.good} · 🟡 ${row.buckets.watch} · 🔴 ${row.buckets.action}`,
+        `${medal(rank)} ${row.name} - *${scoreStr}* · 🟢 ${row.buckets.good} · 🟡 ${row.buckets.watch} · 🔴 ${row.buckets.action}`,
       )
     })
     cm_ranking_section = block.join("\n")
@@ -221,11 +221,11 @@ export function computeTeamWatchlistVars(opts: {
   // ── Revenue ranking section ──
   let revenue_ranking_section = ""
   if (revenueRows.some((r) => r.revenue > 0)) {
-    const block: string[] = ["*Revenue ranking — deze maand*"]
+    const block: string[] = ["*Revenue ranking - deze maand*"]
     revenueRows.forEach((row, idx) => {
       const rank = idx + 1
       block.push(
-        `${medal(rank)} ${row.name} — *${formatEuroCompact(row.revenue)}* (MRR ${formatEuroCompact(row.mrr)} · new biz ${formatEuroCompact(row.newBusiness)})`,
+        `${medal(rank)} ${row.name} - *${formatEuroCompact(row.revenue)}* (MRR ${formatEuroCompact(row.mrr)} · new biz ${formatEuroCompact(row.newBusiness)})`,
       )
     })
     revenue_ranking_section = block.join("\n")

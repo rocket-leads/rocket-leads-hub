@@ -18,13 +18,13 @@ import {
  *       onboarding) so the Settings UI can show "5/5 events registered"
  *       per board.
  * POST → reconcile: for every (board, event) pair we want, register it
- *        if not already present. Idempotent — re-running is safe and
+ *        if not already present. Idempotent - re-running is safe and
  *        cheap.
  * DELETE ?id=... → drop a specific webhook (used to clean up a stale
  *                  one pointing at an old domain or expired secret).
  *
  * The webhook URL is derived from the incoming request so it always
- * matches the host the admin is currently on (prod / preview) — no
+ * matches the host the admin is currently on (prod / preview) - no
  * env var to keep in sync.
  */
 
@@ -47,7 +47,7 @@ const TARGET_EVENTS: MondayWebhookEvent[] = [
 function buildWebhookUrl(req: NextRequest): string | null {
   const secret = process.env.MONDAY_WEBHOOK_SECRET
   if (!secret) return null
-  // `req.nextUrl.origin` reflects the host the admin is currently using —
+  // `req.nextUrl.origin` reflects the host the admin is currently using -
   // e.g. https://hub.rocketleads.com on prod, a *.vercel.app preview URL
   // when poking from a deploy preview. Better than a hardcoded env var
   // because it can't drift.
@@ -56,7 +56,7 @@ function buildWebhookUrl(req: NextRequest): string | null {
 
 /** Monday only accepts publicly-reachable HTTPS URLs as webhook targets.
  *  Trying to register a `http://localhost:3000` (or any private host) makes
- *  the create_webhook mutation throw — and worse, if combined with the
+ *  the create_webhook mutation throw - and worse, if combined with the
  *  reset flag, the delete pass goes through FIRST and wipes the good prod
  *  webhooks before the doomed create can even run. Gate both register and
  *  reset behind this check so a stray click from dev can't take production
@@ -97,14 +97,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Board config missing" }, { status: 500 })
   }
 
-  // Per-board list in parallel — Monday's webhooks query is scoped by board.
+  // Per-board list in parallel - Monday's webhooks query is scoped by board.
   const [onboardingWebhooks, currentWebhooks] = await Promise.all([
     listMondayWebhooks(boards.onboarding).catch(() => [] as MondayWebhook[]),
     listMondayWebhooks(boards.current).catch(() => [] as MondayWebhook[]),
   ])
 
   // Diagnostics for "secret is set in Vercel but the function says it isn't"
-  // troubleshooting. Returns metadata only — never the actual secret value —
+  // troubleshooting. Returns metadata only - never the actual secret value -
   // so we can confirm what the running serverless function sees without
   // leaking the credential. Admin-only.
   const rawSecret = process.env.MONDAY_WEBHOOK_SECRET
@@ -143,19 +143,19 @@ export async function POST(req: NextRequest) {
   const webhookUrl = buildWebhookUrl(req)
   if (!webhookUrl) {
     return NextResponse.json(
-      { error: "MONDAY_WEBHOOK_SECRET not set in env — set it before registering." },
+      { error: "MONDAY_WEBHOOK_SECRET not set in env - set it before registering." },
       { status: 500 },
     )
   }
   // Guard against running from a non-public host (localhost dev, *.local,
-  // private IP). Monday rejects those URLs on create — but the reset path
+  // private IP). Monday rejects those URLs on create - but the reset path
   // would already have deleted the good prod webhooks by the time we
   // discover this. Refuse loudly instead.
   if (!isPublicWebhookUrl(webhookUrl)) {
     return NextResponse.json(
       {
         error:
-          "Refusing to register from a non-public URL — Monday only accepts publicly-reachable HTTPS endpoints. Run this from the production deployment (hub.rocketleads.com), not localhost.",
+          "Refusing to register from a non-public URL - Monday only accepts publicly-reachable HTTPS endpoints. Run this from the production deployment (hub.rocketleads.com), not localhost.",
         attemptedUrl: webhookUrl,
       },
       { status: 400 },
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
 
   // `?reset=1` mode: delete every existing webhook for our target events on
   // both boards before re-registering. Use when the secret has rotated and
-  // old webhooks point at stale URLs that the receiver no longer accepts —
+  // old webhooks point at stale URLs that the receiver no longer accepts -
   // a normal Register call would treat them as "exists" and never refresh
   // the URL embedded in Monday's registration.
   const reset = req.nextUrl.searchParams.get("reset") === "1"
@@ -212,7 +212,7 @@ export async function POST(req: NextRequest) {
 
     const presentEvents = new Set(
       existing
-        // Only count webhooks pointing at OUR URL — a webhook registered
+        // Only count webhooks pointing at OUR URL - a webhook registered
         // against another env (preview vs prod) or to a different consumer
         // is irrelevant for "should we register here?".
         .filter((w) => !w.url || w.url === webhookUrl)

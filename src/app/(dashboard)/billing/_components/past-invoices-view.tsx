@@ -68,7 +68,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("date")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  // Past invoices are billing data — finance routinely needs to look at today's
+  // Past invoices are billing data - finance routinely needs to look at today's
   // sends, so unlike campaign metrics we DO want today included.
   const maxDate = new Date()
 
@@ -118,7 +118,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"))
     } else {
       setSortKey(key)
-      // Sensible default direction per column — dates newest-first, names a→z.
+      // Sensible default direction per column - dates newest-first, names a→z.
       setSortDir(key === "date" || key === "amount" ? "desc" : "asc")
     }
   }
@@ -156,7 +156,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
         <Stat label="Paid" value={String(totals.paidCount)} tone="emerald" />
       </div>
 
-      {/* Filters — same DateRangePicker + preset chips combo as the Clients
+      {/* Filters - same DateRangePicker + preset chips combo as the Clients
           overview, so the filter row reads identically across the Hub. */}
       <div className="flex flex-wrap items-center gap-2">
         <DateRangePicker
@@ -183,7 +183,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
       {/* Table */}
       <Panel className="overflow-hidden">
         {invoices.length === 0 ? (
-          // Cache hasn't been populated yet — most likely on a fresh deploy
+          // Cache hasn't been populated yet - most likely on a fresh deploy
           // before the hourly cron has fired. Tell the user how to fix it
           // rather than the generic "no matches" line which implies the data
           // exists but doesn't fit the filter.
@@ -191,7 +191,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
             <p>Past invoices haven&apos;t been loaded yet.</p>
             <p className="text-xs text-muted-foreground/70">
               Hit <span className="font-medium text-foreground/80">Refresh</span> at the top to
-              pull them from Stripe — runs hourly otherwise.
+              pull them from Stripe - runs hourly otherwise.
             </p>
           </div>
         ) : sorted.length === 0 ? (
@@ -216,7 +216,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                 return (
                   <TableRow key={inv.id} className="border-b border-border/40 row-hover">
                     <TableCell className="py-2.5 font-mono text-xs">
-                      {inv.number ?? <span className="text-muted-foreground/60">—</span>}
+                      {inv.number ?? <span className="text-muted-foreground/60">-</span>}
                     </TableCell>
                     <TableCell className="py-2.5">
                       {inv.clientName ? (
@@ -280,7 +280,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                           <ExternalLink className="h-3 w-3 opacity-50" />
                         </a>
                       ) : (
-                        <span className="text-[11px] text-muted-foreground/50">—</span>
+                        <span className="text-[11px] text-muted-foreground/50">-</span>
                       )}
                     </TableCell>
                   </TableRow>

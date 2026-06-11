@@ -27,14 +27,14 @@ import { AdminEditCell } from "./admin-edit-cell"
 import { combinedClientName } from "@/lib/billing/sibling-name"
 
 /**
- * A billable group — one or more Monday rows that share a Stripe customer.
+ * A billable group - one or more Monday rows that share a Stripe customer.
  * Each Monday row IS one campaign; when several share a customer (e.g.
  * "O2 Plus | B2B" + "O2 Plus | B2C"), they're billed on a single invoice.
  *
  * - Single-sibling groups behave like the old per-row entries.
  * - Multi-sibling groups expand to show the per-campaign breakdown.
  *
- * `primary` is the sibling with the earliest `nextInvoiceDate` — used for
+ * `primary` is the sibling with the earliest `nextInvoiceDate` - used for
  * bucketing into Overdue / Today / This week. Siblings may legitimately
  * disagree on dates when each campaign is its own business with its own
  * start date, so divergent dates are not flagged as an error.
@@ -43,7 +43,7 @@ import { combinedClientName } from "@/lib/billing/sibling-name"
  * row. For single-sibling groups it's the primary's own. For multi-sibling
  * groups it's the worst verdict across siblings (hold > check > send) with
  * each sibling's reason concatenated, so the at-a-glance pill reflects the
- * full group's invoiceability — not just the primary campaign.
+ * full group's invoiceability - not just the primary campaign.
  */
 export type BillingGroup = {
   /** stripeCustomerId, or `unlinked-{mondayItemId}` for ungrouped rows. */
@@ -60,41 +60,41 @@ export type UpcomingInvoice = {
   mondayItemId: string
   name: string
   /** When finance sends the invoice. Always derived as `cycleStartDate - 7d`,
-   *  read-only in the UI — edit the cycle to move the invoice. */
+   *  read-only in the UI - edit the cycle to move the invoice. */
   nextInvoiceDate: string
   /** When the new billing cycle starts for the client. Manual source of truth;
    *  changing this here writes both Monday columns in lockstep. */
   cycleStartDate: string
   stripeCustomerId: string | null
   /** Service fee (sum of platform fees + follow-up fee from the agreement).
-   *  Was previously called "MRR" — renamed to "Fee" because finance reads it
+   *  Was previously called "MRR" - renamed to "Fee" because finance reads it
    *  as "what we charge for managing the campaign", not "monthly recurring
    *  revenue projection". The number is the same. */
   fee: number
   /** Total ad budget across the agreement's campaigns. Only meaningful when
-   *  the client runs ads via Rocket Leads' own ad account — otherwise the
+   *  the client runs ads via Rocket Leads' own ad account - otherwise the
    *  client is paying Meta directly and we don't invoice it. */
   adBudget: number
   /** True when the client's Meta ad account ID matches Rocket Leads'. When
-   *  false, the ad-budget cell renders as "—" and the create-invoice dialog
-   *  omits the ad-budget line — surfacing it would just confuse finance. */
+   *  false, the ad-budget cell renders as "-" and the create-invoice dialog
+   *  omits the ad-budget line - surfacing it would just confuse finance. */
   usesRocketLeadsAdAccount: boolean
   /** Hub-canonical campaign status (live / onboarding / on_hold / churned).
    *  On Hold + Churned are filtered out server-side because they don't get
    *  invoiced; the column shows live vs onboarding so finance can spot which
    *  ones are still in setup. */
   campaignStatus: ClientStatus
-  /** Account manager name from Monday — drives the editable AM cell on the
+  /** Account manager name from Monday - drives the editable AM cell on the
    *  Billing page so finance can see who owns the client at a glance. Same
    *  source as the AM column on the Clients overview. */
   accountManager: string
   /** Stripe is the source of truth for payment state. Monday's "Administration"
-   *  column is ignored here on purpose — it gets out of sync. Null when the
+   *  column is ignored here on purpose - it gets out of sync. Null when the
    *  client has no Stripe customer linked OR the billing summary cache hasn't
    *  resolved them yet. */
   paymentStatus: "complete" | "open" | "overdue" | null
   /** Total € outstanding across all open Stripe invoices for this customer.
-   *  Useful context when finance is scheduling the *next* invoice — chase
+   *  Useful context when finance is scheduling the *next* invoice - chase
    *  unpaid first if there's already a balance. */
   outstanding: number
   /** AI verdict on whether finance should send the invoice today. Pre-loaded
@@ -102,7 +102,7 @@ export type UpcomingInvoice = {
    *  client (the cell falls back to a "Run AI check" affordance). */
   readiness: InvoiceReadiness | null
   /** Deep link to this client's Monday item, built server-side from the row's
-   *  parent board id. Null when the board config isn't loaded — UI hides the
+   *  parent board id. Null when the board config isn't loaded - UI hides the
    *  "Open in Monday" link in that case rather than render a broken URL. */
   mondayItemUrl: string | null
   /** Manual billing-hold flag from `clients.billing_hold`. Held rows render
@@ -113,7 +113,7 @@ export type UpcomingInvoice = {
    *  Shown next to the hold pill so context isn't lost on handoff. */
   billingHoldReason: string | null
   /** Raw value from Monday's "Administration" status column (`status_16`).
-   *  Translated for display by `viewAdministration` — original Dutch label
+   *  Translated for display by `viewAdministration` - original Dutch label
    *  is preserved on the tooltip for finance traceability. */
   administration: string
 }
@@ -139,7 +139,7 @@ function fmtDate(iso: string): string {
 /**
  * Bucket each group into a time-window so finance sees what needs action
  * today vs what's just on the radar. Pure date math against the user's local
- * "today" — server tz drift won't bump groups into the wrong bucket because
+ * "today" - server tz drift won't bump groups into the wrong bucket because
  * we compute everything from `new Date()` on the client. The `primary` row
  * carries the bucketing date (siblings agree post-sync).
  */
@@ -149,7 +149,7 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
   const todayMs = today.getTime()
   const dayMs = 24 * 60 * 60 * 1000
 
-  // "This week" = up to (and including) the coming Sunday — what most people
+  // "This week" = up to (and including) the coming Sunday - what most people
   // mean when they say "deze week". "Next week" = the seven days after that.
   const dayOfWeek = today.getDay() // 0 = Sun
   const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek
@@ -165,7 +165,7 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
     next_week: [],
   }
 
-  // Held groups go to the Hold bucket regardless of their invoice date — the
+  // Held groups go to the Hold bucket regardless of their invoice date - the
   // whole point of holding is to override the time-based buckets. A group
   // counts as held when ANY sibling has billing_hold=true; finance pinning
   // the parent should also park its sub-campaigns.
@@ -183,7 +183,7 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
       continue
     }
 
-    // "Needs attention" — Live client without a `cycleStartDate` filled in.
+    // "Needs attention" - Live client without a `cycleStartDate` filled in.
     // The cycle drives `nextInvoiceDate` (cycle - 7d); without it there's
     // nothing to bucket against and nothing to auto-advance after a send,
     // so finance has to manually set one before any of the other flows
@@ -209,7 +209,7 @@ function bucketGroups(groups: BillingGroup[]): Bucket[] {
   }
 
   const all: Bucket[] = [
-    // Needs attention sits at the top — Live clients without a cycle start
+    // Needs attention sits at the top - Live clients without a cycle start
     // date set. Nothing else can run (invoice date can't derive, auto-
     // advance after send has no anchor) until finance fills it in.
     { key: "needs_attention", label: "Needs attention", hint: "Live client · no cycle start date set", tone: "text-red-500", groups: buckets.needs_attention },
@@ -314,7 +314,7 @@ export function BillingOverview({
 
 /**
  * Per-group state holder. Lifted into its own component so the create-invoice
- * dialog state and the sibling expand state are group-scoped — opening one
+ * dialog state and the sibling expand state are group-scoped - opening one
  * group's dialog or expanding its siblings doesn't bleed into the others.
  *
  * Single-sibling groups render flat (no chevron). Multi-sibling groups show a
@@ -417,12 +417,12 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
           />
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums">
-          {/* Invoice date is derived (cycle − 7d) — read-only here. Edit the
+          {/* Invoice date is derived (cycle − 7d) - read-only here. Edit the
               cycle column instead and we'll keep both Monday columns synced. */}
           {primary.nextInvoiceDate ? (
             fmtDate(primary.nextInvoiceDate)
           ) : (
-            <span className="text-muted-foreground/40">—</span>
+            <span className="text-muted-foreground/40">-</span>
           )}
         </TableCell>
         <TableCell className="py-2.5">
@@ -434,14 +434,14 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
           />
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums font-medium">
-          {/* Multi-sibling groups show the read-only sum here — editing happens
+          {/* Multi-sibling groups show the read-only sum here - editing happens
               on the per-sibling sub-rows below so each campaign owns its own
               fee. Single-sibling groups expose the inline editor directly. */}
           {isMulti ? (
             group.totalFee > 0 ? (
               fmtEuro(group.totalFee)
             ) : (
-              <span className="text-muted-foreground/40">—</span>
+              <span className="text-muted-foreground/40">-</span>
             )
           ) : (
             <AgreementAmountCell
@@ -457,7 +457,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
             group.totalAdBudget > 0 ? (
               fmtEuro(group.totalAdBudget)
             ) : (
-              <span className="text-muted-foreground/40">—</span>
+              <span className="text-muted-foreground/40">-</span>
             )
           ) : (
             <AgreementAmountCell
@@ -469,9 +469,9 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
               // for ad budget" which only makes sense if ads run through the RL ad
               // account. The PATCH handler auto-flips meta_ad_account_id to the RL
               // account when this field transitions from 0/empty → > 0 for a client
-              // not already on RL — so a single edit moves them over without the
+              // not already on RL - so a single edit moves them over without the
               // user having to also touch the ad-account field separately.
-              placeholder={primary.usesRocketLeadsAdAccount ? "0" : "—"}
+              placeholder={primary.usesRocketLeadsAdAccount ? "0" : "-"}
             />
           )}
         </TableCell>
@@ -515,7 +515,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
         </TableCell>
       </TableRow>
 
-      {/* Sibling breakdown — shown only when the user expands a multi-campaign
+      {/* Sibling breakdown - shown only when the user expands a multi-campaign
           group. Indented child rows so it's obvious they belong to the parent. */}
       {isMulti && expanded &&
         group.siblings.map((sib) => (
@@ -531,7 +531,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
                 {sib.name}
               </Link>
             </TableCell>
-            {/* Action + Status — both already on the parent row */}
+            {/* Action + Status - both already on the parent row */}
             <TableCell colSpan={2} className="py-2" />
             <TableCell className="py-2">
               <AdminEditCell
@@ -548,10 +548,10 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
               />
             </TableCell>
             <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground/80">
-              {sib.nextInvoiceDate ? fmtDate(sib.nextInvoiceDate) : "—"}
+              {sib.nextInvoiceDate ? fmtDate(sib.nextInvoiceDate) : "-"}
             </TableCell>
             <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground/80">
-              {sib.cycleStartDate ? fmtDate(sib.cycleStartDate) : "—"}
+              {sib.cycleStartDate ? fmtDate(sib.cycleStartDate) : "-"}
             </TableCell>
             <TableCell className="py-2 text-[11px] tabular-nums">
               <AgreementAmountCell
@@ -567,10 +567,10 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
                 value={sib.usesRocketLeadsAdAccount ? sib.adBudget : 0}
                 // Sibling-row cells follow the same edit-always rule as the
                 // primary row above (see comment there).
-                placeholder={sib.usesRocketLeadsAdAccount ? "0" : "—"}
+                placeholder={sib.usesRocketLeadsAdAccount ? "0" : "-"}
               />
             </TableCell>
-            {/* Payment + AI check + Stripe — all on the parent row */}
+            {/* Payment + AI check + Stripe - all on the parent row */}
             <TableCell colSpan={3} className="py-2" />
           </TableRow>
         ))}
@@ -604,7 +604,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
 /**
  * Mirrors the PaymentInline pill from the client header so the same payment
  * state reads identically across the app. Driven by Stripe via the
- * `billing_summaries` cache — Monday's "Administration" column is intentionally
+ * `billing_summaries` cache - Monday's "Administration" column is intentionally
  * not consulted here because Stripe is the source of truth for payments.
  */
 function PaymentStatusCell({
@@ -617,10 +617,10 @@ function PaymentStatusCell({
   hasStripe: boolean
 }) {
   if (!hasStripe) {
-    return <span className="text-[11px] text-muted-foreground/40">—</span>
+    return <span className="text-[11px] text-muted-foreground/40">-</span>
   }
   if (status === null) {
-    return <span className="text-[11px] text-muted-foreground/40">—</span>
+    return <span className="text-[11px] text-muted-foreground/40">-</span>
   }
   if (status === "complete") {
     return (

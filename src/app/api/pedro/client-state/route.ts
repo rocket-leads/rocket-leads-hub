@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 
-// Pedro per-client state — load + upsert. Persists every deliverable
+// Pedro per-client state - load + upsert. Persists every deliverable
 // (brief, angles, script, creatives, LP, ad copy) per (client_id,
 // campaign_number) so we build up a per-client content database over time.
 
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
 
   const campaignNumber = body.campaignNumber ?? 1
 
-  // Build a partial patch with only the keys the caller sent — preserves
+  // Build a partial patch with only the keys the caller sent - preserves
   // the rest of the row across stage-by-stage saves.
   const patch: Record<string, unknown> = {
     client_id: body.clientId,

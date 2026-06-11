@@ -6,27 +6,27 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 /**
- * Hub button system — herMon-style primary/secondary split.
+ * Hub button system - herMon-style primary/secondary split.
  *
- *   default   = solid brand-purple, white text — the only call-to-action
+ *   default   = solid brand-purple, white text - the only call-to-action
  *               variant. Use sparingly per surface (1-2 max) so it stays
  *               loud.
  *   secondary = white card-coloured background + visible border + dark
- *               text — the workhorse "neutral action" (Filter, Edit, etc.).
+ *               text - the workhorse "neutral action" (Filter, Edit, etc.).
  *               Reads as a button without competing with the primary.
  *   outline   = same as secondary, kept for back-compat with old call sites.
- *   ghost     = transparent, no border, hover-only tint — for tertiary
+ *   ghost     = transparent, no border, hover-only tint - for tertiary
  *               actions (close buttons, icon-only nav).
  *   destructive = subtle red tint, reserved for delete confirms.
  *   link      = inline text link, no chrome.
  *
  * Rounding is `rounded-xl` (~12px after the radius bump) so they sit in the
  * same visual family as Card. `font-medium` + `text-sm` is the default
- * weight across every size — keeps the visual ribbon tidy.
+ * weight across every size - keeps the visual ribbon tidy.
  */
 /**
  * Default radius is `rounded-lg` (~12px after the global radius bump) so the
- * button corner matches the sidebar item rail and the input field family —
+ * button corner matches the sidebar item rail and the input field family -
  * Roy flagged the previous rounded-xl (~17px) as too round + too soft.
  * `rounded-2xl` stays reserved for large surfaces (Card, Panel, KpiTile).
  *

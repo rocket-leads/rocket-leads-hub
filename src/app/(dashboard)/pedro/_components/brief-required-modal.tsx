@@ -5,7 +5,7 @@ import { Sparkles, Loader2, X, AlertTriangle, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
- * BriefRequiredModal — inline brief flow for Pedro Optimize.
+ * BriefRequiredModal - inline brief flow for Pedro Optimize.
  *
  * Reuses the existing Pedro Onboard brief shape (pedro_client_state.brief
  * JSONB with 8 fields) so we're not introducing a parallel schema. The
@@ -16,28 +16,28 @@ import { cn } from "@/lib/utils"
  *
  * Why this matters (Roy 2026-06-09): without a baseline brief Pedro
  * hallucinates business models (Zumex B2C smoothie flop). Hard block on
- * creative-refresh until brief is filled — same completion bar as Pedro
+ * creative-refresh until brief is filled - same completion bar as Pedro
  * Onboard (bedrijf + aanbod non-empty).
  */
 
 /**
- * Visual style controls — Roy 2026-06-10.
+ * Visual style controls - Roy 2026-06-10.
  *
  * Two layers of choice for the CM, in order of authority:
- *   1. `visualStyleMode` (the broad source picker) — where Pedro should
+ *   1. `visualStyleMode` (the broad source picker) - where Pedro should
  *      pull its visual reference from. `website` is the default and
  *      enables the per-element toggles below; the other three modes
  *      ignore the website fingerprint entirely.
- *   2. `websiteToggles` — fine-grained on/off per fingerprint element
+ *   2. `websiteToggles` - fine-grained on/off per fingerprint element
  *      (colors / fonts / look-and-feel / logo). Only consulted when
  *      mode = "website". Stored regardless of mode so a mode-switch
  *      doesn't wipe what the CM picked.
  *
  * `fallbackFontHeading` kicks in whenever the fonts toggle is off OR the
- * mode isn't "website" — Pedro then uses a standard, slightly-bold font
+ * mode isn't "website" - Pedro then uses a standard, slightly-bold font
  * (Inter / Manrope / Plus Jakarta Sans) instead of the scraped family.
  *
- * `customStylePrompt` is only used when mode = "custom" — verbatim text
+ * `customStylePrompt` is only used when mode = "custom" - verbatim text
  * the CM wants injected into the Gemini prompt.
  */
 type VisualStyleMode = "website" | "drive_only" | "winning_ad_only" | "custom"
@@ -58,9 +58,9 @@ const DEFAULT_WEBSITE_TOGGLES: WebsiteToggles = {
 }
 
 const FALLBACK_FONT_LABEL: Record<FallbackFontKey, string> = {
-  inter: "Inter (SemiBold/Bold) — universeel, neutraal-modern",
-  manrope: "Manrope (SemiBold) — geometric, iets friendlier",
-  plus_jakarta: "Plus Jakarta Sans (SemiBold) — modern, iets meer karakter",
+  inter: "Inter (SemiBold/Bold) - universeel, neutraal-modern",
+  manrope: "Manrope (SemiBold) - geometric, iets friendlier",
+  plus_jakarta: "Plus Jakarta Sans (SemiBold) - modern, iets meer karakter",
 }
 
 type BriefData = {
@@ -72,7 +72,7 @@ type BriefData = {
   usps: string
   hooksAM: string
   hooksExtra: string
-  // — Visual style block (Roy 2026-06-10) —
+  // - Visual style block (Roy 2026-06-10) -
   visualStyleMode: VisualStyleMode
   customStylePrompt: string
   websiteToggles: WebsiteToggles
@@ -97,8 +97,8 @@ const EMPTY_BRIEF: BriefData = {
 /** Map the /auto-brief response shape onto the storage shape. Auto-brief
  *  uses different keys for historical reasons (doelgroep vs doel,
  *  pijnpunten vs pijn, marketingHooks vs hooksAM). The visual-style
- *  block is never sourced from auto-brief — those are CM decisions, not
- *  business facts — so they always come back as defaults that the merge
+ *  block is never sourced from auto-brief - those are CM decisions, not
+ *  business facts - so they always come back as defaults that the merge
  *  step below will keep from whatever's already in state. */
 function mapAutoBriefToStorage(autoBrief: Record<string, unknown>): BriefData {
   const get = (k: string) =>
@@ -144,7 +144,7 @@ function readWebsiteToggles(raw: unknown): WebsiteToggles {
 type Props = {
   clientId: string
   clientName: string
-  /** Partial brief echoed back by the creative-refresh 409 — lets us
+  /** Partial brief echoed back by the creative-refresh 409 - lets us
    *  preserve whatever's already filled (e.g., bedrijf typed but aanbod
    *  empty) when the modal opens. Null when there's truly nothing yet. */
   currentBrief?: Record<string, unknown> | null
@@ -204,7 +204,7 @@ export function BriefRequiredModal({
       // names (doelgroep / pijnpunten / marketingHooks), so we remap.
       const briefSource = json.brief ?? json
       const mapped = mapAutoBriefToStorage(briefSource)
-      // Merge — only fill empty fields, keep what the CM already typed.
+      // Merge - only fill empty fields, keep what the CM already typed.
       // Visual-style block is NEVER touched by auto-brief: those are CM
       // decisions about how Pedro should USE the brief, not facts about
       // the business.
@@ -251,10 +251,10 @@ export function BriefRequiredModal({
     setError(null)
     try {
       // Write to BOTH:
-      //   1. pedro_client_state.brief — the "live draft" the gate reads
+      //   1. pedro_client_state.brief - the "live draft" the gate reads
       //      from + every Pedro feature (creative-refresh, past-brief,
       //      cross-client lookup) uses as source of truth.
-      //   2. pedro_stage_versions — the immutable version history so
+      //   2. pedro_stage_versions - the immutable version history so
       //      "Eerdere briefs" lists this save explicitly. Mirrors what
       //      Pedro Onboard does on "Save final version".
       // Step 1 must succeed; step 2 is best-effort so the gate unblocks
@@ -273,7 +273,7 @@ export function BriefRequiredModal({
         throw new Error(json.error || `HTTP ${liveRes.status} (live brief)`)
       }
 
-      // Best-effort version snapshot — don't fail the modal on this.
+      // Best-effort version snapshot - don't fail the modal on this.
       fetch("/api/pedro/saved-versions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -309,7 +309,7 @@ export function BriefRequiredModal({
   }
 
   // Disabling the per-element toggles in non-website modes is purely a
-  // UX cue — the prompt builder reads `visualStyleMode` first and only
+  // UX cue - the prompt builder reads `visualStyleMode` first and only
   // consults the toggles when it's "website". State stays editable
   // (via the data flow) so a mode-flip back to website finds the CM's
   // last choices intact.
@@ -362,7 +362,7 @@ export function BriefRequiredModal({
             {autoGenerating ? "Pedro analyseert context..." : "Genereer concept met Pedro"}
           </button>
           <span className="text-xs text-muted-foreground">
-            Vult alleen lege velden — laat wat je al typte intact.
+            Vult alleen lege velden - laat wat je al typte intact.
           </span>
           {autoBriefSourceNote && (
             <span className="text-[11px] text-muted-foreground/70 italic w-full">
@@ -412,7 +412,7 @@ export function BriefRequiredModal({
             multiline
             rows={3}
             colSpan2
-            placeholder="Concreet wat wordt verkocht. Prijsrange/business model — €5k apparaat, subscription, fee, etc."
+            placeholder="Concreet wat wordt verkocht. Prijsrange/business model - €5k apparaat, subscription, fee, etc."
           />
           <BriefField
             label="USPs"
@@ -437,11 +437,11 @@ export function BriefRequiredModal({
             multiline
             rows={3}
             colSpan2
-            placeholder="Aanvullende ideeën — wat NIET werkt, wat de klant absoluut niet wil zeggen, branding nuances."
+            placeholder="Aanvullende ideeën - wat NIET werkt, wat de klant absoluut niet wil zeggen, branding nuances."
           />
         </div>
 
-        {/* Visual-style controls — Roy 2026-06-10. Sits below the business
+        {/* Visual-style controls - Roy 2026-06-10. Sits below the business
             brief because these are decisions ABOUT how Pedro uses the
             brief, not facts about the client. Collapsed look (no header
             divider above) so it reads as one continuous form. */}
@@ -452,7 +452,7 @@ export function BriefRequiredModal({
                 Visual style
               </h3>
               <p className="text-[11px] text-muted-foreground/70">
-                Bepaal welke referentie Pedro pakt voor het visuele DNA van de creatives. Met de toggles eronder kun je per element kiezen of Pedro het meeneemt — handig als de website-stijl op één punt zwak is maar de rest klopt.
+                Bepaal welke referentie Pedro pakt voor het visuele DNA van de creatives. Met de toggles eronder kun je per element kiezen of Pedro het meeneemt - handig als de website-stijl op één punt zwak is maar de rest klopt.
               </p>
             </div>
 
@@ -502,7 +502,7 @@ export function BriefRequiredModal({
               )}
             >
               <div className="text-[11px] font-medium text-muted-foreground">
-                Van de website — wat Pedro mag meenemen
+                Van de website - wat Pedro mag meenemen
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
                 <ToggleRow

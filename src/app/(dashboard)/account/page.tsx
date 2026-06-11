@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 
 // /account merged into /settings on 2026-05-21. Slack OAuth callbacks still
-// land here briefly with ?slack_error=... — forward those through so the Me
+// land here briefly with ?slack_error=... - forward those through so the Me
 // tab can surface the error inline.
 export default async function AccountPage({
   searchParams,

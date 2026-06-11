@@ -2,7 +2,7 @@
  * Inbox event kind. "chat" was added to the canonical union to match the
  * already-existing reclassify path (`UpdateInboxItemInput.kind`) and the
  * detail-dialog renderer that branches on `item.kind === "chat"`. The
- * three-way taxonomy is the direction the inbox is moving — Roy's
+ * three-way taxonomy is the direction the inbox is moving - Roy's
  * in-progress chat work flows through here.
  */
 export type InboxKind = "update" | "task" | "chat"
@@ -14,7 +14,7 @@ export type InboxPriority = "low" | "normal" | "high"
 
 export type InboxSource = "manual" | "watchlist" | "meeting" | "monday" | "trengo" | "slack" | "automation"
 
-/** Channel medium for Trengo events — drives the channel-specific icon
+/** Channel medium for Trengo events - drives the channel-specific icon
  *  (WhatsApp brand mark / email envelope) on inbox rows so AMs can tell at
  *  a glance which medium a task or update came in on. Resolved server-side
  *  from the row's `trengo_channel_id`. Null for non-Trengo sources. */
@@ -27,7 +27,7 @@ export type InboxItem = {
   clientName: string
   authorId: string
   authorName: string
-  /** External author identifier — for Trengo, this is the contact id, used by
+  /** External author identifier - for Trengo, this is the contact id, used by
    *  the "Link to client" affordance to know which contact to attach. Null for
    *  manual / automation / Monday sources where there's no external author. */
   authorExternal: string | null
@@ -44,7 +44,7 @@ export type InboxItem = {
   sourceRef: Record<string, unknown> | null
   mondayUpdateId: string | null
   /** True when the event came from an external source (Trengo) but isn't tied
-   *  to any Hub client yet — the contact id wasn't found in `clients.trengo_contact_ids`.
+   *  to any Hub client yet - the contact id wasn't found in `clients.trengo_contact_ids`.
    *  Drives the "Unlinked" UI hint so AMs notice and link the contact. */
   isUnlinked: boolean
   /** ISO timestamp until which the item is hidden from the default active
@@ -88,7 +88,7 @@ export type UpdateInboxItemInput = {
   assigneeId?: string
   /** ISO timestamp to snooze until, or null to wake the item up immediately. */
   snoozedUntil?: string | null
-  /** Manual reclassification override — moves the item between Task / Update /
+  /** Manual reclassification override - moves the item between Task / Update /
    *  Chat tabs when the AI classifier got it wrong. Server resets status +
    *  priority to sane defaults for the new kind. */
   kind?: InboxKind | "chat"

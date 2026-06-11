@@ -29,7 +29,7 @@ export default async function SettingsPage({
 
   const locale = await getUserLocale(session.user.id)
 
-  // Me tab — every signed-in user can see this. Lightweight: just their own
+  // Me tab - every signed-in user can see this. Lightweight: just their own
   // platform connections + Trengo channel subscriptions.
   const [meConnections, meTrengoChannelIds] = await Promise.all([
     listUserPlatformConnections(session.user.id),
@@ -46,7 +46,7 @@ export default async function SettingsPage({
     slackError: params.slack_error ?? null,
   }
 
-  // Non-admins only see the Me tab — skip every heavy admin fetch below.
+  // Non-admins only see the Me tab - skip every heavy admin fetch below.
   if (!isAdmin) {
     return (
       <div>
@@ -150,7 +150,7 @@ export default async function SettingsPage({
       <SetupChecklistBanner items={setupChecklist.items} />
 
       {(() => {
-        // Index Monday mappings by user_id — UI now enforces one mapping per user.
+        // Index Monday mappings by user_id - UI now enforces one mapping per user.
         const mappingByUser = new Map<string, { role: MondayRole; name: string }>()
         for (const m of columnMappings ?? []) {
           mappingByUser.set(m.user_id, {

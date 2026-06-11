@@ -17,7 +17,7 @@ function getProRataTarget(monthlyTarget: number, range: DateRange): number {
 /**
  * Derive volume and ratio targets from the Settings inputs.
  *
- * Inputs (from Settings — Marketing/Sales): deals, revenue, cpOptIn, cbc, ctc, cpd.
+ * Inputs (from Settings - Marketing/Sales): deals, revenue, cpOptIn, cbc, ctc, cpd.
  * Everything below is derived.
  *
  *   target ad spend  = deals × cpd
@@ -29,7 +29,7 @@ function getProRataTarget(monthlyTarget: number, range: DateRange): number {
  *   conversion rate  = ctc / cpd              (Deals / Taken)
  *   roas             = revenue / ad spend
  *
- * 2026-05-27: qualification stage removed from the funnel — Booked → Taken
+ * 2026-05-27: qualification stage removed from the funnel - Booked → Taken
  * directly. `cqc` and `qualRate` are no longer part of TargetsConfig /
  * DerivedTargets, and `showUpRate` is now `cbc / ctc` instead of `cqc / ctc`.
  */
@@ -39,10 +39,10 @@ export interface DerivedTargets {
   optIns: number
   calls: number
   takenCalls: number
-  /** Min appointment booking rate (booked / opt-ins) — derived as
+  /** Min appointment booking rate (booked / opt-ins) - derived as
    *  cpOptIn / cbc. E.g. €5 opt-in × €25 booked → 20% target rate. */
   bookingRate: number
-  /** Min show-up rate (taken / booked) — derived as cbc / ctc. */
+  /** Min show-up rate (taken / booked) - derived as cbc / ctc. */
   showUpRate: number
   convRate: number
   roas: number
@@ -83,7 +83,7 @@ export function calculateKpiGroups(
   const t = targets ?? null
   const derived = deriveTargets(t)
 
-  // Volume targets are derived (calls/taken) — only deals & revenue come straight from Settings.
+  // Volume targets are derived (calls/taken) - only deals & revenue come straight from Settings.
   const prCalls = derived.calls > 0 ? Math.round(getProRataTarget(derived.calls, range)) : undefined
   const prTaken = derived.takenCalls > 0 ? Math.round(getProRataTarget(derived.takenCalls, range)) : undefined
   const prDeals = t && t.deals > 0 ? Math.round(getProRataTarget(t.deals, range)) : undefined
@@ -196,7 +196,7 @@ export function calculateKpiGroups(
       kpis: [
         {
           // Show-up rate is now Taken / Booked (was Taken / Qualified). The
-          // booked-call denominator excludes nothing — Planned/Qualified
+          // booked-call denominator excludes nothing - Planned/Qualified
           // still-open items get counted as taken by the fetcher when their
           // appointment date is past, so the rate isn't gamed by closers
           // skipping the status update.

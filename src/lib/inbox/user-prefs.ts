@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 /**
  * Per-user inbox preferences. Sits on the `users` table (not in
  * user_platform_tokens) because subscriptions are independent of whether the
- * user has connected a personal token for replies — you can subscribe to a
+ * user has connected a personal token for replies - you can subscribe to a
  * channel for visibility without ever needing to reply through it.
  */
 
@@ -36,7 +36,7 @@ export async function setUserTrengoChannelIds(
 }
 
 /**
- * Per-user primary outbound channels — separate from the visibility set
+ * Per-user primary outbound channels - separate from the visibility set
  * above. Each AM picks ONE channel to send FROM per type (email + WA),
  * so a client-update triggered by anyone (admin, the AM themselves) for
  * the AM's client lands in Trengo from the AM's own address. Nullable:

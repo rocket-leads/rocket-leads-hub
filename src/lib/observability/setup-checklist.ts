@@ -1,11 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * Setup checklist — drives the Settings banner + the sidebar dot for new
+ * Setup checklist - drives the Settings banner + the sidebar dot for new
  * (or partially-configured) workspaces. Distinct from the runtime health
  * probe (`fetchHealthSummary`): that one flags things that broke after
  * setup (cron errors, tokens that went invalid). This one flags things
- * that were never configured in the first place — "Stripe token missing",
+ * that were never configured in the first place - "Stripe token missing",
  * "board config not saved", "users without Monday role".
  *
  * Roy 2026-05-23: when a new account opens the Hub it isn't obvious
@@ -21,11 +21,11 @@ const REQUIRED_TOKEN_SERVICES = ["monday", "meta", "stripe", "trengo"] as const
 type RequiredService = (typeof REQUIRED_TOKEN_SERVICES)[number]
 
 export type ChecklistItem = {
-  /** Stable id — used as the Settings deeplink anchor and the React key. */
+  /** Stable id - used as the Settings deeplink anchor and the React key. */
   id: string
   /** Short label rendered in the banner ("Stripe API token missing"). */
   label: string
-  /** Which Settings tab to deeplink to — matches SettingsTabs tab ids. */
+  /** Which Settings tab to deeplink to - matches SettingsTabs tab ids. */
   tab: "tokens" | "board" | "users" | "notifications"
   /** Lower number = higher priority in the banner. Tokens come first
    *  because nothing else works without them. */
@@ -49,7 +49,7 @@ const SERVICE_LABELS: Record<RequiredService, string> = {
 
 /**
  * One-shot read of the things a brand-new workspace needs to fill in.
- * Three indexed queries against Supabase — cheap enough to call on every
+ * Three indexed queries against Supabase - cheap enough to call on every
  * admin sidebar render. Returns EMPTY_CHECKLIST on any failure so the
  * sidebar never crashes when this helper does.
  */
@@ -66,7 +66,7 @@ export async function fetchSetupChecklist(): Promise<SetupChecklist> {
 
     const items: ChecklistItem[] = []
 
-    // (1) Required API tokens — split out per service so the admin sees
+    // (1) Required API tokens - split out per service so the admin sees
     //     exactly which service is missing instead of "tokens missing".
     const tokenState = new Map<string, { is_valid: boolean | null }>()
     for (const row of tokensRes.data ?? []) {
@@ -86,14 +86,14 @@ export async function fetchSetupChecklist(): Promise<SetupChecklist> {
       } else if (invalid) {
         items.push({
           id: `token-invalid-${svc}`,
-          label: `${SERVICE_LABELS[svc]} API token is invalid — reconnect`,
+          label: `${SERVICE_LABELS[svc]} API token is invalid - reconnect`,
           tab: "tokens",
           priority: 1,
         })
       }
     }
 
-    // (2) Board config — the JSON blob that maps Monday columns to Hub
+    // (2) Board config - the JSON blob that maps Monday columns to Hub
     //     fields. Without it the per-client KPI fetches and the client
     //     list both fall back to defaults that may not match the actual
     //     boards.
@@ -106,7 +106,7 @@ export async function fetchSetupChecklist(): Promise<SetupChecklist> {
       })
     }
 
-    // (3) Users without a Monday role mapping — non-admin non-finance
+    // (3) Users without a Monday role mapping - non-admin non-finance
     //     users need this so the per-user client filter (Watch List,
     //     All campaigns) returns the right rows. Finance is org-level
     //     and explicitly doesn't map to a Monday column.

@@ -24,7 +24,7 @@ import type { BrandStyle } from "@/lib/pedro/helpers"
  *
  * Idempotent in spirit: re-running replaces the previous image (the
  * Storage helper cleans up the old path before writing the new one).
- * That matches the "regenereer" UX — clicking the button again should
+ * That matches the "regenereer" UX - clicking the button again should
  * give a fresh take, not append.
  *
  * Roy 2026-06-09.
@@ -50,7 +50,7 @@ export async function POST(
     /** Override how many slots to fill when position omitted.
      *  Default 3, max 10 (matches the CHECK on pedro_variant_images). */
     slots?: number
-    /** Structured CM feedback voor een regen — gevuld vanuit de
+    /** Structured CM feedback voor een regen - gevuld vanuit de
      *  RegenFeedbackModal. Wordt achter de prompt geplakt en gelogd in
      *  pedro_creative_feedback. Roy 2026-06-10. */
     regenFeedback?: {
@@ -72,7 +72,7 @@ export async function POST(
     const { data: variantRow, error: readErr } = await supabase
       .from("pedro_variants")
       .select(
-        "id, client_id, refresh_id, image_prompt, ad_name, format_hint, topic_label",
+        "id, client_id, refresh_id, image_prompt, ad_name, format_hint, topic_label, headline",
       )
       .eq("id", variantId)
       .maybeSingle()
@@ -90,8 +90,8 @@ export async function POST(
     }
 
     // Resolve reference images. Two sources, both best-effort:
-    //   1. Winner ad thumbnail from Meta — DNA the CM already validated
-    //   2. Client photos from Google Drive — real product/brand
+    //   1. Winner ad thumbnail from Meta - DNA the CM already validated
+    //   2. Client photos from Google Drive - real product/brand
     //      visuals so Gemini doesn't hallucinate the look-and-feel
     //
     // Gemini Nano Banana Pro accepts up to 3 reference images; we cap
@@ -99,7 +99,7 @@ export async function POST(
     // is empty we fall back to just the winner thumbnail; when even
     // that fails we go prompt-only (Gemini handles that mode too).
     //
-    // Both lookups run in parallel — Drive's recurse-one-level can
+    // Both lookups run in parallel - Drive's recurse-one-level can
     // take 2-5s on big folders and there's no reason to serialize.
 
     type Ref = { bytes: Buffer; mimeType: "image/jpeg" | "image/png" }
@@ -111,12 +111,13 @@ export async function POST(
 
     // ── Resolve winner Meta ad details ─────────────────────────────
     // We need this BEFORE the Drive call so we can pass the winner's
-    // campaign name as `campaignHint` — that's what makes Pedro pick
+    // campaign name as `campaignHint` - that's what makes Pedro pick
     // the right sub-folder under a multi-campaign umbrella (e.g.,
     // "Zumex" under "Juice Concepts Benelux" instead of Blendtec).
     async function resolveWinnerDetail(): Promise<{
       thumbnailUrl: string | null
       campaignName: string | null
+      sourceScreenshotPath: string | null
     } | null> {
       try {
         const { data: refresh } = await supabase
@@ -127,7 +128,14 @@ export async function POST(
         type RefreshEnv = {
           envelope?: {
             proposals?: Array<{
-              basedOnAd?: { adId?: string; adName?: string }
+              basedOnAd?: {
+                adId?: string
+                adName?: string
+                snapshot?: {
+                  campaignName?: string
+                  sourceScreenshotPath?: string
+                }
+              }
               variants?: Array<{ adName?: string }>
             }>
           }
@@ -138,6 +146,13 @@ export async function POST(
         )
         const winnerAdId = proposal?.basedOnAd?.adId
         if (!winnerAdId) return null
+        // Roy 2026-06-10: gesnapshote screenshot path is altijd
+        // beschikbaar uit envelope - geen Meta-call nodig om 'm te
+        // resolven.
+        const sourceScreenshotPath =
+          proposal?.basedOnAd?.snapshot?.sourceScreenshotPath ?? null
+        const snapshotCampaignName =
+          proposal?.basedOnAd?.snapshot?.campaignName ?? null
 
         const { fetchMetaAdDetails } = await import("@/lib/integrations/meta")
         const { data: clientRow } = await supabase
@@ -145,7 +160,13 @@ export async function POST(
           .select("meta_ad_account_id")
           .eq("monday_item_id", variant.client_id)
           .maybeSingle()
-        if (!clientRow?.meta_ad_account_id) return null
+        if (!clientRow?.meta_ad_account_id) {
+          return {
+            thumbnailUrl: null,
+            campaignName: snapshotCampaignName,
+            sourceScreenshotPath,
+          }
+        }
 
         const end = new Date().toISOString().slice(0, 10)
         const startD = new Date()
@@ -157,11 +178,11 @@ export async function POST(
           end,
         ).catch(() => [])
         const match = ads.find((a) => a.adId === winnerAdId)
-        if (!match) return null
 
         return {
-          thumbnailUrl: match.thumbnailUrl ?? null,
-          campaignName: match.campaignName ?? null,
+          thumbnailUrl: match?.thumbnailUrl ?? null,
+          campaignName: match?.campaignName ?? snapshotCampaignName,
+          sourceScreenshotPath,
         }
       } catch (e) {
         console.error(
@@ -176,6 +197,33 @@ export async function POST(
     const winnerCampaignName = winnerDetail?.campaignName ?? null
 
     async function fetchWinnerThumbRef(): Promise<Ref | null> {
+      // Roy 2026-06-10: prio op handmatig-geüploade screenshot. Wanneer
+      // de CM eentje heeft toegevoegd via de AdPicker (voor ads zonder
+      // Meta thumbnail), gebruiken we DIE als reference. Anders val we
+      // terug op de Meta thumbnail URL.
+      const screenshotPath = winnerDetail?.sourceScreenshotPath
+      if (screenshotPath) {
+        try {
+          const { getVariantImageBytes } = await import(
+            "@/lib/integrations/pedro-image-storage"
+          )
+          const bytes = await getVariantImageBytes(screenshotPath)
+          if (bytes) {
+            // Detect MIME from path; default to JPEG.
+            const mimeType: "image/jpeg" | "image/png" = screenshotPath
+              .toLowerCase()
+              .endsWith(".png")
+              ? "image/png"
+              : "image/jpeg"
+            return { bytes, mimeType }
+          }
+        } catch (e) {
+          console.error(
+            "[pedro/generate-image] uploaded screenshot fetch failed (falling back to Meta thumb):",
+            e instanceof Error ? e.message : e,
+          )
+        }
+      }
       const url = winnerDetail?.thumbnailUrl
       if (!url) return null
       try {
@@ -284,7 +332,7 @@ export async function POST(
           sector: briefSector,
         })
         if (queries.length === 0) return []
-        // Run search queries sequentially — Pexels rate limit is fine
+        // Run search queries sequentially - Pexels rate limit is fine
         // but we want to STOP early as soon as we have enough.
         const collected = new Map<string, DriveImageRef>()
         for (const q of queries) {
@@ -296,7 +344,7 @@ export async function POST(
               id: p.id,
               name: p.name,
               mimeType: p.mimeType,
-              // No real modifiedTime — use epoch so it doesn't get
+              // No real modifiedTime - use epoch so it doesn't get
               // an artificial recency bonus in any downstream scorer.
               modifiedTime: new Date(0).toISOString(),
               bytes: p.bytes,
@@ -305,7 +353,7 @@ export async function POST(
           }
         }
         if (collected.size === 0) return []
-        // Rerank stock candidates the same way as Drive — vision-relevance
+        // Rerank stock candidates the same way as Drive - vision-relevance
         // scoring against the campaign context. Reuses the same Haiku
         // cache by file_id ("pexels:<id>" keys).
         const candidates = Array.from(collected.values())
@@ -372,7 +420,7 @@ export async function POST(
       brandStyleForPolicy as BrandStyle | null,
     )
 
-    // Resolve sector from the brief — used both for stock query
+    // Resolve sector from the brief - used both for stock query
     // derivation and downstream prompt grounding.
     const briefSectorRaw = briefForPolicy?.sector
     const briefSector =
@@ -383,7 +431,7 @@ export async function POST(
     // prefs + the visual-style policy.
     const sourcePrefs = await loadImageSourcePrefs()
 
-    // Fetch refs in parallel — but skip the call entirely when the
+    // Fetch refs in parallel - but skip the call entirely when the
     // policy says we won't use that source. Cuts the Meta + Drive
     // round-trips when they're going to be thrown away anyway.
     const [winnerThumbRef, drivePhotoRefs, stockRefs] = await Promise.all([
@@ -392,7 +440,7 @@ export async function POST(
         ? fetchDrivePhotoRefs(sourcePrefs.deniedFolderIds)
         : Promise.resolve([] as DriveImageRef[]),
       // Stock photos only when the CM toggled them on AND the visual
-      // policy allows Drive photos in the first place — same gating
+      // policy allows Drive photos in the first place - same gating
       // (both are "real photo references").
       sourcePrefs.useStock && policy.referenceImagePolicy.useDrivePhotos
         ? fetchStockRefs(briefSector)
@@ -401,7 +449,7 @@ export async function POST(
 
     // Build the reference pool. Order: winner thumbnail first (DNA),
     // then Drive (real client product), then Stock (generic). Gemini
-    // Nano Banana Pro accepts up to 3 references — we cap at that.
+    // Nano Banana Pro accepts up to 3 references - we cap at that.
     const referenceImages: Ref[] = []
     const referenceNames: Array<{ source: "winner" | "drive" | "stock"; name: string }> = []
     const REF_CAP = 3
@@ -441,7 +489,7 @@ export async function POST(
     // Per-slot regen cap (Roy 2026-06-10): single-slot regens are
     // limited to 1 per slot to keep credit usage bounded. The
     // RegenFeedbackModal already gates the click, but the CM could
-    // bypass via direct API call — defense in depth.
+    // bypass via direct API call - defense in depth.
     //
     // Only enforced on single-slot regen (the "Regen" button path).
     // Bulk generation of 3-up first-shot has no cap; that's the entry
@@ -473,7 +521,7 @@ export async function POST(
       }
     }
 
-    // Structured CM feedback uit de RegenFeedbackModal — wordt
+    // Structured CM feedback uit de RegenFeedbackModal - wordt
     // achter de prompt geplakt zodat Gemini ZIET wat fout was en
     // specifiek dat moet fixen. Lege feedback = single-line addendum
     // weggelaten.
@@ -493,33 +541,58 @@ export async function POST(
     }
     const feedbackAddendum =
       fbParts.length > 0
-        ? `\n\n---\nCM REGEN FEEDBACK (CRITICAL — fix these specifically):\n${fbParts.join("\n")}\n---`
+        ? `\n\n---\nCM REGEN FEEDBACK (CRITICAL - fix these specifically):\n${fbParts.join("\n")}\n---`
         : ""
 
-    // RL_QUALITY_RULES — hardcoded suffix appended to EVERY Gemini call,
+    // RL_QUALITY_RULES - hardcoded suffix appended to EVERY Gemini call,
     // regardless of what Pedro generated in the variant.image_prompt.
     // Defense-in-depth: even when Pedro's prompt is verbose or sloppy,
     // these typography rules ride along so Gemini can't hide behind
     // ambiguity. Roy 2026-06-10: marketing-agency-leverbaar quality is
     // the bar. Het screenshot van 3 concurrerende badges + dubbele
     // "3x MARGE" + mismatched fonts is precies wat dit voorkomt.
+    // Roy 2026-06-11: exact on-image text lockdown. Voorheen wisselde
+    // Gemini per slot een andere tekst ("Elk glas vers." vs "Werken aan
+    // een verse toekomst") terwijl de CM een specifieke headline ("Vragen
+    // je gasten ook naar verse sappen?") had ingesteld. Nu forceren we
+    // de exacte Dutch headline verbatim - per slot zelfde tekst, alleen
+    // de visuele uitvoering varieert.
+    const exactHeadline = (variant.headline ?? "").trim()
+    const HEADLINE_LOCKDOWN = exactHeadline
+      ? `
+
+---
+EXACT ON-IMAGE TEXT - MANDATORY VERBATIM:
+
+The on-image text MUST be EXACTLY this Dutch sentence, character for character:
+"${exactHeadline}"
+
+- Do NOT translate to English or any other language.
+- Do NOT paraphrase, shorten, or rephrase.
+- Do NOT add quotation marks around it.
+- Do NOT add a period if the original has a question mark.
+- Do NOT change punctuation, capitalization, or word order.
+- This is the ONLY text element allowed on the image.
+- Every output slot must render the IDENTICAL text - only the visual scene varies.`
+      : ""
+
     const RL_QUALITY_RULES = `
 
 ---
 NON-NEGOTIABLE RL QUALITY RULES (marketing-agency deliverable quality):
 
-ON-IMAGE TEXT — render EXACTLY the Dutch headline ONCE.
+ON-IMAGE TEXT - render EXACTLY the Dutch headline ONCE.
 - No badges. No stickers. No price tags (€..). No "3x"/"2x"/"+15%" multiplier callouts.
 - No comparison labels (LAGE/HOGE, before/after, vs).
 - No secondary captions, no sub-headlines, no photo captions, no watermarks.
 - Do NOT duplicate any text element. Render the headline ONCE in ONE position.
-- If the headline doesn't fit cleanly, simplify the scene — do not break it across boxes.
+- If the headline doesn't fit cleanly, simplify the scene - do not break it across boxes.
 
-TYPOGRAPHY — must read as a professionally designed ad.
+TYPOGRAPHY - must read as a professionally designed ad.
 - ONE sans-serif typeface across the whole headline (no mixed fonts within a line).
 - Even letter-spacing. Consistent weight. Sharp anti-aliased edges.
 - Minimum 8% canvas padding on all sides around the headline.
-- Headline sits in clean negative space — never on top of visually busy detail.
+- Headline sits in clean negative space - never on top of visually busy detail.
 - Color: use a single brand-consistent accent OR pure black/white. No mixed fills + outlines.
 
 COMPOSITION.
@@ -530,15 +603,19 @@ COMPOSITION.
 
 NEGATIVE: badges, sticker overlays, price tags, comparison labels, duplicated text elements, competing brand watermarks, "€X" price callouts, "Nx" multiplier stickers, before/after split overlays, mixed fonts, mixed text weights, low-resolution rendering, collage-style layouts.`
 
-    const promptWithFeedback = prompt + feedbackAddendum + RL_QUALITY_RULES
+    const promptWithFeedback =
+      prompt + feedbackAddendum + RL_QUALITY_RULES + HEADLINE_LOCKDOWN
     const aspectRatio = variant.format_hint === "Video" ? "9:16" : "1:1"
 
     // Generate all targets in parallel. Each variation gets a small
     // delta in the prompt so Gemini doesn't return near-duplicates.
+    // Roy 2026-06-11: variationHint instrueert nu ALLEEN de visuele
+    // compositie - niet de tekst. Tekst is gelockdownt op de exacte
+    // Dutch headline (zie HEADLINE_LOCKDOWN hierboven).
     const slotResults = await Promise.allSettled(
       targetSlots.map((slot) => {
         const variationHint = targetSlots.length > 1
-          ? `\n\nVariation focus for this output (#${slot + 1} of ${targetSlots.length}): ${["lead with the product/subject in close-up", "emphasize the environment/setting around the subject", "balance product and people, lifestyle angle"][slot] ?? "fresh angle, different composition than the others"}.`
+          ? `\n\nVISUAL VARIATION ONLY for this output (#${slot + 1} of ${targetSlots.length}): ${["lead with the product/subject in close-up", "emphasize the environment/setting around the subject", "balance product and people, lifestyle angle"][slot] ?? "fresh angle, different composition than the others"}. The on-image text remains IDENTICAL across all slots - only the visual scene differs.`
           : ""
         return generateImageWithReference({
           prompt: promptWithFeedback + variationHint,
@@ -662,7 +739,7 @@ NEGATIVE: badges, sticker overlays, price tags, comparison labels, duplicated te
     // Persist the prompt override on the variant row so subsequent
     // regens (any slot) reuse the edited prompt by default. Also log
     // it as a feedback signal so the next creative-refresh prompt sees
-    // what this CM wanted changed — the feedback loop that closes the
+    // what this CM wanted changed - the feedback loop that closes the
     // iterative knowledge-gap per knowledge/campaigns.md §Image Creative
     // Principles #5.
     if (body.promptOverride?.trim()) {
@@ -673,7 +750,7 @@ NEGATIVE: badges, sticker overlays, price tags, comparison labels, duplicated te
         .update({ image_prompt: newPrompt })
         .eq("id", variant.id)
       // Only log the edit when it's a real change, not a re-submit of
-      // the same text. Cap the stored text — for prompt edits we keep
+      // the same text. Cap the stored text - for prompt edits we keep
       // the new version (it's the signal of where the CM steered).
       if (newPrompt !== previous.trim()) {
         try {

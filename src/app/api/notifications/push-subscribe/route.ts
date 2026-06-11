@@ -3,8 +3,8 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
- * POST  — register a push subscription for the current user.
- * DELETE — unregister by endpoint.
+ * POST  - register a push subscription for the current user.
+ * DELETE - unregister by endpoint.
  *
  * The browser hands us the subscription object after the user grants
  * permission via PushManager.subscribe(). We unpack it into our table

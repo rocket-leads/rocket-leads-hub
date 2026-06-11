@@ -11,7 +11,7 @@ import { searchStripeCustomers } from "@/lib/integrations/stripe"
  * picker has something to render on first open while the user is still
  * deciding what to type.
  *
- * Auth required (Hub-only), no role gate — every Hub user who can see the
+ * Auth required (Hub-only), no role gate - every Hub user who can see the
  * Client Information panel can use the picker for that client.
  */
 export async function GET(req: NextRequest) {

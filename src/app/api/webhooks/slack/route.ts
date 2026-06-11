@@ -11,19 +11,19 @@ export const maxDuration = 60
  *
  * Two payload shapes Slack sends to this endpoint:
  *
- * 1. `url_verification` — Slack pings on first save with a challenge string
+ * 1. `url_verification` - Slack pings on first save with a challenge string
  *    we must echo back. Run once when configuring Event Subscriptions.
  *
- * 2. `event_callback` — actual events. We care about:
+ * 2. `event_callback` - actual events. We care about:
  *      - message.channels / message.groups / message.im / message.mpim
  *        (messages in any conversation the bot is a member of)
  *      - app_mention (someone @-mentions the bot in a public channel)
  *
- * All requests are HMAC-signed with SLACK_SIGNING_SECRET — we reject any
+ * All requests are HMAC-signed with SLACK_SIGNING_SECRET - we reject any
  * unsigned/old/mismatching request before doing any work.
  *
  * Like the Trengo handler, we always 200-OK fast (Slack retries on non-2xx
- * within ~3s). Heavy work runs after we've responded — actually no, we keep
+ * within ~3s). Heavy work runs after we've responded - actually no, we keep
  * it inline for now because the classifier + DB insert is well under that
  * budget. Move to a queue if it becomes a problem.
  */
@@ -52,7 +52,7 @@ type SlackEvent = {
 }
 
 export async function POST(req: NextRequest) {
-  // We need the raw body string for signature verification — reading it
+  // We need the raw body string for signature verification - reading it
   // first as text and JSON-parsing later avoids consuming the stream twice.
   const rawBody = await req.text()
 
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  // 1. URL verification — echo the challenge so Slack accepts the endpoint.
+  // 1. URL verification - echo the challenge so Slack accepts the endpoint.
   // We intentionally answer this BEFORE the signature check: the challenge
   // response carries no sensitive data and Slack treats this ping as the
   // proof-of-life for the URL. Letting it through without a configured
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
 
   // Only handle message events (and app_mention which Slack delivers as a
   // separate event type). Skip bot_messages and message_changed/deleted
-  // subtypes — we don't need to ingest those for the chat substrate.
+  // subtypes - we don't need to ingest those for the chat substrate.
   const isMessage = event.type === "message" || event.type === "app_mention"
   if (!isMessage) return NextResponse.json({ ok: true, ignored: event.type })
   if (event.bot_id) return NextResponse.json({ ok: true, ignored: "bot_message" })
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "missing channel/user/ts" }, { status: 400 })
   }
 
-  // Thread key — DMs use a per-user thread, channel messages use a per-channel
+  // Thread key - DMs use a per-user thread, channel messages use a per-channel
   // thread. mpim (group DMs) get their own per-conversation thread.
   const channelType = event.channel_type ?? "channel"
   const threadKey =
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createAdminClient()
 
-  // Dedupe — Slack retries on non-2xx within ~3s, sometimes also on success.
+  // Dedupe - Slack retries on non-2xx within ~3s, sometimes also on success.
   const { data: existing } = await supabase
     .from("inbox_events")
     .select("id")
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
 
   // Decide author_kind. If the slack user matches a row in user_platform_tokens
   // (i.e. they've connected Slack via OAuth), they're a Hub team member and
-  // therefore "rl_team". Otherwise "external" — could be a client or anyone.
+  // therefore "rl_team". Otherwise "external" - could be a client or anyone.
   const { data: matchedUser } = await supabase
     .from("user_platform_tokens")
     .select("user_id")
@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   const authorKind: "rl_team" | "external" = matchedUser ? "rl_team" : "external"
 
-  // System author — webhook ingest doesn't have a session-bound user_id.
+  // System author - webhook ingest doesn't have a session-bound user_id.
   const { data: hq } = await supabase
     .from("users")
     .select("id")
@@ -165,7 +165,7 @@ export async function POST(req: NextRequest) {
   // Slack messages always live in the chat substrate (Team Inbox future,
   // currently DMs aren't visible due to API constraints). Classifier output
   // is still recorded for auditability and can drive auto-actions later,
-  // but the row's `kind` is locked to "chat" — the dual-inbox dedup
+  // but the row's `kind` is locked to "chat" - the dual-inbox dedup
   // depends on chat-substrate rows never showing up in Tasks/Updates.
   const status = "unread"
   const priority = null
@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
     .from("inbox_events")
     .insert({
       kind: "chat",
-      client_id: "", // slack channels aren't auto-linked to clients yet — C.5+ adds that
+      client_id: "", // slack channels aren't auto-linked to clients yet - C.5+ adds that
       author_id: hq.id,
       assignee_id: matchedUser?.user_id ?? hq.id,
       title: titlePreview || `Slack message`,

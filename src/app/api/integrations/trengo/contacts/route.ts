@@ -6,7 +6,7 @@ import { searchTrengoContacts } from "@/lib/integrations/trengo"
  * GET /api/integrations/trengo/contacts?q=<query>&limit=<n>
  *
  * Backs the search list inside <ConnectedEntity service="trengo-contact">.
- * Uses Trengo's native `/contacts?term=` substring search — no in-memory
+ * Uses Trengo's native `/contacts?term=` substring search - no in-memory
  * cache because the contact pool is too large; one Trengo round-trip per
  * unique query string, deduped by React Query.
  *

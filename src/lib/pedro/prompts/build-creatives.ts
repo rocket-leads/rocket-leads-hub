@@ -4,11 +4,11 @@ import { GENERATION_RULES, type BriefData, type BrandStyle } from "@/lib/pedro/h
  * Stage 4: Manus creative prompts.
  *
  * Two distinct outputs:
- *  1. `buildCreativesMasterPrompt` — the full Manus master template
+ *  1. `buildCreativesMasterPrompt` - the full Manus master template
  *     (client context + design system + variation guide + output format).
  *     This block is STATIC for the campaign and used as the prompt the
  *     CM pastes into Manus. No Claude call.
- *  2. `buildCreativesDescriptionsPrompt` — the Claude prompt that
+ *  2. `buildCreativesDescriptionsPrompt` - the Claude prompt that
  *     generates per-creative spec blocks (Headline / CTA / Background
  *     / etc.) which are appended below the master prompt.
  *
@@ -194,13 +194,13 @@ export type CreativesDescriptionsArgs = {
   brandStyle: BrandStyle | null | undefined
   /** Already-rendered video-script context block (empty when script skipped). */
   scriptContext?: string
-  /** First ~600 chars of the LP prompt — added 2026-05-22 after LP
+  /** First ~600 chars of the LP prompt - added 2026-05-22 after LP
    *  moved BEFORE creatives in the pipeline. Lets the creative
    *  descriptions align headlines/CTA to the LP hero so the visual
    *  promise and the LP delivery match. */
   lpContext?: string
   previousManusRef?: string
-  /** Free-text steering from the CM — e.g. "minder generieke headlines,
+  /** Free-text steering from the CM - e.g. "minder generieke headlines,
    *  meer concrete cijfers" or "alle creatives in pattern-interrupt
    *  variant F". Layered on top of the standard prompt without
    *  replacing it. */
@@ -229,7 +229,7 @@ Primary kleur: ${pHex} / Secondary: ${sHex}
 Drive: ${args.driveLink || "geen"}
 Formaten: ${fmtList.join(", ")}
 ${args.scriptContext ? `Script context:\n${args.scriptContext}` : ""}
-${args.lpContext ? `Landingspagina context (headlines + CTA's MOETEN hierop aansluiten — visuele belofte = LP belofte):\n${args.lpContext.substring(0, 600)}` : ""}
+${args.lpContext ? `Landingspagina context (headlines + CTA's MOETEN hierop aansluiten - visuele belofte = LP belofte):\n${args.lpContext.substring(0, 600)}` : ""}
 
 Kies ${args.qty} variaties (A-F), min. 1x F "Pattern Interrupt". Varieer toon: urgentie, aspiratie, logica, pattern interrupt.
 

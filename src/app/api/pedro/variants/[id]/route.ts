@@ -13,7 +13,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  * tekstvelden in de variant card zijn nu click-to-edit, en die slaan
  * via dit endpoint op (single field per PATCH, debounced op blur).
  *
- * Only the provided fields are updated — omitted keys stay as-is.
+ * Only the provided fields are updated - omitted keys stay as-is.
  * Empty strings clear that single field, but `altHeadlines: []` /
  * `altPrimaryTexts: []` are treated as "wipe the array".
  */

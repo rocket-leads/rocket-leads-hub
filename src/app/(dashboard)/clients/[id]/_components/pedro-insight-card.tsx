@@ -14,7 +14,7 @@ type Props = {
 }
 
 /**
- * The single Pedro insight card — rendered everywhere AI text used to appear
+ * The single Pedro insight card - rendered everywhere AI text used to appear
  * (client detail header, replacing the old 3-tile overview/optimisation/quality
  * split plus the campaigns-tab lead analysis and proposals).
  *
@@ -31,7 +31,7 @@ export function PedroInsightCard({ mondayItemId, locale }: Props) {
     queryFn: () =>
       fetch(`/api/clients/${mondayItemId}/pedro-insights`).then((r) => r.json()),
     enabled: !!mondayItemId,
-    staleTime: 5 * 60 * 1000, // 5 min — cron only writes hourly
+    staleTime: 5 * 60 * 1000, // 5 min - cron only writes hourly
   })
 
   if (isLoading) {
@@ -49,7 +49,7 @@ export function PedroInsightCard({ mondayItemId, locale }: Props) {
 
   if (!parsed) return null
 
-  // Hide insufficient-signal placeholders — render nothing rather than a card
+  // Hide insufficient-signal placeholders - render nothing rather than a card
   // that says "nothing to see here". Lets the rest of the page breathe.
   if (parsed.actions.length === 0 && /insufficient signal/i.test(parsed.conclusion)) {
     return null
@@ -90,7 +90,7 @@ export function PedroInsightCard({ mondayItemId, locale }: Props) {
   )
 }
 
-/** Compact "X ago" rendering — same buckets the inbox uses elsewhere. */
+/** Compact "X ago" rendering - same buckets the inbox uses elsewhere. */
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
   if (ms < 60_000) return "just now"

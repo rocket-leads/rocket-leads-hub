@@ -7,7 +7,7 @@ import type { DeliveryOverview } from "@/types/targets"
 /**
  * Treats a cache entry as valid only when it has every field the current UI consumes.
  * Bumping the field list here forces a re-fetch on cached entries that predate the new
- * fields — without this guard, stale caches silently render 0/undefined.
+ * fields - without this guard, stale caches silently render 0/undefined.
  */
 const REQUIRED_DELIVERY_FIELDS = ["adBudget", "newClients", "byTeam", "serviceFeePerCustomer"] as const
 
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   const mtd = getMtdRange()
   if (startDate === mtd.startDate && endDate === mtd.endDate && !forceRefresh) {
     const cached = await readCache<DeliveryOverview>("targets_delivery_v3")
-    // Reject any cache entry that predates a UI-required field — otherwise stale caches
+    // Reject any cache entry that predates a UI-required field - otherwise stale caches
     // render 0/undefined for newly-added KPIs (e.g. newClients, byTeam) until cron refreshes.
     if (isFreshDeliveryShape(cached)) {
       return NextResponse.json(cached, {

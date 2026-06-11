@@ -15,12 +15,12 @@ import { computeAccountStats, scoreAd } from "@/lib/pedro/performance"
  *
  * Selection per knowledge/campaigns.md 2026-Q2: CPL-driven. Winners
  * are cheap-CPL relative to their own account-avg with ≥3 leads. Lead-
- * quality-validated winners are the future state — see status note.
+ * quality-validated winners are the future state - see status note.
  *
  * Vertical normalisation: free-text `brief.sector` → first significant
  * non-stopword token, lowercased. Coarse on purpose so typing variants
  * cluster. Phase 5 todo: structured `clients.vertical` tag replaces
- * this — interface stays the same.
+ * this - interface stays the same.
  */
 
 const anthropic = new Anthropic()
@@ -100,7 +100,7 @@ function trim(s: string, max: number): string {
 }
 
 /**
- * Read patterns for a vertical key. Returns null when not yet computed —
+ * Read patterns for a vertical key. Returns null when not yet computed -
  * caller falls back to live cross-client query.
  */
 export async function readVerticalPattern(
@@ -154,10 +154,10 @@ export function renderVerticalPatternBlock(p: VerticalPatternRow): string {
   return `\n\n=== BRANCHE-PATRONEN VOOR "${p.vertical}" ===
 Synthese van winnende ads van ${p.client_count} RL klanten in dezelfde branche (${p.sample_size} ads, ${p.refreshed_at?.slice(0, 10)} gerefreshed).
 
-GEBRUIK ALS INSPIRATIE — NIET ALS BLAUWDRUK:
+GEBRUIK ALS INSPIRATIE - NIET ALS BLAUWDRUK:
 - Patroonherkenning is wat hier nuttig is, geen letterlijke kopie.
 - Noem NOOIT klantnamen of refereer naar "andere RL klanten" in output.
-- CPL-driven selectie (zie knowledge/campaigns.md status note) — zie ze als "goedkoop", niet automatisch "kwalitatief".
+- CPL-driven selectie (zie knowledge/campaigns.md status note) - zie ze als "goedkoop", niet automatisch "kwalitatief".
 ${anglesBlock}${hooksBlock}${formatBlock}
 
 Top winners (geanonimiseerd):
@@ -166,7 +166,7 @@ ${winnerLines.join("\n\n")}
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Computation — used by the nightly cron
+// Computation - used by the nightly cron
 // ──────────────────────────────────────────────────────────────────────
 
 type ClientRow = {
@@ -248,7 +248,7 @@ type SynthesisResult = {
 
 /**
  * Claude reads winning-ad bodies and synthesises common angles + hooks.
- * Returns empty-arrays on any failure — top_winners + format_dist are
+ * Returns empty-arrays on any failure - top_winners + format_dist are
  * still saved independently so the table stays useful.
  */
 async function synthesisePatterns(
@@ -312,7 +312,7 @@ export type RefreshResult = {
  *  3. For each vertical: collect winners across members, run synthesis,
  *     upsert into pedro_vertical_patterns
  *
- * Best-effort per vertical — failures don't poison the batch.
+ * Best-effort per vertical - failures don't poison the batch.
  */
 export async function refreshAllVerticalPatterns(
   supabase: SupabaseClient,
@@ -352,7 +352,7 @@ export async function refreshAllVerticalPatterns(
       formatDistribution[f] = Math.round((c / total) * 100) / 100
     }
 
-    // Synthesise (Claude) — best effort
+    // Synthesise (Claude) - best effort
     const synthesised = await synthesisePatterns(vertical, topWinners)
     const hadSynthesis = synthesised.common_angles.length > 0 || synthesised.common_hooks.length > 0
 

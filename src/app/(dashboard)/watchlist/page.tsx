@@ -22,7 +22,7 @@ function WatchListLoading() {
 async function WatchListData() {
   const session = await auth()
 
-  // 1h TTL on the cache read — without it the watch list would happily serve
+  // 1h TTL on the cache read - without it the watch list would happily serve
   // 24h-old data because the refresh-cache cron only writes `monday_boards`
   // once per day. A client moved to "On hold" in Monday at 10:00 would keep
   // showing on the watch list until the next morning's tick. Mirrors the
@@ -42,7 +42,7 @@ async function WatchListData() {
   // status variants like "live", "Live " (trailing space), or a renamed Monday
   // option still collapse to the right bucket. Also explicitly excludes the
   // entire on-hold / churned family (any "Paused..." or "Stopt..." variant)
-  // even if the cache momentarily has the old "Live" string — once the
+  // even if the cache momentarily has the old "Live" string - once the
   // mapping returns anything other than "live", the row is dropped.
   const active = current.filter((c) => mondayStatusToHub(c.campaignStatus, c.boardType) === "live")
 

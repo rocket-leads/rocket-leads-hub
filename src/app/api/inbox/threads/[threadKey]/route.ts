@@ -12,7 +12,7 @@ import {
  * Returns all messages in a chat thread, chronologically. Visibility is
  * applied per-event so the user only sees what they're allowed to.
  *
- * threadKey is URL-encoded by the caller — typical values look like
+ * threadKey is URL-encoded by the caller - typical values look like
  * "trengo:contact:42" or "slack:dm:U023BECGF".
  */
 export async function GET(

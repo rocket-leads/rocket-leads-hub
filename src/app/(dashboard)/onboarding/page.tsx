@@ -49,7 +49,7 @@ async function OnboardingData({
 }) {
   // Pull boards from cache (same 60-min safety window as /clients). If
   // the cron has missed every tick for an hour, fall back to a live
-  // fetch — same pattern the clients page uses.
+  // fetch - same pattern the clients page uses.
   const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
     "monday_boards",
     60 * 60 * 1000,
@@ -73,7 +73,7 @@ async function OnboardingData({
     ...currentBoard.filter((c) => mondayStatusToHub(c.campaignStatus, "current") === "onboarding"),
   ]
 
-  // Batch the stored step state in one Supabase round-trip — N+1 here
+  // Batch the stored step state in one Supabase round-trip - N+1 here
   // would be ugly with 20-30 onboarding clients each having multiple
   // wizard rows.
   const storedBulk = await fetchStoredStepsBulk(clients.map((c) => c.mondayItemId))
@@ -85,7 +85,7 @@ async function OnboardingData({
     const missing = missingCriticalSteps(states)
     const percent = progressPercent(states)
     const phase = mondayLabelToOnboardingPhase(client.campaignStatus)
-    // First open + not-locked step — what the AM should knock out next
+    // First open + not-locked step - what the AM should knock out next
     // (mirrors the wizard's own "current step" resolution).
     const nextOpen = states.find((s) => !s.done && !s.locked)
     // Days since kickoff date or, if absent, since onboarding-board entry.
@@ -138,14 +138,14 @@ async function OnboardingData({
                   href={`/onboarding/${client.mondayItemId}`}
                   className="font-medium hover:text-primary transition-colors"
                 >
-                  {client.name || client.companyName || "—"}
+                  {client.name || client.companyName || "-"}
                 </Link>
               </td>
               <td className="px-3 py-2.5 text-muted-foreground text-xs">
-                {client.accountManager || <span className="text-muted-foreground/40">—</span>}
+                {client.accountManager || <span className="text-muted-foreground/40">-</span>}
               </td>
               <td className="px-3 py-2.5 text-muted-foreground text-xs">
-                {client.campaignManager || <span className="text-muted-foreground/40">—</span>}
+                {client.campaignManager || <span className="text-muted-foreground/40">-</span>}
               </td>
               <td className="px-3 py-2.5">
                 {phase ? (
@@ -159,7 +159,7 @@ async function OnboardingData({
                     {t(PHASE_LABEL_KEYS[phase], locale)}
                   </span>
                 ) : (
-                  <span className="text-muted-foreground/40 text-xs">—</span>
+                  <span className="text-muted-foreground/40 text-xs">-</span>
                 )}
               </td>
               <td className="px-3 py-2.5">
@@ -188,10 +188,10 @@ async function OnboardingData({
                 )}
               </td>
               <td className="px-3 py-2.5 text-xs text-muted-foreground max-w-[280px] truncate" title={nextOpen ? t(nextOpen.labelKey, locale) : ""}>
-                {nextOpen ? t(nextOpen.labelKey, locale) : <span className="text-muted-foreground/40">—</span>}
+                {nextOpen ? t(nextOpen.labelKey, locale) : <span className="text-muted-foreground/40">-</span>}
               </td>
               <td className="px-4 py-2.5 text-right text-xs text-muted-foreground tabular-nums">
-                {daysSinceStart !== null ? `${daysSinceStart}d` : <span className="text-muted-foreground/40">—</span>}
+                {daysSinceStart !== null ? `${daysSinceStart}d` : <span className="text-muted-foreground/40">-</span>}
               </td>
             </tr>
           ))}

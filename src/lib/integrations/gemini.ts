@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
 
 /**
- * Gemini image generation — Nano Banana Pro (gemini-3-pro-image).
+ * Gemini image generation - Nano Banana Pro (gemini-3-pro-image).
  *
  * Pedro's image-gen backend. Takes the winning ad's thumbnail as a
  * reference image plus a per-variant `imagePrompt` describing the
@@ -11,7 +11,7 @@ import { decrypt } from "@/lib/encryption"
  * Why Gemini and not OpenAI / Stability:
  *   - Best-in-class text rendering on images (critical for Meta ads
  *     where "Bespaar €400/maand" must be legible, not gibberish).
- *   - Multi-turn editing with identity preservation — purpose-built
+ *   - Multi-turn editing with identity preservation - purpose-built
  *     for "iterate in same DNA" workflows.
  *   - Up to 4K output, single API call.
  *
@@ -23,16 +23,16 @@ import { decrypt } from "@/lib/encryption"
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-/** Default image model — Gemini 3 Pro Image (Nano Banana Pro).
+/** Default image model - Gemini 3 Pro Image (Nano Banana Pro).
  *  Roy 2026-06-09 explicitly chose this over 2.5 Flash Image: better
  *  text rendering on ads, better identity preservation. Requires the
  *  API key to be linked to a GCP project with paid billing enabled
- *  on the Generative Language API — not just "billing enabled in AI
+ *  on the Generative Language API - not just "billing enabled in AI
  *  Studio". When quota hits, the error message points to the fix
  *  (see quotaErrorMessage below) rather than silently downgrading. */
 export const DEFAULT_IMAGE_MODEL = "gemini-3-pro-image-preview"
 
-/** Quota error matcher — Google's text-encoded RATE_LIMIT response.
+/** Quota error matcher - Google's text-encoded RATE_LIMIT response.
  *  Detected at error-handling time so the caller can downgrade from
  *  3 Pro Image to 2.5 Flash Image automatically. */
 function isQuotaError(message: string): boolean {
@@ -49,7 +49,7 @@ function isQuotaError(message: string): boolean {
  *  (GCP billing) rather than the raw Google error. */
 function quotaErrorMessage(model: string): string {
   return (
-    `Gemini quota uitgeput voor ${model}. Dit gebeurt vrijwel altijd omdat de API key gekoppeld is aan een GCP project zonder paid billing op de Generative Language API — niet hetzelfde als "billing enabled in AI Studio". Fix:\n` +
+    `Gemini quota uitgeput voor ${model}. Dit gebeurt vrijwel altijd omdat de API key gekoppeld is aan een GCP project zonder paid billing op de Generative Language API - niet hetzelfde als "billing enabled in AI Studio". Fix:\n` +
     `1. https://aistudio.google.com/apikey → check welk GCP project je key gebruikt\n` +
     `2. https://console.cloud.google.com → kies dat project → APIs & Services → Enable "Generative Language API"\n` +
     `3. Billing → koppel een actief billing-account aan het project\n` +
@@ -102,7 +102,7 @@ type GeminiResponse = {
  * Generate a single image from a prompt + optional reference images.
  *
  * Reference images are passed as `inline_data` parts before the text
- * prompt — Gemini's docs recommend image-first ordering when editing
+ * prompt - Gemini's docs recommend image-first ordering when editing
  * (the model treats earlier images as the canvas to manipulate).
  *
  * Returns the image bytes + dimensions when the model attached them
@@ -113,10 +113,10 @@ type GeminiResponse = {
 export async function generateImageWithReference(args: {
   prompt: string
   /** Optional reference images (e.g., the winning ad's thumbnail).
-   *  Up to 3 — Gemini accepts more but practically the loss of fidelity
+   *  Up to 3 - Gemini accepts more but practically the loss of fidelity
    *  past 3 isn't worth it. */
   referenceImages?: Array<{ bytes: Buffer; mimeType: "image/jpeg" | "image/png" }>
-  /** Override model — defaults to Gemini 3 Pro Image (Nano Banana Pro). */
+  /** Override model - defaults to Gemini 3 Pro Image (Nano Banana Pro). */
   model?: string
   /** Aspect ratio target. Image-only MVP → square (Feed) default. Pass
    *  "9:16" if/when we add video/Reels support. */
@@ -192,7 +192,7 @@ export async function generateImageWithReference(args: {
 
   // Walk the candidates → parts to find the image data. The API can
   // return inline_data (snake_case) or inlineData (camelCase) depending
-  // on the model and SDK version — handle both.
+  // on the model and SDK version - handle both.
   for (const candidate of json.candidates ?? []) {
     for (const part of candidate.content?.parts ?? []) {
       const data = part.inline_data?.data ?? part.inlineData?.data
@@ -204,7 +204,7 @@ export async function generateImageWithReference(args: {
         return {
           bytes,
           mimeType: normalisedMime,
-          // Gemini doesn't currently expose width/height in the response —
+          // Gemini doesn't currently expose width/height in the response -
           // future API versions might. Null for now; UI shows it as
           // unknown and the launch endpoint reads dimensions from bytes
           // when it really needs them.
@@ -216,7 +216,7 @@ export async function generateImageWithReference(args: {
     }
   }
 
-  // No image data in the response — usually means the model returned a
+  // No image data in the response - usually means the model returned a
   // text refusal or hit a safety filter without an explicit block reason.
   const textPart = json.candidates?.[0]?.content?.parts?.find((p) => p.text)?.text
   throw new Error(
@@ -227,7 +227,7 @@ export async function generateImageWithReference(args: {
 }
 
 /** Fetch a public image URL (e.g., Meta's `thumbnailUrl` on
- *  MetaAdDetail) and return raw bytes + mime — suitable to pass as a
+ *  MetaAdDetail) and return raw bytes + mime - suitable to pass as a
  *  reference image to generateImageWithReference. */
 export async function fetchReferenceImage(
   url: string,

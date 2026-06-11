@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 
 /**
  * Cheap one-shot health summary for the sidebar dot. Two queries against
- * Supabase, both indexed — runs on every admin sidebar render but stays
+ * Supabase, both indexed - runs on every admin sidebar render but stays
  * well under 50ms on a warm connection.
  *
  * Lit when EITHER:
@@ -31,7 +31,7 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 /**
  * Fetches the summary. On any failure (Supabase down, RLS denial, schema
- * miss) returns HEALTHY_SUMMARY rather than throwing — the sidebar must
+ * miss) returns HEALTHY_SUMMARY rather than throwing - the sidebar must
  * never crash because observability tooling is itself broken.
  */
 export async function fetchHealthSummary(now: number = Date.now()): Promise<HealthSummary> {

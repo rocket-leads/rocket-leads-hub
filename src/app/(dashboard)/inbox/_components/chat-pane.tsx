@@ -48,7 +48,7 @@ type Props = {
   /** Opens the parent composer pre-filled when the user hits "Make task" on
    *  a message bubble. Passes through the linked client id + a title preview
    *  derived from the message body so the AM only has to confirm. Optional
-   *  — when omitted, the Make-task affordance is hidden (e.g. per-client
+   *  - when omitted, the Make-task affordance is hidden (e.g. per-client
    *  views that don't have a composer wired up yet). */
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
   /** Docked-pane mode. When true, ChatPane renders only the thread list
@@ -73,13 +73,13 @@ type Props = {
    *  2026-06-09: the inbox-level search input lives here on the Client
    *  Inbox tab so it visually sits beneath the sub-filter chips, same
    *  as on Tasks/Updates. ChatPane stays unaware of what the slot
-   *  contains — just renders it in the right slot. */
+   *  contains - just renders it in the right slot. */
   underTabsSlot?: React.ReactNode
 }
 
 type MarkAction = "mark_read" | "mark_unread"
 // Roy 2026-06-09: "Read" filter dropped. The Client Inbox AM only ever
-// wants "what's still red" (unread) and "everything" — a Read-only
+// wants "what's still red" (unread) and "everything" - a Read-only
 // filter was never the anchor view. Same minimalism as the Updates
 // strip in inbox-view.
 type ChatFilter = "all" | "unread"
@@ -91,7 +91,7 @@ type ChatFilter = "all" | "unread"
  * Slack channel, etc.), most-recently-active first. Click selects.
  *
  * Right: selected thread's messages in chronological order, plus a reply box
- * at the bottom. Reply uses the existing /api/inbox/[id]/reply endpoint —
+ * at the bottom. Reply uses the existing /api/inbox/[id]/reply endpoint -
  * we pass the thread's latest event id; the helper derives source +
  * thread metadata from there.
  *
@@ -99,7 +99,7 @@ type ChatFilter = "all" | "unread"
  * doesn't have to learn two patterns. Per-row hover actions cover the common
  * "save for later" case (mark a single thread back to unread without
  * selecting). The fixed-height grid is sized to fill the viewport so the
- * thread list scrolls independently of the page chrome — fixes the prior
+ * thread list scrolls independently of the page chrome - fixes the prior
  * h-[640px] which left half the page empty.
  */
 export function ChatPane({
@@ -126,7 +126,7 @@ export function ChatPane({
     if (dockedDetail) onSelectedChange?.(next)
   }
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
-  // Filter strip state — All / Unread / Read. Persisted per scope so the
+  // Filter strip state - All / Unread / Read. Persisted per scope so the
   // Client Inbox and Team Inbox keep their own preferences (an AM might
   // want Unread by default for client chat but All for team chat).
   const [filter, setFilter] = usePersistedChatFilter(scope)
@@ -148,7 +148,7 @@ export function ChatPane({
     [threadsQuery.data?.threads],
   )
 
-  // Tab counts come off the unfiltered set — flipping to "Unread" shouldn't
+  // Tab counts come off the unfiltered set - flipping to "Unread" shouldn't
   // make the Unread tab claim "0 unread" when there are still unread items
   // hiding behind the filter.
   const tabCounts = useMemo(() => {
@@ -162,7 +162,7 @@ export function ChatPane({
     const q = searchQuery.trim().toLowerCase()
     if (!q) return base
     // AND semantics across whitespace-separated words, same as the
-    // inbox-level filterByQuery — keeps a single search field feeling
+    // inbox-level filterByQuery - keeps a single search field feeling
     // consistent across every tab. Matches contact + client name +
     // latest preview. Older messages aren't loaded for the summary, so
     // a hit inside an earlier message still requires opening the thread.
@@ -265,7 +265,7 @@ export function ChatPane({
   // Auto-select the first thread when the list loads, so the empty right pane
   // doesn't sit there waiting for a click. Also marks it read so the badge
   // doesn't sit there showing unread for a thread the user is actively viewing.
-  // Skip in docked mode — the parent owns whether/when to open a thread (e.g.
+  // Skip in docked mode - the parent owns whether/when to open a thread (e.g.
   // it might want to open the user to an empty list and let them pick).
   useEffect(() => {
     if (dockedDetail) return
@@ -307,7 +307,7 @@ export function ChatPane({
 
   const filterTabs: TopTab<ChatFilter>[] = [
     // Roy 2026-06-09: Unread on the LEFT (anchor / default), All on the
-    // RIGHT (scan-everything fallback) — mirrors the Tasks + Updates
+    // RIGHT (scan-everything fallback) - mirrors the Tasks + Updates
     // strips so the chip positions feel consistent across tabs.
     { id: "unread", label: "Unread", icon: Mail, count: tabCounts.unread },
     { id: "all", label: "All conversations", icon: LayoutList, count: tabCounts.all },
@@ -322,11 +322,11 @@ export function ChatPane({
       <TrengoIdentityBanner />
 
       {/* Sized to fill the viewport below the page chrome instead of being
-          locked to 640px — keeps the thread list and chat pane equal in
+          locked to 640px - keeps the thread list and chat pane equal in
           height regardless of screen size, and prevents the prior "sidebar
           stops halfway down the page" UX bug. The 280px subtraction covers
           page header + main tabs + filter tabs + spacing.
-          In docked-detail mode the right column is dropped entirely — the
+          In docked-detail mode the right column is dropped entirely - the
           thread list takes the full width here, and the selected thread's
           ThreadView is rendered by the parent (inbox-view) inside its
           page-level slide-in aside. Same UX as Tasks/Updates/Now: list on
@@ -399,12 +399,12 @@ function ThreadList({
   onMarkThread: (thread: ChatThreadSummary, action: MarkAction) => void
   scope: ChatScope
   /** When true, the right edge of this panel butts up against the
-   *  ThreadView panel — drop the right border-radius so the two cards
+   *  ThreadView panel - drop the right border-radius so the two cards
    *  read as one continuous surface. */
   mergedRightEdge?: boolean
 }) {
   // Wrapper classes shared between loading / empty / loaded states so the
-  // outer card is consistent — only its border-radius changes in merged
+  // outer card is consistent - only its border-radius changes in merged
   // mode. We avoid passing this through the prop sidewalk for every
   // visual state.
   const wrapperClass = mergedRightEdge ? "rounded-l-xl rounded-r-none" : "rounded-xl"
@@ -543,7 +543,7 @@ function ThreadRow({
         isChecked && "bg-primary/[0.07]",
       )}
     >
-      {/* Left edge unread bar — same convention email clients use. Doesn't
+      {/* Left edge unread bar - same convention email clients use. Doesn't
           shift the row content; sits flush against the divider. */}
       {isUnread && (
         <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-primary" />
@@ -584,7 +584,7 @@ function ThreadRow({
               >
                 {thread.primaryName}
               </span>
-              {/* No ChannelBadge here — the SourceIcon already encodes the
+              {/* No ChannelBadge here - the SourceIcon already encodes the
                   channel (WhatsApp brand, email mail icon, Slack purple,
                   …) so repeating the channel name as a text pill was
                   pure visual noise. Roy: dubbel-op. */}
@@ -617,7 +617,7 @@ function ThreadRow({
           </div>
           {/* Subtitle line: only show the client name when the thread is
               actually linked. Previously fell back to `channelName` which
-              is just the channel owner ("Roy Vosters") for our setup —
+              is just the channel owner ("Roy Vosters") for our setup -
               repeats info the AM already knows and clutters the row. */}
           {thread.clientName && (
             <p className="text-[10px] text-muted-foreground/70 truncate mb-1">
@@ -681,7 +681,7 @@ function SelectAllCheckbox({
 }
 
 /**
- * Floating bulk action bar — appears when 1+ threads are selected. Same
+ * Floating bulk action bar - appears when 1+ threads are selected. Same
  * shape as the Updates BulkActionBar so the inbox-wide pattern stays
  * consistent: pill-shaped, fixed bottom-center, single-purpose buttons with
  * tinted hover states.
@@ -734,14 +734,14 @@ function ChatBulkActionBar({
 
 // --- Thread view (right pane) --------------------------------------------
 
-/** Pedro-draft prefill button — fetches the client's current `client_pedro`
+/** Pedro-draft prefill button - fetches the client's current `client_pedro`
  *  insight on click and inserts the `conclusion` into the reply textarea.
  *  Appends to the existing draft when the textarea isn't empty, so the AM
  *  can keep what they already wrote.
  *
  *  Renders only for client-facing replies (skipped for internal notes and
  *  when the thread has no linked client). When Pedro has nothing for this
- *  client the button stays present but disabled with a tooltip — the
+ *  client the button stays present but disabled with a tooltip - the
  *  absence is informative ("Pedro has no draft yet"), not a UI gap. */
 function PedroDraftButton({
   clientId,
@@ -775,7 +775,7 @@ function PedroDraftButton({
         const parsed = JSON.parse(raw) as { conclusion?: string }
         conclusion = typeof parsed.conclusion === "string" ? parsed.conclusion.trim() : null
       } catch {
-        // Body wasn't JSON — fall back to using the raw text.
+        // Body wasn't JSON - fall back to using the raw text.
         conclusion = raw.trim()
       }
       if (!conclusion) {
@@ -910,7 +910,7 @@ function ThreadMessages({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   // WhatsApp composer state: only active when channelKind === "whatsapp".
-  // Stored as user PREFERENCE — initial default is "default" (free text).
+  // Stored as user PREFERENCE - initial default is "default" (free text).
   // Window-closed → render-time override forces Template (Meta requirement);
   // never written back into state, so opening the window again snaps back
   // to whatever the user actually picked. Per Roy: "Als het Conversation
@@ -918,7 +918,7 @@ function ThreadMessages({
   const [userWaMode, setUserWaMode] = useState<WaMode>("default")
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null)
   const [templateParams, setTemplateParams] = useState<string[]>([])
-  // Email composer state — only active when channelKind === "email". Lifted
+  // Email composer state - only active when channelKind === "email". Lifted
   // here (rather than inside EmailComposer) so sendReply can grab everything
   // on submit without an editor ref dance.
   const [emailSubject, setEmailSubject] = useState("")
@@ -956,7 +956,7 @@ function ThreadMessages({
   // of composer state that should survive switching back and forth between
   // threads. Lives in a ref so updates don't re-render; this isn't
   // displayed state, just a stash. Cleared per-entry on send success.
-  // Attachments are NOT persisted — the underlying Trengo draft attachment
+  // Attachments are NOT persisted - the underlying Trengo draft attachment
   // ids are session-bound and we'd risk sending stale references; pasting
   // / re-attaching when returning to a thread is the right tradeoff.
   const draftsRef = useRef(
@@ -1005,7 +1005,7 @@ function ThreadMessages({
 
   // Switch threads: save the previous thread's draft, restore the new one
   // (defaults if no entry). Transient state (errors, mentions, attachments,
-  // upload progress) is always reset — those don't make sense to carry
+  // upload progress) is always reset - those don't make sense to carry
   // across threads.
   useEffect(() => {
     const oldKey = prevThreadKeyRef.current
@@ -1060,7 +1060,7 @@ function ThreadMessages({
       .slice(0, 8)
   })()
 
-  // Resolved mentions in the current reply — exactly the set of users that
+  // Resolved mentions in the current reply - exactly the set of users that
   // will receive an Update + push notification when the AM hits Send. Mirror
   // of the server-side fanOutMentionsForInternalNote regex + lookup so what
   // the AM sees here matches what actually gets fanned out. Live-updates as
@@ -1073,7 +1073,7 @@ function ThreadMessages({
 
   function syncMentionState(value: string, caret: number) {
     if (!isInternal) {
-      // Mention picker only fires inside internal notes — a stray @-mention
+      // Mention picker only fires inside internal notes - a stray @-mention
       // in a client-visible reply would just confuse them.
       setMentionStart(null)
       setMentionQuery("")
@@ -1100,7 +1100,7 @@ function ThreadMessages({
     if (mentionStart == null) return
     const ta = textareaRef.current
     if (!ta) return
-    // Full name when the user has one — unique identifies them when the
+    // Full name when the user has one - unique identifies them when the
     // team has duplicate first names (e.g. two Roys), and matches what
     // shows up in the resolved-mentions chip strip so the AM can visually
     // confirm the right person was tagged. Falls back to the email-local
@@ -1120,7 +1120,7 @@ function ThreadMessages({
     })
   }
 
-  // Trengo is the only source where attachments work — Slack outbound here
+  // Trengo is the only source where attachments work - Slack outbound here
   // doesn't have an upload endpoint wired (different platform contract; we
   // can add it in a later phase if needed).
   const supportsAttachments = thread.source === "trengo"
@@ -1161,12 +1161,12 @@ function ThreadMessages({
   // the window is closed (Meta requirement) but preserves the user's
   // preference in `userWaMode` so reopening the window snaps back to their
   // last choice (Default by default). Internal-note mode also forces
-  // Default — Trengo templates can't be sent as internal notes.
+  // Default - Trengo templates can't be sent as internal notes.
   const waMode: WaMode =
     isInternal ? "default" : isWhatsApp && !windowOpen ? "template" : userWaMode
 
   // Templates list: lazy-loaded the moment the user arrives on a WA thread
-  // (cheap — server-side cached for 5 min). Always-fetch is simpler than
+  // (cheap - server-side cached for 5 min). Always-fetch is simpler than
   // gating on waMode === "template" and avoids a flash-of-empty when the
   // user toggles modes. Disabled for non-WA threads.
   const templatesQuery = useQuery<{ templates: WaTemplate[] }>({
@@ -1185,7 +1185,7 @@ function ThreadMessages({
     [templates, selectedTemplateId],
   )
 
-  // Pick template handler — recomputes the variable input array sized to the
+  // Pick template handler - recomputes the variable input array sized to the
   // template's `{{N}}` count so the UI surfaces the right number of fields.
   function pickTemplate(t: WaTemplate | null) {
     setSelectedTemplateId(t?.id ?? null)
@@ -1339,7 +1339,7 @@ function ThreadMessages({
           params: templateParams,
           body: selectedTemplate.message,
         }
-        // Templates can't carry text or attachments — Trengo / Meta limit.
+        // Templates can't carry text or attachments - Trengo / Meta limit.
       } else if (sendingEmail) {
         // Plain-text fallback derived from the HTML so email clients that
         // strip HTML still see something readable. Trengo also generates
@@ -1383,7 +1383,7 @@ function ThreadMessages({
       setEmailCc([])
       setEmailBcc([])
       setEmailHtml("")
-      // Drop the saved draft for this thread — the message is sent, no
+      // Drop the saved draft for this thread - the message is sent, no
       // reason to restore it next time the user navigates back.
       draftsRef.current.delete(thread.threadKey)
       await queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
@@ -1456,14 +1456,14 @@ function ThreadMessages({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* Quick "Generate update" — only when the thread is linked to a
+          {/* Quick "Generate update" - only when the thread is linked to a
               Hub client. Opens the existing weekly-update dialog scoped
               to this client so the AM can fire off a short data-driven
               check-in without leaving the conversation. Roy 2026-06-09:
               the dialog already picks Trengo channel + handles WA / email
               routing, so threading from the Client Inbox is just a matter
               of passing the right mondayItemId. (Adaptive 7/14/30-day
-              window selection is on the follow-up list — current MVP
+              window selection is on the follow-up list - current MVP
               reuses the same 7-day cadence the dialog already does.) */}
           {thread.clientId && thread.clientName && (
             <ClientUpdateButton
@@ -1513,7 +1513,7 @@ function ThreadMessages({
       </div>
 
       {/* Reply box. Drag-drop handlers moved up here from the textarea row
-          so dropping ANYWHERE in the composer area uploads the file —
+          so dropping ANYWHERE in the composer area uploads the file -
           particularly useful for email mode (no visible textarea) and
           template mode (textarea hidden). */}
       {replyable && (
@@ -1533,7 +1533,7 @@ function ThreadMessages({
           }}
           onDragLeave={(e) => {
             // Only clear when leaving the actual wrapper (not when dragging
-            // between children — those bubble dragenter/leave constantly).
+            // between children - those bubble dragenter/leave constantly).
             if (e.currentTarget === e.target) setIsDragOver(false)
           }}
           onDrop={(e) => {
@@ -1548,7 +1548,7 @@ function ThreadMessages({
           {/* Reply / Internal note toggle. Internal note posts as a Trengo
               `internal_note: true` (team-only bubble) AND fans out @-mention
               notifications to tagged teammates. Slack threads hide the
-              toggle entirely — Slack has no native internal-note concept. */}
+              toggle entirely - Slack has no native internal-note concept. */}
           {supportsInternalNote && (
             <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5 mb-3 shadow-sm">
               <button
@@ -1572,7 +1572,7 @@ function ThreadMessages({
                     ? "bg-amber-500 text-amber-950 shadow-sm"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted",
                 )}
-                title="Team-only note — invisible to the client; @-mention to ping a teammate"
+                title="Team-only note - invisible to the client; @-mention to ping a teammate"
               >
                 Internal note
               </button>
@@ -1618,7 +1618,7 @@ function ThreadMessages({
               {uploadError}
             </div>
           )}
-          {/* Attachment chips strip — sits above the textarea so the user can
+          {/* Attachment chips strip - sits above the textarea so the user can
               see exactly what they're about to send. Each chip shows an icon
               (image preview thumbnail or generic file icon), filename, and
               an × to remove before sending. */}
@@ -1635,7 +1635,7 @@ function ThreadMessages({
               Uploading {uploadingCount} file{uploadingCount === 1 ? "" : "s"}…
             </div>
           )}
-          {/* Resolved-mentions strip — only in internal-note mode. Shows
+          {/* Resolved-mentions strip - only in internal-note mode. Shows
               every teammate the @-mention parser will fan out to when the
               AM hits Send. Mirrors the server-side regex + lookup so what
               you see here is exactly who'll get a notification. Empty
@@ -1647,7 +1647,7 @@ function ThreadMessages({
               hasUnresolved={hasUnresolvedMention(reply, users ?? [])}
             />
           )}
-          {/* Light markdown toolbar — WhatsApp default-mode only. WA supports
+          {/* Light markdown toolbar - WhatsApp default-mode only. WA supports
               bold (*x*), italic (_x_), strikethrough (~x~). Email gets full
               rich text in Fase 3. */}
           {isWhatsApp && waMode === "default" && !isInternal && (
@@ -1661,7 +1661,7 @@ function ThreadMessages({
               Subject/CC/BCC) and signature auto-injection. Replaces the
               textarea+paperclip row entirely on email channels (paperclip
               is rendered inline below the editor). Internal note mode falls
-              back to the basic textarea even on email — Trengo internal
+              back to the basic textarea even on email - Trengo internal
               notes don't carry email_message fields anyway. */}
           {isEmailMode && (
             <>
@@ -1727,7 +1727,7 @@ function ThreadMessages({
               </div>
             </>
           )}
-          {/* Template-mode replaces the textarea with a Send-only bar — the
+          {/* Template-mode replaces the textarea with a Send-only bar - the
               composer's "input" is the variable list above. Default mode
               keeps the existing textarea + paperclip + Send row. */}
           {!isEmailMode && isWhatsApp && waMode === "template" && !isInternal ? (
@@ -1749,7 +1749,7 @@ function ThreadMessages({
             </div>
           ) : !isEmailMode ? (
           <>
-          {/* Pedro draft chip — only for client-facing replies on a linked
+          {/* Pedro draft chip - only for client-facing replies on a linked
               client. Renders just above the textarea so the AM sees it
               before they start typing. Click = append Pedro's current
               conclusion to the draft (or set it when the textarea is
@@ -1785,7 +1785,7 @@ function ThreadMessages({
               }}
               placeholder={
                 isInternal
-                  ? "Internal note — team only. Use @ to mention a teammate."
+                  ? "Internal note - team only. Use @ to mention a teammate."
                   : `Reply via ${thread.source} as you`
               }
               rows={6}
@@ -1928,7 +1928,7 @@ function ThreadMessages({
  *  picks freely; outside the window the selector is locked to Template
  *  (Meta forbids free text). The locked state is conveyed by greying out
  *  the Default option + a tooltip rather than hiding the toggle entirely
- *  — keeps the AM aware that the choice exists and why it's unavailable. */
+ *  - keeps the AM aware that the choice exists and why it's unavailable. */
 function WhatsAppWindowBanner({
   windowOpen,
   hoursRemaining,
@@ -2092,7 +2092,7 @@ function WhatsAppTemplateControls({
   )
 }
 
-/** Lightweight markdown toolbar — three buttons that wrap the textarea's
+/** Lightweight markdown toolbar - three buttons that wrap the textarea's
  *  current selection in WhatsApp's supported markup. Bold (*x*), italic
  *  (_x_), strikethrough (~x~). When no selection, inserts paired markers at
  *  the caret so the user types between them. */
@@ -2198,7 +2198,7 @@ function renderTemplate(message: string, params: string[]): string {
 /** Resolved-mentions strip rendered above the textarea in internal-note
  *  mode. Each chip = one teammate who WILL receive an inbox Update + push
  *  notification when the AM hits Send. Mirrors the server-side fan-out
- *  resolution exactly — the visual is the contract.
+ *  resolution exactly - the visual is the contract.
  *
  *  States:
  *    - 0 resolved + has-unresolved typing → amber "no match" hint so the
@@ -2251,7 +2251,7 @@ function MentionPreviewStrip({
 }
 
 /** Returns true when the body contains an `@<name>` that didn't resolve
- *  to any teammate — used to surface the "unmatched" warning chip so the
+ *  to any teammate - used to surface the "unmatched" warning chip so the
  *  AM doesn't accidentally ship an internal note thinking they tagged
  *  someone who's actually not in the system. */
 function hasUnresolvedMention(body: string, users: InboxUser[]): boolean {
@@ -2287,7 +2287,7 @@ function matchUserByPrefix(capture: string, users: InboxUser[]): InboxUser | nul
     if (user) return user
   }
   // Last resort: first-name-only match (supports `@Roel` when the user's
-  // full name is "Roel van der Harst" — same UX as the picker's quick
+  // full name is "Roel van der Harst" - same UX as the picker's quick
   // pick). Only when capture is a single word; multi-word captures should
   // hit a full-name match above.
   if (tokens.length === 1) {
@@ -2317,7 +2317,7 @@ function resolveMentionsAgainstUsers(body: string, users: InboxUser[]): InboxUse
 /** Inline picker for assigning an unlinked Trengo thread to a Hub client.
  *  Renders as a small "Link to client …" affordance under the conversation
  *  header; expands to a search-as-you-type list of clients on click. The
- *  link is appended (not replaces) — `clients.trengo_contact_ids` is a
+ *  link is appended (not replaces) - `clients.trengo_contact_ids` is a
  *  TEXT[] so a single client can be reachable on multiple Trengo contacts.
  *
  *  Conflict handling: if the contact is already linked to a different
@@ -2548,7 +2548,7 @@ function EditableContactName({
 
 /** Compact preview chip for an attachment that's been uploaded but not sent
  *  yet. Image attachments get a tiny thumbnail (the Trengo presigned S3 URL
- *  is loaded directly — no Hub-side proxy needed since it's already
+ *  is loaded directly - no Hub-side proxy needed since it's already
  *  authenticated via signature). Non-images get a generic file icon.
  *  The remove button drops the chip locally; the underlying Trengo draft
  *  attachment record stays (orphan cleanup is out of scope for Phase 1). */
@@ -2598,7 +2598,7 @@ function MessageBubble({
 }) {
   const isUs = msg.authorKind === "rl_team"
   const isInternal = msg.isInternal === true
-  // Internal notes get a distinct yellow tint regardless of author —
+  // Internal notes get a distinct yellow tint regardless of author -
   // signals "team-only annotation, not part of the customer-visible
   // conversation." Same convention Trengo uses on their own UI.
   return (
@@ -2667,7 +2667,7 @@ function MakeTaskInlineButton({ onClick }: { onClick: () => void }) {
 
 /** Channel icon for Client Inbox rows. For Trengo we differentiate WhatsApp
  *  (brand-green logo) vs email (blue mail) vs other Trengo channels (cyan
- *  chat) so it's instantly clear which medium a thread came in on — Roy's
+ *  chat) so it's instantly clear which medium a thread came in on - Roy's
  *  spec. Slack and Monday keep their existing single-icon treatment. */
 export function SourceIcon({ thread }: { thread: ChatThreadSummary }) {
   if (thread.source === "trengo") {
@@ -2741,11 +2741,11 @@ function fmtTime(iso: string): string {
 
 /** Per-scope localStorage-backed filter state. Mirrors the `usePersistedState`
  *  pattern used in inbox-view.tsx (kept inline here so chat-pane stays
- *  self-contained — when there's a third caller this should become a shared
+ *  self-contained - when there's a third caller this should become a shared
  *  hook in src/lib). Falls back to "all" if storage is blocked or the
  *  persisted JSON is corrupt. */
 function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) => void] {
-  // v3 key — "Read" filter removed entirely, default flipped back to
+  // v3 key - "Read" filter removed entirely, default flipped back to
   // "unread" so the AM lands on what still needs action. Bumping resets
   // returning users carrying a stale "read" choice from v2.
   const key = `inbox.chatFilter.v3.${scope}`
@@ -2762,7 +2762,7 @@ function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) 
         }
       }
     } catch {
-      // bad JSON or storage unavailable — stick with the default
+      // bad JSON or storage unavailable - stick with the default
     }
     hydratedRef.current = true
   }, [key])
@@ -2772,7 +2772,7 @@ function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) 
     try {
       localStorage.setItem(key, JSON.stringify(value))
     } catch {
-      // ignore — full storage shouldn't break the UI
+      // ignore - full storage shouldn't break the UI
     }
   }, [key, value])
 
@@ -2780,7 +2780,7 @@ function usePersistedChatFilter(scope: ChatScope): [ChatFilter, (v: ChatFilter) 
 }
 
 /**
- * Diagnostic banner — Roy 2026-06-09: surfaces "as whom does this user
+ * Diagnostic banner - Roy 2026-06-09: surfaces "as whom does this user
  * actually send in Trengo" + "which channels are they subscribed to".
  *
  * Three problem states get a visible warning row above the thread list:
@@ -2851,7 +2851,7 @@ function TrengoIdentityBanner() {
 
   // --- Channel coverage warning (mild, doesn't block sends) ---------------
   // Roy 2026-06-09: the green "Verstuurt vanuit Trengo als <name>" pill was
-  // removed — once Trengo is wired, no news is good news. Only the
+  // removed - once Trengo is wired, no news is good news. Only the
   // actionable missing-channel warning survives so the "where are my emails?"
   // failure mode still has a CTA.
 
@@ -2865,10 +2865,10 @@ function TrengoIdentityBanner() {
     <Link
       href="/account"
       className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400 hover:underline"
-      title={`Geen ${missingChannelTypes.join(" + ")}-channel(s) geabonneerd — daarom mis je ze in de inbox`}
+      title={`Geen ${missingChannelTypes.join(" + ")}-channel(s) geabonneerd - daarom mis je ze in de inbox`}
     >
       <AlertTriangle className="h-3 w-3" />
-      Geen {missingChannelTypes.join(" / ")} channels — koppel ze in /account
+      Geen {missingChannelTypes.join(" / ")} channels - koppel ze in /account
     </Link>
   )
 }

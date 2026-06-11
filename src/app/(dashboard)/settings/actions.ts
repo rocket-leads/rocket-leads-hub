@@ -102,7 +102,7 @@ export async function updateNotificationConfig(
     next.hour = h
   }
   if (patch.template !== undefined) {
-    // null means "use the built-in default" — we strip the key so getNotificationConfig falls back.
+    // null means "use the built-in default" - we strip the key so getNotificationConfig falls back.
     if (patch.template === null || patch.template.trim() === "") delete next.template
     else next.template = patch.template
   }
@@ -205,8 +205,8 @@ export async function updateUserPrimaryEmailChannel(
 /**
  * Per-user PRIMARY outbound WhatsApp channel. Mirrors
  * `updateUserPrimaryEmailChannel`. Currently only used by a future
- * WA-bootstrap send flow — the existing WA path inherits the channel
- * from the open ticket — but stored centrally so we don't need another
+ * WA-bootstrap send flow - the existing WA path inherits the channel
+ * from the open ticket - but stored centrally so we don't need another
  * migration when that flow ships.
  */
 export async function updateUserPrimaryWaChannel(
@@ -261,12 +261,12 @@ export async function inviteUser(input: {
 
   if (input.mondayRole) {
     // Roles that map to a Monday client-board column require a person name to
-    // resolve which client rows belong to this user. Finance doesn't — its
+    // resolve which client rows belong to this user. Finance doesn't - its
     // mapping is purely "this Hub user is the org's finance person".
     const requiresName = ROLES_NEEDING_MONDAY_NAME.has(input.mondayRole)
     const personName = input.mondayPersonName?.trim() || null
     if (requiresName && !personName) {
-      // Skip silently — the user can be assigned a Monday name later from the
+      // Skip silently - the user can be assigned a Monday name later from the
       // users table without having to recreate the account.
     } else {
       const { error: mappingErr } = await supabase
@@ -287,7 +287,7 @@ export async function inviteUser(input: {
 
 /**
  * Sets a user's Monday mapping to exactly one role+name pair (or clears it).
- * Replaces any existing rows for the user — we now enforce one Monday identity
+ * Replaces any existing rows for the user - we now enforce one Monday identity
  * per Hub user from the UI, even though the underlying schema allows multiple.
  */
 export async function setUserMondayMapping(
@@ -358,7 +358,7 @@ export async function setInboxAutomationRule(
 }
 
 /**
- * Manually trigger the inbox automations runner in TEST MODE — produces the
+ * Manually trigger the inbox automations runner in TEST MODE - produces the
  * same tasks the daily cron would, but routes them to the admin's own inbox
  * (with [TEST] prefix and a body note about who *would* have received it in
  * production). Lets us validate AI-generated content and rule logic without

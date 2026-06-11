@@ -17,7 +17,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 async function wipeTargetsCaches() {
   try {
     const supabase = await createAdminClient()
-    // Same prefix wildcard the assign-customer route uses — covers MTD keys and
+    // Same prefix wildcard the assign-customer route uses - covers MTD keys and
     // historical-month variants in one shot.
     await Promise.all([
       supabase.from("cache_store").delete().like("key", "targets_finance%"),

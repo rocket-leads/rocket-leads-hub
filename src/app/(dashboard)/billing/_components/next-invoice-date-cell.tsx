@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 
 /**
  * Inline-editable date cell used by the Billing page for the cycle-start
- * date (and historically the invoice date — invoice is now read-only since
+ * date (and historically the invoice date - invoice is now read-only since
  * it's always derived as `cycle - 7d`). Shows the current date as a button;
  * click reveals a native date input that auto-saves on change.
  *
@@ -59,7 +59,7 @@ export function NextInvoiceDateCell({
       try {
         inputRef.current?.showPicker?.()
       } catch {
-        // showPicker can throw on browsers that don't support it — silent fallback.
+        // showPicker can throw on browsers that don't support it - silent fallback.
       }
     }
   }, [editing])

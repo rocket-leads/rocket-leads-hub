@@ -17,10 +17,10 @@ import type { KpiResult } from "@/lib/clients/kpis"
 
 function fmt(n: number, type: "currency" | "percent" | "integer" | "multiplier"): string {
   if (!isFinite(n) || (n === 0 && type !== "integer")) {
-    if (type === "percent") return "—%"
-    if (type === "multiplier") return "—"
-    if (type === "currency") return "—"
-    return "—"
+    if (type === "percent") return "-%"
+    if (type === "multiplier") return "-"
+    if (type === "currency") return "-"
+    return "-"
   }
   switch (type) {
     case "currency":
@@ -43,7 +43,7 @@ type KpiCardDef = {
   direction: "cost" | "rate" | "neutral"
 }
 
-// Appointments section removed 2026-05 — see knowledge/vision-rocketleads-hub.md.
+// Appointments section removed 2026-05 - see knowledge/vision-rocketleads-hub.md.
 // `appointments` is no longer a tracked dimension; visibility now toggles deals only.
 export type KpiVisibility = {
   leads: boolean
@@ -56,7 +56,7 @@ type KpiGroup = {
   section: keyof KpiVisibility
 }
 
-// KPI card labels stay English in both locales — these are agreed RL jargon
+// KPI card labels stay English in both locales - these are agreed RL jargon
 // shared with Slack, the Targets settings panel, and the campaigns framework.
 const KPI_GROUPS: KpiGroup[] = [
   {
@@ -141,7 +141,7 @@ export function KpiCards({ data, previousData, isLoading, visibility = { leads: 
         const visibleCards = group.cards
         if (visibleCards.length === 0) return null
 
-        // Auto-hide the Deals group when there's nothing to show — Leads is the
+        // Auto-hide the Deals group when there's nothing to show - Leads is the
         // primary group and always renders, but Deals only surfaces once it
         // actually has data, otherwise it's noise.
         if (group.section !== "leads" && data && !isLoading) {
@@ -193,7 +193,7 @@ export function KpiCards({ data, previousData, isLoading, visibility = { leads: 
                             <Skeleton className="h-7 w-20" />
                           ) : (
                             <p className={`text-xl font-bold tabular-nums tracking-tight ${styles?.value ?? "text-foreground"}`}>
-                              {data ? fmt(data[kpi.key] as number, kpi.type) : "—"}
+                              {data ? fmt(data[kpi.key] as number, kpi.type) : "-"}
                             </p>
                           )}
                         </div>

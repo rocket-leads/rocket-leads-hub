@@ -231,7 +231,7 @@ function extractFontFamilies(text: string): { heading: string | null; body: stri
     }
   }
   function addStack(stack: string, points: number, source: string) {
-    // `font-family: "Inter", "Helvetica Neue", sans-serif;` — take only
+    // `font-family: "Inter", "Helvetica Neue", sans-serif;` - take only
     // the first non-generic name. That's the brand font; the rest is
     // graceful fallback.
     const parts = stack.split(",");
@@ -244,13 +244,13 @@ function extractFontFamilies(text: string): { heading: string | null; body: stri
     }
   }
 
-  // Headings — these carry brand identity (Clash Grotesk, etc.)
+  // Headings - these carry brand identity (Clash Grotesk, etc.)
   const headingRegex = /(?:h[1-3]|\.heading|\.title|\.hero|\.display)\b[^{]*\{[^}]*font-family\s*:\s*([^;}]+)/gi;
   for (const m of Array.from(text.matchAll(headingRegex))) {
     addStack(m[1], 60, "heading");
   }
 
-  // Body / paragraphs — usually the body font (Inter, etc.)
+  // Body / paragraphs - usually the body font (Inter, etc.)
   const bodyRegex = /(?:\bbody\b|\.body|\.text|\.content|p\b)\s*\{[^}]*font-family\s*:\s*([^;}]+)/gi;
   for (const m of Array.from(text.matchAll(bodyRegex))) {
     addStack(m[1], 40, "body");
@@ -268,7 +268,7 @@ function extractFontFamilies(text: string): { heading: string | null; body: stri
     addStack(m[1], 5, "general");
   }
 
-  // Google Fonts <link> imports — strong signal of intentional brand font.
+  // Google Fonts <link> imports - strong signal of intentional brand font.
   const googleRegex = /fonts\.googleapis\.com\/css[^"']*family=([^&"'?]+)/gi;
   for (const m of Array.from(text.matchAll(googleRegex))) {
     const families = m[1].split("|");
@@ -303,7 +303,7 @@ function extractFontFamilies(text: string): { heading: string | null; body: stri
 // `analyze-website` HTML fetch. We pass the raw HTML + the resolved base
 // URL into these helpers and they return absolute URLs / trimmed strings,
 // or null when nothing usable was found. Failure is always a soft return
-// — never a thrown — so an exotic site layout never breaks the existing
+// - never a thrown - so an exotic site layout never breaks the existing
 // color/font extraction that's the actual gate.
 
 /** Turn a possibly-relative URL into an absolute one against the page
@@ -371,13 +371,13 @@ function extractLogoUrl(html: string, baseUrl: string): string | null {
 }
 
 /**
- * Hero image — first reasonably-large content image we can find in the
+ * Hero image - first reasonably-large content image we can find in the
  * top of the document, excluding logos. We don't have layout info here
  * so we approximate "top" with "first occurrence" + skip the first few
  * tags that match the logo pattern. Good enough as a Pedro reference.
  *
  * Skip filters: anything tagged as logo/icon/avatar/sprite, and any
- * srcset-less `<img>` smaller than 200px declared width — those are
+ * srcset-less `<img>` smaller than 200px declared width - those are
  * almost always UI chrome rather than brand content.
  */
 function extractHeroImageUrl(html: string, baseUrl: string, logoUrl: string | null): string | null {
@@ -392,7 +392,7 @@ function extractHeroImageUrl(html: string, baseUrl: string, logoUrl: string | nu
     // Prefer the largest entry from srcset when present; otherwise plain src.
     const srcset = tagAttr(tag, "srcset")
     if (srcset) {
-      // "url 1x, url 2x" or "url 320w, url 640w" — pick the last (largest)
+      // "url 1x, url 2x" or "url 320w, url 640w" - pick the last (largest)
       const lastEntry = srcset.split(",").pop()?.trim().split(/\s+/)[0]
       const abs = absolutizeUrl(lastEntry, baseUrl)
       if (abs && abs !== logoUrl) return abs
@@ -405,7 +405,7 @@ function extractHeroImageUrl(html: string, baseUrl: string, logoUrl: string | nu
 }
 
 /**
- * Tagline — `<h1>` plus the first `<p>` following it (typical hero copy
+ * Tagline - `<h1>` plus the first `<p>` following it (typical hero copy
  * pattern). Both are stripped of HTML and trimmed. We only return them
  * when non-trivially short so Pedro's tone-of-voice analysis has
  * something concrete to work with.
@@ -491,9 +491,9 @@ export async function POST(req: NextRequest) {
 
     // Score all colors
     const scored = scoreColorsFromHTML(fullContent);
-    // Extract fonts in parallel — fail-soft, fonts are nice-to-have.
+    // Extract fonts in parallel - fail-soft, fonts are nice-to-have.
     const fonts = extractFontFamilies(fullContent);
-    // Brand-fingerprint additions (Roy 2026-06-10) — also fail-soft so
+    // Brand-fingerprint additions (Roy 2026-06-10) - also fail-soft so
     // an exotic site layout never kills the color extraction path.
     const logoUrl = extractLogoUrl(html, fetchUrl);
     const heroImageUrl = extractHeroImageUrl(html, fetchUrl, logoUrl);
@@ -503,7 +503,7 @@ export async function POST(req: NextRequest) {
     // below. ~2-4s vision call; we await right before building the
     // response so the rest of this handler can keep working on the
     // synchronous extraction work. Null result = no signal (no image +
-    // no scraped strings) — consuming code falls back to "use everything
+    // no scraped strings) - consuming code falls back to "use everything
     // by default", same behavior as pre-2026-06-10.
     const qualityVerdictPromise = analyzeWebsiteQuality({
       websiteUrl: fetchUrl,
@@ -565,7 +565,7 @@ export async function POST(req: NextRequest) {
       .trim()
       .substring(0, 2000);
 
-    // Await the quality verdict — it ran in parallel with the synchronous
+    // Await the quality verdict - it ran in parallel with the synchronous
     // extraction work above so this is usually already resolved.
     const qualityVerdict = await qualityVerdictPromise;
 
@@ -581,7 +581,7 @@ export async function POST(req: NextRequest) {
         visualStyle: "",
         headingFont: fonts.heading ?? undefined,
         bodyFont: fonts.body ?? undefined,
-        // Brand-fingerprint additions — Pedro references these in the
+        // Brand-fingerprint additions - Pedro references these in the
         // Gemini image prompt when the CM has "Look & feel" and/or
         // "Logo" toggled on. All optional so back-compat with
         // pre-fingerprint state rows is automatic.
@@ -589,7 +589,7 @@ export async function POST(req: NextRequest) {
         heroImageUrl: heroImageUrl ?? undefined,
         taglineHeadline: tagline.headline ?? undefined,
         taglineSubline: tagline.subline ?? undefined,
-        // Quality verdict — null when there wasn't enough signal to
+        // Quality verdict - null when there wasn't enough signal to
         // score (no hero image, no logo, no tagline). Consuming code
         // treats null as "fingerprint is fine to use", same default as
         // pre-2026-06-10.

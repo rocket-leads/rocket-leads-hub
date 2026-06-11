@@ -5,7 +5,7 @@ import { DEFAULT_LOCALE, isLocale, type Locale } from "./types"
 
 /** Custom event name fired by `LocaleToggle` whenever the user picks a new
  *  locale. `useLocale()` subscribes to this so already-mounted client
- *  components re-render synchronously when the toggle is pressed — without
+ *  components re-render synchronously when the toggle is pressed - without
  *  this they keep their initial useState value forever (cookie reads only
  *  happened on mount), which is why kolomheaders en filterlabels op de
  *  Clients page bevroor tot een hard refresh.
@@ -25,7 +25,7 @@ function readLocaleCookie(): Locale | null {
 /**
  * Client-side locale resolution. Reads the `locale` cookie set by the
  * sidebar toggle. Returns DEFAULT_LOCALE during SSR/first-paint to avoid
- * hydration mismatches — the real locale arrives on the next render
+ * hydration mismatches - the real locale arrives on the next render
  * tick once `useEffect` has run.
  *
  * Reactive: subscribes to the LOCALE_CHANGE_EVENT broadcast by the toggle
@@ -41,7 +41,7 @@ export function useLocale(): Locale {
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE)
 
   useEffect(() => {
-    // Initial hydration from cookie — covers SSR mismatch + cross-tab
+    // Initial hydration from cookie - covers SSR mismatch + cross-tab
     // changes that happened before this component mounted.
     const initial = readLocaleCookie()
     if (initial && initial !== locale) setLocale(initial)
@@ -60,7 +60,7 @@ export function useLocale(): Locale {
     }
     document.addEventListener(LOCALE_CHANGE_EVENT, onLocaleChange)
 
-    // Cross-tab sync via the storage event — when the user toggles in
+    // Cross-tab sync via the storage event - when the user toggles in
     // tab A, the cookie is updated but the storage event lets tab B
     // notice. We can't directly observe cookie changes; localStorage is
     // the cheapest proxy. The toggle writes a throwaway marker so this

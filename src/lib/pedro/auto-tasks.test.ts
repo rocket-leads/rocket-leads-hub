@@ -16,7 +16,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
 
 /**
- * Anti-spam invariants — every guardrail in decideForClient gets a
+ * Anti-spam invariants - every guardrail in decideForClient gets a
  * positive AND negative case here. A regression in any of these
  * silently floods the team's inbox; the test names map 1:1 to the
  * SkipReason enum so a failure tells you exactly which gate broke.
@@ -67,7 +67,7 @@ function input(overrides: Partial<DecideInput> = {}): DecideInput {
 
 // ─── Bucket gate ─────────────────────────────────────────────────────────
 
-describe("decideForClient — bucket gate (skip non-Action)", () => {
+describe("decideForClient - bucket gate (skip non-Action)", () => {
   it("skips watch bucket", () => {
     const d = decideForClient(input({ category: "watch" }))
     expect(d).toEqual({ action: "skip", reason: "not_in_action" })
@@ -86,13 +86,13 @@ describe("decideForClient — bucket gate (skip non-Action)", () => {
 
 // ─── Stickiness gate ─────────────────────────────────────────────────────
 
-describe("decideForClient — stickiness gate (≥2 days)", () => {
+describe("decideForClient - stickiness gate (≥2 days)", () => {
   it("skips when daysInBucket is 0 (just landed today)", () => {
     expect(decideForClient(input({ daysInBucket: 0 })).action).toBe("skip")
     expect(decideForClient(input({ daysInBucket: 0 }))).toMatchObject({ reason: "too_fresh" })
   })
 
-  it("skips when daysInBucket is 1 (transient — let recover)", () => {
+  it("skips when daysInBucket is 1 (transient - let recover)", () => {
     expect(decideForClient(input({ daysInBucket: 1 }))).toMatchObject({ reason: "too_fresh" })
   })
 
@@ -113,7 +113,7 @@ describe("decideForClient — stickiness gate (≥2 days)", () => {
 
 // ─── Severity gate ───────────────────────────────────────────────────────
 
-describe("decideForClient — severity gate", () => {
+describe("decideForClient - severity gate", () => {
   it("skips below the threshold (low-impact spike on tiny spend)", () => {
     const d = decideForClient(input({ severity: ACTION_TASK_THRESHOLD - 1 }))
     expect(d).toMatchObject({ action: "skip", reason: "low_severity" })
@@ -132,7 +132,7 @@ describe("decideForClient — severity gate", () => {
 
 // ─── Assignee gate ───────────────────────────────────────────────────────
 
-describe("decideForClient — assignee gate (no fallback to phantom user)", () => {
+describe("decideForClient - assignee gate (no fallback to phantom user)", () => {
   it("skips when no Hub user is mapped to the CM/AM", () => {
     const d = decideForClient(input({ assigneeUserId: null }))
     expect(d).toMatchObject({ action: "skip", reason: "no_assignee" })
@@ -141,7 +141,7 @@ describe("decideForClient — assignee gate (no fallback to phantom user)", () =
 
 // ─── Dedup gate ──────────────────────────────────────────────────────────
 
-describe("decideForClient — dedup (open task)", () => {
+describe("decideForClient - dedup (open task)", () => {
   it("skips when an open Pedro task already exists for this client", () => {
     const d = decideForClient(
       input({ existingPedroTask: { status: "open", completedAt: null } }),
@@ -166,7 +166,7 @@ describe("decideForClient — dedup (open task)", () => {
   })
 })
 
-describe("decideForClient — recently-closed dedup (CM just resolved)", () => {
+describe("decideForClient - recently-closed dedup (CM just resolved)", () => {
   it("skips when a Pedro task was closed by the CM 2 days ago", () => {
     const closedAt = new Date(new Date(NOW_ISO).getTime() - 2 * 86_400_000).toISOString()
     const d = decideForClient(
@@ -187,7 +187,7 @@ describe("decideForClient — recently-closed dedup (CM just resolved)", () => {
 
   it("treats a done task with no completedAt as eligible to re-create (data-quality fallback)", () => {
     // Defensive: if completed_at is null but status is done, we don't have
-    // info to gate on — treat as if the dedup gate passes. The caller's
+    // info to gate on - treat as if the dedup gate passes. The caller's
     // database constraint should normally prevent this.
     const d = decideForClient(
       input({ existingPedroTask: { status: "done", completedAt: null } }),
@@ -198,7 +198,7 @@ describe("decideForClient — recently-closed dedup (CM just resolved)", () => {
 
 // ─── Per-CM cap ──────────────────────────────────────────────────────────
 
-describe("decideForClient — per-assignee cap", () => {
+describe("decideForClient - per-assignee cap", () => {
   it("creates when assignee is below cap", () => {
     const d = decideForClient(
       input({ openTasksForAssignee: MAX_OPEN_PEDRO_TASKS_PER_USER - 1 }),
@@ -223,7 +223,7 @@ describe("decideForClient — per-assignee cap", () => {
 
 // ─── Create payload shape ────────────────────────────────────────────────
 
-describe("decideForClient — create payload", () => {
+describe("decideForClient - create payload", () => {
   it("includes the marker on source_ref so the cron can find its own tasks", () => {
     const d = decideForClient(input())
     if (d.action !== "create") throw new Error("expected create")
@@ -274,9 +274,9 @@ describe("decideAutoClose", () => {
   })
 })
 
-// ─── Billing-health task — guardrails ───────────────────────────────────
+// ─── Billing-health task - guardrails ───────────────────────────────────
 
-describe("decideBillingHealthTask — guardrails", () => {
+describe("decideBillingHealthTask - guardrails", () => {
   function verdict(overrides: Partial<BillingHealthVerdict> = {}): BillingHealthVerdict {
     return {
       hasIssue: true,
@@ -338,7 +338,7 @@ describe("decideBillingHealthTask — guardrails", () => {
   })
 
   it("skips when a billing task was closed within the recently-closed window", () => {
-    // Closed 2 days ago — still within RECENT_CLOSED_DEDUP_DAYS (7)
+    // Closed 2 days ago - still within RECENT_CLOSED_DEDUP_DAYS (7)
     const closedAt = "2026-05-07T12:00:00Z"
     const d = decideBillingHealthTask(
       billingInput({ existingTask: { status: "done", completedAt: closedAt } }),
@@ -361,7 +361,7 @@ describe("decideBillingHealthTask — guardrails", () => {
     expect(d).toEqual({ action: "skip", reason: "assignee_at_cap" })
   })
 
-  it("create payload — title flags billing_error vs severe_underspend distinctly", () => {
+  it("create payload - title flags billing_error vs severe_underspend distinctly", () => {
     const errorTask = decideBillingHealthTask(billingInput())
     expect(errorTask.action).toBe("create")
     if (errorTask.action !== "create") throw new Error("expected create")
@@ -372,7 +372,7 @@ describe("decideBillingHealthTask — guardrails", () => {
         verdict: verdict({
           severity: "severe_underspend",
           reason: "UNDERSPEND_SEVERE",
-          label: "Underspending — €50 spent vs €462 expected",
+          label: "Underspending - €50 spent vs €462 expected",
         }),
       }),
     )
@@ -381,18 +381,18 @@ describe("decideBillingHealthTask — guardrails", () => {
     expect(underspendTask.title).toMatch(/severe underspend/i)
   })
 
-  it("create payload — body embeds the Dutch client-facing message verbatim", () => {
+  it("create payload - body embeds the Dutch client-facing message verbatim", () => {
     const d = decideBillingHealthTask(billingInput())
     if (d.action !== "create") throw new Error("expected create")
     // The pre-baked Dutch template starts with "Hé {firstName}," and
-    // mentions "betaalprobleem" — both are the AM's hint that they can
+    // mentions "betaalprobleem" - both are the AM's hint that they can
     // copy-paste the bottom block straight to the client.
     expect(d.body).toContain("Hé Test")
     expect(d.body).toContain("betaalprobleem")
     expect(d.body).toContain("Meta Business Manager")
   })
 
-  it("create payload — sourceRef carries the verdict severity + reason for filtering", () => {
+  it("create payload - sourceRef carries the verdict severity + reason for filtering", () => {
     const d = decideBillingHealthTask(billingInput())
     if (d.action !== "create") throw new Error("expected create")
     expect(d.sourceRef.marker).toBe(PEDRO_BILLING_HEALTH_MARKER)
@@ -401,7 +401,7 @@ describe("decideBillingHealthTask — guardrails", () => {
   })
 })
 
-describe("decideAutoCloseBillingHealth — only closes when verdict clears", () => {
+describe("decideAutoCloseBillingHealth - only closes when verdict clears", () => {
   it("closes when there is no verdict at all (Meta data gone)", () => {
     const d = decideAutoCloseBillingHealth(null)
     expect(d.close).toBe(true)

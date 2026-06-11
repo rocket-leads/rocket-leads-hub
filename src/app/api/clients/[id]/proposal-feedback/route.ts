@@ -19,7 +19,7 @@ export type ProposalFeedbackRow = {
 
 const LATER_SNOOZE_DAYS = 7
 
-// GET — return feedback history for this client.
+// GET - return feedback history for this client.
 // Active items (still hiding insights) come back by default.
 // Pass ?all=1 to also include historical resolved entries (for the AI prompt).
 export async function GET(
@@ -52,7 +52,7 @@ export async function GET(
   return NextResponse.json({ feedback: (data ?? []) as ProposalFeedbackRow[] })
 }
 
-// POST — record / update feedback for an insight.
+// POST - record / update feedback for an insight.
 type PostBody = {
   insightFingerprint: string
   insightType: "positive" | "warning" | "critical" | "action"
@@ -122,7 +122,7 @@ export async function POST(
   return NextResponse.json({ ok: true })
 }
 
-// DELETE — remove feedback (e.g. user clicked the same status to undo).
+// DELETE - remove feedback (e.g. user clicked the same status to undo).
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

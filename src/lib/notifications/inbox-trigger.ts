@@ -10,7 +10,7 @@ import { sendPushToUser } from "./push"
  * action item bundles), so the assignee actually gets pinged on their device
  * instead of having to remember to refresh the inbox tab.
  *
- * Fire-and-forget — callers should `void` this rather than awaiting, since a
+ * Fire-and-forget - callers should `void` this rather than awaiting, since a
  * push delivery hiccup shouldn't block the parent ingest path. Errors are
  * logged but otherwise swallowed.
  *
@@ -19,7 +19,7 @@ import { sendPushToUser } from "./push"
  *   - the assignee equals the author (no point pinging yourself when you
  *     created your own task)
  *   - the assignee equals the HQ system user (a placeholder author when
- *     ingest can't resolve a real Hub user — pinging the shared mailbox
+ *     ingest can't resolve a real Hub user - pinging the shared mailbox
  *     would notify nobody useful)
  */
 export async function sendInboxAssignmentPush(
@@ -45,7 +45,7 @@ export async function sendInboxAssignmentPush(
     if (row.kind !== "task") return
     // Already-completed tasks (auto-completion at insert time, e.g. Fathom
     // bundle where every action_item was already ticked) shouldn't trigger
-    // a push — there's nothing to act on.
+    // a push - there's nothing to act on.
     if (row.status === "done" || row.status === "cancelled") return
     if (!row.assignee_id) return
     if (row.assignee_id === row.author_id) return
@@ -75,7 +75,7 @@ export async function sendInboxAssignmentPush(
   }
 }
 
-/** Headline tuned to where the task originated — gives the AM a single-line
+/** Headline tuned to where the task originated - gives the AM a single-line
  *  hint about the source before they even open the Hub. Short enough to fit
  *  on a phone lock screen banner. */
 function headlineForSource(source: string): string {
@@ -91,7 +91,7 @@ function headlineForSource(source: string): string {
     case "meeting":
       return "Nieuwe taak uit meeting"
     case "watchlist":
-      return "Watch list — actie nodig"
+      return "Watch list - actie nodig"
     default:
       return "Nieuwe taak op je naam"
   }

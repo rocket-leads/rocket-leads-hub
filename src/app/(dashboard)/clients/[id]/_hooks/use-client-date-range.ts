@@ -19,7 +19,7 @@ import type { DateRange, QuickPreset } from "@/types/targets"
  *     keep their own picker because they answer different questions.
  *
  * Persistence is fine on /targets and /billing where the user runs
- * analysis sessions — that's why the shared `useDateRange` hook keeps
+ * analysis sessions - that's why the shared `useDateRange` hook keeps
  * its module cache + localStorage. Clients-facing surfaces use this hook
  * instead so they always default to the canonical 7d window.
  */

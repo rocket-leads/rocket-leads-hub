@@ -8,7 +8,7 @@ import { deleteCache } from "@/lib/cache"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
- * Single-client detail fetch — backs the slide-over panel on /clients
+ * Single-client detail fetch - backs the slide-over panel on /clients
  * and the Watch List. Latency-sensitive: every ms here is a delay
  * before the panel renders the client tabs.
  *
@@ -18,7 +18,7 @@ import { NextRequest, NextResponse } from "next/server"
  *   3. Supabase ensureClientId (SELECT id by monday_item_id, ~50ms)
  *
  * The full Supabase sync (column updates, agreement seed) runs as a
- * fire-and-forget after we already have the response queued — it's
+ * fire-and-forget after we already have the response queued - it's
  * not in the critical path of rendering the panel.
  */
 export async function GET(
@@ -51,7 +51,7 @@ export async function GET(
       console.error("ensureClientId failed:", e)
     }
 
-    // Fire-and-forget the full sync — it writes the latest Monday
+    // Fire-and-forget the full sync - it writes the latest Monday
     // column values + seeds an agreement row if missing. Not awaited
     // because the panel doesn't need any of that to render. Errors
     // are logged but never block the response.
@@ -59,7 +59,7 @@ export async function GET(
       console.error("Background Supabase sync failed:", e)
     })
 
-    // Hub-only billing fields (no Monday column) — fetched directly
+    // Hub-only billing fields (no Monday column) - fetched directly
     // from Supabase. `nextAdBudgetInvoiceDate` is the ad-budget
     // counterpart to `client.nextInvoiceDate` (the fee date), used
     // only for clients whose ads run on the Rocket Leads ad account.
@@ -106,7 +106,7 @@ export async function PATCH(
   try {
     await updateClientField(mondayItemId, body)
     // Burst the 5-minute slide-over cache so the next open reflects this edit
-    // immediately. Fire-and-forget — the PATCH already succeeded on Monday;
+    // immediately. Fire-and-forget - the PATCH already succeeded on Monday;
     // a failed cache delete just means a brief stale-read window.
     void deleteCache(clientItemCacheKey(mondayItemId))
     return NextResponse.json({ ok: true })

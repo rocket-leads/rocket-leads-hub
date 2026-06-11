@@ -38,7 +38,7 @@ const EXPECTED_CRONS: ReadonlyArray<{ name: string; description: string; cadence
   { name: "refresh-watchlist-context", description: "Monday updates + Trengo summaries for watchlist AI", cadenceKey: "settings.health.cadence.daily" },
   { name: "refresh-pedro-patterns", description: "Pedro vertical-pattern synthesis", cadenceKey: "settings.health.cadence.nightly" },
   { name: "refresh-pedro-insights", description: "Unified Pedro insights cache (replaces watchlist-summaries + per-client AI calls)", cadenceKey: "settings.health.cadence.hourly" },
-  { name: "pedro-auto-tasks", description: "Pedro background co-pilot — auto-creates inbox tasks for stuck-in-Action clients (with anti-spam guardrails)", cadenceKey: "settings.health.cadence.daily_7utc" },
+  { name: "pedro-auto-tasks", description: "Pedro background co-pilot - auto-creates inbox tasks for stuck-in-Action clients (with anti-spam guardrails)", cadenceKey: "settings.health.cadence.daily_7utc" },
   { name: "pedro-knowledge-proposals", description: "Pedro knowledge-base scan", cadenceKey: "settings.health.cadence.weekly" },
   { name: "inbox-automations", description: "Inbox snooze / auto-resolve rules", cadenceKey: "settings.health.cadence.hourly" },
   { name: "slack-team-watchlist", description: "Team watchlist Slack post", cadenceKey: "settings.health.cadence.hourly_gated" },
@@ -174,13 +174,13 @@ export function HealthTab() {
                 <span className="text-muted-foreground leading-snug">{c.description}</span>
                 <CronStatusPill status={status} locale={locale} />
                 <span className="text-muted-foreground tabular-nums">
-                  {row ? formatRelativeFrom(row.started_at, renderNow, locale) : "—"}
+                  {row ? formatRelativeFrom(row.started_at, renderNow, locale) : "-"}
                 </span>
                 <span className="text-muted-foreground tabular-nums">
-                  {row ? formatDuration(row.duration_ms) : "—"}
+                  {row ? formatDuration(row.duration_ms) : "-"}
                 </span>
                 <span className="text-muted-foreground/70 truncate" title={row?.error_message ?? ""}>
-                  {row?.error_message ?? (row?.metrics ? formatMetrics(row.metrics) : "—")}
+                  {row?.error_message ?? (row?.metrics ? formatMetrics(row.metrics) : "-")}
                 </span>
               </div>
             )
@@ -307,7 +307,7 @@ function MigrationDriftSection() {
               {data.pendingCount} pending migration{data.pendingCount === 1 ? "" : "s"}
             </span>
             <span className="text-muted-foreground">
-              — run <code className="font-mono text-[11px]">supabase db push</code> or apply via the Supabase SQL Editor.
+              - run <code className="font-mono text-[11px]">supabase db push</code> or apply via the Supabase SQL Editor.
             </span>
           </div>
           {data.pending.map((p) => (
@@ -408,7 +408,7 @@ function IntegrationStatusPill({ valid, locale }: { valid: boolean | null; local
 }
 
 function formatRelativeFrom(iso: string | null | undefined, now: number, locale: Locale): string {
-  if (!iso) return "—"
+  if (!iso) return "-"
   return formatTimeAgo(iso, locale, now)
 }
 
@@ -424,5 +424,5 @@ function formatMetrics(metrics: Record<string, unknown>): string {
     .filter(([, v]) => v !== null && v !== undefined && v !== false && v !== 0)
     .slice(0, 3)
     .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
-  return entries.join(" · ") || "—"
+  return entries.join(" · ") || "-"
 }

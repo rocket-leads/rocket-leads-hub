@@ -6,12 +6,12 @@ import type { DictionaryKey } from "@/lib/i18n/dictionary"
  *
  * The wizard at /onboarding/[id] walks the AM through a fixed sequence of
  * actionable steps. Each step has:
- *   - a stable `key`        — primary key in `client_onboarding_tasks`
- *   - an `action` type      — which UI component renders the right pane
- *   - `prerequisites`       — steps that must be done before this one can
+ *   - a stable `key`        - primary key in `client_onboarding_tasks`
+ *   - an `action` type      - which UI component renders the right pane
+ *   - `prerequisites`       - steps that must be done before this one can
  *                              be entered (visualised as a "locked" pill
  *                              in the rail until cleared)
- *   - optional `derive`     — auto-mark done when underlying Hub data
+ *   - optional `derive`     - auto-mark done when underlying Hub data
  *                              already proves the work was done (e.g.
  *                              Drive ID set → Drive setup is implicitly
  *                              complete)
@@ -33,7 +33,7 @@ export type WizardStep = {
   labelKey: DictionaryKey
   /** One-line description rendered above the action pane. */
   descriptionKey: DictionaryKey
-  /** Action type — drives which component renders in the right pane. */
+  /** Action type - drives which component renders in the right pane. */
   action: WizardActionType
   /** 1-based order. Determines rail position and "current step" resolution. */
   order: number
@@ -41,7 +41,7 @@ export type WizardStep = {
   prerequisites: string[]
   /** When true, this step blocks Onboarding → Live status flip. */
   critical: boolean
-  /** Optional auto-derive — returns true when underlying Hub data already
+  /** Optional auto-derive - returns true when underlying Hub data already
    *  proves the step is done (e.g. Drive folder ID present → Drive setup
    *  is implicitly complete). The DB row stays unwritten in that case;
    *  the wizard shows it as done regardless. */
@@ -60,7 +60,7 @@ export type WizardStep = {
  * from the Fathom transcript. Stap 4 polls client-side completion.
  * Stap 5 hands off to CM.
  *
- * Competitor research moved to Pedro / CM (2026-06-10) — it's CM craft
+ * Competitor research moved to Pedro / CM (2026-06-10) - it's CM craft
  * work and AM was duplicating brief context, see process.md split.
  */
 export const WIZARD_STEPS: WizardStep[] = [
@@ -80,7 +80,7 @@ export const WIZARD_STEPS: WizardStep[] = [
     action: "transcript_link",
     order: 2,
     prerequisites: ["kickoff_live"],
-    // Not critical — wizard doesn't block Live-flip if the transcript
+    // Not critical - wizard doesn't block Live-flip if the transcript
     // never lands (Fathom hiccup, AM didn't record, etc.). Brief
     // enrichment becomes a no-op in that case.
     critical: false,
@@ -132,7 +132,7 @@ export function getStep(key: string): WizardStep | undefined {
   return STEPS_BY_KEY.get(key)
 }
 
-/** Resolved per-step state — registry metadata + done state + persisted output. */
+/** Resolved per-step state - registry metadata + done state + persisted output. */
 export type WizardStepState = WizardStep & {
   done: boolean
   /** True when prerequisites are not yet all done. The UI dims locked
@@ -140,7 +140,7 @@ export type WizardStepState = WizardStep & {
   locked: boolean
   completedAt: string | null
   completedBy: string | null
-  /** Step-specific output (brief JSON, email body, etc.) — see migration. */
+  /** Step-specific output (brief JSON, email body, etc.) - see migration. */
   content: unknown
 }
 
@@ -188,7 +188,7 @@ export function resolveWizardState(
 }
 
 /**
- * Compute the wizard's "current step" — the lowest-order step that isn't
+ * Compute the wizard's "current step" - the lowest-order step that isn't
  * done AND isn't locked. Returns null when the wizard is complete (every
  * step done) so callers can render the "ready for handoff" finish screen.
  */
@@ -199,7 +199,7 @@ export function currentStepKey(states: WizardStepState[]): string | null {
 }
 
 /**
- * Critical-step gate — returns critical steps that aren't done. Powers
+ * Critical-step gate - returns critical steps that aren't done. Powers
  * the Onboarding → Live hard-gate in `updateClientField`, plus the
  * "X items still open" pill in the overview table.
  */

@@ -1,4 +1,4 @@
-# Rocket Leads — Company Info
+# Rocket Leads - Company Info
 
 > **Last updated:** 2026-04-04 05:30 CET
 > Single source of truth voor alle kerninfo over Rocket Leads. Gebruik dit als primaire context voor AI agents, chatbots en interne tooling.
@@ -7,7 +7,7 @@
 
 ## Samenvatting
 
-Rocket Leads is een performance marketing agency die op de automatische piloot gekwalificeerde afspraken in de agenda van klanten zet, zonder dat zij daar iets voor hoeven te doen. We opereren in de Nederlandse en Vlaamse markt en bedienen het MKB segment. Het team bestaat volledig uit freelancers, werkt remote, en is georganiseerd in vaste klantteams (account manager + campagnemanager). We draaien campagnes op Meta, Google en TikTok — met de nadruk op Meta.
+Rocket Leads is een performance marketing agency die op de automatische piloot gekwalificeerde afspraken in de agenda van klanten zet, zonder dat zij daar iets voor hoeven te doen. We opereren in de Nederlandse en Vlaamse markt en bedienen het MKB segment. Het team bestaat volledig uit freelancers, werkt remote, en is georganiseerd in vaste klantteams (account manager + campagnemanager). We draaien campagnes op Meta, Google en TikTok - met de nadruk op Meta.
 
 ---
 
@@ -43,7 +43,7 @@ De grootste AI-first agency in Europa worden. Met een zo klein mogelijk team op 
 
 **Ideale klant (ICP):**
 - Dienstverlenende bedrijven (B2B en B2C) met een high-ticket product
-- Minimaal €500 marge per klant die ze binnenhalen (hoe hoger hoe beter — ideaal een paar duizend euro marge)
+- Minimaal €500 marge per klant die ze binnenhalen (hoe hoger hoe beter - ideaal een paar duizend euro marge)
 - Grote doelgroep (niet hyper-lokaal met een kleine vijver)
 - Advertentiebudget: typisch €2.000 – €4.000 per maand
 - Willen leads en afspraken, maar hebben niet de ambitie of het budget om €10.000-€30.000+ per maand aan ads uit te geven
@@ -70,7 +70,7 @@ De grootste AI-first agency in Europa worden. Met een zo klein mogelijk team op 
 2. **Results first approach:** We kijken alleen naar resultaat. In sommige gevallen bieden we een resultaatgarantie
 3. **Snelheid:** Als iets gevraagd wordt, is het binnen een uur geregeld. Bereikbaar in weekend en 's avonds
 4. **Groeipartner, geen lead generator:** We denken mee over positionering, doelgroep, back-end systemen en opschaling
-5. **Goede prijs-kwaliteitverhouding:** Niet de duurste, niet de goedkoopste — kwalitatief vooruitstrevend
+5. **Goede prijs-kwaliteitverhouding:** Niet de duurste, niet de goedkoopste - kwalitatief vooruitstrevend
 
 ---
 
@@ -91,7 +91,7 @@ Onboarding duurt gemiddeld 4–6 weken.
 
 ---
 
-### HTO — High-Ticket Offer (alles-in-één)
+### HTO - High-Ticket Offer (alles-in-één)
 
 **Pitchprijs:** €7.500 voor 3 maanden
 - Normaal €3.750 p/m × 3 = €11.250, maar eerste maand gratis
@@ -119,10 +119,10 @@ Onboarding duurt gemiddeld 4–6 weken.
 
 ---
 
-### LTO — Low-Ticket Offer (instap)
+### LTO - Low-Ticket Offer (instap)
 
-**Optie 1 — Enkel Meta Ads:** €3.000 voor 3 maanden (= €1.000 p/m)
-**Optie 2 — Meta Ads + leadopvolging:** €5.250 voor 3 maanden (= €1.750 p/m)
+**Optie 1 - Enkel Meta Ads:** €3.000 voor 3 maanden (= €1.000 p/m)
+**Optie 2 - Meta Ads + leadopvolging:** €5.250 voor 3 maanden (= €1.750 p/m)
 **Maandelijkse betaling:** +€1.000 eenmalige opstartkosten
 
 ---
@@ -156,7 +156,7 @@ Zie **team-structure.md** voor de volledige teamstructuur, rollen, capaciteit en
 - ~100 actieve klanten
 - Winstmarge: huidig ~25%, target 60%+
 
-**Interne Marketing/Sales funnel (Rocket Leads zelf — Targets dashboard):**
+**Interne Marketing/Sales funnel (Rocket Leads zelf - Targets dashboard):**
 1. Ad Spend → 2. Booked Calls → 3. Qualified Calls → 4. Taken Calls → 5. Deals → 6. Revenue
 
 **4 pilaren die CPD en ROAS bepalen:**

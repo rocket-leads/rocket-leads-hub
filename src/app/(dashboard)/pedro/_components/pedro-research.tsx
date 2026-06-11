@@ -23,7 +23,7 @@ interface CompetitorEntry {
 }
 
 /** One ad row pulled back from `client_competitor_ads`, ordered by
- *  days_running desc — used as evidence in the insights / example-ads
+ *  days_running desc - used as evidence in the insights / example-ads
  *  blocks above. */
 interface TopCompetitorAd {
   competitor_name: string;
@@ -105,17 +105,17 @@ type ResearchProps = {
    *  saved in this session is bound to that client. When null, research
    *  saves to the agency-wide library (legacy behaviour). */
   clientId: string | null
-  /** Display name of the active client — used to default the klantnaam
+  /** Display name of the active client - used to default the klantnaam
    *  field and label saved entries. */
   clientName: string
-  /** Active Pedro campaign number — research saves are scoped per
+  /** Active Pedro campaign number - research saves are scoped per
    *  campaign so different campaigns for the same client can hold
    *  different research snapshots. Defaults to 1 for back-compat. */
   campaignNumber?: number
-  /** Optional sector pre-fill when the user arrives from Brief — saves
+  /** Optional sector pre-fill when the user arrives from Brief - saves
    *  re-typing what's already in the brief. */
   defaultBranche?: string
-  /** Continue to the next stage (Angles) — wired by PedroApp. */
+  /** Continue to the next stage (Angles) - wired by PedroApp. */
   onContinue?: () => void
 }
 
@@ -132,7 +132,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
 
   // Auto-pre-fill branche from the active client's saved brief sector,
   // so arriving from Brief feels seamless. Only fires while the field
-  // is empty — never overwrites what the user typed.
+  // is empty - never overwrites what the user typed.
   useEffect(() => {
     if (!clientId) return;
     if (branche.trim()) return;
@@ -206,7 +206,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
     setLibraryLoading(true);
     try {
       // When a client is active, scope the library list to that client
-      // first — Roy's directive: per-client environment. Empty fallback
+      // first - Roy's directive: per-client environment. Empty fallback
       // to agency-wide is documented in the API.
       const url = clientId
         ? `/api/pedro/research/library?clientId=${encodeURIComponent(clientId)}`
@@ -218,7 +218,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
     setLibraryLoading(false);
   }
 
-  // Re-load library when active client changes — keeps the visible
+  // Re-load library when active client changes - keeps the visible
   // saved-research list in sync with the current client.
   useEffect(() => {
     loadLibrary();
@@ -235,10 +235,10 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
     setResult(null);
     setSavedId(null);
 
-    // Stepped progress so the CM sees what's happening — the full
+    // Stepped progress so the CM sees what's happening - the full
     // pipeline can take 90-180s when scrape is enabled. Each label
     // matches the phase the route is actually in (timed conservatively
-    // — slightly off is fine; the goal is the CM doesn't think it's
+    // - slightly off is fine; the goal is the CM doesn't think it's
     // hung).
     const scrapeOn = includeCompetitors && Boolean(clientId);
     if (scrapeOn) {
@@ -392,7 +392,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
         </div>
       )}
 
-      {/* Save bar — same pattern as Brief / Angles / Script / etc. so the
+      {/* Save bar - same pattern as Brief / Angles / Script / etc. so the
           version-tracking story is consistent across stages. Hidden when
           no client is selected (the agency-wide research library still
           works via the legacy "Opslaan in bibliotheek" button below). */}
@@ -556,7 +556,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
           </div>
         </div>
 
-        {/* Competitor-scrape controls — country picker drives both the
+        {/* Competitor-scrape controls - country picker drives both the
             AI competitor-discovery scope AND the Apify country filter.
             Toggle defaults on when a client is active, off otherwise. */}
         <div className="flex items-center gap-3 flex-wrap pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
@@ -637,7 +637,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
             </div>
           </div>
 
-          {/* Competitors found — Claude-suggested + cross-referenced with
+          {/* Competitors found - Claude-suggested + cross-referenced with
               the Apify scrape. Shown above Insights because they're the
               evidence base the rest of the research is grounded in. */}
           {result.competitors && result.competitors.length > 0 && (
@@ -657,7 +657,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {result.competitors.map((c, i) => {
-                  // Count how many scraped ads we have per competitor —
+                  // Count how many scraped ads we have per competitor -
                   // surface the number inline so the CM sees who actually
                   // delivered material vs. who was a dud lookup.
                   const adCount = result.topCompetitorAds
@@ -711,7 +711,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
             </div>
           )}
 
-          {/* Top live competitor ads — direct evidence of what's winning
+          {/* Top live competitor ads - direct evidence of what's winning
               right now. Ordered by days_running desc (longer = stronger
               signal of conversion). */}
           {result.topCompetitorAds && result.topCompetitorAds.length > 0 && (
@@ -813,7 +813,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
             </div>
           )}
 
-          {/* Save & continue to Angles — wired by PedroApp. Single click
+          {/* Save & continue to Angles - wired by PedroApp. Single click
               commits this research as a new version on the active client
               AND navigates. Tab-nav bovenin slaat niet op (escape hatch
               for "just go" without commit). */}
@@ -832,7 +832,7 @@ export function Research({ clientId, clientName, campaignNumber = 1, defaultBran
                       data: { branche, klantnaam, doelgroep, propositie, extraContext, research: result },
                     });
                     if (r.saved) showToast(`✓ Opgeslagen als v${r.versionNumber}`);
-                    else if (r.reason === "unchanged") showToast(`v${r.versionNumber} ongewijzigd — geen nieuwe versie`);
+                    else if (r.reason === "unchanged") showToast(`v${r.versionNumber} ongewijzigd - geen nieuwe versie`);
                   }
                   onContinue();
                 }}
@@ -874,12 +874,12 @@ function buildResearchMD(r: ResearchPayload, ctx: { branche: string; klantnaam: 
   if (ctx.propositie) lines.push(`**Propositie:** ${ctx.propositie}`);
   lines.push(`**Datum:** ${new Date().toISOString().split("T")[0]}`);
   lines.push("");
-  // Competitors block — appears above Insights in the MD so the
+  // Competitors block - appears above Insights in the MD so the
   // reader sees the evidence base before the synthesised patterns.
   if (r.competitors?.length) {
     lines.push("## Concurrenten");
     r.competitors.forEach((c) => {
-      lines.push(`- **${c.name}** — ${c.relevance}`);
+      lines.push(`- **${c.name}** - ${c.relevance}`);
       if (c.facebookPageUrl) lines.push(`  - Facebook: ${c.facebookPageUrl}`);
       if (c.websiteUrl) lines.push(`  - Website: ${c.websiteUrl}`);
     });

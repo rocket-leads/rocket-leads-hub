@@ -5,7 +5,7 @@ import { readCache } from "@/lib/cache"
 /**
  * Admin-only readout of the Trengo webhook debug ring buffer. Each entry
  * records what arrived on /api/webhooks/trengo BEFORE any auth or shape
- * checks — used to diagnose why real Trengo deliveries don't land in
+ * checks - used to diagnose why real Trengo deliveries don't land in
  * inbox_events even when the curl probe works end-to-end.
  *
  * Drop this endpoint once the webhook flow is healthy.

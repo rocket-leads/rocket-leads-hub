@@ -20,10 +20,10 @@ import { readCache, writeCache } from "@/lib/cache"
 /**
  * Two-step Finance approval flow for sending a Stripe invoice from the Hub.
  *
- *   1. `action: "preview"` — read-only fetch of the Stripe customer +
+ *   1. `action: "preview"` - read-only fetch of the Stripe customer +
  *      tax IDs, paired with form-side line-item totals. NO draft is
  *      created; Stripe sees nothing until the user approves and sends.
- *   2. `action: "send"` — atomic draft → finalize → email via Stripe's
+ *   2. `action: "send"` - atomic draft → finalize → email via Stripe's
  *      hosted template, followed by all post-send refreshes (cycle
  *      advance, Monday admin stamp, billing-summary + past-invoices
  *      cache rebuild). On send failure the draft is voided automatically.
@@ -31,7 +31,7 @@ import { readCache, writeCache } from "@/lib/cache"
  * Legacy callers (no `action` field) get treated as `send` for backward-
  * compat, since the previous behaviour was one-shot create+send.
  *
- * Open to anyone with a Hub session — billing flows are visible to
+ * Open to anyone with a Hub session - billing flows are visible to
  * finance / members / admins (same trust level as opening /billing). We
  * re-resolve the Stripe customer id from the Monday item id on every
  * action so a stale client-side state can't redirect the invoice.
@@ -70,7 +70,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  // Server-side authoritative customer id — pulled from Supabase by the
+  // Server-side authoritative customer id - pulled from Supabase by the
   // Monday item id rather than trusted from the request, so a tampered
   // client state can't redirect the invoice.
   const supabase = await createAdminClient()
@@ -144,7 +144,7 @@ export async function POST(
   // 2026-06-03: Roy reported ProSteal got an invoice sent from Hub but the
   // Monday admin status stayed "Overdue" and the invoice date didn't advance.
   // Likely cause: one of these Monday writes silently failed (Monday API
-  // hiccup) — the previous code logged + continued, so finance had no way to
+  // hiccup) - the previous code logged + continued, so finance had no way to
   // know which sync step didn't take. Collect any failure as a warning and
   // include it in the response so the dialog can surface it on the success
   // screen + finance can manually fix Monday before walking away.
@@ -157,11 +157,11 @@ export async function POST(
   const adminResult = await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
   if (!adminResult.ok) {
     postSendWarnings.push(
-      `Monday admin status could not be set to '${ADMIN_LABELS.invoiceSend}' — update manually. (${adminResult.error})`,
+      `Monday admin status could not be set to '${ADMIN_LABELS.invoiceSend}' - update manually. (${adminResult.error})`,
     )
   }
 
-  // 1. Advance cycle by one month. Skip when the row has no cycle yet —
+  // 1. Advance cycle by one month. Skip when the row has no cycle yet -
   // there's nothing to advance and the next-render bucket is unaffected.
   const currentCycle = (client.cycle_start_date as string | null) ?? null
   let newCycle: string | null = null
@@ -179,15 +179,15 @@ export async function POST(
         const msg = e instanceof Error ? e.message : String(e)
         console.error(`[create-invoice] cycle advance failed for ${mondayItemId}:`, msg)
         postSendWarnings.push(
-          `Monday invoice date could not advance to ${newCycle} — update manually. (${msg})`,
+          `Monday invoice date could not advance to ${newCycle} - update manually. (${msg})`,
         )
       }
     }
   } else {
-    // No cycle yet means we won't advance one — surface it so finance can
+    // No cycle yet means we won't advance one - surface it so finance can
     // backfill the cycle date in Monday if they expected the auto-advance.
     postSendWarnings.push(
-      "Client has no cycle date in Monday — invoice date won't auto-advance until one is set.",
+      "Client has no cycle date in Monday - invoice date won't auto-advance until one is set.",
     )
   }
 
@@ -236,7 +236,7 @@ export async function POST(
   try {
     await writeCache("billing_refreshed_at", new Date().toISOString())
   } catch {
-    // Silent — this is just a UI hint, not load-bearing.
+    // Silent - this is just a UI hint, not load-bearing.
   }
 
   return NextResponse.json({

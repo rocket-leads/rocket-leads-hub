@@ -23,11 +23,11 @@ interface ResearchInput {
    *  both the AI suggestions and the Apify scraper. Defaults to NL. */
   country?: string
   /** Opt-in: include Apify competitor scrape in the research pipeline.
-   *  CM toggles this on per run — defaults off in the API so accidental
+   *  CM toggles this on per run - defaults off in the API so accidental
    *  re-runs don't burn Apify credits. The UI defaults it ON when a
    *  client is selected. */
   includeCompetitors?: boolean
-  /** Optional — the client's own company name to exclude from
+  /** Optional - the client's own company name to exclude from
    *  competitor suggestions. We fall back to the brand in `klantnaam`
    *  context when the caller doesn't pass one. */
   ownCompanyName?: string
@@ -54,7 +54,7 @@ interface TopScrapedAd {
 const anthropic = new Anthropic()
 
 // Research generation now optionally orchestrates a full Apify scrape
-// on top of the existing synthesis pass — that can run 60-180s
+// on top of the existing synthesis pass - that can run 60-180s
 // end-to-end for 5 competitors. Bumped the ceiling so the synthesis
 // call survives even when the scrape is slow.
 export const maxDuration = 300
@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── RL Meta ads — same logic as before, used either as primary
+    // ── RL Meta ads - same logic as before, used either as primary
     // reference (no competitor flow) or as supplementary signal
     // (combined with scraped competitor ads). ──
     const allAds = await fetchRLMetaAds(req)
@@ -167,9 +167,9 @@ export async function POST(req: NextRequest) {
     const competitorAdRef = topScrapedAds.length > 0
       ? topScrapedAds.map((ad, i) =>
           `[Concurrent ${i + 1}] ${ad.competitor_name}${ad.days_running ? ` (${ad.days_running}d live)` : ""}\n` +
-          `Titel: "${ad.headline ?? "—"}"\n` +
+          `Titel: "${ad.headline ?? "-"}"\n` +
           `Body: ${(ad.body ?? "").substring(0, 350)}\n` +
-          `CTA: ${ad.cta_text ?? "—"}`
+          `CTA: ${ad.cta_text ?? "-"}`
         ).join("\n\n")
       : null
 
@@ -191,12 +191,12 @@ ONDERZOEKSCONTEXT:
 ${input.extraContext ? `- Extra context: ${input.extraContext}` : ""}
 
 ${competitorSummary ? `CONCURRENTEN GEVONDEN (Claude + Apify scrape):\n${competitorSummary}\n` : ""}
-${competitorAdRef ? `LIVE WINNING ADS VAN DEZE CONCURRENTEN (Apify scrape, geordend op days_running desc — longer-running = sterker signaal):\n${competitorAdRef}\n` : ""}
+${competitorAdRef ? `LIVE WINNING ADS VAN DEZE CONCURRENTEN (Apify scrape, geordend op days_running desc - longer-running = sterker signaal):\n${competitorAdRef}\n` : ""}
 REFERENTIE -- Bestaande RL Meta ads in (vergelijkbare) branche:
 ${rlAdRef}
 
 OPDRACHT: Genereer een complete research-analyse die een campaign manager kan gebruiken als basis voor een nieuwe campagne in deze branche. Baseer je op:
-${competitorAdRef ? "1. De LIVE concurrent ads hierboven — dit is het sterkste signaal: deze advertenties draaien al langer en zijn dus winners.\n2. De bestaande RL ads als context voor RL's huisstijl.\n3. Algemene best practices voor lead generation Meta ads in deze sector." : "1. De bestaande RL ads hierboven (als die in de branche zitten).\n2. Algemene best practices voor lead generation Meta ads in deze sector.\n3. Patronen die je herkent bij winnende ads in vergelijkbare niches."}
+${competitorAdRef ? "1. De LIVE concurrent ads hierboven - dit is het sterkste signaal: deze advertenties draaien al langer en zijn dus winners.\n2. De bestaande RL ads als context voor RL's huisstijl.\n3. Algemene best practices voor lead generation Meta ads in deze sector." : "1. De bestaande RL ads hierboven (als die in de branche zitten).\n2. Algemene best practices voor lead generation Meta ads in deze sector.\n3. Patronen die je herkent bij winnende ads in vergelijkbare niches."}
 
 WEES SPECIFIEK:
 - Geen algemene marketing-tips
@@ -258,7 +258,7 @@ Genereer 4-6 voorbeeld ads. Alle tekst in het Nederlands. Valuta in €.`
 
     // Attach the competitor enrichment to the response so the UI can
     // render the new "Concurrenten" + "Top live ads" sections. Empty
-    // arrays when the CM didn't run the scrape — UI skips those blocks.
+    // arrays when the CM didn't run the scrape - UI skips those blocks.
     research.competitors = competitors.map((c) => ({
       name: c.name,
       relevance: c.relevance,

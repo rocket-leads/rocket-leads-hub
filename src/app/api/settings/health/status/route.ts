@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * GET /api/settings/health/status — lightweight token-validity read.
+ * GET /api/settings/health/status - lightweight token-validity read.
  *
  * The full health endpoint (/api/settings/health) pings every external
  * provider on each call which is expensive. This endpoint only reads the
@@ -33,7 +33,7 @@ export type ApiHealthStatusResponse = {
     /** ISO string or null when the token has never been checked. */
     lastVerified: string | null
   }>
-  /** Most-recent last_verified across all services — used to warn when the
+  /** Most-recent last_verified across all services - used to warn when the
    *  cron hasn't run in a long time (status is potentially stale). Null when
    *  no token has ever been checked. */
   lastCheckedAt: string | null

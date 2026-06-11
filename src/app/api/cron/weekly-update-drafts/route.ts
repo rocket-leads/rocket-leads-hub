@@ -12,7 +12,7 @@ import {
 import { fetchKpisForWindow, type KpiSummary } from "@/app/api/kpi-summaries/route"
 
 /**
- * Weekly Update drafts — Monday morning cron.
+ * Weekly Update drafts - Monday morning cron.
  *
  * Pre-composes a V2 weekly-update draft for every Live client with a
  * linked Trengo contact, attributed to that client's account manager.
@@ -29,7 +29,7 @@ import { fetchKpisForWindow, type KpiSummary } from "@/app/api/kpi-summaries/rou
  * Schedule: Mondays at 06:00 UTC (= 07:00 NL winter, 08:00 NL summer).
  *
  * Idempotency: unique index on (client_id, week_of) means re-runs the
- * same Monday are no-ops. Vercel may retry on transient failure — safe.
+ * same Monday are no-ops. Vercel may retry on transient failure - safe.
  */
 
 export const maxDuration = 300
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
 
     // Use the cached Monday boards when available (refresh-cache cron runs
     // 30 min before this one at 05:30 UTC, so we'll typically hit warm
-    // cache). Fall back to a live fetch when cold — slower but correct.
+    // cache). Fall back to a live fetch when cold - slower but correct.
     const cached = await readCache<{ current: MondayClient[] }>("monday_boards")
     const data = cached ?? (await fetchBothBoards())
 
@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
     // Pre-fetch KPI for the most-recently-completed Mon-Sun for every
     // candidate in ONE batch instead of 51 sequential per-client fetches.
     // The build pipeline then reads from this map (no internal cache
-    // lookup) — keeps the cron's runtime under a minute and guarantees
+    // lookup) - keeps the cron's runtime under a minute and guarantees
     // the data exactly matches the date label rendered in the message.
     const weekRange = lastCompletedWeek(new Date(startedAt))
     const weeklyKpis: Record<string, KpiSummary> = await fetchKpisForWindow({
@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
     // `keptResolved` so the response makes it obvious whether the rerun
     // actually re-wrote anything.
     let updatedPending = 0
-    // Sent / dismissed drafts are never touched — counted for visibility.
+    // Sent / dismissed drafts are never touched - counted for visibility.
     let keptResolved = 0
     let failed = 0
 
@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
 
         const payload = {
           parts: draft.parts,
-          // Legacy column on weekly_update_drafts — V2 is the only path
+          // Legacy column on weekly_update_drafts - V2 is the only path
           // now, so we always write 2. Kept for backwards-compat with
           // any external dashboards reading the column.
           template_version: 2,
@@ -220,7 +220,7 @@ export async function GET(req: NextRequest) {
           }
           updatedPending += 1
         } else {
-          // sent / dismissed — never touch.
+          // sent / dismissed - never touch.
           keptResolved += 1
         }
       } catch (e) {

@@ -5,7 +5,7 @@ import { isPrevPeriodReliable, PREV_PERIOD_COVERAGE_THRESHOLD } from "./kpi-wind
  * The prev-period reliability flag is what tells the UI whether to show
  * "+/- X% vs prev 7d" or hide it entirely. A regression here lets a
  * freshly-launched client display a wild +inf%/+5000% delta as if it were
- * a real campaign performance signal — which is exactly the kind of
+ * a real campaign performance signal - which is exactly the kind of
  * silent dashboard lie this whole foundation pass is meant to prevent.
  */
 
@@ -24,18 +24,18 @@ describe("isPrevPeriodReliable", () => {
   })
 
   it("returns false when coverage is below the 80% threshold", () => {
-    // 5/7 = 71% — below threshold.
+    // 5/7 = 71% - below threshold.
     expect(isPrevPeriodReliable("2026-05-01", "2026-05-07", 5, 100)).toBe(false)
   })
 
   it("returns true at exactly the 80% threshold", () => {
-    // 6/7 ≈ 85.7% — over. Test the precise boundary on a 10-day window.
+    // 6/7 ≈ 85.7% - over. Test the precise boundary on a 10-day window.
     expect(isPrevPeriodReliable("2026-05-01", "2026-05-10", 8, 100)).toBe(true)
   })
 
   it("returns false for a degenerate 0-day window", () => {
     // Same start and end with the formula `(end - start)/86400000 + 1` is 1
-    // day — this assertion checks an actually-bad input where end < start.
+    // day - this assertion checks an actually-bad input where end < start.
     expect(isPrevPeriodReliable("2026-05-07", "2026-05-01", 0, 100)).toBe(false)
   })
 })

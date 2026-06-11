@@ -19,22 +19,14 @@ import { PageHeader } from "@/components/ui/page-header"
 import { ActionBlock } from "./_components/action-block"
 import { InboxBlock } from "./_components/inbox-block"
 import { BillingBlock } from "./_components/billing-block"
-import { PedroBlock, type PedroProposal } from "./_components/pedro-block"
-import { MeetingsBlock, type TodayMeeting } from "./_components/meetings-block"
-import { KpiStrip } from "./_components/kpi-strip"
-import { WeeklyUpdateDraftsBanner } from "@/app/(dashboard)/clients/_components/weekly-update-drafts-banner"
-import { MEETING_ROW_COLUMNS, type MeetingRow } from "@/lib/meetings/types"
 import { safeFetch } from "@/lib/safe-fetch"
 
 function HomeLoading() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-9 w-72" />
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[110px] rounded-lg" />)}
-      </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[280px] rounded-lg" />)}
+        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-[280px] rounded-lg" />)}
       </div>
     </div>
   )
@@ -56,12 +48,11 @@ async function HomeData() {
 
   const userId = session.user.id ?? ""
   const role = session.user.role ?? "member"
-  const isAdmin = role === "admin"
   const userName = session.user.name ?? session.user.email ?? "there"
   const firstName = userName.split(" ")[0] ?? userName
   const locale = await getUserLocale(userId)
 
-  // Pull everything in parallel — every block has its own bail-out so a
+  // Pull everything in parallel - every block has its own bail-out so a
   // single source going down doesn't take the dashboard with it.
   const [
     boards,
@@ -72,8 +63,6 @@ async function HomeData() {
     agreementsByMondayId,
     myInboxItems,
     inboxBadgeCounts,
-    pedroProposals,
-    todayMeetings,
     lastKpiRefreshAt,
   ] = await Promise.all([
     readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards").then(
@@ -85,10 +74,6 @@ async function HomeData() {
     readCache<Record<string, BillingSummary>>("billing_summaries").then((c) => c ?? {}),
     fetchAgreementsByMondayId(),
     fetchMyInbox(userId, role),
-    // Single source of truth for the sidebar badge — includes unread chat
-    // messages, not just tasks/updates. The home Inbox Block now reads its
-    // total + empty state from here so "Inbox Zero" doesn't show while you
-    // still have unread Trengo/Slack messages waiting.
     userId
       ? getInboxBadgeCounts(userId, role === "admin" ? "admin" : "member").catch(() => ({
           unreadUpdates: 0,
@@ -96,8 +81,6 @@ async function HomeData() {
           unreadChats: 0,
         }))
       : Promise.resolve({ unreadUpdates: 0, openTasks: 0, unreadChats: 0 }),
-    isAdmin ? fetchPendingPedroProposals() : Promise.resolve<PedroProposal[]>([]),
-    fetchTodayMeetings(),
     fetchLastKpiRefreshAt(),
   ])
 
@@ -105,9 +88,10 @@ async function HomeData() {
   const visibleClients = await filterClientsByUser(allCurrent, userId, role)
   const liveClients = visibleClients.filter((c) => c.campaignStatus === "Live")
 
-  // Categorize each visible Live client using the same logic the watchlist uses
-  // so the home page numbers line up exactly with /watchlist when filtered to
-  // the same scope.
+  // Categorize each visible Live client to surface the Action items - the
+  // home page still leads with "what's on fire" via ActionBlock. Health
+  // score / KPI strip were removed 2026-06-11; severity is the only signal
+  // we still need.
   const today = new Date().toISOString().slice(0, 10)
   const categorized = liveClients.map((client) => {
     const kpi = kpiCache[client.mondayItemId]
@@ -115,27 +99,15 @@ async function HomeData() {
     const severity = kpi ? severityScore(kpi) : 0
     const state = stateRows[client.mondayItemId]
     const isNewToday = state?.category === category && state.sinceDate === today
-    return { client, category, insight, kpi, severity, isNewToday, state }
+    return { client, category, insight, kpi, severity, isNewToday }
   })
 
   const action = categorized.filter((c) => c.category === "action")
-  const watch = categorized.filter((c) => c.category === "watch")
-  const good = categorized.filter((c) => c.category === "good")
 
-  // Health score = good / (action + watch + good). Same formula as the Watch
-  // List header. Excludes no-data so a setup gap doesn't water down the score.
-  const healthDenominator = action.length + watch.length + good.length
-  const healthScore =
-    healthDenominator > 0 ? Math.round((good.length / healthDenominator) * 100) : null
-
-  // Team MRR (this month) — sum agreementMonthly across only those clients
-  // whose billing cycle starts in the current calendar month. Answers "what
-  // are we actually invoicing this month?" rather than "what's our
-  // annualised run-rate?". A quarterly client billed in March doesn't
-  // contribute to May's number, even though their MRR-equivalent is still
-  // running — for cash-this-month framing, the cycle date is what counts.
-  // Admins see the org-wide total since filterClientsByUser returns
-  // everything for them. CMs/AMs see only their own team.
+  // Team MRR (this month) - sum agreementMonthly across only those clients
+  // whose billing cycle starts in the current calendar month. Now lives on
+  // the BillingBlock alongside the open-invoice total (Roy 2026-06-11
+  // collapsed the 4-tile KPI strip into the billing block).
   const thisMonthPrefix = new Date().toISOString().slice(0, 7) // "YYYY-MM"
   const thisMonthMrrClients = visibleClients.filter((c) =>
     c.cycleStartDate.startsWith(thisMonthPrefix),
@@ -149,23 +121,10 @@ async function HomeData() {
     return mrr > 0 ? n + 1 : n
   }, 0)
 
-  // Yesterday counts so the KPI strip can show day-over-day deltas. The cron
-  // updates `watchlist_client_state` once per day, so for a client that
-  // transitioned today, prev_category is what they were yesterday; otherwise
-  // their current category was their bucket yesterday too.
-  const yesterdayActionCount = (() => {
-    let n = 0
-    for (const c of categorized) {
-      const yCat = c.state?.sinceDate === today ? c.state?.prevCategory : c.state?.category
-      if (yCat === "action") n++
-    }
-    return n
-  })()
-
-  // Top action clients — sorted by severity desc (same ranking as watchlist).
+  // Top action clients - sorted by severity desc (same ranking as watchlist).
   const topAction = [...action].sort((a, b) => b.severity - a.severity).slice(0, 5)
 
-  // Overdue / open billing — clients with non-zero outstanding, sorted by
+  // Overdue / open billing - clients with non-zero outstanding, sorted by
   // amount desc. Filtered to user-visible clients.
   const overdueClients = visibleClients
     .map((client) => {
@@ -180,7 +139,7 @@ async function HomeData() {
   const totalOutstanding = overdueClients.reduce((s, x) => s + x.summary.outstanding, 0)
   const topOverdue = overdueClients.slice(0, 5)
 
-  // Inbox — preview list still shows the 5 most recent tasks/updates (those
+  // Inbox - preview list still shows the 5 most recent tasks/updates (those
   // are the items with a discrete title we can render in a row), but the
   // total count + empty-state check use the badge counts which ALSO include
   // unread chat messages. Without this, the block flipped to "Inbox Zero"
@@ -194,15 +153,12 @@ async function HomeData() {
 
   return (
     <div className="space-y-6">
-      {/* Header — /home is the "Today" landing. Greeting as the page title,
-          today's date + one-line framing as the subtitle, refresh timestamp
-          on the right. Migrated to the canonical PageHeader (2026-05-23) so
-          the Home page opens with the same visual rhythm as every other
-          dashboard surface (24px title, muted subtitle, right-aligned
-          actions). */}
+      {/* Header - /home is the "Today" landing. Greeting as the page title,
+          today's date on the right (subtitle removed 2026-06-11 to cut
+          repeating copy). */}
       <PageHeader
         title={t("home.greeting.morning", locale, { name: firstName })}
-        subtitle={`${formatDate(new Date().toISOString(), locale)} · ${t("home.subtitle", locale)}`}
+        subtitle={formatDate(new Date().toISOString(), locale)}
         actions={
           lastKpiRefreshAt ? (
             <span
@@ -215,23 +171,6 @@ async function HomeData() {
         }
       />
 
-      {/* Weekly update drafts banner — self-hides when count is zero, so on
-          most days this is invisible. Mondays after 06:00 UTC it shows
-          everyone's pending drafts and opens the split-pane queue sheet. */}
-      <WeeklyUpdateDraftsBanner />
-
-      {/* KPI strip */}
-      <KpiStrip
-        actionCount={action.length}
-        actionDelta={action.length - yesterdayActionCount}
-        unreadInboxCount={unreadInboxCount}
-        healthScore={healthScore}
-        teamMrr={teamMrr}
-        teamMrrClientCount={teamMrrClientCount}
-        locale={locale}
-      />
-
-      {/* 2x2 grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <ActionBlock
           items={topAction.map((c) => ({
@@ -254,13 +193,6 @@ async function HomeData() {
           locale={locale}
         />
 
-        <MeetingsBlock
-          items={todayMeetings}
-          totalCount={todayMeetings.length}
-          nowMs={Date.now()}
-          locale={locale}
-        />
-
         <BillingBlock
           items={topOverdue.map((x) => ({
             mondayItemId: x.client.mondayItemId,
@@ -270,16 +202,10 @@ async function HomeData() {
           }))}
           totalCount={overdueClients.length}
           totalOutstanding={totalOutstanding}
+          teamMrr={teamMrr}
+          teamMrrClientCount={teamMrrClientCount}
           locale={locale}
         />
-
-        {isAdmin && (
-          <PedroBlock
-            items={pedroProposals.slice(0, 3)}
-            totalCount={pedroProposals.length}
-            locale={locale}
-          />
-        )}
       </div>
     </div>
   )
@@ -311,7 +237,7 @@ async function fetchWatchlistState(): Promise<Record<string, WatchlistClientStat
  * Block. Tasks/Updates are assignee-scoped; chat threads use the same
  * visibility rules as the Client Inbox / Team Inbox tabs (channel
  * subscription + client access + participant fallback). Snoozed tasks
- * excluded — same rules the inbox badge uses.
+ * excluded - same rules the inbox badge uses.
  *
  * Chat threads are mapped to the InboxItem shape so the existing render
  * path in inbox-block.tsx works unchanged. Fields the block doesn't read
@@ -373,7 +299,7 @@ async function fetchMyInbox(
 
 /**
  * Per-client MRR keyed by monday_item_id. Same data the Clients overview
- * pulls via `/api/clients/agreements-summary` — we read the table directly
+ * pulls via `/api/clients/agreements-summary` - we read the table directly
  * here so the home page renders in one server pass.
  */
 async function fetchAgreementsByMondayId(): Promise<Record<string, number>> {
@@ -405,7 +331,7 @@ async function fetchAgreementsByMondayId(): Promise<Record<string, number>> {
 }
 
 /**
- * Per-client action notes — reads the `client_pedro` JSON insight and returns
+ * Per-client action notes - reads the `client_pedro` JSON insight and returns
  * just the conclusion sentence as the 1-liner. Same source the client detail
  * page renders, so the home preview and the deep dive can't disagree.
  */
@@ -429,7 +355,7 @@ async function fetchActionNotes(): Promise<Record<string, string>> {
 }
 
 /**
- * Last successful refresh-kpi cron run — drives the "Updated Xm ago" stamp
+ * Last successful refresh-kpi cron run - drives the "Updated Xm ago" stamp
  * in the page header. Falls back to null on any failure (no row, schema
  * miss, Supabase blip) so the header gracefully omits the stamp instead of
  * crashing the page render.
@@ -451,68 +377,3 @@ async function fetchLastKpiRefreshAt(): Promise<string | null> {
   }
 }
 
-/**
- * Today's meetings — Fathom rows with `scheduled_at` between 00:00 and 23:59
- * of the user's local day. Caps at 10 to keep the home preview compact;
- * full list lives on /meetings. Joins to clients so the row can show the
- * linked client name + click straight into the slide-over.
- */
-async function fetchTodayMeetings(): Promise<TodayMeeting[]> {
-  try {
-    const supabase = await createAdminClient()
-    const now = new Date()
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
-    const { data } = await supabase
-      .from("meetings")
-      .select(`${MEETING_ROW_COLUMNS}, clients(name, monday_item_id)`)
-      // Sales calls are ingested for the Targets dashboard insight loop
-      // (2026-05-23) but should not pollute the daily meetings block.
-      .neq("meeting_type", "sales")
-      .gte("scheduled_at", startOfDay.toISOString())
-      .lte("scheduled_at", endOfDay.toISOString())
-      .order("scheduled_at", { ascending: true })
-      .limit(10)
-
-    return (data ?? []).map((row): TodayMeeting => {
-      const r = row as MeetingRow & {
-        clients: { name: string | null; monday_item_id: string | null } | { name: string | null; monday_item_id: string | null }[] | null
-      }
-      const joined = Array.isArray(r.clients) ? r.clients[0] : r.clients
-      return {
-        id: r.id,
-        title: r.title ?? "(untitled)",
-        scheduledAt: r.scheduled_at ?? new Date().toISOString(),
-        clientName: joined?.name ?? null,
-        mondayItemId: joined?.monday_item_id ?? null,
-        shareUrl: r.share_url,
-      }
-    })
-  } catch {
-    return []
-  }
-}
-
-async function fetchPendingPedroProposals(): Promise<PedroProposal[]> {
-  try {
-    const supabase = await createAdminClient()
-    const { data } = await supabase
-      .from("pedro_knowledge_proposals")
-      .select("id, title, proposal_body, vertical, created_at")
-      .eq("status", "pending")
-      .order("created_at", { ascending: false })
-      .limit(20)
-    return (data ?? []).map((r) => ({
-      id: r.id,
-      title: r.title,
-      vertical: r.vertical,
-      // Just the first line — the body is full markdown and would blow up the row.
-      summary: typeof r.proposal_body === "string"
-        ? r.proposal_body.split("\n").find((l) => l.trim().length > 0)?.replace(/^#+\s*/, "") ?? null
-        : null,
-      created_at: r.created_at,
-    }))
-  } catch {
-    return []
-  }
-}

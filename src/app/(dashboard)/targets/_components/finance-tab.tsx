@@ -43,7 +43,7 @@ export function FinanceTab() {
   const startDate = format(range.startDate, "yyyy-MM-dd")
   const endDate = format(range.endDate, "yyyy-MM-dd")
   // Costs come from the Sheet at calendar-month resolution. We pull the month
-  // containing the start of the selected range — for ranges that span a month
+  // containing the start of the selected range - for ranges that span a month
   // boundary the costs shown will be from the start month only. UI should make
   // this clear; revenue numbers respect the exact selected range.
   const year = range.startDate.getFullYear()
@@ -101,7 +101,7 @@ export function FinanceTab() {
 
   // ── Derived finance targets ──
   // Both Net Profit target and Max Total Costs target scale with actual/projected revenue
-  // so that "costs on track" ⟺ "profit on track" ⟺ "margin on track" — these three
+  // so that "costs on track" ⟺ "profit on track" ⟺ "margin on track" - these three
   // can never disagree. The numbers move with revenue: at higher revenue we can spend
   // proportionally more while still hitting the same margin %.
   const profitMargin = tgt?.profitMargin ?? 0
@@ -115,7 +115,7 @@ export function FinanceTab() {
 
   return (
     <div className="space-y-6">
-      {/* Date picker — same component as Marketing/Sales + Delivery */}
+      {/* Date picker - same component as Marketing/Sales + Delivery */}
       <div className="flex items-center gap-3 flex-wrap">
         <DateRangePicker
           startDate={range.startDate}
@@ -139,7 +139,7 @@ export function FinanceTab() {
       {/* Service Fee Invoiced progress bar */}
       {totalRevenueTarget > 0 && (
         <RevenueProgressBar
-          label="Service Fee — Invoiced"
+          label="Service Fee - Invoiced"
           current={actualServiceFee}
           proRata={totalRevenueExpected}
           monthlyTarget={totalRevenueTarget}
@@ -147,63 +147,63 @@ export function FinanceTab() {
         />
       )}
 
-      {/* ── REVENUE — SERVICE FEE ── */}
+      {/* ── REVENUE - SERVICE FEE ── */}
       <div className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.revenue_service_fee", locale)}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee — Invoiced", (d) => d.category === "service_fee")}>
+          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee - Invoiced", (d) => d.category === "service_fee")}>
             <KpiCard label="Invoiced" value={sf?.invoiced ?? null} formatted={formatCurrency(sf?.invoiced ?? 0)} variant="neutral" isLoading={loading} />
             <div className="grid grid-cols-2 gap-1">
               <SubCard label="New Biz" value={formatCurrency(nb?.invoiced ?? 0)} loading={loading}
-                onClick={() => openDetail("Service Fee — Invoiced (New Biz)", (d) => d.category === "service_fee" && d.subCategory === "new_business")} />
+                onClick={() => openDetail("Service Fee - Invoiced (New Biz)", (d) => d.category === "service_fee" && d.subCategory === "new_business")} />
               <SubCard label="MRR" value={formatCurrency(mrr?.invoiced ?? 0)} loading={loading}
-                onClick={() => openDetail("Service Fee — Invoiced (MRR)", (d) => d.category === "service_fee" && d.subCategory === "mrr")} />
+                onClick={() => openDetail("Service Fee - Invoiced (MRR)", (d) => d.category === "service_fee" && d.subCategory === "mrr")} />
             </div>
           </div>
-          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee — Cash Collected", (d) => d.category === "service_fee" && (d.status === "paid" || d.status === "credit" || d.status === "credit_old"))}>
+          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee - Cash Collected", (d) => d.category === "service_fee" && (d.status === "paid" || d.status === "credit" || d.status === "credit_old"))}>
             <KpiCard label="Cash Collected" value={sf?.cashCollected ?? null} formatted={formatCurrency(sf?.cashCollected ?? 0)} variant="neutral" isLoading={loading} />
             <div className="grid grid-cols-2 gap-1">
               <SubCard label="New Biz" value={formatCurrency(nb?.cashCollected ?? 0)} loading={loading}
-                onClick={() => openDetail("Service Fee — Cash Collected (New Biz)", (d) => d.category === "service_fee" && d.subCategory === "new_business" && (d.status === "paid" || d.status === "credit" || d.status === "credit_old"))} />
+                onClick={() => openDetail("Service Fee - Cash Collected (New Biz)", (d) => d.category === "service_fee" && d.subCategory === "new_business" && (d.status === "paid" || d.status === "credit" || d.status === "credit_old"))} />
               <SubCard label="MRR" value={formatCurrency(mrr?.cashCollected ?? 0)} loading={loading}
-                onClick={() => openDetail("Service Fee — Cash Collected (MRR)", (d) => d.category === "service_fee" && d.subCategory === "mrr" && (d.status === "paid" || d.status === "credit" || d.status === "credit_old"))} />
+                onClick={() => openDetail("Service Fee - Cash Collected (MRR)", (d) => d.category === "service_fee" && d.subCategory === "mrr" && (d.status === "paid" || d.status === "credit" || d.status === "credit_old"))} />
             </div>
           </div>
-          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee — Open", (d) => d.category === "service_fee" && d.status === "open")}>
+          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee - Open", (d) => d.category === "service_fee" && d.status === "open")}>
             <KpiCard label="Open" value={sf?.open ?? null} formatted={formatCurrency(sf?.open ?? 0)} variant="neutral" isLoading={loading} />
             <div className="grid grid-cols-2 gap-1">
               <SubCard label="New Biz" value={formatCurrency(nb?.open ?? 0)} loading={loading}
-                onClick={() => openDetail("Service Fee — Open (New Biz)", (d) => d.category === "service_fee" && d.subCategory === "new_business" && d.status === "open")} />
+                onClick={() => openDetail("Service Fee - Open (New Biz)", (d) => d.category === "service_fee" && d.subCategory === "new_business" && d.status === "open")} />
               <SubCard label="MRR" value={formatCurrency(mrr?.open ?? 0)} loading={loading}
-                onClick={() => openDetail("Service Fee — Open (MRR)", (d) => d.category === "service_fee" && d.subCategory === "mrr" && d.status === "open")} />
+                onClick={() => openDetail("Service Fee - Open (MRR)", (d) => d.category === "service_fee" && d.subCategory === "mrr" && d.status === "open")} />
             </div>
           </div>
-          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee — Overdue", (d) => d.category === "service_fee" && d.status === "overdue")}>
+          <div className="flex flex-col gap-1 cursor-pointer" onClick={() => openDetail("Service Fee - Overdue", (d) => d.category === "service_fee" && d.status === "overdue")}>
             <KpiCard label="Overdue" value={sf?.overdue ?? null} formatted={formatCurrency(sf?.overdue ?? 0)} variant="neutral" isLoading={loading} />
             <div className="grid grid-cols-2 gap-1">
               <SubCard label="New Biz" value={formatCurrency(nb?.overdue ?? 0)} loading={loading}
-                onClick={() => openDetail("Service Fee — Overdue (New Biz)", (d) => d.category === "service_fee" && d.subCategory === "new_business" && d.status === "overdue")} />
+                onClick={() => openDetail("Service Fee - Overdue (New Biz)", (d) => d.category === "service_fee" && d.subCategory === "new_business" && d.status === "overdue")} />
               <SubCard label="MRR" value={formatCurrency(mrr?.overdue ?? 0)} loading={loading}
-                onClick={() => openDetail("Service Fee — Overdue (MRR)", (d) => d.category === "service_fee" && d.subCategory === "mrr" && d.status === "overdue")} />
+                onClick={() => openDetail("Service Fee - Overdue (MRR)", (d) => d.category === "service_fee" && d.subCategory === "mrr" && d.status === "overdue")} />
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── REVENUE — AD BUDGET ── */}
+      {/* ── REVENUE - AD BUDGET ── */}
       <div className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.finance.section.revenue_ad_budget", locale)}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget — Invoiced", (d) => d.category === "ad_budget")}>
+          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget - Invoiced", (d) => d.category === "ad_budget")}>
             <KpiCard label="Invoiced" value={finance?.adBudget?.invoiced ?? null} formatted={formatCurrency(finance?.adBudget?.invoiced ?? 0)} variant="neutral" isLoading={loading} />
           </div>
-          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget — Cash Collected", (d) => d.category === "ad_budget" && (d.status === "paid" || d.status === "credit"))}>
+          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget - Cash Collected", (d) => d.category === "ad_budget" && (d.status === "paid" || d.status === "credit"))}>
             <KpiCard label="Cash Collected" value={finance?.adBudget?.cashCollected ?? null} formatted={formatCurrency(finance?.adBudget?.cashCollected ?? 0)} variant="neutral" isLoading={loading} />
           </div>
-          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget — Open", (d) => d.category === "ad_budget" && d.status === "open")}>
+          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget - Open", (d) => d.category === "ad_budget" && d.status === "open")}>
             <KpiCard label="Open" value={finance?.adBudget?.open ?? null} formatted={formatCurrency(finance?.adBudget?.open ?? 0)} variant="neutral" isLoading={loading} />
           </div>
-          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget — Overdue", (d) => d.category === "ad_budget" && d.status === "overdue")}>
+          <div className="cursor-pointer" onClick={() => openDetail("Ad Budget - Overdue", (d) => d.category === "ad_budget" && d.status === "overdue")}>
             <KpiCard label="Overdue" value={finance?.adBudget?.overdue ?? null} formatted={formatCurrency(finance?.adBudget?.overdue ?? 0)} variant="neutral" isLoading={loading} />
           </div>
         </div>

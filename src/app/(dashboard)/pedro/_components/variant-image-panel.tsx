@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils"
 import { RegenFeedbackModal, type RegenFeedbackPayload } from "./regen-feedback-modal"
 
 /**
- * VariantImagePanel — 3-slot image gallery per variant.
+ * VariantImagePanel - 3-slot image gallery per variant.
  *
  * Roy 2026-06-09: bij elke "Genereer image"-klik krijgt de CM 3
  * varianten naast elkaar zodat hij meteen de beste kan kiezen. Per
@@ -97,7 +97,7 @@ export function VariantImagePanel({
   const [promptDraft, setPromptDraft] = useState(initialImagePrompt ?? "")
   const [references, setReferences] = useState<GenerateReferences | null>(null)
 
-  // Explicit-feedback state — the textarea is the strongest signal Pedro
+  // Explicit-feedback state - the textarea is the strongest signal Pedro
   // gets back ("logos altijd klein", "klant haat te witte tanden", etc.).
   // Stored in `pedro_creative_feedback` and pulled into the next
   // creative-refresh prompt for THIS client.
@@ -149,7 +149,7 @@ export function VariantImagePanel({
       .then((r) => r.json())
       .then((json) => {
         if (cancelled || !Array.isArray(json.slots)) return
-        // Merge — keep empty slots for positions the server didn't return.
+        // Merge - keep empty slots for positions the server didn't return.
         setSlots((prev) =>
           prev.map((p) => {
             const found = (json.slots as SlotState[]).find((s) => s.position === p.position)
@@ -374,7 +374,7 @@ export function VariantImagePanel({
                 setFeedbackError(null)
               }}
               disabled={bulkBusy}
-              title="Geef Pedro feedback op deze creative — wordt opgeslagen per klant en gebruikt bij volgende refresh"
+              title="Geef Pedro feedback op deze creative - wordt opgeslagen per klant en gebruikt bij volgende refresh"
               className={cn(
                 "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors",
                 feedbackOpen
@@ -407,7 +407,7 @@ export function VariantImagePanel({
         </div>
       </div>
 
-      {/* Feedback textarea — explicit signal that Pedro injects into the
+      {/* Feedback textarea - explicit signal that Pedro injects into the
           next refresh prompt for this client. */}
       {feedbackOpen && clientId && (
         <div className="space-y-1 rounded-md border border-amber-500/30 bg-amber-500/5 p-2">
@@ -420,7 +420,7 @@ export function VariantImagePanel({
             onChange={(e) => setFeedbackDraft(e.target.value)}
             rows={2}
             disabled={feedbackBusy}
-            placeholder='Bijv. "Logo veel te groot — altijd klein of helemaal weg" of "Headline moet vraag uit doelgroep zijn, geen product-claim"'
+            placeholder='Bijv. "Logo veel te groot - altijd klein of helemaal weg" of "Headline moet vraag uit doelgroep zijn, geen product-claim"'
             className="w-full text-xs rounded-md border border-border bg-background px-2 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 resize-none disabled:opacity-50"
           />
           <div className="flex items-center justify-between gap-2">
@@ -457,7 +457,7 @@ export function VariantImagePanel({
         </div>
       )}
 
-      {/* References — shown after a generate */}
+      {/* References - shown after a generate */}
       {references && (
         <div className="text-[11px] text-muted-foreground/80 flex flex-wrap gap-x-1.5 gap-y-0.5 items-center">
           <span className="text-muted-foreground/60">References:</span>
@@ -488,7 +488,7 @@ export function VariantImagePanel({
       {editingPrompt && (
         <div className="space-y-1">
           <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-            Image prompt — geldt voor de volgende "Genereer 3 images" klik
+            Image prompt - geldt voor de volgende "Genereer 3 images" klik
           </div>
           <textarea
             value={promptDraft}
@@ -501,7 +501,7 @@ export function VariantImagePanel({
         </div>
       )}
 
-      {/* Bulk generate button — primary action */}
+      {/* Bulk generate button - primary action */}
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -547,7 +547,7 @@ export function VariantImagePanel({
         </div>
       )}
 
-      {/* Structured regen-feedback modal — opens when CM clicks Regen
+      {/* Structured regen-feedback modal - opens when CM clicks Regen
           on a slot that already has an image. Roy 2026-06-10. */}
       <RegenFeedbackModal
         open={regenModalSlot !== null}
@@ -602,7 +602,7 @@ function SlotCard({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={slot.signedUrl}
-              alt={`${adName} — variant ${slotLabel}`}
+              alt={`${adName} - variant ${slotLabel}`}
               className={cn("w-full h-full object-cover", isBusy && "opacity-40")}
             />
             <a

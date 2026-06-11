@@ -1,20 +1,20 @@
 // ─── Configurable targets ───
 
 export interface TargetsConfig {
-  // Marketing / Sales — volume targets for opt-ins / booked / taken calls are
+  // Marketing / Sales - volume targets for opt-ins / booked / taken calls are
   // derived from (deals × cpd) ÷ {cpOptIn, cbc, ctc}; ratios are derived from
   // the cost ladder (booking rate = cpOptIn / cbc, show-up rate = cbc / ctc).
-  // 2026-05-27: qualification stage dropped — cqc removed.
+  // 2026-05-27: qualification stage dropped - cqc removed.
   deals: number
   revenue: number
-  /** Max cost per opt-in (€) — top-of-funnel form submission. Derives the
+  /** Max cost per opt-in (€) - top-of-funnel form submission. Derives the
    *  opt-ins volume target (adSpend / cpOptIn) and the appointment booking
    *  rate target (cpOptIn / cbc). */
   cpOptIn: number
   cbc: number
   ctc: number
   cpd: number
-  // Finance — net profit € and max total costs € are derived from serviceFeeRevenue × profitMargin
+  // Finance - net profit € and max total costs € are derived from serviceFeeRevenue × profitMargin
   serviceFeeRevenue: number
   teamCosts: number
   profitMargin: number // as decimal, e.g. 0.30 = 30%
@@ -33,7 +33,7 @@ export interface MondayTargetsData {
   leads: number
   /** Top-of-funnel opt-ins from a separate Monday board (form submissions
    *  before they become booked calls). Counted on date_created within the
-   *  period. Has no country attribution — only populated on the "all" bucket. */
+   *  period. Has no country attribution - only populated on the "all" bucket. */
   optIns: number
   /** Total booked calls in the period (every lead row with date_created in range). */
   calls: number
@@ -53,7 +53,7 @@ export interface MondayTargetsData {
   closers: CloserData[]
   /**
    * Stripe-side cross-check: total New Business invoiced this period (service fee, after
-   * credits, override-aware). Only populated on the "all" country bucket — Stripe has no
+   * credits, override-aware). Only populated on the "all" country bucket - Stripe has no
    * country attribution. Compare against `closedRevenue` to surface a gap (deals invoiced
    * in Stripe but not yet logged in Monday).
    */
@@ -78,7 +78,7 @@ export interface StripeNewBusinessInvoice {
   date: string
   amount: number
   hostedUrl: string | null
-  /** True when fuzzy-matched to a Monday closed deal — UI hides matched rows by default. */
+  /** True when fuzzy-matched to a Monday closed deal - UI hides matched rows by default. */
   matched: boolean
 }
 
@@ -92,7 +92,7 @@ export interface ClosedDeal {
   dateDeal: string
   dealValue: number
   mondayItemId: string
-  /** True when fuzzy-matched to a Stripe NB invoice — UI hides matched rows by default. */
+  /** True when fuzzy-matched to a Stripe NB invoice - UI hides matched rows by default. */
   matched: boolean
 }
 
@@ -100,11 +100,11 @@ export interface CloserData {
   closer: string
   /** All past appointments scheduled with this closer in the period (regardless of status). */
   qualifiedCalls: number
-  /** Future appointments scheduled in the period — visible workload but not yet measurable. */
+  /** Future appointments scheduled in the period - visible workload but not yet measurable. */
   upcomingCalls: number
   /** Subset that was actually held (status in taken set: No deal/FU, No deal, DEAL). */
   takenCalls: number
-  /** Past appointments still sitting in pre-call status (Qualified / Gepland) — closer hasn't updated. */
+  /** Past appointments still sitting in pre-call status (Qualified / Gepland) - closer hasn't updated. */
   notUpdated: number
   deals: number
   revenue: number
@@ -228,14 +228,14 @@ export interface UnlinkedMondayItem {
   id: string
   name: string
   boardType: "onboarding" | "current"
-  /** First name from the Monday client board — fed into fuzzy matching alongside `name`. */
+  /** First name from the Monday client board - fed into fuzzy matching alongside `name`. */
   firstName: string
-  /** Optional `bedrijfsnaam` column when configured — used for fuzzy matching when present. */
+  /** Optional `bedrijfsnaam` column when configured - used for fuzzy matching when present. */
   companyName: string
   /**
    * Raw `stripe_customer_id` column value (may be empty, single, or comma-separated).
    * Carried in the payload so the assign-customer endpoint can append the new ID without
-   * needing an extra Monday read round-trip — that read was the main source of slowness.
+   * needing an extra Monday read round-trip - that read was the main source of slowness.
    */
   stripeCustomerId: string
 }
@@ -266,7 +266,7 @@ export interface DeliveryOverview {
   byTeam: AccountManagerRevenue[]
   /** Customer-level breakdown of the "Unassigned" AM bucket so it can be acted on directly. */
   unassignedCustomers: UnassignedCustomer[]
-  /** Monday items without a stripe_customer_id — picker pool for manual assignment. */
+  /** Monday items without a stripe_customer_id - picker pool for manual assignment. */
   unlinkedMondayItems: UnlinkedMondayItem[]
 }
 

@@ -4,7 +4,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 /**
- * Auto-growing textarea — same visual style as shadcn `Input` but
+ * Auto-growing textarea - same visual style as shadcn `Input` but
  * vertical, and the height tracks content automatically. No manual
  * drag-to-resize handle; users never see content cut off behind a
  * scrollbar because the field grows to fit.
@@ -69,7 +69,7 @@ const AutoTextarea = React.forwardRef<HTMLTextAreaElement, AutoTextareaProps>(
         defaultValue={defaultValue}
         onChange={handleChange}
         // Visual baseline matches shadcn Input: same border, radius,
-        // padding, focus ring. The `resize-none` is intentional — the
+        // padding, focus ring. The `resize-none` is intentional - the
         // auto-grow logic above handles sizing.
         className={cn(
           "w-full rounded-lg border border-input bg-transparent px-3.5 py-2 text-sm leading-snug transition-colors outline-none resize-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 dark:bg-input/30",

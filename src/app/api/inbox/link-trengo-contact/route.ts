@@ -13,7 +13,7 @@ import { resolveClientAssignee } from "@/lib/inbox/assignee"
  *  1. Write the contact id to the client's `trengo_contact_id` Monday column
  *     (re-syncs to Supabase via `updateClientField`).
  *  2. Update every Trengo `inbox_events` row whose `author_external` matches
- *     the contact id and whose `client_id` is empty (unlinked) — set them to
+ *     the contact id and whose `client_id` is empty (unlinked) - set them to
  *     the new client id.
  *  3. Re-resolve the AM for that client and rewrite `assignee_id` for those
  *     same rows when the previous assignee was the system HQ user (the
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 1. Write the contact id to the client's Monday column. updateClientField
-  // throws on failure, which we let bubble up as a 500 — the caller will see
+  // throws on failure, which we let bubble up as a 500 - the caller will see
   // a meaningful error rather than a silent partial success.
   try {
     await updateClientField(mondayItemId, {
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
   // 2. Backfill unlinked inbox events. We match strictly: same external id,
   // same source, currently empty client_id. We don't touch already-linked
-  // rows — those belong to whichever client they were tagged with.
+  // rows - those belong to whichever client they were tagged with.
   const { data: rowsToBackfill, error: fetchErr } = await supabase
     .from("inbox_events")
     .select("id, assignee_id")
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
   // null and break the FK.
   const newAssignee = await resolveClientAssignee(mondayItemId)
 
-  // Look up the system HQ user once — it's the marker for "this row was never
+  // Look up the system HQ user once - it's the marker for "this row was never
   // routed to anyone real, so it's safe to overwrite the assignee."
   const { data: hq } = await supabase
     .from("users")

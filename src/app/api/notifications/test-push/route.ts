@@ -4,7 +4,7 @@ import { sendPushToUser } from "@/lib/notifications/push"
 import { NextResponse } from "next/server"
 
 /**
- * Diagnostic endpoint — sends a single test push to the authenticated user
+ * Diagnostic endpoint - sends a single test push to the authenticated user
  * AND returns enough state to debug the push pipe end-to-end.
  *
  * Returns:
@@ -41,7 +41,7 @@ export async function POST() {
     vapidConfigured: !!process.env.VAPID_PUBLIC_KEY && !!process.env.VAPID_PRIVATE_KEY,
     subscriptionsBeforeSend: (subs ?? []).map((s) => ({
       id: s.id,
-      // Just the host — we don't want to leak full endpoint URLs in the UI.
+      // Just the host - we don't want to leak full endpoint URLs in the UI.
       endpointHost: (() => {
         try {
           return new URL(s.endpoint).host

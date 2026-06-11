@@ -22,7 +22,7 @@ import { BillingSectionShell } from "./billing-section-shell"
 type Props = {
   mondayItemId: string
   stripeCustomerId: string | null
-  /** Used to detect whether ads run on the Rocket Leads ad account — only
+  /** Used to detect whether ads run on the Rocket Leads ad account - only
    *  then does RL invoice the ad budget separately and need its own date. */
   metaAdAccountId?: string | null
   initialNextInvoiceDate?: string | null
@@ -32,7 +32,7 @@ type Props = {
   initialNextAdBudgetInvoiceDate?: string | null
 }
 
-/** Invoice status pill — label flips via dictionary, class + icon stay
+/** Invoice status pill - label flips via dictionary, class + icon stay
  *  constant since the visual treatment is independent of language. */
 const STATUS_CONFIG: Record<
   InvoiceRow["status"],
@@ -41,7 +41,7 @@ const STATUS_CONFIG: Record<
   paid: { labelKey: "client.billing.status.paid", className: "bg-green-500/20 text-green-400 border-green-500/30", icon: "✓" },
   open: { labelKey: "client.billing.status.open", className: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", icon: "○" },
   overdue: { labelKey: "client.billing.status.overdue", className: "bg-red-500/20 text-red-400 border-red-500/30", icon: "!" },
-  void: { labelKey: "client.billing.status.void", className: "bg-muted text-muted-foreground", icon: "—" },
+  void: { labelKey: "client.billing.status.void", className: "bg-muted text-muted-foreground", icon: "-" },
   draft: { labelKey: "client.billing.status.draft", className: "bg-muted text-muted-foreground", icon: "~" },
 }
 
@@ -92,7 +92,7 @@ export function BillingTab({
   initialNextInvoiceDate,
   initialNextAdBudgetInvoiceDate,
 }: Props) {
-  // Only RL-ad-account clients have a separate ad-budget invoice — for
+  // Only RL-ad-account clients have a separate ad-budget invoice - for
   // everyone else the client pays Meta directly, so there's nothing for
   // us to bill on a different cadence than the fee.
   const showAdBudgetDate = isRocketLeadsAdAccount(metaAdAccountId)
@@ -103,7 +103,7 @@ export function BillingTab({
         mondayItemId={mondayItemId}
         fieldKey="next_invoice_date"
         icon={CalendarClock}
-        // Distinguish the title only when both dates are visible — otherwise
+        // Distinguish the title only when both dates are visible - otherwise
         // the original "Next invoice" reads naturally for clients with one cadence.
         titleKey={showAdBudgetDate ? "client.billing.next_invoice.fee.title" : "client.billing.next_invoice.title"}
         subtitleKey={showAdBudgetDate ? "client.billing.next_invoice.fee.subtitle" : "client.billing.next_invoice.subtitle"}
@@ -128,7 +128,7 @@ export function BillingTab({
 /**
  * Editable date section for a billing-cadence field. Used for both the fee
  * `next_invoice_date` (Monday-mirrored via /api/clients/[id] PATCH) and the
- * Hub-only `next_ad_budget_invoice_date` — the PATCH endpoint dispatches on
+ * Hub-only `next_ad_budget_invoice_date` - the PATCH endpoint dispatches on
  * `fieldKey`, so the same component covers both.
  */
 function InvoiceDateSection({
@@ -246,7 +246,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
 
   const data = query.data
   // Customer name + email (when available) acts as the subtitle. Fallback to
-  // the generic "what this client got billed" line — no need to translate the
+  // the generic "what this client got billed" line - no need to translate the
   // identity string itself.
   const subtitle = data?.customerName
     ? `${data.customerName}${data.customerEmail ? ` · ${data.customerEmail}` : ""}`
@@ -301,7 +301,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
         />
         <SummaryCard
           title={t("client.billing.summary.avg_days", locale)}
-          value={avgPaymentDays !== null ? t("client.billing.summary.days", locale, { n: String(avgPaymentDays) }) : "—"}
+          value={avgPaymentDays !== null ? t("client.billing.summary.days", locale, { n: String(avgPaymentDays) }) : "-"}
           sub={t("client.billing.summary.avg_days.sub", locale)}
         />
       </div>
@@ -338,7 +338,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
                     <TableCell className="text-sm">
                       {inv.dueDate
                         ? new Date(inv.dueDate * 1000).toLocaleDateString(dateLocale)
-                        : "—"}
+                        : "-"}
                     </TableCell>
                     <TableCell className="text-sm font-medium">{fmt(inv.amountDue)}</TableCell>
                     <TableCell>
@@ -368,7 +368,7 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
                           {t("client.billing.link.view", locale)}
                         </a>
                       ) : (
-                        <span className="text-muted-foreground">—</span>
+                        <span className="text-muted-foreground">-</span>
                       )}
                     </TableCell>
                   </TableRow>

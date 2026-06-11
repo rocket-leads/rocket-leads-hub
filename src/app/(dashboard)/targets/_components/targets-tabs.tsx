@@ -18,7 +18,7 @@ import { t } from "@/lib/i18n/t"
 
 type TargetsTabId = "marketing" | "finance" | "delivery" | "settings"
 
-/** Query key prefixes belonging to the targets dashboard — used by the refresh button to scope invalidation. */
+/** Query key prefixes belonging to the targets dashboard - used by the refresh button to scope invalidation. */
 const TARGETS_QUERY_PREFIXES = ["targets-monday", "targets-meta", "targets-finance", "targets-costs", "targets-delivery", "targets-config"] as const
 
 function TargetsTabsInner({ isAdmin, canSeeFinance }: { isAdmin: boolean; canSeeFinance: boolean }) {
@@ -64,7 +64,7 @@ function TargetsTabsInner({ isAdmin, canSeeFinance }: { isAdmin: boolean; canSee
       const year = startDate.getFullYear()
       const month = startDate.getMonth() + 1
       // Bypass the server-side caches by hitting each endpoint with refresh=1 in
-      // parallel. We discard the response — React Query refetches with the normal
+      // parallel. We discard the response - React Query refetches with the normal
       // (non-refresh) URLs right after, hitting the freshly-warm caches.
       await Promise.allSettled([
         fetch(`/api/targets/monday?startDate=${s}&endDate=${e}&refresh=1`, { cache: "no-store" }),

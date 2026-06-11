@@ -47,12 +47,12 @@ type WaitStatus = {
 }
 
 /**
- * Stap 4 — Wait on client. Polls three completion signals every 60s and
+ * Stap 4 - Wait on client. Polls three completion signals every 60s and
  * auto-promotes the step done when all three are green. AM doesn't have
  * to click anything (in the happy path); the rail flips this step to
  * green silently and the wizard's "current step" jumps to handoff.
  *
- * "Skip step" override exists for edge cases — e.g. a client paid via
+ * "Skip step" override exists for edge cases - e.g. a client paid via
  * bank transfer that Stripe won't see, or content was delivered out-of-
  * band on Drive that we can't detect.
  */

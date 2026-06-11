@@ -11,7 +11,7 @@ type Supabase = Awaited<ReturnType<typeof createAdminClient>>
  * accounts with many active campaigns silently truncates at row 1000.
  * Clients whose rows land in the tail of the result lose their selections,
  * the KPI cron then falls back to "no filter" for them, and any client on a
- * shared ad account ends up showing the full account total — surfaced as
+ * shared ad account ends up showing the full account total - surfaced as
  * three Hero Leads Monday items reporting identical adspend + leads on the
  * Clients overview (Roy 2026-06-07).
  *

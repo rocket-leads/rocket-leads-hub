@@ -13,7 +13,7 @@ import { Loader2, Send, CheckSquare, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
- * Quick-add bar — Monday-parity compose for the client slide-over.
+ * Quick-add bar - Monday-parity compose for the client slide-over.
  *
  * Sits between the client header and the tabs so it's reachable from
  * every tab. One textarea, Enter = post, Shift+Enter = newline. The
@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils"
  * Kind selection:
  *  - Default: `update` (matches Monday's primary update flow).
  *  - Implicit `task` when the text starts with `todo:` or `[task]`
- *    (case-insensitive). No toggle UI — fewer clicks, fewer decisions.
+ *    (case-insensitive). No toggle UI - fewer clicks, fewer decisions.
  *    Roy's brief: "minder clicks dan Monday, niet meer."
  *
  * Assignee resolution:
@@ -59,7 +59,7 @@ const TASK_PREFIX_RE = /^\s*(\[task\]|todo:)\s*/i
 
 /** Resolve the first `@firstname` (or `@firstname lastname`) mention in
  *  the text to a Hub user. We're permissive: match against first names,
- *  full names, and email-prefix (the part before @) — case-insensitive.
+ *  full names, and email-prefix (the part before @) - case-insensitive.
  *  Returns null when no mention or no match (caller falls back to self). */
 function resolveFirstMention(
   text: string,
@@ -97,7 +97,7 @@ export function ClientQuickAdd({ mondayItemId, clientName, currentUser }: Props)
   const [error, setError] = useState<string | null>(null)
   const [justPosted, setJustPosted] = useState<null | "update" | "task">(null)
 
-  // Hub user list — same source the global inbox composer uses. Cached for
+  // Hub user list - same source the global inbox composer uses. Cached for
   // 10 min so this isn't a per-mount round-trip.
   const usersQuery = useQuery<{ users: InboxUser[] }>({
     queryKey: ["inbox-users"],
@@ -212,7 +212,7 @@ export function ClientQuickAdd({ mondayItemId, clientName, currentUser }: Props)
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder={`Snelle update over ${clientName} — Enter om te plaatsen, @ om toe te wijzen, "todo:" voor een taak`}
+            placeholder={`Snelle update over ${clientName} - Enter om te plaatsen, @ om toe te wijzen, "todo:" voor een taak`}
             rows={1}
             className={cn(
               "w-full resize-none bg-transparent border-0 outline-none text-sm leading-relaxed",

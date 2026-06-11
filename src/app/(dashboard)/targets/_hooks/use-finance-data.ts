@@ -6,7 +6,7 @@ import type { FinanceOverview, CostData, ProfitOverview } from "@/types/targets"
 
 /**
  * `startDate`/`endDate` drive the Stripe revenue query at exact day resolution.
- * `year`/`month` drive the costs query — costs come from a Google Sheet with
+ * `year`/`month` drive the costs query - costs come from a Google Sheet with
  * one column per calendar month, so we derive these from the range start.
  */
 export function useFinanceData(startDate: string, endDate: string, year: number, month: number) {

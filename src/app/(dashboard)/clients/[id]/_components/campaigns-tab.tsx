@@ -95,7 +95,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, onN
     )
   }
 
-  // No campaigns selected — prompt to go to settings
+  // No campaigns selected - prompt to go to settings
   if (metaAdAccountId && selectedIds.length === 0) {
     return (
       <Card>
@@ -121,7 +121,7 @@ export function CampaignsTab({ mondayItemId, metaAdAccountId, clientBoardId, onN
     <div className="space-y-6">
       <PedroInsightCard mondayItemId={mondayItemId} locale={locale} />
 
-      {/* Date filter + KPIs at the top — what the CM looks at first */}
+      {/* Date filter + KPIs at the top - what the CM looks at first */}
       <div className="flex items-center gap-3 flex-wrap">
         <DateRangePicker
           startDate={range.startDate}

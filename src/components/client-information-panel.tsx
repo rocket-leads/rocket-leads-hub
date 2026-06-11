@@ -154,7 +154,7 @@ function SimpleField({ mondayItemId, fieldKey, value, label, type = "text", help
   useEffect(() => setDraft(value), [value])
 
   // CLIENT_DETAIL group invalidates client-detail + clients-overview +
-  // watchlist + kpi-summaries — all the surfaces that show this row's
+  // watchlist + kpi-summaries - all the surfaces that show this row's
   // Monday data. Central catalogue means a new surface reading
   // `["client-detail", id]` doesn't need to chase down every mutation
   // site to make sure its data updates.
@@ -292,7 +292,7 @@ function PersonField({ mondayItemId, fieldKey, value, label, multi = false }: Pe
     },
     onError: () => setOptimisticValue(value),
     onSuccess: () => {
-      // Same as SimpleField — the slide-over caches client data via React
+      // Same as SimpleField - the slide-over caches client data via React
       // Query, so router.refresh() alone won't flip the panel to the new
       // value. Invalidate the cached detail + overview so the next render
       // reads fresh data from Monday.

@@ -9,15 +9,15 @@ import {
 export const maxDuration = 120
 
 /**
- * POST /api/pedro/ad-copy-refresh — body: { clientId, days?: 30 }
+ * POST /api/pedro/ad-copy-refresh - body: { clientId, days?: 30 }
  *
- * For each winning ad, propose fresh AD COPY variants — Meta primary text,
- * headlines and descriptions — that align with the winning angle but
+ * For each winning ad, propose fresh AD COPY variants - Meta primary text,
+ * headlines and descriptions - that align with the winning angle but
  * read differently in the feed.
  */
 
 type AdCopyVariant = {
-  /** Short label (e.g. "Variant A — Korter & scherper"). */
+  /** Short label (e.g. "Variant A - Korter & scherper"). */
   label: string
   /** Full primary text (the text above the creative). Max ~125 woorden. */
   primaryText: string
@@ -25,7 +25,7 @@ type AdCopyVariant = {
   headline: string
   /** Short description shown under the headline (max ~30 chars). */
   description: string
-  /** 1 line — what's different from the original. */
+  /** 1 line - what's different from the original. */
   why: string
 }
 
@@ -57,9 +57,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshEnvelo
     stage: "ad-copy",
     noWinnersSummary: ({ days, loserCount, stats }) =>
       loserCount > 0
-        ? `Geen winners in ${days}d window (avg CPL ${stats.avgCpl ? `€${stats.avgCpl.toFixed(2)}` : "—"}, ${loserCount} loser${loserCount === 1 ? "" : "s"}). Nieuwe copy op losers schrijven is verspilling — eerst nieuwe angles testen, dan copy schrijven op het winnende angle.`
-        : `Geen ads scoren als winner in ${days}d. Te weinig data — kies een breder window of begin met de Onboard Ad-copy flow.`,
-    buildPrompt: (ctx) => `Je bent Pedro, senior campaign manager bij Rocket Leads. Je bekijkt de live Meta performance van een klant en stelt NIEUWE AD COPY voor op de winnaars — Meta primary text + headlines + descriptions die in dezelfde angle landen maar fris lezen in de feed.
+        ? `Geen winners in ${days}d window (avg CPL ${stats.avgCpl ? `€${stats.avgCpl.toFixed(2)}` : "-"}, ${loserCount} loser${loserCount === 1 ? "" : "s"}). Nieuwe copy op losers schrijven is verspilling - eerst nieuwe angles testen, dan copy schrijven op het winnende angle.`
+        : `Geen ads scoren als winner in ${days}d. Te weinig data - kies een breder window of begin met de Onboard Ad-copy flow.`,
+    buildPrompt: (ctx) => `Je bent Pedro, senior campaign manager bij Rocket Leads. Je bekijkt de live Meta performance van een klant en stelt NIEUWE AD COPY voor op de winnaars - Meta primary text + headlines + descriptions die in dezelfde angle landen maar fris lezen in de feed.
 
 ${commonPromptPreamble(ctx)}
 OPDRACHT:
@@ -94,7 +94,7 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
       },
       "variants": [
         {
-          "label": "Variant A — korte beschrijvende naam",
+          "label": "Variant A - korte beschrijvende naam",
           "primaryText": "Volledige primary text (NL, max ~125 woorden)",
           "headline": "Headline (NL, max ~40 chars)",
           "description": "Description (NL, max ~30 chars)",

@@ -23,7 +23,7 @@ import type { ApiHealthStatusResponse } from "@/app/api/settings/health/status/r
  * Behaviour: renders nothing when every service is valid. When one or
  * more services are invalid, shows a yellow strip with a "Fix it"
  * link straight to Settings → API tokens. Per-session dismiss only
- * (resets on full page reload) — Roy explicitly didn't want this
+ * (resets on full page reload) - Roy explicitly didn't want this
  * persistently dismissable, because then he'd never see it again.
  */
 export function ApiHealthBanner() {
@@ -53,7 +53,7 @@ export function ApiHealthBanner() {
         <div className="flex-1 text-sm font-medium leading-tight">
           {isPlural ? "API tokens verlopen" : "API token verlopen"}
           <span className="font-normal text-amber-900/70 dark:text-amber-100/70 ml-2">
-            · {services} — reconnect via Settings om data te blijven verversen.
+            · {services} - reconnect via Settings om data te blijven verversen.
           </span>
         </div>
         <Link

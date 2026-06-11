@@ -18,7 +18,7 @@ export const maxDuration = 30
  *   { link_status: 'unlinked' }       → unarchive / un-link (clears client_id)
  *
  * Visibility note: every meeting is admin-visible, so we don't need the
- * cached-Monday filtering used elsewhere — just require an authenticated
+ * cached-Monday filtering used elsewhere - just require an authenticated
  * Hub user. The matcher (C.5.b) will be a separate code path that runs
  * server-side without a session.
  */
@@ -77,14 +77,14 @@ export async function PATCH(
 
   // Identity learning loop: every manual link feeds the matcher with the
   // external attendees of this call so the next meeting with the same
-  // people auto-matches. Best-effort — never fails the parent update.
+  // people auto-matches. Best-effort - never fails the parent update.
   let learned = 0
   let actionItemsLinked = 0
   if (update.client_id && update.link_status === "linked") {
     const result = await learnIdentitiesFromMeeting(supabase, update.client_id, id)
     learned = result.learned
 
-    // Phase D.1 — patch any inbox tasks created from this meeting's action
+    // Phase D.1 - patch any inbox tasks created from this meeting's action
     // items so they're tied to the right client. Tasks created while the
     // meeting was still unlinked land with client_id='' and would otherwise
     // never show up on the client's per-client timeline.

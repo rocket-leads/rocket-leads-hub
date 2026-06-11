@@ -8,11 +8,11 @@ import { DEFAULT_LOCALE, isLocale, type Locale } from "./types"
  * of insights for everyone.
  *
  * Resolution order for the user UI locale:
- *   1. cookie `locale` — set immediately when the user toggles, no
+ *   1. cookie `locale` - set immediately when the user toggles, no
  *      round-trip required. Source of truth for the next render.
- *   2. users.locale column — persisted across browsers / devices. Read
+ *   2. users.locale column - persisted across browsers / devices. Read
  *      lazily (only when the cookie is missing or the user is signed in).
- *   3. DEFAULT_LOCALE ('nl') — for unauthenticated routes / first paint.
+ *   3. DEFAULT_LOCALE ('nl') - for unauthenticated routes / first paint.
  *
  * Designed to never block a render on Supabase. If the DB read fails we
  * fall back to the cookie or default.
@@ -25,7 +25,7 @@ const LOCALE_COOKIE = "locale"
  * inside a server component / route handler.
  *
  * Pass the optional userId to read the persisted preference from
- * `users.locale` when the cookie is missing — useful on the very first
+ * `users.locale` when the cookie is missing - useful on the very first
  * post-login render.
  */
 export async function getUserLocale(userId?: string | null): Promise<Locale> {
@@ -46,7 +46,7 @@ async function readLocaleCookie(): Promise<Locale | null> {
     const value = store.get(LOCALE_COOKIE)?.value
     return isLocale(value) ? value : null
   } catch {
-    // Outside a request context — happens during static optimisation.
+    // Outside a request context - happens during static optimisation.
     return null
   }
 }

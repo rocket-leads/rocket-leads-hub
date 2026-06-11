@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * Admin diagnostic — lists every row in cache_store with its age and approximate
+ * Admin diagnostic - lists every row in cache_store with its age and approximate
  * payload size. Used to answer "is the cron still warming the cache" without
  * having to open the Supabase studio. Hit it from the browser while signed in
  * as admin: GET /api/debug/cache-status.
@@ -53,7 +53,7 @@ export async function GET() {
           ? `${Math.round(ageMinutes / 60)}h ago`
           : `${Math.round(ageMinutes / 1440)}d ago`
 
-    // Approx size — JSON.stringify is the same the cache_store column already used.
+    // Approx size - JSON.stringify is the same the cache_store column already used.
     let sizeKB = 0
     try { sizeKB = Math.round(JSON.stringify(r.data).length / 1024) } catch { /* noop */ }
 

@@ -15,7 +15,7 @@ export type TopTab<T extends string = string> = {
   label: string
   icon?: LucideIcon
   count?: number
-  /** Small status dot on the icon — used by client-detail for overdue/open invoices. */
+  /** Small status dot on the icon - used by client-detail for overdue/open invoices. */
   dot?: "red" | "amber"
   /** Active-state accent. Defaults to `primary` when unset. */
   accent?: TabAccent
@@ -27,7 +27,7 @@ export type TopTab<T extends string = string> = {
 
 /** Maps `TabAccent` to the Tailwind classes used on the active tab. Single
  *  source of truth so the icon, count, and underline all stay in sync.
- *  Inactive state never uses these — it's always muted regardless of the
+ *  Inactive state never uses these - it's always muted regardless of the
  *  accent, otherwise the tabs would look like a coloured carousel and the
  *  user wouldn't be able to tell which one is selected. */
 const ACCENT_CLASSES: Record<TabAccent, { icon: string; count: string; bar: string }> = {

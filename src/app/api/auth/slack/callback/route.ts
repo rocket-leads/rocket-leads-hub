@@ -9,7 +9,7 @@ import { setUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
  * the user-token in `user_platform_tokens` so future replies can post as the
  * user (not as the system bot).
  *
- * The bot-token returned alongside is intentionally NOT stored by us — Slack's
+ * The bot-token returned alongside is intentionally NOT stored by us - Slack's
  * own install state is enough for Events API delivery. We only need the
  * user-token for impersonation when sending replies.
  */
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Belt-and-braces: also confirm an authenticated session exists and matches
-  // the cookie user — refuses to install someone else's token.
+  // the cookie user - refuses to install someone else's token.
   const session = await auth()
   if (!session?.user?.id || session.user.id !== cookieUserId) {
     return NextResponse.redirect(new URL("/auth/signin", req.url))

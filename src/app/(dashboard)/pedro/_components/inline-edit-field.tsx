@@ -5,7 +5,7 @@ import { Loader2, AlertTriangle, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
- * InlineEditField — click-to-edit text without a separate edit mode.
+ * InlineEditField - click-to-edit text without a separate edit mode.
  *
  * Roy 2026-06-10: weg met de aparte "Bewerk" knop met potloodje
  * rechtsboven. Elk veld in de variant card moet direct klikbaar zijn,
@@ -39,7 +39,7 @@ type Props = {
   allowEmpty?: boolean
   /** Visual style hooks. */
   className?: string
-  /** Optional disabled state — read-only when true. */
+  /** Optional disabled state - read-only when true. */
   disabled?: boolean
 }
 
@@ -47,7 +47,7 @@ export function InlineEditField({
   value,
   onSave,
   variant = "multi",
-  placeholder = "(leeg — klik om te bewerken)",
+  placeholder = "(leeg - klik om te bewerken)",
   minRows = 1,
   maxLength,
   allowEmpty = false,
@@ -60,7 +60,7 @@ export function InlineEditField({
   const [error, setError] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement | null>(null)
-  // Tracks the most recent committed value — used to revert on Escape
+  // Tracks the most recent committed value - used to revert on Escape
   // and skip save when nothing changed.
   const committedRef = useRef(value)
 

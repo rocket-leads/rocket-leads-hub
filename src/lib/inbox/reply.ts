@@ -4,7 +4,7 @@ import { sendPushToUser } from "@/lib/notifications/push"
 import { updateTrengoContactName, fetchWaTemplates } from "@/lib/integrations/trengo"
 
 /**
- * Outbound reply path — sends a Hub reply back to the source platform AS the
+ * Outbound reply path - sends a Hub reply back to the source platform AS the
  * logged-in Hub user, never as a generic system bot. Uses the user's stored
  * platform token from `user_platform_tokens` (set up via /account in C.3).
  *
@@ -13,7 +13,7 @@ import { updateTrengoContactName, fetchWaTemplates } from "@/lib/integrations/tr
  * the UI rather than a confusing API failure.
  *
  * Successful sends also write the outbound message back into inbox_events so
- * the chat thread in the Hub stays a complete history — both received and
+ * the chat thread in the Hub stays a complete history - both received and
  * sent messages live in the same table, queryable by thread_key.
  */
 
@@ -37,7 +37,7 @@ export class NeedsConnectError extends Error {
  * collapse runs of spaces.
  *
  * Idempotent: running it twice changes nothing on the second pass. Email
- * sends do NOT need this — Trengo's email endpoint accepts the original
+ * sends do NOT need this - Trengo's email endpoint accepts the original
  * multi-line body as-is.
  */
 export function sanitizeWaTemplateParam(s: string): string {
@@ -70,7 +70,7 @@ type InboxEventRow = {
   thread_key: string | null
   scope: "external" | "internal" | null
   client_id: string
-  /** Trengo channel id of the original event — propagated to the outbound
+  /** Trengo channel id of the original event - propagated to the outbound
    *  mirror so the user's own replies pass the channel-subscription filter
    *  in listChatThreads / getChatThreadMessages (otherwise an admin who
    *  subscribed to a specific channel wouldn't see their own outbound). */
@@ -100,7 +100,7 @@ async function loadEvent(eventId: string): Promise<InboxEventRow | null> {
  *
  * The Trengo payload shape (`type: "TEMPLATE", template_name, language,
  * params`) is the same as the existing automation path in
- * [send-trengo-message/route.ts](../../app/api/inbox/[id]/send-trengo-message/route.ts) —
+ * [send-trengo-message/route.ts](../../app/api/inbox/[id]/send-trengo-message/route.ts) -
  * we just lift it into the user-driven reply path here.
  *
  * `params` order maps to `{{1}}`, `{{2}}`, … placeholders in the template
@@ -111,7 +111,7 @@ async function loadEvent(eventId: string): Promise<InboxEventRow | null> {
  * Send a Trengo WhatsApp Business HSM template into an existing ticket.
  * Exported so the Client Update send path can call it directly when there's
  * no Hub-side inbox_event anchor to thread through (template messages don't
- * need the anchor's metadata — they only need a ticket id + the AM's token).
+ * need the anchor's metadata - they only need a ticket id + the AM's token).
  */
 export async function sendTrengoTemplateAsUser(
   userId: string,
@@ -132,11 +132,11 @@ export async function sendTrengoTemplateAsUser(
 
   // Hard guarantee at the API boundary: any caller passing multi-line params
   // (Client Update composer, future template flows) gets a Meta-valid send
-  // automatically — no 422 from forgotten sanitisation upstream.
+  // automatically - no 422 from forgotten sanitisation upstream.
   const safeParams = params.map(sanitizeWaTemplateParam)
 
   // Trengo's HSM template endpoint expects EACH parameter as a structured
-  // `{type, key, value}` object — NOT a bare string. Verified against
+  // `{type, key, value}` object - NOT a bare string. Verified against
   // developers.trengo.com/reference: `type` selects the component
   // (body/header/button/otp), `key` is the placeholder identifier
   // (`{{1}}`, `{{2}}`, …), `value` is the substitution.
@@ -147,7 +147,7 @@ export async function sendTrengoTemplateAsUser(
   }))
 
   // Resolve the numeric `hsm_id` from the template name. The /wa_sessions
-  // endpoint requires the integer id, NOT the slug — the old code path was
+  // endpoint requires the integer id, NOT the slug - the old code path was
   // posting to /tickets/{id}/messages with `template_name` which is silently
   // not a template-supporting endpoint (only accepts message/internal_note/
   // subject/attachment_ids per Trengo docs). Trengo therefore fell back to
@@ -169,7 +169,7 @@ export async function sendTrengoTemplateAsUser(
   }
 
   // POST /v2/wa_sessions is Trengo's HSM template send endpoint. Accepts
-  // either `recipient_phone_number` or `ticket_id` — we always have the
+  // either `recipient_phone_number` or `ticket_id` - we always have the
   // ticket id because the caller resolved an existing conversation, so we
   // pass that and the message lands in the same ticket.
   const payload = {
@@ -198,7 +198,7 @@ export async function sendTrengoTemplateAsUser(
     const errText = await res.text().catch(() => "")
     // Trengo's "Message is outside the 24 hour window" pattern shows up
     // whenever Trengo doesn't recognise our request as a valid template
-    // send — could be template-not-on-channel, language mismatch, wrong
+    // send - could be template-not-on-channel, language mismatch, wrong
     // var count, etc. Fetch the channel's approved templates so the
     // error can pinpoint the actual mismatch instead of guessing.
     const channelMatch = errText.match(
@@ -228,19 +228,19 @@ export async function sendTrengoTemplateAsUser(
           `Template '${templateName}' staat NIET in de approved lijst voor channel ${channelUuidFromErr}.${hint} Approve 'm in Trengo → Settings → Channels → die channel → Templates.`,
         )
       }
-      // Template IS in the approved list but Trengo still rejected — pinpoint why.
+      // Template IS in the approved list but Trengo still rejected - pinpoint why.
       const mismatches: string[] = []
       if (ours.lang !== language) mismatches.push(`language=${ours.lang} (wij sturen ${language})`)
       if (ours.vars !== safeParams.length) mismatches.push(`vars=${ours.vars} (wij sturen ${safeParams.length})`)
       const detail = mismatches.length > 0
         ? `: ${mismatches.join(", ")}`
-        : `: Trengo accepteert 'm niet en de mismatch is niet duidelijk — raw: ${errText.slice(0, 200)}`
+        : `: Trengo accepteert 'm niet en de mismatch is niet duidelijk - raw: ${errText.slice(0, 200)}`
       throw new Error(
         `Template '${templateName}' is approved op channel ${channelUuidFromErr} maar Trengo rejected${detail}`,
       )
     }
     const diag = `template=${templateName} vars=${safeParams.length}`
-    // Log the full Trengo response server-side — Meta nests detail inside
+    // Log the full Trengo response server-side - Meta nests detail inside
     // their error body that the truncated 300-char preview hides. Surfaces
     // in the same Vercel function-invocation log block as the outgoing
     // params diagnostic, so a 422 has both halves of the picture.
@@ -267,7 +267,7 @@ export async function sendTrengoTemplateAsUser(
   const id = json.message?.id ?? json.id ?? json.data?.id ?? json.message_id
   if (id == null) {
     throw new Error(
-      `Trengo template send returned no message id — keys: ${Object.keys(json).join(",")}`,
+      `Trengo template send returned no message id - keys: ${Object.keys(json).join(",")}`,
     )
   }
   return { message_id: String(id) }
@@ -275,7 +275,7 @@ export async function sendTrengoTemplateAsUser(
 
 /**
  * Send a Trengo WhatsApp Business HSM template directly to a phone
- * number — no existing ticket required. Used by the client-update
+ * number - no existing ticket required. Used by the client-update
  * "test mode" path so we can deliver a template message to an AM's
  * own phone without first staging a fake WA conversation with that
  * contact. Trengo's `POST /v2/wa_sessions` accepts `recipient_phone_number`
@@ -361,7 +361,7 @@ export async function sendTrengoTemplateToPhoneAsUser(
     json.data?.message_id ?? json.message_id ?? json.id ?? json.data?.id ?? json.data?.ticket_id
   if (id == null) {
     throw new Error(
-      `Trengo wa_sessions returned no id — keys: ${Object.keys(json).join(",")}`,
+      `Trengo wa_sessions returned no id - keys: ${Object.keys(json).join(",")}`,
     )
   }
   return { message_id: String(id) }
@@ -403,7 +403,7 @@ export async function sendTrengoReplyAsUser(
     if (email.html?.trim()) payload.html = email.html
     // Trengo's v2 message endpoint 500'd on cc/bcc-as-array during the
     // Phase 3 probe but accepted cc-as-string. Receive-side `email_message.cc`
-    // is also a single value — treating it as a comma-separated string keeps
+    // is also a single value - treating it as a comma-separated string keeps
     // both sides consistent. Empty arrays produce no header (correct).
     const ccStr = (email.cc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
     const bccStr = (email.bcc ?? []).map((s) => s.trim()).filter(Boolean).join(", ")
@@ -447,7 +447,7 @@ export async function sendTrengoReplyAsUser(
   const id = json.message?.id ?? json.id ?? json.data?.id ?? json.message_id
   if (id == null) {
     throw new Error(
-      `Trengo send returned no message id — keys: ${Object.keys(json).join(",")}`,
+      `Trengo send returned no message id - keys: ${Object.keys(json).join(",")}`,
     )
   }
   return { message_id: String(id) }
@@ -497,7 +497,7 @@ export type ReplyResult = {
 
 /**
  * Send a reply to whichever platform produced this inbox event. Currently
- * supports Trengo and Slack — Monday "updates" are CRM-side notes, not chat
+ * supports Trengo and Slack - Monday "updates" are CRM-side notes, not chat
  * messages, and we don't surface a reply affordance for them.
  *
  * `internalNote=true` posts as a Trengo internal note (team-only bubble in
@@ -511,7 +511,7 @@ export type TemplateSendOption = {
   /** Trengo template name (slug, e.g. "rl_universal_roel"). */
   name: string
   /** Template language code (`nl`, `en`, etc.). Comes from the template
-   *  record itself — composer never asks the AM. */
+   *  record itself - composer never asks the AM. */
   language: string
   /** Ordered values for `{{1}}`, `{{2}}`, … placeholders. */
   params: string[]
@@ -558,7 +558,7 @@ export async function replyToInboxEvent(
   if (template) {
     if (internalNote) throw new Error("Templates can't be sent as internal notes")
     if (attachmentIds.length > 0) {
-      throw new Error("Templates can't be combined with attachments — Meta limitation")
+      throw new Error("Templates can't be combined with attachments - Meta limitation")
     }
     if (!template.name?.trim()) throw new Error("Template name required")
     if (!template.language?.trim()) throw new Error("Template language required")
@@ -614,7 +614,7 @@ export async function replyToInboxEvent(
       outboundId = r.message_id
       sourceMsgId = `trengo:msg:${outboundId}`
       // Render placeholders for the mirror so Hub history matches what the
-      // customer actually received — that's the sanitised single-line
+      // customer actually received - that's the sanitised single-line
       // version, not the multi-line composer draft. We re-apply the
       // sanitiser here (idempotent) instead of plumbing it through the
       // send function's return value.
@@ -637,14 +637,14 @@ export async function replyToInboxEvent(
       sourceMsgId = `trengo:msg:${outboundId}`
     }
   } else {
-    // Slack — source_thread is either `slack:thread:<channel>:<thread_ts>` or
+    // Slack - source_thread is either `slack:thread:<channel>:<thread_ts>` or
     // `slack:channel:<channel>`. Channel ID is also the second segment of
     // thread_key for DMs (slack:dm:<user_id> doesn't carry channel, so we
     // pull it from the source_msg_id parts: slack:msg:<channel>:<ts>).
     if (!trimmed) {
       // Slack rejects empty text and we don't pipe attachments to Slack
       // (no upload endpoint), so refuse early with a clear message.
-      throw new Error("Slack replies require a text body — attachments aren't supported here")
+      throw new Error("Slack replies require a text body - attachments aren't supported here")
     }
     let channel = ""
     let threadTs: string | undefined
@@ -669,7 +669,7 @@ export async function replyToInboxEvent(
 
   // Mirror the outbound reply back into inbox_events so the chat thread in
   // the Hub stays a complete picture. For templates, mirrorBody holds the
-  // rendered text (with {{n}} substituted) — Hub history matches what the
+  // rendered text (with {{n}} substituted) - Hub history matches what the
   // customer received, not just "[template:foo]".
   const previewSource = mirrorBody.length > 0 ? mirrorBody : trimmed
   const titlePreview =
@@ -685,7 +685,7 @@ export async function replyToInboxEvent(
       assignee_id: userId,
       title: titlePreview,
       body: bodyFull,
-      status: "read", // user just sent it — already read for them
+      status: "read", // user just sent it - already read for them
       source: event.source,
       source_thread: event.source_thread,
       source_msg_id: sourceMsgId,
@@ -697,7 +697,7 @@ export async function replyToInboxEvent(
       classify_method: "manual",
       created_at_src: createdAtSrc,
       // Propagate the original event's channel id so the outbound row passes
-      // the per-user channel-subscription filter (Trengo only — Slack uses
+      // the per-user channel-subscription filter (Trengo only - Slack uses
       // different routing and channel_id stays null for it).
       trengo_channel_id: event.source === "trengo" ? event.trengo_channel_id : null,
       // Internal-note flag drives the team-only yellow bubble in chat-pane
@@ -708,7 +708,7 @@ export async function replyToInboxEvent(
     .single()
 
   if (error || !inserted) {
-    // The outbound send already succeeded — surface the storage error but
+    // The outbound send already succeeded - surface the storage error but
     // don't let it look like the reply itself failed.
     console.error("Reply mirror insert failed:", error)
     throw new Error("Reply sent, but failed to store in Hub history")
@@ -716,7 +716,7 @@ export async function replyToInboxEvent(
 
   // Internal-note @-mention fan-out: when the AM tags a teammate inside a
   // team-only note (`@Stefan kun je dit even checken?`), each tagged user
-  // gets an Update in their inbox + a push notification — same shape as
+  // gets an Update in their inbox + a push notification - same shape as
   // the task-comment mention pipeline. Skipped for client-visible replies
   // (a stray @-mention there is just a typo and shouldn't ping anyone).
   if (internalNote) {
@@ -766,7 +766,7 @@ export async function replyToInboxEvent(
  *
  * Skips the author (no point pinging yourself) and dedupes when the same
  * user is @'d twice in one note. Uses fire-and-forget semantics on the
- * caller side — a flake here shouldn't roll back the reply.
+ * caller side - a flake here shouldn't roll back the reply.
  */
 async function fanOutMentionsForInternalNote(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
@@ -816,7 +816,7 @@ async function fanOutMentionsForInternalNote(
       }
     }
     // Last resort: first-name-only (single-word capture, matches the
-    // first token of any user's full name — same UX as the picker).
+    // first token of any user's full name - same UX as the picker).
     if (!matchedRow && tokens.length === 1) {
       const single = tokens[0].toLowerCase()
       for (const row of rows as Array<{ id: string; name: string | null }>) {
@@ -833,7 +833,7 @@ async function fanOutMentionsForInternalNote(
   }
   if (ids.size === 0) return
 
-  // Resolve a client name for the notification title — falls back to the
+  // Resolve a client name for the notification title - falls back to the
   // raw client_id if the client isn't in the cache (rare, but tolerable).
   const { data: clientRow } = await supabase
     .from("clients")
@@ -888,7 +888,7 @@ async function fanOutMentionsForInternalNote(
  *  user-supplied params, in order. Returns the rendered text we mirror into
  *  inbox_events so Hub history shows what the customer actually received.
  *  Falls back to `[Template: name]` if the composer didn't pass the body
- *  through (defensive — shouldn't happen on the happy path). */
+ *  through (defensive - shouldn't happen on the happy path). */
 function renderTemplatePreview(template: TemplateSendOption): string {
   if (!template.body) {
     if (template.params.length === 0) return `[Template: ${template.name}]`
@@ -930,7 +930,7 @@ function extractGreetingName(message: string): string | null {
  *  should overwrite? Phone numbers (+31…), email addresses/usernames, and
  *  the literal "Unknown" all count as weak. A real human name (Capital
  *  start, no digits, doesn't match the external id) is treated as strong
- *  and left alone — manual edits via the editable header always win. */
+ *  and left alone - manual edits via the editable header always win. */
 function isCurrentNameWeak(currentName: string | null, authorExternal: string | null): boolean {
   const t = (currentName ?? "").trim()
   if (!t) return true
@@ -948,7 +948,7 @@ function isCurrentNameWeak(currentName: string | null, authorExternal: string | 
 }
 
 /** Best-effort: when the AM types a greeting in a free-text reply, pull the
- *  name and propagate it to the Trengo contact (and Hub-side mirror) — but
+ *  name and propagate it to the Trengo contact (and Hub-side mirror) - but
  *  only when the existing name is a weak placeholder. Fire-and-forget; never
  *  throws because send already succeeded. */
 async function smartUpdateContactNameFromGreeting(args: {
@@ -976,7 +976,7 @@ async function smartUpdateContactNameFromGreeting(args: {
 
   if (!isCurrentNameWeak(data.author_name_cached, data.author_external)) return
   // Don't update if the extracted name already appears in the current name
-  // (e.g. "Evelyn van Dijk" — we'd just be re-setting a more specific name
+  // (e.g. "Evelyn van Dijk" - we'd just be re-setting a more specific name
   // to the first token).
   if (data.author_name_cached?.toLowerCase().includes(extracted.toLowerCase())) return
 

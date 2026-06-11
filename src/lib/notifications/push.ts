@@ -2,7 +2,7 @@ import webpush from "web-push"
 import { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * Phase F — browser push notifications.
+ * Phase F - browser push notifications.
  *
  * This module is the only place that knows how to deliver a push to a user.
  * Callers (inbox automation, comment hooks, future @mentions) just hand off
@@ -27,7 +27,7 @@ function configureVapid(): boolean {
   const privateKey = process.env.VAPID_PRIVATE_KEY
   const contact = process.env.VAPID_CONTACT_EMAIL ?? "mailto:notifications@rocketleads.com"
   if (!publicKey || !privateKey) {
-    console.warn("VAPID keys not configured — push notifications disabled")
+    console.warn("VAPID keys not configured - push notifications disabled")
     return false
   }
   webpush.setVapidDetails(contact, publicKey, privateKey)
@@ -43,7 +43,7 @@ export type PushPayload = {
   /** Where the user lands when they click the notification. Relative paths
    *  are resolved against the Hub origin in the service worker. */
   url?: string
-  /** Optional grouping tag — same tag replaces an older notification rather
+  /** Optional grouping tag - same tag replaces an older notification rather
    *  than stacking. Use this for "your inbox has X new tasks" updates that
    *  shouldn't pile up if the user is offline a while. */
   tag?: string
@@ -97,7 +97,7 @@ export async function sendPushToUser(
     await supabase.from("push_subscriptions").delete().in("id", deadIds)
   }
 
-  // Bump last_used_at on whichever subs delivered — cheap signal for "this
+  // Bump last_used_at on whichever subs delivered - cheap signal for "this
   // device is still alive" if we ever want to prune stale ones.
   if (delivered > 0) {
     const liveIds = subs.filter((s) => !deadIds.includes(s.id)).map((s) => s.id)

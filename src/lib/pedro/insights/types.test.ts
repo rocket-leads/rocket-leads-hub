@@ -3,7 +3,7 @@ import { parsePedroBody } from "./types"
 
 /**
  * `parsePedroBody` is the last line of defence between Haiku's actual output
- * and the dialog rendering — when it fails the AM sees a wall of raw JSON
+ * and the dialog rendering - when it fails the AM sees a wall of raw JSON
  * (which is exactly the bug Roy hit in production). These tests pin the
  * common ways the model breaks the contract.
  */
@@ -61,7 +61,7 @@ describe("parsePedroBody", () => {
   })
 
   it("handles malformed JSON inside fences by falling back gracefully", () => {
-    // Missing closing brace — substring parser tries `{...` slice, also fails,
+    // Missing closing brace - substring parser tries `{...` slice, also fails,
     // we end up with plain-text fallback (better than crashing the dialog).
     const body = "```json\n{\"conclusion\": \"oops\",\n```"
     const parsed = parsePedroBody(body)
@@ -70,7 +70,7 @@ describe("parsePedroBody", () => {
   })
 })
 
-describe("parsePedroBody — action sanitiser (drops internal CM speech)", () => {
+describe("parsePedroBody - action sanitiser (drops internal CM speech)", () => {
   const wrap = (actions: string[]) =>
     JSON.stringify({ conclusion: "Update.", actions })
 
@@ -136,7 +136,7 @@ describe("parsePedroBody — action sanitiser (drops internal CM speech)", () =>
     expect(parsePedroBody(body)?.actions).toHaveLength(3)
   })
 
-  it("returns an empty action array when EVERYTHING is internal — better than padding", () => {
+  it("returns an empty action array when EVERYTHING is internal - better than padding", () => {
     const body = wrap([
       "Analyseer ad-set fatigue diepgaand.",
       "Bespreek met Roy de leadkwaliteit signalen.",

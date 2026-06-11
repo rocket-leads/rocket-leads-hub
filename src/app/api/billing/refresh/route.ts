@@ -12,7 +12,7 @@ import { deriveInvoiceDate } from "@/lib/clients/billing-cycle"
 
 /**
  * On-demand combined refresh for the Billing page. Triggered by the
- * "Refresh" button — finance hits this when something just changed on
+ * "Refresh" button - finance hits this when something just changed on
  * Monday or in Stripe and they don't want to wait for the next cron tick.
  *
  * Three things in one call:
@@ -21,7 +21,7 @@ import { deriveInvoiceDate } from "@/lib/clients/billing-cycle"
  *      cycle/invoice dates into Supabase `clients` table.
  *   3. Refresh Stripe `billing_summaries` cache for every linked customer.
  *
- * AI invoice-readiness verdicts are NOT refreshed here — that runs every 6h
+ * AI invoice-readiness verdicts are NOT refreshed here - that runs every 6h
  * via its dedicated cron, and the per-row Refresh button on the popover
  * handles single-client recompute. Pulling it into the global Refresh would
  * burn ~50 Claude calls per click.
@@ -63,7 +63,7 @@ async function handler() {
   const existing = new Set((clientRows ?? []).map((r) => r.monday_item_id as string))
   const targets = allClients.filter((c) => existing.has(c.mondayItemId))
 
-  // 2. Drift correction + dates mirror — same logic as the daily cron, just
+  // 2. Drift correction + dates mirror - same logic as the daily cron, just
   // exposed on demand. Cycle is the source of truth; invoice = cycle - 7d.
   let drifted = 0
   const driftWrites: Array<Promise<unknown>> = []
@@ -93,7 +93,7 @@ async function handler() {
   const dateResults = await Promise.allSettled(dateUpdates)
   const datesFailed = dateResults.filter((r) => r.status === "rejected").length
 
-  // 3. Refresh Stripe state in parallel — per-customer summaries (for the
+  // 3. Refresh Stripe state in parallel - per-customer summaries (for the
   // payment pill on each row) AND the global recent-invoices list (for the
   // Past invoices tab).
   const customerIds = Array.from(
@@ -121,7 +121,7 @@ async function handler() {
     }
   }
 
-  // Stamp last refresh — the page reads this to render "Last updated X ago".
+  // Stamp last refresh - the page reads this to render "Last updated X ago".
   const refreshedAt = new Date().toISOString()
   await writeCache("billing_refreshed_at", refreshedAt)
 

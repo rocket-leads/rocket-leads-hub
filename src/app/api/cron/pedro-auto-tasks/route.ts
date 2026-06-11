@@ -25,7 +25,7 @@ import {
 import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
 
 /**
- * Pedro background co-pilot — daily auto-task generation + auto-close.
+ * Pedro background co-pilot - daily auto-task generation + auto-close.
  *
  * Fans out across all Live clients, calls the pure decideForClient()
  * function with a context bundle, and writes inbox_events for each
@@ -34,15 +34,15 @@ import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
  * bucket.
  *
  * Anti-spam invariants are enforced in decideForClient (see
- * src/lib/pedro/auto-tasks.ts) — bucket gate, stickiness gate,
+ * src/lib/pedro/auto-tasks.ts) - bucket gate, stickiness gate,
  * severity gate, dedup, per-CM cap. Read that module before tweaking
  * trigger logic here.
  *
- * Schedule: daily at 7 UTC. One pass per day. Never hourly — the whole
+ * Schedule: daily at 7 UTC. One pass per day. Never hourly - the whole
  * point of this co-pilot is to surface "what should I look at TODAY",
  * not to keep firing every 30 minutes.
  *
- * Idempotent: re-running the cron the same day is safe — dedup gate
+ * Idempotent: re-running the cron the same day is safe - dedup gate
  * skips clients that already have an open Pedro task, auto-close skips
  * clients that have already been closed.
  */
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
 
     const kpiCache = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}
 
-    // Days-in-bucket comes from the watchlist_client_state table — same
+    // Days-in-bucket comes from the watchlist_client_state table - same
     // source the Watch List UI reads. Skip clients whose state is unknown
     // (the state table populates on the daily cron).
     const { data: stateRows } = await supabase
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Existing Pedro tasks — by client and by assignee. We pull all rows
+    // Existing Pedro tasks - by client and by assignee. We pull all rows
     // regardless of status because the dedup gate checks done timestamps
     // for the recently-closed window. Filter by source='automation' AND
     // the marker on source_ref so we don't collide with the existing
@@ -135,7 +135,7 @@ export async function GET(req: NextRequest) {
     }
     const pedroTasks = (pedroTaskRows ?? []) as PedroTaskRow[]
 
-    // Latest Pedro task per client (any status) — by completed_at desc
+    // Latest Pedro task per client (any status) - by completed_at desc
     // when present, else by row order. Used by the dedup gate.
     const latestPedroTaskByClient = new Map<string, PedroTaskRow>()
     for (const t of pedroTasks) {
@@ -156,7 +156,7 @@ export async function GET(req: NextRequest) {
 
     const darkTasks = (darkTaskRows ?? []) as PedroTaskRow[]
 
-    // Latest live-but-dark task per client — same shape as latestPedroTaskByClient
+    // Latest live-but-dark task per client - same shape as latestPedroTaskByClient
     // but tracks the dark marker separately. Both can be open for the same client.
     const latestDarkTaskByClient = new Map<string, PedroTaskRow>()
     for (const t of darkTasks) {
@@ -174,7 +174,7 @@ export async function GET(req: NextRequest) {
 
     const billingTasks = (billingTaskRows ?? []) as PedroTaskRow[]
 
-    // Latest billing-health task per client — independent dedup from the
+    // Latest billing-health task per client - independent dedup from the
     // CPL-spike and live-but-dark markers, same "open beats closed"
     // preference.
     const latestBillingTaskByClient = new Map<string, PedroTaskRow>()
@@ -191,7 +191,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Count of OPEN Pedro tasks per assignee — feeds the per-user cap.
+    // Count of OPEN Pedro tasks per assignee - feeds the per-user cap.
     // Sums ALL THREE markers so a single user isn't slammed when multiple
     // signals happen to fire at once.
     const openCountByAssignee = new Map<string, number>()
@@ -221,7 +221,7 @@ export async function GET(req: NextRequest) {
       else amByName.set(m.monday_person_name, m.user_id)
     }
 
-    // ─── 2. Decision pass — create candidates ──────────────────────────
+    // ─── 2. Decision pass - create candidates ──────────────────────────
 
     const created: Array<{ client: string; assignee: string }> = []
     const skipped: Record<SkipReason, number> = {
@@ -276,7 +276,7 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      // Create the task. Idempotent on client_id + marker — re-running the
+      // Create the task. Idempotent on client_id + marker - re-running the
       // cron the same day won't create a duplicate because the dedup gate
       // sees the just-created row as "open".
       try {
@@ -309,7 +309,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ─── 2b. Live-but-dark decision pass — AM-routed ──────────────────
+    // ─── 2b. Live-but-dark decision pass - AM-routed ──────────────────
     //
     // Independent from the CPL-spike loop above: different signal
     // (no spend, not noisy CPL), different recipient (AM, not CM),
@@ -330,7 +330,7 @@ export async function GET(req: NextRequest) {
       const kpi = kpiCache[client.mondayItemId]
       const consecutiveDarkDays = countConsecutiveDarkDays(kpi, nowDate)
       if (consecutiveDarkDays === 0) {
-        // No trailing dark days at all — skip silently, not even a "not_enough"
+        // No trailing dark days at all - skip silently, not even a "not_enough"
         // count. We only tally skips that actually got past the data-availability
         // floor, otherwise the metric is dominated by the 95% of healthy clients.
         continue
@@ -387,12 +387,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ─── 2c. Billing-health decision pass — AM-routed ──────────────────
+    // ─── 2c. Billing-health decision pass - AM-routed ──────────────────
     //
     // Reads the `meta_billing_health` cache that refresh-cache populates
     // (Meta `account_status` + actual-spend-vs-expected-weekly verdict).
     // Each issue verdict converts into one AM-routed task carrying the
-    // pre-baked Dutch client message — the AM can hit send to the client
+    // pre-baked Dutch client message - the AM can hit send to the client
     // without re-typing.
 
     const billingCreated: Array<{
@@ -413,7 +413,7 @@ export async function GET(req: NextRequest) {
       const verdict = billingHealthCache[client.mondayItemId] ?? null
       // Skip the silent "no verdict / no issue" cases early. The decider
       // would skip them with `no_issue` too but counting them buries the
-      // real signal — there are 5-10 problem clients vs ~100 healthy.
+      // real signal - there are 5-10 problem clients vs ~100 healthy.
       if (!verdict || !verdict.hasIssue) {
         continue
       }
@@ -470,7 +470,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ─── 3. Auto-close pass — close tasks whose client left Action ─────
+    // ─── 3. Auto-close pass - close tasks whose client left Action ─────
 
     const liveClientById = new Map(liveClients.map((c) => [c.mondayItemId, c]))
     let autoClosed = 0
@@ -633,7 +633,7 @@ function appendAutoCloseNote(
   const existing = (task.body ?? "").trim()
   const note = `\n\n---\n[Auto-closed by Pedro]\n${reason}`
   // Avoid duplicating the marker if the cron somehow re-runs against an
-  // already-marked row (defensive — we already gate on status above).
+  // already-marked row (defensive - we already gate on status above).
   if (existing.includes("[Auto-closed by Pedro]")) return existing
   return existing + note
 }

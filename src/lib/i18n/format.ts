@@ -3,7 +3,7 @@ import type { Locale } from "./types"
 /**
  * Locale-aware date / currency / number formatters. Wrappers around
  * `Intl` so callers don't have to thread BCP-47 tags through every
- * render path — pass the Hub's `Locale` and we map to the right tag
+ * render path - pass the Hub's `Locale` and we map to the right tag
  * (and the Dutch € convention) here.
  *
  * Pure functions, safe to call from anywhere.

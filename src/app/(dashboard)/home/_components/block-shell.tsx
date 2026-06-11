@@ -6,10 +6,10 @@ import type { ReactNode } from "react"
  * Shared shell for the home dashboard sections. Keeps the four blocks visually
  * aligned: same header height, same divider rules, same footer button styling.
  * If a block has zero items it shows a single muted line rather than a big
- * empty state — keeps the layout from collapsing.
+ * empty state - keeps the layout from collapsing.
  *
  * Footer "Open X →" used to be a faded text link (text-[11px] muted/60) which
- * Roy flagged as ambiguous — "I don't know where to click". Now it's a real
+ * Roy flagged as ambiguous - "I don't know where to click". Now it's a real
  * secondary-style button so the affordance is unambiguous.
  */
 export function BlockShell({
@@ -29,7 +29,7 @@ export function BlockShell({
   footerHref: string
   footerLabel: string
   empty?: boolean
-  /** Plain text empty state — used when no `emptyContent` slot is provided. */
+  /** Plain text empty state - used when no `emptyContent` slot is provided. */
   emptyMessage?: string
   /** Override the entire empty body when a block wants something richer than a
    *  one-liner (e.g. an icon + rotating motivational line on Inbox Zero). */
@@ -58,7 +58,7 @@ export function BlockShell({
         {empty ? (
           emptyContent ?? (
             <div className="flex items-center justify-center h-full px-4 py-8">
-              <p className="text-sm text-muted-foreground/60 italic">{emptyMessage ?? "—"}</p>
+              <p className="text-sm text-muted-foreground/60 italic">{emptyMessage ?? "-"}</p>
             </div>
           )
         ) : (

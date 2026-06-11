@@ -6,14 +6,14 @@ import { resolveMondayBoard } from "@/lib/integrations/monday"
  * GET /api/integrations/monday/boards/[id]
  *
  * Resolves a single Monday board ID to its ResolvedEntity. Used by the
- * always-on verification on the picker trigger — every time a Client
+ * always-on verification on the picker trigger - every time a Client
  * Information panel renders, the stored `client_board_id` is round-tripped
  * to confirm the board still exists + the token still has access.
  *
  * Response shape:
- *   - 200 { entity: ResolvedEntity }   — happy path
- *   - 200 { entity: null }             — well-formed ID but board archived/missing (broken link)
- *   - 500                              — Monday transport/auth failure (couldn't verify)
+ *   - 200 { entity: ResolvedEntity }   - happy path
+ *   - 200 { entity: null }             - well-formed ID but board archived/missing (broken link)
+ *   - 500                              - Monday transport/auth failure (couldn't verify)
  */
 export async function GET(
   _req: NextRequest,

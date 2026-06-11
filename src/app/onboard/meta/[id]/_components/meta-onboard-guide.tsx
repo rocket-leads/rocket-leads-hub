@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
  *
  * Manual instructions until Sprint 6 swaps in the Embedded Signup
  * "Connect with Meta" button. The component will absorb the swap-in
- * without restructuring — the button just becomes a new "Path 0" above
+ * without restructuring - the button just becomes a new "Path 0" above
  * the three manual paths, defaulted open.
  */
 
@@ -25,7 +25,7 @@ export function MetaOnboardGuide() {
       <PathCard
         id="no_bm"
         title="Ik heb nog geen Business Manager"
-        subtitle="Geen probleem — we maken er samen één aan."
+        subtitle="Geen probleem - we maken er samen één aan."
         open={open === "no_bm"}
         onToggle={() => setOpen(open === "no_bm" ? null : "no_bm")}
       >
@@ -47,7 +47,7 @@ export function MetaOnboardGuide() {
             Bevestig je e-mailadres via de mail die je krijgt.
           </Step>
           <Step n={4}>
-            Klaar! Ga nu door naar het volgende scenario hieronder — we
+            Klaar! Ga nu door naar het volgende scenario hieronder - we
             moeten nog een ad account aanmaken in je BM en Rocket Leads
             als partner toevoegen.
           </Step>

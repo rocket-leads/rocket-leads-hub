@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { fetchItemUpdates } from "@/lib/integrations/monday"
 import { fetchConversations, type TrengoConversation } from "@/lib/integrations/trengo"
 import { cachedFetch } from "@/lib/cache"
+import { checkTabAccess } from "@/lib/clients/access"
 
 /**
  * Per-client timeline (Phase C.8). Returns inbox events + meetings for this
@@ -17,13 +18,13 @@ import { cachedFetch } from "@/lib/cache"
  * onboarded, etc.) still get a populated timeline. Dedup'd by source_msg_id
  * against inbox_events where the id is available; Monday updates have no
  * stable id from the GraphQL response so we de-dup by (source, occurred_at,
- * title-prefix) — good enough to avoid the common case of double-rendering
+ * title-prefix) - good enough to avoid the common case of double-rendering
  * the exact same update once it lands in inbox_events later.
  */
 
 export type TimelineEntry = {
   id: string
-  /** What category of activity — drives the icon and label. */
+  /** What category of activity - drives the icon and label. */
   kind: "update" | "task" | "chat" | "meeting"
   /** Origin platform / system. */
   source: "monday" | "trengo" | "slack" | "meeting" | "manual" | "watchlist" | "automation"
@@ -53,6 +54,15 @@ export async function GET(
 
   const { id } = await params
   if (!id) return NextResponse.json({ error: "Missing client id" }, { status: 400 })
+
+  // Pure CMs can see the timeline shape but not the Trengo/chat content
+  // (those are AM workflows). Drives the two `canViewComm` branches below.
+  const canViewComm = await checkTabAccess(
+    session.user.id ?? "",
+    session.user.role ?? "member",
+    id,
+    "communication",
+  )
 
   const supabase = await createAdminClient()
 
@@ -90,16 +100,17 @@ export async function GET(
     cachedFetch(
       `timeline_monday_item_updates:${id}`,
       // 365-day cutoff so the timeline goes back further than the 14d
-      // default — the timeline view is meant to show long-term history.
+      // default - the timeline view is meant to show long-term history.
       () => fetchItemUpdates(id, 365),
       LIVE_FETCH_CACHE_MS,
     ).catch((e) => {
       console.error(`[timeline] Monday item updates failed for ${id}:`, e instanceof Error ? e.message : e)
       return [] as Awaited<ReturnType<typeof fetchItemUpdates>>
     }),
-    // Live Trengo conversations — skipped when the client has no Trengo
-    // contact id linked.
-    trengoContactId
+    // Live Trengo conversations - skipped when the client has no Trengo
+    // contact id linked, and for users without communication access
+    // (pure CMs - Roy 2026-06-11).
+    trengoContactId && canViewComm
       ? cachedFetch(
           `timeline_trengo_conversations:${trengoContactId}`,
           () => fetchConversations(trengoContactId),
@@ -118,23 +129,28 @@ export async function GET(
     return NextResponse.json({ error: meetingsRes.error.message }, { status: 500 })
   }
 
-  const eventEntries: TimelineEntry[] = (eventsRes.data ?? []).map((e) => ({
-    id: `event:${e.id}`,
-    kind: (e.kind ?? "chat") as TimelineEntry["kind"],
-    source: (e.source ?? "manual") as TimelineEntry["source"],
-    scope: (e.scope ?? null) as TimelineEntry["scope"],
-    title: e.title ?? "(no title)",
-    body: e.body ? truncate(e.body, BODY_PREVIEW_LEN) : null,
-    author: e.author_name_cached ?? null,
-    occurred_at: e.created_at_src ?? e.created_at,
-    link_url: null,
-    meta: {
-      status: e.status,
-      author_kind: e.author_kind,
-      source_thread: e.source_thread,
-      source_msg_id: e.source_msg_id,
-    },
-  }))
+  const eventEntries: TimelineEntry[] = (eventsRes.data ?? [])
+    // Pure CMs don't get to see external chat events on the timeline -
+    // those are AM-facing customer conversations. Mentions still surface
+    // in the CM's Updates tab via the existing assignee fan-out.
+    .filter((e) => canViewComm || !(e.kind === "chat" && e.scope === "external"))
+    .map((e) => ({
+      id: `event:${e.id}`,
+      kind: (e.kind ?? "chat") as TimelineEntry["kind"],
+      source: (e.source ?? "manual") as TimelineEntry["source"],
+      scope: (e.scope ?? null) as TimelineEntry["scope"],
+      title: e.title ?? "(no title)",
+      body: e.body ? truncate(e.body, BODY_PREVIEW_LEN) : null,
+      author: e.author_name_cached ?? null,
+      occurred_at: e.created_at_src ?? e.created_at,
+      link_url: null,
+      meta: {
+        status: e.status,
+        author_kind: e.author_kind,
+        source_thread: e.source_thread,
+        source_msg_id: e.source_msg_id,
+      },
+    }))
 
   const meetingEntries: TimelineEntry[] = (meetingsRes.data ?? []).map((m) => ({
     id: `meeting:${m.id}`,
@@ -156,7 +172,7 @@ export async function GET(
 
   // Live Monday updates → TimelineEntry. fetchClientItemUpdates doesn't return
   // a stable id, so the entry id uses the createdAt + a hash slice of the
-  // text — stable enough that React-key collisions don't fire on re-fetch.
+  // text - stable enough that React-key collisions don't fire on re-fetch.
   const mondayUpdateEntries: TimelineEntry[] = mondayUpdates.map((u, idx) => {
     const previewSrc = u.text.trim()
     const oneLine = previewSrc.split("\n")[0] ?? ""
@@ -209,7 +225,7 @@ export async function GET(
   const dedupedTrengo = trengoEntries.filter((t) => !eventMsgIds.has(`trengo:${t.meta?.conversation_id}`))
   // Monday updates: no source_msg_id from fetchClientItemUpdates, so de-dup
   // by (source=monday, kind=update, occurred_at exact match, title-prefix).
-  // Conservative — only drops the live copy when an inbox_event clearly
+  // Conservative - only drops the live copy when an inbox_event clearly
   // looks like the same message.
   const eventMondayKeys = new Set<string>()
   for (const e of eventEntries) {
@@ -235,7 +251,7 @@ function truncate(s: string, n: number): string {
   return s.slice(0, n).trimEnd() + "…"
 }
 
-/** Cheap HTML strip for Trengo email message previews. Doesn't try to render —
+/** Cheap HTML strip for Trengo email message previews. Doesn't try to render -
  *  just collapses tags so we don't show raw `<p>` markup in the timeline body. */
 function stripHtml(s: string): string {
   return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()

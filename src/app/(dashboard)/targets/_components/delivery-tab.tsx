@@ -43,7 +43,7 @@ export function DeliveryTab() {
 
   return (
     <div className="space-y-6">
-      {/* Date picker — same component as Marketing/Sales for consistency */}
+      {/* Date picker - same component as Marketing/Sales for consistency */}
       <div className="flex items-center gap-3 flex-wrap">
         <DateRangePicker
           startDate={range.startDate}
@@ -119,7 +119,7 @@ export function DeliveryTab() {
         </div>
       </div>
 
-      {/* Retention — ordered to read like the math: prev → +new → −churned → net → current → rate */}
+      {/* Retention - ordered to read like the math: prev → +new → −churned → net → current → rate */}
       <div className="space-y-3">
         <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.delivery.section.retention", locale)}</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -167,7 +167,7 @@ export function DeliveryTab() {
         </div>
       </div>
 
-      {/* Revenue by Team — ranked by service fee (excl. ad budget); 1st place leftmost */}
+      {/* Revenue by Team - ranked by service fee (excl. ad budget); 1st place leftmost */}
       {data?.byTeam && data.byTeam.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.delivery.section.revenue_by_team", locale)}</h2>
@@ -181,7 +181,7 @@ export function DeliveryTab() {
         </div>
       )}
 
-      {/* Unassigned Revenue — collapsible, only the Unassigned bucket with per-customer fix actions */}
+      {/* Unassigned Revenue - collapsible, only the Unassigned bucket with per-customer fix actions */}
       {data?.byAccountManager?.find((am) => am.name === "Unassigned") && (data.unassignedCustomers?.length ?? 0) > 0 && (
         <div className="space-y-3">
           <h2 className="text-xs font-medium uppercase tracking-wider text-foreground">{t("targets.delivery.section.unassigned", locale)}</h2>
@@ -235,7 +235,7 @@ export function DeliveryTab() {
 // ─── Per-team rollup card ───────────────────────────────────────────────────
 
 function TeamCard({ row, rank, locale }: { row: AccountManagerRevenue; rank: number; locale: Locale }) {
-  // Subtle ranking through opacity of the brand purple — no medals. Position 1
+  // Subtle ranking through opacity of the brand purple - no medals. Position 1
   // also gets a thin top accent line so the leader is visible at a glance, but
   // the cards stay visually equal otherwise (we don't want to demotivate #2).
   const rankOpacity = rank === 1 ? "text-primary" : rank === 2 ? "text-primary/55" : "text-primary/30"
@@ -262,7 +262,7 @@ function TeamCard({ row, rank, locale }: { row: AccountManagerRevenue; rank: num
         </div>
       </div>
 
-      {/* Service Fee — hero metric, ranking is based on this */}
+      {/* Service Fee - hero metric, ranking is based on this */}
       <div className="rounded-md border border-primary/30 bg-primary/10 px-4 py-3">
         <p className="text-[10px] uppercase tracking-wider text-primary/80 font-medium">
           Service Fee Revenue
@@ -369,7 +369,7 @@ function UnassignedRow({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [error, setError] = useState<string | null>(null)
-  // Once we've fired an auto-assign for this customer, don't fire again — the
+  // Once we've fired an auto-assign for this customer, don't fire again - the
   // row disappears on the next refetch but we may render once more in the meantime.
   const autoAssignFired = useRef(false)
 
@@ -405,10 +405,10 @@ function UnassignedRow({
       setError(e instanceof Error ? e.message : t("targets.delivery.assign_failed", locale))
       setAssigning(false)
     }
-    // On success the row will disappear via refetch — no need to reset state.
+    // On success the row will disappear via refetch - no need to reset state.
   }, [assigning, customer.customerId, itemsById, queryClient])
 
-  // Auto-assign when the top fuzzy suggestion is ≥80% confident — that's "definitely
+  // Auto-assign when the top fuzzy suggestion is ≥80% confident - that's "definitely
   // the same client, just not linked yet" territory. Saves a click per high-confidence
   // match and is reversible via Monday if it ever picks wrong.
   const AUTO_ASSIGN_THRESHOLD = 0.8
@@ -421,7 +421,7 @@ function UnassignedRow({
     void assignTo({ id: top.mondayItemId, boardType: top.boardType })
   }, [customer, assigning, error, assignTo])
 
-  // Manual picker filtering: cap at 30 (was 8 — too low for the ~150 item board).
+  // Manual picker filtering: cap at 30 (was 8 - too low for the ~150 item board).
   const lowerQuery = query.toLowerCase().trim()
   const filtered = lowerQuery
     ? unlinkedItems.filter((i) => i.name.toLowerCase().includes(lowerQuery))

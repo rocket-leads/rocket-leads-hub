@@ -29,7 +29,7 @@ export type SavedVersionRow = {
 
 /**
  * Latest saved version for one (client, stage). Returns null when
- * nothing has been explicitly saved yet — caller falls back to draft.
+ * nothing has been explicitly saved yet - caller falls back to draft.
  */
 export async function loadLatestSavedVersion(
   supabase: SupabaseClient,
@@ -51,7 +51,7 @@ export async function loadLatestSavedVersion(
 }
 
 /**
- * All versions across all stages for a client — used by the client
+ * All versions across all stages for a client - used by the client
  * detail Pedro tab to render a unified history timeline.
  */
 export async function loadAllVersionsForClient(

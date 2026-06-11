@@ -10,11 +10,11 @@ import {
 /**
  * Inputs the reconciler needs to decide whether/what to write to the
  * "Administration" column. All fields normalised to the same shape
- * `MondayClient` already provides — pass the cached client object directly.
+ * `MondayClient` already provides - pass the cached client object directly.
  */
 export type AdminSyncInput = {
   /** Hub-canonical campaign status (live / on_hold / etc.). Drives the
-   *  Unholt branch — held campaigns get an "Unholt" admin flag regardless
+   *  Unholt branch - held campaigns get an "Unholt" admin flag regardless
    *  of what Stripe says. */
   campaignStatus: ClientStatus | null
   /** Stripe payment state for this customer, from `billing_summaries` cache.
@@ -25,7 +25,7 @@ export type AdminSyncInput = {
   nextInvoiceDate: string | null
   /** Current Monday admin value (raw). Empty when unset. The reconciler
    *  compares against this to decide whether the target value is worth
-   *  writing — same-value writes are skipped. */
+   *  writing - same-value writes are skipped. */
   currentAdministration: string
   /** ISO date `YYYY-MM-DD` used as "today" for the cycle-reached check.
    *  Passed in (instead of computed inside) so callers + tests share a
@@ -36,7 +36,7 @@ export type AdminSyncInput = {
 /**
  * Decide which admin label the Hub should write for a client, given the
  * latest Stripe + campaign + cycle state. Returns `null` when no auto-target
- * applies (no Stripe linkage, no cycle reached, etc.) — caller should leave
+ * applies (no Stripe linkage, no cycle reached, etc.) - caller should leave
  * the column alone.
  *
  * Precedence (top wins):
@@ -51,7 +51,7 @@ export type AdminSyncInput = {
  * signals (overdue/open) take priority over cycle-driven prompts because
  * they reflect what actually happened with money. "Send invoice" only fires
  * when finance hasn't sent anything yet AND the cycle date has arrived.
- * "Payments complete" is the resting state — only set when nothing else is
+ * "Payments complete" is the resting state - only set when nothing else is
  * outstanding.
  */
 export function targetAdminStatus(input: AdminSyncInput): AdminLabel | null {
@@ -76,7 +76,7 @@ export function targetAdminStatus(input: AdminSyncInput): AdminLabel | null {
  * Compute the target + write it to Monday if (a) we have a target and (b)
  * the overwrite rules in `shouldAutoWriteAdministration` allow it.
  *
- * Always best-effort — a Monday failure is logged but never thrown. The
+ * Always best-effort - a Monday failure is logged but never thrown. The
  * caller (cron / endpoint) shouldn't fail because the admin column couldn't
  * be reconciled; the next cron tick will retry.
  *
@@ -107,12 +107,12 @@ export async function reconcileAdministrationForClient(
 
 /**
  * Force-write a target label, bypassing the auto-overwrite rules. Used by
- * event-driven callers that know the truth — e.g. after a successful Stripe
+ * event-driven callers that know the truth - e.g. after a successful Stripe
  * `createAndSendInvoice` we KNOW the admin should be "Invoice sent", no
  * reason to consult Stripe state again.
  *
  * Returns `{ ok: true }` on success or `{ ok: false, error }` with the
- * underlying Monday error message — callers surface it to finance so they
+ * underlying Monday error message - callers surface it to finance so they
  * know whether the column is unmapped, the label is unknown, the token's
  * scope is wrong, etc. (Previously this returned a bare boolean and the
  * real reason only showed up in server logs.)

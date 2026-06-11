@@ -16,7 +16,7 @@ export const maxDuration = 300
 /**
  * Pre-warm the AI invoice-readiness cache for every client that's eligible
  * for the /billing page (status Live or On Hold + a valid invoice date).
- * Runs every 6h via Vercel cron — same logic as the on-demand recompute,
+ * Runs every 6h via Vercel cron - same logic as the on-demand recompute,
  * just batched and time-budgeted so finance doesn't have to click "Run AI
  * check" on each row to populate verdicts.
  *
@@ -27,7 +27,7 @@ export const maxDuration = 300
  *     refresh when finance opens a row.
  *   - Otherwise compute fresh (Monday updates + Stripe + classify).
  *
- * Concurrency capped to 4 parallel computes — Claude tolerates higher rates
+ * Concurrency capped to 4 parallel computes - Claude tolerates higher rates
  * but Monday's API rate-limits aggressively, so we keep it gentle.
  */
 
@@ -68,7 +68,7 @@ async function handler(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "1"
 
   // Pull the universe of clients from the Monday cache. Falls back to a live
-  // fetch if the cache is missing — the readiness pre-warm shouldn't be
+  // fetch if the cache is missing - the readiness pre-warm shouldn't be
   // blocked by a stale-cache state.
   const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
     "monday_boards",
@@ -76,7 +76,7 @@ async function handler(req: NextRequest) {
   const boards = cached ?? (await fetchBothBoards().catch(() => ({ onboarding: [], current: [] })))
   const allClients = [...boards.onboarding, ...boards.current]
 
-  // Same eligibility filter as /billing/page.tsx — Live + On Hold with a
+  // Same eligibility filter as /billing/page.tsx - Live + On Hold with a
   // valid invoice date. Onboarding/Churned don't appear there, so warming
   // them would just burn API quota.
   const eligible = allClients.filter((c) => {
@@ -109,7 +109,7 @@ async function handler(req: NextRequest) {
     () => Date.now() >= deadline,
   )
 
-  // Persist the merged map — best-effort writes during the loop would race
+  // Persist the merged map - best-effort writes during the loop would race
   // across concurrent workers, so we batch one final write at the end.
   try {
     await writeReadinessMap(map)

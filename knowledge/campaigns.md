@@ -1,4 +1,4 @@
-# Rocket Leads — Campaigns & Marketing Frameworks
+# Rocket Leads - Campaigns & Marketing Frameworks
 
 > **Last updated:** 2026-04-15 CET
 > Dit document beschrijft alle campagne frameworks, marketing angles, ad formats, scripts, landingspagina's en testing methodieken van Rocket Leads. Gebruik dit als referentie voor AI agents die campagne deliverables genereren en voor campagnemanagers.
@@ -7,7 +7,7 @@
 
 ## Samenvatting
 
-Rocket Leads draait campagnes op Meta (primair), Google en TikTok. De standaard campagnestructuur is 1 ABO-campagne met 1 open-targeting ad set en 4-5 ads. Marketing angles worden gekozen op basis van een bewezen framework per branche. Creatives (video, static, AI avatar) zijn de belangrijkste hefboom — niet targeting of ad copy.
+Rocket Leads draait campagnes op Meta (primair), Google en TikTok. De standaard campagnestructuur is 1 ABO-campagne met 1 open-targeting ad set en 4-5 ads. Marketing angles worden gekozen op basis van een bewezen framework per branche. Creatives (video, static, AI avatar) zijn de belangrijkste hefboom - niet targeting of ad copy.
 
 ---
 
@@ -17,42 +17,42 @@ Rocket Leads draait campagnes op Meta (primair), Google en TikTok. De standaard 
 
 - **Typisch budget:** €1.000–€3.000 per maand totaal. Dit is een **harde ceiling**, geen startbedrag.
 - Klanten **schalen vrijwel nooit** hun budget op. Budget is geen flexibele knop.
-- In zeldzame gevallen wil een klant na bewezen resultaten omhoog — maar dat is een uitzondering, geen norm.
+- In zeldzame gevallen wil een klant na bewezen resultaten omhoog - maar dat is een uitzondering, geen norm.
 - "Schalen" als optimalisatie-aanbeveling is **bijna altijd irrelevant** voor onze klantenbasis.
 
 **De échte hefbomen voor optimalisatie zijn altijd:**
-1. **Itereren op winnende creatives** — bij een ad die goed presteert maken we direct nieuwe variaties in dezelfde richting (zelfde hook, angle, format, AI avatar) om CPL laag te houden en ad fatigue te voorkomen
-2. **Betere creatives** — nieuwe video's, betere hooks, andere AI avatars
-3. **Nieuwe marketing angles** — andere invalshoek uit het framework testen wanneer huidige angle uitgewerkt is
-4. **Verfijndere targeting** — al draaien we standaard open
-5. **Betere landingspagina's** — conversie-optimalisatie
-6. **Snellere/betere leadopvolging** — vooral bij HTO klanten met opvolging
-7. **Reallocatie binnen vast budget** — verschuiven van underperformer naar winner, NIET netto erbij
+1. **Itereren op winnende creatives** - bij een ad die goed presteert maken we direct nieuwe variaties in dezelfde richting (zelfde hook, angle, format, AI avatar) om CPL laag te houden en ad fatigue te voorkomen
+2. **Betere creatives** - nieuwe video's, betere hooks, andere AI avatars
+3. **Nieuwe marketing angles** - andere invalshoek uit het framework testen wanneer huidige angle uitgewerkt is
+4. **Verfijndere targeting** - al draaien we standaard open
+5. **Betere landingspagina's** - conversie-optimalisatie
+6. **Snellere/betere leadopvolging** - vooral bij HTO klanten met opvolging
+7. **Reallocatie binnen vast budget** - verschuiven van underperformer naar winner, NIET netto erbij
 
 **Wat AI agents NOOIT moeten aanbevelen:**
 - ❌ "Scale budget by X%"
 - ❌ "Increase spend on this ad set"
 - ❌ "Scale up this winner"
 - ❌ "Add more budget to capture more traffic"
-- ❌ "Houd deze ad draaien" / "Keep running this winner" — passief, leidt tot ad fatigue. Een winnende ad moet juist actief worden uitgebouwd met nieuwe iteraties.
+- ❌ "Houd deze ad draaien" / "Keep running this winner" - passief, leidt tot ad fatigue. Een winnende ad moet juist actief worden uitgebouwd met nieuwe iteraties.
 
 **Wat AI agents WEL moeten aanbevelen bij goed presterende campagnes:**
-- ✅ "Itereer op [ad naam] — 3-5 nieuwe varianten in dezelfde richting (zelfde hook/angle/format) voor de volgende refresh"
+- ✅ "Itereer op [ad naam] - 3-5 nieuwe varianten in dezelfde richting (zelfde hook/angle/format) voor de volgende refresh"
 - ✅ "Repliceer deze winnende angle in nieuwe creatives met andere openers, B-roll en CTA's"
 - ✅ "Push meer creatives in deze richting om CPL laag te houden en fatigue te voorkomen"
 - ✅ "Pause underperformer X, schuif budget naar winner Y binnen dezelfde ad set"
 
-**Kernprincipe:** Een winnende ad is geen rustpunt maar een signaal. Zodra iets werkt, verdubbelen we erop met nieuwe iteraties — zelfde DNA, frisse executies. Stilstaan = ad fatigue = stijgende CPL.
+**Kernprincipe:** Een winnende ad is geen rustpunt maar een signaal. Zodra iets werkt, verdubbelen we erop met nieuwe iteraties - zelfde DNA, frisse executies. Stilstaan = ad fatigue = stijgende CPL.
 
-**Maandelijkse creative refresh** is de standaard manier waarop we waarde toevoegen — niet door budget te verhogen.
+**Maandelijkse creative refresh** is de standaard manier waarop we waarde toevoegen - niet door budget te verhogen.
 
 ---
 
-## Huidige Hub data state — CPL als primary driver (2026-Q2)
+## Huidige Hub data state - CPL als primary driver (2026-Q2)
 
 > **Status note voor AI agents (Pedro + Watch List + alles wat aanbevelingen genereert):**
 >
-> Tot Q3 2026 draait de Hub primair op **cost per lead (CPL)** als hoofdsignaal voor wat winnaars en verliezers zijn. Niet omdat dat strategisch het juiste antwoord is — de tekst hieronder over Monday-update lead-feedback blijft de inhoudelijke standaard — maar omdat de **data daar nog niet is**:
+> Tot Q3 2026 draait de Hub primair op **cost per lead (CPL)** als hoofdsignaal voor wat winnaars en verliezers zijn. Niet omdat dat strategisch het juiste antwoord is - de tekst hieronder over Monday-update lead-feedback blijft de inhoudelijke standaard - maar omdat de **data daar nog niet is**:
 >
 > - Monday lead-board structuur is per klant ad-hoc; niet elke klant heeft consistent UTM-tagging op leads
 > - Setter/AM-feedback in updates is niet gestandaardiseerd genoeg om betrouwbaar machine-leesbaar per UTM te aggregeren
@@ -61,17 +61,17 @@ Rocket Leads draait campagnes op Meta (primair), Google en TikTok. De standaard 
 > Tot dat is opgelost, gelden voor Pedro / Watch List / alle agent-output **deze tijdelijke regels**:
 >
 > 1. Pedro mag CPL als primary winner/loser-signaal gebruiken, met het bekende voorbehoud: "winnaars zijn goedkoop, niet automatisch goed". Dit voorbehoud moet expliciet in elke proposal/refresh staan.
-> 2. Cross-client examples (Pedro Phase 2) gebruiken óók CPL als basis — winners van same-vertical RL klanten worden geselecteerd op CPL-ratio t.o.v. hun account-avg, niet op leadkwaliteit.
-> 3. Wanneer een AI agent een lead-quality observatie tóch wil maken (bv. een agent leest individuele Monday updates voor één klant in real-time), moet het expliciet als signaal naast CPL worden aangeboden — niet de plek vervangen van CPL als gating metric.
+> 2. Cross-client examples (Pedro Phase 2) gebruiken óók CPL als basis - winners van same-vertical RL klanten worden geselecteerd op CPL-ratio t.o.v. hun account-avg, niet op leadkwaliteit.
+> 3. Wanneer een AI agent een lead-quality observatie tóch wil maken (bv. een agent leest individuele Monday updates voor één klant in real-time), moet het expliciet als signaal naast CPL worden aangeboden - niet de plek vervangen van CPL als gating metric.
 > 4. **De tekst hieronder ("Lead Feedback uit Monday Updates") beschrijft de strategische eindstaat, niet de huidige operatie.** Wanneer Monday + appointment-data klopt, schalen we Pedro op naar CPA/CPD-driven decisions. Tot dan: CPL is wat we hebben, dus CPL is wat we gebruiken.
 >
 > Roy + Pedro maintainer-team werkt parallel aan dataquality (Monday lead-board normalisatie + per-UTM update-structuur) zodat Pedro v.a. Q3 op leadkwaliteit kan draaien.
 
 ---
 
-## Lead Feedback uit Monday Updates — primaire kwaliteitssignaal
+## Lead Feedback uit Monday Updates - primaire kwaliteitssignaal
 
-> *(Strategische standaard — zie status note hierboven voor huidige operatie.)*
+> *(Strategische standaard - zie status note hierboven voor huidige operatie.)*
 
 De Monday updates op individuele lead-items (geschreven door account managers en appointment setters) zijn de **belangrijkste bron van waarheid** over leadkwaliteit. CPL en CTR zeggen niets als de leads zelf onbruikbaar zijn.
 
@@ -97,7 +97,7 @@ De Monday updates op individuele lead-items (geschreven door account managers en
 
 5. **Wees specifiek in aanbevelingen:**
    - ❌ "Sommige ads brengen slechte leads"
-   - ✅ "Ad 'Photo 2 | Pricelist' heeft 8 leads waarvan 6× 'geen budget' — pauzeer en vervang met budget-kwalificatie in formulier"
+   - ✅ "Ad 'Photo 2 | Pricelist' heeft 8 leads waarvan 6× 'geen budget' - pauzeer en vervang met budget-kwalificatie in formulier"
 
 **Zonder lead feedback is elke optimalisatie-aanbeveling halfblind.** CPL-cijfers zonder kwaliteitscontext leiden tot verkeerde conclusies.
 
@@ -105,13 +105,13 @@ De Monday updates op individuele lead-items (geschreven door account managers en
 
 ## Lead Analysis Strategie (Quantity + Quality)
 
-Voor elke klant maken we twee oordelen die samen het volledige beeld vormen: **hoeveel** leads er binnenkomen en **hoe goed** ze zijn. Beide oordelen moeten elkaar aanvullen — niet vervangen.
+Voor elke klant maken we twee oordelen die samen het volledige beeld vormen: **hoeveel** leads er binnenkomen en **hoe goed** ze zijn. Beide oordelen moeten elkaar aanvullen - niet vervangen.
 
-### 1. Quantity (kostefficiëntie — CPL & CPA vs baseline)
+### 1. Quantity (kostefficiëntie - CPL & CPA vs baseline)
 
-**Wat:** judgement op pure kostefficiëntie — krijgen we per geïnvesteerde euro voldoende leads en afspraken?
+**Wat:** judgement op pure kostefficiëntie - krijgen we per geïnvesteerde euro voldoende leads en afspraken?
 
-**KRITISCH — we kijken NOOIT naar absolute aantallen leads.**
+**KRITISCH - we kijken NOOIT naar absolute aantallen leads.**
 Het aantal leads is een functie van het advertentiebudget. Als spend daalt, dalen de leads automatisch mee. Dat zegt **niets** over performance. Volumeveranderingen kunnen komen door:
 - Budget verlagen of verhogen
 - Campagne pauzeren of starten
@@ -125,12 +125,12 @@ Geen van deze zijn actionable signalen over leadkwaliteit of efficiency. Daarom 
 1. **CPL (cost per lead)** = adSpend ÷ leads
 2. **CPA (cost per appointment / booked call)** = adSpend ÷ booked calls
 
-Deze normaliseren voor budget en laten echte efficiency zien — onafhankelijk van hoeveel er is uitgegeven.
+Deze normaliseren voor budget en laten echte efficiency zien - onafhankelijk van hoeveel er is uitgegeven.
 
 **Hoe te beoordelen:**
 - Vergelijk huidige CPL en CPA (7d) met 14d en 30d baselines
 - 14d/30d = baseline (wat is normaal voor deze klant), 7d = huidige status
-- Gebruik branche-context (renovatie/verduurzaming/coaching/recruitment) om te bepalen of een CPL/CPA "goed" is in absolute zin — er is geen universele benchmark
+- Gebruik branche-context (renovatie/verduurzaming/coaching/recruitment) om te bepalen of een CPL/CPA "goed" is in absolute zin - er is geen universele benchmark
 - Per-ad analyse: kijk naar CPL en CPA per UTM/ad, niet naar leads per UTM/ad
 
 ### KRITISCH: 25% noise threshold
@@ -145,56 +145,56 @@ Meta levert week-over-week wisselende resultaten door auction-dynamiek, audience
 **Verdict op basis van 25% threshold:**
 - **good** = CPL OF CPA verbeterd met 25%+ t.o.v. baseline, OF beide stabiel binnen ±25% en in gezonde absolute range voor de branche
 - **concerning** = CPL OF CPA verslechterd met 25%+ t.o.v. baseline
-- **neutral** = zowel CPL als CPA binnen ±25% van baseline (normale Meta ruis — geen actie nodig)
+- **neutral** = zowel CPL als CPA binnen ±25% van baseline (normale Meta ruis - geen actie nodig)
 
 **Implicaties voor de Optimisation Proposal:**
 - Geen insights genereren over "CPL stijgt" of "CPA verslechtert" tenzij ≥25%
-- Geen insights genereren over lead-volume dalingen of stijgingen — ooit
-- Wel insights genereren als CPL/CPA de 25% drempel kruist, en altijd als Monday update sentiment kwaliteitsproblemen onthult — ongeacht cost trends
+- Geen insights genereren over lead-volume dalingen of stijgingen - ooit
+- Wel insights genereren als CPL/CPA de 25% drempel kruist, en altijd als Monday update sentiment kwaliteitsproblemen onthult - ongeacht cost trends
 
 **Wat NOOIT te doen:**
-- ❌ "Volume gedaald van X naar Y leads" — irrelevant zonder spend-context
+- ❌ "Volume gedaald van X naar Y leads" - irrelevant zonder spend-context
 - ❌ Verdict baseren op lead-aantallen
 - ❌ Alarm slaan op een volume-daling (kan puur door budget/pauze komen)
 - ❌ Aanbevelen om budget te verhogen (zie budget reality)
-- ❌ Reageren op CPL/CPA fluctuaties onder de 25% drempel — dat is normale Meta ruis
+- ❌ Reageren op CPL/CPA fluctuaties onder de 25% drempel - dat is normale Meta ruis
 
 **Voorbeeldformuleringen:**
-- ✅ "CPL stabiel op €11.42 (binnen ruis vs €11.30 baseline). CPA verbeterd met 28% — sterke conversie naar afspraak."
-- ✅ "CPL gestegen van €9.20 naar €13.80 (+50% vs 14d, ruim boven 25% drempel). CPA volgt zelfde trend — efficiency degradeert."
+- ✅ "CPL stabiel op €11.42 (binnen ruis vs €11.30 baseline). CPA verbeterd met 28% - sterke conversie naar afspraak."
+- ✅ "CPL gestegen van €9.20 naar €13.80 (+50% vs 14d, ruim boven 25% drempel). CPA volgt zelfde trend - efficiency degradeert."
 - ⚠️ "CPL gestegen van €9.20 naar €10.40 (+13%)." → Binnen ruis, niet noemen, niet flaggen.
 - ❌ "Volume gedaald van 36 naar 16 leads (-56%). CPL stabiel op €11.44." → De volume-zin is verboden.
 
 ### 2. Quality (Monday updates + conversie)
 
-**Wat:** judgement op leadkwaliteit — komen er bruikbare leads binnen of vooral rotzooi?
+**Wat:** judgement op leadkwaliteit - komen er bruikbare leads binnen of vooral rotzooi?
 
 **Hoe te beoordelen:**
-- **Monday updates zijn de PRIMAIRE bron** — niet conversie-percentages
+- **Monday updates zijn de PRIMAIRE bron** - niet conversie-percentages
 - Lees per UTM/ad de updates en zoek patronen:
   - Negatief: "geen budget", "niet geïnteresseerd", "verkeerde doelgroep", "geen beslisser", "te duur", no-shows
   - Positief: "afspraak ingepland", "goede lead", "interesse", "deal", "kwalitatief"
 - Cross-check met conversie lead → afspraak, maar wees voorzichtig:
   - Hoge conversie + slechte updates = **concerning** (de afspraken worden gemaakt maar de leads zijn waardeloos)
-  - Lage conversie + goede updates = **neutral** (kwaliteit is er maar opvolging hapert — process issue, niet ad issue)
+  - Lage conversie + goede updates = **neutral** (kwaliteit is er maar opvolging hapert - process issue, niet ad issue)
   - Hoge conversie + goede updates = **good**
   - Lage conversie + slechte updates = **concerning** (dubbel rood)
 - Citeer altijd specifieke ad/UTM namen + concrete patronen ("Photo 2 | Pricelist: 5 van 8 leads zeiden 'geen budget'")
-- 2-4 patronen is genoeg — geen muur van bullets
+- 2-4 patronen is genoeg - geen muur van bullets
 
 **Waarom Monday updates belangrijker zijn dan conversie %:**
 Conversie-statistieken meten of het opvolgproces werkt, niet of de leads kwalitatief zijn. Updates van setters/AM's geven ground truth over wat de leads écht zijn. Een ad kan 80% conversie naar afspraak hebben en alsnog waardeloos zijn als 100% van die afspraken "no budget" zegt.
 
 ### Verschil met AI Optimisation Proposal
 
-- **Lead Analysis** = wat is er aan de hand? (state of the union) — geen acties, alleen oordelen
-- **AI Optimisation Proposal** = wat moeten we doen? — concrete acties
+- **Lead Analysis** = wat is er aan de hand? (state of the union) - geen acties, alleen oordelen
+- **AI Optimisation Proposal** = wat moeten we doen? - concrete acties
 
-De Lead Analysis informeert de Optimisation Proposal: een "concerning" quality verdict op een specifieke ad zou moeten leiden tot een actie-insight om die ad te pauzeren of te herwerken. Maar de Lead Analysis zelf bevat nooit acties — die horen in de Proposal.
+De Lead Analysis informeert de Optimisation Proposal: een "concerning" quality verdict op een specifieke ad zou moeten leiden tot een actie-insight om die ad te pauzeren of te herwerken. Maar de Lead Analysis zelf bevat nooit acties - die horen in de Proposal.
 
 ---
 
-## Klant Feedback Interpretatie — Niet Blind Vertrouwen
+## Klant Feedback Interpretatie - Niet Blind Vertrouwen
 
 Klanten geven regelmatig feedback via Trengo (WhatsApp/email) en Monday updates. Deze feedback is waardevol maar moet altijd door onze eigen ervaring gefilterd worden. We nemen feedback serieus maar maken nooit blindelings aanpassingen.
 
@@ -205,8 +205,8 @@ Klanten geven regelmatig feedback via Trengo (WhatsApp/email) en Monday updates.
 | "Leads nemen niet op" | Follow-up timing issue, NIET campagne-probleem | Andere beltijden proberen, WhatsApp reminder sequence toevoegen, ochtend vs avond testen |
 | "Leads hebben geen budget" | Echt kwalificatie-issue | Budget-vraag toevoegen aan leadformulier, targeting aanpassen |
 | "Leads zijn niet geïnteresseerd" | Te brede targeting OF te trage opvolging | Checken welke ads (per UTM) de slechte leads opleveren, angle-mismatch of follow-up snelheid |
-| "Kwaliteit is slecht" | Vaag — altijd doorvragen | Welke UTM? Welke ads? Wat % is daadwerkelijk slecht? Niet actie nemen op vage klacht |
-| "Er komen te weinig leads" | Budget-gerelateerd (vast budget) | Niet ons probleem als CPL goed is — volume = functie van budget. Wel kijken of CPL te hoog is |
+| "Kwaliteit is slecht" | Vaag - altijd doorvragen | Welke UTM? Welke ads? Wat % is daadwerkelijk slecht? Niet actie nemen op vage klacht |
+| "Er komen te weinig leads" | Budget-gerelateerd (vast budget) | Niet ons probleem als CPL goed is - volume = functie van budget. Wel kijken of CPL te hoog is |
 | "Ik zie geen resultaten" | Verwachtingsmanagement | Wekelijkse rapportage tonen, concrete cijfers delen, eventueel evaluatie call plannen |
 
 ### Tijdsgevoeligheid van klant context
@@ -222,27 +222,27 @@ Klanten geven regelmatig feedback via Trengo (WhatsApp/email) en Monday updates.
 
 Elke optimalisatie-aanbeveling valt in een van deze 5 categorieën. Elke aanbeveling MOET specifiek zijn met ad-namen, cijfers en een concreet plan.
 
-### 1. Creative (🎨) — Nieuwe varianten of refresh
+### 1. Creative (🎨) - Nieuwe varianten of refresh
 - **Wanneer:** Winnende ad gevonden (lage CPL + goede feedback), of bestaande creative vertoont fatigue (CTR daalt)
 - **Wat:** 3-5 nieuwe varianten in dezelfde richting. Zelfde hook/angle/format, verse uitvoering (nieuwe openers, andere B-roll, nieuwe CTA's)
-- **Altijd specifiek:** "Itereer op [ad naam] — €25 CPL, 14 leads (30d). Maak 3 varianten met zelfde hook, nieuwe visuals"
+- **Altijd specifiek:** "Itereer op [ad naam] - €25 CPL, 14 leads (30d). Maak 3 varianten met zelfde hook, nieuwe visuals"
 
-### 2. Pause (⏸) — Specifieke ads uitzetten
+### 2. Pause (⏸) - Specifieke ads uitzetten
 - **Wanneer:** Ad heeft hoge spend zonder resultaat, of goedkope leads maar slechte kwaliteit
 - **Wat:** Pauzeer de specifieke ad, schuif budget naar winner
-- **Altijd met data:** "Pauzeer [ad naam] — €154 spend, 2 leads = €77 CPL (30d), 3x boven account gemiddelde"
+- **Altijd met data:** "Pauzeer [ad naam] - €154 spend, 2 leads = €77 CPL (30d), 3x boven account gemiddelde"
 
-### 3. Angle (🧭) — Nieuwe marketing angle testen
+### 3. Angle (🧭) - Nieuwe marketing angle testen
 - **Wanneer:** Huidige angle uitgewerkt (meerdere creatives getest, allemaal boven target CPL), of branche-specifieke seizoenseffecten
 - **Wat:** Concreet nieuwe angle voorstellen op basis van branche-framework
-- **Altijd specifiek:** "Test subsidie-angle — huidige 3 creatives allen boven €50 CPL, angle is uitgewerkt"
+- **Altijd specifiek:** "Test subsidie-angle - huidige 3 creatives allen boven €50 CPL, angle is uitgewerkt"
 
-### 4. Funnel (🎚) — Formulier, landingspagina of opvolging aanpassen
+### 4. Funnel (🎚) - Formulier, landingspagina of opvolging aanpassen
 - **Wanneer:** Lead quality issues die niet door creative changes opgelost worden (veel "geen budget", hoge no-show rate)
 - **Wat:** Leadform vragen aanpassen, overstappen van leadform naar landingspagina (of vice versa), reminder-flow toevoegen
-- **Altijd met reden:** "Voeg budgetvraag toe aan leadform — 5/8 leads via [UTM] hebben 'geen budget'"
+- **Altijd met reden:** "Voeg budgetvraag toe aan leadform - 5/8 leads via [UTM] hebben 'geen budget'"
 
-### 5. Other (🔧) — Reallocatie, targeting, overig
+### 5. Other (🔧) - Reallocatie, targeting, overig
 - **Wanneer:** Budget verdeling suboptimaal, of targeting-issue geïdentificeerd
 - **Wat:** Budget verschuiven tussen ads/adsets, targeting aanpassen
 - **Altijd met vergelijking:** "Verschuif budget van [ad X] (€77 CPL) naar [ad Y] (€25 CPL)"
@@ -251,10 +251,10 @@ Elke optimalisatie-aanbeveling valt in een van deze 5 categorieën. Elke aanbeve
 
 **Elke aanbeveling MOET harde cijfers bevatten:**
 - ❌ "Ad presteert goed" → ✅ "Ad heeft €25 CPL, 14 leads, 4 afspraken (30d)"
-- ❌ "Slechte efficiency" → ✅ "€154 spend, 2 leads = €77 CPL — 3x boven gemiddelde"
+- ❌ "Slechte efficiency" → ✅ "€154 spend, 2 leads = €77 CPL - 3x boven gemiddelde"
 - ❌ "Creative fatigue" → ✅ "CTR gedaald van 2.1% naar 0.8% over 30d bij €280 spend"
 
-### Time Window Labels — verplicht op élk getal in AI output
+### Time Window Labels - verplicht op élk getal in AI output
 
 Elk getal dat een AI agent (Watch List AI Note, Optimisation Proposal, Lead Analysis, etc.) noemt MOET inline gelabeld zijn met de tijdvenster waar het uit komt. Geen blote getallen.
 
@@ -262,44 +262,44 @@ Elk getal dat een AI agent (Watch List AI Note, Optimisation Proposal, Lead Anal
 - ❌ "8 'no budget' replies" → ✅ "8 'no budget' replies (14d)"
 - ❌ "CPL €38 vs €23 prev week" → ✅ "CPL €38 (7d) vs €23 (prev 7d)"
 
-**Geldige labels:** `(7d)` · `(14d)` · `(30d)` · `(prev 7d)` · `(all-time)` — wat van toepassing is op de bron.
+**Geldige labels:** `(7d)` · `(14d)` · `(30d)` · `(prev 7d)` · `(all-time)` - wat van toepassing is op de bron.
 
-**Waarom:** De Watch List kolommen tonen 7d cijfers (spend, leads, CPL, appts). De AI Note ernaast trekt vaak getallen uit bredere bronnen (all-time Monday status counts, 14d updates, 30d ad-detail data). Zonder window-label leest "25 leads" als tegenstrijdig met de "5 leads" kolom — de campaign manager denkt dat het dashboard kapot is. Het label is het bewijs dat twee verschillende getallen allebei kloppen. Zonder label sneuvelt het vertrouwen in het hele product.
+**Waarom:** De Watch List kolommen tonen 7d cijfers (spend, leads, CPL, appts). De AI Note ernaast trekt vaak getallen uit bredere bronnen (all-time Monday status counts, 14d updates, 30d ad-detail data). Zonder window-label leest "25 leads" als tegenstrijdig met de "5 leads" kolom - de campaign manager denkt dat het dashboard kapot is. Het label is het bewijs dat twee verschillende getallen allebei kloppen. Zonder label sneuvelt het vertrouwen in het hele product.
 
 **Bron-windows die AI agents standaard ontvangen:**
 | Datablok | Window |
 |---|---|
 | KPI columns / KPI block | 7d (en `prev 7d` voor week-over-week deltas) |
 | Per-client KPI vergelijking | 7d / 14d / 30d (alle drie expliciet gelabeld) |
-| Monday CRM — lead status counts | all-time (lifetime board totals) |
-| Monday CRM — recent update texts | 14d |
+| Monday CRM - lead status counts | all-time (lifetime board totals) |
+| Monday CRM - recent update texts | 14d |
 | Trengo conversations | 14d |
 | Per-ad performance details | meestal 30d, label per call mee |
 
-Als een AI agent niet kan vaststellen uit welk venster een getal komt, gebruik dat getal niet — kies een andere invalshoek.
+Als een AI agent niet kan vaststellen uit welk venster een getal komt, gebruik dat getal niet - kies een andere invalshoek.
 
-### Data Awareness — schrijf nooit conclusies over data die je niet hebt
+### Data Awareness - schrijf nooit conclusies over data die je niet hebt
 
 Elke client heeft een andere combinatie van bronnen die verbonden zijn. Vóór een AI agent een note of proposal schrijft moet hij eerst checken WELKE data daadwerkelijk beschikbaar is. Een ontbrekende bron is **niet** hetzelfde als een nul-uitkomst.
 
 **Bron-status combinaties die voorkomen:**
 | Status | Wat de AI heeft | Wat de AI NIET heeft | Wat NIET claimen |
 |---|---|---|---|
-| Monday CRM connected | leads, appointments, lead status, Monday updates per UTM | — | (geen restricties) |
-| Monday CRM **niet** connected (geen board OF fetch failed) | Meta spend/leads/CPL/CTR (Meta-fallback) | appointments, lead quality, conversie %, lead-status sentiment | "0 appointments", "no appts", "audience mismatch — geen afspraken", conversiepercentages, "leads converteren niet", lead-quality oordelen |
+| Monday CRM connected | leads, appointments, lead status, Monday updates per UTM | - | (geen restricties) |
+| Monday CRM **niet** connected (geen board OF fetch failed) | Meta spend/leads/CPL/CTR (Meta-fallback) | appointments, lead quality, conversie %, lead-status sentiment | "0 appointments", "no appts", "audience mismatch - geen afspraken", conversiepercentages, "leads converteren niet", lead-quality oordelen |
 | Geen Meta ad account gekoppeld | Monday-data (als CRM linked) | spend, CPL, ad performance | Cost-per-X claims, ad-fatigue oordelen, creative-iteratie aanbevelingen |
-| Geen Trengo contact | KPI + Monday updates | klant-sentiment via berichten | "Klant klaagt", "klant vraagt om X" — tenzij in Monday updates |
+| Geen Trengo contact | KPI + Monday updates | klant-sentiment via berichten | "Klant klaagt", "klant vraagt om X" - tenzij in Monday updates |
 
-**Waarom:** als appointments=0 staat in een KPI block terwijl Monday niet gekoppeld is, is dat 0 GEEN feit — het is afwezigheid van data. Een AI die schrijft "25 leads, 0 afspraken = audience mismatch" voor een client zonder Monday CRM ondermijnt het vertrouwen in het hele dashboard. Roy heeft dit expliciet gemarkeerd voor Juice Concepts Benelux en ZoomX: er stond "0 appointments" terwijl Monday niet gekoppeld was, dus die conclusie was onmogelijk te trekken.
+**Waarom:** als appointments=0 staat in een KPI block terwijl Monday niet gekoppeld is, is dat 0 GEEN feit - het is afwezigheid van data. Een AI die schrijft "25 leads, 0 afspraken = audience mismatch" voor een client zonder Monday CRM ondermijnt het vertrouwen in het hele dashboard. Roy heeft dit expliciet gemarkeerd voor Juice Concepts Benelux en ZoomX: er stond "0 appointments" terwijl Monday niet gekoppeld was, dus die conclusie was onmogelijk te trekken.
 
 **Wat WEL doen als data ontbreekt:**
 - Focus op de bronnen die je wél hebt. Bij alleen Meta: CPL trend (7d/30d), CTR-decay, ad fatigue, frequency, creative variation depth, hook-iteratie kansen.
-- Stel ontbrekende-data zelf voor als actie: "Verify with client — no CRM linked, ask if appointments are being booked offline" — alleen als de afwezigheid zelf het meest nuttige inzicht is.
+- Stel ontbrekende-data zelf voor als actie: "Verify with client - no CRM linked, ask if appointments are being booked offline" - alleen als de afwezigheid zelf het meest nuttige inzicht is.
 - **Nooit verzinnen wat je niet weet.** Liever een kortere, smallere note die klopt dan een complete maar deels-fictieve.
 
 **Implementatie-hint voor prompts:** stuur per client een expliciete `DATA AVAILABILITY` regel mee (welke bronnen connected, welke metrics trackable) en label velden die niet beschikbaar zijn als `UNKNOWN` in plaats van `0`.
 
-### Signal Bar — geen filler in AI-genereerde lijsten
+### Signal Bar - geen filler in AI-genereerde lijsten
 
 Voor elke AI-output die naast bestaande KPI-kolommen of een Insight-tekst getoond wordt (Watch List Activity Summary, Optimisation Proposals, AI Note), geldt een hoge bar: minder bullets die kloppen verslaat meer bullets die zacht of overlappend zijn.
 
@@ -308,37 +308,37 @@ Voor elke AI-output die naast bestaande KPI-kolommen of een Insight-tekst getoon
 | Failure mode | Voorbeeld (BAD) | Waarom skippen |
 |---|---|---|
 | **Dubbele info met Insight kolom** | "CPL elevated this week" terwijl Insight zegt "CPL up 80%" | De CM ziet het al, herhaling kost leestijd zonder waarde |
-| **Bare counts zonder noemer** | "11 leads marked 'niet bereikbaar'" | Zonder totaal-pool of percentage zegt het niets — 11 op 1000 is geen probleem, 11 op 15 is een crisis. Verbieden tenzij als ratio: `X/Y (Z%, 14d)` |
+| **Bare counts zonder noemer** | "11 leads marked 'niet bereikbaar'" | Zonder totaal-pool of percentage zegt het niets - 11 op 1000 is geen probleem, 11 op 15 is een crisis. Verbieden tenzij als ratio: `X/Y (Z%, 14d)` |
 | **Vage referenties zonder uitkomst** | "Pending invoicing clarification", "video timeline discussion", "ongoing content alignment" | Geen concrete actie of beslissing. Of expand naar het specifieke besluit/blocker, of skip |
 
 **Wat WEL als signal telt:**
-1. **Campaign status changes** — on hold, paused, going live, killed, resuming after content delivery
-2. **Directe klant requests/decisions** — budget increase, scope change, complaint, content commitment (cite kanaal + datum)
-3. **Concrete blockers** — "wacht op nieuwe creatives voor restart", "klant moet Meta business manager verifiëren"
-4. **Lead-quality patterns als RATIO** — "11/15 'niet bereikbaar' (73%, 14d)", "5/8 leads via [UTM] 'geen budget' (14d)"
-5. **Pattern over meerdere Trengo berichten** — herhaalde klacht, escalatie, expliciete tevredenheid
+1. **Campaign status changes** - on hold, paused, going live, killed, resuming after content delivery
+2. **Directe klant requests/decisions** - budget increase, scope change, complaint, content commitment (cite kanaal + datum)
+3. **Concrete blockers** - "wacht op nieuwe creatives voor restart", "klant moet Meta business manager verifiëren"
+4. **Lead-quality patterns als RATIO** - "11/15 'niet bereikbaar' (73%, 14d)", "5/8 leads via [UTM] 'geen budget' (14d)"
+5. **Pattern over meerdere Trengo berichten** - herhaalde klacht, escalatie, expliciete tevredenheid
 
-**Aantal bullets:** maximaal 3. Nul bullets is een geldig antwoord wanneer er geen concrete signalen zijn — output dan exact één regel `- No notable activity in the last 14d.` Geen padding.
+**Aantal bullets:** maximaal 3. Nul bullets is een geldig antwoord wanneer er geen concrete signalen zijn - output dan exact één regel `- No notable activity in the last 14d.` Geen padding.
 
 **Implementatie-hint voor prompts:** stuur de huidige Insight-tekst expliciet mee in de prompt zodat de AI kan vergelijken en niet dubbel-werk produceert. Cache-key bumpen wanneer het prompt verandert zodat oude soft summaries weggaan.
 
-### Top Ads — geen winners/losers split bij kleine ad-sets
+### Top Ads - geen winners/losers split bij kleine ad-sets
 
 Voor de Watch List inline-expand (en vergelijkbare per-client overzichten) toon je **één** ranglijst van top ads, gesorteerd op spend, met per-ad een verdict relatief tot de account-gemiddelde CPL. Géén aparte "Top winners" en "Top losers" panelen.
 
-**Waarom:** klanten draaien meestal 5-10 advertenties. Met 5 ads zijn "laagste CPL met ≥3 leads" en "hoogste CPL met ≥€50 spend" niet wederzijds uitsluitend — dezelfde ad valt in beide buckets. Roy heeft dit gemarkeerd voor SiteJob: "Before/After Dynamics" stond én bij winners (€22.71 CPL, laagste) én bij losers (€22.71 CPL, hoogste). Dat sloopt het concept.
+**Waarom:** klanten draaien meestal 5-10 advertenties. Met 5 ads zijn "laagste CPL met ≥3 leads" en "hoogste CPL met ≥€50 spend" niet wederzijds uitsluitend - dezelfde ad valt in beide buckets. Roy heeft dit gemarkeerd voor SiteJob: "Before/After Dynamics" stond én bij winners (€22.71 CPL, laagste) én bij losers (€22.71 CPL, hoogste). Dat sloopt het concept.
 
 **Verdict-regels (relatief tot account-avg CPL):**
 | Conditie | Verdict | UI kleur |
 |---|---|---|
-| `leads === 0 && spend ≥ €50` | loser | rood (CPL "—") |
+| `leads === 0 && spend ≥ €50` | loser | rood (CPL "-") |
 | `cpl ≤ 0.7 × accountAvgCpl` | winner | groen |
 | `cpl ≥ 1.4 × accountAvgCpl` | loser | rood |
 | anders (incl. te weinig data om te oordelen) | neutral | muted |
 
-Brede neutrale band (0.7 / 1.4) voorkomt dat met kleine ad-sets álles gekleurd wordt — alleen de duidelijke uitschieters krijgen een signaal.
+Brede neutrale band (0.7 / 1.4) voorkomt dat met kleine ad-sets álles gekleurd wordt - alleen de duidelijke uitschieters krijgen een signaal.
 
-**Filter:** ad-sets met spend < €10 (30d) negeren — micro-tests vertekenen het account-gemiddelde anders.
+**Filter:** ad-sets met spend < €10 (30d) negeren - micro-tests vertekenen het account-gemiddelde anders.
 
 **Output cap:** max 5 ads, gesorteerd op spend desc. De ad waar je de meeste euro's in stopt wil je sowieso zien.
 
@@ -347,8 +347,8 @@ Brede neutrale band (0.7 / 1.4) voorkomt dat met kleine ad-sets álles gekleurd 
 ## Campagnestructuur (Meta)
 
 ### Standaard setup
-- **1 campagne** — ABO (Ad Set Budget Optimization)
-- **1 ad set** — volledig open targeting:
+- **1 campagne** - ABO (Ad Set Budget Optimization)
+- **1 ad set** - volledig open targeting:
   - Advantage+ aan
   - Geen interesses
   - Leeftijd open (tenzij echt relevant)
@@ -385,24 +385,24 @@ Het kiezen van de juiste marketing angle is de belangrijkste stap. Hieronder het
 
 ### Universele winnende angles (werken voor bijna elke branche)
 
-1. **Gegarandeerd resultaat** — "Ontvang een garantie op X leads/afspraken/resultaat"
-2. **Gratis iets van waarde** — "Gratis X t.w.v. €X" (hogere perceived value door bedrag te noemen)
-3. **Prijslijst/offerte** — "Bekijk onze tarieven" (laagdrempelig, iedereen wil dit weten)
-4. **Financieel/ROI** — "Al rendabel vanaf X per dag", "Bespaar X% per maand", "Zonder directe investering"
-5. **Uniek/Enige in NL/Revolutionair** — Exclusiviteit en nieuwheid
-6. **Schaarste** — "We zoeken 10 bedrijven die..." (exclusief aanbod. Let op: leads kunnen denken dat het gratis is)
-7. **Pijnpunten adresseren** — Specifieke problemen van de doelgroep benoemen
-8. **Branche-specifiek** — Spreek de taal van de doelgroep, ad sluit aan bij de branche
+1. **Gegarandeerd resultaat** - "Ontvang een garantie op X leads/afspraken/resultaat"
+2. **Gratis iets van waarde** - "Gratis X t.w.v. €X" (hogere perceived value door bedrag te noemen)
+3. **Prijslijst/offerte** - "Bekijk onze tarieven" (laagdrempelig, iedereen wil dit weten)
+4. **Financieel/ROI** - "Al rendabel vanaf X per dag", "Bespaar X% per maand", "Zonder directe investering"
+5. **Uniek/Enige in NL/Revolutionair** - Exclusiviteit en nieuwheid
+6. **Schaarste** - "We zoeken 10 bedrijven die..." (exclusief aanbod. Let op: leads kunnen denken dat het gratis is)
+7. **Pijnpunten adresseren** - Specifieke problemen van de doelgroep benoemen
+8. **Branche-specifiek** - Spreek de taal van de doelgroep, ad sluit aan bij de branche
 
 ### Angles per branche
 
-#### B2B — Agencies & Consultants
+#### B2B - Agencies & Consultants
 - Garantie op resultaat (30 leads in eerste maand)
 - Pijnpunten: "Al maanden geld verspild aan een agency?"
 - Multiple choice vragen: "Gebruik je al X? Ja/Nee", "Hoeveel spend je per maand?"
 - Wanneer bereikbaar, doel, huidige website
 
-#### B2B — Product/Service
+#### B2B - Product/Service
 - Garantie: "Gegarandeerd 5% meer omzet met X"
 - ROI: "Al rendabel bij verkoop van X per dag"
 - Gratis proberen: "Probeer gratis voor 30 dagen"
@@ -410,21 +410,21 @@ Het kiezen van de juiste marketing angle is de belangrijkste stap. Hieronder het
 - Problemen adresseren met concrete oplossing
 - "We zoeken 10 bedrijven die..."
 
-#### B2C — Verduurzaming
+#### B2C - Verduurzaming
 - **Besparen** werkt het beste: "Bespaar €750 per maand met een warmtepomp"
 - Gratis giveaway: "Ontvang 2 GRATIS zonnepanelen"
 - Veel concurrentie → ad moet uniek aanbod hebben
 - Vragen: adres, binnen welke termijn realiseren
 
-#### B2C — Renovatie / Home Improvement
+#### B2C - Renovatie / Home Improvement
 - **Pijnpunten**: "Is je huidige badkamer toe aan vervanging?"
 - **Before/after foto's** als creative
 - **(Seizoens)kortingen**: "Zomeractie: bespaar tot €400"
 - Let op: weer-afhankelijk (bijv. dakdekker niet in de zomer adverteren met lekkages)
 - Vragen: hoe kunnen we helpen, wanneer bereikbaar
 
-#### B2C — Product/Service
-- **Prijslijst bekijken** — lagere kwaliteit maar werkt voor volume
+#### B2C - Product/Service
+- **Prijslijst bekijken** - lagere kwaliteit maar werkt voor volume
 - **Gratis sample/proefperiode**
 - **Snelheid**: "Je hele huis geschilderd binnen 48 uur"
 - Let op: gelukzoekers die 's avonds formulier invullen en het vergeten → goede filtering nodig
@@ -477,9 +477,9 @@ Het kiezen van de juiste marketing angle is de belangrijkste stap. Hieronder het
 ## Video Scripts & Hooks
 
 ### Script structuur
-1. **Hook** (eerste 3 seconden) — stopper, moet scrollen doorbreken
-2. **Body** — probleem benoemen, oplossing positioneren, social proof
-3. **CTA** — duidelijke call to action
+1. **Hook** (eerste 3 seconden) - stopper, moet scrollen doorbreken
+2. **Body** - probleem benoemen, oplossing positioneren, social proof
+3. **CTA** - duidelijke call to action
 
 ### Winnende hook-categorieën
 1. **Provocerend/confronterend**: "Als je nog steeds dezelfde methodes gebruikt..."
@@ -492,10 +492,10 @@ Het kiezen van de juiste marketing angle is de belangrijkste stap. Hieronder het
 8. **Branche-specifiek**: "[Branche] opgelet!" of "Ben jij eigenaar van een [branche]bedrijf?"
 
 ### Content types
-1. **Professionele video op locatie** (1x per kwartaal bij HTO) — b-roll, testimonials, hooks, productvisuals
-2. **AI Avatar video's** — schaalbaar, snel, goedkoop. 5x meer output, 85% lagere kosten
-3. **Static ads** (Canva) — foto's, afbeeldingen
-4. **Manus** (Meta AI tool) — automatisch advertenties genereren
+1. **Professionele video op locatie** (1x per kwartaal bij HTO) - b-roll, testimonials, hooks, productvisuals
+2. **AI Avatar video's** - schaalbaar, snel, goedkoop. 5x meer output, 85% lagere kosten
+3. **Static ads** (Canva) - foto's, afbeeldingen
+4. **Manus** (Meta AI tool) - automatisch advertenties genereren
 5. **Stock content** (laatste optie als klant geen eigen content heeft)
 
 ---
@@ -506,13 +506,13 @@ Het kiezen van de juiste marketing angle is de belangrijkste stap. Hieronder het
 
 ### 1. Logo's klein, of helemaal niet
 
-- **Verbod op grote logo's** die de helft van de afbeelding vullen. Het logo van de klant verkoopt geen ad — de hook doet dat.
+- **Verbod op grote logo's** die de helft van de afbeelding vullen. Het logo van de klant verkoopt geen ad - de hook doet dat.
 - Subtiele logo-integratie is prima: klein in een hoek, op een product zelf (kassa-display, schort, gevel), of op een receipt/menukaart in beeld. Maakt 'm "echt" zonder de aandacht te kapen.
-- Helemaal géén logo is ook acceptabel — een product zonder branding is vaak sterker dan een product met een 60%-screen logo.
+- Helemaal géén logo is ook acceptabel - een product zonder branding is vaak sterker dan een product met een 60%-screen logo.
 
 ### 2. Géén brand-slogans als visuele tekst
 
-- **Brand-slogans verkopen niet.** "Working on a fresh future", "Better. Faster. Stronger." — dat zijn interne tagline-flexies, geen ad copy.
+- **Brand-slogans verkopen niet.** "Working on a fresh future", "Better. Faster. Stronger." - dat zijn interne tagline-flexies, geen ad copy.
 - De enige tekst die op de afbeelding mag staan is de **werkelijke hook of headline** van de variant.
 - Pedro mag een brand-slogan opnemen in de IMAGE_PROMPT als referentie naar de visuele stijl, maar moet expliciet verbieden dat hij als overlay-text op de output komt. ("Do not render any brand slogan or tagline as on-image text.")
 
@@ -526,13 +526,13 @@ De headline-tekst op een static ad moet de doelgroep **direct in hun pijn raken*
 | "Bespaar tot 40% energie" | "Te hoge energierekening ondanks je beste isolatie?" |
 | "Snelle service, beste prijs" | "Wachten je klanten al weken op die offerte?" |
 
-De vraag/pijn moet **uit de doelgroep zelf komen** — wat ze dénken of zéggen, niet wat wij over hen claimen. Pedro genereert image-prompts mét deze framing: de overlay-tekst op de afbeelding is altijd een pijnpunt-vraag of een herkenbare situatie, nooit een verkoopclaim.
+De vraag/pijn moet **uit de doelgroep zelf komen** - wat ze dénken of zéggen, niet wat wij over hen claimen. Pedro genereert image-prompts mét deze framing: de overlay-tekst op de afbeelding is altijd een pijnpunt-vraag of een herkenbare situatie, nooit een verkoopclaim.
 
 ### 4. Brand-kleuren + fonts gestructureerd capturen (per klant verplicht)
 
 - Voor élke klant moeten **brand colors (hex codes)** en **font families** worden vastgelegd voordat Pedro mag genereren. Geslagen op `pedro_client_state.brand_style`.
 - Auto-extractie via `analyze-website`: pakt primary/secondary/accent kleuren + dominant font uit de klant-website. CM verifieert/overrided.
-- Brand kit (PDF/Drive) overschrijft auto-extractie als die er is — verplichte input bij onboarding voor klanten met een brand kit.
+- Brand kit (PDF/Drive) overschrijft auto-extractie als die er is - verplichte input bij onboarding voor klanten met een brand kit.
 - Pedro's image-prompt verwijst expliciet naar de hex codes ("use #FF6B00 as accent color for the headline overlay") en font ("Sans-serif body in style of Inter / Clash Grotesk").
 - **Geen brand identity vastgelegd = Pedro waarschuwt + valt terug op kleur-extractie uit reference photos**, maar markeert de output als "brand-identity missing".
 
@@ -548,21 +548,21 @@ Voorbeelden van feedback die Pedro moet onthouden:
 
 Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om de eerste-versie goed te krijgen. **Iteratie is leerdata, geen kosten-post.**
 
-### 6. Typografie + alignment quality bar — marketing-agency deliverable
+### 6. Typografie + alignment quality bar - marketing-agency deliverable
 
 > Roy 2026-06-10. Een Zumex generatie kwam terug met 3 concurrerende badges ("LAGE MARGE" / "3x MARGE" twee keer / "€2.50" / "€3.000" / "€5.50" / "€6.00") plus een QualityFry watermerk op een Zumex shot. Dit kunnen wij als bureau niet leveren. Generatieve modellen "vullen" automatisch met badges/labels als de prompt niet expliciet verbiedt. Pedro's image-prompt moet strakke regels meegeven, EN de Hub stamps deze regels hardcoded op elke Gemini-call (defense-in-depth).
 
-**Hard rules — niet onderhandelbaar:**
+**Hard rules - niet onderhandelbaar:**
 
 | # | Regel | Reden |
 |---|---|---|
-| 1 | **EXACTLY ONE on-image text element** — de Dutch headline. Niets anders. | Modellen dupliceren badges; één element verzekert leesbaarheid |
+| 1 | **EXACTLY ONE on-image text element** - de Dutch headline. Niets anders. | Modellen dupliceren badges; één element verzekert leesbaarheid |
 | 2 | **NO badges, prijslabels (€..), multiplier-stickers (3x/2x), comparison-labels (LAGE/HOGE), watermarks, sub-captions, sticker overlays** | Maakt collage-look, niet professioneel |
-| 3 | **Render headline ONCE, één positie** — never twice, never split across boxes | Modellen herhalen graag dezelfde tekst in 2-3 plekken |
+| 3 | **Render headline ONCE, één positie** - never twice, never split across boxes | Modellen herhalen graag dezelfde tekst in 2-3 plekken |
 | 4 | **ONE sans-serif typeface** voor de hele headline. Even letter-spacing. Consistente weight. | Mixed fonts schreeuwen "AI" |
 | 5 | **≥8% canvas padding** rond de headline op alle kanten. Headline in negative space, nooit op visueel drukke detail | Voorkomt overlap met onderwerp |
 | 6 | **Eén kleur** voor de headline (brand accent OR pure zwart/wit). GEEN mixed fill+outline | Mixed treatments lezen amateuristisch |
-| 7 | **Eén foto-subject in focus** — geen split-screen of collage, tenzij expliciet gevraagd | Drukte = onleesbaar in feed |
+| 7 | **Eén foto-subject in focus** - geen split-screen of collage, tenzij expliciet gevraagd | Drukte = onleesbaar in feed |
 | 8 | **Geen concurrerende brand-namen** zichtbaar (geen QualityFry/Blendtec in een Zumex shot) | Confuses brand-attribution |
 | 9 | **Brand-aanwezigheid alleen subtiel + natuurlijk** op productoppervlak (klein, in-context) | Grote logo's verkopen niet |
 
@@ -575,7 +575,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-## Volledige Video Scripts — RL 3.0 Campagnes
+## Volledige Video Scripts - RL 3.0 Campagnes
 
 > Gebruik als referentie bij het schrijven van nieuwe ad copy of het briefen van video-opnames.
 
@@ -589,7 +589,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 1 — AI/Automatisering angle
+### Video 1 - AI/Automatisering angle
 
 | # | Hook | Visuele richting |
 |---|---|---|
@@ -606,7 +606,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 1 — Meta twijfel angle
+### Video 1 - Meta twijfel angle
 
 **Hooks:**
 1. Hoeveel keer ga je nog zeggen dat Facebook niet werkt, terwijl je het nooit écht goed hebt geprobeerd?
@@ -622,7 +622,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 1 — RL 3.0 angle
+### Video 1 - RL 3.0 angle
 
 **Hooks:**
 1. Wil je 24/7 grip op jouw marketing en sales?
@@ -633,29 +633,29 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 2 — Fake Nieuwsbericht
+### Video 2 - Fake Nieuwsbericht
 
 | # | Hook | Visuele richting |
 |---|---|---|
 | 1 | Jan ging met zijn bedrijf van nul naar 10.000 afspraken per maand zonder ook maar één telefoontje te plegen! | Roy op reuze-eenhoorn zwemband met laptop |
 | 2 | Wist je dat Mark €500.000 omzet behaalde in 3 maanden tijd zonder ooit zijn agenda open te trekken? | Op de bank in pyjama in een freehouse |
-| 3 | Deze B.V is van €10.000 naar €2.500.000 maandomzet gegaan met één simpele automatisering. Geen cold calling, geen urenlange meetings. | — |
-| 4 | Ondernemers versterken elkaar en profiteren van een ROI van zo'n 80%! | — |
+| 3 | Deze B.V is van €10.000 naar €2.500.000 maandomzet gegaan met één simpele automatisering. Geen cold calling, geen urenlange meetings. | - |
+| 4 | Ondernemers versterken elkaar en profiteren van een ROI van zo'n 80%! | - |
 | 5 | Elke week 10 nieuwe klanten voor de rest van je leven met slechts 1 simpele software! | Maaltijd, chill met beentjes omhoog |
 
 **Body:**
 > Je hebt vast al vaker zulke ongelooflijke verhalen gehoord, maar helaas is het niet zo eenvoudig. Wat wel mogelijk is, is Rocket Leads 3.0. Dit is geen magische oplossing, maar wel een compleet systeem waarmee jij geautomatiseerd gekwalificeerde afspraken ontvangt, zonder dat je daar zelf veel voor hoeft te doen.
 >
-> We leveren meer dan alleen afspraken — wat we bieden is een module die bestaat uit automatiseringen, triggers, loops, e-mails en meer, waarmee warme leads continu aan je digitale dashboard komen. Je hoeft alleen maar te profiteren van een stijgende omzet.
+> We leveren meer dan alleen afspraken - wat we bieden is een module die bestaat uit automatiseringen, triggers, loops, e-mails en meer, waarmee warme leads continu aan je digitale dashboard komen. Je hoeft alleen maar te profiteren van een stijgende omzet.
 >
 > Benieuwd naar dit framework en of jouw bedrijf geschikt is? Klik op de knop en plan vrijblijvend een kennismaking in!
 
 ---
 
-### Video 3 — Pijnpunt CRM
+### Video 3 - Pijnpunt CRM
 
 **Hooks:**
-1. Wist je dat maar liefst 70% van je leads verloren gaat door trage opvolging in je CRM? Als je denkt dat je geen tijd hebt om het bij te houden, dan heb je waarschijnlijk gelijk — maar dat hoeft niet zo te blijven.
+1. Wist je dat maar liefst 70% van je leads verloren gaat door trage opvolging in je CRM? Als je denkt dat je geen tijd hebt om het bij te houden, dan heb je waarschijnlijk gelijk - maar dat hoeft niet zo te blijven.
 2. Waarom krijg jij je leads niet op tijd in gesprek? 67% van de ondernemers geeft aan dat het CRM-systeem hen juist tegenhoudt in plaats van helpt.
 3. Heb jij ook last van leads die vast blijven hangen in je CRM en uiteindelijk nooit kopen?
 4. Heb jij een bak aan leads die niet gekwalificeerd zijn of hun telefoon niet opnemen?
@@ -668,7 +668,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 4 — Pijnpunt Oude Leads
+### Video 4 - Pijnpunt Oude Leads
 
 | # | Hook | Visuele richting |
 |---|---|---|
@@ -676,14 +676,14 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 | 2 | Waarom blijf je geld verbranden aan nieuwe leads als er nog goud in je CRM ligt? | Shot van geld dat verbrand wordt |
 | 3 | Hoeveel leads in jouw CRM zijn na één belletje of mailtje nooit meer opgevolgd? | Telefoon neergelegd, CRM vol ongeopende leads |
 | 4 | 80% van bedrijven benaderen hun oude leads niet en laten daar duizenden euro's mee liggen. | Geld in prullenbak gooien |
-| 5 | Gratis afspraken of dure betaalde afspraken — de keuze lijkt simpel. Maar gek genoeg kiezen veel bedrijven voor het laatste. | — |
-| 6 | Waarom zou je betalen voor afspraken als je ze ook gratis kunt krijgen? | — |
-| 7 | Meer dan 33 gekwalificeerde afspraken in een maand zonder te adverteren! | — |
+| 5 | Gratis afspraken of dure betaalde afspraken - de keuze lijkt simpel. Maar gek genoeg kiezen veel bedrijven voor het laatste. | - |
+| 6 | Waarom zou je betalen voor afspraken als je ze ook gratis kunt krijgen? | - |
+| 7 | Meer dan 33 gekwalificeerde afspraken in een maand zonder te adverteren! | - |
 
 **Body:**
 > Oude leads die ooit interesse hebben getoond, verdwijnen vaak na één belletje of mailtje in de vergetelheid. En juist dáár laat je omzet liggen.
 >
-> Het probleem is niet dat je te weinig leads hebt — het probleem is dat je niet alles uit de leads haalt die je al bezit. Met een gestructureerde opvolging kun je die slapende kansen wakker maken en direct omzetten in nieuwe afspraken en omzet.
+> Het probleem is niet dat je te weinig leads hebt - het probleem is dat je niet alles uit de leads haalt die je al bezit. Met een gestructureerde opvolging kun je die slapende kansen wakker maken en direct omzetten in nieuwe afspraken en omzet.
 >
 > Dit levert je duizenden euro's extra op, zonder ook maar één euro extra aan advertenties uit te geven.
 >
@@ -691,7 +691,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 5 — Pijnpunt Bedrijf Staat Stil
+### Video 5 - Pijnpunt Bedrijf Staat Stil
 
 **Hooks:**
 1. Je hebt hard gewerkt om je bedrijf op te bouwen, maar het voelt alsof je maar op één plek blijft draaien. Wat als ik je vertel dat je bedrijf in één maand tijd volledig geautomatiseerd kan draaien?
@@ -711,7 +711,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 5 — Leo angle (branchespecifiek, professioneel)
+### Video 5 - Leo angle (branchespecifiek, professioneel)
 
 **Hooks:**
 1. Ben jij {functie} van een {branche} bedrijf? Dit is jouw unieke kans om marktleider binnen jouw regio te worden!
@@ -725,13 +725,13 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 6 — Lege Agenda
+### Video 6 - Lege Agenda
 
 **Hooks:**
 1. Nog zo'n lead die zegt 'ik laat iets weten'… en daarna nooit meer reageert?
 2. Je investeert in marketing, maar je agenda blijft leeg. Herkenbaar?
 3. Lege agenda's, trage opvolging… en wéér een maand zonder resultaat?
-4. Leads die niet opnemen, niet terugbellen en niet komen opdagen — het is om gek van te worden.
+4. Leads die niet opnemen, niet terugbellen en niet komen opdagen - het is om gek van te worden.
 5. Je hebt een prachtige showroom, maar zonder afspraken is het gewoon dure opslagruimte. *(interieur angle)*
 
 **Body:**
@@ -745,7 +745,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 6 — AI UGC vorm
+### Video 6 - AI UGC vorm
 
 **Hooks:**
 1. Dit is hoe AI de agenda van mijn bedrijf compleet veranderd heeft.
@@ -765,7 +765,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 6.1 — AI UGC Iteratie
+### Video 6.1 - AI UGC Iteratie
 
 **Hooks:**
 1. AI wordt in 2026 niet je voordeel… maar je concurrentie als je er geen gebruik van maakt!
@@ -784,7 +784,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 6 V2 — Branchespecifiek
+### Video 6 V2 - Branchespecifiek
 
 **Hooks:**
 1. Ben jij eigenaar van een interieurbedrijf en wil jij je positioneren als dé partner in jouw regio? Dan is dit jouw kans om je omzet structureel te laten groeien!
@@ -795,7 +795,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 7 — Stabiele Stroom
+### Video 7 - Stabiele Stroom
 
 **Hooks:**
 1. Je kent het wel. Weken waarin jij en je team alles geven maar de agenda halfleeg blijft.
@@ -812,7 +812,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 8 — Druk maar Lege Agenda
+### Video 8 - Druk maar Lege Agenda
 
 **Hooks:**
 1. Je dagen zitten vol, maar nieuwe klanten krijgen voelt nog steeds als losse flodders.
@@ -820,7 +820,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 3. Je team draait wéér een drukke week, maar de agenda blijft leeg.
 
 **Body:**
-> Altijd bezig met klanten, personeel en offertes — en voor marketing is geen tijd. En die keren dat je het uitbesteedde? Mooie beloftes, weinig resultaat. Je wilt gewoon nieuwe klanten. Zonder gezeik.
+> Altijd bezig met klanten, personeel en offertes - en voor marketing is geen tijd. En die keren dat je het uitbesteedde? Mooie beloftes, weinig resultaat. Je wilt gewoon nieuwe klanten. Zonder gezeik.
 >
 > Maar zo doorgaan? De ene maand druk, de volgende stil. Geen rust. Geen voorspelbaarheid.
 >
@@ -830,7 +830,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 9 — Agency vs In-house
+### Video 9 - Agency vs In-house
 
 **Hooks:**
 1. Dure agencies slokken je budget op. In-house teams verbranden je tijd. Wat als je wél de resultaten kreeg zonder beide?
@@ -846,12 +846,12 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 10 — AI Avatar (generiek)
+### Video 10 - AI Avatar (generiek)
 
 **Hooks:**
 1. Stel je voor dat je nooit meer zelf voor de camera hoeft te staan, maar tóch elke week nieuwe video's hebt die jouw bedrijf laten groeien.
 2. Geen zin en tijd om elke week video's op te nemen? Laat je AI-avatar het doen!
-3. Hi, ik ben Twan — de AI-avatar die jouw content draait terwijl jij andere dingen doet.
+3. Hi, ik ben Twan - de AI-avatar die jouw content draait terwijl jij andere dingen doet.
 4. Hoeveel tijd verlies je nog aan opnames en edits… terwijl je AI avatar in minuten nieuwe varianten maakt en tot 85% goedkoper is.
 
 **Body:**
@@ -859,15 +859,15 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 >
 > Wij maken jouw AI-avatar en produceren alle video-ads ermee, zodat je content 24/7 blijft lopen zonder dat je zelf hoeft te filmen.
 >
-> De voordelen: onbeperkte variaties zonder extra kosten, 5x hogere output per week, 85% lagere productiekosten — en het belangrijkste: betere resultaten dan ooit tevoren.
+> De voordelen: onbeperkte variaties zonder extra kosten, 5x hogere output per week, 85% lagere productiekosten - en het belangrijkste: betere resultaten dan ooit tevoren.
 
 ---
 
-### Video 10.1 — AI Avatar + Leadgeneratie combo
+### Video 10.1 - AI Avatar + Leadgeneratie combo
 
 **Hooks:**
 1. Geen zin en tijd om elke week video's op te nemen? Laat je AI-avatar het doen!
-2. Hi, ik ben Linda — de AI-avatar die jouw leads binnenhaalt terwijl jij andere dingen doet.
+2. Hi, ik ben Linda - de AI-avatar die jouw leads binnenhaalt terwijl jij andere dingen doet.
 3. Hoeveel tijd verlies je nog aan opnames én leadgeneratie… terwijl je AI-avatar beide automatiseert, 24/7 leads binnenhaalt en tot 85% goedkoper is.
 4. Leads genereren kost tijd en video ads maken ook. Wat als één systeem beide regelt?
 
@@ -876,11 +876,11 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 >
 > Wij maken jouw AI-avatar en zetten een systeem op dat continu kwalitatieve leads genereert, zodat je content én afspraken 24/7 blijft doorlopen zonder dat je zelf hoeft te filmen.
 >
-> De voordelen: onbeperkte video variaties, 5x hogere output per week, 85% lagere productiekosten — en kwalitatieve afspraken op de automatische piloot.
+> De voordelen: onbeperkte video variaties, 5x hogere output per week, 85% lagere productiekosten - en kwalitatieve afspraken op de automatische piloot.
 
 ---
 
-### Video 10 — AI Avatar Roy (studio versie)
+### Video 10 - AI Avatar Roy (studio versie)
 
 **Hooks:**
 1. Iedereen vertelt je dat video advertenties nodig zijn, maar jij wil liever de camera vermijden? Het kan nu met jouw eigen AI-avatar!
@@ -899,15 +899,15 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 11 — Roy Studio (FTC angle)
+### Video 11 - Roy Studio (FTC angle)
 
-**Hooks — B-roll:**
+**Hooks - B-roll:**
 1. {{Branche}} opgelet!
 2. Ben jij op zoek naar leads voor {{branche}}?
 3. Wij zoeken X {{branche}}-bedrijven die willen groeien.
 4. Ben jij eigenaar van een interieurbedrijf met een salesteam? Dat kost je waarschijnlijk bakken met geld.
 
-**Hooks — FTC (confronterend):**
+**Hooks - FTC (confronterend):**
 1. De ene na de andere agency op je beeldscherm, maar wie kan het nou ECHT waarmaken?!
 2. Je hebt toch geen FUCK [BLIEP in edit] aan "kwalitatieve leads"… Jij wilt gewoon betalende klanten.
 3. Ik ken het marketing geheim van 2026 waardoor bedrijven hun gehele marketing en sales team kunnen automatiseren.
@@ -921,7 +921,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 12 — Algemeen
+### Video 12 - Algemeen
 
 **Hooks:**
 1. Ben je het zat om tijd te verspillen aan leads die nergens naartoe leiden?
@@ -931,12 +931,12 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 13 — Groeicalculator
+### Video 13 - Groeicalculator
 
 **Hooks:**
 1. Benieuwd hoeveel extra leads en omzet er voor jouw bedrijf mogelijk zijn?
 2. Wat als je kon berekenen hoeveel afspraken en omzet je structureel laat liggen?
-3. Volgende week miljonair? Nee, dat beloven we niet. Wij laten liever zien wat er nú al mogelijk is in jouw markt — en dat is vaak meer dan gedacht.
+3. Volgende week miljonair? Nee, dat beloven we niet. Wij laten liever zien wat er nú al mogelijk is in jouw markt - en dat is vaak meer dan gedacht.
 4. 300% tot 900% rendement is wat wij gemiddeld realiseren voor onze klanten! Ontdek binnen 1 minuut of dit ook voor jou haalbaar is via onze gratis calculator.
 5. Gemiddeld 25-80 extra afspraken en aanvragen per maand voor onze klanten. Check binnen 1 minuut wat voor jouw bedrijf mogelijk is.
 
@@ -947,7 +947,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 14 — Seizoensgebonden
+### Video 14 - Seizoensgebonden
 
 **Hooks:**
 1. Heb jij een bedrijf dat in de winter amper groeit? Dan geef ik je de garantie: dit wordt een zwaar voorjaar.
@@ -955,7 +955,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 3. Heb jij een bedrijf dat op koude dagen bijna geen nieuwe klanten ziet binnenkomen? Die stilte voel je straks gegarandeerd in je omzet.
 
 **Body:**
-> Maar wat als dit rustige seizoen juist het moment is om een voorsprong te bouwen — zonder meer uren, zonder extra personeel en zonder torenhoge advertentiekosten?
+> Maar wat als dit rustige seizoen juist het moment is om een voorsprong te bouwen - zonder meer uren, zonder extra personeel en zonder torenhoge advertentiekosten?
 >
 > Met dit systeem hebben we al meer dan 2000 ondernemers geholpen om het hele jaar door hun pipeline gevuld te houden. Zodat zij het voorjaar ingaan met aanvragen in plaats van stress.
 
@@ -963,13 +963,13 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ## New Offer Scripts
 
-### Video 1 — Eén aanspreekpunt / Totaalplaatje
+### Video 1 - Eén aanspreekpunt / Totaalplaatje
 
 **Hooks:**
 1. 3 bureaus. Drie verschillende meningen. En uiteindelijk 0 resultaat.
 2. Het feit dat je marketing niet werkt ligt niet aan jou of de partners… maar aan het feit dat je met meerdere partners werkt en niemand het totaalplaatje bewaakt.
 3. Als jouw ads niet werken, je content niet converteert en je opvolging hapert… wie is er dan verantwoordelijk?
-4. Je investeert steeds meer budget in marketing, je omzet stijgt niet, marges krimpen — en iedere partij geeft een andere oorzaak.
+4. Je investeert steeds meer budget in marketing, je omzet stijgt niet, marges krimpen - en iedere partij geeft een andere oorzaak.
 
 **Body:**
 > Je hebt iemand voor je content, iemand anders voor je advertenties, de opvolging doe je in-house, en je hebt ergens nog iemand voor emailmarketing. Niemand pakt de regie. Iedere partij focust op zijn eigen stukje. Hierdoor zal je nooit echt doorkunnen groeien.
@@ -982,7 +982,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 2 — Content Machine
+### Video 2 - Content Machine
 
 **Hooks:**
 1. Als jij elke maand meer dan €3.000 investeert in advertenties, en je hebt geen systeem dat aan de lopende band nieuwe creatives lanceert, dan ben je budget aan het verbranden.
@@ -996,13 +996,13 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 >
 > Wij bouwen een volautomatische contentmachine voor jouw advertentiecampagnes. 1x per kwartaal komen we bij je langs voor een videoshoot, en vervolgens maken we met AI onbeperkt iteraties zodat we eindeloos kunnen blijven testen en opschalen.
 >
-> Het resultaat: 5x meer advertentiecreatives per week, 85% lagere productiekosten, onbeperkte variaties — en betere resultaten dan ooit tevoren.
+> Het resultaat: 5x meer advertentiecreatives per week, 85% lagere productiekosten, onbeperkte variaties - en betere resultaten dan ooit tevoren.
 >
 > Bij Dr. Ludidi genereerden we met €5.000 ad spend meer dan 500 aanvragen en 10 high-ticket deals. Voor TV Media Partners leidde €350.000+ budget tot meer dan €2M extra omzet.
 
 ---
 
-### Video 3 — €3K Spend
+### Video 3 - €3K Spend
 
 **Hooks:**
 1. Spendeer jij maandelijks minimaal €3.000 aan ad budget? Dan geef ik jou de garantie dat wij sneller, beter en goedkoper afspraken kunnen genereren voor jouw bedrijf op automatische piloot!
@@ -1011,7 +1011,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 4. Ondernemers die meer dan €3.000 per maand spenderen aan advertenties lopen allemaal tegen hetzelfde aan: verzadiging door te weinig variatie.
 
 **Body:**
-> Bij Rocket Leads draaien we al 8 jaar mee, en we hebben een flinke verandering gezien in de strategie die werkt op Meta. Vroeger optimaliseerden we campagnes en doelgroepen — maar nu zijn winnende video creatives het enige dat telt.
+> Bij Rocket Leads draaien we al 8 jaar mee, en we hebben een flinke verandering gezien in de strategie die werkt op Meta. Vroeger optimaliseerden we campagnes en doelgroepen - maar nu zijn winnende video creatives het enige dat telt.
 >
 > We hebben meer dan 2000 bedrijven geholpen en naar schatting meer dan €75 miljoen omzet gegenereerd via performance marketing.
 >
@@ -1021,7 +1021,7 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 4 — Branches met spend (selfie mode buiten)
+### Video 4 - Branches met spend (selfie mode buiten)
 
 **Hooks:**
 1. Run jij een bedrijf in de renovatiebranche dat maandelijks duizenden euro's spendeert aan een marketingbureau en heb je het idee dat je te veel betaalt voor wat je daadwerkelijk krijgt? Bij ons is dit anders.
@@ -1031,17 +1031,17 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 5. Betaal jij nu €200 per afspraak en ben je tevreden? Geloof me… daar zit nog veel meer winst.
 
 **Body:**
-> Ik ben Roy, eigenaar van Rocket Leads. Als jij maandelijks duizenden euro's uitgeeft aan marketing maar je voelt dat het te weinig oplevert — dan ligt dat meestal niet aan je product of dienst.
+> Ik ben Roy, eigenaar van Rocket Leads. Als jij maandelijks duizenden euro's uitgeeft aan marketing maar je voelt dat het te weinig oplevert - dan ligt dat meestal niet aan je product of dienst.
 >
 > Het probleem is dat marketing bij de meeste bedrijven geen systeem is. Je hebt een ads-partij, een contentpartij, en ergens nog opvolging… maar niemand pakt de regie. En daardoor verdwijnt je budget in ruis, vertraging en te weinig output.
 >
 > Bij Rocket Leads brengen we alles samen onder 1 dak: advertenties, maandelijkse content, funnels, opvolging en automatiseringen. Zodat jij één aanspreekpunt hebt, één plan, en één team dat verantwoordelijk is voor resultaat, dag in dag uit.
 >
-> Dat doen we al 8+ jaar voor 2000+ bedrijven — niet via een copy-paste systeem, maar via een unieke funnel exclusief gebouwd voor jouw bedrijf.
+> Dat doen we al 8+ jaar voor 2000+ bedrijven - niet via een copy-paste systeem, maar via een unieke funnel exclusief gebouwd voor jouw bedrijf.
 
 ---
 
-### Video 5.1 — AI Avatar Winners (performance angle)
+### Video 5.1 - AI Avatar Winners (performance angle)
 
 **Hooks:**
 1. Voel jij je oncomfortabel voor de camera, maar wil je wel video advertenties die werken? Laat je AI-avatar het werk voor je doen!
@@ -1062,13 +1062,13 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 ---
 
-### Video 7 — AI Bouw/Renovatie (AI avatar in setting)
+### Video 7 - AI Bouw/Renovatie (AI avatar in setting)
 
 **Setting:** Bouw/renovatie omgeving
 
 **Hooks:**
 1. Terwijl jij aan het renoveren bent lopen er gekwalificeerde klanten aan je voorbij. Ik ben AI en ik lever ze gewoon voor je aan.
-2. Aannemers opgelet — stel je voor: je hoeft nooit meer zelf te zoeken naar klanten, nooit meer voor de camera, nooit meer hopen dat de telefoon gaat. Ik ben de AI die dat voor je regelt en ik stop nooit.
+2. Aannemers opgelet - stel je voor: je hoeft nooit meer zelf te zoeken naar klanten, nooit meer voor de camera, nooit meer hopen dat de telefoon gaat. Ik ben de AI die dat voor je regelt en ik stop nooit.
 3. Bouwbedrijven lopen maandelijks duizenden euro's mis, simpelweg omdat ze het verkeerde systeem gebruiken. Ik ga je laten zien hoe dat anders kan.
 
 **Body:**
@@ -1082,38 +1082,38 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 
 | Slide | Inhoud |
 |---|---|
-| 1 | Sterke zet — bevestiging kennismaking ingepland |
+| 1 | Sterke zet - bevestiging kennismaking ingepland |
 | 2 | Wie is Rocket Leads? |
-| 3 | #1 leadgeneratie agency — focus op performance, niet targeting |
+| 3 | #1 leadgeneratie agency - focus op performance, niet targeting |
 | 4 | 8+ jaar / €18M adspend / €75M+ omzet / 2000+ bedrijven |
 | 5 | Wat kun je verwachten? |
-| 6 | Online kennismaking via Google Meet — groeisessie, geen standaard salescall |
-| 7 | RL 3.0 — 4 pijlers: content + funnel + dashboard + opvolging |
+| 6 | Online kennismaking via Google Meet - groeisessie, geen standaard salescall |
+| 7 | RL 3.0 - 4 pijlers: content + funnel + dashboard + opvolging |
 | 8 | Complete strategie-setup: doelgroeponderzoek, LP's, ads, tracking, automatiseringen |
-| 9 | Focus op gekwalificeerde afspraken — niet op likes, bereik of "leads" |
+| 9 | Focus op gekwalificeerde afspraken - niet op likes, bereik of "leads" |
 | 10 | Waarom uitbesteden? (zelf doen = uitstelgedrag, weinig focus, ondoordachte strategie) |
-| 11 | Zelf doen vs Rocket Leads — één schaalbaar systeem |
-| 12 | Case Werk en Berg — €13K → €1M+ omzet, ROAS 76 |
-| 13 | Case DiamondFlame — 100+ showroom afspraken in 3 mnd, €80K+ omzet |
-| 14 | Case TV Media Partners — €350K+ spend, 20.000+ leads, €2M+ omzet |
-| 15 | Case Dr. Ludidi — €5K spend, 500+ leads, 10 high-ticket deals in 2 mnd |
-| 16 | Groeisessie — analyse + omzet laten liggen + roadmap 3-6 mnd |
+| 11 | Zelf doen vs Rocket Leads - één schaalbaar systeem |
+| 12 | Case Werk en Berg - €13K → €1M+ omzet, ROAS 76 |
+| 13 | Case DiamondFlame - 100+ showroom afspraken in 3 mnd, €80K+ omzet |
+| 14 | Case TV Media Partners - €350K+ spend, 20.000+ leads, €2M+ omzet |
+| 15 | Case Dr. Ludidi - €5K spend, 500+ leads, 10 high-ticket deals in 2 mnd |
+| 16 | Groeisessie - analyse + omzet laten liggen + roadmap 3-6 mnd |
 | 17 | Gefeliciteerd met eerste stap |
-| 18 | Team slide — tot snel |
+| 18 | Team slide - tot snel |
 
 ---
 
 ## Review Video Bodies (per klant)
 
-**Dr. Ludidi:** Geen koude leads of tijdverspilling — maar tientallen high-ticket deals in 3 maanden. Dr. Ludidi is een autoriteit binnen zijn vakgebied maar miste het systeem om hier consistent omzet uit te halen. Wij bouwden dat systeem. Van advertentie tot salescall, volledig ingericht en geoptimaliseerd.
+**Dr. Ludidi:** Geen koude leads of tijdverspilling - maar tientallen high-ticket deals in 3 maanden. Dr. Ludidi is een autoriteit binnen zijn vakgebied maar miste het systeem om hier consistent omzet uit te halen. Wij bouwden dat systeem. Van advertentie tot salescall, volledig ingericht en geoptimaliseerd.
 
 **Werk en Berg:** Werk & Berg heeft een sterk product, maar zonder het juiste systeem bleef echte omzet liggen. Wij bouwden de volledige funnel: van de eerste advertenties tot een gevulde agenda. Geoptimaliseerd, consistent en schaalbaar.
 
-**Zumex:** Geen startup meer, maar een gevestigd miljoenenbedrijf. Vandaag de dag komt meer dan 50% van al hun afspraken via Rocket Leads. Niet via beurzen, niet via mond-tot-mond — maar via één geoptimaliseerd systeem.
+**Zumex:** Geen startup meer, maar een gevestigd miljoenenbedrijf. Vandaag de dag komt meer dan 50% van al hun afspraken via Rocket Leads. Niet via beurzen, niet via mond-tot-mond - maar via één geoptimaliseerd systeem.
 
-**Vlex Vending:** Zo overtuigd van wat wij deden dat ze iedere cent die ze hadden investeerden. Binnen één jaar schaalden zij hun vending business op naar meer dan €100.000 omzet in 1 maand. Rocket Leads was niet hun marketingbureau — wij waren hun groeimotor.
+**Vlex Vending:** Zo overtuigd van wat wij deden dat ze iedere cent die ze hadden investeerden. Binnen één jaar schaalden zij hun vending business op naar meer dan €100.000 omzet in 1 maand. Rocket Leads was niet hun marketingbureau - wij waren hun groeimotor.
 
-**TV Media Partners:** Meer dan 20.000 leads, verdeeld over 3 landen. De kracht van schaalbare advertenties die écht werken — in een branche waar leadgeneratie traditioneel via netwerken en koude acquisitie gaat.
+**TV Media Partners:** Meer dan 20.000 leads, verdeeld over 3 landen. De kracht van schaalbare advertenties die écht werken - in een branche waar leadgeneratie traditioneel via netwerken en koude acquisitie gaat.
 
 **Adeqo:** Klaar met hopen op mond-tot-mond vanuit de bouw. Wilden structureel aan tafel zitten bij aannemers en bouwbedrijven. Rocket Leads bouwde het systeem om precies die doelgroep te bereiken. Resultaat: meer dan 100 B2B deals in de afgelopen 2 jaar.
 
@@ -1148,17 +1148,17 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 - Nieuwe doelgroepen testen (ad set dupliceren met interesses)
 - Nieuwe ads / iteraties op winnende creatives lanceren
 - Lead feedback uit Monday updates per UTM scannen → bad-quality ads pauzeren
-- Budget verhogen (max 20%/dag) — ALLEEN bij klanten met flexibel budget; standaard klanten zitten op vast budget en hier is dit niet relevant
+- Budget verhogen (max 20%/dag) - ALLEEN bij klanten met flexibel budget; standaard klanten zitten op vast budget en hier is dit niet relevant
 
 **Creative refresh:** elke maand nieuwe creatives en ad copy. Creatives > ad copy in impact. Bij winnende ads: itereren in dezelfde richting (zelfde hook/angle/format, frisse executies) om CPL laag te houden en fatigue te voorkomen.
 
 **Wanneer nieuwe angle:** als meerdere creatives op dezelfde invalshoek niet werken én lead feedback geen kwaliteitsproblemen aantoont.
 
-**Bij winnende ad:** nooit "laten lopen" — direct itereren. Een winnende ad is een signaal om te verdubbelen met nieuwe varianten, niet een rustpunt.
+**Bij winnende ad:** nooit "laten lopen" - direct itereren. Een winnende ad is een signaal om te verdubbelen met nieuwe varianten, niet een rustpunt.
 
 ---
 
-## 4-Pilaren Optimalisatie Framework (Intern — Targets Dashboard)
+## 4-Pilaren Optimalisatie Framework (Intern - Targets Dashboard)
 
 CPD (Cost per Deal) en ROAS zijn **outcomes**, nooit root causes. Bij diagnose altijd terugtraceren naar de 4 pilaren:
 
@@ -1177,7 +1177,7 @@ CPD (Cost per Deal) en ROAS zijn **outcomes**, nooit root causes. Bij diagnose a
 ### Pilaar 3: Show-up Rate (Taken / Qualified Calls)
 - **Benchmark:** ≥80%
 - **Off track = oorzaak:** no-shows door gebrek aan urgentie, koude leads, scheduling issues
-- **Optimalisatie:** WhatsApp reminder delivery en timing auditen (zijn al actief — check of ze aankomen), persoonlijke bevestigingsbelletje 2u voor afspraak, booking window verkorten (niet te ver vooruit kunnen boeken)
+- **Optimalisatie:** WhatsApp reminder delivery en timing auditen (zijn al actief - check of ze aankomen), persoonlijke bevestigingsbelletje 2u voor afspraak, booking window verkorten (niet te ver vooruit kunnen boeken)
 - **Let op:** als CBC/CQC off track zijn maar show-up rate ≥80% → CTC kan alsnog on track zijn. Geen actie nodig op creatives.
 
 ### Pilaar 4: Conversion Rate (Deals / Taken Calls)
@@ -1198,13 +1198,13 @@ CPD (Cost per Deal) en ROAS zijn **outcomes**, nooit root causes. Bij diagnose a
 | Klant | Ad Spend | Resultaat |
 |---|---|---|
 | Werk & Berg | €13.000 | 2000+ leads, €1M+ omzet, ROAS 76 |
-| Vlex Vending | — | Bijna 200 leads in eerste maand → €100K/maand |
+| Vlex Vending | - | Bijna 200 leads in eerste maand → €100K/maand |
 | TV Media Partners | €350.000+ | 20.000+ leads, 3 landen, €2M+ omzet |
 | Dr. Ludidi | €5.000 | 500+ leads, 10 high-ticket deals in 2 mnd |
-| DiamondFlame | — | 100+ showroom afspraken in 3 mnd, €80K+ omzet |
-| Zumex | — | 50%+ van alle afspraken via Rocket Leads |
-| Adeqo | — | 100+ B2B deals in 2 jaar |
-| Verhuisvlot | — | 30+ opdrachten binnen 2 maanden |
+| DiamondFlame | - | 100+ showroom afspraken in 3 mnd, €80K+ omzet |
+| Zumex | - | 50%+ van alle afspraken via Rocket Leads |
+| Adeqo | - | 100+ B2B deals in 2 jaar |
+| Verhuisvlot | - | 30+ opdrachten binnen 2 maanden |
 
 **Social proof totaal:** 4.5★ Google (162+ reviews) · 2000+ bedrijven · 8+ jaar · €18M+ adspend · €75M+ omzet
 
@@ -1227,12 +1227,12 @@ CPD (Cost per Deal) en ROAS zijn **outcomes**, nooit root causes. Bij diagnose a
 
 ## Belangrijke nuances voor AI agents
 
-- **Creatives zijn de belangrijkste hefboom** — niet targeting, niet ad copy
-- Marketing angles worden gekozen op basis van **ervaring per branche** — niet willekeurig
-- **Video ads presteren het beste op Meta** — static ads zijn tweede keuze
+- **Creatives zijn de belangrijkste hefboom** - niet targeting, niet ad copy
+- Marketing angles worden gekozen op basis van **ervaring per branche** - niet willekeurig
+- **Video ads presteren het beste op Meta** - static ads zijn tweede keuze
 - Bij klanten zonder content: video scripts schrijven → klant neemt op met telefoon → wij editen. Stock content is laatste optie
-- **Formulier-vragen zijn cruciaal voor leadkwaliteit** — meer vragen = minder maar betere leads
+- **Formulier-vragen zijn cruciaal voor leadkwaliteit** - meer vragen = minder maar betere leads
 - **AI avatars zijn een kernonderscheider** van Rocket Leads 3.0
 - Seizoensgebondenheid meenemen bij branche-specifieke angles
-- Case studies worden actief gebruikt in sales framing — agents moeten deze kennen
-- Scripts zijn gevalideerde referentie voor nieuwe campagne copy — gebruik de volledige teksten hierboven, niet samengevatte versies
+- Case studies worden actief gebruikt in sales framing - agents moeten deze kennen
+- Scripts zijn gevalideerde referentie voor nieuwe campagne copy - gebruik de volledige teksten hierboven, niet samengevatte versies

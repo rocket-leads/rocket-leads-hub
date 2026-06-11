@@ -196,7 +196,7 @@ export function BoardConfigTab({ config: initial, defaults }: Props) {
         {saving ? t("settings.board.action.saving", locale) : saved ? t("settings.board.action.saved", locale) : t("settings.board.action.save", locale)}
       </Button>
 
-      {/* Real-time sync — registers Monday webhooks against the boards
+      {/* Real-time sync - registers Monday webhooks against the boards
           configured above so status / name / create / delete events push to
           the Hub within seconds. Without this, the Hub relies on the daily
           refresh-cache cron and can be up to 24h stale. */}

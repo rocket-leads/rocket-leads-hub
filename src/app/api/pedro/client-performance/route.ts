@@ -20,7 +20,7 @@ import {
  *  - account-level stats for the window
  *  - trend vs the prior equivalent window
  *  - every ad with a verdict (winner/loser/neutral) + reason
- *  - top spenders, top winners, top losers — pre-sorted convenience lists
+ *  - top spenders, top winners, top losers - pre-sorted convenience lists
  *  - data-availability flags so Claude knows when context is thin
  *
  * Caches Meta calls via the same `cachedFetch` the existing
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
       losers: [],
       trend: null,
       warnings: [
-        "Geen Meta ad account gekoppeld voor deze klant — kan geen performance-analyse doen.",
+        "Geen Meta ad account gekoppeld voor deze klant - kan geen performance-analyse doen.",
       ],
     })
   }
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     cachedFetch(cacheKeyCur, () =>
       fetchMetaAdDetails(client.meta_ad_account_id, cur.start, cur.end),
     ).catch((e) => {
-      console.error("Pedro performance — current window error:", e)
+      console.error("Pedro performance - current window error:", e)
       return [] as Awaited<ReturnType<typeof fetchMetaAdDetails>>
     }),
     cachedFetch(cacheKeyPrior, () =>
@@ -130,13 +130,13 @@ export async function GET(req: NextRequest) {
     warnings.push("Window-spend is laag (<€100); inzichten zijn richtinggevend, niet conclusive.")
   }
   if (stats.totalLeads === 0) {
-    warnings.push("Geen leads in dit window — alle CPL-vergelijkingen vervallen.")
+    warnings.push("Geen leads in dit window - alle CPL-vergelijkingen vervallen.")
   }
   if (priorStats.totalSpend === 0) {
-    warnings.push("Geen prior-window data — trend-deltas zijn afwezig of onbetrouwbaar.")
+    warnings.push("Geen prior-window data - trend-deltas zijn afwezig of onbetrouwbaar.")
   }
   warnings.push(
-    "Lead-quality (Monday CRM updates per UTM) is nog niet meegerekend — winnaars zijn 'goedkoop', niet automatisch 'goed'. Verifieer feedback in Monday voor je itereert.",
+    "Lead-quality (Monday CRM updates per UTM) is nog niet meegerekend - winnaars zijn 'goedkoop', niet automatisch 'goed'. Verifieer feedback in Monday voor je itereert.",
   )
 
   return NextResponse.json(

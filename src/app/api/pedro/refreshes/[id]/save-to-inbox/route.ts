@@ -12,7 +12,7 @@ import {
  *
  * Creates a Hub `update` assigned to the current user with the refresh
  * rendered as markdown in the body. Lands in the AM's personal Updates
- * inbox, searchable forever — Hub-canonical, no external mirror.
+ * inbox, searchable forever - Hub-canonical, no external mirror.
  *
  * Idempotent: if the refresh already carries `saved_to_inbox_event_id`,
  * return that event id rather than creating a duplicate.
@@ -56,10 +56,10 @@ export async function POST(
 
     if (refreshRow.stage !== "creatives") {
       // Other stages (angles/script/ad_copy) will land here once their
-      // renderers ship. For now we only support creatives — Roy's
+      // renderers ship. For now we only support creatives - Roy's
       // explicit ask. Future PR: switch on stage and pick the renderer.
       return NextResponse.json(
-        { error: `Stage '${refreshRow.stage}' niet ondersteund — alleen creatives voor nu.` },
+        { error: `Stage '${refreshRow.stage}' niet ondersteund - alleen creatives voor nu.` },
         { status: 400 },
       )
     }
@@ -93,7 +93,7 @@ export async function POST(
     })
     const body = renderCreativeRefreshMarkdown(envelopeForRender)
 
-    // Insert the update — self-assigned, source `automation` with a
+    // Insert the update - self-assigned, source `automation` with a
     // pedro-refresh marker so the inbox UI can render the right icon
     // and so we can search/dedup later.
     const { data: inserted, error: insertErr } = await supabase

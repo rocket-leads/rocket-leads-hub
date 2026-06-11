@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
  *   green   = ok
  *   red     = broken or (required + missing)
  *   amber   = warning (resolved-but-degraded, e.g. Meta Pending review)
- *   muted   = not_used (optional service intentionally blank — Monday or
+ *   muted   = not_used (optional service intentionally blank - Monday or
  *             Drive when the client doesn't use them)
  *
  * Hover any dot to see the service name + resolved entity (or error reason),
@@ -84,11 +84,11 @@ function toneFor(state: ServiceHealth["state"]): string {
     case "broken":
       return "bg-destructive"
     case "missing":
-      // Required field with no link. Same red as broken — both are real
+      // Required field with no link. Same red as broken - both are real
       // problems for the audit roll-up.
       return "bg-destructive"
     case "not_used":
-      // Optional service intentionally blank — calm muted dot so it reads
+      // Optional service intentionally blank - calm muted dot so it reads
       // as "the AM made a choice", not "something's wrong".
       return "bg-muted-foreground/30"
   }
@@ -101,7 +101,7 @@ function buildTooltip(label: string, health: ServiceHealth): string {
     case "warning":
       return `${label}: ${health.name ?? "OK"} (warning)`
     case "broken":
-      return `${label}: broken${health.error ? ` — ${health.error}` : ""}`
+      return `${label}: broken${health.error ? ` - ${health.error}` : ""}`
     case "missing":
       return `${label}: not linked`
     case "not_used":

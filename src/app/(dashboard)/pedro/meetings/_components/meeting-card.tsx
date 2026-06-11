@@ -50,7 +50,7 @@ function formatDuration(seconds: number | null): string {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "—"
+  if (!iso) return "-"
   return new Date(iso).toLocaleString("en-GB", {
     day: "numeric",
     month: "short",
@@ -61,7 +61,7 @@ function formatDate(iso: string | null): string {
 }
 
 export function MeetingCard({ meeting, showClientLink = true, clientName, clients }: Props) {
-  // Collapsed by default — overview reads as a scannable list (title, date,
+  // Collapsed by default - overview reads as a scannable list (title, date,
   // host, attendees). Click "Show details" to expand summary + action items.
   const [detailsOpen, setDetailsOpen] = useState(false)
 
@@ -146,12 +146,12 @@ export function MeetingCard({ meeting, showClientLink = true, clientName, client
           )}
         </div>
 
-        {/* Action bar — link / archive / unarchive */}
+        {/* Action bar - link / archive / unarchive */}
         {showActions && (
           <MeetingActions meeting={meeting} clients={clients!} />
         )}
 
-        {/* Show / hide details — summary + action items */}
+        {/* Show / hide details - summary + action items */}
         {hasDetails && (
           <div>
             <button

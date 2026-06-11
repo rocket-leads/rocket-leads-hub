@@ -11,11 +11,11 @@ type Props = {
   mondayItemId: string
   clientName: string
   /** Server-rendered initial value from the `invoice_readiness` cache. Null
-   *  when the cache has no entry yet for this client — the cell shows a
+   *  when the cache has no entry yet for this client - the cell shows a
    *  "Run AI check" button on first hit, then auto-fetches. */
   initial: InvoiceReadiness | null
   /** Deep link to the Monday item, built server-side from the parent board
-   *  ID. Null when board config wasn't available — link is hidden in that
+   *  ID. Null when board config wasn't available - link is hidden in that
    *  case rather than rendered broken. */
   mondayItemUrl: string | null
 }
@@ -51,7 +51,7 @@ const VERDICT_TONES = {
  */
 export function InvoiceReadinessCell({ mondayItemId, clientName, initial, mondayItemUrl }: Props) {
   const [open, setOpen] = useState(false)
-  // Local state keeps things simple — we never want to auto-fetch on mount
+  // Local state keeps things simple - we never want to auto-fetch on mount
   // (would fire ~50 Claude calls per page load), so the React Query machinery
   // doesn't add anything here. Compute is on-demand only: popover open or
   // explicit Refresh click.
@@ -107,7 +107,7 @@ export function InvoiceReadinessCell({ mondayItemId, clientName, initial, monday
         )}
         title={
           data.verdict === "error"
-            ? "AI check failed — open to retry"
+            ? "AI check failed - open to retry"
             : `${tone.label} · ${data.confidence}% confidence`
         }
       >

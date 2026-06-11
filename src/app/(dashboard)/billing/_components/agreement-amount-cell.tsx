@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
  * "ad budget" columns. Click the value to reveal a number input; auto-saves
  * on blur or Enter via PATCH /api/clients/[id]/agreement.
  *
- * Optimistic — the typed value renders immediately. On save success we
+ * Optimistic - the typed value renders immediately. On save success we
  * `router.refresh()` so the row re-aggregates (group totals, MRR headline,
  * etc.) and any server-side derivation (e.g. follow-up fee in the fee math)
  * reflects in the next render. On error we revert + surface the message
@@ -22,11 +22,11 @@ type Props = {
   field: "fee" | "ad_budget"
   /** Current value in euros (whole number). */
   value: number
-  /** When false, the cell renders the value as static text — used on the
+  /** When false, the cell renders the value as static text - used on the
    *  parent row of multi-sibling groups where editing happens on the
    *  sub-rows instead. */
   editable?: boolean
-  /** Optional placeholder when `value` is 0 / unset. Defaults to "—". */
+  /** Optional placeholder when `value` is 0 / unset. Defaults to "-". */
   placeholder?: string
   /** Style class for the rendered button. Defaults to a "muted" variant
    *  appropriate for the ad-budget column; pass a stronger one for "fee". */
@@ -42,7 +42,7 @@ export function AgreementAmountCell({
   field,
   value,
   editable = true,
-  placeholder = "—",
+  placeholder = "-",
   className,
 }: Props) {
   const router = useRouter()

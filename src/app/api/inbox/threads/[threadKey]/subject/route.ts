@@ -10,7 +10,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  * gets the same affordance as a normal mail client (just edit if needed,
  * don't re-type from scratch).
  *
- * Source: the latest inbox_events row's `raw` payload — Trengo webhooks
+ * Source: the latest inbox_events row's `raw` payload - Trengo webhooks
  * include the email subject under `email_message.subject` (or `subject` at
  * the top level depending on event shape). We avoid an extra Trengo
  * round-trip by reading from the cached webhook data.

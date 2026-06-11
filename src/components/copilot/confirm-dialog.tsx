@@ -16,7 +16,7 @@ type UserRow = { id: string; name: string | null; email: string; role: string | 
 /**
  * Editable confirmation dialog. Opened from the notification bell when
  * the user clicks "Edit" on a ready draft. The original parse + enrich
- * pre-filled all fields — this dialog lets the user tweak before approving.
+ * pre-filled all fields - this dialog lets the user tweak before approving.
  *
  * On confirm: PATCHes the draft action (so the audit trail reflects what
  * actually shipped), runs the client-side executor, and marks the draft
@@ -150,7 +150,7 @@ function CreateTaskFields({
   const update = (patch: Partial<typeof draft>) => onChange({ ...draft, ...patch })
 
   // Pre-fill due date with today if AI didn't pick one (matches existing
-  // inbox composer behaviour — tasks require a due date).
+  // inbox composer behaviour - tasks require a due date).
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
   useEffect(() => {
     if (!draft.dueDate) update({ dueDate: today })
@@ -173,7 +173,7 @@ function CreateTaskFields({
           onChange={(e) => update({ body: e.target.value })}
           minRows={3}
           maxRows={12}
-          placeholder="Extra context — KPI numbers, ad names, why this matters"
+          placeholder="Extra context - KPI numbers, ad names, why this matters"
         />
       </Field>
       <div className="grid grid-cols-2 gap-2">
@@ -183,7 +183,7 @@ function CreateTaskFields({
             onChange={(e) => update({ clientId: e.target.value || undefined })}
             className={fieldClass}
           >
-            <option value="">— No client —</option>
+            <option value="">- No client -</option>
             {clients.map((c) => (
               <option key={c.mondayItemId} value={c.mondayItemId}>
                 {c.name}
@@ -197,7 +197,7 @@ function CreateTaskFields({
             onChange={(e) => update({ assigneeId: e.target.value })}
             className={fieldClass}
           >
-            <option value="">— Pick someone —</option>
+            <option value="">- Pick someone -</option>
             {users.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name ?? u.email}

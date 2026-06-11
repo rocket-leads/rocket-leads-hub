@@ -6,12 +6,12 @@ import { loadLatestSavedVersion, type SavedVersionRow } from "@/lib/pedro/saved-
  *
  * Reads the latest saved version of each stage out of pedro_stage_versions
  * and bakes them into one human-readable markdown document. This is the
- * "Deliverable #1" we hand to the client — a single doc covering brief,
+ * "Deliverable #1" we hand to the client - a single doc covering brief,
  * research, angles, script, creatives, LP and ad copy, with per-section
  * version provenance so the CM can tell at a glance "built from brief v3,
  * lp v2".
  *
- * Stage versions are the source of truth — this assembly is purely a
+ * Stage versions are the source of truth - this assembly is purely a
  * baked rendering. Re-generating after a stage edit is cheap and safe.
  */
 
@@ -87,7 +87,7 @@ function fmtDate(iso: string): string {
 
 function provenanceLine(row: SavedVersionRow | null, fallback: string): string {
   if (!row) return `_${fallback}_`
-  return `_Versie ${row.version_number} — opgeslagen ${fmtDate(row.saved_at)}${row.label ? ` · ${row.label}` : ""}_`
+  return `_Versie ${row.version_number} - opgeslagen ${fmtDate(row.saved_at)}${row.label ? ` · ${row.label}` : ""}_`
 }
 
 function renderBrief(row: SavedVersionRow | null, clientName: string): string {
@@ -113,7 +113,7 @@ function renderBrief(row: SavedVersionRow | null, clientName: string): string {
 
 function renderResearch(row: SavedVersionRow | null): string {
   if (!row) return `## 2. Research\n_Nog geen research opgeslagen voor deze campagne._\n`
-  // Research payload shape varies — render as fenced JSON for transparency
+  // Research payload shape varies - render as fenced JSON for transparency
   // rather than guessing keys. The CM rarely shows research to clients
   // anyway; this is mostly internal reference.
   const json = JSON.stringify(row.data, null, 2)
@@ -133,7 +133,7 @@ function renderAngles(row: SavedVersionRow | null): string {
 }
 
 function renderScript(row: SavedVersionRow | null): string {
-  if (!row) return `## 4. Video scripts\n_Geen scripts opgeslagen — stap overgeslagen of nog niet uitgevoerd._\n`
+  if (!row) return `## 4. Video scripts\n_Geen scripts opgeslagen - stap overgeslagen of nog niet uitgevoerd._\n`
   const data = (row.data ?? {}) as ScriptData
   const lines: string[] = ["## 4. Video scripts", provenanceLine(row, ""), ""]
   const videos = data.script_videos ?? []
@@ -144,7 +144,7 @@ function renderScript(row: SavedVersionRow | null): string {
     return lines.join("\n") + "\n"
   }
   videos.forEach((v, i) => {
-    lines.push(`### Video ${i + 1}${v.angle ? ` — ${v.angle}` : ""}`)
+    lines.push(`### Video ${i + 1}${v.angle ? ` - ${v.angle}` : ""}`)
     if (v.hooks && v.hooks.length > 0) {
       lines.push("**Hooks:**")
       v.hooks.forEach((h, hi) => lines.push(`${hi + 1}. ${h}`))
@@ -167,7 +167,7 @@ function renderCreatives(row: SavedVersionRow | null): string {
   const data = (row.data ?? {}) as CreativesData
   const lines: string[] = ["## 5. Creatives (Manus prompt)", provenanceLine(row, ""), ""]
   if (data.qty || data.formats?.length) {
-    lines.push(`**Aantal:** ${data.qty ?? "?"}  ·  **Formaten:** ${(data.formats ?? []).join(", ") || "—"}`)
+    lines.push(`**Aantal:** ${data.qty ?? "?"}  ·  **Formaten:** ${(data.formats ?? []).join(", ") || "-"}`)
   }
   if (data.driveLink) lines.push(`**Drive:** ${data.driveLink}`)
   if (data.brandbookName) lines.push(`**Brandbook:** ${data.brandbookName}`)
@@ -209,12 +209,12 @@ function renderAdCopy(row: SavedVersionRow | null): string {
   const data = (row.data ?? {}) as AdCopyData
   const lines: string[] = ["## 7. Ad copy (Meta)", provenanceLine(row, ""), ""]
   if (data.variantA) {
-    lines.push("### Primaire tekst — variant A")
+    lines.push("### Primaire tekst - variant A")
     lines.push(data.variantA)
     lines.push("")
   }
   if (data.variantB) {
-    lines.push("### Primaire tekst — variant B")
+    lines.push("### Primaire tekst - variant B")
     lines.push(data.variantB)
     lines.push("")
   }
@@ -268,7 +268,7 @@ export async function assembleDeliverable(
     minute: "2-digit",
   })
 
-  const header = `# Pedro Campaign Deliverable — ${clientName}
+  const header = `# Pedro Campaign Deliverable - ${clientName}
 
 > Campagne ${campaignNumber} · Gegenereerd op ${generatedAt}
 >

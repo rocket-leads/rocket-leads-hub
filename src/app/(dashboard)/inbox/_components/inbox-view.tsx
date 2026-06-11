@@ -59,7 +59,7 @@ export type InboxClientOption = {
 export type CurrentUser = { id: string; name: string; role: string }
 
 type LockedClient = InboxClientOption & {
-  /** Trengo contact ID — if present, the Client Inbox sub-tab renders the
+  /** Trengo contact ID - if present, the Client Inbox sub-tab renders the
    * Trengo conversation history for this client. Otherwise the tab is hidden. */
   trengoContactId?: string | null
   /** Role-based gate on the Client Inbox sub-tab. */
@@ -81,7 +81,7 @@ type UpdateFilter = "all" | UpdateStatus
 /**
  * Task filters are intentionally bare: only "All" and "Open". Roy 2026-06-09:
  * "Bezig" / "Klaar" / "Snoozed" cluttered the strip without earning their
- * keep — the AM lands on Tasks to see what's still to do, not to manage
+ * keep - the AM lands on Tasks to see what's still to do, not to manage
  * lifecycle states. Stale persisted values (in_progress / done / snoozed
  * from the v2 key) fall back to "open" via the v3 key bump below.
  */
@@ -111,7 +111,7 @@ const TASK_SOURCE_LABEL_KEYS: Record<InboxSource, DictionaryKey> = {
 const UPDATE_FILTER_SHAPE = [
   // Roy 2026-06-09: Updates use the same "Open" / "Alles" chips as Tasks
   // so the inbox affordance reads identically across kinds. The chip id
-  // still maps to the DB status (`unread`) — only the rendered label +
+  // still maps to the DB status (`unread`) - only the rendered label +
   // icon changed to match the Tasks strip.
   { id: "unread" as const, labelKey: "inbox.update.filter.open" as const, icon: Circle },
   { id: "all" as const, labelKey: "inbox.update.filter.all" as const, icon: LayoutList },
@@ -119,14 +119,14 @@ const UPDATE_FILTER_SHAPE = [
 
 const TASK_FILTER_SHAPE = [
   // Roy 2026-06-09: "Open" on the LEFT as the anchor, "Alles" on the
-  // RIGHT as the catch-all. Bezig / Klaar / Snoozed dropped — same
+  // RIGHT as the catch-all. Bezig / Klaar / Snoozed dropped - same
   // minimalism as the Updates strip; consistent positions across tabs.
   { id: "open" as const, labelKey: "inbox.task.filter.open" as const, icon: Circle },
   { id: "all" as const, labelKey: "inbox.task.filter.all" as const, icon: LayoutList },
 ]
 
 const ALL_UPDATE_STATUSES: UpdateStatus[] = ["unread", "read"]
-// "All" excludes cancelled tasks — they're archived state and shouldn't
+// "All" excludes cancelled tasks - they're archived state and shouldn't
 // clutter the active list. If a user explicitly needs to find a cancelled
 // task, the row still exists in the DB; we'd add a dedicated Archive view
 // when the need actually shows up. in_progress + done remain part of the
@@ -151,7 +151,7 @@ export function InboxView({
   const queryClient = useQueryClient()
   const locale = useLocale()
 
-  // Build locale-aware filter tab arrays per render — the underlying
+  // Build locale-aware filter tab arrays per render - the underlying
   // shape is static; only labels flip with the language toggle.
   const TASK_FILTERS: TopTab<TaskFilter>[] = useMemo(
     () => TASK_FILTER_SHAPE.map((f) => ({ id: f.id, label: t(f.labelKey, locale), icon: f.icon })),
@@ -162,10 +162,10 @@ export function InboxView({
     [locale],
   )
 
-  // activeTab intentionally NOT persisted — opening the inbox should land
+  // activeTab intentionally NOT persisted - opening the inbox should land
   // on Now ("what needs my attention right now") regardless of where the
   // user was last time. Per-client inbox skips the Now tab and goes
-  // straight to Tasks (Now is global-only — see mainTabs below). Everything
+  // straight to Tasks (Now is global-only - see mainTabs below). Everything
   // else is sticky so a reload doesn't blow away the filter context the AM
   // was working from.
   const [activeTab, setActiveTab] = useState<MainTab>(lockedClient ? "tasks" : "now")
@@ -174,14 +174,14 @@ export function InboxView({
     true,
   )
   const [updateFilter, setUpdateFilter] = usePersistedState<UpdateFilter>(
-    // v3 key — chips collapsed to All + Unread, default flipped to Unread.
+    // v3 key - chips collapsed to All + Unread, default flipped to Unread.
     // Bump resets returning users carrying a stale "read" or "all" choice
     // from v2 onto the new default.
     "inbox.updateFilter.v3",
     DEFAULT_UPDATE_FILTER,
   )
   const [taskFilter, setTaskFilter] = usePersistedState<TaskFilter>(
-    // v3 key — chips collapsed to All + Open, default flipped to Open.
+    // v3 key - chips collapsed to All + Open, default flipped to Open.
     // Same rationale as the Updates bump above.
     "inbox.taskFilter.v3",
     DEFAULT_TASK_FILTER,
@@ -196,7 +196,7 @@ export function InboxView({
   )
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerKind, setComposerKind] = useState<"update" | "task">("update")
-  // Chat-derived prefill — set when the user clicks "Make task" on a chat
+  // Chat-derived prefill - set when the user clicks "Make task" on a chat
   // message bubble. Cleared whenever the composer is reopened from the
   // toolbar so a standard "New task" doesn't inherit stale chat context.
   const [composerPrefill, setComposerPrefill] = useState<{
@@ -205,7 +205,7 @@ export function InboxView({
     body?: string
   }>({})
   const [detailItem, setDetailItem] = useState<InboxItem | null>(null)
-  // Selected chat thread — second tenant of the docked pane. Mutually
+  // Selected chat thread - second tenant of the docked pane. Mutually
   // exclusive with `detailItem` (opening a task closes any open thread and
   // vice versa) so the user always sees exactly one detail surface.
   const [selectedThread, setSelectedThread] = useState<ChatThreadSummary | null>(null)
@@ -218,7 +218,7 @@ export function InboxView({
     [updateFilter],
   )
   const taskStatuses = useMemo(() => {
-    // "All" returns the full visible set (open + in_progress + done — cancelled
+    // "All" returns the full visible set (open + in_progress + done - cancelled
     // is the only archive bucket excluded). "Open" filters down to just the
     // open-status rows the AM hasn't started yet.
     if (taskFilter === "all") return VISIBLE_TASK_STATUSES
@@ -249,7 +249,7 @@ export function InboxView({
   // (Trengo messages, Monday updates, automation tasks) should appear
   // without a manual refresh. 15s feels live enough that the AM can keep
   // the tab open while doing other work and trust that anything new
-  // surfaces on its own — and it's cheap (one query per pane). Slack-y
+  // surfaces on its own - and it's cheap (one query per pane). Slack-y
   // realtime via Supabase channels would be cleaner but RLS blocks the
   // anon-key browser path; polling is the pragmatic choice until we
   // wire authenticated realtime.
@@ -274,7 +274,7 @@ export function InboxView({
   })
 
   // Tab-bar counts. The user's "what needs my attention" baseline number,
-  // independent of the in-tab status/source filter — flipping to the Done
+  // independent of the in-tab status/source filter - flipping to the Done
   // filter shouldn't make the Tasks tab badge claim "you have 240 things
   // to do!" The sidebar already polls /api/inbox/badge for its own count;
   // we share that cache here at the same 15s cadence as the lists so they
@@ -285,7 +285,7 @@ export function InboxView({
     unreadUpdates: number
     openTasks: number
     unreadChats: number
-    /** Roy 2026-06-09: CMs don't get the Client Inbox tab by default —
+    /** Roy 2026-06-09: CMs don't get the Client Inbox tab by default -
      *  it's an AM workflow. The server flips this to true when a CM
      *  (i.e. user mapped only as campaign_manager) has at least one
      *  unread chat row assigned to them (an @-mention or hand-routed
@@ -313,7 +313,7 @@ export function InboxView({
 
   /** Open the composer pre-filled from a chat message bubble. The thread's
    *  linked client id becomes the locked client, and a truncated message
-   *  body becomes the task title — AM only confirms + sets a due date. */
+   *  body becomes the task title - AM only confirms + sets a due date. */
   function openComposerFromChat({
     clientId,
     title,
@@ -335,7 +335,7 @@ export function InboxView({
    *
    *   - "remove": the row disappears from every matching list query. Used
    *     for actions that take the row out of the current view by definition
-   *     — Done, Cancel, Snooze (default filters hide snoozed), Reassign-away
+   *     - Done, Cancel, Snooze (default filters hide snoozed), Reassign-away
    *     (when "Assigned to me" is on and the new assignee isn't the actor).
    *
    *   - "mutate": the row stays visible but its fields update. The optional
@@ -344,7 +344,7 @@ export function InboxView({
    *     the row jumps between groups; assignee name updates in place).
    *
    * On error we roll back from a snapshot. On success we invalidate so the
-   * next render reconciles with the server (cheap — the result is identical
+   * next render reconciles with the server (cheap - the result is identical
    * to our optimistic guess in 99% of cases).
    */
   async function patchItem(
@@ -384,7 +384,7 @@ export function InboxView({
       })
       if (!res.ok) throw new Error(`PATCH failed (${res.status})`)
     } catch (err) {
-      // Roll back every snapshot we touched. Cheap — these are tiny lists.
+      // Roll back every snapshot we touched. Cheap - these are tiny lists.
       for (const [key, data] of snapshots) {
         queryClient.setQueryData(key, data)
       }
@@ -401,7 +401,7 @@ export function InboxView({
    * Permanently delete a row. Same optimistic-then-rollback pattern as
    * patchItem with mode=remove, but hits DELETE /api/inbox/:id instead of
    * PATCH. Used by the bulk-delete button. The server gates DELETE to
-   * author/admin — auto-ingested rows (Trengo/Monday/Fathom/automation,
+   * author/admin - auto-ingested rows (Trengo/Monday/Fathom/automation,
    * authored by the system HQ user) are admin-only delete, which is the
    * intended behaviour: an AM can Cancel a task they don't want, but only
    * an admin can wipe the audit trail entirely.
@@ -431,7 +431,7 @@ export function InboxView({
   const allUpdates = updatesQuery.data?.items ?? []
   const allTasks = tasksQuery.data?.items ?? []
 
-  // Free-text search over the loaded items. Cheap client-side filter — no
+  // Free-text search over the loaded items. Cheap client-side filter - no
   // round-trip needed since the lists are already capped by the server-side
   // `assignedToMe`/status filters. Searches title, body, client name and
   // author, so an AM can find "that thing about Vlex" via either the client
@@ -478,7 +478,7 @@ export function InboxView({
     [queryFilteredUpdates, updateSourceFilter],
   )
 
-  // Flat ordered list of items as they appear on screen — used by keyboard
+  // Flat ordered list of items as they appear on screen - used by keyboard
   // navigation (j/k) so Down/Up moves through Overdue → Today → Upcoming
   // (or Today → Yesterday → This week → Older for updates) the same way the
   // user reads top-to-bottom. Recomputed on filter/sort/source changes so
@@ -505,7 +505,7 @@ export function InboxView({
     }
   }, [flatVisibleItems, focusedItemId])
 
-  // Scroll the keyboard-focused row into view. Cheap — single querySelector
+  // Scroll the keyboard-focused row into view. Cheap - single querySelector
   // by data attribute, only fires when focus actually changes.
   useEffect(() => {
     if (!focusedItemId) return
@@ -515,7 +515,7 @@ export function InboxView({
     el?.scrollIntoView({ block: "nearest", behavior: "smooth" })
   }, [focusedItemId])
 
-  // Global keyboard shortcuts. Slack/Linear-style — j/k navigate, Enter
+  // Global keyboard shortcuts. Slack/Linear-style - j/k navigate, Enter
   // opens detail, e completes (done for tasks / read for updates), x
   // cancels a task, / focuses search. Skipped when the user is typing in
   // an input/textarea/contenteditable so the shortcuts don't hijack normal
@@ -538,7 +538,7 @@ export function InboxView({
       }
 
       // ? opens the shortcuts overlay (Slack/Linear default). Skip when
-      // typing or when the detail dialog is open — those own keyboard.
+      // typing or when the detail dialog is open - those own keyboard.
       if (e.key === "?" && !isTypingTarget(e.target) && !detailItem) {
         e.preventDefault()
         setShortcutsOpen(true)
@@ -616,7 +616,7 @@ export function InboxView({
         return
       }
 
-      // No more cancel shortcut — Cancel was retired in favour of a single
+      // No more cancel shortcut - Cancel was retired in favour of a single
       // Delete action. Hard delete needs an explicit confirm so we don't
       // bind it to a key (would be too easy to nuke the focused row).
     }
@@ -628,9 +628,9 @@ export function InboxView({
 
   // Per-client view (locked-client tab on client detail page) surfaces
   // tasks/updates linked to that client plus a Client Inbox (Trengo
-  // conversations) and Meetings sub-tab — keeping all per-client activity
+  // conversations) and Meetings sub-tab - keeping all per-client activity
   // under one tab. Global mode shows the cross-client Client Inbox.
-  // Team Inbox (Slack DMs) is intentionally not shown — Slack's API can't
+  // Team Inbox (Slack DMs) is intentionally not shown - Slack's API can't
   // expose human-to-human DMs, so we replace that workflow in Phase E
   // (Hub-native team chat) instead of half-syncing it.
   const tabBadge = badgeQuery.data
@@ -640,10 +640,10 @@ export function InboxView({
   const nowCount = tabBadge
     ? tabBadge.unreadUpdates + tabBadge.openTasks + tabBadge.unreadChats
     : undefined
-  // Roy 2026-06-09: CMs don't get Client Inbox by default — it's an AM
+  // Roy 2026-06-09: CMs don't get Client Inbox by default - it's an AM
   // workflow. The server signals CM-only via `showClientInbox=false` on
   // the badge; the UI hides the tab entirely. @-mentions land in the
-  // CM's Updates tab via the Trengo webhook fan-out — there's no
+  // CM's Updates tab via the Trengo webhook fan-out - there's no
   // dedicated Mentions tab.
   //
   // Defaults to true (= treat as non-CM) while the badge query resolves,
@@ -700,7 +700,7 @@ export function InboxView({
       ]
 
   // Auto-redirect when the Client Inbox tab disappears from the strip
-  // (CM audience — falls back to Now since CMs see mentions in Updates,
+  // (CM audience - falls back to Now since CMs see mentions in Updates,
   // not a separate chat tab).
   useEffect(() => {
     if (lockedClient) return
@@ -711,7 +711,7 @@ export function InboxView({
 
   const isChatTab = activeTab === "client-inbox"
   const isClientOnlyTab = activeTab === "meetings" || (!!lockedClient && activeTab === "client-inbox")
-  // Now tab is read-only triage — it shows what needs attention but doesn't
+  // Now tab is read-only triage - it shows what needs attention but doesn't
   // own the composer/search affordances those belong to (those live in the
   // tabs that author their own items).
   const isNowTab = activeTab === "now"
@@ -719,7 +719,7 @@ export function InboxView({
   // Unified detail surface: every tab (Now / Tasks / Updates / Client Inbox)
   // opens its detail as a right-side slide-in panel on xl+ screens. The
   // list area compresses on the left so the AM can keep jumping from row
-  // to row without closing the open ticket — no inline grid recompute =
+  // to row without closing the open ticket - no inline grid recompute =
   // no layout shake when switching tickets. Below xl, ItemDetailDialog
   // falls back to its modal slide-over with backdrop.
   const showDockedPane = detailItem !== null || selectedThread !== null
@@ -743,7 +743,7 @@ export function InboxView({
 
   /** Content of the docked slide-in panel. Picks the surface based on
    *  what's open: a Task/Update detail (ItemDetailDialog) or a chat thread
-   *  (ThreadView). Mutually exclusive — see openDetailItem / openThread.
+   *  (ThreadView). Mutually exclusive - see openDetailItem / openThread.
    *  The wrapping <aside> below provides positioning + slide-in animation. */
   function renderDockedContent(): React.ReactNode {
     if (detailItem) {
@@ -799,7 +799,7 @@ export function InboxView({
   // the list dominates and the detail is a slide-in.
   const dockSplit5050 = isChatTab && showDockedPane
 
-  // Shared full-width search input — Roy 2026-06-09 wants it RIGHT UNDER the
+  // Shared full-width search input - Roy 2026-06-09 wants it RIGHT UNDER the
   // sub-filter chip strip on every tab, spanning the full content width. Same
   // controlled state across all tabs so a query typed on Tasks carries over if
   // the user flips to Updates/Now/Client Inbox without re-typing.
@@ -841,7 +841,7 @@ export function InboxView({
           dockSplit5050 && "xl:max-w-[calc(50%-12px)]",
         )}
       >
-      {/* Migrated to PageHeader 2026-05-23 — drops the bespoke 28px h1 so
+      {/* Migrated to PageHeader 2026-05-23 - drops the bespoke 28px h1 so
           /inbox opens with the same visual rhythm as every other dashboard
           page (24px title, right-aligned actions row). Search input + Plus
           button + shortcut help live in the actions slot. */}
@@ -854,7 +854,7 @@ export function InboxView({
               // never collides visually with the primary action button (purple
               // "New update" / "New task") sitting right next to it. Active
               // state is signalled by a subtle primary-tinted background +
-              // border, not by switching to the full primary fill — Roy: two
+              // border, not by switching to the full primary fill - Roy: two
               // identical purple buttons next to each other made it unclear
               // which one was the action vs. the filter.
               <Button
@@ -892,7 +892,7 @@ export function InboxView({
 
       <TopTabs<MainTab> tabs={mainTabs} value={activeTab} onChange={setActiveTab} />
 
-      {/* Shared full-width search input — Roy 2026-06-09: lives DIRECTLY
+      {/* Shared full-width search input - Roy 2026-06-09: lives DIRECTLY
           UNDER the sub-filter strip on every tab so the chip strip and
           search field read as one unit. Rendered as a JSX variable below
           inside each tab block. The Meetings sub-tab is the one exception
@@ -914,7 +914,7 @@ export function InboxView({
             onJumpToTab={(tab) => setActiveTab(tab)}
             onOpenItem={openDetailItem}
             // Chat click opens the thread in the page-level slide-in aside
-            // — same UX as Tasks/Updates. No tab switch, no layout shake.
+            // - same UX as Tasks/Updates. No tab switch, no layout shake.
             onOpenThread={openThread}
           />
           </>
@@ -965,7 +965,7 @@ export function InboxView({
                   // Fan out DELETEs through the optimistic-remove path. The
                   // server gates DELETE to author/admin, so non-admin AMs
                   // attempting to delete auto-ingested rows will see them
-                  // re-appear after the rollback — which is the correct
+                  // re-appear after the rollback - which is the correct
                   // signal that they should Cancel instead of Delete.
                   for (const id of ids) deleteItem(id)
                 }}
@@ -973,10 +973,10 @@ export function InboxView({
                 onAction={(item, action) => {
                   // Optimistic strategy:
                   //   - Done, Snooze, Delete, and Reassign-away leave the
-                  //     active list under default filters — REMOVE so the
+                  //     active list under default filters - REMOVE so the
                   //     row disappears immediately.
                   //   - Reopen, Unsnooze, Reassign-staying, Rename keep the
-                  //     row in the list — MUTATE.
+                  //     row in the list - MUTATE.
                   if (action === "done") {
                     patchItem(item.id, { status: "done" }, { mode: "remove" })
                   } else if (action === "delete") {
@@ -1093,7 +1093,7 @@ export function InboxView({
                 }}
                 onAction={(item, action) => {
                   // Updates: Read/Unread is a per-row toggle that should leave
-                  // the row visible regardless of filter — even when the
+                  // the row visible regardless of filter - even when the
                   // current filter is e.g. "Unread", flipping a row is
                   // already a UX feedback signal. We mutate in place; the
                   // background invalidate will quietly drop it from the list
@@ -1115,7 +1115,7 @@ export function InboxView({
                     // priority='normal' on kind change; we also default the
                     // due date to today so the converted task lands in the
                     // Today section ready to act on. Optimistic remove from
-                    // the Updates list — the row migrates to Tasks.
+                    // the Updates list - the row migrates to Tasks.
                     const today = new Date().toISOString().slice(0, 10)
                     patchItem(
                       item.id,
@@ -1148,7 +1148,7 @@ export function InboxView({
               {/* Two ChatPane variants behind one tab. On xl+ we render the
                   docked-detail variant so the selected thread opens in the
                   right-side dock (same UX as Tasks/Updates). Below xl,
-                  ChatPane keeps its internal 360px|1fr split — there isn't
+                  ChatPane keeps its internal 360px|1fr split - there isn't
                   room for a separate dock at that width. */}
               <div className="hidden xl:block">
                 <ChatPane
@@ -1218,7 +1218,7 @@ export function InboxView({
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       </div>
 
-      {/* Docked slide-in aside — xl+ only. Sibling of the inbox content
+      {/* Docked slide-in aside - xl+ only. Sibling of the inbox content
           column so the list visibly compresses (rather than being hidden
           under a floating panel). Sticky positioning + own internal scroll
           so the detail follows the page as the user scrolls the list.
@@ -1248,7 +1248,7 @@ export function InboxView({
  * grid so AMs don't have to remember the bindings.
  *
  * Built on the same base-ui dialog the detail slide-over uses, but rendered
- * as a centered modal — small reference card, not a slide-out panel.
+ * as a centered modal - small reference card, not a slide-out panel.
  */
 function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   // Esc closes via base-ui's built-in handler.
@@ -1354,7 +1354,7 @@ function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void
 
 /**
  * Inbox-zero affordance for the Updates tab. Renders only when there
- * are unread updates currently visible — tapping it marks all of them
+ * are unread updates currently visible - tapping it marks all of them
  * read in one shot (one PATCH per row through the optimistic path).
  * Hidden when nothing is unread, so a clean tab stays clean.
  */
@@ -1408,7 +1408,7 @@ function usePersistedState<T>(key: string, initial: T): [T, (v: T) => void] {
         setValue(JSON.parse(raw) as T)
       }
     } catch {
-      // Bad JSON or storage unavailable — stick with the initial value.
+      // Bad JSON or storage unavailable - stick with the initial value.
     }
     hydratedRef.current = true
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1422,7 +1422,7 @@ function usePersistedState<T>(key: string, initial: T): [T, (v: T) => void] {
     try {
       localStorage.setItem(key, JSON.stringify(value))
     } catch {
-      // ignore — full storage shouldn't break the UI
+      // ignore - full storage shouldn't break the UI
     }
   }, [key, value])
 
@@ -1450,11 +1450,11 @@ function EmptyState({ text, onCreate }: { text: string; onCreate?: () => void })
  * Inline quick-add bar for tasks. Sits at the top of the Tasks tab; type a
  * title, pick a client (or skip if locked-client), Enter creates the task on
  * the current user with due=today. Aimed at the mid-triage moment when the
- * AM thinks "I need to do X for klant Y" — full composer dialog is overkill
+ * AM thinks "I need to do X for klant Y" - full composer dialog is overkill
  * and breaks flow.
  *
  * Behaviour:
- *  - Title input is the focused affordance — wide and always-visible.
+ *  - Title input is the focused affordance - wide and always-visible.
  *  - Client picker collapses to nothing when lockedClient is set (we already
  *    know who it's for).
  *  - Date defaults to today; user can override before submit.
@@ -1462,7 +1462,7 @@ function EmptyState({ text, onCreate }: { text: string; onCreate?: () => void })
  *    is missing, focus jumps to the picker instead so the user knows what's
  *    blocking.
  *  - After successful submit, the title clears but the client selection
- *    sticks — so quick-adding multiple tasks for the same client is fast.
+ *    sticks - so quick-adding multiple tasks for the same client is fast.
  *  - On error, message shows under the bar; nothing else changes.
  */
 function QuickAddTaskBar({
@@ -1480,7 +1480,7 @@ function QuickAddTaskBar({
 }) {
   const [title, setTitle] = useState("")
   const [clientId, setClientId] = useState<string>(lockedClient?.id ?? "")
-  // Tasks default to "me" — AMs typically jot down their own to-dos via
+  // Tasks default to "me" - AMs typically jot down their own to-dos via
   // QuickAdd and reassign via the composer or row action when needed.
   const [assigneeId, setAssigneeId] = useState<string>(currentUserId)
   const [dueDate, setDueDate] = useState<string>(() =>
@@ -1561,7 +1561,7 @@ function QuickAddTaskBar({
               setTitle("")
             }
           }}
-          placeholder="Add a task — type and Enter"
+          placeholder="Add a task - type and Enter"
           disabled={submitting}
           className="flex-1 bg-transparent text-[15px] placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
         />
@@ -1613,10 +1613,10 @@ function QuickAddTaskBar({
 }
 
 /**
- * Quick-add bar for Updates — same speed-of-action principle as the Tasks
+ * Quick-add bar for Updates - same speed-of-action principle as the Tasks
  * quick-add: title input, client picker, assignee picker (since updates
  * are addressed to someone specific), Enter creates. No due date, no
- * priority — those are task concepts. Submit POST is kind=update,
+ * priority - those are task concepts. Submit POST is kind=update,
  * status=unread by default per the create endpoint.
  */
 function QuickAddUpdateBar({
@@ -1635,7 +1635,7 @@ function QuickAddUpdateBar({
   const [title, setTitle] = useState("")
   const [clientId, setClientId] = useState<string>(lockedClient?.id ?? "")
   // Default the recipient to the first teammate that isn't the current user
-  // — updates need an audience and "to myself" is rarely useful. Falls back
+  // - updates need an audience and "to myself" is rarely useful. Falls back
   // to the current user when there's only one Hub user (dev environment).
   const defaultAssigneeId = useMemo(() => {
     const other = users.find((u) => u.id !== currentUserId)
@@ -1721,7 +1721,7 @@ function QuickAddUpdateBar({
               setTitle("")
             }
           }}
-          placeholder="Add an update — type and Enter"
+          placeholder="Add an update - type and Enter"
           disabled={submitting}
           className="flex-1 bg-transparent text-[15px] placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
         />
@@ -1846,7 +1846,7 @@ function QuickClientPicker({
               type="button"
               onMouseDown={(e) => {
                 // mousedown so the click fires before the input's onBlur closes
-                // the popover — otherwise the click would be swallowed.
+                // the popover - otherwise the click would be swallowed.
                 e.preventDefault()
                 pick(c)
               }}
@@ -1889,7 +1889,7 @@ function groupTasksByDeadline(tasks: InboxItem[]): TaskGroups {
   for (const t of tasks) {
     // No due date = treat as Today. Roy's directive: composer enforces a
     // due date on every new task, but historical rows or auto-ingested ones
-    // may still be null — surface them in the most actionable bucket rather
+    // may still be null - surface them in the most actionable bucket rather
     // than hiding them in a "No due date" section that requires extra
     // clicks to find.
     if (!t.dueDate) {
@@ -1988,13 +1988,13 @@ function SectionHeader({
   onToggle: () => void
   /** Bulk-select state for the rows in this section. Hover-revealed
    *  checkbox in the header lets the AM tick every row in Today/Overdue/
-   *  Upcoming with one click. Optional — updates don't have bulk-select. */
+   *  Upcoming with one click. Optional - updates don't have bulk-select. */
   selectAllState?: "none" | "some" | "all"
   onToggleSelectAll?: () => void
 }) {
   const t = SECTION_TONES[tone]
   const showSelectAll = !!onToggleSelectAll
-  // Compact divider style — mirrors NowSection so all section headers in
+  // Compact divider style - mirrors NowSection so all section headers in
   // the inbox share the same visual language. Reads as a label + rule
   // rather than a card, so the eye can tell at a glance that headers are
   // not items. Bulk-select checkbox (when present) sits between the
@@ -2198,7 +2198,7 @@ function useTaskCollapse() {
       const parsed = JSON.parse(raw) as Partial<Record<TaskSectionKey, boolean>>
       setCollapsed((s) => ({ ...s, ...parsed }))
     } catch {
-      // ignore — bad localStorage shouldn't break the page
+      // ignore - bad localStorage shouldn't break the page
     }
   }, [])
 
@@ -2230,7 +2230,7 @@ function GroupedTasks({
   showClient: boolean
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: TaskAction) => void
-  /** Bulk delete handler — gets the selected ids and is responsible for
+  /** Bulk delete handler - gets the selected ids and is responsible for
    *  fanning out DELETE requests with optimistic cache removal. Optional
    *  because the per-row UI never deletes (Cancel is the row-level
    *  equivalent); only the bulk bar offers permanent delete. */
@@ -2287,7 +2287,7 @@ function GroupedTasks({
   function handleBulk(action: TaskAction) {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    // Optimistic clear — fan out the per-item PATCHes through the existing
+    // Optimistic clear - fan out the per-item PATCHes through the existing
     // single-item action handler so each fires through patchItem + cache
     // invalidation in the parent.
     const items = tasks.filter((t) => selectedIds.has(t.id))
@@ -2298,7 +2298,7 @@ function GroupedTasks({
   function handleBulkDeleteSelected() {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
-    // Confirm explicitly — delete is destructive and there's no undo path.
+    // Confirm explicitly - delete is destructive and there's no undo path.
     // Cancel is the soft alternative; if the user wanted that they'd have
     // hit the X button instead.
     const ok = window.confirm(
@@ -2380,12 +2380,12 @@ function GroupedTasks({
  *
  * Reassign uses a searchable user popover (same pattern as the per-row one,
  * just anchored above the bar instead of below). Delete confirms first
- * because it can't be undone — Cancel is the soft alternative for
+ * because it can't be undone - Cancel is the soft alternative for
  * "this isn't relevant" without losing the audit trail.
  */
 /** Shared chrome for the floating bulk-action bars (Tasks + Updates). Roy
  *  2026-05-22: "bulk bar mag eigen pattern blijven maar moet wel in dezelfde
- *  huisstijl — minder rond, dikker, iets meer vierkant." So: rounded-xl
+ *  huisstijl - minder rond, dikker, iets meer vierkant." So: rounded-xl
  *  container (was rounded-full), h-9 px-3 rounded-md chip buttons (was h-7
  *  px-3 rounded-full), same coloured hover tints as before. */
 const BULK_BAR_CHIP =
@@ -2434,7 +2434,7 @@ function BulkActionBar({
         type="button"
         onClick={onDelete}
         className={cn(BULK_BAR_CHIP, "hover:bg-red-500/15 hover:text-red-500")}
-        title="Verwijder geselecteerde taken — dit kan niet ongedaan worden"
+        title="Verwijder geselecteerde taken - dit kan niet ongedaan worden"
       >
         <Trash2 className="h-3.5 w-3.5" />
         Delete
@@ -2717,7 +2717,7 @@ function useUpdateCollapse() {
   const [collapsed, setCollapsed] = useState<Record<UpdateSectionKey, boolean>>({
     today: false,
     yesterday: false,
-    thisWeek: true, // default-collapsed — older context, less actionable
+    thisWeek: true, // default-collapsed - older context, less actionable
     older: true,
   })
   useEffect(() => {
@@ -2756,7 +2756,7 @@ function GroupedUpdates({
   showClient: boolean
   onItemClick: (item: InboxItem) => void
   onAction: (item: InboxItem, action: UpdateAction) => void
-  /** Bulk delete handler — fans out DELETE requests with optimistic
+  /** Bulk delete handler - fans out DELETE requests with optimistic
    *  cache removal in the parent. Same shape as GroupedTasks. */
   onBulkDelete: (ids: string[]) => void
   focusedItemId?: string | null
@@ -2943,7 +2943,7 @@ function UpdateBulkActionBar({
         type="button"
         onClick={onDelete}
         className={cn(BULK_BAR_CHIP, "hover:bg-red-500/15 hover:text-red-500")}
-        title="Verwijder geselecteerde updates — dit kan niet ongedaan worden"
+        title="Verwijder geselecteerde updates - dit kan niet ongedaan worden"
       >
         <Trash2 className="h-3.5 w-3.5" />
         Delete
@@ -2985,7 +2985,7 @@ function filterByQuery(items: InboxItem[], query: string): InboxItem[] {
 /** Free-text search across chat thread summaries. Same AND semantics as
  *  filterByQuery so a single search input feels consistent across tabs.
  *  Matches the contact name, the linked client name, and the latest message
- *  preview — Roy 2026-06-09 wants "zoeken op naam én bericht". Full message
+ *  preview - Roy 2026-06-09 wants "zoeken op naam én bericht". Full message
  *  history isn't loaded for the summary list, so a hit inside an older
  *  message still requires opening the thread (acceptable for v1; a
  *  server-side full-text endpoint can come later). */
@@ -3006,7 +3006,7 @@ function filterChatsByQuery(threads: ChatThreadSummary[], query: string): ChatTh
 }
 
 /**
- * Compact chip strip below the Tasks status filter — narrow tasks to a
+ * Compact chip strip below the Tasks status filter - narrow tasks to a
  * single source (Trengo / Monday / Automation / Watchlist / etc). Helps
  * Roy's "tasjes is super onoverzichtelijk" pain when a stack of automation
  * tasks drowns out a single Monday request he actually needs to action.
@@ -3027,7 +3027,7 @@ function TaskSourceChips({
   totalCount: number
 }) {
   const locale = useLocale()
-  // Only render the strip if there's more than one source with content —
+  // Only render the strip if there's more than one source with content -
   // a single-source workspace doesn't need the affordance.
   const populatedSources = (Object.keys(counts) as InboxSource[]).filter(
     (s) => (counts[s] ?? 0) > 0,
@@ -3083,7 +3083,7 @@ function SourceChip({
 }
 
 /**
- * "Now" — the cross-source triage feed.
+ * "Now" - the cross-source triage feed.
  *
  * Merges three independent queries (tasks, updates, chats) into a single
  * scannable surface so an AM doesn't have to switch tabs to figure out
@@ -3093,7 +3093,7 @@ function SourceChip({
  * Read-only by design: items keep their full action surface (mark done,
  * snooze, reassign) via the InboxListRow component, but creating new items
  * happens in the dedicated tabs. Clicking a chat card switches to the
- * Client Inbox tab — opening a specific thread isn't wired yet (one click
+ * Client Inbox tab - opening a specific thread isn't wired yet (one click
  * away is acceptable for v1).
  */
 function NowFeed({
@@ -3120,7 +3120,7 @@ function NowFeed({
   onJumpToTab: (tab: "tasks" | "updates" | "client-inbox") => void
   onOpenItem: (item: InboxItem) => void
   /** Open a chat thread. The parent renders ThreadView in the page-level
-   *  slide-in aside — same UX as Tasks/Updates. No tab switch. */
+   *  slide-in aside - same UX as Tasks/Updates. No tab switch. */
   onOpenThread: (thread: ChatThreadSummary) => void
 }) {
   const locale = useLocale()
@@ -3128,7 +3128,7 @@ function NowFeed({
 
   // Overdue + today tasks: open or in_progress, assigned to me, not snoozed.
   // We over-fetch slightly (all active assigned-to-me) and filter to due≤today
-  // client-side rather than adding a dueBefore param to the API — keeps the
+  // client-side rather than adding a dueBefore param to the API - keeps the
   // server fetcher simple, and the assigned-to-me set is small enough that
   // shipping a few extra rows is fine.
   const tasksQuery = useQuery<{ items: InboxItem[] }>({
@@ -3178,7 +3178,7 @@ function NowFeed({
       const due = new Date(item.dueDate + "T00:00:00")
       if (due.getTime() < todayStart.getTime()) o.push(item)
       else if (due.getTime() < tomorrowStart.getTime()) t.push(item)
-      // Future tasks intentionally excluded — they belong in the Tasks tab.
+      // Future tasks intentionally excluded - they belong in the Tasks tab.
     }
     return { overdue: o, today: t }
   }, [tasksQuery.data, todayStart, tomorrowStart, searchQuery])
@@ -3194,7 +3194,7 @@ function NowFeed({
     return filterChatsByQuery(all, searchQuery)
   }, [chatsQuery.data, searchQuery])
 
-  // Combined "Unread inbox" feed — interleave unread updates + unread chat
+  // Combined "Unread inbox" feed - interleave unread updates + unread chat
   // threads, sorted by most-recent activity. Roy: one consolidated section
   // instead of two separate ones, so the AM has a single "what's new" list
   // to scan. The discriminated union below preserves per-entry typing so
@@ -3224,7 +3224,7 @@ function NowFeed({
   const loading =
     tasksQuery.isLoading || updatesQuery.isLoading || chatsQuery.isLoading
 
-  // Top-of-Now summary cards — three jump-cards showing what's still open
+  // Top-of-Now summary cards - three jump-cards showing what's still open
   // across the AM's queues so the inbox state is legible at a glance. The
   // cards are always rendered (even on "all caught up") so the user has a
   // consistent landing zone; when everything is zero the cards just confirm
@@ -3256,13 +3256,13 @@ function NowFeed({
     </div>
   )
 
-  // Sections list — same structure regardless of whether the inline detail
+  // Sections list - same structure regardless of whether the inline detail
   // is open. When open, the parent caller wraps it in the 50/50 grid below
   // so the list scrolls inside the left column with the detail on the
   // right; when closed, the sections render full-width as before.
   //
   // Outer gap is small (space-y-1) because each section already has its
-  // own internal mb-3 below the items — keeps spacing consistent whether
+  // own internal mb-3 below the items - keeps spacing consistent whether
   // a section is collapsed or expanded.
   const sectionsList = (
     <div className="space-y-1">
@@ -3337,9 +3337,9 @@ function NowFeed({
     </div>
   )
 
-  // Body — single column of "what needs attention right now": overdue
+  // Body - single column of "what needs attention right now": overdue
   // tasks, today's tasks, and the interleaved unread updates + unread
-  // chats feed. Roy 2026-06-09: read items are out of scope for Now —
+  // chats feed. Roy 2026-06-09: read items are out of scope for Now -
   // anything already-read isn't open and shouldn't compete for screen
   // real estate here. The Updates tab is where you go to scan the
   // history; Now is strictly the to-do queue.
@@ -3371,7 +3371,7 @@ function NowFeed({
  *  treatment elsewhere (violet/sky/emerald) so the same visual language
  *  ties the summary to the lists below. Click jumps to that tab.
  *
- *  The "0" state is rendered intentionally — a deliberate zero is more
+ *  The "0" state is rendered intentionally - a deliberate zero is more
  *  useful than a missing card ("yes, I have nothing in Tasks" reassures
  *  more than the card just being absent). Zero cards get a muted treatment
  *  so the AM's eye lands on the cards that actually need attention. */
@@ -3446,7 +3446,7 @@ function NowSummaryCard({
 /** Section header + collapsible body for the Now feed.
  *
  *  Roy: the previous design rendered each section header as a full-width
- *  coloured card, which made headers and rows compete visually — the eye
+ *  coloured card, which made headers and rows compete visually - the eye
  *  couldn't tell at a glance which was a label vs. an item. New treatment
  *  is a compact "section divider" style: small tonal icon pill, label in
  *  the tone colour, count, a thin rule extending to the right edge, and
@@ -3512,7 +3512,7 @@ function NowSection({
         <span className="text-[11px] tabular-nums text-muted-foreground/70 font-medium">
           {count}
         </span>
-        {/* Hairline rule extending to the right edge — gives the header a
+        {/* Hairline rule extending to the right edge - gives the header a
             divider feel without a heavy card background. */}
         <span className="flex-1 ml-1 h-px bg-border/60" aria-hidden />
       </button>
@@ -3522,7 +3522,7 @@ function NowSection({
 }
 
 /** Compact card for an unread chat thread in the Now feed. Clicking opens
- *  the Client Inbox tab — selecting the specific thread is a v2 nicety
+ *  the Client Inbox tab - selecting the specific thread is a v2 nicety
  *  (one extra click in v1 is acceptable). */
 function NowChatCard({
   thread,
@@ -3534,7 +3534,7 @@ function NowChatCard({
   openLabel: string
 }) {
   // Mirrors the visual structure of ThreadRow in Client Inbox so chat
-  // tickets read identically across the inbox — Roy: "geen dubbel
+  // tickets read identically across the inbox - Roy: "geen dubbel
   // tekstwolkje en CLIENT chip; gewoon WhatsApp-icoontje zoals bij
   // Client Inbox". Card wrapper (border + bg) is kept here because in Now
   // the row sits inline with task/update cards, where the eye expects a
@@ -3555,7 +3555,7 @@ function NowChatCard({
       title={openLabel}
       className="group relative w-full text-left rounded-lg border border-border bg-card hover:border-border hover:bg-muted/40 hover:shadow-sm transition-all px-4 py-3 overflow-hidden cursor-pointer"
     >
-      {/* Left-edge unread bar — same convention as ThreadRow in Client
+      {/* Left-edge unread bar - same convention as ThreadRow in Client
           Inbox. Hairline (w-0.5) so it doesn't compete with row content. */}
       {isUnread && (
         <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-primary" aria-hidden />
@@ -3573,7 +3573,7 @@ function NowChatCard({
               >
                 {thread.primaryName}
               </span>
-              {/* No ChannelBadge here — SourceIcon already encodes the
+              {/* No ChannelBadge here - SourceIcon already encodes the
                   channel (WhatsApp brand, email icon, Slack purple, …)
                   so repeating "WhatsApp" as a text pill is dubbel-op. */}
             </div>

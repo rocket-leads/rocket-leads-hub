@@ -28,7 +28,7 @@ type View = "selected" | "available"
  * Roy 2026-05-22 (second pass):
  *   - Search input moved below the tab strip so it visually belongs to
  *     the active tab.
- *   - Dropped the "Verberg inactief" toggle — both active and inactive
+ *   - Dropped the "Verberg inactief" toggle - both active and inactive
  *     campaigns are shown in every tab, with status surfaced as a small
  *     coloured dot per row (green=ACTIVE, amber=PAUSED, grey=ARCHIVED).
  *   - Sorted active first within each tab so the relevant rows are
@@ -123,7 +123,7 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
 
   // Sort: ACTIVE first, then PAUSED, then everything else; alphabetical
   // within each status bucket. Roy: actieve bovenaan zodat de CM die als
-  // eerste ziet — inactieven blijven zichtbaar maar staan onderaan.
+  // eerste ziet - inactieven blijven zichtbaar maar staan onderaan.
   const STATUS_RANK: Record<string, number> = {
     ACTIVE: 0,
     PAUSED: 1,
@@ -177,7 +177,7 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
 
   return (
     <div className="space-y-3">
-      {/* Tab strip + save indicator. Search lives BELOW per Roy 2026-05-22 —
+      {/* Tab strip + save indicator. Search lives BELOW per Roy 2026-05-22 -
           it visually belongs to the active tab's list. */}
       <TopTabs<View>
         tabs={[
@@ -188,7 +188,7 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
         onChange={setView}
         rightContent={
           <div className="flex items-center gap-2">
-            {/* Save indicator — feedback that toggles actually persisted.
+            {/* Save indicator - feedback that toggles actually persisted.
                 Was missing; Roy thought selections were silently dropping. */}
             <SaveIndicator savingCount={savingCount} savedAt={savedAt} />
             {visibleAll.length > 0 && (
@@ -226,7 +226,7 @@ export function CampaignSelector({ campaigns, isLoading, mondayItemId, onSelecti
           selected.length === 0 && q ? (
             "Geen geselecteerde campagne matcht je zoekopdracht."
           ) : selected.length === 0 ? (
-            "Geen campagnes geselecteerd — alle spend telt mee in KPI's."
+            "Geen campagnes geselecteerd - alle spend telt mee in KPI's."
           ) : (
             `${selected.length} ${
               selected.length === 1 ? "campagne voedt" : "campagnes voeden"
@@ -265,7 +265,7 @@ function SaveIndicator({
   savedAt: number | null
 }) {
   // Saving: spinner + "Opslaan…". Recently saved (≤3s): green ✓ + "Opgeslagen".
-  // Otherwise nothing — silence is the resting state.
+  // Otherwise nothing - silence is the resting state.
   const [, force] = useState(0)
   useMemo(() => {
     if (!savedAt) return

@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/pedro/research/library — save a research entry
+// POST /api/pedro/research/library - save a research entry
 export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// DELETE /api/pedro/research/library?id=... — delete a research entry
+// DELETE /api/pedro/research/library?id=... - delete a research entry
 export async function DELETE(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

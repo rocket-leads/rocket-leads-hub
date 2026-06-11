@@ -22,7 +22,7 @@ type Props = {
 
 /** Persisted shape for this step's `content` blob. The AM edits each
  *  field in place. Competitor analysis lives on Pedro's research tab
- *  (CM craft) since 2026-06-10 — not duplicated here anymore. */
+ *  (CM craft) since 2026-06-10 - not duplicated here anymore. */
 type BriefContent = {
   brief: {
     bedrijf: string
@@ -54,14 +54,14 @@ const EMPTY: BriefContent = {
 }
 
 /**
- * Client Brief step. Calls Pedro's existing /api/pedro/auto-brief — the
- * same generator the CM's brief tab uses — to produce an AI draft from
+ * Client Brief step. Calls Pedro's existing /api/pedro/auto-brief - the
+ * same generator the CM's brief tab uses - to produce an AI draft from
  * the kick-off transcript + Trengo + Monday context. AM edits inline
  * and saves & continues. Competitor analysis moved to Pedro (CM craft)
- * as of 2026-06-10 — no longer captured here.
+ * as of 2026-06-10 - no longer captured here.
  */
 export function ClientBriefStep({ step, mondayItemId, client, locale, nextKey, onStepSaved }: Props) {
-  // Load prior content (revisit case) — render whatever was last saved.
+  // Load prior content (revisit case) - render whatever was last saved.
   const stored = step.content as BriefContent | null
   const [content, setContent] = useState<BriefContent>(() => {
     if (stored && typeof stored === "object" && "brief" in stored) {
@@ -130,7 +130,7 @@ export function ClientBriefStep({ step, mondayItemId, client, locale, nextKey, o
 
   return (
     <div className="space-y-5">
-      {/* AI generation row — single button when empty, "Re-generate" once filled. */}
+      {/* AI generation row - single button when empty, "Re-generate" once filled. */}
       <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-4 py-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -161,7 +161,7 @@ export function ClientBriefStep({ step, mondayItemId, client, locale, nextKey, o
         </div>
       )}
 
-      {/* Brief form — flat layout, no card chrome to keep it focused. */}
+      {/* Brief form - flat layout, no card chrome to keep it focused. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label={t("onboarding.wizard.brief.field.bedrijf", locale)}>
           <Input

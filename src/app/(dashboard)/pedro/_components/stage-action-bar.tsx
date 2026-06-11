@@ -18,7 +18,7 @@ import type { Locale } from "@/lib/i18n/types"
  *    These are what client detail page + cross-client examples read.
  *
  * Bar lives at the top of each stage so the CM always knows:
- *  - what the latest saved version is (vN — date)
+ *  - what the latest saved version is (vN - date)
  *  - that the working draft auto-saves continuously
  *  - one click to commit the current draft as a new version
  */
@@ -34,7 +34,7 @@ type LatestVersion = {
 type Props = {
   clientId: string | null
   stage: SaveStage
-  /** Pedro campaign scope — saves land under this campaign_number.
+  /** Pedro campaign scope - saves land under this campaign_number.
    *  Defaults to 1 for back-compat. */
   campaignNumber?: number
   /** Function returning the current draft data to snapshot. Called when

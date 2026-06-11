@@ -75,7 +75,7 @@ type FieldSuggestion = {
 type EnrichmentContent = {
   suggestions?: Record<BriefFields, FieldSuggestion>
   insufficientTranscript?: boolean
-  /** Per-field accept state — the AM's decision per row. Persisted
+  /** Per-field accept state - the AM's decision per row. Persisted
    *  across saves so a refresh doesn't lose accept/reject decisions
    *  before they hit "Approve & continue". */
   accepted?: Partial<Record<BriefFields, boolean>>
@@ -84,7 +84,7 @@ type EnrichmentContent = {
 }
 
 /**
- * Stap 3 — Brief enrichment diff view.
+ * Stap 3 - Brief enrichment diff view.
  *
  * Reads:
  *   - AM's live brief draft from Stap 1's content
@@ -107,7 +107,7 @@ export function BriefEnrichmentStep({
   const suggestions = content.suggestions ?? null
   const insufficientTranscript = Boolean(content.insufficientTranscript)
 
-  // Local per-field accept state — initialised from persisted content so
+  // Local per-field accept state - initialised from persisted content so
   // a page reload preserves the AM's decisions.
   const [accepted, setAccepted] = useState<Partial<Record<BriefFields, boolean>>>(
     content.accepted ?? {},
@@ -126,7 +126,7 @@ export function BriefEnrichmentStep({
       return res.json()
     },
     onSuccess: () => {
-      // Reset accept state — new suggestions, new decisions.
+      // Reset accept state - new suggestions, new decisions.
       setAccepted({})
       queryClient.invalidateQueries({ queryKey: ["onboarding-wizard", mondayItemId] })
     },
@@ -156,7 +156,7 @@ export function BriefEnrichmentStep({
     },
   })
 
-  // ── Initial empty state — needs "generate" before anything to diff ──
+  // ── Initial empty state - needs "generate" before anything to diff ──
   if (!suggestions) {
     return (
       <div className="space-y-4">
@@ -199,7 +199,7 @@ export function BriefEnrichmentStep({
     )
   }
 
-  // ── Diff view — one row per field ──
+  // ── Diff view - one row per field ──
   const usefulFields = FIELD_ORDER.filter(
     (f) => (suggestions[f]?.suggestion ?? "").length > 0,
   )
@@ -249,7 +249,7 @@ export function BriefEnrichmentStep({
         </ul>
       )}
 
-      {/* Footer — approve & save */}
+      {/* Footer - approve & save */}
       <div className="flex items-center justify-between gap-3 pt-4 border-t border-border/40">
         <p className="text-[11px] text-muted-foreground">
           {usefulFields.length > 0
@@ -427,7 +427,7 @@ function computeFinalBrief(
       continue
     }
     if (accepted[field] !== true) {
-      // Rejected or undecided — keep AM's value as-is.
+      // Rejected or undecided - keep AM's value as-is.
       out[field] = s.amValue
       continue
     }
@@ -435,7 +435,7 @@ function computeFinalBrief(
     if (s.mode === "replace") {
       out[field] = s.suggestion
     } else {
-      // add — append to AM's value with a separator. Empty AM value
+      // add - append to AM's value with a separator. Empty AM value
       // becomes the suggestion outright (no leading newline cruft).
       out[field] = s.amValue
         ? `${s.amValue}\n\n${s.suggestion}`

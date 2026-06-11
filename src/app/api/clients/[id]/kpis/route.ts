@@ -41,7 +41,7 @@ export async function GET(
       .single()
       .then((res) => {
         if (res.error && (res.error.code === "PGRST204" || res.error.message?.includes("monday_client_board_id"))) {
-          console.warn("[kpis] monday_client_board_id column missing — querying without it")
+          console.warn("[kpis] monday_client_board_id column missing - querying without it")
           return supabase.from("clients").select("id, meta_ad_account_id, column_mapping_override").eq("monday_item_id", mondayItemId).single()
         }
         return res
@@ -49,7 +49,7 @@ export async function GET(
     supabase.from("settings").select("value").eq("key", "board_config").single(),
   ])
   const client = clientResult.data as { id: string; meta_ad_account_id: string | null; monday_client_board_id?: string | null; column_mapping_override?: Record<string, string> | null } | null
-  // settingsRow used elsewhere historically — kept around so the destructure
+  // settingsRow used elsewhere historically - kept around so the destructure
   // above stays stable, but no field is currently read from it.
   void settingsRow
 
@@ -78,7 +78,7 @@ export async function GET(
 
   // 24h TTL so the daily refresh-kpi cron's pre-warmed entries stay valid
   // for the full day between cron runs. Without this the default 10min TTL
-  // would expire 10 minutes after the cron — defeating the whole pre-warm
+  // would expire 10 minutes after the cron - defeating the whole pre-warm
   // (Roy, May 2026). Stale data is at most ~24h old; the Refresh button
   // bypasses this entirely for ad-hoc freshness.
   const PER_CLIENT_TTL_MS = 24 * 60 * 60 * 1000
@@ -116,7 +116,7 @@ export async function GET(
   const kpis = calculateKpis(adSpend, leadItems, startDate, endDate)
 
   // Fall back to Meta-reported leads whenever Monday returns zero in this window but Meta
-  // reports leads — covers no board, access denied, broken Zapier sync, wrong column mapping.
+  // reports leads - covers no board, access denied, broken Zapier sync, wrong column mapping.
   // Deals stay as-is since Meta can't track those.
   const metaLeadsReported = relevantInsights.reduce((sum, i) => sum + i.leads, 0)
   if (kpis.leads === 0 && metaLeadsReported > 0) {

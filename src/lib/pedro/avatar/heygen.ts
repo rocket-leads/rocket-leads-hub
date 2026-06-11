@@ -5,11 +5,11 @@ import type {
 } from "@/lib/pedro/avatar/types"
 
 /**
- * Heygen provider — STUB IMPLEMENTATION.
+ * Heygen provider - STUB IMPLEMENTATION.
  *
  * Heygen has a real REST API (https://api.heygen.com/v2/...) for
  * generating avatar videos from text. This stub describes the call
- * shapes Pedro needs without making the actual requests yet — keeps
+ * shapes Pedro needs without making the actual requests yet - keeps
  * the abstraction layer compileable while we firm up:
  *
  *  1. Which Heygen account RL uses (single-org or per-client?)
@@ -35,18 +35,18 @@ export class HeygenProvider implements AvatarProvider {
 
   async startRender(_input: AvatarRenderInput): Promise<AvatarRenderJob> {
     throw new Error(
-      "HeygenProvider.startRender not yet implemented — see lib/pedro/avatar/heygen.ts comment block",
+      "HeygenProvider.startRender not yet implemented - see lib/pedro/avatar/heygen.ts comment block",
     )
   }
 
   async pollStatus(_externalJobId: string): Promise<AvatarRenderJob> {
     throw new Error(
-      "HeygenProvider.pollStatus not yet implemented — see lib/pedro/avatar/heygen.ts comment block",
+      "HeygenProvider.pollStatus not yet implemented - see lib/pedro/avatar/heygen.ts comment block",
     )
   }
 
   async listAvatars(): Promise<Array<{ id: string; name: string; previewUrl?: string }>> {
-    // Returning [] is safe for now — Pedro UI shows "configure Heygen
+    // Returning [] is safe for now - Pedro UI shows "configure Heygen
     // first" until this returns real data.
     return []
   }

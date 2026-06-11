@@ -14,11 +14,11 @@ import type { EditableParts } from "@/lib/clients/client-update-template"
  *
  * What the hook does:
  *   1. Debounced save (800ms) on every `parts` change after the seed
- *   2. Immediate save via `flushNow()` — the caller invokes this from the
+ *   2. Immediate save via `flushNow()` - the caller invokes this from the
  *      sendMutation `onError` so the latest edit is safe even before the
  *      AM can read the error toast
- *   3. Unmount flush — catches "close the sheet right after typing"
- *   4. `beforeunload` flush via `keepalive: true` — catches hard reloads
+ *   3. Unmount flush - catches "close the sheet right after typing"
+ *   4. `beforeunload` flush via `keepalive: true` - catches hard reloads
  *      and tab closes (regular `fetch` is killed when the page unloads;
  *      keepalive keeps the request alive for up to 64KB after navigation)
  *
@@ -31,7 +31,7 @@ import type { EditableParts } from "@/lib/clients/client-update-template"
  * dialog can use it unconditionally without branching.
  *
  * Roy 2026-05-23: Danny lost edits after a Trengo send failed. Earlier
- * versions only had debounced autosave in the queue editor — the
+ * versions only had debounced autosave in the queue editor - the
  * per-client dialog had none, and even the queue editor relied on the
  * unmount flush which doesn't fire on hard reload.
  */
@@ -82,7 +82,7 @@ export function useWeeklyDraftAutosave(args: {
   useEffect(() => {
     if (suspendDuring) return
     if (!draftId || !parts) return
-    if (parts === seedRef.current) return // initial render — nothing to save
+    if (parts === seedRef.current) return // initial render - nothing to save
     const handle = setTimeout(() => {
       void savePartsToDraft(draftId, parts, { keepalive: false })
     }, 800)
@@ -122,7 +122,7 @@ async function savePartsToDraft(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ parts }),
       // `keepalive: true` lets the browser keep this fetch alive past
-      // navigation / page-unload — required for the beforeunload path
+      // navigation / page-unload - required for the beforeunload path
       // because a normal fetch gets aborted the moment the page goes
       // away, taking the last edit with it.
       keepalive: opts.keepalive,

@@ -10,7 +10,7 @@
  * Keep this module dependency-free.
  */
 
-/** Threshold for "prev period had substantial activity" — see isPrevPeriodReliable. */
+/** Threshold for "prev period had substantial activity" - see isPrevPeriodReliable. */
 export const PREV_PERIOD_COVERAGE_THRESHOLD = 0.8
 
 function daysBetween(startDate: string, endDate: string): number {
@@ -21,7 +21,7 @@ function daysBetween(startDate: string, endDate: string): number {
 
 /**
  * Returns true when the prev period was live for ≥80% of its days AND had
- * total spend > 0. Both conditions matter — a single high-spend day in an
+ * total spend > 0. Both conditions matter - a single high-spend day in an
  * otherwise-dead window passes "spend > 0" but fails the coverage check.
  *
  * The UI uses this flag to decide whether the "vs prev 7d" delta is real

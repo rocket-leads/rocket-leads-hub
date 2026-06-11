@@ -7,7 +7,7 @@ import {
 } from "./guardrails"
 
 /**
- * Guardrails are the *enforcement* side of the AI rules — without these,
+ * Guardrails are the *enforcement* side of the AI rules - without these,
  * the rules in the prompt drift across surfaces and Roy ends up with a
  * memory entry per regression. The validator catches the regressions
  * automatically, before the output reaches the user.
@@ -18,19 +18,19 @@ import {
 
 const CRM_OK = { mondayCrmConnected: true } as const
 
-describe("validateAiOutput — missing window labels", () => {
+describe("validateAiOutput - missing window labels", () => {
   it("flags a bare percentage", () => {
-    const v = validateAiOutput("CPL up 80% — pause underperformer.", CRM_OK)
+    const v = validateAiOutput("CPL up 80% - pause underperformer.", CRM_OK)
     expect(v.some((x) => x.rule === "missing_window_label")).toBe(true)
   })
 
   it("flags a bare currency amount", () => {
-    const v = validateAiOutput("Spend €450 with 3 leads — efficiency dropping.", CRM_OK)
+    const v = validateAiOutput("Spend €450 with 3 leads - efficiency dropping.", CRM_OK)
     expect(v.some((x) => x.rule === "missing_window_label")).toBe(true)
   })
 
   it("flags a bare lead count", () => {
-    const v = validateAiOutput("8 leads marked 'no budget' — add qualifier.", CRM_OK)
+    const v = validateAiOutput("8 leads marked 'no budget' - add qualifier.", CRM_OK)
     expect(v.some((x) => x.rule === "missing_window_label")).toBe(true)
   })
 
@@ -41,7 +41,7 @@ describe("validateAiOutput — missing window labels", () => {
     expect(v.filter((x) => x.rule === "missing_window_label")).toEqual([])
   })
 
-  it("FLAGS prose without parens (canonical form requires parens — be strict)", () => {
+  it("FLAGS prose without parens (canonical form requires parens - be strict)", () => {
     // "In the last 7d the spend was €450" reads fine to a human but the
     // canonical format is parens-suffix per number ("€450 (7d)"). We
     // enforce strictness so cross-surface output stays consistent and
@@ -51,12 +51,12 @@ describe("validateAiOutput — missing window labels", () => {
   })
 
   it("passes when the prefix is 'last Nd'", () => {
-    const v = validateAiOutput("CPL recovered to €25 (last 2d) — monitor.", CRM_OK)
+    const v = validateAiOutput("CPL recovered to €25 (last 2d) - monitor.", CRM_OK)
     expect(v.filter((x) => x.rule === "missing_window_label")).toEqual([])
   })
 })
 
-describe("validateAiOutput — budget reality", () => {
+describe("validateAiOutput - budget reality", () => {
   it("flags 'scale budget'", () => {
     const v = validateAiOutput("Scale budget on this winner.", CRM_OK)
     expect(v.some((x) => x.rule === "budget_increase_recommended")).toBe(true)
@@ -78,7 +78,7 @@ describe("validateAiOutput — budget reality", () => {
   })
 
   it("flags 'keep running' (passive, leads to ad fatigue)", () => {
-    const v = validateAiOutput("Keep running this winner — it's converting well.", CRM_OK)
+    const v = validateAiOutput("Keep running this winner - it's converting well.", CRM_OK)
     expect(v.some((x) => x.rule === "winner_keep_running")).toBe(true)
   })
 
@@ -88,7 +88,7 @@ describe("validateAiOutput — budget reality", () => {
   })
 
   it("does NOT flag 'iterate on the winner'", () => {
-    const v = validateAiOutput("Iterate on the winner — 3 new variants same hook.", CRM_OK)
+    const v = validateAiOutput("Iterate on the winner - 3 new variants same hook.", CRM_OK)
     expect(v.some((x) => x.rule === "winner_keep_running")).toBe(false)
   })
 })
@@ -133,7 +133,7 @@ describe("AI_GUARDRAILS_PROMPT", () => {
 
 describe("stripAiTells", () => {
   it("replaces em-dash with comma", () => {
-    expect(stripAiTells("CPL stable, geen actie nodig — alleen monitoren."))
+    expect(stripAiTells("CPL stable, geen actie nodig - alleen monitoren."))
       .toBe("CPL stable, geen actie nodig, alleen monitoren.")
   })
 
@@ -169,7 +169,7 @@ describe("stripAiTells", () => {
   })
 
   it("collapses double commas it creates", () => {
-    expect(stripAiTells("CPL stijgt, — focus op creatives.")).toBe("CPL stijgt, focus op creatives.")
+    expect(stripAiTells("CPL stijgt, - focus op creatives.")).toBe("CPL stijgt, focus op creatives.")
   })
 
   it("handles empty/null-ish input safely", () => {
@@ -177,9 +177,9 @@ describe("stripAiTells", () => {
   })
 })
 
-describe("validateAiOutput — em-dash detection", () => {
+describe("validateAiOutput - em-dash detection", () => {
   it("flags an em-dash between words", () => {
-    const v = validateAiOutput("CPL up 80% (7d) — pauzeer ad.", { mondayCrmConnected: true })
+    const v = validateAiOutput("CPL up 80% (7d) - pauzeer ad.", { mondayCrmConnected: true })
     expect(v.some((x) => x.rule === "em_dash_used")).toBe(true)
   })
 

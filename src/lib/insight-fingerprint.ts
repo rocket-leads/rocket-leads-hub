@@ -3,7 +3,7 @@
  * regenerations and persist done/later/skip feedback against it.
  *
  * The AI may rephrase the same observation slightly between runs, so this
- * is not bulletproof — but combined with feeding the manager's verdict
+ * is not bulletproof - but combined with feeding the manager's verdict
  * back into the prompt, it gives the AI enough context to avoid surfacing
  * the same suggestion twice.
  *

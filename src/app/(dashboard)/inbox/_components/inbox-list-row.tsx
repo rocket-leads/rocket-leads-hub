@@ -30,7 +30,7 @@ const TASK_STATUS_LABELS: Record<TaskStatus, { label: string; cls: string }> = {
  *
  * - Task → violet (the colour we already use for the keyboard-focus ring
  *   and `Make task` button, so it reads as "this is an action item")
- * - Update → sky/blue (informational tone — matches the "Open" task status
+ * - Update → sky/blue (informational tone - matches the "Open" task status
  *   shade but in a separate column, so no visual collision)
  */
 const KIND_TREATMENT: Record<"task" | "update", {
@@ -101,7 +101,7 @@ export function InboxListRow({
    *  Updates use their existing read/unread checkbox path. */
   selected?: boolean
   onToggleSelect?: () => void
-  /** Team members for the inline Reassign popover. Optional — when omitted,
+  /** Team members for the inline Reassign popover. Optional - when omitted,
    *  the Reassign button is hidden and reassignment falls back to the detail
    *  dialog. Always available in the global inbox; locked-client inbox
    *  passes them through too. */
@@ -118,7 +118,7 @@ export function InboxListRow({
   // Type rail + meta-row dot. The rail is the at-a-glance kind signal in
   // peripheral vision; the dot+label inside the meta row re-states it in
   // text form so the kind is still legible if you're scanning straight
-  // down the title column. We stripped the bordered "chip" treatment —
+  // down the title column. We stripped the bordered "chip" treatment -
   // it was visually competing with the title without adding info.
   const kindTreatment = isUpdate ? KIND_TREATMENT.update : KIND_TREATMENT.task
   // Bulk-select checkbox shown on tasks AND updates when the parent
@@ -142,7 +142,7 @@ export function InboxListRow({
       data-inbox-row-id={item.id}
       className={cn(
         "group relative w-full text-left rounded-xl border border-border/60 bg-card transition-all px-5 py-3.5 cursor-pointer overflow-hidden",
-        // Subtle lift on hover — slightly darker border + soft shadow so
+        // Subtle lift on hover - slightly darker border + soft shadow so
         // the row feels interactive without a heavy state flip. Faster
         // duration than the default so the response feels snappy.
         "hover:border-border hover:bg-muted/30 hover:shadow-[0_2px_8px_-2px_rgba(0,0,0,0.04)] duration-150",
@@ -152,14 +152,14 @@ export function InboxListRow({
         "pl-6",
         selected && "ring-2 ring-primary/60 bg-primary/[0.06] border-primary/40",
         // Keyboard focus ring also denotes "this row's detail is open" in
-        // docked mode — see inbox-view.tsx where setFocusedItemId follows
+        // docked mode - see inbox-view.tsx where setFocusedItemId follows
         // setDetailItem on every click. Distinct violet ring so it doesn't
         // collide with the type rail colour.
         keyboardFocused && "ring-2 ring-violet-500/60 bg-violet-500/[0.04]",
         isCompleted && "opacity-60",
       )}
     >
-      {/* Type rail on the left edge — always rendered (so type is visible
+      {/* Type rail on the left edge - always rendered (so type is visible
           at a glance on every row), but dimmed to ~45% when the item is
           done/cancelled/read so completed rows visually recede. Unread
           updates get the rail at full saturation: the rail does double
@@ -173,7 +173,7 @@ export function InboxListRow({
           isCompleted && "opacity-40",
         )}
       />
-      {/* Subtle background tint for unread updates — kept from the old
+      {/* Subtle background tint for unread updates - kept from the old
           treatment because the rail alone isn't quite strong enough on a
           dense list. The colour is sky-tinted to match the Update rail
           (was primary/violet before, which clashed with the new Task rail). */}
@@ -212,18 +212,18 @@ export function InboxListRow({
 
         <div className="flex-1 min-w-0">
           {/* Visual hierarchy (Roy 2026-06-10):
-                1. Client — small bold, 14px. Scannable as the row's
+                1. Client - small bold, 14px. Scannable as the row's
                    subject, but doesn't outrank the headline.
-                2. Title — 15px bold, the main signal. "What happened."
+                2. Title - 15px bold, the main signal. "What happened."
                    When there's no client (orphan / locked view) the
                    title is promoted to 16px to stay the row's anchor.
-                3. Meta — 11px muted. Kind dot, source, status, people,
-                   date, due, comments — all visually recessed.
+                3. Meta - 11px muted. Kind dot, source, status, people,
+                   date, due, comments - all visually recessed.
               The left rail still carries kind colour for peripheral
               scanning; the bordered TYPE chip is gone (dot+label only)
               so it stops competing with the headline. */}
 
-          {/* Row 1 — client. Compact, bold; reads as the row's subject. */}
+          {/* Row 1 - client. Compact, bold; reads as the row's subject. */}
           {showClient && item.isUnlinked && (
             <div className="flex items-center gap-1.5 min-w-0 mb-0.5">
               <Link2Off className="h-3.5 w-3.5 text-amber-500/90 dark:text-amber-400 shrink-0" />
@@ -249,7 +249,7 @@ export function InboxListRow({
             </div>
           )}
 
-          {/* Row 2 — title. The primary headline of the row. Bold by
+          {/* Row 2 - title. The primary headline of the row. Bold by
               default; line-through + muted when completed; promotes to
               16px when no client header is rendered above. */}
           {(() => {
@@ -275,7 +275,7 @@ export function InboxListRow({
             )
           })()}
 
-          {/* Row 3 — meta. Tiny, muted. Kind dot replaces the bordered
+          {/* Row 3 - meta. Tiny, muted. Kind dot replaces the bordered
               chip; source + task-status pills still appear but stripped
               of background fills where possible. People-and-time trail
               uses very-faint separators so the comma-rhythm doesn't
@@ -337,7 +337,7 @@ export function InboxListRow({
           </div>
         </div>
 
-        {/* Unified right-side action set — renders the same Done / Reopen
+        {/* Unified right-side action set - renders the same Done / Reopen
             chrome for both Tasks and Updates. Kind-specific extras (Snooze
             for tasks, Make-task for updates) are wired inside RowActions. */}
         {onAction && <RowActions item={item} onAction={onAction} users={users} />}
@@ -347,7 +347,7 @@ export function InboxListRow({
 }
 
 /** Double-click-to-edit task title in the row. Single click does NOT enter
- *  edit mode — the row container handles that as "open detail dialog" — so
+ *  edit mode - the row container handles that as "open detail dialog" - so
  *  there's no ambiguity. Hovering hints at the edit affordance with a
  *  subtle dotted underline; double-click anywhere on the title text
  *  switches to an inline input. Enter or blur saves; Esc reverts; empty
@@ -452,13 +452,13 @@ function RowActions({
   const isUpdate = item.kind === "update"
   // "Active" = the row still needs the user's attention. Tasks use
   // open/in_progress; updates use unread. Both render the same green
-  // check button on the right (Roy 2026-06-09 — the inbox affordance
+  // check button on the right (Roy 2026-06-09 - the inbox affordance
   // should be identical across kinds, only the DB enum differs).
   const isActive = isUpdate
     ? item.status === "unread"
     : item.status === "open" || item.status === "in_progress"
   const isSnoozed = !!item.snoozedUntil && new Date(item.snoozedUntil).getTime() > Date.now()
-  // Kind-specific status verbs — same UI, different underlying value.
+  // Kind-specific status verbs - same UI, different underlying value.
   // Done flips status to "read" for updates, "done" for tasks. Reopen
   // does the inverse. The status check above already routes to the
   // right branch; this just picks the value to PATCH.
@@ -481,7 +481,7 @@ function RowActions({
             isSnoozed ? (
               <ActionIconButton
                 tone="muted"
-                label={`Snoozed until ${formatSnoozeLabel(item.snoozedUntil!)} — click to wake`}
+                label={`Snoozed until ${formatSnoozeLabel(item.snoozedUntil!)} - click to wake`}
                 onClick={() => onAction("unsnooze")}
                 icon={<BellOff className="h-4 w-4" />}
               />
@@ -490,7 +490,7 @@ function RowActions({
             )
           )}
           {/* Updates-only: convert to a task. Same affordance the standalone
-              hover button used to be — now lives inline with the rest of
+              hover button used to be - now lives inline with the rest of
               the action set so the right-side cluster is consistent. */}
           {isUpdate && (
             <ActionIconButton
@@ -654,7 +654,7 @@ function formatSnoozeLabel(iso: string): string {
 }
 
 /** Snooze quick-pick menu. Built from scratch (instead of pulling in a popover
- *  primitive) to keep the row compact — a tiny relative-positioned panel
+ *  primitive) to keep the row compact - a tiny relative-positioned panel
  *  closes on outside-click and on Esc. */
 function SnoozeButton({ onPick }: { onPick: (untilIso: string) => void }) {
   const [open, setOpen] = useState(false)
@@ -743,7 +743,7 @@ function computeSnoozeIso(option: SnoozeOption): string | null {
     case "later_today": {
       const d = new Date(now)
       d.setHours(Math.max(now.getHours() + 3, 17), 0, 0, 0)
-      // Don't roll over to tomorrow — if "later today" would land past 22:00,
+      // Don't roll over to tomorrow - if "later today" would land past 22:00,
       // snap to 22:00 today instead.
       if (d.getDate() !== now.getDate()) {
         d.setDate(now.getDate())

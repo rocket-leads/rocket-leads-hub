@@ -12,7 +12,7 @@ import type { Locale } from "@/lib/i18n/types"
 export type ClientStatus = "onboarding" | "live" | "on_hold" | "churned"
 
 /**
- * Canonical EN labels — kept stable because they're written back to Monday
+ * Canonical EN labels - kept stable because they're written back to Monday
  * (via `hubStatusToMondayLabel`) and used as comparison keys throughout the
  * codebase. UI-facing surfaces should use STATUS_LABEL_KEYS + t() instead so
  * Dutch users see Nederlands.
@@ -25,7 +25,7 @@ export const STATUS_LABELS: Record<ClientStatus, string> = {
 }
 
 /** Dictionary keys for translation. Use with `t(STATUS_LABEL_KEYS[s], locale)`
- *  wherever a status is shown to the user — filter dropdowns, pills, headers.
+ *  wherever a status is shown to the user - filter dropdowns, pills, headers.
  *  The canonical EN strings above stay reserved for Monday writes + analytics. */
 export const STATUS_LABEL_KEYS: Record<ClientStatus, DictionaryKey> = {
   onboarding: "client.status.onboarding",
@@ -35,9 +35,9 @@ export const STATUS_LABEL_KEYS: Record<ClientStatus, DictionaryKey> = {
 }
 
 /** Label for missing / unmapped status. Used everywhere the UI renders a
- *  status pill — so empty Monday statuses surface as a muted dash instead of
+ *  status pill - so empty Monday statuses surface as a muted dash instead of
  *  a misleading "Onboarding" label. */
-export const STATUS_LABEL_NONE = "—"
+export const STATUS_LABEL_NONE = "-"
 
 /** Look up the canonical EN label for a possibly-null status. Used for
  *  sorting, server-side identifiers, and analytics where the locale-independent
@@ -46,14 +46,14 @@ export function statusLabel(status: ClientStatus | null): string {
   return status === null ? STATUS_LABEL_NONE : STATUS_LABELS[status]
 }
 
-/** Locale-aware status label — use this for everything the user reads.
+/** Locale-aware status label - use this for everything the user reads.
  *  Null falls back to the muted dash; the four canonical statuses route
  *  through the dictionary. */
 export function statusLabelI18n(status: ClientStatus | null, locale: Locale): string {
   return status === null ? STATUS_LABEL_NONE : t(STATUS_LABEL_KEYS[status], locale)
 }
 
-/** Locale-aware phase label — display variant for onboarding phase. */
+/** Locale-aware phase label - display variant for onboarding phase. */
 export function phaseLabelI18n(phase: OnboardingPhase, locale: Locale): string {
   return t(PHASE_LABEL_KEYS[phase], locale)
 }
@@ -78,7 +78,7 @@ export const STATUS_TONE_NONE = {
   pill: "bg-muted/40 text-muted-foreground",
 } as const
 
-/** Tone lookup for nullable status — returns the muted tone when null. */
+/** Tone lookup for nullable status - returns the muted tone when null. */
 export function statusTone(status: ClientStatus | null): { dot: string; pill: string } {
   return status === null ? STATUS_TONE_NONE : STATUS_TONES[status]
 }
@@ -99,12 +99,12 @@ export function statusTone(status: ClientStatus | null): { dot: string; pill: st
  * status column is renamed to canonical labels the mapping keeps working
  * without a code change.
  *
- * Empty Monday status → null (renders as "—" in the UI rather than a
+ * Empty Monday status → null (renders as "-" in the UI rather than a
  * misleading Onboarding badge). Truly unknown labels also collapse to null
  * so we never silently misclassify a new Monday option.
  *
  * Boards: clients on the Onboarding board are always "onboarding" regardless
- * of column value — the board itself signals the lifecycle phase.
+ * of column value - the board itself signals the lifecycle phase.
  */
 export function mondayStatusToHub(
   mondayLabel: string | null | undefined,
@@ -131,7 +131,7 @@ export function mondayStatusToHub(
     return "onboarding"
   }
 
-  // Churned family — covers all "Stopped …" / "Stopt …" variants plus
+  // Churned family - covers all "Stopped …" / "Stopt …" variants plus
   // collection/guarantee outcomes which are functionally a churn.
   if (
     normalized === "churned" ||
@@ -144,7 +144,7 @@ export function mondayStatusToHub(
     return "churned"
   }
 
-  // Unknown/new Monday label — surface as null so a missing mapping doesn't
+  // Unknown/new Monday label - surface as null so a missing mapping doesn't
   // hide behind a phantom "Onboarding" badge. Add the label to the ladders
   // above when it shows up in real data.
   return null
@@ -169,7 +169,7 @@ export function hubStatusToMondayLabel(status: ClientStatus): string {
 // ─── Onboarding phases ────────────────────────────────────────────────────
 // The onboarding board's `campaign_status` column doubles as the phase tracker
 // (replacing the old groups-as-phase model). All phases collapse to the
-// canonical "onboarding" Hub status — phases are an onboarding-tab-only detail.
+// canonical "onboarding" Hub status - phases are an onboarding-tab-only detail.
 
 export type OnboardingPhase =
   | "kickoff_scheduled"
@@ -180,7 +180,7 @@ export type OnboardingPhase =
   | "on_hold"
   | "debt_collection"
 
-/** Canonical EN labels — must match the Monday status column options EXACTLY,
+/** Canonical EN labels - must match the Monday status column options EXACTLY,
  *  because these strings are written back to Monday on edit. Renaming an option
  *  in Monday means renaming it here too. UI surfaces should use
  *  PHASE_LABEL_KEYS + t() to display the locale-aware version. */
@@ -207,7 +207,7 @@ export const PHASE_LABEL_KEYS: Record<OnboardingPhase, DictionaryKey> = {
   debt_collection: "client.phase.debt_collection",
 }
 
-/** Display order — mirrors the chronological flow from kick-off to launch,
+/** Display order - mirrors the chronological flow from kick-off to launch,
  *  with the off-track states (on hold, debt collection) at the bottom. */
 export const PHASE_OPTIONS: OnboardingPhase[] = [
   "kickoff_scheduled",
@@ -234,7 +234,7 @@ export const PHASE_TONES: Record<OnboardingPhase, { dot: string; pill: string }>
 /**
  * Map a Monday `campaign_status` value (from the onboarding board) to one of
  * the canonical phases. Returns null when empty or when the label doesn't fit
- * any known bucket — e.g. legacy "In development" values left over from before
+ * any known bucket - e.g. legacy "In development" values left over from before
  * the phase rename. Matching is normalized so trailing emoji and minor casing
  * differences ("Kick off scheduled" vs "Kickoff scheduled") still resolve.
  */

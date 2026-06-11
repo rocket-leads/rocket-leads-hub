@@ -12,23 +12,23 @@ import { computeAccountStats } from "@/lib/pedro/performance"
 import type { MondayClient } from "@/lib/integrations/monday"
 
 /**
- * sync-pedro-variants — closes Pedro's learning loop.
+ * sync-pedro-variants - closes Pedro's learning loop.
  *
  * For every pedro_variants row that has been around long enough to
  * possibly have been shipped:
  *   1. Find the client's Meta ad account.
  *   2. Pull the last 60d of ad performance.
  *   3. Match `pedro_variants.ad_name` against `MetaAdDetail.adName`
- *      EXACTLY (Roy's design — CM must copy 1:1, no fuzzy match).
+ *      EXACTLY (Roy's design - CM must copy 1:1, no fuzzy match).
  *   4. If matched: stamp spend/leads/CPL + verdict (winner/loser/neutral).
  *   5. If NOT matched after NOT_SHIPPED_AFTER_DAYS days: mark `not_shipped`.
  *
  * The next creative-refresh prompt reads back from this enriched table
- * as a LEARNING block — see `getPastPedroVariantsForClient` in
+ * as a LEARNING block - see `getPastPedroVariantsForClient` in
  * src/lib/pedro/past-variants-context.ts.
  *
  * Scope: one Meta call per Live client that has variants. Batched so
- * we don't hit Meta rate limits on big fleets. Idempotent — re-running
+ * we don't hit Meta rate limits on big fleets. Idempotent - re-running
  * the same day just updates the same rows.
  *
  * Roy 2026-06-09.
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
 
     // 2. Get every client with at least one pending variant or one variant
     // that hasn't been synced in the last 24h. We don't re-sync winners/
-    // losers more often than that — once the verdict's in, it doesn't
+    // losers more often than that - once the verdict's in, it doesn't
     // change materially day-to-day.
     type DueClientRow = { client_id: string }
     const { data: dueClientsData } = await supabase
@@ -174,7 +174,7 @@ export async function GET(req: NextRequest) {
               continue
             }
 
-            // No match — if it's been long enough since generation,
+            // No match - if it's been long enough since generation,
             // mark not_shipped so we stop re-checking it (and so the
             // learning prompt can tell Pedro "this proposal was never
             // used").
@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
               markedNotShipped++
               updated++
             } else {
-              // Still in the grace window — just stamp the sync time so
+              // Still in the grace window - just stamp the sync time so
               // we don't pick it up again until tomorrow.
               await supabase
                 .from("pedro_variants")

@@ -3,7 +3,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
 import { seedDefaultAgreementIfMissing } from "./agreement"
 
 /**
- * Fast variant of `syncClientToSupabase` — only ensures a `clients` row
+ * Fast variant of `syncClientToSupabase` - only ensures a `clients` row
  * exists for this Monday item and returns its Supabase UUID. Used by
  * latency-sensitive paths (client slide-over) where we just need the
  * id to power downstream queries; the full sync of all Monday fields
@@ -60,7 +60,7 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
     updated_at: new Date().toISOString(),
   }
 
-  // Try update first — preserves columns like column_mapping_override and monday_active
+  // Try update first - preserves columns like column_mapping_override and monday_active
   const { data: existing } = await supabase
     .from("clients")
     .select("id")
@@ -88,7 +88,7 @@ export async function syncClientToSupabase(client: MondayClient): Promise<string
   // Seed a default agreement on first sync (or first sync after the feature
   // shipped). Idempotent: never overwrites an existing row, so manual edits
   // via the UI are always preserved. Failures here are intentionally swallowed
-  // — a broken seed shouldn't block the client from loading.
+  // - a broken seed shouldn't block the client from loading.
   try {
     await seedDefaultAgreementIfMissing(client, clientId)
   } catch (e) {

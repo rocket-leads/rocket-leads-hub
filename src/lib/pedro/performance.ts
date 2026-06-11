@@ -1,13 +1,13 @@
 import type { MetaAdDetail } from "@/lib/integrations/meta"
 
 /**
- * Pedro performance helpers — categorise ads as winners/losers/neutrals
+ * Pedro performance helpers - categorise ads as winners/losers/neutrals
  * relative to the account's own CPL average. Used by /api/pedro/client-
  * performance to give Claude a clean signal-vs-noise feed for optimisation
  * decisions.
  *
  * Rules per knowledge/campaigns.md:
- *  - Need ≥€10 spend (window) on an ad to judge it — anything less is noise
+ *  - Need ≥€10 spend (window) on an ad to judge it - anything less is noise
  *  - Loser by zero-leads: ≥€50 spend, 0 leads (clear waste)
  *  - Winner: CPL ≤ 0.7 × account-avg CPL with ≥3 leads
  *  - Loser: CPL ≥ 1.4 × account-avg CPL OR zero-leads-with-spend
@@ -16,9 +16,9 @@ import type { MetaAdDetail } from "@/lib/integrations/meta"
  * NOTE on lead-quality: this file judges ONLY on cost efficiency. Per
  * `knowledge/campaigns.md` the real quality signal is Monday CRM lead
  * feedback per UTM ("geen budget", "niet geïnteresseerd", etc.). That's
- * Phase 3 lead-quality work — a separate fetch from the Monday lead board
+ * Phase 3 lead-quality work - a separate fetch from the Monday lead board
  * + grouping by UTM. Until that ships, treat winners as "cheap leads"
- * not "good leads" — the AM/CM still has to verify quality.
+ * not "good leads" - the AM/CM still has to verify quality.
  */
 
 export type AdVerdict = "winner" | "loser" | "neutral"
@@ -26,7 +26,7 @@ export type AdVerdict = "winner" | "loser" | "neutral"
 export type ScoredAd = MetaAdDetail & {
   cpl: number | null
   verdict: AdVerdict
-  /** Why this verdict — one short sentence the AI can quote. */
+  /** Why this verdict - one short sentence the AI can quote. */
   reason: string
 }
 
@@ -136,11 +136,11 @@ export function computeTrend(
 }
 
 /**
- * Compact per-ad table Claude can read — one block per ad with verdict +
+ * Compact per-ad table Claude can read - one block per ad with verdict +
  * numbers + the actual primary copy (body) and creative type. The body
  * is the single biggest signal for understanding what the client sells
  * and who they're talking to; without it Pedro has to guess from the
- * ad name alone (which led to the Zumex B2C-smoothie hallucination —
+ * ad name alone (which led to the Zumex B2C-smoothie hallucination -
  * Roy flagged 2026-06-09).
  *
  * Body is trimmed to BODY_CHAR_LIMIT to keep prompt cost predictable
@@ -163,7 +163,7 @@ function normalizeAdBody(body: string | undefined | null): string {
 
 /** Optional per-ad visual descriptions, keyed by adId. When passed,
  *  rendered as a "Visual:" line so Pedro knows what's IN the creative
- *  — not just what's written. */
+ *  - not just what's written. */
 export type AdVisionMap = Map<string, string>
 
 export function renderAdsForPrompt(
@@ -174,11 +174,11 @@ export function renderAdsForPrompt(
   const sorted = [...ads].sort((a, b) => b.spend - a.spend).slice(0, topN)
   if (sorted.length === 0) return "Geen actieve ads in dit window."
   const blocks = sorted.map((a) => {
-    const cpl = a.cpl != null ? `€${a.cpl.toFixed(2)}` : "—"
+    const cpl = a.cpl != null ? `€${a.cpl.toFixed(2)}` : "-"
     const ctr = a.ctr.toFixed(2)
     const body = normalizeAdBody(a.body)
     const creativeType = a.creativeType ?? "unknown"
-    const header = `[${a.verdict.toUpperCase().padEnd(7)}] "${a.adName}" (${creativeType}) — €${a.spend.toFixed(0)} spend, ${a.leads} leads, CPL ${cpl}, CTR ${ctr}% — ${a.reason}`
+    const header = `[${a.verdict.toUpperCase().padEnd(7)}] "${a.adName}" (${creativeType}) - €${a.spend.toFixed(0)} spend, ${a.leads} leads, CPL ${cpl}, CTR ${ctr}% - ${a.reason}`
     const lines: string[] = [header]
     if (a.title) lines.push(`  Headline: "${a.title.slice(0, 200)}"`)
     if (body) {
@@ -190,7 +190,7 @@ export function renderAdsForPrompt(
     if (a.callToActionType) lines.push(`  CTA button: ${a.callToActionType}`)
     if (a.linkUrl) lines.push(`  Landing page: ${a.linkUrl.slice(0, 100)}`)
     if (a.assetFeedSummary) {
-      // Dynamic-creative variation pool — indent so the prompt stays readable.
+      // Dynamic-creative variation pool - indent so the prompt stays readable.
       lines.push(`  Dynamic variations:\n${a.assetFeedSummary.split("\n").map((l) => `    ${l}`).join("\n")}`)
     }
     const vision = visionByAdId?.get(a.adId)

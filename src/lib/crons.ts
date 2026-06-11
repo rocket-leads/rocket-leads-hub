@@ -8,7 +8,7 @@ import type { DictionaryKey } from "@/lib/i18n/dictionary"
  *     silent past its expected window)
  *
  * Keep in sync with /api/cron/* directories. Add new crons here so the
- * watchdog notices when they break — otherwise a silent regression to
+ * watchdog notices when they break - otherwise a silent regression to
  * "never ran" looks identical to a brand-new cron that hasn't ticked yet.
  */
 export type ExpectedCron = {
@@ -29,7 +29,7 @@ export const EXPECTED_CRONS: ReadonlyArray<ExpectedCron> = [
   { name: "refresh-watchlist-context", description: "Monday updates + Trengo summaries for watchlist AI", cadenceKey: "settings.health.cadence.daily", cadenceMinutes: 1440 },
   { name: "refresh-pedro-patterns", description: "Pedro vertical-pattern synthesis", cadenceKey: "settings.health.cadence.nightly", cadenceMinutes: 1440 },
   { name: "refresh-pedro-insights", description: "Unified Pedro insights cache (replaces watchlist-summaries + per-client AI calls)", cadenceKey: "settings.health.cadence.hourly", cadenceMinutes: 60 },
-  { name: "pedro-auto-tasks", description: "Pedro background co-pilot — auto-creates inbox tasks for stuck-in-Action clients (with anti-spam guardrails)", cadenceKey: "settings.health.cadence.daily_7utc", cadenceMinutes: 1440 },
+  { name: "pedro-auto-tasks", description: "Pedro background co-pilot - auto-creates inbox tasks for stuck-in-Action clients (with anti-spam guardrails)", cadenceKey: "settings.health.cadence.daily_7utc", cadenceMinutes: 1440 },
   { name: "pedro-knowledge-proposals", description: "Pedro knowledge-base scan", cadenceKey: "settings.health.cadence.weekly", cadenceMinutes: 10080 },
   { name: "inbox-automations", description: "Inbox snooze / auto-resolve rules", cadenceKey: "settings.health.cadence.hourly", cadenceMinutes: 60 },
   { name: "slack-team-watchlist", description: "Team watchlist Slack post", cadenceKey: "settings.health.cadence.hourly_gated", cadenceMinutes: 60 },

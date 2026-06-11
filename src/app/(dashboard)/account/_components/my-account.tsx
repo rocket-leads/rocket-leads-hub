@@ -64,7 +64,7 @@ export function MyAccount({
       <div>
         <h2 className="text-sm font-medium mb-1">Browser notifications</h2>
         <p className="text-xs text-muted-foreground/60 mb-4">
-          Krijg een melding op je desktop of telefoon zodra er een nieuwe taak op je naam komt — ook als de Hub-tab dicht is.
+          Krijg een melding op je desktop of telefoon zodra er een nieuwe taak op je naam komt - ook als de Hub-tab dicht is.
         </p>
         <BrowserNotificationsCard />
       </div>
@@ -72,7 +72,7 @@ export function MyAccount({
       <div>
         <h2 className="text-sm font-medium mb-1">Inbox subscriptions</h2>
         <p className="text-xs text-muted-foreground/60 mb-4">
-          Pick which Trengo channels surface in your Client Inbox — including conversations from contacts that aren&apos;t linked to a client yet.
+          Pick which Trengo channels surface in your Client Inbox - including conversations from contacts that aren&apos;t linked to a client yet.
         </p>
         <TrengoChannelsCard initialSelected={trengoChannelIds} />
       </div>
@@ -80,7 +80,7 @@ export function MyAccount({
   )
 }
 
-// --- Slack (OAuth — coming in C.4) ---
+// --- Slack (OAuth - coming in C.4) ---
 
 const SLACK_ERROR_MESSAGES: Record<string, string> = {
   oauth_not_configured:
@@ -88,7 +88,7 @@ const SLACK_ERROR_MESSAGES: Record<string, string> = {
   start_failed: "Couldn't start the Slack connect flow. Please try again or contact an admin.",
   missing_code_or_state: "Slack returned without a code. Try connecting again.",
   missing_state_cookie: "Your browser blocked the OAuth state cookie. Try again in a non-incognito window.",
-  state_mismatch: "OAuth state mismatch — possible CSRF or expired flow. Try again.",
+  state_mismatch: "OAuth state mismatch - possible CSRF or expired flow. Try again.",
   exchange_failed: "Slack rejected the OAuth code exchange. Try again.",
   oauth_failed: "Slack reported an OAuth failure. Try again.",
   store_failed: "Couldn't save your Slack token. Try again or contact an admin.",
@@ -143,7 +143,7 @@ function SlackCard({
           Disconnect
         </Button>
       ) : (
-        // Server-side redirect to Slack OAuth — using a plain <a> (not next/link)
+        // Server-side redirect to Slack OAuth - using a plain <a> (not next/link)
         // so the browser does a full navigation rather than client-side route.
         <Button
           size="sm"
@@ -635,7 +635,7 @@ function BrowserNotificationsCard() {
       }
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        // PushManager's TS types want a BufferSource — Uint8Array on a
+        // PushManager's TS types want a BufferSource - Uint8Array on a
         // SharedArrayBuffer is too narrow. Cast through unknown to keep TS
         // happy without leaking SharedArrayBuffer constraints into our code.
         applicationServerKey: urlBase64ToUint8Array(vapidKey) as unknown as BufferSource,
@@ -709,7 +709,7 @@ function BrowserNotificationsCard() {
       const subs = data.subscriptionsBeforeSend ?? []
       const lines: string[] = []
       lines.push(`User: ${data.userId?.slice(0, 8)}…`)
-      lines.push(`VAPID configured: ${data.vapidConfigured ? "yes" : "NO — server side env missing"}`)
+      lines.push(`VAPID configured: ${data.vapidConfigured ? "yes" : "NO - server side env missing"}`)
       lines.push(`Subscriptions in DB: ${subs.length}`)
       for (const s of subs) {
         lines.push(`  • ${s.endpointHost} (since ${s.createdAt.slice(0, 10)})`)
@@ -769,7 +769,7 @@ function BrowserNotificationsCard() {
               ? "Je krijgt nu desktop/mobiele meldingen voor nieuwe taken. Werkt op deze browser; herhaal op andere apparaten als je daar ook gepingd wilt worden."
               : permission === "denied"
                 ? "Je hebt eerder de toestemming geweigerd. Open je browser-instellingen en sta meldingen toe voor deze site om opnieuw te proberen."
-                : "Eén klik om aan te zetten — je browser vraagt toestemming."}
+                : "Eén klik om aan te zetten - je browser vraagt toestemming."}
           </p>
           {error && <p className="text-[11px] text-destructive mb-2">{error}</p>}
           {testInfo && (

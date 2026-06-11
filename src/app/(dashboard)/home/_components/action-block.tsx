@@ -16,7 +16,7 @@ type ActionItem = {
 }
 
 function fmtSpend(v: number): string {
-  if (v <= 0) return "—"
+  if (v <= 0) return "-"
   if (v >= 1000) return `€${(v / 1000).toFixed(1)}k`
   return `€${v.toFixed(0)}`
 }

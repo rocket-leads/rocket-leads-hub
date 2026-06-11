@@ -26,7 +26,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       // Backfill name from the Google profile when the row was pre-created by
       // inviteUser (which leaves name NULL) and the admin hasn't typed one in
-      // manually. Don't overwrite an existing name — admins can edit it in
+      // manually. Don't overwrite an existing name - admins can edit it in
       // Settings → Users and we shouldn't clobber their edit.
       const googleName = user.name?.trim()
       if (googleName) {
@@ -61,7 +61,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           session.user.id = data.id
           session.user.role = data.role
 
-          // Detect the finance role from user_column_mappings — orthogonal to
+          // Detect the finance role from user_column_mappings - orthogonal to
           // the access role, so a finance person can still be a member or an
           // admin. Used by the sidebar to swap to a finance-tailored nav and
           // by gates that surface billing-only flows.

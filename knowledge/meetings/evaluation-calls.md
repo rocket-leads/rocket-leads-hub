@@ -1,8 +1,8 @@
-# Rocket Leads — Evaluation Calls
+# Rocket Leads - Evaluation Calls
 
 > Template voor AI-context bij evaluatie-/voortgangsgesprekken
 > (Fathom `meeting_type='evaluation'`). Wekelijks of tweewekelijks contact
-> tussen AM en klant — barometer voor klanttevredenheid en performance.
+> tussen AM en klant - barometer voor klanttevredenheid en performance.
 >
 > Gerelateerde knowledge: `knowledge/process.md` (Fase 5 Klantcontact),
 > `knowledge/campaigns.md` (4 pilaren CPD/ROAS framework).
@@ -12,7 +12,7 @@
 ## Wat is een evaluation call bij Rocket Leads?
 
 - **Setting:** Google Meet (voorkeur), telefoon, of WhatsApp call (~30 min)
-- **Host:** Account Manager — CM zit er **nooit** bij
+- **Host:** Account Manager - CM zit er **nooit** bij
 - **Frequentie:** wekelijks of tweewekelijks per klant
 - **Format:** "Wat gaat goed? Wat kan beter?" + concrete adjustments
 - **Recording:** Fathom in team **Delivery Rocket Leads**
@@ -35,7 +35,7 @@ Match wat klant zegt tegen wat KPI's laten zien:
 
 ### 3. Strategische adjustments
 - Nieuwe angle besproken
-- Budget verhogen/verlagen (zeldzaam — vast budget is norm)
+- Budget verhogen/verlagen (zeldzaam - vast budget is norm)
 - Nieuwe creatives gevraagd
 - Targeting aanpassen
 - Lead form filtervragen toevoegen
@@ -120,9 +120,9 @@ Focus op groei en retentie:
 
 Fathom AI summary in NL bevat typisch:
 - **Doel van de vergadering** ("evaluatie", "monthly review", "tussentijds overleg")
-- **Belangrijkste punten** — performance + sentiment + adjustments
-- **Onderwerpen** — per topic wat besproken
-- **Volgende stappen** — concrete acties
+- **Belangrijkste punten** - performance + sentiment + adjustments
+- **Onderwerpen** - per topic wat besproken
+- **Volgende stappen** - concrete acties
 
 Cross-reference met:
 - KPI block voor performance check

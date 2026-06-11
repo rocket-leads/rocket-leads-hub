@@ -25,7 +25,7 @@ import type {
  * (parent's `onSelect` updates URL + localStorage exactly the same way
  * the ClientPicker dropdown does).
  *
- * Roy's framing 2026-06-09: "ik wil dat ik gelijk kan zien — dit zijn
+ * Roy's framing 2026-06-09: "ik wil dat ik gelijk kan zien - dit zijn
  * klanten waar geoptimaliseerd moet worden, waar nieuwe creatives
  * gemaakt moeten worden, en dat je die daar dan kan selecteren."
  *
@@ -34,7 +34,7 @@ import type {
  * the CM knows the system checked.
  *
  * Selected client gets a ring + tinted background so the CM sees which
- * chip is currently active — matters when bouncing between Optimize
+ * chip is currently active - matters when bouncing between Optimize
  * tabs (Angles / Scripts / Creatives / Ad Copy) without losing
  * orientation.
  */
@@ -106,7 +106,7 @@ export function OptimizeSuggestions({ selectedClientId, onSelect }: Props) {
         <Header count={0} />
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3 flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          Geen klanten in Action Needed — alles loopt. Kies hieronder zelf een
+          Geen klanten in Action Needed - alles loopt. Kies hieronder zelf een
           klant om te optimaliseren.
         </div>
       </div>
@@ -143,7 +143,7 @@ function Header({ count }: { count: number | null }) {
         </span>
       )}
       <span className="text-muted-foreground/60">
-        — klik om direct te gaan optimaliseren
+        - klik om direct te gaan optimaliseren
       </span>
     </div>
   )

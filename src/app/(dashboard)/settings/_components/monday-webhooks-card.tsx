@@ -26,7 +26,7 @@ type StatusResponse = {
   targetEvents: MondayWebhookEvent[]
   secretConfigured: boolean
   /** True when the current host is a public HTTPS URL Monday can reach.
-   *  False on localhost / private IPs — UI disables register + reset to
+   *  False on localhost / private IPs - UI disables register + reset to
    *  prevent the "delete from dev nukes prod webhooks" foot-gun. */
   publicReachable?: boolean
   currentOrigin?: string
@@ -148,7 +148,7 @@ export function MondayWebhooksCard() {
         {!status?.secretConfigured && (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
             <strong>MONDAY_WEBHOOK_SECRET</strong> is not set in env. Set it
-            in Vercel + your local <code>.env</code> before registering —
+            in Vercel + your local <code>.env</code> before registering -
             Monday will reject incoming events without it.
           </div>
         )}
@@ -157,7 +157,7 @@ export function MondayWebhooksCard() {
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
             <strong>You&apos;re on a non-public host</strong> (<code>{status.currentOrigin}</code>).
             Monday only accepts publicly-reachable HTTPS endpoints, so
-            Register / Reset are disabled here — running them would delete
+            Register / Reset are disabled here - running them would delete
             the production webhooks without being able to recreate them.
             Open this page on <code>https://hub.rocketleads.com/settings</code> instead.
           </div>
@@ -205,7 +205,7 @@ export function MondayWebhooksCard() {
                             ✓ #{present.id}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground/60">— missing</span>
+                          <span className="text-muted-foreground/60">- missing</span>
                         )}
                       </li>
                     )
@@ -234,7 +234,7 @@ export function MondayWebhooksCard() {
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Webhook className="h-4 w-4" />}
             Register webhooks
           </Button>
-          {/* Reset path — needed when the secret has rotated and the existing
+          {/* Reset path - needed when the secret has rotated and the existing
               webhooks point at URLs the receiver no longer authenticates. The
               normal Register call treats them as "exists" and skips, so we
               need an explicit delete+recreate. Destructive enough to confirm

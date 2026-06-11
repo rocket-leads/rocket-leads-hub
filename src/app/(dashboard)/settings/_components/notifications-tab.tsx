@@ -52,7 +52,7 @@ type NotificationDef = {
   channelId?: string | null
   schedule: string
   previewEndpoint: string
-  /** Cron URL — invoked with GET as admin to send the real notification to recipients now. */
+  /** Cron URL - invoked with GET as admin to send the real notification to recipients now. */
   cronEndpoint: string
   description: string
   examplePreview: string
@@ -70,7 +70,7 @@ export function NotificationsTab({
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({})
 
-  // Closers list moved out of SSR to keep /settings fast — see the comment
+  // Closers list moved out of SSR to keep /settings fast - see the comment
   // in /api/admin/settings/closer-names/route.ts for context. Server passes
   // an empty `initialClosers` now; we hydrate via this query as soon as the
   // Notifications tab mounts. 30-min staleTime so flipping between tabs
@@ -108,7 +108,7 @@ export function NotificationsTab({
           : "alle Hub users met een Slack ID"
         : `het Slack channel (${def.channelLabel.toLowerCase()})`
     const confirmed = window.confirm(
-      `Verstuur "${def.title}" nu naar ${audienceLabel}?\n\nDit is geen test — de echte ontvangers krijgen het bericht.`,
+      `Verstuur "${def.title}" nu naar ${audienceLabel}?\n\nDit is geen test - de echte ontvangers krijgen het bericht.`,
     )
     if (!confirmed) return
 
@@ -139,25 +139,25 @@ export function NotificationsTab({
       id: "personal_watchlist",
       title: "Personal Watchlist Summary",
       destination: "dm",
-      channelLabel: "Direct Message — per Hub user",
+      channelLabel: "Direct Message - per Hub user",
       schedule: "Daily · 06:00 Europe/Amsterdam",
       previewEndpoint: "/api/slack/preview-daily-watchlist",
       cronEndpoint: "/api/cron/slack-daily-watchlist",
       audience: "hub-users",
       description:
-        "Every Hub user with a Slack ID gets a personal morning DM about their own clients (filtered by column mapping). Focuses on changes since yesterday — new concerns, wins, persistent issues — not a copy of the watchlist.",
+        "Every Hub user with a Slack ID gets a personal morning DM about their own clients (filtered by column mapping). Focuses on changes since yesterday - new concerns, wins, persistent issues - not a copy of the watchlist.",
       examplePreview: `🌅 Goedemorgen. Een paar bewegingen overnight.
 
 *Health score: 50% · ↑ 7pt vs gisteren · 7d avg building…*
 🟢 20 healthy · 🟡 6 watch · 🔴 14 action
 
 *⚠️ 7 nieuwe concerns vandaag*
-• ProSteel → Action (was Healthy) — CPL up 43%
-• Diamondflame → Watch (was Healthy) — CPL rising 8%
+• ProSteel → Action (was Healthy) - CPL up 43%
+• Diamondflame → Watch (was Healthy) - CPL rising 8%
 …en 5 meer
 
 *✅ 10 wins vandaag*
-• AltaDent → Watch (was Action) — CPL rising 18%
+• AltaDent → Watch (was Action) - CPL rising 18%
 …en 9 meer
 
 Open Watchlist`,
@@ -174,19 +174,19 @@ Open Watchlist`,
       cronEndpoint: "/api/cron/slack-team-watchlist",
       audience: "hub-users",
       description:
-        "Team-wide overview posted to a shared Slack channel. No per-client details (those go to individual CMs already) — just team health, CM leaderboard, and a few overall observations.",
+        "Team-wide overview posted to a shared Slack channel. No per-client details (those go to individual CMs already) - just team health, CM leaderboard, and a few overall observations.",
       examplePreview: `Happy Tuesday! ☕
 
 *Health score: 50% · ↑ 7pt vs gisteren · 7d avg building…*
 🟢 20 healthy · 🟡 6 watch · 🔴 14 action
 
 *Campaign Manager ranking*
-🥇 Roel & Mike — *68%* · 🟢 13 · 🟡 3 · 🔴 3
-🥈 Danny & Stefan — *54%* · 🟢 7 · 🟡 3 · 🔴 3
+🥇 Roel & Mike - *68%* · 🟢 13 · 🟡 3 · 🔴 3
+🥈 Danny & Stefan - *54%* · 🟢 7 · 🟡 3 · 🔴 3
 
-*Revenue ranking — deze maand*
-🥇 Roel & Mike — *€32.4k* (MRR €27.3k · new biz €5.1k)
-🥈 Danny & Stefan — *€30.1k* (MRR €18.9k · new biz €11.3k)
+*Revenue ranking - deze maand*
+🥇 Roel & Mike - *€32.4k* (MRR €27.3k · new biz €5.1k)
+🥈 Danny & Stefan - *€30.1k* (MRR €18.9k · new biz €11.3k)
 
 Open Watchlist`,
     },
@@ -194,7 +194,7 @@ Open Watchlist`,
       id: "personal_sales",
       title: "Personal Sales Summary",
       destination: "dm",
-      channelLabel: "Direct Message — per closer/setter",
+      channelLabel: "Direct Message - per closer/setter",
       schedule: "Daily · 06:00 Europe/Amsterdam",
       previewEndpoint: "/api/slack/preview-daily-sales",
       cronEndpoint: "/api/cron/slack-personal-sales",
@@ -216,9 +216,9 @@ Open Watchlist`,
 • €27.4k / €60.0k revenue
 • Conversion: 32% (target 30%)
 
-*Empty call outcomes — 2*
-• Acme BV — 3 dagen terug, status nog "Qualified"
-• Beta NV — 5 dagen terug, status nog "Gepland"
+*Empty call outcomes - 2*
+• Acme BV - 3 dagen terug, status nog "Qualified"
+• Beta NV - 5 dagen terug, status nog "Gepland"
 
 Open Targets`,
     },
@@ -238,14 +238,14 @@ Open Targets`,
       examplePreview: `Goedemorgen sales team! ☕
 
 *Gisteren*
-• Sebastiaan: 2 calls — 1× DEAL · 1× No deal/FU
-• Anel: 4 calls — 3× DEAL · 1× No show
+• Sebastiaan: 2 calls - 1× DEAL · 1× No deal/FU
+• Anel: 4 calls - 3× DEAL · 1× No show
 
 *Vandaag*
 • 4 calls ingepland bij Anel, 2 bij Sebastiaan en 1 bij Jill
 
 :rotating_light: *Empty call outcomes*
-2 bij Sebastiaan en 1 bij Anel — checken in Monday
+2 bij Sebastiaan en 1 bij Anel - checken in Monday
 
 *Deze maand (mei)*
 • 96 booked calls
@@ -255,10 +255,10 @@ Open Targets`,
 • €62.1k / €120.0k revenue · 🟢 102% pace
 • Conversion: 29% (target 30%)
 
-*Leaderboard — deze maand*
-🥇 Anel — *12 deals* · €27.4k · 32%
-🥈 Jill — *9 deals* · €19.8k · 28%
-🥉 Sebastiaan — *7 deals* · €14.9k · 26%
+*Leaderboard - deze maand*
+🥇 Anel - *12 deals* · €27.4k · 32%
+🥈 Jill - *9 deals* · €19.8k · 28%
+🥉 Sebastiaan - *7 deals* · €14.9k · 26%
 
 Open Targets`,
     },
@@ -299,7 +299,7 @@ Open Targets`,
           </div>
         )}
 
-        {/* Test DM card — small utility */}
+        {/* Test DM card - small utility */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">

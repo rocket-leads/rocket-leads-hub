@@ -42,7 +42,7 @@ export async function GET(
     if (!variantRow) return NextResponse.json({ error: "Variant not found" }, { status: 404 })
 
     // Pull all slots for this variant. Even slots that haven't been
-    // generated yet count — the UI shows empty slots so the CM knows
+    // generated yet count - the UI shows empty slots so the CM knows
     // they can fill them.
     const { data: slotRows, error: sErr } = await supabase
       .from("pedro_variant_images")

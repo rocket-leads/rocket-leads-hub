@@ -16,20 +16,20 @@ export type RawTargetsItem = {
   closer: string | null
   /** Lead name (Monday item name). */
   name: string
-  /** datum_afspraak — YYYY-MM-DD or null. */
+  /** datum_afspraak - YYYY-MM-DD or null. */
   datumAfspraak: string | null
-  /** date3 — when the deal was actually closed, if any. */
+  /** date3 - when the deal was actually closed, if any. */
   dateDeal: string | null
   /** status column text. */
   status: string
-  /** numbers column — deal value in EUR. */
+  /** numbers column - deal value in EUR. */
   dealValue: number
 }
 
 export type CloserSalesMetrics = {
   closer: string
   yesterday: {
-    /** Total calls "in scope" yesterday — resolved + empty. Drives the "X calls totaal" line. */
+    /** Total calls "in scope" yesterday - resolved + empty. Drives the "X calls totaal" line. */
     taken: number
     /** Status counts for *resolved* outcomes only (No show / No deal / DEAL). Empty stays out. */
     statusBreakdown: Record<string, number>
@@ -56,7 +56,7 @@ export type CloserSalesMetrics = {
     revenue: number
     conversion: number | null
   }
-  /** Past appointments still on a pre-call status — backlog the closer should log. */
+  /** Past appointments still on a pre-call status - backlog the closer should log. */
   emptyOutcomes: Array<{ name: string; daysOverdue: number; status: string }>
 }
 
@@ -88,7 +88,7 @@ export function computeCloserMetrics(
   for (const item of items) {
     if (item.closer !== closerName) continue
 
-    // Yesterday: appointments held yesterday — split resolved status counts from empty
+    // Yesterday: appointments held yesterday - split resolved status counts from empty
     // so the channel can show "Nx empty call outcomes" as its own line.
     if (item.datumAfspraak === yesterday) {
       if (isTaken(item.status) || isNoShow(item.status)) {
@@ -101,7 +101,7 @@ export function computeCloserMetrics(
       }
     }
 
-    // Today: planned appointments (any status — we count what's on the agenda)
+    // Today: planned appointments (any status - we count what's on the agenda)
     if (item.datumAfspraak === today) {
       todayPlanned++
     }
@@ -118,7 +118,7 @@ export function computeCloserMetrics(
       if (isTaken(item.status)) mtd.taken++
     }
 
-    // MTD deals — by dateDeal
+    // MTD deals - by dateDeal
     if (
       item.dateDeal &&
       item.dateDeal >= monthStart &&
@@ -129,7 +129,7 @@ export function computeCloserMetrics(
       mtd.revenue += item.dealValue
     }
 
-    // Deal closed yesterday from an OLDER call — surfaces the "Roy closed a deal
+    // Deal closed yesterday from an OLDER call - surfaces the "Roy closed a deal
     // yesterday but from a call on day-3" case, so a reader of the message doesn't
     // misattribute the deal to yesterday's appointments.
     if (
@@ -141,7 +141,7 @@ export function computeCloserMetrics(
     }
 
     // Empty outcomes: any past appointment still pre-call. Surfaced as a backlog
-    // — the closer should log every call eventually, this list is the to-do.
+    // - the closer should log every call eventually, this list is the to-do.
     if (
       isInPast(item.datumAfspraak, today) &&
       isEmpty(item.status)
@@ -168,7 +168,7 @@ export function computeCloserMetrics(
 }
 
 function formatPercent(n: number | null): string {
-  if (n === null) return "—"
+  if (n === null) return "-"
   return `${Math.round(n * 100)}%`
 }
 
@@ -201,7 +201,7 @@ function monthFractionFromToday(today: string): number {
 
 /**
  * Renders ` · 🟢 102% pace` (or 🔴 when behind) to be appended to a target line.
- * Returns "" when target/fraction can't produce a meaningful number — caller
+ * Returns "" when target/fraction can't produce a meaningful number - caller
  * just concatenates so the line stays clean.
  */
 function paceTag(actual: number, target: number, monthFraction: number): string {
@@ -237,7 +237,7 @@ export function computeCloserSalesVars(opts: {
   const { metrics, targets, monthLabel } = opts
   const firstName = metrics.closer.split(" ")[0]
 
-  // Yesterday lines — total, then resolved status breakdown, then empty count as own row.
+  // Yesterday lines - total, then resolved status breakdown, then empty count as own row.
   const yesterdayLines: string[] = []
   if (metrics.yesterday.taken === 0) {
     yesterdayLines.push("• Geen calls gepland gisteren")
@@ -259,7 +259,7 @@ export function computeCloserSalesVars(opts: {
     todayLines.push(`• ${metrics.today.planned} call${metrics.today.planned === 1 ? "" : "s"} ingepland`)
   }
 
-  // MTD lines — order: booked → taken → show-up → deals → revenue → conversion.
+  // MTD lines - order: booked → taken → show-up → deals → revenue → conversion.
   const dealTarget = targets?.deals ?? 0
   const revenueTarget = targets?.revenue ?? 0
   const mtdLines: string[] = []
@@ -276,16 +276,16 @@ export function computeCloserSalesVars(opts: {
     mtdLines.push(`• Conversion: ${formatPercent(metrics.mtd.conversion)} (target 30%)`)
   }
 
-  // Empty call outcomes — past appointments still on a pre-call status (backlog).
+  // Empty call outcomes - past appointments still on a pre-call status (backlog).
   let action_items_section = ""
   if (metrics.emptyOutcomes.length > 0) {
     const n = metrics.emptyOutcomes.length
     const block: string[] = [
-      `*Empty call outcomes — ${n}*`,
+      `*Empty call outcomes - ${n}*`,
     ]
     for (const item of metrics.emptyOutcomes.slice(0, 6)) {
       const daysLabel = item.daysOverdue === 1 ? "1 dag" : `${item.daysOverdue} dagen`
-      block.push(`• ${item.name} — ${daysLabel} terug, status nog "${item.status}"`)
+      block.push(`• ${item.name} - ${daysLabel} terug, status nog "${item.status}"`)
     }
     if (n > 6) {
       block.push(`…en ${n - 6} meer`)
@@ -325,7 +325,7 @@ type TeamSalesVars = {
 }
 
 /**
- * Channel summary — aggregates metrics across all closers for the team view.
+ * Channel summary - aggregates metrics across all closers for the team view.
  */
 export function computeTeamSalesVars(opts: {
   perCloser: CloserSalesMetrics[]
@@ -358,9 +358,9 @@ export function computeTeamSalesVars(opts: {
   const teamConversion = totals.mtdTaken > 0 ? totals.mtdDeals / totals.mtdTaken : null
   const teamShowRate = totals.mtdBooked > 0 ? totals.mtdTaken / totals.mtdBooked : null
 
-  // Leaderboard — only closers with MTD activity (booked OR closed at least one).
+  // Leaderboard - only closers with MTD activity (booked OR closed at least one).
   // Old closures who haven't worked the period would otherwise sit at the bottom of
-  // every daily message forever. Top 3 only — 4 / 5 add noise without info.
+  // every daily message forever. Top 3 only - 4 / 5 add noise without info.
   const leaderboard = [...perCloser]
     .filter((c) => c.mtd.booked > 0 || c.mtd.deals > 0)
     .sort((a, b) => {
@@ -403,8 +403,8 @@ export function computeTeamSalesVars(opts: {
     return `${parts.slice(0, -1).join(", ")} en ${parts[parts.length - 1]}`
   }
 
-  // Yesterday lines — show each closer's calls + outcome breakdown so the reader
-  // sees "Sebastiaan: 2 calls — 2× No show" rather than a single team total that
+  // Yesterday lines - show each closer's calls + outcome breakdown so the reader
+  // sees "Sebastiaan: 2 calls - 2× No show" rather than a single team total that
   // hides who-did-what. Empty-call-outcome count surfaces below as its own row.
   // Deals closed yesterday from OLDER calls go into a separate sub-section so a
   // reader doesn't misattribute them to yesterday's appointments.
@@ -419,13 +419,13 @@ export function computeTeamSalesVars(opts: {
       const callWord = m.yesterday.taken === 1 ? "call" : "calls"
       const breakdown = statusBreakdownLine(m.yesterday.statusBreakdown)
       const breakdownPart =
-        Object.keys(m.yesterday.statusBreakdown).length > 0 ? ` — ${breakdown}` : ""
+        Object.keys(m.yesterday.statusBreakdown).length > 0 ? ` - ${breakdown}` : ""
       const emptyPart = m.yesterday.empty > 0 ? ` · ${m.yesterday.empty}× empty` : ""
       yesterdayLines.push(`• ${firstName(m.closer)}: ${m.yesterday.taken} ${callWord}${breakdownPart}${emptyPart}`)
     }
   }
 
-  // Deals closed yesterday from older calls — surface separately under the yesterday
+  // Deals closed yesterday from older calls - surface separately under the yesterday
   // block so it's clear "Roy closed an older deal yesterday" doesn't come from
   // yesterday's appointments. Skipped entirely when nothing fits.
   const olderDealsByCloser = perCloser
@@ -436,14 +436,14 @@ export function computeTeamSalesVars(opts: {
     yesterdayLines.push("_Deals afgerond gisteren uit oudere calls:_")
     for (const m of olderDealsByCloser) {
       for (const d of m.yesterday.dealsFromOlderCalls) {
-        yesterdayLines.push(`• ${firstName(m.closer)} — ${d.name} (${formatEuro(d.dealValue)})`)
+        yesterdayLines.push(`• ${firstName(m.closer)} - ${d.name} (${formatEuro(d.dealValue)})`)
       }
     }
   }
 
-  // Today line — reads like a sentence: "3 calls ingepland bij Anel" or
+  // Today line - reads like a sentence: "3 calls ingepland bij Anel" or
   // "4 calls ingepland bij Anel, 2 bij Sebastiaan en 1 bij Jill". Avoids the
-  // robotic "9 calls ingepland — Anel 3 · Sebastiaan 1" leaderboard format.
+  // robotic "9 calls ingepland - Anel 3 · Sebastiaan 1" leaderboard format.
   const todayActiveClosers = perCloser
     .filter((m) => m.today.planned > 0)
     .sort((a, b) => b.today.planned - a.today.planned)
@@ -466,7 +466,7 @@ export function computeTeamSalesVars(opts: {
     todayLines.push(`• ${headPart}${tail}`)
   }
 
-  // MTD lines — booked → taken → show-up → deals → revenue → conversion.
+  // MTD lines - booked → taken → show-up → deals → revenue → conversion.
   // Deals + revenue lines append an expected-pace tag (🟢/🔴 vs. linear pace
   // for the days elapsed) so the team sees at a glance whether the month is
   // on track without pulling up the dashboard.
@@ -495,22 +495,22 @@ export function computeTeamSalesVars(opts: {
     mtdLines.push(`• Conversion: ${formatPercent(teamConversion)} (target 30%)`)
   }
 
-  // Leaderboard section — top 3 only (4 / 5 added noise). Already filtered upstream
+  // Leaderboard section - top 3 only (4 / 5 added noise). Already filtered upstream
   // to closers with MTD activity, so old closures don't get carried as zero rows.
   let leaderboard_section = ""
   if (leaderboard.length > 0 && totals.mtdDeals > 0) {
-    const block: string[] = ["*Leaderboard — deze maand*"]
+    const block: string[] = ["*Leaderboard - deze maand*"]
     leaderboard.slice(0, 3).forEach((row, idx) => {
       const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉"
-      const conv = row.mtd.conversion === null ? "—" : formatPercent(row.mtd.conversion)
+      const conv = row.mtd.conversion === null ? "-" : formatPercent(row.mtd.conversion)
       block.push(
-        `${medal} ${row.closer} — *${row.mtd.deals} deals* · ${formatEuro(row.mtd.revenue)} · ${conv}`,
+        `${medal} ${row.closer} - *${row.mtd.deals} deals* · ${formatEuro(row.mtd.revenue)} · ${conv}`,
       )
     })
     leaderboard_section = block.join("\n")
   }
 
-  // Empty call outcomes — sits ABOVE "deze maand" so it gets attention before the
+  // Empty call outcomes - sits ABOVE "deze maand" so it gets attention before the
   // closers scan the summary numbers. Per-closer line uses the same organic
   // phrasing as the today block: "2 bij Sebastiaan en 1 bij Anel".
   let action_items_section = ""
@@ -518,7 +518,7 @@ export function computeTeamSalesVars(opts: {
     const breakdown = formatPerCloserOrganic(
       perCloser.map((m) => ({ closer: m.closer, n: m.emptyOutcomes.length })),
     )
-    action_items_section = `:rotating_light: *Empty call outcomes*\n${breakdown} — checken in Monday`
+    action_items_section = `:rotating_light: *Empty call outcomes*\n${breakdown} - checken in Monday`
   }
 
   return {

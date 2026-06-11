@@ -8,7 +8,7 @@ import type { BrandStyle } from "@/lib/pedro/helpers"
  *      customStylePrompt, fallbackFontHeading).
  *   2. The scraped brand fingerprint (BrandStyle) with its embedded
  *      Haiku quality verdict.
- *   3. The implicit quality gate — score <40 disables the fingerprint
+ *   3. The implicit quality gate - score <40 disables the fingerprint
  *      even when the CM has "Match website" selected; 40-69 only allows
  *      the objective data (colors + fonts).
  *
@@ -19,7 +19,7 @@ import type { BrandStyle } from "@/lib/pedro/helpers"
  *     mode = "custom".
  *   - `referenceImagePolicy`: tells the image-gen route whether to
  *     include the winner-ad thumbnail and Drive photos.
- *   - `notice`: human-readable string for the brief modal banner —
+ *   - `notice`: human-readable string for the brief modal banner -
  *     non-null when the policy diverged from "use everything by
  *     default" (quality below 40, mode override, etc).
  *
@@ -45,7 +45,7 @@ const DEFAULT_TOGGLES: WebsiteToggles = {
 }
 
 /** Display label + short identifier passed into the prompt. SemiBold for
- *  headlines, Regular/Medium for body — picked for the "uitgesproken /
+ *  headlines, Regular/Medium for body - picked for the "uitgesproken /
  *  duidelijk, iets bold maar niet té bold" brief Roy gave. */
 const FALLBACK_FONT_LABEL: Record<FallbackFontKey, string> = {
   inter: "Inter SemiBold (headlines) / Regular-Medium (body)",
@@ -70,7 +70,7 @@ export type ResolvedVisualStylePolicy = {
   referenceImagePolicy: ReferenceImagePolicy
   notice: string | null
   /** Whether the website fingerprint was applied (any element on). For
-   *  observability — surfaces in creative-refresh-context's sources
+   *  observability - surfaces in creative-refresh-context's sources
    *  flags so we can tell from logs that the policy kicked in. */
   fingerprintApplied: boolean
 }
@@ -107,13 +107,13 @@ export function resolveVisualStylePolicy(
   if (mode === "custom") {
     const lines: string[] = []
     if (customPrompt.length > 0) {
-      lines.push(`VISUAL STYLE (custom — CM-authored, treat as authoritative): ${customPrompt}`)
+      lines.push(`VISUAL STYLE (custom - CM-authored, treat as authoritative): ${customPrompt}`)
     }
     lines.push(`Typography fallback: ${fallbackFontLabel}.`)
     return {
       brandBlockLines: lines,
       referenceImagePolicy: { useWinnerThumbnail: false, useDrivePhotos: false },
-      notice: "Custom visual prompt — Pedro ignores website + winner ad + Drive photos.",
+      notice: "Custom visual prompt - Pedro ignores website + winner ad + Drive photos.",
       fingerprintApplied: false,
     }
   }
@@ -125,7 +125,7 @@ export function resolveVisualStylePolicy(
         `Typography: ${fallbackFontLabel}.`,
       ],
       referenceImagePolicy: { useWinnerThumbnail: false, useDrivePhotos: true },
-      notice: "Pedro only uses Drive folder photos — website fingerprint + winner ad style ignored.",
+      notice: "Pedro only uses Drive folder photos - website fingerprint + winner ad style ignored.",
       fingerprintApplied: false,
     }
   }
@@ -137,12 +137,12 @@ export function resolveVisualStylePolicy(
         `Typography: ${fallbackFontLabel}.`,
       ],
       referenceImagePolicy: { useWinnerThumbnail: true, useDrivePhotos: false },
-      notice: "Pedro mirrors the winner ad only — website fingerprint + Drive photos ignored.",
+      notice: "Pedro mirrors the winner ad only - website fingerprint + Drive photos ignored.",
       fingerprintApplied: false,
     }
   }
 
-  // ── mode === "website" — apply quality gate + per-element toggles ─
+  // ── mode === "website" - apply quality gate + per-element toggles ─
   const verdict = brand?.qualityVerdict ?? null
   const score = verdict?.score ?? null
 
@@ -161,7 +161,7 @@ export function resolveVisualStylePolicy(
         `Lean on winner-ad DNA + Drive folder photos for visual style. Typography fallback: ${fallbackFontLabel}.`,
       ],
       referenceImagePolicy: { useWinnerThumbnail: true, useDrivePhotos: true },
-      notice: `Quality score ${score}/100 — website fingerprint suppressed. ${verdict?.summary ?? ""}`.trim(),
+      notice: `Quality score ${score}/100 - website fingerprint suppressed. ${verdict?.summary ?? ""}`.trim(),
       fingerprintApplied: false,
     }
   }
@@ -215,7 +215,7 @@ export function resolveVisualStylePolicy(
 
   if (fullFingerprintAllowed && toggles.useLogo && brand?.logoUrl) {
     lines.push(
-      `- Brand logo (reference only — keep small on the ad, never dominant): ${brand.logoUrl}`,
+      `- Brand logo (reference only - keep small on the ad, never dominant): ${brand.logoUrl}`,
     )
     applied.push("logo")
   }
@@ -223,7 +223,7 @@ export function resolveVisualStylePolicy(
   const headerLine =
     lines.length > 0
       ? onlyObjectiveAllowed
-        ? `BRAND IDENTITY (objective data only — quality score ${score}/100 too low for layout/logo cues):`
+        ? `BRAND IDENTITY (objective data only - quality score ${score}/100 too low for layout/logo cues):`
         : `BRAND IDENTITY (use hex codes + font names verbatim in every imagePrompt for consistent headline overlays and CTAs):`
       : null
 
@@ -231,9 +231,9 @@ export function resolveVisualStylePolicy(
 
   let notice: string | null = null
   if (onlyObjectiveAllowed) {
-    notice = `Quality score ${score}/100 — only brand colors + fonts applied. Layout/logo cues suppressed.`
+    notice = `Quality score ${score}/100 - only brand colors + fonts applied. Layout/logo cues suppressed.`
   } else if (applied.length === 0 && score === null) {
-    notice = "No usable brand fingerprint scraped — Pedro relies on winner ad + Drive folder."
+    notice = "No usable brand fingerprint scraped - Pedro relies on winner ad + Drive folder."
   }
 
   return {

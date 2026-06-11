@@ -12,17 +12,38 @@ type BillingRow = {
   status: "complete" | "open" | "overdue"
 }
 
+function fmtCompact(v: number, locale: Locale): string {
+  if (v >= 1000) return `€${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k`
+  return formatCurrency(v, locale)
+}
+
 export function BillingBlock({
   items,
   totalCount,
   totalOutstanding,
+  teamMrr,
+  teamMrrClientCount,
   locale,
 }: {
   items: BillingRow[]
   totalCount: number
   totalOutstanding: number
+  /** Sum of monthly agreement value across this user's visible clients
+   *  whose cycle_start_date falls in the current calendar month. */
+  teamMrr: number
+  /** Count of those clients with non-zero MRR - drives the "X live
+   *  agreements" subtitle. */
+  teamMrrClientCount: number
   locale: Locale
 }) {
+  const mrrSubtitle = teamMrrClientCount === 0
+    ? t("home.kpi.mrr.no_agreements", locale)
+    : t(
+        teamMrrClientCount === 1 ? "home.kpi.mrr.live_one" : "home.kpi.mrr.live_many",
+        locale,
+        { n: teamMrrClientCount },
+      )
+
   return (
     <BlockShell
       title={t("home.block.billing.title", locale)}
@@ -33,9 +54,29 @@ export function BillingBlock({
       empty={items.length === 0}
       emptyMessage={t("home.block.billing.empty", locale)}
     >
-      <div className="px-5 py-3 border-b border-border/30 flex items-center justify-between">
-        <span className="text-sm font-medium text-muted-foreground">{t("home.block.billing.total_open", locale)}</span>
-        <span className="text-sm font-mono tabular-nums text-amber-400">{formatCurrency(totalOutstanding, locale)}</span>
+      <div className="px-5 py-3 border-b border-border/30 grid grid-cols-2 gap-4">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70 font-medium">
+            {t("home.kpi.mrr.label", locale)}
+          </p>
+          <p className="text-base font-mono tabular-nums text-foreground mt-0.5">
+            {fmtCompact(teamMrr, locale)}
+          </p>
+          <p className="text-[10px] text-muted-foreground/60 mt-0.5">{mrrSubtitle}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70 font-medium">
+            {t("home.block.billing.total_open", locale)}
+          </p>
+          <p className="text-base font-mono tabular-nums text-amber-400 mt-0.5">
+            {formatCurrency(totalOutstanding, locale)}
+          </p>
+          <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+            {totalCount === 0
+              ? t("home.block.billing.empty", locale)
+              : t("home.block.billing.cta", locale)}
+          </p>
+        </div>
       </div>
       <ul className="divide-y divide-border/30">
         {items.map((item) => (

@@ -63,7 +63,7 @@ export function calculatePulse(
   const revenue = monday.closedRevenue
 
   const cbc = safeDivide(spend, calls)
-  // 2026-05-27: qualification pillar dropped — booking rate (Booked/Opt-ins)
+  // 2026-05-27: qualification pillar dropped - booking rate (Booked/Opt-ins)
   // takes its place and show-up rate uses booked as denominator.
   const bookingRate = safeDivide(calls, optIns)
   const showUpRate = safeDivide(taken, calls)
@@ -79,29 +79,29 @@ export function calculatePulse(
       name: "Cost per Booked Call",
       onTrack: cbcCheck,
       hint: cbcCheck === true ? HINTS.cbc.good : HINTS.cbc.bad,
-      metric: calls > 0 ? formatCurrencyDecimal(cbc) : "—",
-      target: targets.cbc > 0 ? formatCurrencyDecimal(targets.cbc) : "—",
+      metric: calls > 0 ? formatCurrencyDecimal(cbc) : "-",
+      target: targets.cbc > 0 ? formatCurrencyDecimal(targets.cbc) : "-",
     },
     {
       name: "Booking Rate",
       onTrack: bookingCheck,
       hint: bookingCheck === true ? HINTS.booking.good : HINTS.booking.bad,
-      metric: optIns > 0 ? formatPercent(bookingRate) : "—",
-      target: derived.bookingRate > 0 ? formatPercent(derived.bookingRate) : "—",
+      metric: optIns > 0 ? formatPercent(bookingRate) : "-",
+      target: derived.bookingRate > 0 ? formatPercent(derived.bookingRate) : "-",
     },
     {
       name: "Show-up Rate",
       onTrack: showUpCheck,
       hint: showUpCheck === true ? HINTS.showUp.good : HINTS.showUp.bad,
-      metric: calls > 0 ? formatPercent(showUpRate) : "—",
-      target: derived.showUpRate > 0 ? formatPercent(derived.showUpRate) : "—",
+      metric: calls > 0 ? formatPercent(showUpRate) : "-",
+      target: derived.showUpRate > 0 ? formatPercent(derived.showUpRate) : "-",
     },
     {
       name: "Conversion Rate",
       onTrack: convCheck,
       hint: convCheck === true ? HINTS.conv.good : HINTS.conv.bad,
-      metric: taken > 0 ? formatPercent(convRate) : "—",
-      target: derived.convRate > 0 ? formatPercent(derived.convRate) : "—",
+      metric: taken > 0 ? formatPercent(convRate) : "-",
+      target: derived.convRate > 0 ? formatPercent(derived.convRate) : "-",
     },
   ]
 
@@ -126,8 +126,8 @@ export function calculatePulse(
     let summary: string
     if (isClosed) {
       summary = revenue >= targetRevenue
-        ? `Closed at ${formatCurrency(revenue)} — hit ${formatCurrency(targetRevenue)} target`
-        : `Closed at ${formatCurrency(revenue)} — ${formatCurrency(targetRevenue - revenue)} short of ${formatCurrency(targetRevenue)} target`
+        ? `Closed at ${formatCurrency(revenue)} - hit ${formatCurrency(targetRevenue)} target`
+        : `Closed at ${formatCurrency(revenue)} - ${formatCurrency(targetRevenue - revenue)} short of ${formatCurrency(targetRevenue)} target`
     } else if (paceFactor >= 1.05) {
       summary = `Ahead of pace · projected ${formatCurrency(projectedRevenue)} (${Math.round(paceFactor * 100)}% of target)`
     } else if (paceFactor >= 0.95) {

@@ -2,7 +2,7 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { PedroInsightBody } from "@/lib/pedro/insights/types"
 
 /**
- * Weekly-update template — composes the {{1}} body for the Trengo WhatsApp
+ * Weekly-update template - composes the {{1}} body for the Trengo WhatsApp
  * HSM template `rl_universal_<voornaam>` (e.g. `rl_universal_roel`,
  * `rl_universal_danny`). The Trengo template owns the greeting prefix
  * ("Hey ") and the sign-off ("Groetjes <am>") via its approved body; this
@@ -15,20 +15,20 @@ import type { PedroInsightBody } from "@/lib/pedro/insights/types"
  * What we DO include and ALL of it is editable in the dialog:
  *   - First-name line ("Bram!") so the message reads "Hey Bram! …"
  *   - Intro sentence
- *   - 7-day KPI block (incl. numbers — AM can correct if a number looks off)
+ *   - 7-day KPI block (incl. numbers - AM can correct if a number looks off)
  *   - Qualitative trend sentence
  *   - Pedro's conclusion sentence
  *   - Actions header + bullet list
  *
  * Per Roy: "ik wil echt alles kunnen aanpassen, zelfs de data in de 7-Day
- * update". So the previous locked/editable split is collapsed — every field
+ * update". So the previous locked/editable split is collapsed - every field
  * lives in `EditableParts` and the dialog binds each to an editable input.
  *
  * The render stays deterministic per (clientId, ISO week) so re-opening the
  * dialog within the same week returns the same draft, but next week rotates
  * to a different intro phrasing for natural variation.
  *
- * No AI call — pulls straight from Pedro's daily cache + the 7d KPI cache.
+ * No AI call - pulls straight from Pedro's daily cache + the 7d KPI cache.
  */
 
 // ─── Variant pools (rotated per week) ─────────────────────────────────────
@@ -46,7 +46,7 @@ export const INTROS = [
  * actions from the campaign-manager playbook so the AM only has to tweak
  * them instead of starting from a blank list.
  *
- * Items are written to be generic-but-credible — none of them refer to a
+ * Items are written to be generic-but-credible - none of them refer to a
  * specific ad name, so they read fine for any client. The seed rotates which
  * three appear per week so the same client doesn't get the literal same
  * starter list two weeks in a row.
@@ -65,7 +65,7 @@ const DEFAULT_ACTIONS = [
  *
  *  IMPORTANT: must NOT restate what the trend sentence already says. The
  *  trend sentence covers "wat is er gebeurd" (CPL loopt op / mooie beweging)
- *  — the conclusion is then *complementary*, focusing on "wat doe ik
+ *  - the conclusion is then *complementary*, focusing on "wat doe ik
  *  komende dagen". Mirroring the trend would produce a visibly-duplicate
  *  message ("Kost per lead loopt op …" twice in a row). */
 function defaultConclusion(kpi: KpiSummary | null): string {
@@ -99,7 +99,7 @@ function defaultActions(seed: number): string[] {
  *     (the Trengo HSM template wraps with "Hey " + "Groetjes …" itself).
  *   - email → real email shape: subject line, "Hé {name}," greeting in the
  *     body, full conclusion paragraph, our own "Groetjes,\n{am}" sign-off.
- *     No template wrapper — we send free-text via Trengo's email channel. */
+ *     No template wrapper - we send free-text via Trengo's email channel. */
 export type Channel = "whatsapp" | "email" | "unknown"
 
 /** Every field the AM sees in the dialog is editable. */
@@ -112,7 +112,7 @@ export type EditableParts = {
   kpiBlock: string
   /** Qualitative trend sentence (empty when there's no notable move). */
   trendSentence: string
-  /** Free-form AM context — dictated above the bubble. Gets inserted into
+  /** Free-form AM context - dictated above the bubble. Gets inserted into
    *  the body between the trend sentence and Pedro's conclusion so the AM
    *  can override the AI framing with their own ("we hebben de drempel
    *  verhoogd, daarom is CPL gestegen"). Empty by default. */
@@ -124,10 +124,10 @@ export type EditableParts = {
   /** Pedro's action bullets (empty array allowed). */
   actions: string[]
   /** Email-only: subject line. Empty string for WhatsApp. Sent as message
-   *  metadata, not body content — `renderFromParts` does NOT include it in
+   *  metadata, not body content - `renderFromParts` does NOT include it in
    *  the rendered string. */
   subject: string
-  /** Email-only: closing line. The AM's name is NEVER pre-filled — the
+  /** Email-only: closing line. The AM's name is NEVER pre-filled - the
    *  message is already sent FROM the AM's account, so adding their name
    *  again is redundant. Defaults to `Groetjes,` (or empty) and the AM can
    *  customise. Empty for WhatsApp (template handles sign-off). */
@@ -179,7 +179,7 @@ function fmtCpl(n: number): string {
 }
 
 /** CPL delta bullet as "stabiel" / "X% stijging" / "X% daling". Empty string
- *  when there's no reliable baseline — caller can keep the line out. */
+ *  when there's no reliable baseline - caller can keep the line out. */
 function cplDeltaBullet(kpi: KpiSummary | null): string {
   if (!kpi) return ""
   if (!kpi.prevCpl || kpi.prevPeriodReliable === false) return ""
@@ -208,7 +208,7 @@ function cplDeltaBullet(kpi: KpiSummary | null): string {
  *    while removing the conflicting number.
  *
  *  Used only when injecting Pedro's conclusion into the client-facing
- *  weekly update — the watch list / CM views still get the original
+ *  weekly update - the watch list / CM views still get the original
  *  text because CMs DO want the precise window labels.
  */
 function sanitizePedroConclusionForClient(s: string): string {
@@ -241,7 +241,7 @@ function trendSentenceFor(kpi: KpiSummary | null): string {
  *    "📊 Cijfers deze week:" header above {{3}} so adding our own would
  *    double it up.
  *  - Email: includes the "📊 Afgelopen 7 dagen" header line because the
- *    email body has no template wrapper — we render everything ourselves.
+ *    email body has no template wrapper - we render everything ourselves.
  */
 function buildKpiBlock(kpi: KpiSummary | null, channel: Channel): string {
   if (!kpi) return ""
@@ -262,7 +262,7 @@ function buildKpiBlock(kpi: KpiSummary | null, channel: Channel): string {
  *  (or when every overdue invoice somehow lacks a hosted URL, which
  *  shouldn't happen but we don't want a header with no links).
  *
- *  WhatsApp keeps a tight one-line-per-invoice layout — Trengo strips
+ *  WhatsApp keeps a tight one-line-per-invoice layout - Trengo strips
  *  most formatting. Email uses the same shape; HTML rendering of the
  *  URL is up to Trengo's email pipeline.
  */
@@ -271,12 +271,12 @@ function buildOverdueBlock(invoices: OverdueInvoiceForBlock[] | undefined): stri
   const usable = invoices.filter((i) => !!i.hostedUrl)
   if (usable.length === 0) return ""
   const header = usable.length === 1
-    ? "⚠️ Openstaande factuur — je kunt direct betalen via deze link:"
-    : "⚠️ Openstaande facturen — je kunt direct betalen via onderstaande links:"
+    ? "⚠️ Openstaande factuur - je kunt direct betalen via deze link:"
+    : "⚠️ Openstaande facturen - je kunt direct betalen via onderstaande links:"
   const lines = [header]
   for (const inv of usable) {
     const label = inv.number ? `Factuur ${inv.number}` : "Factuur"
-    lines.push(`• ${label} — ${fmtEur(inv.amountDue)}: ${inv.hostedUrl}`)
+    lines.push(`• ${label} - ${fmtEur(inv.amountDue)}: ${inv.hostedUrl}`)
   }
   return lines.join("\n")
 }
@@ -298,17 +298,17 @@ export type ComposeInput = {
   /** Drives opener / subject / signOff defaults. Defaults to "whatsapp"
    *  when omitted so older callers keep their behaviour. */
   channel?: Channel
-  /** Client's company name (or display name) — only used to seed the
+  /** Client's company name (or display name) - only used to seed the
    *  email subject ("Wekelijkse update {name}"). Optional; falls back to
    *  the firstName when missing. */
   clientName?: string
-  /** AM's first name — only used to seed the email sign-off ("Groetjes,
+  /** AM's first name - only used to seed the email sign-off ("Groetjes,
    *  {amFirstName}"). Capitalised on render. Falls back to "Roel" when
    *  missing so the placeholder still reads naturally. */
   amFirstName?: string
   kpi: KpiSummary | null
   pedro: PedroInsightBody | null
-  /** Render date — pass `new Date()` in production, fixed dates in tests. */
+  /** Render date - pass `new Date()` in production, fixed dates in tests. */
   now?: Date
   /** Human-readable date range for the week the update covers (e.g.
    *  "11 t/m 17 mei"). When set, the intro reads "Hier de update over
@@ -344,7 +344,7 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
   // - Email: full salutation in the body ("Hé Bram,") since there's no
   //   template wrapper.
   // - WhatsApp: just the first name (no "!"); the Trengo template body is
-  //   "Hey {{1}}," — Trengo adds the "Hey " prefix and the trailing ",".
+  //   "Hey {{1}}," - Trengo adds the "Hey " prefix and the trailing ",".
   const opener = firstName
     ? isEmail
       ? `Hé ${firstName},`
@@ -388,7 +388,7 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
 
   // Actions: Pedro's bullets win. When Pedro produced none, pre-fill three
   // generic playbook actions so the AM only tweaks them. Empty-state skips
-  // actions entirely — there's nothing to act on yet.
+  // actions entirely - there's nothing to act on yet.
   const pedroActions = (input.pedro?.actions ?? []).filter((a) => a.trim().length > 0)
   const actions = noSignal
     ? []
@@ -403,11 +403,11 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
       kpiBlock: buildKpiBlock(input.kpi, channel),
       // trendSentence merged into `conclusion` above. Field kept on the
       // type for backwards compat with stored drafts, but always empty
-      // for new composes — renderers should ignore it.
+      // for new composes - renderers should ignore it.
       trendSentence: "",
       note: "",
       conclusion,
-      // WhatsApp: empty — the approved template body provides
+      // WhatsApp: empty - the approved template body provides
       // "✅ Wat we deze week gaan doen:" above {{5}}. Email: still
       // included since email has no template wrapper.
       actionsHeader: noSignal
@@ -428,7 +428,7 @@ export function composeInitialParts(input: ComposeInput): ComposedUpdate {
 /** Pure stringification of the editable parts. Skips empty fields so a
  *  cleared-out section doesn't leave a stray blank line behind.
  *
- *  Subject is NOT emitted — it's metadata sent alongside the body when the
+ *  Subject is NOT emitted - it's metadata sent alongside the body when the
  *  channel is email. The sign-off IS emitted (at the end) when set; it's
  *  only set in email mode by `composeInitialParts`. */
 export function renderFromParts(parts: EditableParts): string {
@@ -451,7 +451,7 @@ export function renderFromParts(parts: EditableParts): string {
     blocks.push(actionLines.join("\n"))
   }
 
-  // Overdue invoices sit between actions and sign-off — they're a
+  // Overdue invoices sit between actions and sign-off - they're a
   // call-to-action so reading order is: what happened → what we're
   // doing → please settle these → sign off.
   if (parts.overdueBlock?.trim()) blocks.push(parts.overdueBlock.trim())
@@ -473,9 +473,9 @@ export function renderWeeklyUpdate(input: ComposeInput): string {
 /**
  * Map the AM-edited parts into the five ordered params for the V2 Weekly
  * Update HSM template (`rl_weekly_<voornaam>`). The template body
- * already contains the structural pieces — paragraph breaks, the "📊 Cijfers
+ * already contains the structural pieces - paragraph breaks, the "📊 Cijfers
  * deze week:" header, the "✅ Wat we deze week gaan doen:" header, and the
- * per-AM sign-off — so the variables hold ONLY the bare content.
+ * per-AM sign-off - so the variables hold ONLY the bare content.
  *
  * Slot mapping:
  *   [0] → {{1}}  first name (no trailing "!")
@@ -492,7 +492,7 @@ export function renderWeeklyUpdate(input: ComposeInput): string {
  * the format that gets through cleanly. The template body itself can
  * still wrap the bullets visually if Meta-approved that way.
  *
- * Email keeps its bulleted/multi-line shape — it uses `renderFromParts`,
+ * Email keeps its bulleted/multi-line shape - it uses `renderFromParts`,
  * not this function, since email has no HSM-template variable limits.
  */
 export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
@@ -531,7 +531,7 @@ export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
   //
   // Overdue invoices ride along in the same slot: WhatsApp HSM templates
   // only have 5 body variables, and Meta does not allow URLs in template
-  // params for most categories — we therefore inline them into the action
+  // params for most categories - we therefore inline them into the action
   // paragraph so they land somewhere visible. The "betaal hier" sentence
   // + URLs come AFTER the actions so the optimisation actions read first
   // and the payment ask is the closing CTA. Empty overdue block adds
@@ -558,7 +558,7 @@ export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
   )
 
   // Meta rejects WhatsApp template body parameters that are empty, null,
-  // or anything other than a non-empty string — the error surfaces as
+  // or anything other than a non-empty string - the error surfaces as
   // "JSON schema constraint 'type' for the JSON field 'text.body' …
   // expected: 'string'", which is misleading (empty string IS a string,
   // but Meta validates non-empty here). Guarantee every slot has
@@ -575,7 +575,7 @@ export function partsToWeeklyUpdateParams(parts: EditableParts): string[] {
 }
 
 /** Append a trailing period when the string doesn't already end with
- *  one of `.!?:` — so chained sentences/phrases don't run together. */
+ *  one of `.!?:` - so chained sentences/phrases don't run together. */
 function finishSentence(s: string): string {
   const t = s.trim()
   if (!t) return t
@@ -601,7 +601,7 @@ function sanitizeForWaParam(s: string): string {
   // Coerce: callers can hand us `null`/`undefined` from optional-field
   // EditableParts and we must NEVER let those reach the Trengo payload
   // (Meta rejects non-string body params with a misleading "expected:
-  // 'string'" 422). Empty string is a valid intermediate — the per-slot
+  // 'string'" 422). Empty string is a valid intermediate - the per-slot
   // empty fallback in partsToWeeklyUpdateParams handles those.
   const str = String(s ?? "")
   if (!str) return ""

@@ -4,13 +4,13 @@ import { createAdminClient } from "@/lib/supabase/server"
  * Resolve which WhatsApp HSM template to use when an AM sends a message.
  *
  * Hardcoded convention: every AM has TWO approved templates in Trengo:
- *   - `rl_universal_<voornaam>` — single-variable wrapper for ad-hoc /
+ *   - `rl_universal_<voornaam>` - single-variable wrapper for ad-hoc /
  *     AI-drafted updates (inbox composer, per-client "Update" button)
- *   - `rl_weekly_<voornaam>`    — multi-variable structured template for
+ *   - `rl_weekly_<voornaam>`    - multi-variable structured template for
  *     the Monday weekly update queue
  *
  * The AM's `<voornaam>` is derived from `users.name` (first token,
- * lowercased). No per-AM override is consulted — onboarding a new AM
+ * lowercased). No per-AM override is consulted - onboarding a new AM
  * means creating two Meta-approved templates in Trengo with that name,
  * not editing a Hub setting.
  *
@@ -41,7 +41,7 @@ export type WaTemplateResolution = {
  * replaces it. Keyed by the lowercased first name; the override wins
  * over the convention slug.
  *
- * Keep this list short and intentional — long-term these should
+ * Keep this list short and intentional - long-term these should
  * become a column on `users` (e.g. `weekly_template_slug`) so admins
  * can manage them without a deploy. For now in-code is fast enough.
  */
@@ -53,7 +53,7 @@ const WEEKLY_TEMPLATE_OVERRIDES: Record<string, string> = {
 /**
  * Build the template slug from an AM's first name + the template kind.
  * Returns null when the first name contains anything other than ASCII
- * letters/digits (Meta slugs don't allow accents or spaces) — caller
+ * letters/digits (Meta slugs don't allow accents or spaces) - caller
  * should treat that as a config error on the user row.
  *
  * Per-AM overrides (e.g. Danny's `_2` version) only apply to the
@@ -72,7 +72,7 @@ export function hardcodedTemplateName(
 }
 
 /** Look up the AM's first name from the `users` table. Returns "" when
- *  the user row is missing or has no name set — callers translate that
+ *  the user row is missing or has no name set - callers translate that
  *  into a null template name + a clear error to the AM. */
 async function loadAmFirstName(userId: string): Promise<string> {
   const supabase = await createAdminClient()
@@ -84,7 +84,7 @@ async function loadAmFirstName(userId: string): Promise<string> {
   return (data?.name ?? "").trim().split(/\s+/)[0] ?? ""
 }
 
-/** Universal HSM template (`rl_universal_<voornaam>`) — used by ad-hoc
+/** Universal HSM template (`rl_universal_<voornaam>`) - used by ad-hoc
  *  / AI-drafted outbound (inbox composer, per-client Update button). */
 export async function resolveWaTemplate(args: {
   userId: string
@@ -98,12 +98,12 @@ export async function resolveWaTemplate(args: {
   return { name, source: name ? "hardcoded" : "none" }
 }
 
-/** Weekly Update HSM template (`rl_weekly_<voornaam>`) — used by the
+/** Weekly Update HSM template (`rl_weekly_<voornaam>`) - used by the
  *  Monday-morning cron + the per-client Client Update dialog when the
  *  V2 env flag is on. */
 export async function resolveWeeklyUpdateTemplate(args: {
   userId: string
-  /** Accepted for backwards-compat — see resolveWaTemplate. */
+  /** Accepted for backwards-compat - see resolveWaTemplate. */
   mondayItemId?: string
 }): Promise<WaTemplateResolution> {
   const first = await loadAmFirstName(args.userId)

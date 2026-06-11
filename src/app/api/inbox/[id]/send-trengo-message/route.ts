@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 /**
  * Smart-inbox send: post the AM's edited draft as a reply on the right
- * Trengo ticket — and mark the originating Hub task as done with an audit
+ * Trengo ticket - and mark the originating Hub task as done with an audit
  * note pointing at the outbound message.
  *
  * Channel handling:
@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server"
  *  - draft_channel === "trengo_whatsapp" → only allowed if a 24-hour session
  *    window is open (last *contact-authored* message ≤24h old). Inside the
  *    window we can send free text. Outside it we'd need a pre-approved
- *    Trengo template — that's slice 3 of this work; we 501 with a helpful
+ *    Trengo template - that's slice 3 of this work; we 501 with a helpful
  *    pointer for now.
  *  - Anything else falls back to email behaviour for safety.
  *
@@ -128,14 +128,14 @@ export async function POST(
     // 24h session window: free text only allowed when the latest *contact-
     // authored* message is ≤24h old. Outside the window we have to send via
     // a Meta-approved template registered in Trengo. The convention is
-    // `rl_universal_<voornaam>` for ad-hoc outbound — derived hardcoded
+    // `rl_universal_<voornaam>` for ad-hoc outbound - derived hardcoded
     // from the assignee's `users.name` (no per-AM override consulted).
     const windowOpen = await isSessionWindowOpen(waTicket.id)
     if (!windowOpen) {
       const assigneeId = task.assignee_id
       if (!assigneeId) {
         return NextResponse.json(
-          { error: "Task has no assignee — kan geen template-naam opzoeken." },
+          { error: "Task has no assignee - kan geen template-naam opzoeken." },
           { status: 400 },
         )
       }
@@ -195,10 +195,10 @@ export async function POST(
         )
       }
 
-      // Audit + done in one shot — the regular post path is skipped because
+      // Audit + done in one shot - the regular post path is skipped because
       // we already wrote the message above.
       const sentAt = new Date().toISOString()
-      const auditNote = `\n\n— Verstuurd via Trengo WhatsApp template '${templateName}' (ticket ${waTicket.id}, message ${templateOutboundId}) op ${sentAt.slice(0, 10)}.`
+      const auditNote = `\n\n- Verstuurd via Trengo WhatsApp template '${templateName}' (ticket ${waTicket.id}, message ${templateOutboundId}) op ${sentAt.slice(0, 10)}.`
       const sourceRef = (task.source_ref ?? {}) as Record<string, unknown>
       await supabase
         .from("inbox_events")
@@ -273,7 +273,7 @@ export async function POST(
 
   const sentAt = new Date().toISOString()
   const channelHuman = outboundChannelLabel === "trengo_whatsapp" ? "WhatsApp" : "email"
-  const auditNote = `\n\n— Verstuurd via Trengo ${channelHuman} (ticket ${targetTicket.id}, message ${outboundId}) op ${sentAt.slice(0, 10)}.`
+  const auditNote = `\n\n- Verstuurd via Trengo ${channelHuman} (ticket ${targetTicket.id}, message ${outboundId}) op ${sentAt.slice(0, 10)}.`
   const sourceRef = (task.source_ref ?? {}) as Record<string, unknown>
   await supabase
     .from("inbox_events")
@@ -307,7 +307,7 @@ export async function POST(
  *
  * We ask Trengo for the messages of the most recent ticket and look at the
  * newest "Contact"-authored entry. Failure modes (no messages, fetch error)
- * default to "closed" — safer to ask the AM to handle manually than to push
+ * default to "closed" - safer to ask the AM to handle manually than to push
  * an outbound that Meta will then reject silently.
  */
 async function isSessionWindowOpen(ticketId: number): Promise<boolean> {

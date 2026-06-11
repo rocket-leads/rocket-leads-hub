@@ -7,7 +7,7 @@ type Supabase = Awaited<ReturnType<typeof import("@/lib/supabase/server").create
 export type NonRlAutoSelectInput = {
   /** Supabase clients.id */
   clientId: string
-  /** Monday item id — returned in `affectedMondayItemIds` so callers can invalidate caches */
+  /** Monday item id - returned in `affectedMondayItemIds` so callers can invalidate caches */
   mondayItemId: string
   /** Meta ad account ID, with or without the `act_` prefix */
   metaAdAccountId: string
@@ -21,12 +21,12 @@ export type NonRlAutoSelectResult = {
 /**
  * Auto-assign new ACTIVE Meta campaigns to non-RL clients, mirroring the live behaviour of
  * `/api/clients/[id]/campaigns` GET. Without this, the cron and the watchlist's live-fetch
- * keep filtering by stale `client_campaigns` selections — a client whose only selected row
+ * keep filtering by stale `client_campaigns` selections - a client whose only selected row
  * points at an old paused campaign will appear with €0 / 0 leads even though Meta has fresh
  * spend on a new ACTIVE campaign that nobody picked up yet (because nobody opened the client
  * page since it launched).
  *
- * Skips RL accounts entirely — those are handled by `runRocketLeadsCampaignMatcher`, which
+ * Skips RL accounts entirely - those are handled by `runRocketLeadsCampaignMatcher`, which
  * uses name-confidence matching since one ad account is shared across many clients.
  *
  * Idempotent: only campaigns with no row at all (neither selected nor deselected) are added.
@@ -53,7 +53,7 @@ export async function autoSelectActiveCampaignsForNonRlClients(
   }
 
   const allClientIds = nonRl.map((c) => c.clientId)
-  // Paginated — Supabase's default 1000-row cap was silently
+  // Paginated - Supabase's default 1000-row cap was silently
   // truncating the existingRows on accounts with thousands of
   // client_campaigns rows, causing the matcher to re-assign
   // campaigns the user had already deselected. Roy 2026-05-22.

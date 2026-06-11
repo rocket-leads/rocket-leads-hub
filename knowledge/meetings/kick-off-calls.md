@@ -1,7 +1,7 @@
-# Rocket Leads — Kick-off Calls
+# Rocket Leads - Kick-off Calls
 
 > Template voor AI-context bij kick-off meetings (Fathom `meeting_type='kick_off'`).
-> Eerste call met een nieuwe klant na betaling — alle campagne-context wordt
+> Eerste call met een nieuwe klant na betaling - alle campagne-context wordt
 > hier opgehaald en vastgelegd.
 >
 > Gerelateerde knowledge: `knowledge/process.md` (Fase 2 Kick-off Meeting),
@@ -12,7 +12,7 @@
 ## Wat is een kick-off call bij Rocket Leads?
 
 - **Setting:** Google Meet, ~60 min
-- **Host:** Account Manager (AM) — campagne manager (CM) zit er **nooit** bij
+- **Host:** Account Manager (AM) - campagne manager (CM) zit er **nooit** bij
 - **Wanneer:** binnen 1-3 dagen na betaling van de eerste maand/kwartaal
 - **Doel:** alle context ophalen om campagne te kunnen bouwen
 - **Recording:** Fathom in team **Delivery Rocket Leads**
@@ -21,12 +21,12 @@
 
 ## Structuur van een kick-off
 
-### Fase 1 — Relatie opbouwen
+### Fase 1 - Relatie opbouwen
 Klein, persoonlijk, vriendelijk. Gemeenschappelijke interesses zoeken (F1, voetbal, reizen). Belangrijk: de eerste indruk bepaalt de toon van de samenwerking.
 
-### Fase 2 — Diepte in de campagne
+### Fase 2 - Diepte in de campagne
 AM stelt vragen over:
-- **ICP** — wie is de ideale klant van de klant?
+- **ICP** - wie is de ideale klant van de klant?
 - **Pijnpunten** van de doelgroep
 - **Objections** die de doelgroep heeft
 - **USPs** van de klant
@@ -35,7 +35,7 @@ AM stelt vragen over:
 - **Salesproces** van de klant
 - **Koppelingen & technische setup**
 
-### Fase 3 — Technische zaken & verwachtingen
+### Fase 3 - Technische zaken & verwachtingen
 - Toegang tot Meta Business Manager bespreken
 - Google Drive aangemaakt voor content
 - Tijdlijn (4-6 weken tot live, content is grootste vertraging)
@@ -68,7 +68,7 @@ Cruciaal voor de Hub om de klant goed te kunnen ondersteunen:
 - Wie levert video's: klant zelf, RL on-location, of derde partij
 - Tijdlijn voor levering
 - AI Avatar gebruik: ja/nee
-- Stock content vermijden — flag als opgekomen
+- Stock content vermijden - flag als opgekomen
 
 ### 5. Technische setup
 - Meta Business Manager toegang: klant heeft, of RL ad account?
@@ -131,8 +131,8 @@ Als deze patterns in de transcript voorkomen, flag voor AM:
 
 Fathom AI summary in NL bevat typisch:
 - **Doel van de vergadering** (vrijwel altijd "kick-off [klantnaam]")
-- **Belangrijkste punten** — vaak ICP + propositie samenvatting
-- **Onderwerpen** — per onderwerp wat besproken
-- **Volgende stappen** — concrete to-do's, mappen naar `action_items`
+- **Belangrijkste punten** - vaak ICP + propositie samenvatting
+- **Onderwerpen** - per onderwerp wat besproken
+- **Volgende stappen** - concrete to-do's, mappen naar `action_items`
 
 Cross-reference met `client_agreements` (ad budget + service fee) voor consistency check.

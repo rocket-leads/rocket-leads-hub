@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import type { InsightType } from "@/lib/pedro/insights/types"
 
 /**
- * Per-client Pedro insights — facade reader over the unified pedro_insights
+ * Per-client Pedro insights - facade reader over the unified pedro_insights
  * table. Returns whatever insight types have been generated for the client.
  *
  * The slide-over fetches this in parallel with the client metadata so a
@@ -15,7 +15,7 @@ import type { InsightType } from "@/lib/pedro/insights/types"
  *   { insights: { [insight_type]: { body, severity, generated_at, prompt_version } } }
  *
  * No-data clients (or clients the cron hasn't reached yet) return
- * { insights: {} } — caller hides the panel rather than rendering empty.
+ * { insights: {} } - caller hides the panel rather than rendering empty.
  */
 
 export type PedroInsightRecord = {

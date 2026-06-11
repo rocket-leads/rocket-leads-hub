@@ -13,7 +13,7 @@ import { aiLanguageDirective } from "@/lib/ai/guardrails"
 /**
  * i18n locks: dictionary completeness, placeholder interpolation,
  * formatter sanity, and the AI language directive shape. The
- * dictionary completeness test is the most valuable — without it,
+ * dictionary completeness test is the most valuable - without it,
  * adding a new key for one locale and forgetting the other ships
  * silently and the missing-locale users see English fragments.
  */
@@ -35,7 +35,7 @@ describe("dictionary completeness", () => {
   })
 })
 
-describe("t() — translation lookup", () => {
+describe("t() - translation lookup", () => {
   it("returns the right string per locale", () => {
     expect(t("nav.clients", "nl")).toBe("Klanten")
     expect(t("nav.clients", "en")).toBe("Clients")
@@ -52,7 +52,7 @@ describe("t() — translation lookup", () => {
   })
 
   it("leaves un-interpolated placeholders intact when params don't include the name", () => {
-    // Defensive — avoids accidentally rendering "undefined" if a caller
+    // Defensive - avoids accidentally rendering "undefined" if a caller
     // forgets to pass a param.
     const result = t("home.greeting.morning", "nl", {})
     expect(result).toContain("{name}")

@@ -39,7 +39,7 @@ function pct(v: number | null): string {
 }
 
 function euro(v: number | null): string {
-  if (v == null) return "—"
+  if (v == null) return "-"
   return `€${v.toFixed(2)}`
 }
 
@@ -47,7 +47,7 @@ export function renderCreativeRefreshMarkdown(
   env: CreativesEnvelopeForRender,
 ): string {
   const lines: string[] = []
-  lines.push(`# Pedro creative refresh — ${env.clientName}`)
+  lines.push(`# Pedro creative refresh - ${env.clientName}`)
   lines.push("")
   lines.push(`**Window:** ${env.window.start} → ${env.window.end} (${env.window.days}d)`)
   lines.push("")
@@ -67,9 +67,9 @@ export function renderCreativeRefreshMarkdown(
   lines.push(`## Proposals`)
   lines.push("")
   for (const [pi, p] of env.proposals.entries()) {
-    lines.push(`### ${pi + 1}. Itereren op winner — ${p.basedOnAd.adName}`)
+    lines.push(`### ${pi + 1}. Itereren op winner - ${p.basedOnAd.adName}`)
     lines.push(
-      `_CPL ${p.basedOnAd.cpl != null ? `€${p.basedOnAd.cpl.toFixed(2)}` : "—"} · Behoud: ${p.preserve.hook} / ${p.preserve.angle} / ${p.preserve.format}_`,
+      `_CPL ${p.basedOnAd.cpl != null ? `€${p.basedOnAd.cpl.toFixed(2)}` : "-"} · Behoud: ${p.preserve.hook} / ${p.preserve.angle} / ${p.preserve.format}_`,
     )
     lines.push("")
     for (const v of p.variants) {
@@ -114,5 +114,5 @@ export function renderRefreshTitle(args: {
   windowDays: number
 }): string {
   const date = args.generatedAt.slice(0, 10)
-  return `Pedro creative refresh — ${args.clientName} — ${date} (${args.windowDays}d)`
+  return `Pedro creative refresh - ${args.clientName} - ${date} (${args.windowDays}d)`
 }

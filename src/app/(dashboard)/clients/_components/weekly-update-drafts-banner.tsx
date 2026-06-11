@@ -45,10 +45,10 @@ import type {
 } from "@/app/api/weekly-update-drafts/route"
 
 /**
- * Monday-morning weekly-update queue surface — banner + split-pane sheet.
+ * Monday-morning weekly-update queue surface - banner + split-pane sheet.
  *
  * Banner: compact button showing the pending count. Click to open the sheet.
- * Hidden when count is zero — we don't want persistent UI noise on a
+ * Hidden when count is zero - we don't want persistent UI noise on a
  * Tuesday when the queue is empty.
  *
  * Sheet: full-width dialog with two panes:
@@ -65,6 +65,58 @@ import type {
  * remove the draft from the local list (optimistic) AND fire a refetch
  * so the global count stays in sync across tabs.
  */
+/**
+ * Compact top-bar chip variant of the weekly-update queue. Lives next to
+ * the AI Co-pilot / Notification Bell / Search in the sticky dashboard
+ * header so the affordance is always reachable - the big homepage banner
+ * was removed 2026-06-11 to cut visual clutter. Hides itself when the
+ * queue is empty so non-Monday days have zero chrome added.
+ */
+export function WeeklyUpdatesChip() {
+  const queryClient = useQueryClient()
+  const [sheetOpen, setSheetOpen] = useState(false)
+
+  const draftsQuery = useQuery<WeeklyUpdateDraftListResponse>({
+    queryKey: ["weekly-update-drafts"],
+    queryFn: () => fetch("/api/weekly-update-drafts").then((r) => r.json()),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+  })
+
+  const count = draftsQuery.data?.count ?? 0
+  if (count === 0) return null
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setSheetOpen(true)}
+        title={`${count} wekelijkse update${count === 1 ? "" : "s"} te verzenden`}
+        aria-label={`${count} wekelijkse updates te verzenden`}
+        className="inline-flex items-center gap-1.5 h-10 rounded-lg border border-violet-500/40 bg-violet-500/10 px-2.5 text-sm font-medium text-violet-600 dark:text-violet-300 hover:bg-violet-500/20 hover:border-violet-500/60 transition-colors"
+      >
+        <Sparkles className="h-3.5 w-3.5 shrink-0" />
+        <span className="tabular-nums">{count}</span>
+      </button>
+      {sheetOpen && (
+        <WeeklyUpdateQueueSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          drafts={draftsQuery.data?.drafts ?? []}
+          isRefreshing={draftsQuery.isFetching}
+          onRefresh={() => {
+            void draftsQuery.refetch()
+          }}
+          onDraftConsumed={() => {
+            void queryClient.invalidateQueries({ queryKey: ["weekly-update-drafts"] })
+            void queryClient.invalidateQueries({ queryKey: ["last-client-updates"] })
+          }}
+        />
+      )}
+    </>
+  )
+}
+
 export function WeeklyUpdateDraftsBanner() {
   const queryClient = useQueryClient()
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -74,7 +126,7 @@ export function WeeklyUpdateDraftsBanner() {
     queryFn: () => fetch("/api/weekly-update-drafts").then((r) => r.json()),
     // Tighter freshness window: 30s instead of 5min so the queue picks up
     // the cron's upsert without a hard refresh. Also refetch when the tab
-    // regains focus — AMs often Alt-Tab to Trengo to send something and
+    // regains focus - AMs often Alt-Tab to Trengo to send something and
     // come back, and the queue should reflect what they just did.
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
@@ -98,7 +150,7 @@ export function WeeklyUpdateDraftsBanner() {
             {count} wekelijkse update{count === 1 ? "" : "s"} te verzenden
           </p>
           <p className="text-[11px] text-muted-foreground/70">
-            Pre-gegenereerd op maandag — klik om te reviewen en versturen.
+            Pre-gegenereerd op maandag - klik om te reviewen en versturen.
           </p>
         </div>
         <span className="text-[11px] text-violet-500 font-medium">Open queue →</span>
@@ -166,7 +218,7 @@ function WeeklyUpdateQueueSheet({
   // Track which drafts are gone (sent or dismissed) so they disappear
   // from the list immediately, even before the server refetch completes.
   const [consumedIds, setConsumedIds] = useState<Set<string>>(new Set())
-  // Bulk selection — checkbox per row. Lets the AM tag multiple drafts
+  // Bulk selection - checkbox per row. Lets the AM tag multiple drafts
   // for "Overslaan in bulk" (mass dismiss) or "Versturen in bulk"
   // (sequential mass-send with a progress bar). Cleared whenever a
   // selected draft is consumed individually.
@@ -177,7 +229,7 @@ function WeeklyUpdateQueueSheet({
     | null
     | { total: number; done: number; failed: number; lastError: string | null }
   >(null)
-  // Bulk-skip in-flight flag — disables actions during the brief parallel
+  // Bulk-skip in-flight flag - disables actions during the brief parallel
   // PATCH burst so the AM can't double-click "Overslaan" mid-flight.
   const [bulkSkipping, setBulkSkipping] = useState(false)
 
@@ -199,7 +251,7 @@ function WeeklyUpdateQueueSheet({
 
   // Derived active id: user pick if still visible, else first visible draft.
   // This collapses "auto-select first on open" and "auto-advance after send"
-  // into one pure derivation — no useEffect race conditions.
+  // into one pure derivation - no useEffect race conditions.
   const activeId =
     userPickedId && visibleDrafts.some((d) => d.id === userPickedId)
       ? userPickedId
@@ -252,7 +304,7 @@ function WeeklyUpdateQueueSheet({
     setSelectedIds(new Set())
   }
 
-  /** Bulk dismiss — fires the existing single-draft PATCH per selected id
+  /** Bulk dismiss - fires the existing single-draft PATCH per selected id
    *  in parallel. Status flip is cheap, the risk is low, and parallel
    *  finishes faster than sequential for the typical 5-15 drafts. */
   async function bulkSkip() {
@@ -282,11 +334,11 @@ function WeeklyUpdateQueueSheet({
     }
   }
 
-  /** Bulk send — runs the same /send-client-update endpoint per draft in
+  /** Bulk send - runs the same /send-client-update endpoint per draft in
    *  SEQUENCE (not parallel). Trengo's API rate-limits at ~10 req/s and
    *  we'd rather stagger than collide. Tracks per-draft progress so the
    *  header strip can show "Sending 4 of 12 …". On the first failure we
-   *  surface the error inline but keep going — one bad client shouldn't
+   *  surface the error inline but keep going - one bad client shouldn't
    *  block the rest. */
   async function bulkSendAll() {
     if (selectedIds.size === 0 || bulkSend !== null) return
@@ -442,7 +494,7 @@ function WeeklyUpdateQueueSheet({
               </div>
             </div>
 
-            {/* Bulk action bar — appears between the search and the list
+            {/* Bulk action bar - appears between the search and the list
                 whenever ≥1 drafts are selected. Master-checkbox toggles
                 "all visible". */}
             <div className="px-2.5 py-1.5 border-b border-border/60 shrink-0 flex items-center justify-between gap-2">
@@ -497,7 +549,7 @@ function WeeklyUpdateQueueSheet({
               )}
             </div>
 
-            {/* Bulk send progress — visible while sending, plus ~4.5s
+            {/* Bulk send progress - visible while sending, plus ~4.5s
                 after to show the final tallies. Failures are surfaced
                 inline; the bulk continues past errors so one bad client
                 doesn't block the rest. */}
@@ -508,7 +560,7 @@ function WeeklyUpdateQueueSheet({
                     <>Versturen {bulkSend.done + 1} van {bulkSend.total}…</>
                   ) : (
                     <>
-                      Klaar — {bulkSend.total - bulkSend.failed} verzonden
+                      Klaar - {bulkSend.total - bulkSend.failed} verzonden
                       {bulkSend.failed > 0 && `, ${bulkSend.failed} mislukt`}
                     </>
                   )}
@@ -622,7 +674,7 @@ function DraftSidebarRow({
   // the fact that Monday is missing data for follow-up if needed.
   const isEmail = draft.channel === "email"
   const titleSuffix =
-    draft.channel === "unknown" ? " (Monday contact_channel leeg — verifieer)" : ""
+    draft.channel === "unknown" ? " (Monday contact_channel leeg - verifieer)" : ""
   return (
     <div
       className={cn(
@@ -672,7 +724,7 @@ function DraftSidebarRow({
           </p>
           <p className="text-[11px] text-muted-foreground truncate">
             {draft.contactFirstName ? `${draft.contactFirstName} · ` : ""}
-            {draft.accountManager || "—"}
+            {draft.accountManager || "-"}
           </p>
         </div>
         {edited && (
@@ -725,7 +777,7 @@ function ActiveDraftEditor({
     return slug.charAt(0).toUpperCase() + slug.slice(1)
   }, [draft.templateName])
 
-  // Frozen at mount per draft — looks like "now" when the AM opens the
+  // Frozen at mount per draft - looks like "now" when the AM opens the
   // editor. Reads draft.id so the linter sees the dep and so re-mounting
   // for a different draft does refresh the displayed time.
   const timestamp = useMemo(() => {
@@ -831,7 +883,7 @@ function ActiveDraftEditor({
           <h3 className="text-sm font-semibold truncate">{draft.clientName}</h3>
           <p className="text-[11px] text-muted-foreground/70">
             {draft.contactFirstName ? `${draft.contactFirstName} · ` : ""}
-            AM: {draft.accountManager || "—"}
+            AM: {draft.accountManager || "-"}
           </p>
         </div>
         {draft.templateName && (
@@ -862,7 +914,7 @@ function ActiveDraftEditor({
 
       <footer className="border-t border-border/60 px-5 py-3 flex items-center justify-between shrink-0 bg-muted/20 dark:bg-zinc-900/40">
         <div className="flex items-center gap-3">
-          {/* Outlined button with skip icon — was a ghost button with the
+          {/* Outlined button with skip icon - was a ghost button with the
               English "Dismiss" label that read as cancellation of the whole
               dialog instead of "skip this client this week". */}
           <Button
@@ -880,7 +932,7 @@ function ActiveDraftEditor({
             )}
             Overslaan
           </Button>
-          {/* Autosave indicator — only renders when something has happened.
+          {/* Autosave indicator - only renders when something has happened.
               "Opslaan…" during PATCH, "Opgeslagen" briefly after success. */}
           {saveState === "saving" && (
             <span className="text-[11px] text-muted-foreground flex items-center gap-1">
@@ -925,7 +977,7 @@ function ActiveDraftEditor({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-/** Mirror of `renderFromParts` from the template module — duplicated here
+/** Mirror of `renderFromParts` from the template module - duplicated here
  *  to avoid a deep import chain from a client component into a route
  *  type. Keep the two in sync if you change the join rules. */
 function renderForSend(parts: EditableParts): string {
@@ -950,7 +1002,7 @@ function renderForSend(parts: EditableParts): string {
     lines.push(...validActions.map((a) => `• ${a}`))
     blocks.push(lines.join("\n"))
   }
-  // Overdue invoice payment block — sits between actions and sign-off so
+  // Overdue invoice payment block - sits between actions and sign-off so
   // the call-to-action reads as the closing CTA. Auto-populated by the
   // composer when Stripe returns one or more overdue invoices for this
   // client; AM can strip / edit per send.

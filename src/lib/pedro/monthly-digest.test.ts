@@ -3,7 +3,7 @@ import { previousMonth } from "./monthly-digest"
 
 /**
  * `previousMonth` derives the digest's month label from the cron run
- * date. It must always return the month that just *ended* — anything
+ * date. It must always return the month that just *ended* - anything
  * else lands the task with the wrong title and breaks the dedupe key.
  */
 
@@ -22,7 +22,7 @@ describe("previousMonth", () => {
 
   it("handles month-end run dates without falling into the wrong month", () => {
     // 31 March: a naive d.setMonth(d.getMonth() - 1) on the 31st would
-    // land in March (since Feb has no 31st) — but we set day=1 first.
+    // land in March (since Feb has no 31st) - but we set day=1 first.
     const r = previousMonth(new Date("2026-03-31T09:00:00Z"))
     expect(r.monthYear).toBe("2026-02")
     expect(r.label).toBe("February 2026")

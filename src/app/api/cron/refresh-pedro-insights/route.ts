@@ -10,7 +10,7 @@ import { ALL_INSIGHT_TYPES } from "@/lib/pedro/insights/registry"
 import { getAiLocale } from "@/lib/i18n/server"
 
 /**
- * Pedro insights refresh — the unified AI hub for the Hub.
+ * Pedro insights refresh - the unified AI hub for the Hub.
  *
  * For every Live client, build the canonical context bundle once and
  * generate every insight type registered in INSIGHT_REGISTRY. Each
@@ -19,12 +19,12 @@ import { getAiLocale } from "@/lib/i18n/server"
  * One cron, one Claude pipeline, one cache. v2 collapses the per-client
  * AI surface to a single `client_pedro` insight (JSON body with conclusion
  * + action bullets) consumed by the client detail page, the watchlist row
- * 1-liner, and the home page action notes — no more contradictions between
+ * 1-liner, and the home page action notes - no more contradictions between
  * separately-generated voices.
  *
  * Schedule: hourly. KPI freshness only changes daily, but Monday/Trengo/
  * inbox events shift through the day, so an hourly refresh keeps notes
- * relevant without bombing Anthropic — Live client count × insight types
+ * relevant without bombing Anthropic - Live client count × insight types
  * is small (<100 calls per tick today; Haiku for the short notes).
  *
  * Concurrency capped at 4 to stay polite with Anthropic rate limits.
@@ -49,11 +49,11 @@ export async function GET(req: NextRequest) {
 
   try {
     // Resolve the workspace AI locale once for the whole run. All clients
-    // get insights in the same language regardless of who reads — AI cache
+    // get insights in the same language regardless of who reads - AI cache
     // is workspace-wide.
     const aiLocale = await getAiLocale()
 
-    // Load Live clients from the cron-warmed cache. Live-only — no point
+    // Load Live clients from the cron-warmed cache. Live-only - no point
     // generating insights for churned/onboarding clients (no AM uses them).
     const cached = await readCache<{ current: MondayClient[] }>("monday_boards")
     const data = cached ?? (await fetchBothBoards())
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Per-client context is expensive (multiple Supabase + integration calls).
-    // Cache it so all insight types for the same client share one bundle —
+    // Cache it so all insight types for the same client share one bundle -
     // common-case is many types per client, doing the work once is the win.
     const contextCache = new Map<string, Awaited<ReturnType<typeof collectClientAiContext>>>()
 

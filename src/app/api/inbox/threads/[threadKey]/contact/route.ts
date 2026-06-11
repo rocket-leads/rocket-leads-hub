@@ -6,14 +6,14 @@ import { createAdminClient } from "@/lib/supabase/server"
 /**
  * PATCH /api/inbox/threads/{threadKey}/contact
  *
- * Body: `{ name: string }` — updates the Trengo contact's display name.
+ * Body: `{ name: string }` - updates the Trengo contact's display name.
  * Used by the chat-pane header's editable name affordance: AM clicks the
  * bold contact name (e.g. "+31 6 12345678" or "Unknown"), types the actual
  * name, save propagates to Trengo so every surface (Trengo web UI, future
  * inbound webhooks, other agents) picks it up.
  *
  * threadKey shape for Trengo: `trengo:contact:<id>`. Other sources are
- * rejected — Slack DM "names" are auto-derived from the user object and
+ * rejected - Slack DM "names" are auto-derived from the user object and
  * we don't expose an edit affordance for them.
  *
  * Side effect: bumps `author_name_cached` on existing inbox_events rows
@@ -55,7 +55,7 @@ export async function PATCH(
     const result = await updateTrengoContactName(contactId, name)
 
     // Mirror the new name into the Hub's cached author names so the thread
-    // list shows the updated label immediately. Best-effort — failure here
+    // list shows the updated label immediately. Best-effort - failure here
     // doesn't block the response since the Trengo write already succeeded
     // and the next webhook will reconcile.
     try {

@@ -5,7 +5,7 @@ import { parseProposalRow, PROPOSAL_TTL_MS } from "./generate"
  * The freshness gate + JSON parse path on the proposal facade is the
  * difference between "user gets a fast cached read" and "user pays a
  * 30-60s Sonnet call every time". A regression here would hammer
- * Anthropic invisibly until someone notices the bill — these tests
+ * Anthropic invisibly until someone notices the bill - these tests
  * pin the gate.
  */
 
@@ -15,7 +15,7 @@ function makeRow(body: object | null, generatedAt: string) {
   return { body: body ? JSON.stringify(body) : null, generated_at: generatedAt }
 }
 
-describe("parseProposalRow — freshness gate", () => {
+describe("parseProposalRow - freshness gate", () => {
   it("returns null for null/undefined row (cache miss)", () => {
     expect(parseProposalRow(null, NOW)).toBeNull()
     expect(parseProposalRow(undefined, NOW)).toBeNull()
@@ -27,7 +27,7 @@ describe("parseProposalRow — freshness gate", () => {
 
   it("returns the parsed payload when within TTL", () => {
     const payload = {
-      proposals: [{ category: "creative", title: "Iterate on Photo 2 — €25 CPL", detail: "..." }],
+      proposals: [{ category: "creative", title: "Iterate on Photo 2 - €25 CPL", detail: "..." }],
       leadAnalysis: null,
       hasKnowledge: true,
       generatedAt: "2026-05-09T11:30:00Z",
@@ -44,7 +44,7 @@ describe("parseProposalRow — freshness gate", () => {
     expect(parseProposalRow(row, NOW)).toBeNull()
   })
 
-  it("treats the TTL boundary inclusively — exactly TTL old still passes", () => {
+  it("treats the TTL boundary inclusively - exactly TTL old still passes", () => {
     const generatedAt = new Date(NOW - PROPOSAL_TTL_MS).toISOString()
     const payload = { proposals: [], leadAnalysis: null, hasKnowledge: false, generatedAt }
     const row = makeRow(payload, generatedAt)

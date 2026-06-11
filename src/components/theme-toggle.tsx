@@ -14,7 +14,7 @@ function readTheme(): Theme {
 
 /**
  * Stores the choice as a cookie so RootLayout can read it server-side and
- * paint the `dark` class into the initial HTML — no flash, no client script.
+ * paint the `dark` class into the initial HTML - no flash, no client script.
  * 1-year expiry so the preference survives normal sessions.
  */
 function writeThemeCookie(theme: Theme) {
@@ -41,7 +41,7 @@ export function ThemeToggle() {
 
   const isDark = theme === "dark"
   const Icon = isDark ? Sun : Moon
-  // The label advertises the action (what you'd switch TO), not the current state —
+  // The label advertises the action (what you'd switch TO), not the current state -
   // mirrors how Linear/Notion read.
   const label = isDark ? t("theme.light", locale) : t("theme.dark", locale)
   const fallback = t("theme.fallback", locale)

@@ -22,9 +22,9 @@ export const maxDuration = 60
  *
  * Two payload shapes Monday sends here:
  *
- * 1. `challenge` — sent once when registering the webhook URL. We echo it.
+ * 1. `challenge` - sent once when registering the webhook URL. We echo it.
  *
- * 2. Real events — only `create_update` is handled. Each carries:
+ * 2. Real events - only `create_update` is handled. Each carries:
  *      - event.boardId  → must be the onboarding or current-clients board
  *      - event.pulseId  → the Monday item id of the client
  *      - event.userId / event.userName → Monday user who wrote the update
@@ -99,7 +99,7 @@ function parseMondayMentions(html: string): Array<{ mondayUserId: string; displa
  * Resolve mentioned Monday display names to Hub user ids via
  * `user_column_mappings.monday_person_name`. Returns the FIRST matched Hub
  * user id (the assignee for the inbox event). Null when none of the
- * mentioned names map to a Hub user — caller should skip the event.
+ * mentioned names map to a Hub user - caller should skip the event.
  *
  * Why first-match: a Monday update that mentions multiple people would
  * otherwise need a fan-out per mention, doubling event counts. First-match
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  // 1. Challenge response — echoed BEFORE auth check so the URL can be
+  // 1. Challenge response - echoed BEFORE auth check so the URL can be
   // registered even before MONDAY_WEBHOOK_SECRET is set in env.
   if ("challenge" in payload && payload.challenge) {
     return NextResponse.json({ challenge: payload.challenge })
@@ -180,31 +180,31 @@ export async function POST(req: NextRequest) {
   const onboardingBoard = String(boardConfig.onboarding_board_id ?? "")
   const currentBoard = String(boardConfig.current_board_id ?? "")
   if (eventBoardId !== onboardingBoard && eventBoardId !== currentBoard) {
-    // Event on some other board (lead board, internal board, etc.) — out of scope.
+    // Event on some other board (lead board, internal board, etc.) - out of scope.
     return NextResponse.json({ ok: true, ignored: "non-client board" })
   }
 
   // Real-time cache sync for client mutations on the onboarding / current
   // boards. Without this, status / AM / phase / cycle edits made directly in
-  // Monday don't reach the Hub until the next daily refresh-cache cron tick —
+  // Monday don't reach the Hub until the next daily refresh-cache cron tick -
   // /watchlist + /clients display stale rows for up to 24h. The webhook
   // patches the `monday_boards` cache + Supabase mirror surgically so the
   // next page render reflects the change within a couple of seconds.
   //
   // Event types we handle:
-  //   - change_column_value / change_status_column_value / change_name —
+  //   - change_column_value / change_status_column_value / change_name -
   //     a column on an existing client was edited (status, AM/CM, phase,
   //     cycle date, etc.). Re-fetch the full client and replace the cached
   //     row in-place.
-  //   - update_name — the item's name (= client name) was renamed in Monday.
-  //   - create_pulse — a brand-new client row landed on one of the boards.
-  //   - item_deleted / archive_pulse — client removed. We strip them from
+  //   - update_name - the item's name (= client name) was renamed in Monday.
+  //   - create_pulse - a brand-new client row landed on one of the boards.
+  //   - item_deleted / archive_pulse - client removed. We strip them from
   //     the cache so they stop showing on the Hub immediately.
   //
   // `create_update` (existing path below) is the inbox / @-mention flow and
   // continues to its specialised handler. Anything else is acknowledged but
   // not acted on.
-  // Both `create_item` (v2 enum) and `create_pulse` (legacy alias) — the
+  // Both `create_item` (v2 enum) and `create_pulse` (legacy alias) - the
   // payload type Monday sends depends on when the webhook was registered.
   const SYNC_EVENT_TYPES = new Set([
     "change_column_value",
@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (existing) return NextResponse.json({ ok: true, deduped: true })
 
-  // System author for the FK — Monday webhook ingest doesn't have a
+  // System author for the FK - Monday webhook ingest doesn't have a
   // session-bound user_id and we don't try to map the *poster* to a Hub
   // account (that's a different problem; the body credits them by name via
   // author_name_cached). Also satisfies the NOT NULL assignee_id for
@@ -298,13 +298,13 @@ export async function POST(req: NextRequest) {
   //     a hypothetical "everything assigned to me" query stays clean.
   //   - status="read" → no unread state to ping anywhere.
   //   The per-client timeline (api/clients/[id]/timeline) only filters by
-  //   `client_id`, so these still show up there — which is the whole point.
+  //   `client_id`, so these still show up there - which is the whole point.
   const mentions = parseMondayMentions(rawHtml)
   const mentionedUserId = mentions.length > 0
     ? await resolveFirstMentionToHubUser(supabase, mentions)
     : null
 
-  // Only spend Anthropic budget when there's a routable mention — otherwise
+  // Only spend Anthropic budget when there's a routable mention - otherwise
   // we already know we'll write timeline-only and the classification doesn't
   // change anything downstream.
   const classification = mentionedUserId
@@ -325,7 +325,7 @@ export async function POST(req: NextRequest) {
       }
     : {
         kind: "chat" as const,
-        assignee_id: hq.id, // system user — keeps row out of every "assigned to me" query
+        assignee_id: hq.id, // system user - keeps row out of every "assigned to me" query
         status: "read",
         priority: null,
       }
@@ -341,8 +341,8 @@ export async function POST(req: NextRequest) {
       source: "monday",
       source_thread: `monday:item:${pulseId}`,
       source_msg_id: sourceMsgId,
-      // thread_key intentionally null — Monday updates don't form a chat thread.
-      // scope intentionally null — they live in Tasks/Updates (when promoted)
+      // thread_key intentionally null - Monday updates don't form a chat thread.
+      // scope intentionally null - they live in Tasks/Updates (when promoted)
       // or in the per-client timeline (when not), never in Chat tabs.
       thread_key: null,
       scope: null,
@@ -361,7 +361,7 @@ export async function POST(req: NextRequest) {
     console.error("Monday webhook insert failed:", error)
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
-  // Push notifications only for promoted rows — the timeline-only path is
+  // Push notifications only for promoted rows - the timeline-only path is
   // passive history, not someone's TODO.
   if (promote && inserted?.id) void sendInboxAssignmentPush(supabase, inserted.id)
 
@@ -376,14 +376,14 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Real-time client sync — fires on column / name / create events. Re-fetches
+ * Real-time client sync - fires on column / name / create events. Re-fetches
  * the canonical client snapshot from Monday (bypasses the 5-min item cache
  * because the value we want IS the change that just landed), patches the
  * `monday_boards` cache in-place so the watchlist + clients table reflect it
  * within the next page render, and mirrors the row into Supabase.
  *
  * Errors are surfaced in the response (status 500) so Monday will retry;
- * cache + Supabase writes are best-effort independently — a partial success
+ * cache + Supabase writes are best-effort independently - a partial success
  * on one shouldn't block the other.
  */
 async function handleClientSync(
@@ -402,14 +402,14 @@ async function handleClientSync(
     return NextResponse.json({ ok: false, error: "fetch failed" }, { status: 500 })
   }
   if (!refreshed) {
-    // Item is gone from Monday between the event firing and our fetch —
+    // Item is gone from Monday between the event firing and our fetch -
     // treat it as a delete so the cache strips the row instead of holding a
     // ghost entry.
     return await handleClientDelete(event)
   }
 
   // Two writes in parallel. patchMondayBoardsCache already swallows its own
-  // errors (best-effort), syncClientToSupabase will throw on failure — we
+  // errors (best-effort), syncClientToSupabase will throw on failure - we
   // catch + log here so a Supabase blip doesn't 500 the webhook (Monday
   // would retry endlessly and worsen the situation).
   await Promise.allSettled([
@@ -434,7 +434,7 @@ async function handleClientSync(
 /**
  * Strip a deleted / archived client from the `monday_boards` cache so it
  * stops showing on the Hub before the next cron tick rewrites the cache.
- * Supabase soft-delete is out of scope here — leaving the row historical
+ * Supabase soft-delete is out of scope here - leaving the row historical
  * for reporting; only the cache (which drives current-state UI) is touched.
  */
 async function handleClientDelete(

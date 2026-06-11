@@ -107,7 +107,7 @@ export async function GET(
   // Merge: every enumerated folder gets its pref (default enabled=true
   // when no row exists). Also include prefs for folders that aren't in
   // the current enumeration (CM toggled them once, the folder later
-  // moved out of scope — keep showing so they can re-enable).
+  // moved out of scope - keep showing so they can re-enable).
   type FolderWithPref = DriveFolderNode & {
     enabled: boolean
     prefUpdatedAt: string | null
@@ -160,7 +160,7 @@ type PatchBody = {
     /** Roy 2026-06-10: cascade naar subfolders. Wanneer een
      *  hoofdfolder op uit gaat, sturen we hier alle bekende descendant
      *  folder ids mee zodat ze in één PATCH dezelfde enabled-state
-     *  krijgen. Idem voor 'aan' — als de parent weer aan gaat, gaan
+     *  krijgen. Idem voor 'aan' - als de parent weer aan gaat, gaan
      *  alle (eerder met de parent uitgezette) descendants ook aan.
      *  Lege array = single-folder toggle (oude gedrag). */
     descendants?: Array<{
@@ -282,7 +282,7 @@ export async function PATCH(
         return NextResponse.json({ error: error.message }, { status: 500 })
       }
     } else {
-      // No client_state row yet — insert minimal row with just the prefs.
+      // No client_state row yet - insert minimal row with just the prefs.
       const { error } = await supabase.from("pedro_client_state").insert({
         client_id: clientId,
         campaign_number: 1,

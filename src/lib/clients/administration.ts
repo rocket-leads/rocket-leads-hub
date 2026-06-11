@@ -2,28 +2,28 @@
  * The Monday "Administration" column (`status_16` on the current-clients
  * board) is finance's workflow ledger for what's happening with each
  * client's invoice this cycle. Roy locked the option list to seven exact
- * labels — anything else in the column is treated as legacy / unknown and
+ * labels - anything else in the column is treated as legacy / unknown and
  * passed through unchanged (so a stale row never gets silently relabelled).
  *
  * The Hub both READS the column (display pill on the Billing overview) and
- * WRITES it from a few auto-sync paths — after creating a Stripe invoice,
- * when a campaign flips to On Hold, etc. — so finance doesn't have to keep
+ * WRITES it from a few auto-sync paths - after creating a Stripe invoice,
+ * when a campaign flips to On Hold, etc. - so finance doesn't have to keep
  * the Monday column in sync manually.
  */
 
 // Labels must match the Monday "Administration" column option list EXACTLY
-// (case-sensitive) — Monday rejects `change_column_value` with a label that
+// (case-sensitive) - Monday rejects `change_column_value` with a label that
 // isn't in the column's option set. The exact strings below were extracted
 // from a 2026-06-08 Monday API error message that listed every valid option,
 // so they're authoritative. If finance edits the option list in Monday, this
 // constant has to be updated in lockstep or all writes start failing again.
 //
 // Notable quirks finance owns (do NOT silently "fix" the typos here):
-//   - "Invoice sent (unpaid)" — the trailing "(unpaid)" is part of the
+//   - "Invoice sent (unpaid)" - the trailing "(unpaid)" is part of the
 //     label so finance can distinguish from "Payments complete".
-//   - "Partialy Paid" — yes, finance spelled it that way in Monday; we
+//   - "Partialy Paid" - yes, finance spelled it that way in Monday; we
 //     mirror the typo exactly so the write succeeds.
-//   - "Debt collection agency" — singular, not plural.
+//   - "Debt collection agency" - singular, not plural.
 export const ADMIN_LABELS = {
   paymentsComplete: "Payments complete",
   onHold: "On hold",
@@ -52,13 +52,13 @@ export const ADMIN_OPTIONS: AdminLabel[] = [
   ADMIN_LABELS.paymentsComplete,
 ]
 
-/** Coarse visual tone — drives the pill colour in the Billing overview. */
+/** Coarse visual tone - drives the pill colour in the Billing overview. */
 export type AdministrationTone = "neutral" | "warn" | "danger" | "success" | "muted"
 
 const TONE_BY_LABEL: Record<AdminLabel, AdministrationTone> = {
   [ADMIN_LABELS.paymentsComplete]: "success",
   [ADMIN_LABELS.invoiceSend]: "warn",
-  // Partial paid is on the road to complete — leans positive but not
+  // Partial paid is on the road to complete - leans positive but not
   // there yet, so "warn" (yellow) like Invoice sent rather than success.
   [ADMIN_LABELS.partiallyPaid]: "warn",
   [ADMIN_LABELS.sendInvoice]: "neutral",
@@ -86,7 +86,7 @@ export type AdministrationView = {
    *  options; otherwise the raw text is shown verbatim (so a brand-new Monday
    *  option doesn't get silently misrepresented). */
   label: string
-  /** Coarse tone for the pill renderer — neutral / warn / danger / success / muted. */
+  /** Coarse tone for the pill renderer - neutral / warn / danger / success / muted. */
   tone: AdministrationTone
   /** Originally-stored Monday label when it differs from `label`. Currently
    *  only populated for legacy/unknown values where we want the tooltip to
@@ -96,12 +96,12 @@ export type AdministrationView = {
 
 /**
  * Map a Monday administration value to a Hub view object. Empty / unset →
- * a muted "—" view so the cell still has something visible. Unknown labels
+ * a muted "-" view so the cell still has something visible. Unknown labels
  * pass through with neutral tone (no silent translation).
  */
 export function viewAdministration(raw: string | null | undefined): AdministrationView {
   const trimmed = (raw ?? "").trim()
-  if (!trimmed) return { label: "—", tone: "muted", originalLabel: null }
+  if (!trimmed) return { label: "-", tone: "muted", originalLabel: null }
 
   // Case-insensitive lookup against the canonical seven so minor casing
   // mismatches from Monday (e.g. someone typed "send Invoice") still resolve.
@@ -110,7 +110,7 @@ export function viewAdministration(raw: string | null | undefined): Administrati
     return { label: match, tone: TONE_BY_LABEL[match], originalLabel: null }
   }
 
-  // Unknown / legacy value — render the raw text, neutral tone, surface the
+  // Unknown / legacy value - render the raw text, neutral tone, surface the
   // original on the tooltip so finance can spot the inconsistency.
   return { label: trimmed, tone: "neutral", originalLabel: trimmed }
 }
@@ -139,7 +139,7 @@ export function administrationToneClass(tone: AdministrationTone): string {
  * Decide whether an auto-sync should overwrite the current admin value.
  *
  * Rule (per Roy 2026-05-19):
- *   - `Invoice sent` ALWAYS overwrites — "Stripe shipped the invoice" is an
+ *   - `Invoice sent` ALWAYS overwrites - "Stripe shipped the invoice" is an
  *     objective fact that wins over any flag (incl. Discuss first / Debt
  *     collection agencies).
  *   - Any other target leaves the manual workflow flags alone (Discuss first,

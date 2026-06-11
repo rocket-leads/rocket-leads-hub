@@ -36,19 +36,19 @@ export function computeActionCategory(
     }
   }
 
-  // RL ad account with no campaign selected — treat as no data
+  // RL ad account with no campaign selected - treat as no data
   if (kpi?.rlAccountNoCampaign) {
     return {
       priority: 5,
       category: "autopilot",
       label: "No Campaign Selected",
-      reason: "RL ad account — no campaign selected",
+      reason: "RL ad account - no campaign selected",
       color: "green",
     }
   }
 
   // Priority 2 + 3 are CPL-only for now. CPA branches were removed because Monday
-  // appointment data is too sparse to be a reliable signal — see categorize.ts header.
+  // appointment data is too sparse to be a reliable signal - see categorize.ts header.
   // CPA values stay on the KPI summary so the table can still display them.
   if (kpi) {
     if (kpi.adSpend > 50 && kpi.leads === 0) {
@@ -68,7 +68,7 @@ export function computeActionCategory(
           priority: 2,
           category: "campaign-critical",
           label: "CPL Critical",
-          reason: `CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev week`,
+          reason: `CPL €${kpi.cpl.toFixed(2)} - up ${cplChange.toFixed(0)}% vs prev week`,
           color: "red",
         }
       }
@@ -82,7 +82,7 @@ export function computeActionCategory(
         priority: 3,
         category: "performance-warning",
         label: "CPL Rising",
-        reason: `CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev week`,
+        reason: `CPL €${kpi.cpl.toFixed(2)} - up ${cplChange.toFixed(0)}% vs prev week`,
         color: "amber",
       }
     }
@@ -94,12 +94,12 @@ export function computeActionCategory(
       priority: 4,
       category: "monday-inactive",
       label: "CRM Inactive",
-      reason: "Monday board not being used — check with appointment setter",
+      reason: "Monday board not being used - check with appointment setter",
       color: "amber",
     }
   }
 
-  // Priority 5: Autopilot — everything looks fine
+  // Priority 5: Autopilot - everything looks fine
   const cplInfo = kpi && kpi.cpl > 0 ? `CPL €${kpi.cpl.toFixed(2)}` : ""
   const leadsInfo = kpi && kpi.leads > 0 ? `${kpi.leads} leads` : ""
   const summary = [cplInfo, leadsInfo].filter(Boolean).join(" · ") || "No data"

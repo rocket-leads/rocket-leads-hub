@@ -51,7 +51,7 @@ async function testGoogleDrive(token: string): Promise<TestResult> {
     try {
       keyJson = JSON.parse(token.trim())
     } catch {
-      return { ok: false, message: "Token is not valid JSON — paste the full service-account file contents" }
+      return { ok: false, message: "Token is not valid JSON - paste the full service-account file contents" }
     }
     if (!keyJson.client_email || !keyJson.private_key) {
       return { ok: false, message: "Service-account JSON is missing client_email or private_key" }
@@ -89,7 +89,7 @@ async function testSlack(token: string): Promise<TestResult> {
 
 async function testTrengo(token: string): Promise<TestResult> {
   // Roy 2026-06-09: previous version returned on the FIRST endpoint's
-  // verdict — which broke when `/users` returned 403 (admin scope only) on
+  // verdict - which broke when `/users` returned 403 (admin scope only) on
   // app-integration tokens that worked fine for /contacts + /channels +
   // /tickets. Order endpoints from least-strict to most-strict, and only
   // hard-fail on 401 (auth itself is invalid) or after all endpoints fail.
@@ -103,7 +103,7 @@ async function testTrengo(token: string): Promise<TestResult> {
         headers: { Authorization: `Bearer ${trimmed}`, Accept: "application/json" },
       })
       if (res.ok) return { ok: true, message: `Trengo connected (via ${endpoint})` }
-      // 401 = auth itself is bad — decisive across every endpoint.
+      // 401 = auth itself is bad - decisive across every endpoint.
       if (res.status === 401) {
         const data = await res.json().catch(() => ({})) as { message?: string; error?: string }
         return {
@@ -124,14 +124,14 @@ async function testTrengo(token: string): Promise<TestResult> {
       lastError = `${endpoint} fetch error: ${e instanceof Error ? e.message : String(e)}`
     }
   }
-  return { ok: false, message: `All Trengo endpoints failed — last: ${lastError}` }
+  return { ok: false, message: `All Trengo endpoints failed - last: ${lastError}` }
 }
 
 async function testFathom(token: string): Promise<TestResult> {
   // Roy 2026-06-09: /team_members requires the team-admin scope on the
   // API key. Lower-scope keys return 403 there but work fine on /meetings,
   // which is what the Hub actually uses day-to-day. Same fallback chain
-  // as the cron's checkFathom — if /meetings succeeds, the token is valid
+  // as the cron's checkFathom - if /meetings succeeds, the token is valid
   // for our usage even if /team_members would 403.
   const key = token.trim()
   try {
@@ -147,7 +147,7 @@ async function testFathom(token: string): Promise<TestResult> {
       return { ok: false, message: `Fathom HTTP 401: token unauthorized` }
     }
     if (tm.status === 403) {
-      // Scope-mismatch on /team_members — try /meetings before giving up.
+      // Scope-mismatch on /team_members - try /meetings before giving up.
       const mt = await fetch("https://api.fathom.ai/external/v1/meetings?limit=1", {
         headers: { "X-Api-Key": key, Accept: "application/json" },
       })
@@ -171,7 +171,7 @@ async function testFathom(token: string): Promise<TestResult> {
 }
 
 async function testApify(token: string): Promise<TestResult> {
-  // /users/me is the cheapest probe — returns the token owner without
+  // /users/me is the cheapest probe - returns the token owner without
   // consuming compute units. 401 on bad token, 200 on good.
   try {
     const res = await fetch("https://api.apify.com/v2/users/me", {

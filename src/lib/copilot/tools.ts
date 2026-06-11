@@ -3,7 +3,7 @@ import type Anthropic from "@anthropic-ai/sdk"
 /**
  * Co-pilot tool schemas (Claude tool-use). Each tool maps to one concrete
  * Hub action the AI co-pilot can propose. The user always confirms before
- * execution — schemas are intentionally narrow so the LLM can't invent
+ * execution - schemas are intentionally narrow so the LLM can't invent
  * shapes that the executor doesn't know how to run.
  *
  * IDs (clientId, assigneeId) are resolved server-side from the names the
@@ -53,7 +53,7 @@ export const COPILOT_TOOLS: Anthropic.Tool[] = [
         body: {
           type: "string",
           description:
-            "Optional longer description with context (the why, relevant numbers, ad names). Leave empty when the title is self-explanatory — the executor will auto-enrich with KPI/Pedro context if a clientId is set.",
+            "Optional longer description with context (the why, relevant numbers, ad names). Leave empty when the title is self-explanatory - the executor will auto-enrich with KPI/Pedro context if a clientId is set.",
         },
         assigneeId: {
           type: "string",
@@ -125,7 +125,7 @@ export type CopilotParseSuccess = {
   action: CopilotAction
   /** Human-readable preview the UI shows in the confirmation card. */
   summary: string
-  /** Source labels that contributed to the (enriched) task body — shown
+  /** Source labels that contributed to the (enriched) task body - shown
    *  under the AI parsed line so the user can see what data the co-pilot
    *  actually consulted. Empty for non-enriched actions (Pedro, navigate). */
   sourcesUsed?: string[]

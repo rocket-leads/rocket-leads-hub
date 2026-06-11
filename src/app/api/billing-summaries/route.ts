@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({})
   }
 
-  // Serve from cache — cron keeps it fresh every 30 min
+  // Serve from cache - cron keeps it fresh every 30 min
   const cached = await readCache<Record<string, BillingSummary>>("billing_summaries")
   if (cached) {
     const summaries: Record<string, BillingSummary> = {}
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // No cache at all — fetch live (first load only)
+  // No cache at all - fetch live (first load only)
   const results = await Promise.allSettled(customerIds.map((id) => fetchBillingSummary(id)))
 
   const summaries: Record<string, BillingSummary> = {}

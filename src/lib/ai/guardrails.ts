@@ -80,7 +80,7 @@ Recommend instead: iterate on winning creatives (3-5 new variants same hook), pa
 - Output language is set per-call via the LANGUAGE directive in the request, respect it strictly.
 
 ## NEVER USE EM-DASHES OR EN-DASHES
-Em-dashes (—) and en-dashes (–) are the most-recognised AI-tell in written output. They make every sentence read as machine-generated and undermine trust in the message. Do NOT use them, ever.
+Em-dashes (-) and en-dashes (–) are the most-recognised AI-tell in written output. They make every sentence read as machine-generated and undermine trust in the message. Do NOT use them, ever.
 - If you want to split a sentence, use a COMMA.
 - If two ideas don't fit in one sentence, split into TWO sentences.
 - A regular ASCII hyphen INSIDE a compound word is fine (no-budget, high-ticket).
@@ -108,7 +108,7 @@ export function aiLanguageDirective(locale: "nl" | "en"): string {
 
 /**
  * Strip the dead-giveaway "AI written this" markers from generated text.
- * Em-dashes (—) and en-dashes (–) are the strongest signal; ASCII " - " as a
+ * Em-dashes (-) and en-dashes (–) are the strongest signal; ASCII " - " as a
  * sentence-splitter is the runner-up. All three get converted to a comma so
  * the prose reads like a human typed it.
  *
@@ -130,13 +130,13 @@ export function stripAiTells(text: string): string {
       // Em-dash and en-dash with optional surrounding spaces → ", "
       // The (?<=\S)…(?=\S) lookarounds ensure we only hit dashes BETWEEN words,
       // never at the start of a list item ("- item") or as a standalone line.
-      .replace(/(?<=\S)\s*[—–]\s*(?=\S)/g, ", ")
+      .replace(/(?<=\S)\s*[-–]\s*(?=\S)/g, ", ")
       // ASCII " - " as a sentence splitter (less common but same AI tell).
       // Requires a space on BOTH sides,leaves compound-word hyphens alone.
       .replace(/(?<=\S) - (?=\S)/g, ", ")
       // Double-hyphen " -- " is another model habit, same fix.
       .replace(/(?<=\S)\s*--\s*(?=\S)/g, ", ")
-      // Collapse "double commas" that can appear when the model wrote ", —"
+      // Collapse "double commas" that can appear when the model wrote ", -"
       // or similar combinations we just hit twice.
       .replace(/,\s*,/g, ",")
   )
@@ -254,7 +254,7 @@ export function validateAiOutput(
   // don't trip; matches the same shape `stripAiTells` cleans up. Logged
   // separately so we can see how often the model still emits them despite
   // the prompt rule.
-  const emDash = /(?<=\S)\s*[—–]\s*(?=\S)/g
+  const emDash = /(?<=\S)\s*[-–]\s*(?=\S)/g
   let dm: RegExpExecArray | null
   while ((dm = emDash.exec(text)) !== null) {
     violations.push({

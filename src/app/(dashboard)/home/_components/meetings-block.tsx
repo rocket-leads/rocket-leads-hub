@@ -6,7 +6,7 @@ import type { Locale } from "@/lib/i18n/types"
 
 export type TodayMeeting = {
   id: string
-  /** Title of the meeting (eg. "Strategy call — Acme"). */
+  /** Title of the meeting (eg. "Strategy call - Acme"). */
   title: string
   /** ISO timestamp for `scheduled_at`. We rely on the caller to have already
    *  filtered to today's date in the local timezone. */
@@ -21,7 +21,7 @@ export type TodayMeeting = {
 }
 
 /**
- * Today's meetings — surfaces calls happening today so the user can see
+ * Today's meetings - surfaces calls happening today so the user can see
  * what's coming up + jump straight to notes from earlier in the day.
  * Fed by Fathom data (the meetings table), filtered server-side to
  * `scheduled_at` between 00:00 and 23:59 of the user's local day.

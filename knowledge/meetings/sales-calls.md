@@ -1,4 +1,4 @@
-# Rocket Leads — Sales Calls
+# Rocket Leads - Sales Calls
 
 > Template voor AI-context bij sales meetings (Fathom `meeting_type='sales'`).
 > Gebruikt door de matcher, summarizers, en task-extractors om patronen te
@@ -13,7 +13,7 @@
 ## Wat is een sales call bij Rocket Leads?
 
 - **Setting:** kennismakingsgesprek of groeisessie via Google Meet, ~45 min
-- **Hosts:** sales consultants — closers (Anel, Jill) of bijspringende setters (Quintus)
+- **Hosts:** sales consultants - closers (Anel, Jill) of bijspringende setters (Quintus)
 - **Doel:** prospect → klant. Discovery (25-30 min vragen) + pitch + close
 - **Frequentie:** ~30 per week
 - **Recording:** Fathom in team **Sales Rocket Leads** (na ingest filter)
@@ -24,7 +24,7 @@
 
 ## Structuur van een sales call
 
-### Fase 1 — Discovery (eerste 25-30 min)
+### Fase 1 - Discovery (eerste 25-30 min)
 Sales consultant stelt alleen vragen:
 - Wie ben je / wat doe je?
 - Wie is de doelgroep?
@@ -34,12 +34,12 @@ Sales consultant stelt alleen vragen:
 - Wat al geprobeerd?
 - Waarom nog niet behaald?
 
-### Fase 2 — Pitch & close
-- Vehicle (Meta Ads, leadgen) niet centraal — focus op resultaat (volle agenda, meer omzet)
+### Fase 2 - Pitch & close
+- Vehicle (Meta Ads, leadgen) niet centraal - focus op resultaat (volle agenda, meer omzet)
 - Start altijd met **HTO** (high-ticket offer) als eerste optie
 - Urgency hooks: eerste maand gratis bij directe beslissing, schaarste ("nog X plekken")
 
-### Fase 3 — Close, follow-up of disqualify
+### Fase 3 - Close, follow-up of disqualify
 
 ---
 
@@ -49,10 +49,10 @@ Sales consultant stelt alleen vragen:
 | Signaal in transcript / summary | Outcome | Vervolgactie |
 |---|---|---|
 | "Stuur me de offerte" / "wanneer kunnen we starten" / "ik wil graag" | **Closed (intent)** | Wacht op betaling → kick-off in agenda |
-| "Ik moet er even over nadenken" / "ik laat het je weten" | **Follow-up nodig** | Plan vervolgafspraak — geen open follow-up zonder gepland moment |
-| "Te duur" / "geen budget" | **Lost — prijs** | Disqualify of HTO→LTO downgrade voorstellen |
+| "Ik moet er even over nadenken" / "ik laat het je weten" | **Follow-up nodig** | Plan vervolgafspraak - geen open follow-up zonder gepland moment |
+| "Te duur" / "geen budget" | **Lost - prijs** | Disqualify of HTO→LTO downgrade voorstellen |
 | "Mijn doelgroep zit niet op Facebook" | **Bezwaar** | Frame met case study (B2B zoals Fortune Coffee) |
-| "Slechte ervaring met agencies" | **Bezwaar — vertrouwen** | Frame met garantie + case study (Uptmz) |
+| "Slechte ervaring met agencies" | **Bezwaar - vertrouwen** | Frame met garantie + case study (Uptmz) |
 | "Op commissie" / "gratis proeven" | **Disqualify hard** | Niet doen, doorvragen waar het vandaan komt |
 
 ### ICP fit signalen
@@ -84,14 +84,14 @@ Wat Fathom detecteert (en wij straks promoten naar Hub tasks):
 
 Voor de toekomstige `sales-call-summary` AI prompt:
 
-1. **Outcome** — closed / follow-up / lost / disqualified
-2. **Prospect bedrijfsnaam + branche** — voor matcher als ze later klant worden
-3. **Aanbod gepitcht** — HTO / LTO / variant
-4. **Bezwaren genoemd** — uit de 6 standaard set
-5. **Follow-up commitments** — wat is afgesproken, wanneer, door wie
-6. **ICP fit verdict** — past de prospect bij Rocket Leads (goed/twijfelachtig/slecht)
-7. **Deal value indicator** — werd budget besproken, in welke range
-8. **Decision maker check** — was de juiste persoon aanwezig?
+1. **Outcome** - closed / follow-up / lost / disqualified
+2. **Prospect bedrijfsnaam + branche** - voor matcher als ze later klant worden
+3. **Aanbod gepitcht** - HTO / LTO / variant
+4. **Bezwaren genoemd** - uit de 6 standaard set
+5. **Follow-up commitments** - wat is afgesproken, wanneer, door wie
+6. **ICP fit verdict** - past de prospect bij Rocket Leads (goed/twijfelachtig/slecht)
+7. **Deal value indicator** - werd budget besproken, in welke range
+8. **Decision maker check** - was de juiste persoon aanwezig?
 
 ---
 
@@ -99,10 +99,10 @@ Voor de toekomstige `sales-call-summary` AI prompt:
 
 Dingen waar AI op moet alarmeren in de Watch List of summary:
 
-- Closer geeft een **garantie zonder dat ICP fit duidelijk is** — risico op churn
+- Closer geeft een **garantie zonder dat ICP fit duidelijk is** - risico op churn
 - Prospect noemt **"andere offertes vergelijken"** zonder commitment → low-intent
 - **Onrealistische verwachtingen** ("100 leads in eerste week") niet gecorrigeerd door closer
-- Prospect heeft eerder **bij meerdere agencies stop gezet** — churn risk
+- Prospect heeft eerder **bij meerdere agencies stop gezet** - churn risk
 - **Geen budget besproken** in een 45-min call → close zal moeilijk worden
 
 ---
@@ -115,4 +115,4 @@ Fathom levert in NL een gestructureerde markdown summary. Standaard secties:
 - **Onderwerpen** (per onderwerp een korte uitleg)
 - **Volgende stappen** (vaak overlap met `action_items`)
 
-Deze worden 1-op-1 opgeslagen — geen post-processing op ingest.
+Deze worden 1-op-1 opgeslagen - geen post-processing op ingest.

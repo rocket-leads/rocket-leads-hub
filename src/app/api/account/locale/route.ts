@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
  * locale toggle right after the cookie is written, so the next render
  * (or any other browser/device) sees the same preference.
  *
- * The cookie is the source of truth for the *next* render — this
+ * The cookie is the source of truth for the *next* render - this
  * endpoint just keeps the DB in sync. Failure here doesn't break the
  * UI; the cookie alone keeps the switch working until the next sign-in.
  */

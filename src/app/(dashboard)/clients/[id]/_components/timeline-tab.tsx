@@ -64,7 +64,7 @@ function iconFor(entry: TimelineEntry) {
 
 function formatDateTime(iso: string, locale: Locale): string {
   const d = new Date(iso)
-  if (isNaN(d.getTime())) return "—"
+  if (isNaN(d.getTime())) return "-"
   return d.toLocaleString(locale === "nl" ? "nl-NL" : "en-GB", {
     day: "numeric",
     month: "short",
@@ -76,7 +76,7 @@ function formatDateTime(iso: string, locale: Locale): string {
 
 function formatDay(iso: string, locale: Locale): string {
   const d = new Date(iso)
-  if (isNaN(d.getTime())) return "—"
+  if (isNaN(d.getTime())) return "-"
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(today.getDate() - 1)

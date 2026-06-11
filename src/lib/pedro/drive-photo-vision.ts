@@ -13,10 +13,10 @@ import type { DriveImageRef } from "@/lib/integrations/google-drive"
  * matches the variant's angle.
  *
  * Two-step pipeline so cost stays bounded:
- *   1. DESCRIBE — Haiku vision call per file_id, cached forever in
+ *   1. DESCRIBE - Haiku vision call per file_id, cached forever in
  *      `pedro_drive_photo_vision`. 1-2 sentences, only what's visible.
  *      ~$0.001 per file, paid once.
- *   2. SCORE — text-only Haiku call combining all descriptions with the
+ *   2. SCORE - text-only Haiku call combining all descriptions with the
  *      campaign + variant context. Returns ranked file_ids with brief
  *      reasons. Fresh per refresh (~$0.0005 per call), no cache.
  *
@@ -115,7 +115,7 @@ NEVER speculate about ROI, branding strategy, or fit for a campaign. Just descri
 
   if (!description) return ""
 
-  // 3. Cache write — best-effort.
+  // 3. Cache write - best-effort.
   try {
     await supabase.from("pedro_drive_photo_vision").upsert(
       {
@@ -142,7 +142,7 @@ NEVER speculate about ROI, branding strategy, or fit for a campaign. Just descri
 
 /** Rerank candidates against the variant's campaign context. Returns
  *  the input refs sorted by relevance (best first). Always returns
- *  every input — slicing/limit handled by the caller. */
+ *  every input - slicing/limit handled by the caller. */
 export async function rerankDrivePhotos(
   supabase: Supabase,
   candidates: DriveImageRef[],
@@ -172,7 +172,7 @@ export async function rerankDrivePhotos(
     }
   }
 
-  // 2. Score — single text-only call covering all candidates.
+  // 2. Score - single text-only call covering all candidates.
   const ctxParts: string[] = []
   if (context.campaignName) ctxParts.push(`Campaign: ${context.campaignName}`)
   if (context.clientPositioning) ctxParts.push(`Client positioning: ${context.clientPositioning}`)

@@ -27,7 +27,7 @@ export async function GET(
 
     // Auto-promote: once all three signals are green, persist done so
     // the wizard's "current step" pointer rolls forward to handoff
-    // without the AM having to click anything. Idempotent — re-saving
+    // without the AM having to click anything. Idempotent - re-saving
     // done=true is a no-op besides updated_at.
     if (status.allGreen) {
       await saveStepState({

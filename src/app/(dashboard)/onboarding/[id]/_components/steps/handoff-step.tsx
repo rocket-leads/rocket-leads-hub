@@ -35,14 +35,14 @@ type HandoffContent = {
 }
 
 /**
- * Stap 5 — Handoff to CM. Final wizard action.
+ * Stap 5 - Handoff to CM. Final wizard action.
  *
  * Shows a summary of what the CM will inherit + a big "Klaar voor CM"
  * button. On click:
  *   1. Hub flips client status from Onboarding → Live (via handoff
  *      endpoint, which runs the hard-gate inside updateClientField).
  *      Gate failures surface as an actionable error here.
- *   2. CM gets a Slack DM with the Hub link. Best-effort — if it
+ *   2. CM gets a Slack DM with the Hub link. Best-effort - if it
  *      fails the AM still completes the handoff and gets a hint to
  *      message manually.
  *   3. Step marked done. Wizard renders "wizard complete" state.
@@ -73,7 +73,7 @@ export function HandoffStep({
       }>
     },
     onSuccess: () => {
-      // Invalidate everything that watches the client's status — the
+      // Invalidate everything that watches the client's status - the
       // flip ripples through campaign lists, watchlist, billing dots.
       queryClient.invalidateQueries({ queryKey: ["onboarding-wizard", mondayItemId] })
       queryClient.invalidateQueries({ queryKey: ["client-detail", mondayItemId] })
@@ -81,7 +81,7 @@ export function HandoffStep({
     },
   })
 
-  // ── Done state — show completion summary ──
+  // ── Done state - show completion summary ──
   if (step.done && content.handoffAt) {
     const date = new Date(content.handoffAt)
     return (
@@ -93,7 +93,7 @@ export function HandoffStep({
           </h3>
           <p className="text-sm text-muted-foreground mb-4">
             {t("onboarding.wizard.handoff.done.body", locale)
-              .replace("{cm}", content.cmName || "—")
+              .replace("{cm}", content.cmName || "-")
               .replace(
                 "{when}",
                 date.toLocaleString(locale === "en" ? "en-GB" : "nl-NL", {
@@ -132,7 +132,7 @@ export function HandoffStep({
     )
   }
 
-  // ── Pre-handoff — summary + big handoff button ──
+  // ── Pre-handoff - summary + big handoff button ──
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted-foreground">
@@ -148,27 +148,27 @@ export function HandoffStep({
         />
         <SummaryRow
           label={t("onboarding.wizard.handoff.summary.am", locale)}
-          value={client.accountManager || "—"}
+          value={client.accountManager || "-"}
           ok={Boolean(client.accountManager)}
         />
         <SummaryRow
           label={t("onboarding.wizard.handoff.summary.drive", locale)}
-          value={client.googleDriveId ? client.googleDriveId : "—"}
+          value={client.googleDriveId ? client.googleDriveId : "-"}
           ok={Boolean(client.googleDriveId)}
         />
         <SummaryRow
           label={t("onboarding.wizard.handoff.summary.meta", locale)}
-          value={client.metaAdAccountId || "—"}
+          value={client.metaAdAccountId || "-"}
           ok={Boolean(client.metaAdAccountId)}
         />
         <SummaryRow
           label={t("onboarding.wizard.handoff.summary.stripe", locale)}
-          value={client.stripeCustomerId || "—"}
+          value={client.stripeCustomerId || "-"}
           ok={Boolean(client.stripeCustomerId)}
         />
         <SummaryRow
           label={t("onboarding.wizard.handoff.summary.trengo", locale)}
-          value={client.trengoContactId || "—"}
+          value={client.trengoContactId || "-"}
           ok={Boolean(client.trengoContactId)}
         />
       </ul>

@@ -131,17 +131,17 @@ export const PulseBanner = memo(function PulseBanner({ monday, meta, targets, ra
 
   if (evaluated === 0) return <NeutralBanner />
 
-  // All on track — full-width green banner
+  // All on track - full-width green banner
   if (offCount === 0) {
     return <StatusCard variant="on-track" pillars={pulse.onTrackPillars} totalCount={evaluated} />
   }
 
-  // All off track — full-width red banner
+  // All off track - full-width red banner
   if (onCount === 0) {
     return <StatusCard variant="off-track" pillars={pulse.offTrackPillars} totalCount={evaluated} />
   }
 
-  // Mixed — split 50/50; both cards visually identical
+  // Mixed - split 50/50; both cards visually identical
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <StatusCard variant="on-track" pillars={pulse.onTrackPillars} totalCount={evaluated} />

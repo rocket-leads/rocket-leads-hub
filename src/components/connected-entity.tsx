@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils"
  * which endpoints to hit for search + single-ID resolve, and what to call
  * the picker in the UI. Adding the next service (Monday boards, Meta ad
  * accounts, Trengo contacts, Drive folders) means adding one row here and
- * a matching pair of API routes — no changes to the component logic.
+ * a matching pair of API routes - no changes to the component logic.
  */
 export type ServiceKey =
   | "stripe-customer"
@@ -38,13 +38,13 @@ export type ServiceKey =
  * Per-service config. `required` says whether a missing link is a real
  * problem (Stripe = no billing data, Meta = no campaign data, Trengo = no
  * client comms) or just "not used for this client" (Monday CRM and Drive
- * folder are both opt-in — some clients use their own CRM / storage).
+ * folder are both opt-in - some clients use their own CRM / storage).
  *
  * The flag drives two surfaces:
- *   1. The picker trigger's empty-state copy here — "Link X… · optional"
- *      vs plain "Link X…" — so an AM doesn't feel pressured to fill in
+ *   1. The picker trigger's empty-state copy here - "Link X… · optional"
+ *      vs plain "Link X…" - so an AM doesn't feel pressured to fill in
  *      something that doesn't apply.
- *   2. The connection-health audit (next step) — empty + optional must not
+ *   2. The connection-health audit (next step) - empty + optional must not
  *      count as a broken connection, otherwise every client without Monday
  *      CRM lights up red and the audit becomes noise.
  *
@@ -57,21 +57,21 @@ type ServiceConfig = {
   serviceLabel: string
   /** Required services flag the AM if empty (visual hint, not alarm) and
    *  count as a broken connection in audit mode. Optional services are
-   *  intentionally-blank when empty — no alarm, no audit hit. */
+   *  intentionally-blank when empty - no alarm, no audit hit. */
   required: boolean
   /** Builds the search URL given a query string and limit. */
   searchUrl: (query: string, limit: number) => string
   /** Builds the resolve URL for a single ID. */
   resolveUrl: (id: string) => string
   /** Validates the raw ID shape so we can render "this isn't a Stripe ID
-   *  at all" without an API roundtrip. Optional — defaults to non-empty. */
+   *  at all" without an API roundtrip. Optional - defaults to non-empty. */
   isLikelyValidId?: (id: string) => boolean
 }
 
 /**
  * Single source of truth for "is this service required for a client to be
  * fully connected". Exported so the connection-health audit endpoint can
- * apply the same rule without drifting from the UI — required-and-empty
+ * apply the same rule without drifting from the UI - required-and-empty
  * counts as broken, optional-and-empty is fine.
  */
 export function isServiceRequired(service: ServiceKey): boolean {
@@ -89,7 +89,7 @@ const REGISTRY: Record<ServiceKey, ServiceConfig> = {
     isLikelyValidId: (id) => id.startsWith("cus_"),
   },
   "monday-board": {
-    // Roy 2026-06-09: Monday is opt-in — some clients use their own CRM and
+    // Roy 2026-06-09: Monday is opt-in - some clients use their own CRM and
     // don't have a per-client lead board. Empty must not feel broken.
     serviceLabel: "Monday",
     required: false,
@@ -109,7 +109,7 @@ const REGISTRY: Record<ServiceKey, ServiceConfig> = {
     resolveUrl: (id) =>
       `/api/integrations/meta/ad-accounts/${encodeURIComponent(id)}`,
     // Stored ID may be `act_123456789` or plain numeric (Monday's column has
-    // accepted both historically). Both shapes are fine here — only the
+    // accepted both historically). Both shapes are fine here - only the
     // obviously-wrong inputs (a Stripe `cus_…`, a Trengo phone number, etc.)
     // should fail the cheap shape check.
     isLikelyValidId: (id) => /^(act_)?\d{6,20}$/.test(id),
@@ -122,11 +122,11 @@ const REGISTRY: Record<ServiceKey, ServiceConfig> = {
     resolveUrl: (id) =>
       `/api/integrations/trengo/contacts/${encodeURIComponent(id)}`,
     // Trengo contact IDs are numeric (typically 6-10 digits). No `cus_*` or
-    // `act_*` prefix — those wouldn't be Trengo IDs at all.
+    // `act_*` prefix - those wouldn't be Trengo IDs at all.
     isLikelyValidId: (id) => /^\d{4,12}$/.test(id),
   },
   "drive-folder": {
-    // Roy 2026-06-09: Drive is opt-in — clients may have their own storage
+    // Roy 2026-06-09: Drive is opt-in - clients may have their own storage
     // for content/assets. Empty just means "not used here", not "broken".
     serviceLabel: "Drive",
     required: false,
@@ -142,7 +142,7 @@ const REGISTRY: Record<ServiceKey, ServiceConfig> = {
 }
 
 type Props = {
-  /** Monday item ID — used as the PATCH target on save. */
+  /** Monday item ID - used as the PATCH target on save. */
   mondayItemId: string
   /** Which client field this picker writes to (e.g. "stripe_customer_id"). */
   fieldKey: SimpleFieldKey
@@ -171,7 +171,7 @@ type Props = {
  *               pill "Not found in {service}" so it's visually impossible to
  *               miss when scrolling through the panel.
  *
- * Bron-of-truth blijft Monday — every selection is a PATCH /api/clients/[id]
+ * Bron-of-truth blijft Monday - every selection is a PATCH /api/clients/[id]
  * which writes through to Monday's column via updateClientField + mirrors the
  * Supabase row + patches the slide-over cache. Same code path as SimpleField.
  */
@@ -191,11 +191,11 @@ export function ConnectedEntity({
   const [savedFlash, setSavedFlash] = useState(false)
 
   // Optimistic override lets the trigger label flip to the new entity name
-  // the instant the user clicks "select" — without waiting for the PATCH +
+  // the instant the user clicks "select" - without waiting for the PATCH +
   // router.refresh round-trip (~300-800ms). When the parent re-renders with
   // the new prop value we drop the override and trust the server value.
   // The `if (snapshot !== value)` pattern is React 19's official "adjust
-  // state during render" — see the useEffect → derived-state migration in
+  // state during render" - see the useEffect → derived-state migration in
   // react.dev/learn/you-might-not-need-an-effect.
   const [propSnapshot, setPropSnapshot] = useState(value)
   const [optimisticOverride, setOptimisticOverride] = useState<string | null>(null)
@@ -221,7 +221,7 @@ export function ConnectedEntity({
   })
 
   // Search results for the picker dropdown. Debounced via the input's
-  // local state — React Query dedupes identical keys so rapid typing
+  // local state - React Query dedupes identical keys so rapid typing
   // doesn't pile up requests.
   const searchQuery = useQuery<{ entities: ResolvedEntity[] }>({
     queryKey: ["entity-search", service, query],
@@ -283,7 +283,7 @@ export function ConnectedEntity({
 
   // Pre-fill the search box with the company name on first-open when there's
   // no existing link, so the AM lands on relevant matches without typing. Done
-  // in the onOpenChange callback rather than an effect — opening the picker is
+  // in the onOpenChange callback rather than an effect - opening the picker is
   // a user action, not a state-sync event.
   function handleOpenChange(next: boolean) {
     setOpen(next)
@@ -357,7 +357,7 @@ export function ConnectedEntity({
                 {!registry.required && (
                   // Soft "this is fine to leave blank" hint. Roy 2026-06-09:
                   // optional services (Monday, Drive) must never feel like a
-                  // missing-data alarm — empty just means "not used here".
+                  // missing-data alarm - empty just means "not used here".
                   <span className="ml-1.5 text-muted-foreground/50">· optional</span>
                 )}
               </span>
@@ -462,7 +462,7 @@ export function ConnectedEntity({
               <div className="px-2.5 py-2 text-[12px] text-destructive">
                 {searchQuery.error instanceof Error
                   ? searchQuery.error.message
-                  : `Search failed — check ${registry.serviceLabel} token in Settings.`}
+                  : `Search failed - check ${registry.serviceLabel} token in Settings.`}
               </div>
             )}
             {searchQuery.data?.entities.length === 0 && !searchQuery.isLoading && (

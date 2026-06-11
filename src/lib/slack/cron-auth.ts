@@ -8,7 +8,7 @@ import { auth } from "@/lib/auth"
  * standing up a parallel route per notification.
  *
  * When the caller is a logged-in admin, `forcedByAdmin` is true so the handler
- * skips its time-of-day guard automatically — the explicit click IS the consent.
+ * skips its time-of-day guard automatically - the explicit click IS the consent.
  */
 export async function authorizeCronOrAdmin(req: NextRequest): Promise<{
   ok: true

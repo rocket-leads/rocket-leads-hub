@@ -37,10 +37,10 @@ type Props = {
  * Top-level groups. Reduced from 7 flat tabs (Home / Campaigns / Inbox /
  * Timeline / Pedro / Billing / Settings) to 4 groups:
  *
- *   performance   — KPI summary + campaign drill-down (Overview / Campaigns)
- *   conversations — interactive Inbox + read-only Timeline of touchpoints
- *   pedro         — AI insights for this client (single view)
- *   admin         — Billing + per-client Settings
+ *   performance   - KPI summary + campaign drill-down (Overview / Campaigns)
+ *   conversations - interactive Inbox + read-only Timeline of touchpoints
+ *   pedro         - AI insights for this client (single view)
+ *   admin         - Billing + per-client Settings
  *
  * Each group with multiple inner views renders a SegmentedTabs pill switcher
  * at the top of its body so the user can flip between them. Single-view
@@ -78,7 +78,7 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
   // invalidates browser-side caches while the server keeps serving stale data.
   const [refreshNonce, setRefreshNonce] = useState(0)
 
-  // Drives the tab notification dot — same queryKey as the header so React
+  // Drives the tab notification dot - same queryKey as the header so React
   // Query dedupes the network call.
   const billingQuery = useQuery<Partial<BillingData>>({
     queryKey: ["billing-check", client.mondayItemId],
@@ -92,7 +92,7 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
 
   const hasOverdueInvoice = hasOverdue(billingQuery.data?.invoices)
 
-  // Tab state — `activeGroup` drives the top strip; the three view states
+  // Tab state - `activeGroup` drives the top strip; the three view states
   // remember which inner view is active inside each group so jumping away
   // and coming back lands on the same sub-tab.
   const [activeGroup, setActiveGroup] = useState<TopGroup>("performance")
@@ -142,7 +142,7 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
 
   // Callbacks fired by inner panels that want to jump to another group. The
   // HomeTab uses these for "open billing" / "open inbox" affordances on the
-  // payment banner + tasks card — we map them to the new top+sub state pair.
+  // payment banner + tasks card - we map them to the new top+sub state pair.
   const goToCampaigns = () => {
     setActiveGroup("performance")
     setPerformanceView("campaigns")
@@ -178,7 +178,7 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
         }
       />
 
-      {/* PERFORMANCE — Overview (Home) + Campaigns drill-down */}
+      {/* PERFORMANCE - Overview (Home) + Campaigns drill-down */}
       {activeGroup === "performance" && (
         <div className="space-y-4">
           {access.canViewCampaigns && (
@@ -220,7 +220,7 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
         </div>
       )}
 
-      {/* CONVERSATIONS — interactive Inbox + read-only Timeline */}
+      {/* CONVERSATIONS - interactive Inbox + read-only Timeline */}
       {activeGroup === "conversations" && (
         <div className="space-y-4">
           <SegmentedTabs<ConversationsView>
@@ -248,14 +248,14 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
         </div>
       )}
 
-      {/* PEDRO — single view, no sub-toggle */}
+      {/* PEDRO - single view, no sub-toggle */}
       {activeGroup === "pedro" && (
         <PedroTab mondayItemId={client.mondayItemId} clientName={client.name} />
       )}
 
-      {/* ADMIN — per-client Settings + Billing.
+      {/* ADMIN - per-client Settings + Billing.
           Uses the platform's standard TopTabs strip so Admin's sub-nav
-          reads the same as Pedro / Inbox / Settings etc. — Roy 2026-05-22
+          reads the same as Pedro / Inbox / Settings etc. - Roy 2026-05-22
           asked for "dezelfde kast als alle andere" instead of the
           segmented-pill switcher which felt like a different design
           system. Order: Settings (left, always available) → Billing

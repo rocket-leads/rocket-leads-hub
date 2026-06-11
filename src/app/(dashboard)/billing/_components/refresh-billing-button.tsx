@@ -17,7 +17,7 @@ type RefreshResponse = {
  * Combined Monday + Stripe refresh button for the Billing page. Hits
  * POST /api/billing/refresh, then `router.refresh()` so server components
  * re-render with the new state. Also shows "Last updated X ago" so finance
- * can see how fresh the data is at a glance — payment state ages fast on
+ * can see how fresh the data is at a glance - payment state ages fast on
  * this page (invoices going out, payments landing) and they shouldn't have
  * to guess whether to click again.
  */
@@ -48,7 +48,7 @@ export function RefreshBillingButton({ lastRefreshedAt }: Props) {
   const [age, setAge] = useState<string | null>(formatAge(lastRefreshedAt))
 
   // Re-render the relative time every 30s so "5m ago" doesn't sit visibly
-  // wrong while the user is on the page. Cheap re-render — just one string.
+  // wrong while the user is on the page. Cheap re-render - just one string.
   useEffect(() => {
     const tick = () => setAge(formatAge(lastRefreshedAt))
     tick()

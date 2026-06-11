@@ -6,7 +6,7 @@ import {
 } from "./administration"
 
 /**
- * `targetAdminStatus` is the brain of the admin-column auto-sync — it decides
+ * `targetAdminStatus` is the brain of the admin-column auto-sync - it decides
  * which label the Hub should TRY to write to Monday given the latest Stripe
  * state + campaign status + cycle date. `shouldAutoWriteAdministration` is
  * the gate that decides whether the write is ACTUALLY allowed (preserving

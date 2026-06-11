@@ -72,7 +72,7 @@ export function SettingsTabs(props: Props) {
   const { isAdmin, initialTab, meTab } = props
   // useUrlState keeps the active tab in the URL so the back button + bookmarks
   // + "send me this view" links all work. The server already passed
-  // `initialTab` in for the initial render — useUrlState then takes over for
+  // `initialTab` in for the initial render - useUrlState then takes over for
   // any in-session tab changes.
   const [rawTab, setActiveTab] = useUrlState("tab", initialTab)
   const resolvedTab: SettingsTabId = ALL_TAB_IDS.includes(rawTab as SettingsTabId)

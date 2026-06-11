@@ -21,7 +21,7 @@ export type UserPlatformConnection = {
   updatedAt: string
 }
 
-/** Read-only listing — never returns the decrypted token. */
+/** Read-only listing - never returns the decrypted token. */
 export async function listUserPlatformConnections(userId: string): Promise<UserPlatformConnection[]> {
   const supabase = await createAdminClient()
   const { data } = await supabase
@@ -37,7 +37,7 @@ export async function listUserPlatformConnections(userId: string): Promise<UserP
 }
 
 /**
- * Decrypted token retrieval — for use server-side when sending an outbound
+ * Decrypted token retrieval - for use server-side when sending an outbound
  * reply on behalf of the user. Returns null when the user hasn't connected
  * the platform yet, so callers can prompt with "Connect your X first" rather
  * than surprising them with an error.
@@ -62,7 +62,7 @@ export async function getUserPlatformToken(
   }
 }
 
-/** Upsert a fresh token for the user — replaces any existing one. */
+/** Upsert a fresh token for the user - replaces any existing one. */
 export async function setUserPlatformToken(
   userId: string,
   platform: Platform,

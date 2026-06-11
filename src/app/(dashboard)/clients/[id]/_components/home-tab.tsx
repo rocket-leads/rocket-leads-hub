@@ -86,12 +86,12 @@ const HEALTH_TONES: Record<WatchCategory, { bg: string; border: string; text: st
 }
 
 function fmtCurrency(n: number): string {
-  if (!isFinite(n) || n === 0) return "—"
+  if (!isFinite(n) || n === 0) return "-"
   return `€${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 function fmtInt(n: number): string {
-  if (!isFinite(n) || n === 0) return "—"
+  if (!isFinite(n) || n === 0) return "-"
   return n.toLocaleString("en-GB")
 }
 
@@ -111,7 +111,7 @@ function describeWindow(start: Date, end: Date): string {
   const yesterday = subDays(today, 1)
   const days = differenceInCalendarDays(end, start) + 1
 
-  // End must be yesterday for any of the rolling-window presets to apply —
+  // End must be yesterday for any of the rolling-window presets to apply -
   // otherwise we're looking at a historical range and the day count is the
   // only honest label.
   if (isSameDay(end, yesterday)) {
@@ -122,7 +122,7 @@ function describeWindow(start: Date, end: Date): string {
     if (isSameDay(start, startOfMonth(today))) return "MTD"
   }
 
-  // "Last Month" — start at first day of last month, end at last day of last month.
+  // "Last Month" - start at first day of last month, end at last day of last month.
   const lastMonth = subMonths(today, 1)
   const lastMonthStart = startOfMonth(lastMonth)
   // endOfMonth would need an import; cheap to compute: day before this month starts.
@@ -262,7 +262,7 @@ function TopAdsCard({
         ) : (
           <ul className="space-y-1.5">
             {ads.map((ad, i) => {
-              const cplLabel = ad.leads > 0 && ad.cpl > 0 ? `€${ad.cpl.toFixed(2)}` : "—"
+              const cplLabel = ad.leads > 0 && ad.cpl > 0 ? `€${ad.cpl.toFixed(2)}` : "-"
               const cplColor =
                 ad.verdict === "winner"
                   ? "text-emerald-500"
@@ -394,7 +394,7 @@ function TasksList({
     )
   }
 
-  // Whole card is one big click target — keeps the hover/click semantics
+  // Whole card is one big click target - keeps the hover/click semantics
   // consistent with the Lead Analysis and Payment cards above. Individual
   // tasks aren't separately clickable; they all route to the same place
   // anyway, so adding nested buttons just adds noise.
@@ -470,7 +470,7 @@ export function HomeTab({
   const locale = useLocale()
   const queryClient = useQueryClient()
   // useClientDateRange (slide-over only) defaults to Last 7 Days every
-  // open, no localStorage persistence — so the picker on /clients
+  // open, no localStorage persistence - so the picker on /clients
   // overview or /targets can't leak in and make the KPI cards under a
   // Watch List link disagree with the canonical 7d numbers.
   const { range, setRange, presets, applyPreset, formatDate } = useClientDateRange()
@@ -487,7 +487,7 @@ export function HomeTab({
     [range.startDate, range.endDate],
   )
 
-  // 30d baseline window — yesterday back 30 days. The Health card always
+  // 30d baseline window - yesterday back 30 days. The Health card always
   // compares the user-selected current window against this. Kept stable so
   // changing the picker only shifts the "current" side of the comparison;
   // the baseline stays anchored.
@@ -500,7 +500,7 @@ export function HomeTab({
       baselineLabel: "30d",
     }
   }, [])
-  // 90d long-baseline — cross-check against the 30d baseline so we can spot
+  // 90d long-baseline - cross-check against the 30d baseline so we can spot
   // "baseline drifted high" (Roy 2026-05): if the client was off-track for
   // weeks, the 30d itself is degraded and a "good vs 30d" verdict is
   // misleading recovery-from-bad rather than genuine recovery.
@@ -514,7 +514,7 @@ export function HomeTab({
     }
   }, [])
   // When the selected window is 30d+ the baseline equals (or overlaps) the
-  // current — comparison would be meaningless. The categorizer renders a
+  // current - comparison would be meaningless. The categorizer renders a
   // "no baseline yet" message in that case. Drift cross-check is also
   // suppressed when the user is already looking at the long window.
   const baselineSuppressed = useMemo(
@@ -531,7 +531,7 @@ export function HomeTab({
   // cards + Health current value read from `kpi_summaries` (same bucket the
   // Watch List + Home page + Pedro narrative read), so they can never
   // disagree. When the user picks a custom range, we live-fetch via the
-  // kpis endpoint — no Watch List equivalent for that window, so no risk
+  // kpis endpoint - no Watch List equivalent for that window, so no risk
   // of cross-surface mismatch.
   const isCronSevenDayWindow = useMemo(() => {
     const end = subDays(new Date(), 1)
@@ -539,7 +539,7 @@ export function HomeTab({
     return formatDate(start) === startDateStr && formatDate(end) === endDateStr
   }, [startDateStr, endDateStr, formatDate])
 
-  // Period KPIs (AdSpend, Leads, CPL) — driven by the period selector.
+  // Period KPIs (AdSpend, Leads, CPL) - driven by the period selector.
   // Disabled when the selected window is the canonical 7d; that case reads
   // from kpi_summaries via `summaryQuery` below so every surface shows the
   // same number. `refreshNonce` is part of the queryKey so the Refresh
@@ -563,7 +563,7 @@ export function HomeTab({
       (!!client.metaAdAccountId || !!client.clientBoardId),
   })
 
-  // 30d baseline KPI — Health card compares the selected window against this.
+  // 30d baseline KPI - Health card compares the selected window against this.
   // Same `/kpis` endpoint as kpisQuery but fixed to the 30d window so the
   // baseline doesn't move when the user shifts the period picker. Skipped
   // when selected window already overlaps baseline (suppressComparison path).
@@ -585,7 +585,7 @@ export function HomeTab({
       (!!client.metaAdAccountId || !!client.clientBoardId),
   })
 
-  // 90d long-baseline — only used for the baseline-drift cross-check.
+  // 90d long-baseline - only used for the baseline-drift cross-check.
   // Same endpoint, longer window. Skipped when selected window already
   // overlaps the 90d (user is looking at the long lens themselves).
   const kpisLongBaselineQuery = useQuery<KpiResult>({
@@ -606,7 +606,7 @@ export function HomeTab({
       (!!client.metaAdAccountId || !!client.clientBoardId),
   })
 
-  // 7d summary — single source of truth for the KPI cards + Health card
+  // 7d summary - single source of truth for the KPI cards + Health card
   // current value when the user is on the canonical 7d window. Reads the
   // same kpi_summaries cache that the Watch List + Home page + Pedro
   // narrative all read from, so all four surfaces show identical numbers.
@@ -653,7 +653,7 @@ export function HomeTab({
   // verdict + KPI cards. When the user is on the canonical 7d window we
   // read from kpiSummary (kpi_summaries cache), exactly what the Watch
   // List + Home page + Pedro narrative read. When the user picks a custom
-  // range, fall back to the live kpisQuery — no Watch List equivalent
+  // range, fall back to the live kpisQuery - no Watch List equivalent
   // exists for that range so there's nothing to drift against.
   const currentCpl = isCronSevenDayWindow
     ? kpiSummary?.cpl ?? 0
@@ -701,12 +701,12 @@ export function HomeTab({
     locale,
   ])
 
-  // Top ads (30d) — surfaced under the Pedro card so the user can verify which
+  // Top ads (30d) - surfaced under the Pedro card so the user can verify which
   // specific ads are driving Pedro's verdict. The AI activity summary that used
   // to live alongside this has been absorbed into the unified Pedro insight,
   // and the 14d daily-trend sparkline that used to live in the Watch List rows
   // is no longer rendered either. So we ask the expand endpoint for `topAds`
-  // only — skips a Meta-daily fetch (~1s), a Monday updates fetch (~500ms),
+  // only - skips a Meta-daily fetch (~1s), a Monday updates fetch (~500ms),
   // and a Claude AI generation (~1-3s on a cache miss), dropping latency from
   // ~6s to ~1-2s.
   const expandQuery = useQuery<WatchlistExpandResponse>({
@@ -739,7 +739,7 @@ export function HomeTab({
   const paymentSummary = summarizePayments(billingQuery.data?.invoices)
 
   // Display values for the KPI cards are derived once above (single source
-  // of truth: `currentSpend / currentLeads / currentCpl` — kpi_summaries
+  // of truth: `currentSpend / currentLeads / currentCpl` - kpi_summaries
   // for the canonical 7d window, live kpisQuery for custom ranges).
   const adSpendValue = currentSpend
   const leadsValue = currentLeads
@@ -795,11 +795,11 @@ export function HomeTab({
         />
       </div>
 
-      {/* Single Pedro insight — replaces the old LeadAnalysisCard / Activity
+      {/* Single Pedro insight - replaces the old LeadAnalysisCard / Activity
           Summary / Optimization Proposal stack. One AI voice across the platform. */}
       <PedroInsightCard mondayItemId={client.mondayItemId} locale={locale} />
 
-      {/* Deliverable #1 — assembled markdown of every Pedro stage saved
+      {/* Deliverable #1 - assembled markdown of every Pedro stage saved
           for this client. Re-readable + downloadable as the formal hand-off. */}
       <PedroDeliverableCard mondayItemId={client.mondayItemId} />
 

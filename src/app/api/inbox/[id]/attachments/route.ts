@@ -14,7 +14,7 @@ import { NeedsConnectError } from "@/lib/inbox/reply"
  * The `id` is what the chat-pane composer collects and passes on send via
  * `attachment_ids[]` in the reply payload.
  *
- * The Trengo path used here is `/api/v2/ticket_draft_attachments` — NOT the
+ * The Trengo path used here is `/api/v2/ticket_draft_attachments` - NOT the
  * public `/attachments` endpoint, which silently drops attachment IDs and is
  * effectively non-functional for our use case (see Phase 0 audit). The path
  * we use is undocumented but stable; it's what Trengo's own web UI calls
@@ -66,7 +66,7 @@ export async function POST(
   }
 
   // Forward the multipart body to Trengo. We don't parse-and-rebuild the
-  // multipart payload — a fresh FormData is cheaper and avoids edge cases
+  // multipart payload - a fresh FormData is cheaper and avoids edge cases
   // with binary boundaries.
   let incoming: FormData
   try {

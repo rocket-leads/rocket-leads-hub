@@ -58,7 +58,7 @@ export async function loadPastCampaigns(
 
   // For each campaign row, prefer EXPLICITLY SAVED versions over the
   // draft state. Two-layer storage rule: drafts are private working
-  // state — cross-call context should always read from saved versions
+  // state - cross-call context should always read from saved versions
   // first. Falls back to draft only when nothing has been committed
   // yet (matches existing behaviour for legacy clients).
   const rows = data as unknown as PastCampaignRow[]
@@ -107,7 +107,7 @@ export function renderPastForStage(
   const blocks: string[] = []
 
   for (const p of past) {
-    const header = `[CAMPAGNE #${p.campaign_number} — laatst bijgewerkt ${p.updated_at?.slice(0, 10) ?? ""}]`
+    const header = `[CAMPAGNE #${p.campaign_number} - laatst bijgewerkt ${p.updated_at?.slice(0, 10) ?? ""}]`
     const parts: string[] = [header]
 
     if (stage === "brief" && p.brief) {
@@ -162,7 +162,7 @@ export function renderPastForStage(
 
   if (blocks.length === 0) return ""
 
-  return `\n\n=== EERDERE PEDRO CAMPAGNES VOOR DEZE KLANT ===\n${blocks.join("\n\n")}\n\nGEBRUIK DEZE CONTEXT:\n- Herhaal géén angles of openers die al getest zijn (tenzij ze bewezen winnen — dan bouw verder)\n- Houd tone of voice en ICP-framing consistent met eerdere campagnes\n- Als nieuwe context (bv. recente eval) afwijkt van wat hierboven staat, ga met de NIEUWE context mee — eerdere campagnes zijn referentie, niet wet\n- Bouw progressief: nieuwe iteratie moet aanvullend of tegenvoorstellend zijn op het bestaande\n=== EINDE EERDERE CAMPAGNES ===\n`
+  return `\n\n=== EERDERE PEDRO CAMPAGNES VOOR DEZE KLANT ===\n${blocks.join("\n\n")}\n\nGEBRUIK DEZE CONTEXT:\n- Herhaal géén angles of openers die al getest zijn (tenzij ze bewezen winnen - dan bouw verder)\n- Houd tone of voice en ICP-framing consistent met eerdere campagnes\n- Als nieuwe context (bv. recente eval) afwijkt van wat hierboven staat, ga met de NIEUWE context mee - eerdere campagnes zijn referentie, niet wet\n- Bouw progressief: nieuwe iteratie moet aanvullend of tegenvoorstellend zijn op het bestaande\n=== EINDE EERDERE CAMPAGNES ===\n`
 }
 
 export async function pastContextForStage(

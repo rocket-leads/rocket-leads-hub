@@ -22,7 +22,7 @@ import { INVALIDATION_GROUPS, type InvalidationGroupName } from "./invalidation-
  *     },
  *   })
  *
- * Pass multiple group names when a mutation crosses boundaries — e.g.
+ * Pass multiple group names when a mutation crosses boundaries - e.g.
  * an agreement edit touches both BILLING and CLIENT_DETAIL.
  *
  * The user's existing `onSuccess` (if any) still runs first; invalidation

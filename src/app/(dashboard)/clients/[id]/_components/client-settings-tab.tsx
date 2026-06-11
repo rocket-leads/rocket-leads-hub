@@ -32,7 +32,7 @@ export function ClientSettingsTab({ client }: Props) {
 
   return (
     <div className="space-y-8">
-      {/* Campaign Selection — surfaced first because this is the section CMs adjust
+      {/* Campaign Selection - surfaced first because this is the section CMs adjust
           most often. Client info / KPI / columns rarely change after setup. */}
       {metaAdAccountId && (
         <div>
@@ -55,7 +55,7 @@ export function ClientSettingsTab({ client }: Props) {
         </div>
       )}
 
-      {/* Client Information — name, IDs, financials, team. Edits write back to Monday. */}
+      {/* Client Information - name, IDs, financials, team. Edits write back to Monday. */}
       <div>
         <h3 className="text-sm font-medium mb-1">{t("client.settings.info.title", locale)}</h3>
         <p className="text-xs text-muted-foreground/60 mb-4">

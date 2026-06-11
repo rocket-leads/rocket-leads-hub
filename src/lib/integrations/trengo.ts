@@ -57,7 +57,7 @@ async function trengoFetch<T>(path: string, retries = 3): Promise<T> {
 
 export type TrengoChannel = {
   id: number
-  /** Trengo's `name` field is null for many WhatsApp/Email channels — the
+  /** Trengo's `name` field is null for many WhatsApp/Email channels - the
    *  human-readable label lives in different fields per channel type
    *  (title / display_name / phone / email_address / from). Coalesce before
    *  showing to users. Type kept loose to reflect API reality. */
@@ -144,12 +144,12 @@ export function isWhatsAppChannelType(type: string | null | undefined): boolean 
 /**
  * Return the workspace's first Trengo email channel. Used to bootstrap a
  * new outbound email ticket when the contact has no existing email
- * thread — Dr. Ludidi etc. who's email-primary on Monday but has never
+ * thread - Dr. Ludidi etc. who's email-primary on Monday but has never
  * been emailed through Trengo before.
  *
  * Returns null when no email channel exists in this workspace.
  *
- * Prefer `findAmEmailChannel(amUserId)` for client-update sends — that
+ * Prefer `findAmEmailChannel(amUserId)` for client-update sends - that
  * picks the AM's personally-selected email channel (so the email goes
  * FROM the AM's address, not the workspace's generic catch-all).
  */
@@ -163,13 +163,13 @@ export async function findFirstEmailChannel(): Promise<TrengoChannel | null> {
  * explicit `users.primary_email_channel_id` setting (configured at
  * /account → Outbound sender channels) and looks up the channel in
  * the workspace metadata. Returns null when the AM hasn't picked one
- * yet — caller surfaces a clear "configure your outbound channel"
+ * yet - caller surfaces a clear "configure your outbound channel"
  * error instead of silently falling back to the workspace catch-all
  * (the Roel-vs-`rocket-lea-mail.*@trengomail.com` bug).
  *
  * Note: this used to intersect `trengo_channel_ids` (the VISIBILITY
  * set) with workspace email channels. That overloaded one column for
- * two unrelated concepts — fixed by adding `primary_email_channel_id`
+ * two unrelated concepts - fixed by adding `primary_email_channel_id`
  * (migration 20240043). Visibility stays on `trengo_channel_ids`;
  * outbound is its own explicit column.
  */
@@ -187,10 +187,10 @@ export async function findAmEmailChannel(
 
 /**
  * Resolve the WhatsApp channel an AM should send FROM. Mirrors
- * `findAmEmailChannel` — reads `users.primary_wa_channel_id` and looks
+ * `findAmEmailChannel` - reads `users.primary_wa_channel_id` and looks
  * up the workspace channel. Returns null when unset (current send paths
  * fall back to the existing-ticket channel anyway, since WhatsApp has
- * no bootstrap flow — kept here for future use).
+ * no bootstrap flow - kept here for future use).
  */
 export async function findAmWaChannel(
   amUserId: string,
@@ -209,7 +209,7 @@ export async function findAmWaChannel(
  * brand-new ticket. Returns the new ticket id + the message id.
  *
  * Two-step because Trengo's `POST /api/v2/tickets/messages` shortcut
- * returns 405 — that route is read-only. Standard REST flow:
+ * returns 405 - that route is read-only. Standard REST flow:
  *   1. `POST /api/v2/tickets`     → create ticket (channel + contact + subject)
  *   2. `POST /api/v2/tickets/{id}/messages` → send body into new ticket
  *
@@ -223,7 +223,7 @@ export async function createEmailMessageForContact(args: {
   subject: string
   body: string
 }): Promise<{ ticketId: string; messageId: string }> {
-  // Step 1 — create the ticket.
+  // Step 1 - create the ticket.
   const createRes = await fetch(`https://app.trengo.com/api/v2/tickets`, {
     method: "POST",
     headers: {
@@ -252,11 +252,11 @@ export async function createEmailMessageForContact(args: {
     createJson.id ?? createJson.ticket_id ?? createJson.data?.id ?? createJson.data?.ticket_id
   if (!ticketId) {
     throw new Error(
-      `Trengo create-ticket returned no id — keys: ${Object.keys(createJson).join(",")}`,
+      `Trengo create-ticket returned no id - keys: ${Object.keys(createJson).join(",")}`,
     )
   }
 
-  // Step 2 — send the message into the new ticket. Mirrors the regular
+  // Step 2 - send the message into the new ticket. Mirrors the regular
   // outbound email reply payload (subject re-stated for clarity even
   // though the ticket already carries it).
   const sendRes = await fetch(
@@ -289,7 +289,7 @@ export async function createEmailMessageForContact(args: {
   const messageId = sendJson.message?.id ?? sendJson.id ?? sendJson.data?.id
   if (!messageId) {
     throw new Error(
-      `Trengo email-send returned no id — keys: ${Object.keys(sendJson).join(",")}`,
+      `Trengo email-send returned no id - keys: ${Object.keys(sendJson).join(",")}`,
     )
   }
   return { ticketId: String(ticketId), messageId: String(messageId) }
@@ -300,7 +300,7 @@ export async function createEmailMessageForContact(args: {
  * subscription picker on /account so users can pick which Trengo channels
  * (Email, WhatsApp, Voice, etc.) surface in their Hub Client Inbox.
  *
- * Uses the system Trengo token — channel listings are workspace-wide metadata,
+ * Uses the system Trengo token - channel listings are workspace-wide metadata,
  * not tied to a specific agent. Cheap and cached for 5 minutes by trengoFetch.
  */
 export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
@@ -310,10 +310,10 @@ export async function fetchTrengoChannels(): Promise<TrengoChannel[]> {
 
 /**
  * Trengo's `/channels` returns `name` as the channel-TYPE literal
- * ("Email", "Wa_business") for most channels — useless for picking
+ * ("Email", "Wa_business") for most channels - useless for picking
  * between several email channels in a dropdown. The user-given label
  * lives in `title` (Trengo sidebar), and for default channels that
- * sidebar label is also generic — the actual routable identifier
+ * sidebar label is also generic - the actual routable identifier
  * (email address / phone) sits in `display_name`.
  *
  * Single source of truth so admin + per-user channel listings agree.
@@ -352,7 +352,7 @@ export function deriveTrengoChannelDisplayName(c: TrengoChannel): string {
 /** Email-specific channel metadata exposed by `GET /channels`. We surface
  *  the signature + sender info to the email composer so the AM gets the same
  *  signature Trengo's web UI uses, without us having to maintain a Hub-side
- *  copy. Placeholders like `[agent.first_name]` are NOT substituted here —
+ *  copy. Placeholders like `[agent.first_name]` are NOT substituted here -
  *  Trengo replaces them at send time, so the composer should preview them
  *  literally. */
 export type TrengoEmailChannelInfo = {
@@ -360,7 +360,7 @@ export type TrengoEmailChannelInfo = {
   title: string
   senderEmail: string | null
   senderName: string | null
-  /** "[agent.first_name] | Rocket Leads" — Trengo substitutes per-agent. */
+  /** "[agent.first_name] | Rocket Leads" - Trengo substitutes per-agent. */
   senderNamePersonal: string | null
   /** HTML signature block. May contain Trengo placeholders. */
   signature: string | null
@@ -368,7 +368,7 @@ export type TrengoEmailChannelInfo = {
 
 /**
  * Look up an email channel's send-side metadata (signature, sender labels)
- * by channel id. Backed by the cached `/channels` fetch — calling this on
+ * by channel id. Backed by the cached `/channels` fetch - calling this on
  * every composer open is cheap.
  *
  * Returns null if the channel doesn't exist OR isn't an email channel
@@ -420,7 +420,7 @@ export type TrengoWaTemplate = {
  * filtering on `status` + `channel_id` is supported by Trengo (verified via
  * web-UI sniff during Phase 0 audit); without it we'd need to walk all 25
  * pages of the workspace template pool to find the ~50-70 that match each
- * channel — too expensive even with the 5-minute cache.
+ * channel - too expensive even with the 5-minute cache.
  *
  * Returns the FULL filtered list (paginated server-side, but we collect all
  * pages here so the UI gets one array). Cached for 5 minutes by trengoFetch.
@@ -443,7 +443,7 @@ export async function fetchWaTemplates(channelId: number): Promise<TrengoWaTempl
 
 /**
  * Subset of a Trengo contact's fields we read for outbound destination
- * decisions. The full Trengo `Contact` returns many more fields — we type
+ * decisions. The full Trengo `Contact` returns many more fields - we type
  * only what we use so the surface area stays narrow.
  */
 export type TrengoContact = {
@@ -463,7 +463,7 @@ export type TrengoContact = {
  *    `wa_sessions` calls (the endpoint accepts a raw phone number, no
  *    ticket needed), and derive the email for email-mode bootstrapping.
  *
- * Uses the system Trengo token — contact records aren't per-agent gated.
+ * Uses the system Trengo token - contact records aren't per-agent gated.
  * Returns null on 404 so callers can render a clean "no test contact set"
  * state without a try/catch wrapper.
  */
@@ -490,7 +490,7 @@ export async function fetchTrengoContact(
 
 /**
  * Map a raw Trengo contact to the unified ResolvedEntity. The subline
- * carries phone + email so the AM can disambiguate same-named contacts —
+ * carries phone + email so the AM can disambiguate same-named contacts -
  * "Brian Verheij" alone is useless when a company has separate WhatsApp,
  * email, and billing contacts each named differently, which is exactly the
  * scenario Roy flagged as the Trengo blind spot.
@@ -514,7 +514,7 @@ function toResolvedTrengoContact(c: TrengoContact): ResolvedEntity {
 /**
  * Search Trengo contacts by name/email/phone for the ConnectedEntity picker.
  *
- * Uses Trengo's native `/contacts?term=<query>` substring search — no
+ * Uses Trengo's native `/contacts?term=<query>` substring search - no
  * client-side cache needed because the workspace contact count (10k+) is
  * too large to keep in memory and Trengo's search is fast enough on
  * single round-trip. Empty query returns the first page (most-recently-
@@ -546,7 +546,7 @@ export async function searchTrengoContacts(
 
 /**
  * Resolve a single Trengo contact ID to its ResolvedEntity. Used by the
- * always-on verification on the picker trigger — without this, a typo'd
+ * always-on verification on the picker trigger - without this, a typo'd
  * trengo_contact_id silently breaks the per-client Inbox + Timeline tabs
  * with no visible signal in the panel.
  *
@@ -572,7 +572,7 @@ export async function resolveTrengoContact(
  * (cheap when the email is new); on the duplicate-conflict response we
  * fall back to a search lookup.
  *
- * `channelId` should be the email channel the contact will live under —
+ * `channelId` should be the email channel the contact will live under -
  * Trengo scopes contacts to channels for email.
  */
 export async function findOrCreateTrengoEmailContact(args: {
@@ -604,7 +604,7 @@ export async function findOrCreateTrengoEmailContact(args: {
     if (id != null) return { id: Number(id) }
   }
 
-  // Conflict / duplicate path — search the workspace for an existing
+  // Conflict / duplicate path - search the workspace for an existing
   // contact carrying this email and use that. Trengo's search returns
   // matches across channels; we pick the first hit.
   const searchRes = await fetch(
@@ -633,7 +633,7 @@ export async function findOrCreateTrengoEmailContact(args: {
 
 /**
  * Update a Trengo contact's name. Used by the inbox composer's editable
- * conversation header — the AM types a real name over an "Unknown"/phone-
+ * conversation header - the AM types a real name over an "Unknown"/phone-
  * number contact and we propagate it back to Trengo so every workspace
  * surface picks it up. System token (workspace-wide write); contact updates
  * aren't per-agent attributed in Trengo.

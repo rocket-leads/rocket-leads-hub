@@ -9,7 +9,7 @@ import {
 export const maxDuration = 120
 
 /**
- * POST /api/pedro/script-refresh — body: { clientId, days?: 30 }
+ * POST /api/pedro/script-refresh - body: { clientId, days?: 30 }
  *
  * For each winning ad, propose fresh video script variations on the
  * winning hook. Different from creative-refresh: creative-refresh is
@@ -18,13 +18,13 @@ export const maxDuration = 120
  */
 
 type ScriptVariant = {
-  /** Short label so the CM can refer to the variant (e.g. "Variant A — Verlies-confrontatie"). */
+  /** Short label so the CM can refer to the variant (e.g. "Variant A - Verlies-confrontatie"). */
   label: string
-  /** 3-5s opener — the actual line spoken in the first frames. */
+  /** 3-5s opener - the actual line spoken in the first frames. */
   hook: string
   /** Full 50-70 second UGC-style script with stage directions in [brackets]. */
   fullScript: string
-  /** 1 line — what's different from the original winner script. */
+  /** 1 line - what's different from the original winner script. */
   why: string
 }
 
@@ -57,18 +57,18 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshEnvelo
     stage: "script",
     noWinnersSummary: ({ days, loserCount, stats }) =>
       loserCount > 0
-        ? `Geen winners in ${days}d window (avg CPL ${stats.avgCpl ? `€${stats.avgCpl.toFixed(2)}` : "—"}, ${loserCount} loser${loserCount === 1 ? "" : "s"}). Nieuwe scripts op losers schrijven is verspilling — eerst een nieuwe angle testen via angles-refresh, dan scripts schrijven op het winnende angle.`
-        : `Geen ads scoren als winner in ${days}d. Te weinig data — kies een breder window of begin met de Onboard Script flow.`,
-    buildPrompt: (ctx) => `Je bent Pedro, senior campaign manager bij Rocket Leads. Je bekijkt de live Meta performance van een klant en stelt NIEUWE VIDEO SCRIPTS voor op de winnaars — volledig uitgeschreven UGC-style scripts (50-70 sec) die de videograaf direct kan opnemen, in dezelfde hook-DNA als de winnaar maar met verse executies.
+        ? `Geen winners in ${days}d window (avg CPL ${stats.avgCpl ? `€${stats.avgCpl.toFixed(2)}` : "-"}, ${loserCount} loser${loserCount === 1 ? "" : "s"}). Nieuwe scripts op losers schrijven is verspilling - eerst een nieuwe angle testen via angles-refresh, dan scripts schrijven op het winnende angle.`
+        : `Geen ads scoren als winner in ${days}d. Te weinig data - kies een breder window of begin met de Onboard Script flow.`,
+    buildPrompt: (ctx) => `Je bent Pedro, senior campaign manager bij Rocket Leads. Je bekijkt de live Meta performance van een klant en stelt NIEUWE VIDEO SCRIPTS voor op de winnaars - volledig uitgeschreven UGC-style scripts (50-70 sec) die de videograaf direct kan opnemen, in dezelfde hook-DNA als de winnaar maar met verse executies.
 
 ${commonPromptPreamble(ctx)}
 OPDRACHT:
 Voor ELKE winner uit de WINNERS lijst (max 3 winners om scope behapbaar te houden):
 - Identificeer de DNA: wat is de hook-stijl, de marketing angle, het format.
-- Schrijf 3 NIEUWE volledige scripts die in dezelfde richting itereren — zelfde hook-categorie, zelfde angle, zelfde format. Andere opener-zin, andere body, frisse CTA.
+- Schrijf 3 NIEUWE volledige scripts die in dezelfde richting itereren - zelfde hook-categorie, zelfde angle, zelfde format. Andere opener-zin, andere body, frisse CTA.
 - Scripts zijn volledig uitgeschreven (50-70 sec gesproken NL), met [stage directions] in brackets (bv. [close-up gezicht], [B-roll: showroom], [text overlay: "€2.500 bespaard"]).
 - Geen kopie van scripts uit "Eerdere script" hierboven.
-- Geen kopie van losers — die hebben juist niet gewerkt.
+- Geen kopie van losers - die hebben juist niet gewerkt.
 
 PRINCIPES (knowledge/campaigns.md):
 - Hook in eerste 3 seconden moet het scrollen doorbreken.
@@ -95,7 +95,7 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
       },
       "variants": [
         {
-          "label": "Variant A — korte beschrijvende naam",
+          "label": "Variant A - korte beschrijvende naam",
           "hook": "concrete opener-zin in NL (3-5 sec)",
           "fullScript": "volledig script (50-70 sec gesproken), met [stage directions] in brackets, in NL, één doorlopende tekst met regeleinden",
           "why": "1 zin: waarom deze variant in dezelfde DNA past maar fris is"

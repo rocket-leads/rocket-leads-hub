@@ -29,7 +29,7 @@ const TAG = "[cron/slack-team-sales]"
 /**
  * DM each admin Hub user a heads-up when the cron is supposed to fire but can't.
  * Misconfigured channel / Slack outage / Monday outage all silently broke the daily
- * post before — now Roy + admins get pinged so it can't go unnoticed.
+ * post before - now Roy + admins get pinged so it can't go unnoticed.
  */
 async function alertAdmins(reason: string) {
   try {
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
     await tracker.ok({ skipped: guard.reason })
     return NextResponse.json({ ok: true, skipped: guard.reason, config })
   }
-  console.log(TAG, "proceeding — config:", JSON.stringify(config))
+  console.log(TAG, "proceeding - config:", JSON.stringify(config))
 
   const channels = await getSlackChannels()
   const SALES_CHANNEL_ID = channels.sales
@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
     await tracker.ok({ channel: SALES_CHANNEL_ID, closers: perCloser.length })
     return NextResponse.json({ ok: true, channel: SALES_CHANNEL_ID, closers: perCloser.length })
   } catch (e) {
-    const reason = `Slack post failed (channel ${SALES_CHANNEL_ID}): ${e instanceof Error ? e.message : String(e)}. Common cause: bot isn't a member — invite it via /invite @Rocket Leads Hub.`
+    const reason = `Slack post failed (channel ${SALES_CHANNEL_ID}): ${e instanceof Error ? e.message : String(e)}. Common cause: bot isn't a member - invite it via /invite @Rocket Leads Hub.`
     console.error(TAG, reason)
     void alertAdmins(reason)
     await tracker.fail(e)

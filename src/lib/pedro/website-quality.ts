@@ -45,13 +45,13 @@ export type WebsiteQualityVerdict = {
    *  "no_branding", "broken_images". Free-form so the model isn't
    *  constrained to our list. */
   flags: string[]
-  /** 1-2 sentence human-readable reason — shown verbatim in the brief
+  /** 1-2 sentence human-readable reason - shown verbatim in the brief
    *  modal banner when score < 40 so the CM knows WHY Pedro is being
    *  conservative. */
   summary: string
   /** ISO timestamp so the CM can see when this was last evaluated. */
   computedAt: string
-  /** Model identifier — bumps to a newer Haiku version invalidate the
+  /** Model identifier - bumps to a newer Haiku version invalidate the
    *  cache via equality check in `analyzeWebsiteQualityCached`. */
   model: string
 }
@@ -70,7 +70,7 @@ export type WebsiteQualityInput = {
 
 /**
  * Run the Haiku vision call and return a parsed verdict. Returns null
- * when there's no usable signal (no image + no scraped strings) — the
+ * when there's no usable signal (no image + no scraped strings) - the
  * caller should treat null as "skip the gate, use everything by default"
  * rather than penalising the client for an indeterminate verdict.
  */
@@ -98,7 +98,7 @@ export async function analyzeWebsiteQuality(
       })
       if (res.ok) {
         const buf = Buffer.from(await res.arrayBuffer())
-        // Drop huge images — Haiku has a hard cap and a 5 MB hero blowing
+        // Drop huge images - Haiku has a hard cap and a 5 MB hero blowing
         // the vision call up is pointless when 500 KB resolves the same.
         if (buf.byteLength <= 5 * 1024 * 1024) {
           const headerMime = res.headers.get("content-type") ?? ""
@@ -114,7 +114,7 @@ export async function analyzeWebsiteQuality(
         }
       }
     } catch {
-      // Image fetch is best-effort — fall back to text-only scoring.
+      // Image fetch is best-effort - fall back to text-only scoring.
     }
   }
 
@@ -131,7 +131,7 @@ export async function analyzeWebsiteQuality(
       `Attached image: ${input.heroImageUrl ? "hero image from page" : "logo / brand mark"} (use this as the primary visual evidence).`,
     )
   } else if (imageUrl) {
-    contextLines.push("(no image available — score on text/color/font evidence only)")
+    contextLines.push("(no image available - score on text/color/font evidence only)")
   }
 
   let raw = ""

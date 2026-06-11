@@ -20,8 +20,8 @@ export type WatchlistExpandResponse = {
    *  parent KpiSummary cache predates the dailyTrend field. */
   dailyTrend: Array<{ date: string; spend: number; leads: number }>
   /** Top live ads in the last 30d, sorted by spend desc. Each ad gets a verdict relative
-   *  to the account-average CPL — single list (no winner/loser overlap with few ads).
-   *  `cpl: 0` is the on-the-wire convention for "no leads with spend"; the UI renders "—". */
+   *  to the account-average CPL - single list (no winner/loser overlap with few ads).
+   *  `cpl: 0` is the on-the-wire convention for "no leads with spend"; the UI renders "-". */
   topAds: TopAd[]
   /** Concise 14d activity summary, AI-generated from Monday updates (both boards) +
    *  Trengo conversations. Null when no qualitative input is available. */
@@ -83,7 +83,7 @@ async function generateAiSummary(
     sections.push(`MONDAY LEAD BOARD UPDATES [WINDOW: update texts = last 14d; "Lead statuses: X" line is ALL-TIME aggregates]\n${inputs.leadBoardUpdates}`)
   }
   if (inputs.currentBoardUpdates.trim()) {
-    sections.push(`MONDAY CURRENT-CLIENTS BOARD UPDATES [WINDOW: last 14d — AM/CM notes on the client row itself]\n${inputs.currentBoardUpdates}`)
+    sections.push(`MONDAY CURRENT-CLIENTS BOARD UPDATES [WINDOW: last 14d - AM/CM notes on the client row itself]\n${inputs.currentBoardUpdates}`)
   }
   if (inputs.trengo.trim()) {
     sections.push(`TRENGO CONVERSATIONS [WINDOW: last 14d]\n${inputs.trengo}`)
@@ -95,10 +95,10 @@ async function generateAiSummary(
       max_tokens: 500,
       system: `You write the Activity Summary for a campaign manager triaging clients on the Watch List. The bar is HIGH: every bullet must give the CM something they can act on or that genuinely changes the picture. Filler is worse than silence.
 
-## What's already on screen — DO NOT REPEAT
+## What's already on screen - DO NOT REPEAT
 The user already sees, for this client, in adjacent columns:
 - Spend, leads, CPL (last 7d) and a 14d CPL sparkline
-- An "Insight" line for cost/efficiency (e.g. "CPL up 80% — €70 vs €38 prev week", "€350 spent, 0 leads in 7d")
+- An "Insight" line for cost/efficiency (e.g. "CPL up 80% - €70 vs €38 prev week", "€350 spent, 0 leads in 7d")
 
 The Insight line for THIS client right now is:
 "${insight || "(none)"}"
@@ -112,16 +112,16 @@ Your bullets must NOT contain ANY of:
 If a draft bullet is essentially the Insight in different words, delete it.
 
 ## What to surface (in priority order)
-1. **Campaign status changes** — "on hold", "paused", "going live", "resuming after content delivery", "killed".
-2. **Direct client requests / decisions** — budget increase ask, new direction, scope change, complaint, content delivery commitment. Cite the channel + date when possible: "(Apr 22 WhatsApp)".
-3. **Concrete blockers awaiting action** — "waiting for new creative assets before resuming", "client needs to verify Meta business manager".
-4. **Lead-quality patterns ONLY when expressed as a ratio** — "11/15 leads 'niet bereikbaar' (73%, 14d)", "5/8 leads via [UTM] said 'geen budget' (14d)".
-5. **Pattern across multiple Trengo messages** — repeated complaint, escalation, satisfied feedback.
+1. **Campaign status changes** - "on hold", "paused", "going live", "resuming after content delivery", "killed".
+2. **Direct client requests / decisions** - budget increase ask, new direction, scope change, complaint, content delivery commitment. Cite the channel + date when possible: "(Apr 22 WhatsApp)".
+3. **Concrete blockers awaiting action** - "waiting for new creative assets before resuming", "client needs to verify Meta business manager".
+4. **Lead-quality patterns ONLY when expressed as a ratio** - "11/15 leads 'niet bereikbaar' (73%, 14d)", "5/8 leads via [UTM] said 'geen budget' (14d)".
+5. **Pattern across multiple Trengo messages** - repeated complaint, escalation, satisfied feedback.
 
 ## ABSOLUTE rules
 - **No bare counts.** "11 leads marked unreachable" is BANNED unless paired with a denominator and ratio: "11/47 (23%, 14d)". An absolute count without a denominator is meaningless and you must SKIP that bullet.
-- **The "Lead statuses: X" line is ALL-TIME** — only useful as a denominator for a ratio computation. Never quote a status count as a standalone bullet.
-- **Vague references are BANNED.** "Pending invoicing clarification", "video timeline discussion", "ongoing content alignment" — useless. Either expand with the specific outcome / decision / blocker, or skip entirely.
+- **The "Lead statuses: X" line is ALL-TIME** - only useful as a denominator for a ratio computation. Never quote a status count as a standalone bullet.
+- **Vague references are BANNED.** "Pending invoicing clarification", "video timeline discussion", "ongoing content alignment" - useless. Either expand with the specific outcome / decision / blocker, or skip entirely.
 - **Maximum 3 bullets.** ZERO bullets is correct when there's nothing concrete. Do not pad.
 - Every number gets a window label inline: (7d), (14d), (all-time).
 - ≤16 words per bullet. Plain English. No buzzwords.
@@ -132,20 +132,20 @@ If a draft bullet is essentially the Insight in different words, delete it.
 ✅ GOOD:
 - Client awaits new creative assets before resuming campaign (Apr 24 WhatsApp).
 - Budget-increase request to €3k/mnd pending AM approval (Apr 22 email).
-- 11/15 leads "niet bereikbaar" (73%, 14d) — follow-up timing or wrong audience.
+- 11/15 leads "niet bereikbaar" (73%, 14d) - follow-up timing or wrong audience.
 
 ❌ BAD:
 - 11 leads marked unreachable (no denominator → useless)
 - Pending invoice clarification (vague → useless)
 - CPL elevated this week (duplicates Insight)
 - Recent client communication ongoing (filler)
-- 47 leads have status "Niet bereikbaar" (all-time count — needs ratio context)
+- 47 leads have status "Niet bereikbaar" (all-time count - needs ratio context)
 
-If nothing meets this bar: output exactly one line — \`- No notable activity in the last 14d.\``,
+If nothing meets this bar: output exactly one line - \`- No notable activity in the last 14d.\``,
       messages: [
         {
           role: "user",
-          content: `Client: ${clientName}\n\n${sections.join("\n\n---\n\n")}\n\nReturn the bullet list only. Apply the bar strictly — fewer correct bullets beats more soft ones.`,
+          content: `Client: ${clientName}\n\n${sections.join("\n\n---\n\n")}\n\nReturn the bullet list only. Apply the bar strictly - fewer correct bullets beats more soft ones.`,
         },
       ],
     })
@@ -169,7 +169,7 @@ export async function GET(
 
   // Field selector: callers that don't need all three datasets save the
   // round-trips for the ones they're not going to render. Currently the
-  // slide-over's HomeTab only uses topAds — passing `?fields=topAds`
+  // slide-over's HomeTab only uses topAds - passing `?fields=topAds`
   // skips the Meta-daily fetch (trend), the Monday updates fetch, and
   // the Claude AI summary generation, dropping latency from 6-7s to
   // ~1-2s. Empty / missing → all fields, for back-compat.
@@ -205,7 +205,7 @@ export async function GET(
   const adRange = getLast30DaysRange()
 
   // Pre-baked Monday lead board updates + Trengo come from the cron-managed
-  // cache — only read when the AI summary is actually requested.
+  // cache - only read when the AI summary is actually requested.
   const ctx = wantsSummary
     ? ((await readCache<Record<string, ClientContext>>("watchlist_context")) ?? {})[mondayItemId]
     : undefined
@@ -220,7 +220,7 @@ export async function GET(
 
   // Cron pre-bakes the 30d ranked top-ads per client into `client_top_ads:<id>`.
   // When present we skip the live fetchMetaAdDetails call entirely (1-2s saved).
-  // 30-min TTL matches the refresh-cache cron cadence — a stale entry just means
+  // 30-min TTL matches the refresh-cache cron cadence - a stale entry just means
   // the next slide-over open sees the prior tick's numbers (fine for triage).
   const TOP_ADS_TTL_MS = 30 * 60 * 1000
   const cachedTopAds = wantsTopAds
@@ -262,7 +262,7 @@ export async function GET(
     void writeCache(topAdsCacheKey(mondayItemId), topAds)
   }
 
-  // AI summary — cached 1h per client. Source mix: lead-board updates, current-board updates,
+  // AI summary - cached 1h per client. Source mix: lead-board updates, current-board updates,
   // Trengo. The model receives explicit per-block window labels so it can't conflate sources,
   // and the current Insight text so it can avoid duplicating what's already on screen.
   let aiSummary: string | null = cacheValid ? cachedSummary!.summary : null

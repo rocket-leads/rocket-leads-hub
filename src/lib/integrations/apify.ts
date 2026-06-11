@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/encryption"
 
 /**
- * Apify integration — minimal wrapper around the Apify API for running
+ * Apify integration - minimal wrapper around the Apify API for running
  * actors and pulling their results.
  *
  * We use this for Meta Ad Library scraping (apify~facebook-ads-scraper)
@@ -11,7 +11,7 @@ import { decrypt } from "@/lib/encryption"
  * scrapers within weeks; Apify maintains the scraper against the live
  * site for us at a few cents per run.
  *
- * Token is stored encrypted in `api_tokens` under service='apify' — same
+ * Token is stored encrypted in `api_tokens` under service='apify' - same
  * pattern as Fathom/Monday/Trengo. The in-memory cache mirrors the
  * Fathom wrapper's behaviour (5-min TTL, busted on 401/403).
  */
@@ -57,10 +57,10 @@ async function apifyFetch<T>(
         ...(init.headers ?? {}),
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
-        // No body header here — caller sets Content-Type when POSTing JSON
+        // No body header here - caller sets Content-Type when POSTing JSON
       },
       // Auth-bearing API responses aren't ISR-cacheable. Same logic as
-      // the Fathom wrapper — a stale 4xx parked in the Next Data Cache
+      // the Fathom wrapper - a stale 4xx parked in the Next Data Cache
       // for minutes makes every call look like the token expired.
       cache: "no-store",
     })
@@ -117,7 +117,7 @@ type ApifyRunResponse = {
 }
 
 /** Item shape returned by the Facebook Ads Scraper actor (apify/facebook-
- *  ads-scraper). Reflects the fields documented on the actor's page — we
+ *  ads-scraper). Reflects the fields documented on the actor's page - we
  *  only declare the ones we use; Apify may return more.
  *
  *  Note: Apify periodically tweaks output schemas. Treat every field as
@@ -135,7 +135,7 @@ export type FacebookAdScrapeResult = {
    *  running ads. */
   is_active?: boolean
   publisher_platform?: string[]
-  /** Ad creative — primary body of the ad. Multiple snapshots may exist
+  /** Ad creative - primary body of the ad. Multiple snapshots may exist
    *  for carousel/multi-card formats. */
   snapshot?: {
     title?: string
@@ -160,7 +160,7 @@ export type FacebookAdScrapeResult = {
 // ─── Public API ────────────────────────────────────────────────────────────
 
 /**
- * Start an Apify actor run. Returns the run ID — caller polls until the
+ * Start an Apify actor run. Returns the run ID - caller polls until the
  * status is terminal, then reads the dataset via {@link getDatasetItems}.
  *
  * `input` shape varies per actor. For the Facebook Ads Scraper see the
@@ -214,7 +214,7 @@ export async function getDatasetItems<T = unknown>(
  * `timeoutMs` total (default 90s).
  *
  * Facebook Ads Scraper typically finishes in 20-60s for a single
- * advertiser. If we're consistently hitting the timeout, raise it —
+ * advertiser. If we're consistently hitting the timeout, raise it -
  * don't shorten the poll interval (Apify rate-limits).
  */
 export async function waitForRun(
@@ -240,13 +240,13 @@ export async function waitForRun(
 /**
  * High-level helper: run the Facebook Ads Scraper for a given Meta page
  * URL (advertiser homepage on Facebook). Returns active ads only, sorted
- * server-side by Apify's relevance — caller is responsible for further
+ * server-side by Apify's relevance - caller is responsible for further
  * ranking (e.g. by days_running for "winning ads").
  *
  * `country` filters to ads visible from that locale. Defaults to NL
  * (Rocket Leads is NL/BE focused). Pass "BE" / "DE" etc. as needed.
  *
- * `maxAds` caps the per-advertiser result count — the actor's default
+ * `maxAds` caps the per-advertiser result count - the actor's default
  * is too generous for our cost profile.
  */
 export async function runFacebookAdsScraper(args: {
@@ -270,7 +270,7 @@ export async function runFacebookAdsScraper(args: {
 }
 
 /**
- * Test-token helper — used by the Settings → API Tokens "Test" button.
+ * Test-token helper - used by the Settings → API Tokens "Test" button.
  * Hits a cheap endpoint (`/users/me`) that 401s on bad tokens and 200s
  * on good ones, without consuming any compute units.
  */

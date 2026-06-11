@@ -5,19 +5,19 @@ import { fetchMondayTargets, getMtdRange, invalidateTargetsBoardItems, invalidat
 import type { MondayTargetsByCountry } from "@/types/targets"
 
 // Cached entries from before the closers shape existed (qualifiedCalls / upcomingCalls /
-// notUpdated) are stale. Also detect the old takenCalls semantic — after the recent
+// notUpdated) are stale. Also detect the old takenCalls semantic - after the recent
 // change Not Updated is folded into Taken, so a closer with notUpdated > 0 must have
 // takenCalls >= notUpdated. Old caches violate that invariant.
 //
 // Also requires the Stripe-cross-check fields (`stripeNewBusinessRevenue` and
 // `closedDeals`). Earlier code briefly overwrote `closedRevenue` with the Stripe
-// service-fee total — those caches still exist and silently mis-render the bar.
+// service-fee total - those caches still exist and silently mis-render the bar.
 // Requiring the new fields forces a fresh fetch with the corrected logic.
 function hasFreshSchema(cached: MondayTargetsByCountry | null): boolean {
   if (!cached?.all) return false
   if (!("stripeNewBusinessRevenue" in cached.all)) return false
   if (!Array.isArray(cached.all.closedDeals)) return false
-  // optIns added 2026-05-23 — entries written before that don't have the
+  // optIns added 2026-05-23 - entries written before that don't have the
   // field; serving them back would render the new tiles as 0 instead of
   // triggering a refetch with the new value.
   if (typeof cached.all.optIns !== "number") return false
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
   const startDate = searchParams.get("startDate")
   const endDate = searchParams.get("endDate")
   const forceRefresh = searchParams.get("refresh") === "1"
-  // `closer` filter — when present the dashboard scopes top-level metrics to that
+  // `closer` filter - when present the dashboard scopes top-level metrics to that
   // person. Cache is unfiltered (cron-warmed for the team), so a filtered request
   // always live-fetches; that's cheap enough since it's a power-user toggle.
   const closer = searchParams.get("closer")?.trim() || null
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
   }
 
   // Historical month: cache forever in cache_store under `targets_monday:YYYY-MM`.
-  // Skipped when a closer filter is active — historical cache is unfiltered.
+  // Skipped when a closer filter is active - historical cache is unfiltered.
   const periodMonth = getRangeCalendarMonth(startDate, endDate)
   if (!closer && periodMonth && isPastCalendarMonth(periodMonth.year, periodMonth.month)) {
     try {
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
   // Arbitrary current-period ranges (e.g. "Last 7 days", "1 May – 18 May") miss both
   // the MTD warm cache above and the historical-month cache. Without this, every load
   // of a custom range pays the full Monday board fetch + Stripe cross-check (~5–10s).
-  // A short-TTL keyed cache makes repeat loads of the same range instant — and since
+  // A short-TTL keyed cache makes repeat loads of the same range instant - and since
   // multiple users typically land on the same default windows, the second visitor is
   // free even when the first paid for it.
   const rangeCacheKey = `targets_monday:${startDate}:${endDate}`
@@ -101,7 +101,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Refresh button explicitly wants fresh data — bust the in-process board items
+    // Refresh button explicitly wants fresh data - bust the in-process board items
     // caches so this request re-paginates from Monday instead of reusing the items
     // a previous request warmed.
     if (forceRefresh) {
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
     const result = await fetchMondayTargets(startDate, endDate, closer)
     // Refresh the cron cache when this is the current MTD range, so the next
     // request hits warm cache instead of paying for another live fetch.
-    // Only when no closer filter is active — the cache stores team-wide data.
+    // Only when no closer filter is active - the cache stores team-wide data.
     if (!closer && startDate === mtd.startDate && endDate === mtd.endDate) {
       void writeCache("targets_marketing_monday", result)
     }
@@ -120,7 +120,7 @@ export async function GET(request: Request) {
     if (!closer) {
       void writeCache(rangeCacheKey, result)
     }
-    // Filtered responses must not be cached at any layer — switching closers
+    // Filtered responses must not be cached at any layer - switching closers
     // cycles through them quickly and a stale slice would silently lie. The
     // unfiltered response keeps the short s-maxage so the cron-warmed cache
     // still serves bursts of dashboard loads efficiently.

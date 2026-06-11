@@ -18,7 +18,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  *        await tracker.ok({ clients: 87, batches: 9 })
  *
  * Both paths fire-and-forget the DB write so a transient Supabase blip
- * never breaks the cron itself — the cost of an occasional missed
+ * never breaks the cron itself - the cost of an occasional missed
  * heartbeat is acceptable; the cost of a heartbeat write blocking a real
  * data refresh isn't.
  */
@@ -38,7 +38,7 @@ export type CronTracker = {
 
 /**
  * Start a new cron run. Returns a tracker; call .ok / .fail / .partial when
- * the cron finishes. Always finalize — a tracker that's never finalized
+ * the cron finishes. Always finalize - a tracker that's never finalized
  * leaves no row at all, which looks like the cron didn't even start.
  */
 export function startCronRun(cronName: string): CronTracker {
@@ -92,7 +92,7 @@ export function withCronHeartbeat<T>(
       const result = await handler(tracker)
       // If handler didn't finalize, default to ok with no metrics. Idempotent
       // because the tracker only writes on the first finalize call... actually
-      // it's not — guard at call site. Document the rule: if you take the
+      // it's not - guard at call site. Document the rule: if you take the
       // tracker, you finalize it. Skip auto-ok to avoid double-heartbeat.
       return result
     } catch (e) {

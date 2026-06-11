@@ -38,7 +38,7 @@ describe("renderWeeklyUpdate", () => {
       pedro: PEDRO,
       now: MONDAY_WEEK_20,
     })
-    // Opener is just the name — the V2 Trengo template body provides
+    // Opener is just the name - the V2 Trengo template body provides
     // both "Hey " prefix and trailing ",", so the variable content stays
     // bare.
     expect(out).toMatch(/^Bram\b/)
@@ -50,14 +50,14 @@ describe("renderWeeklyUpdate", () => {
     expect(out).toContain(PEDRO.conclusion)
     expect(out).toContain("• " + PEDRO.actions[0])
     // Actions header is provided by the V2 template body, not by the
-    // variable content — so it should NOT appear in the rendered string.
+    // variable content - so it should NOT appear in the rendered string.
     expect(out).not.toContain("Wat we deze week gaan doen")
-    // No sign-off — that comes from the Trengo template suffix.
+    // No sign-off - that comes from the Trengo template suffix.
     expect(out).not.toMatch(/Hoor 't graag/)
     expect(out).not.toMatch(/Groet(jes)?/i)
   })
 
-  it("is deterministic — same client + same week = same draft", () => {
+  it("is deterministic - same client + same week = same draft", () => {
     const input = { firstName: "Bram", clientId: "12345", kpi: KPI, pedro: PEDRO }
     const a = renderWeeklyUpdate({ ...input, now: MONDAY_WEEK_20 })
     const b = renderWeeklyUpdate({ ...input, now: new Date("2026-05-12T10:00:00Z") })
@@ -111,7 +111,7 @@ describe("renderWeeklyUpdate", () => {
   })
 })
 
-describe("composeInitialParts + renderFromParts — fully-editable model", () => {
+describe("composeInitialParts + renderFromParts - fully-editable model", () => {
   it("returns parts with the opener as name-only (no greeting word)", () => {
     const { parts } = composeInitialParts({
       firstName: "Bram",
@@ -128,7 +128,7 @@ describe("composeInitialParts + renderFromParts — fully-editable model", () =>
     expect(INTROS).toContain(parts.intro as (typeof INTROS)[number])
     expect(parts.kpiBlock).not.toContain("📊 Afgelopen 7 dagen")
     expect(parts.kpiBlock).toContain("€1.834")
-    // trendSentence is now empty on new composes — the qualitative
+    // trendSentence is now empty on new composes - the qualitative
     // headline is concatenated into `conclusion` so the AM edits a
     // single block.
     expect(parts.trendSentence).toBe("")
@@ -138,7 +138,7 @@ describe("composeInitialParts + renderFromParts — fully-editable model", () =>
     expect(parts.actionsHeader).toBe("")
   })
 
-  it("editing every field — including KPI numbers — flows through to the rendered output", () => {
+  it("editing every field - including KPI numbers - flows through to the rendered output", () => {
     const { parts } = composeInitialParts({
       firstName: "Bram",
       clientId: "12345",
@@ -209,7 +209,7 @@ describe("composeInitialParts + renderFromParts — fully-editable model", () =>
   })
 })
 
-describe("composeInitialParts — defaults when Pedro hasn't generated yet", () => {
+describe("composeInitialParts - defaults when Pedro hasn't generated yet", () => {
   it("pre-fills a CPL-shaped conclusion when Pedro has nothing to say", () => {
     // CPL up 25%+ → focus-area framing
     const spikedKpi: KpiSummary = { ...KPI, cpl: 60, prevCpl: 40 }
@@ -236,8 +236,8 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
     expect(parts.actions.every((a) => a.trim().length > 5)).toBe(true)
     // No duplicates within the trio
     expect(new Set(parts.actions).size).toBe(3)
-    // Header is provided by the V2 Trengo template body — not by the
-    // variable content — so it stays empty in `parts`.
+    // Header is provided by the V2 Trengo template body - not by the
+    // variable content - so it stays empty in `parts`.
     expect(parts.actionsHeader).toBe("")
   })
 
@@ -328,7 +328,7 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
       pedro: PEDRO,
       now: MONDAY_WEEK_20,
     })
-    // V2 template wraps the body — opener variable is just the name.
+    // V2 template wraps the body - opener variable is just the name.
     expect(parts.opener).toBe("Bram")
     expect(parts.subject).toBe("")
     expect(parts.signOff).toBe("")
@@ -379,7 +379,7 @@ describe("composeInitialParts — defaults when Pedro hasn't generated yet", () 
   })
 })
 
-describe("partsToWeeklyUpdateParams — V2 multi-variable template mapping", () => {
+describe("partsToWeeklyUpdateParams - V2 multi-variable template mapping", () => {
   const baseParts: EditableParts = {
     opener: "Bram!",
     intro: "Korte update over deze week.",
@@ -449,7 +449,7 @@ describe("partsToWeeklyUpdateParams — V2 multi-variable template mapping", () 
 
   it("handles empty actions list with a fallback placeholder for {{5}}", () => {
     const out = partsToWeeklyUpdateParams({ ...baseParts, actions: [] })
-    // Meta rejects empty body params — must substitute something non-empty.
+    // Meta rejects empty body params - must substitute something non-empty.
     expect(out[4]).toBe("Geen specifieke actiepunten deze week.")
   })
 

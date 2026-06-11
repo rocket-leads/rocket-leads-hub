@@ -16,14 +16,14 @@ type Props = {
   /** Current raw label from Monday's `status_16` column. Empty string when unset. */
   value: string
   /** Distinct labels finance can pick from. Sourced from the Monday boards
-   *  cache at page render — every label currently in use across any client
+   *  cache at page render - every label currently in use across any client
    *  is available, so the popover stays in sync with whatever Monday allows
    *  without needing a settings change. */
   options: string[]
 }
 
 /**
- * Editable Admin cell on the Billing overview — same UX as the Status cell.
+ * Editable Admin cell on the Billing overview - same UX as the Status cell.
  * Click the pill, pick a label from the popover, optimistic update, PATCH
  * goes through `updateClientField('administration', label)` which writes the
  * Monday `status_16` column and patches the `monday_boards` cache. The page
@@ -56,8 +56,8 @@ export function AdminEditCell({ mondayItemId, value, options }: Props) {
   })
 
   const pill =
-    view.tone === "muted" && view.label === "—" ? (
-      <span className="text-[11px] text-muted-foreground/40">—</span>
+    view.tone === "muted" && view.label === "-" ? (
+      <span className="text-[11px] text-muted-foreground/40">-</span>
     ) : (
       <span
         className={cn(

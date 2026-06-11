@@ -13,7 +13,7 @@ import {
   buildAdCopyPrompt,
 } from "@/lib/pedro/prompts"
 
-// SDK reads ANTHROPIC_API_KEY from env automatically — same key the rest of
+// SDK reads ANTHROPIC_API_KEY from env automatically - same key the rest of
 // the hub (watchlist, refresh-cache) uses.
 const anthropic = new Anthropic()
 
@@ -23,7 +23,7 @@ const anthropic = new Anthropic()
 // HTML 504 page instead of JSON.
 export const maxDuration = 120
 
-// Stages where same-vertical RL winners help most. Brief is omitted —
+// Stages where same-vertical RL winners help most. Brief is omitted -
 // briefs come from the client's OWN data, cross-client examples would
 // contaminate. LP / creatives have less direct copy reuse value. Angles
 // + script + ad-copy are where Pedro most benefits from "what already
@@ -31,7 +31,7 @@ export const maxDuration = 120
 const CROSS_CLIENT_ELIGIBLE_STAGES = new Set<PedroStage>(["angles", "script", "ad-copy"])
 
 // Model routing. Stages that produce pure structured output (JSON for
-// angles + ad copy) don't need Sonnet's reasoning depth — Haiku 4.5 is
+// angles + ad copy) don't need Sonnet's reasoning depth - Haiku 4.5 is
 // 4-5× faster and ~10× cheaper while passing the same schema. Sonnet
 // stays for stages that actually reason: brief, script, creatives (Manus
 // specs), LP (Lovable prompt).
@@ -46,7 +46,7 @@ function resolveModel(tier: ModelTier | undefined): string {
  * Per-stage config: which builder produces the prompt, default model,
  * default max_tokens. Owning these defaults server-side means the
  * client just says `stage: "lp"` and the server picks the right cost
- * / latency / quality trade-off — no leaking model IDs into bundles.
+ * / latency / quality trade-off - no leaking model IDs into bundles.
  * Client may still override via the request body when a special case
  * demands it.
  */
@@ -68,17 +68,17 @@ const STAGE_CONFIGS: Record<string, StageConfig> = {
  * Pedro generation endpoint. Always streams via Server-Sent Events so the
  * client can render text progressively as Claude generates it. Event types:
  *
- *   data: {"type":"text","delta":"..."}         — text chunk
+ *   data: {"type":"text","delta":"..."}         - text chunk
  *   data: {"type":"done","text":"...","stopReason":"end_turn","usage":{...}}
  *   data: {"type":"error","message":"..."}
  *
  * Request body:
  *   stage:      "angles" | "script" | "creatives" | "lp" | "ad-copy"
  *   options:    the typed args object for the corresponding prompt builder
- *   clientId:   optional — when present, server injects past-campaign +
+ *   clientId:   optional - when present, server injects past-campaign +
  *               cross-client context into the system prompt
- *   model:      optional override — defaults from STAGE_CONFIGS
- *   maxTokens:  optional override — defaults from STAGE_CONFIGS
+ *   model:      optional override - defaults from STAGE_CONFIGS
+ *   maxTokens:  optional override - defaults from STAGE_CONFIGS
  *
  * The `done` event carries the canonical full text + stop_reason so the
  * client doesn't need to concatenate deltas correctly to know when to fire
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
   const stageConfig = STAGE_CONFIGS[stage]
   // Strip the magic `_jsonRetry` flag before passing to the builder so
   // none of the typed builders need to know about it. When set, we
-  // append a strict "JSON only" reminder to the built prompt — used by
+  // append a strict "JSON only" reminder to the built prompt - used by
   // callPedroJson on the client to recover from Claude preambles that
   // break parseJSON.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
     return sseErrorResponse(`Bad options for stage ${stage}: ${msg}`, 400)
   }
   if (_jsonRetry) {
-    prompt += `\n\nBELANGRIJK: Je vorige antwoord was geen geldige JSON. Geef nu ALLEEN het JSON-object/array. Geen preamble, geen markdown-fences, geen uitleg, geen tekst eromheen — alleen pure JSON die direct te parsen is.`
+    prompt += `\n\nBELANGRIJK: Je vorige antwoord was geen geldige JSON. Geef nu ALLEEN het JSON-object/array. Geen preamble, geen markdown-fences, geen uitleg, geen tekst eromheen - alleen pure JSON die direct te parsen is.`
   }
 
   const maxTokens = typeof maxTokensOverride === "number" ? maxTokensOverride : stageConfig.defaultMaxTokens
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
   // System prompt is split into two blocks so prompt caching can hit
   // the heavy one. The knowledge-base block (~25k tokens of
   // campaigns.md + brand.md) is stable across every Pedro call in a
-  // session — marking it cacheable means subsequent calls within 5
+  // session - marking it cacheable means subsequent calls within 5
   // min reuse the cached tokens at ~90% cost discount + ~85% latency
   // cut. The dynamic block (past-campaign + cross-client examples)
   // changes per (clientId, stage) so it's not worth caching.
@@ -233,7 +233,7 @@ export async function POST(req: NextRequest) {
       Connection: "keep-alive",
       // Disables Vercel's response buffering so deltas reach the client
       // immediately. Without this, chunks may sit in a proxy until the
-      // upstream connection closes — eliminating the perceived-speed win
+      // upstream connection closes - eliminating the perceived-speed win
       // streaming is supposed to give.
       "X-Accel-Buffering": "no",
     },

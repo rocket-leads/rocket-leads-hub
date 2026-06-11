@@ -13,7 +13,7 @@
  *  - Network or server error on the GET → fall through to POST anyway
  *    (better to over-save than to lose work; skip is an optimisation).
  *
- * Equality is JSON-based — every field Pedro persists is JSON-
+ * Equality is JSON-based - every field Pedro persists is JSON-
  * serialisable (objects, arrays, strings, numbers). Key-order changes
  * could in theory cause false-negatives but in practice Pedro builds
  * its payloads from stable shapes so this isn't a real concern.
@@ -34,7 +34,7 @@ export type SaveResult =
   | { saved: false; reason: "no_client" | "post_failed" | "error"; versionNumber?: number; message?: string }
 
 /**
- * Stable JSON serialisation — sorts object keys recursively so that
+ * Stable JSON serialisation - sorts object keys recursively so that
  * `{ a: 1, b: 2 }` and `{ b: 2, a: 1 }` produce the same string.
  * Prevents false "changed" verdicts when the only difference is key
  * order (e.g. when the server hands back fields in a different order
@@ -63,7 +63,7 @@ export async function saveIfChanged(args: {
   const campaignNumber = args.campaignNumber ?? 1
 
   // 1. Fetch latest version for this stage+campaign. If anything goes
-  // wrong here we don't block the save — fall through to POST.
+  // wrong here we don't block the save - fall through to POST.
   let latest: { version_number: number; data: unknown } | null = null
   try {
     const res = await fetch(

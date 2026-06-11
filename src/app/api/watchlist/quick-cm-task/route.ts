@@ -5,16 +5,16 @@ import { NextResponse, type NextRequest } from "next/server"
 /**
  * Watch List quick action: create an inbox task assigned to the client's
  * Campaign Manager in one click. Used by the "Create task" column on the
- * Watch List home page — Roy wants to fire-and-forget a CM nudge for any
+ * Watch List home page - Roy wants to fire-and-forget a CM nudge for any
  * row without opening the full composer.
  *
  * Resolves the CM via user_column_mappings (monday_column_role =
  * "campaign_manager" + monday_person_name = client.campaignManager). If
- * the CM isn't mapped to a Hub user we return 404 — the caller surfaces
+ * the CM isn't mapped to a Hub user we return 404 - the caller surfaces
  * a "CM not mapped" toast.
  *
- * Default title is "Watch List: {clientName} — actie nodig" (NL) or "…
- * action needed" (EN) — the caller passes the rendered title so the
+ * Default title is "Watch List: {clientName} - actie nodig" (NL) or "…
+ * action needed" (EN) - the caller passes the rendered title so the
  * endpoint stays locale-agnostic.
  */
 
@@ -24,11 +24,11 @@ type Body = {
   /** Pre-rendered title from the client (so this endpoint doesn't need to
    *  know about i18n). */
   title: string
-  /** Optional body — when the caller used the edit dialog, this is the
+  /** Optional body - when the caller used the edit dialog, this is the
    *  AI-prefilled + possibly user-edited context. Empty/null means the
    *  task lands with no body (title-only). */
   taskBody?: string | null
-  /** ISO date string (YYYY-MM-DD). Defaults to today if absent — that's
+  /** ISO date string (YYYY-MM-DD). Defaults to today if absent - that's
    *  the historical behaviour from the instant-create button. */
   dueDate?: string | null
 }
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
   // Default due date = today (the original instant-create UX). When the
   // caller passes a YYYY-MM-DD it overrides; anything malformed falls
-  // back to today rather than rejecting — the dialog already validates
+  // back to today rather than rejecting - the dialog already validates
   // the picker so an invalid value here is a programming error, not
   // user input.
   const today = new Date().toISOString().slice(0, 10)

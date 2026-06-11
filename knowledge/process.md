@@ -1,4 +1,4 @@
-# Rocket Leads — Process
+# Rocket Leads - Process
 
 > **Last updated:** 2026-04-15 CET
 > Dit document beschrijft het volledige klantproces van Rocket Leads: van betaling tot offboarding. Gebruik dit als referentie voor AI agents, onboarding van teamleden, en procesoptimalisatie.
@@ -29,9 +29,9 @@ Het Rocket Leads proces loopt van betaling → kick-off → campagne opzet → l
 - Campagnemanager bereidt zich voor op basis van deze briefing
 
 **Structuur van de kick-off:**
-1. **Relatie opbouwen** — We beginnen altijd vriendelijk en persoonlijk
-2. **Diepte in de campagne** — Alles wordt besproken:
-   - ICP (Ideal Customer Profile) — wie is de ideale klant van de klant?
+1. **Relatie opbouwen** - We beginnen altijd vriendelijk en persoonlijk
+2. **Diepte in de campagne** - Alles wordt besproken:
+   - ICP (Ideal Customer Profile) - wie is de ideale klant van de klant?
    - Pijnpunten van de doelgroep
    - Objections die de doelgroep heeft
    - Unique selling points van de klant
@@ -39,7 +39,7 @@ Het Rocket Leads proces loopt van betaling → kick-off → campagne opzet → l
    - Advertentiebudget
    - Salesproces van de klant
    - Koppelingen en technische setup
-3. **Technische zaken & verwachtingen** — Toegang, systemen, tijdlijn, verwachtingen uitspreken
+3. **Technische zaken & verwachtingen** - Toegang, systemen, tijdlijn, verwachtingen uitspreken
 
 **Na de kick-off:**
 - Google Drive wordt aangemaakt voor de klant
@@ -51,53 +51,53 @@ Het Rocket Leads proces loopt van betaling → kick-off → campagne opzet → l
 
 ## Fase 3: Campagne Opzet
 
-**Stap 1 — Marketing angles bepalen**
+**Stap 1 - Marketing angles bepalen**
 - Op basis van ervaring en een interne sheet met winning marketing angles per branche
 - Vast framework voor het kiezen van de juiste hooks en invalshoeken (zie campaigns.md voor het volledige framework)
 
-**Stap 2 — Video scripts schrijven**
+**Stap 2 - Video scripts schrijven**
 - Scripts worden geschreven op basis van de gekozen marketing angles
 - Klant krijgt scripts ter feedback om te checken of positionering en doelgroep kloppen
 
-**Stap 3 — Content productie**
+**Stap 3 - Content productie**
 - Klant neemt video's op (zelf, door Rocket Leads op locatie, of door een derde partij)
-- Dit is vaak de fase waar de meeste vertraging zit — afhankelijk van de klant
+- Dit is vaak de fase waar de meeste vertraging zit - afhankelijk van de klant
 
-**Stap 4 — Landingspagina bouwen**
+**Stap 4 - Landingspagina bouwen**
 - Gebouwd via **Loveable**
 - Er is een standaard prompt (gebouwd in Claude Chat) die in Loveable wordt ingevoerd
 - Hieruit komt de landingspagina
 - Geen Loveable template, wel een vaste prompt
 
-**Stap 5 — Ad copy & creatives maken**
+**Stap 5 - Ad copy & creatives maken**
 - Ad copy wordt geschreven door het team
 - Creatives worden gemaakt door Shanna (graphic designer)
 
-**Stap 6 — Feedback ronde**
+**Stap 6 - Feedback ronde**
 - Alles wordt voorgelegd aan de klant: ad copies, ad creatives, landingspagina's
 - Meestal één feedbackronde, soms meer
 - Als de klant feedback geeft die ingaat tegen wat wij weten dat werkt, leggen we uit waarom we bepaalde keuzes maken
 
-**Stap 7 — Automatiseringen & koppelingen opzetten**
+**Stap 7 - Automatiseringen & koppelingen opzetten**
 - Gedaan via **Zapier**
 - Standaard flow: Loveable form (webhook) of Meta Lead Form → Zapier → Monday CRM-bord van de klant
 - Vanuit Monday CRM:
   - Automatisch WhatsApp-bericht naar de klant: "Er is een nieuwe lead binnen"
   - Automatische email naar de klant met dezelfde notificatie
   - Automatisch WhatsApp-bericht naar de lead: "Bedankt voor je aanvraag, we nemen zo snel mogelijk contact met je op"
-- Daarnaast worden er per klant **op maat gemaakte automatiseringen** gebouwd — dit is niet copy-paste, verschilt per klant
+- Daarnaast worden er per klant **op maat gemaakte automatiseringen** gebouwd - dit is niet copy-paste, verschilt per klant
 
-**Stap 8 — Campagne bouwen in Meta**
+**Stap 8 - Campagne bouwen in Meta**
 - Vaste campagnestructuur (zie hieronder)
-- Campagne wordt gebouwd en ingepland voor **de volgende dag** — nooit dezelfde avond live
+- Campagne wordt gebouwd en ingepland voor **de volgende dag** - nooit dezelfde avond live
 
 ---
 
 ## Vaste Campagnestructuur (Meta)
 
 **Standaard setup:**
-- **1 campagne** — ABO (Ad Set Budget Optimization)
-- **1 ad set** — volledig open targeting:
+- **1 campagne** - ABO (Ad Set Budget Optimization)
+- **1 ad set** - volledig open targeting:
   - Geen interesses
   - Advantage+ aan
   - Leeftijd open (tenzij echt relevant voor de klant)
@@ -136,14 +136,14 @@ De campagnemanager kijkt **elke dag** naar alle accounts en ad sets.
 
 **Creative refresh:**
 - Klanten krijgen **elke maand** nieuwe creatives en ad copy
-- Focus ligt op creatives — ad copy heeft minder impact dan de creative zelf
+- Focus ligt op creatives - ad copy heeft minder impact dan de creative zelf
 
 ### Watch List (Rocket Leads Hub)
 
 De Rocket Leads Hub heeft een **Watch List** die alle Live klanten automatisch categoriseert:
-- **Action Needed** — klanten met CPL/CPA stijging >25% of zero leads bij actieve spend
-- **Watch** — klanten met CPL/CPA stijging 10-25% (nog geen actie nodig, wel monitoren)
-- **Good Performance** — klanten met stabiele of dalende CPL/CPA
+- **Action Needed** - klanten met CPL/CPA stijging >25% of zero leads bij actieve spend
+- **Watch** - klanten met CPL/CPA stijging 10-25% (nog geen actie nodig, wel monitoren)
+- **Good Performance** - klanten met stabiele of dalende CPL/CPA
 
 #### Recent-window override (kortste tijdsperiode wint)
 
@@ -151,18 +151,18 @@ Een 7d-only verdict heeft tunnelvisie. Wij optimaliseren dagelijks, dus een 7d C
 
 De Watch List trekt daarom de **kortste betrouwbare tijdsperiode** (1d → 2d → 3d, met minimaal 2 leads en >€0 spend) uit de daily trend en past het volgende toe op het 7d verdict:
 
-- **Action + recovery** (recent CPL ≤1.25× prev-7d baseline) → demote naar **Watch**, met insight zoals "CPL recovered — €X (7d) but €Y (last Nd) ≈ €Z (prev 7d) baseline. Monitor."
-- **Good + fresh spike** (recent CPL ≥1.5× prev-7d baseline én ≥€30 spend in dat venster) → promote naar **Watch**, met insight zoals "Fresh CPL spike — €X (last Nd) vs €Y (prev 7d). 7d avg still €Z."
-- **Watch blijft Watch** in beide richtingen — Watch is al de monitor-bucket; we updaten alleen de insight tekst om het recente herstel/verergering te reflecteren.
+- **Action + recovery** (recent CPL ≤1.25× prev-7d baseline) → demote naar **Watch**, met insight zoals "CPL recovered - €X (7d) but €Y (last Nd) ≈ €Z (prev 7d) baseline. Monitor."
+- **Good + fresh spike** (recent CPL ≥1.5× prev-7d baseline én ≥€30 spend in dat venster) → promote naar **Watch**, met insight zoals "Fresh CPL spike - €X (last Nd) vs €Y (prev 7d). 7d avg still €Z."
+- **Watch blijft Watch** in beide richtingen - Watch is al de monitor-bucket; we updaten alleen de insight tekst om het recente herstel/verergering te reflecteren.
 
-Voorbeeld: een klant met 7d CPL €38.87 vs prev 7d €13.15 (Action) maar last 2d CPL €10 → demote naar Watch ("CPL recovered — €38.87 (7d) but €10.00 (last 2d) ≈ €13.15 (prev 7d) baseline. Monitor."). Geen actie nodig, alleen monitoren of het laag blijft.
+Voorbeeld: een klant met 7d CPL €38.87 vs prev 7d €13.15 (Action) maar last 2d CPL €10 → demote naar Watch ("CPL recovered - €38.87 (7d) but €10.00 (last 2d) ≈ €13.15 (prev 7d) baseline. Monitor."). Geen actie nodig, alleen monitoren of het laag blijft.
 
 Severity binnen de Watch bucket wordt gehalveerd voor recovered clients zodat genuinely-still-bad cases bovenaan blijven.
 
 De Watch List wordt verrijkt met:
-1. **Monday CRM updates** — lead feedback van setters/AM's (primaire kwaliteitssignaal)
-2. **Trengo conversaties** — recente klantcommunicatie (tevredenheid, klachten)
-3. **KPI data** — spend, leads, CPL, CPA trends (ondersteunend)
+1. **Monday CRM updates** - lead feedback van setters/AM's (primaire kwaliteitssignaal)
+2. **Trengo conversaties** - recente klantcommunicatie (tevredenheid, klachten)
+3. **KPI data** - spend, leads, CPL, CPA trends (ondersteunend)
 
 **Insight kolom** toont de KPI-observatie ("CPL up 42%", "€695 spent, 0 leads").
 **AI Note kolom** toont de concrete actie als aanvulling (nooit herhaling): "Pauzeer [ad naam], test nieuwe angle met subsidie-hook".
@@ -180,18 +180,18 @@ De data wordt dagelijks gecached door een cron job zodat alles instant laadt.
 **Frequentie:** Wekelijks contact met de klant
 
 **Kanalen (verschilt per klant):**
-- Google Meet (voorkeur — helpt bij relatieopbouw)
+- Google Meet (voorkeur - helpt bij relatieopbouw)
 - Telefonisch
 - WhatsApp (via Trengo, WhatsApp Business API)
 - Email (via Trengo)
-- Geen groepsapps — alles via Trengo tickets
+- Geen groepsapps - alles via Trengo tickets
 
 **Evaluatie calls:**
 - ~30 minuten
 - Format: "Wat gaat er goed? Wat kan er beter?"
 - Feedback van klant wordt opgehaald
 - Account manager stelt aanpassingen voor op basis van feedback
-- **Campagnemanager zit hier nooit bij** — campagnemanager heeft nooit direct contact of meetings met de klant
+- **Campagnemanager zit hier nooit bij** - campagnemanager heeft nooit direct contact of meetings met de klant
 
 **Wie doet wat:**
 - Account manager = enige klantcontactpunt
@@ -208,7 +208,7 @@ De data wordt dagelijks gecached door een cron job zodat alles instant laadt.
 **Klant dashboard:**
 - Klanten kunnen resultaten inzien in hun eigen Monday-bord
 - In de Hub: Client Specific Dashboard waar KPI's van Monday en Meta worden samengebracht
-- Geen screenshots — alles via dashboards
+- Geen screenshots - alles via dashboards
 
 ---
 
@@ -241,7 +241,7 @@ Klantafhankelijkheid is een kernprincipe van Rocket Leads. Alles wat we bouwen i
 - CRM-bord is door ons opgezet en beheerd
 - Creatives en content blijven bij ons
 
-**Waarom:** Als een klant stopt, wordt de hele strategie eruit getrokken. Dit beschermt onze MRR en zorgt voor klantretentie. Zonder Rocket Leads kan de klant niet zelfstandig verder draaien — en dat is by design.
+**Waarom:** Als een klant stopt, wordt de hele strategie eruit getrokken. Dit beschermt onze MRR en zorgt voor klantretentie. Zonder Rocket Leads kan de klant niet zelfstandig verder draaien - en dat is by design.
 
 Dit principe wordt doorgevoerd in alles: de Hub, de automatiseringen, de tooling. Hoe meer we bouwen, hoe afhankelijker de klant wordt.
 
@@ -250,13 +250,13 @@ Dit principe wordt doorgevoerd in alles: de Hub, de automatiseringen, de tooling
 ## Fase 8: Escalatie
 
 **Bij klantontevredenheid:**
-- **Snelheid is alles** — direct de telefoon pakken en bellen
+- **Snelheid is alles** - direct de telefoon pakken en bellen
 - Account manager is zelf verantwoordelijk om ontevredenheid op te pakken
 - Bij verdere escalatie: Arno (Finance) kan meekijken
 - Roel is eindverantwoordelijk voor de hele delivery en neemt ownership als het nodig is
 
 **Wanneer Rocket Leads zelf de samenwerking beëindigt:**
-- Als een klant **disrespectvol** is — dat wordt niet geaccepteerd
+- Als een klant **disrespectvol** is - dat wordt niet geaccepteerd
 - Als een klant **onrealistische verwachtingen** heeft voor de prijs die ze betalen
 - Als verwachtingen fundamenteel niet in lijn liggen met wat Rocket Leads kan leveren
 
@@ -277,13 +277,13 @@ Dit principe wordt doorgevoerd in alles: de Hub, de automatiseringen, de tooling
 
 ## Belangrijke nuances voor AI agents
 
-- **Er wordt NIETS gedaan zonder betaling** — dit is niet onderhandelbaar
-- De **account manager is het enige klantcontactpunt** — campagnemanager werkt altijd op de achtergrond
+- **Er wordt NIETS gedaan zonder betaling** - dit is niet onderhandelbaar
+- De **account manager is het enige klantcontactpunt** - campagnemanager werkt altijd op de achtergrond
 - Vertraging in onboarding ligt **vrijwel altijd bij de klant** (content aanleveren, video's opnemen)
-- Automatiseringen zijn **per klant maatwerk** — er is een standaard basisflow maar elke klant heeft custom koppelingen
-- Optimalisatie is **dagelijks** — niet wekelijks of maandelijks
+- Automatiseringen zijn **per klant maatwerk** - er is een standaard basisflow maar elke klant heeft custom koppelingen
+- Optimalisatie is **dagelijks** - niet wekelijks of maandelijks
 - Budget wordt maximaal **20% per dag** verhoogd
-- Bij offboarding krijgt de klant **niets mee** — geen campagnes, geen landingspagina's, geen creatives
+- Bij offboarding krijgt de klant **niets mee** - geen campagnes, geen landingspagina's, geen creatives
 - **Deals worden geteld op "Date deal" (kolom `date3`)**, niet op afspraakdatum. Dit voorkomt dat deals aan de verkeerde maand worden toegewezen.
 - **Leads board (3762696870)** heeft een "Country" kolom (`color`) met waarden NL/BE/DE. Het Targets dashboard filtert hierop.
 - **Meta campagnes** worden per land gefilterd op basis van campagnenaam die "NL", "BE" of "DE" bevat.
@@ -296,7 +296,7 @@ Dit principe wordt doorgevoerd in alles: de Hub, de automatiseringen, de tooling
 - Bespreek met campagnemanager en brainstorm nieuwe angles op basis van ervaring
 - Account manager stelt nieuwe angles voor aan de klant (dit is een onderhandeling)
 - Educeer de klant over het belang van een goed aanbod en goede angles
-- Laatste optie: testen met de "matige" angles, maar maak klant bewust dat resultaat niet gegarandeerd is — eventueel garantie intrekken wegens "geen vrijheid in strategie"
+- Laatste optie: testen met de "matige" angles, maar maak klant bewust dat resultaat niet gegarandeerd is - eventueel garantie intrekken wegens "geen vrijheid in strategie"
 
 ### 2. Klant heeft geen goede foto's/video's
 - **Optie A:** Push klant om betere content aan te leveren. Alles is beter dan stock (kantoor, team, zijzelf)
@@ -314,7 +314,7 @@ Dit principe wordt doorgevoerd in alles: de Hub, de automatiseringen, de tooling
 - Check of klant een betaalmethode heeft (voorkeur: credit card of PayPal, bankoverschrijving is lastiger)
 
 ### 5. Ad account disabled tijdens onboarding
-- Dit is **normaal** — security maatregel van Meta, gebeurt bij 1 op de 3 nieuwe accounts
+- Dit is **normaal** - security maatregel van Meta, gebeurt bij 1 op de 3 nieuwe accounts
 - Klant moet identiteit verifiëren via Meta Business Settings → Ad accounts → "See details"
 - Na verificatie verdwijnt de restrictie. Zo niet → contact Meta
 
@@ -338,7 +338,7 @@ Dit principe wordt doorgevoerd in alles: de Hub, de automatiseringen, de tooling
 
 ---
 
-## Customer Journey — Contactmomenten
+## Customer Journey - Contactmomenten
 
 ### Tijdens onboarding (overcommuniceer!)
 1. **Kick-off meeting** (1 uur) → vertel klant dat het max 1 week duurt voor eerste draft
@@ -346,7 +346,7 @@ Dit principe wordt doorgevoerd in alles: de Hub, de automatiseringen, de tooling
 3. **PDF doorsturen** → zodra landingspagina + advertenties klaar zijn. Duurt het langer dan 1 week? Informeer de klant!
 4. **Feedback verwerkt** → informeer klant dat het verwerkt is en wanneer ads LIVE gaan
 
-### Eerste 5 dagen na livegang — ELKE DAG contact
+### Eerste 5 dagen na livegang - ELKE DAG contact
 - **Leads binnen?** → Vertel dat er leads zijn en vraag update over kwaliteit
 - **Geen leads?** → Geef update over campagne en optimalisatie. Leg uit wat je doet en waarom. Dit stelt de klant gerust
 
@@ -364,30 +364,30 @@ Dit principe wordt doorgevoerd in alles: de Hub, de automatiseringen, de tooling
 ## Account Manager Kernprincipes
 
 ### Communicatieregels
-- **Nooit langer dan 24 uur wachten** met reageren — ook als je geen tijd hebt, vertel wanneer je terugkomt
-- **Altijd één stap voor op de klant** — klant mag nooit het gevoel hebben dat ze ons moeten trekken
-- **Overcommuniceer** — klant moet altijd weten wat we doen. Als we niets laten horen, denkt de klant dat we niets doen
+- **Nooit langer dan 24 uur wachten** met reageren - ook als je geen tijd hebt, vertel wanneer je terugkomt
+- **Altijd één stap voor op de klant** - klant mag nooit het gevoel hebben dat ze ons moeten trekken
+- **Overcommuniceer** - klant moet altijd weten wat we doen. Als we niets laten horen, denkt de klant dat we niets doen
 - **Gemiste oproep?** Binnen 24 uur terugbellen of bericht sturen
-- **Beloftes nakomen** — als je zegt dat je iets doet, doe het. Lukt het niet? Communiceer dat
+- **Beloftes nakomen** - als je zegt dat je iets doet, doe het. Lukt het niet? Communiceer dat
 
 ### Resultaat tonen
-- Goed werk is niet genoeg — **laat zien** dat we goed werk leveren
+- Goed werk is niet genoeg - **laat zien** dat we goed werk leveren
 - Bij wekelijkse calls: benadruk de wins, focus op wat goed ging
 - Bij teleurstellende resultaten: zorg voor een duidelijk plan en toon vertrouwen
-- Je mag een beetje overdrijven als het goed gaat — laat de waarde zien
+- Je mag een beetje overdrijven als het goed gaat - laat de waarde zien
 
 ### Relatie opbouwen (word vrienden met klanten)
-- Gebruik kick-off om ijs te breken — gooi er een grapje in
+- Gebruik kick-off om ijs te breken - gooi er een grapje in
 - Zoek naar gedeelde interesses (F1, voetbal, reizen, etc.)
-- Maak het persoonlijk — praat over je eigen leven, vraag naar hun leven
+- Maak het persoonlijk - praat over je eigen leven, vraag naar hun leven
 - Complimenteer hun bedrijf (klanten vinden dit altijd leuk)
-- **Maak Rocket Leads onvervangbaar:** help met sales tips, bedrijfsadvies, automatiseringen, referrals uit eigen netwerk — weinig moeite maar toont betrokkenheid
+- **Maak Rocket Leads onvervangbaar:** help met sales tips, bedrijfsadvies, automatiseringen, referrals uit eigen netwerk - weinig moeite maar toont betrokkenheid
 
 ### Omgaan met verwachtingen
 - Wees eerlijk over tijdlijnen en wat realistisch is
 - Frame al vroeg dat het even kan duren om de perfecte marketing angle te vinden
 - Zelfs als er geen resultaat is: laat de klant weten wat er gebeurt
-- **Underpromise, overdeliver** — doe altijd meer dan de klant verwacht
+- **Underpromise, overdeliver** - doe altijd meer dan de klant verwacht
 
 ### Samenwerking met campagnemanager
 - Regelmatige interne meetings om aligned te blijven

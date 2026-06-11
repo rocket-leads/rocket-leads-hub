@@ -5,7 +5,7 @@ import { GENERATION_RULES, type BriefData } from "@/lib/pedro/helpers"
  *
  * Generates 2 UGC-stijl video ad scripts with sterk verschillende
  * psychologische triggers. Output is a fixed-format text block (not
- * JSON) — `parseScriptText` in generate-script-docx then carves it
+ * JSON) - `parseScriptText` in generate-script-docx then carves it
  * into per-video hooks/body/CTA.
  *
  * Held to a strict layout because the parser keys off `---` separators
@@ -19,7 +19,7 @@ export type ScriptPromptArgs = {
   anglesStr: string
   styleRef?: string
   huisstijl?: string
-  /** Free-text steering from the CM — e.g. "harder confronterend",
+  /** Free-text steering from the CM - e.g. "harder confronterend",
    *  "minder cliché, meer concrete cijfers". Layered on top of the
    *  standard prompt. */
   steering?: string

@@ -4,7 +4,7 @@
  * Used by webhook ingesters (Monday in particular sends update bodies as
  * rich HTML with mention anchors). Anchor text is preserved by virtue of
  * the regex only removing the tags, so `<a ...>@Arno Vosters</a>` becomes
- * `@Arno Vosters` — which is exactly what we want to surface in inbox rows.
+ * `@Arno Vosters` - which is exactly what we want to surface in inbox rows.
  */
 export function stripHtml(html: string | null | undefined): string {
   if (!html) return ""
@@ -15,7 +15,7 @@ export function stripHtml(html: string | null | undefined): string {
     // Truncated input: rows stored before our ingest-time strip got a 100-
     // char title cap that sometimes lopped off in the middle of an HTML tag
     // (`<a class="..." href="...26220-st…`). The full-tag regex above won't
-    // touch that — there's no closing `>`. Drop everything from a dangling
+    // touch that - there's no closing `>`. Drop everything from a dangling
     // `<` to end-of-string so the user sees clean truncated text instead of
     // broken markup. Matches strictly at end so a stray `<3` in body text
     // doesn't get clobbered.

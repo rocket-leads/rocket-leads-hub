@@ -24,7 +24,7 @@ type Props = {
   onClose: () => void
   onChanged: () => void
   /** Layout mode. `overlay` (default) is the original right-side slide-over
-   *  with a backdrop — used on narrow viewports where the list can't fit
+   *  with a backdrop - used on narrow viewports where the list can't fit
    *  alongside the detail. `docked` renders inline as a column inside a
    *  flex split, with no portal/backdrop, so the list stays interactive
    *  next to the open ticket. The body content is identical in both modes;
@@ -33,7 +33,7 @@ type Props = {
   /** When docked and butted up against the list on the left, drop the
    *  left radius + left border so the two cards read as one continuous
    *  panel (email-client style). Roy: same visual language across Tasks /
-   *  Updates / Client Inbox / Now — no floating side-panels, one merged
+   *  Updates / Client Inbox / Now - no floating side-panels, one merged
    *  surface. */
   mergedLeftEdge?: boolean
 }
@@ -65,7 +65,7 @@ function renderMentions(
   // thousands of React nodes here and could contribute to a renderer
   // crash. Beyond ~10K chars, fall back to plain text.
   if (body.length > 10_000) return body
-  // Same regex as the backend mention resolver — keep them in sync so
+  // Same regex as the backend mention resolver - keep them in sync so
   // visual styling matches what the server actually fans out to.
   const re = /@([A-Za-zÀ-ÖØ-öø-ÿ.\-']+(?:\s+[A-Za-zÀ-ÖØ-öø-ÿ.\-']+)?)/g
   const out: React.ReactNode[] = []
@@ -107,7 +107,7 @@ function renderMentions(
         </span>,
       )
     } else {
-      // No Hub-user match — leave as plain text so a stray `@example.com`
+      // No Hub-user match - leave as plain text so a stray `@example.com`
       // or unknown name doesn't get falsely styled like a real mention.
       out.push(`@${captured}`)
     }
@@ -159,7 +159,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
   /**
    * Edit a meta field on the item (title / body / dueDate). Optimistic on
    * the detail-query cache so the new value sticks the moment the user
-   * blurs out of the input — without that, an Enter-to-save flashes back to
+   * blurs out of the input - without that, an Enter-to-save flashes back to
    * the old text for half a second while the round-trip completes. We
    * also invalidate the list queries so the row in the inbox view picks
    * up the fresh title.
@@ -187,7 +187,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
     }
   }
 
-  // Reassign — open to anyone with visibility, since handing a task off is a
+  // Reassign - open to anyone with visibility, since handing a task off is a
   // routine team operation. We optimistically refresh on success but don't
   // close the dialog: the user might want to keep working with the item.
   const [reassigning, setReassigning] = useState(false)
@@ -211,7 +211,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
   }
 
   // Reclassify the item to a different kind. The server resets status +
-  // priority for the new kind, so we close the dialog after — the item moves
+  // priority for the new kind, so we close the dialog after - the item moves
   // to a different tab and the user picks it back up there if needed.
   const [reclassifying, setReclassifying] = useState(false)
   async function reclassify(kind: "task" | "update" | "chat") {
@@ -316,7 +316,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
   const draftMessage = (item?.sourceRef as Record<string, unknown> | null)?.draft_message
   const draftChannel = (item?.sourceRef as Record<string, unknown> | null)?.draft_channel
   // Trengo-source items already have a Reply panel that knows the source
-  // ticket — for those we prefill that textarea instead of showing the
+  // ticket - for those we prefill that textarea instead of showing the
   // smart-draft panel separately. Avoids two competing send buttons.
   const draftIsForExistingReplyPanel = item?.source === "trengo"
   const hasDraft =
@@ -392,7 +392,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
     }
   }
 
-  // Inner content is identical in both modes — only the surrounding shell
+  // Inner content is identical in both modes - only the surrounding shell
   // (portal+backdrop vs inline column) differs. Defined once and passed to
   // the right wrapper below to keep edits painless.
   const body = (
@@ -543,7 +543,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
             )}
 
             {/* The reclassify control lives in the KindBanner at the top
-                of the panel now — putting it twice is just clutter. Kept
+                of the panel now - putting it twice is just clutter. Kept
                 the component definition below in case we need it again. */}
 
             {/* Update controls */}
@@ -595,7 +595,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                   </div>
                 </div>
 
-                {/* Comments — internal team chat per task. Roy: "dan
+                {/* Comments - internal team chat per task. Roy: "dan
                     kunnen we daar ook chats hebben in de specifieke
                     tasks." Slack-style: avatars, alternating alignment
                     based on author, empty-state nudge, Enter-to-send
@@ -612,13 +612,13 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               </div>
             )}
 
-            {/* Client timeline — collapsible section under tasks + updates so
+            {/* Client timeline - collapsible section under tasks + updates so
                 the AM/CM can see the recent Monday updates, Trengo/Slack chats,
                 and meetings around this client without leaving the dialog. Roy
                 2026-05-28: "een soort timeline van de klant inladen waar alle
                 Monday-updates en clientcommunicaties staan. Dan heb je iets
                 meer context." Only renders when the item is linked to a client
-                — there's nothing meaningful to scope to on unlinked items. */}
+                - there's nothing meaningful to scope to on unlinked items. */}
             {(isTask || isUpdate) && item.clientId && (
               <ClientTimelineSection clientId={item.clientId} />
             )}
@@ -627,7 +627,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
               <div className="border-t border-border/40 pt-3">
                 <p className="text-[10px] uppercase tracking-widest text-muted-foreground/40 mb-2 inline-flex items-center gap-1.5">
                   <Sparkles className="h-3 w-3" />
-                  AI draft — <ChannelMark channel={draftChannel} />
+                  AI draft - <ChannelMark channel={draftChannel} />
                   {channelLabel(draftChannel)}
                 </p>
                 {draftNeedsConnect && (
@@ -696,7 +696,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                 {replyPrefilledFromAi && (
                   <div className="mb-2 inline-flex items-center gap-1.5 text-[10px] text-violet-500 font-medium">
                     <Sparkles className="h-3 w-3" />
-                    AI-voorstel — review en pas aan voor je verstuurt
+                    AI-voorstel - review en pas aan voor je verstuurt
                   </div>
                 )}
                 <div className="flex items-end gap-2">
@@ -704,11 +704,11 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
                     value={replyBody}
                     onChange={(e) => {
                       setReplyBody(e.target.value)
-                      // Once the AM edits the prefilled draft, drop the AI hint —
+                      // Once the AM edits the prefilled draft, drop the AI hint -
                       // it's their message now.
                       if (replyPrefilledFromAi) setReplyPrefilledFromAi(false)
                     }}
-                    placeholder={`Type your reply — sent via ${item.source} as you`}
+                    placeholder={`Type your reply - sent via ${item.source} as you`}
                     rows={replyPrefilledFromAi ? 5 : 3}
                     disabled={sendingReply}
                     className="flex-1 rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none"
@@ -755,7 +755,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
     // Docked variant: a self-contained card filling its parent. The parent
     // (page-level aside in inbox-view) owns positioning, slide-in
     // animation and viewport height; this component just renders the
-    // bordered card. No backdrop — the list next to the aside stays
+    // bordered card. No backdrop - the list next to the aside stays
     // interactive, so the AM can jump from row to row without closing.
     return (
       <div className="relative flex h-full flex-col rounded-xl border border-border bg-background shadow-2xl overflow-hidden">
@@ -779,7 +779,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
         />
         <DialogPrimitive.Popup
           className={cn(
-            // Right-side slide panel — used on viewports narrower than xl
+            // Right-side slide panel - used on viewports narrower than xl
             // where the list can't sensibly sit next to a docked pane.
             // On xl+ the parent renders <ItemDetailDialog mode="docked" />
             // instead and this overlay path is never reached.
@@ -802,7 +802,7 @@ export function ItemDetailDialog({ itemId, currentUser, users, onClose, onChange
  * Click-to-reassign control. Renders the current assignee as an inline button
  * styled to match the surrounding metadata text (so it doesn't look out of
  * place), and opens a small popover with the team list on click. Open to
- * anyone with visibility — handing tasks off is a routine team operation.
+ * anyone with visibility - handing tasks off is a routine team operation.
  */
 function AssigneePicker({
   currentAssigneeId,
@@ -883,13 +883,13 @@ function AssigneePicker({
 /**
  * Three-pill segmented control to move an item between Tasks / Updates / Chat
  * tabs. Currently-selected kind is highlighted. Chat is only shown when the
- * item came from a thread-bearing source (Trengo or Slack) — Monday updates
+ * item came from a thread-bearing source (Trengo or Slack) - Monday updates
  * and manual items don't have a thread to live in.
  */
 /**
  * Slack-style chat thread for per-task team conversation. Replaces the
  * old flat comment list. Comments by the current user align right (no
- * bubble — like Linear/iMessage); others align left with an avatar
+ * bubble - like Linear/iMessage); others align left with an avatar
  * initial. Empty state encourages a first message instead of just
  * showing "Comments (0)" which felt forgotten. Enter sends, Shift+Enter
  * newlines (matches Slack/Discord); Cmd/Ctrl+Enter still works for
@@ -930,7 +930,7 @@ function CommentThread({
   }, [comments.length])
 
   // Filter the team list by the typed query (after `@`). Excludes the
-  // current user — mentioning yourself is not useful. Caps to 8 results
+  // current user - mentioning yourself is not useful. Caps to 8 results
   // so the popover doesn't dwarf the composer on a big team.
   const mentionMatches = useMemo(() => {
     const q = mentionQuery.trim().toLowerCase()
@@ -960,7 +960,7 @@ function CommentThread({
       const prev = i === 0 ? " " : value[i - 1]
       if (/\s|^/.test(prev) || i === 0) {
         const q = value.slice(i + 1, caret)
-        // Multi-word query is fine but we cap at one space — beyond that
+        // Multi-word query is fine but we cap at one space - beyond that
         // it's no longer a name.
         if (q.split(/\s+/).length <= 2) {
           setMentionStart(i)
@@ -1084,7 +1084,7 @@ function CommentThread({
           rows={1}
           className="flex-1 rounded-lg border border-input bg-transparent px-3 py-2 text-sm dark:bg-input/30 focus:outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-none min-h-[36px] max-h-32"
           onKeyDown={(e) => {
-            // Mention popover keyboard handling takes priority — arrow keys
+            // Mention popover keyboard handling takes priority - arrow keys
             // navigate the suggestion list, Enter/Tab pick the highlighted
             // entry, Esc cancels the picker without sending the message.
             if (mentionStart != null && mentionMatches.length > 0) {
@@ -1175,13 +1175,13 @@ function CommentThread({
 /**
  * Top-of-panel kind banner. Big colored strip + label so the user can tell
  * in a glance whether they opened a Task or an Update. The reclassify
- * dropdown lives on the right side of the banner — one-click fix when the
+ * dropdown lives on the right side of the banner - one-click fix when the
  * AI classifier put the item in the wrong tab.
  *
  * Tone:
  *   - task    → violet (action needed, primary brand colour)
  *   - update  → blue (informational)
- *   - chat    → muted (we rarely render this — chat lives in Client/Team Inbox)
+ *   - chat    → muted (we rarely render this - chat lives in Client/Team Inbox)
  */
 /** Collapsible "Client timeline" section rendered under the task / update
  *  detail. Wraps the canonical TimelineTab (same data source as the client
@@ -1190,10 +1190,10 @@ function CommentThread({
  *  the current item's client.
  *
  *  Default-collapsed: timeline can be heavy (full client history) and the
- *  user opens the inbox item for the item itself first — context is on
+ *  user opens the inbox item for the item itself first - context is on
  *  demand. Toggle is local state; closing the dialog resets it on next open. */
 function ClientTimelineSection({ clientId }: { clientId: string }) {
-  // Default open — Roy wants the timeline visible as a scroll-down second
+  // Default open - Roy wants the timeline visible as a scroll-down second
   // section, not hidden behind a click. The chevron stays as an escape hatch
   // for when the panel feels too busy on small viewports.
   const [open, setOpen] = useState(true)
@@ -1254,7 +1254,7 @@ function KindBanner({
             text: "text-blue-700 dark:text-blue-300",
             icon: InboxIcon,
             label: "Update",
-            hint: "Informatie om te weten — geen actie nodig.",
+            hint: "Informatie om te weten - geen actie nodig.",
           }
         : {
             bar: "bg-muted-foreground/40",
@@ -1387,7 +1387,7 @@ function ChannelMark({ channel }: { channel: unknown }) {
 
 /** Click-to-edit task title. Shows the current text styled as a DialogTitle;
  *  click switches to a single-line input. Enter or blur saves; Esc reverts.
- *  Empty title isn't allowed (nothing to label the task by) — we revert to
+ *  Empty title isn't allowed (nothing to label the task by) - we revert to
  *  the previous value instead of saving. A small pencil glyph fades in on
  *  hover so the affordance is discoverable without cluttering the header. */
 function EditableTitle({
@@ -1419,7 +1419,7 @@ function EditableTitle({
   function commit() {
     const next = draft.trim()
     if (!next) {
-      // Don't save an empty title — revert and exit.
+      // Don't save an empty title - revert and exit.
       setDraft(value)
       setEditing(false)
       return
@@ -1496,7 +1496,7 @@ function EditableBody({
   useEffect(() => {
     if (editing) {
       ref.current?.focus()
-      // Place cursor at end rather than selecting all — body edits are
+      // Place cursor at end rather than selecting all - body edits are
       // usually appends/tweaks, not full rewrites.
       const len = ref.current?.value.length ?? 0
       ref.current?.setSelectionRange(len, len)
@@ -1538,7 +1538,7 @@ function EditableBody({
 
   // Defensive cap: a single Monday update body of 100k+ chars (pasted email
   // thread, oversized log dump) was crashing Chrome's renderer with
-  // RESULT_CODE_KILLED_BAD_MESSAGE / "This page couldn't load" — `whitespace-
+  // RESULT_CODE_KILLED_BAD_MESSAGE / "This page couldn't load" - `whitespace-
   // pre-wrap` on a multi-MB string with no breakable whitespace blows up
   // layout. Slice for display; the full body still lives server-side and the
   // editing textarea pulls the untrimmed value when the user opens it.
@@ -1560,7 +1560,7 @@ function EditableBody({
           </span>
           {truncated && (
             <span className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-              … {value.length.toLocaleString()} chars total — body truncated for display. Click to edit and see the full text.
+              … {value.length.toLocaleString()} chars total - body truncated for display. Click to edit and see the full text.
             </span>
           )}
         </>

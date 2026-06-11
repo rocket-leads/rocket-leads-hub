@@ -13,7 +13,7 @@ export const maxDuration = 300
  * Two-step admin operation, kept behind one button:
  *   1. Pull recent meetings from Fathom (default last 90d = 2160h)
  *      and run them through `ingestFathomMeeting()`. Skipped/dedupe
- *      paths are normal — we just want the full set in `meetings`.
+ *      paths are normal - we just want the full set in `meetings`.
  *   2. Run the matcher batch across every still-unlinked + archived
  *      row so anything we just inserted gets a shot at auto-linking.
  *
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   let errored = 0
 
   try {
-    // API-side filter on Rocket Leads teams only — typically dozens of
+    // API-side filter on Rocket Leads teams only - typically dozens of
     // recordings instead of hundreds, well under the pagination cap.
     // Bumped maxPages to 20 as a safety buffer in case team volume grows.
     const meetings = await fetchRecentFathomMeetings({

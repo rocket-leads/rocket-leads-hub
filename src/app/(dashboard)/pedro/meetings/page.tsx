@@ -16,7 +16,7 @@ export default async function MeetingsPage() {
   const supabase = await createAdminClient()
   const locale = await getUserLocale(session.user.id)
 
-  // Pull a generous window — last 60 days, max 300 rows. The view splits this
+  // Pull a generous window - last 60 days, max 300 rows. The view splits this
   // into Unlinked / Recent / Internal tabs client-side. We don't care about
   // older meetings on the global page; per-client tab shows full history per
   // client.
@@ -26,7 +26,7 @@ export default async function MeetingsPage() {
     .from("meetings")
     .select(MEETING_ROW_COLUMNS)
     // Sales calls are ingested for the Targets dashboard insight loop but
-    // hidden from the team meetings overview — they aren't actionable as
+    // hidden from the team meetings overview - they aren't actionable as
     // "linked client meetings".
     .neq("meeting_type", "sales")
     .gte("scheduled_at", cutoff)

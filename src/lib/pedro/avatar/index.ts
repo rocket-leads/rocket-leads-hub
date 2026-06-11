@@ -6,7 +6,7 @@ import type { AvatarProvider, AvatarProviderId } from "@/lib/pedro/avatar/types"
  * Resolve the active avatar provider for Pedro.
  *
  * Currently the agency runs one provider at a time (Heygen). When that
- * changes we extend this resolver — Pedro callers stay unchanged.
+ * changes we extend this resolver - Pedro callers stay unchanged.
  *
  * Returns null when no provider is configured (no API token saved). UI
  * should surface a "configure provider in Settings → API Tokens" hint
@@ -25,7 +25,7 @@ export async function getAvatarProvider(): Promise<AvatarProvider | null> {
   if (heygen?.token_encrypted) {
     try {
       const apiKey = decrypt(heygen.token_encrypted)
-      // Lazy import — provider implementation lives behind this so the
+      // Lazy import - provider implementation lives behind this so the
       // bundler doesn't pull SDK code into request paths that don't
       // need avatars.
       const { HeygenProvider } = await import("@/lib/pedro/avatar/heygen")

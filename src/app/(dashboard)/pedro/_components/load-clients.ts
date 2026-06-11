@@ -41,7 +41,7 @@ export async function loadPedroClients(opts: {
 
     // Enrich every client with hub-data signals so the picker can show why
     // a given variant is the right one (especially when names are
-    // duplicated). One round-trip each, in parallel — meetings + saved
+    // duplicated). One round-trip each, in parallel - meetings + saved
     // Pedro state.
     const ids = baseClients.map((c) => c.id)
     const supabase = await createAdminClient()

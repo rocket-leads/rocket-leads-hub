@@ -13,9 +13,9 @@ import type { MondayClient } from "@/lib/integrations/monday"
  * Monday so newly-added MondayClient fields are picked up.
  *
  * Idempotent: rows with `updated_by` set are always skipped, so manual edits
- * are never overwritten. Admin-only — pricing data is finance-sensitive.
+ * are never overwritten. Admin-only - pricing data is finance-sensitive.
  *
- * Does NOT re-sync clients to Supabase — assumes the regular sync (running
+ * Does NOT re-sync clients to Supabase - assumes the regular sync (running
  * on every client-page open + the cache cron) keeps `clients` rows fresh.
  * Skipping the sync keeps the loop fast enough to finish in Vercel's time
  * budget for ~800 clients.
@@ -65,7 +65,7 @@ async function runBackfill(req: NextRequest) {
     )
   }
 
-  // Refuse to seed off a stale cache — would silently produce wrong defaults
+  // Refuse to seed off a stale cache - would silently produce wrong defaults
   // for hundreds of clients (followUpStatus would be undefined → toggle off
   // for everyone). Caller can retry with ?live=1.
   const cacheStale =
@@ -76,7 +76,7 @@ async function runBackfill(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Cached Monday data is missing followUpStatus — refusing to seed off stale data. Retry with ?live=1, or wait for the next /api/cron/refresh-cache run.",
+          "Cached Monday data is missing followUpStatus - refusing to seed off stale data. Retry with ?live=1, or wait for the next /api/cron/refresh-cache run.",
       },
       { status: 409 },
     )
@@ -95,7 +95,7 @@ async function runBackfill(req: NextRequest) {
   const idByMondayId = new Map<string, string>()
   for (const r of rows ?? []) idByMondayId.set(r.monday_item_id, r.id)
 
-  // Bounded concurrency — running all seeds in parallel hammers Supabase and
+  // Bounded concurrency - running all seeds in parallel hammers Supabase and
   // risks rate limits; running them sequentially blows the Vercel time budget
   // at ~800 clients. 20-at-a-time gets the full backfill done in a few seconds.
   const CONCURRENCY = 20

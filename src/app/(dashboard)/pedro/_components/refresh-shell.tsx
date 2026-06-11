@@ -36,9 +36,9 @@ type BriefRequiredPayload = {
  * (angles-refresh, script-refresh, creative-refresh, ad-copy-refresh).
  *
  * Each stage component supplies:
- *  - `endpoint` — the /api/pedro/*-refresh URL
- *  - `title` + `description` — what shows in the header card
- *  - `renderProposals(envelope)` — stage-specific renderer for the proposals
+ *  - `endpoint` - the /api/pedro/*-refresh URL
+ *  - `title` + `description` - what shows in the header card
+ *  - `renderProposals(envelope)` - stage-specific renderer for the proposals
  *    when mode === "iterate-winners"
  *
  * Everything else (window picker, generate button, stats grid, summary
@@ -124,7 +124,7 @@ export function CopyButton({ text }: { text: string }) {
 
 type Props<TProposal> = {
   endpoint: string
-  /** Stage discriminator — drives the history panel + save endpoints.
+  /** Stage discriminator - drives the history panel + save endpoints.
    *  Same enum as `pedro_refreshes.stage`. Default `creatives` for
    *  backwards compatibility with components that haven't passed it yet. */
   stage?: RefreshStage
@@ -135,6 +135,17 @@ type Props<TProposal> = {
   autoStart?: boolean
   /** Renders the iterate-winners proposals. Receives the parsed envelope. */
   renderProposals: (env: Extract<RefreshEnvelope<TProposal>, { mode: "iterate-winners" }>) => ReactNode
+  /** Roy 2026-06-10: optional render prop dat de standaard window-picker
+   *  + Genereer-knop UI vervangt. Gebruikt door CreativeRefresh om een
+   *  AdPicker te tonen ipv het window-based winner-detection pad.
+   *  Krijgt `generate` callback + `loading` flag + `hasOutput` zodat
+   *  child component zijn eigen UX kan kiezen. */
+  customInputs?: (args: {
+    generate: (extraBody?: Record<string, unknown>) => Promise<void>
+    loading: boolean
+    hasOutput: boolean
+    error: string | null
+  }) => ReactNode
 }
 
 export function RefreshShell<TProposal>({
@@ -146,6 +157,7 @@ export function RefreshShell<TProposal>({
   selectedClientName,
   autoStart,
   renderProposals,
+  customInputs,
 }: Props<TProposal>) {
   const [days, setDays] = useState<number>(30)
   const [loading, setLoading] = useState(false)
@@ -162,7 +174,7 @@ export function RefreshShell<TProposal>({
     setError(null)
   }, [selectedClientId])
 
-  const generate = useCallback(async () => {
+  const generate = useCallback(async (extraBody?: Record<string, unknown>) => {
     if (!selectedClientId) return
     setLoading(true)
     setError(null)
@@ -172,12 +184,16 @@ export function RefreshShell<TProposal>({
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: selectedClientId, days }),
+        body: JSON.stringify({
+          clientId: selectedClientId,
+          days,
+          ...(extraBody ?? {}),
+        }),
       })
       const json = await res.json()
       // 409 + requires_brief → open the brief modal instead of erroring.
       // The route returned everything we need to prefill (clientName,
-      // current_brief) — no extra round-trip.
+      // current_brief) - no extra round-trip.
       if (res.status === 409 && json?.requires_brief) {
         setBriefRequired({
           clientId: String(json.clientId ?? selectedClientId),
@@ -228,7 +244,7 @@ export function RefreshShell<TProposal>({
 
   return (
     <div className="max-w-[1060px] space-y-5">
-      {/* Brief gate modal — opens when creative-refresh returns 409 +
+      {/* Brief gate modal - opens when creative-refresh returns 409 +
           requires_brief. After save, the modal calls back into
           generate() to auto-retry the refresh. Roy 2026-06-09: zonder
           baseline brief hallucineert Pedro de business model. */}
@@ -245,7 +261,7 @@ export function RefreshShell<TProposal>({
           onCancel={() => setBriefRequired(null)}
         />
       )}
-      {/* History panel — collapsed by default, expanding shows past
+      {/* History panel - collapsed by default, expanding shows past
           refresh runs for this client. Click on a row → loads that
           refresh back into the result view (no Anthropic call). Roy
           2026-06-09: zonder dit voelt elke refresh als wegwerp. */}
@@ -257,45 +273,59 @@ export function RefreshShell<TProposal>({
         />
       )}
 
-      {/* Picker + window + generate */}
+      {/* Picker + window + generate. Roy 2026-06-10: customInputs prop
+          vervangt het hele standaard window+generate block - CreativeRefresh
+          gebruikt dit voor de AdPicker flow (campagne + ad kiezen ipv
+          window-based auto-winner detection). */}
       <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04),0_1px_3px_-1px_rgb(0_0_0_/_0.04)] dark:shadow-[0_1px_2px_0_rgb(0_0_0_/_0.3)]">
         <div className="mb-4">
           <div className="font-heading font-semibold text-[15px] tracking-tight">{title}</div>
           <div className="text-xs text-muted-foreground mt-1">{description}</div>
         </div>
 
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 mb-3">
-          <div className="text-sm">
-            <span className="text-muted-foreground">Actieve klant:</span>{" "}
-            <span className="font-medium text-foreground">{selectedClientName || "—"}</span>
-          </div>
-          <button
-            type="button"
-            onClick={generate}
-            disabled={!selectedClientId || loading}
-            className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
-          >
-            {loading ? "Pedro denkt na..." : "Genereer refresh"}
-          </button>
-        </div>
+        {customInputs ? (
+          customInputs({
+            generate,
+            loading,
+            hasOutput: !!data,
+            error,
+          })
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 mb-3">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Actieve klant:</span>{" "}
+                <span className="font-medium text-foreground">{selectedClientName || "-"}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => generate()}
+                disabled={!selectedClientId || loading}
+                className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
+              >
+                {loading ? "Pedro denkt na..." : "Genereer refresh"}
+              </button>
+            </div>
 
-        <div className="flex items-center gap-3 mt-3">
-          <div className="text-xs text-muted-foreground">Window:</div>
-          {WINDOW_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setDays(opt.value)}
-              className={`text-xs font-medium px-2.5 py-1 rounded-md border transition-colors ${
-                days === opt.value
-                  ? "bg-primary/10 text-primary border-primary/30"
-                  : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:bg-accent"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+            <div className="flex items-center gap-3 mt-3">
+              <div className="text-xs text-muted-foreground">Window:</div>
+              {WINDOW_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setDays(opt.value)}
+                  className={`text-xs font-medium px-2.5 py-1 rounded-md border transition-colors ${
+                    days === opt.value
+                      ? "bg-primary/10 text-primary border-primary/30"
+                      : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:bg-accent"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Loading */}
@@ -303,7 +333,7 @@ export function RefreshShell<TProposal>({
         <div className="rounded-2xl border border-border/60 bg-card p-5 flex items-center gap-3">
           <RefreshCw className="h-4 w-4 text-primary animate-spin" />
           <span className="text-sm text-muted-foreground">
-            Pedro pakt performance van &quot;{selectedClientName}&quot; over {days}d, zoekt winners en schrijft proposals…
+            Pedro itereert op de gekozen ad voor &quot;{selectedClientName}&quot; - schrijft 3 varianten…
           </span>
         </div>
       )}
@@ -350,7 +380,7 @@ export function RefreshShell<TProposal>({
             />
             <StatBlock
               label="Avg CPL"
-              value={data.stats.avgCpl != null ? `€${data.stats.avgCpl.toFixed(2)}` : "—"}
+              value={data.stats.avgCpl != null ? `€${data.stats.avgCpl.toFixed(2)}` : "-"}
               trend={data.trend.cplDeltaPct}
               goodIs="down"
             />
@@ -388,14 +418,14 @@ export function RefreshShell<TProposal>({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={generate}
+              onClick={() => generate()}
               className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md border border-border bg-transparent text-foreground hover:bg-accent transition-colors"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Genereer opnieuw
             </button>
             {/* Drive auto-save status. Inbox is intentionally removed
-                (Roy 2026-06-09 — Drive is the canonical persistence
+                (Roy 2026-06-09 - Drive is the canonical persistence
                 target; inbox added noise without much value). */}
             {data.refreshId && (
               <DriveAutoSave
@@ -530,7 +560,7 @@ function RefreshHistoryPanel({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  // Refetch when the active client OR stage changes — history is
+  // Refetch when the active client OR stage changes - history is
   // scoped to both.
   useEffect(() => {
     let cancelled = false

@@ -6,13 +6,13 @@ export type TopAd = {
   adName: string
   spend: number
   leads: number
-  /** 0 when there are no leads with spend — UI renders this as "—". */
+  /** 0 when there are no leads with spend - UI renders this as "-". */
   cpl: number
   verdict: AdVerdict
 }
 
 /**
- * Pure top-ads ranker — shared between `/api/watchlist/[id]/expand` (live) and
+ * Pure top-ads ranker - shared between `/api/watchlist/[id]/expand` (live) and
  * the cron's per-client pre-bake. Same rules in both surfaces so the cached
  * version is byte-equivalent to a live recompute.
  *
@@ -20,7 +20,7 @@ export type TopAd = {
  *   - Drop ads with spend < €10 (micro-tests skew the account average)
  *   - Verdict is relative to account-avg CPL across ads-with-leads
  *   - Wide neutral band (0.7×–1.4×) keeps the signal honest with small ad sets
- *   - Sort by spend desc, take top 5 — what the user is putting money behind
+ *   - Sort by spend desc, take top 5 - what the user is putting money behind
  */
 export function rankTopAds(ads: MetaAdDetail[]): TopAd[] {
   const enriched = ads

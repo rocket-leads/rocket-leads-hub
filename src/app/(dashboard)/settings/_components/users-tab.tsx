@@ -67,7 +67,7 @@ type Props = {
 }
 
 const NONE = "__none__"
-const UNSET_LABEL = "—"
+const UNSET_LABEL = "-"
 
 export function UsersTab({ users: initial, currentUserId }: Props) {
   const locale = useLocale()
@@ -650,7 +650,7 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NONE}>—</SelectItem>
+                          <SelectItem value={NONE}>-</SelectItem>
                           {emailChannelOptions.map((c) => (
                             <SelectItem key={c.id} value={c.id.toString()}>
                               {c.name}
@@ -681,7 +681,7 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NONE}>—</SelectItem>
+                          <SelectItem value={NONE}>-</SelectItem>
                           {waChannelOptions.map((c) => (
                             <SelectItem key={c.id} value={c.id.toString()}>
                               {c.name}
@@ -710,7 +710,7 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
                           />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={NONE}>—</SelectItem>
+                          <SelectItem value={NONE}>-</SelectItem>
                           {fathomTeamMembers.map((m) => (
                             <SelectItem key={m.email} value={m.email}>
                               {m.name} <span className="text-muted-foreground">({m.email})</span>

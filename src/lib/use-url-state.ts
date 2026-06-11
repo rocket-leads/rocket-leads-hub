@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 
 /**
  * Bookmarkable component state synced to a single URL query param. Use
- * this anywhere the user can "send me this exact view" — Watch List
+ * this anywhere the user can "send me this exact view" - Watch List
  * filters, Targets date range, Inbox search, slide-over tabs.
  *
  * Drop-in replacement for `useState` where the state matters past a
@@ -23,7 +23,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
  *   - Setting the value to the default clears the param from the URL
  *     so links stay clean (`?tab=overview` becomes `/settings`).
  *   - Multiple call sites on the same page can update different params
- *     without clobbering each other — every set reads the current
+ *     without clobbering each other - every set reads the current
  *     URLSearchParams snapshot before mutating.
  */
 export function useUrlState(

@@ -14,12 +14,12 @@ import { NextRequest, NextResponse } from "next/server"
 /**
  * Client-facing weekly update draft.
  *
- * Thin HTTP wrapper around `buildWeeklyUpdateDraft` — the same composition
+ * Thin HTTP wrapper around `buildWeeklyUpdateDraft` - the same composition
  * pipeline the Monday-morning cron uses. Returns editable parts + a fresh
  * preview render + the resolved WhatsApp template name (hardcoded
  * `rl_weekly_<voornaam>`) so the dialog can post the right send payload.
  *
- * No AI call — pulls from Pedro's daily cache + the 7d KPI cache.
+ * No AI call - pulls from Pedro's daily cache + the 7d KPI cache.
  */
 
 export type ClientUpdateChannel = WeeklyUpdateChannel
@@ -63,12 +63,12 @@ export async function POST(
 
   const { id: mondayItemId } = await params
 
-  // Cache check — the Monday-morning cron pre-builds a draft for every
+  // Cache check - the Monday-morning cron pre-builds a draft for every
   // Live + Trengo-linked client and stores it in `weekly_update_drafts`.
   // Reusing that snapshot skips the Meta + Stripe + Trengo + Pedro fan-out
   // that buildWeeklyUpdateDraft does, which is the 30-40s "Update
-  // klaarzetten…" hang the AM sees mid-week. The data hasn't changed —
-  // the weekly KPI window is last week's already-completed range — so
+  // klaarzetten…" hang the AM sees mid-week. The data hasn't changed -
+  // the weekly KPI window is last week's already-completed range - so
   // the cron's snapshot is the right thing to show. Falls through to the
   // live build only when no pending draft exists (client wasn't a cron
   // candidate, e.g. flipped Live mid-week, or the cron hasn't run yet).
@@ -90,7 +90,7 @@ export async function POST(
     if (cachedDraft?.parts) {
       // Pull recipient email/phone live (cheap; shared trengoFetch cache)
       // so the "To: …" line in the dialog reflects current contact data.
-      // Best-effort — null when no Trengo contact is linked or the fetch
+      // Best-effort - null when no Trengo contact is linked or the fetch
       // fails. This is the only network call left on the hot path.
       const { fetchClientById } = await import("@/lib/integrations/monday")
       const { fetchTrengoContact } = await import("@/lib/integrations/trengo")

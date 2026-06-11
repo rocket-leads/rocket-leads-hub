@@ -98,7 +98,7 @@ export async function PUT(
  *
  * Body: `{ field: "fee" | "ad_budget"; value: number }`
  *
- * `ad_budget` writes straight to the column. `fee` is a virtual field — what
+ * `ad_budget` writes straight to the column. `fee` is a virtual field - what
  * the Billing page actually shows is `agreementMonthly(agreement)` (sum of
  * selected platform_fees + follow_up_fee). To keep "what you typed = what you
  * see", we park the delta in `platform_fees.meta`:
@@ -106,7 +106,7 @@ export async function PUT(
  *   platform_fees.meta = value − sumOfOtherPlatformFees − (followUp ? followUpFee : 0)
  *
  * If that math goes negative (the fee already exceeds what they're trying to
- * set, e.g. follow-up fee alone is higher), we 400 — they need the full
+ * set, e.g. follow-up fee alone is higher), we 400 - they need the full
  * editor to restructure the agreement, since inline can't safely zero out
  * other components without losing config.
  *
@@ -155,7 +155,7 @@ export async function PATCH(
       if (metaShare < 0) {
         return NextResponse.json(
           {
-            error: `Can't set fee below €${otherFees + followUpAmount} — other platform fees + follow-up already exceed it. Open the client's Billing tab to restructure.`,
+            error: `Can't set fee below €${otherFees + followUpAmount} - other platform fees + follow-up already exceed it. Open the client's Billing tab to restructure.`,
           },
           { status: 400 },
         )
@@ -235,7 +235,7 @@ export async function PATCH(
     }
 
     // Return the resulting displayed values so the caller can confirm what was
-    // saved without a separate fetch — useful when "fee" gets rewritten via
+    // saved without a separate fetch - useful when "fee" gets rewritten via
     // platform_fees.meta and the client's optimistic value might mismatch.
     return NextResponse.json({
       ok: true,

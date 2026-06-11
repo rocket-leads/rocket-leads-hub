@@ -3,14 +3,14 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { NextResponse, type NextRequest } from "next/server"
 
 /**
- * Watch List manual override — CM/AM moves a client between Action / Watch /
+ * Watch List manual override - CM/AM moves a client between Action / Watch /
  * Good with a required reason, expires after 7d max OR earlier when CPL/spend
  * shifts >25% from the snapshot (whichever comes first).
  *
  * Two surfaces are updated atomically:
- *   1. `watchlist_client_state.manual_category` — the active override, read by
+ *   1. `watchlist_client_state.manual_category` - the active override, read by
  *      the categorizer on every dashboard render.
- *   2. `watchlist_overrides` — append-only audit row with the KPI snapshot at
+ *   2. `watchlist_overrides` - append-only audit row with the KPI snapshot at
  *      decision time. This is the learning corpus for the AI adjustment layer.
  *
  * The caller passes the KPI snapshot it was looking at; we trust the client
@@ -41,7 +41,7 @@ type PostBody = {
   fromCategory: WatchCategory | null
   reason: string
   kpiSnapshot?: KpiSnapshot | null
-  /** The rules-based insight string the user was looking at — useful context
+  /** The rules-based insight string the user was looking at - useful context
    *  for the learning loop ("CM overrode this when the rule said 'CPL up 30%'"). */
   insightAtTime?: string | null
 }
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
   const nowIso = new Date().toISOString()
   const expiresAt = new Date(Date.now() + OVERRIDE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
-  // Supersede any existing active override on this client — one active override
+  // Supersede any existing active override on this client - one active override
   // at a time, the rest live in the audit log with `expired_at` set.
   const { error: supersedeErr } = await supabase
     .from("watchlist_overrides")
@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to supersede previous override" }, { status: 500 })
   }
 
-  // Append the audit row first — losing the active-state write is recoverable
+  // Append the audit row first - losing the active-state write is recoverable
   // (next cron rewrites it), but losing the audit row breaks the learning loop.
   const { error: auditErr } = await supabase.from("watchlist_overrides").insert({
     monday_item_id: body.mondayItemId,
@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Failed to log override" }, { status: 500 })
   }
 
-  // Write the active state. Upsert by monday_item_id — `watchlist_client_state`
+  // Write the active state. Upsert by monday_item_id - `watchlist_client_state`
   // has the rules-based `category` populated by the cron, we just attach the
   // override columns alongside without disturbing it.
   const { data: existing } = await supabase
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
     // Keep the rules-based category column untouched so we can still see what
     // the rules would say without the override. Use the existing row's value
     // when present; default to the toCategory when the client wasn't tracked
-    // yet (rare — usually the cron has already written this).
+    // yet (rare - usually the cron has already written this).
     category: existing?.category ?? body.toCategory,
     since_date: existing?.since_date ?? today,
     manual_category: body.toCategory,
@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
 
 /**
  * Clear the active override on a client. The audit row stays intact (marked
- * `expired_at` with cause `manual`) — only the active flag is removed.
+ * `expired_at` with cause `manual`) - only the active flag is removed.
  */
 export async function DELETE(req: NextRequest) {
   const session = await auth()

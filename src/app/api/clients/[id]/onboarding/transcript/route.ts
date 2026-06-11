@@ -4,21 +4,21 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { saveStepState } from "@/lib/clients/onboarding-state"
 
 /**
- * Onboarding wizard Stap 2 — Fathom kick-off transcript link.
+ * Onboarding wizard Stap 2 - Fathom kick-off transcript link.
  *
- * GET — returns the candidate meetings the AM most likely just had with
+ * GET - returns the candidate meetings the AM most likely just had with
  *       this client. Filter: recorded by the current session user,
  *       link_status IN ('unlinked', 'suggested'), scheduled within the
  *       last 14 days, and not already typed as `sales` / `evaluation` /
  *       `internal`. Ordered most-recent first.
  *
- * POST — confirms the AM-picked meeting as THE kick-off for this client.
+ * POST - confirms the AM-picked meeting as THE kick-off for this client.
  *        Writes `client_id` + flips `link_status` to 'linked' with
  *        `link_method='manual'`. Also marks the wizard step done with
  *        content { meetingId, transcriptLen }.
  *
  * If Fathom hasn't fired its webhook yet (transcript still processing),
- * the candidates list comes back empty — the UI shows a "wachten op
+ * the candidates list comes back empty - the UI shows a "wachten op
  * transcript" empty state and the AM refreshes when they expect it to
  * have landed.
  */
@@ -75,7 +75,7 @@ export async function POST(
   const supabase = await createAdminClient()
 
   // Update the meeting row: link to this client, classify as kick_off,
-  // bump link_status to 'linked'. We don't touch transcript / summary —
+  // bump link_status to 'linked'. We don't touch transcript / summary -
   // those are Fathom's responsibility.
   const { data: updated, error: updateErr } = await supabase
     .from("meetings")

@@ -16,7 +16,7 @@ import { safeFetch } from "@/lib/safe-fetch"
  * UsersTab fetches it on mount via React Query, so the rest of Settings
  * paints instantly.
  *
- * Returns the same shape `UsersTab` used to receive — channels already
+ * Returns the same shape `UsersTab` used to receive - channels already
  * tagged with `isEmail` / `isWa` so the dropdowns don't have to
  * re-classify on every render.
  */
@@ -36,7 +36,7 @@ export async function GET() {
     .filter((c) => isEmailChannelType(c.type) || isWhatsAppChannelType(c.type))
     .map((c) => ({
       id: c.id,
-      // Trengo returns `name: "Email"` for every email channel — useless
+      // Trengo returns `name: "Email"` for every email channel - useless
       // when picking between multiple. deriveTrengoChannelDisplayName
       // falls through to display_name / email_address so dropdowns
       // actually show "support@…" instead of "Email".

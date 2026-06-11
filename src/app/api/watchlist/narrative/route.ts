@@ -6,22 +6,22 @@ import { AI_GUARDRAILS_PROMPT, aiLanguageDirective, validateAiOutput, stripAiTel
 import { getAiLocale } from "@/lib/i18n/server"
 
 /**
- * Watch List portfolio narrative — the "Key Insights" + "Optimisation
+ * Watch List portfolio narrative - the "Key Insights" + "Optimisation
  * Proposal" cards at the top of the Watch List, scoped per CM filter.
  *
  * Pre-Pedro-unification: stored in the cache_store under
  * `watchlist_narrative_v3:{scope}:{date}`. Now lives in pedro_insights as
  * a row keyed by:
- *   - monday_item_id = `_portfolio:{scope}` (sentinel — portfolio-level
+ *   - monday_item_id = `_portfolio:{scope}` (sentinel - portfolio-level
  *     rows ride alongside per-client rows in the same table; the prefix
  *     keeps them filterable and avoids a schema extension)
  *   - insight_type   = "watchlist_narrative"
  *
  * The body is JSON-stringified `{insights, proposals}`. 1h freshness gate
- * matches the original cache TTL — well-trafficked scopes (All / each
+ * matches the original cache TTL - well-trafficked scopes (All / each
  * CM) regenerate on demand when the row stales out.
  *
- * Splices AI_GUARDRAILS_PROMPT and post-validates output (logs only —
+ * Splices AI_GUARDRAILS_PROMPT and post-validates output (logs only -
  * structured-JSON output predates the conventions, hard ban would block
  * legitimate output mid-migration).
  */
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   const supabase = await createAdminClient()
   const subjectId = portfolioId(body.scope)
 
-  // Cache hit path — pedro_insights row younger than 1h.
+  // Cache hit path - pedro_insights row younger than 1h.
   const { data: cachedRow } = await supabase
     .from("pedro_insights")
     .select("body, generated_at")
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
     `--- Per-client snapshot (today) ---`,
     body.clients
       .slice(0, 60)
-      .map((c) => `[${c.category.toUpperCase()}${c.daysInBucket != null ? ` ${c.daysInBucket}d` : ""}${c.isNewToday ? " NEW" : ""}] ${c.name} — ${c.insight}`)
+      .map((c) => `[${c.category.toUpperCase()}${c.daysInBucket != null ? ` ${c.daysInBucket}d` : ""}${c.isNewToday ? " NEW" : ""}] ${c.name} - ${c.insight}`)
       .join("\n"),
     "",
     `--- Today's transitions ---`,
@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
   ]
 }
 
-## What's already visible — DO NOT REPEAT
+## What's already visible - DO NOT REPEAT
 The user already sees, on the same page:
 - A "Health score" KPI card with the % and zone (red <50 / amber 50-74 / green 75+)
 - A "Healthy clients" KPI card showing "X of Y healthy"
@@ -158,9 +158,9 @@ So your output MUST NOT contain:
 - Score readouts: "Health is at 43%", "Score improved 4pp", "X% of clients healthy"
 - Bucket counts: "16 in Action, 5 in Watch", "X clients in Action"
 - Per-bucket totals or % statements about the portfolio
-- Generic praise ("portfolio is performing well") — useless filler
+- Generic praise ("portfolio is performing well") - useless filler
 
-## Insights — what to surface
+## Insights - what to surface
 3 to 5 entries. Each is one sentence (≤22 words) tagged by severity.
 - **critical**: an urgent pattern requiring this-week action. Examples: 5+ clients with CPL spiking >40% sharing a common cause; 3+ clients stuck in Action 5+ days with the same insight pattern; rising no-leads count.
 - **warning**: noticeable trend that may become critical if untreated. Examples: rising avg CPL across the book, multiple clients showing "no budget" feedback themes.
@@ -168,11 +168,11 @@ So your output MUST NOT contain:
 
 Tag prefix the most-important pattern as "critical", reserve "positive" for genuine wins.
 
-## Proposals — what to surface
+## Proposals - what to surface
 2 to 4 numbered actions, ordered by impact. Each is one sentence (≤24 words) describing a CONCRETE step a campaign manager can take today, grounded in the patterns above.
 - Reference specific client names where relevant.
-- Suggest a SINGLE next step per proposal — not a checklist within a checklist.
-- Bias toward creative/angle changes, audience refinements, follow-up audits — not "talk to the team" filler.
+- Suggest a SINGLE next step per proposal - not a checklist within a checklist.
+- Bias toward creative/angle changes, audience refinements, follow-up audits - not "talk to the team" filler.
 
 ## Output rules
 - No emoji. No markdown inside the strings (no asterisks, no backticks).
@@ -191,7 +191,7 @@ ${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(aiLocale)}`,
     if (match) {
       const parsed = JSON.parse(match[0]) as Partial<WatchlistNarrativeResponse>
       // Strip AI-tell em-dashes from each rendered string before we persist
-      // or return — the prompt rule is the first line of defence, this is
+      // or return - the prompt rule is the first line of defence, this is
       // the backstop in case the model still emits one through.
       const insights = Array.isArray(parsed.insights)
         ? parsed.insights
@@ -215,7 +215,7 @@ ${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(aiLocale)}`,
   }
 
   // Run guardrails over the raw text (not the parsed JSON, which has the
-  // numbers nested) — soft-fail, log only.
+  // numbers nested) - soft-fail, log only.
   const violations = rawText
     ? validateAiOutput(rawText, { mondayCrmConnected: true })
     : []

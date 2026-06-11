@@ -13,11 +13,11 @@ interface Props {
   label?: string
   /** Stripe-side cross-check value. When higher than `current`, the gap is surfaced as a yellow chip. */
   stripeCrossCheck?: number
-  /** Click handler for the gap chip — host can open a drilldown listing the underlying Stripe invoices. */
+  /** Click handler for the gap chip - host can open a drilldown listing the underlying Stripe invoices. */
   onGapClick?: () => void
 }
 
-// Sub-€100 differences are noise (rounding, single-line credits etc.) — don't flag.
+// Sub-€100 differences are noise (rounding, single-line credits etc.) - don't flag.
 const GAP_THRESHOLD = 100
 
 export const RevenueProgressBar = memo(function RevenueProgressBar({
@@ -49,7 +49,7 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
   const barColor = performance >= 1 ? "bg-green-500" : "bg-red-500"
   const textColor = performance >= 1 ? "text-green-500" : "text-red-500"
 
-  // Surface a gap when Stripe shows more new business than Monday's closed deals —
+  // Surface a gap when Stripe shows more new business than Monday's closed deals -
   // means deals are invoiced but not yet logged in Monday. Click → drilldown.
   const gap = stripeCrossCheck != null ? stripeCrossCheck - current : 0
   const showGapChip = gap > GAP_THRESHOLD
@@ -69,7 +69,7 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
                 "bg-yellow-500/15 text-yellow-500 hover:bg-yellow-500/25 transition-colors",
                 onGapClick && "cursor-pointer",
               )}
-              title="Stripe shows more New Business than Monday — click to see which invoices"
+              title="Stripe shows more New Business than Monday - click to see which invoices"
             >
               Stripe shows +{formatCurrency(gap)} not in Monday
             </button>
@@ -83,7 +83,7 @@ export const RevenueProgressBar = memo(function RevenueProgressBar({
 
       {/* Bar */}
       <div className="relative h-4 bg-muted rounded-full overflow-visible">
-        {/* Pro-rata expected — lighter background */}
+        {/* Pro-rata expected - lighter background */}
         {proRataPct > 0 && (
           <div
             className="absolute inset-y-0 left-0 bg-muted-foreground/20 rounded-full"

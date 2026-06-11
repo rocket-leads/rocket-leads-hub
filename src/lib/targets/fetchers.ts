@@ -35,7 +35,7 @@ const TARGETS_BOARD_ID = "3762696870"
 
 // In-process cache for the raw Targets board items. The board is huge (full lead
 // history across all clients) and pagination dominates the wall-clock time of
-// /api/targets/monday — a cold fetch is ~3min while the per-range aggregation
+// /api/targets/monday - a cold fetch is ~3min while the per-range aggregation
 // loop afterwards is sub-second. The items are identical regardless of date
 // range, so caching them in memory lets range-switching reuse the same fetch.
 //
@@ -49,7 +49,7 @@ let targetsBoardCache: { items: TargetsBoardItem[]; fetchedAt: number; inflight:
   inflight: null,
 }
 const TARGETS_BOARD_TTL_MS = 5 * 60 * 1000
-/** Drop the in-process Targets board items cache — used by the refresh button to
+/** Drop the in-process Targets board items cache - used by the refresh button to
  *  guarantee the next read paginates fresh from Monday. */
 export function invalidateTargetsBoardItems(): void {
   targetsBoardCache = { items: [], fetchedAt: 0, inflight: null }
@@ -57,7 +57,7 @@ export function invalidateTargetsBoardItems(): void {
 async function getTargetsBoardItems(token: string): Promise<TargetsBoardItem[]> {
   const fresh = Date.now() - targetsBoardCache.fetchedAt < TARGETS_BOARD_TTL_MS && targetsBoardCache.items.length > 0
   if (fresh) return targetsBoardCache.items
-  // Coalesce concurrent cold fetches — if two requests land while the board is
+  // Coalesce concurrent cold fetches - if two requests land while the board is
   // being paginated, both await the same promise instead of triggering two
   // 3-minute parallel scrapes against Monday.
   if (targetsBoardCache.inflight) return targetsBoardCache.inflight
@@ -78,7 +78,7 @@ async function getTargetsBoardItems(token: string): Promise<TargetsBoardItem[]> 
 //
 // Opt-ins = top-of-funnel form submissions before they're qualified into a
 // lead row on the targets board. Each item has a `date4` column carrying its
-// creation date — counting items with date4 in [startDate, endDate] gives the
+// creation date - counting items with date4 in [startDate, endDate] gives the
 // period's opt-in volume. Pair with ad spend → cost per opt-in.
 //
 // The board is small relative to the targets board (only form submissions,
@@ -129,7 +129,7 @@ const META_GRAPH_VERSION = "v20.0"
 const HQ_COSTS_MONTHLY = 5000
 const MONTH_NAMES_NL = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"]
 
-// Targets-board lead-status buckets — used to slice the booked-calls funnel
+// Targets-board lead-status buckets - used to slice the booked-calls funnel
 // into "actually happened" (taken), "didn't happen" (no-show / cancellation)
 // and "still pending" (notUpdated). Roy 2026-05-27: qualification dropped
 // from the funnel entirely; the pipeline is now Opt-in → Booked → Taken →
@@ -141,7 +141,7 @@ const MONTH_NAMES_NL = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", 
 // fully migrated to the new naming.
 const STATUS_MAP = {
   /** Call actually happened. Outcome may be positive (Deal/Signed) or
-   *  negative (No deal X variants — call took place, just didn't close). */
+   *  negative (No deal X variants - call took place, just didn't close). */
   taken: [
     "Deal", "Signed",
     "No deal follow up", "No deal not interested", "No deal unqualified",
@@ -152,7 +152,7 @@ const STATUS_MAP = {
   deals: ["Deal", "Signed", "DEAL"],
   /** Booked but didn't show up. */
   noShows: ["No show"],
-  /** Lead canceled BEFORE the call — different from "No deal not interested"
+  /** Lead canceled BEFORE the call - different from "No deal not interested"
    *  which means the call DID happen and they then said no. "Not interested"
    *  here is the standalone cancel-status (lead pulled out before the call).
    *  Old label "Lead cancelation" stays in this bucket for historical items. */
@@ -315,11 +315,11 @@ function getCountryKey(countryValue: string): CountryKey {
 }
 
 /**
- * Marketing / Sales — Monday board data, grouped by country.
+ * Marketing / Sales - Monday board data, grouped by country.
  *
  * When `closerFilter` is provided, the top-level / weekly / industries / closed-deals
  * aggregations only include items where the `wie_` column matches. The per-closer
- * rollup always uses every item regardless of the filter — that's what populates the
+ * rollup always uses every item regardless of the filter - that's what populates the
  * "Closer" dropdown options on the dashboard, so we can't strip it down.
  */
 export async function fetchMondayTargets(
@@ -328,7 +328,7 @@ export async function fetchMondayTargets(
   closerFilter?: string | null,
 ): Promise<MondayTargetsByCountry> {
   const token = await getMondayToken()
-  // Kick off Stripe NB cross-check in parallel with the Monday board fetch — the two are
+  // Kick off Stripe NB cross-check in parallel with the Monday board fetch - the two are
   // independent (Stripe results only join back at the fuzzy-matching step below) so there's
   // no reason to serialize them. Was the dominant wall-clock cost on this endpoint.
   const stripeCrossCheckPromise = (async (): Promise<{
@@ -342,7 +342,7 @@ export async function fetchMondayTargets(
       const stripeNewBusinessRevenue = breakdown.serviceFeeNewBusiness.invoiced
 
       // Aggregate per invoice: a single invoice can contribute multiple line items in
-      // `details`. Sum line amounts under the same invoiceId (positive only — credits
+      // `details`. Sum line amounts under the same invoiceId (positive only - credits
       // are handled by the aggregate above) and emit one row per invoice for the UI.
       const byInvoice = new Map<string, StripeNewBusinessInvoice>()
       for (const d of breakdown.details) {
@@ -369,7 +369,7 @@ export async function fetchMondayTargets(
       return { stripeNewBusinessRevenue: 0, stripeNewBusinessInvoices: [] }
     }
   })()
-  // Opt-ins lives on a separate Monday board — kick it off in parallel with
+  // Opt-ins lives on a separate Monday board - kick it off in parallel with
   // the targets board fetch and the Stripe cross-check. Failure logs and
   // returns 0 so a missing-board / access issue degrades to "no opt-ins
   // surfaced" rather than failing the whole Marketing tab.
@@ -378,7 +378,7 @@ export async function fetchMondayTargets(
     return 0
   })
   const allItems = await getTargetsBoardItems(token)
-  // Today (UTC, YYYY-MM-DD) — used to split closer appointments into past vs future.
+  // Today (UTC, YYYY-MM-DD) - used to split closer appointments into past vs future.
   const todayStr = new Date().toISOString().slice(0, 10)
   const filter = closerFilter?.trim() || null
   const matchesFilter = (closerKey: string): boolean => !filter || closerKey === filter
@@ -437,7 +437,7 @@ export async function fetchMondayTargets(
 
     if (includeInTopLevel && isInRange(datumCreated, startDate, endDate)) {
       addTo(country, (a) => { a.leads++; a.calls++ })
-      // Booked-calls funnel slicing — replaces the old qualified/rejections
+      // Booked-calls funnel slicing - replaces the old qualified/rejections
       // counters (2026-05-27: qualification stage dropped from the dashboard).
       // Booked = total items; Taken = call happened; NoShow + Cancellation =
       // call did not happen; Planned/Qualified open = still pending outcome
@@ -453,7 +453,7 @@ export async function fetchMondayTargets(
         && datumAfspraak !== null
         && datumAfspraak < todayStr
       ) {
-        // Past appointment still in pre-call status — count as taken anyway so the
+        // Past appointment still in pre-call status - count as taken anyway so the
         // conversion rate can't be gamed by closers leaving statuses un-updated.
         addTo(country, (a) => a.takenCalls++)
       }
@@ -466,7 +466,7 @@ export async function fetchMondayTargets(
         a.industryMap[industry].revenue += dealValue
       })
       // companyName falls back to "" when the targets board doesn't expose a
-      // bedrijfsnaam column — the matcher then just uses item.name as today.
+      // bedrijfsnaam column - the matcher then just uses item.name as today.
       const companyName = getColumnValue(item, "bedrijfsnaam") || ""
       closedDealsAll.push({
         name: item.name,
@@ -530,7 +530,7 @@ export async function fetchMondayTargets(
       }
     }
 
-    // Weekly — same filter rule as the top-level: no contribution when the closer
+    // Weekly - same filter rule as the top-level: no contribution when the closer
     // doesn't match. Without this, a filtered view would still show team-wide
     // weekly bars next to a single closer's KPI cards.
     if (includeInTopLevel) {
@@ -552,13 +552,13 @@ export async function fetchMondayTargets(
   }
 
   // Stripe NB cross-check was kicked off in parallel at the top of this function.
-  // Result is country-agnostic — only the "all" bucket gets it. Independent of the
+  // Result is country-agnostic - only the "all" bucket gets it. Independent of the
   // Monday aggregation; only joins back via the fuzzy matcher below.
   const { stripeNewBusinessRevenue, stripeNewBusinessInvoices } = await stripeCrossCheckPromise
   const optInsCount = await optInsPromise
 
   // Bidirectional fuzzy matching between Monday closed deals and Stripe NB invoices.
-  // Greedy — sort all candidate pairs by similarity, claim the highest first, never let
+  // Greedy - sort all candidate pairs by similarity, claim the highest first, never let
   // either side be claimed twice. Anything still unclaimed is a real gap and shows in the UI.
   // Threshold 0.6 is permissive enough to catch most genuine matches (substring + Jaccard
   // both score 0.6+ on real-world variations) without false-pairing on weak overlaps.
@@ -568,7 +568,7 @@ export async function fetchMondayTargets(
     const PAIR_THRESHOLD = 0.6
     for (let dIdx = 0; dIdx < closedDealsAll.length; dIdx++) {
       const d = closedDealsAll[dIdx]
-      // Score against the deal's name AND companyName (when present) — pick the best.
+      // Score against the deal's name AND companyName (when present) - pick the best.
       const dealVariants = [d.name, d.companyName].filter((s): s is string => !!s)
       for (let iIdx = 0; iIdx < stripeNewBusinessInvoices.length; iIdx++) {
         const inv = stripeNewBusinessInvoices[iIdx]
@@ -605,13 +605,13 @@ export async function fetchMondayTargets(
     const closers = Object.entries(a.closerMap)
       .sort(([, x], [, y]) => y.revenue - x.revenue)
       .map(([closer, data]) => ({ closer, ...data }))
-    // Only the "all" bucket carries Stripe data — Stripe is country-agnostic.
+    // Only the "all" bucket carries Stripe data - Stripe is country-agnostic.
     result[k] = {
       ...a,
       weekly,
       industries,
       closers,
-      // Opt-ins board has no country attribution — populate only on "all".
+      // Opt-ins board has no country attribution - populate only on "all".
       optIns: k === "all" ? optInsCount : 0,
       stripeNewBusinessRevenue: k === "all" ? stripeNewBusinessRevenue : 0,
       stripeNewBusinessInvoices: k === "all" ? stripeNewBusinessInvoices : [],
@@ -640,7 +640,7 @@ function computeDerivedMetaMetrics(acc: { spend: number; impressions: number; cl
   }
 }
 
-/** Marketing / Sales — Meta ad spend, grouped by country (campaign name contains NL/BE/DE) */
+/** Marketing / Sales - Meta ad spend, grouped by country (campaign name contains NL/BE/DE) */
 export async function fetchMetaTargets(startDate: string, endDate: string): Promise<MetaTargetsByCountry> {
   const token = await getMetaToken()
   const timeRange = JSON.stringify({ since: startDate, until: endDate })
@@ -657,7 +657,7 @@ export async function fetchMetaTargets(startDate: string, endDate: string): Prom
     const data: { data?: Array<{ campaign_name?: string; spend?: string; impressions?: string; clicks?: string }>; paging?: { next?: string }; error?: { message?: string } } = await resp.json()
     // Previously only checked `data.error`; a non-200 with a different error
     // shape (token expired, rate-limited, etc.) slipped through and silently
-    // returned zeros — the cron then cached the zeros and the Targets page
+    // returned zeros - the cron then cached the zeros and the Targets page
     // showed "all 0 spend" the rest of the day. Always throw on !ok so the
     // failure is surfaced via the route's catch block instead of poisoning
     // the cache.
@@ -686,13 +686,13 @@ export async function fetchMetaTargets(startDate: string, endDate: string): Prom
   return result
 }
 
-/** Finance — Stripe revenue with NB/MRR split, excl. VAT, incl. credit notes */
+/** Finance - Stripe revenue with NB/MRR split, excl. VAT, incl. credit notes */
 /**
  * Shared invoice-breakdown core. Both `fetchFinance` and `fetchDelivery` consume this so
  * the line-item classification (service fee vs ad budget) and credit-note handling live
  * in exactly one place.
  *
- * The credit logic mirrors what's surfaced in the Finance tab — same-month and
+ * The credit logic mirrors what's surfaced in the Finance tab - same-month and
  * previous-month credits reduce totals; older credits are visible in `details` only.
  * Credits are split fee-vs-ad based on the credit note's own line items, falling back
  * to the original invoice's line proportions (fetching it if it sits outside the range).
@@ -712,8 +712,8 @@ type CustomerLineRollup = {
 
 /**
  * Loads all per-invoice MRR/NB overrides keyed by stripe invoice id. Empty map
- * means "no overrides — use auto-detection everywhere". Cheap query (small
- * table — only manually-classified invoices).
+ * means "no overrides - use auto-detection everywhere". Cheap query (small
+ * table - only manually-classified invoices).
  */
 async function loadInvoiceOverrides(): Promise<Map<string, "mrr" | "new_business">> {
   try {
@@ -778,7 +778,7 @@ async function buildInvoiceBreakdown(
     startingAfter = page.data[page.data.length - 1]?.id
   }
 
-  // Credit notes in period — Stripe doesn't support a `created` filter on creditNotes.list,
+  // Credit notes in period - Stripe doesn't support a `created` filter on creditNotes.list,
   // so we paginate reverse-chronologically and break out once we drop below startTs.
   const creditNotes: Stripe.CreditNote[] = []
   let cnHasMore = true
@@ -800,7 +800,7 @@ async function buildInvoiceBreakdown(
   }
 
   // New-business detection: a customer with no earlier (non-draft/non-void) invoice is "new" this period.
-  // Parallelized with a worker pool (concurrency 5) — the previous sequential loop was the
+  // Parallelized with a worker pool (concurrency 5) - the previous sequential loop was the
   // dominant cost on /api/targets/monday, ~300ms × N customers serialized end-to-end.
   const customerIds = [...new Set(allInvoices.map((inv) => inv.customer as string).filter(Boolean))]
   const isNewBusinessCustomer = new Map<string, boolean>()
@@ -822,7 +822,7 @@ async function buildInvoiceBreakdown(
     await Promise.all(Array.from({ length: 5 }, worker))
   }
 
-  // For each "new" customer, identify the FIRST invoice they had in this period —
+  // For each "new" customer, identify the FIRST invoice they had in this period -
   // that single invoice gets the New Business label. Subsequent invoices for the
   // same customer in the same period are MRR (auto), even though the customer is
   // new-this-period overall. Without this, ArcadeLab/ProsperBiz-style cases where
@@ -953,7 +953,7 @@ async function buildInvoiceBreakdown(
     let originalInv: Stripe.Invoice | null = invoiceId
       ? allInvoices.find((inv) => inv.id === invoiceId) ?? null
       : null
-    // The credit's MRR/NB classification follows its original invoice — so an
+    // The credit's MRR/NB classification follows its original invoice - so an
     // override on the original applies to the credit too. We pass the *original
     // invoice's* id (not the credit note's id) because resolveSubCategory checks
     // whether that id is the customer's first-in-period.
@@ -963,7 +963,7 @@ async function buildInvoiceBreakdown(
     if (originalInv) {
       creditTier = "credit"
     } else if (invoiceId) {
-      // Original invoice is outside the current period — fetch it once so we can both
+      // Original invoice is outside the current period - fetch it once so we can both
       // determine the credit tier AND use its line items for the fee/ad split when the
       // credit note itself has no line breakdown (Stripe lets you create line-less CNs).
       try {
@@ -980,7 +980,7 @@ async function buildInvoiceBreakdown(
     const countsAgainstTotal = creditTier === "credit" || creditTier === "credit_prev"
 
     // Split fee vs ad: prefer the credit note's own line items; otherwise pro-rate against
-    // the original invoice's line items (now works for older originals too — was previously
+    // the original invoice's line items (now works for older originals too - was previously
     // a "all service fee" fallback that under-credited ad-budget). Last-resort fallback is
     // unchanged: assume service fee.
     let serviceFeeCredit = 0
@@ -1083,7 +1083,7 @@ export async function fetchFinance(startDate: string, endDate: string): Promise<
   }
 }
 
-/** Costs — Google Sheets only, with per-team-member augmentation when current month is partially filled. */
+/** Costs - Google Sheets only, with per-team-member augmentation when current month is partially filled. */
 export async function fetchCosts(year: number, month: number): Promise<CostData> {
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID
   if (!spreadsheetId) throw new Error("Spreadsheet ID not configured.")
@@ -1171,7 +1171,7 @@ export async function fetchCosts(year: number, month: number): Promise<CostData>
     }
   }
 
-  // Marketing — same simple 3-month-average fallback (no per-person logic).
+  // Marketing - same simple 3-month-average fallback (no per-person logic).
   if (marketingCosts === 0) {
     const validMarketing = priorData.filter((d) => d.marketingCosts > 0)
     if (validMarketing.length > 0) {
@@ -1197,7 +1197,7 @@ export async function fetchCosts(year: number, month: number): Promise<CostData>
 }
 
 /**
- * Delivery — service-fee MRR/NB + ad budget (kept separate) + revenue per account manager.
+ * Delivery - service-fee MRR/NB + ad budget (kept separate) + revenue per account manager.
  *
  * Builds on the same `buildInvoiceBreakdown` core as Finance so the line-item split
  * (service fee vs ad budget) and credit-note handling are identical between the two tabs.
@@ -1214,7 +1214,7 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
   const prevStartTs = startTs - periodSeconds
   const prevEndTs = startTs - 1
 
-  // Previous-period customers (for churn) — only the customer set is needed, no line detail.
+  // Previous-period customers (for churn) - only the customer set is needed, no line detail.
   async function fetchPrevCustomerIds(): Promise<Set<string>> {
     const ids = new Set<string>()
     let hasMore = true
@@ -1244,7 +1244,7 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
   ])
 
   // Stripe customer ID → Monday entry (account manager + item id). One Monday item can
-  // map to MULTIPLE Stripe customer IDs — entity changes, alt payment methods, the same
+  // map to MULTIPLE Stripe customer IDs - entity changes, alt payment methods, the same
   // client billed via two Stripe customers. The Monday `stripe_customer_id` column holds
   // them comma-separated; `parseStripeCustomerIds` splits them.
   type MondayLink = { accountManager: string; mondayItemId: string }
@@ -1260,11 +1260,11 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
     }
   }
 
-  // Picker pool — every Monday item, regardless of whether it already has a Stripe link.
+  // Picker pool - every Monday item, regardless of whether it already has a Stripe link.
   // Already-linked items must remain pickable so the user can attach a SECOND Stripe
   // customer to the same client (the assign endpoint appends rather than overwrites).
   // Carrying the existing `stripeCustomerId` value lets the assign endpoint skip its own
-  // Monday read — saves one round-trip per assign click.
+  // Monday read - saves one round-trip per assign click.
   // `firstName` + `companyName` are passed through so the suggestion scorer can match on
   // multiple fields (Stripe name vs Monday item / first name / company), not just item.name.
   const unlinkedMondayItems: UnlinkedMondayItem[] = allClients
@@ -1297,14 +1297,14 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
     amRevenue.set(amName, acc)
 
     if (amName === "Unassigned") {
-      // Smart suggestions only make sense when there's no Monday match yet — otherwise the
+      // Smart suggestions only make sense when there's no Monday match yet - otherwise the
       // fix is "fill the AM column", not "pick a Monday item".
       let suggestions: MatchSuggestion[] | undefined
       if (!link) {
         const SUGGESTION_THRESHOLD = 0.4
         const TOP_N = 3
-        // Score against every available Monday-side variant — item.name, firstName,
-        // companyName, and combined "first name + item name" — and pick the best.
+        // Score against every available Monday-side variant - item.name, firstName,
+        // companyName, and combined "first name + item name" - and pick the best.
         // Captures cases where Stripe customer is a person ("John Smith") while Monday
         // splits the same client into name=Acme BV / firstName=John, or where Monday
         // has the company name in a separate `bedrijfsnaam` column.
@@ -1343,7 +1343,7 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
     }
   }
 
-  // Sort unassigned by revenue desc — highest-impact gaps surface first.
+  // Sort unassigned by revenue desc - highest-impact gaps surface first.
   unassignedCustomers.sort((a, b) => b.revenue - a.revenue)
 
   const byAccountManager: AccountManagerRevenue[] = [...amRevenue.entries()]
@@ -1359,7 +1359,7 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
       serviceFeePerCustomer: data.customers > 0 ? (data.mrr + data.newBusiness) / data.customers : 0,
     }))
 
-  // Roll AMs into delivery teams. Unassigned is excluded — it's surfaced separately
+  // Roll AMs into delivery teams. Unassigned is excluded - it's surfaced separately
   // at the bottom of the dashboard. AMs that don't match any TEAMS member fall into
   // a synthetic "Other" bucket so nothing gets dropped silently.
   const teamAcc = new Map<string, { revenue: number; customers: number; mrr: number; newBusiness: number; adBudget: number }>()
@@ -1393,7 +1393,7 @@ export async function fetchDelivery(startDate: string, endDate: string): Promise
       }
     })
 
-  // Top-level totals come straight from the breakdown — keeps Delivery and Finance aligned.
+  // Top-level totals come straight from the breakdown - keeps Delivery and Finance aligned.
   const mrr = breakdown.serviceFeeMrr.invoiced
   const newBusiness = breakdown.serviceFeeNewBusiness.invoiced
   const adBudget = breakdown.adBudget.invoiced

@@ -10,7 +10,7 @@ type Trend = {
    *  week", "Stable", "Lowest since launch"). Pure text, no logic. */
   caption?: string
   /** Override the up/down direction inferred from `pct` sign. Use when the
-   *  metric's "good" direction is reversed (eg. CPL — down is good). */
+   *  metric's "good" direction is reversed (eg. CPL - down is good). */
   goodWhen?: "up" | "down"
   /** Override the auto-formatted "+12.5%" chip text. Use when the delta is
    *  an absolute count instead of a percentage (eg. "+2 vs yesterday"). The
@@ -19,7 +19,7 @@ type Trend = {
 }
 
 /**
- * Optional tinting of the hero number. Use sparingly — only when the metric
+ * Optional tinting of the hero number. Use sparingly - only when the metric
  * has a verdict that benefits from a glance-level color (action count = red
  * when > 0, health score = green/amber/red against target). Default
  * `neutral` keeps the value in the standard foreground color.
@@ -30,10 +30,10 @@ type Props = {
   /** Small uppercased label above the number (Flow + herMon both do this). */
   label: string
   /** Optional icon rendered to the left of the label (e.g. €, %, 🎯). Lucide
-   *  icon component or a custom node — kept tiny (12px) so it sits next to
+   *  icon component or a custom node - kept tiny (12px) so it sits next to
    *  the 11px label without throwing the visual weight off. */
   icon?: React.ReactNode
-  /** Optional tiny suffix on the label line — e.g. "7d", "MTD". Same muted
+  /** Optional tiny suffix on the label line - e.g. "7d", "MTD". Same muted
    *  treatment as the label so it reads as a window qualifier. */
   windowLabel?: string
   /** The hero number. Pre-formatted string so the component stays
@@ -63,7 +63,7 @@ function fmtPct(pct: number): string {
 }
 
 /**
- * Hub KPI tile — the herMon dashboard pattern (label, delta chip top-right,
+ * Hub KPI tile - the herMon dashboard pattern (label, delta chip top-right,
  * big number, trend caption underneath). Used everywhere we surface a metric
  * card: Home, Targets, Watch List, Client home tab.
  *

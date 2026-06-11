@@ -243,9 +243,9 @@ export function InvoiceDetailModal({ title, details, open, onClose }: Props) {
                         ) : (
                           d.invoiceNumber
                         )
-                      ) : "—"}
+                      ) : "-"}
                     </td>
-                    <td className="py-2 px-5 truncate max-w-[180px]">{d.customerName || "—"}</td>
+                    <td className="py-2 px-5 truncate max-w-[180px]">{d.customerName || "-"}</td>
                     <td className="py-2 px-5 relative" onClick={(e) => e.stopPropagation()}>
                       {d.category === "ad_budget" ? (
                         <span className="text-[10px] text-muted-foreground">Ad Budget</span>

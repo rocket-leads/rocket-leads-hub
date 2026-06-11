@@ -17,7 +17,7 @@ const HUB_URL = process.env.NEXT_PUBLIC_HUB_URL ?? "https://hub.rocketleads.com"
 const MAX_LINES_PER_SECTION = 5
 
 /**
- * Morning Slack DM — "wat staat er voor jou klaar in de Hub vandaag".
+ * Morning Slack DM - "wat staat er voor jou klaar in de Hub vandaag".
  *
  * Fans out one DM per Hub user that has a Slack ID mapped. Each user gets
  * their own assigned-to-me view: overdue tasks, tasks due today, unread
@@ -26,7 +26,7 @@ const MAX_LINES_PER_SECTION = 5
  * Cadence: hourly cron + shouldRunNow guard against the configured hour
  * (default 08:00 Europe/Amsterdam). Same shape as slack-personal-sales.
  *
- * Failure isolation: per-user failures don't abort the run — they get
+ * Failure isolation: per-user failures don't abort the run - they get
  * collected into the response payload so the watchdog can flag a partial
  * outcome instead of marking the whole cron as failed.
  */
@@ -96,7 +96,7 @@ export async function GET(req: NextRequest) {
         }),
         // Chat threads endpoint is the simplest path to "unread external
         // threads for this user". Plain HTTP would require an auth header
-        // dance — we hit Supabase directly via the same helper the API uses.
+        // dance - we hit Supabase directly via the same helper the API uses.
         getUnreadExternalThreads(u.id, u.role ?? "user"),
       ])
 
@@ -170,7 +170,7 @@ function deriveFirstName(name: string | null, email: string | null): string {
  *  the threads they're allowed to read. */
 async function getUnreadExternalThreads(userId: string, role: string) {
   const { listChatThreads } = await import("@/lib/inbox/fetchers")
-  // The fetcher's Role type is internal to the module; safe to widen here —
+  // The fetcher's Role type is internal to the module; safe to widen here -
   // listChatThreads handles unknown roles by falling back to the most
   // restrictive access path.
   const threads = await listChatThreads(userId, role as Parameters<typeof listChatThreads>[1], "external")
@@ -224,7 +224,7 @@ function renderTaskSection(header: string, items: TaskOrUpdate[]): string {
   const bullets = items
     .slice(0, MAX_LINES_PER_SECTION)
     .map((it) => {
-      const client = it.clientName ? `*${it.clientName}* — ` : ""
+      const client = it.clientName ? `*${it.clientName}* - ` : ""
       return `• ${client}${truncate(it.title, 80)}`
     })
     .join("\n")
@@ -238,7 +238,7 @@ function renderUpdateSection(header: string, items: TaskOrUpdate[]): string {
     .slice(0, MAX_LINES_PER_SECTION)
     .map((it) => {
       const from = it.authorName ? `${it.authorName} → ` : ""
-      const client = it.clientName ? `*${it.clientName}* — ` : ""
+      const client = it.clientName ? `*${it.clientName}* - ` : ""
       return `• ${from}${client}${truncate(it.title, 80)}`
     })
     .join("\n")
@@ -252,7 +252,7 @@ function renderChatSection(header: string, threads: ThreadSummary[]): string {
     .slice(0, MAX_LINES_PER_SECTION)
     .map((t) => {
       const name = t.clientName ?? t.primaryName
-      return `• *${name}* — ${truncate(t.latestPreview, 80)} _(${t.unreadCount} unread)_`
+      return `• *${name}* - ${truncate(t.latestPreview, 80)} _(${t.unreadCount} unread)_`
     })
     .join("\n")
   const more = threads.length > MAX_LINES_PER_SECTION ? `\n_+ ${threads.length - MAX_LINES_PER_SECTION} more_` : ""

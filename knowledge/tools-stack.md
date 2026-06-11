@@ -1,4 +1,4 @@
-# Rocket Leads — Tools & Stack
+# Rocket Leads - Tools & Stack
 
 > **Last updated:** 2026-04-04 05:30 CET
 > Dit document beschrijft alle tools, platformen en koppelingen die Rocket Leads gebruikt. Gebruik dit als referentie voor AI agents, onboarding van teamleden, en bij het opzetten van automatiseringen.
@@ -15,28 +15,28 @@ Rocket Leads draait op Meta Ads, Google Ads en TikTok Ads als advertentieplatfor
 
 ### Meta Ads (primair)
 - Campagnes worden beheerd via **Meta Ads Manager**
-- Toegang loopt via de **Rocket Leads Business Manager** — teamleden zijn hieraan toegevoegd als personen
+- Toegang loopt via de **Rocket Leads Business Manager** - teamleden zijn hieraan toegevoegd als personen
 - **Standaard:** klant voegt hun eigen ad account, pagina, pixel etc. toe door het Business ID van Rocket Leads als partner te koppelen. Rocket Leads teamleden worden dan toegewezen aan het ad account van de klant
 - **Alternatief:** als de klant technische problemen heeft (errors, payment issues, niet technisch genoeg) → Rocket Leads gebruikt het eigen vaste ad account (1 account, 1 account ID). Advertentiebudget wordt dan naar de klant gefactureerd
-- Voorkeur is altijd het account van de klant — klanten betalen en willen hun eigen data verzamelen
+- Voorkeur is altijd het account van de klant - klanten betalen en willen hun eigen data verzamelen
 
 ### Google Ads (secundair)
 - Zelfde principe: klant heeft eigen Google Ads account en nodigt Rocket Leads uit per email
 
 ### TikTok Ads (tertiair)
 - Zelfde principe: eigen business manager account per klant, klant nodigt Rocket Leads uit
-- Sommige klanten gebruiken het Rocket Leads account — budget wordt dan gefactureerd
+- Sommige klanten gebruiken het Rocket Leads account - budget wordt dan gefactureerd
 
 ---
 
 ## CRM & Project Management
 
 ### Monday.com
-- Gebruikt als **CRM voor klanten** — 1 Monday-bord per klant (soms meerdere borden als klant meerdere bedrijven/producten/diensten heeft)
+- Gebruikt als **CRM voor klanten** - 1 Monday-bord per klant (soms meerdere borden als klant meerdere bedrijven/producten/diensten heeft)
 - Leads komen binnen vanuit Meta Lead Forms, Loveable, of Typeform (via Zapier) → Monday CRM
 - Klanten kunnen hun eigen resultaten inzien in hun Monday-bord
-- **Updates:** Monday wordt gebruikt met het updates-systeem — taken worden als update in een item gezet, updates kunnen worden afgevinkt
-- Sommige grotere klanten hebben hun eigen CRM — dan koppelen we Monday eraan, maar **Rocket Leads werkt nooit in het systeem van de klant**. Altijd in ons eigen Monday-bord
+- **Updates:** Monday wordt gebruikt met het updates-systeem - taken worden als update in een item gezet, updates kunnen worden afgevinkt
+- Sommige grotere klanten hebben hun eigen CRM - dan koppelen we Monday eraan, maar **Rocket Leads werkt nooit in het systeem van de klant**. Altijd in ons eigen Monday-bord
 - Bij leadopvolging door Rocket Leads: Monday-bord wordt bovenop het klant-CRM gebruikt voor leadkwalificatie
 - In de Rocket Leads Hub: Client Specific Dashboard combineert KPI's van Monday en Meta
 
@@ -48,14 +48,14 @@ Rocket Leads draait op Meta Ads, Google Ads en TikTok Ads als advertentieplatfor
 
 ### Trengo (klantcommunicatie)
 - Alle klantcommunicatie loopt via Trengo
-- Kanalen: **WhatsApp** (via WhatsApp Business API) en **email** — uitsluitend deze twee
+- Kanalen: **WhatsApp** (via WhatsApp Business API) en **email** - uitsluitend deze twee
 - Geen groepsapps
 - Elke account manager heeft zijn eigen inbox (WhatsApp inbox + mail inbox)
 - Inboxen kunnen makkelijk gedeeld worden (bijv. bij vakantie)
 
 ### Google Meet
 - Gebruikt voor evaluatie calls en klantmeetings
-- Voorkeur boven telefonisch — helpt bij relatieopbouw
+- Voorkeur boven telefonisch - helpt bij relatieopbouw
 
 ### Slack (interne communicatie)
 - Alle interne communicatie loopt via Slack
@@ -66,7 +66,7 @@ Rocket Leads draait op Meta Ads, Google Ads en TikTok Ads als advertentieplatfor
 ## Automatisering
 
 ### Zapier
-- Enige automatiseringstool — geen Make, geen n8n
+- Enige automatiseringstool - geen Make, geen n8n
 - Honderden zaps actief (intern + extern voor alle klanten)
 - Tier: 50.000 tasks
 - **Standaard lead flow per klant:**
@@ -92,22 +92,22 @@ Rocket Leads draait op Meta Ads, Google Ads en TikTok Ads als advertentieplatfor
 - Werkwijze: standaard prompt (gebouwd in Claude Chat) → invoeren in Loveable → landingspagina
 - Geen Loveable template, wel een vaste prompt
 - Landingspagina's staan op Rocket Leads infrastructuur (klant krijgt deze niet mee bij offboarding)
-- **Landing.ai** wordt ook nog gebruikt voor sommige landingspagina's — draait nog door, maar transitie gaat volledig naar Loveable
+- **Landing.ai** wordt ook nog gebruikt voor sommige landingspagina's - draait nog door, maar transitie gaat volledig naar Loveable
 
 ### Content & Creatives
 - **Shanna** maakt alle ad creatives, edit video's, en gaat op locatie voor content
-- **CapCut** — video editing
-- **InVideo Pro** — video editing
-- **Canva** — static ads (foto's, afbeeldingen)
-- **Manus** (AI tool van Meta) — automatisch advertenties maken
+- **CapCut** - video editing
+- **InVideo Pro** - video editing
+- **Canva** - static ads (foto's, afbeeldingen)
+- **Manus** (AI tool van Meta) - automatisch advertenties maken
 - Bij HTO-pakket: 1x per kwartaal videoshoot op locatie door videograaf
 - AI Avatar + onbeperkte high-end variaties (onderdeel van HTO)
 
 ### AI Tools
-- **ChatGPT** — brainstormen
-- **Claude** — diverse taken
-- **ElevenLabs** — voiceovers
-- **HeyGen / HeyGen Suite** — AI avatars
+- **ChatGPT** - brainstormen
+- **Claude** - diverse taken
+- **ElevenLabs** - voiceovers
+- **HeyGen / HeyGen Suite** - AI avatars
 
 ---
 
@@ -123,14 +123,14 @@ Rocket Leads draait op Meta Ads, Google Ads en TikTok Ads als advertentieplatfor
   - Factuur wordt 7 dagen voor vernieuwing van de maand verstuurd
   - Klant heeft 7 dagen om te betalen
   - Als niet betaald → campagne op hold
-- **Opzegtermijn:** 7 dagen — zodra de factuur verzonden is, is het opzegtermijn verlopen
+- **Opzegtermijn:** 7 dagen - zodra de factuur verzonden is, is het opzegtermijn verlopen
 
 ### PandaDoc
 - Gebruikt voor het tekenen van offertes en algemene voorwaarden
 - Na tekenen → direct doorgestuurd naar Stripe Payment Link
 
 ### Beleid bij betalingsproblemen
-- We zijn klantvriendelijk — altijd meedenken in het belang van Rocket Leads op de langere termijn
+- We zijn klantvriendelijk - altijd meedenken in het belang van Rocket Leads op de langere termijn
 - Soms is het beter om een factuur te crediteren en de campagne op hold te zetten dan hard op de algemene voorwaarden te staan
 - Per klant en per case bekijken: wat heeft de klant al gefactureerd, hoe staan ze in de wedstrijd
 - Doel: klant komt later terug voor opnieuw een half jaar of jaar samenwerking
@@ -141,7 +141,7 @@ Rocket Leads draait op Meta Ads, Google Ads en TikTok Ads als advertentieplatfor
 
 ### Fathom
 - Alle meetings worden opgenomen en getranscribeerd via Fathom
-- Transcripts worden op dit moment alleen opgeslagen in Fathom zelf — worden nog nergens naartoe gepusht
+- Transcripts worden op dit moment alleen opgeslagen in Fathom zelf - worden nog nergens naartoe gepusht
 - **Plan:** transcripts gaan gecentraliseerd worden voor sales meetings, kick-off meetings en evaluatie meetings om meer data te verzamelen over het salesproces en klanttevredenheid
 
 ---
@@ -152,20 +152,20 @@ Rocket Leads draait op Meta Ads, Google Ads en TikTok Ads als advertentieplatfor
 - Per klant wordt een Google Drive map aangemaakt
 - Klant levert hier content aan: logo's, afbeeldingen, beeldmateriaal, bestanden
 - Sommige klanten hebben eigen Dropbox of sturen WeTransfer-links
-- Google Drive capaciteit: 100 GB — raakt af en toe vol, dan worden oude klanten met grote bestanden opgeruimd (taak van account manager)
+- Google Drive capaciteit: 100 GB - raakt af en toe vol, dan worden oude klanten met grote bestanden opgeruimd (taak van account manager)
 
 ---
 
 ## Overige tools
 
-- **Rocket Leads Hub** (hub.rocketleads.com) — intern dashboard met:
-  - **Clients overzicht** — alle klanten met KPI's, health status, billing status
-  - **Watch List** — campagne performance monitor voor Live klanten. Categoriseert klanten in Action Needed / Watch / Good op basis van CPL/CPA trends. AI-verrijkt met Monday CRM updates + Trengo conversaties. Insight kolom (KPI observatie) + AI Note kolom (concrete actie aanbeveling)
-  - **Client detail pagina** — per klant: Lead Analysis (Quantity + Quality), AI Optimisation Proposals (concrete acties met ad-namen), KPI cards, UTM breakdown, ad performance, billing, Trengo communicatie
-  - **Targets dashboard** — agency-breed: delivery, finance, marketing insights
+- **Rocket Leads Hub** (hub.rocketleads.com) - intern dashboard met:
+  - **Clients overzicht** - alle klanten met KPI's, health status, billing status
+  - **Watch List** - campagne performance monitor voor Live klanten. Categoriseert klanten in Action Needed / Watch / Good op basis van CPL/CPA trends. AI-verrijkt met Monday CRM updates + Trengo conversaties. Insight kolom (KPI observatie) + AI Note kolom (concrete actie aanbeveling)
+  - **Client detail pagina** - per klant: Lead Analysis (Quantity + Quality), AI Optimisation Proposals (concrete acties met ad-namen), KPI cards, UTM breakdown, ad performance, billing, Trengo communicatie
+  - **Targets dashboard** - agency-breed: delivery, finance, marketing insights
   - Date ranges sluiten vandaag altijd uit (data tot gisteren)
   - Dagelijkse cron genereert AI analyses voor alle klanten → instant laden
-- **Calendly** — klanten koppelen hun Calendly voor afspraakinplanning
+- **Calendly** - klanten koppelen hun Calendly voor afspraakinplanning
 
 ---
 
@@ -206,11 +206,11 @@ Maandags rapportage (Monday dashboard / Hub)
 
 ## Belangrijke nuances voor AI agents
 
-- **Zapier is de enige automatiseringstool** — geen Make, geen n8n
-- **Rocket Leads werkt NOOIT in het systeem van de klant** — altijd in eigen Monday-bord
-- Landingspagina's staan op **Rocket Leads infrastructuur** — bewust voor client dependency
+- **Zapier is de enige automatiseringstool** - geen Make, geen n8n
+- **Rocket Leads werkt NOOIT in het systeem van de klant** - altijd in eigen Monday-bord
+- Landingspagina's staan op **Rocket Leads infrastructuur** - bewust voor client dependency
 - **Trengo is het enige kanaal** voor klantcommunicatie (WhatsApp + email)
 - Transitie naar **Typeform** als standaard formulierentool is gaande
-- **Stripe** is het enige betalingssysteem — eerste betaling altijd via Payment Link
+- **Stripe** is het enige betalingssysteem - eerste betaling altijd via Payment Link
 - Elke account manager heeft een eigen Trengo inbox die gedeeld kan worden
-- Fathom transcripts worden nog niet automatisch verwerkt — dit is een toekomstig project
+- Fathom transcripts worden nog niet automatisch verwerkt - dit is een toekomstig project

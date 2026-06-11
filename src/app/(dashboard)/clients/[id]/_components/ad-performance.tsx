@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type { UtmRow, KpiResult } from "@/lib/clients/kpis"
 
-// Rewritten 2026-05 after appointments tracking was removed from the Hub —
+// Rewritten 2026-05 after appointments tracking was removed from the Hub -
 // previously categorization leaned on taken-call rate, which depended on the
 // `dateAppointment` + `leadStatus2` Monday columns being reliably maintained
 // (they weren't). Quality signal is now deals/leads conversion only.
@@ -128,12 +128,12 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {r.category === "winner"
-                      ? `All-round performer — ${r.leads} leads, ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed (${fmtPct(r.dealRate)} conversion). ${
-                          r.reliability === "low" ? "Scale cautiously — limited data so far." : "Strong across volume and revenue. Scale with confidence."
+                      ? `All-round performer - ${r.leads} leads, ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed (${fmtPct(r.dealRate)} conversion). ${
+                          r.reliability === "low" ? "Scale cautiously - limited data so far." : "Strong across volume and revenue. Scale with confidence."
                         }`
-                      : `Sniper — low opt-in volume but ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed. ${
+                      : `Sniper - low opt-in volume but ${r.deals} deal${r.deals !== 1 ? "s" : ""} closed. ${
                           r.reliability === "low"
-                            ? "Promising early signal — scale modestly to gather more data."
+                            ? "Promising early signal - scale modestly to gather more data."
                             : "Reliable signal. Scale budget to capture more of this high-quality traffic."
                         }`}
                     {r.revenue > 0 && ` ${fmtEur(r.revenue)} revenue.`}
@@ -170,7 +170,7 @@ export function OptimizationProposal({ scored, kpis }: { scored: ScoredRow[]; kp
           <div>
             <div className="mb-2 flex items-center gap-1.5 pl-4">
               <span className="h-2 w-2 rounded-full bg-amber-500" />
-              <span className="text-sm font-medium">Monitor — insufficient data</span>
+              <span className="text-sm font-medium">Monitor - insufficient data</span>
             </div>
             <div className="space-y-1">
               {monitor.map((r) => (

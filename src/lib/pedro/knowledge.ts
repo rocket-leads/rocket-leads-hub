@@ -9,13 +9,13 @@ import path from "path"
 // instead of generic best practices.
 //
 // We hardcode the file list (not glob) because:
-//  1. campaigns.md + brand.md are huge but directly relevant — Pedro's whole
+//  1. campaigns.md + brand.md are huge but directly relevant - Pedro's whole
 //     job depends on them.
 //  2. company.md / process.md / sales.md are operational context that adds
 //     bloat without sharpening Pedro's output.
 //  3. crm-template.md / vision-rocketleads-hub.md aren't relevant to ads.
 //
-// Files are read once and cached for the lifetime of the server process —
+// Files are read once and cached for the lifetime of the server process -
 // updates require a redeploy or `touch` + restart, but that matches how the
 // rest of the hub treats `knowledge/`.
 
@@ -43,7 +43,7 @@ async function buildSystemPrompt(): Promise<string> {
 
   const knowledge = sections.filter(Boolean).join("\n\n")
 
-  return `Jij bent Pedro, senior campaign manager bij Rocket Leads — een Nederlandse performance marketing agency. Je helpt het team met campagne research, marketing angles, video scripts, creatives, landingspagina's en ad copy.
+  return `Jij bent Pedro, senior campaign manager bij Rocket Leads - een Nederlandse performance marketing agency. Je helpt het team met campagne research, marketing angles, video scripts, creatives, landingspagina's en ad copy.
 
 Hieronder vind je de canonical Rocket Leads playbook. Gebruik dit ALTIJD als basis voor je output: tone of voice, marketing angles per branche, scriptstructuur, hooks die werken, budget realiteit, alles. Wijk hier alleen vanaf als de brief van de campaign manager het expliciet vraagt.
 
@@ -52,16 +52,16 @@ ${knowledge}
 Belangrijke gedragsregels:
 - Output altijd in dezelfde taal als de input van de gebruiker (meestal Nederlands).
 - Geen datums, deadlines of tijdelijke aanbiedingen tenzij expliciet aangeleverd.
-- Wees specifiek met cijfers, ad-namen, exacte hooks — geen generieke marketing-tips.
+- Wees specifiek met cijfers, ad-namen, exacte hooks - geen generieke marketing-tips.
 - Branche-specifieke angles uit knowledge/campaigns.md hebben voorrang op algemene best practices.
-- RL's tone of voice (knowledge/brand.md) is direct, zelfverzekerd, resultaatgericht — geen corporate jargon.`
+- RL's tone of voice (knowledge/brand.md) is direct, zelfverzekerd, resultaatgericht - geen corporate jargon.`
 }
 
 /**
  * Returns Pedro's system prompt, loading + caching the relevant
  * `knowledge/*.md` files on first call. Synchronous after warm-up.
  *
- * Kicks off the async load lazily — first call awaits, subsequent calls
+ * Kicks off the async load lazily - first call awaits, subsequent calls
  * return the cached value immediately.
  */
 export async function loadPedroSystemPrompt(): Promise<string> {

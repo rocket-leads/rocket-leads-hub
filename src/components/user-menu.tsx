@@ -14,7 +14,7 @@ type Props = {
   initialLocale: Locale
   userName: string
   /** Job-function label shown below the name (e.g. "Owner", "Account
-   *  Manager", "Finance"). Replaces the email — Roy preferred role over
+   *  Manager", "Finance"). Replaces the email - Roy preferred role over
    *  contact info per herMon's pattern. */
   userFunction: string
   userInitial: string
@@ -52,7 +52,7 @@ export function UserMenu({
         title={accountTitle}
       >
         <div className="relative shrink-0">
-          {/* Solid brand-purple square — clean, high-contrast initial. */}
+          {/* Solid brand-purple square - clean, high-contrast initial. */}
           <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center text-sm font-semibold text-primary-foreground">
             {userInitial}
           </div>

@@ -18,7 +18,7 @@ import {
  *
  * Precondition: client has a `googleDriveId` set, AND the folder must be
  * shared with the service account email as Editor. Drive returns 403
- * otherwise — we translate that into a clear actionable error.
+ * otherwise - we translate that into a clear actionable error.
  *
  * Idempotent on already-saved: the refresh row stores the file id +
  * URL; re-clicking returns the existing URL without uploading again.
@@ -63,7 +63,7 @@ export async function POST(
 
     if (refreshRow.stage !== "creatives") {
       return NextResponse.json(
-        { error: `Stage '${refreshRow.stage}' niet ondersteund — alleen creatives voor nu.` },
+        { error: `Stage '${refreshRow.stage}' niet ondersteund - alleen creatives voor nu.` },
         { status: 400 },
       )
     }

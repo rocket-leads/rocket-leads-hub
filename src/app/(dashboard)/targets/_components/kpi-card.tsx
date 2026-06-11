@@ -55,7 +55,7 @@ function getBarColor(variant: string, value: number, target: number): string {
 
 // Chrome (rounded-2xl, border-border/60, shadow, px-5 py-4, 11px uppercase
 // label, 26px font-heading value) is aligned 1:1 with the canonical KpiTile
-// primitive — Roy 2026-05-23: "structuur en fonts moeten overal hetzelfde".
+// primitive - Roy 2026-05-23: "structuur en fonts moeten overal hetzelfde".
 // What this card adds on top of KpiTile and what KpiTile doesn't:
 //   - a target progress bar (actual + expected/pro-rata overlay)
 //   - dashed border + "Expected" chip when value is computed (not yet actual)
@@ -133,7 +133,7 @@ export const KpiCard = memo(function KpiCard({
         </div>
       </div>
       {/* MTD placeholder used to dim the value to text-muted-foreground/60
-          but Roy 2026-05-23: "die moeten wel zwart" — the small MTD pill in
+          but Roy 2026-05-23: "die moeten wel zwart" - the small MTD pill in
           the top-right is enough signal on its own, the headline number
           should stay in the brand foreground so the page doesn't read as
           a sea of grey while the real range loads. */}
@@ -147,7 +147,7 @@ export const KpiCard = memo(function KpiCard({
       {hasTarget && (
         <div className="mt-3 space-y-1">
           <div className="relative h-1 bg-muted rounded-full overflow-hidden">
-            {/* Expected (pro-rata) — lighter background */}
+            {/* Expected (pro-rata) - lighter background */}
             {expectedPct > 0 && (
               <div
                 className="absolute inset-y-0 left-0 bg-muted-foreground/30 rounded-full"

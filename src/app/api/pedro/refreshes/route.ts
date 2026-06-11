@@ -9,7 +9,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  * trimmed. Used by the RefreshHistoryPanel at the top of the Optimize
  * tabs to show "Eerdere refreshes (N)" with click-to-load behaviour.
  *
- * Lightweight projection — only the columns the panel needs to render a
+ * Lightweight projection - only the columns the panel needs to render a
  * row. The full envelope comes from GET /api/pedro/refreshes/[id] when
  * the AM clicks a row.
  */

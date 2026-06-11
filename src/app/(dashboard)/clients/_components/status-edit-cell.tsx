@@ -19,7 +19,7 @@ import { t } from "@/lib/i18n/t"
 type Props = {
   mondayItemId: string
   /** Null when Monday's status column is empty or holds an unmapped value.
-   *  Renders as a muted "—" pill so the empty state is visible and clickable. */
+   *  Renders as a muted "-" pill so the empty state is visible and clickable. */
   status: ClientStatus | null
   /** Onboarding-board clients are derived from board membership, not the column. */
   readOnly?: boolean

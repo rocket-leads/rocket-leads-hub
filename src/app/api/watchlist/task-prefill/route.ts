@@ -10,7 +10,7 @@ import { getAiLocale } from "@/lib/i18n/server"
  * body inputs with a concrete, edit-ready draft Pedro would suggest.
  *
  * Input is the same context the row already has client-side (insight,
- * 7d KPIs, category bucket) — no extra round-trips.
+ * 7d KPIs, category bucket) - no extra round-trips.
  *
  * Returns plain text fields the dialog can drop straight into <input> /
  * <textarea>. Failures fall back to a deterministic template (no spinner
@@ -46,10 +46,10 @@ function fallback(body: Body, locale: "nl" | "en"): PrefillResponse {
   // headline / body fields immediately editable.
   const title =
     locale === "nl"
-      ? `Watch List: ${body.clientName} — actie nodig`
-      : `Watch List: ${body.clientName} — action needed`
-  const cm = body.campaignManager?.trim() || "—"
-  const insight = body.insight?.trim() || "—"
+      ? `Watch List: ${body.clientName} - actie nodig`
+      : `Watch List: ${body.clientName} - action needed`
+  const cm = body.campaignManager?.trim() || "-"
+  const insight = body.insight?.trim() || "-"
   const draftBody =
     locale === "nl"
       ? `Reden: ${insight}\n\nActie: bekijk de laatste 7d performance en stel een vervolgstap voor.\nToegewezen aan: ${cm}.`
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
   const locale = await getAiLocale()
 
-  // Compact context block — small enough to send to Haiku without the
+  // Compact context block - small enough to send to Haiku without the
   // full Pedro guardrails stack (this isn't a Pedro insight, it's a
   // copy-write task).
   const kpiLines: string[] = []
@@ -98,9 +98,9 @@ Schrijf:
 - BODY: 3-5 regels (gebruik newlines, geen bullets). Eerste regel = waarom (één feit met cijfer + window-label). Tweede regel = concrete eerstvolgende stap. Optioneel derde regel = vraag waarop de CM moet antwoorden of context (welke ad, welke campagne).
 
 GEEN:
-- Geen verzonnen cijfers — gebruik alleen wat in de KPI snapshot of de insight staat.
+- Geen verzonnen cijfers - gebruik alleen wat in de KPI snapshot of de insight staat.
 - Geen budget-increase suggesties (klanten zitten op vast budget).
-- Geen "Hi {name}" / "Hey CM" — dit is een inbox-taak, geen mail.
+- Geen "Hi {name}" / "Hey CM" - dit is een inbox-taak, geen mail.
 - Geen markdown (geen **, geen #, geen lijsten).
 
 Output STRICT JSON, niets erbuiten:
@@ -109,7 +109,7 @@ Output STRICT JSON, niets erbuiten:
   try {
     const message = await anthropic.messages.create({
       // Haiku is plenty for a 5-line copy task and 5-10x faster than
-      // Sonnet — the dialog can't wait 4 seconds for a draft.
+      // Sonnet - the dialog can't wait 4 seconds for a draft.
       model: "claude-haiku-4-5-20251001",
       max_tokens: 400,
       messages: [{ role: "user", content: userPrompt }],

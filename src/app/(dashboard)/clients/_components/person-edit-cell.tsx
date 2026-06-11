@@ -40,7 +40,7 @@ function avatarColor(name: string): string {
 type Props = {
   mondayItemId: string
   fieldKey: "account_manager" | "campaign_manager" | "appointment_setter"
-  /** Current display value from Monday — comma-separated for multi-person columns. */
+  /** Current display value from Monday - comma-separated for multi-person columns. */
   value: string
   /** When true, allows multi-select (e.g. appointment_setter). */
   multi?: boolean
@@ -64,7 +64,7 @@ export function PersonEditCell({ mondayItemId, fieldKey, value, multi = false }:
   const mutation = useMutation({
     mutationFn: async ({ personIds, personNames }: { personIds: number[]; personNames: string[] }) => {
       // Names accompany the IDs so the backend can patch the cache with
-      // the value we know was selected — avoids the Monday read-after-write
+      // the value we know was selected - avoids the Monday read-after-write
       // race that previously flashed the cell back to "unassigned".
       const res = await fetch(`/api/clients/${mondayItemId}`, {
         method: "PATCH",

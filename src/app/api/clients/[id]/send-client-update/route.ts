@@ -36,17 +36,17 @@ import { NextRequest, NextResponse } from "next/server"
  * Send shape: WhatsApp HSM TEMPLATE, not free-text. The AM's personal
  * `whatsapp_template_name` (e.g. `rl_universal_roy`) is the Meta-approved
  * wrapper, and the rendered weekly update goes into `{{1}}`. This works
- * inside AND outside the 24h conversation window — Meta requires templates
+ * inside AND outside the 24h conversation window - Meta requires templates
  * for any outbound outside the window, and templates are also safe inside.
  *
- * Requires the AM to have connected their personal Trengo token at /account —
+ * Requires the AM to have connected their personal Trengo token at /account -
  * we send as them, not as a generic system bot, so the client sees the AM's
  * name in WhatsApp / on the email "From" line.
  *
  * Threading: when the Hub already has an `inbox_events` row from this Trengo
  * conversation we use that as the anchor (drops us into the existing reply
- * pipeline with mirror writes for free). When there's no Hub anchor yet —
- * webhook hasn't backfilled, brand-new ticket — we send the template
+ * pipeline with mirror writes for free). When there's no Hub anchor yet -
+ * webhook hasn't backfilled, brand-new ticket - we send the template
  * DIRECTLY to the latest Trengo WhatsApp ticket and write the mirror row
  * ourselves. The AM should never have to "open the Inbox tab first" just
  * to unblock a send.
@@ -69,7 +69,7 @@ function isWhatsAppChannel(type: string | null | undefined): boolean {
   return /whats/i.test(type) || /^wa[_-]?/i.test(type)
 }
 
-/** Email channel detector — same shape as the WhatsApp one. Used to pick the
+/** Email channel detector - same shape as the WhatsApp one. Used to pick the
  *  right ticket when we have no Hub anchor for an email send. */
 function isEmailChannel(type: string | null | undefined): boolean {
   if (!type) return false
@@ -98,7 +98,7 @@ export async function POST(
     /** V2 multi-variable template path: the dialog ships the full editable
      *  parts alongside the rendered `message`. When present + feature flag
      *  on + weekly template approved, we derive 5 vars from this instead of
-     *  shipping the whole rendered body as `{{1}}`. Optional — V1 path
+     *  shipping the whole rendered body as `{{1}}`. Optional - V1 path
      *  ignores it entirely. */
     parts?: EditableParts
   }
@@ -129,7 +129,7 @@ export async function POST(
     }
 
     // Channel routes the send: email goes as free-text with a subject (no HSM
-    // template needed — Meta's template-only rule is WhatsApp-specific),
+    // template needed - Meta's template-only rule is WhatsApp-specific),
     // WhatsApp goes through one of two HSM templates.
     const sendAsEmail = preferEmail(client.contactChannel)
 
@@ -165,9 +165,9 @@ export async function POST(
 
     // Test mode: short-circuit the entire conversation-routing dance and
     // deliver the rendered message to an ad-hoc address supplied at send
-    // time (no persisted "test contact" lookup — testing is rare, the
+    // time (no persisted "test contact" lookup - testing is rare, the
     // dialog just remembers via localStorage). Uses the AM's outbound
-    // channels + token + template, so the test is end-to-end faithful —
+    // channels + token + template, so the test is end-to-end faithful -
     // only the destination is swapped. Skips the inbox_events mirror +
     // client_updates audit (this isn't a real client communication).
     if (testMode) {
@@ -317,30 +317,30 @@ export async function POST(
     }
 
     // Channel routing for client-update sends is ALWAYS done via the live
-    // Trengo conversation list — we no longer use a "last inbox_event"
+    // Trengo conversation list - we no longer use a "last inbox_event"
     // anchor for threading. Two bugs the anchor caused:
     //   1. Email sends could land in a WhatsApp ticket when the latest
     //      inbox_event happened to be a WA message (Dr. Ludidi case).
-    //      Trengo rejected with "outside 24h window / SMS fallback" —
+    //      Trengo rejected with "outside 24h window / SMS fallback" -
     //      WhatsApp constraints triggered by email content.
     //   2. WhatsApp sends could pick a channel where the AM's template
     //      isn't approved when the latest event was on a different WA
     //      channel than the one with the approved template.
     // Trade-off: slightly worse threading (a brand-new ticket may be
-    // created when an old one would have worked). Worth it — sends are
+    // created when an old one would have worked). Worth it - sends are
     // rare, wrong channel breaks them entirely.
     const conversations = await fetchConversations(client.trengoContactId).catch(
       () => [] as TrengoConversation[],
     )
 
-    // No early return on `conversations.length === 0` here — for email
+    // No early return on `conversations.length === 0` here - for email
     // sends we bootstrap a brand-new email ticket a few lines down (the
     // exact reason that fallback was built). Bailing out before it could
     // run meant weekly-update sends to clients without a pre-existing
     // Trengo ticket failed with "geen gesprek in Trengo" even though the
     // bootstrap path was designed to handle that case. Roy 2026-05-23.
     //
-    // Strict channel-type matching — no silent fallback to `conversations[0]`
+    // Strict channel-type matching - no silent fallback to `conversations[0]`
     // because that's exactly how the email-into-WA-ticket bug used to land.
     let ticket = sendAsEmail
       ? conversations.find((c) => isEmailChannel(c.channel?.type))
@@ -349,17 +349,17 @@ export async function POST(
     // Email fallback: when the contact has no email ticket yet (e.g.
     // Dr. Ludidi who's email-primary on Monday but has never been
     // emailed through Trengo before), bootstrap a fresh email ticket
-    // on the AM's PERSONAL email channel — NOT the workspace's first
+    // on the AM's PERSONAL email channel - NOT the workspace's first
     // catch-all. Using `findFirstEmailChannel` previously caused the
     // mail to go out from `rocket-lea-mail.*@trengomail.com` (Trengo's
     // generic) instead of `roel@rocketleads.nl` (the channel Roel
     // actually selected in /account → Trengo Channels).
     //
     // We also send via the AM's own Trengo token now, so the ticket
-    // gets attributed to the AM agent in Trengo — Roy clicking Send for
+    // gets attributed to the AM agent in Trengo - Roy clicking Send for
     // Roel's client should never make Roy the sender of record.
     //
-    // WhatsApp has no equivalent fallback — outbound WhatsApp requires
+    // WhatsApp has no equivalent fallback - outbound WhatsApp requires
     // an approved HSM template AND a known channel-with-approval combo,
     // which the bootstrap path can't produce safely.
     let bootstrappedEmail: { ticketId: string; messageId: string } | null = null
@@ -381,7 +381,7 @@ export async function POST(
           {
             error: "am_trengo_not_connected",
             message:
-              "De AM van deze klant heeft Trengo nog niet verbonden in /account. Laat 'm Trengo daar koppelen en probeer opnieuw — anders kunnen we niet als hen versturen.",
+              "De AM van deze klant heeft Trengo nog niet verbonden in /account. Laat 'm Trengo daar koppelen en probeer opnieuw - anders kunnen we niet als hen versturen.",
           },
           { status: 400 },
         )
@@ -440,7 +440,7 @@ export async function POST(
 
     let outboundId: string
     try {
-      // Bootstrapped email already sent during create — skip the second
+      // Bootstrapped email already sent during create - skip the second
       // post, just adopt the new message id.
       if (bootstrappedEmail) {
         outboundId = bootstrappedEmail.messageId
@@ -448,14 +448,14 @@ export async function POST(
         // Reply path uses the AM's token too (same reasoning as the
         // bootstrap branch above): Roy clicking Send for Roel's client
         // should land as Roel in Trengo, with Roel's selected email
-        // channel as the From — not session.user's.
+        // channel as the From - not session.user's.
         const amToken = await getUserPlatformToken(amUserId, "trengo")
         if (!amToken) {
           return NextResponse.json(
             {
               error: "am_trengo_not_connected",
               message:
-                "De AM van deze klant heeft Trengo nog niet verbonden in /account. Laat 'm Trengo daar koppelen en probeer opnieuw — anders kunnen we niet als hen versturen.",
+                "De AM van deze klant heeft Trengo nog niet verbonden in /account. Laat 'm Trengo daar koppelen en probeer opnieuw - anders kunnen we niet als hen versturen.",
             },
             { status: 400 },
           )
@@ -493,7 +493,7 @@ export async function POST(
       .maybeSingle<{ id: string; name: string | null; email: string | null }>()
 
     // WhatsApp sends were flattened by sanitizeWaTemplateParam at the API
-    // boundary — mirror what the customer actually received (single-line
+    // boundary - mirror what the customer actually received (single-line
     // with " • " bullets). Email keeps the original multi-line body since
     // email accepts newlines natively.
     const previewSource = sendAsEmail ? message : sanitizeWaTemplateParam(message)

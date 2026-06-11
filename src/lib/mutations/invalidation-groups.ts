@@ -16,7 +16,7 @@
  *     same queries client-side does.
  *
  * Each entry is an array of React Query keys (with `exact: false` match
- * semantics — `["client-detail"]` matches every per-id child key).
+ * semantics - `["client-detail"]` matches every per-id child key).
  */
 export type InvalidationGroup = ReadonlyArray<ReadonlyArray<unknown>>
 
@@ -37,7 +37,7 @@ export const INVALIDATION_GROUPS = {
     // until a full page reload. Roy 2026-06-10.
     ["onboarding-wizard"],
   ],
-  /** Per-client billing — invoices, agreement state, payment status. */
+  /** Per-client billing - invoices, agreement state, payment status. */
   BILLING: [
     ["billing-summaries"],
     ["billing"],

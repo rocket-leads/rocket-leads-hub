@@ -7,7 +7,7 @@
  * The shared RL account hosts campaigns for many clients at once, so a
  * blanket auto-select would pull every other client's spend into one client's
  * KPIs. Instead, we look at the campaign name and try to identify which
- * client it belongs to — only auto-assigning when we hit a high-confidence
+ * client it belongs to - only auto-assigning when we hit a high-confidence
  * match (≥0.95). Anything else stays unselected for the user to decide.
  */
 
@@ -15,7 +15,7 @@ export type MatcherClient = { id: string; name: string }
 export type MatchResult = { clientId: string; confidence: number }
 
 /**
- * Rocket Leads-built campaigns always carry "RL" in the name — the standard is
+ * Rocket Leads-built campaigns always carry "RL" in the name - the standard is
  * `RL | NL | RV | Acme | LP` but field tolerance allows variants like `RL|NL|...`,
  * `RL_NL_...`, or just a leading `RL ` prefix. We match RL as a whole-word token,
  * case-insensitively, so a campaign called "Rolex" doesn't accidentally qualify
@@ -52,7 +52,7 @@ export function matchRocketLeadsCampaign(
   const normalizedCampaign = normalize(campaignName)
   if (!normalizedCampaign) return null
 
-  // Skip empty/short names — would substring-match anything.
+  // Skip empty/short names - would substring-match anything.
   const norms = candidates
     .map((c) => ({ id: c.id, norm: normalize(c.name) }))
     .filter((c) => c.norm.length >= 3)
@@ -68,7 +68,7 @@ export function matchRocketLeadsCampaign(
     }
   }
 
-  // 2. Word-boundary substring match — full normalized client name appears
+  // 2. Word-boundary substring match - full normalized client name appears
   //    somewhere in the normalized campaign name. Reject if multiple
   //    candidates match (ambiguous).
   const matches = norms.filter((c) =>
@@ -79,7 +79,7 @@ export function matchRocketLeadsCampaign(
   // 3. Token-overlap fallback for multi-word names. When the campaign carries
   //    only part of the client name ("RL | NL | RV | Inland | LF" for client
   //    "Inland Invest") strict substring fails, but a strong partial token
-  //    overlap is still a useful signal — surfaced as a suggestion (<0.95)
+  //    overlap is still a useful signal - surfaced as a suggestion (<0.95)
   //    rather than auto-assigned. Confidence scales with the ratio of matched
   //    tokens; only the clear winner among candidates is returned.
   const partials = norms

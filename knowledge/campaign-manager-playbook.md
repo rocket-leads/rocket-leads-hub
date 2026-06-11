@@ -257,7 +257,7 @@
 
 #### Voorbeelden Sterke Angles
 **Voorbeeld 1: Terrasoverkapping**
-> "Betaal nooit meer te veel voor een terrasoverkapping — gegarandeerd goedkoper dan de concurrent"
+> "Betaal nooit meer te veel voor een terrasoverkapping - gegarandeerd goedkoper dan de concurrent"
 
 **Waarom goed:**
 - Concreet (goedkoper dan concurrent)

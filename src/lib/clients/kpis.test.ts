@@ -6,11 +6,11 @@ import type { MondayLeadItem } from "@/lib/integrations/monday"
  * Date-window inclusion regression. Monday's GraphQL `text` for a date+time
  * column returns "2026-05-17 06:50:00", not "2026-05-17". A naive lexicographic
  * compare drops every item on the end date because the trailing time sorts
- * after the YYYY-MM-DD endpoint — silently undercounting leads on the most
+ * after the YYYY-MM-DD endpoint - silently undercounting leads on the most
  * recent day in any window. The Zenovo report (Hub 17 vs Monday 24 for
  * May 11–17) was this exact bug surfacing.
  *
- * 2026-05: trimmed alongside appointment-tracking removal — assertions on
+ * 2026-05: trimmed alongside appointment-tracking removal - assertions on
  * bookedCalls / takenCalls were dropped; only leads + deals + revenue remain.
  */
 
@@ -98,7 +98,7 @@ describe("calculateKpis date-window inclusion", () => {
 
   it("normalizes deal + UTM-breakdown dates the same way", () => {
     // One lead created on the end-date with a time, and a deal closed on
-    // the end-date with a time. Both should land in the window — pre-fix
+    // the end-date with a time. Both should land in the window - pre-fix
     // the date+time string would have dropped out of range entirely.
     const k = calculateKpis(
       0,

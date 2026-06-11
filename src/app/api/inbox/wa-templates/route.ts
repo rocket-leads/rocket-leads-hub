@@ -9,7 +9,7 @@ import { fetchWaTemplates } from "@/lib/integrations/trengo"
  * channel. Used by the chat-pane composer to populate the Template picker
  * inside the 24h-window-closed (and inside-window opt-in) flow.
  *
- * Filter set: only `status === ACCEPTED` (the others — PENDING/REJECTED —
+ * Filter set: only `status === ACCEPTED` (the others - PENDING/REJECTED -
  * can't be sent so they'd just confuse the picker). Server-side filter via
  * Trengo's own query params keeps the request shape tight; we don't pull
  * the whole workspace pool client-side.

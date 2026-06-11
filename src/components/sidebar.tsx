@@ -27,6 +27,7 @@ export async function Sidebar() {
   // Resolve once early so we can branch on AM for the unmatched-meetings
   // count below without a second round-trip.
   let mondayRole: MondayRole | null = null
+  let isPureCampaignManager = false
   if (session?.user?.id && !isAdmin && !isFinance) {
     try {
       const supabase = await createAdminClient()
@@ -34,16 +35,24 @@ export async function Sidebar() {
         .from("user_column_mappings")
         .select("monday_column_role")
         .eq("user_id", session.user.id)
-        .maybeSingle()
-      mondayRole = (data?.monday_column_role as MondayRole | undefined) ?? null
+      const rows = (data ?? []) as { monday_column_role: MondayRole }[]
+      // Pick the primary role for label/badge logic. If the user holds
+      // both AM and CM, prefer AM since AM is the broader-access role.
+      mondayRole =
+        rows.find((r) => r.monday_column_role === "account_manager")?.monday_column_role
+          ?? rows[0]?.monday_column_role
+          ?? null
+      isPureCampaignManager =
+        rows.some((r) => r.monday_column_role === "campaign_manager") &&
+        !rows.some((r) => r.monday_column_role === "account_manager")
     } catch {
-      // Silent — never block the sidebar render.
+      // Silent - never block the sidebar render.
     }
   }
   const isAccountManager = mondayRole === "account_manager"
 
   // ── Unmatched-meeting badge (Pedro parent + Meetings child) ──
-  // Only AMs see this — they're the ones who need to confirm/match Fathom
+  // Only AMs see this - they're the ones who need to confirm/match Fathom
   // recordings to clients. Counts meetings recorded by the current user
   // whose link_status still needs human action. Roy 2026-05-23.
   let unmatchedMeetingsCount = 0
@@ -91,7 +100,7 @@ export async function Sidebar() {
           if (status !== "live" && status !== "onboarding") continue
           const d = new Date(c.nextInvoiceDate)
           d.setHours(0, 0, 0, 0)
-          // Strict today match — overdue invoices show on the Billing page
+          // Strict today match - overdue invoices show on the Billing page
           // itself; the sidebar badge only fires the day a fresh invoice
           // is due so it functions as a daily nudge, not a backlog count.
           if (d.getTime() !== todayMs) continue
@@ -104,7 +113,7 @@ export async function Sidebar() {
         invoicesDueTodayCount = count
       }
     } catch {
-      // Silent — a missing cache shouldn't break the sidebar.
+      // Silent - a missing cache shouldn't break the sidebar.
     }
   }
 
@@ -141,7 +150,7 @@ export async function Sidebar() {
     children: pedroChildren,
     // The badge on the Pedro parent mirrors the Meetings child count so
     // the AM still sees it when the Pedro group is collapsed in their
-    // mental model — the children are visually nested but the parent
+    // mental model - the children are visually nested but the parent
     // chip is the at-a-glance signal.
     ...(unmatchedMeetingsCount > 0
       ? {
@@ -156,7 +165,7 @@ export async function Sidebar() {
     ...(isFinance ? [] : [WATCH_LIST]),
     { href: "/inbox", label: t("nav.inbox", locale), icon: "Inbox" },
     { href: "/clients", label: t("nav.clients", locale), icon: "Users" },
-    // Finance doesn't run onboarding — hide for them, same rule as Watch List.
+    // Finance doesn't run onboarding - hide for them, same rule as Watch List.
     // Uses ClipboardCheck (not Rocket) to avoid colliding with Pedro → On-board.
     ...(isFinance
       ? []
@@ -166,9 +175,9 @@ export async function Sidebar() {
 
   // ── Bottom group: ops / admin stack ──
   // Targets stays visible to everyone (the page itself gates its finance
-  // tab to admin+finance — Roy 2026-05-23). Billing visible to admin +
+  // tab to admin+finance - Roy 2026-05-23). Billing visible to admin +
   // finance + member today per current policy. Settings is visible to
-  // everyone — non-admins land on the Me tab (personal account: platform
+  // everyone - non-admins land on the Me tab (personal account: platform
   // connections, notifications, Trengo channel subscriptions); the page
   // itself hides admin-only tabs.
   const BILLING: NavItem = {
@@ -185,12 +194,16 @@ export async function Sidebar() {
   const TARGETS: NavItem = { href: "/targets", label: t("nav.targets", locale), icon: "Target" }
   const SETTINGS: NavItem = { href: "/settings", label: t("nav.settings", locale), icon: "Settings" }
 
-  const bottomGroup: NavItem[] = [BILLING, TARGETS, SETTINGS]
+  // Billing is for AM / Finance / Admin only - hide it for pure campaign
+  // managers. Roy 2026-06-11.
+  const bottomGroup: NavItem[] = isPureCampaignManager
+    ? [TARGETS, SETTINGS]
+    : [BILLING, TARGETS, SETTINGS]
 
   const allItems: NavItem[] = [...TOP_GROUP, ...bottomGroup]
 
   // Count missing platform connections so we can flag the avatar with a dot.
-  // Replies-as-self require Slack/Trengo/Monday tokens per user — if any are
+  // Replies-as-self require Slack/Trengo/Monday tokens per user - if any are
   // missing, the user's reply path is broken until they connect.
   let missingPlatforms = 0
   if (session?.user?.id) {
@@ -204,8 +217,8 @@ export async function Sidebar() {
   }
 
   const accountTitle = missingPlatforms > 0
-    ? `My Account — ${missingPlatforms} platform${missingPlatforms === 1 ? "" : "s"} not connected (Slack, Trengo, Monday)`
-    : "My Account — connect Slack, Trengo, Monday"
+    ? `My Account - ${missingPlatforms} platform${missingPlatforms === 1 ? "" : "s"} not connected (Slack, Trengo, Monday)`
+    : "My Account - connect Slack, Trengo, Monday"
 
   // Job-function label shown in the sidebar user trigger. Resolution order:
   //   admin   → "Owner" (one per workspace, top of hierarchy)
@@ -248,7 +261,7 @@ export async function Sidebar() {
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-sidebar-border bg-sidebar flex flex-col">
-      {/* Logo — sized to herMon's brand-mark scale per Roy's 2026-05-21 ask:
+      {/* Logo - sized to herMon's brand-mark scale per Roy's 2026-05-21 ask:
           read as a brand block, not a footnote. */}
       <div className="px-5 pt-7 pb-6">
         <Link href={isFinance ? "/billing" : "/watchlist"} className="block">
@@ -277,7 +290,7 @@ export async function Sidebar() {
         healthSummary={combinedDot}
       />
 
-      {/* User section — collapsed to just the avatar + name. Locale, theme,
+      {/* User section - collapsed to just the avatar + name. Locale, theme,
           Settings + Sign out live behind a popover that opens on click. */}
       <div className="mt-auto border-t border-sidebar-border p-3">
         <UserMenu

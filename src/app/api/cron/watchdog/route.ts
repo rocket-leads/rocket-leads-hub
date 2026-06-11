@@ -4,7 +4,7 @@ import { EXPECTED_CRONS } from "@/lib/crons"
 import { sendSlackDm } from "@/lib/slack"
 
 /**
- * Cron watchdog — runs every 15 min. Alerts admins on Slack when:
+ * Cron watchdog - runs every 15 min. Alerts admins on Slack when:
  *   1. The latest run of any expected cron has status `error` (failure)
  *   2. A cron hasn't run for >1.5× its cadenceMinutes (stuck / scheduler
  *      dead / dependency timeout, depending on the cron)
@@ -12,7 +12,7 @@ import { sendSlackDm } from "@/lib/slack"
  * Dedupe via `cron_alert_state`: one alert per (cron, started_at). When
  * a cron flaps (fails → recovers → fails again), the new `started_at`
  * makes it past the dedupe and re-alerts. Stuck-cron alerts dedupe by
- * pinning to the last successful started_at we saw — once a cron starts
+ * pinning to the last successful started_at we saw - once a cron starts
  * ticking again, that timestamp updates and the next stuck detection
  * re-alerts.
  *
@@ -53,7 +53,7 @@ export async function GET(req: Request) {
     if (!latestByCron.has(row.cron_name)) latestByCron.set(row.cron_name, row)
   }
 
-  // Existing alert state — used to skip duplicate alerts.
+  // Existing alert state - used to skip duplicate alerts.
   const { data: stateRows } = await supabase
     .from("cron_alert_state")
     .select("cron_name, last_started_at, last_alert_kind")
@@ -88,7 +88,7 @@ export async function GET(req: Request) {
           cron: expected.name,
           kind: "failed",
           started_at: last.started_at,
-          text: `🚨 *Cron failed* — \`${expected.name}\`\n${expected.description}\nError: ${last.error_message ?? "(no message)"}`,
+          text: `🚨 *Cron failed* - \`${expected.name}\`\n${expected.description}\nError: ${last.error_message ?? "(no message)"}`,
         })
       }
       continue
@@ -102,14 +102,14 @@ export async function GET(req: Request) {
           cron: expected.name,
           kind: "stuck",
           started_at: last.started_at,
-          text: `⏰ *Cron stuck* — \`${expected.name}\` hasn't run in ${mins} min (expected every ~${expected.cadenceMinutes} min).\n${expected.description}`,
+          text: `⏰ *Cron stuck* - \`${expected.name}\` hasn't run in ${mins} min (expected every ~${expected.cadenceMinutes} min).\n${expected.description}`,
         })
       }
     }
   }
 
   // Fan out alerts to every admin with Slack. Failures here don't fail
-  // the cron — we log + continue so a single bad DM doesn't take the
+  // the cron - we log + continue so a single bad DM doesn't take the
   // watchdog out for the next 15 min.
   let dmsSent = 0
   for (const alert of alerts) {

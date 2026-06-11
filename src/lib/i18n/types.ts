@@ -1,5 +1,5 @@
 /**
- * Two locales supported. Keep this list small — every locale = a column
+ * Two locales supported. Keep this list small - every locale = a column
  * in the dictionary that needs maintenance. Roy's team is Dutch; English
  * is kept around for external observers / future non-Dutch hires.
  */

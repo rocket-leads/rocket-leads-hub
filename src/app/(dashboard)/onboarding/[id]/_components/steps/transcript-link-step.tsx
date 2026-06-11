@@ -55,14 +55,14 @@ type LinkedContent = {
 }
 
 /**
- * Stap 2 — Fathom transcript link. AM picks which Fathom recording is
+ * Stap 2 - Fathom transcript link. AM picks which Fathom recording is
  * the kick-off for this client. Confidence pre-scoring already happened
  * in the Fathom webhook (match_candidates jsonb on each meeting row), so
  * this UI just surfaces what Fathom already suggested as the AM's most
  * likely candidates.
  *
  * Empty state ("transcript nog niet binnen") just means the Fathom
- * webhook hasn't fired yet — usually 5-15 min after meeting ends. AM
+ * webhook hasn't fired yet - usually 5-15 min after meeting ends. AM
  * refreshes manually when they expect it to have landed.
  */
 export function TranscriptLinkStep({
@@ -79,7 +79,7 @@ export function TranscriptLinkStep({
     queryKey: ["onboarding-transcript-candidates", mondayItemId],
     queryFn: () =>
       fetch(`/api/clients/${mondayItemId}/onboarding/transcript`).then((r) => r.json()),
-    // Only poll while step is open and not yet linked — once done, stop.
+    // Only poll while step is open and not yet linked - once done, stop.
     refetchInterval: step.done ? false : 60 * 1000,
     enabled: !step.done,
   })
@@ -103,7 +103,7 @@ export function TranscriptLinkStep({
     },
   })
 
-  // ── Linked state — show what was linked + jump-to-next + "wijzigen" override ──
+  // ── Linked state - show what was linked + jump-to-next + "wijzigen" override ──
   if (step.done && linkedContent) {
     return (
       <div className="space-y-4">
@@ -144,7 +144,7 @@ export function TranscriptLinkStep({
             variant="ghost"
             size="sm"
             onClick={() => {
-              // Unlink — revert step done state so the AM can pick again.
+              // Unlink - revert step done state so the AM can pick again.
               // We don't actively unlink the meeting from Supabase (that
               // would force re-ingest); we just re-open the step.
               void fetch(`/api/clients/${mondayItemId}/onboarding`, {

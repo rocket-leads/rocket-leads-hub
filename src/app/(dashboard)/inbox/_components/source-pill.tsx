@@ -15,7 +15,7 @@ type SourceConfig = {
   /** Plain label used when there's no translation key (brand names). */
   label: string
   /** Either a static brand SVG (Slack/Trengo/Monday) or a Lucide icon
-   *  (Automation/Watchlist/Meeting) — branded sources get the real mark
+   *  (Automation/Watchlist/Meeting) - branded sources get the real mark
    *  per Roy's request, internal/system sources stay on Lucide. */
   brandLogo?: string
   icon?: LucideIcon
@@ -25,7 +25,7 @@ type SourceConfig = {
 }
 
 const SOURCE_CONFIG: Record<InboxSource, SourceConfig | null> = {
-  // Manual is the implicit default — surfacing a pill for "you typed this in
+  // Manual is the implicit default - surfacing a pill for "you typed this in
   // yourself" is just visual noise.
   manual: null,
   trengo: {
@@ -68,10 +68,10 @@ const SOURCE_CONFIG: Record<InboxSource, SourceConfig | null> = {
 
 type Props = {
   source: InboxSource
-  /** Compact omits the label text and shows just the icon — for tight rows. */
+  /** Compact omits the label text and shows just the icon - for tight rows. */
   compact?: boolean
   /** When the source is Trengo, the channel medium swaps both the icon
-   *  (WhatsApp brand mark / email envelope) and the pill label — so an AM
+   *  (WhatsApp brand mark / email envelope) and the pill label - so an AM
    *  can tell at a glance whether a task came in via WA or via email
    *  without opening the row. Ignored for non-Trengo sources. */
   channelKind?: InboxChannelKind
@@ -101,7 +101,7 @@ export function SourcePill({ source, compact = false, channelKind, className }: 
   const baseCfg = SOURCE_CONFIG[source]
   if (!baseCfg) return null
 
-  // For Trengo we promote the channel medium to the pill itself — WhatsApp
+  // For Trengo we promote the channel medium to the pill itself - WhatsApp
   // and email each get their own brand-coloured mark + label so the row
   // shows what kind of message it actually was, not just "Trengo".
   const override =

@@ -28,7 +28,7 @@ async function InboxData() {
   const userId = session.user.id
   const role = session.user.role
 
-  // Initial item lists default to "Assigned to me" — same as the UI default.
+  // Initial item lists default to "Assigned to me" - same as the UI default.
   const [updates, tasks, usersRes, mondayBoards] = await Promise.all([
     listInboxItems(userId, role, { kind: "update", assignedToMe: true }),
     listInboxItems(userId, role, { kind: "task", assignedToMe: true }),

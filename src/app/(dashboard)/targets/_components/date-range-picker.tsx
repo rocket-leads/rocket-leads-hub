@@ -13,7 +13,7 @@ interface Props {
   endDate: Date
   onChange: (start: Date, end: Date) => void
   /**
-   * Latest selectable day. Anything after this is disabled in the calendar — used to
+   * Latest selectable day. Anything after this is disabled in the calendar - used to
    * prevent picking today when the underlying data only goes up to yesterday.
    */
   maxDate?: Date
@@ -31,14 +31,14 @@ export function DateRangePicker({ startDate, endDate, onChange, maxDate }: Props
   const [pending, setPending] = useState<RdpDateRange | undefined>({ from: startDate, to: endDate })
   // Track the click count since the popover opened. We only commit once the user has
   // explicitly picked TWO dates (start + end). Without this guard, react-day-picker
-  // can emit a same-day range on the very first click — which previously slammed the
+  // can emit a same-day range on the very first click - which previously slammed the
   // popover closed before the user got to pick the end date.
   const [clickCount, setClickCount] = useState(0)
 
   const handleSelect = (range: RdpDateRange | undefined) => {
     setPending(range)
     if (clickCount === 0) {
-      // First click — keep the popup open so the user can pick the end date.
+      // First click - keep the popup open so the user can pick the end date.
       setClickCount(1)
       return
     }

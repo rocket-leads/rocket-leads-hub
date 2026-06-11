@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils"
  *                    *value* inline: search input clear, chip remove,
  *                    selected-item remove, inline edit cancel.
  *
- * Both always render the same lucide <X> icon — never <XIcon>, never
+ * Both always render the same lucide <X> icon - never <XIcon>, never
  * <Cross2>, never a custom svg. Both always carry an `aria-label`
  * (default "Close", overridable). Both stop propagation by default
  * because dismiss-from-inside-a-clickable-row is the most common case.

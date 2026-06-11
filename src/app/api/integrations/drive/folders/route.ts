@@ -6,7 +6,7 @@ import { searchDriveFolders } from "@/lib/integrations/google-drive"
  * GET /api/integrations/drive/folders?q=<query>&limit=<n>
  *
  * Backs the search list inside <ConnectedEntity service="drive-folder">.
- * Uses Drive's native `q=name contains '...'` filter — no in-memory cache
+ * Uses Drive's native `q=name contains '...'` filter - no in-memory cache
  * needed because Drive's search is server-side and fast enough for the
  * single round-trip per unique query (deduped by React Query).
  *
@@ -14,7 +14,7 @@ import { searchDriveFolders } from "@/lib/integrations/google-drive"
  * the picker shows "folders I actually use" first.
  *
  * Scope: only folders the service account has been shared into appear.
- * That's the right boundary — workspace folders that the service account
+ * That's the right boundary - workspace folders that the service account
  * can't see aren't valid link candidates from the Hub anyway.
  */
 export async function GET(req: NextRequest) {

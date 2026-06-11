@@ -5,7 +5,7 @@ import type { ClientData } from "@/lib/pedro/client-database"
  * Pure context helpers shared by every stage prompt.
  *
  * Each one returns a string fragment that the builder can splice into
- * its template. Empty string when the input is missing — never null —
+ * its template. Empty string when the input is missing - never null -
  * so prompts can use unconditional `${...}` interpolation without
  * branching on undefined.
  *
@@ -37,7 +37,7 @@ type HuisstijlOpts = {
 }
 
 /**
- * Default huisstijl block — used by angles / script / ad-copy prompts.
+ * Default huisstijl block - used by angles / script / ad-copy prompts.
  * When the AM has overridden via the manual textarea, that's authoritative.
  * Otherwise we render the structured BrandStyle if extracted from the
  * client website. Final fallback: any free-text the AM did paste.
@@ -59,7 +59,7 @@ export function huisstijlContext(opts: HuisstijlOpts): string {
 }
 
 /**
- * Variant for the Manus creatives prompt — adds the explicit instruction
+ * Variant for the Manus creatives prompt - adds the explicit instruction
  * "use this as the visual basis for the creatives".
  */
 export function huisstijlForManus(opts: HuisstijlOpts): string {
@@ -81,7 +81,7 @@ Gebruik dit als visuele basis voor de creatives.`
 }
 
 /**
- * Variant for the Lovable LP prompt — emphasises matching brand identity
+ * Variant for the Lovable LP prompt - emphasises matching brand identity
  * rather than visual creative basis.
  */
 export function huisstijlForLp(opts: HuisstijlOpts): string {
@@ -100,7 +100,7 @@ export function huisstijlForLp(opts: HuisstijlOpts): string {
 
 /**
  * Tail-of-prompt reference back to the most recent Manus prompt for this
- * client — keeps creatives visually consistent across refreshes. Reads
+ * client - keeps creatives visually consistent across refreshes. Reads
  * the last campaign in the client DB and truncates from the end so the
  * output spec (which lives at the bottom of past prompts) is preserved.
  */

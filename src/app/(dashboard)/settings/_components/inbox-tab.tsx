@@ -33,7 +33,7 @@ const RULES: RuleConfig[] = [
     key: "payment_overdue_task",
     title: "Payment overdue → high-priority task",
     description:
-      "When a Stripe invoice goes overdue for a Live client, the daily cron creates a high-priority task assigned to that client's Account Manager. The task asks the AM to contact the client about the overdue payment. Onboarding, On Hold and Churned clients are skipped — chasing payments on those accounts adds noise without action. Idempotent — one task per overdue invoice.",
+      "When a Stripe invoice goes overdue for a Live client, the daily cron creates a high-priority task assigned to that client's Account Manager. The task asks the AM to contact the client about the overdue payment. Onboarding, On Hold and Churned clients are skipped - chasing payments on those accounts adds noise without action. Idempotent - one task per overdue invoice.",
     trigger: "Stripe invoice status becomes overdue (Live clients only)",
     effect: "Task created · assigned to AM · priority high · due today",
     icon: CreditCard,
@@ -42,7 +42,7 @@ const RULES: RuleConfig[] = [
     key: "positive_client_signal_cpl_drop",
     title: "Positive client signal → AM share-the-win task",
     description:
-      "When a client's CPL drops 50% or more compared to the previous period (last 7d or last 30d), the cron drafts a short, informal Dutch update message — using recent Trengo conversations to match tone-of-voice — and creates a task for the AM with the message ready to copy-paste to the client. Idempotent: one signal per client per period in any 14-day window.",
+      "When a client's CPL drops 50% or more compared to the previous period (last 7d or last 30d), the cron drafts a short, informal Dutch update message - using recent Trengo conversations to match tone-of-voice - and creates a task for the AM with the message ready to copy-paste to the client. Idempotent: one signal per client per period in any 14-day window.",
     trigger: "CPL drops ≥50% vs previous period (7d or 30d)",
     effect: "Task created · AI-drafted Dutch update in body · assigned to AM",
     icon: TrendingDown,
@@ -60,7 +60,7 @@ const RULES: RuleConfig[] = [
     key: "dedup_overlapping_tasks",
     title: "AI dedup → cancel duplicate tasks across sources",
     description:
-      "Same logical action can land in the inbox via multiple paths (Trengo classification + Fathom action item + automation cron). Claude Haiku scans recently-created open tasks per client and merges semantic duplicates: the OLDEST in each group survives, the rest get cancelled with an audit note pointing back at the kept task. Conservative defaults — confidence threshold ≥0.85, only same-client groups, only tasks created in the last 7 days. Reversible via Reopen on the cancelled rows.",
+      "Same logical action can land in the inbox via multiple paths (Trengo classification + Fathom action item + automation cron). Claude Haiku scans recently-created open tasks per client and merges semantic duplicates: the OLDEST in each group survives, the rest get cancelled with an audit note pointing back at the kept task. Conservative defaults - confidence threshold ≥0.85, only same-client groups, only tasks created in the last 7 days. Reversible via Reopen on the cancelled rows.",
     trigger: "≥2 open tasks for the same client created in last 7d",
     effect: "Newer duplicates → cancelled · source_ref.duplicate_of set · audit note in body",
     icon: Sparkles,
@@ -247,7 +247,7 @@ function RunNowPanel() {
             <span>
               <span className="text-amber-500 font-medium">{result.skippedTotal}</span> {t("settings.inbox.result.skipped", locale)}
             </span>
-            {result.reason && <span className="italic">— {result.reason}</span>}
+            {result.reason && <span className="italic">- {result.reason}</span>}
           </div>
 
           {result.created.length > 0 && (
@@ -273,7 +273,7 @@ function RunNowPanel() {
                   <span className="font-mono text-muted-foreground/60">{s.reason}</span>
                   {s.client && <span className="ml-2">{s.client}</span>}
                   {s.detail && (
-                    <span className="ml-2 text-muted-foreground/50">— {s.detail}</span>
+                    <span className="ml-2 text-muted-foreground/50">- {s.detail}</span>
                   )}
                 </p>
               ))}

@@ -25,6 +25,11 @@ const NO_ACCESS: ClientAccess = {
  *   contextualise an invoice).
  * - If a client_access row exists, use its permissions.
  * - Members without a row get full access; guests without a row get no access.
+ * - Campaign managers (without finance / AM overlap) lose Billing AND
+ *   Communication visibility (Roy 2026-06-11) - billing context is for
+ *   AM/Finance/Admin only, and client conversations are an AM workflow.
+ *   CMs only see chat rows where they are explicitly mentioned/assigned
+ *   (handled in the chat-thread fetcher via the cm_only audience role).
  */
 export async function getClientAccess(
   userId: string,
@@ -35,15 +40,18 @@ export async function getClientAccess(
 
   const supabase = await createAdminClient()
 
-  // Finance gets the same blanket access as admin — same reasoning as
-  // filterClientsByUser. Single mapping check is cheap (indexed on user_id).
-  const { data: financeRow } = await supabase
+  // Pull the user's Monday role mappings once. A user can hold multiple
+  // mappings (e.g. both AM + CM during a coverage period) so we check the
+  // full set to decide what to allow.
+  const { data: roleRows } = await supabase
     .from("user_column_mappings")
-    .select("user_id")
+    .select("monday_column_role")
     .eq("user_id", userId)
-    .eq("monday_column_role", "finance")
-    .maybeSingle()
-  if (financeRow) return FULL_ACCESS
+  const roleSet = new Set<string>((roleRows ?? []).map((r) => r.monday_column_role as string))
+
+  if (roleSet.has("finance")) return FULL_ACCESS
+
+  const isPureCm = roleSet.has("campaign_manager") && !roleSet.has("account_manager")
 
   // Look up the Supabase client ID from the Monday item ID
   const { data: client } = await supabase
@@ -52,27 +60,35 @@ export async function getClientAccess(
     .eq("monday_item_id", mondayItemId)
     .single()
 
+  let access: ClientAccess
   if (!client) {
-    // Client not yet synced — members get full access, guests get none
-    return role === "guest" ? NO_ACCESS : FULL_ACCESS
+    // Client not yet synced - members get full access, guests get none
+    access = role === "guest" ? NO_ACCESS : { ...FULL_ACCESS }
+  } else {
+    const { data: row } = await supabase
+      .from("client_access")
+      .select("can_view_campaigns, can_view_billing, can_view_communication")
+      .eq("user_id", userId)
+      .eq("client_id", client.id)
+      .single()
+
+    if (!row) {
+      access = role === "guest" ? NO_ACCESS : { ...FULL_ACCESS }
+    } else {
+      access = {
+        canViewCampaigns: row.can_view_campaigns,
+        canViewBilling: row.can_view_billing,
+        canViewCommunication: row.can_view_communication,
+      }
+    }
   }
 
-  const { data: access } = await supabase
-    .from("client_access")
-    .select("can_view_campaigns, can_view_billing, can_view_communication")
-    .eq("user_id", userId)
-    .eq("client_id", client.id)
-    .single()
-
-  if (!access) {
-    return role === "guest" ? NO_ACCESS : FULL_ACCESS
+  if (isPureCm) {
+    access.canViewBilling = false
+    access.canViewCommunication = false
   }
 
-  return {
-    canViewCampaigns: access.can_view_campaigns,
-    canViewBilling: access.can_view_billing,
-    canViewCommunication: access.can_view_communication,
-  }
+  return access
 }
 
 /**

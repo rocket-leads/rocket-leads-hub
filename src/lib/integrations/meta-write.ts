@@ -1,12 +1,12 @@
 import { getToken } from "./meta"
 
 /**
- * Meta write helpers — Push-to-Meta backend.
+ * Meta write helpers - Push-to-Meta backend.
  *
  * All calls go through the Marketing API and require the token to have
  * `ads_management` scope (the read-only token RL uses for performance
  * reads is NOT sufficient). When the token lacks the scope, Meta
- * returns 403 with a structured error — we translate that into a
+ * returns 403 with a structured error - we translate that into a
  * Dutch user-facing message so the CM knows what to fix.
  *
  * All writes default to status="PAUSED" so the CM never accidentally
@@ -106,7 +106,7 @@ async function uploadBinaryToMeta<T>(
   return JSON.parse(text) as T
 }
 
-/** Account prefix helper — Meta expects "act_<id>" but we sometimes
+/** Account prefix helper - Meta expects "act_<id>" but we sometimes
  *  store the bare numeric id. */
 function actId(adAccountId: string): string {
   return adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`
@@ -117,13 +117,13 @@ function actId(adAccountId: string): string {
  * keeping geo/age/gender/platforms/locale/advantage settings intact.
  *
  * Roy 2026-06-10: Pedro launches every new ad set as "NT" (no targeting)
- * — same audience configuration as the winner, but with all interest
+ * - same audience configuration as the winner, but with all interest
  * and behavioral targeting removed. Meta Advantage+ takes over from
  * there. This matches the standard RL play of duplicating a working
  * ad set and wiping the interests so the algorithm gets full freedom.
  *
  * We use a BLOCKLIST (not allowlist) so any new targeting field Meta
- * adds in future API versions doesn't accidentally make it through —
+ * adds in future API versions doesn't accidentally make it through -
  * if we don't recognise it as safe, we strip it. Safe fields = the
  * structural audience definition (where + who-demographically), not
  * the interest-graph.
@@ -208,7 +208,7 @@ export function stripPlacementConstraints(
  * basis for a new ad set under the same campaign. The fields we copy:
  * targeting, budget, schedule, optimization goal, billing event,
  * placements. Roy's design: new ad set inherits everything that was
- * already working on the winner's parent set — CM can adjust in Meta
+ * already working on the winner's parent set - CM can adjust in Meta
  * Ads Manager before activating if needed.
  */
 export type MetaAdSetTemplate = {
@@ -326,7 +326,7 @@ export async function uploadAdImage(args: {
   // Meta returns { images: { "<filename>": { hash } } }.
   const first = Object.values(json.images ?? {})[0]
   if (!first?.hash) {
-    throw new Error("Meta gaf geen image_hash terug — upload mislukt.")
+    throw new Error("Meta gaf geen image_hash terug - upload mislukt.")
   }
   return { imageHash: first.hash }
 }
@@ -389,11 +389,11 @@ export const PEDRO_UTM_TEMPLATE =
 /**
  * Create an ad creative. Two modes:
  *
- *   1. Single-copy creative (legacy) — exactly one body + one title,
+ *   1. Single-copy creative (legacy) - exactly one body + one title,
  *      via `object_story_spec.link_data`. Used when caller doesn't
  *      pass `altBodies` / `altTitles`. Same behavior as pre-2026-06-10.
  *
- *   2. Dynamic-creative spec — Meta's `asset_feed_spec`. Used when the
+ *   2. Dynamic-creative spec - Meta's `asset_feed_spec`. Used when the
  *      caller passes 2+ bodies or titles. We pack everything into
  *      `asset_feed_spec` (Meta tests permutations) PLUS a fallback
  *      `object_story_spec` so older endpoints can still serve. Roy
@@ -450,7 +450,7 @@ export async function createAdCreative(args: {
   const allBodies = dedup([args.body, ...(args.altBodies ?? [])])
   const allTitles = dedup([args.title ?? "", ...(args.altTitles ?? [])])
 
-  // Choose CTA value — lead form id wins when present (Meta replaces
+  // Choose CTA value - lead form id wins when present (Meta replaces
   // the link with the form modal); otherwise the destination link.
   const ctaValue: Record<string, unknown> = args.leadGenFormId
     ? { link: args.linkUrl, lead_gen_form_id: args.leadGenFormId }
@@ -467,7 +467,7 @@ export async function createAdCreative(args: {
   }
   if (urlTags) creativeBody.url_tags = urlTags
 
-  // Always send object_story_spec — it's required even for asset-feed
+  // Always send object_story_spec - it's required even for asset-feed
   // creatives as the "fallback" identity (page + IG actor).
   const objectStorySpec: Record<string, unknown> = {
     page_id: args.pageId,
@@ -477,7 +477,7 @@ export async function createAdCreative(args: {
   }
 
   if (dynamicCreative) {
-    // Asset-feed mode — Meta will permute across the arrays. Lead form
+    // Asset-feed mode - Meta will permute across the arrays. Lead form
     // creatives ALSO support this since v15+.
     const assetFeedSpec: Record<string, unknown> = {
       images: [{ hash: args.imageHash }],
@@ -497,7 +497,7 @@ export async function createAdCreative(args: {
       if (assetFeedSpec[k] === undefined) delete assetFeedSpec[k]
     }
     creativeBody.asset_feed_spec = assetFeedSpec
-    // Fallback object_story_spec — uses the FIRST body/title so the
+    // Fallback object_story_spec - uses the FIRST body/title so the
     // creative still has a renderable preview if Meta can't yet permute.
     const linkData: Record<string, unknown> = {
       image_hash: args.imageHash,
@@ -510,7 +510,7 @@ export async function createAdCreative(args: {
     objectStorySpec.link_data = linkData
     creativeBody.object_story_spec = objectStorySpec
   } else {
-    // Single-copy creative — classic link_data only.
+    // Single-copy creative - classic link_data only.
     const linkData: Record<string, unknown> = {
       image_hash: args.imageHash,
       link: args.linkUrl,
@@ -535,7 +535,7 @@ export async function createAdCreative(args: {
 
 /**
  * Create an Ad under an ad set, referencing a creative. Status defaults
- * to PAUSED — Roy's principle: nooit auto-live, CM activeert in Ads
+ * to PAUSED - Roy's principle: nooit auto-live, CM activeert in Ads
  * Manager na review.
  */
 export async function createAd(args: {

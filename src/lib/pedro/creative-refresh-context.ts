@@ -15,14 +15,14 @@ import { resolveVisualStylePolicy } from "./visual-style-policy"
  * Why this matters (Roy's Zumex flag 2026-06-09): without grounded
  * context Pedro hallucinated B2C smoothie ads for a B2B industrial
  * juicer company. The information to prevent that was already in the
- * Hub — Monday updates, Trengo conversations, Fathom kick-offs, agreement
- * data, Drive files — just never plumbed into creative-refresh.
+ * Hub - Monday updates, Trengo conversations, Fathom kick-offs, agreement
+ * data, Drive files - just never plumbed into creative-refresh.
  *
  * Roy 2026-06-09.
  */
 
 /** Filename keywords that historically carry the kind of long-form
- *  product/ICP context we want Pedro to read. Conservative list — too
+ *  product/ICP context we want Pedro to read. Conservative list - too
  *  permissive and we burn tokens on irrelevant files. */
 const DRIVE_KEYWORD_RE = /(kick.?off|brief|intake|onboard|start|propositie|aanbod|positionering|brand|style.?guide|gids|manual|strateg)/i
 
@@ -127,7 +127,7 @@ function trim(s: string | null | undefined, max: number): string {
 }
 
 /** Fetch the latest pedro_client_state.brief for this client. Empty
- *  for legacy clients that never ran Pedro Onboard — caller renders
+ *  for legacy clients that never ran Pedro Onboard - caller renders
  *  a no-brief sentinel in that case so Pedro knows context is sparse. */
 async function fetchBrief(
   mondayItemId: string,
@@ -169,7 +169,7 @@ async function fetchBrandStyle(
   }
 }
 
-/** Recent CM iterations on this client's creatives — explicit feedback,
+/** Recent CM iterations on this client's creatives - explicit feedback,
  *  prompt edits, manual uploads. Pulled into the prompt so Pedro learns
  *  per-client preferences (logo size, headline format, photo style) and
  *  needs fewer iterations to land the first-shot output. Roy 2026-06-10
@@ -232,7 +232,7 @@ function fmtAgreementBlock(ctx: ClientAiContext): string {
 
 function fmtMondayUpdatesBlock(ctx: ClientAiContext): string {
   if (!ctx.sources.mondayUpdates || !ctx.mondayTrengo?.mondayUpdates) return ""
-  return `MONDAY CRM UPDATES (afgelopen 14d — wat het team intern noteert; status counts = all-time):\n${ctx.mondayTrengo.mondayUpdates.slice(0, 1500)}`
+  return `MONDAY CRM UPDATES (afgelopen 14d - wat het team intern noteert; status counts = all-time):\n${ctx.mondayTrengo.mondayUpdates.slice(0, 1500)}`
 }
 
 function fmtTrengoBlock(ctx: ClientAiContext): string {
@@ -268,14 +268,14 @@ function fmtInboxBlock(ctx: ClientAiContext): string {
     .filter((e) => e.body && e.body.trim().length > 0)
     .map((e) => {
       const date = e.createdAt.slice(0, 10)
-      return `[${date} · ${e.kind} · ${e.source}] ${e.title}${e.body ? ` — ${e.body.slice(0, 200)}` : ""}`
+      return `[${date} · ${e.kind} · ${e.source}] ${e.title}${e.body ? ` - ${e.body.slice(0, 200)}` : ""}`
     })
   if (lines.length === 0) return ""
   return `HUB INBOX (interne team-notes over deze klant):\n${lines.join("\n")}`
 }
 
 /** Pull the visual-style config out of a brief blob. Returns null when
- *  the brief is empty or has no visual-style fields (pre-2026-06-10) —
+ *  the brief is empty or has no visual-style fields (pre-2026-06-10) -
  *  policy resolver normalises null into defaults. */
 function readVisualStyleConfig(
   brief: Record<string, unknown> | null,
@@ -313,7 +313,7 @@ function readVisualStyleConfig(
 }
 
 /** Coerce a raw JSONB brand_style blob into the BrandStyle shape. Used
- *  here only to pass into the visual-style policy resolver — that helper
+ *  here only to pass into the visual-style policy resolver - that helper
  *  is strict about field shapes so we filter unknown values upfront. */
 function coerceBrandStyle(
   raw: Record<string, unknown> | null,
@@ -374,7 +374,7 @@ function fmtBrandStyleBlock(
   brand: Record<string, unknown> | null,
   brief: Record<string, unknown> | null,
 ): string {
-  // Pure resolver — no DB access, no side effects. Brief carries the CM
+  // Pure resolver - no DB access, no side effects. Brief carries the CM
   // controls (mode + toggles + custom prompt + fallback font); brand
   // carries the scraped fingerprint + its quality verdict.
   const config = readVisualStyleConfig(brief)
@@ -403,7 +403,7 @@ function fmtFeedbackBlock(rows: FeedbackRow[]): string {
     const body = r.feedback_text.replace(/\s+/g, " ").trim().slice(0, 240)
     return `- [${date} · ${tag}] ${body}`
   })
-  return `KLANT-FEEDBACK PATRONEN (laatste 90d — Pedro moet ELKE volgende imagePrompt voor deze klant hierop afstemmen; recente feedback wint van oude):\n${lines.join("\n")}`
+  return `KLANT-FEEDBACK PATRONEN (laatste 90d - Pedro moet ELKE volgende imagePrompt voor deze klant hierop afstemmen; recente feedback wint van oude):\n${lines.join("\n")}`
 }
 
 function fmtDriveBlock(drive: Awaited<ReturnType<typeof fetchDriveContext>>): string {
@@ -428,7 +428,7 @@ function fmtDriveBlock(drive: Awaited<ReturnType<typeof fetchDriveContext>>): st
 // ─── Public API ─────────────────────────────────────────────────────────
 
 export type CreativeRefreshContextResult = {
-  /** Ready-to-inject text block — splice this directly into the prompt. */
+  /** Ready-to-inject text block - splice this directly into the prompt. */
   block: string
   /** Per-source flags for downstream observability / debugging. */
   sources: {
@@ -446,7 +446,7 @@ export type CreativeRefreshContextResult = {
      *  (excludes raw regen events). 0 = no feedback loop yet. */
     feedbackCount: number
   }
-  /** Rough char budget — useful to log/track token cost growth. */
+  /** Rough char budget - useful to log/track token cost growth. */
   charCount: number
 }
 
@@ -454,7 +454,7 @@ export type CreativeRefreshContextResult = {
  * Build the full context block for one client.
  *
  * Calls collectClientAiContext under the hood + fetches Drive content
- * in parallel. Every source has its own try/catch — a slow Trengo or
+ * in parallel. Every source has its own try/catch - a slow Trengo or
  * a broken Drive share returns an empty section rather than failing
  * the whole context build.
  */
@@ -489,8 +489,8 @@ export async function buildCreativeRefreshContext(
   ].filter((s) => s.length > 0)
 
   const block = sections.length > 0
-    ? `CLIENT CONTEXT (ground-truth bronnen — gebruik dit om de proposals te grounden, NIET om te speculeren):\n\n${sections.join("\n\n")}`
-    : `CLIENT CONTEXT: geen aanvullende bronnen beschikbaar — alleen Meta performance. Wees expliciet voorzichtig met aannames over wat klant verkoopt of wie de doelgroep is.`
+    ? `CLIENT CONTEXT (ground-truth bronnen - gebruik dit om de proposals te grounden, NIET om te speculeren):\n\n${sections.join("\n\n")}`
+    : `CLIENT CONTEXT: geen aanvullende bronnen beschikbaar - alleen Meta performance. Wees expliciet voorzichtig met aannames over wat klant verkoopt of wie de doelgroep is.`
 
   return {
     block,

@@ -22,8 +22,8 @@ type Props = {
 
 /** Tabs shown above the clients list. Onboarding lives on the dedicated
  *  Onboarding view, so we only surface the three "operational" statuses
- *  here — Live is the default because that's what 95% of edits target.
- *  "broken" is a synthetic filter — not a Hub status, just an audit lens
+ *  here - Live is the default because that's what 95% of edits target.
+ *  "broken" is a synthetic filter - not a Hub status, just an audit lens
  *  that surfaces clients with ≥1 broken/missing required integration. */
 type ListFilter = ClientStatus | "broken"
 const STATUS_TABS: ClientStatus[] = ["live", "on_hold", "churned"]
@@ -34,7 +34,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
   const [search, setSearch] = useState("")
   const [openId, setOpenId] = useState<string | null>(null)
 
-  // Tab-local fetch — only fires when no pre-warmed list was passed. Shared
+  // Tab-local fetch - only fires when no pre-warmed list was passed. Shared
   // queryKey with UsersTab's mondayPeople query so the two tabs dedupe.
   const clientsQuery = useQuery<{ clients: MondayClient[]; mondayPeople: string[] }>({
     queryKey: ["admin-monday-clients"],
@@ -50,7 +50,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
   const isLoadingClients = !clientsProp && clientsQuery.isLoading
 
   // Pre-compute Hub status per client once so the tab counts and the list
-  // share the same classification — no chance of a count saying "5 churned"
+  // share the same classification - no chance of a count saying "5 churned"
   // while the list shows 6 due to a re-classification mismatch.
   const withStatus = useMemo(
     () => clients.map((c) => ({ client: c, hubStatus: mondayStatusToHub(c.campaignStatus, c.boardType) })),
@@ -68,7 +68,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
   // Connection-health audit. Backs the broken-count badges, the per-row
   // 5-dot statusbar, and the "Broken connections (N)" filter tab.
   //
-  // Only audits LIVE clients — churned clients having broken integrations
+  // Only audits LIVE clients - churned clients having broken integrations
   // is by design (the AM offboarded them), and on_hold clients aren't
   // running active campaigns, so a stale Meta link there isn't
   // immediately actionable. This keeps the audit roll-up signal-only.
@@ -91,12 +91,12 @@ export function ClientsTab({ clients: clientsProp }: Props) {
       return r.json()
     },
     enabled: liveIds.length > 0,
-    // Long staleTime — the underlying lib already caches per-client for
+    // Long staleTime - the underlying lib already caches per-client for
     // 1h. The UI just needs to re-render when the user navigates back.
     staleTime: 60 * 60 * 1000,
   })
   // useMemo'd so the empty-fallback `{}` keeps a stable reference between
-  // renders — the downstream useMemos that depend on this are eager about
+  // renders - the downstream useMemos that depend on this are eager about
   // re-running on any input change. Without this wrapper they'd recompute
   // on every render, which lint correctly flags.
   const healthByClient = useMemo(
@@ -116,7 +116,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
       .filter(({ client, hubStatus }) => {
         if (listFilter === "broken") {
           // Only live clients with ≥1 broken/missing required service.
-          // Health may still be loading for some entries — skip them
+          // Health may still be loading for some entries - skip them
           // until data arrives, the broken-count badge will trigger a
           // re-render when it does.
           return hubStatus === "live" && (healthByClient[client.mondayItemId]?.brokenCount ?? 0) > 0
@@ -132,7 +132,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
         )
       })
       .sort((a, b) => {
-        // Inside the broken filter, surface the worst offenders first —
+        // Inside the broken filter, surface the worst offenders first -
         // brokenCount desc, then alpha. Other filters keep the existing
         // alpha-only sort so admins can scan predictably.
         if (listFilter === "broken") {
@@ -153,7 +153,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
         </p>
       </div>
 
-      {/* Status tabs — default Live so the rolodex of churned clients
+      {/* Status tabs - default Live so the rolodex of churned clients
           isn't the first thing the admin sees. The Broken filter sits to
           the right and is destructive-tinted when N>0, so it pulls the
           eye whenever there's something to fix. */}
@@ -295,7 +295,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
             {listFilter === "broken"
               ? healthQuery.isLoading
                 ? "Auditing connections…"
-                : "All connections healthy — no broken or missing required links."
+                : "All connections healthy - no broken or missing required links."
               : t("settings.clients.empty", locale, {
                   status: statusLabelI18n(listFilter, locale).toLowerCase(),
                   searchSuffix: search ? t("settings.clients.empty_search_suffix", locale) : "",

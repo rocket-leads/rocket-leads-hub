@@ -1,25 +1,25 @@
 /**
  * Rotating motivational lines shown on the Home dashboard's Inbox block when
- * the user has hit Inbox Zero. Same line for everyone for the whole UTC day —
+ * the user has hit Inbox Zero. Same line for everyone for the whole UTC day -
  * picks a new one tomorrow. The point is to make Inbox Zero feel like a tiny
  * win you want to keep, not a dead empty state.
  *
- * Tone: Roy / Rocket Leads — direct, slightly cheeky, jij-vorm, no fluff.
+ * Tone: Roy / Rocket Leads - direct, slightly cheeky, jij-vorm, no fluff.
  * Light pop-culture / marketing references are fine. Avoid anything mean.
  *
  * Pre-baked rather than LLM-on-load so the home page stays cheap to render
  * and never depends on an outbound API call to feel snappy. Refresh the list
- * any time — pure data, no schema.
+ * any time - pure data, no schema.
  */
 export const INBOX_ZERO_MESSAGES: readonly string[] = [
   "Inbox zero. Tijd voor een pilsie. 🍻",
-  "Inbox zero — je bent een living legend.",
+  "Inbox zero - je bent een living legend.",
   "Jouw inbox verdwijnt als sneeuw voor de zon. ❄️",
   "Whoosh. Alles weg. ✨",
   "0 unread. Je moeder zou trots zijn.",
   "Inbox zero of bug? Beide kan.",
   "Klaar. Echt klaar. Beetje raar eigenlijk.",
-  "Niks meer te doen — eerste rondje is voor jou. 🍺",
+  "Niks meer te doen - eerste rondje is voor jou. 🍺",
   "Inbox zero. Niet normaal goed.",
   "Inbox zero. Een 10 met een griffel.",
   "Wie heeft inbox zero? Jij. Pure boss energy.",

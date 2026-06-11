@@ -14,7 +14,7 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
 
 /**
- * Pedro Optimize — Action Needed client suggestions for the strip at the
+ * Pedro Optimize - Action Needed client suggestions for the strip at the
  * top of the Optimize page. Returns the current user's accessible clients
  * that are currently in the Watch List Action bucket, ranked by severity
  * (most urgent first), capped at MAX_SUGGESTIONS.
@@ -26,7 +26,7 @@ import type { BillingHealthVerdict } from "@/lib/clients/billing-health"
  *
  * Why severity-ranked (not alphabetical, not days-in-bucket): severity
  * already prioritises billing errors > live-but-dark > big-spend CPL
- * spikes > small-spend CPL spikes — the exact order a CM would tackle
+ * spikes > small-spend CPL spikes - the exact order a CM would tackle
  * them in. See `severityScore` in [watchlist/categorize.ts] for the
  * formula + floors.
  *
@@ -45,7 +45,7 @@ export type OptimizeSuggestion = {
   name: string
   insight: string
   severity: number
-  /** Which underlying signal is driving this — used to pick the right icon
+  /** Which underlying signal is driving this - used to pick the right icon
    *  in the UI (billing chip vs CPL chip vs dark chip). Mirrors the
    *  branches in categorize() roughly; UI shouldn't need to know the
    *  thresholds. */
@@ -61,7 +61,7 @@ export type OptimizeSuggestion = {
 
 export type OptimizeSuggestionsResponse = {
   suggestions: OptimizeSuggestion[]
-  /** Hub-canonical user id this was computed for — handy for client-side
+  /** Hub-canonical user id this was computed for - handy for client-side
    *  cache invalidation when the session user changes. */
   userId: string
 }
@@ -94,7 +94,7 @@ export async function GET() {
     const supabase = await createAdminClient()
 
     // Read the cron-warmed caches in parallel. Each fall back to an empty
-    // object — categorize() handles null/undefined KPI gracefully, and the
+    // object - categorize() handles null/undefined KPI gracefully, and the
     // strip simply omits clients we can't categorize.
     const [boards, kpiCache, billingHealthCache, stateRows] = await Promise.all([
       readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>("monday_boards"),
@@ -109,7 +109,7 @@ export async function GET() {
 
     if (!boards) {
       // Cold cache (very first deploy / cache wiped). Return empty
-      // gracefully — the strip just shows the empty state until the next
+      // gracefully - the strip just shows the empty state until the next
       // refresh-cache cron tick warms the boards.
       return NextResponse.json<OptimizeSuggestionsResponse>({
         suggestions: [],
@@ -142,7 +142,7 @@ export async function GET() {
     // List row 1:1. Skip everything that isn't currently Action.
     const candidates: OptimizeSuggestion[] = []
     for (const client of userClients) {
-      // Pre-filter on the state table — saves running categorize() on
+      // Pre-filter on the state table - saves running categorize() on
       // ~95% of clients that aren't in Action right now.
       const state = actionStateById.get(client.mondayItemId)
       if (!state) continue
@@ -157,7 +157,7 @@ export async function GET() {
         "en",
         { clientStatus, billingHealth },
       )
-      // The state table can lag a tick — if categorize() now says
+      // The state table can lag a tick - if categorize() now says
       // something other than action, trust the live verdict (skip).
       if (category !== "action") continue
 

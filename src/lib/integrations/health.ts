@@ -10,21 +10,21 @@ import { readCache, writeCache } from "@/lib/cache"
  * Per-service health state for one client. Drives the 6-dot statusbar on
  * the Clients tab + the audit-mode "Broken connections" filter.
  *
- *  `ok`        — ID set and resolved cleanly
- *  `broken`    — ID set but resolve returned null OR threw (transport/auth)
- *  `missing`   — ID empty AND service is required (Stripe / Meta / Trengo)
- *  `not_used`  — ID empty AND service is optional (Monday / Drive)
+ *  `ok`        - ID set and resolved cleanly
+ *  `broken`    - ID set but resolve returned null OR threw (transport/auth)
+ *  `missing`   - ID empty AND service is required (Stripe / Meta / Trengo)
+ *  `not_used`  - ID empty AND service is optional (Monday / Drive)
  *                Visually neutral, never counts as broken in the audit
- *                roll-up — Roy 2026-06-09: optional services empty means
+ *                roll-up - Roy 2026-06-09: optional services empty means
  *                the client opted out, not a broken connection.
- *  `warning`   — Resolved but the entity has a warning status
+ *  `warning`   - Resolved but the entity has a warning status
  *                (e.g. Meta ad account "Pending risk review", non-billing)
  */
 export type ServiceHealthState = "ok" | "broken" | "missing" | "not_used" | "warning"
 
 export type ServiceHealth = {
   state: ServiceHealthState
-  /** Resolved name when state is `ok`/`warning`/`broken` — for tooltip use. */
+  /** Resolved name when state is `ok`/`warning`/`broken` - for tooltip use. */
   name?: string
   /** Human-readable error reason when state is `broken`. Surfaces as the
    *  hover tooltip on the broken dot so the AM doesn't have to open the
@@ -40,7 +40,7 @@ export type ClientHealth = {
   trengo: ServiceHealth
   drive: ServiceHealth
   /** Aggregated `broken` count for the row badge + audit filter. Counts
-   *  `broken` + `missing` (required-and-empty) — does NOT count `not_used`
+   *  `broken` + `missing` (required-and-empty) - does NOT count `not_used`
    *  or `warning`. */
   brokenCount: number
 }
@@ -68,7 +68,7 @@ async function resolveService(
   try {
     const entity = await resolver(id)
     if (!entity) return { state: "broken", error: "Not found" }
-    // Resolver-side status — Meta uses this for Disabled accounts, Drive for
+    // Resolver-side status - Meta uses this for Disabled accounts, Drive for
     // trashed folders. Either way: the link works, but the entity itself is
     // in a bad state and silently breaks downstream features.
     if (entity.status === "error") return { state: "broken", name: entity.name, error: "Entity in error state" }
@@ -76,7 +76,7 @@ async function resolveService(
     return { state: "ok", name: entity.name }
   } catch (e) {
     // Service is down or auth broke. We can't distinguish "broken link" from
-    // "API hiccup" without more state — surface as broken with the error so
+    // "API hiccup" without more state - surface as broken with the error so
     // the AM has a hint, but the audit roll-up should be re-fetched later.
     return { state: "broken", error: e instanceof Error ? e.message : "Verify failed" }
   }
@@ -88,7 +88,7 @@ async function resolveService(
  * are linked + how slow the slowest API is (typically Meta or Monday).
  *
  * Results are cached for 1 hour in `cache_store` so the Clients tab opens
- * fast on subsequent visits — the audit-modus is for "find broken links
+ * fast on subsequent visits - the audit-modus is for "find broken links
  * across all clients", not "real-time monitoring". A manual Refresh
  * button bypasses the cache.
  */
@@ -127,7 +127,7 @@ export async function computeClientHealth(
     brokenCount,
   }
 
-  // Best-effort cache write — a Supabase blip here just means the next
+  // Best-effort cache write - a Supabase blip here just means the next
   // load takes the slow path again. Never block the response.
   void writeCache(HEALTH_CACHE_KEY(client.mondayItemId), health).catch((e) => {
     console.error(
@@ -142,7 +142,7 @@ export async function computeClientHealth(
 /**
  * Batch the per-client health computation across N clients with a fixed
  * concurrency cap so we don't hammer any one external API. Per-client
- * failures are caught — a missing client gets a synthetic "all broken"
+ * failures are caught - a missing client gets a synthetic "all broken"
  * row rather than failing the whole batch, so the UI can still render
  * the 99 working ones.
  */

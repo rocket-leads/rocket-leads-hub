@@ -6,13 +6,13 @@ import type { ChecklistItem } from "@/lib/observability/setup-checklist"
 
 /**
  * Banner at the top of Settings that calls out incomplete platform setup
- * — missing API tokens, board config, user role mappings. Each row is a
+ * - missing API tokens, board config, user role mappings. Each row is a
  * deeplink into the relevant tab (Tokens / Board / Users) so the admin
  * can act on it in two clicks.
  *
  * Drives off the same `fetchSetupChecklist()` data that lights the
  * sidebar Settings dot. Roy 2026-05-23: dot was unclear ("what does the
- * red dot mean?") — banner makes the answer explicit.
+ * red dot mean?") - banner makes the answer explicit.
  */
 export function SetupChecklistBanner({ items }: { items: ChecklistItem[] }) {
   if (items.length === 0) return null
@@ -29,7 +29,7 @@ export function SetupChecklistBanner({ items }: { items: ChecklistItem[] }) {
       <div className="px-4 py-3 border-b border-amber-500/30 flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-amber-500" />
         <div className="text-sm font-medium text-foreground">
-          Setup incomplete — {items.length} item{items.length === 1 ? "" : "s"} need attention
+          Setup incomplete - {items.length} item{items.length === 1 ? "" : "s"} need attention
         </div>
       </div>
       <ul className="divide-y divide-amber-500/15">

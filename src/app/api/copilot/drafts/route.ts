@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 import type { CopilotAction, CopilotDraft, CopilotDraftStatus } from "@/lib/copilot/tools"
 
 /**
- * Active drafts for the bell — ready + failed + pending only. Approved
+ * Active drafts for the bell - ready + failed + pending only. Approved
  * and dismissed drafts stay in the table for audit but are filtered out.
  *
  * Ordered newest-ready-first so the most recent ✨ work shows on top.

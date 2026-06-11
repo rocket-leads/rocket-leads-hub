@@ -1,4 +1,4 @@
-# Rocket Leads — CRM Template (Monday.com)
+# Rocket Leads - CRM Template (Monday.com)
 
 > **Last updated:** 2026-04-04 05:30 CET
 > Dit document beschrijft de structuur van het Monday.com CRM-bord dat Rocket Leads gebruikt per klant. Gebruik dit als referentie voor AI agents, account managers en bij het opzetten van nieuwe klantborden.
@@ -16,7 +16,7 @@ Elk klantbord heet "Template NL / BE 3.0" en bestaat uit vijf vaste secties. Lea
 | Kolom | Type | Beschrijving |
 |---|---|---|
 | Name | Tekst | Bedrijfsnaam of naam contactpersoon |
-| Status | Status (kleurgecodeerd) | Huidige fase in de pipeline — zie statuslijst per sectie |
+| Status | Status (kleurgecodeerd) | Huidige fase in de pipeline - zie statuslijst per sectie |
 | 🗓️ Afspraak | Datum + tijd | Datum en tijdstip van geplande afspraak |
 | Telefoon | Telefoon | Telefoonnummer van de lead |
 | E-mail | E-mail | E-mailadres van de lead |
@@ -62,7 +62,7 @@ Leads waarbij een kennismakingsgesprek is ingepland of heeft plaatsgevonden.
 ---
 
 ### 3. Salescalls
-Leads in de salesfase — na kennismaking, voor deal.
+Leads in de salesfase - na kennismaking, voor deal.
 
 | Status | Betekenis |
 |---|---|
@@ -75,7 +75,7 @@ Leads in de salesfase — na kennismaking, voor deal.
 ---
 
 ### 4. Deals
-Gewonnen deals — klant heeft getekend of akkoord gegeven.
+Gewonnen deals - klant heeft getekend of akkoord gegeven.
 
 | Status | Betekenis |
 |---|---|
@@ -86,7 +86,7 @@ Gewonnen deals — klant heeft getekend of akkoord gegeven.
 ---
 
 ### 5. Lost
-Verloren leads en gediskwalificeerde contacten. Nooit verwijderen — worden gebruikt voor retargetingcampagnes.
+Verloren leads en gediskwalificeerde contacten. Nooit verwijderen - worden gebruikt voor retargetingcampagnes.
 
 | Status | Betekenis |
 |---|---|
@@ -119,17 +119,17 @@ De samenvatting-rij onderaan toont automatisch de totalen over de geselecteerde 
 ```
 Lead binnenkomt (Zapier trigger)
         ↓
-[Leads] — Status: 🎯 Nieuwe leads
+[Leads] - Status: 🎯 Nieuwe leads
         ↓
 Opvolging: bellen, WhatsApp, mail
         ↓
 Afspraak ingepland → 🔥 Afspraak kennismaking
         ↓
-[Kennismaking] — Gesprek gehad → ✅ Kennismaking gehad
+[Kennismaking] - Gesprek gehad → ✅ Kennismaking gehad
         ↓
-[Salescalls] — Offerte → Onderhandeling → ✅ Deal
+[Salescalls] - Offerte → Onderhandeling → ✅ Deal
         ↓
-[Deals] — Onboarding → Live
+[Deals] - Onboarding → Live
 
 → Op elk moment kan een lead naar [Lost]
 ```
@@ -164,19 +164,19 @@ Afspraak ingepland → 🔥 Afspraak kennismaking
 
 ## Veldnotities voor Account Managers
 
-- **UTM altijd invullen** bij aanmaken van een lead — essentieel voor campagnerapportage en het koppelen van resultaten aan specifieke advertenties
+- **UTM altijd invullen** bij aanmaken van een lead - essentieel voor campagnerapportage en het koppelen van resultaten aan specifieke advertenties
 - **First contact handmatig invullen** zodra je de lead voor het eerst daadwerkelijk hebt bereikt (niet bij de eerste belpoging)
-- **Omzet invullen** bij een gewonnen deal — wordt gebruikt voor ROAS-berekeningen per campagne
-- **Lost leads nooit verwijderen** — worden ingezet voor retargetingcampagnes en reactiveringscampagnes via oude leads
-- **Advertentiekosten-sectie wekelijks bijwerken** — elke maandag, voor de rapportage naar de klant
+- **Omzet invullen** bij een gewonnen deal - wordt gebruikt voor ROAS-berekeningen per campagne
+- **Lost leads nooit verwijderen** - worden ingezet voor retargetingcampagnes en reactiveringscampagnes via oude leads
+- **Advertentiekosten-sectie wekelijks bijwerken** - elke maandag, voor de rapportage naar de klant
 - **Notities-veld** van een item gebruiken voor gespreksaantekeningen, relevante context en afspraken
 
 ---
 
 ## Belangrijke nuances voor AI agents
 
-- Monday-bord structuur is per klant gelijk — zelfde secties, zelfde kolommen, zelfde statussen
-- Sommige klanten hebben hun eigen CRM — Rocket Leads koppelt Monday erbovenop, maar **werkt altijd in het eigen Monday-bord**, nooit in het systeem van de klant
+- Monday-bord structuur is per klant gelijk - zelfde secties, zelfde kolommen, zelfde statussen
+- Sommige klanten hebben hun eigen CRM - Rocket Leads koppelt Monday erbovenop, maar **werkt altijd in het eigen Monday-bord**, nooit in het systeem van de klant
 - Klanten kunnen hun eigen resultaten inzien in hun bord
 - De Hub combineert KPI's van Monday én Meta Ads in één dashboard
-- Zapier is de enige automatiseringstool — alle triggers en flows lopen hiervia
+- Zapier is de enige automatiseringstool - alle triggers en flows lopen hiervia

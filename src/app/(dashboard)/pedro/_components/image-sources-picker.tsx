@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils"
 
 /**
- * ImageSourcesPicker — keuzeproces VOOR de Genereer-image klik.
+ * ImageSourcesPicker - keuzeproces VOOR de Genereer-image klik.
  *
  * Roy 2026-06-10: Pedro's auto-selectie uit Drive maakte verkeerde
  * keuzes (logo's, sibling-brand foto's). Deze picker laat de CM:
@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils"
  * Voordat hij op de Genereer-knop drukt. Geen API kosten meer aan de
  * verkeerde bronnen.
  *
- * State is per-client persistent — ééns instellen, voor altijd opgelost
+ * State is per-client persistent - ééns instellen, voor altijd opgelost
  * voor die klant. Geen per-refresh of per-variant state.
  */
 
@@ -102,7 +102,7 @@ export function ImageSourcesPicker({ clientId }: Props) {
       const next = !folder.enabled
       // Cascade: gather descendants by path-prefix match. Roy 2026-06-10:
       // "als ik een hoofdfolder uit zet wil ik alle subfolders ook uit".
-      // Path format is "Parent / Child / Grandchild" — anything that
+      // Path format is "Parent / Child / Grandchild" - anything that
       // starts with `${folder.path} / ` is below this folder.
       const currentFolders = data?.folders ?? []
       const parentPrefix = folder.path + " / "
@@ -234,7 +234,7 @@ export function ImageSourcesPicker({ clientId }: Props) {
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">
-      {/* Header — collapsible toggle, always visible. */}
+      {/* Header - collapsible toggle, always visible. */}
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -273,7 +273,7 @@ export function ImageSourcesPicker({ clientId }: Props) {
         </div>
       </button>
 
-      {/* Expanded body — folder list + stock toggle. */}
+      {/* Expanded body - folder list + stock toggle. */}
       {expanded && (
         <div className="border-t border-border bg-muted/20">
           {/* Stock toggle */}
@@ -372,7 +372,7 @@ export function ImageSourcesPicker({ clientId }: Props) {
                           {ancestorOff && (
                             <span
                               className="text-[9px] text-muted-foreground/60 px-1 rounded bg-muted/60 shrink-0"
-                              title="Hoofdmap staat uit — deze subfolder wordt ook geskipt"
+                              title="Hoofdmap staat uit - deze subfolder wordt ook geskipt"
                             >
                               parent uit
                             </span>
@@ -384,9 +384,9 @@ export function ImageSourcesPicker({ clientId }: Props) {
                           disabled={saving || ancestorOff}
                           title={
                             ancestorOff
-                              ? "Hoofdmap staat uit — zet eerst de parent aan om deze subfolder afzonderlijk te beheren."
+                              ? "Hoofdmap staat uit - zet eerst de parent aan om deze subfolder afzonderlijk te beheren."
                               : f.enabled
-                                ? "Uitzetten — Pedro skipt deze folder + alle subfolders"
+                                ? "Uitzetten - Pedro skipt deze folder + alle subfolders"
                                 : "Aanzetten"
                           }
                           className={cn(
@@ -433,7 +433,7 @@ export function ImageSourcesPicker({ clientId }: Props) {
           {(savingStock || savingIds.size > 0) && (
             <div className="px-4 py-2 border-t border-border/60 text-[11px] text-muted-foreground inline-flex items-center gap-1.5">
               <Check className="h-3 w-3" />
-              Opgeslagen — geldt voor volgende generatie.
+              Opgeslagen - geldt voor volgende generatie.
             </div>
           )}
         </div>

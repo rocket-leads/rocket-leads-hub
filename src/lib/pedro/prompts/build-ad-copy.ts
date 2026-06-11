@@ -7,7 +7,7 @@ import { GENERATION_RULES, type BriefData } from "@/lib/pedro/helpers"
  * and 2 descriptions (≤25 words each). Output is JSON matching
  * `AdCopy` for direct parseJSON consumption.
  *
- * The LP context — when present — is injected so the ad copy lands on
+ * The LP context - when present - is injected so the ad copy lands on
  * the same kernboodschap as the landing page. Mismatches between ad
  * promise and LP delivery destroy conversion rates more than any
  * single creative variable.
@@ -19,9 +19,9 @@ export type AdCopyPromptArgs = {
   anglesStr: string
   /** Already-rendered video-script context block (empty when script skipped). */
   scriptContext?: string
-  /** First ~600 chars of the LP prompt — used to align ad-copy to LP. */
+  /** First ~600 chars of the LP prompt - used to align ad-copy to LP. */
   lpPrompt?: string
-  /** First ~600 chars of the Manus creatives prompt — added 2026-05-22.
+  /** First ~600 chars of the Manus creatives prompt - added 2026-05-22.
    *  Ad copy now reads both LP + creatives so the headlines + primary
    *  text match the visual promise the user clicks through on Meta. */
   creativesContext?: string
@@ -29,7 +29,7 @@ export type AdCopyPromptArgs = {
   styleRef?: string
   /** Huisstijl block. */
   huisstijl?: string
-  /** Free-text steering from the CM — e.g. "korter, scherper",
+  /** Free-text steering from the CM - e.g. "korter, scherper",
    *  "minder corporate". Layered on top of the standard prompt. */
   steering?: string
 }

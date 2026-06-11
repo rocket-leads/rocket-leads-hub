@@ -27,18 +27,18 @@ export type WeeklyUpdateDraftListItem = {
   id: string
   clientId: string
   mondayItemId: string
-  /** Display name preferred for headers — uses Monday `companyName` when
+  /** Display name preferred for headers - uses Monday `companyName` when
    *  set (most common), falls back to `name`, finally to the Monday item id. */
   clientName: string
   /** First name of the contact at the client side (e.g. "Rick" from the
    *  draft body). Used in the queue list for quick scanning. */
   contactFirstName: string
-  /** Account manager assigned to this client on Monday — shown in the
+  /** Account manager assigned to this client on Monday - shown in the
    *  list so a Roy-as-admin can see whose draft is whose at a glance. */
   accountManager: string
   weekOf: string
   parts: EditableParts
-  /** Legacy field — always 2 in the new flow. Kept for backwards-compat. */
+  /** Legacy field - always 2 in the new flow. Kept for backwards-compat. */
   templateVersion: 2
   templateName: string | null
   channel: "whatsapp" | "email" | "unknown"
@@ -86,7 +86,7 @@ export async function GET() {
 
   // Pull the Monday board cache once. It's already the authoritative
   // source for client display name, company name, and AM on every other
-  // page — using it here keeps the queue's labels consistent with what
+  // page - using it here keeps the queue's labels consistent with what
   // the AM sees in /clients (vs. the stale clients.name in Supabase,
   // which often lags the Monday rename until the next refresh).
   const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(

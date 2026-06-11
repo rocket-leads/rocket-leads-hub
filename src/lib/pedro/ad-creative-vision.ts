@@ -34,7 +34,7 @@ export type AdVisionInput = {
 
 /** Get vision description from cache OR generate + cache it. Returns
  *  empty string when the thumbnail isn't fetchable or the model refuses
- *  — caller treats absence as "no visual data" and falls back to copy
+ *  - caller treats absence as "no visual data" and falls back to copy
  *  alone. */
 export async function analyzeAdCreativeVision(
   supabase: Supabase,
@@ -131,7 +131,7 @@ Output requirements:
 
   if (!description) return ""
 
-  // 4. Cache write — upsert so re-analyzing the same ad updates rather
+  // 4. Cache write - upsert so re-analyzing the same ad updates rather
   //    than collides. Failures are non-blocking; we still return the
   //    description.
   try {
@@ -160,7 +160,7 @@ Output requirements:
   return description
 }
 
-/** Analyze multiple ads in parallel — used by creative-refresh to get
+/** Analyze multiple ads in parallel - used by creative-refresh to get
  *  vision for all top winners + losers in one go. Returns a Map keyed
  *  by adId for easy lookup when building the prompt. */
 export async function analyzeAdsParallel(

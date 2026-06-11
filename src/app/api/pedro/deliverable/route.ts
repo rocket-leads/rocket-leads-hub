@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { assembleDeliverable } from "@/lib/pedro/deliverable"
 
 /**
- * Pedro client deliverable — assembled markdown doc per client.
+ * Pedro client deliverable - assembled markdown doc per client.
  *
  *   GET  /api/pedro/deliverable?clientId=X&campaignNumber=N
  *     → returns the currently-stored deliverable or null
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createAdminClient()
 
-  // Look up client name from supabase clients table — faster than
+  // Look up client name from supabase clients table - faster than
   // re-fetching Monday and good enough for the deliverable header.
   const { data: clientRow } = await supabase
     .from("clients")

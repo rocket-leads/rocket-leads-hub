@@ -9,7 +9,7 @@ export const PLATFORMS = ["meta", "google", "tiktok"] as const
 export type Platform = (typeof PLATFORMS)[number]
 
 /**
- * Flat agreement shape — one Monday client row = one campaign. The legacy
+ * Flat agreement shape - one Monday client row = one campaign. The legacy
  * `campaigns[]` array is gone; consolidation across siblings sharing a Stripe
  * customer happens at the billing UI layer (group by stripe_customer_id), not
  * in the data model. See migration 20240026000000_flatten_client_agreements.
@@ -34,7 +34,7 @@ export const EMPTY_AGREEMENT: Agreement = {
 
 /**
  * Sum of platform fees for currently selected platforms + follow-up fee if
- * enabled. Unselected platforms are ignored even if a fee is stored — that
+ * enabled. Unselected platforms are ignored even if a fee is stored - that
  * way deselecting a platform doesn't silently still bill it, and reselecting
  * restores the previous number without re-typing.
  */
@@ -45,7 +45,7 @@ export function agreementMonthly(a: Agreement): number {
 
 /**
  * Resolve a Monday item ID to the Supabase clients.id UUID. Returns null when
- * the client hasn't been synced yet — callers should surface a clear error
+ * the client hasn't been synced yet - callers should surface a clear error
  * rather than silently creating an orphan row.
  */
 async function resolveSupabaseClientId(mondayItemId: string): Promise<string | null> {
@@ -116,7 +116,7 @@ export type SeedMode = "if-missing" | "if-untouched"
  *   row exists. Existing rows are left alone so manual edits via the UI are
  *   never overwritten.
  * - `if-untouched` (admin backfill): also re-seed when a row exists but
- *   `updated_by IS NULL` — i.e. the row was auto-seeded and never edited
+ *   `updated_by IS NULL` - i.e. the row was auto-seeded and never edited
  *   through the UI (which sets `updated_by` to the editing user). Useful for
  *   refreshing stale defaults after the seed logic itself improves.
  */
@@ -134,9 +134,9 @@ export async function seedDefaultAgreementIfMissing(
     .maybeSingle()
 
   if (existing) {
-    // Manual edit happened — never touch.
+    // Manual edit happened - never touch.
     if (existing.updated_by) return "skipped"
-    // Untouched default — only refresh when explicitly asked.
+    // Untouched default - only refresh when explicitly asked.
     if (mode === "if-missing") return "skipped"
   }
 
@@ -169,13 +169,13 @@ export async function seedDefaultAgreementIfMissing(
   return "inserted"
 }
 
-/** Permissive matcher — any status label that mentions "rocket" (case-insensitive)
+/** Permissive matcher - any status label that mentions "rocket" (case-insensitive)
  *  counts as RL doing the follow-up. Anything else (incl. empty) means we don't. */
 function isFollowUpByRL(status: string): boolean {
   return /rocket/i.test(status)
 }
 
-/** Tolerant euro parser — Monday returns values like "1500", "€1.500",
+/** Tolerant euro parser - Monday returns values like "1500", "€1.500",
  *  "1.500,00" depending on the column type. Strips anything that isn't a
  *  digit or sign and returns 0 when nothing parseable is left. */
 function parseEuro(raw: string): number {
@@ -187,7 +187,7 @@ function parseEuro(raw: string): number {
 }
 
 /**
- * Defensive normalisation — JSONB / array columns can technically contain
+ * Defensive normalisation - JSONB / array columns can technically contain
  * anything, so we coerce each field to its expected shape on read/write.
  * Keeps callers from having to handle malformed legacy rows.
  */

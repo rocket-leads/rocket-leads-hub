@@ -7,11 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 
 /**
- * Pedro Insights — agency-level knowledge browser.
+ * Pedro Insights - agency-level knowledge browser.
  *
  * Reads pedro_vertical_patterns (refreshed nightly by cron) and lets the
  * team explore: "what's actually winning in [branche]?". Anonymised: no
- * client names, no per-client attribution — just patterns, winners,
+ * client names, no per-client attribution - just patterns, winners,
  * format breakdowns.
  */
 
@@ -63,7 +63,7 @@ type Response = {
 }
 
 function fmtDate(iso: string | null): string {
-  if (!iso) return "—"
+  if (!iso) return "-"
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
 }
 
@@ -126,7 +126,7 @@ export function PedroInsights() {
     return (
       <Card>
         <CardContent className="py-6 text-sm text-muted-foreground">
-          Insights niet beschikbaar — {error instanceof Error ? error.message : "onbekende fout"}
+          Insights niet beschikbaar - {error instanceof Error ? error.message : "onbekende fout"}
         </CardContent>
       </Card>
     )
@@ -139,10 +139,10 @@ export function PedroInsights() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
-            Pedro Insights — agency-level knowledge
+            Pedro Insights - agency-level knowledge
           </CardTitle>
           <CardDescription>
-            Wat werkt agency-breed in elke branche? Pattern library wordt nachtelijk gerefreshed (04:00) op basis van laagste CPL t.o.v. account-gemiddelde, last 30d. Geanonimiseerd — geen klantnamen.
+            Wat werkt agency-breed in elke branche? Pattern library wordt nachtelijk gerefreshed (04:00) op basis van laagste CPL t.o.v. account-gemiddelde, last 30d. Geanonimiseerd - geen klantnamen.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -320,7 +320,7 @@ export function PedroInsights() {
 
                 {v.common_angles.length === 0 && v.common_hooks.length === 0 && (
                   <div className="text-xs text-muted-foreground/70 italic">
-                    Synthesis nog niet uitgevoerd (te weinig winners of Claude faalde) — winners zijn er wel.
+                    Synthesis nog niet uitgevoerd (te weinig winners of Claude faalde) - winners zijn er wel.
                   </div>
                 )}
 

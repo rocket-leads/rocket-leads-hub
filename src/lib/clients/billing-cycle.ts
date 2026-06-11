@@ -1,5 +1,5 @@
 /**
- * Billing-cycle date helpers — used by both the edit pipeline (write
+ * Billing-cycle date helpers - used by both the edit pipeline (write
  * derived invoice date when the user edits the cycle) and the cron drift
  * corrector (rewrite Monday's invoice column when it falls out of sync).
  *
@@ -30,7 +30,7 @@ export function subtractDaysIso(yyyy_mm_dd: string, days: number): string | null
 }
 
 /** Compute the invoice date for a given cycle start. Returns null when the
- *  cycle is unset or malformed — the caller is expected to clear Monday's
+ *  cycle is unset or malformed - the caller is expected to clear Monday's
  *  invoice column too in that case. */
 export function deriveInvoiceDate(cycleStartDate: string | null | undefined): string | null {
   if (!cycleStartDate) return null
@@ -49,7 +49,7 @@ export function addMonthsIso(yyyy_mm_dd: string, months: number): string | null 
   const totalMonths = (m - 1) + months
   const targetYear = y + Math.floor(totalMonths / 12)
   const targetMonthIdx = ((totalMonths % 12) + 12) % 12 // 0-indexed, handles negatives
-  // Last day of the target month — Date.UTC(year, monthIdx + 1, 0) gives the
+  // Last day of the target month - Date.UTC(year, monthIdx + 1, 0) gives the
   // last day of monthIdx because day=0 rolls back into the previous month.
   const lastDay = new Date(Date.UTC(targetYear, targetMonthIdx + 1, 0)).getUTCDate()
   const day = Math.min(d, lastDay)

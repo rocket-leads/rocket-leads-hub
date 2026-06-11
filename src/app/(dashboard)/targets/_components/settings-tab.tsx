@@ -157,31 +157,31 @@ function DerivedMarketingTargets({ values }: { values: TargetsConfig }) {
     {
       label: "Target Ad Spend",
       formula: "deals × max CPD",
-      value: derived.adSpend > 0 ? formatCurrency(derived.adSpend) : "—",
+      value: derived.adSpend > 0 ? formatCurrency(derived.adSpend) : "-",
       available: derived.adSpend > 0,
     },
     {
       label: "Target Opt-ins",
       formula: "ad spend ÷ max cost per opt-in",
-      value: derived.optIns > 0 ? String(Math.round(derived.optIns)) : "—",
+      value: derived.optIns > 0 ? String(Math.round(derived.optIns)) : "-",
       available: derived.optIns > 0,
     },
     {
       label: "Appointment Booking Rate",
       formula: "max cost per opt-in ÷ max CBC",
-      value: derived.bookingRate > 0 ? formatPercent(derived.bookingRate) : "—",
+      value: derived.bookingRate > 0 ? formatPercent(derived.bookingRate) : "-",
       available: derived.bookingRate > 0,
     },
     {
       label: "Show-up Rate",
       formula: "max CBC ÷ max CTC",
-      value: derived.showUpRate > 0 ? formatPercent(derived.showUpRate) : "—",
+      value: derived.showUpRate > 0 ? formatPercent(derived.showUpRate) : "-",
       available: derived.showUpRate > 0,
     },
     {
       label: "Conversion Rate",
       formula: "max CTC ÷ max CPD",
-      value: derived.convRate > 0 ? formatPercent(derived.convRate) : "—",
+      value: derived.convRate > 0 ? formatPercent(derived.convRate) : "-",
       available: derived.convRate > 0,
     },
   ]

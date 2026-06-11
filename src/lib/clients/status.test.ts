@@ -11,7 +11,7 @@ import {
 
 /**
  * The status mapping is shared between every part of the Hub that pills
- * a client's lifecycle phase — Watch List, Settings, Clients overview,
+ * a client's lifecycle phase - Watch List, Settings, Clients overview,
  * Home, Targets. A regression here either silently misclassifies clients
  * (e.g. counting "Stopt - geen budget" as live revenue) or produces
  * phantom "Onboarding" badges on truly unmapped values.
@@ -21,13 +21,13 @@ import {
  * a status family.
  */
 
-describe("mondayStatusToHub — current board", () => {
+describe("mondayStatusToHub - current board", () => {
   it("Live family", () => {
     expect(mondayStatusToHub("Live", "current")).toBe("live")
     expect(mondayStatusToHub("Subcampaigns only", "current")).toBe("live")
   })
 
-  it("On-hold family — including PAUSED variants", () => {
+  it("On-hold family - including PAUSED variants", () => {
     expect(mondayStatusToHub("On hold", "current")).toBe("on_hold")
     expect(mondayStatusToHub("Paused", "current")).toBe("on_hold")
     expect(mondayStatusToHub("PAUSED (long term)", "current")).toBe("on_hold")
@@ -40,7 +40,7 @@ describe("mondayStatusToHub — current board", () => {
     expect(mondayStatusToHub("Onboarding", "current")).toBe("onboarding")
   })
 
-  it("Churned family — Stopt / Stopped / debt collection / guarantee not met", () => {
+  it("Churned family - Stopt / Stopped / debt collection / guarantee not met", () => {
     expect(mondayStatusToHub("Stopped 1st month", "current")).toBe("churned")
     expect(mondayStatusToHub("Stopped 2nd month+", "current")).toBe("churned")
     expect(mondayStatusToHub("Stopt - geen budget", "current")).toBe("churned")
@@ -57,7 +57,7 @@ describe("mondayStatusToHub — current board", () => {
     expect(mondayStatusToHub("on hold", "current")).toBe("on_hold")
   })
 
-  it("returns null for empty / unknown labels — never silently falls back to onboarding", () => {
+  it("returns null for empty / unknown labels - never silently falls back to onboarding", () => {
     expect(mondayStatusToHub("", "current")).toBeNull()
     expect(mondayStatusToHub("   ", "current")).toBeNull()
     expect(mondayStatusToHub(null, "current")).toBeNull()
@@ -67,9 +67,9 @@ describe("mondayStatusToHub — current board", () => {
   })
 })
 
-describe("mondayStatusToHub — onboarding board", () => {
+describe("mondayStatusToHub - onboarding board", () => {
   it("always returns onboarding regardless of column value", () => {
-    // The onboarding board's membership IS the lifecycle signal — column
+    // The onboarding board's membership IS the lifecycle signal - column
     // value is per-phase, not per-status. We collapse all of them.
     expect(mondayStatusToHub("Live", "onboarding")).toBe("onboarding")
     expect(mondayStatusToHub("Stopped", "onboarding")).toBe("onboarding")

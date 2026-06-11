@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * Pedro knowledge proposals — list + decide endpoints.
+ * Pedro knowledge proposals - list + decide endpoints.
  * Admin-only.
  *
  * GET  /api/pedro/knowledge-proposals?status=pending|accepted|rejected
@@ -12,7 +12,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  * POST /api/pedro/knowledge-proposals
  *   body: { id, decision: "accepted" | "rejected", note? }
  *   → flips status + records decision metadata. Knowledge file edits
- *     are STILL manual — accepting just acknowledges Roy reviewed and
+ *     are STILL manual - accepting just acknowledges Roy reviewed and
  *     plans to integrate; rejecting closes the loop without action.
  */
 

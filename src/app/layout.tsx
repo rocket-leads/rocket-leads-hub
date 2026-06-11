@@ -34,7 +34,7 @@ export const metadata: Metadata = {
  * Without this, a colleague who lands on the Hub for the first time always
  * gets light mode regardless of their system setting, and has to hunt for the
  * sidebar toggle to flip it. Inline so it can't be deferred / split into a
- * bundle that paints after first render — that would cause a white flash.
+ * bundle that paints after first render - that would cause a white flash.
  *
  * The cookie-painted `dark` class on <html> (set below from the server) still
  * wins when a cookie is present; this script only kicks in for the unset
@@ -63,7 +63,7 @@ export default async function RootLayout({
   const localeCookie = cookieStore.get("locale")?.value
   const lang = isLocale(localeCookie) ? localeCookie : DEFAULT_LOCALE
 
-  // html intentionally has no fixed height — pinning it to `h-full` locks it
+  // html intentionally has no fixed height - pinning it to `h-full` locks it
   // at exactly viewport height, which causes intermittent page-scroll bugs
   // when the body content overflows (browser falls back to body-scroll, which
   // is flaky after route changes + on touch). `min-h-screen` on body keeps
@@ -75,14 +75,14 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* Raw <script dangerouslySetInnerHTML> — NOT <Script> from next/script.
+        {/* Raw <script dangerouslySetInnerHTML> - NOT <Script> from next/script.
             Next.js 16 only supports next/script for external src= URLs; using
             it for inline content triggers a "script tag inside React component
             won't execute" warning. The canonical App-Router pattern for inline
             theme bootstrap is the raw script tag (same as next-themes). Runs
             synchronously before React hydrates so the cold-start case (no
             cookie, OS prefers dark, SSR class is "light") is corrected before
-            paint — no white flash. */}
+            paint - no white flash. */}
         <script
           id="theme-init"
           dangerouslySetInnerHTML={{ __html: themeInitScript }}

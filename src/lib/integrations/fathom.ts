@@ -37,7 +37,7 @@ async function fathomFetch<T>(path: string, retries = 3): Promise<T> {
       // 5 minutes (the old `next: { revalidate: 300 }` setting) made
       // every Fathom call look like the token had expired even after
       // the issue cleared. Auth-bearing API responses aren't worth ISR-
-      // caching anyway — Fathom data changes per call. Roy 2026-06-09.
+      // caching anyway - Fathom data changes per call. Roy 2026-06-09.
       cache: "no-store",
     })
 
@@ -221,7 +221,7 @@ export async function fetchRecentFathomMeetings(opts: {
 }
 
 /**
- * Lightweight ping — fetches one team member (or zero) just to confirm
+ * Lightweight ping - fetches one team member (or zero) just to confirm
  * the API key is valid. Used by Settings → Test connection.
  */
 export async function pingFathom(): Promise<{ ok: true; teamMembers: number } | { ok: false; message: string }> {
@@ -241,7 +241,7 @@ export async function pingFathom(): Promise<{ ok: true; teamMembers: number } | 
  * Spec: https://developers.fathom.ai/webhooks#verifying-webhooks
  *   - Build signed content: `${webhook-id}.${webhook-timestamp}.${rawBody}`
  *   - Base64-decode the part of the secret after the `whsec_` prefix
- *   - HMAC-SHA256, then Base64 encode — compare against any of the v1 sigs
+ *   - HMAC-SHA256, then Base64 encode - compare against any of the v1 sigs
  *   - Reject if timestamp is older than 5 minutes (replay protection)
  *
  * IMPORTANT: `rawBody` must be the raw request body as a string, BEFORE any
@@ -274,7 +274,7 @@ export function verifyFathomWebhook(
   const expected = crypto.createHmac("sha256", secretBytes).update(signedContent).digest("base64")
   const expectedBuf = Buffer.from(expected)
 
-  // Header looks like "v1,sig1 v2,sig2 ..." — strip the version prefix from each.
+  // Header looks like "v1,sig1 v2,sig2 ..." - strip the version prefix from each.
   const candidates = sigHeader
     .split(" ")
     .map((s) => s.split(",").pop() ?? s)
@@ -296,7 +296,7 @@ export function verifyFathomWebhook(
 /**
  * Roy's Fathom account spans multiple teams (Rocket Leads delivery, Rocket
  * Leads sales, Founder Download, etc.). Only Rocket Leads recordings belong
- * in the Hub — anything else gets skipped at ingest time. Match is a
+ * in the Hub - anything else gets skipped at ingest time. Match is a
  * case-insensitive substring on "rocket leads" so renames like "Sales Rocket
  * Leads NL" still pass.
  */
@@ -308,7 +308,7 @@ export function isRocketLeadsTeam(team: string | null | undefined): boolean {
 /**
  * Exact Fathom team names to pass to the API's `teams[]=` filter. Cuts the
  * backfill from "fetch every recording in the workspace, drop 99%" down to
- * "ask Fathom only for our teams" — typically dozens of recordings instead
+ * "ask Fathom only for our teams" - typically dozens of recordings instead
  * of hundreds, which keeps us well under the pagination cap.
  *
  * The API filter is exact-match, so add new exact team names here when Roy
@@ -346,7 +346,7 @@ export function classifyMeetingType(payload: FathomMeeting): MeetingType {
 }
 
 /**
- * Render the structured transcript array as a readable text blob — speaker +
+ * Render the structured transcript array as a readable text blob - speaker +
  * timestamp prefix per line. Stored on `meetings.transcript` so we can full-text
  * search and feed it to AI prompts later without re-parsing the JSON each time.
  */

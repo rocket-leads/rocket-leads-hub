@@ -14,7 +14,7 @@ import crypto from "crypto"
  *
  * The bot token is installed once per workspace; user tokens are issued per
  * user that runs through the Connect Slack flow on /account, and stored in
- * `user_platform_tokens`. The bot token isn't stored by us — Slack delivers
+ * `user_platform_tokens`. The bot token isn't stored by us - Slack delivers
  * events directly to our webhook based on the workspace install.
  */
 
@@ -113,7 +113,7 @@ export function verifySlackSignature(
   }
   if (!timestamp || !signature) return false
 
-  // Replay protection — Slack recommends rejecting requests older than 5 min.
+  // Replay protection - Slack recommends rejecting requests older than 5 min.
   const ts = parseInt(timestamp, 10)
   if (!Number.isFinite(ts)) return false
   const fiveMinutes = 60 * 5

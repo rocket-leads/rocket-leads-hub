@@ -7,13 +7,13 @@ import { resolveStripeCustomer } from "@/lib/integrations/stripe"
  *
  * Resolves a single Stripe customer ID to its ResolvedEntity. Used by the
  * `useResolvedEntity` hook to show "linked to: John Doe · john@doe.com"
- * next to a stripe_customer_id field — the always-on verification that
+ * next to a stripe_customer_id field - the always-on verification that
  * stops broken/wrong IDs from sitting unnoticed for weeks.
  *
  * Response shape:
- *   - 200 { entity: ResolvedEntity }   — happy path
- *   - 200 { entity: null }             — ID is well-formed but not a Stripe customer (broken link)
- *   - 500                              — Stripe transport/auth failure (couldn't verify)
+ *   - 200 { entity: ResolvedEntity }   - happy path
+ *   - 200 { entity: null }             - ID is well-formed but not a Stripe customer (broken link)
+ *   - 500                              - Stripe transport/auth failure (couldn't verify)
  *
  * The "ID doesn't resolve" case returns 200/null instead of 404 so React
  * Query treats it as data, not a fetch error. The component renders a

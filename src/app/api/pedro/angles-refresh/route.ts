@@ -9,7 +9,7 @@ import {
 export const maxDuration = 120
 
 /**
- * POST /api/pedro/angles-refresh — body: { clientId, days?: 30 }
+ * POST /api/pedro/angles-refresh - body: { clientId, days?: 30 }
  *
  * Pedro reads live Meta performance, identifies which angles are working
  * and which aren't, then proposes NEW angles to test that fit the
@@ -22,7 +22,7 @@ export const maxDuration = 120
  */
 
 type AnglesProposal = {
-  /** Short descriptive name for the angle — used as the proposal title in UI. */
+  /** Short descriptive name for the angle - used as the proposal title in UI. */
   title: string
   /** 1-2 line description of the angle's core argument. */
   description: string
@@ -56,17 +56,17 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshEnvelo
     stage: "angles",
     noWinnersSummary: ({ days, loserCount, stats }) =>
       loserCount > 0
-        ? `Geen winners in ${days}d window (avg CPL ${stats.avgCpl ? `€${stats.avgCpl.toFixed(2)}` : "—"}, ${loserCount} loser${loserCount === 1 ? "" : "s"}). Dit is precies het moment voor nieuwe angles — de huidige angles trekken niet. Pedro voorstelde geen nieuwe angles automatisch omdat winners + losers samen het signaal vormen; run angles-refresh nogmaals wanneer er minimaal 1 winner is, of doe de Onboard Angles flow van scratch.`
-        : `Geen ads scoren als winner in ${days}d. Te weinig data om een richting te kiezen — kies een breder window of doe de Onboard Angles flow van scratch.`,
-    buildPrompt: (ctx) => `Je bent Pedro, senior campaign manager bij Rocket Leads. Je bekijkt de live Meta performance van een klant en stelt NIEUWE ANGLES voor om te testen — niet itereren op winnaars, maar onontgonnen invalshoeken die de doelgroep van een andere kant raken.
+        ? `Geen winners in ${days}d window (avg CPL ${stats.avgCpl ? `€${stats.avgCpl.toFixed(2)}` : "-"}, ${loserCount} loser${loserCount === 1 ? "" : "s"}). Dit is precies het moment voor nieuwe angles - de huidige angles trekken niet. Pedro voorstelde geen nieuwe angles automatisch omdat winners + losers samen het signaal vormen; run angles-refresh nogmaals wanneer er minimaal 1 winner is, of doe de Onboard Angles flow van scratch.`
+        : `Geen ads scoren als winner in ${days}d. Te weinig data om een richting te kiezen - kies een breder window of doe de Onboard Angles flow van scratch.`,
+    buildPrompt: (ctx) => `Je bent Pedro, senior campaign manager bij Rocket Leads. Je bekijkt de live Meta performance van een klant en stelt NIEUWE ANGLES voor om te testen - niet itereren op winnaars, maar onontgonnen invalshoeken die de doelgroep van een andere kant raken.
 
 ${commonPromptPreamble(ctx)}
 OPDRACHT:
-Stel 3-5 NIEUWE angles voor (geen variaties op bestaande winnaars — die doet creative-refresh). Elke angle moet:
+Stel 3-5 NIEUWE angles voor (geen variaties op bestaande winnaars - die doet creative-refresh). Elke angle moet:
 - Een fundamenteel andere invalshoek zijn dan wat de WINNERS hierboven al doen.
 - Aansluiten bij de brief (zie "Eerdere brief" hierboven) en de cross-client patterns voor deze branche.
 - Geen kopie zijn van angles uit "Eerdere angles" (die zijn al getest of lopen).
-- Geen kopie zijn van wat de LOSERS deden — die hebben juist niet gewerkt.
+- Geen kopie zijn van wat de LOSERS deden - die hebben juist niet gewerkt.
 
 PRINCIPES (knowledge/campaigns.md):
 - Universele winnende angles: garantie, gratis-iets-van-waarde, prijslijst, financieel/ROI, uniek/revolutionair, schaarste, pijnpunten, branche-specifiek.

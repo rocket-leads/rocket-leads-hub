@@ -13,12 +13,12 @@ import { pastContextForStage } from "@/lib/pedro/past-campaigns"
  *  - any future cron / batch job
  *
  * Anthropic SDK reads ANTHROPIC_API_KEY from env. Failures bubble up to the
- * caller — caller decides whether to surface or swallow them.
+ * caller - caller decides whether to surface or swallow them.
  */
 
 const anthropic = new Anthropic()
 
-/** Per-field provenance — which input(s) Pedro used for each value.
+/** Per-field provenance - which input(s) Pedro used for each value.
  *  Surfaced in the Brief UI as a small "Bron: kick-off" tag below
  *  each auto-filled field so the AM can verify without re-reading the
  *  full transcript. */
@@ -47,7 +47,7 @@ export type GeneratedBrief = {
   driveLink: string
   /** Short, plain-text rationale ("based on kick-off + last eval"). */
   source: string
-  /** Per-field source breakdown — Claude reports which input(s) it
+  /** Per-field source breakdown - Claude reports which input(s) it
    *  pulled each value from. Used by the Brief UI to render source
    *  tags. Empty/missing means Pedro inferred or didn't track it. */
   _sources?: BriefFieldSources
@@ -59,7 +59,7 @@ export type GenerateBriefMeta = {
   hasKickoffMeeting: boolean
   monthlyUpdateCount: number
   hasTrengo: boolean
-  /** Monday item id used as input — echo for callers that need provenance. */
+  /** Monday item id used as input - echo for callers that need provenance. */
   clientId: string
   /** Display name resolved from Monday item. */
   clientName: string
@@ -79,7 +79,7 @@ const EMPTY: GeneratedBrief = {
   _sources: {},
 }
 
-// Allowed FieldSource values — used to validate Claude's output before
+// Allowed FieldSource values - used to validate Claude's output before
 // surfacing it. Anything outside this list collapses to "unknown".
 const VALID_SOURCES: ReadonlySet<FieldSource> = new Set<FieldSource>([
   "kickoff_meeting",
@@ -137,7 +137,7 @@ export async function generateAutoBrief(
 
   if (!client) throw new Error("Klant niet gevonden in Monday")
 
-  // ── 2. Pull recent meetings — most recent EVALUATION wins, kick-off is anchor ──
+  // ── 2. Pull recent meetings - most recent EVALUATION wins, kick-off is anchor ──
   const { data: meetingsRaw } = await supabase
     .from("meetings")
     .select("id, title, scheduled_at, meeting_type, summary, transcript")
@@ -209,25 +209,25 @@ export async function generateAutoBrief(
   ]
 
   if (kickoffUpdate) {
-    sections.push(`\n[KICK-OFF update — ${kickoffUpdate.createdAt}]\n${trim(kickoffUpdate.text, 4500)}`)
+    sections.push(`\n[KICK-OFF update - ${kickoffUpdate.createdAt}]\n${trim(kickoffUpdate.text, 4500)}`)
   }
   if (latestEval) {
     sections.push(
-      `\n[MEEST RECENTE EVALUATIE — ${latestEval.scheduled_at?.slice(0, 10) ?? ""}, "${latestEval.title ?? ""}"]\n` +
+      `\n[MEEST RECENTE EVALUATIE - ${latestEval.scheduled_at?.slice(0, 10) ?? ""}, "${latestEval.title ?? ""}"]\n` +
         `Samenvatting: ${trim(latestEval.summary ?? "", 1200)}\n` +
         (latestEval.transcript ? `Transcript: ${trim(latestEval.transcript, 6000)}` : ""),
     )
   }
   if (latestKickoff && latestKickoff.id !== latestEval?.id) {
     sections.push(
-      `\n[KICK-OFF MEETING — ${latestKickoff.scheduled_at?.slice(0, 10) ?? ""}]\n` +
+      `\n[KICK-OFF MEETING - ${latestKickoff.scheduled_at?.slice(0, 10) ?? ""}]\n` +
         `Samenvatting: ${trim(latestKickoff.summary ?? "", 1200)}\n` +
         (latestKickoff.transcript ? `Transcript: ${trim(latestKickoff.transcript, 10000)}` : ""),
     )
   }
   if (otherRecent) {
     sections.push(
-      `\n[ANDERE RECENTE MEETING — ${otherRecent.scheduled_at?.slice(0, 10) ?? ""}, "${otherRecent.title ?? ""}"]\n` +
+      `\n[ANDERE RECENTE MEETING - ${otherRecent.scheduled_at?.slice(0, 10) ?? ""}, "${otherRecent.title ?? ""}"]\n` +
         `Samenvatting: ${trim(otherRecent.summary ?? "", 600)}`,
     )
   }
@@ -240,12 +240,12 @@ export async function generateAutoBrief(
 
   const pastBrief = await pastContextForStage(clientId, "brief", 2)
 
-  const prompt = `Op basis van onderstaande klantcontext, vul een complete campagne-brief in voor deze klant. Pedro gebruikt deze brief als basis voor angles, scripts en creatives — wees zo specifiek en bruikbaar mogelijk.
+  const prompt = `Op basis van onderstaande klantcontext, vul een complete campagne-brief in voor deze klant. Pedro gebruikt deze brief als basis voor angles, scripts en creatives - wees zo specifiek en bruikbaar mogelijk.
 
 BELANGRIJKE PRIORITEITSREGELS:
-1. **De MEEST RECENTE evaluatie weegt het zwaarst.** Als er recente eval-context is, is die leidend boven de kick-off. Doelgroep, propositie en aanbod kunnen sinds de kick-off zijn aangepast — pak de actuele versie.
-2. **Negeer expliciet tegenstrijdige info uit oude meetings of updates** — als de huidige eval iets anders zegt dan de kick-off, ga met de eval mee. Geen ruis op de lijn.
-3. Trengo-berichten en recente Monday updates zijn aanvullende signalen voor pijn, bezwaren en wat klant nu echt wil — niet de hoofdbron.
+1. **De MEEST RECENTE evaluatie weegt het zwaarst.** Als er recente eval-context is, is die leidend boven de kick-off. Doelgroep, propositie en aanbod kunnen sinds de kick-off zijn aangepast - pak de actuele versie.
+2. **Negeer expliciet tegenstrijdige info uit oude meetings of updates** - als de huidige eval iets anders zegt dan de kick-off, ga met de eval mee. Geen ruis op de lijn.
+3. Trengo-berichten en recente Monday updates zijn aanvullende signalen voor pijn, bezwaren en wat klant nu echt wil - niet de hoofdbron.
 4. Kick-off blijft de baseline voor sector, USP's en aanbod-structuur als er géén recentere eval is.
 
 ${sections.join("\n")}
@@ -255,13 +255,13 @@ Geef alleen JSON terug (geen markdown, geen code fences), exact in dit format:
 {
   "bedrijf": "Officiele bedrijfsnaam",
   "sector": "Branche / sector zoals Pedro die zou positioneren (bv. 'Verduurzaming - zonnepanelen', 'Renovatie - badkamers')",
-  "doelgroep": "Concrete ICP omschrijving — B2B/B2C, regio, demografie, koopkracht. 1-2 zinnen.",
+  "doelgroep": "Concrete ICP omschrijving - B2B/B2C, regio, demografie, koopkracht. 1-2 zinnen.",
   "pijnpunten": "De 2-3 belangrijkste pijnpunten van de doelgroep, vanuit klant-perspectief. Als bullets met '-'.",
   "aanbod": "Het aanbod / dienst, inclusief tarieven of prijsindicatie als die bekend zijn. 1-3 zinnen.",
   "usps": "De 3-5 sterkste USP's van de klant. Als bullets met '-'.",
   "marketingHooks": "Bestaande hooks die in de kick-off / evaluatie zijn benoemd door account manager (niet jij verzinnen, alleen extracten als ze er zijn). Lege string als er geen hooks zijn benoemd.",
-  "websiteUrl": "Website URL van klant (bv. www.bedrijfsnaam.nl) — alleen als deze in de context voorkomt, anders lege string",
-  "driveLink": "Google Drive folder link — alleen als die in de context voorkomt, anders lege string",
+  "websiteUrl": "Website URL van klant (bv. www.bedrijfsnaam.nl) - alleen als deze in de context voorkomt, anders lege string",
+  "driveLink": "Google Drive folder link - alleen als die in de context voorkomt, anders lege string",
   "source": "1 zin in NL die kort uitlegt waar je deze brief op hebt gebaseerd, bv. 'Op basis van laatste evaluatie 2026-04-12 + kick-off + 8 recente Monday updates.'",
   "_sources": {
     "bedrijf": ["client_metadata"],
@@ -291,7 +291,7 @@ Wees eerlijk in _sources. Als je een veld puur uit de naam afleidt → ["inferre
 
 Belangrijk:
 - Alle tekst in het Nederlands
-- Geen platte herhaling — synthetiseer; haal de essentie uit context
+- Geen platte herhaling - synthetiseer; haal de essentie uit context
 - Lege string ('') voor velden waar geen betrouwbare info beschikbaar is, NIET fantaseren
 - Geen datums of deadlines in de brief tenzij die expliciet in de context staan`
 

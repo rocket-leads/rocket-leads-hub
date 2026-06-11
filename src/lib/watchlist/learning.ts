@@ -1,11 +1,11 @@
-// Watch List learning layer — turns the override audit log into an AI
+// Watch List learning layer - turns the override audit log into an AI
 // adjustment signal that the categorizer can apply to FUTURE clients in
 // a similar situation.
 //
 // This is the second half of the feedback loop the user designed:
 //   1. CM hits Move → row jumps to the chosen bucket (categorize.ts manual override)
 //   2. The override + KPI snapshot lands in `watchlist_overrides` (audit log)
-//   3. ↓ THIS MODULE ↓ — for every live client, find the most similar past
+//   3. ↓ THIS MODULE ↓ - for every live client, find the most similar past
 //      override by KPI signature. If similar enough (similarity ≥ threshold)
 //      AND the team consistently moved that pattern to the same bucket, emit
 //      an AI adjustment suggestion. The categorizer then short-circuits the
@@ -13,12 +13,12 @@
 //
 // Pattern matching (rather than LLM) by design:
 //   - Zero per-request cost (runs purely on cached data)
-//   - Improves the moment a new override lands — no cron lag
+//   - Improves the moment a new override lands - no cron lag
 //   - Transparent: "matched override on Client X 4 days ago (similarity 0.82)"
-//   - Strictly monotonic with data — more overrides = better suggestions
+//   - Strictly monotonic with data - more overrides = better suggestions
 //
 // The signature space is intentionally small (cpl_pct_change, recovery_state,
-// spend_band). We're not trying to model nuance — just detect "this looks
+// spend_band). We're not trying to model nuance - just detect "this looks
 // like a case the team has already decided on" reliably enough that the UI
 // can surface a hint without taking the decision away from the CM.
 //
@@ -30,7 +30,7 @@ import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { AiAdjustmentExtras } from "./categorize"
 
 /** Compact descriptor of "what does this client's signal look like right now?"
- *  — used to find similar past overrides. */
+ *  - used to find similar past overrides. */
 export type ClientSignature = {
   /** Percent change in CPL vs prev-7d, signed (negative = improving). */
   cplPctChange: number | null
@@ -38,7 +38,7 @@ export type ClientSignature = {
   recoveryState: "recovered" | "spiking" | "stable" | "unknown"
   /** Spend band: 'low' (<€50), 'mid' (€50-200), 'high' (>€200). 7d total. */
   spendBand: "low" | "mid" | "high"
-  /** Has at least one lead in the window — affects which patterns can apply. */
+  /** Has at least one lead in the window - affects which patterns can apply. */
   hasLeads: boolean
 }
 
@@ -49,7 +49,7 @@ export type StoredOverride = {
   reason: string
   /** When the override was created. Newer overrides weigh more in the match. */
   createdAt: string
-  /** KPI snapshot at decision time — used to build the signature for comparison. */
+  /** KPI snapshot at decision time - used to build the signature for comparison. */
   kpiSnapshot: {
     adSpend?: number | null
     leads?: number | null
@@ -68,7 +68,7 @@ export function buildSignature(kpi: KpiSummary | undefined): ClientSignature {
   const cplPctChange =
     kpi.cpl > 0 && kpi.prevCpl > 0 ? ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100 : null
 
-  // Recovery state needs the daily trend — approximate via prevCpl ratio for
+  // Recovery state needs the daily trend - approximate via prevCpl ratio for
   // signature compactness. A full implementation would call getRecentSignal()
   // here; the approximation is fine because the categorizer itself runs the
   // recent-window logic and we only need a coarse bucket.
@@ -117,11 +117,11 @@ function similarity(a: ClientSignature, b: ClientSignature): number {
   let score = 0
   let weight = 0
 
-  // Recovery state — the dominant axis. Match = full credit, mismatch = 0.
+  // Recovery state - the dominant axis. Match = full credit, mismatch = 0.
   weight += 0.5
   if (a.recoveryState !== "unknown" && a.recoveryState === b.recoveryState) score += 0.5
 
-  // CPL pct change — gradient, closer = more credit.
+  // CPL pct change - gradient, closer = more credit.
   weight += 0.3
   if (a.cplPctChange !== null && b.cplPctChange !== null) {
     const diff = Math.abs(a.cplPctChange - b.cplPctChange)
@@ -130,11 +130,11 @@ function similarity(a: ClientSignature, b: ClientSignature): number {
     score += 0.3 * cplCredit
   }
 
-  // Spend band — exact match only.
+  // Spend band - exact match only.
   weight += 0.15
   if (a.spendBand === b.spendBand) score += 0.15
 
-  // Lead presence — exact match only.
+  // Lead presence - exact match only.
   weight += 0.05
   if (a.hasLeads === b.hasLeads) score += 0.05
 
@@ -143,14 +143,14 @@ function similarity(a: ClientSignature, b: ClientSignature): number {
 
 /** Minimum number of supporting overrides before a pattern can yield a
  *  high-confidence adjustment. One-off overrides shouldn't move other
- *  clients — we need to see the team make the same call twice. */
+ *  clients - we need to see the team make the same call twice. */
 const MIN_SUPPORTING_OVERRIDES = 2
 
 /** Similarity above which an override counts as "supporting" the pattern. */
 const SUPPORTING_SIMILARITY = 0.7
 
 /** Confidence bump applied per supporting override beyond the minimum.
- *  Caps at 0.95 — we never claim full certainty on a pattern match. */
+ *  Caps at 0.95 - we never claim full certainty on a pattern match. */
 const CONFIDENCE_PER_SUPPORTER = 0.1
 
 /**
@@ -202,7 +202,7 @@ export function suggestAiAdjustment(
   if (topScore === 0) return null
 
   // Confidence: base 0.6 (cleared the gate), +0.1 per supporter beyond the
-  // minimum, capped at 0.95. Categorizer applies at ≥0.75 — so we need at
+  // minimum, capped at 0.95. Categorizer applies at ≥0.75 - so we need at
   // least 4 supporters to cross the threshold.
   const confidence = Math.min(
     0.95,

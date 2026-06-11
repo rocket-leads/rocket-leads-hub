@@ -38,13 +38,13 @@ type Props = {
 /**
  * Trigger + dialog for the weekly client update.
  *
- * UX shape: WhatsApp message preview where EVERY field is inline-editable —
+ * UX shape: WhatsApp message preview where EVERY field is inline-editable -
  * opener, intro, the 7-day KPI block (incl. numbers), trend sentence,
  * conclusion, actions header, action bullets. The Trengo template's fixed
  * "Hey " prefix and "Groetjes ..." suffix happen at send time and aren't
  * rendered in the dialog, so the AM only sees + edits the {{1}} body.
  *
- * The live preview IS the editor — what you see is exactly what gets sent.
+ * The live preview IS the editor - what you see is exactly what gets sent.
  * On send we POST the rendered string (output of `renderFromParts(parts)`)
  * which Trengo then wraps in the AM's `rl_universal_<voornaam>` HSM template.
  */
@@ -197,7 +197,7 @@ type PreviewProps = {
   inputsDisabled: boolean
 }
 
-// ContextNoteCard removed — AMs reported it as noise (always empty, took
+// ContextNoteCard removed - AMs reported it as noise (always empty, took
 // vertical space at the top of the editor). `parts.note` stays on the
 // EditableParts shape for backwards-compat with stored drafts but is
 // neither rendered nor written to anywhere in the UI.
@@ -205,7 +205,7 @@ type PreviewProps = {
 export function ActionsBlock({ parts, setParts, inputsDisabled }: PreviewProps) {
   return (
     <div>
-      {/* Locked header — the approved Trengo template body provides
+      {/* Locked header - the approved Trengo template body provides
           "✅ Wat we deze week gaan doen:" above {{5}}, so showing it
           here as muted/select-none keeps the preview faithful to what
           the customer receives and prevents the AM from "editing" a
@@ -269,7 +269,7 @@ export function ActionsBlock({ parts, setParts, inputsDisabled }: PreviewProps) 
 /** WhatsApp chat-bubble preview for the V2 weekly template
  *  (`rl_weekly_<voornaam>`). All template-body strings ("Hey ", ",",
  *  "📊 Cijfers deze week:", "✅ Wat we deze week gaan doen:", "Groetjes,",
- *  AM name) render as locked muted labels — only the variable content
+ *  AM name) render as locked muted labels - only the variable content
  *  ({{1}}..{{5}}) is editable. Reads top-to-bottom exactly like what the
  *  customer will receive. */
 export function WhatsAppPreview({
@@ -344,7 +344,7 @@ export function WhatsAppPreview({
           ariaLabel="KPI block"
         />
 
-        {/* Single conclusion block — was previously split across
+        {/* Single conclusion block - was previously split across
             trendSentence + conclusion. Edits go to `conclusion`; the
             trendSentence field stays empty on new composes. */}
         <InlineTextarea
@@ -359,7 +359,7 @@ export function WhatsAppPreview({
           <ActionsBlock parts={parts} setParts={setParts} inputsDisabled={inputsDisabled} />
         </div>
 
-        {/* Overdue invoices block — auto-populated by the composer when
+        {/* Overdue invoices block - auto-populated by the composer when
             the client has open Stripe invoices past their due date. Each
             invoice ships a hosted Stripe payment URL so the customer can
             settle straight from the WhatsApp message. Editable so the AM
@@ -402,7 +402,7 @@ export function WhatsAppPreview({
 
 /** Email composer preview: free-text. Email has no Meta-approved template
  *  wrapper, so unlike WhatsApp there are NO locked headers, NO comma-after-
- *  opener, NO multi-line sign-off baked in — the AM types the whole body.
+ *  opener, NO multi-line sign-off baked in - the AM types the whole body.
  *
  *  On mount, `parts` is pre-seeded by composeInitialParts with a sensible
  *  starting draft (greeting + intro + KPI block + conclusion + actions +
@@ -426,7 +426,7 @@ export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) 
       for (const a of validActions) lines.push(`• ${a}`)
       blocks.push(lines.join("\n"))
     }
-    // Overdue invoices block — payment links appear before the sign-off
+    // Overdue invoices block - payment links appear before the sign-off
     // so the call-to-action reads as the closing CTA.
     if (parts.overdueBlock?.trim()) blocks.push(parts.overdueBlock.trim())
     if (parts.signOff?.trim()) blocks.push(parts.signOff.trim())
@@ -447,7 +447,7 @@ export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) 
   return (
     <div className="px-6 py-5 bg-muted/30 dark:bg-zinc-900/40 min-h-full">
       <div className="max-w-3xl mx-auto rounded-lg border border-border/60 bg-background shadow-sm overflow-hidden">
-        {/* Subject row — sticks at top with a thin border, like a real
+        {/* Subject row - sticks at top with a thin border, like a real
             email composer. */}
         <div className="border-b border-border/60 px-5 py-3 flex items-center gap-3">
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium shrink-0 w-20">
@@ -464,7 +464,7 @@ export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) 
           />
         </div>
 
-        {/* Body — single free-text textarea. Edits are stored entirely on
+        {/* Body - single free-text textarea. Edits are stored entirely on
             `parts.conclusion`; opener/intro/kpiBlock/actions/signOff +
             overdueBlock all get blanked so renderFromParts emits exactly
             what the AM typed (any overdue payment links the composer
@@ -507,7 +507,7 @@ export function EmailPreview({ parts, setParts, inputsDisabled }: PreviewProps) 
 /** Subset of WeeklyUpdateDraftListItem the dialog actually needs to skip
  *  the generate fetch. Kept inline here (not imported from the route) so
  *  the dialog stays decoupled from the list endpoint's response shape and
- *  can be hydrated by any caller — queue overlay, mass-send tool, etc. */
+ *  can be hydrated by any caller - queue overlay, mass-send tool, etc. */
 export type ClientUpdateDraftSeed = {
   draftId: string
   parts: EditableParts
@@ -518,7 +518,7 @@ export type ClientUpdateDraftSeed = {
 type DialogProps = Props & {
   open: boolean
   onOpenChange: (next: boolean) => void
-  /** Pre-generated draft (from the Monday cron) — when present, the dialog
+  /** Pre-generated draft (from the Monday cron) - when present, the dialog
    *  skips its own /client-update POST and renders from this seed
    *  immediately. On successful send, also PATCHes the draft to
    *  status='sent' so it disappears from the queue. */
@@ -548,7 +548,7 @@ export function ClientUpdateDialog({
   const [sendError, setSendError] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
   const [testMode, setTestMode] = useState(false)
-  // Ad-hoc test recipients — persisted in localStorage so the AM doesn't
+  // Ad-hoc test recipients - persisted in localStorage so the AM doesn't
   // have to retype each session, but never stored server-side (there's
   // no per-user "test contact" setting any more). The dialog renders an
   // email OR phone input depending on the channel of the current send.
@@ -602,12 +602,12 @@ export function ClientUpdateDialog({
     mutationFn: async (payload: {
       message: string
       subject?: string
-      /** Full editable parts — the server uses these for V2 multi-variable
+      /** Full editable parts - the server uses these for V2 multi-variable
        *  template sends (`rl_weekly_<voornaam>`) when the feature
        *  flag is on. Ignored on V1 path. */
       parts?: EditableParts
       /** Test mode: swap recipient with the ad-hoc email/phone supplied
-       *  below. Body/template/channel stay real — only the destination
+       *  below. Body/template/channel stay real - only the destination
        *  is replaced. */
       test?: boolean
       /** Ad-hoc test recipients. Email is required for an email-channel
@@ -631,7 +631,7 @@ export function ClientUpdateDialog({
       setSent(true)
       void queryClient.invalidateQueries({ queryKey: ["last-client-updates"] })
       // Test sends never consume a draft or trigger client-side state
-      // changes — they're verifications, not real client communications.
+      // changes - they're verifications, not real client communications.
       // The dialog closes after the success indicator and the draft
       // queue stays untouched.
       const wasTest = (data as { test?: boolean })?.test === true
@@ -650,7 +650,7 @@ export function ClientUpdateDialog({
             }),
           })
         } catch {
-          // swallowed — see fire-and-forget comment above
+          // swallowed - see fire-and-forget comment above
         }
         void queryClient.invalidateQueries({ queryKey: ["weekly-update-drafts"] })
         onDraftResolved?.()
@@ -729,10 +729,10 @@ export function ClientUpdateDialog({
   }, [sendErrorObj, flushNow])
   // For WhatsApp the AM's HSM template is required (Meta won't accept free
   // text outside the 24h window, and we route ALL outbound via template).
-  // For email no template is needed — Trengo handles the email channel
+  // For email no template is needed - Trengo handles the email channel
   // server-side once we have a Trengo contact.
   // Test mode adds its own gate: the ad-hoc destination input must be
-  // filled before we let the send fire — server would reject otherwise
+  // filled before we let the send fire - server would reject otherwise
   // with a less friendly 400.
   const testRecipientReady = !testMode || (isEmail ? !!testEmail.trim() : !!testPhone.trim())
   const canSend =
@@ -760,7 +760,7 @@ export function ClientUpdateDialog({
         {testMode && parts && (
           <div className="mx-6 mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 space-y-2">
             <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
-              <strong>Test mode</strong> — bericht gaat naar het ingevulde adres hieronder, niet naar de klant. FROM channel, template en body blijven realistisch.
+              <strong>Test mode</strong> - bericht gaat naar het ingevulde adres hieronder, niet naar de klant. FROM channel, template en body blijven realistisch.
             </p>
             <div className="flex items-center gap-2">
               <label className="text-[10px] uppercase tracking-wider text-amber-700/70 dark:text-amber-400/70 font-medium shrink-0 w-16">
@@ -785,7 +785,7 @@ export function ClientUpdateDialog({
               )}
             </div>
             <p className="text-[10px] text-amber-700/60 dark:text-amber-400/60">
-              Opgeslagen in je browser — hoef je niet opnieuw te typen.
+              Opgeslagen in je browser - hoef je niet opnieuw te typen.
             </p>
           </div>
         )}
@@ -835,10 +835,10 @@ export function ClientUpdateDialog({
                   <code className="rounded bg-muted/60 px-1 font-mono text-[10px]">
                     rl_weekly_&lt;voornaam&gt;
                   </code>{" "}
-                  — check Settings &rarr; Users.
+                  - check Settings &rarr; Users.
                 </p>
               )}
-              {/* Recipient verification — shows the actual email/phone the
+              {/* Recipient verification - shows the actual email/phone the
                   send is going to, resolved from the linked Trengo contact.
                   Suppressed in test mode (banner above already explains
                   where it goes). */}

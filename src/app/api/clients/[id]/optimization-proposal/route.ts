@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server"
 /**
  * Pre-Pedro-unification this read from a separate `client_proposal_v3:{id}`
  * cache_store entry. Now the structured proposal lives in pedro_insights as
- * a row with insight_type = "client_optimisation_full" — the same table
+ * a row with insight_type = "client_optimisation_full" - the same table
  * that backs all per-client AI surfaces.
  *
  * GET = fast path. Reads pedro_insights and returns the parsed body. No
@@ -45,7 +45,7 @@ export async function GET(
     try {
       parsed = JSON.parse(data.body) as Partial<CachedProposal>
     } catch {
-      // Corrupt row — surface as cache-miss so the UI re-runs POST.
+      // Corrupt row - surface as cache-miss so the UI re-runs POST.
       return NextResponse.json({ cached: false })
     }
 

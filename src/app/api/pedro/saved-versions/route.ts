@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 
 /**
- * Pedro saved versions — explicit "Save final version" snapshots per
+ * Pedro saved versions - explicit "Save final version" snapshots per
  * stage. Layer 2 of the two-layer storage model (drafts in
  * pedro_client_state, versions here).
  *

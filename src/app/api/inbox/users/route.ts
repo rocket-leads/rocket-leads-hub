@@ -5,7 +5,7 @@ import { NextResponse } from "next/server"
 /**
  * Lightweight user list for the inbox composer (assignee picker). Returns
  * everyone in the users table, sorted by name. Available to any signed-in
- * user — assignment doesn't grant access, so listing isn't sensitive.
+ * user - assignment doesn't grant access, so listing isn't sensitive.
  */
 export async function GET() {
   const session = await auth()

@@ -10,12 +10,12 @@ import {
  *
  * Returns the WhatsApp + Email channels in the Rocket Leads Trengo workspace
  * for the per-user subscription picker on /account. Other channel types
- * (voice, chat, social) are filtered out — the Hub Client Inbox today only
+ * (voice, chat, social) are filtered out - the Hub Client Inbox today only
  * surfaces WhatsApp + email tickets, so listing the rest just adds noise.
  *
  * Display name is coalesced from several candidate fields because Trengo's
  * `/channels` endpoint frequently returns `name: null` for WhatsApp/Email
- * channels — the human-readable label lives in `title`, `phone`,
+ * channels - the human-readable label lives in `title`, `phone`,
  * `email_address`, `display_name`, or `from`, depending on the channel type.
  *
  * Auth required so we don't leak channel metadata to anonymous callers; no
@@ -26,7 +26,7 @@ const ALLOWED_TYPES = new Set([
   // Email family
   "EMAIL",
   "email",
-  // WhatsApp family — Trengo has historically used several type strings
+  // WhatsApp family - Trengo has historically used several type strings
   "WA_BUSINESS",
   "wa_business",
   "WHATSAPP",
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
 
     const filtered = channels
       .filter((c) => ALLOWED_TYPES.has(c.type))
-      // Drop disabled / archived channels — they show in /channels but the
+      // Drop disabled / archived channels - they show in /channels but the
       // user can't pick a useful subscription on them.
       .filter((c) => {
         const status = (c as { status?: string }).status

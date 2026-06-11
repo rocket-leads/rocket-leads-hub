@@ -8,7 +8,7 @@ function fmt(d: Date) {
   return format(d, "yyyy-MM-dd")
 }
 
-/** MTD range (1st of current month → today) — the cron pre-warms this exact
+/** MTD range (1st of current month → today) - the cron pre-warms this exact
  *  window so it's effectively free to fetch. Used as placeholderData for the
  *  user's selected range, so the page never sits empty while the slow cold
  *  fetch (~2-3min) runs in the background. */
@@ -31,7 +31,7 @@ export function useTargetsData(
   const mtd = getMtdRange()
   const isOnMtd = !closerKey && startDate === mtd.startDate && endDate === mtd.endDate
 
-  // Always-on MTD query — fires in parallel with the selected-range query so
+  // Always-on MTD query - fires in parallel with the selected-range query so
   // the placeholderData below has something to fall back on. When the user is
   // already on MTD, both queries share the same key and dedupe to one fetch.
   const mtdMondayQuery = useQuery<MondayTargetsByCountry>({
@@ -50,7 +50,7 @@ export function useTargetsData(
       const params = new URLSearchParams({ startDate, endDate })
       if (closerKey) params.set("closer", closerKey)
       // `no-store` defeats any browser/HTTP cache layer that might otherwise
-      // collapse `?closer=X` and `?closer=Y` onto the same response — the
+      // collapse `?closer=X` and `?closer=Y` onto the same response - the
       // earlier symptom (data not changing on closer pick) pointed at exactly
       // that. React Query still owns logical caching via queryKey above.
       return fetch(`/api/targets/monday?${params.toString()}`, { cache: "no-store" }).then((r) => {

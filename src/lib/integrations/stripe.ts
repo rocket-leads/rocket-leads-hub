@@ -60,7 +60,7 @@ export type BillingSummary = {
 export type PastInvoice = {
   id: string
   number: string | null
-  /** Stripe customer ID — joined to Monday clients on the page so finance
+  /** Stripe customer ID - joined to Monday clients on the page so finance
    *  can see "client name" instead of `cus_…`. */
   customerId: string
   amountDue: number
@@ -82,7 +82,7 @@ export type PastInvoice = {
  * we don't have to iterate per customer (much cheaper for the dashboard
  * "past invoices" view that needs the union of everyone's history).
  *
- * Pagination handled internally — yields the full list in one return. Stops
+ * Pagination handled internally - yields the full list in one return. Stops
  * at 5000 invoices as a safety cap (we'd never legitimately need more for a
  * default 180-day window; misconfiguration would otherwise burn API quota).
  */
@@ -102,7 +102,7 @@ export async function fetchAllRecentInvoices(daysBack: number): Promise<PastInvo
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     })
     for (const inv of page.data) {
-      // Drafts are noise on the past-invoices view — finance hasn't sent them
+      // Drafts are noise on the past-invoices view - finance hasn't sent them
       // yet, so they don't belong in the "what's gone out" list.
       if (inv.status === "draft") continue
       const customerId =
@@ -129,7 +129,7 @@ export async function fetchAllRecentInvoices(daysBack: number): Promise<PastInvo
     if (!startingAfter) break
   }
 
-  // Most-recent first — matches what finance expects to see at the top.
+  // Most-recent first - matches what finance expects to see at the top.
   out.sort((a, b) => b.created - a.created)
   return out
 }
@@ -138,7 +138,7 @@ export async function fetchAllRecentInvoices(daysBack: number): Promise<PastInvo
  * Refresh BillingSummary for a list of Stripe customer IDs in parallel,
  * returning the resulting map. Used by the hourly Stripe-refresh cron and
  * the manual Refresh button on /billing so payment state never goes stale
- * by more than an hour. Concurrency capped to 5 — Stripe rate-limits at
+ * by more than an hour. Concurrency capped to 5 - Stripe rate-limits at
  * ~25 req/s but we want to leave headroom for other Stripe traffic.
  *
  * Caller is responsible for writing the cache; this only produces data.
@@ -206,7 +206,7 @@ export type OverdueInvoice = {
  * (most overdue at the top).
  *
  * Used by the weekly-update composer to always include a "betaal hier"
- * block when a client has overdue invoices — Roy 2026-05-23: AMs were
+ * block when a client has overdue invoices - Roy 2026-05-23: AMs were
  * not consistently chasing these themselves, so it goes in the update
  * by default with one payment link per invoice.
  *
@@ -280,7 +280,7 @@ function isAdBudgetLineItem(description: string | null): boolean {
 }
 
 /**
- * Onboarding payment status — "has this client paid us at least once?"
+ * Onboarding payment status - "has this client paid us at least once?"
  *
  * Used by the onboarding wizard's Stap 1 live screen so the AM can see
  * at-a-glance whether the kick-off precondition (per knowledge/process.md
@@ -397,7 +397,7 @@ export async function fetchInvoicedAdBudget(customerId: string): Promise<AdBudge
 /**
  * Search Stripe customers by name/email for the ConnectedEntity picker.
  * Uses Stripe's `customers.search` with a query that matches against `name`
- * or `email` substrings — that's the cheapest API for "find the customer
+ * or `email` substrings - that's the cheapest API for "find the customer
  * the AM is trying to link". Falls back to `customers.list` (alphabetical)
  * for an empty query so the picker has something to show on first open.
  *
@@ -417,13 +417,13 @@ export async function searchStripeCustomers(
   let customers: Stripe.Customer[] = []
   if (trimmed.length === 0) {
     // Cold-open: alphabetical first page so the picker isn't blank. AMs
-    // type to filter — this is just the placeholder list.
+    // type to filter - this is just the placeholder list.
     const page = await stripe.customers.list({ limit: cap })
     customers = page.data
   } else {
     // Stripe search syntax: substring match on name OR email. Quoted to be
     // safe with names containing spaces or special chars. We don't worry
-    // about injection — Stripe parses this server-side and only against
+    // about injection - Stripe parses this server-side and only against
     // our own customer set.
     const escaped = trimmed.replace(/'/g, "\\'")
     const params = `name~'${escaped}' OR email~'${escaped}'`
@@ -450,7 +450,7 @@ export async function resolveStripeCustomer(id: string): Promise<ResolvedEntity 
     if (customer.deleted) return null
     return toResolvedCustomer(customer as Stripe.Customer)
   } catch (e) {
-    // Stripe throws on unknown IDs — surface that as null (the "broken
+    // Stripe throws on unknown IDs - surface that as null (the "broken
     // link" state). Any other error bubbles up; the API route turns it
     // into a 500 so the picker shows "couldn't verify" instead of
     // "definitely broken".
@@ -549,7 +549,7 @@ export type CreateInvoiceInput = {
   /** One line per service. Amounts are expected in EUR (e.g. 450 for €450.00),
    *  converted to cents on the way into Stripe. Empty array → throws. */
   items: Array<{ description: string; amountEuro: number }>
-  /** Days from today until the invoice is due. Defaults to 7 — matches the
+  /** Days from today until the invoice is due. Defaults to 7 - matches the
    *  standard Rocket Leads payment term. */
   daysUntilDue?: number
   currency?: string
@@ -558,7 +558,7 @@ export type CreateInvoiceInput = {
    *  (cycle_start → cycle_start + 1 month - 1 day) and the line description
    *  gets a "(26 May – 25 Jun 2026)" suffix so the customer can see exactly
    *  which period they're paying for. Omit when finance doesn't have a
-   *  cycle yet — the invoice just won't carry a period block. */
+   *  cycle yet - the invoice just won't carry a period block. */
   cycleStartDate?: string | null
 }
 
@@ -571,7 +571,7 @@ export type CreateInvoiceResult = {
   invoicePdf: string | null
 }
 
-/** Preview snapshot for the Finance approval screen — fetched read-only
+/** Preview snapshot for the Finance approval screen - fetched read-only
  *  from Stripe (customer + tax IDs) and computed locally from the form's
  *  line items. NO draft is created; Stripe sees nothing until the user
  *  approves and the actual send fires. All amounts in EUR. */
@@ -588,7 +588,7 @@ export type InvoiceDraftPreview = {
     } | null
     taxExempt: "none" | "exempt" | "reverse" | null
     /** All registered tax IDs for this customer (BTW, VAT, etc.). One entry
-     *  per ID — Stripe allows multiples. Used by the preview to show "BTW
+     *  per ID - Stripe allows multiples. Used by the preview to show "BTW
      *  NL123456789" so finance can verify the right number is on the invoice. */
     taxIds: Array<{ type: string; value: string }>
   }
@@ -615,8 +615,8 @@ export type InvoiceDraftPreview = {
  *
  * Tax handling: the actual send uses Stripe `automatic_tax` so Stripe
  * computes the rate from the BG origin + customer address + tax IDs. The
- * preview mirrors the same rules locally — 0% with a valid EU tax ID,
- * else 20% BG VAT — so Finance sees an accurate total before approving.
+ * preview mirrors the same rules locally - 0% with a valid EU tax ID,
+ * else 20% BG VAT - so Finance sees an accurate total before approving.
  */
 export async function fetchInvoicePreview(input: CreateInvoiceInput): Promise<InvoiceDraftPreview> {
   const items = input.items.filter((i) => i.description.trim() && i.amountEuro > 0)
@@ -641,7 +641,7 @@ export async function fetchInvoicePreview(input: CreateInvoiceInput): Promise<In
     amount: item.amountEuro,
   }))
   const subtotal = lineItems.reduce((sum, l) => sum + l.amount, 0)
-  // BTW handling — mirrors what Stripe `automatic_tax` will charge on send:
+  // BTW handling - mirrors what Stripe `automatic_tax` will charge on send:
   //   - Customer has a registered tax ID (BTW number) → reverse charge, 0%.
   //   - No tax ID on file → RL is BG-registered, charges 20% BG VAT.
   // Stripe is the source of truth at send-time; this local computation is
@@ -699,7 +699,7 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
   // tax IDs + address, applies BG origin rules (RL is BG-registered,
   // BG208169940), and produces 0% reverse-charge for valid EU tax IDs or 20%
   // BG VAT otherwise. The tax shows up on the finalized invoice as a tax
-  // amount, NOT a separate line item — same way it appears when finance
+  // amount, NOT a separate line item - same way it appears when finance
   // creates an invoice in the Stripe dashboard with automatic tax on.
   const draft = await stripe.invoices.create({
     customer: input.customerId,
@@ -746,7 +746,7 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
     try {
       await stripe.invoices.del(invoiceId)
     } catch {
-      // Best-effort — if we can't delete it the draft will still need manual cleanup.
+      // Best-effort - if we can't delete it the draft will still need manual cleanup.
     }
     throw e
   }
@@ -755,7 +755,7 @@ export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<C
 /**
  * Compute the billing period covered by an invoice given its cycle start.
  * The Rocket Leads cadence is monthly, so the period runs from cycle_start
- * to the day BEFORE the next cycle start — i.e. 26 May → 25 Jun (not 26 Jun)
+ * to the day BEFORE the next cycle start - i.e. 26 May → 25 Jun (not 26 Jun)
  * so two consecutive periods don't visually overlap on the customer's bank
  * statement.
  *
@@ -767,7 +767,7 @@ function resolveBillingPeriod(
 ): { unixStart: number; unixEnd: number; label: string } | null {
   if (!cycleStartDate || !/^\d{4}-\d{2}-\d{2}$/.test(cycleStartDate)) return null
   const [y, m, d] = cycleStartDate.split("-").map(Number)
-  // UTC math — same approach as `addMonthsIso` in clients/billing-cycle.ts.
+  // UTC math - same approach as `addMonthsIso` in clients/billing-cycle.ts.
   const startUtcMs = Date.UTC(y, m - 1, d)
   // End = same-day next month, then -1 day → "25 Jun" for a 26 May cycle.
   // Clamp the day to the target month's last day so 31 Jan + 1mo - 1d

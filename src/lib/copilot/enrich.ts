@@ -13,7 +13,7 @@ import type { MondayClient } from "@/lib/integrations/monday"
  *
  * The result replaces the title-echo body the v1 parse step produced.
  * Roy's feedback (2026-05-22): the co-pilot should explain WHY the task
- * is needed by quoting numbers, client messages, and Pedro signals — not
+ * is needed by quoting numbers, client messages, and Pedro signals - not
  * just paraphrase the input.
  */
 
@@ -70,7 +70,7 @@ export async function enrichTaskBody(args: {
 
   const sourcesUsed = listAvailableSources(ctx, pedroInsight !== null)
   if (sourcesUsed.length === 0) {
-    // Nothing to cite — keep the original body the user produced.
+    // Nothing to cite - keep the original body the user produced.
     return {
       body: originalBody ?? "",
       sourcesUsed: [],
@@ -90,7 +90,7 @@ Toegewezen aan: ${assigneeName ?? "(onbekend)"}
 De gebruiker zei letterlijk:
 "${userInput}"
 
-De taak titel staat al vast — herhaal die NIET in de body. Schrijf alleen de body.
+De taak titel staat al vast - herhaal die NIET in de body. Schrijf alleen de body.
 
 ═══ CLIENT CONTEXT (vandaag opgehaald uit de Hub) ═══
 
@@ -101,8 +101,8 @@ ${contextBlock}
 Schrijf een task body die scanbaar is in 5 seconden. Gebruik DEZE EXACTE structuur:
 
 Waarom:
-• [hoofdreden — concrete getal met tijdvenster label, bijv. "CPL €38 (7d) vs €23 (prev 7d), +65%"]
-• [ondersteunende observatie uit Pedro / Monday / Trengo — citeer letterlijk met datum]
+• [hoofdreden - concrete getal met tijdvenster label, bijv. "CPL €38 (7d) vs €23 (prev 7d), +65%"]
+• [ondersteunende observatie uit Pedro / Monday / Trengo - citeer letterlijk met datum]
 • [evt. derde bullet, max 4 in deze sectie]
 
 Volgende stap:
@@ -115,21 +115,21 @@ REGELS:
 - Section labels eindigen met ":" en staan op een eigen regel
 - Elk getal MOET een tijdvenster label krijgen: (7d) / (14d) / (30d) / (prev 7d) / (all-time)
 - Citeer Pedro / Monday / Trengo letterlijk wanneer relevant, mét datum
-- Gebruik ALLEEN cijfers/quotes uit de context hierboven — niets verzinnen
+- Gebruik ALLEEN cijfers/quotes uit de context hierboven - niets verzinnen
 - Houd elke bullet kort: max 20 woorden
 
 VERBODEN:
 - Geen markdown headers (#, ##), bold (**), of italic (*)
 - Geen budget-verhoging adviezen (klanten zitten op vast budget)
-- Geen "Hi [naam]" — dit is een inbox taak, geen mail
+- Geen "Hi [naam]" - dit is een inbox taak, geen mail
 - Niet de taak titel herhalen
 - Geen "Waarom:" of "Volgende stap:" zonder bullets eronder
 
 Geef ALLEEN de body terug. Geen JSON, geen wrapping, geen preamble.
 
-VOORBEELD output (vorm — niet inhoud kopiëren):
+VOORBEELD output (vorm - niet inhoud kopiëren):
 Waarom:
-• CPL €38 (7d) vs €23 (prev 7d), +65% — well boven 25% noise threshold
+• CPL €38 (7d) vs €23 (prev 7d), +65% - well boven 25% noise threshold
 • Pedro AI Note (2026-05-19): "Photo 2 | Pricelist heeft 6/8 'geen budget' replies"
 • Monday updates (14d) bevestigen patroon op UTM photo-2-pricelist
 

@@ -29,7 +29,7 @@ type Props = {
 /**
  * Editable onboarding-phase cell. Displays the exact Monday label, coloured by
  * its mapped phase, and lets the user pick a new phase from the canonical 7
- * options — the chosen label is written back to Monday's `campaign_status`
+ * options - the chosen label is written back to Monday's `campaign_status`
  * column via the standard PATCH /api/clients/:id pipeline.
  */
 export function PhaseEditCell({ mondayItemId, rawLabel }: Props) {
@@ -76,7 +76,7 @@ export function PhaseEditCell({ mondayItemId, rawLabel }: Props) {
   ) : (
     <span className="inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium bg-muted/40 text-muted-foreground">
       <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
-      —
+      -
     </span>
   )
 

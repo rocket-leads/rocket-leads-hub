@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
   try {
     // We re-fetch the Monday client list here rather than trusting client-
-    // posted MondayClient blobs — keeps the audit a pure read-only server-
+    // posted MondayClient blobs - keeps the audit a pure read-only server-
     // side compute (the client only sends IDs), and ensures we audit the
     // current Monday state, not whatever was in the page's cache.
     const { onboarding, current } = await fetchBothBoards()

@@ -96,6 +96,51 @@ type ExtractedColor = {
   luminance: number
 }
 
+type AanbodLine = { included: boolean; pricePerMonth: string }
+type Aanbod = NonNullable<KickoffContent["aanbod"]>
+type FormField = { id: string; label: string; isDefault?: boolean }
+type Automations = NonNullable<KickoffContent["automations"]>
+
+// Defaults that match Rocket Leads' standard package: every service
+// off by default (AM ticks what applies), but the lead-form has 3
+// mandatory fields and all 4 automations on — that's the standard
+// Zapier wiring per knowledge/process.md.
+const DEFAULT_AANBOD: Aanbod = {
+  metaAds: { included: true, pricePerMonth: "" },
+  googleAds: { included: false, pricePerMonth: "" },
+  contentShoot: { included: false, pricePerMonth: "" },
+  leadOpvolging: { included: false, pricePerMonth: "" },
+  adBudget: { included: false, pricePerMonth: "" },
+}
+
+const DEFAULT_FORM_FIELDS: FormField[] = [
+  { id: "naam", label: "Naam", isDefault: true },
+  { id: "telefoon", label: "Telefoonnummer", isDefault: true },
+  { id: "email", label: "E-mailadres", isDefault: true },
+]
+
+const DEFAULT_AUTOMATIONS: Automations = {
+  monday: true,
+  gmail: true,
+  whatsappToClient: true,
+  whatsappToLead: true,
+}
+
+const AANBOD_LINES: Array<{ key: keyof Aanbod; labelKey: string }> = [
+  { key: "metaAds", labelKey: "onboarding.wizard.kickoff.aanbod.meta_ads" },
+  { key: "googleAds", labelKey: "onboarding.wizard.kickoff.aanbod.google_ads" },
+  { key: "contentShoot", labelKey: "onboarding.wizard.kickoff.aanbod.content_shoot" },
+  { key: "leadOpvolging", labelKey: "onboarding.wizard.kickoff.aanbod.lead_opvolging" },
+  { key: "adBudget", labelKey: "onboarding.wizard.kickoff.aanbod.ad_budget" },
+]
+
+const AUTOMATION_LINES: Array<{ key: keyof Automations; labelKey: string }> = [
+  { key: "monday", labelKey: "onboarding.wizard.kickoff.automations.monday" },
+  { key: "gmail", labelKey: "onboarding.wizard.kickoff.automations.gmail" },
+  { key: "whatsappToClient", labelKey: "onboarding.wizard.kickoff.automations.wa_client" },
+  { key: "whatsappToLead", labelKey: "onboarding.wizard.kickoff.automations.wa_lead" },
+]
+
 type KickoffContent = {
   autoSetup?: AutoSetupResult
   briefDraft?: BriefDraft
@@ -120,6 +165,37 @@ type KickoffContent = {
    *  budget gets invoiced to the client by RL (instead of klant paying
    *  Meta directly). See process.md §"Onboarding Roadblocks" #3. */
   useRlAdAccount?: boolean
+  /** What RL delivers, with monthly price per line item. AM tickt
+   *  per service of we het leveren + vult de prijs in. "adBudget"
+   *  zit hier ook in zodat het altijd ingevuld kan worden — los van
+   *  of de klant op z'n eigen ad account of het RL ad account draait. */
+  aanbod?: {
+    metaAds?: { included: boolean; pricePerMonth: string }
+    googleAds?: { included: boolean; pricePerMonth: string }
+    contentShoot?: { included: boolean; pricePerMonth: string }
+    leadOpvolging?: { included: boolean; pricePerMonth: string }
+    adBudget?: { included: boolean; pricePerMonth: string }
+  }
+  /** Lead-form fields the klant's landing page will ask. Hub seeds
+   *  the three defaults (naam/telefoon/email); AM adds custom ones
+   *  via the "+" button — typically bedrijfsnaam, branche, budget. */
+  formFields?: Array<{
+    id: string
+    label: string
+    /** Default fields can't be removed — only their label is
+     *  technically editable. Custom fields are AM-added and
+     *  fully editable + removable. */
+    isDefault?: boolean
+  }>
+  /** Zapier-driven flows that fire on a new lead landing in Monday.
+   *  All four default ON because that's the standard onboarding
+   *  pakket; AM untickt wat niet van toepassing is. */
+  automations?: {
+    monday?: boolean
+    gmail?: boolean
+    whatsappToClient?: boolean
+    whatsappToLead?: boolean
+  }
   recapSentAt?: string
 }
 
@@ -193,6 +269,56 @@ export function KickoffLiveStep({
     ...(content.briefDraft ?? {}),
   }))
   const [briefDirty, setBriefDirty] = useState(false)
+
+  // ── Aanbod (RL services + monthly prices) ──
+  const [aanbod, setAanbod] = useState<Aanbod>(() => ({
+    ...DEFAULT_AANBOD,
+    ...(content.aanbod ?? {}),
+  }))
+  const updateAanbodLine = (
+    key: keyof Aanbod,
+    patch: Partial<AanbodLine>,
+  ) => {
+    setAanbod((prev) => ({
+      ...prev,
+      [key]: {
+        included: prev[key]?.included ?? false,
+        pricePerMonth: prev[key]?.pricePerMonth ?? "",
+        ...patch,
+      },
+    }))
+    setBriefDirty(true)
+  }
+
+  // ── Formulier leads (lead-form fields the LP will collect) ──
+  const [formFields, setFormFields] = useState<FormField[]>(
+    () => content.formFields ?? DEFAULT_FORM_FIELDS,
+  )
+  const addFormField = () => {
+    setFormFields((prev) => [
+      ...prev,
+      { id: `field_${Date.now()}`, label: "" },
+    ])
+    setBriefDirty(true)
+  }
+  const updateFormFieldLabel = (id: string, label: string) => {
+    setFormFields((prev) => prev.map((f) => (f.id === id ? { ...f, label } : f)))
+    setBriefDirty(true)
+  }
+  const removeFormField = (id: string) => {
+    setFormFields((prev) => prev.filter((f) => f.id !== id || f.isDefault))
+    setBriefDirty(true)
+  }
+
+  // ── Automations (Zapier flows) ──
+  const [automations, setAutomations] = useState<Automations>(() => ({
+    ...DEFAULT_AUTOMATIONS,
+    ...(content.automations ?? {}),
+  }))
+  const toggleAutomation = (key: keyof Automations) => {
+    setAutomations((prev) => ({ ...prev, [key]: !prev[key] }))
+    setBriefDirty(true)
+  }
 
   // ── Manual resource toggles ──
   // Two AM-confirmed signals replace auto-detection on Drive + Meta.
@@ -319,6 +445,9 @@ export function KickoffLiveStep({
           content: {
             ...content,
             briefDraft,
+            aanbod,
+            formFields,
+            automations,
             ...(brandStyle ? { brandStyle } : {}),
             ...(brandSwatches.length > 0 ? { brandSwatches } : {}),
           },
@@ -328,7 +457,19 @@ export function KickoffLiveStep({
       setBrandDirty(false)
     }, 3000)
     return () => clearTimeout(handle)
-  }, [briefDirty, brandDirty, briefDraft, brandStyle, brandSwatches, content, mondayItemId, step.key])
+  }, [
+    briefDirty,
+    brandDirty,
+    briefDraft,
+    aanbod,
+    formFields,
+    automations,
+    brandStyle,
+    brandSwatches,
+    content,
+    mondayItemId,
+    step.key,
+  ])
 
   const updateBrief = <K extends keyof BriefDraft>(field: K, value: string) => {
     setBriefDraft((b) => ({ ...b, [field]: value }))
@@ -489,19 +630,9 @@ export function KickoffLiveStep({
             </div>
           </label>
 
-          {/* Ad-budget inline input — only shown when RL ad-account is
-              on, since that's the path where Hub needs to know the
-              budget to invoice through. Writes through to Monday's
-              `ad_budget` field (mapped to numeric0 on onboarding board)
-              via the standard updateClientField path. */}
-          {useRlAdAccount && (
-            <AdBudgetInput
-              mondayItemId={mondayItemId}
-              initialValue={client.adBudget}
-              locale={locale}
-              queryClient={queryClient}
-            />
-          )}
+          {/* Ad-budget input verhuisd naar de Aanbod-sectie boven de
+              brief — moet ook ingevuld worden als klant op eigen
+              ad-account draait (Roy 2026-06-11). */}
         </div>
       </section>
 

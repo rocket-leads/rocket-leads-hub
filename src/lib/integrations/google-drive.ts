@@ -22,7 +22,7 @@ async function getAuth() {
   // Scopes: `drive.readonly` for the existing knowledge-base ingest, plus
   // `drive.file` so we can write Pedro refresh deliverables INTO folders
   // the service account was already given Editor access to. `drive.file`
-  // is the narrower of the two write scopes — it only authorises files
+  // is the narrower of the two write scopes - it only authorises files
   // the service account itself creates, which is exactly what we want
   // (no risk of clobbering an existing client file by accident).
   //
@@ -59,7 +59,7 @@ export type CreatedDriveFolder = {
  * MUST be shared as Editor with the service account, otherwise Drive
  * returns a 403 (same precondition as `createMarkdownFile` above).
  *
- * `webViewLink` is the URL the AM shares with the client — it's the
+ * `webViewLink` is the URL the AM shares with the client - it's the
  * folder's normal Drive URL, opens in browser when clicked.
  */
 export async function createFolder(args: {
@@ -103,7 +103,7 @@ export async function createFolder(args: {
  * via Trengo", we grant the client Editor access on the root folder so
  * they can drop their content in.
  *
- * `sendNotificationEmail: false` — we send our own onboarding email
+ * `sendNotificationEmail: false` - we send our own onboarding email
  * via Trengo with the link, so Drive's auto-email would just be noise.
  */
 export async function shareFolderWithUser(args: {
@@ -133,7 +133,7 @@ export async function shareFolderWithUser(args: {
  * them in the client's existing Drive folder without manually exporting.
  *
  * Permission failures surface as a thrown error with a hint about the
- * Editor share — the caller wraps this so the AM sees an actionable
+ * Editor share - the caller wraps this so the AM sees an actionable
  * message instead of a stack trace.
  */
 export async function createMarkdownFile(args: {
@@ -190,7 +190,7 @@ export type DriveFolderNode = {
   id: string
   name: string
   /** Pad relatief vanaf de root, alleen folder-namen (geen ids).
-   *  Voorbeeld: "Photos / Showroom" — disambiguatie wanneer twee
+   *  Voorbeeld: "Photos / Showroom" - disambiguatie wanneer twee
    *  subfolders dezelfde naam hebben. Root zelf heeft path="". */
   path: string
   /** Depth vanaf de root (0 = root, 1 = direct child, ...). */
@@ -209,7 +209,7 @@ export type DriveFolderNode = {
 
 /** Lightweight in-memory cache for listFolderTree results, keyed by
  *  (rootFolderId, maxDepth, maxFolders). TTL 10 min. Survives across
- *  requests (Next.js keeps the module in memory) — so subsequent
+ *  requests (Next.js keeps the module in memory) - so subsequent
  *  ImageSourcesPicker opens for the same client return instant. Roy
  *  2026-06-10: was 15-25s sequential per open; nu meestal <100ms na de
  *  eerste call.
@@ -243,7 +243,7 @@ function evictTreeCacheIfNeeded(): void {
 /** Force-invalidate the cache entry for a given root. Use after the CM
  *  toggles a folder pref so the next picker load reflects fresh state.
  *  (Pref state itself lives in the DB, so the tree-content cache stays
- *  valid — but a CM that just toggled wants confidence the UI reflects
+ *  valid - but a CM that just toggled wants confidence the UI reflects
  *  reality, so we invalidate.) */
 export function invalidateFolderTreeCache(rootFolderId: string): void {
   if (!rootFolderId) return
@@ -254,7 +254,7 @@ export function invalidateFolderTreeCache(rootFolderId: string): void {
 
 /**
  * Enumerate folders onder een root, tot `maxDepth` niveaus diep. Geeft
- * een platte lijst — caller bouwt zelf een tree-view uit de `path` en
+ * een platte lijst - caller bouwt zelf een tree-view uit de `path` en
  * `depth` velden. Bedoeld voor de per-klant Drive folder picker waarin
  * de CM vóór de Genereer-klik aanvinkt welke folders Pedro mag
  * gebruiken.
@@ -431,7 +431,7 @@ export type GetFolderImagesOptions = {
   rerank?: (candidates: DriveImageRef[]) => Promise<DriveImageRef[]>
   /** Folder ids the CM has explicitly toggled OFF for this client (per
    *  `pedro_drive_folder_prefs`). When the BFS encounters one of these
-   *  the entire subtree is hard-skipped — no enumeration, no download,
+   *  the entire subtree is hard-skipped - no enumeration, no download,
    *  no vision-call. Roy 2026-06-10: dit voorkomt dat we API kosten
    *  maken aan irrelevante folders zoals 'QualityFree' onder een Zumex
    *  refresh. */
@@ -503,7 +503,7 @@ export async function getFolderImages(
     size: number
   }
 
-  // Token derivation. Campaign hint is the PRIMARY signal — drives both
+  // Token derivation. Campaign hint is the PRIMARY signal - drives both
   // positive scoring (campaign match) and which OTHER siblings to avoid.
   function tokensOf(s: string): string[] {
     return s
@@ -535,18 +535,18 @@ export async function getFolderImages(
   const FOLDER_PENALTY_RE = /(invoice|factuur|contract|nda|legal|signed|admin|verklaring|wedstrijd|rapport|finance|tax|hr)/i
 
   // siblingsBlacklist gets populated from the root's other top-level
-  // children — those are presumed to be OTHER campaigns in the umbrella.
+  // children - those are presumed to be OTHER campaigns in the umbrella.
   const siblingBlacklistTokens = new Set<string>()
 
   function scoreFolder(name: string, depth: number): number {
     let score = 0
     const lcName = name.toLowerCase()
-    // 1. Campaign hit — biggest signal.
+    // 1. Campaign hit - biggest signal.
     if (campaignTokens.length > 0) {
       const hits = campaignTokens.filter((t) => lcName.includes(t)).length
       if (hits > 0) score += 200 * hits
     }
-    // 2. Sibling campaign hit — strong negative, will exclude subtree.
+    // 2. Sibling campaign hit - strong negative, will exclude subtree.
     for (const t of siblingBlacklistTokens) {
       if (lcName.includes(t)) score -= 500
     }
@@ -598,7 +598,7 @@ export async function getFolderImages(
   if (campaignTokens.length > 0) {
     for (const child of rootChildren) {
       const childTokens = tokensOf(child.name)
-      // Skip generic asset-folder names — those are NOT sibling campaigns.
+      // Skip generic asset-folder names - those are NOT sibling campaigns.
       if (FOLDER_BONUS_RE.test(child.name)) continue
       // Tokens that DON'T overlap with campaign tokens → sibling.
       const overlaps = childTokens.some((t) => campaignTokens.includes(t))
@@ -638,11 +638,11 @@ export async function getFolderImages(
       for (const f of res.data.files ?? []) {
         if (!f.id || !f.name || !f.mimeType) continue
         if (f.mimeType === "application/vnd.google-apps.folder") {
-          // Subfolder — score and enqueue if still within depth + not visited.
+          // Subfolder - score and enqueue if still within depth + not visited.
           if (current.depth + 1 > maxDepth) continue
           if (visited.has(f.id)) continue
           visited.add(f.id)
-          // Hard CM-denylist skip — pedro_drive_folder_prefs.enabled=false.
+          // Hard CM-denylist skip - pedro_drive_folder_prefs.enabled=false.
           // No enumeration, no download, no vision-call for this subtree.
           // Roy 2026-06-10.
           if (deniedFolderIds.has(f.id)) continue
@@ -695,7 +695,7 @@ export async function getFolderImages(
         { responseType: "arraybuffer" },
       )
       const bytes = Buffer.from(dl.data as ArrayBuffer)
-      // Defensive size cap — sometimes Drive returns size=0 in metadata
+      // Defensive size cap - sometimes Drive returns size=0 in metadata
       // but the actual download is huge. Skip rather than blow up Gemini.
       if (bytes.length > MAX_BYTES) continue
       const mimeType: "image/jpeg" | "image/png" =
@@ -715,7 +715,7 @@ export async function getFolderImages(
     }
   }
 
-  // 5. Optional vision rerank — caller passes a callback that scores
+  // 5. Optional vision rerank - caller passes a callback that scores
   //    candidates against campaign + variant context. On failure we
   //    keep the original (folder-score) order.
   let ordered = downloaded
@@ -770,7 +770,7 @@ export async function listFolderFiles(folderId: string): Promise<DriveFile[]> {
 
 /**
  * Format `modifiedTime` (ISO8601) as a short relative label for the picker
- * subline ("modified 3d ago"). Keeps things tight in the row — anything
+ * subline ("modified 3d ago"). Keeps things tight in the row - anything
  * past a year is rendered as the year only.
  */
 function relativeModifiedLabel(iso: string | null | undefined): string | null {
@@ -811,11 +811,11 @@ function toResolvedDriveFolder(f: DriveFolderSummary): ResolvedEntity {
 /**
  * Search Drive folders by name for the ConnectedEntity picker.
  *
- * Uses `files.list` with a server-side `name contains` filter — Drive
+ * Uses `files.list` with a server-side `name contains` filter - Drive
  * supports this natively so we don't have to do client-side substring
  * matching. Scopes to folders the service account can see (it's been
  * shared in as Editor or Viewer); workspace folders the service account
- * has no access to won't appear, which is the correct behavior — those
+ * has no access to won't appear, which is the correct behavior - those
  * aren't link candidates anyway.
  *
  * Empty query returns the most-recently-modified folders so cold-open
@@ -861,7 +861,7 @@ export async function searchDriveFolders(
 
 /**
  * Resolve a single Drive folder ID to its ResolvedEntity. Returns null
- * when the folder doesn't exist or the service account has no access —
+ * when the folder doesn't exist or the service account has no access -
  * both are "broken link" from the Hub's perspective; the AM needs to
  * either fix the ID or share the folder. Throws on transport/auth
  * failures so the picker shows "couldn't verify" instead of "broken".
@@ -880,7 +880,7 @@ export async function resolveDriveFolder(id: string): Promise<ResolvedEntity | n
     const f = res.data
     if (!f.id) return null
     if (f.mimeType !== "application/vnd.google-apps.folder") {
-      // It's a real file ID but not a folder — wrong link, treat as broken
+      // It's a real file ID but not a folder - wrong link, treat as broken
       // so the picker prompts a correction rather than silently accepting
       // a file ID where the rest of the Hub expects a folder.
       return null
@@ -905,7 +905,7 @@ export async function getFileContent(fileId: string, mimeType: string): Promise<
   const auth = await getAuth()
   const drive = google.drive({ version: "v3", auth })
 
-  // Google Docs/Sheets/Slides — export as plain text
+  // Google Docs/Sheets/Slides - export as plain text
   if (mimeType.startsWith("application/vnd.google-apps.")) {
     const exportMime = mimeType === "application/vnd.google-apps.spreadsheet"
       ? "text/csv"
@@ -927,7 +927,7 @@ export async function getFileContent(fileId: string, mimeType: string): Promise<
     return String(res.data)
   }
 
-  // PDFs — download binary and extract text
+  // PDFs - download binary and extract text
   if (mimeType === "application/pdf") {
     const res = await drive.files.get(
       { fileId, alt: "media" },
@@ -936,7 +936,7 @@ export async function getFileContent(fileId: string, mimeType: string): Promise<
     return extractPdfText(res.data as ArrayBuffer)
   }
 
-  // Word documents — export via Google's conversion
+  // Word documents - export via Google's conversion
   if (
     mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     mimeType === "application/msword"
@@ -982,5 +982,5 @@ function extractPdfText(buffer: ArrayBuffer): string {
     .replace(/\s+/g, " ")
     .trim()
 
-  return text || "[PDF content could not be extracted — may be image-based]"
+  return text || "[PDF content could not be extracted - may be image-based]"
 }

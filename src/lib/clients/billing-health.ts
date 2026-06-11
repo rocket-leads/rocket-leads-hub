@@ -3,11 +3,11 @@ import type { MetaAdAccountHealth } from "@/lib/integrations/meta"
 /**
  * Billing-health verdict per client. Two signals merge into one verdict:
  *
- *   1. DIRECT — Meta API `account_status` (disabled / unsettled / grace
+ *   1. DIRECT - Meta API `account_status` (disabled / unsettled / grace
  *      period / pending settlement). Hard signal: Meta itself says
  *      there's a payment problem.
  *
- *   2. INDIRECT — actual 7d spend vs expected weekly budget (derived from
+ *   2. INDIRECT - actual 7d spend vs expected weekly budget (derived from
  *      `agreement.ad_budget / 4.33`). When actual is dramatically below
  *      expected, the most common cause is a billing error Meta hasn't
  *      labelled at the account level yet (declined card, expired payment
@@ -15,10 +15,10 @@ import type { MetaAdAccountHealth } from "@/lib/integrations/meta"
  *
  * The "live-but-dark" detector (`detectLiveButDark` in watchlist/categorize)
  * already covers full stop = 0 spend. THIS detector covers partial spend
- * — the case Roy described: "I see only €50 spent all week on a €2k/mo
+ * - the case Roy described: "I see only €50 spent all week on a €2k/mo
  * budget, that's almost certainly a billing problem."
  *
- * Pure module — no DB, no fetch. Refresh-cache cron is the impure caller.
+ * Pure module - no DB, no fetch. Refresh-cache cron is the impure caller.
  */
 
 export type BillingHealthReason =
@@ -37,8 +37,8 @@ export type BillingHealthVerdict = {
    *  billing but could also be intentional pause / new account ramp-up). */
   severity: "billing_error" | "severe_underspend" | "ok"
   reason: BillingHealthReason
-  /** Short label for AI Note / Watch List insight ("Account disabled — unpaid balance",
-   *  "Underspending — €50 spent vs €462 expected (last 7d)"). Always in English; UI/AI
+  /** Short label for AI Note / Watch List insight ("Account disabled - unpaid balance",
+   *  "Underspending - €50 spent vs €462 expected (last 7d)"). Always in English; UI/AI
    *  picks Dutch when needed. */
   label: string
   /** Computed weekly budget from agreement.ad_budget. Null when no agreement. */
@@ -48,17 +48,17 @@ export type BillingHealthVerdict = {
   /** actualSpendLast7d / expectedWeeklyBudget. Null when expected is null
    *  or zero. Useful for ranking / displaying "spending at 11% of plan". */
   spendRatio: number | null
-  /** Meta direct signal — null when fetch failed for this client. */
+  /** Meta direct signal - null when fetch failed for this client. */
   metaHealth: MetaAdAccountHealth | null
 }
 
 /** Spend below this ratio of expected weekly budget = severe underspend.
  *  Calibrated to mean "you're spending so little, this is almost certainly
- *  not a campaign-tweak decision — something broke." 0.4 = 40% of expected. */
+ *  not a campaign-tweak decision - something broke." 0.4 = 40% of expected. */
 const UNDERSPEND_RATIO_THRESHOLD = 0.4
 
 /** Minimum days of activity in the 7d window required to call underspend.
- *  Stops us flagging brand-new accounts that just went live mid-week — they
+ *  Stops us flagging brand-new accounts that just went live mid-week - they
  *  always look "underspent" against the prorated weekly budget. */
 const UNDERSPEND_MIN_DAYS = 3
 
@@ -96,7 +96,7 @@ export function computeBillingHealth(input: BillingHealthInput): BillingHealthVe
       ? input.actualSpendLast7d / expectedWeeklyBudget
       : null
 
-  // ─── 1. Direct signal from Meta — wins over everything else ────────────
+  // ─── 1. Direct signal from Meta - wins over everything else ────────────
   if (input.metaHealth?.isBillingIssue) {
     const status = input.metaHealth.accountStatus
     const label = input.metaHealth.accountStatusLabel
@@ -111,7 +111,7 @@ export function computeBillingHealth(input: BillingHealthInput): BillingHealthVe
       hasIssue: true,
       severity: "billing_error",
       reason,
-      label: `Meta account: ${label}${expectedWeeklyBudget != null ? ` — €${input.actualSpendLast7d.toFixed(0)} spent (7d) vs €${expectedWeeklyBudget.toFixed(0)} expected` : ""}`,
+      label: `Meta account: ${label}${expectedWeeklyBudget != null ? ` - €${input.actualSpendLast7d.toFixed(0)} spent (7d) vs €${expectedWeeklyBudget.toFixed(0)} expected` : ""}`,
       expectedWeeklyBudget,
       actualSpendLast7d: input.actualSpendLast7d,
       spendRatio,
@@ -119,7 +119,7 @@ export function computeBillingHealth(input: BillingHealthInput): BillingHealthVe
     }
   }
 
-  // ─── 2. Indirect signal — severe underspend vs expected weekly ─────────
+  // ─── 2. Indirect signal - severe underspend vs expected weekly ─────────
   if (
     expectedWeeklyBudget != null &&
     expectedWeeklyBudget >= UNDERSPEND_MIN_EXPECTED_WEEKLY &&
@@ -131,7 +131,7 @@ export function computeBillingHealth(input: BillingHealthInput): BillingHealthVe
       hasIssue: true,
       severity: "severe_underspend",
       reason: "UNDERSPEND_SEVERE",
-      label: `Underspending — €${input.actualSpendLast7d.toFixed(0)} spent (7d) vs €${expectedWeeklyBudget.toFixed(0)} expected (${(spendRatio * 100).toFixed(0)}% of plan). Likely billing error.`,
+      label: `Underspending - €${input.actualSpendLast7d.toFixed(0)} spent (7d) vs €${expectedWeeklyBudget.toFixed(0)} expected (${(spendRatio * 100).toFixed(0)}% of plan). Likely billing error.`,
       expectedWeeklyBudget,
       actualSpendLast7d: input.actualSpendLast7d,
       spendRatio,
@@ -153,7 +153,7 @@ export function computeBillingHealth(input: BillingHealthInput): BillingHealthVe
 }
 
 /** AM-facing template message in NL. Pasted unchanged into the auto-task
- *  body — the AM hits send to their WhatsApp/email line to the client.
+ *  body - the AM hits send to their WhatsApp/email line to the client.
  *  Keep this in this module (not the cron) so prompt engineering iterates
  *  alongside the verdict logic. */
 export function billingErrorTemplateMessageNL(args: {
@@ -164,6 +164,6 @@ export function billingErrorTemplateMessageNL(args: {
   if (verdict.severity === "billing_error") {
     return `Hé ${clientFirstName}, ik zag dat er een betaalprobleem in je Meta ad account staat (${verdict.metaHealth?.accountStatusLabel ?? "betalingsfout"}). De campagnes draaien daardoor op halve kracht en deze week is er maar €${verdict.actualSpendLast7d.toFixed(0)} besteed${verdict.expectedWeeklyBudget != null ? ` (zou ~€${verdict.expectedWeeklyBudget.toFixed(0)} moeten zijn)` : ""}. Kun je vandaag even in Meta Business Manager je betaalmethode updaten? Dan zet ik de campagnes weer op volle snelheid.`
   }
-  // severe_underspend — softer phrasing, we're inferring
+  // severe_underspend - softer phrasing, we're inferring
   return `Hé ${clientFirstName}, ik zag dat we deze week maar €${verdict.actualSpendLast7d.toFixed(0)} hebben kunnen besteden${verdict.expectedWeeklyBudget != null ? ` van de geplande ~€${verdict.expectedWeeklyBudget.toFixed(0)}` : ""}. Dat lijkt op een betaalprobleem in je Meta ad account. Kun je even in Business Manager checken of je betaalmethode nog werkt? Dan kunnen we de campagnes weer op volle snelheid zetten.`
 }

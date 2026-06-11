@@ -10,7 +10,7 @@ import { createAdminClient } from "@/lib/supabase/server"
  * and are excluded from Overdue/Today/This week so finance can't
  * accidentally invoice a client they explicitly parked.
  *
- * Distinct from campaign status `on_hold` — that one also pauses Meta
+ * Distinct from campaign status `on_hold` - that one also pauses Meta
  * delivery + filters the client out of every overview. Billing hold only
  * affects the Future invoices view; everything else about the client
  * continues to operate normally.

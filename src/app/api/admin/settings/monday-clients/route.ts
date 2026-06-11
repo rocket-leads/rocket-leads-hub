@@ -8,7 +8,7 @@ import { safeFetch } from "@/lib/safe-fetch"
  * Monday client list for Settings → Clients tab + the `mondayPeople`
  * dropdown in Settings → Users. Lifted out of `settings/page.tsx` SSR
  * so the Settings page paints instantly. Cached server-side for 1h via
- * `cache_store` (cron-warmed) — sub-second 99% of the time, only the
+ * `cache_store` (cron-warmed) - sub-second 99% of the time, only the
  * once-an-hour cache-miss path touches Monday's GraphQL.
  *
  * `mondayPeople` is the sorted distinct list of AM/CM names taken from

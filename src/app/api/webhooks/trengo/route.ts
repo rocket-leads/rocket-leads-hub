@@ -9,7 +9,7 @@ import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
 export const maxDuration = 60
 
 /**
- * Trengo webhook receiver — POST endpoint that ingests new ticket messages
+ * Trengo webhook receiver - POST endpoint that ingests new ticket messages
  * into `inbox_events` and classifies them via AI as chat / task / update.
  *
  * Auth: shared secret. Roy configures `TRENGO_WEBHOOK_SECRET` as an env var,
@@ -84,14 +84,14 @@ type NormalizedPayload = {
   contactId: string
   contactName: string | null
   channelId: number | null
-  /** Only present in the JSON shape — null on form payloads. */
+  /** Only present in the JSON shape - null on form payloads. */
   channelType: string | null
   authorKind: "rl_team" | "client"
   authorName: string
   authorExternal: string
   createdAtSrc: string
   attachments: Array<{ name?: string; url?: string }> | null
-  /** Original parsed payload — stored on the row's `raw` field for debugging. */
+  /** Original parsed payload - stored on the row's `raw` field for debugging. */
   raw: Record<string, unknown>
 }
 
@@ -117,7 +117,7 @@ function parseFormPayload(body: string): NormalizedPayload | null {
   // since Trengo sends `Roy+test` (form-encoding for "Roy test").
   const contactName = get("contact_name").replace(/\+/g, " ") || null
 
-  // Form payload has no created_at — use server time as a best effort.
+  // Form payload has no created_at - use server time as a best effort.
   const createdAtSrc = new Date().toISOString()
 
   const channelIdRaw = get("channel_id")
@@ -221,7 +221,7 @@ function parseJsonPayload(body: string): NormalizedPayload | null {
 function parseTrengoPayload(rawBody: string, contentType: string): NormalizedPayload | null {
   // Auto-detect: a leading `{` means JSON; everything else is form-urlencoded
   // (Trengo's default). Content-type is consulted as a hint but we don't
-  // trust it blindly — some Trengo plans send a generic content-type while
+  // trust it blindly - some Trengo plans send a generic content-type while
   // the body is still form-encoded.
   const trimmed = rawBody.trimStart()
   if (trimmed.startsWith("{") || contentType.includes("application/json")) {
@@ -232,7 +232,7 @@ function parseTrengoPayload(rawBody: string, contentType: string): NormalizedPay
 
 // --- Handler -------------------------------------------------------------
 
-/** Event types we treat as "a message arrived" — drives whether we ingest
+/** Event types we treat as "a message arrived" - drives whether we ingest
  *  a row. Both the modern uppercase flat verbs and the legacy lowercase JSON
  *  strings are accepted. Anything else is acknowledged with `ignored`. */
 const MESSAGE_EVENT_TYPES = new Set<string>([
@@ -317,7 +317,7 @@ export async function POST(req: NextRequest) {
     .contains("trengo_contact_ids", [payload.contactId])
     .maybeSingle()
 
-  // System author for the FK — webhook ingest doesn't have a session-bound
+  // System author for the FK - webhook ingest doesn't have a session-bound
   // user_id. Author attribution for chat events is via author_kind +
   // author_name_cached; the FK is just a placeholder.
   const { data: hq } = await supabase
@@ -339,13 +339,13 @@ export async function POST(req: NextRequest) {
       ? await resolveClientAssignee(clientRow.monday_item_id)
       : null) ?? hq.id
 
-  // Roy 2026-06-09 — @-mention fan-out (Updates tab, not a dedicated tab).
+  // Roy 2026-06-09 - @-mention fan-out (Updates tab, not a dedicated tab).
   //
   // Trengo internal notes (NOTE events) are how the team @-mentions a
   // teammate. We resolve mentions AFTER inserting the chat row below and
   // emit one `kind: "update"` inbox_event per mentioned Hub user so the
   // mention lands in their Updates tab. The chat row itself stays
-  // assigned to the client AM — no reassignment, no separate "Mentions"
+  // assigned to the client AM - no reassignment, no separate "Mentions"
   // tab. Roy: "doe maar gewoon bij de updates, want de meeste mentions
   // zijn updates."
   const mentionedUserIds =
@@ -364,7 +364,7 @@ export async function POST(req: NextRequest) {
     content: messageBody,
   })
 
-  // Trengo messages always live in the chat substrate — the row's `kind`
+  // Trengo messages always live in the chat substrate - the row's `kind`
   // is locked to "chat" so the dual-inbox dedup keeps them out of Tasks
   // and Updates (those tabs are reserved for discrete @mention / Fathom /
   // automation / manual rows). The classifier output is still computed
@@ -373,7 +373,7 @@ export async function POST(req: NextRequest) {
   //
   // Roy 2026-06-09: only INBOUND messages from the contact count as
   // "unread". OUTBOUND (we replied) and NOTE (internal note) land as
-  // "read" — they're our own writes, nothing the AM needs to action.
+  // "read" - they're our own writes, nothing the AM needs to action.
   // The "Nieuwe inbox" / Now feed pulls unread chats, so without this
   // every outbound reply ghosted in as a fresh inbox item. @-mentions
   // in internal notes still notify mentioned users via the fan-out below
@@ -398,7 +398,7 @@ export async function POST(req: NextRequest) {
     // Channel type isn't always present (form payload omits it), so we look
     // up the channel id against subscribed-channel metadata when needed.
     // For now we treat anything that isn't explicitly an email channel as
-    // WhatsApp — that's the dominant case for tasks.
+    // WhatsApp - that's the dominant case for tasks.
     const channelType = (payload.channelType ?? "").toLowerCase()
     const isWhatsapp =
       channelType.includes("whats") ||
@@ -463,7 +463,7 @@ export async function POST(req: NextRequest) {
   // tab. One `kind: "update"` row per mentioned Hub user with a body
   // preview of the note + a source_ref pointing back to the chat row, so
   // the mention is visible even for users (like CMs) who don't see the
-  // Client Inbox at all. Best-effort — a failed update insert mustn't
+  // Client Inbox at all. Best-effort - a failed update insert mustn't
   // tank the webhook response.
   if (mentionedUserIds.length > 0 && inserted?.id) {
     const titlePrefix = `${payload.authorName} mentioned you`
@@ -518,9 +518,9 @@ export async function POST(req: NextRequest) {
 /**
  * Resolve every Hub user @-mentioned in a Trengo internal note. We fan
  * out one `kind: "update"` row per mentioned user so the mention surfaces
- * in their Updates tab (Roy 2026-06-09 — no dedicated Mentions tab).
+ * in their Updates tab (Roy 2026-06-09 - no dedicated Mentions tab).
  *
- * Best-effort parsing — Trengo notes can be HTML-rich, so we strip tags
+ * Best-effort parsing - Trengo notes can be HTML-rich, so we strip tags
  * first, then run the same `@FirstName` regex the comments path uses.
  * Lookup matches case-insensitively against `users.name` on first-name
  * OR full-name. Self-mentions are skipped by matching the captured
@@ -532,7 +532,7 @@ async function resolveMentionedHubUserIds(
   body: string,
   authorName: string | null,
 ): Promise<string[]> {
-  // Strip HTML — Trengo notes can be rich text. Removing tags leaves the
+  // Strip HTML - Trengo notes can be rich text. Removing tags leaves the
   // visible @-mention text intact (mentions render as `<span>@Roy</span>`
   // or similar; the inner text survives).
   const text = body
@@ -564,7 +564,7 @@ async function resolveMentionedHubUserIds(
     .not("name", "is", null)
   if (!rows || rows.length === 0) return []
 
-  // Self-mention filter — match against the note's poster name. We compare
+  // Self-mention filter - match against the note's poster name. We compare
   // first names because Trengo's author_name is usually a full name and the
   // @-mention is typically the first name. Lower-cased on both sides.
   const authorFirstNameLower = (authorName ?? "").trim().toLowerCase().split(/\s+/)[0] ?? ""

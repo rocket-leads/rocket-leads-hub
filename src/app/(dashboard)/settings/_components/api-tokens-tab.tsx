@@ -22,14 +22,14 @@ type Props = {
 
 const SERVICES = [
   { id: "monday", label: "Monday.com", description: "API token from Monday.com developer settings" },
-  { id: "meta", label: "Meta (Facebook)", description: "Graph API access token — expires periodically" },
+  { id: "meta", label: "Meta (Facebook)", description: "Graph API access token - expires periodically" },
   { id: "stripe", label: "Stripe", description: "Secret key (sk_live_... or sk_test_...)" },
   { id: "trengo", label: "Trengo", description: "API token from Trengo settings" },
-  { id: "google_drive", label: "Google (Drive + Sheets)", description: "Full service account JSON — used for knowledge folder + targets cost sheet" },
+  { id: "google_drive", label: "Google (Drive + Sheets)", description: "Full service account JSON - used for knowledge folder + targets cost sheet" },
   { id: "slack", label: "Slack", description: "Bot User OAuth Token (starts with xoxb-) from your Slack App" },
   { id: "fathom", label: "Fathom", description: "API key from Fathom → Settings → API Access. Webhook secret goes in FATHOM_WEBHOOK_SECRET env var." },
   { id: "apify", label: "Apify", description: "Personal API token from apify.com/settings/integrations. Used by onboarding wizard for Meta Ad Library scraping." },
-  { id: "heygen", label: "Heygen", description: "API key from Heygen → Settings → API. Used by Pedro's avatar pipeline (provider-pluggable). Optional — leave blank until avatar actuation is wired." },
+  { id: "heygen", label: "Heygen", description: "API key from Heygen → Settings → API. Used by Pedro's avatar pipeline (provider-pluggable). Optional - leave blank until avatar actuation is wired." },
   { id: "gemini", label: "Google Gemini", description: "API key from aistudio.google.com/apikey. Used by Pedro for image generation (Nano Banana Pro / gemini-3-pro-image)." },
 ]
 
@@ -48,7 +48,7 @@ function StatusDot({ status, locale }: { status: ServiceStatus | undefined; loca
 export function ApiTokensTab({ statuses: initialStatuses }: Props) {
   const locale = useLocale()
   const router = useRouter()
-  // Local mirror of statuses — updated optimistically on save & after test results
+  // Local mirror of statuses - updated optimistically on save & after test results
   // so the dot reflects the latest state without a full page reload.
   const [statuses, setStatuses] = useState<Record<string, ServiceStatus>>(initialStatuses)
   const [tokens, setTokens] = useState<Record<string, string>>({})
@@ -66,7 +66,7 @@ export function ApiTokensTab({ statuses: initialStatuses }: Props) {
       setTokens((prev) => ({ ...prev, [service]: "" }))
       setSaved((s) => ({ ...s, [service]: true }))
       setTimeout(() => setSaved((s) => ({ ...s, [service]: false })), 3000)
-      // After save the token is fresh but unverified — reset dot to "Not tested" grey
+      // After save the token is fresh but unverified - reset dot to "Not tested" grey
       setStatuses((prev) => ({ ...prev, [service]: { is_valid: null, last_verified: null } }))
       setTestResults((r) => {
         const { [service]: _drop, ...rest } = r

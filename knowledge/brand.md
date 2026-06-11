@@ -1,4 +1,4 @@
-# Rocket Leads — Brand Knowledge Base
+# Rocket Leads - Brand Knowledge Base
 
 > Single source of truth voor tone of voice, visuele identiteit en merkpositionering.
 > Last updated: 2026-04-04 05:30 CET
@@ -11,23 +11,23 @@
 **Juridische entiteiten:** Rocket Leads Ltd. & Rocket Leads B.V.
 **Opgericht:** 2018
 **Oprichter:** Roy Vosters
-**Hoofdvestiging (primair, sinds april 2025):** Rocket Leads Ltd. — 19 Lavele Str., 1000 Sofia, Bulgarije
-**Secundaire vestiging:** Rocket Leads B.V. — Jacob van Lennepkade 155H, 1054 ZL Amsterdam, Nederland
+**Hoofdvestiging (primair, sinds april 2025):** Rocket Leads Ltd. - 19 Lavele Str., 1000 Sofia, Bulgarije
+**Secundaire vestiging:** Rocket Leads B.V. - Jacob van Lennepkade 155H, 1054 ZL Amsterdam, Nederland
 **Facturatie:** Alle klanten gefactureerd vanuit Rocket Leads Ltd. (Bulgarije)
 **Finance e-mail:** Finance@rocketleads.com
 **BTW-nummer:** BG VAT BG208169940
 **Markt:** Nederland & Vlaanderen (primair), actief in 5+ landen
 **Tagline:** *"Your Strategic Partner In Marketing & Sales"* / *"Skyrocket your business"*
-**Positionering:** Marktleider leadgeneratie in Nederland — complete marketing- en salesmachine onder één dak
+**Positionering:** Marktleider leadgeneratie in Nederland - complete marketing- en salesmachine onder één dak
 
 ---
 
 ## 2. Wat doet Rocket Leads?
 
 3-stappen framework:
-1. **Genereer** — Unieke marketingcampagnes (voornamelijk Meta Ads) trekken juiste prospects aan
-2. **Automatiseer** — Volledig geautomatiseerd dashboard met WhatsApp- en e-mailautomatisering
-3. **Kwalificeer** — Professionele appointment setters kwalificeren leads voordat ze afspraak worden
+1. **Genereer** - Unieke marketingcampagnes (voornamelijk Meta Ads) trekken juiste prospects aan
+2. **Automatiseer** - Volledig geautomatiseerd dashboard met WhatsApp- en e-mailautomatisering
+3. **Kwalificeer** - Professionele appointment setters kwalificeren leads voordat ze afspraak worden
 
 **Kernbelofte:** Structureel meer gekwalificeerde afspraken en meer omzet, zonder dat de klant zelf de marketing hoeft te managen.
 
@@ -50,7 +50,7 @@
 
 ## 3. Tone of Voice
 
-**Kernkarakter: Direct. Zelfverzekerd. Resultaatgericht. Licht agressief — maar nooit bot.**
+**Kernkarakter: Direct. Zelfverzekerd. Resultaatgericht. Licht agressief - maar nooit bot.**
 
 Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen tijd verliest aan fluff. Geen corporaat, geen omslachtig, geen onzekerheid.
 
@@ -64,11 +64,11 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 | CTA | Duidelijk en urgent | Vrijblijvend |
 
 **Stijlprincipes:**
-- Schrijf in jij/jouw — directe aanspraak
+- Schrijf in jij/jouw - directe aanspraak
 - Korte zinnen. Geen lappen tekst.
 - Bullets voor voordelen, lopende tekst voor verhaal
 - Cijfers zijn heilig (€75M+, 2.000+ klanten, 100 leads in eerste maand)
-- Geen passieve constructies — actief, niet lijdend
+- Geen passieve constructies - actief, niet lijdend
 - Geen disclaimers
 - Urgentie is standaard
 
@@ -118,11 +118,11 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 
 ## 5. Merkwaarden
 
-1. **Resultaat boven alles** — afgerekend op output, niet inspanning
-2. **Ownership** — verantwoordelijkheid nemen, nooit afschuiven
-3. **Snelheid** — snel handelen intern en voor klanten
-4. **Expertise** — 8+ jaar, €75M+ bewezen resultaat
-5. **Partnerschap** — groeipartner, niet leverancier
+1. **Resultaat boven alles** - afgerekend op output, niet inspanning
+2. **Ownership** - verantwoordelijkheid nemen, nooit afschuiven
+3. **Snelheid** - snel handelen intern en voor klanten
+4. **Expertise** - 8+ jaar, €75M+ bewezen resultaat
+5. **Partnerschap** - groeipartner, niet leverancier
 
 ---
 
@@ -160,7 +160,7 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 ### Logo varianten
 - **Main Logo:** Rocket Leads volledig logo (horizontaal)
 - **Logo Variation 1:** Volledig logo op donkere achtergrond
-- **Logo Variation 2:** "R" met raket icoon — half logo (108px × 222px)
+- **Logo Variation 2:** "R" met raket icoon - half logo (108px × 222px)
 - **Vectoren:** Raket icoon en "R" letter als losse vectoren beschikbaar
 
 ### Logo gebruik per achtergrond
@@ -185,8 +185,8 @@ Rocket Leads praat zoals een ambitieuze ondernemer die weet wat hij doet en geen
 | Element 2 | Thick Circles | Dikke cirkels |
 | Element 3 | Thin Circles | Dunne cirkels |
 | Element 4 | Glass Frame | Glasmorfisme frame met paarse tint |
-| Element 5 | Border 1 | Zwart, afgeronde hoeken — alleen op zwarte achtergrond |
-| Element 6 | Border 2 | Zwart, volledig ronde hoeken — alleen op zwarte achtergrond |
+| Element 5 | Border 1 | Zwart, afgeronde hoeken - alleen op zwarte achtergrond |
+| Element 6 | Border 2 | Zwart, volledig ronde hoeken - alleen op zwarte achtergrond |
 | Element 7 | Border 3 | Witte border, licht afgeronde hoeken |
 | Element 8 | Border 4 | Witte border, volledig ronde hoeken |
 | Element 9 | Border 5 | Grote witte border, afgeronde hoeken |
@@ -238,4 +238,4 @@ Zie **team-structure.md** voor de volledige teamstructuur, rollen, capaciteit en
 
 ---
 
-*Versie 1.0 — Aangemaakt: maart 2026 | Volgende module: ICP & Doelgroepanalyse*
+*Versie 1.0 - Aangemaakt: maart 2026 | Volgende module: ICP & Doelgroepanalyse*

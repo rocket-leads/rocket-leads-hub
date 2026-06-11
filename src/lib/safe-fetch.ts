@@ -1,7 +1,7 @@
 /**
  * Wrap a fetch / external call so failures fall back to a default value
  * *and* leave a searchable breadcrumb. Replaces the `.catch(() => [])`
- * pattern that swallows errors silently — those are the bugs that take
+ * pattern that swallows errors silently - those are the bugs that take
  * weeks to find (see: empty Users tab, 2026-05-21).
  *
  * Why a helper instead of let-callers-do-it:
@@ -11,7 +11,7 @@
  *     call site
  *   - Removes the temptation to drop a bare `.catch(() => [])` that
  *     hides everything including bugs in your own code (typos,
- *     undefined accesses, etc — they all become "empty result")
+ *     undefined accesses, etc - they all become "empty result")
  *
  * Usage:
  *   const channels = await safeFetch(

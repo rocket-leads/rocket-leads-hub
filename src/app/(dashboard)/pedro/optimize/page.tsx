@@ -4,7 +4,7 @@ import { loadPedroClients } from "../_components/load-clients"
 import { PedroOptimizeApp } from "../_components/pedro-optimize-app"
 
 export const dynamic = "force-dynamic"
-export const metadata = { title: "Pedro · Optimize — Rocket Leads Hub" }
+export const metadata = { title: "Pedro · Optimize - Rocket Leads Hub" }
 
 export default async function PedroOptimizePage() {
   const session = await auth()

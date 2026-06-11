@@ -65,7 +65,7 @@ function StatusPill({ tone, label }: { tone: PillTone; label: string }) {
  */
 function DeltaPill({ pct }: { pct: number }) {
   if (Math.abs(pct) < 0.5) {
-    return <span className="text-muted-foreground/60">—</span>
+    return <span className="text-muted-foreground/60">-</span>
   }
   const isDown = pct < 0
   const isHighUp = pct >= 25
@@ -83,7 +83,7 @@ function DeltaPill({ pct }: { pct: number }) {
   )
 }
 
-/** Canonical payment-status filter values — match the BillingSummary.status
+/** Canonical payment-status filter values - match the BillingSummary.status
  *  enum (after capitalisation). Display labels are looked up via the
  *  dictionary at render time. */
 const PAYMENT_STATUSES = ["Complete", "Open", "Overdue"] as const
@@ -135,7 +135,7 @@ function getCampaignHealth(kpi: KpiSummary | undefined, locale: Locale = "en"): 
   let status: HealthStatus = "good"
 
   // Trend-based: compare current 7d CPL vs previous 7d CPL.
-  // Skip when prev period wasn't substantially live — a freshly-launched client
+  // Skip when prev period wasn't substantially live - a freshly-launched client
   // would otherwise read as a wild +/-X% swing that's purely an artefact of the
   // launch date. `prevPeriodReliable === false` is set explicitly by the API;
   // older cached entries without the flag default to "show" (undefined check).
@@ -143,15 +143,15 @@ function getCampaignHealth(kpi: KpiSummary | undefined, locale: Locale = "en"): 
     const cplChange = ((kpi.cpl - kpi.prevCpl) / kpi.prevCpl) * 100
 
     if (cplChange > 50) {
-      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev 7d (€${kpi.prevCpl.toFixed(2)})`)
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} - up ${cplChange.toFixed(0)}% vs prev 7d (€${kpi.prevCpl.toFixed(2)})`)
       status = "critical"
     } else if (cplChange > 25) {
-      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — up ${cplChange.toFixed(0)}% vs prev 7d (€${kpi.prevCpl.toFixed(2)})`)
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} - up ${cplChange.toFixed(0)}% vs prev 7d (€${kpi.prevCpl.toFixed(2)})`)
       status = "warning"
     } else if (cplChange < -10) {
-      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — down ${Math.abs(cplChange).toFixed(0)}% vs prev 7d`)
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} - down ${Math.abs(cplChange).toFixed(0)}% vs prev 7d`)
     } else {
-      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — stable vs prev 7d`)
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} - stable vs prev 7d`)
     }
   }
 
@@ -161,14 +161,14 @@ function getCampaignHealth(kpi: KpiSummary | undefined, locale: Locale = "en"): 
     status = "critical"
   }
 
-  // CPA trend is intentionally NOT a status driver right now — appointment data
+  // CPA trend is intentionally NOT a status driver right now - appointment data
   // is too sparse to be reliable (see categorize.ts). The CPA column itself still
   // displays the value; it just doesn't push a client into critical/warning.
 
   // Good summary
   if (status === "good" && reasons.length === 0) {
     if (kpi.leads > 0) {
-      reasons.push(`CPL €${kpi.cpl.toFixed(2)} — ${kpi.leads} leads`)
+      reasons.push(`CPL €${kpi.cpl.toFixed(2)} - ${kpi.leads} leads`)
     } else {
       reasons.push(t("clients.health.reason.running_normally", locale))
     }
@@ -184,7 +184,7 @@ const HEALTH_STYLES: Record<HealthStatus, { dot: string; bg: string; text: strin
   "no-data": { dot: "bg-zinc-400", bg: "bg-zinc-500/10", text: "text-muted-foreground", labelKey: null },
 }
 
-/** Health filter values are the canonical English status names — they map to
+/** Health filter values are the canonical English status names - they map to
  *  the HealthStatus enum at filter-evaluation time. The DISPLAY label is
  *  translated via the dictionary on each filter option. */
 const HEALTH_FILTER_VALUES = ["Good", "Warning", "Critical"] as const
@@ -192,13 +192,13 @@ const HEALTH_FILTER_VALUES = ["Good", "Warning", "Critical"] as const
 function HealthBadge({ health, locale }: { health: HealthResult; locale: Locale }) {
   const style = HEALTH_STYLES[health.status]
   if (health.status === "no-data") {
-    return <span className="text-muted-foreground text-sm">—</span>
+    return <span className="text-muted-foreground text-sm">-</span>
   }
   return (
     <div className="relative group">
       <div className={`inline-flex items-center gap-2 rounded-md px-2.5 py-1 text-[13px] font-medium ${style.bg} ${style.text}`}>
         <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
-        {style.labelKey ? t(style.labelKey, locale) : "—"}
+        {style.labelKey ? t(style.labelKey, locale) : "-"}
       </div>
       {health.reasons.length > 0 && (
         <div className="absolute z-50 hidden group-hover:block bottom-full left-0 mb-1.5 w-64 rounded-lg border bg-popover p-2.5 text-xs text-popover-foreground shadow-lg">
@@ -241,7 +241,7 @@ type Props = {
   /**
    * When provided, renders a date-range picker + preset chips in the search row.
    * The selected range is used by the parent to fetch period-scoped KPI data, so this
-   * component only owns the UI control surface — state lives in the parent.
+   * component only owns the UI control surface - state lives in the parent.
    */
   dateRangeControl?: {
     startDate: Date
@@ -254,7 +254,7 @@ type Props = {
   }
   /**
    * Row-click handler. When supplied, clicking a row calls this with the
-   * Monday item ID and skips full-page navigation — used by the slide-over
+   * Monday item ID and skips full-page navigation - used by the slide-over
    * panel UX on the All Clients page. Falls back to internal `/clients/[id]`
    * navigation when omitted.
    */
@@ -273,7 +273,7 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-/** YYYY-MM-DD → "5 May" — keep the overview cell narrow. */
+/** YYYY-MM-DD → "5 May" - keep the overview cell narrow. */
 function fmtDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
@@ -288,7 +288,7 @@ function fmtKpi(value: number, type: "currency" | "integer"): string {
 /** YYYY-MM-DD of "today" so two timestamps on the same calendar day compare
  *  equal regardless of how many hours apart they were. We compare ISO date
  *  prefixes rather than ms-deltas because "24h ago" and "today" aren't the
- *  same concept — Roy wants the button to come back at the start of the
+ *  same concept - Roy wants the button to come back at the start of the
  *  next calendar day, not 24h after the last send. */
 function isSameLocalDay(iso: string | undefined): boolean {
   if (!iso) return false
@@ -297,7 +297,7 @@ function isSameLocalDay(iso: string | undefined): boolean {
   return d.toLocaleDateString("en-CA") === new Date().toLocaleDateString("en-CA")
 }
 
-/** "Laatste update: 15 mei" — short caption matching the MRR/budget style. */
+/** "Laatste update: 15 mei" - short caption matching the MRR/budget style. */
 function fmtLastUpdateLabel(iso: string | undefined, locale: Locale): string {
   if (!iso) return ""
   const d = new Date(iso)
@@ -432,6 +432,34 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   const [healthFilter, setHealthFilter] = useState("All")
   const [sortKey, setSortKey] = useState<SortKey | null>(defaultSortKey ?? null)
   const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir ?? "asc")
+  // Compact / Full toggle - hides the Invoice (Outstanding / MRR / Next)
+  // and People (AM / CM / AS) groups when true. Roy 2026-06-11: the
+  // table read too busy. Default to compact so first-time visitors land
+  // on the calmer view; localStorage preserves the choice across pages.
+  // Lazy init reads localStorage on first render in the browser to avoid
+  // the setState-in-effect cascade flagged by react-hooks/set-state-in-effect.
+  const [compact, setCompact] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true
+    try {
+      const stored = window.localStorage.getItem("clients-table-compact")
+      if (stored === "1") return true
+      if (stored === "0") return false
+    } catch {
+      // private mode - fall through to default
+    }
+    return true
+  })
+  const toggleCompact = useCallback(() => {
+    setCompact((prev) => {
+      const next = !prev
+      try { localStorage.setItem("clients-table-compact", next ? "1" : "0") } catch {}
+      return next
+    })
+  }, [])
+  // Compact only applies to the current board - onboarding has its own
+  // column set that's already narrow.
+  const showInvoiceGroup = !compact || boardType !== "current"
+  const showPeopleGroup = !compact || boardType !== "current"
 
   const accountManagers = useMemo(() => uniqueSorted(clients.map((c) => c.accountManager)), [clients])
   const campaignManagers = useMemo(() => uniqueSorted(clients.map((c) => c.campaignManager)), [clients])
@@ -522,7 +550,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
         case "leads": valA = kpiA?.leads ?? 0; valB = kpiB?.leads ?? 0; break
         case "cpl": valA = kpiA?.cpl ?? 0; valB = kpiB?.cpl ?? 0; break
         case "cplDelta": {
-          // Rows where the prev period wasn't fully live get sorted as 0 — they're
+          // Rows where the prev period wasn't fully live get sorted as 0 - they're
           // displayed without a delta pill anyway, so giving them a real swing
           // value here would put them where they don't belong in the ranking.
           const reliableA = kpiA?.prevPeriodReliable !== false
@@ -538,7 +566,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           valB = agreementSummaries?.[b.mondayItemId]?.mrr ?? 0
           break
         case "nextInvoice":
-          // Empty dates sort to the end ascending — strings sort naturally for ISO YYYY-MM-DD.
+          // Empty dates sort to the end ascending - strings sort naturally for ISO YYYY-MM-DD.
           valA = a.nextInvoiceDate || "9999-12-31"
           valB = b.nextInvoiceDate || "9999-12-31"
           break
@@ -549,7 +577,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           break
         }
         case "clientUpdate": {
-          // Most-recently-updated wins on desc — clients never updated sort
+          // Most-recently-updated wins on desc - clients never updated sort
           // to the BOTTOM in both directions so they're never confused with
           // "oldest" entries that have a real (just very old) timestamp.
           const a0 = lastClientUpdates?.[a.mondayItemId]
@@ -599,10 +627,13 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
   }, [sorted.length, visibleCount])
 
   // 18 → 15 after Appointments + CPA + CPA-Delta cells removed 2026-05.
-  const colSpan = boardType === "onboarding" ? 11 : 15
+  // -6 in compact mode (3 invoice cols + 3 people cols hidden).
+  const colSpan = boardType === "onboarding"
+    ? 11
+    : 15 - (!showInvoiceGroup ? 3 : 0) - (!showPeopleGroup ? 3 : 0)
 
   // Status / phase value labels stay as their Monday-canonical English form for
-  // now — they're the wire format the dropdown writes back to Monday, and the
+  // now - they're the wire format the dropdown writes back to Monday, and the
   // four buckets ("Live", "On Hold", "Churned") read fine in Dutch business
   // context. The filter LABELS and "All ..." options route through the
   // dictionary so the surrounding chrome flips.
@@ -733,6 +764,16 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
             {t(sorted.length === 1 ? "clients.count_total_one" : "clients.count_total_many", locale, { n: sorted.length })}
           </span>
         )}
+        {boardType === "current" && (
+          <button
+            type="button"
+            onClick={toggleCompact}
+            className="h-8 px-2.5 text-[11px] rounded-lg bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors font-medium tabular-nums"
+            title={compact ? "Toon alle kolommen (Facturatie + Personen)" : "Verberg Facturatie + Personen kolommen"}
+          >
+            {compact ? "Volledig" : "Compact"}
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -742,7 +783,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
             <TableRow className="border-b border-border/60 bg-muted/50 hover:bg-muted/50 [&>th]:h-10">
               {/* Client section */}
               <TableHead className="text-[13px] text-foreground/80 font-semibold w-[220px] border-r border-border/60">{t("clients.col.client", locale)}</TableHead>
-              {/* Status section — onboarding shows the granular phase + Meta-connected
+              {/* Status section - onboarding shows the granular phase + Meta-connected
                   column; current board shows the canonical 4-bucket Hub status. */}
               {boardType === "onboarding" ? (
                 <>
@@ -756,14 +797,23 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
               {boardType === "current" && (
                 <SortableHead label={t("clients.col.health", locale)} sortKey="health" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold text-center w-[90px]" />
               )}
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[95px]">{t("clients.col.payment", locale)}</TableHead>
-              <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">{t("clients.col.outstanding", locale)}</TableHead>
-              <SortableHead label={t("clients.col.mrr", locale)} sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px]" />
-              <SortableHead label={t("clients.col.next", locale)} sortKey="nextInvoice" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px] border-r border-border/60" />
-              {/* People section */}
-              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">{t("clients.col.am", locale)}</TableHead>
-              <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">{t("clients.col.cm", locale)}</TableHead>
-              <TableHead className={`text-[13px] text-foreground/80 font-semibold text-center w-[50px] ${boardType === "current" ? "border-r border-border/60" : ""}`}>{t("clients.col.as", locale)}</TableHead>
+              <TableHead className={`text-[13px] text-foreground/80 font-semibold w-[95px] ${!showInvoiceGroup ? "border-r border-border/60" : ""}`}>{t("clients.col.payment", locale)}</TableHead>
+              {/* Invoice section - hidden in compact mode */}
+              {showInvoiceGroup && (
+                <>
+                  <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">{t("clients.col.outstanding", locale)}</TableHead>
+                  <SortableHead label={t("clients.col.mrr", locale)} sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px]" />
+                  <SortableHead label={t("clients.col.next", locale)} sortKey="nextInvoice" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px] border-r border-border/60" />
+                </>
+              )}
+              {/* People section - hidden in compact mode */}
+              {showPeopleGroup && (
+                <>
+                  <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">{t("clients.col.am", locale)}</TableHead>
+                  <TableHead className="text-[13px] text-foreground/80 font-semibold text-center w-[50px]">{t("clients.col.cm", locale)}</TableHead>
+                  <TableHead className={`text-[13px] text-foreground/80 font-semibold text-center w-[50px] ${boardType === "current" ? "border-r border-border/60" : ""}`}>{t("clients.col.as", locale)}</TableHead>
+                </>
+              )}
               {/* KPI section (current only) */}
               {boardType === "current" && (
                 <>
@@ -812,7 +862,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                       })() : ""
                     }`}
                     onClick={(e) => {
-                      // Only handle plain left-click — let modifier+click and middle-click pass through
+                      // Only handle plain left-click - let modifier+click and middle-click pass through
                       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
                       if (onSelectClient) {
                         onSelectClient(client.mondayItemId)
@@ -823,7 +873,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     onMouseEnter={onSelectClient ? () => prefetchClient(client.mondayItemId) : undefined}
                     onMouseLeave={onSelectClient ? () => cancelPrefetch(client.mondayItemId) : undefined}
                     onAuxClick={(e) => {
-                      // Middle-click opens in new tab — keep this even with the slide-over
+                      // Middle-click opens in new tab - keep this even with the slide-over
                       // pattern so power users can still pop a full page in another window.
                       if (e.button === 1) {
                         e.preventDefault()
@@ -834,7 +884,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                     {/* Client section */}
                     <TableCell className="border-r border-border/40 bg-muted/20 max-w-0">
                       {onSelectClient ? (
-                        // In slide-over mode, the row click handles selection — render
+                        // In slide-over mode, the row click handles selection - render
                         // the name as plain text so we don't have a Link competing with
                         // the row's onClick.
                         <div className="block min-w-0" title={client.name}>
@@ -870,7 +920,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           {client.metaConnected ? (
                             <StatusPill tone={metaConnectedTone(client.metaConnected)} label={client.metaConnected} />
                           ) : (
-                            <span className="text-muted-foreground/40 text-xs">—</span>
+                            <span className="text-muted-foreground/40 text-xs">-</span>
                           )}
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground tabular-nums">{client.kickOffDate || ""}</TableCell>
@@ -893,7 +943,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         )}
                       </TableCell>
                     )}
-                    <TableCell>
+                    <TableCell className={!showInvoiceGroup ? "border-r border-border/40" : ""}>
                       {billingSummaries && summary && PAYMENT_TONES[summary.status] && (
                         <StatusPill
                           tone={PAYMENT_TONES[summary.status]}
@@ -904,76 +954,85 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         <span className="text-muted-foreground/40 text-xs">...</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-xs tabular-nums">
-                      {summary && summary.outstanding > 0 && (
-                        <span className={summary.status === "overdue" ? "text-red-400 font-medium" : "text-muted-foreground"}>{fmt(summary.outstanding)}</span>
-                      )}
-                      {!billingSummaries && client.stripeCustomerId && (
-                        <span className="text-muted-foreground/40">...</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {(() => {
-                        const a = agreementSummaries?.[client.mondayItemId]
-                        if (!agreementSummaries) {
-                          return <span className="text-muted-foreground/40 text-xs">...</span>
-                        }
-                        if (!a || (a.mrr === 0 && a.adBudget === 0)) {
-                          return null
-                        }
-                        return (
-                          <div className="leading-tight">
-                            <p className="text-xs tabular-nums font-medium">{formatCurrencyLocale(a.mrr, locale)}</p>
-                            <p className="text-[10px] tabular-nums text-muted-foreground/60">
-                              {formatCurrencyLocale(a.adBudget, locale)} {t("clients.budget_suffix", locale)}
-                            </p>
-                          </div>
-                        )
-                      })()}
-                    </TableCell>
-                    <TableCell className="border-r border-border/40">
-                      {client.nextInvoiceDate ? (
-                        <span
-                          className={`text-xs tabular-nums ${
-                            client.nextInvoiceDate <= todayIso()
-                              ? "text-amber-500 font-medium"
-                              : "text-muted-foreground"
-                          }`}
-                          title={t("clients.tooltip.next_invoice", locale)}
-                        >
-                          {fmtDate(client.nextInvoiceDate)}
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    {/* People section */}
-                    <TableCell>
-                      <PersonEditCell
-                        mondayItemId={client.mondayItemId}
-                        fieldKey="account_manager"
-                        value={client.accountManager}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <PersonEditCell
-                        mondayItemId={client.mondayItemId}
-                        fieldKey="campaign_manager"
-                        value={client.campaignManager}
-                      />
-                    </TableCell>
-                    <TableCell className={boardType === "current" ? "border-r border-border/40" : ""}>
-                      {boardType === "current" ? (
-                        <PersonEditCell
-                          mondayItemId={client.mondayItemId}
-                          fieldKey="appointment_setter"
-                          value={client.appointmentSetter}
-                          multi
-                        />
-                      ) : (
-                        client.appointmentSetter && (
-                          <span className="text-xs text-muted-foreground">{client.appointmentSetter}</span>
-                        )
-                      )}
-                    </TableCell>
+                    {/* Invoice section - hidden in compact mode */}
+                    {showInvoiceGroup && (
+                      <>
+                        <TableCell className="text-xs tabular-nums">
+                          {summary && summary.outstanding > 0 && (
+                            <span className={summary.status === "overdue" ? "text-red-400 font-medium" : "text-muted-foreground"}>{fmt(summary.outstanding)}</span>
+                          )}
+                          {!billingSummaries && client.stripeCustomerId && (
+                            <span className="text-muted-foreground/40">...</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const a = agreementSummaries?.[client.mondayItemId]
+                            if (!agreementSummaries) {
+                              return <span className="text-muted-foreground/40 text-xs">...</span>
+                            }
+                            if (!a || (a.mrr === 0 && a.adBudget === 0)) {
+                              return null
+                            }
+                            return (
+                              <div className="leading-tight">
+                                <p className="text-xs tabular-nums font-medium">{formatCurrencyLocale(a.mrr, locale)}</p>
+                                <p className="text-[10px] tabular-nums text-muted-foreground/60">
+                                  {formatCurrencyLocale(a.adBudget, locale)} {t("clients.budget_suffix", locale)}
+                                </p>
+                              </div>
+                            )
+                          })()}
+                        </TableCell>
+                        <TableCell className="border-r border-border/40">
+                          {client.nextInvoiceDate ? (
+                            <span
+                              className={`text-xs tabular-nums ${
+                                client.nextInvoiceDate <= todayIso()
+                                  ? "text-amber-500 font-medium"
+                                  : "text-muted-foreground"
+                              }`}
+                              title={t("clients.tooltip.next_invoice", locale)}
+                            >
+                              {fmtDate(client.nextInvoiceDate)}
+                            </span>
+                          ) : null}
+                        </TableCell>
+                      </>
+                    )}
+                    {/* People section - hidden in compact mode */}
+                    {showPeopleGroup && (
+                      <>
+                        <TableCell>
+                          <PersonEditCell
+                            mondayItemId={client.mondayItemId}
+                            fieldKey="account_manager"
+                            value={client.accountManager}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <PersonEditCell
+                            mondayItemId={client.mondayItemId}
+                            fieldKey="campaign_manager"
+                            value={client.campaignManager}
+                          />
+                        </TableCell>
+                        <TableCell className={boardType === "current" ? "border-r border-border/40" : ""}>
+                          {boardType === "current" ? (
+                            <PersonEditCell
+                              mondayItemId={client.mondayItemId}
+                              fieldKey="appointment_setter"
+                              value={client.appointmentSetter}
+                              multi
+                            />
+                          ) : (
+                            client.appointmentSetter && (
+                              <span className="text-xs text-muted-foreground">{client.appointmentSetter}</span>
+                            )
+                          )}
+                        </TableCell>
+                      </>
+                    )}
                     {/* KPI section (current only) */}
                     {boardType === "current" && (
                       <>
@@ -996,7 +1055,7 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                               className="text-muted-foreground/40"
                               title={t("clients.tooltip.no_prev_period", locale)}
                             >
-                              —
+                              -
                             </span>
                           ) : ""}
                         </TableCell>

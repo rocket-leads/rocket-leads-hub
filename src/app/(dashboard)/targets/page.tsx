@@ -14,7 +14,7 @@ export default async function TargetsPage() {
     <div>
       <PageHeader title={t("targets.title", locale)} subtitle={t("targets.subtitle", locale)} />
       {/* Finance tab visible to admin + finance (Roy 2026-05-23). Settings
-          tab stays admin-only — it edits targets, not finance numbers. */}
+          tab stays admin-only - it edits targets, not finance numbers. */}
       <TargetsTabs isAdmin={isAdmin} canSeeFinance={isAdmin || isFinance} />
     </div>
   )

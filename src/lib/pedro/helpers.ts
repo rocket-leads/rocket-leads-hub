@@ -34,7 +34,7 @@ export interface AdCopy {
 export interface BrandStyle {
   primaryColor: string
   secondaryColor: string
-  /** Accent color for headlines/CTA — usually the brightest brand color
+  /** Accent color for headlines/CTA - usually the brightest brand color
    *  with luminance > 0.15, returned by analyze-website. Optional for
    *  back-compat with state rows saved before 2026-06-10. */
   accentColor?: string
@@ -49,20 +49,20 @@ export interface BrandStyle {
    *  Roy 2026-06-10. */
   headingFont?: string
   bodyFont?: string
-  /** Brand-fingerprint additions (Roy 2026-06-10) — captured from the
+  /** Brand-fingerprint additions (Roy 2026-06-10) - captured from the
    *  client website in `analyze-website/route.ts` to give Pedro more
    *  signal beyond the color palette.
    *
    *  All optional + URL strings:
-   *   - `logoUrl`        — best-guess brand mark (og:image > apple
+   *   - `logoUrl`        - best-guess brand mark (og:image > apple
    *                         touch-icon > favicon > "logo"-named header
    *                         img). Used as a reference image when the
    *                         "Logo" toggle is on.
-   *   - `heroImageUrl`   — first sizeable content image, excluding logos.
+   *   - `heroImageUrl`   - first sizeable content image, excluding logos.
    *                         Used as a layout/composition reference when
    *                         "Look & feel" is on.
-   *   - `taglineHeadline` — `<h1>` text (≤200 chars).
-   *   - `taglineSubline`  — first `<p>` after the h1 (≤400 chars).
+   *   - `taglineHeadline` - `<h1>` text (≤200 chars).
+   *   - `taglineSubline`  - first `<p>` after the h1 (≤400 chars).
    *                         Feeds the tone-of-voice prompt for ad copy
    *                         generation, not the image prompt.
    */

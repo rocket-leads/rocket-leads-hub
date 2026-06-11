@@ -31,13 +31,13 @@ type UserRow = { id: string; name: string | null; email: string; role: string | 
  * card 1:1 per Roy's directive (2026-05-22) so dismiss/approve/edit on
  * an AI draft feels identical to mark-done/delete on a regular task:
  *
- *   - Colored left rail (primary brand purple — AI is the "third type"
+ *   - Colored left rail (primary brand purple - AI is the "third type"
  *     next to violet=Task, sky=Update)
  *   - Type chip top-left ("AI Draft" with Sparkles icon)
  *   - StatusPill (Ready / Processing / Failed) in the same row
  *   - Title using inbox `text-[15px] font-medium`
  *   - Meta row with `text-xs text-muted-foreground/80` and `·` separators
- *   - Right-side 36×36 ActionIconButtons (success/danger/muted) — same
+ *   - Right-side 36×36 ActionIconButtons (success/danger/muted) - same
  *     component the inbox row uses, so the chrome is literally identical
  */
 export function NotificationBell() {
@@ -46,7 +46,7 @@ export function NotificationBell() {
   const [editingDraft, setEditingDraft] = useState<CopilotDraft | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Roster lazily loaded once — same pattern the command bar uses for
+  // Roster lazily loaded once - same pattern the command bar uses for
   // the editable confirmation card.
   const [users, setUsers] = useState<UserRow[]>([])
   const [clients, setClients] = useState<ClientSearchResult[]>([])
@@ -65,7 +65,7 @@ export function NotificationBell() {
         setClients(Array.isArray(data) ? data : [])
       }
     } catch {
-      // Non-fatal — the bell still renders with raw ids.
+      // Non-fatal - the bell still renders with raw ids.
     }
   }, [])
 
@@ -191,7 +191,7 @@ export function NotificationBell() {
   )
 }
 
-// ─── Row card — mirrors inbox-list-row.tsx 1:1 ─────────────────────────────
+// ─── Row card - mirrors inbox-list-row.tsx 1:1 ─────────────────────────────
 
 const RAIL = {
   pending: "bg-amber-500",
@@ -231,7 +231,7 @@ function DraftRow({
     }
   }
 
-  // Action mapping per status — matches inbox row semantics:
+  // Action mapping per status - matches inbox row semantics:
   //   ready  → success (Approve, Check) + muted (Edit, Pencil) + danger (Dismiss, Trash)
   //   failed → danger (Dismiss only)
   //   pending → no actions; just the spinner glyph
@@ -239,7 +239,7 @@ function DraftRow({
 
   return (
     <div className="relative rounded-lg border border-border bg-card hover:bg-muted/40 hover:shadow-sm transition-all overflow-hidden">
-      {/* Left rail — same visual language as the inbox type rail */}
+      {/* Left rail - same visual language as the inbox type rail */}
       <span
         aria-hidden
         className={cn("absolute left-0 top-0 bottom-0 w-1", RAIL[draft.status as keyof typeof RAIL] ?? "bg-muted")}
@@ -290,7 +290,7 @@ function DraftRow({
           </div>
         </div>
 
-        {/* Right-side actions — identical chrome to inbox row */}
+        {/* Right-side actions - identical chrome to inbox row */}
         <div className="flex items-center gap-1 shrink-0 pt-0.5">
           {isReady && (
             <>

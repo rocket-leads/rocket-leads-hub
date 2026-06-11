@@ -6,11 +6,11 @@ import { NextRequest, NextResponse } from "next/server"
 /**
  * Patch a weekly-update draft. Three flavours:
  *
- *   1. `status: "sent"`      — after the Trengo template send succeeded.
+ *   1. `status: "sent"`      - after the Trengo template send succeeded.
  *      Stamps `sent_at` + `sent_by_user_id`, optionally `sent_message_id`.
- *   2. `status: "dismissed"` — when the AM skips this draft for the week.
+ *   2. `status: "dismissed"` - when the AM skips this draft for the week.
  *      Stamps `dismissed_at` + `dismissed_by_user_id`.
- *   3. `parts: EditableParts` — autosave from the queue editor. The cron
+ *   3. `parts: EditableParts` - autosave from the queue editor. The cron
  *      pre-generated the draft; once the AM tweaks anything in the
  *      composer we persist those edits so navigating away (closing the
  *      sheet, switching drafts, hard refresh) doesn't lose them.
@@ -21,11 +21,11 @@ import { NextRequest, NextResponse } from "next/server"
 
 type PatchBody = {
   status?: "sent" | "dismissed"
-  /** Trengo outbound message id — only populated on `sent` (mirrors the
+  /** Trengo outbound message id - only populated on `sent` (mirrors the
    *  trengo_message_id we log in client_updates). */
   sentMessageId?: string
   /** Replacement EditableParts snapshot for autosave. Server overwrites
-   *  the whole `parts` column — partial merges aren't supported (the
+   *  the whole `parts` column - partial merges aren't supported (the
    *  composer always ships the full edited snapshot). */
   parts?: EditableParts
 }

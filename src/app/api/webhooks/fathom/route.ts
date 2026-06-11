@@ -8,14 +8,14 @@ export const maxDuration = 60
 /**
  * Fathom `new-meeting-content-ready` webhook receiver.
  *
- * Auth: Svix-style HMAC-SHA256 — we verify against `FATHOM_WEBHOOK_SECRET`
+ * Auth: Svix-style HMAC-SHA256 - we verify against `FATHOM_WEBHOOK_SECRET`
  * (env var, set to the `whsec_…` secret Fathom shows when you create the
  * webhook in Settings → API Access).
  *
  * Behavior: dedupes on `fathom_recording_id` (Fathom retries failed deliveries)
  * and inserts a row into `meetings` with `link_status='unlinked'` (or
  * `'internal'` when the call had no external attendees). Client-matching is
- * NOT done here — that lives in the matcher (C.5.b) so backfills + manual
+ * NOT done here - that lives in the matcher (C.5.b) so backfills + manual
  * triggers go through the same code path.
  *
  * Meeting type IS classified inline because it depends only on title +

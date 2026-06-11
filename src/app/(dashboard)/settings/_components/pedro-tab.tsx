@@ -15,7 +15,7 @@ import type { Locale } from "@/lib/i18n/types"
  * surfaces:
  *   - 7d kick-offs ingested vs Pedro fires (the funnel)
  *   - List of recent fires with assignee + status
- *   - List of "missed" — linked kick-offs without a corresponding Pedro
+ *   - List of "missed" - linked kick-offs without a corresponding Pedro
  *     fire (could be legit skips or bugs; surfaced for inspection)
  */
 
@@ -68,7 +68,7 @@ type HealthResponse = {
 }
 
 function fmtDateTime(iso: string | null, locale: Locale): string {
-  if (!iso) return "—"
+  if (!iso) return "-"
   return new Date(iso).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB", {
     day: "2-digit",
     month: "short",
@@ -206,7 +206,7 @@ export function PedroSettingsTab() {
         </CardContent>
       </Card>
 
-      {/* Eval digest funnel — separate card so it's clear that low conversion is normal */}
+      {/* Eval digest funnel - separate card so it's clear that low conversion is normal */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -347,7 +347,7 @@ export function PedroSettingsTab() {
                       <span className="font-medium text-sm truncate">{m.clientName}</span>
                     </div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      {fmtDateTime(m.scheduledAt, locale)} · {m.title ?? "—"}
+                      {fmtDateTime(m.scheduledAt, locale)} · {m.title ?? "-"}
                     </div>
                   </div>
                   {m.clientId && (

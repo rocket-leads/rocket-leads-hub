@@ -26,7 +26,7 @@ export async function GET(
     return NextResponse.json({ error: "No Stripe Customer ID linked for this client." }, { status: 404 })
   }
 
-  // Cron warms `billing:<id>` every 30min — serve from cache regardless of age
+  // Cron warms `billing:<id>` every 30min - serve from cache regardless of age
   // when present (same pattern as kpi_summaries and billing_summaries). On a
   // cache miss, fall through to live fetch + write so the next reader is fast.
   try {

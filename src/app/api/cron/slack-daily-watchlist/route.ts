@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   }
 
   const url = new URL(req.url)
-  // Admins firing this from the UI mean "send it to everyone right now" — bypass
+  // Admins firing this from the UI mean "send it to everyone right now" - bypass
   // the hour-of-day guard. Cron callers still need ?force=1 to override.
   const force = authz.forcedByAdmin || url.searchParams.get("force") === "1"
 

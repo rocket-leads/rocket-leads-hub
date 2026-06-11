@@ -37,7 +37,7 @@ describe("agreementMonthly", () => {
       agreementMonthly({
         ad_budget: 0,
         platforms: ["meta"],
-        // tiktok fee is stored but tiktok isn't in `platforms` — must NOT count.
+        // tiktok fee is stored but tiktok isn't in `platforms` - must NOT count.
         platform_fees: { meta: 1000, tiktok: 999 },
         follow_up: false,
         follow_up_fee: 0,
@@ -72,7 +72,7 @@ describe("agreementMonthly", () => {
     ).toBe(1000)
   })
 
-  it("excludes ad_budget — that is invoiced separately, not part of MRR", () => {
+  it("excludes ad_budget - that is invoiced separately, not part of MRR", () => {
     // ad_budget is the client's media spend, paid through to Meta/Google,
     // not Rocket Leads revenue. agreementMonthly is the management+follow-up
     // fee total only.
@@ -95,7 +95,7 @@ describe("normalizeAgreement", () => {
     expect(normalizeAgreement(undefined)).toEqual(EMPTY_AGREEMENT)
     expect(normalizeAgreement("nonsense")).toEqual({
       ...EMPTY_AGREEMENT,
-      // String input goes through Record cast — all fields stay at default.
+      // String input goes through Record cast - all fields stay at default.
     })
   })
 
@@ -133,7 +133,7 @@ describe("normalizeAgreement", () => {
 
   it("preserves a stable PLATFORMS order regardless of input array order", () => {
     const result = normalizeAgreement({ platforms: ["tiktok", "meta"] })
-    // Input order is preserved (filter doesn't reorder) — but PLATFORMS const
+    // Input order is preserved (filter doesn't reorder) - but PLATFORMS const
     // is the canonical reference if a UI ever needs to display in fixed order.
     expect(result.platforms.every((p) => PLATFORMS.includes(p))).toBe(true)
     expect(result.platforms.length).toBe(2)

@@ -16,14 +16,14 @@ import { RefreshBillingButton } from "./_components/refresh-billing-button"
 import { combinedClientName } from "@/lib/billing/sibling-name"
 
 /**
- * Finance overview page — open to anyone signed in. Surfaces every client
+ * Finance overview page - open to anyone signed in. Surfaces every client
  * with a `next_invoice_date` set, so finance has one place to see what's
  * coming without clicking into 50 separate Billing tabs.
  *
- * Date sourcing — three layers, in order of trust:
+ * Date sourcing - three layers, in order of trust:
  *   1. Live Monday fetch (canonical: Monday's `date3` column).
  *   2. Monday boards cache (fast path, but may predate the `nextInvoiceDate`
- *      field on MondayClient — empty rows fall through).
+ *      field on MondayClient - empty rows fall through).
  *   3. Supabase `clients.next_invoice_date` mirror (only populated when a
  *      client page is visited or a date is set via the Hub UI; misses any
  *      client whose detail page hasn't been opened since the tracker shipped).
@@ -39,6 +39,19 @@ export default async function BillingPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
 
+  // Block pure campaign managers - billing is for AM / Finance / Admin only.
+  // Roy 2026-06-11.
+  if (session.user.role !== "admin" && !session.user.isFinance) {
+    const supabaseAuth = await createAdminClient()
+    const { data: roleRows } = await supabaseAuth
+      .from("user_column_mappings")
+      .select("monday_column_role")
+      .eq("user_id", session.user.id)
+    const roles = new Set<string>((roleRows ?? []).map((r) => r.monday_column_role as string))
+    const isPureCm = roles.has("campaign_manager") && !roles.has("account_manager")
+    if (isPureCm) redirect("/watchlist")
+  }
+
   // Layer 1: cache.
   const cached = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
     "monday_boards",
@@ -47,7 +60,7 @@ export default async function BillingPage() {
   let allClients = [...boards.onboarding, ...boards.current]
 
   // If the cache exists but no client carries either billing date, the cache
-  // predates the field shapes — fall through to a live Monday fetch so the
+  // predates the field shapes - fall through to a live Monday fetch so the
   // page isn't stuck waiting on the next cron tick.
   const cacheCarriesDates = allClients.some(
     (c) => DATE_RE.test(c.nextInvoiceDate) || DATE_RE.test(c.cycleStartDate),
@@ -57,7 +70,7 @@ export default async function BillingPage() {
     allClients = [...boards.onboarding, ...boards.current]
   }
 
-  // Supabase fallback — fills in dates for rows where the live/cache source
+  // Supabase fallback - fills in dates for rows where the live/cache source
   // didn't carry the date (e.g. Monday API hiccup, cache pre-dates the new
   // `cycleStartDate` field). Cheap query, indexed on both columns.
   // Also pulls the manual billing-hold flag in the same round-trip.
@@ -89,7 +102,7 @@ export default async function BillingPage() {
     _cycle: string
     _status: ReturnType<typeof mondayStatusToHub>
   }
-  // Don't annotate the variable — let inference keep the narrower `_status`
+  // Don't annotate the variable - let inference keep the narrower `_status`
   // type produced by the type-guard filter below, otherwise the narrowing is
   // widened back to `ClientStatus | null` and the .map can't satisfy
   // `UpcomingInvoice.campaignStatus: ClientStatus`.
@@ -107,7 +120,7 @@ export default async function BillingPage() {
     })
     // Filter conditions:
     // - must have an invoice date (else there's nothing for finance to send)
-    // - On Hold + Churned drop off — those clients aren't billed this period.
+    // - On Hold + Churned drop off - those clients aren't billed this period.
     //   Live + Onboarding remain (Onboarding clients still get their first
     //   invoice on the date set in Monday).
     .filter((c): c is typeof c & { _status: "live" | "onboarding" } =>
@@ -149,7 +162,7 @@ export default async function BillingPage() {
     }
   }
 
-  // Stripe is the source of truth for payment state — Monday's "Administration"
+  // Stripe is the source of truth for payment state - Monday's "Administration"
   // column drifts out of sync, so we read the dedicated `billing_summaries`
   // cache (refreshed by the same cron that syncs next_invoice_date back here).
   const billingCache = (await readCache<Record<string, BillingSummary>>("billing_summaries")) ?? {}
@@ -159,7 +172,7 @@ export default async function BillingPage() {
   // can see freshness at a glance.
   const lastRefreshedAt = (await readCache<string>("billing_refreshed_at")) ?? null
 
-  // Past invoices — global Stripe list refreshed hourly + on manual refresh.
+  // Past invoices - global Stripe list refreshed hourly + on manual refresh.
   // Join customerId → client name from the Monday cache so the table reads
   // human (not "cus_…"). Multiple Monday rows can share one Stripe customer
   // (multi-campaign clients like O2 Plus | B2B + B2C); we collect ALL siblings
@@ -184,7 +197,7 @@ export default async function BillingPage() {
       linked.length === 1
         ? linked[0].name
         : combinedClientName(linked.map((l) => l.name))
-    // Link to the first sibling — they can navigate from there if they want
+    // Link to the first sibling - they can navigate from there if they want
     // a different campaign within the same Stripe customer.
     return {
       ...inv,
@@ -193,12 +206,12 @@ export default async function BillingPage() {
     }
   })
 
-  // AI invoice-readiness verdicts — pre-computed by /api/billing/invoice-readiness.
+  // AI invoice-readiness verdicts - pre-computed by /api/billing/invoice-readiness.
   // Cache miss = the row renders a "Run AI check" affordance and the inline
   // cell fetches on demand, populating the cache for subsequent loads.
   // Uses `readReadinessMap` (not raw readCache) so legacy "AI failed" entries
-  // — which were stored as verdict="check"+confidence=30 before the error
-  // verdict existed — get upgraded to verdict="error" at read time.
+  // - which were stored as verdict="check"+confidence=30 before the error
+  // verdict existed - get upgraded to verdict="error" at read time.
   const readinessCache = await readReadinessMap()
 
   // Board config feeds Monday item URL construction. Null means we couldn't
@@ -238,7 +251,7 @@ export default async function BillingPage() {
   // uniformly.
   const groups: BillingGroup[] = groupBillingRows(rows)
 
-  // Distinct admin labels currently in use anywhere on the boards — feeds the
+  // Distinct admin labels currently in use anywhere on the boards - feeds the
   // editable Admin cell's popover so finance can pick any value Monday
   // already accepts. Discovered from real data (not a hardcoded list) so a
   // new Monday option becomes available the moment a single client uses it,
@@ -251,7 +264,7 @@ export default async function BillingPage() {
     <div>
       <PageHeader
         title="Billing"
-        subtitle="Upcoming invoices grouped by when they need to go out. The invoice date is always 7 days before the new cycle starts — edit a client's cycle to move both dates in lockstep."
+        subtitle="Upcoming invoices grouped by when they need to go out. The invoice date is always 7 days before the new cycle starts - edit a client's cycle to move both dates in lockstep."
         actions={<RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />}
       />
       <BillingTabs futureGroups={groups} pastInvoices={pastInvoices} adminOptions={adminOptions} />
@@ -265,7 +278,7 @@ export default async function BillingPage() {
  * Bundling rule: rows bundle into one group only when they share BOTH a
  * Stripe customer AND the same `nextInvoiceDate`. Same customer + different
  * dates = separate groups (e.g. HeroLeads has 3 campaigns on the same Stripe
- * customer but each with its own start date — finance bills them as 3
+ * customer but each with its own start date - finance bills them as 3
  * separate invoices). The invoice date is therefore the de-facto bundling
  * signal: align dates to bundle, diverge dates to split.
  *
@@ -289,7 +302,7 @@ function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
     const primary = siblings[0]
     const totalFee = siblings.reduce((s, r) => s + r.fee, 0)
     // Only count ad budget when the campaign actually runs through our ad
-    // account — otherwise the client pays Meta directly and we don't bill it.
+    // account - otherwise the client pays Meta directly and we don't bill it.
     const totalAdBudget = siblings.reduce(
       (s, r) => s + (r.usesRocketLeadsAdAccount ? r.adBudget : 0),
       0,
@@ -314,7 +327,7 @@ function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
 /**
  * Combine sibling AI invoice-readiness verdicts into a single group-level
  * verdict. The at-a-glance pill on the parent row should reflect the WORST
- * sibling — if "O2 Plus | B2C" is on hold (e.g. quality issues in updates),
+ * sibling - if "O2 Plus | B2C" is on hold (e.g. quality issues in updates),
  * the group reads as "Hold" even when "O2 Plus | B2B" looks fine on its own.
  *
  * - No siblings have readiness yet → null (cell renders "Run AI check").
@@ -323,7 +336,7 @@ function groupBillingRows(rows: UpcomingInvoice[]): BillingGroup[] {
  *   verdict. Reasons are concatenated, prefixed with the sibling's
  *   distinguishing suffix (e.g. "B2B: ..." / "B2C: ...") so the popover shows
  *   why each campaign got the verdict it did. Updates from all siblings get
- *   merged for the popover's update list — finance sees the full picture.
+ *   merged for the popover's update list - finance sees the full picture.
  */
 function aggregateGroupReadiness(siblings: UpcomingInvoice[]): InvoiceReadiness | null {
   const withReadiness = siblings.filter(
@@ -333,7 +346,7 @@ function aggregateGroupReadiness(siblings: UpcomingInvoice[]): InvoiceReadiness 
   if (withReadiness.length === 1) return withReadiness[0].readiness
 
   // Worst-first sort. "error" ranks below "send" so any real verdict from a
-  // sibling trumps an errored one — error only surfaces if all siblings failed.
+  // sibling trumps an errored one - error only surfaces if all siblings failed.
   const order = { error: -1, send: 0, check: 1, hold: 2 } as const
   withReadiness.sort((a, b) => order[b.readiness.verdict] - order[a.readiness.verdict])
   const worst = withReadiness[0].readiness
@@ -354,11 +367,11 @@ function aggregateGroupReadiness(siblings: UpcomingInvoice[]): InvoiceReadiness 
     .join("\n\n")
 
   // Merge updates across siblings so finance can see everything that fed the
-  // verdicts in one place. Don't dedupe — same sibling shouldn't have dupes
+  // verdicts in one place. Don't dedupe - same sibling shouldn't have dupes
   // and cross-sibling overlap is rare (different Monday boards).
   const updates = withReadiness.flatMap((s) => s.readiness.updates)
 
-  // Most-recent computedAt + lastUpdateAt across siblings — the popover shows
+  // Most-recent computedAt + lastUpdateAt across siblings - the popover shows
   // the freshest signal we have.
   const computedAt = withReadiness
     .map((s) => s.readiness.computedAt)
