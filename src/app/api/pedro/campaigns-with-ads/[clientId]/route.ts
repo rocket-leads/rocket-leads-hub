@@ -197,7 +197,7 @@ export async function GET(
   return NextResponse.json({
     clientId,
     clientName: client.name,
-    windowDays: 30,
+    windowDays: 90,
     windowStart: start,
     windowEnd: end,
     campaigns,
