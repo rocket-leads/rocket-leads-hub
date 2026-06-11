@@ -21,9 +21,10 @@ type Props = {
   selectedClientId: string | null
   selectedClientName: string
   autoStart?: boolean
+  hideShellHeader?: boolean
 }
 
-export function AdCopyRefresh({ selectedClientId, selectedClientName, autoStart }: Props) {
+export function AdCopyRefresh({ selectedClientId, selectedClientName, autoStart, hideShellHeader }: Props) {
   return (
     <RefreshShell<AdCopyProposal>
       endpoint="/api/pedro/ad-copy-refresh"
@@ -32,6 +33,7 @@ export function AdCopyRefresh({ selectedClientId, selectedClientName, autoStart 
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}
+      hideShellHeader={hideShellHeader}
       renderProposals={(env) => (
         <div className="space-y-4">
           {env.proposals.map((p, i) => (

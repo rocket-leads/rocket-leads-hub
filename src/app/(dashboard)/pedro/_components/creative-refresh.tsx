@@ -456,9 +456,10 @@ type Props = {
   selectedClientId: string | null
   selectedClientName: string
   autoStart?: boolean
+  hideShellHeader?: boolean
 }
 
-export function CreativeRefresh({ selectedClientId, selectedClientName, autoStart }: Props) {
+export function CreativeRefresh({ selectedClientId, selectedClientName, autoStart, hideShellHeader }: Props) {
   return (
     <RefreshShell<CreativeProposal>
       endpoint="/api/pedro/creative-refresh"
@@ -467,6 +468,7 @@ export function CreativeRefresh({ selectedClientId, selectedClientName, autoStar
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}
+      hideShellHeader={hideShellHeader}
       customInputs={({ generate, loading, hasOutput }) => (
         <AdPicker
           clientId={selectedClientId}

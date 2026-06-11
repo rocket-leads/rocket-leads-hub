@@ -1,38 +1,24 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { Users, Compass, Video, ImageIcon, Megaphone, FolderOpen } from "lucide-react"
-import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
+import { Users, FolderOpen, FileText, ArrowRight } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { ClientPicker } from "./client-picker"
-import { AnglesRefresh } from "./angles-refresh"
-import { ScriptRefresh } from "./script-refresh"
-import { CreativeRefresh } from "./creative-refresh"
-import { AdCopyRefresh } from "./ad-copy-refresh"
+import { OptimizeWizard } from "./optimize-wizard"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { PedroClient } from "./types"
 
 // Pedro Optimize - the "iterate on a live campaign" entry point.
 //
-// Roy 2026-05-23: Optimize used to only do creative refresh. Now it has
-// four tabs that mirror the deliverables tabs in Onboard - Angles,
-// Video Scripts, Creatives, Ad Copy - so the CM can refresh any stage
-// without having to re-do the on-board flow from scratch. Each tab
-// reads live Meta performance and proposes new variants in that stage's
-// shape.
-type Section = "angles" | "script" | "creatives" | "ad-copy"
-
-const TAB_SHAPE: Array<{ id: Section; labelKey: Parameters<typeof t>[0]; icon: typeof Compass }> = [
-  { id: "angles", labelKey: "pedro.tab.angles", icon: Compass },
-  { id: "script", labelKey: "pedro.tab.script", icon: Video },
-  { id: "creatives", labelKey: "pedro.tab.creatives", icon: ImageIcon },
-  { id: "ad-copy", labelKey: "pedro.tab.ad_copy", icon: Megaphone },
-]
-
-const VALID_SECTIONS = new Set<Section>(["angles", "script", "creatives", "ad-copy"])
+// Roy 2026-06-11 v5 reorg: vervangt de tab-based UX door een step-wizard
+// die de onboarding-shell spiegelt. Stap 1 = winning ad kiezen, dan
+// per deliverable een aparte stap. Zie OptimizeWizard voor de details.
+// Landing Page is uit Pedro Optimize gehaald - dat hoort thuis in de
+// onboarding wizard (waar de brief + angles aanwezig zijn voor context).
 
 const CLIENT_STORAGE_KEY = "pedro.selectedClientId"
 
@@ -44,25 +30,6 @@ export function PedroOptimizeApp({ clients }: Props) {
 
   const urlClientId = searchParams.get("clientId")
   const autoStart = searchParams.get("auto") === "1"
-
-  // Tab seed: ?tab=X in the URL wins on first load (Watch List "Ask Pedro"
-  // can deep-link to a specific stage). Otherwise default to Creatives
-  // since that's what Optimize did exclusively before tabs shipped - keeps
-  // the existing muscle memory.
-  const initialSection: Section = (() => {
-    const tab = searchParams.get("tab")
-    if (tab && VALID_SECTIONS.has(tab as Section)) return tab as Section
-    return "creatives"
-  })()
-
-  const [section, setSection] = useState<Section>(initialSection)
-
-  useEffect(() => {
-    const tab = searchParams.get("tab")
-    if (tab && VALID_SECTIONS.has(tab as Section)) {
-      setSection(tab as Section)
-    }
-  }, [searchParams])
 
   // Shared storage key with the on-board app so a client picked in one
   // tab carries to the other - the AM almost always wants the same
@@ -96,16 +63,6 @@ export function PedroOptimizeApp({ clients }: Props) {
     [clients, selectedClientId],
   )
 
-  const TABS: TopTab<Section>[] = useMemo(
-    () =>
-      TAB_SHAPE.map((tab) => ({
-        id: tab.id,
-        label: t(tab.labelKey, locale),
-        icon: tab.icon,
-      })),
-    [locale],
-  )
-
   return (
     <div className="pedro-root">
       <PageHeader
@@ -117,10 +74,6 @@ export function PedroOptimizeApp({ clients }: Props) {
           </span>
         }
       />
-
-      {/* Roy 2026-06-10: Action Needed strip verwijderd uit Pedro. De
-          globale top-bar (search + AI + notificaties) is altijd zichtbaar
-          en biedt dezelfde shortcuts naar klanten die actie nodig hebben. */}
 
       <div className="mb-5 rounded-2xl border border-border/60 bg-card p-4 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
         <div className="flex items-center gap-3">
@@ -135,8 +88,6 @@ export function PedroOptimizeApp({ clients }: Props) {
               hideAutoFill
             />
           </div>
-          {/* Drive folder shortcut - verify which client photos are
-              available before/after image-gen. Roy 2026-06-09. */}
           {selectedClient?.googleDriveId && (
             <a
               href={`https://drive.google.com/drive/folders/${selectedClient.googleDriveId}`}
@@ -149,6 +100,17 @@ export function PedroOptimizeApp({ clients }: Props) {
               Drive
             </a>
           )}
+          {selectedClient?.id && (
+            <Link
+              href={`/onboarding/${selectedClient.id}?step=cm_landing_page`}
+              className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors"
+              title="Landing-page prompt zit in de onboarding wizard"
+            >
+              <FileText className="h-4 w-4" />
+              LP prompt
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          )}
           {selectedClient && (
             <span className="shrink-0 text-xs text-muted-foreground hidden md:inline">
               {selectedClient.boardType === "onboarding" ? t("pedro.picker.onboarding", locale) : t("pedro.picker.live", locale)}
@@ -157,39 +119,12 @@ export function PedroOptimizeApp({ clients }: Props) {
         </div>
       </div>
 
-      <TopTabs<Section> tabs={TABS} value={section} onChange={setSection} className="mb-6" />
-
       {selectedClientId ? (
-        <>
-          {section === "angles" && (
-            <AnglesRefresh
-              selectedClientId={selectedClientId}
-              selectedClientName={selectedClient?.name ?? ""}
-              autoStart={autoStart}
-            />
-          )}
-          {section === "script" && (
-            <ScriptRefresh
-              selectedClientId={selectedClientId}
-              selectedClientName={selectedClient?.name ?? ""}
-              autoStart={autoStart}
-            />
-          )}
-          {section === "creatives" && (
-            <CreativeRefresh
-              selectedClientId={selectedClientId}
-              selectedClientName={selectedClient?.name ?? ""}
-              autoStart={autoStart}
-            />
-          )}
-          {section === "ad-copy" && (
-            <AdCopyRefresh
-              selectedClientId={selectedClientId}
-              selectedClientName={selectedClient?.name ?? ""}
-              autoStart={autoStart}
-            />
-          )}
-        </>
+        <OptimizeWizard
+          selectedClientId={selectedClientId}
+          selectedClientName={selectedClient?.name ?? ""}
+          autoStart={autoStart}
+        />
       ) : (
         <NoClientSelected />
       )}

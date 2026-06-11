@@ -146,6 +146,12 @@ type Props<TProposal> = {
     hasOutput: boolean
     error: string | null
   }) => ReactNode
+  /** Roy 2026-06-11: hide het interne title+description blok. Wordt
+   *  gebruikt door de OptimizeWizard zodat de step header (Stap X / Y +
+   *  titel + beschrijving) niet wordt gedupliceerd door dezelfde info
+   *  uit de refresh-shell. Default false zodat standalone gebruik
+   *  (buiten de wizard) niets verandert. */
+  hideShellHeader?: boolean
 }
 
 export function RefreshShell<TProposal>({
@@ -158,6 +164,7 @@ export function RefreshShell<TProposal>({
   autoStart,
   renderProposals,
   customInputs,
+  hideShellHeader,
 }: Props<TProposal>) {
   const [days, setDays] = useState<number>(30)
   const [loading, setLoading] = useState(false)
@@ -278,10 +285,12 @@ export function RefreshShell<TProposal>({
           gebruikt dit voor de AdPicker flow (campagne + ad kiezen ipv
           window-based auto-winner detection). */}
       <div className="rounded-2xl border border-border/60 bg-card p-5 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04),0_1px_3px_-1px_rgb(0_0_0_/_0.04)] dark:shadow-[0_1px_2px_0_rgb(0_0_0_/_0.3)]">
-        <div className="mb-4">
-          <div className="font-heading font-semibold text-[15px] tracking-tight">{title}</div>
-          <div className="text-xs text-muted-foreground mt-1">{description}</div>
-        </div>
+        {!hideShellHeader && (
+          <div className="mb-4">
+            <div className="font-heading font-semibold text-sm tracking-tight">{title}</div>
+            <div className="text-xs text-muted-foreground mt-1">{description}</div>
+          </div>
+        )}
 
         {customInputs ? (
           customInputs({

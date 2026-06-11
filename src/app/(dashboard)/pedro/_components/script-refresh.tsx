@@ -20,9 +20,10 @@ type Props = {
   selectedClientId: string | null
   selectedClientName: string
   autoStart?: boolean
+  hideShellHeader?: boolean
 }
 
-export function ScriptRefresh({ selectedClientId, selectedClientName, autoStart }: Props) {
+export function ScriptRefresh({ selectedClientId, selectedClientName, autoStart, hideShellHeader }: Props) {
   return (
     <RefreshShell<ScriptProposal>
       endpoint="/api/pedro/script-refresh"
@@ -31,6 +32,7 @@ export function ScriptRefresh({ selectedClientId, selectedClientName, autoStart 
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}
+      hideShellHeader={hideShellHeader}
       renderProposals={(env) => (
         <div className="space-y-4">
           {env.proposals.map((p, i) => (

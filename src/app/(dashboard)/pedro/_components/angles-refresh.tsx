@@ -15,9 +15,10 @@ type Props = {
   selectedClientId: string | null
   selectedClientName: string
   autoStart?: boolean
+  hideShellHeader?: boolean
 }
 
-export function AnglesRefresh({ selectedClientId, selectedClientName, autoStart }: Props) {
+export function AnglesRefresh({ selectedClientId, selectedClientName, autoStart, hideShellHeader }: Props) {
   return (
     <RefreshShell<AnglesProposal>
       endpoint="/api/pedro/angles-refresh"
@@ -26,6 +27,7 @@ export function AnglesRefresh({ selectedClientId, selectedClientName, autoStart 
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}
+      hideShellHeader={hideShellHeader}
       renderProposals={(env) => (
         <div className="space-y-4">
           {env.proposals.map((p, i) => (
