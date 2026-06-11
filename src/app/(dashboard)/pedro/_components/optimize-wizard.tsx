@@ -15,6 +15,8 @@ import { AnglesRefresh } from "./angles-refresh"
 import { ScriptRefresh } from "./script-refresh"
 import { LpRefresh } from "./lp-refresh"
 import { AdsRefresh } from "./ads-refresh"
+import { useLocale } from "@/lib/i18n/client"
+import { t } from "@/lib/i18n/t"
 
 /**
  * OptimizeWizard - Roy 2026-06-11 v3 reorg. Vervangt de tab-based UX
@@ -42,61 +44,31 @@ type ActiveKey = StepKey | OverigKey
 type StepDef = {
   key: StepKey
   order: number
-  title: string
-  description: string
+  titleKey: "pedro.optimize.step.pick_ad.title" | "pedro.optimize.step.angles.title" | "pedro.optimize.step.ads.title"
   icon: typeof Compass
 }
 
 type OverigDef = {
   key: OverigKey
-  title: string
-  description: string
+  titleKey: "pedro.optimize.step.lp_prompt.title" | "pedro.optimize.step.video_scripts.title"
   icon: typeof Compass
 }
 
 // Roy 2026-06-11 v6: terug naar de oude 3-stappen-flow zoals onboarding.
 // Stap 1 = winning ad, stap 2 = angles, stap 3 = ads (creative + copy).
+// Step descriptions stripped (Roy 2026-06-11) - titles + numbered rail
+// already explain the flow; the sub-headlines added clutter.
 const STEPS: StepDef[] = [
-  {
-    key: "pick_ad",
-    order: 1,
-    title: "Kies winning ad",
-    description: "Selecteer de bewezen ad waarop Pedro de iteraties baseert. Dit is de DNA-bron voor angles, creatives en copy.",
-    icon: Target,
-  },
-  {
-    key: "angles",
-    order: 2,
-    title: "Angles refresh",
-    description: "Pedro stelt 3-5 nieuwe marketing angles voor, gebaseerd op de huidige performance.",
-    icon: Compass,
-  },
-  {
-    key: "ads",
-    order: 3,
-    title: "Creatives + ad copy",
-    description: "Pedro genereert 3 zus-varianten van de gekozen ad: image gen + primary text + headline + description.",
-    icon: Megaphone,
-  },
+  { key: "pick_ad", order: 1, titleKey: "pedro.optimize.step.pick_ad.title", icon: Target },
+  { key: "angles", order: 2, titleKey: "pedro.optimize.step.angles.title", icon: Compass },
+  { key: "ads", order: 3, titleKey: "pedro.optimize.step.ads.title", icon: Megaphone },
 ]
 
 // Roy 2026-06-11 v7: video scripts + LP prompt zitten naast de iteratie
 // flow als losse rail-sectie "OVERIG", niet als grote banner onderaan.
-// Same chrome als de iteratie flow zelf - kleinere visuele footprint, en
-// blijft zichtbaar ongeacht welke stap actief is.
 const OVERIG: OverigDef[] = [
-  {
-    key: "lp_prompt",
-    title: "LP prompt",
-    description: "Verbeter de bestaande LP (URL + wens) of bouw vanaf scratch.",
-    icon: FileText,
-  },
-  {
-    key: "video_scripts",
-    title: "Video scripts",
-    description: "Pedro schrijft 3 UGC-stijl scripts per winning ad - on demand.",
-    icon: Video,
-  },
+  { key: "lp_prompt", titleKey: "pedro.optimize.step.lp_prompt.title", icon: FileText },
+  { key: "video_scripts", titleKey: "pedro.optimize.step.video_scripts.title", icon: Video },
 ]
 
 type PickedAd = {
@@ -144,6 +116,7 @@ export function OptimizeWizard({
   selectedClientName,
   autoStart,
 }: Props) {
+  const locale = useLocale()
   // Active step starts at the first step the CM hasn't completed yet -
   // i.e., pick_ad when no ad is picked, angles otherwise. The CM can
   // always navigate by clicking the rail.
@@ -209,15 +182,15 @@ export function OptimizeWizard({
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Pedro Optimize
+            {t("pedro.optimize.header.label", locale)}
           </div>
           <h2 className="font-heading text-lg font-semibold tracking-tight leading-tight text-foreground mt-0.5">
-            {selectedClientName || "Geen klant geselecteerd"}
+            {selectedClientName || t("pedro.optimize.header.no_client", locale)}
           </h2>
         </div>
         <div className="shrink-0 text-right">
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            Voortgang
+            {t("pedro.optimize.progress.label", locale)}
           </div>
           <div className="text-sm font-medium tabular-nums">
             {totalDone} / {STEPS.length} · {Math.round((totalDone / STEPS.length) * 100)}%
@@ -242,7 +215,7 @@ export function OptimizeWizard({
           {/* Iteratie flow sectie */}
           <div>
             <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
-              Iteratie flow
+              {t("pedro.optimize.rail.iteration_flow", locale)}
             </div>
             <div className="space-y-1">
               {STEPS.map((step) => (
@@ -252,6 +225,7 @@ export function OptimizeWizard({
                   active={activeKey === step.key}
                   done={doneFor(step.key)}
                   onClick={() => setActiveKey(step.key)}
+                  locale={locale}
                 />
               ))}
             </div>
@@ -259,7 +233,7 @@ export function OptimizeWizard({
           {/* Overig sectie */}
           <div>
             <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">
-              Overig
+              {t("pedro.optimize.rail.other", locale)}
             </div>
             <div className="space-y-1">
               {OVERIG.map((item) => (
@@ -268,6 +242,7 @@ export function OptimizeWizard({
                   item={item}
                   active={activeKey === item.key}
                   onClick={() => setActiveKey(item.key)}
+                  locale={locale}
                 />
               ))}
             </div>
@@ -276,7 +251,7 @@ export function OptimizeWizard({
 
         {/* Right pane - active step content */}
         <div className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] overflow-hidden">
-          <StepHeader item={activeStepOrOverig} />
+          <StepHeader item={activeStepOrOverig} locale={locale} />
           {pickedAd && activeKey !== "pick_ad" && activeKey !== "lp_prompt" && (
             <SourceAdBanner
               picked={pickedAd}
@@ -284,6 +259,7 @@ export function OptimizeWizard({
                 updatePickedAd(null)
                 setActiveKey("pick_ad")
               }}
+              locale={locale}
             />
           )}
           <div className="p-5">
@@ -295,10 +271,11 @@ export function OptimizeWizard({
                   setActiveKey("angles")
                 }}
                 currentPicked={pickedAd}
+                locale={locale}
               />
             )}
             {activeKey === "angles" && (
-              <StepGate clientId={selectedClientId} pickedAd={pickedAd}>
+              <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
                 <div onClick={() => markGenerated("angles")}>
                   <AnglesRefresh
                     selectedClientId={selectedClientId}
@@ -310,7 +287,7 @@ export function OptimizeWizard({
               </StepGate>
             )}
             {activeKey === "ads" && (
-              <StepGate clientId={selectedClientId} pickedAd={pickedAd}>
+              <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
                 <div onClick={() => markGenerated("ads")}>
                   <AdsRefresh
                     selectedClientId={selectedClientId}
@@ -329,7 +306,7 @@ export function OptimizeWizard({
               />
             )}
             {activeKey === "video_scripts" && (
-              <StepGate clientId={selectedClientId} pickedAd={pickedAd}>
+              <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
                 <ScriptRefresh
                   selectedClientId={selectedClientId}
                   selectedClientName={selectedClientName}
@@ -350,11 +327,13 @@ function StepRailItem({
   active,
   done,
   onClick,
+  locale,
 }: {
   step: StepDef
   active: boolean
   done: boolean
   onClick: () => void
+  locale: import("@/lib/i18n/types").Locale
 }) {
   return (
     <button
@@ -379,7 +358,7 @@ function StepRailItem({
         {done ? <CheckCircle2 className="h-3 w-3" /> : step.order}
       </span>
       <span className={cn("flex-1 truncate", done && "text-muted-foreground/70")}>
-        {step.title}
+        {t(step.titleKey, locale)}
       </span>
     </button>
   )
@@ -389,10 +368,12 @@ function OverigRailItem({
   item,
   active,
   onClick,
+  locale,
 }: {
   item: OverigDef
   active: boolean
   onClick: () => void
+  locale: import("@/lib/i18n/types").Locale
 }) {
   const Icon = item.icon
   return (
@@ -413,7 +394,7 @@ function OverigRailItem({
       >
         <Icon className="h-3 w-3" />
       </span>
-      <span className="flex-1 truncate">{item.title}</span>
+      <span className="flex-1 truncate">{t(item.titleKey, locale)}</span>
     </button>
   )
 }
@@ -422,9 +403,17 @@ function isStepDef(x: StepDef | OverigDef): x is StepDef {
   return (x as StepDef).order !== undefined
 }
 
-function StepHeader({ item }: { item: StepDef | OverigDef }) {
+function StepHeader({
+  item,
+  locale,
+}: {
+  item: StepDef | OverigDef
+  locale: import("@/lib/i18n/types").Locale
+}) {
   const Icon = item.icon
-  const label = isStepDef(item) ? `Stap ${item.order} / ${STEPS.length}` : "Overig"
+  const label = isStepDef(item)
+    ? t("pedro.optimize.step.label", locale, { n: item.order, total: STEPS.length })
+    : t("pedro.optimize.step.label.other", locale)
   return (
     <div className="px-5 pt-5 pb-3 border-b border-border/40">
       <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
@@ -432,9 +421,8 @@ function StepHeader({ item }: { item: StepDef | OverigDef }) {
       </div>
       <h2 className="font-heading text-lg font-semibold leading-tight flex items-center gap-2">
         <Icon className="h-4 w-4 text-primary" />
-        {item.title}
+        {t(item.titleKey, locale)}
       </h2>
-      <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
     </div>
   )
 }
@@ -442,15 +430,17 @@ function StepHeader({ item }: { item: StepDef | OverigDef }) {
 function SourceAdBanner({
   picked,
   onReset,
+  locale,
 }: {
   picked: PickedAd
   onReset: () => void
+  locale: import("@/lib/i18n/types").Locale
 }) {
   return (
     <div className="px-5 py-2.5 border-b border-border/40 bg-emerald-500/5 flex items-center justify-between gap-3">
       <div className="min-w-0 flex items-center gap-2 text-xs">
         <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-        <span className="text-muted-foreground">Bron-ad:</span>
+        <span className="text-muted-foreground">{t("pedro.optimize.source_ad.label", locale)}</span>
         <span className="font-mono text-foreground truncate">{picked.adName}</span>
         {picked.campaignName && (
           <span className="text-muted-foreground/70 truncate hidden md:inline">
@@ -459,7 +449,7 @@ function SourceAdBanner({
         )}
         {picked.screenshotPath && (
           <span className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400 font-semibold px-1.5 rounded bg-emerald-500/10">
-            screenshot
+            {t("pedro.optimize.source_ad.screenshot", locale)}
           </span>
         )}
       </div>
@@ -468,7 +458,7 @@ function SourceAdBanner({
         onClick={onReset}
         className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
       >
-        Andere ad kiezen
+        {t("pedro.optimize.source_ad.change", locale)}
       </button>
     </div>
   )
@@ -478,23 +468,24 @@ function StepGate({
   clientId,
   pickedAd,
   children,
+  locale,
 }: {
   clientId: string
   pickedAd: PickedAd | null
   children: React.ReactNode
+  locale: import("@/lib/i18n/types").Locale
 }) {
   if (!clientId) {
     return (
       <div className="text-sm text-muted-foreground">
-        Selecteer eerst een klant.
+        {t("pedro.optimize.gate.no_client", locale)}
       </div>
     )
   }
   if (!pickedAd) {
     return (
       <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
-        Stap 1 nog niet voltooid - kies eerst een winning ad. De iteraties die je daarna
-        genereert zijn dan herleidbaar naar die bron-ad.
+        {t("pedro.optimize.gate.no_ad", locale)}
       </div>
     )
   }
@@ -510,10 +501,12 @@ function PickAdStep({
   clientId,
   onPicked,
   currentPicked,
+  locale,
 }: {
   clientId: string
   onPicked: (picked: PickedAd) => void
   currentPicked: PickedAd | null
+  locale: import("@/lib/i18n/types").Locale
 }) {
   // We hijack AdPicker's onGenerate as our "pick confirmation": the
   // picker calls it with sourceAdId (+ optional screenshotPath) when
@@ -565,8 +558,8 @@ function PickAdStep({
     <div className="space-y-3">
       {currentPicked && (
         <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          Huidige bron-ad: <span className="font-mono text-foreground">{currentPicked.adName}</span>
-          . Kies hieronder een andere of bevestig met opnieuw klikken op &quot;Genereer&quot;.
+          {t("pedro.optimize.pick_ad.current", locale)}: <span className="font-mono text-foreground">{currentPicked.adName}</span>
+          . {t("pedro.optimize.pick_ad.confirm_hint", locale)}
         </div>
       )}
       <AdPicker

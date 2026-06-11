@@ -31,7 +31,7 @@ export const DICTIONARY = {
   "nav.meetings": { nl: "Meetings", en: "Meetings" },
   "nav.pedro": { nl: "Pedro", en: "Pedro" },
   "nav.pedro_onboard": { nl: "On-board", en: "On-board" },
-  "nav.pedro_optimize": { nl: "Optimize", en: "Optimize" },
+  "nav.pedro_optimize": { nl: "Optimaliseer", en: "Optimize" },
   "nav.insights": { nl: "Insights", en: "Insights" },
   "nav.targets": { nl: "Targets", en: "Targets" },
   "nav.billing": { nl: "Facturatie", en: "Billing" },
@@ -1184,7 +1184,7 @@ export const DICTIONARY = {
   "onboarding.wizard.cm_lp.mark_done": { nl: "Markeer als klaar", en: "Mark as done" },
 
   // Sidebar entries Roy 2026-06-11
-  "nav.optimize": { nl: "Optimize", en: "Optimize" },
+  "nav.optimize": { nl: "Optimaliseer", en: "Optimize" },
 
   // Brief step copy
   "onboarding.wizard.brief.generate_hint": { nl: "Genereer een AI-draft op basis van kick-off + Trengo + Monday.", en: "Generate an AI draft from kick-off + Trengo + Monday." },
@@ -1340,7 +1340,7 @@ export const DICTIONARY = {
   "pedro.tab.creatives_ads": { nl: "Creatives & Ads", en: "Creatives & Ads" },
   "pedro.tab.lp": { nl: "LP prompts", en: "LP prompts" },
   "pedro.tab.ad_copy": { nl: "Ad copy", en: "Ad copy" },
-  "pedro.tab.refresh": { nl: "Refresh", en: "Refresh" },
+  "pedro.tab.refresh": { nl: "Verversen", en: "Refresh" },
   "pedro.tab.insights": { nl: "Insights", en: "Insights" },
   "pedro.phase.preparation": { nl: "Voorbereiding", en: "Preparation" },
   "pedro.phase.deliverables": { nl: "Deliverables", en: "Deliverables" },
@@ -1349,6 +1349,27 @@ export const DICTIONARY = {
   // No-client-selected state
   "pedro.no_client.title": { nl: "Selecteer een klant om te starten", en: "Select a client to start" },
   "pedro.no_client.body": { nl: "Pedro's output - brief, research, angles, scripts, creatives, LP, ad copy, refreshes - wordt allemaal opgeslagen bij de actieve klant. Kies hierboven een klant zodat Pedro weet voor wie hij werkt.", en: "Pedro's output - brief, research, angles, scripts, creatives, LP, ad copy, refreshes - is all stored on the active client. Pick a client above so Pedro knows who he's working for." },
+
+  // ─── Pedro Optimize wizard chrome ─────────────────────────────────────
+  "pedro.optimize.header.label": { nl: "Pedro Optimize", en: "Pedro Optimize" },
+  "pedro.optimize.header.no_client": { nl: "Geen klant geselecteerd", en: "No client selected" },
+  "pedro.optimize.progress.label": { nl: "Voortgang", en: "Progress" },
+  "pedro.optimize.rail.iteration_flow": { nl: "Iteratie flow", en: "Iteration flow" },
+  "pedro.optimize.rail.other": { nl: "Overig", en: "Other" },
+  "pedro.optimize.step.label": { nl: "Stap {n} / {total}", en: "Step {n} / {total}" },
+  "pedro.optimize.step.label.other": { nl: "Overig", en: "Other" },
+  "pedro.optimize.step.pick_ad.title": { nl: "Kies winning ad", en: "Pick winning ad" },
+  "pedro.optimize.step.angles.title": { nl: "Angles refresh", en: "Angles refresh" },
+  "pedro.optimize.step.ads.title": { nl: "Creatives + ad copy", en: "Creatives + ad copy" },
+  "pedro.optimize.step.lp_prompt.title": { nl: "LP prompt", en: "LP prompt" },
+  "pedro.optimize.step.video_scripts.title": { nl: "Video scripts", en: "Video scripts" },
+  "pedro.optimize.source_ad.label": { nl: "Bron-ad:", en: "Source ad:" },
+  "pedro.optimize.source_ad.change": { nl: "Andere ad kiezen", en: "Pick a different ad" },
+  "pedro.optimize.source_ad.screenshot": { nl: "screenshot", en: "screenshot" },
+  "pedro.optimize.gate.no_client": { nl: "Selecteer eerst een klant.", en: "Select a client first." },
+  "pedro.optimize.gate.no_ad": { nl: "Stap 1 nog niet voltooid - kies eerst een winning ad. De iteraties die je daarna genereert zijn dan herleidbaar naar die bron-ad.", en: "Step 1 not complete yet - pick a winning ad first. The iterations you generate after that will all trace back to that source ad." },
+  "pedro.optimize.pick_ad.current": { nl: "Huidige bron-ad", en: "Current source ad" },
+  "pedro.optimize.pick_ad.confirm_hint": { nl: "Kies hieronder een andere of bevestig met opnieuw klikken op \"Genereer\".", en: "Pick another below or confirm by clicking \"Generate\" again." },
 
   // ─── Client detail - Settings tab sections ────────────────────────────
   "client.settings.info.title": { nl: "Klantgegevens", en: "Client Information" },
@@ -1397,7 +1418,7 @@ export const DICTIONARY = {
 
   // KpiCard helpers
   "targets.kpi.not_updated": { nl: "{n} niet bijgewerkt", en: "{n} not updated" },
-  "targets.kpi.not_updated_title": { nl: "{n} van deze afgelopen afspraken staan nog op Qualified / Gepland status. Geteld als taken zodat de conversion rate niet gespeeld wordt, maar gemarkeerd zodat closers hun statussen bijwerken.", en: "{n} of these past appointments are still in Qualified / Gepland status. Counted as taken so the conversion rate isn't gamed, but flagged so closers update their statuses." },
+  "targets.kpi.not_updated_title": { nl: "{n} van deze afgelopen afspraken staan nog op Qualified / Gepland status. Geteld als taken zodat de conversion rate niet gespeeld wordt, maar gemarkeerd zodat closers hun statussen bijwerken.", en: "{n} of these past appointments are still in Qualified / Planned status. Counted as taken so the conversion rate isn't gamed, but flagged so closers update their statuses." },
   "targets.kpi.target_of": { nl: "{value} van {target}", en: "{value} of {target}" },
   "targets.kpi.opt_ins": { nl: "Opt-ins", en: "Opt-ins" },
   "targets.kpi.cost_per_opt_in": { nl: "Kosten per opt-in", en: "Cost per opt-in" },
@@ -1602,7 +1623,7 @@ export const DICTIONARY = {
   "client.pedro.header.last_edited_many": { nl: "Laatst bewerkt {date} · {n} refreshes", en: "Last edited {date} · {n} refreshes" },
   "client.pedro.header.empty": { nl: "Nog geen brief, angles of refreshes voor deze klant gegenereerd.", en: "No brief, angles or refreshes generated for this client yet." },
   "client.pedro.action.open": { nl: "Open in Pedro", en: "Open in Pedro" },
-  "client.pedro.action.refresh": { nl: "Refresh", en: "Refresh" },
+  "client.pedro.action.refresh": { nl: "Verversen", en: "Refresh" },
   "client.pedro.action.refresh_title": { nl: "Vraag Pedro een nieuwe creative refresh", en: "Ask Pedro for a new creative refresh" },
 
   // Brief snapshot card
@@ -1616,7 +1637,7 @@ export const DICTIONARY = {
   "client.pedro.brief.field.hooksAM": { nl: "Marketing hooks", en: "Marketing hooks" },
 
   // Refresh history card
-  "client.pedro.refresh.title": { nl: "Refresh history", en: "Refresh history" },
+  "client.pedro.refresh.title": { nl: "Refresh-geschiedenis", en: "Refresh history" },
   "client.pedro.refresh.total": { nl: "{n} totaal", en: "{n} total" },
   "client.pedro.refresh.empty_lead": { nl: "Nog geen refresh-rondes gedraaid.", en: "No refresh rounds run yet." },
   "client.pedro.refresh.empty_cta": { nl: "Genereer er nu één →", en: "Generate one now →" },
