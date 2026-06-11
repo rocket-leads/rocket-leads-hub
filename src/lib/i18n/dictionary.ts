@@ -26,7 +26,7 @@ export const DICTIONARY = {
   // ─── Sidebar nav ──────────────────────────────────────────────────────
   "nav.home": { nl: "Home", en: "Home" },
   "nav.watch_list": { nl: "Watch list", en: "Watch list" }, // brand term
-  "nav.clients": { nl: "Alle campagnes", en: "All campaigns" },
+  "nav.clients": { nl: "Huidige klanten", en: "Current clients" },
   "nav.inbox": { nl: "Inbox", en: "Inbox" },
   "nav.meetings": { nl: "Meetings", en: "Meetings" },
   "nav.pedro": { nl: "Pedro", en: "Pedro" },
@@ -103,6 +103,10 @@ export const DICTIONARY = {
   "home.block.inbox.title": { nl: "Inbox voor jou", en: "Your Inbox" },
   "home.block.inbox.empty": { nl: "Inbox zero - niks toegewezen.", en: "Inbox zero - nothing assigned." },
   "home.block.inbox.cta": { nl: "Open Inbox", en: "Open Inbox" },
+  "home.block.inbox.split.tasks": { nl: "Taken", en: "Tasks" },
+  "home.block.inbox.split.updates": { nl: "Updates", en: "Updates" },
+  "home.block.inbox.split.tasks_empty": { nl: "Geen open taken.", en: "No open tasks." },
+  "home.block.inbox.split.updates_empty": { nl: "Geen nieuwe updates.", en: "No new updates." },
   "home.block.billing.title": { nl: "Openstaande facturen", en: "Open Invoices" },
   "home.block.billing.total_open": { nl: "Totaal open", en: "Total Open" },
   "home.block.billing.empty": { nl: "Geen openstaande facturen.", en: "No open invoices." },
@@ -127,6 +131,7 @@ export const DICTIONARY = {
   "watchlist.pill.no_data": { nl: "Geen data", en: "No data" },
   "watchlist.filter.cm_label": { nl: "Campaign Manager", en: "Campaign Manager" },
   "watchlist.filter.all_cms": { nl: "Alle Campaign Managers", en: "All Campaign Managers" },
+  "watchlist.filter.shown_of": { nl: "{shown} van {total} klanten", en: "{shown} of {total} clients" },
 
   // KPI cards
   "watchlist.kpi.health.label": { nl: "Gezondheidsscore", en: "Health score" },
@@ -278,6 +283,7 @@ export const DICTIONARY = {
 
   // ─── Clients overview ─────────────────────────────────────────────────
   "clients.updated": { nl: "Bijgewerkt {time}", en: "Updated {time}" },
+  "clients.refresh": { nl: "Vernieuwen", en: "Refresh" },
   "clients.tab.current": { nl: "Huidige klanten", en: "Current Clients" },
   "clients.tab.onboarding": { nl: "Onboarding", en: "Onboarding" },
 
@@ -1022,6 +1028,83 @@ export const DICTIONARY = {
 
   "onboarding.wizard.step.handoff.label": { nl: "Klaar voor CM", en: "Ready for CM" },
   "onboarding.wizard.step.handoff.desc": { nl: "Markeer klant klaar voor campagnemanager - status flipt naar Live.", en: "Mark client ready for the campaign manager - status flips to Live." },
+
+  // v4 step labels (Roy 2026-06-11) — AM + CM unified
+  "onboarding.wizard.section.am": { nl: "Account Manager", en: "Account Manager" },
+  "onboarding.wizard.section.cm": { nl: "Campagne Manager", en: "Campaign Manager" },
+  "onboarding.wizard.combined.transcript_section": { nl: "Transcript koppelen", en: "Link transcript" },
+  "onboarding.wizard.combined.enrichment_section": { nl: "Brief verrijken met AI", en: "Enrich brief with AI" },
+
+  "onboarding.wizard.step.transcript_brief.label": {
+    nl: "Transcript + brief verrijken",
+    en: "Transcript + brief enrichment",
+  },
+  "onboarding.wizard.step.transcript_brief.desc": {
+    nl: "Koppel de Fathom-recording en laat AI de brief verrijken met wat er besproken is.",
+    en: "Link the Fathom recording and let AI enrich the brief with what was discussed.",
+  },
+  "onboarding.wizard.step.am_checklist.label": { nl: "AM checklist + klaar voor CM", en: "AM checklist + ready for CM" },
+  "onboarding.wizard.step.am_checklist.desc": {
+    nl: "Check alle signalen: brief af, Drive content, Meta connect, betaling. Flipt status naar Live + draagt over aan CM.",
+    en: "Verify all signals: brief done, Drive content, Meta connect, payment. Flips status to Live + hands off to CM.",
+  },
+  "onboarding.wizard.step.cm_brief.label": { nl: "Creative briefing", en: "Creative briefing" },
+  "onboarding.wizard.step.cm_brief.desc": {
+    nl: "Verrijk de brief van AM met invalshoeken. Geen leeg blad — bouw op wat de AM al heeft.",
+    en: "Augment the AM's brief with campaign angles. No blank slate — build on what the AM produced.",
+  },
+  "onboarding.wizard.step.cm_competitors.label": { nl: "Concurrentie research", en: "Competitor research" },
+  "onboarding.wizard.step.cm_competitors.desc": {
+    nl: "Scrape winning ads van concurrenten via Apify. Output landt in Drive 'Winning Ads/'.",
+    en: "Scrape competitor winning ads via Apify. Output lands in Drive 'Winning Ads/'.",
+  },
+  "onboarding.wizard.step.cm_angles.label": { nl: "Marketing angles", en: "Marketing angles" },
+  "onboarding.wizard.step.cm_angles.desc": {
+    nl: "Genereer 5-10 angles op basis van brief + concurrentie. Pak de winnende invalshoeken.",
+    en: "Generate 5-10 angles from brief + competitor research. Pick the winning approaches.",
+  },
+  "onboarding.wizard.step.cm_scripts.label": { nl: "Video scripts", en: "Video scripts" },
+  "onboarding.wizard.step.cm_scripts.desc": {
+    nl: "AI scripts per angle, klaar voor klant-feedback en opname.",
+    en: "AI scripts per angle, ready for client feedback and recording.",
+  },
+  "onboarding.wizard.step.cm_landing_page.label": { nl: "Landing page", en: "Landing page" },
+  "onboarding.wizard.step.cm_landing_page.desc": {
+    nl: "Loveable prompts genereren + URL koppelen.",
+    en: "Generate Loveable prompts + link the URL.",
+  },
+  "onboarding.wizard.step.cm_creatives.label": { nl: "Creatives & ads", en: "Creatives & ads" },
+  "onboarding.wizard.step.cm_creatives.desc": {
+    nl: "Image creatives + Meta ad copy. Push naar Meta wanneer goedgekeurd.",
+    en: "Image creatives + Meta ad copy. Push to Meta when approved.",
+  },
+
+  // CmBriefStep — read-only preview van AM's brief
+  "onboarding.wizard.cm_brief.source.enriched": {
+    nl: "Brief geladen vanuit Stap 1 (kick-off) + Stap 2 (AI verrijking). Hieronder wat de AM heeft samengesteld.",
+    en: "Brief loaded from Stap 1 (kick-off) + Stap 2 (AI enrichment). Below is what the AM put together.",
+  },
+  "onboarding.wizard.cm_brief.source.draft": {
+    nl: "Brief geladen vanuit Stap 1 (live ingevuld door AM tijdens kick-off). AI verrijking nog niet uitgevoerd — wat hieronder staat komt uit de live notities.",
+    en: "Brief loaded from Stap 1 (AM filled it live during kick-off). AI enrichment not yet done — what's below is the live notes.",
+  },
+  "onboarding.wizard.cm_brief.source.empty": {
+    nl: "Nog geen brief beschikbaar. Wacht tot de AM de kick-off heeft afgerond en de brief in Stap 1 heeft ingevuld.",
+    en: "No brief available yet. Wait for the AM to finish the kick-off and fill the brief in Stap 1.",
+  },
+  "onboarding.wizard.cm_brief.field.empty": { nl: "(nog niet ingevuld)", en: "(not yet filled in)" },
+  "onboarding.wizard.cm_brief.empty.title": { nl: "Brief is nog leeg", en: "Brief is still empty" },
+  "onboarding.wizard.cm_brief.empty.body": {
+    nl: "AM moet eerst de kick-off afronden en de brief invullen voordat je hier wat kunt doen.",
+    en: "AM needs to finish the kick-off and fill the brief before there's anything actionable here.",
+  },
+  "onboarding.wizard.cm_brief.future_tool": {
+    nl: "Volgende sprint: tool om de brief te verrijken met campagne-angles, concurrenten en USPs vanuit CM-perspectief.",
+    en: "Coming next sprint: a tool to enrich the brief with campaign angles, competitors and USPs from a CM perspective.",
+  },
+
+  // Sidebar entries Roy 2026-06-11
+  "nav.optimize": { nl: "Optimize", en: "Optimize" },
 
   // Brief step copy
   "onboarding.wizard.brief.generate_hint": { nl: "Genereer een AI-draft op basis van kick-off + Trengo + Monday.", en: "Generate an AI draft from kick-off + Trengo + Monday." },

@@ -61,6 +61,29 @@
  * stays one shade lighter than the page so the rail visually separates
  * without a heavy border. */
 :root {
+  /* Collapsible sidebar width — toggled by SidebarCollapseToggle. The
+   * 240px / 64px values are the only two we use today; transitions on
+   * <aside> + <main> keep the rest of the chrome in sync. */
+  --sidebar-w: 240px;
+}
+:root[data-sidebar-collapsed="1"] {
+  --sidebar-w: 64px;
+}
+/* All chrome that should disappear in collapsed mode wears this class.
+ * Use it on label-text spans inside nav items, the user-menu name +
+ * function block, and anything else that would overflow in 64px. */
+.sidebar-label {
+  transition: opacity 120ms ease-out;
+}
+:root[data-sidebar-collapsed="1"] .sidebar-label {
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+:root {
   --background: #F8F4EE;
   --foreground: #1F2024;
   --card: #FFFFFF;

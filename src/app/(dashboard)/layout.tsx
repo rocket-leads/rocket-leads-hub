@@ -26,7 +26,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <Providers>
       <div className="min-h-screen flex">
         <Sidebar />
-        <main className="flex-1 ml-[240px] min-h-screen bg-background flex flex-col">
+        <main className="flex-1 ml-[var(--sidebar-w)] min-h-screen bg-background flex flex-col transition-[margin-left] duration-150">
           {/* Persistent top bar - keeps the global client search reachable
               from every page. Sticky so it survives long scrolls; translucent
               + backdrop-blur so content reads cleanly through it. h-12 keeps

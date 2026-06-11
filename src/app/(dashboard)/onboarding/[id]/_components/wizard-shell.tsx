@@ -17,6 +17,10 @@ export type SerializedStep = {
   labelKey: DictionaryKey
   descriptionKey: DictionaryKey
   action: WizardActionType
+  /** Roy 2026-06-11: AM + CM unified in one wizard. Each step
+   *  belongs to one of the two; the rail uses this to render
+   *  section headers. */
+  role: "AM" | "CM"
   order: number
   prerequisites: string[]
   critical: boolean
@@ -46,6 +50,11 @@ export type WizardClient = {
 
 export type WizardPayload = {
   steps: SerializedStep[]
+  /** Content of underlying DB rows that don't appear in the rail —
+   *  carries the AM's transcript_link + brief_enrichment content so
+   *  CmBriefStep can render a read-only preview without a separate
+   *  fetch. Roy 2026-06-11. */
+  hiddenContent?: Record<string, unknown>
   currentStepKey: string | null
   missingCritical: string[]
   percent: number
@@ -163,17 +172,46 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
       {/* Wizard body - rail + active step */}
       {data && (
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
-          {/* Left rail */}
-          <nav className="space-y-1 rounded-2xl border border-border/60 bg-card p-2 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
-            {steps.map((step) => (
-              <RailItem
-                key={step.key}
-                step={step}
-                active={activeStep?.key === step.key}
-                onClick={() => setActiveKey(step.key)}
-                locale={locale}
-              />
-            ))}
+          {/* Left rail — gegroepeerd per AM/CM sectie (Roy 2026-06-11) */}
+          <nav className="space-y-3 rounded-2xl border border-border/60 bg-card p-2 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
+            {/* AM section */}
+            <div>
+              <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+                {t("onboarding.wizard.section.am", locale)}
+              </div>
+              <div className="space-y-1">
+                {steps
+                  .filter((s) => s.role === "AM")
+                  .map((step) => (
+                    <RailItem
+                      key={step.key}
+                      step={step}
+                      active={activeStep?.key === step.key}
+                      onClick={() => setActiveKey(step.key)}
+                      locale={locale}
+                    />
+                  ))}
+              </div>
+            </div>
+            {/* CM section */}
+            <div>
+              <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">
+                {t("onboarding.wizard.section.cm", locale)}
+              </div>
+              <div className="space-y-1">
+                {steps
+                  .filter((s) => s.role === "CM")
+                  .map((step) => (
+                    <RailItem
+                      key={step.key}
+                      step={step}
+                      active={activeStep?.key === step.key}
+                      onClick={() => setActiveKey(step.key)}
+                      locale={locale}
+                    />
+                  ))}
+              </div>
+            </div>
           </nav>
 
           {/* Right pane - active step's action UI */}
@@ -184,6 +222,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
                 mondayItemId={mondayItemId}
                 client={data.client}
                 allSteps={steps}
+                hiddenContent={data.hiddenContent}
                 locale={locale}
                 onStepSaved={onStepSaved}
               />

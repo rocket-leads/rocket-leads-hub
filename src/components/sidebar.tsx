@@ -13,6 +13,7 @@ import { getUserLocale } from "@/lib/i18n/server"
 import { t } from "@/lib/i18n/t"
 import { createAdminClient } from "@/lib/supabase/server"
 import { MONDAY_ROLE_LABELS, type MondayRole } from "@/app/(dashboard)/settings/types"
+import { SidebarCollapseToggle } from "@/components/sidebar-collapse-toggle"
 
 const REQUIRED_PLATFORMS: Platform[] = ["slack", "trengo", "monday"]
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -117,41 +118,21 @@ export async function Sidebar() {
     }
   }
 
-  // ── Pedro children (Meetings child gets the unmatched badge) ──
-  const pedroChildren: NavItem[] = [
-    { href: "/pedro/onboard", label: t("nav.pedro_onboard", locale), icon: "Rocket" },
-    { href: "/pedro/optimize", label: t("nav.pedro_optimize", locale), icon: "Wrench" },
-    { href: "/pedro/insights", label: t("nav.insights", locale), icon: "Layers" },
-    {
-      href: "/pedro/meetings",
-      label: t("nav.meetings", locale),
-      icon: "Video",
-      ...(unmatchedMeetingsCount > 0
-        ? {
-            badge: unmatchedMeetingsCount,
-            badgeTitle: `${unmatchedMeetingsCount} unmatched meeting${unmatchedMeetingsCount === 1 ? "" : "s"} need linking to a client`,
-          }
-        : {}),
-    },
-  ]
-
   // ── Top group: navigational tools ──
+  // Roy 2026-06-11: Pedro Onboard is verhuisd naar de Onboarding wizard;
+  // Pedro Optimize wordt een eigen top-level "Optimaliseer" item.
+  // Insights eruit. Meetings wordt z'n eigen top-level item.
   const HOME: NavItem = { href: "/home", label: t("nav.home", locale), icon: "Home" }
   const WATCH_LIST: NavItem = { href: "/watchlist", label: t("nav.watch_list", locale), icon: "Eye" }
-  const PEDRO: NavItem = {
-    // Link Pedro directly to its default child instead of /pedro (which
-    // would server-redirect to /pedro/onboard). The redirect hop delays
-    // the purple "active" highlight on On-board by one round-trip; going
-    // straight to /pedro/onboard gives an instant active state.
-    // Roy 2026-05-23.
-    href: "/pedro/onboard",
-    label: t("nav.pedro", locale),
-    icon: "Megaphone",
-    children: pedroChildren,
-    // The badge on the Pedro parent mirrors the Meetings child count so
-    // the AM still sees it when the Pedro group is collapsed in their
-    // mental model - the children are visually nested but the parent
-    // chip is the at-a-glance signal.
+  const OPTIMIZE: NavItem = {
+    href: "/optimize",
+    label: t("nav.optimize", locale),
+    icon: "Wrench",
+  }
+  const MEETINGS: NavItem = {
+    href: "/meetings",
+    label: t("nav.meetings", locale),
+    icon: "Video",
     ...(unmatchedMeetingsCount > 0
       ? {
           badge: unmatchedMeetingsCount,
@@ -170,7 +151,7 @@ export async function Sidebar() {
     ...(isFinance
       ? []
       : [{ href: "/onboarding", label: t("nav.onboarding", locale), icon: "ClipboardCheck" as const }]),
-    PEDRO,
+    ...(isFinance ? [] : [OPTIMIZE, MEETINGS]),
   ]
 
   // ── Bottom group: ops / admin stack ──
@@ -260,10 +241,11 @@ export async function Sidebar() {
     : null
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 w-[240px] border-r border-sidebar-border bg-sidebar flex flex-col">
+    <aside className="fixed inset-y-0 left-0 z-30 w-[var(--sidebar-w)] border-r border-sidebar-border bg-sidebar flex flex-col transition-[width] duration-150 overflow-hidden">
       {/* Logo - sized to herMon's brand-mark scale per Roy's 2026-05-21 ask:
-          read as a brand block, not a footnote. */}
-      <div className="px-5 pt-7 pb-6">
+          read as a brand block, not a footnote. Wrapped in .sidebar-label
+          so the full lockup hides in collapsed mode. */}
+      <div className="px-5 pt-7 pb-6 sidebar-label">
         <Link href={isFinance ? "/billing" : "/watchlist"} className="block">
           <Image
             src="/logos/logo-white-purple.svg"
@@ -292,19 +274,25 @@ export async function Sidebar() {
 
       {/* User section - collapsed to just the avatar + name. Locale, theme,
           Settings + Sign out live behind a popover that opens on click. */}
-      <div className="mt-auto border-t border-sidebar-border p-3">
-        <UserMenu
-          initialLocale={locale}
-          userName={session?.user.name ?? t("account.user_fallback", locale)}
-          userFunction={userFunction}
-          userInitial={
-            session?.user.name?.[0]?.toUpperCase() ??
-            session?.user.email?.[0]?.toUpperCase() ??
-            "?"
-          }
-          missingPlatforms={missingPlatforms}
-          accountTitle={accountTitle}
-        />
+      <div className="mt-auto border-t border-sidebar-border p-3 flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <UserMenu
+            initialLocale={locale}
+            userName={session?.user.name ?? t("account.user_fallback", locale)}
+            userFunction={userFunction}
+            userInitial={
+              session?.user.name?.[0]?.toUpperCase() ??
+              session?.user.email?.[0]?.toUpperCase() ??
+              "?"
+            }
+            missingPlatforms={missingPlatforms}
+            accountTitle={accountTitle}
+          />
+        </div>
+        {/* Collapse toggle — always visible regardless of state so the
+            user can always re-expand. Sits next to UserMenu so the row
+            stays balanced. */}
+        <SidebarCollapseToggle />
       </div>
     </aside>
   )

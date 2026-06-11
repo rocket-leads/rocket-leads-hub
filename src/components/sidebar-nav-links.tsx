@@ -166,12 +166,13 @@ function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClic
           }`}
         />
       )}
-      <span className="truncate">{item.label}</span>
+      <span className="sidebar-label truncate">{item.label}</span>
       {/* Spacer pushes any trailing chips/dot/chevron to the right edge.
           Using a single ml-auto spacer (instead of putting ml-auto on the
           first trailing element) so badge + chevron can sit side-by-side
-          on parent rows like Pedro without stealing each other's space. */}
-      <span className="ml-auto inline-flex items-center gap-1.5">
+          on parent rows like Pedro without stealing each other's space.
+          Also hidden in collapsed mode — only the icon remains. */}
+      <span className="sidebar-label ml-auto inline-flex items-center gap-1.5">
         {isInbox && <InboxBadge />}
         {badgeCount > 0 && (
           <span

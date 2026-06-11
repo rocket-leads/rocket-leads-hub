@@ -2,11 +2,10 @@
 
 import type { Locale } from "@/lib/i18n/types"
 import { t } from "@/lib/i18n/t"
-import { BriefEnrichmentStep } from "./steps/brief-enrichment-step"
+import { CmBriefStep } from "./steps/cm-brief-step"
 import { HandoffStep } from "./steps/handoff-step"
 import { KickoffLiveStep } from "./steps/kickoff-live-step"
-import { TranscriptLinkStep } from "./steps/transcript-link-step"
-import { WaitOnClientStep } from "./steps/wait-on-client-step"
+import { TranscriptBriefStep } from "./steps/transcript-brief-step"
 import { PlaceholderStep } from "./steps/placeholder-step"
 import type { SerializedStep, WizardClient } from "./wizard-shell"
 
@@ -15,6 +14,9 @@ type Props = {
   mondayItemId: string
   client: WizardClient
   allSteps: SerializedStep[]
+  /** Hidden DB rows (transcript_link, brief_enrichment) that aren't
+   *  in the rail but carry content the CM-side previews need. */
+  hiddenContent?: Record<string, unknown>
   locale: Locale
   onStepSaved: (nextStepKey?: string) => void
 }
@@ -34,6 +36,7 @@ export function StepRenderer({
   mondayItemId,
   client,
   allSteps,
+  hiddenContent,
   locale,
   onStepSaved,
 }: Props) {
@@ -70,6 +73,7 @@ export function StepRenderer({
     mondayItemId,
     client,
     allSteps,
+    hiddenContent,
     locale,
     nextKey,
     onStepSaved,
@@ -81,15 +85,22 @@ export function StepRenderer({
       <div className="p-5">
         {step.action === "kickoff_live" ? (
           <KickoffLiveStep {...stepProps} />
-        ) : step.action === "transcript_link" ? (
-          <TranscriptLinkStep {...stepProps} />
-        ) : step.action === "brief_enrichment" ? (
-          <BriefEnrichmentStep {...stepProps} />
-        ) : step.action === "wait_on_client" ? (
-          <WaitOnClientStep {...stepProps} />
-        ) : step.action === "handoff" ? (
+        ) : step.action === "transcript_brief" ? (
+          <TranscriptBriefStep {...stepProps} />
+        ) : step.action === "am_checklist" ? (
+          // AM checklist + handoff zit nu in dezelfde stap. HandoffStep
+          // toont al de summary van wat klaarstaat + de "Klaar voor CM"
+          // knop — past precies bij wat Roy wil zien op Stap 3.
           <HandoffStep {...stepProps} />
+        ) : step.action === "cm_brief" ? (
+          // CM brief: laadt AM's brief in (uit Stap 1 + Stap 2 enrichment).
+          // Roy 2026-06-11: "ook zonder transcript wil ik dat die client
+          // brief daar wordt ingeladen".
+          <CmBriefStep {...stepProps} />
         ) : (
+          // Remaining CM steps (cm_competitors, cm_angles, cm_scripts,
+          // cm_landing_page, cm_creatives) fall through to PlaceholderStep.
+          // Next iteration wires each to the matching Pedro Onboard stage.
           <PlaceholderStep {...stepProps} />
         )}
       </div>

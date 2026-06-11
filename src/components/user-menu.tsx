@@ -63,13 +63,13 @@ export function UserMenu({
             />
           )}
         </div>
-        <div className="flex-1 min-w-0">
+        <div className="sidebar-label flex-1 min-w-0">
           <p className="text-sm font-semibold leading-tight truncate text-foreground">
             {userName}
           </p>
           <p className="text-xs text-muted-foreground truncate mt-0.5">{userFunction}</p>
         </div>
-        <ChevronsUpDown className="h-4 w-4 text-muted-foreground/60 shrink-0 group-hover:text-foreground transition-colors" />
+        <ChevronsUpDown className="sidebar-label h-4 w-4 text-muted-foreground/60 shrink-0 group-hover:text-foreground transition-colors" />
       </PopoverTrigger>
       <PopoverContent side="top" align="start" sideOffset={8} className="min-w-[224px] p-1.5">
         <UserMenuItems initialLocale={initialLocale} />

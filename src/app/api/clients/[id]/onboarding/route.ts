@@ -44,8 +44,19 @@ export async function GET(
   const missingCritical = missingCriticalSteps(states)
   const percent = progressPercent(states)
 
+  // Hidden child rows: not in WIZARD_STEPS (so don't appear in the
+  // rail), but their content is needed by the CM-side views — e.g.
+  // CmBriefStep reads kickoff_live.briefDraft + brief_enrichment.
+  // finalBrief to render a read-only brief preview. Roy 2026-06-11.
+  const hiddenContent: Record<string, unknown> = {}
+  for (const key of ["transcript_link", "brief_enrichment"]) {
+    const row = stored.get(key)
+    if (row) hiddenContent[key] = row.content
+  }
+
   return NextResponse.json({
     steps: serializeStates(states),
+    hiddenContent,
     currentStepKey: currentKey,
     missingCritical: missingCritical.map((s) => s.key),
     percent,
@@ -140,6 +151,7 @@ function serializeStates(states: WizardStepState[]) {
     labelKey: s.labelKey,
     descriptionKey: s.descriptionKey,
     action: s.action,
+    role: s.role,
     order: s.order,
     prerequisites: s.prerequisites,
     critical: s.critical,

@@ -152,6 +152,17 @@ export function BriefEnrichmentStep({
       return res.json()
     },
     onSuccess: (_data, vars) => {
+      // Approve → Drive write. Fire-and-forget: a slow/failed Drive
+      // write doesn't block the AM from continuing to the next step;
+      // they can re-trigger the save manually if needed (next sprint
+      // adds a "Save to Drive" button on the done-state for manual
+      // retry). Only fires when promoting to done=true so AM-saves on
+      // an in-progress draft don't litter Drive with revisions.
+      if (vars.done) {
+        void fetch(`/api/clients/${mondayItemId}/onboarding/save-brief-to-drive`, {
+          method: "POST",
+        }).catch(() => undefined)
+      }
       onStepSaved(vars.done ? nextKey : undefined)
     },
   })

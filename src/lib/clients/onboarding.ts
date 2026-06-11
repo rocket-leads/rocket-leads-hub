@@ -21,11 +21,30 @@ import type { DictionaryKey } from "@/lib/i18n/dictionary"
  */
 
 export type WizardActionType =
+  // AM section
   | "kickoff_live"
-  | "transcript_link"
-  | "brief_enrichment"
-  | "wait_on_client"
-  | "handoff"
+  | "transcript_brief"
+  | "am_checklist"
+  // CM section (formerly Pedro Onboard stages)
+  | "cm_brief"
+  | "cm_competitors"
+  | "cm_angles"
+  | "cm_scripts"
+  | "cm_landing_page"
+  | "cm_creatives"
+
+/** Who owns the step — drives the section header in the rail + the
+ *  default "active step" logic when an AM vs CM opens the wizard. */
+export type WizardRole = "AM" | "CM"
+
+/** Stored per-step state read from `client_onboarding_tasks`. Declared
+ *  early so the `WizardStep.derive` signature can reference it. */
+export type StoredStepRow = {
+  done: boolean
+  completedAt: string | null
+  completedBy: string | null
+  content: unknown
+}
 
 export type WizardStep = {
   key: string
@@ -35,6 +54,10 @@ export type WizardStep = {
   descriptionKey: DictionaryKey
   /** Action type - drives which component renders in the right pane. */
   action: WizardActionType
+  /** Account manager vs Campaign manager — drives the section header
+   *  in the rail. Roy 2026-06-11: unify the wizard so AM + CM see one
+   *  continuous flow instead of two separate sidebar entries. */
+  role: WizardRole
   /** 1-based order. Determines rail position and "current step" resolution. */
   order: number
   /** Step keys that must be done before this one is reachable. */
@@ -43,83 +66,142 @@ export type WizardStep = {
   critical: boolean
   /** Optional auto-derive - returns true when underlying Hub data already
    *  proves the step is done (e.g. Drive folder ID present → Drive setup
-   *  is implicitly complete). The DB row stays unwritten in that case;
+   *  is implicitly complete) OR when other stored step rows can vouch
+   *  for it (e.g. transcript_brief is done if its two underlying child
+   *  rows are both done). The DB row stays unwritten in that case;
    *  the wizard shows it as done regardless. */
-  derive?: (c: MondayClient) => boolean
+  derive?: (c: MondayClient, storedRows: Map<string, StoredStepRow>) => boolean
 }
 
 /**
- * v3 wizard sequence (2026-06-10 reframe, scope-split 2026-06-10):
- * The wizard is a LIVE tool the AM uses during the kick-off itself,
- * not a post-kick-off checklist. Stap 1 is the do-everything live
- * screen: auto-setup (Drive + Meta BM URL + Stripe link) already ran
- * before the AM opens it, so they have all the resources to share with
- * the client + Hub-connection pickers to wire Trengo/Stripe/Monday +
- * a brief template to fill live + a website brand-fingerprint snapshot
- * (colors + fonts editable). After the call, Stap 2-3 enrich the brief
- * from the Fathom transcript. Stap 4 polls client-side completion.
- * Stap 5 hands off to CM.
+ * v4 wizard sequence (2026-06-11 reframe): AM + CM in één wizard
+ * i.p.v. twee aparte sidebar entries (Onboarding + Pedro Onboard).
  *
- * Competitor research moved to Pedro / CM (2026-06-10) - it's CM craft
- * work and AM was duplicating brief context, see process.md split.
+ * AM section (3 stappen):
+ *   1. Kick-off meeting — live tool tijdens de call (brief, aanbod,
+ *      klant-acties, brand fingerprint, send recap)
+ *   2. Transcript koppelen + brief verrijken — Fathom recording
+ *      koppelen EN AI brief enrichment in één stap (was twee)
+ *   3. AM checklist — controleert alles staat klaar, flipt status
+ *      Live + draagt over aan CM (was 'handoff' in v3)
+ *
+ * CM section (6 stappen — was Pedro Onboard):
+ *   4. Creative briefing — CM verrijkt brief met invalshoeken
+ *      bovenop AM's base brief
+ *   5. Competitor research — Apify scrape per competitor
+ *   6. Marketing angles — AI gegenereerd uit brief + concurrentie
+ *   7. Video scripts — AI scripts per angle
+ *   8. Landing page prompts — Loveable prompts
+ *   9. Creatives & ads — Pedro image creatives + Meta ad copy
+ *
+ * Removed: wait_on_client (signalen zitten al in Stap 1 klant-
+ * actie checkboxes + Stap 3 checklist).
  */
 export const WIZARD_STEPS: WizardStep[] = [
+  // ─── ACCOUNT MANAGER ──────────────────────────────────────────
   {
     key: "kickoff_live",
     labelKey: "onboarding.wizard.step.kickoff_live.label",
     descriptionKey: "onboarding.wizard.step.kickoff_live.desc",
     action: "kickoff_live",
+    role: "AM",
     order: 1,
     prerequisites: [],
     critical: true,
   },
   {
-    key: "transcript_link",
-    labelKey: "onboarding.wizard.step.transcript_link.label",
-    descriptionKey: "onboarding.wizard.step.transcript_link.desc",
-    action: "transcript_link",
+    key: "transcript_brief",
+    labelKey: "onboarding.wizard.step.transcript_brief.label",
+    descriptionKey: "onboarding.wizard.step.transcript_brief.desc",
+    action: "transcript_brief",
+    role: "AM",
     order: 2,
     prerequisites: ["kickoff_live"],
-    // Not critical - wizard doesn't block Live-flip if the transcript
-    // never lands (Fathom hiccup, AM didn't record, etc.). Brief
-    // enrichment becomes a no-op in that case.
     critical: false,
+    // Done when BOTH underlying child rows are done — the combined
+    // view delegates to TranscriptLinkStep + BriefEnrichmentStep,
+    // which still save to their own original DB keys.
+    derive: (_c, rows) =>
+      Boolean(rows.get("transcript_link")?.done) &&
+      Boolean(rows.get("brief_enrichment")?.done),
   },
   {
-    key: "brief_enrichment",
-    labelKey: "onboarding.wizard.step.brief_enrichment.label",
-    descriptionKey: "onboarding.wizard.step.brief_enrichment.desc",
-    action: "brief_enrichment",
+    key: "am_checklist",
+    labelKey: "onboarding.wizard.step.am_checklist.label",
+    descriptionKey: "onboarding.wizard.step.am_checklist.desc",
+    action: "am_checklist",
+    role: "AM",
     order: 3,
-    prerequisites: ["transcript_link"],
-    critical: false,
-  },
-  {
-    key: "wait_on_client",
-    labelKey: "onboarding.wizard.step.wait_on_client.label",
-    descriptionKey: "onboarding.wizard.step.wait_on_client.desc",
-    action: "wait_on_client",
-    order: 4,
     prerequisites: ["kickoff_live"],
     critical: true,
-    // Auto-done once every critical client-side action is detected.
-    // Meta IDs auto-wire through the Embedded Signup callback the
-    // moment the client connects (Sprint 6 swap-in); until then the
-    // metaAdAccountId stays empty and this stays open.
+    // Auto-done once every critical client-side AND Hub signal is
+    // green. Read from the Stap 1 manual checkboxes (Drive content
+    // uploaded, Meta connected) + the Hub IDs that the AM should have
+    // wired during the kick-off.
     derive: (c) =>
       Boolean(c.metaAdAccountId) &&
       Boolean(c.stripeCustomerId) &&
       Boolean(c.googleDriveId),
   },
+  // ─── CAMPAIGN MANAGER ──────────────────────────────────────────
   {
-    key: "handoff",
-    labelKey: "onboarding.wizard.step.handoff.label",
-    descriptionKey: "onboarding.wizard.step.handoff.desc",
-    action: "handoff",
+    key: "cm_brief",
+    labelKey: "onboarding.wizard.step.cm_brief.label",
+    descriptionKey: "onboarding.wizard.step.cm_brief.desc",
+    action: "cm_brief",
+    role: "CM",
+    order: 4,
+    prerequisites: ["am_checklist"],
+    critical: false,
+  },
+  {
+    key: "cm_competitors",
+    labelKey: "onboarding.wizard.step.cm_competitors.label",
+    descriptionKey: "onboarding.wizard.step.cm_competitors.desc",
+    action: "cm_competitors",
+    role: "CM",
     order: 5,
-    prerequisites: ["wait_on_client"],
-    // Handoff is the consequence of finishing the upstream gates, not
-    // itself a gate. Flipping the client to Live is what this step does.
+    prerequisites: ["cm_brief"],
+    critical: false,
+  },
+  {
+    key: "cm_angles",
+    labelKey: "onboarding.wizard.step.cm_angles.label",
+    descriptionKey: "onboarding.wizard.step.cm_angles.desc",
+    action: "cm_angles",
+    role: "CM",
+    order: 6,
+    prerequisites: ["cm_brief"],
+    critical: false,
+  },
+  {
+    key: "cm_scripts",
+    labelKey: "onboarding.wizard.step.cm_scripts.label",
+    descriptionKey: "onboarding.wizard.step.cm_scripts.desc",
+    action: "cm_scripts",
+    role: "CM",
+    order: 7,
+    prerequisites: ["cm_angles"],
+    critical: false,
+  },
+  {
+    key: "cm_landing_page",
+    labelKey: "onboarding.wizard.step.cm_landing_page.label",
+    descriptionKey: "onboarding.wizard.step.cm_landing_page.desc",
+    action: "cm_landing_page",
+    role: "CM",
+    order: 8,
+    prerequisites: ["cm_angles"],
+    critical: false,
+  },
+  {
+    key: "cm_creatives",
+    labelKey: "onboarding.wizard.step.cm_creatives.label",
+    descriptionKey: "onboarding.wizard.step.cm_creatives.desc",
+    action: "cm_creatives",
+    role: "CM",
+    order: 9,
+    prerequisites: ["cm_landing_page"],
     critical: false,
   },
 ]
@@ -144,13 +226,6 @@ export type WizardStepState = WizardStep & {
   content: unknown
 }
 
-/** Stored per-step state read from `client_onboarding_tasks`. */
-export type StoredStepRow = {
-  done: boolean
-  completedAt: string | null
-  completedBy: string | null
-  content: unknown
-}
 
 /**
  * Resolve the state of every step for a single client. Joins the static
@@ -166,8 +241,11 @@ export function resolveWizardState(
   const doneByKey: Map<string, boolean> = new Map()
   const states: WizardStepState[] = WIZARD_STEPS.map((step) => {
     const stored = storedRows.get(step.key)
-    // Done = explicitly marked OR auto-derived from Monday snapshot.
-    const done = Boolean(stored?.done) || (step.derive ? step.derive(client) : false)
+    // Done = explicitly marked OR auto-derived from Monday snapshot +
+    // the underlying child-step rows.
+    const done =
+      Boolean(stored?.done) ||
+      (step.derive ? step.derive(client, storedRows) : false)
     doneByKey.set(step.key, done)
     return {
       ...step,
