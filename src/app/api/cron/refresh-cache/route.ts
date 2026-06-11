@@ -14,6 +14,7 @@ import {
   BASELINE_90D_MIN_DAYS,
 } from "@/app/api/kpi-summaries/route"
 import { categorize, updateWatchlistClientState } from "@/lib/watchlist/categorize"
+import { reviewDueActions } from "@/lib/watchlist/review-actions"
 import { mondayStatusToHub, type ClientStatus } from "@/lib/clients/status"
 import { fetchBillingSummary } from "@/lib/integrations/stripe"
 import { readCache, writeCache, writeCacheBatch } from "@/lib/cache"
@@ -40,7 +41,7 @@ const SPARKLINE_DAYS = 14
 // maxDuration on the KPI batch loop, leaving kpi_daily un-written and forcing
 // /clients into the slow live-fetch fallback. 120 days covers every date preset
 // the dashboard exposes (MTD, Last 7/14/30 Days, Last Month, Last 3 Months);
-// anything older still works — it just falls through to live-fetch via
+// anything older still works - it just falls through to live-fetch via
 // /api/kpi-summaries' date-range path with `cache: "no-store"`.
 const DAILY_HISTORY_DAYS = 120
 
@@ -66,7 +67,7 @@ function getPrevious7DaysRange() {
 
 function getDailyHistoryRange() {
   const end = new Date()
-  end.setDate(end.getDate() - 1) // yesterday — we never include today in cached data
+  end.setDate(end.getDate() - 1) // yesterday - we never include today in cached data
   const start = new Date(end)
   start.setDate(start.getDate() - (DAILY_HISTORY_DAYS - 1))
   return { startDate: fmtDate(start), endDate: fmtDate(end) }
@@ -75,7 +76,7 @@ function getDailyHistoryRange() {
 /**
  * Build a dense per-day rollup spanning the full daily-history window. Every day in the
  * window has a row (zero-filled when no Meta or Monday activity), so any range query is
- * just `.filter(d => d.date >= start && d.date <= end)` — no missing-date handling needed
+ * just `.filter(d => d.date >= start && d.date <= end)` - no missing-date handling needed
  * downstream.
  */
 function buildDailyRollups(
@@ -147,7 +148,7 @@ export async function GET(req: NextRequest) {
     // recomputed, manual override, etc.) we rewrite Monday's `date_mm3297df`
     // column to match. Cycle is the single source of truth.
     //
-    // Only update existing Supabase rows — never insert stubs for unsynced
+    // Only update existing Supabase rows - never insert stubs for unsynced
     // clients.
     {
       const { setItemColumnValue } = await import("@/lib/integrations/monday")
@@ -155,7 +156,7 @@ export async function GET(req: NextRequest) {
       const dateRe = /^\d{4}-\d{2}-\d{2}$/
       const targets = allClients.filter((c) => itemToClientId[c.mondayItemId])
 
-      // Pass 1 — drift correct Monday's invoice column where cycle - 7 != current
+      // Pass 1 - drift correct Monday's invoice column where cycle - 7 != current
       // invoice. Best-effort: if a write fails we still proceed to the Supabase
       // sync below so the page reflects current state.
       const driftWrites: Array<Promise<unknown>> = []
@@ -178,7 +179,7 @@ export async function GET(req: NextRequest) {
         console.log(`[refresh-cache] drift-corrected Monday invoice date on ${driftWrites.length} clients`)
       }
 
-      // Pass 2 — mirror both date columns into Supabase in one round per client.
+      // Pass 2 - mirror both date columns into Supabase in one round per client.
       const dateSyncs = targets.map((c) => {
         const cycle = dateRe.test(c.cycleStartDate) ? c.cycleStartDate : null
         const invoice = dateRe.test(c.nextInvoiceDate) ? c.nextInvoiceDate : null
@@ -230,7 +231,7 @@ export async function GET(req: NextRequest) {
     for (let i = 0; i < kpiClients.length; i += KPI_BATCH) {
       const batch = kpiClients.slice(i, i + KPI_BATCH)
       const elapsedSec = ((Date.now() - kpiStartedAt) / 1000).toFixed(0)
-      console.log(`[refresh-cache] KPI batch ${i / KPI_BATCH + 1}/${Math.ceil(kpiClients.length / KPI_BATCH)} — ${i}/${kpiClients.length} done — ${elapsedSec}s elapsed`)
+      console.log(`[refresh-cache] KPI batch ${i / KPI_BATCH + 1}/${Math.ceil(kpiClients.length / KPI_BATCH)} - ${i}/${kpiClients.length} done - ${elapsedSec}s elapsed`)
       const results = await Promise.allSettled(
         batch.map(async (client) => {
           const selectedCampaignIds = selectedByMondayItemId[client.mondayItemId] ?? new Set<string>()
@@ -241,7 +242,7 @@ export async function GET(req: NextRequest) {
           type MondayResult = { ok: boolean; items: MondayItems }
 
           // One 365d Meta fetch covers all date-range queries we'll ever need.
-          // metaFetchFailed mirrors the `monday.ok` pattern — a Meta outage used
+          // metaFetchFailed mirrors the `monday.ok` pattern - a Meta outage used
           // to silently produce zero-spend rows for every client, which then
           // tripped `detectLiveButDark` for every Live client and blanket-flagged
           // them as Action in `watchlist_client_state`. Tracking the failure
@@ -293,7 +294,7 @@ export async function GET(req: NextRequest) {
           const cpl = leads > 0 ? adSpend / leads : 0
           const prevCpl = prevLeads > 0 ? prevAdSpend / prevLeads : 0
 
-          // Coverage check on the prev window — same rule as kpi-summaries' live path:
+          // Coverage check on the prev window - same rule as kpi-summaries' live path:
           // ≥80% of prev days had spend or (when CRM is connected) Monday leads. windowPrev
           // is a slice of the dense rollup, so its length is the full prev-window length.
           const prevDaysWithActivity = windowPrev.filter(
@@ -301,7 +302,7 @@ export async function GET(req: NextRequest) {
           ).length
           const prevPeriodReliable = isPrevPeriodReliable(prevStartDate, prevEndDate, prevDaysWithActivity, prevAdSpend)
 
-          // 30d + 90d structural baselines — drive Watch List categorize().
+          // 30d + 90d structural baselines - drive Watch List categorize().
           // Both windows END the day before the current 7d starts so a fresh
           // CPL spike doesn't pollute its own baseline (vs prev-7d which has
           // the same property but is too short to detect chronic problems).
@@ -375,15 +376,15 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3a. EARLY WRITE — get the KPI caches into Supabase BEFORE billing /
+    // 3a. EARLY WRITE - get the KPI caches into Supabase BEFORE billing /
     // AI proposals / targets fetches. Those downstream steps regularly eat the
     // remaining budget on heavy days and the cron times out (Vercel kills it
-    // at maxDuration), which is why kpi_daily kept disappearing — the writes
+    // at maxDuration), which is why kpi_daily kept disappearing - the writes
     // were queued behind work that ran out the clock. monday_boards goes here
     // too since it's the cheapest write and the watchlist depends on it.
-    console.log(`[refresh-cache] KPI loop done — writing kpi caches early (${Object.keys(kpiDaily).length} clients)`)
+    console.log(`[refresh-cache] KPI loop done - writing kpi caches early (${Object.keys(kpiDaily).length} clients)`)
     {
-      // Per-client kpi_daily fan-out — written alongside the monolithic blob so the
+      // Per-client kpi_daily fan-out - written alongside the monolithic blob so the
       // slide-over's single-client kpi-summaries request can read one cache row
       // (~50ms) instead of fetching+parsing the entire 1-2MB blob (~500-700ms).
       // One batch upsert keeps this to a single round-trip regardless of fleet size.
@@ -398,7 +399,7 @@ export async function GET(req: NextRequest) {
         { key: "kpi_daily", bytes: JSON.stringify(kpiDaily).length, run: () => writeCache("kpi_daily", kpiDaily) },
         { key: `kpi_daily:* (${perClientDailyEntries.length} entries)`, bytes: JSON.stringify(perClientDailyEntries).length, run: () => writeCacheBatch(perClientDailyEntries) },
       ]
-      for (const j of earlyJobs) console.log(`[refresh-cache] early-writing ${j.key} — ${(j.bytes / 1024).toFixed(0)}KB`)
+      for (const j of earlyJobs) console.log(`[refresh-cache] early-writing ${j.key} - ${(j.bytes / 1024).toFixed(0)}KB`)
       const earlyResults = await Promise.allSettled(earlyJobs.map((j) => j.run()))
       earlyResults.forEach((r, idx) => {
         if (r.status === "rejected") {
@@ -407,7 +408,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // 3b. Top-ads bake — pre-compute the 30d ranked top-ads per client so the
+    // 3b. Top-ads bake - pre-compute the 30d ranked top-ads per client so the
     // slide-over's HomeTab can serve from cache (~50ms) instead of issuing a
     // live `fetchMetaAdDetails` call (1-2s) on every open. Runs AFTER the
     // early-write block so KPI data lands first and a partial run still leaves
@@ -430,7 +431,7 @@ export async function GET(req: NextRequest) {
       for (let i = 0; i < topAdsEligible.length; i += TOP_ADS_BATCH) {
         const batch = topAdsEligible.slice(i, i + TOP_ADS_BATCH)
         const elapsedSec = ((Date.now() - topAdsStartedAt) / 1000).toFixed(0)
-        console.log(`[refresh-cache] top-ads batch ${Math.floor(i / TOP_ADS_BATCH) + 1}/${Math.ceil(topAdsEligible.length / TOP_ADS_BATCH)} — ${i}/${topAdsEligible.length} done — ${elapsedSec}s elapsed`)
+        console.log(`[refresh-cache] top-ads batch ${Math.floor(i / TOP_ADS_BATCH) + 1}/${Math.ceil(topAdsEligible.length / TOP_ADS_BATCH)} - ${i}/${topAdsEligible.length} done - ${elapsedSec}s elapsed`)
         const results = await Promise.allSettled(
           batch.map(async (c) => {
             const selected = selectedByMondayItemId[c.mondayItemId]
@@ -445,7 +446,7 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      console.log(`[refresh-cache] top-ads loop done — writing ${topAdsEntries.length} entries`)
+      console.log(`[refresh-cache] top-ads loop done - writing ${topAdsEntries.length} entries`)
       try {
         await writeCacheBatch(topAdsEntries)
       } catch (e) {
@@ -462,7 +463,7 @@ export async function GET(req: NextRequest) {
     //
     // Runs after the KPI early-write so a Meta /AdAccount outage doesn't
     // poison KPI data. Failures per-client are tracked but the cron
-    // continues — we cache an "ok: false fetch" record so the categorizer
+    // continues - we cache an "ok: false fetch" record so the categorizer
     // can preserve prior verdicts.
     const billingHealthEligible = allClients.filter(
       (c) => c.metaAdAccountId && c.campaignStatus === "Live",
@@ -496,7 +497,7 @@ export async function GET(req: NextRequest) {
         const batch = billingHealthEligible.slice(i, i + BILLING_HEALTH_BATCH)
         const elapsedSec = ((Date.now() - billingHealthStartedAt) / 1000).toFixed(0)
         console.log(
-          `[refresh-cache] billing-health batch ${Math.floor(i / BILLING_HEALTH_BATCH) + 1}/${Math.ceil(billingHealthEligible.length / BILLING_HEALTH_BATCH)} — ${i}/${billingHealthEligible.length} done — ${elapsedSec}s elapsed`,
+          `[refresh-cache] billing-health batch ${Math.floor(i / BILLING_HEALTH_BATCH) + 1}/${Math.ceil(billingHealthEligible.length / BILLING_HEALTH_BATCH)} - ${i}/${billingHealthEligible.length} done - ${elapsedSec}s elapsed`,
         )
         const results = await Promise.allSettled(
           batch.map(async (client) => {
@@ -520,7 +521,7 @@ export async function GET(req: NextRequest) {
       }
 
       console.log(
-        `[refresh-cache] billing-health done — ${Object.keys(billingHealthByClient).length}/${billingHealthEligible.length} verdicts (${Object.values(billingHealthByClient).filter((v) => v.hasIssue).length} flagged)`,
+        `[refresh-cache] billing-health done - ${Object.keys(billingHealthByClient).length}/${billingHealthEligible.length} verdicts (${Object.values(billingHealthByClient).filter((v) => v.hasIssue).length} flagged)`,
       )
       try {
         await writeCache("meta_billing_health", billingHealthByClient)
@@ -547,7 +548,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 5. Write billing cache. (KPI + monday_boards already wrote at step 3a.)
-    console.log(`[refresh-cache] writing billing_summaries — ${(JSON.stringify(billingSummaries).length / 1024).toFixed(0)}KB`)
+    console.log(`[refresh-cache] writing billing_summaries - ${(JSON.stringify(billingSummaries).length / 1024).toFixed(0)}KB`)
     try {
       await writeCache("billing_summaries", billingSummaries)
     } catch (e) {
@@ -566,7 +567,7 @@ export async function GET(req: NextRequest) {
       for (let i = 0; i < customerIds.length; i += BILLING_BATCH) {
         const batch = customerIds.slice(i, i + BILLING_BATCH)
         const elapsedSec = ((Date.now() - billingStartedAt) / 1000).toFixed(0)
-        console.log(`[refresh-cache] billing-data batch ${Math.floor(i / BILLING_BATCH) + 1}/${Math.ceil(customerIds.length / BILLING_BATCH)} — ${i}/${customerIds.length} done — ${elapsedSec}s elapsed`)
+        console.log(`[refresh-cache] billing-data batch ${Math.floor(i / BILLING_BATCH) + 1}/${Math.ceil(customerIds.length / BILLING_BATCH)} - ${i}/${customerIds.length} done - ${elapsedSec}s elapsed`)
         const results = await Promise.allSettled(batch.map((id) => fetchBillingData(id)))
         results.forEach((result, j) => {
           if (result.status === "fulfilled") {
@@ -574,7 +575,7 @@ export async function GET(req: NextRequest) {
           }
         })
       }
-      console.log(`[refresh-cache] billing-data loop done — writing ${billingEntries.length} entries`)
+      console.log(`[refresh-cache] billing-data loop done - writing ${billingEntries.length} entries`)
       try {
         await writeCacheBatch(billingEntries)
       } catch (e) {
@@ -583,9 +584,9 @@ export async function GET(req: NextRequest) {
     }
 
     // 5a-pre. Daily score snapshot per CM. Used for the "vs 7d avg" KPI card on the
-    // watchlist header — kept in cache_store under a single rolling map so we don't need
+    // watchlist header - kept in cache_store under a single rolling map so we don't need
     // a dedicated table. Pruned to the trailing 14 days.
-    // Hub-status map keyed by Monday item id — feeds the live-but-dark
+    // Hub-status map keyed by Monday item id - feeds the live-but-dark
     // override in categorize() / severityScore(). Built once and reused for
     // both the score snapshot below and the state-table update in step 5a.
     const statusByClient = new Map<string, ClientStatus | null>()
@@ -602,17 +603,41 @@ export async function GET(req: NextRequest) {
       type DailySnapshot = Record<string, BucketTotals> // keys: CM name + "_all"
       const snapshot: DailySnapshot = { _all: { action: 0, watch: 0, good: 0 } }
 
+      // Cache the rules-based verdict per client so the action-review pass
+      // below can decide whether each ripe action recovered without
+      // re-categorizing. categorize() here is called WITHOUT activeAction
+      // extras on purpose - the review pass needs the natural KPI verdict.
+      const categoryByClient = new Map<string, "action" | "watch" | "good" | "no-data">()
       for (const client of allClients) {
         const kpi = kpiSummaries[client.mondayItemId]
         const { category } = categorize(client, kpi, "en", {
           clientStatus: statusByClient.get(client.mondayItemId) ?? null,
           billingHealth: billingHealthByClient[client.mondayItemId] ?? null,
         })
+        categoryByClient.set(client.mondayItemId, category)
         if (category !== "action" && category !== "watch" && category !== "good") continue
         const cmKey = client.campaignManager || "_unassigned"
         if (!snapshot[cmKey]) snapshot[cmKey] = { action: 0, watch: 0, good: 0 }
         snapshot[cmKey][category]++
         snapshot._all[category]++
+      }
+
+      // Action review pass - close any actions where review_due_at has
+      // passed. Outcome derived from the natural categorizer verdict above
+      // + CPL drift vs snapshot. Must run BEFORE updateWatchlistClientState
+      // so when a ripe action's pointer is cleared, the state writer that
+      // follows can write the correct natural category for that client.
+      try {
+        const summary = await reviewDueActions(supabase, kpiSummaries, categoryByClient)
+        if (summary.reviewed > 0) {
+          console.log(
+            `[refresh-cache] reviewed ${summary.reviewed} actions: ` +
+              `${summary.recovered} recovered, ${summary.improved} improved, ` +
+              `${summary.unchanged} unchanged, ${summary.worse} worse`,
+          )
+        }
+      } catch (e) {
+        console.error("Action review pass failed:", e instanceof Error ? e.message : e)
       }
 
       const historyKey = "watchlist_score_history"
@@ -631,7 +656,7 @@ export async function GET(req: NextRequest) {
 
     // 5a. Update Watch List bucket state (`watchlist_client_state`) for ALL clients.
     // Shared helper does the diff-and-upsert so since_date stays anchored at the original
-    // transition date — the same helper is used by the kpi-summaries `?force=1` path so
+    // transition date - the same helper is used by the kpi-summaries `?force=1` path so
     // a manual refresh from the UI also populates state without waiting for cron.
     try {
       await updateWatchlistClientState(
@@ -671,7 +696,7 @@ export async function GET(req: NextRequest) {
       // Sanity check: don't overwrite the warm cache with an all-zero result.
       // Meta has been known to return `{data: []}` on transient issues (token
       // hiccup, account-level rate limit) which used to silently cache as
-      // "€0 spend everywhere" until the next cron tick — that was the cause
+      // "€0 spend everywhere" until the next cron tick - that was the cause
       // of the "MTD targets won't load" reports. Preserve the previous cache
       // instead and surface the empty fetch as a warning.
       const total = metaResult.value.all
@@ -679,7 +704,7 @@ export async function GET(req: NextRequest) {
       if (hasAnySignal) {
         targetsWrites.push(writeCache("targets_marketing_meta", metaResult.value))
       } else {
-        console.warn("[cron] targets meta returned empty (spend=0, impressions=0) — keeping previous cache instead of poisoning with zeros")
+        console.warn("[cron] targets meta returned empty (spend=0, impressions=0) - keeping previous cache instead of poisoning with zeros")
       }
     } else {
       console.error("[cron] targets meta failed:", metaResult.reason)
@@ -725,11 +750,11 @@ export async function GET(req: NextRequest) {
         const msg = await anthropic.messages.create({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 2000,
-          system: `You are a performance marketing analyst at Rocket Leads. Generate a 1-line actionable recommendation for each client. Be specific — reference their KPIs.
+          system: `You are a performance marketing analyst at Rocket Leads. Generate a 1-line actionable recommendation for each client. Be specific - reference their KPIs.
 
-CRITICAL: Rocket Leads clients have FIXED, LIMITED budgets (typically €1,000–€3,000/month total). Clients almost NEVER scale budget. NEVER recommend "scale budget", "increase spend", or any budget increase. The lever is always: better creatives, iterations on winning ads, new angles, refined targeting, better landing pages — NOT more spend.
+CRITICAL: Rocket Leads clients have FIXED, LIMITED budgets (typically €1,000–€3,000/month total). Clients almost NEVER scale budget. NEVER recommend "scale budget", "increase spend", or any budget increase. The lever is always: better creatives, iterations on winning ads, new angles, refined targeting, better landing pages - NOT more spend.
 
-NEVER recommend "keep running" for winners — that's passive advice. Winners decay from ad fatigue. Always recommend ITERATING: new variants of the winning creative in the same direction (same hook/angle/format, fresh executions).
+NEVER recommend "keep running" for winners - that's passive advice. Winners decay from ad fatigue. Always recommend ITERATING: new variants of the winning creative in the same direction (same hook/angle/format, fresh executions).
 
 Output JSON only: { "monday_item_id": { "type": "critical"|"warning"|"action", "title": "1-line recommendation" } }`,
           messages: [{ role: "user", content: `Generate 1-line recommendations for these clients:\n${clientLines}\n\nReturn ONLY a JSON object.` }],

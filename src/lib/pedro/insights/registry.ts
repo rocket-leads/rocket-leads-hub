@@ -6,7 +6,7 @@ import type { Locale } from "@/lib/i18n/types"
 
 /**
  * Per-insight-type prompt + model + version. Adding a new insight surface
- * means adding an entry here — the cron picks it up automatically.
+ * means adding an entry here - the cron picks it up automatically.
  *
  * v2 reduces the entire client AI surface to ONE insight type (`client_pedro`)
  * so the user sees a single, consistent Pedro voice everywhere: client detail
@@ -24,7 +24,7 @@ export type InsightRegistryEntry = {
   maxTokens: number
   promptVersion: number
   /** Optional pre-flight gate. Return false to skip generation entirely
-   *  (no DB write — the caller decides whether to delete an existing row). */
+   *  (no DB write - the caller decides whether to delete an existing row). */
   shouldGenerate?: (ctx: ClientAiContext) => boolean
 }
 
@@ -32,7 +32,7 @@ export type InsightRegistryEntry = {
 
 function fmtKpiBlock(ctx: ClientAiContext): string {
   const k = ctx.kpi
-  if (!k) return "KPI [WINDOW: last 7d]: NOT AVAILABLE — no spend or leads cached for this window."
+  if (!k) return "KPI [WINDOW: last 7d]: NOT AVAILABLE - no spend or leads cached for this window."
   const cplPct =
     k.prevCpl > 0 && k.prevPeriodReliable !== false
       ? `${(((k.cpl - k.prevCpl) / k.prevCpl) * 100).toFixed(0)}% wow`
@@ -47,14 +47,14 @@ function fmtRecentBlock(ctx: ClientAiContext): string {
   const r = ctx.recent
   const k = ctx.kpi
   if (!r || !k) {
-    return `RECENT WINDOW: insufficient leads in last 1-3d to compute a recent CPL — stick to 7d framing.`
+    return `RECENT WINDOW: insufficient leads in last 1-3d to compute a recent CPL - stick to 7d framing.`
   }
   const baseline = k.prevCpl > 0 ? k.prevCpl : null
   const recoveryHint =
     baseline && r.recentCpl <= baseline * 1.25
-      ? "RECOVERED — recent CPL at/below prev-7d baseline"
+      ? "RECOVERED - recent CPL at/below prev-7d baseline"
       : baseline && r.recentCpl >= baseline * 1.5
-        ? "FRESH SPIKE — recent CPL well above prev-7d baseline"
+        ? "FRESH SPIKE - recent CPL well above prev-7d baseline"
         : "in line with 7d trend"
   return `RECENT WINDOW [last ${r.windowDays}d]: spend €${r.recentSpend.toFixed(0)} | leads ${r.recentLeads} | CPL €${r.recentCpl.toFixed(2)} → ${recoveryHint}`
 }
@@ -77,6 +77,29 @@ function fmtFathomBlock(ctx: ClientAiContext): string {
     return `[${date} · ${m.meetingType ?? "meeting"}] ${m.title ?? ""}\n  ${summary}`
   })
   return `FATHOM MEETINGS [WINDOW: last 5 linked]:\n${lines.join("\n")}`
+}
+
+function fmtWatchlistActionsBlock(ctx: ClientAiContext): string {
+  if (!ctx.sources.watchlistActions || ctx.watchlistActions.length === 0) return ""
+  // Render newest first - the OPEN action (if any) is most relevant, then
+  // recently-closed ones with their outcome. The model should read this
+  // and avoid recommending what was just tried + didn't move CPL.
+  const lines = ctx.watchlistActions.map((a) => {
+    const date = a.createdAt.slice(0, 10)
+    if (a.isOpen) {
+      const reviewDate = a.reviewDueAt.slice(0, 10)
+      return `[${date} · ${a.category} · OPEN, re-eval ${reviewDate}] ${a.actionText}`
+    }
+    const outcome = a.outcome ? a.outcome.toUpperCase() : "REVIEWED"
+    const note = a.outcomeNote ? ` (${a.outcomeNote})` : ""
+    return `[${date} · ${a.category} · ${outcome}] ${a.actionText}${note}`
+  })
+  return [
+    `PREVIOUS WATCHLIST ACTIONS [WINDOW: last 30d, newest first]:`,
+    ...lines,
+    `  → If an OPEN action exists, the campaign manager is already on it; do NOT prescribe what they just did.`,
+    `  → If a closed action has outcome UNCHANGED or WORSE, recommending the same category again is wrong.`,
+  ].join("\n")
 }
 
 function fmtInboxBlock(ctx: ClientAiContext): string {
@@ -107,18 +130,18 @@ function fmtBillingHealthBlock(ctx: ClientAiContext): string {
   const bh = ctx.billingHealth
   if (!bh) return ""
   if (!bh.hasIssue) {
-    // Only mention "ok" health when there's a Meta record at all — gives
+    // Only mention "ok" health when there's a Meta record at all - gives
     // the model confidence to NOT mention billing in the conclusion.
     return bh.metaHealth ? `META BILLING HEALTH: OK (account status: ${bh.metaHealth.accountStatusLabel})` : ""
   }
-  // Issue present — this is the most important block in the prompt. The
+  // Issue present - this is the most important block in the prompt. The
   // system prompt has explicit instructions to LEAD with this signal.
   const expected = bh.expectedWeeklyBudget != null ? `€${bh.expectedWeeklyBudget.toFixed(0)}` : "n/a"
   const ratio = bh.spendRatio != null ? `${(bh.spendRatio * 100).toFixed(0)}% of plan` : "n/a"
   const headline =
     bh.severity === "billing_error"
       ? `META BILLING HEALTH: ⚠ BILLING ERROR DETECTED`
-      : `META BILLING HEALTH: ⚠ SEVERE UNDERSPEND — likely billing error`
+      : `META BILLING HEALTH: ⚠ SEVERE UNDERSPEND - likely billing error`
   return [
     headline,
     `  Reason: ${bh.reason}`,
@@ -136,6 +159,7 @@ function fmtDataAvailability(ctx: ClientAiContext): string {
     `  Trengo = ${ctx.sources.trengoSummary ? "PRESENT (last 14d)" : "MISSING"}`,
     `  Fathom meetings = ${ctx.sources.fathomMeetings ? "PRESENT" : "MISSING"}`,
     `  Internal inbox = ${ctx.sources.inboxEvents ? "PRESENT" : "MISSING"}`,
+    `  Previous watchlist actions = ${ctx.sources.watchlistActions ? "PRESENT (last 30d)" : "NONE"}`,
   ].join("\n")
 }
 
@@ -143,9 +167,13 @@ function buildContextBlock(ctx: ClientAiContext): string {
   const blocks = [
     fmtDataAvailability(ctx),
     // Billing-health goes first so a payment problem is the most-prominent
-    // signal in the prompt — the system instructions tell the model to lead
+    // signal in the prompt - the system instructions tell the model to lead
     // with this when `hasIssue` is true.
     fmtBillingHealthBlock(ctx),
+    // Previous watchlist actions sit just above KPI so the model reads
+    // "the CM tried X 3d ago, CPL didn't move" before computing fresh
+    // recommendations - prevents recommending what was just tried.
+    fmtWatchlistActionsBlock(ctx),
     fmtKpiBlock(ctx),
     fmtRecentBlock(ctx),
     fmtMondayBlock(ctx),
@@ -160,7 +188,7 @@ function buildContextBlock(ctx: ClientAiContext): string {
 
 // ─── Registry ────────────────────────────────────────────────────────────
 
-/** Skip clients with no signal at all — paused / no-Meta / zero-spend-zero-leads.
+/** Skip clients with no signal at all - paused / no-Meta / zero-spend-zero-leads.
  *  Same gate the old types used; keeps the cron from spending tokens on dead air. */
 function hasMeaningfulSignal(ctx: ClientAiContext): boolean {
   const { category } = categorize(ctx.client, ctx.kpi ?? undefined)
@@ -170,19 +198,20 @@ function hasMeaningfulSignal(ctx: ClientAiContext): boolean {
 export const INSIGHT_REGISTRY: Record<InsightType, InsightRegistryEntry> = {
   client_pedro: {
     model: "claude-haiku-4-5-20251001",
-    // Token budget tightened — long output IS the bug. 500 gave Haiku room
+    // Token budget tightened - long output IS the bug. 500 gave Haiku room
     // to ramble; 220 forces brevity. Conclusion ≤30 words + 0-3 short
     // bullets fits comfortably under this cap.
     maxTokens: 220,
-    // Bumped to 5 → every client_pedro row regenerates with the billing-
-    // health override block. A flagged billing issue now leads the message
-    // instead of being buried under CPL analysis.
-    promptVersion: 5,
+    // Bumped to 6 → every client_pedro row regenerates with the previous-
+    // watchlist-actions block so Pedro can avoid recommending what the CM
+    // just tried + factually narrate "we paused Photo 2 this week" as the
+    // cause of any KPI shift.
+    promptVersion: 6,
     shouldGenerate: hasMeaningfulSignal,
     systemPrompt: (_ctx, locale) =>
       `You are writing ONE WhatsApp / email message AS the account manager, TO THE CLIENT. The AM hits send unmodified, so this needs to read like a human AM texting their client, NOT like a CM dashboard analysis.
 
-OUTPUT SHAPE — STRICTLY JSON, nothing else (no code fences, no preamble):
+OUTPUT SHAPE - STRICTLY JSON, nothing else (no code fences, no preamble):
 {
   "conclusion": "1-2 short sentences. Plain Dutch. ≤30 words total.",
   "actions": ["bullet 1", "bullet 2"]
@@ -190,11 +219,11 @@ OUTPUT SHAPE — STRICTLY JSON, nothing else (no code fences, no preamble):
 
 When there is no actionable signal:
 {
-  "conclusion": "Insufficient signal — keep monitoring.",
+  "conclusion": "Insufficient signal - keep monitoring.",
   "actions": []
 }
 
-## HARD CONSTRAINTS — VIOLATIONS GET DROPPED POST-FACTO
+## HARD CONSTRAINTS - VIOLATIONS GET DROPPED POST-FACTO
 1. Each action MUST be ≤12 words. One sentence. No colons. No nested clauses.
 2. MAXIMUM 3 actions. Returning 1 or 2 is preferred when nothing concrete fits in 12 words.
 3. Conclusion ≤2 sentences, ≤30 words total.
@@ -202,32 +231,32 @@ When there is no actionable signal:
 5. NEVER use these jargon words/phrases (they get auto-dropped):
    ad-set · adset · fatigue · vermoeidheid · frequency · CTR · relevance score · audience overlap · saturation · verzadig · Meta-campagne · spend-aanpassing · kosteneﬃciëntie · volumeproblemen · lead-quality signaal · cyclus · interne inbox · interne notitie · TO DO · @Mention · ad-set segmentatie · demografie/interesse · CPL-trend
 6. NEVER include window labels in client output: "(7d)", "(prev 7d)", "(30d)" are FOR YOU, not for the client.
-7. NEVER state a specific CPL / spend / lead count in the CONCLUSION. The weekly update renders this conclusion right under a "Cijfers deze week" bullet block that already shows the numbers, AND the bullets cover last week's Mon-Sun while your KPI input is the rolling 7d — the two numbers almost always differ, so quoting "€X,XX" in your conclusion makes the message contradict itself. Describe direction only ("CPL is flink gedaald", "lead-prijs ligt iets hoger"); numbers belong in the bullets.
-8. NEVER paraphrase the Monday update word-for-word, especially TO-DOs between team members ("@Stefan TO DO") — that's a CM-to-CM signal, not something the client should see.
+7. NEVER state a specific CPL / spend / lead count in the CONCLUSION. The weekly update renders this conclusion right under a "Cijfers deze week" bullet block that already shows the numbers, AND the bullets cover last week's Mon-Sun while your KPI input is the rolling 7d - the two numbers almost always differ, so quoting "€X,XX" in your conclusion makes the message contradict itself. Describe direction only ("CPL is flink gedaald", "lead-prijs ligt iets hoger"); numbers belong in the bullets.
+8. NEVER paraphrase the Monday update word-for-word, especially TO-DOs between team members ("@Stefan TO DO") - that's a CM-to-CM signal, not something the client should see.
 
-## BILLING OVERRIDE — HIGHEST PRIORITY
+## BILLING OVERRIDE - HIGHEST PRIORITY
 If the context contains "META BILLING HEALTH: ⚠ BILLING ERROR DETECTED" or "META BILLING HEALTH: ⚠ SEVERE UNDERSPEND", the message is ENTIRELY about that billing problem. IGNORE every other signal (CPL trends, Monday updates, recent windows). The conclusion explains the billing issue in casual Dutch and asks the client to fix their payment method. Actions are concrete steps for the client, not for the AM.
 
 Tone for billing-error conclusion (pick one direction; keep it ≤30 words):
 - "Hé, ik zag dat er een betaalprobleem in je Meta account staat. Daardoor draaien de campagnes op halve kracht. Kun je vandaag je betaalmethode updaten in Business Manager?"
 - "We hebben deze week veel minder kunnen draaien omdat er een betaalfout in je ad account staat. Kun je even kijken of je creditcard nog geldig is?"
 
-Billing actions — these go IN the actions array, addressed to the CLIENT:
+Billing actions - these go IN the actions array, addressed to the CLIENT:
 ✔ "Even inloggen in Meta Business Manager."
 ✔ "Betaalmethode of creditcard updaten."
 ✔ "Laat het me weten als het is gelukt, dan zet ik de campagnes weer aan."
 
-After a billing override the actions array MUST contain only client-facing fix-steps. NO "wij testen nieuwe varianten" or any optimisation work — those don't matter until the account pays again.
+After a billing override the actions array MUST contain only client-facing fix-steps. NO "wij testen nieuwe varianten" or any optimisation work - those don't matter until the account pays again.
 
-## VOICE — HOW THE CLIENT TALKS WITH HIS AGENCY
+## VOICE - HOW THE CLIENT TALKS WITH HIS AGENCY
 Imagine the AM texting their client over WhatsApp. Casual Dutch, direct, no agency-speak. Bullets are short concrete things "we" do this week. The client doesn't know what an ad set is, what CTR means, what frequency does.
 
-CONCLUSION — examples of the right tone:
+CONCLUSION - examples of the right tone:
 - "De kost per lead is iets hoger deze week omdat we een extra vraag hebben toegevoegd voor betere leads. Volgende week zien we of dat zich vertaalt in kwaliteit."
 - "Mooie verbetering deze week, lead-prijs is bijna gehalveerd. Lekker bezig."
 - "Volume is stabiel deze week, lead-prijs ligt iets hoger. Niks om je zorgen over te maken."
 
-ACTIONS — good vs bad:
+ACTIONS - good vs bad:
 ✘ "Analyseer ad-set fatigue: controleer frequency en CTR decay in de Meta-campagnes (laatste 30d) om te bepalen of creatieve vermoeidheid of audience overlap de CPL-stijging veroorzaakt."
 ✔ "Nieuwe varianten van de winnende creative testen."
 
@@ -243,12 +272,12 @@ ACTIONS — good vs bad:
 ✘ "Test 3-5 nieuwe creative varianten met dezelfde hook als huidige winnaar, gericht op frisheid binnen vaste budget van €950/maand."
 ✔ "3-5 nieuwe varianten van de winnaar testen."
 
-## CONCLUSION — MONDAY UPDATES ARE THE "WHY"
+## CONCLUSION - MONDAY UPDATES ARE THE "WHY"
 The MONDAY CRM block tells you WHY KPIs moved. READ IT BEFORE WRITING. When recent Monday updates show a deliberate change (extra qualifying question, raised threshold, paused creative, new audience, new landing page), name THAT as the cause:
 - "CPL is gestegen omdat we een extra vraag hebben toegevoegd. Volgende week zien we of dat ook betere leads oplevert."
 - "We hebben de drempel verhoogd, daardoor wat minder maar wel kwalitatievere leads."
 
-If Monday is empty / nothing structural changed, describe the data plainly without speculating on cause. Default explanations like "creative fatigue" or "audience saturation" are BANNED — if you don't know the cause, don't invent one.
+If Monday is empty / nothing structural changed, describe the data plainly without speculating on cause. Default explanations like "creative fatigue" or "audience saturation" are BANNED - if you don't know the cause, don't invent one.
 
 ${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(locale)}`,
     userPrompt: (ctx) => {
@@ -256,7 +285,7 @@ ${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(locale)}`,
       return [
         `CLIENT: ${ctx.client.name} (${ctx.client.mondayItemId})`,
         `WATCHLIST CATEGORY: ${category}`,
-        `WATCHLIST INSIGHT (rule-based, already shown alongside your output — do NOT repeat verbatim): "${insight}"`,
+        `WATCHLIST INSIGHT (rule-based, already shown alongside your output - do NOT repeat verbatim): "${insight}"`,
         ``,
         buildContextBlock(ctx),
         ``,
@@ -266,5 +295,5 @@ ${AI_GUARDRAILS_PROMPT}${aiLanguageDirective(locale)}`,
   },
 }
 
-/** All registered insight types — used by the cron to fan out. */
+/** All registered insight types - used by the cron to fan out. */
 export const ALL_INSIGHT_TYPES: InsightType[] = Object.keys(INSIGHT_REGISTRY) as InsightType[]

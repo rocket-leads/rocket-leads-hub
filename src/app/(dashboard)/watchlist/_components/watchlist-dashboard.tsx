@@ -8,17 +8,15 @@ import Image from "next/image"
 import { FiltersPopover, type FilterConfig } from "@/components/ui/filters-popover"
 import { PageHeader } from "@/components/ui/page-header"
 import { StatusPill } from "@/components/ui/status-pill"
-import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft } from "lucide-react"
-import { Skeleton } from "@/components/ui/skeleton"
+import { RefreshCw, AlertCircle, TrendingUp, CheckCircle2, Check, ChevronDown, ChevronRight, ExternalLink, CircleDashed, Lightbulb, ListTodo, Loader2, ArrowRightLeft, CheckCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
-import { KpiTile, type KpiValueTone } from "@/components/ui/kpi-tile"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import type { MondayClient } from "@/lib/integrations/monday"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { WatchlistStateResponse } from "@/app/api/watchlist/state/route"
-// Watchlist narrative + score-history queries were removed 2026-06-09 —
+// Watchlist narrative + score-history queries were removed 2026-06-09 -
 // the Key Insights / Optimisation Proposals panels and the "vs 7d avg"
 // KPI card they fed are gone. The endpoints stay live for cron / admin
 // usage; this view just doesn't call them anymore.
@@ -45,16 +43,19 @@ type CategorizedClient = {
   category: WatchCategory
   insight: string
   kpi: KpiSummary | undefined
-  /** Severity score used to rank within Action/Watch — higher = more urgent */
+  /** Severity score used to rank within Action/Watch - higher = more urgent */
   severity: number
-  /** Days the client has been in this category — null when state is still loading or unknown */
+  /** Days the client has been in this category - null when state is still loading or unknown */
   daysInBucket: number | null
   /** True when the client transitioned into this category today */
   isNewToday: boolean
-  /** Yesterday's bucket — null if unknown / brand-new client */
+  /** Yesterday's bucket - null if unknown / brand-new client */
   prevCategory: WatchCategory | null
-  /** Active manual override surfaced from the state API — null when none */
+  /** Active manual override surfaced from the state API - null when none */
   manualOverride: import("@/app/api/watchlist/state/route").WatchlistClientState["manualOverride"]
+  /** Open action loop - CM acted + is monitoring. Drives the "in review"
+   *  insight inside the Watchlist bucket and the sub-grouping sort order. */
+  activeAction: import("@/app/api/watchlist/state/route").WatchlistClientState["activeAction"]
 }
 
 const categorize = sharedCategorize
@@ -66,11 +67,11 @@ function fmtCurrency(v: number): string {
 }
 
 /**
- * Manual override action — campaign manager moves a client into a different
+ * Manual override action - campaign manager moves a client into a different
  * bucket with a required reason. Override lasts 7d max OR releases earlier
  * when CPL/spend shifts >25% from the snapshot (handled categorizer-side).
  *
- * Every Move also lands in the `watchlist_overrides` audit log — that's the
+ * Every Move also lands in the `watchlist_overrides` audit log - that's the
  * learning corpus the AI adjustment layer feeds on, so the same pattern on
  * future clients can be auto-suggested.
  *
@@ -192,7 +193,7 @@ function MoveDialog({
   const [error, setError] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
-  // Reset when the dialog re-opens — picks up the latest override snapshot
+  // Reset when the dialog re-opens - picks up the latest override snapshot
   // if the user opens, closes, then re-opens after another override landed.
   useEffect(() => {
     if (open) {
@@ -286,7 +287,7 @@ function MoveDialog({
         onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
       >
         <DialogHeader>
-          <DialogTitle>{t("watchlist.move.dialog_title", locale)} — {clientName}</DialogTitle>
+          <DialogTitle>{t("watchlist.move.dialog_title", locale)} - {clientName}</DialogTitle>
           <DialogDescription className="text-xs">
             {t("watchlist.move.dialog_subtitle", locale)}
           </DialogDescription>
@@ -398,6 +399,316 @@ function MoveDialog({
 }
 
 /**
+ * "Mark done" button - the inbox-zero workflow primary action on every
+ * Action Needed row. CM picks a category (Creative / Pause / Angle /
+ * Funnel / Other), writes a 1-2 sentence update that goes to the AM,
+ * and picks a review window (2/3/5/7 days). On submit the client moves
+ * Action Needed → Watchlist "in review" until the cron re-checks at
+ * review_due_at, then either keeps it there (recovered) or flips it
+ * back to Action Needed with an outcome insight ("Previous action
+ * didn't recover CPL").
+ *
+ * Click handling mirrors MoveButton + CreateTaskButton: stopPropagation
+ * so the row's slide-over doesn't open at the same time.
+ */
+const ACTION_CATEGORIES = ["creative", "pause", "angle", "funnel", "other"] as const
+type MarkDoneCategory = (typeof ACTION_CATEGORIES)[number]
+
+function MarkDoneButton({
+  mondayItemId,
+  clientName,
+  accountManager,
+  insight,
+  kpi,
+  locale,
+}: {
+  mondayItemId: string
+  clientName: string
+  accountManager: string | null
+  insight: string
+  kpi: KpiSummary | undefined
+  locale: Locale
+}) {
+  const [open, setOpen] = useState(false)
+  const [lastResult, setLastResult] = useState<"done" | "error" | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  function handleClick(e: React.MouseEvent | React.KeyboardEvent) {
+    e.stopPropagation()
+    e.preventDefault()
+    setOpen(true)
+  }
+
+  function handleSubmitted() {
+    setLastResult("done")
+    setOpen(false)
+    setTimeout(() => setLastResult(null), 3500)
+  }
+
+  function handleFailed(message: string) {
+    setLastResult("error")
+    setErrorMsg(message)
+    setOpen(false)
+    setTimeout(() => {
+      setLastResult(null)
+      setErrorMsg(null)
+    }, 5000)
+  }
+
+  const tooltip =
+    lastResult === "done"
+      ? t("watchlist.row.mark_done_submitted", locale)
+      : lastResult === "error"
+        ? errorMsg ?? t("watchlist.row.mark_done_failed", locale)
+        : t("watchlist.row.mark_done_tooltip", locale)
+
+  return (
+    <>
+      <ActionIconButton
+        tone="success"
+        label={t("watchlist.row.mark_done", locale)}
+        showLabel
+        state={lastResult}
+        tooltip={tooltip}
+        icon={lastResult === "done" ? <Check className="h-3.5 w-3.5" /> : <CheckCheck className="h-3.5 w-3.5" />}
+        onClick={(e) => handleClick(e)}
+      />
+      <MarkDoneDialog
+        open={open}
+        onOpenChange={setOpen}
+        mondayItemId={mondayItemId}
+        clientName={clientName}
+        accountManager={accountManager}
+        insight={insight}
+        kpi={kpi}
+        locale={locale}
+        onSubmitted={handleSubmitted}
+        onFailed={handleFailed}
+      />
+    </>
+  )
+}
+
+const REVIEW_WINDOW_OPTIONS: ReadonlyArray<2 | 3 | 5 | 7> = [2, 3, 5, 7]
+const DEFAULT_REVIEW_DAYS: 2 | 3 | 5 | 7 = 3
+const MARK_DONE_MIN_LENGTH = 10
+
+function MarkDoneDialog({
+  open,
+  onOpenChange,
+  mondayItemId,
+  clientName,
+  accountManager,
+  insight,
+  kpi,
+  locale,
+  onSubmitted,
+  onFailed,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  mondayItemId: string
+  clientName: string
+  accountManager: string | null
+  insight: string
+  kpi: KpiSummary | undefined
+  locale: Locale
+  onSubmitted: () => void
+  onFailed: (message: string) => void
+}) {
+  const [category, setCategory] = useState<MarkDoneCategory>("creative")
+  const [actionText, setActionText] = useState("")
+  const [reviewDays, setReviewDays] = useState<2 | 3 | 5 | 7>(DEFAULT_REVIEW_DAYS)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+
+  // Reset state each time the dialog opens so a previous typed-but-not-
+  // submitted draft doesn't leak across clients. Defaults are the cheap
+  // happy-path: creative iteration, 3-day window.
+  useEffect(() => {
+    if (open) {
+      setCategory("creative")
+      setActionText("")
+      setReviewDays(DEFAULT_REVIEW_DAYS)
+      setError(null)
+    }
+  }, [open])
+
+  const trimmed = actionText.trim()
+  const canSubmit = trimmed.length >= MARK_DONE_MIN_LENGTH && !submitting
+
+  async function handleSubmit() {
+    if (trimmed.length < MARK_DONE_MIN_LENGTH) {
+      setError(t("watchlist.mark_done.error_too_short", locale))
+      return
+    }
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/watchlist/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mondayItemId,
+          clientName,
+          accountManager,
+          actionCategory: category,
+          actionText: trimmed,
+          reviewDays,
+          insightAtTime: insight,
+          kpiSnapshot: kpi
+            ? {
+                adSpend: kpi.adSpend,
+                leads: kpi.leads,
+                cpl: kpi.cpl,
+                prevCpl: kpi.prevCpl,
+              }
+            : null,
+        }),
+      })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(j.error || t("watchlist.mark_done.failed", locale))
+      }
+      await queryClient.invalidateQueries({ queryKey: ["watchlist-state"] })
+      onSubmitted()
+    } catch (e) {
+      onFailed(e instanceof Error ? e.message : t("watchlist.mark_done.failed", locale))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const categoryLabel: Record<MarkDoneCategory, string> = {
+    creative: t("watchlist.mark_done.category_creative", locale),
+    pause: t("watchlist.mark_done.category_pause", locale),
+    angle: t("watchlist.mark_done.category_angle", locale),
+    funnel: t("watchlist.mark_done.category_funnel", locale),
+    other: t("watchlist.mark_done.category_other", locale),
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-md"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e: React.KeyboardEvent) => e.stopPropagation()}
+      >
+        <DialogHeader>
+          <DialogTitle>
+            {t("watchlist.mark_done.title", locale)} - {clientName}
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            {accountManager?.trim()
+              ? t("watchlist.mark_done.subtitle_with_am", locale, { am: accountManager })
+              : t("watchlist.mark_done.subtitle_no_am", locale)}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Category - five chips matching campaigns.md Optimisation Proposal classes. */}
+          <div>
+            <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">
+              {t("watchlist.mark_done.category_label", locale)}
+            </label>
+            <div className="grid grid-cols-5 gap-1.5">
+              {ACTION_CATEGORIES.map((opt) => {
+                const isSelected = category === opt
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setCategory(opt)}
+                    className={cn(
+                      "h-9 rounded-md border px-2 text-[11px] font-medium transition-colors",
+                      isSelected
+                        ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "border-border/40 hover:border-emerald-500/40",
+                    )}
+                  >
+                    {categoryLabel[opt]}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* What was done - this is the AM update verbatim. */}
+          <div>
+            <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">
+              {t("watchlist.mark_done.what_label", locale)}
+            </label>
+            <textarea
+              value={actionText}
+              onChange={(e) => setActionText(e.target.value)}
+              placeholder={t("watchlist.mark_done.what_placeholder", locale)}
+              rows={3}
+              className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+              maxLength={2000}
+            />
+            <p className="text-[10px] text-muted-foreground/60 mt-1">
+              {t("watchlist.mark_done.what_hint", locale)}
+            </p>
+          </div>
+
+          {/* Review window - segmented selector. Default 3d. */}
+          <div>
+            <label className="block text-[11px] font-medium text-muted-foreground mb-1.5">
+              {t("watchlist.mark_done.review_label", locale)}
+            </label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {REVIEW_WINDOW_OPTIONS.map((opt) => {
+                const isSelected = reviewDays === opt
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setReviewDays(opt)}
+                    className={cn(
+                      "h-9 rounded-md border px-2 text-[12px] font-medium transition-colors tabular-nums",
+                      isSelected
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-border/40 hover:border-primary/40",
+                    )}
+                  >
+                    {opt}d
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {error && (
+            <div className="text-[11px] text-red-600 dark:text-red-400">{error}</div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={submitting}
+          >
+            {t("watchlist.mark_done.cancel", locale)}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+          >
+            {submitting ? t("watchlist.mark_done.submit_saving", locale) : t("watchlist.mark_done.submit", locale)}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
  * "Create task" chip that opens a small editable pop-up on every Watch
  * List row. Click → AI pre-fills a title + body draft based on the
  * insight + 7d KPI snapshot, Roy edits anything (title, body, due
@@ -410,7 +721,7 @@ function MoveDialog({
  *   - error:  red chip with last error tooltip
  *   - disabled: muted, when the client has no campaignManager set
  *
- * The dialog handles its own saving/loading state — the trigger button
+ * The dialog handles its own saving/loading state - the trigger button
  * doesn't gate on a network round-trip anymore.
  */
 function CreateTaskButton({
@@ -436,7 +747,7 @@ function CreateTaskButton({
   const hasCm = !!campaignManager?.trim()
 
   function handleClick(e: React.MouseEvent | React.KeyboardEvent) {
-    // Don't open the row's slide-over — this button has its own action.
+    // Don't open the row's slide-over - this button has its own action.
     e.stopPropagation()
     e.preventDefault()
     if (!hasCm) return
@@ -571,7 +882,7 @@ function CreateTaskDialog({
       setBody(data.body ?? "")
       setAiGenerated(!!data.aiGenerated)
     } catch {
-      // Fall back to a minimal title — Roy can edit + submit anyway.
+      // Fall back to a minimal title - Roy can edit + submit anyway.
       setTitle(t("watchlist.row.create_task_title", locale, { client: clientName }))
       setBody("")
       setAiGenerated(false)
@@ -580,7 +891,7 @@ function CreateTaskDialog({
     }
   }, [clientName, campaignManager, category, insight, kpi, locale])
 
-  // Fire prefill each time the dialog opens (not just first mount —
+  // Fire prefill each time the dialog opens (not just first mount -
   // the dialog stays mounted now to keep Base UI's body-scroll-lock
   // cleanup intact). Reset the ref on close so the next open gets a
   // fresh Haiku draft against the latest insight/KPI snapshot. The
@@ -756,7 +1067,7 @@ function uniqueSorted(values: string[]): string[] {
 
 /**
  * Admin setup gaps surfaced in the No Data bucket. Meta ad account is intentionally
- * excluded — that gap is already produced by `categorize()` itself (with a richer
+ * excluded - that gap is already produced by `categorize()` itself (with a richer
  * "no Meta ad account configured" reason). Monday board is excluded too because it
  * has a Meta-fallback path and therefore isn't a setup blocker.
  */
@@ -805,9 +1116,9 @@ const CATEGORY_CONFIG = {
  * Compact "how long has this client been in this bucket" indicator. Sits inline next
  * to the client name. Three states:
  *   - Just landed today  → red NEW pill (attention-grabbing, transient)
- *   - 1–2 days           → muted "Nd" — recent, no alarm
- *   - 3–6 days           → amber "Nd" — sticky, watch out
- *   - 7+ days            → red "Nd" — stuck in the bucket, structural problem
+ *   - 1–2 days           → muted "Nd" - recent, no alarm
+ *   - 3–6 days           → amber "Nd" - sticky, watch out
+ *   - 7+ days            → red "Nd" - stuck in the bucket, structural problem
  * Returns null when there's nothing meaningful to show (state still loading, or 0d
  * without the NEW signal). For Good clients we keep the visual subtle since long-good
  * is a positive signal but not urgent.
@@ -832,7 +1143,7 @@ function BucketAge({
   }
   if (daysInBucket == null || daysInBucket <= 0) return null
 
-  // Color emphasis only for Action / Watch — for Good a long stretch is good news, just
+  // Color emphasis only for Action / Watch - for Good a long stretch is good news, just
   // not something to highlight. No-data buckets don't show this at all (handled by caller).
   let toneClass = "text-muted-foreground/50"
   if (category === "action" || category === "watch") {
@@ -842,27 +1153,6 @@ function BucketAge({
   }
 
   return <span className={`text-[10px] tabular-nums ${toneClass}`}>{daysInBucket}d</span>
-}
-
-// --- Summary Header ---
-//
-// Watchlist KPI summary uses the canonical KpiTile primitive — same
-// chrome, label, value typography and tone-system as Home, Targets and
-// the Client home tab. Roy 2026-05-23: "structuur en fonts moeten overal
-// hetzelfde". WatchlistKpiCard + WatchlistKpiSkeletons were removed in
-// favour of the shared component so any future tweak to KpiTile lands
-// across all surfaces at once.
-
-type WatchlistKpiStatus = "good" | "warn" | "bad" | "neutral"
-
-function WatchlistKpiSkeletons() {
-  return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <KpiTile key={i} label="" value="" loading />
-      ))}
-    </div>
-  )
 }
 
 // --- Watch Section ---
@@ -901,7 +1191,7 @@ function WatchSection({
 
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
-          {/* Column headers — kept tight per Roy's instruction: Client,
+          {/* Column headers - kept tight per Roy's instruction: Client,
               Insight, Spend, Leads, CPL, and one Create-task quick action.
               AI Note / Appts / 14d CPL sparkline / Ask Pedro all removed
               (rolled into the slide-over which opens on row click). */}
@@ -931,7 +1221,7 @@ function WatchSection({
                     // contenteditable. React synthetic events bubble through
                     // portals, so a Space pressed inside a portal-mounted
                     // dialog textarea (Move dialog, Create-task dialog) still
-                    // reaches this handler — and preventDefault would block
+                    // reaches this handler - and preventDefault would block
                     // the literal space character from appearing in the
                     // field. Roy 2026-06-09.
                     const tag = (e.target as HTMLElement | null)?.tagName
@@ -968,32 +1258,48 @@ function WatchSection({
 
                   {/* Spend */}
                   <span className="text-xs tabular-nums text-muted-foreground">
-                    {kpi && kpi.adSpend > 0 ? fmtCurrency(kpi.adSpend) : "—"}
+                    {kpi && kpi.adSpend > 0 ? fmtCurrency(kpi.adSpend) : "-"}
                   </span>
 
                   {/* Leads */}
                   <span className="text-xs tabular-nums font-medium">
-                    {kpi && kpi.leads > 0 ? kpi.leads : kpi && kpi.adSpend > 0 ? "0" : "—"}
+                    {kpi && kpi.leads > 0 ? kpi.leads : kpi && kpi.adSpend > 0 ? "0" : "-"}
                   </span>
 
                   {/* CPL */}
                   <span className="text-xs tabular-nums text-muted-foreground">
-                    {kpi && kpi.cpl > 0 ? formatCurrency(kpi.cpl, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+                    {kpi && kpi.cpl > 0 ? formatCurrency(kpi.cpl, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
                   </span>
 
-                  {/* Create task — opens edit dialog pre-filled with an
-                      AI draft, assigned to the client's CM. */}
-                  <CreateTaskButton
-                    mondayItemId={id}
-                    clientName={client.name}
-                    campaignManager={client.campaignManager}
-                    category={category}
-                    insight={insight}
-                    kpi={kpi}
-                    locale={locale}
-                  />
+                  {/* Action Needed: primary verb is "Mark done" - the inbox-zero
+                      workflow. CM picks category + types a 1-2 sentence AM update +
+                      picks review window. The client flips to Watchlist "in review"
+                      and the cron re-checks at review_due_at, auto-flipping back if
+                      still concerning.
+                      Watch / Good: keep Create Task as the proactive verb (e.g.
+                      "remind me to test new angle"). */}
+                  {category === "action" ? (
+                    <MarkDoneButton
+                      mondayItemId={id}
+                      clientName={client.name}
+                      accountManager={client.accountManager}
+                      insight={insight}
+                      kpi={kpi}
+                      locale={locale}
+                    />
+                  ) : (
+                    <CreateTaskButton
+                      mondayItemId={id}
+                      clientName={client.name}
+                      campaignManager={client.campaignManager}
+                      category={category}
+                      insight={insight}
+                      kpi={kpi}
+                      locale={locale}
+                    />
+                  )}
 
-                  {/* Manual override — moves the client between buckets with a
+                  {/* Manual override - moves the client between buckets with a
                       required reason. Reason + KPI snapshot lands in the
                       audit log as training signal for the AI adjustment layer. */}
                   <MoveButton
@@ -1013,7 +1319,7 @@ function WatchSection({
                           isn't always enough across React's synthetic
                           system, so we also pre-empt the row at
                           mousedown + run nativeEvent.stopImmediatePropagation
-                          on click. preventDefault is mandatory — the
+                          on click. preventDefault is mandatory - the
                           anchor would otherwise navigate before our
                           custom open logic fires.
                       (b) Browsers don't expose a clean "open new tab
@@ -1033,7 +1339,7 @@ function WatchSection({
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         // Stop the row's onClick (slide-over) but DON'T
-                        // preventDefault — let the anchor navigate
+                        // preventDefault - let the anchor navigate
                         // natively. Foreground/background on
                         // target="_blank" is a browser-level decision
                         // tied to the user's gesture (plain click =
@@ -1073,7 +1379,7 @@ function WatchSection({
 }
 
 // --- No Data Section ---
-// Live clients that have no actionable performance metrics for the 7d window — picked up
+// Live clients that have no actionable performance metrics for the 7d window - picked up
 // here so they're never silently dropped. Reasons surface inline: RL ad account with no
 // campaigns selected, no Meta ad account configured, or genuinely no spend/leads this week.
 
@@ -1172,7 +1478,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
   // Body scroll lock is handled by Base UI's Dialog inside ClientSlideOver.
   // The previous manual `body.style.overflow` lock here fought with Base UI's:
   // if Base UI ran first, `original` captured "hidden" and the cleanup
-  // restored it back to "hidden" — leaving the page unscrollable until
+  // restored it back to "hidden" - leaving the page unscrollable until
   // a hard refresh. Removed 2026-06-07.
 
   const [cmFilter, setCmFilter] = useState("All")
@@ -1224,7 +1530,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     ? new Date(kpiQuery.dataUpdatedAt).toLocaleTimeString(locale === "nl" ? "nl-NL" : "en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
-  // Watch List bucket state — written by the cron, read here to render Days indicator,
+  // Watch List bucket state - written by the cron, read here to render Days indicator,
   // NEW badge, and yesterday-vs-today score trend.
   const stateQuery = useQuery<WatchlistStateResponse>({
     queryKey: ["watchlist-state"],
@@ -1233,7 +1539,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
     refetchOnWindowFocus: false,
   })
 
-  // Recent overrides — feeds the learning layer. Every Move action invalidates
+  // Recent overrides - feeds the learning layer. Every Move action invalidates
   // this query so the pattern-matcher picks up new corrections immediately.
   const recentOverridesQuery = useQuery<RecentOverridesResponse>({
     queryKey: ["watchlist-recent-overrides"],
@@ -1245,7 +1551,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
   function daysBetween(fromIso: string, toIso: string): number {
-    // Date strings are YYYY-MM-DD UTC — use UTC math to avoid DST drift.
+    // Date strings are YYYY-MM-DD UTC - use UTC math to avoid DST drift.
     const a = Date.UTC(+fromIso.slice(0, 4), +fromIso.slice(5, 7) - 1, +fromIso.slice(8, 10))
     const b = Date.UTC(+toIso.slice(0, 4), +toIso.slice(5, 7) - 1, +toIso.slice(8, 10))
     return Math.max(0, Math.floor((b - a) / 86400000))
@@ -1269,18 +1575,24 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
       const isNewToday = stateMatchesCategory && state!.sinceDate === today
       const prevCategory = stateMatchesCategory ? (state!.prevCategory as WatchCategory | null) : null
       const manualOverride = state?.manualOverride ?? null
-      return { client, category, insight, kpi, severity, daysInBucket, isNewToday, prevCategory, manualOverride }
+      const activeAction = state?.activeAction ?? null
+      return { client, category, insight, kpi, severity, daysInBucket, isNewToday, prevCategory, manualOverride, activeAction }
     }
 
     const overrides = recentOverridesQuery.data?.overrides ?? []
 
     for (const client of filteredClients) {
       const kpi = kpiQuery.data?.[client.mondayItemId]
-      // Active manual override (if any) — categorize() short-circuits to this
+      // Active manual override (if any) - categorize() short-circuits to this
       // bucket when the override is still within its 7d TTL AND the live KPI
       // hasn't drifted >25% from the snapshot the CM was looking at.
       const manualOverride = stateMap[client.mondayItemId]?.manualOverride ?? null
-      // AI adjustment derived from the override audit log — pattern matches
+      // Active action - CM marked done + monitoring. The categorizer keeps
+      // this row in Watchlist until reviewDueAt passes, no matter what KPI
+      // rules would say. Cron is what closes the loop (auto-flip back to
+      // Action Needed if still concerning).
+      const activeAction = stateMap[client.mondayItemId]?.activeAction ?? null
+      // AI adjustment derived from the override audit log - pattern matches
       // against the team's past corrections. Returns a suggestion only when
       // ≥2 supporting overrides exist with consistent target bucket. Applied
       // by categorize() when confidence ≥ 0.75 AND no hard manual override.
@@ -1288,30 +1600,31 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
       const { category, insight } = categorize(client, kpi, locale, {
         manualOverride,
         aiAdjustment,
+        activeAction,
       })
       const severity = kpi ? severityScore(kpi) : 0
       const gaps = getSetupGaps(client)
 
-      // "missing — admin setup incomplete" suffix stays a UI-side build (not
+      // "missing - admin setup incomplete" suffix stays a UI-side build (not
       // produced inside categorize) so the locale-aware Dutch/English split
       // for the gap label lives next to the rest of the watchlist surface.
       const missingLabel = locale === "nl" ? "ontbreekt" : "missing"
       const adminIncompleteLabel = locale === "nl"
-        ? "ontbreekt — admin setup onvolledig"
-        : "missing — admin setup incomplete"
+        ? "ontbreekt - admin setup onvolledig"
+        : "missing - admin setup incomplete"
 
       if (category === "action") action.push(buildItem(client, category, insight, kpi, severity))
       else if (category === "watch") watch.push(buildItem(client, category, insight, kpi, severity))
       else if (category === "good") good.push(buildItem(client, category, insight, kpi, severity))
       else if (category === "no-data") {
-        // Already a no-data client — append any Stripe/Trengo gap to the existing reason
+        // Already a no-data client - append any Stripe/Trengo gap to the existing reason
         // so the CM sees both "no spend this week" + "Stripe missing" in one row.
         const augmented = gaps.length > 0 ? `${insight} · ${gaps.join(" + ")} ${missingLabel}` : insight
         noData.push(buildItem(client, category, augmented, kpi, severity))
       }
 
       // Surface setup gaps even when performance data exists. These intentionally appear
-      // in BOTH the performance bucket (Action/Watch/Good) and in No Data — Roy explicitly
+      // in BOTH the performance bucket (Action/Watch/Good) and in No Data - Roy explicitly
       // wants admin gaps prominently visible regardless of campaign performance.
       if (category !== "no-data" && gaps.length > 0) {
         noData.push(buildItem(client, "no-data", `${gaps.join(" + ")} ${adminIncompleteLabel}`, kpi, 0))
@@ -1326,61 +1639,34 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
       return (b.daysInBucket ?? 0) - (a.daysInBucket ?? 0)
     }
     action.sort(sortByImpact)
-    watch.sort(sortByImpact)
+    // Watchlist sort: in-review actions sink to the bottom because the CM
+    // has already handled them. Organic concerns at the top so they keep
+    // visibility - the in-review rows are passive monitoring, not work.
+    watch.sort((a, b) => {
+      const aInReview = !!a.activeAction
+      const bInReview = !!b.activeAction
+      if (aInReview !== bInReview) return aInReview ? 1 : -1
+      return sortByImpact(a, b)
+    })
     good.sort((a, b) => (b.kpi?.leads ?? 0) - (a.kpi?.leads ?? 0))
     noData.sort((a, b) => a.client.name.localeCompare(b.client.name))
 
     return { action, watch, good, noData }
   }, [filteredClients, kpiQuery.data, stateQuery.data, recentOverridesQuery.data, today, locale])
 
-  // Health score for the summary header. Excludes no-data so setup gaps don't water down
-  // the percentage (Roy: "die wil ik niet dat die de data beïnvloed").
-  const healthScore = useMemo(() => {
-    const total = categorized.action.length + categorized.watch.length + categorized.good.length
-    return total > 0 ? Math.round((categorized.good.length / total) * 100) : 0
-  }, [categorized])
-
-  // Yesterday's bucket counts, reconstructed from the state table. For each client whose
-  // since_date === today, prev_category was their bucket yesterday; otherwise category is.
-  // Then we filter to the same CM scope and tally.
-  const yesterdayTotals = useMemo(() => {
-    const stateMap = stateQuery.data ?? {}
-    const totals = { action: 0, watch: 0, good: 0, noData: 0 }
-    for (const client of filteredClients) {
-      const state = stateMap[client.mondayItemId]
-      if (!state) continue
-      const yCat: WatchCategory | null = state.sinceDate === today ? state.prevCategory : state.category
-      if (yCat === "action") totals.action++
-      else if (yCat === "watch") totals.watch++
-      else if (yCat === "good") totals.good++
-      else if (yCat === "no-data") totals.noData++
-    }
-    return totals
-  }, [filteredClients, stateQuery.data, today])
-
-  // Average CPL across all currently-live clients (action + watch + good). Computed as
-  // SUM(spend) / SUM(leads) so the metric is weighted by spend — a single high-spend
-  // client doesn't get drowned out by many low-spend clients with extreme CPLs.
-  const avgCpl = useMemo(() => {
-    const liveClients = [...categorized.action, ...categorized.watch, ...categorized.good]
-    let totalSpend = 0
-    let totalLeads = 0
-    for (const c of liveClients) {
-      if (!c.kpi) continue
-      totalSpend += c.kpi.adSpend
-      totalLeads += c.kpi.leads
-    }
-    return totalLeads > 0 ? totalSpend / totalLeads : null
-  }, [categorized])
+  // KPI summary cards (health score, healthy ratio, avg CPL) were removed
+  // 2026-06-11 - Roy: the section headers + per-row data already give the
+  // necessary at-a-glance overview, the three cards just took screen real
+  // estate without driving decisions.
 
   // AI narrative (Key Insights + Optimisation Proposals) was removed
-  // 2026-06-09 — Roy: nobody read it on the watchlist. The narrative
+  // 2026-06-09 - Roy: nobody read it on the watchlist. The narrative
   // endpoint stays so the cron + admin debug surfaces can still hit
   // it; we just don't fetch it from this dashboard anymore.
 
   // AI Note column was removed per Roy's directive (Watch List home →
   // Watch List 2026-05-14). The /api/watchlist-summaries call and the
-  // per-row note state went with it — the slide-over opened on row click
+  // per-row note state went with it - the slide-over opened on row click
   // is where AI commentary still lives.
 
   async function handleRefresh() {
@@ -1427,7 +1713,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         }
       />
 
-      {/* Summary pills + CM filter — uses the shared StatusPill primitive
+      {/* Summary pills + CM filter - uses the shared StatusPill primitive
           so the same chrome is used everywhere the Hub displays a status
           tone (table rows, slide-over headers, etc.). */}
       <div className="flex items-center justify-between">
@@ -1463,76 +1749,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         />
       </div>
 
-      {/* 4 KPI cards — same primitive as the Targets HeroPillars so the watchlist reads
-          as the same product family. */}
-      {kpiQuery.isLoading || stateQuery.isLoading ? (
-        <WatchlistKpiSkeletons />
-      ) : (
-        (() => {
-          const total = categorized.action.length + categorized.watch.length + categorized.good.length
-
-          // Card 1 — health score (today). Traffic-light coloured by zone so the
-          // number reads as "below target / on the line / on track" at a glance:
-          //   <50 red, 50-74 amber, ≥75 green.
-          const scoreStatus: WatchlistKpiStatus =
-            total === 0
-              ? "neutral"
-              : healthScore < 50
-                ? "bad"
-                : healthScore < 75
-                  ? "warn"
-                  : "good"
-
-          // "vs 7d avg" KPI card removed 2026-06-09 — Roy: the
-          // delta-vs-rolling-average card wasn't being read. The
-          // headline Health card already conveys current state; a
-          // separate "vs 7d" delta added noise without driving
-          // decisions. The score-history endpoint stays live for
-          // crons / admin debug.
-
-          // Card 3 — Healthy clients ratio. Always neutral status (it's a fact, not a verdict).
-          const valueHealthy = total === 0 ? "—" : `${categorized.good.length}/${total}`
-          const subtitleHealthy = total === 0
-            ? t("watchlist.kpi.healthy.no_scope", locale)
-            : t("watchlist.kpi.healthy.subtitle", locale)
-
-          // Card 4 — Average CPL across live clients (weighted by spend).
-          const valueCpl = avgCpl == null
-            ? "—"
-            : formatCurrency(avgCpl, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          const liveCount = categorized.action.length + categorized.watch.length + categorized.good.length
-          const subtitleCpl = avgCpl == null
-            ? t("watchlist.kpi.avg_cpl.empty", locale)
-            : t(
-                liveCount === 1 ? "watchlist.kpi.avg_cpl.subtitle_one" : "watchlist.kpi.avg_cpl.subtitle_many",
-                locale,
-                { n: liveCount },
-              )
-
-          return (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <KpiTile
-                label={t("watchlist.kpi.health.label", locale)}
-                value={total === 0 ? "—" : `${healthScore}%`}
-                valueTone={scoreStatus as KpiValueTone}
-                sub={total === 0 ? t("watchlist.kpi.health.no_scope", locale) : t("watchlist.kpi.health.target", locale)}
-              />
-              <KpiTile
-                label={t("watchlist.kpi.healthy.label", locale)}
-                value={valueHealthy}
-                sub={subtitleHealthy}
-              />
-              <KpiTile
-                label={t("watchlist.kpi.avg_cpl.label", locale)}
-                value={valueCpl}
-                sub={subtitleCpl}
-              />
-            </div>
-          )
-        })()
-      )}
-
-      {/* Key Insights + Optimisation Proposal panels removed 2026-06-09 —
+      {/* Key Insights + Optimisation Proposal panels removed 2026-06-09 -
           per Roy nobody read them on the watchlist; the AI commentary
           still surfaces inside the slide-over opened on row click. */}
 

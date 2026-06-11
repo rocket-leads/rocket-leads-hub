@@ -5,7 +5,7 @@ import type { ClientAiContext } from "./context"
 import type { MondayClient } from "@/lib/integrations/monday"
 
 /**
- * Registry shape tests — lock in invariants every insight type must hold.
+ * Registry shape tests - lock in invariants every insight type must hold.
  * The cron loops over ALL_INSIGHT_TYPES and calls systemPrompt + userPrompt
  * on each; a registry entry that throws on a no-data context (for example)
  * would silently kill the entire cron tick mid-batch.
@@ -48,6 +48,7 @@ function makeMinimalContext(overrides: Partial<ClientAiContext> = {}): ClientAiC
     mondayTrengo: null,
     fathomMeetings: [],
     inboxEvents: [],
+    watchlistActions: [],
     agreement: null,
     billing: null,
     billingHealth: null,
@@ -58,6 +59,7 @@ function makeMinimalContext(overrides: Partial<ClientAiContext> = {}): ClientAiC
       trengoSummary: false,
       fathomMeetings: false,
       inboxEvents: false,
+      watchlistActions: false,
       agreement: false,
       billing: false,
       billingHealth: false,
@@ -84,6 +86,7 @@ function makeRichContext(): ClientAiContext {
       trengoSummary: true,
       fathomMeetings: true,
       inboxEvents: true,
+      watchlistActions: false,
       agreement: true,
       billing: true,
       billingHealth: false,
@@ -96,7 +99,7 @@ function makeRichContext(): ClientAiContext {
   })
 }
 
-describe("INSIGHT_REGISTRY — shape invariants", () => {
+describe("INSIGHT_REGISTRY - shape invariants", () => {
   it("ALL_INSIGHT_TYPES matches the INSIGHT_TYPES constant", () => {
     expect(new Set(ALL_INSIGHT_TYPES)).toEqual(new Set(INSIGHT_TYPES))
   })
@@ -134,10 +137,10 @@ describe("INSIGHT_REGISTRY — shape invariants", () => {
     }
   })
 
-  it("every prompt builder is total — runs on minimal (no-data) context without throwing", () => {
+  it("every prompt builder is total - runs on minimal (no-data) context without throwing", () => {
     // The cron WILL pass thin contexts in real life (clients with no KPI,
     // no Monday, no Trengo). A registry entry that throws on such a
-    // context kills the entire batch — defend against that here.
+    // context kills the entire batch - defend against that here.
     const ctx = makeMinimalContext()
     for (const type of INSIGHT_TYPES) {
       expect(() => INSIGHT_REGISTRY[type].systemPrompt(ctx, "nl")).not.toThrow()
@@ -155,7 +158,7 @@ describe("INSIGHT_REGISTRY — shape invariants", () => {
   })
 })
 
-describe("INSIGHT_REGISTRY — shouldGenerate gates", () => {
+describe("INSIGHT_REGISTRY - shouldGenerate gates", () => {
   it("client_pedro skips no-data clients", () => {
     const ctx = makeMinimalContext()
     expect(INSIGHT_REGISTRY.client_pedro.shouldGenerate?.(ctx)).toBe(false)
@@ -167,7 +170,7 @@ describe("INSIGHT_REGISTRY — shouldGenerate gates", () => {
   })
 })
 
-describe("INSIGHT_REGISTRY — context-awareness in prompts", () => {
+describe("INSIGHT_REGISTRY - context-awareness in prompts", () => {
   it("user prompt flags when Monday CRM is missing", () => {
     const ctx = makeMinimalContext()
     const user = INSIGHT_REGISTRY.client_pedro.userPrompt(ctx)
