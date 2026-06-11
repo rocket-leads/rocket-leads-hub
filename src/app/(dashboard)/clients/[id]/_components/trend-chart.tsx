@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   ComposedChart,
@@ -70,7 +70,7 @@ export function TrendChart({ mondayItemId }: Props) {
       ) : !data || data.points.length === 0 ? (
         <EmptyState />
       ) : (
-        <Chart points={data.points} />
+        <Chart points={data.points} windowDays={windowDays} />
       )}
     </div>
   )
@@ -112,10 +112,56 @@ function EmptyState() {
   )
 }
 
-function Chart({ points }: { points: TrendPoint[] }) {
+/** Trailing-window smoothing widths per chart range. Raw daily Meta CPL
+ *  bounces hard on auction noise; smoothing reveals the actual trend.
+ *  Width grows with range to keep the line visually steady at the same
+ *  zoom level - 90d would be a chaotic squiggle with a 3d window. */
+function smoothingWindow(windowDays: WindowDays): number {
+  if (windowDays === 14) return 3
+  if (windowDays === 30) return 5
+  return 7
+}
+
+type SmoothedPoint = TrendPoint & {
+  /** Trailing moving average; null when no leads in the entire window. */
+  cplSmoothed: number | null
+  spendSmoothed: number
+}
+
+/** Apply a trailing moving average to CPL + Spend. CPL nulls (zero-lead
+ *  days) are skipped in the window mean - the line just gets a slightly
+ *  noisier sample for that segment instead of dropping to zero. */
+function smoothPoints(points: TrendPoint[], window: number): SmoothedPoint[] {
+  return points.map((p, i) => {
+    const start = Math.max(0, i - window + 1)
+    const slice = points.slice(start, i + 1)
+
+    const cplValues = slice
+      .map((s) => s.cpl)
+      .filter((v): v is number => v != null && v > 0)
+    const cplSmoothed = cplValues.length > 0
+      ? Number((cplValues.reduce((s, v) => s + v, 0) / cplValues.length).toFixed(2))
+      : null
+
+    const spendSmoothed = Number(
+      (slice.reduce((s, v) => s + v.spend, 0) / slice.length).toFixed(2),
+    )
+
+    return { ...p, cplSmoothed, spendSmoothed }
+  })
+}
+
+function Chart({ points, windowDays }: { points: TrendPoint[]; windowDays: WindowDays }) {
+  // Smoothed series memoised on the raw points + window - cheap (≤90
+  // entries) but no point recomputing on every Tooltip hover.
+  const smoothed = useMemo(
+    () => smoothPoints(points, smoothingWindow(windowDays)),
+    [points, windowDays],
+  )
+
   return (
     <ResponsiveContainer width="100%" height={260}>
-      <ComposedChart data={points} margin={{ top: 5, right: 8, left: -8, bottom: 0 }}>
+      <ComposedChart data={smoothed} margin={{ top: 5, right: 8, left: -8, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
         <XAxis
           dataKey="date"
@@ -154,15 +200,19 @@ function Chart({ points }: { points: TrendPoint[] }) {
             <span className="text-muted-foreground">{value}</span>
           )}
         />
-        {/* connectNulls=false so zero-lead days are visual gaps - prevents a
-            misleading "CPL dropped to €0" rendering on idle days. */}
+        {/* connectNulls=false on smoothed CPL so a fully zero-lead window
+            still renders as a visual gap. monotone stays the curve type
+            but now on smoothed data - so it draws clean rolling waves
+            instead of wild S-curves around daily spikes. */}
         <Line
           yAxisId="cpl"
           type="monotone"
-          dataKey="cpl"
+          dataKey="cplSmoothed"
           name="CPL"
           stroke={CPL_COLOR}
-          strokeWidth={2}
+          strokeWidth={2.25}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           dot={false}
           activeDot={{ r: 4, fill: CPL_COLOR }}
           connectNulls={false}
@@ -171,10 +221,12 @@ function Chart({ points }: { points: TrendPoint[] }) {
         <Line
           yAxisId="spend"
           type="monotone"
-          dataKey="spend"
+          dataKey="spendSmoothed"
           name="Ad Spend"
           stroke={SPEND_COLOR}
-          strokeWidth={2}
+          strokeWidth={2.25}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           dot={false}
           activeDot={{ r: 4, fill: SPEND_COLOR }}
           isAnimationActive={false}
@@ -190,28 +242,42 @@ function TrendTooltip({
   label,
 }: {
   active?: boolean
-  payload?: Array<{ name: string; value: number | null; color: string }>
+  /** Recharts hands the full data point as `payload[i].payload` - we read
+   *  the RAW cpl / spend from there instead of `entry.value` (which is
+   *  the smoothed series the line is drawn from). Tooltip must show the
+   *  actual day's number, not the rolling mean. */
+  payload?: Array<{ name: string; value: number | null; color: string; payload: SmoothedPoint }>
   label?: string
 }) {
   if (!active || !payload?.length || !label) return null
+  const raw = payload[0]?.payload
   return (
     <div className="bg-card border border-border rounded-lg p-3 shadow-xl">
       <p className="text-[11px] text-muted-foreground mb-2 font-medium">{formatDateLabel(label)}</p>
-      {payload.map((entry) => (
-        <div key={entry.name} className="flex items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-            <span className="text-muted-foreground">{entry.name}</span>
+      {payload.map((entry) => {
+        const rawValue =
+          entry.name === "CPL" ? raw?.cpl ?? null : entry.name === "Ad Spend" ? raw?.spend ?? 0 : entry.value
+        return (
+          <div key={entry.name} className="flex items-center justify-between gap-4 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+              <span className="text-muted-foreground">{entry.name}</span>
+            </div>
+            <span className="font-mono text-foreground">
+              {rawValue == null
+                ? "—"
+                : entry.name === "CPL"
+                  ? `€${rawValue.toFixed(2)}`
+                  : `€${Math.round(rawValue).toLocaleString("en-GB")}`}
+            </span>
           </div>
-          <span className="font-mono text-foreground">
-            {entry.value == null
-              ? "—"
-              : entry.name === "CPL"
-                ? `€${entry.value.toFixed(2)}`
-                : `€${Math.round(entry.value).toLocaleString("en-GB")}`}
-          </span>
-        </div>
-      ))}
+        )
+      })}
+      {raw && (
+        <p className="text-[10px] text-muted-foreground/50 mt-1.5 pt-1.5 border-t border-border/40">
+          Line: rolling avg · Value shown: that day&apos;s actual
+        </p>
+      )}
     </div>
   )
 }
