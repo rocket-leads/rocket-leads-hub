@@ -60,6 +60,24 @@ type Body = {
    *  (we convert to cents before sending to Meta). When omitted we
    *  inherit the winner's adset budget (default behavior). */
   dailyBudgetEuros?: number
+  /** Roy 2026-06-11: manual template-source override. When the snapshot
+   *  path fails (winner ad + ad set both gone from Meta), the CM picks
+   *  any ad set from the account via /api/pedro/template-candidates and
+   *  we use that as the clone source instead. Skips the snapshot
+   *  resolution and uses these IDs directly. */
+  overrideTemplate?: {
+    adsetId: string
+    adsetName?: string
+    campaignId: string
+    campaignName?: string
+    pageId: string
+    instagramActorId?: string
+    leadGenFormId?: string
+    linkUrl?: string
+    callToActionType?: string
+    templateAdId?: string
+    templateAdName?: string
+  }
 }
 
 export async function POST(
@@ -119,11 +137,11 @@ export async function POST(
   }
   if (!clientRow.meta_ad_account_id) {
     return NextResponse.json(
-      { error: "Geen Meta ad account voor deze klant — vul 'm in op het client-info paneel." },
+      { error: "Geen Meta ad account voor deze klant - vul 'm in op het client-info paneel." },
       { status: 400 },
     )
   }
-  // Page ID inherits from the winner ad — extracted below from
+  // Page ID inherits from the winner ad - extracted below from
   // fetchMetaAdDetails. Roy 2026-06-10: override-field removed; winner
   // inheritance turned out to be the right default for every case.
 
@@ -168,7 +186,7 @@ export async function POST(
     !!snapshot.adsetId &&
     !!snapshot.pageId
 
-  // ── 3. Resolve template source — snapshot-first ─────────────────────
+  // ── 3. Resolve template source - snapshot-first ─────────────────────
   // Result type: same shape as MetaAdDetail's relevant subset so the
   // rest of the route works uniformly.
   type TemplateSource = {
@@ -192,8 +210,33 @@ export async function POST(
     templateAdsetName: string
   } | null = null
 
-  if (hasCompleteSnapshot) {
-    // Snapshot path — geen live Meta lookup nodig om de template te
+  if (body.overrideTemplate?.adsetId && body.overrideTemplate.campaignId && body.overrideTemplate.pageId) {
+    // Manual override path - CM picked an ad set in the candidate
+    // picker UI when the snapshot was unusable. Use it verbatim;
+    // fetchAdSetTemplate below will still pull live budget/targeting
+    // from the picked adset.
+    const o = body.overrideTemplate
+    winnerLive = {
+      adId: o.templateAdId ?? winnerAdId,
+      adName: o.templateAdName ?? proposal.basedOnAd.adName ?? "",
+      adsetId: o.adsetId,
+      adsetName: o.adsetName ?? "",
+      campaignId: o.campaignId,
+      campaignName: o.campaignName ?? "",
+      pageId: o.pageId,
+      instagramActorId: o.instagramActorId ?? "",
+      leadGenFormId: o.leadGenFormId ?? "",
+      linkUrl: o.linkUrl ?? "",
+      callToActionType: o.callToActionType ?? "",
+    }
+    fallbackInfo = {
+      reason: "Handmatige template-keuze door CM (snapshot was niet bruikbaar).",
+      templateAdId: winnerLive.adId,
+      templateAdName: winnerLive.adName || "(geen ad)",
+      templateAdsetName: winnerLive.adsetName || o.adsetId,
+    }
+  } else if (hasCompleteSnapshot) {
+    // Snapshot path - geen live Meta lookup nodig om de template te
     // resolven. De adset-template (budget/targeting/bid strategy) wordt
     // straks live opgehaald via fetchAdSetTemplate; als die call faalt
     // (= adset verwijderd) doen we de campagne-scoped fallback.
@@ -211,7 +254,7 @@ export async function POST(
       callToActionType: snapshot!.callToActionType ?? "",
     }
   } else {
-    // Legacy path — refresh has no snapshot. Same as before: live
+    // Legacy path - refresh has no snapshot. Same as before: live
     // lookup against last 90d, fall back to most-recent valid ad.
     const end = new Date().toISOString().slice(0, 10)
     const startD = new Date()
@@ -235,7 +278,7 @@ export async function POST(
       if (winnerLive) {
         fallbackInfo = {
           reason:
-            "Refresh heeft geen snapshot (oude refresh). Winner ad niet meer in Meta — meest-recente bruikbare ad gebruikt als template.",
+            "Refresh heeft geen snapshot (oude refresh). Winner ad niet meer in Meta - meest-recente bruikbare ad gebruikt als template.",
           templateAdId: winnerLive.adId,
           templateAdName: winnerLive.adName,
           templateAdsetName: winnerLive.adsetName,
@@ -248,7 +291,8 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Geen bruikbare template gevonden voor deze refresh. Snapshot ontbreekt én geen recente actieve ad in dit Meta account. Check of de campagne nog leeft in Ads Manager.",
+          "Geen bruikbare template gevonden voor deze refresh. Snapshot ontbreekt én geen recente actieve ad in dit Meta account. Kies handmatig een ad set hieronder om als template te gebruiken.",
+        errorCode: "no_template",
       },
       { status: 404 },
     )
@@ -267,7 +311,7 @@ export async function POST(
 
   // ── 4. Pull ad set template (budget/targeting/bid strategy) ─────────
   // Try snapshotted adsetId first. If gone (404 from Meta), look up
-  // another non-deleted ad set in the SAME campaign — much more stable
+  // another non-deleted ad set in the SAME campaign - much more stable
   // than falling back to a random ad set elsewhere in the account.
   let adsetTemplate
   let usedCampaignFallback = false
@@ -287,7 +331,7 @@ export async function POST(
           usedCampaignFallback = true
           fallbackInfo = {
             reason:
-              "Oorspronkelijke ad set niet meer in Meta — andere ad set uit dezelfde campagne gebruikt als template.",
+              "Oorspronkelijke ad set niet meer in Meta - andere ad set uit dezelfde campagne gebruikt als template.",
             templateAdId: winnerLive.adId,
             templateAdName: winnerLive.adName,
             templateAdsetName: alive.name,
@@ -296,7 +340,8 @@ export async function POST(
           return NextResponse.json(
             {
               error:
-                "Ad set én alle sibling-adsets in deze campagne zijn verwijderd. Check of de campagne nog actief is in Ads Manager.",
+                "Ad set én alle sibling-adsets in deze campagne zijn verwijderd. Kies handmatig een ad set hieronder om als template te gebruiken.",
+              errorCode: "no_template",
             },
             { status: 404 },
           )
@@ -324,7 +369,7 @@ export async function POST(
   }
   void usedCampaignFallback // tracked via fallbackInfo
 
-  // Ad set name — CM-supplied override wins. Default follows Roy's
+  // Ad set name - CM-supplied override wins. Default follows Roy's
   // 2026-06-10 NT convention: `NT | {{angle}}`. Falls back to legacy
   // "LF | Open targeting | DD/MM" only when neither override nor angle
   // is available (e.g. older refreshes with no preserve.angle).
@@ -353,7 +398,7 @@ export async function POST(
     stripInterestTargeting(adsetTemplate.targeting),
   )
 
-  // Budget override — CM types daily budget in EUR; Meta wants cents.
+  // Budget override - CM types daily budget in EUR; Meta wants cents.
   // When omitted, fall back to the winner's daily budget (existing
   // behavior). Minimum sanity: €1/day, max €10000/day.
   let overrideDailyBudget: string | null = null
@@ -394,7 +439,7 @@ export async function POST(
   // format. Each selected slot consumes one number from its format's pool.
   // Roy 2026-06-10 v2: in de snapshot-flow hebben we de adsRaw lijst niet
   // meer in scope (was deel van de legacy live-lookup). Voor numbering
-  // doen we nu een lightweight name-only fetch — veel goedkoper dan de
+  // doen we nu een lightweight name-only fetch - veel goedkoper dan de
   // volledige fetchMetaAdDetails call die hier voorheen ronddwaalde.
   const allAdNames = await fetchAdNamesInAccount(clientRow.meta_ad_account_id).catch(() => [])
   const maxByFormat = getMaxAdNumberByFormat(allAdNames)
@@ -488,7 +533,7 @@ export async function POST(
         bytes,
         fileName: `${adName}.jpg`,
       })
-      // 8c. Creative — Pedro-generated headline + primary copy +
+      // 8c. Creative - Pedro-generated headline + primary copy +
       // 2 alt headlines + 2 alt primary texts → asset_feed_spec
       // dynamic creative. IG actor + lead form id inherit from winner.
       // url_tags defaults to PEDRO_UTM_TEMPLATE.
@@ -512,11 +557,11 @@ export async function POST(
         body: variant.primary_copy_snippet ?? "",
         title: primaryHeadline || undefined,
         description: variant.link_description?.trim() || undefined,
-        // Inherit link + CTA from winner when available — same destination
+        // Inherit link + CTA from winner when available - same destination
         // so UTM tracking keeps working.
         linkUrl: winnerLive.linkUrl || "https://www.facebook.com",
         callToActionType: winnerLive.callToActionType || "LEARN_MORE",
-        // Inherit IG actor + lead-gen form from winner — keeps the new
+        // Inherit IG actor + lead-gen form from winner - keeps the new
         // ad on the same IG account and (for ON_AD lead-form ads) the
         // same instant form. Roy 2026-06-10.
         instagramActorId: winnerLive.instagramActorId || undefined,

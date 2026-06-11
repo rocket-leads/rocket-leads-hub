@@ -7,20 +7,25 @@ import { VariantImagePanel } from "./variant-image-panel"
 import { PushToMetaModal } from "./push-to-meta-modal"
 import { ImageSourcesPicker } from "./image-sources-picker"
 import { InlineEditField } from "./inline-edit-field"
+import { AdPicker } from "./ad-picker"
 import { cn } from "@/lib/utils"
 
 type CreativeVariant = {
   label: string
-  /** Canonical RL ad name — CM copies this 1:1 into Meta. The UTM later
+  /** Canonical RL ad name - CM copies this 1:1 into Meta. The UTM later
    *  ties incoming leads back to this exact variant so Pedro can learn
    *  which generated creatives worked. Roy 2026-06-09. */
   adName: string
   formatHint: "Photo" | "Video"
   topicLabel: string
+  /** Roy 2026-06-11: directe quote uit source primary copy / headline /
+   *  description waar deze variant op gebaseerd is. Bewijs van
+   *  source-anchoring. Empty voor legacy refreshes. */
+  sourceHookQuote?: string
   newHook: string
   scriptOutline: string
   primaryCopySnippet: string
-  /** Full ad-copy package (Roy 2026-06-10) — Pedro genereert nu meteen
+  /** Full ad-copy package (Roy 2026-06-10) - Pedro genereert nu meteen
    *  alle Meta tekstvelden zodat Push-to-Meta een complete dynamic
    *  creative ad kan lanceren zonder handmatige tuning. */
   headline?: string
@@ -30,7 +35,7 @@ type CreativeVariant = {
   /** English visual brief for image-gen. Stored on pedro_variants. */
   imagePrompt?: string
   why: string
-  /** From enriched envelope — pedro_variants row id, lets image
+  /** From enriched envelope - pedro_variants row id, lets image
    *  generate/upload endpoints target this specific variant. */
   variantId?: string | null
   image?: { hasImage: boolean; provider?: string | null; model?: string | null; generatedAt?: string | null; imagePrompt?: string | null }
@@ -42,7 +47,7 @@ type CreativeProposal = {
   variants: CreativeVariant[]
 }
 
-/** Single-click copy of the canonical ad name — sits next to the variant
+/** Single-click copy of the canonical ad name - sits next to the variant
  *  label so it's the first thing the CM sees. The whole point of this
  *  feature: 1 click → paste into Meta → done. */
 function AdNameChip({ adName }: { adName: string }) {
@@ -76,14 +81,14 @@ function AdNameChip({ adName }: { adName: string }) {
   )
 }
 
-/** Per-variant card — Roy 2026-06-10 overhaul:
+/** Per-variant card - Roy 2026-06-10 overhaul:
  *  - Geen Bewerk-modus knop meer. Elk tekstveld is click-to-edit
  *    (InlineEditField) met blur-to-save.
- *  - Script outline en lange Hook display zijn weg — niet nuttig.
+ *  - Script outline en lange Hook display zijn weg - niet nuttig.
  *  - De Hook is hernoemd naar "Tekst op afbeelding" en toont de korte
  *    on-image overlay (= Meta headline) bovenaan. Pedro gebruikt dit
  *    als overlay-tekst in de imagePrompt.
- *  - Push naar Meta zit nu OP variant-niveau — één ad set per variant
+ *  - Push naar Meta zit nu OP variant-niveau - één ad set per variant
  *    met de 3 slots erin. Geen proposal-level bundeling meer.
  */
 function VariantCard({
@@ -99,7 +104,7 @@ function VariantCard({
   proposalIndex: number
   proposalAngle: string
 }) {
-  // Local "live" state — InlineEditField writes back via PATCH, success
+  // Local "live" state - InlineEditField writes back via PATCH, success
   // updates these so the rest of the card (e.g. the CopyButton text)
   // stays in sync without a full refresh.
   const [headline, setHeadline] = useState(variant.headline ?? "")
@@ -123,7 +128,7 @@ function VariantCard({
   const patchVariant = useCallback(
     async (patch: Record<string, unknown>): Promise<void> => {
       if (!variantId) {
-        throw new Error("Variant id ontbreekt — refresh de proposals opnieuw.")
+        throw new Error("Variant id ontbreekt - refresh de proposals opnieuw.")
       }
       const res = await fetch(`/api/pedro/variants/${variantId}`, {
         method: "PATCH",
@@ -179,7 +184,7 @@ function VariantCard({
       <div className="flex items-start justify-between gap-2">
         <div className="font-heading font-semibold text-sm">{variant.label}</div>
         <div className="flex items-center gap-1.5">
-          {/* Per-variant Push-to-Meta — Roy 2026-06-10: één variant =
+          {/* Per-variant Push-to-Meta - Roy 2026-06-10: één variant =
               één ad set met de 3 image slots als ads. CM kan los kiezen
               welke variant ze willen testen. */}
           {refreshId && variantId && (
@@ -208,7 +213,22 @@ function VariantCard({
         </div>
       )}
 
-      {/* Image text (= Meta headline) — short pijnpunt-vraag die als
+      {/* Bron-hook quote - Roy 2026-06-11: bewijs dat Pedro op een echte
+          hook uit de source-copy heeft geanchored ipv een nieuwe angle
+          te hallucineren. Toont alleen wanneer Pedro 'm geleverd heeft
+          (ad-picker flow). */}
+      {variant.sourceHookQuote && variant.sourceHookQuote.length > 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-amber-700 dark:text-amber-400 font-semibold mb-0.5">
+            Bron-hook uit source ad
+          </div>
+          <div className="text-xs italic text-foreground">
+            &ldquo;{variant.sourceHookQuote}&rdquo;
+          </div>
+        </div>
+      )}
+
+      {/* Image text (= Meta headline) - short pijnpunt-vraag die als
           overlay op de afbeelding komt. Bovenaan omdat het de meest
           visueel-zichtbare tekst is. Roy 2026-06-10. */}
       <div>
@@ -222,14 +242,14 @@ function VariantCard({
             setHeadline(next)
           }}
           variant="single"
-          placeholder="(leeg — klik om tekst voor de afbeelding-overlay te typen)"
+          placeholder="(leeg - klik om tekst voor de afbeelding-overlay te typen)"
           maxLength={80}
           disabled={!editable}
           className="text-sm font-medium"
         />
       </div>
 
-      {/* Primary copy — de body boven de afbeelding. */}
+      {/* Primary copy - de body boven de afbeelding. */}
       <div>
         <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
           Primary copy
@@ -242,13 +262,13 @@ function VariantCard({
           }}
           variant="multi"
           minRows={3}
-          placeholder="(leeg — klik om primary text te schrijven)"
+          placeholder="(leeg - klik om primary text te schrijven)"
           maxLength={1500}
           disabled={!editable}
         />
       </div>
 
-      {/* Meta dynamic creative pool — alt headlines + alt primary texts.
+      {/* Meta dynamic creative pool - alt headlines + alt primary texts.
           Pedro genereert 2 van elk; Meta roteert ze samen met de
           primary headline / primary copy. Roy 2026-06-10. */}
       <div className="rounded-md border border-border/60 bg-muted/15 p-2.5 space-y-3">
@@ -267,7 +287,7 @@ function VariantCard({
               value={h}
               onSave={(next) => saveAltHeadline(i, next)}
               variant="single"
-              placeholder={`(alt headline ${i + 1} — klik om te bewerken)`}
+              placeholder={`(alt headline ${i + 1} - klik om te bewerken)`}
               maxLength={80}
               allowEmpty
               disabled={!editable}
@@ -287,7 +307,7 @@ function VariantCard({
               onSave={(next) => saveAltPrimary(i, next)}
               variant="multi"
               minRows={2}
-              placeholder={`(alt primary ${i + 1} — klik om te bewerken)`}
+              placeholder={`(alt primary ${i + 1} - klik om te bewerken)`}
               maxLength={1500}
               allowEmpty
               disabled={!editable}
@@ -307,7 +327,7 @@ function VariantCard({
               setLinkDescription(next)
             }}
             variant="single"
-            placeholder="(leeg — optionele korte ondertitel)"
+            placeholder="(leeg - optionele korte ondertitel)"
             maxLength={200}
             allowEmpty
             disabled={!editable}
@@ -316,7 +336,7 @@ function VariantCard({
         </div>
       </div>
 
-      {/* Image generation panel — 3 slots side-by-side per variant.
+      {/* Image generation panel - 3 slots side-by-side per variant.
           Roy 2026-06-09. */}
       <VariantImagePanel
         variantId={variantId}
@@ -330,9 +350,9 @@ function VariantCard({
         Waarom: {variant.why}
       </div>
 
-      {/* Push modal scoped to THIS variant — single ad set with up to
+      {/* Push modal scoped to THIS variant - single ad set with up to
           3 ads (the 3 image slots). Roy 2026-06-10. */}
-      {refreshId && variantId && (
+      {refreshId && variantId && clientId && (
         <PushToMetaModal
           open={pushOpen}
           onClose={() => setPushOpen(false)}
@@ -341,6 +361,7 @@ function VariantCard({
           winnerAdName={variant.adName}
           proposalAngle={proposalAngle}
           variantHeadline={headline}
+          clientId={clientId}
           variants={[
             {
               variantId,
@@ -355,7 +376,7 @@ function VariantCard({
   )
 }
 
-/** Per-proposal card — Roy 2026-06-10: geen Push-to-Meta knop meer op
+/** Per-proposal card - Roy 2026-06-10: geen Push-to-Meta knop meer op
  *  dit niveau. Push gaat nu per variant (eigen ad set, eigen ads), zodat
  *  de CM gericht één invalshoek kan testen ipv altijd alle drie. */
 function ProposalCard({
@@ -380,7 +401,7 @@ function ProposalCard({
           {proposal.basedOnAd.adName}
         </div>
         <div className="text-xs text-muted-foreground mt-0.5">
-          CPL {proposal.basedOnAd.cpl != null ? `€${proposal.basedOnAd.cpl.toFixed(2)}` : "—"}
+          CPL {proposal.basedOnAd.cpl != null ? `€${proposal.basedOnAd.cpl.toFixed(2)}` : "-"}
           {" · "}
           Behoud: {proposal.preserve.hook} / {proposal.preserve.angle} / {proposal.preserve.format}
           {" · "}
@@ -415,13 +436,23 @@ export function CreativeRefresh({ selectedClientId, selectedClientName, autoStar
     <RefreshShell<CreativeProposal>
       endpoint="/api/pedro/creative-refresh"
       title="Creative refresh"
-      description="Pedro leest live Meta performance, vindt winners en stelt 3 iteraties per winner voor — zelfde DNA, frisse executie."
+      description="Kies een campagne en een specifieke ad - Pedro genereert 3 iteraties op die ad in dezelfde DNA. Geen window-confusie meer."
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}
+      customInputs={({ generate, loading, hasOutput }) => (
+        <AdPicker
+          clientId={selectedClientId}
+          loading={loading}
+          hasOutput={hasOutput}
+          onGenerate={async (extra) => {
+            await generate(extra)
+          }}
+        />
+      )}
       renderProposals={(env) => (
         <div className="space-y-4">
-          {/* Image bronnen picker — keuzeproces VOOR de Genereer-klik.
+          {/* Image bronnen picker - keuzeproces VOOR de Genereer-klik.
               Roy 2026-06-10: voorkomt API kosten aan verkeerde Drive
               folders en geeft directe controle over stock content. */}
           <ImageSourcesPicker clientId={selectedClientId} />

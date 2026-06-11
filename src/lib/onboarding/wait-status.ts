@@ -6,20 +6,20 @@ import { createAdminClient } from "@/lib/supabase/server"
 /**
  * Wait-on-client poll for the onboarding wizard's Stap 4.
  *
- * The step is non-blocking from the AM's side — they just watch three
+ * The step is non-blocking from the AM's side - they just watch three
  * client-side actions flip from red to green:
  *
- *   1. Drive content    — client uploaded files into `Content van klant/`
+ *   1. Drive content    - client uploaded files into `Content van klant/`
  *                          subfolder created during auto-setup. Threshold:
  *                          ≥1 file in the subfolder.
- *   2. Meta BM linked   — client connected their Business Manager via the
+ *   2. Meta BM linked   - client connected their Business Manager via the
  *                          Embedded Signup link (Sprint 6) OR completed the
  *                          manual partner-invite flow off the placeholder
  *                          guide page. We detect this as `metaAdAccountId`
- *                          being set on Monday — proxy signal that an AM
+ *                          being set on Monday - proxy signal that an AM
  *                          (or future Embedded Signup callback) confirmed
  *                          the partnership.
- *   3. Payment received — any paid invoice on the linked Stripe customer.
+ *   3. Payment received - any paid invoice on the linked Stripe customer.
  *                          Reuses `fetchOnboardingPaymentStatus`.
  *
  * Stap 4 marks itself done when ALL three are green. The wizard's
@@ -32,7 +32,7 @@ export type WaitStatus = {
     detected: boolean
     fileCount: number
     /** Folder ID we checked. Null when auto-setup hasn't yet captured
-     *  the `Content van klant/` subfolder ID — UI shows "checking…". */
+     *  the `Content van klant/` subfolder ID - UI shows "checking…". */
     folderId: string | null
   }
   metaBmLinked: {
@@ -54,7 +54,7 @@ export async function fetchWaitStatus(args: {
 }): Promise<WaitStatus> {
   const supabase = await createAdminClient()
 
-  // Pull all the inputs in parallel — none of them depend on each other.
+  // Pull all the inputs in parallel - none of them depend on each other.
   const [client, kickoffRow, paymentStatus] = await Promise.all([
     fetchClientById(args.mondayItemId).catch(() => null),
     supabase
@@ -95,7 +95,7 @@ export async function fetchWaitStatus(args: {
       driveFileCount = files.length
       driveDetected = driveFileCount > 0
     } catch (e) {
-      // Drive hiccup — treat as not-yet-detected rather than throwing.
+      // Drive hiccup - treat as not-yet-detected rather than throwing.
       // Next poll will retry; the UI shows the previous value until
       // then via React Query staleness.
       console.error(
@@ -105,12 +105,30 @@ export async function fetchWaitStatus(args: {
     }
   }
 
-  // ── Meta BM linked ──
-  // Placeholder signal until Embedded Signup callback wires the real
-  // detection (Sprint 6). The proxy: metaAdAccountId mirrored to Hub
-  // implies someone confirmed the partnership.
+  // ── Manual klant-action signals (Roy 2026-06-11) ──
+  // Both Drive content and Meta partnership are now AM-confirmed
+  // checkboxes in Stap 1, not auto-detected. Wait-status reads them
+  // from kickoff_live content. "RL ad account" toggle counts as
+  // Meta-done since we're not waiting on klant in that path.
+  const kickoffContent = kickoffRow?.content as
+    | {
+        metaConnected?: { confirmedAt?: string }
+        clientContentUploaded?: { confirmedAt?: string }
+        useRlAdAccount?: boolean
+      }
+    | null
+    | undefined
+  const metaDetected =
+    Boolean(kickoffContent?.metaConnected?.confirmedAt) ||
+    Boolean(kickoffContent?.useRlAdAccount)
   const adAccountId = client?.metaAdAccountId ?? ""
-  const metaDetected = adAccountId.length > 0
+
+  // Override the Drive detection — manual signal trumps the file-count
+  // poll. AM confirmation is the canonical truth; the poll is just a
+  // nudge surface that doesn't gate the wait step anymore.
+  if (kickoffContent?.clientContentUploaded?.confirmedAt) {
+    driveDetected = true
+  }
 
   const allGreen = driveDetected && metaDetected && payment.hasPaid
 

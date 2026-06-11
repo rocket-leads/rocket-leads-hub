@@ -8,11 +8,12 @@ import {
   AlertTriangle,
   Check,
   ExternalLink,
+  ArrowLeft,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
- * PushToMetaModal — batch launch van een proposal naar Meta.
+ * PushToMetaModal - batch launch van een proposal naar Meta.
  *
  * Per variant binnen het proposal: checkbox per slot (A/B/C). Default
  * preselectie = eerste slot dat een image heeft.
@@ -59,6 +60,7 @@ type LaunchResponse = {
   partialFailure?: boolean
   results?: LaunchResult[]
   error?: string
+  errorCode?: string
   /** Roy 2026-06-10: wanneer de winner uit Meta is verdwenen vallen we
    *  terug op de meest-recente bruikbare ad in het account als template
    *  voor de nieuwe ad set. UI banner informeert de CM. */
@@ -70,6 +72,42 @@ type LaunchResponse = {
   } | null
 }
 
+type TemplateCandidate = {
+  adsetId: string
+  adsetName: string
+  campaignId: string
+  campaignName: string
+  campaignIsSelected: boolean
+  spend: number
+  leads: number
+  cpl: number | null
+  adCount: number
+  representativeAd?: {
+    adId: string
+    adName: string
+    pageId: string
+    instagramActorId: string
+    leadGenFormId: string
+    linkUrl: string
+    callToActionType: string
+  }
+  adsManagerUrl: string
+}
+
+type OverrideTemplate = {
+  adsetId: string
+  adsetName: string
+  campaignId: string
+  campaignName: string
+  pageId: string
+  instagramActorId?: string
+  leadGenFormId?: string
+  linkUrl?: string
+  callToActionType?: string
+  templateAdId?: string
+  templateAdName?: string
+}
+
 type Props = {
   open: boolean
   onClose: () => void
@@ -77,7 +115,7 @@ type Props = {
   proposalIndex: number
   winnerAdName: string
   variants: ProposalVariant[]
-  /** Proposal's shared angle (preserve.angle) — fallback voor de
+  /** Proposal's shared angle (preserve.angle) - fallback voor de
    *  default ad-set name als geen headline beschikbaar is. */
   proposalAngle: string
   /** Variant's on-image headline (Meta headline). Roy 2026-06-10:
@@ -85,6 +123,9 @@ type Props = {
    *  generieke angle als default ad set name. CM kan altijd nog
    *  overschrijven in het input veld. */
   variantHeadline?: string
+  /** Monday item id van de klant - nodig om template-candidates op te
+   *  halen wanneer het snapshot-path faalt. Roy 2026-06-11. */
+  clientId: string
 }
 
 const SLOT_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
@@ -98,6 +139,7 @@ export function PushToMetaModal({
   variants,
   proposalAngle,
   variantHeadline,
+  clientId,
 }: Props) {
   const [slotsByVariant, setSlotsByVariant] = useState<Map<string, SlotInfo[]>>(
     new Map(),
@@ -110,7 +152,7 @@ export function PushToMetaModal({
 
   // Editable ad-set config. Default name priority:
   //   1. variant headline (Pedro's on-image text, often the strongest
-  //      summary of what the ad set tests) — Roy 2026-06-10.
+  //      summary of what the ad set tests) - Roy 2026-06-10.
   //   2. proposal.preserve.angle (shared theme across the proposal).
   //   3. Empty NT | placeholder.
   // CM can always overwrite in the input. Trailing punctuation gets
@@ -124,6 +166,15 @@ export function PushToMetaModal({
   const [adsetName, setAdsetName] = useState(defaultAdsetName)
   const [dailyBudgetEuros, setDailyBudgetEuros] = useState<string>("")
 
+  // Template-picker fallback state. Becomes active when push returns
+  // errorCode=no_template (snapshot dead + no usable ad in 90d). User
+  // picks an ad set from the picker → we re-launch with overrideTemplate.
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [candidates, setCandidates] = useState<TemplateCandidate[] | null>(null)
+  const [candidatesLoading, setCandidatesLoading] = useState(false)
+  const [candidatesError, setCandidatesError] = useState<string | null>(null)
+  const [override, setOverride] = useState<OverrideTemplate | null>(null)
+
   // Load slot states for each variant on open.
   useEffect(() => {
     if (!open) return
@@ -131,10 +182,14 @@ export function PushToMetaModal({
     setLoading(true)
     setError(null)
     setLaunchResponse(null)
-    // Reset ad-set inputs each time the modal opens — the proposal /
+    // Reset ad-set inputs each time the modal opens - the proposal /
     // angle can change between opens.
     setAdsetName(defaultAdsetName)
     setDailyBudgetEuros("")
+    setPickerOpen(false)
+    setCandidates(null)
+    setCandidatesError(null)
+    setOverride(null)
 
     const variantIds = variants
       .map((v) => v.variantId)
@@ -192,6 +247,26 @@ export function PushToMetaModal({
   const budgetValid = Number.isFinite(budgetParsed) && budgetParsed >= 1
   const launchReady = adsetNameTrimmed.length > 0 && budgetValid
 
+  const loadCandidates = useCallback(async () => {
+    setCandidatesLoading(true)
+    setCandidatesError(null)
+    try {
+      const res = await fetch(
+        `/api/pedro/template-candidates/${encodeURIComponent(clientId)}?windowDays=90`,
+      )
+      const json = await res.json()
+      if (!res.ok || json.error) {
+        setCandidatesError(json.error || `HTTP ${res.status}`)
+        return
+      }
+      setCandidates((json.candidates ?? []) as TemplateCandidate[])
+    } catch (e) {
+      setCandidatesError(e instanceof Error ? e.message : "Kon kandidaten niet laden")
+    } finally {
+      setCandidatesLoading(false)
+    }
+  }, [clientId])
+
   const launch = useCallback(async () => {
     if (launching || !launchReady) return
     setLaunching(true)
@@ -202,22 +277,29 @@ export function PushToMetaModal({
       for (const [variantId, positions] of selected.entries()) {
         for (const pos of positions) payload.push({ variantId, slotPosition: pos })
       }
+      const body: Record<string, unknown> = {
+        variants: payload,
+        adsetName: adsetNameTrimmed,
+        dailyBudgetEuros: budgetParsed,
+      }
+      if (override) body.overrideTemplate = override
       const res = await fetch(
         `/api/pedro/proposals/${encodeURIComponent(refreshId)}/${proposalIndex}/push-to-meta`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            variants: payload,
-            adsetName: adsetNameTrimmed,
-            dailyBudgetEuros: budgetParsed,
-          }),
+          body: JSON.stringify(body),
         },
       )
       const json: LaunchResponse = await res.json()
       if (!res.ok || json.error) {
         setError(json.error || `HTTP ${res.status}`)
         setLaunchResponse(json)
+        // Auto-open template picker when the failure is missing-template.
+        if (json.errorCode === "no_template" && !override) {
+          setPickerOpen(true)
+          if (!candidates) void loadCandidates()
+        }
         return
       }
       setLaunchResponse(json)
@@ -226,7 +308,38 @@ export function PushToMetaModal({
     } finally {
       setLaunching(false)
     }
-  }, [launching, launchReady, selected, refreshId, proposalIndex, adsetNameTrimmed, budgetParsed])
+  }, [
+    launching,
+    launchReady,
+    selected,
+    refreshId,
+    proposalIndex,
+    adsetNameTrimmed,
+    budgetParsed,
+    override,
+    candidates,
+    loadCandidates,
+  ])
+
+  const pickCandidate = useCallback((c: TemplateCandidate) => {
+    if (!c.representativeAd) return
+    setOverride({
+      adsetId: c.adsetId,
+      adsetName: c.adsetName,
+      campaignId: c.campaignId,
+      campaignName: c.campaignName,
+      pageId: c.representativeAd.pageId,
+      instagramActorId: c.representativeAd.instagramActorId || undefined,
+      leadGenFormId: c.representativeAd.leadGenFormId || undefined,
+      linkUrl: c.representativeAd.linkUrl || undefined,
+      callToActionType: c.representativeAd.callToActionType || undefined,
+      templateAdId: c.representativeAd.adId,
+      templateAdName: c.representativeAd.adName,
+    })
+    setPickerOpen(false)
+    setError(null)
+    setLaunchResponse(null)
+  }, [])
 
   if (!open) return null
 
@@ -243,14 +356,14 @@ export function PushToMetaModal({
               Itereren op {winnerAdName}
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Eén nieuwe ad set (NT — no interest targeting) wordt aangemaakt in
+              Eén nieuwe ad set (NT - no interest targeting) wordt aangemaakt in
               dezelfde campagne, met dezelfde geo / leeftijd / placements als de
               winner.{" "}
               <span className="font-medium text-amber-700 dark:text-amber-400">
                 Status: PAUSED (= concept).
               </span>{" "}
               Niets gaat live, geen euro spend. Verschijnt in Ads Manager onder
-              deze campagne — je controleert + activeert zelf wanneer je klaar
+              deze campagne - je controleert + activeert zelf wanneer je klaar
               bent. Wegklikken / aanpassen in Meta blijft mogelijk.
             </p>
           </div>
@@ -266,15 +379,133 @@ export function PushToMetaModal({
 
         {/* Body */}
         <div className="px-6 py-4 space-y-4">
+          {/* Template-picker view - overlays the rest when active */}
+          {pickerOpen && !launchResponse && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs uppercase tracking-wide font-semibold text-amber-600 dark:text-amber-400">
+                    Kies template ad set
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Snapshot is niet meer bruikbaar. Kies handmatig welke ad set
+                    gekloond moet worden (budget / targeting / placements / page
+                    + IG / lead-form worden hieruit overgenomen). 90d performance
+                    helpt je kiezen.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="inline-flex items-center gap-1 h-8 px-2.5 text-xs rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                  Terug
+                </button>
+              </div>
+
+              {candidatesLoading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Ad sets laden (90 dagen)…
+                </div>
+              )}
+              {candidatesError && (
+                <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+                  {candidatesError}
+                </div>
+              )}
+              {!candidatesLoading && !candidatesError && candidates && candidates.length === 0 && (
+                <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  Geen ad sets gevonden in dit Meta account (laatste 90 dagen).
+                </div>
+              )}
+              {!candidatesLoading && candidates && candidates.length > 0 && (
+                <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
+                  {candidates.map((c) => {
+                    const usable = !!c.representativeAd
+                    return (
+                      <button
+                        key={c.adsetId}
+                        type="button"
+                        onClick={() => pickCandidate(c)}
+                        disabled={!usable}
+                        title={
+                          usable
+                            ? `Kies "${c.adsetName}" als template`
+                            : "Deze ad set heeft geen bruikbare ad (geen page_id of geen link/lead-form)."
+                        }
+                        className={cn(
+                          "w-full text-left rounded-md border p-2.5 transition-colors",
+                          usable
+                            ? "border-border bg-background hover:border-primary/60 hover:bg-primary/5"
+                            : "border-dashed border-border/60 bg-muted/20 cursor-not-allowed opacity-60",
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium truncate">{c.adsetName || "(naamloos)"}</div>
+                            <div className="text-[11px] text-muted-foreground truncate font-mono">
+                              {c.campaignName || c.campaignId}
+                              {c.campaignIsSelected && (
+                                <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded bg-sky-500/10 text-sky-700 dark:text-sky-400 text-[10px]">
+                                  geselecteerd
+                                </span>
+                              )}
+                              {!usable && (
+                                <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px]">
+                                  geen rep-ad
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0 text-[11px]">
+                            <div className="font-mono">
+                              €{c.spend.toFixed(0)} · {c.leads} leads
+                            </div>
+                            <div className="text-muted-foreground font-mono">
+                              CPL {c.cpl !== null ? `€${c.cpl.toFixed(2)}` : "—"} · {c.adCount} ads
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Pre-launch: ad set config + slot picker per variant */}
-          {!launchResponse && (
+          {!pickerOpen && !launchResponse && (
             <>
-              {/* Ad set config — top-level container. Roy 2026-06-10: NT
+              {override && (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-400 flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-medium">Handmatige template-keuze actief</div>
+                      <div className="font-mono">{override.adsetName}</div>
+                      <div className="text-[11px] opacity-80">
+                        {override.campaignName || override.campaignId}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOverride(null)}
+                    className="inline-flex items-center h-7 px-2 text-[11px] rounded-md hover:bg-amber-500/10 transition-colors"
+                  >
+                    Reset
+                  </button>
+                </div>
+              )}
+              {/* Ad set config - top-level container. Roy 2026-06-10: NT
                   ad set with the angle in the name, daily budget editable
                   per launch. */}
               <div className="rounded-lg border border-sky-500/40 bg-sky-500/5 p-3 space-y-3">
                 <div className="text-[10px] uppercase tracking-[0.12em] text-sky-700 dark:text-sky-400 font-semibold">
-                  Ad set (NT — no interest targeting)
+                  Ad set (NT - no interest targeting)
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-2 space-y-1">
@@ -339,7 +570,7 @@ export function PushToMetaModal({
                         key={variant.adName}
                         className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground"
                       >
-                        {variant.label} — geen variantId. Refresh proposals opnieuw.
+                        {variant.label} - geen variantId. Refresh proposals opnieuw.
                       </div>
                     )
                   }
@@ -481,10 +712,24 @@ export function PushToMetaModal({
             </div>
           )}
 
-          {error && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 dark:text-red-400 flex items-start gap-2 whitespace-pre-line">
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-              {error}
+          {error && !pickerOpen && (
+            <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-600 dark:text-red-400 space-y-2">
+              <div className="flex items-start gap-2 whitespace-pre-line">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                {error}
+              </div>
+              {launchResponse?.errorCode === "no_template" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPickerOpen(true)
+                    if (!candidates) void loadCandidates()
+                  }}
+                  className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 hover:bg-amber-500/15 transition-colors"
+                >
+                  Kies handmatig een ad set →
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -505,7 +750,7 @@ export function PushToMetaModal({
             >
               {launchResponse ? "Sluiten" : "Annuleer"}
             </button>
-            {!launchResponse && (
+            {!launchResponse && !pickerOpen && (
               <button
                 type="button"
                 onClick={launch}

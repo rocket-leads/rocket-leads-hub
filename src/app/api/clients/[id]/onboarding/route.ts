@@ -60,6 +60,9 @@ export async function GET(
       stripeCustomerId: client.stripeCustomerId,
       trengoContactId: client.trengoContactId,
       clientBoardId: client.clientBoardId,
+      // Surfaces in the RL-ad-account inline input on Stap 1 so the AM
+      // can fill it without switching to Monday.
+      adBudget: client.adBudget,
     },
   })
 }
@@ -69,7 +72,7 @@ export async function GET(
  *
  * Body: { stepKey: string, done: boolean, content?: unknown }
  *
- * Persists a step's state. `content` is optional — pass it when the step
+ * Persists a step's state. `content` is optional - pass it when the step
  * has rich output (brief JSON, email body); leave it out when just
  * flipping done. Returns the freshly resolved wizard state so the client
  * can render without a second GET.

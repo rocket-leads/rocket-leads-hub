@@ -38,6 +38,10 @@ export type WizardClient = {
   stripeCustomerId: string
   trengoContactId: string
   clientBoardId: string
+  /** Monthly ad budget in EUR (Monday `numeric0` on the onboarding board,
+   *  or the corresponding mapped column on the current board). Surfaced
+   *  in the RL-ad-account inline input on Stap 1. May be "" when unset. */
+  adBudget: string
 }
 
 export type WizardPayload = {
@@ -55,7 +59,7 @@ type Props = {
 }
 
 /**
- * The onboarding wizard's outer chrome — header (client name + progress
+ * The onboarding wizard's outer chrome - header (client name + progress
  * bar + back link), left rail (step list), right pane (active step).
  *
  * Active step is "current step" by default (the lowest-order step that's
@@ -84,7 +88,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
   const data = query.data
   const steps = data?.steps ?? []
 
-  // Active step — defaults to the wizard's current step (resolved server-
+  // Active step - defaults to the wizard's current step (resolved server-
   // side). User clicks in the rail override the default. Reset to the
   // current step when the payload first loads.
   const [activeKey, setActiveKey] = useState<string | null>(null)
@@ -94,7 +98,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
 
   const activeStep = steps.find((s) => s.key === activeKey) ?? steps.find((s) => s.key === data?.currentStepKey) ?? steps[0]
 
-  // Called by step components after they successfully save — refresh the
+  // Called by step components after they successfully save - refresh the
   // wizard payload so the rail flips the step to "done" and current-step
   // resolution rolls forward to the next available step.
   const onStepSaved = (nextStepKey?: string) => {
@@ -104,7 +108,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
 
   return (
     <div className="space-y-4">
-      {/* Header — back link + name + progress */}
+      {/* Header - back link + name + progress */}
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
           <Link
@@ -156,7 +160,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
         </div>
       )}
 
-      {/* Wizard body — rail + active step */}
+      {/* Wizard body - rail + active step */}
       {data && (
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
           {/* Left rail */}
@@ -175,7 +179,7 @@ export function WizardShell({ mondayItemId, clientName, locale: serverLocale }: 
             ))}
           </nav>
 
-          {/* Right pane — active step's action UI */}
+          {/* Right pane - active step's action UI */}
           <div className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] overflow-hidden">
             {activeStep ? (
               <StepRenderer

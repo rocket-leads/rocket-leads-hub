@@ -8,16 +8,16 @@ import { syncClientToSupabase } from "@/lib/clients/sync"
  * three things have to be in place so they can share + reference them
  * live in the meeting:
  *
- *   1. Drive folder    — root + subfolder tree under the RL Clients
+ *   1. Drive folder    - root + subfolder tree under the RL Clients
  *                         shared drive (parent ID via env), service
  *                         account is already Editor at the shared-drive
  *                         level. Drive folder ID also gets mirrored to
  *                         Monday so the existing Hub Drive picker stays
  *                         in sync.
- *   2. Meta BM URL     — Embedded Signup link. Placeholder until App
+ *   2. Meta BM URL     - Embedded Signup link. Placeholder until App
  *                         Review approval; today returns a Hub-hosted
  *                         guide page so the AM has *something* to share.
- *   3. Stripe link     — payment link for the first invoice. TODO:
+ *   3. Stripe link     - payment link for the first invoice. TODO:
  *                         hook into the existing Stripe invoice helpers;
  *                         placeholder until Sprint 2.
  *
@@ -85,7 +85,7 @@ export async function runAutoSetup(args: {
   let reused = false
 
   if (client.googleDriveId) {
-    // Already wired — trust that the subfolder structure exists. Don't
+    // Already wired - trust that the subfolder structure exists. Don't
     // re-create or we'd risk duplicating subfolders inside the existing
     // tree. The wizard can show a "Recreate subfolders" override later
     // if the AM truly needs that.
@@ -101,7 +101,7 @@ export async function runAutoSetup(args: {
     const folderName = `${client.companyName || client.name} · ${args.mondayItemId.slice(0, 6)}`
     rootFolder = await createFolder({ parentId, name: folderName })
 
-    // Create subfolders sequentially — Drive's API rate limit handles
+    // Create subfolders sequentially - Drive's API rate limit handles
     // this fine for 7 calls, and sequential makes the error path
     // simpler (if subfolder 4 fails we know the first 3 are real).
     const created: Partial<Record<ClientDriveFolderKey, { id: string; url: string }>> = {}
@@ -115,12 +115,12 @@ export async function runAutoSetup(args: {
     subfolders = created as Record<ClientDriveFolderKey, { id: string; url: string }>
 
     // Mirror the root folder ID back to Monday so the existing Hub Drive
-    // picker on the client detail page picks it up. Best-effort — Monday
+    // picker on the client detail page picks it up. Best-effort - Monday
     // hiccup shouldn't fail the whole setup; the AM can paste manually if
     // it's a transient error.
     try {
       await setItemColumnValue(client.boardType, args.mondayItemId, "google_drive_id", rootFolder.id)
-      // Resync so Supabase mirror picks up the new ID immediately —
+      // Resync so Supabase mirror picks up the new ID immediately -
       // otherwise the next page render still shows it empty until the
       // cron rolls around.
       await syncClientToSupabase({ ...client, googleDriveId: rootFolder.id })
@@ -133,13 +133,15 @@ export async function runAutoSetup(args: {
   }
 
   // ── 2. Meta BM connect URL ──
-  // Placeholder until App Review for Embedded Signup is approved. Today
-  // returns a Hub-hosted guide page that walks the client through
-  // creating/finding their BM + the partner-invite flow manually.
-  // Sprint 6 swap-in: replace with the real Meta Embedded Signup URL.
-  const metaBmConnectUrl = buildMetaBmPlaceholderUrl(args.mondayItemId)
+  // Fixed external explainer page (Roy 2026-06-11). Same URL for every
+  // client — AM shares this with the client and ticks the "Meta
+  // connected" checkbox in Stap 1 manually once the client confirms.
+  // Embedded Signup remains the eventual swap-in (see vision doc) but
+  // for now we don't want per-client URLs or auto-detection — keeps the
+  // wizard rustig.
+  const metaBmConnectUrl = "https://info.rocketleads.com/explanation-meta"
 
-  // No Stripe link — payment is a precondition for the kick-off itself
+  // No Stripe link - payment is a precondition for the kick-off itself
   // (per knowledge/process.md), not something we ask the client to
   // resolve during the call. The wizard surfaces payment-status (paid
   // yes/no) separately via /api/clients/[id]/onboarding/payment-status,
@@ -157,19 +159,9 @@ export async function runAutoSetup(args: {
 }
 
 /**
- * Returns a placeholder Meta BM URL pointing to a Hub-hosted guide page.
- * The page itself doesn't exist yet — Sprint 6 builds both the Embedded
- * Signup integration AND replaces this URL with the real one.
- */
-function buildMetaBmPlaceholderUrl(mondayItemId: string): string {
-  const base = process.env.HUB_BASE_URL ?? "https://hub.rocketleads.com"
-  return `${base}/onboard/meta/${mondayItemId}`
-}
-
-/**
  * When auto-setup reuses an already-created root folder, we don't know
  * the subfolder IDs without listing the folder. Returning empty for now
- * is safe — the wizard's Stap 4 / Stap 1 share paths that need subfolder
+ * is safe - the wizard's Stap 4 / Stap 1 share paths that need subfolder
  * IDs gracefully fall back to "no subfolder, write to root".
  *
  * TODO: list the children of the root folder + match by name against

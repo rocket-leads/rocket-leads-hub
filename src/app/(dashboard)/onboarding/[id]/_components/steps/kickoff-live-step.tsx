@@ -100,18 +100,35 @@ type KickoffContent = {
   autoSetup?: AutoSetupResult
   briefDraft?: BriefDraft
   brandStyle?: BrandFingerprint
-  /** Top-N scored swatches from the website analyzer — kept around so
+  /** Top-N scored swatches from the website analyzer - kept around so
    *  the AM can re-pick after the call without re-running the scrape. */
   brandSwatches?: ExtractedColor[]
+  /** Manual confirmation that the klant has added RL as partner in their
+   *  Meta Business Manager. AM ticks this when the klant says they did
+   *  the connect via the fixed info.rocketleads.com/explanation-meta
+   *  guide link. Replaces the previous metaAdAccountId-proxy detection
+   *  in Stap 4 (Roy 2026-06-11). */
+  metaConnected?: { confirmedAt: string; confirmedBy: string }
+  /** Manual confirmation that the klant uploaded brand content into the
+   *  shared Drive folder. AM-driven signal (no more Drive file-count
+   *  polling for the wait-on-client signal). */
+  clientContentUploaded?: { confirmedAt: string; confirmedBy: string }
+  /** When true, we drive the campaign on Rocket Leads' own ad account
+   *  ("Clients Rocket Leads") instead of asking the klant to add us as
+   *  partner. Flipping this on auto-fills `meta_ad_account_id` on
+   *  Monday with the RL_OWN_AD_ACCOUNT_ID env var and signals that ad
+   *  budget gets invoiced to the client by RL (instead of klant paying
+   *  Meta directly). See process.md §"Onboarding Roadblocks" #3. */
+  useRlAdAccount?: boolean
   recapSentAt?: string
 }
 
 /**
- * Stap 1 — Live kick-off tool. AM opens this *during* the kick-off call.
+ * Stap 1 - Live kick-off tool. AM opens this *during* the kick-off call.
  *
  * On first mount, auto-setup creates the Drive folder tree + generates
  * the Meta BM connect URL placeholder. Two resources surface to share
- * with the client (Drive folder + Meta BM connect link) — Stripe payment
+ * with the client (Drive folder + Meta BM connect link) - Stripe payment
  * is intentionally NOT a resource here because payment is a precondition
  * for the kick-off per process.md; we just show paid-yes/no based on the
  * linked Stripe customer ID.
@@ -177,6 +194,65 @@ export function KickoffLiveStep({
   }))
   const [briefDirty, setBriefDirty] = useState(false)
 
+  // ── Manual resource toggles ──
+  // Two AM-confirmed signals replace auto-detection on Drive + Meta.
+  // Wait-status reads both from this step's content. Single mutation
+  // shape — pass which field flips and the desired value.
+  const driveContentUploaded = Boolean(content.clientContentUploaded?.confirmedAt)
+  const metaConnected = Boolean(content.metaConnected?.confirmedAt)
+  const useRlAdAccount = Boolean(content.useRlAdAccount)
+
+  const toggleResource = useMutation({
+    mutationFn: async (vars: {
+      key: "clientContentUploaded" | "metaConnected" | "useRlAdAccount"
+      next: boolean
+    }) => {
+      // Build the new content blob — handles each toggle's own shape.
+      const patch: Partial<KickoffContent> = {}
+      if (vars.key === "useRlAdAccount") {
+        patch.useRlAdAccount = vars.next
+      } else {
+        patch[vars.key] = vars.next
+          ? { confirmedAt: new Date().toISOString(), confirmedBy: "" }
+          : undefined
+      }
+      const res = await fetch(`/api/clients/${mondayItemId}/onboarding`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stepKey: step.key,
+          done: false,
+          content: { ...content, ...patch },
+        }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error ?? "Toggle failed")
+      }
+
+      // Side-effect: when "we draaien op RL ad account" toggles ON,
+      // auto-fill metaAdAccountId on Monday with the RL ad account ID
+      // from env. Best-effort — UI shows an error toast on failure
+      // but the wizard state stays consistent (toggle reverts if the
+      // PATCH below throws). Untoggling does NOT clear the field
+      // because the AM may have already pasted a different ID.
+      if (vars.key === "useRlAdAccount" && vars.next) {
+        await fetch(`/api/clients/${mondayItemId}/onboarding/rl-ad-account`, {
+          method: "POST",
+        }).catch(() => undefined)
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onboarding-wizard", mondayItemId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["onboarding-wait-status", mondayItemId],
+      })
+    },
+  })
+
   // ── Brand fingerprint (captured live; primary/secondary/accent
   // hexes are AM-editable so the website scrape doesn't lock anyone
   // in if it mis-picks). ──
@@ -228,7 +304,7 @@ export function KickoffLiveStep({
     },
   })
 
-  // Debounced persist for both brief edits AND brand-style edits — same
+  // Debounced persist for both brief edits AND brand-style edits - same
   // step content blob, so we batch them through one timer. Reads the
   // freshest local state each fire because `content` may be stale.
   useEffect(() => {
@@ -311,7 +387,7 @@ export function KickoffLiveStep({
         </div>
       )}
 
-      {/* Hub connections — typeahead pickers writing straight to Monday */}
+      {/* Hub connections - typeahead pickers writing straight to Monday */}
       <section className="rounded-xl border border-border/60 bg-card/50 p-4">
         <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-primary" />
@@ -353,29 +429,83 @@ export function KickoffLiveStep({
         </div>
       </section>
 
-      {/* Resources — share with client (Drive + Meta BM only) */}
+      {/* Klant-acties — checkbox per item. AM tickt zodra de klant
+          de actie bevestigd heeft (Roy 2026-06-11). Stap 4 wait-on-
+          client leest deze signalen i.p.v. auto-detectie. */}
       <section className="rounded-xl border border-border/60 bg-card/50 p-4">
         <h3 className="text-sm font-semibold mb-3">
           {t("onboarding.wizard.kickoff.resources.title", locale)}
         </h3>
         <div className="space-y-2">
-          <ResourceRow
-            icon={Folder}
-            label={t("onboarding.wizard.kickoff.resource.drive", locale)}
+          <CheckboxResourceRow
+            label={t("onboarding.wizard.kickoff.resource.drive.checkbox", locale)}
             url={autoSetup?.drive.rootFolderUrl ?? null}
+            urlLabel={t("onboarding.wizard.kickoff.resource.drive.open", locale)}
+            checked={driveContentUploaded}
+            onToggle={(v) =>
+              toggleResource.mutate({ key: "clientContentUploaded", next: v })
+            }
+            pending={
+              toggleResource.isPending &&
+              toggleResource.variables?.key === "clientContentUploaded"
+            }
             disabled={!autoSetup}
           />
-          <ResourceRow
-            icon={Megaphone}
-            label={t("onboarding.wizard.kickoff.resource.meta_bm", locale)}
+          <CheckboxResourceRow
+            label={t("onboarding.wizard.kickoff.resource.meta_bm.checkbox", locale)}
             url={autoSetup?.metaBmConnectUrl ?? null}
-            disabled={!autoSetup}
-            hint={t("onboarding.wizard.kickoff.resource.meta_bm.hint", locale)}
+            urlLabel={t("onboarding.wizard.kickoff.resource.meta_bm.open", locale)}
+            checked={metaConnected}
+            onToggle={(v) =>
+              toggleResource.mutate({ key: "metaConnected", next: v })
+            }
+            pending={
+              toggleResource.isPending &&
+              toggleResource.variables?.key === "metaConnected"
+            }
+            disabled={!autoSetup || useRlAdAccount}
           />
+          {/* RL ad-account toggle — when ticked the Meta-connect row
+              above becomes irrelevant (we don't need the klant's BM),
+              and Hub auto-fills meta_ad_account_id with the RL account
+              + flips Monday status to "Rocket Leads". */}
+          <label className="flex items-start gap-3 text-xs pl-3 pt-2 mt-1 border-t border-border/30 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={useRlAdAccount}
+              disabled={toggleResource.isPending}
+              onChange={(e) =>
+                toggleResource.mutate({ key: "useRlAdAccount", next: e.target.checked })
+              }
+              className="h-4 w-4 rounded border-input accent-primary mt-0.5"
+            />
+            <div className="flex-1">
+              <div className={cn("font-medium", useRlAdAccount ? "text-foreground" : "text-muted-foreground")}>
+                {t("onboarding.wizard.kickoff.rl_ad_account.label", locale)}
+              </div>
+              <div className="text-[11px] text-muted-foreground/80 mt-0.5">
+                {t("onboarding.wizard.kickoff.rl_ad_account.hint", locale)}
+              </div>
+            </div>
+          </label>
+
+          {/* Ad-budget inline input — only shown when RL ad-account is
+              on, since that's the path where Hub needs to know the
+              budget to invoice through. Writes through to Monday's
+              `ad_budget` field (mapped to numeric0 on onboarding board)
+              via the standard updateClientField path. */}
+          {useRlAdAccount && (
+            <AdBudgetInput
+              mondayItemId={mondayItemId}
+              initialValue={client.adBudget}
+              locale={locale}
+              queryClient={queryClient}
+            />
+          )}
         </div>
       </section>
 
-      {/* Live status — payment indicator (polled) */}
+      {/* Live status - payment indicator (polled) */}
       <section className="rounded-xl border border-border/60 bg-card/50 p-4">
         <h3 className="text-sm font-semibold mb-3">
           {t("onboarding.wizard.kickoff.status.title", locale)}
@@ -388,7 +518,7 @@ export function KickoffLiveStep({
         />
       </section>
 
-      {/* Brief template — fill live during the call */}
+      {/* Brief template - fill live during the call */}
       <section className="rounded-xl border border-border/60 bg-card/50 p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold">
@@ -478,7 +608,7 @@ export function KickoffLiveStep({
         </Field>
       </section>
 
-      {/* Brand identity — pulled from the website URL above. Pedro
+      {/* Brand identity - pulled from the website URL above. Pedro
           pre-fills its `brand_style` from this so the CM never has to
           re-extract colors. Hex codes are AM-editable. */}
       <BrandIdentitySection
@@ -576,6 +706,184 @@ function PaymentStatusRow({
   )
 }
 
+/**
+ * Checkbox-driven resource card. The checkbox IS the primary state
+ * affordance — left edge, large enough to read at a glance. Right edge
+ * carries a Copy + Open-link pair so the AM can share the URL with
+ * the klant without disturbing the checked state. Roy 2026-06-11
+ * UX direction: "het hele item zou een checkbox moeten zijn".
+ */
+function CheckboxResourceRow({
+  label,
+  url,
+  urlLabel,
+  checked,
+  onToggle,
+  pending,
+  disabled,
+}: {
+  label: string
+  url: string | null
+  urlLabel: string
+  checked: boolean
+  onToggle: (next: boolean) => void
+  pending: boolean
+  disabled: boolean
+}) {
+  const [copied, setCopied] = useState(false)
+  const copy = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!url) return
+    await navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+        checked
+          ? "border-emerald-500/30 bg-emerald-500/5"
+          : "border-border/60 bg-card/30 hover:bg-muted/30",
+        disabled && "opacity-50 pointer-events-none",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => onToggle(!checked)}
+        disabled={disabled || pending}
+        className="shrink-0 h-5 w-5 rounded-md border-2 flex items-center justify-center transition-colors"
+        style={{
+          borderColor: checked ? "rgb(16 185 129)" : "rgb(148 163 184 / 0.5)",
+          background: checked ? "rgb(16 185 129)" : "transparent",
+        }}
+        aria-label={checked ? "Uncheck" : "Check"}
+      >
+        {pending ? (
+          <Loader2 className="h-3 w-3 animate-spin text-white" />
+        ) : checked ? (
+          <Check className="h-3 w-3 text-white" />
+        ) : null}
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className={cn("text-sm font-medium", checked && "text-emerald-700 dark:text-emerald-400")}>
+          {label}
+        </div>
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-[11px] text-muted-foreground hover:text-primary truncate block transition-colors"
+          >
+            {urlLabel}
+          </a>
+        )}
+      </div>
+      {url && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={copy}
+          disabled={disabled}
+          className="h-7 w-7 p-0 shrink-0"
+          title="Copy link"
+        >
+          {copied ? (
+            <Check className="h-3 w-3 text-emerald-500" />
+          ) : (
+            <Copy className="h-3 w-3" />
+          )}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Inline EUR-per-month input bound to Monday's `ad_budget` field. Only
+ * mounts when RL ad-account toggle is on — that's when Hub is going to
+ * invoice the budget through, so the amount has to be set before the
+ * AM can hand off to finance. Saves on blur (no per-keystroke server
+ * round-trip).
+ */
+function AdBudgetInput({
+  mondayItemId,
+  initialValue,
+  locale,
+  queryClient,
+}: {
+  mondayItemId: string
+  initialValue: string
+  locale: Locale
+  queryClient: ReturnType<typeof useQueryClient>
+}) {
+  const [value, setValue] = useState(initialValue ?? "")
+  const [saved, setSaved] = useState(false)
+
+  const save = useMutation({
+    mutationFn: async (next: string) => {
+      const res = await fetch(`/api/clients/${mondayItemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fieldKey: "ad_budget", value: next }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error ?? "Ad budget save failed")
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      setSaved(true)
+      setTimeout(() => setSaved(false), 1500)
+      queryClient.invalidateQueries({
+        queryKey: ["onboarding-wizard", mondayItemId],
+      })
+    },
+  })
+
+  const handleBlur = () => {
+    const trimmed = value.trim()
+    if (trimmed === (initialValue ?? "").trim()) return
+    save.mutate(trimmed)
+  }
+
+  return (
+    <div className="pl-7 pt-2">
+      <label className="block text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1">
+        {t("onboarding.wizard.kickoff.ad_budget.label", locale)}
+      </label>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">€</span>
+        <Input
+          type="number"
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={handleBlur}
+          placeholder="1500"
+          className="h-8 max-w-[140px]"
+        />
+        <span className="text-xs text-muted-foreground">
+          {t("onboarding.wizard.kickoff.ad_budget.per_month", locale)}
+        </span>
+        {save.isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        {saved && !save.isPending && <Check className="h-3 w-3 text-emerald-500" />}
+      </div>
+      {save.isError && (
+        <div className="mt-1 text-[11px] text-destructive">
+          {save.error instanceof Error ? save.error.message : "Save failed"}
+        </div>
+      )}
+      <p className="mt-1 text-[10px] text-muted-foreground/70">
+        {t("onboarding.wizard.kickoff.ad_budget.hint", locale)}
+      </p>
+    </div>
+  )
+}
+
 function ResourceRow({
   icon: Icon,
   label,
@@ -601,7 +909,7 @@ function ResourceRow({
       <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="font-medium">{label}</div>
-        <div className="text-muted-foreground truncate">{url ?? hint ?? "—"}</div>
+        <div className="text-muted-foreground truncate">{url ?? hint ?? "-"}</div>
       </div>
       <Button
         size="sm"
@@ -622,7 +930,7 @@ function ResourceRow({
 }
 
 /**
- * Brand identity — lives in its own section so the AM can do the
+ * Brand identity - lives in its own section so the AM can do the
  * website fingerprint as a discrete step after typing the URL above.
  * Empty state: just the Analyze button + hint. Loaded state: three
  * editable hex inputs (primary / secondary / accent) with live color
@@ -726,7 +1034,7 @@ function BrandIdentitySection({
             })}
           </div>
 
-          {/* Display-only font picks. We don't let the AM override here —
+          {/* Display-only font picks. We don't let the AM override here -
               if the picked font is wrong, the CM tunes it in Pedro. */}
           {(brandStyle.headingFont || brandStyle.bodyFont) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-muted-foreground">
@@ -749,7 +1057,7 @@ function BrandIdentitySection({
             </div>
           )}
 
-          {/* Quick-pick swatches — top extracted colors with origin tags.
+          {/* Quick-pick swatches - top extracted colors with origin tags.
               Click sets primary, shift-click sets secondary. Same UX as
               Pedro's brand swatches so the muscle memory transfers. */}
           {swatches.length > 0 && (
