@@ -34,6 +34,70 @@ export type LpPromptArgs = {
   steering?: string
 }
 
+export type LpOptimizeArgs = {
+  brief: BriefData
+  selectedAngles: Angle[]
+  anglesStr: string
+  huisstijl?: string
+  /** Cleaned-up text content of the existing LP (homepage scrape). */
+  currentLpText: string
+  /** The actual URL the CM pasted - quoted in the prompt so Pedro
+   *  can reference it. */
+  currentLpUrl: string
+  /** Free-text "what should change" from the CM. Required for this mode. */
+  steering: string
+  pixelId?: string
+  webhookUrl?: string
+  utmStr?: string
+}
+
+/**
+ * Stage 5b: Lovable LP optimization prompt.
+ *
+ * Different from `buildLpPrompt`: instead of building from a brief, this
+ * one takes the EXISTING live LP as the starting point and asks Pedro
+ * to generate a Lovable prompt that recreates the page with the CM's
+ * requested changes baked in. Use this whenever a client already has a
+ * live LP — the brief is still passed for tone/ICP continuity, but the
+ * existing page is the structural anchor.
+ */
+export function buildLpOptimizePrompt(args: LpOptimizeArgs): string {
+  const { brief } = args
+  const pixel = args.pixelId || "niet opgegeven"
+  const webhook = args.webhookUrl || "niet opgegeven"
+  const utm = args.utmStr || "utm_source=meta&utm_medium=paid"
+  const angleNames = args.selectedAngles.map((a) => a.titel).join(", ") || "n.v.t."
+
+  return `Jij bent Pedro bij Rocket Leads. Genereer een volledige Lovable prompt die de HUIDIGE landingspagina van de klant nabouwt met de gevraagde aanpassingen.
+${args.huisstijl ?? ""}
+
+Client: ${brief.bedrijf} (${brief.sector})
+Doelgroep: ${brief.doel}
+Aanbod: ${brief.aanbod}
+USP's: ${brief.usps}
+${args.selectedAngles.length ? `Geselecteerde angles (${angleNames}):\n${args.anglesStr}\n` : ""}
+HUIDIGE LANDINGSPAGINA — ${args.currentLpUrl}
+Hieronder een uitgelezen tekst van de huidige live LP. Gebruik dit als structurele basis (hero, secties, copy-richting, CTA-positionering). Behoud wat werkt, los op wat de CM aangeeft te willen veranderen.
+---
+${args.currentLpText}
+---
+
+WAT DE CM WIL VERBETEREN (laat dit ZWAAR wegen):
+${args.steering}
+
+Technisch:
+- Meta Pixel ID: ${pixel} - fbq('init') + fbq('track','PageView') + fbq('track','Lead') on submit
+- Zapier webhook: ${webhook} - form POST naar deze URL met form-velden + UTM params uit URL
+- UTM: ${utm}
+
+INSTRUCTIES:
+1. Begin met "Recreate the landing page at ${args.currentLpUrl}" als anker.
+2. Spec hero / pijnpunten / aanbod+USP's / social proof / leadformulier zoals nu, OF zoals de CM vraagt te veranderen.
+3. Bewaar conversie-elementen die op de huidige pagina staan (bv. specifieke trust badges, getallen, garantie-vermelding) tenzij de CM expliciet vraagt om weg te halen.
+4. Bouw de gevraagde aanpassingen ONLY in - niet ongevraagd nieuwe secties bij verzinnen.
+5. Houd het visueel in lijn met de brand-style (zie huisstijl boven).${GENERATION_RULES}`
+}
+
 export function buildLpPrompt(args: LpPromptArgs): string {
   const { brief } = args
   const pixel = args.pixelId || "niet opgegeven"
