@@ -6,18 +6,18 @@ import type { Locale } from "./types"
  *
  * Conventions:
  *   - Keys are dot-namespaced by surface (`nav.home`, `home.greeting`).
- *   - Both locales are mandatory — TypeScript enforces it via the
+ *   - Both locales are mandatory - TypeScript enforces it via the
  *     `Record<Locale, ...>` shape on every leaf.
  *   - When a string is the same in both locales (a brand term, a number,
  *     a punctuation-only string), still write it twice. Don't try to be
- *     clever with fallback chains — clever fallbacks become the bug
+ *     clever with fallback chains - clever fallbacks become the bug
  *     surface when "English" silently means "I forgot to translate".
  *   - Placeholders use `{name}` syntax. Resolved by passing
  *     `t("home.greeting", locale, { name: "Roy" })`.
  *
  * This file is intentionally a single big record so adding a string is
  * one edit. If it grows past a few thousand entries we can split per-
- * surface — but flat is simpler until then.
+ * surface - but flat is simpler until then.
  */
 
 type LocalizedString = Record<Locale, string>
@@ -68,12 +68,12 @@ export const DICTIONARY = {
   "locale.dutch": { nl: "Nederlands", en: "Dutch" },
   "locale.english": { nl: "Engels", en: "English" },
 
-  // ─── Home page (the "Today" landing — what needs your attention now) ──
+  // ─── Home page (the "Today" landing - what needs your attention now) ──
   "home.greeting.morning": { nl: "Goedemorgen, {name}", en: "Good morning, {name}" },
   "home.subtitle": { nl: "Hier is wat vandaag aandacht nodig heeft.", en: "Here's what needs your attention today." },
   "home.updated_prefix": { nl: "Bijgewerkt {ago}", en: "Updated {ago}" },
 
-  // Today's meetings block — surfaces Fathom calls happening today.
+  // Today's meetings block - surfaces Fathom calls happening today.
   "home.block.meetings.title": { nl: "Vandaag's meetings", en: "Today's Meetings" },
   "home.block.meetings.empty": { nl: "Geen meetings vandaag.", en: "No meetings today." },
   "home.block.meetings.cta": { nl: "Open Meetings", en: "Open Meetings" },
@@ -98,10 +98,10 @@ export const DICTIONARY = {
   "home.kpi.mrr.live_many": { nl: "{n} klanten deze maand", en: "{n} clients this month" },
 
   "home.block.action.title": { nl: "Actie nodig", en: "Action Needed" },
-  "home.block.action.empty": { nl: "Niks urgents — top of watch list ↓", en: "Nothing urgent — top of watch list ↓" },
+  "home.block.action.empty": { nl: "Niks urgents - top of watch list ↓", en: "Nothing urgent - top of watch list ↓" },
   "home.block.action.cta": { nl: "Open Watch List", en: "Open Watch List" },
   "home.block.inbox.title": { nl: "Inbox voor jou", en: "Your Inbox" },
-  "home.block.inbox.empty": { nl: "Inbox zero — niks toegewezen.", en: "Inbox zero — nothing assigned." },
+  "home.block.inbox.empty": { nl: "Inbox zero - niks toegewezen.", en: "Inbox zero - nothing assigned." },
   "home.block.inbox.cta": { nl: "Open Inbox", en: "Open Inbox" },
   "home.block.billing.title": { nl: "Openstaande facturen", en: "Open Invoices" },
   "home.block.billing.total_open": { nl: "Totaal open", en: "Total Open" },
@@ -122,8 +122,8 @@ export const DICTIONARY = {
 
   // Summary pills + filter
   "watchlist.pill.action": { nl: "Actie", en: "Action" },
-  "watchlist.pill.watch": { nl: "Watch", en: "Watch" },
-  "watchlist.pill.good": { nl: "Goed", en: "Good" },
+  "watchlist.pill.watch": { nl: "Watchlist", en: "Watchlist" },
+  "watchlist.pill.good": { nl: "Gezond", en: "Healthy" },
   "watchlist.pill.no_data": { nl: "Geen data", en: "No data" },
   "watchlist.filter.cm_label": { nl: "Campaign Manager", en: "Campaign Manager" },
   "watchlist.filter.all_cms": { nl: "Alle Campaign Managers", en: "All Campaign Managers" },
@@ -145,14 +145,17 @@ export const DICTIONARY = {
 
   // Insights + Proposals panel
   "watchlist.insights.title": { nl: "Belangrijkste inzichten", en: "Key Insights" },
-  "watchlist.insights.empty": { nl: "Nog geen patronen — wacht op de volgende sync.", en: "No notable patterns yet — wait for the next sync." },
+  "watchlist.insights.empty": { nl: "Nog geen patronen - wacht op de volgende sync.", en: "No notable patterns yet - wait for the next sync." },
   "watchlist.proposals.title": { nl: "Optimalisatievoorstellen", en: "Optimisation Proposal" },
-  "watchlist.proposals.empty": { nl: "Nog geen voorstellen — wacht op de volgende sync.", en: "No proposals yet — wait for the next sync." },
+  "watchlist.proposals.empty": { nl: "Nog geen voorstellen - wacht op de volgende sync.", en: "No proposals yet - wait for the next sync." },
 
-  // Section headers
+  // Section headers - "Healthy" + "Watchlist" are the canonical bucket
+  // names after the inbox-zero workflow rename (2026-06-11). Action Needed
+  // becomes the daily inbox; Watchlist holds organic concerns + in-review
+  // actions; Healthy is everything else.
   "watchlist.section.action": { nl: "Actie nodig", en: "Action Needed" },
-  "watchlist.section.watch": { nl: "Watch List", en: "Watch List" },
-  "watchlist.section.good": { nl: "Goede performance", en: "Good Performance" },
+  "watchlist.section.watch": { nl: "Watchlist", en: "Watchlist" },
+  "watchlist.section.good": { nl: "Gezond", en: "Healthy" },
 
   // Column headers
   "watchlist.col.client": { nl: "Klant", en: "Client" },
@@ -167,7 +170,7 @@ export const DICTIONARY = {
   "watchlist.col.move": { nl: "Verplaats", en: "Move" },
   "watchlist.col.ads_manager": { nl: "Ads Manager", en: "Ads Manager" },
 
-  // Move (override) — manually moves a client between Action / Watch / Good
+  // Move (override) - manually moves a client between Action / Watch / Good
   "watchlist.move.tooltip": { nl: "Verplaats deze klant naar een andere bucket", en: "Move this client to a different bucket" },
   "watchlist.move.tooltip_overridden": { nl: "Override actief · nog {days}d. Klik om aan te passen of te wissen.", en: "Override active · {days}d left. Click to adjust or clear." },
   "watchlist.move.dialog_title": { nl: "Verplaats klant", en: "Move client" },
@@ -177,8 +180,8 @@ export const DICTIONARY = {
   "watchlist.move.target_watch": { nl: "Watch", en: "Watch" },
   "watchlist.move.target_good": { nl: "Good Performance", en: "Good Performance" },
   "watchlist.move.reason_label": { nl: "Waarom hoort deze klant daar?", en: "Why does this client belong there?" },
-  "watchlist.move.reason_placeholder": { nl: "Bv. CPL spike was eenmalig na creative refresh — leadkwaliteit is goed", en: "E.g. CPL spike was a one-off after creative refresh — lead quality is good" },
-  "watchlist.move.reason_required": { nl: "Reden is verplicht — dit is de feedback waar het algoritme van leert.", en: "Reason is required — this is the feedback the algorithm learns from." },
+  "watchlist.move.reason_placeholder": { nl: "Bv. CPL spike was eenmalig na creative refresh - leadkwaliteit is goed", en: "E.g. CPL spike was a one-off after creative refresh - lead quality is good" },
+  "watchlist.move.reason_required": { nl: "Reden is verplicht - dit is de feedback waar het algoritme van leert.", en: "Reason is required - this is the feedback the algorithm learns from." },
   "watchlist.move.submit": { nl: "Verplaatsen", en: "Move" },
   "watchlist.move.submit_saving": { nl: "Verplaatsen…", en: "Moving…" },
   "watchlist.move.clear": { nl: "Override wissen", en: "Clear override" },
@@ -198,7 +201,7 @@ export const DICTIONARY = {
   "watchlist.row.open_ads_manager": { nl: "Open Meta Ads Manager (⌘/Ctrl-klik voor achtergrond-tab)", en: "Open Meta Ads Manager (⌘/Ctrl-click for background tab)" },
   "watchlist.row.create_task_tooltip": { nl: "Maak direct een taak aan voor {cm} (de campaign manager van deze klant)", en: "Create a task assigned to {cm} (this client's campaign manager) in one click" },
   "watchlist.row.create_task_no_cm_tooltip": { nl: "Geen campaign manager ingesteld voor deze klant", en: "No campaign manager set for this client" },
-  "watchlist.row.create_task_title": { nl: "Watch List: {client} — actie nodig", en: "Watch List: {client} — action needed" },
+  "watchlist.row.create_task_title": { nl: "Watch List: {client} - actie nodig", en: "Watch List: {client} - action needed" },
   "watchlist.row.create_task_saving": { nl: "Aanmaken…", en: "Creating…" },
   "watchlist.row.create_task_done": { nl: "Toegewezen aan {cm}", en: "Assigned to {cm}" },
   "watchlist.row.create_task_failed": { nl: "Mislukt", en: "Failed" },
@@ -207,7 +210,7 @@ export const DICTIONARY = {
   // Create-task edit dialog (opens when Roy clicks the row's Taak chip)
   "watchlist.task_dialog.title": { nl: "Taak aanmaken", en: "Create task" },
   "watchlist.task_dialog.subtitle_with_cm": { nl: "Wordt toegewezen aan {cm}", en: "Will be assigned to {cm}" },
-  "watchlist.task_dialog.subtitle_no_cm": { nl: "Geen campaign manager — taak kan nog niet aangemaakt worden", en: "No campaign manager — task can't be created yet" },
+  "watchlist.task_dialog.subtitle_no_cm": { nl: "Geen campaign manager - taak kan nog niet aangemaakt worden", en: "No campaign manager - task can't be created yet" },
   "watchlist.task_dialog.ai_drafting": { nl: "Pedro stelt een concept op…", en: "Pedro is drafting…" },
   "watchlist.task_dialog.ai_label": { nl: "AI-concept · pas aan zoals nodig", en: "AI draft · edit as needed" },
   "watchlist.task_dialog.manual_label": { nl: "Concept · pas aan zoals nodig", en: "Draft · edit as needed" },
@@ -221,6 +224,52 @@ export const DICTIONARY = {
   "watchlist.task_dialog.submit": { nl: "Taak aanmaken", en: "Create task" },
   "watchlist.task_dialog.submitting": { nl: "Aanmaken…", en: "Creating…" },
   "watchlist.task_dialog.error_no_title": { nl: "Titel is verplicht.", en: "Title is required." },
+
+  // Mark done - inbox-zero workflow primary action on Action Needed rows.
+  // CM logs what was done + the AM gets an inbox Update; the client flips
+  // to Watchlist "in review" until the cron re-checks at review_due_at.
+  "watchlist.row.mark_done": { nl: "Markeer klaar", en: "Mark done" },
+  "watchlist.row.mark_done_tooltip": {
+    nl: "Log wat je hebt gedaan, stuur een update naar de AM en zet de klant op her-eval over een paar dagen",
+    en: "Log what you did, send an update to the AM, and queue the client for re-evaluation",
+  },
+  "watchlist.row.mark_done_submitted": { nl: "Gelogd · AM op de hoogte", en: "Logged · AM notified" },
+  "watchlist.row.mark_done_failed": { nl: "Niet gelukt", en: "Failed" },
+
+  // Mark done dialog
+  "watchlist.mark_done.title": { nl: "Actie loggen", en: "Log action" },
+  "watchlist.mark_done.subtitle_with_am": {
+    nl: "{am} krijgt deze update in zijn inbox. Klant verhuist naar Watchlist totdat de her-eval draait.",
+    en: "{am} sees this update in their inbox. Client moves to Watchlist until the re-eval runs.",
+  },
+  "watchlist.mark_done.subtitle_no_am": {
+    nl: "Geen account manager gekoppeld - update wordt alleen in de audit log gelogd.",
+    en: "No account manager mapped - update will only be logged in the audit log.",
+  },
+  "watchlist.mark_done.category_label": { nl: "Wat heb je gedaan?", en: "What did you do?" },
+  "watchlist.mark_done.category_creative": { nl: "Creative", en: "Creative" },
+  "watchlist.mark_done.category_pause": { nl: "Pause", en: "Pause" },
+  "watchlist.mark_done.category_angle": { nl: "Angle", en: "Angle" },
+  "watchlist.mark_done.category_funnel": { nl: "Funnel", en: "Funnel" },
+  "watchlist.mark_done.category_other": { nl: "Overig", en: "Other" },
+  "watchlist.mark_done.what_label": { nl: "Korte update voor de AM", en: "Short update for the AM" },
+  "watchlist.mark_done.what_placeholder": {
+    nl: "Bv. Pauseerd Photo 2 | Pricelist (€77 CPL, 30d). 3 varianten subsidie-angle live.",
+    en: "E.g. Paused Photo 2 | Pricelist (€77 CPL, 30d). 3 new variants in subsidy angle now live.",
+  },
+  "watchlist.mark_done.what_hint": {
+    nl: "Wat de AM nodig heeft om de klant te kunnen briefen - 1-2 zinnen, geen JSON.",
+    en: "What the AM needs to brief the client - 1-2 sentences, no JSON.",
+  },
+  "watchlist.mark_done.review_label": { nl: "Her-eval over", en: "Re-eval in" },
+  "watchlist.mark_done.cancel": { nl: "Annuleren", en: "Cancel" },
+  "watchlist.mark_done.submit": { nl: "Loggen", en: "Log" },
+  "watchlist.mark_done.submit_saving": { nl: "Loggen…", en: "Logging…" },
+  "watchlist.mark_done.error_too_short": {
+    nl: "Schrijf minstens 1 zin - dit gaat naar de AM.",
+    en: "Write at least one sentence - this goes to the AM.",
+  },
+  "watchlist.mark_done.failed": { nl: "Loggen mislukt", en: "Logging failed" },
 
   // No Data section
   "watchlist.no_data.title": { nl: "Geen data", en: "No data" },
@@ -293,13 +342,13 @@ export const DICTIONARY = {
 
   // Tooltips + cell hints
   "clients.tooltip.next_invoice": { nl: "Volgende factuurdatum", en: "Next invoice date" },
-  "clients.tooltip.no_prev_period": { nl: "Geen vergelijkbare voorgaande periode — deze klant was niet live in het grootste deel van het vorige venster.", en: "No comparable prior period — this client wasn't live for most of the previous window." },
+  "clients.tooltip.no_prev_period": { nl: "Geen vergelijkbare voorgaande periode - deze klant was niet live in het grootste deel van het vorige venster.", en: "No comparable prior period - this client wasn't live for most of the previous window." },
   "clients.cell.click_to_assign": { nl: "Klik om toe te wijzen", en: "Click to assign" },
   "clients.cell.loading_users": { nl: "Gebruikers laden…", en: "Loading users..." },
   "clients.cell.load_users_failed": { nl: "Gebruikers laden mislukt", en: "Failed to load users" },
   "clients.cell.clear": { nl: "Wissen", en: "Clear" },
 
-  // ─── Settings — top-level + tab strip ─────────────────────────────────
+  // ─── Settings - top-level + tab strip ─────────────────────────────────
   "settings.title": { nl: "Instellingen", en: "Settings" },
   "settings.subtitle": { nl: "API tokens, board config, gebruikers en notificaties.", en: "API tokens, board config, users and notifications." },
   "settings.health_link": { nl: "Health →", en: "Health →" },
@@ -320,7 +369,7 @@ export const DICTIONARY = {
 
   // Settings → Clients tab
   "settings.clients.title": { nl: "Klanten", en: "Clients" },
-  "settings.clients.subtitle": { nl: "Wijzig elke klantdetail — naam, IDs, financiën, team. Wijzigingen schrijven terug naar Monday en syncen naar de Hub.", en: "Edit any client's details — name, IDs, financials, team. Changes write back to Monday and sync to the Hub." },
+  "settings.clients.subtitle": { nl: "Wijzig elke klantdetail - naam, IDs, financiën, team. Wijzigingen schrijven terug naar Monday en syncen naar de Hub.", en: "Edit any client's details - name, IDs, financials, team. Changes write back to Monday and sync to the Hub." },
   "settings.clients.search": { nl: "Zoek klanten…", en: "Search clients..." },
   "settings.clients.empty": { nl: "Geen {status} klanten{searchSuffix}.", en: "No {status} clients{searchSuffix}." },
   "settings.clients.empty_search_suffix": { nl: " met deze zoekopdracht", en: " matching your search" },
@@ -369,7 +418,7 @@ export const DICTIONARY = {
   "settings.health.integration.never": { nl: "Nooit", en: "Never" },
   "settings.health.recent_errors.no_message": { nl: "(geen bericht)", en: "(no message)" },
 
-  // Cadence labels — short, used in the crons table second-row sub-line
+  // Cadence labels - short, used in the crons table second-row sub-line
   "settings.health.cadence.daily_5utc": { nl: "dagelijks 05:00 UTC", en: "daily 5:00 UTC" },
   "settings.health.cadence.daily_530utc": { nl: "dagelijks 05:30 UTC", en: "daily 5:30 UTC" },
   "settings.health.cadence.hourly": { nl: "elk uur", en: "hourly" },
@@ -404,7 +453,7 @@ export const DICTIONARY = {
   "inbox.now.section.today": { nl: "Vandaag", en: "Due today" },
   "inbox.now.section.updates": { nl: "Nieuwe updates", en: "Unread updates" },
   "inbox.now.section.chats": { nl: "Nieuwe berichten", en: "Unread chats" },
-  // Combined "Unread inbox" — single Now section that mixes unread updates
+  // Combined "Unread inbox" - single Now section that mixes unread updates
   // and unread client chats, sorted by recency. Roy: one consolidated
   // signal instead of two separate sections.
   "inbox.now.section.unread_inbox": { nl: "Nieuwe inbox", en: "Unread inbox" },
@@ -418,9 +467,9 @@ export const DICTIONARY = {
   "inbox.task.filter.all": { nl: "Alles", en: "All" },
   "inbox.task.filter.snoozed": { nl: "Snoozed", en: "Snoozed" },
 
-  // Update status filters — same vocabulary as Tasks ("Open" / "Alles")
+  // Update status filters - same vocabulary as Tasks ("Open" / "Alles")
   // so the sub-tab strip reads identically across kinds. The chip id
-  // still maps to the underlying DB status (`unread`) — only the label
+  // still maps to the underlying DB status (`unread`) - only the label
   // changed. Roy 2026-06-09.
   "inbox.update.filter.all": { nl: "Alle updates", en: "All updates" },
   "inbox.update.filter.open": { nl: "Open", en: "Open" },
@@ -439,14 +488,14 @@ export const DICTIONARY = {
   // generic `updates_none` empty state instead.
   "inbox.update.filter.open_lower": { nl: "open", en: "open" },
 
-  // Source pill labels (brand names stay as plain strings — these are
+  // Source pill labels (brand names stay as plain strings - these are
   // the ones that actually translate)
   "inbox.source.automation": { nl: "Automatisering", en: "Automation" },
   "inbox.source.watchlist": { nl: "Watch List", en: "Watch list" },
   "inbox.source.meeting": { nl: "Meeting", en: "Meeting" },
   "inbox.source.email": { nl: "Email", en: "Email" },
   "inbox.source.tooltip_prefix": { nl: "Bron:", en: "Source:" },
-  // Additional inbox source labels — used by the source filter chips on
+  // Additional inbox source labels - used by the source filter chips on
   // /inbox. Brand names (Monday, Trengo, Slack) stay identical across locales.
   "inbox.source.manual": { nl: "Handmatig", en: "Manual" },
   "inbox.source.meetings": { nl: "Meetings", en: "Meetings" },
@@ -488,7 +537,7 @@ export const DICTIONARY = {
 
   // ─── Client status + onboarding phase (display labels) ───────────────
   // Canonical EN labels in src/lib/clients/status.ts stay reserved for Monday
-  // writes — these dictionary entries drive everything the user reads.
+  // writes - these dictionary entries drive everything the user reads.
   "client.status.onboarding": { nl: "Onboarding", en: "Onboarding" },
   "client.status.live": { nl: "Live", en: "Live" },
   "client.status.on_hold": { nl: "On Hold", en: "On Hold" },
@@ -502,7 +551,7 @@ export const DICTIONARY = {
   "client.phase.on_hold": { nl: "On Hold", en: "On Hold" },
   "client.phase.debt_collection": { nl: "Incassobureau", en: "Debt collection agency" },
 
-  // Onboarding checklist — only shown for clients on the onboarding board.
+  // Onboarding checklist - only shown for clients on the onboarding board.
   "client.onboarding.checklist.title": { nl: "Onboarding checklist", en: "Onboarding checklist" },
   "client.onboarding.checklist.team_assigned": { nl: "AM + CM toegewezen", en: "AM + CM assigned" },
   "client.onboarding.checklist.stripe_linked": { nl: "Stripe gekoppeld", en: "Stripe linked" },
@@ -514,10 +563,10 @@ export const DICTIONARY = {
   "client.onboarding.checklist.creatives_approved": { nl: "Creatives goedgekeurd", en: "Creatives approved" },
   "client.onboarding.checklist.live": { nl: "Campagne live", en: "Campaign live" },
 
-  // Onboarding tasks — extended checklist used by the rich Onboarding panel
+  // Onboarding tasks - extended checklist used by the rich Onboarding panel
   // and the cross-client /onboarding overview. Each task maps to an entry in
   // `src/lib/clients/onboarding.ts`. Keep the key naming aligned with the
-  // task `key` field — that's the contract the registry counts on.
+  // task `key` field - that's the contract the registry counts on.
   "client.onboarding.section.hub_setup": { nl: "Hub setup", en: "Hub setup" },
   "client.onboarding.section.client_access": { nl: "Klanttoegang", en: "Client access" },
   "client.onboarding.section.content_campaign": { nl: "Content & campagne", en: "Content & campaign" },
@@ -553,8 +602,8 @@ export const DICTIONARY = {
   // Onboarding panel chrome
   "client.onboarding.panel.title": { nl: "Onboarding", en: "Onboarding" },
   "client.onboarding.panel.critical_missing": {
-    nl: "Kritieke items ontbreken — klant kan niet Live worden gezet voordat deze gedaan zijn:",
-    en: "Critical items missing — client cannot go Live until these are done:",
+    nl: "Kritieke items ontbreken - klant kan niet Live worden gezet voordat deze gedaan zijn:",
+    en: "Critical items missing - client cannot go Live until these are done:",
   },
   "client.onboarding.panel.all_done": { nl: "Klant is klaar om Live te gaan.", en: "Client is ready to go Live." },
   "client.onboarding.panel.auto_derived": { nl: "Automatisch", en: "Auto" },
@@ -566,13 +615,13 @@ export const DICTIONARY = {
   "onboarding.wizard.subtitle": { nl: "Loop deze stappen door om de klant klaar te zetten voor de campagnemanager.", en: "Walk through these steps to prepare the client for the campaign manager." },
   "onboarding.wizard.progress": { nl: "Voortgang", en: "Progress" },
   "onboarding.wizard.loading": { nl: "Wizard laden…", en: "Loading wizard…" },
-  "onboarding.wizard.no_active_step": { nl: "Geen actieve stap — alle stappen zijn voltooid.", en: "No active step — all steps complete." },
+  "onboarding.wizard.no_active_step": { nl: "Geen actieve stap - alle stappen zijn voltooid.", en: "No active step - all steps complete." },
   "onboarding.wizard.step_label": { nl: "Stap", en: "Step" },
   "onboarding.wizard.critical_pill": { nl: "Kritiek", en: "Critical" },
   "onboarding.wizard.rail.locked_tooltip": { nl: "Vorige stap eerst afronden", en: "Finish the previous step first" },
-  "onboarding.wizard.rail.done_tooltip": { nl: "Voltooid — klik om opnieuw te bekijken", en: "Done — click to revisit" },
+  "onboarding.wizard.rail.done_tooltip": { nl: "Voltooid - klik om opnieuw te bekijken", en: "Done - click to revisit" },
 
-  // v3 step labels — the kick-off is now a LIVE tool the AM uses during
+  // v3 step labels - the kick-off is now a LIVE tool the AM uses during
   // the meeting, not a post-meeting checklist.
   "onboarding.wizard.step.kickoff_live.label": { nl: "Kick-off meeting (live)", en: "Kick-off meeting (live)" },
   "onboarding.wizard.step.kickoff_live.desc": { nl: "Deel direct vanuit het gesprek de Drive folder, Meta BM link en Stripe link. Vul de brief alvast in terwijl je luistert.", en: "Share Drive, Meta BM link and Stripe link straight from the call. Fill the brief live while you listen." },
@@ -596,12 +645,46 @@ export const DICTIONARY = {
   "onboarding.wizard.kickoff.picker.monday_board": { nl: "Monday lead-board", en: "Monday lead board" },
   "onboarding.wizard.kickoff.picker.drive": { nl: "Google Drive folder", en: "Google Drive folder" },
 
-  "onboarding.wizard.kickoff.resources.title": { nl: "Resources — deel met klant", en: "Resources — share with client" },
+  "onboarding.wizard.kickoff.resources.title": { nl: "Klant-acties — check af wat de klant heeft gedaan", en: "Client actions — check what the client has done" },
   "onboarding.wizard.kickoff.resource.drive": { nl: "Drive folder", en: "Drive folder" },
   "onboarding.wizard.kickoff.resource.meta_bm": { nl: "Meta Business Manager connect", en: "Meta Business Manager connect" },
+  "onboarding.wizard.kickoff.meta_connected.label": {
+    nl: "Klant heeft Rocket Leads als partner toegevoegd",
+    en: "Client has added Rocket Leads as partner",
+  },
   "onboarding.wizard.kickoff.resource.meta_bm.hint": {
-    nl: "Tijdelijke link totdat Meta App Review goedgekeurd is — leidt klant naar Hub-hosted handleiding.",
-    en: "Placeholder until Meta App Review is approved — sends client to a Hub-hosted guide.",
+    nl: "Vaste uitleg-link voor klanten. Vink hieronder af zodra de klant de partner-koppeling bevestigt.",
+    en: "Fixed explainer link for clients. Tick the box below once the client confirms the partner connection.",
+  },
+  // Resource-row checkboxes (Drive content + Meta BM confirmation) +
+  // RL ad-account fallback toggle. Added 2026-06-11 to back the kickoff
+  // step's new CheckboxResourceRow + RL ad-account opt-in.
+  "onboarding.wizard.kickoff.resource.drive.checkbox": {
+    nl: "Klant heeft content geüpload naar Drive",
+    en: "Client uploaded content to Drive",
+  },
+  "onboarding.wizard.kickoff.resource.drive.open": { nl: "Open Drive", en: "Open Drive" },
+  "onboarding.wizard.kickoff.resource.meta_bm.checkbox": {
+    nl: "Klant heeft Meta Business Manager gekoppeld",
+    en: "Client linked Meta Business Manager",
+  },
+  "onboarding.wizard.kickoff.resource.meta_bm.open": { nl: "Open connect link", en: "Open connect link" },
+  "onboarding.wizard.kickoff.rl_ad_account.label": {
+    nl: "Gebruik RL ad-account (klant kan Meta BM niet koppelen)",
+    en: "Use RL ad-account (client can't link Meta BM)",
+  },
+  "onboarding.wizard.kickoff.rl_ad_account.hint": {
+    nl: "Hub gebruikt het Rocket Leads ad-account voor deze klant. Ad budget wordt apart gefactureerd.",
+    en: "Hub uses the Rocket Leads ad-account for this client. Ad budget is invoiced separately.",
+  },
+  "onboarding.wizard.kickoff.ad_budget.label": {
+    nl: "Ad budget (€ per maand)",
+    en: "Ad budget (€ per month)",
+  },
+  "onboarding.wizard.kickoff.ad_budget.per_month": { nl: "/ maand", en: "/ month" },
+  "onboarding.wizard.kickoff.ad_budget.hint": {
+    nl: "Wordt automatisch op Monday gezet. Bevestigt richting finance hoeveel ze maandelijks doorfactureren.",
+    en: "Written through to Monday automatically. Tells finance how much to invoice through each month.",
   },
   // Live-status panel (payment indicator + Drive activity + Meta connect)
   "onboarding.wizard.kickoff.status.title": { nl: "Live status", en: "Live status" },
@@ -610,8 +693,8 @@ export const DICTIONARY = {
   "onboarding.wizard.kickoff.status.payment.unpaid": { nl: "Nog niet betaald", en: "Not paid yet" },
   "onboarding.wizard.kickoff.status.payment.checking": { nl: "Even checken…", en: "Checking…" },
   "onboarding.wizard.kickoff.status.payment.no_customer": {
-    nl: "Geen Stripe customer gekoppeld — koppel er één via Hub connections hierboven.",
-    en: "No Stripe customer linked — pick one via Hub connections above.",
+    nl: "Geen Stripe customer gekoppeld - koppel er één via Hub connections hierboven.",
+    en: "No Stripe customer linked - pick one via Hub connections above.",
   },
 
   "onboarding.wizard.kickoff.brief.title": { nl: "Client brief (vul live in)", en: "Client brief (fill live)" },
@@ -624,7 +707,7 @@ export const DICTIONARY = {
 
   "onboarding.wizard.kickoff.send_recap": { nl: "Stuur recap (Sprint 2)", en: "Send recap (Sprint 2)" },
 
-  // Brand identity — captured live from the client's website. Pedro
+  // Brand identity - captured live from the client's website. Pedro
   // pre-fills its `brand_style` from this when the CM opens the client
   // for the first time, so colors / fonts never have to be re-entered.
   "onboarding.wizard.kickoff.brand.title": { nl: "Huisstijl", en: "Brand identity" },
@@ -649,7 +732,7 @@ export const DICTIONARY = {
     en: "Click a swatch to set primary, shift+click for secondary.",
   },
 
-  // Stap 2 — transcript link
+  // Stap 2 - transcript link
   "onboarding.wizard.transcript.hint": {
     nl: "Selecteer welke recording de kick-off van deze klant was. Fathom kandidaten verschijnen 5-15 min na het einde van de meeting.",
     en: "Pick the recording that was this client's kick-off. Fathom candidates appear 5-15 min after the meeting ends.",
@@ -673,7 +756,7 @@ export const DICTIONARY = {
   "onboarding.wizard.transcript.linked.open_fathom": { nl: "Open in Fathom", en: "Open in Fathom" },
   "onboarding.wizard.transcript.change": { nl: "Wijzigen", en: "Change" },
 
-  // Stap 3 — brief enrichment diff
+  // Stap 3 - brief enrichment diff
   "onboarding.wizard.enrich.start.title": {
     nl: "AI brief enrichment",
     en: "AI brief enrichment",
@@ -705,7 +788,7 @@ export const DICTIONARY = {
   },
   "onboarding.wizard.enrich.decide_first": {
     nl: "Beslis eerst per suggestie of je accept of reject klikt.",
-    en: "Decide per suggestion before continuing — accept or reject each.",
+    en: "Decide per suggestion before continuing - accept or reject each.",
   },
   "onboarding.wizard.enrich.save_draft": { nl: "Concept opslaan", en: "Save draft" },
   "onboarding.wizard.enrich.approve_and_continue": {
@@ -725,7 +808,7 @@ export const DICTIONARY = {
   "onboarding.wizard.enrich.mode.add": { nl: "toevoeging", en: "addition" },
   "onboarding.wizard.enrich.mode.replace": { nl: "correctie", en: "correction" },
 
-  // Stap 4 — wait on client
+  // Stap 4 - wait on client
   "onboarding.wizard.wait.hint": {
     nl: "Hub poll't elke minuut. Stap voltooit zichzelf wanneer alle 3 de signalen groen zijn.",
     en: "Hub polls every minute. Step auto-completes when all 3 signals turn green.",
@@ -733,8 +816,8 @@ export const DICTIONARY = {
   "onboarding.wizard.wait.refresh": { nl: "Ververs nu", en: "Refresh now" },
   "onboarding.wizard.wait.loading": { nl: "Status ophalen…", en: "Checking status…" },
   "onboarding.wizard.wait.all_green": {
-    nl: "Alle 3 signalen groen — stap is automatisch voltooid. Klant kan over naar de campagnemanager.",
-    en: "All 3 signals green — step auto-completed. Client ready for handoff to CM.",
+    nl: "Alle 3 signalen groen - stap is automatisch voltooid. Klant kan over naar de campagnemanager.",
+    en: "All 3 signals green - step auto-completed. Client ready for handoff to CM.",
   },
 
   "onboarding.wizard.wait.drive.label": { nl: "Content op Drive", en: "Content on Drive" },
@@ -744,8 +827,8 @@ export const DICTIONARY = {
     en: "Waiting for client upload",
   },
   "onboarding.wizard.wait.drive.no_folder": {
-    nl: "Auto-setup heeft de subfolder nog niet vastgelegd — wacht tot Stap 1 setup klaar is.",
-    en: "Auto-setup hasn't captured the subfolder yet — wait until Stap 1 setup completes.",
+    nl: "Auto-setup heeft de subfolder nog niet vastgelegd - wacht tot Stap 1 setup klaar is.",
+    en: "Auto-setup hasn't captured the subfolder yet - wait until Stap 1 setup completes.",
   },
 
   "onboarding.wizard.wait.meta.label": { nl: "Meta Business Manager", en: "Meta Business Manager" },
@@ -769,7 +852,7 @@ export const DICTIONARY = {
   },
   "onboarding.wizard.wait.skip.btn": { nl: "Skip stap", en: "Skip step" },
 
-  // Stap 5 — handoff to CM
+  // Stap 5 - handoff to CM
   "onboarding.wizard.handoff.summary.hint": {
     nl: "Alle kritieke stappen zijn klaar. Klik op de knop om de klant op Live te zetten en de campagnemanager te alerten.",
     en: "All critical steps done. Click to flip the client to Live and notify the campaign manager.",
@@ -788,7 +871,7 @@ export const DICTIONARY = {
     nl: "Er is nog geen campagnemanager toegewezen op Monday. Zet er één op voordat je handoff doet, anders krijgt niemand de notificatie.",
     en: "No campaign manager assigned on Monday yet. Assign one before handoff or nobody gets the notification.",
   },
-  "onboarding.wizard.handoff.cta": { nl: "Klaar voor CM — flip naar Live", en: "Ready for CM — flip to Live" },
+  "onboarding.wizard.handoff.cta": { nl: "Klaar voor CM - flip naar Live", en: "Ready for CM - flip to Live" },
   "onboarding.wizard.handoff.done.title": { nl: "Onboarding voltooid", en: "Onboarding complete" },
   "onboarding.wizard.handoff.done.body": {
     nl: "Klant staat op Live sinds {when}. {cm} heeft een Slack-DM gekregen.",
@@ -810,7 +893,7 @@ export const DICTIONARY = {
   "onboarding.wizard.kickoff.mark_done": { nl: "Stap voltooien", en: "Mark step done" },
   "onboarding.wizard.kickoff.save_and_continue": { nl: "Opslaan & verder", en: "Save & continue" },
 
-  // Legacy v2 step labels — referenced nowhere after the v3 refactor,
+  // Legacy v2 step labels - referenced nowhere after the v3 refactor,
   // but kept in the dictionary so a stale browser tab on the old build
   // doesn't 404 on the lookup until the deploy rolls forward.
   "onboarding.wizard.step.kickoff_link.label": { nl: "Kick-off recording koppelen", en: "Link kick-off recording" },
@@ -832,7 +915,7 @@ export const DICTIONARY = {
   "onboarding.wizard.step.hub_wiring.desc": { nl: "Koppel alle IDs: Meta ad account, Stripe, Trengo, lead-board, pixel + page.", en: "Link every ID: Meta ad account, Stripe, Trengo, lead board, pixel + page." },
 
   "onboarding.wizard.step.handoff.label": { nl: "Klaar voor CM", en: "Ready for CM" },
-  "onboarding.wizard.step.handoff.desc": { nl: "Markeer klant klaar voor campagnemanager — status flipt naar Live.", en: "Mark client ready for the campaign manager — status flips to Live." },
+  "onboarding.wizard.step.handoff.desc": { nl: "Markeer klant klaar voor campagnemanager - status flipt naar Live.", en: "Mark client ready for the campaign manager - status flips to Live." },
 
   // Brief step copy
   "onboarding.wizard.brief.generate_hint": { nl: "Genereer een AI-draft op basis van kick-off + Trengo + Monday.", en: "Generate an AI draft from kick-off + Trengo + Monday." },
@@ -873,8 +956,8 @@ export const DICTIONARY = {
   "nav.onboarding": { nl: "Onboarding", en: "Onboarding" },
   "onboarding.overview.title": { nl: "Onboarding", en: "Onboarding" },
   "onboarding.overview.subtitle": {
-    nl: "Klanten die nog niet Live zijn — sorteer op voortgang of dagen sinds start.",
-    en: "Clients not yet Live — sorted by progress or days since start.",
+    nl: "Klanten die nog niet Live zijn - sorteer op voortgang of dagen sinds start.",
+    en: "Clients not yet Live - sorted by progress or days since start.",
   },
   "onboarding.overview.empty": {
     nl: "Geen klanten in onboarding.",
@@ -890,7 +973,7 @@ export const DICTIONARY = {
   "onboarding.overview.col.days": { nl: "Dagen", en: "Days" },
 
   // ─── Client detail page ───────────────────────────────────────────────
-  // Legacy per-section labels — used by sub-toggles inside the 4 top
+  // Legacy per-section labels - used by sub-toggles inside the 4 top
   // groups (Performance → Overview vs Campaigns, Admin → Billing vs
   // Settings, etc). The flat 7-tab strip these once labelled is gone.
   "client.tab.home": { nl: "Home", en: "Home" },
@@ -917,7 +1000,7 @@ export const DICTIONARY = {
   "client.tab.refresh_title": { nl: "Data verversen en analyse opnieuw genereren", en: "Refresh data and regenerate analysis" },
   "client.no_access": { nl: "Je hebt geen toegang tot deze sectie.", en: "You do not have access to this section." },
 
-  // Header — meta row labels + payment summary
+  // Header - meta row labels + payment summary
   "client.header.am": { nl: "AM", en: "AM" },
   "client.header.cm": { nl: "CM", en: "CM" },
   "client.header.budget": { nl: "Budget", en: "Budget" },
@@ -927,7 +1010,7 @@ export const DICTIONARY = {
   "client.header.payment.overdue": { nl: "{count} achterstallig · {amount}", en: "{count} overdue · {amount}" },
 
   // ─── Watch List sparkline tooltip ─────────────────────────────────────
-  // The rest of the Watch List is already wired through t() — these are
+  // The rest of the Watch List is already wired through t() - these are
   // the leftover hardcoded English strings inside the CPL trend tooltip.
   "watchlist.sparkline.trending_up": { nl: "CPL stijgt ({pct}% over de periode)", en: "CPL trending up ({pct}% over the window)" },
   "watchlist.sparkline.trending_down": { nl: "CPL daalt ({pct}% over de periode)", en: "CPL trending down ({pct}% over the window)" },
@@ -959,7 +1042,7 @@ export const DICTIONARY = {
   "meetings.subtitle.archived": { nl: "{n} gearchiveerde meeting(s). Gebruik Dearchiveren om terug te zetten in triage.", en: "{n} archived meeting(s). Use Unarchive to restore to triage." },
 
   // Empty states
-  "meetings.empty.unlinked": { nl: "Niks te triagen — alle recente meetings zijn gekoppeld.", en: "Nothing to triage — all recent meetings are matched." },
+  "meetings.empty.unlinked": { nl: "Niks te triagen - alle recente meetings zijn gekoppeld.", en: "Nothing to triage - all recent meetings are matched." },
   "meetings.empty.recent": { nl: "Nog geen gekoppelde meetings.", en: "No linked meetings yet." },
   "meetings.empty.internal": { nl: "Geen interne team meetings opgenomen in de laatste 60 dagen.", en: "No internal team meetings recorded in the last 60 days." },
   "meetings.empty.archived": { nl: "Niks gearchiveerd.", en: "Nothing archived." },
@@ -984,6 +1067,8 @@ export const DICTIONARY = {
   "pedro.tab.angles": { nl: "Angles", en: "Angles" },
   "pedro.tab.script": { nl: "Video scripts", en: "Video scripts" },
   "pedro.tab.creatives": { nl: "Creatives", en: "Creatives" },
+  // Merged label (2026-06-11) — creatives + ad copy live on one tab now.
+  "pedro.tab.creatives_ads": { nl: "Creatives & Ads", en: "Creatives & Ads" },
   "pedro.tab.lp": { nl: "LP prompts", en: "LP prompts" },
   "pedro.tab.ad_copy": { nl: "Ad copy", en: "Ad copy" },
   "pedro.tab.refresh": { nl: "Refresh", en: "Refresh" },
@@ -994,9 +1079,9 @@ export const DICTIONARY = {
 
   // No-client-selected state
   "pedro.no_client.title": { nl: "Selecteer een klant om te starten", en: "Select a client to start" },
-  "pedro.no_client.body": { nl: "Pedro's output — brief, research, angles, scripts, creatives, LP, ad copy, refreshes — wordt allemaal opgeslagen bij de actieve klant. Kies hierboven een klant zodat Pedro weet voor wie hij werkt.", en: "Pedro's output — brief, research, angles, scripts, creatives, LP, ad copy, refreshes — is all stored on the active client. Pick a client above so Pedro knows who he's working for." },
+  "pedro.no_client.body": { nl: "Pedro's output - brief, research, angles, scripts, creatives, LP, ad copy, refreshes - wordt allemaal opgeslagen bij de actieve klant. Kies hierboven een klant zodat Pedro weet voor wie hij werkt.", en: "Pedro's output - brief, research, angles, scripts, creatives, LP, ad copy, refreshes - is all stored on the active client. Pick a client above so Pedro knows who he's working for." },
 
-  // ─── Client detail — Settings tab sections ────────────────────────────
+  // ─── Client detail - Settings tab sections ────────────────────────────
   "client.settings.info.title": { nl: "Klantgegevens", en: "Client Information" },
   "client.settings.info.description": { nl: "Bewerk de klantgegevens. Wijzigingen worden teruggeschreven naar Monday en gesynchroniseerd met de Hub.", en: "Edit the client's details. Changes write back to Monday and sync to the Hub." },
   "client.settings.kpi.title": { nl: "KPI-secties", en: "KPI Sections" },
@@ -1006,7 +1091,7 @@ export const DICTIONARY = {
   "client.settings.columns.title": { nl: "Board kolom-IDs", en: "Board Column IDs" },
   "client.settings.columns.description": { nl: "Overschrijf de standaard Monday kolom-IDs voor deze klant. Laat leeg om de globale defaults uit Instellingen te gebruiken.", en: "Override default Monday column IDs for this client. Leave empty to use the global defaults from Settings." },
 
-  // ─── Client detail — Meetings tab (per-client view) ───────────────────
+  // ─── Client detail - Meetings tab (per-client view) ───────────────────
   "client.meetings.error": { nl: "Meetings konden niet geladen worden.", en: "Failed to load meetings." },
   "client.meetings.empty.title": { nl: "Nog geen meetings aan deze klant gekoppeld.", en: "No meetings linked to this client yet." },
   "client.meetings.empty.body": { nl: "Fathom-opnames worden automatisch gekoppeld via e-mailadres van de deelnemer. Check de globale {meetings} pagina om handmatig te koppelen.", en: "Fathom recordings auto-link via attendee email. Check the global {meetings} page to link manually." },
@@ -1022,9 +1107,9 @@ export const DICTIONARY = {
   "client.date.from": { nl: "Vanaf", en: "From" },
   "client.date.to": { nl: "Tot", en: "To" },
 
-  // ─── Targets — Marketing tab chrome ───────────────────────────────────
+  // ─── Targets - Marketing tab chrome ───────────────────────────────────
   // KPI metric labels (Ad Spend, Booked Calls, CBC, CQC, etc.) stay English
-  // in both locales — they're agreed RL jargon used in Slack + Settings.
+  // in both locales - they're agreed RL jargon used in Slack + Settings.
   "targets.country.all": { nl: "Alles", en: "All" },
   "targets.country.other": { nl: "Overig", en: "Other" },
   "targets.filter.closer": { nl: "Closer", en: "Closer" },
@@ -1050,8 +1135,8 @@ export const DICTIONARY = {
   "targets.kpi.appointment_booking_rate": { nl: "Appointment Booking Rate", en: "Appointment Booking Rate" },
 
   // Stripe gap modal (admin drilldown)
-  "targets.stripe.title": { nl: "Monday vs Stripe — Revenue cross-check", en: "Monday vs Stripe — Revenue cross-check" },
-  "targets.stripe.subtitle": { nl: "Toont alleen items zonder tegenhanger aan de andere kant. Gematchte paren zijn standaard verborgen — gebruik de toggle om alles te zien.", en: "Showing only items without a counterpart on the other side. Matched pairs are hidden by default — toggle below to see everything." },
+  "targets.stripe.title": { nl: "Monday vs Stripe - Revenue cross-check", en: "Monday vs Stripe - Revenue cross-check" },
+  "targets.stripe.subtitle": { nl: "Toont alleen items zonder tegenhanger aan de andere kant. Gematchte paren zijn standaard verborgen - gebruik de toggle om alles te zien.", en: "Showing only items without a counterpart on the other side. Matched pairs are hidden by default - toggle below to see everything." },
   "targets.stripe.monday_closed_deals": { nl: "Monday closed deals", en: "Monday closed deals" },
   "targets.stripe.stripe_new_business": { nl: "Stripe new business", en: "Stripe new business" },
   "targets.stripe.gap": { nl: "Gap (Stripe − Monday)", en: "Gap (Stripe − Monday)" },
@@ -1070,7 +1155,7 @@ export const DICTIONARY = {
   "targets.stripe.count.total": { nl: "{n} totaal", en: "{n} total" },
   "targets.stripe.count.split": { nl: "{unmatched} unmatched · {matched} matched", en: "{unmatched} unmatched · {matched} matched" },
 
-  // ─── Client detail — Home tab ─────────────────────────────────────────
+  // ─── Client detail - Home tab ─────────────────────────────────────────
   // Health card (top-right)
   "client.home.health.label": { nl: "Health", en: "Health" },
   "client.home.health.action": { nl: "Action", en: "Action" },
@@ -1083,7 +1168,7 @@ export const DICTIONARY = {
   "client.home.lead_analysis.verdict.good": { nl: "good", en: "good" },
   "client.home.lead_analysis.verdict.neutral": { nl: "neutral", en: "neutral" },
   "client.home.lead_analysis.verdict.concerning": { nl: "concerning", en: "concerning" },
-  "client.home.lead_analysis.empty": { nl: "Nog geen lead-analyse beschikbaar — open Campagnes om te genereren.", en: "No lead analysis available yet — open Campaigns to generate." },
+  "client.home.lead_analysis.empty": { nl: "Nog geen lead-analyse beschikbaar - open Campagnes om te genereren.", en: "No lead analysis available yet - open Campaigns to generate." },
   "client.home.lead_analysis.see_full": { nl: "Bekijk volledige proposal", en: "See full proposal" },
 
   // Top ads card
@@ -1099,7 +1184,7 @@ export const DICTIONARY = {
   // Payment banner
   "client.home.payment.label": { nl: "Betaling", en: "Payment" },
   "client.home.payment.no_stripe": { nl: "Geen Stripe-klant gekoppeld.", en: "No Stripe customer linked." },
-  "client.home.payment.paid": { nl: "Betaald — geen open of achterstallige facturen", en: "Paid up — no open or overdue invoices" },
+  "client.home.payment.paid": { nl: "Betaald - geen open of achterstallige facturen", en: "Paid up - no open or overdue invoices" },
   "client.home.payment.open_one": { nl: "{count} open factuur · {amount} openstaand", en: "{count} open invoice · {amount} outstanding" },
   "client.home.payment.open_many": { nl: "{count} open facturen · {amount} openstaand", en: "{count} open invoices · {amount} outstanding" },
   "client.home.payment.overdue_one": { nl: "{count} achterstallige factuur · {amount} openstaand", en: "{count} overdue invoice · {amount} outstanding" },
@@ -1122,18 +1207,18 @@ export const DICTIONARY = {
   "client.home.due.on_date": { nl: "Voor {date}", en: "Due {date}" },
 
   // ─── KPI Cards (Campaigns tab) ─────────────────────────────────────────
-  // Group titles — KPI labels themselves stay English (RL jargon).
+  // Group titles - KPI labels themselves stay English (RL jargon).
   "kpi.group.leads": { nl: "Leads", en: "Leads" },
   "kpi.group.deals": { nl: "Deals", en: "Deals" },
 
-  // ─── Client detail — Campaigns tab ────────────────────────────────────
+  // ─── Client detail - Campaigns tab ────────────────────────────────────
   "client.campaigns.empty.no_link": { nl: "Geen Meta-advertentieaccount of klantbord gekoppeld in Monday.com voor deze klant.", en: "No Meta Ad Account or Client Board linked in Monday.com for this client." },
   "client.campaigns.empty.no_selection": { nl: "Nog geen campagnes geselecteerd. Kies welke campagnes worden bijgehouden in Instellingen.", en: "No campaigns selected yet. Select which campaigns to track in Settings." },
   "client.campaigns.empty.go_settings": { nl: "Ga naar instellingen", en: "Go to Settings" },
   "client.campaigns.error.kpi": { nl: "KPI-data kon niet geladen worden. Controleer je API-tokens.", en: "Failed to load KPI data. Check your API tokens." },
   "client.campaigns.utm.title": { nl: "UTM / Ad performance breakdown", en: "UTM / Ad Performance Breakdown" },
 
-  // ─── Client detail — Billing tab ──────────────────────────────────────
+  // ─── Client detail - Billing tab ──────────────────────────────────────
   // Invoice status pills
   "client.billing.status.paid": { nl: "Betaald", en: "Paid" },
   "client.billing.status.open": { nl: "Open", en: "Open" },
@@ -1148,10 +1233,10 @@ export const DICTIONARY = {
   // (RL-ad-account clients who paid the fee upfront but still get monthly
   // ad-budget invoices). The plain "next_invoice" labels above are kept for
   // clients with a single cadence.
-  "client.billing.next_invoice.fee.title": { nl: "Volgende factuur — service fee", en: "Next invoice — service fee" },
+  "client.billing.next_invoice.fee.title": { nl: "Volgende factuur - service fee", en: "Next invoice - service fee" },
   "client.billing.next_invoice.fee.subtitle": { nl: "Wanneer de volgende fee-factuur de deur uit moet. Bij kwartaalbetaling zet je deze datum op het einde van het kwartaal.", en: "When the next service-fee invoice should go out. For quarterly-paid clients, set this to the end of the prepaid quarter." },
-  "client.billing.next_invoice.ad_budget.title": { nl: "Volgende factuur — ad budget", en: "Next invoice — ad budget" },
-  "client.billing.next_invoice.ad_budget.subtitle": { nl: "Wanneer de volgende ad-budget factuur de deur uit moet. Alleen relevant als wij het ad budget voorschieten en doorbelasten — meestal maandelijks, ongeacht of de fee voor een kwartaal vooruit is betaald.", en: "When the next ad-budget invoice should go out. Only relevant when RL fronts the ad budget — typically monthly, even when the fee is prepaid for a quarter." },
+  "client.billing.next_invoice.ad_budget.title": { nl: "Volgende factuur - ad budget", en: "Next invoice - ad budget" },
+  "client.billing.next_invoice.ad_budget.subtitle": { nl: "Wanneer de volgende ad-budget factuur de deur uit moet. Alleen relevant als wij het ad budget voorschieten en doorbelasten - meestal maandelijks, ongeacht of de fee voor een kwartaal vooruit is betaald.", en: "When the next ad-budget invoice should go out. Only relevant when RL fronts the ad budget - typically monthly, even when the fee is prepaid for a quarter." },
   "client.billing.action.save": { nl: "Opslaan", en: "Save" },
   "client.billing.action.clear": { nl: "Wissen", en: "Clear" },
   "client.billing.action.clear_title": { nl: "Datum volgende factuur wissen", en: "Clear next invoice date" },
@@ -1208,7 +1293,7 @@ export const DICTIONARY = {
   "client.billing.empty.no_invoices": { nl: "Geen facturen gevonden", en: "No invoices found" },
   "client.billing.link.view": { nl: "Bekijk", en: "View" },
 
-  // ─── Client detail — Timeline tab ─────────────────────────────────────
+  // ─── Client detail - Timeline tab ─────────────────────────────────────
   // Source labels: Monday/Trengo/Slack/Fathom stay as brand names; only the
   // generic "Manual" and "Watch List" labels translate. The badge classes
   // (color tokens) stay independent of the labels.
@@ -1230,18 +1315,18 @@ export const DICTIONARY = {
   "client.timeline.day.today": { nl: "Vandaag", en: "Today" },
   "client.timeline.day.yesterday": { nl: "Gisteren", en: "Yesterday" },
 
-  // ─── Client detail — Pedro tab (per-client) ───────────────────────────
+  // ─── Client detail - Pedro tab (per-client) ───────────────────────────
   // Status pills
-  // Inline demarcation note in the slide-over Pedro tab — clarifies this is
+  // Inline demarcation note in the slide-over Pedro tab - clarifies this is
   // the *insight-mode* surface for this client (status, brief snapshot,
   // refresh history) versus the *build-mode* /pedro route (generators,
   // creatives, scripts). Without this hint users with both surfaces open
   // mix up where to do what.
-  "client.pedro.mode_hint": { nl: "Inzicht-modus — voor build-tools (creatives, scripts, refreshes), open Pedro.", en: "Insight mode — for build tools (creatives, scripts, refreshes), open Pedro." },
+  "client.pedro.mode_hint": { nl: "Inzicht-modus - voor build-tools (creatives, scripts, refreshes), open Pedro.", en: "Insight mode - for build tools (creatives, scripts, refreshes), open Pedro." },
 
   "client.pedro.status.not_started": { nl: "Pedro nog niet gestart", en: "Pedro not started yet" },
   "client.pedro.status.auto_draft": { nl: "Auto-draft (nog niet bewerkt)", en: "Auto-draft (not edited yet)" },
-  "client.pedro.status.active": { nl: "Pedro actief — campagne #{n}", en: "Pedro active — campaign #{n}" },
+  "client.pedro.status.active": { nl: "Pedro actief - campagne #{n}", en: "Pedro active - campaign #{n}" },
 
   // Header card
   "client.pedro.header.last_edited_one": { nl: "Laatst bewerkt {date} · {n} refresh", en: "Last edited {date} · {n} refresh" },
@@ -1272,8 +1357,8 @@ export const DICTIONARY = {
   "client.pedro.refresh.stat.leads": { nl: "Leads", en: "Leads" },
   "client.pedro.refresh.stat.avg_cpl": { nl: "Avg CPL", en: "Avg CPL" },
   "client.pedro.refresh.trend.flat": { nl: "stabiel", en: "flat" },
-  "client.pedro.refresh.proposals_one": { nl: "{n} proposal — itereren op:", en: "{n} proposal — iterate on:" },
-  "client.pedro.refresh.proposals_many": { nl: "{n} proposals — itereren op:", en: "{n} proposals — iterate on:" },
+  "client.pedro.refresh.proposals_one": { nl: "{n} proposal - itereren op:", en: "{n} proposal - iterate on:" },
+  "client.pedro.refresh.proposals_many": { nl: "{n} proposals - itereren op:", en: "{n} proposals - iterate on:" },
   "client.pedro.refresh.variants": { nl: "{n} varianten", en: "{n} variants" },
   "client.pedro.refresh.open_full": { nl: "Open de volledige refresh-stage in Pedro", en: "Open the full refresh stage in Pedro" },
 
@@ -1303,8 +1388,8 @@ export const DICTIONARY = {
   "client.pedro.stage.lp": { nl: "LP prompts", en: "LP prompts" },
   "client.pedro.stage.ad_copy": { nl: "Ad copy", en: "Ad copy" },
 
-  // ─── Settings — API Tokens tab ────────────────────────────────────────
-  // Service descriptions kept English in both locales — they're admin
+  // ─── Settings - API Tokens tab ────────────────────────────────────────
+  // Service descriptions kept English in both locales - they're admin
   // setup-instruction copy (referring to vendor screens) that the team
   // reads alongside the vendor docs themselves.
   "settings.tokens.dot.not_tested": { nl: "Niet getest", en: "Not tested" },
@@ -1323,8 +1408,8 @@ export const DICTIONARY = {
   "settings.tokens.slack.live_hint_tab": { nl: "Notificaties", en: "Notifications" },
   "settings.tokens.slack.live_hint_after": { nl: " tab.", en: " tab." },
 
-  // ─── Settings — Board Config tab ──────────────────────────────────────
-  // Field labels (Monday column mappings) stay English in both locales —
+  // ─── Settings - Board Config tab ──────────────────────────────────────
+  // Field labels (Monday column mappings) stay English in both locales -
   // they describe the English schema of Monday boards. Only the chrome
   // (card titles, group titles, top-level board ID fields, save button)
   // flips with the locale toggle.
@@ -1339,7 +1424,7 @@ export const DICTIONARY = {
   "settings.board.action.saving": { nl: "Opslaan...", en: "Saving..." },
   "settings.board.action.saved": { nl: "Opgeslagen!", en: "Saved!" },
 
-  // ─── Settings — Users tab ─────────────────────────────────────────────
+  // ─── Settings - Users tab ─────────────────────────────────────────────
   // Invite form
   "settings.users.invite.first_name": { nl: "Voornaam", en: "First name" },
   "settings.users.invite.last_name": { nl: "Achternaam", en: "Last name" },
@@ -1383,18 +1468,18 @@ export const DICTIONARY = {
   "settings.users.row.remove_title": { nl: "Gebruiker verwijderen", en: "Remove user" },
   "settings.users.row.remove_confirm": { nl: "{email} verwijderen? Verliest direct toegang.", en: "Remove {email}? They will lose access immediately." },
   "settings.users.row.remove_failed": { nl: "Gebruiker verwijderen mislukt", en: "Failed to remove user" },
-  "settings.users.row.wa_tooltip": { nl: "Trengo WhatsApp template-naam (bv. rl_universal_roel) — gebruikt voor outbound buiten 24u session window", en: "Trengo WhatsApp template name (e.g. rl_universal_roel) — used for outbound buiten 24u session window" },
+  "settings.users.row.wa_tooltip": { nl: "Trengo WhatsApp template-naam (bv. rl_universal_roel) - gebruikt voor outbound buiten 24u session window", en: "Trengo WhatsApp template name (e.g. rl_universal_roel) - used for outbound buiten 24u session window" },
 
   // Footer
-  "settings.users.footer": { nl: "Hub rol bepaalt toegang. Monday rol bepaalt wat deze gebruiker doet — voor AM/CM/Setter pikt de Monday naam welke klanten ze zien (admins zien altijd alles). Finance is org-breed en heeft geen Monday naam nodig; triggert factuur-taken via de inbox automation. Slack ID wordt gebruikt voor DM-notificaties. Fathom e-mail koppelt deze Hub-gebruiker aan hun Fathom-account zodat de meeting matcher weet wie er in een opgenomen call zat. Alle velden auto-saven.", en: "Hub role controls access. Monday role decides what this user does — for AM/CM/Setter, the Monday name picks which clients they see (admins always see all). Finance is org-level and doesn't need a Monday name; it triggers invoice tasks via the inbox automation. Slack ID is used for DM notifications. Fathom email maps this Hub user to their Fathom account so the meeting matcher knows who was in a recorded call. All fields autosave." },
+  "settings.users.footer": { nl: "Hub rol bepaalt toegang. Monday rol bepaalt wat deze gebruiker doet - voor AM/CM/Setter pikt de Monday naam welke klanten ze zien (admins zien altijd alles). Finance is org-breed en heeft geen Monday naam nodig; triggert factuur-taken via de inbox automation. Slack ID wordt gebruikt voor DM-notificaties. Fathom e-mail koppelt deze Hub-gebruiker aan hun Fathom-account zodat de meeting matcher weet wie er in een opgenomen call zat. Alle velden auto-saven.", en: "Hub role controls access. Monday role decides what this user does - for AM/CM/Setter, the Monday name picks which clients they see (admins always see all). Finance is org-level and doesn't need a Monday name; it triggers invoice tasks via the inbox automation. Slack ID is used for DM notifications. Fathom email maps this Hub user to their Fathom account so the meeting matcher knows who was in a recorded call. All fields autosave." },
 
-  // ─── Settings — Inbox Automations tab ─────────────────────────────────
+  // ─── Settings - Inbox Automations tab ─────────────────────────────────
   // Per-rule descriptions (title/description/trigger/effect) intentionally
-  // stay English — admin operator docs full of code-flow terminology
+  // stay English - admin operator docs full of code-flow terminology
   // (cron, idempotent, source_ref, etc.) that maps to the implementation.
   // Translating would break the mental model with code/UI.
   "settings.inbox.title": { nl: "Inbox automatiseringen", en: "Inbox Automations" },
-  "settings.inbox.subtitle": { nl: "Regels die automatisch inbox-taken of updates aanmaken op basis van data-signalen uit de Hub. Elke regel draait dagelijks via cron en is volledig idempotent — opnieuw draaien levert geen duplicaten.", en: "Rules that automatically create inbox tasks or updates based on data signals across the Hub. Each rule runs once daily via cron and is fully idempotent — re-running won't create duplicates." },
+  "settings.inbox.subtitle": { nl: "Regels die automatisch inbox-taken of updates aanmaken op basis van data-signalen uit de Hub. Elke regel draait dagelijks via cron en is volledig idempotent - opnieuw draaien levert geen duplicaten.", en: "Rules that automatically create inbox tasks or updates based on data signals across the Hub. Each rule runs once daily via cron and is fully idempotent - re-running won't create duplicates." },
   "settings.inbox.trigger": { nl: "Trigger", en: "Trigger" },
   "settings.inbox.effect": { nl: "Effect", en: "Effect" },
   "settings.inbox.footer_more": { nl: "Meer regels landen hier zodra we signalen uit Monday updates, Trengo conversaties en Watch List events verbinden met geautomatiseerde taken.", en: "More rules will land here as we wire signals from Monday updates, Trengo conversations and Watch List events into automated tasks." },
@@ -1404,7 +1489,7 @@ export const DICTIONARY = {
   "settings.inbox.run.subtitle_before": { nl: "Zelfde code-pad als de dagelijkse cron, maar taken worden toegewezen aan ", en: "Same code path as the daily cron, but tasks are assigned to " },
   "settings.inbox.run.subtitle_you": { nl: "jou", en: "you" },
   "settings.inbox.run.subtitle_with": { nl: " met een ", en: " with a " },
-  "settings.inbox.run.subtitle_after": { nl: " prefix — zodat je AI-output en regel-logica kunt valideren zonder het team te spammen. Idempotency check is uit, dus opnieuw draaien levert altijd verse items.", en: " prefix — so you can validate AI output and rule logic without spamming the team. Idempotency check is skipped, so re-running always produces fresh items." },
+  "settings.inbox.run.subtitle_after": { nl: " prefix - zodat je AI-output en regel-logica kunt valideren zonder het team te spammen. Idempotency check is uit, dus opnieuw draaien levert altijd verse items.", en: " prefix - so you can validate AI output and rule logic without spamming the team. Idempotency check is skipped, so re-running always produces fresh items." },
   "settings.inbox.run.action.run": { nl: "Test draaien", en: "Run test" },
   "settings.inbox.run.action.running": { nl: "Draait...", en: "Running..." },
   "settings.inbox.run.error.failed": { nl: "Draaien mislukt", en: "Run failed" },
@@ -1415,7 +1500,7 @@ export const DICTIONARY = {
   "settings.inbox.result.skipped": { nl: "overgeslagen", en: "skipped" },
   "settings.inbox.result.section_created": { nl: "Aangemaakt ({n})", en: "Created ({n})" },
   "settings.inbox.result.section_skipped": { nl: "Overgeslagen ({n})", en: "Skipped ({n})" },
-  "settings.inbox.result.empty": { nl: "Geen acties ondernomen — niks paste vandaag bij een regel.", en: "No actions taken — nothing matched any rule today." },
+  "settings.inbox.result.empty": { nl: "Geen acties ondernomen - niks paste vandaag bij een regel.", en: "No actions taken - nothing matched any rule today." },
   "settings.inbox.result.truncated": { nl: "+{n} meer (afgekapt)", en: "+{n} more (truncated)" },
 
   // Created-row labels
@@ -1425,8 +1510,8 @@ export const DICTIONARY = {
   "settings.inbox.row.cpl_drop": { nl: "CPL daling {period}", en: "CPL drop {period}" },
   "settings.inbox.row.invoice_short": { nl: "factuur {id}…", en: "invoice {id}…" },
 
-  // ─── Settings — Pedro tab (admin pipeline observability) ──────────────
-  "settings.pedro.error.title": { nl: "Pedro health niet beschikbaar — {message}", en: "Pedro health unavailable — {message}" },
+  // ─── Settings - Pedro tab (admin pipeline observability) ──────────────
+  "settings.pedro.error.title": { nl: "Pedro health niet beschikbaar - {message}", en: "Pedro health unavailable - {message}" },
   "settings.pedro.error.unknown": { nl: "onbekende fout", en: "unknown error" },
 
   "settings.pedro.kickoff.title": { nl: "Pedro pipeline (laatste 7d)", en: "Pedro pipeline (last 7d)" },
@@ -1449,7 +1534,7 @@ export const DICTIONARY = {
   "settings.pedro.degraded.body": { nl: "Mogelijk hebben de klanten al een eerdere `pedro_client_state` row (geen rerun-rule), of er is een bug. Check de server logs of inspecteer de \"missed\" lijst hieronder.", en: "Clients might already have a prior `pedro_client_state` row (no rerun rule), or there's a bug. Check the server logs or inspect the \"missed\" list below." },
 
   "settings.pedro.evals.title": { nl: "Eval digest pipeline (laatste 7d)", en: "Eval digest pipeline (last 7d)" },
-  "settings.pedro.evals.description": { nl: "Pedro leest elke evaluatie en flagt alleen wanneer Claude iets actionable detecteert. Lage conversion is normaal — routine evals produceren geen task.", en: "Pedro reads every evaluation and only flags when Claude detects something actionable. Low conversion is normal — routine evals produce no task." },
+  "settings.pedro.evals.description": { nl: "Pedro leest elke evaluatie en flagt alleen wanneer Claude iets actionable detecteert. Lage conversion is normaal - routine evals produceren geen task.", en: "Pedro reads every evaluation and only flags when Claude detects something actionable. Low conversion is normal - routine evals produce no task." },
   "settings.pedro.stat.evals_ingested": { nl: "Evals ingested", en: "Evals ingested" },
   "settings.pedro.stat.evals_ingested.hint": { nl: "{n} gekoppeld", en: "{n} linked" },
   "settings.pedro.stat.digests_fired": { nl: "Digests fired", en: "Digests fired" },
@@ -1468,10 +1553,10 @@ export const DICTIONARY = {
   "settings.pedro.missed.description": { nl: "Gekoppelde kick-offs uit de afgelopen 7d die geen auto-fire hebben getriggerd. Vaak legit (CM had Pedro al gestart vóór de kick-off), maar inspecteer als de aantallen hoog zijn.", en: "Linked kick-offs from the last 7d that didn't trigger an auto-fire. Often legit (CM had already started Pedro before the kick-off), but inspect if the counts are high." },
   "settings.pedro.missed.client_link": { nl: "Klant", en: "Client" },
 
-  // ─── Settings — Notifications tab ─────────────────────────────────────
+  // ─── Settings - Notifications tab ─────────────────────────────────────
   // Per-notification descriptions + example bodies stay in their authored
-  // mix of EN/NL — they're admin-docs about a multilingual product.
-  "settings.notifications.intro": { nl: "Beheer geautomatiseerde notificaties die de Hub verstuurt. Elke notificatie heeft een preview-knop die naar je eigen Slack DM stuurt — veilig om te testen zonder het team te spammen.", en: "Manage automated notifications sent from the Hub. Each notification has a preview button that posts to your own Slack DM — safe to test without spamming the team." },
+  // mix of EN/NL - they're admin-docs about a multilingual product.
+  "settings.notifications.intro": { nl: "Beheer geautomatiseerde notificaties die de Hub verstuurt. Elke notificatie heeft een preview-knop die naar je eigen Slack DM stuurt - veilig om te testen zonder het team te spammen.", en: "Manage automated notifications sent from the Hub. Each notification has a preview button that posts to your own Slack DM - safe to test without spamming the team." },
   "settings.notifications.slack_section": { nl: "Slack", en: "Slack" },
   "settings.notifications.slack_not_connected.title": { nl: "Slack token niet verbonden", en: "Slack token not connected" },
   "settings.notifications.slack_not_connected.body_before": { nl: "Verbind eerst een Slack Bot Token in ", en: "Connect a Slack Bot Token in " },
@@ -1490,9 +1575,9 @@ export const DICTIONARY = {
   "settings.notifications.metadata.schedule": { nl: "Schema", en: "Schedule" },
   "settings.notifications.metadata.destination": { nl: "Bestemming", en: "Destination" },
   "settings.notifications.metadata.recipients": { nl: "Ontvangers", en: "Recipients" },
-  "settings.notifications.recipients.empty": { nl: "Nog geen gebruikers hebben een Slack ID — voeg er één toe in Kolom mapping.", en: "No users have a Slack ID configured yet — add one in Column Mapping." },
+  "settings.notifications.recipients.empty": { nl: "Nog geen gebruikers hebben een Slack ID - voeg er één toe in Kolom mapping.", en: "No users have a Slack ID configured yet - add one in Column Mapping." },
   "settings.notifications.recipients.no_slack": { nl: "(geen Slack ID)", en: "(no Slack ID)" },
-  "settings.notifications.recipients.no_slack_title": { nl: "Geen Slack ID ingesteld — ontvangt geen notificaties", en: "No Slack ID set — won't receive notifications" },
+  "settings.notifications.recipients.no_slack_title": { nl: "Geen Slack ID ingesteld - ontvangt geen notificaties", en: "No Slack ID set - won't receive notifications" },
   "settings.notifications.footer.preview_label": { nl: "Preview naar mij", en: "Preview to me" },
   "settings.notifications.footer.preview_channel": { nl: "post naar je eigen DM (niet het kanaal) zodat je veilig kunt testen.", en: "posts to your own DM (not the channel) for safe testing." },
   "settings.notifications.footer.preview_dm": { nl: "stuurt alleen naar je eigen Slack met live data.", en: "sends only to your own Slack with live data." },
@@ -1512,8 +1597,8 @@ export const DICTIONARY = {
   "settings.notifications.closers.row.unsaved": { nl: "Niet opgeslagen", en: "Unsaved" },
   "settings.notifications.closers.row.saved": { nl: "Opgeslagen", en: "Saved" },
 
-  // ─── Targets — Delivery tab ───────────────────────────────────────────
-  // Section headers (the KPI metric labels themselves stay English — RL jargon)
+  // ─── Targets - Delivery tab ───────────────────────────────────────────
+  // Section headers (the KPI metric labels themselves stay English - RL jargon)
   "targets.delivery.section.revenue": { nl: "Omzet", en: "Revenue" },
   "targets.delivery.section.retention": { nl: "Retentie", en: "Retention" },
   "targets.delivery.section.revenue_by_team": { nl: "Omzet per team", en: "Revenue by Team" },
@@ -1547,18 +1632,18 @@ export const DICTIONARY = {
   "targets.delivery.cancel": { nl: "Annuleren", en: "Cancel" },
   "targets.delivery.no_unlinked": { nl: "Geen ongekoppelde Monday items beschikbaar.", en: "No unlinked Monday items available." },
   "targets.delivery.no_match": { nl: "Geen items komen overeen met deze zoekopdracht.", en: "No items match this search." },
-  "targets.delivery.more_results": { nl: "+ {n} meer — verfijn je zoekopdracht.", en: "+ {n} more — refine your search to narrow down." },
+  "targets.delivery.more_results": { nl: "+ {n} meer - verfijn je zoekopdracht.", en: "+ {n} more - refine your search to narrow down." },
   "targets.delivery.assigning": { nl: "Toewijzen…", en: "Assigning…" },
   "targets.delivery.assign_failed": { nl: "Toewijzen mislukt", en: "Failed to assign" },
 
-  // ─── Targets — Finance tab ────────────────────────────────────────────
-  // Section headers — KPI labels stay English (RL jargon).
-  "targets.finance.section.revenue_service_fee": { nl: "Omzet — Service Fee", en: "Revenue — Service Fee" },
-  "targets.finance.section.revenue_ad_budget": { nl: "Omzet — Ad Budget", en: "Revenue — Ad Budget" },
+  // ─── Targets - Finance tab ────────────────────────────────────────────
+  // Section headers - KPI labels stay English (RL jargon).
+  "targets.finance.section.revenue_service_fee": { nl: "Omzet - Service Fee", en: "Revenue - Service Fee" },
+  "targets.finance.section.revenue_ad_budget": { nl: "Omzet - Ad Budget", en: "Revenue - Ad Budget" },
   "targets.finance.section.costs": { nl: "Kosten (volledige maand)", en: "Costs (Full Month)" },
   "targets.finance.section.profit": { nl: "Winst", en: "Profit" },
 
-  // ─── Targets — Settings tab (per-month targets config) ────────────────
+  // ─── Targets - Settings tab (per-month targets config) ────────────────
   // Field labels (Deals/Revenue/Max CBC/etc.) stay English (RL jargon).
   "targets.settings.title": { nl: "Maandelijkse targets", en: "Monthly Targets" },
   "targets.settings.subtitle": { nl: "Stel targets in per tab. Waardes worden pro-rata vergeleken met de huidige periode. 0 = target uit.", en: "Set targets for each tab. Values are compared pro-rata against the current period. Set to 0 to disable a target." },
@@ -1614,14 +1699,14 @@ export const DICTIONARY = {
 
   // ─── Pedro stage action bar (Save final version per stage) ────────────
   "pedro.stage.last_saved_prefix": { nl: "Laatst opgeslagen:", en: "Last saved:" },
-  "pedro.stage.unsaved_lead": { nl: "Nog niet opgeslagen — werkt in", en: "Not yet saved — working in" },
+  "pedro.stage.unsaved_lead": { nl: "Nog niet opgeslagen - werkt in", en: "Not yet saved - working in" },
   "pedro.stage.draft_mode": { nl: "draft mode", en: "draft mode" },
   "pedro.stage.draft_hint": { nl: "(auto-save aan, niet zichtbaar voor klant-record)", en: "(auto-save on, not visible to client record)" },
   "pedro.stage.saving": { nl: "Opslaan...", en: "Saving..." },
   "pedro.stage.save_as_next": { nl: "Save als v{n}", en: "Save as v{n}" },
   "pedro.stage.save_initial": { nl: "Save naar klant", en: "Save to client" },
   "pedro.stage.saved_as": { nl: "Opgeslagen als v{n}", en: "Saved as v{n}" },
-  "pedro.stage.unchanged": { nl: "v{n} ongewijzigd — geen nieuwe versie", en: "v{n} unchanged — no new version" },
+  "pedro.stage.unchanged": { nl: "v{n} ongewijzigd - geen nieuwe versie", en: "v{n} unchanged - no new version" },
   "pedro.stage.save_failed": { nl: "Opslaan mislukt", en: "Save failed" },
 } as const satisfies Record<string, LocalizedString>
 

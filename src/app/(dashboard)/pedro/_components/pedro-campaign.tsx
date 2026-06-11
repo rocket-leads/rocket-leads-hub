@@ -617,6 +617,7 @@ export function Campaign({
   // on top of the standard prompt before regenerating. Same pattern as
   // angles + creatives.
   const [scriptSteering, setScriptSteering] = useState("");
+  const [scriptDriveSaving, setScriptDriveSaving] = useState(false);
 
   // Step 4: Creatives
   const [qty, setQty] = useState(3);
@@ -1422,6 +1423,41 @@ export function Campaign({
       showToast("Scripts gedownload als .docx ✓");
     } catch {
       showToast("Fout bij genereren .docx");
+    }
+  }
+
+  // Push the in-state script bundle to the client's Drive folder as MD.
+  // Same precondition as refresh save-to-drive: client.googleDriveId must
+  // exist on Monday and the folder must be Editor-shared with the
+  // service account; otherwise the server returns a clear NL error.
+  async function saveScriptsToDrive() {
+    if (!selectedClientId || scriptVideos.length === 0) return;
+    setScriptDriveSaving(true);
+    try {
+      const res = await fetch("/api/pedro/scripts/save-to-drive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: selectedClientId,
+          scriptVideos,
+          campaignNumber,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showToast(data.error || "Opslaan in Drive mislukt");
+      } else {
+        showToast("Scripts opgeslagen in Drive ✓");
+        // Auto-open the file in a new tab so the CM can verify the doc
+        // landed where expected — same UX as the refresh save-to-drive.
+        if (data.url) {
+          try { window.open(data.url, "_blank", "noopener,noreferrer"); } catch { /* ignore */ }
+        }
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? `Drive save mislukt: ${e.message}` : "Drive save mislukt");
+    } finally {
+      setScriptDriveSaving(false);
     }
   }
 
@@ -2465,6 +2501,15 @@ ${creativeDescriptions}`;
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="xs" onClick={() => doScript()}>↻ Opnieuw{scriptSteering.trim() ? " met steering" : ""}</Button>
                   <Button variant="outline" size="xs" onClick={downloadScriptDocx}>↓ Download .docx</Button>
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={saveScriptsToDrive}
+                    disabled={scriptDriveSaving || !selectedClientId || scriptVideos.length === 0}
+                    title={!selectedClientId ? "Selecteer eerst een klant" : undefined}
+                  >
+                    {scriptDriveSaving ? "Opslaan…" : "📁 Opslaan in Drive"}
+                  </Button>
                 </div>
                 <Button
                   onClick={() =>
@@ -2717,20 +2762,113 @@ ${creativeDescriptions}`;
                       <Button variant="outline" size="xs" onClick={downloadBrandMD}>Brand MD</Button>
                     </div>
                     <Button
-                      onClick={() =>
-                        saveStageAndContinue({
-                          stage: "creatives",
-                          data: { qty, formats, driveLink, brandbookName, huisstijl, manusPrompt },
-                          nextSection: "ad-copy",
-                        })
-                      }
+                      onClick={async () => {
+                        // Combined Creatives & Ads tab (2026-06-11): save
+                        // creatives, then auto-generate ad copy in-place so
+                        // the CM doesn't have to navigate. doAdCopy runs
+                        // with skipNav so we stay on the merged view.
+                        if (selectedClientId) {
+                          await saveIfChanged({
+                            clientId: selectedClientId,
+                            stage: "creatives",
+                            campaignNumber,
+                            data: { qty, formats, driveLink, brandbookName, huisstijl, manusPrompt },
+                          });
+                        }
+                        void doAdCopy({ skipNav: true });
+                      }}
                     >
-                      Opslaan &amp; naar ad copy →
+                      Opslaan &amp; genereer ad copy →
                     </Button>
                   </div>
                 </>
               ) : null}
             </Card>
+          )}
+
+          {/* ── Ad copy sub-section (was a separate step before the
+              2026-06-11 merge) — renders below the Manus card so the CM
+              sees creatives and ad copy in one continuous view. The
+              underlying save-version data shape stays per-stage so
+              future Optimize-pipeline port doesn't have to migrate
+              anything. ── */}
+          {(adCopyLoading || adCopy) && (
+            <>
+              <StageActionBar
+                clientId={selectedClientId}
+                stage="ad-copy"
+                campaignNumber={campaignNumber}
+                getCurrentData={() => adCopy}
+                busy={adCopyLoading}
+              />
+              <Card>
+                <div className="flex items-start justify-between mb-5">
+                  <div>
+                    <div className="font-heading font-semibold text-base tracking-tight">Ad copy</div>
+                    <div className="text-xs text-muted-foreground mt-[3px]">Meta &amp; Instagram advertentieteksten - afgestemd op LP + creatives</div>
+                  </div>
+                </div>
+
+                {adCopyLoading ? (
+                  <Spinner text="Pedro schrijft de copy..." sub="Afgestemd op landingspagina, angles & script" />
+                ) : adCopy ? (
+                  <>
+                    <div className="flex border-b border-border/60 mb-5">
+                      {(["primary", "headlines", "desc"] as const).map((tab) => (
+                        <button
+                          key={tab}
+                          onClick={() => setCopyTab(tab)}
+                          className={`px-[0.875rem] py-[0.45rem] text-xs font-medium cursor-pointer border-b-2 -mb-px transition-all bg-transparent font-inter ${
+                            copyTab === tab ? "text-primary border-primary" : "text-muted-foreground border-transparent hover:text-foreground"
+                          }`}
+                        >
+                          {tab === "primary" ? "Primaire tekst" : tab === "headlines" ? "Headlines" : "Beschrijving"}
+                        </button>
+                      ))}
+                    </div>
+
+                    {copyTab === "primary" && (
+                      <>
+                        <div className="mb-5">
+                          <div className="text-[9.5px] uppercase tracking-[1px] text-muted-foreground/60 font-semibold mb-[5px]">Variant A</div>
+                          <OutputBlock content={adCopy.variantA} />
+                        </div>
+                        <div className="mb-5">
+                          <div className="text-[9.5px] uppercase tracking-[1px] text-muted-foreground/60 font-semibold mb-[5px]">Variant B</div>
+                          <OutputBlock content={adCopy.variantB} />
+                        </div>
+                      </>
+                    )}
+                    {copyTab === "headlines" && <OutputBlock content={adCopy.headlines} />}
+                    {copyTab === "desc" && <OutputBlock content={adCopy.beschrijving} />}
+
+                    <input
+                      type="text"
+                      value={adCopySteering}
+                      onChange={(e) => setAdCopySteering(e.target.value)}
+                      placeholder="Optionele steering bij regenereren (bv. 'korter, scherper', 'minder corporate')"
+                      className="w-full text-[11px] rounded-md border border-border/60 bg-background/60 px-2.5 py-1.5 leading-snug placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40 mt-3"
+                    />
+                    <div className="flex items-center justify-between pt-[1.125rem] border-t border-border/60 mt-[1.125rem]">
+                      <Button variant="outline" size="xs" onClick={() => doAdCopy({ skipNav: true })}>↻ Opnieuw{adCopySteering.trim() ? " met steering" : ""}</Button>
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          size="xs"
+                          onClick={saveClientDeliverable}
+                          disabled={deliverableSaving || !selectedClientId}
+                          title="Bundel alle opgeslagen stages tot één client deliverable .md en sla op aan de klant"
+                          className="bg-emerald-500 text-white hover:bg-emerald-600 dark:hover:bg-emerald-400"
+                        >
+                          {deliverableSaving ? "Opslaan…" : "📄 Sla op als client deliverable"}
+                        </Button>
+                        <Button variant="outline" size="xs" onClick={generateAndDownloadClientMD}>Client MD download</Button>
+                        <Button variant="outline" size="xs" onClick={resetAll}>+ Nieuwe campagne</Button>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </Card>
+            </>
           )}
         </>
       )}

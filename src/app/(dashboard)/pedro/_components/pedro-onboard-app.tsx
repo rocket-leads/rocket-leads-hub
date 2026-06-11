@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Megaphone, Users } from "lucide-react"
+import { Sparkles, Lightbulb, Compass, Video, ImageIcon, FileCode, Users } from "lucide-react"
 import { TopTabs, type TopTab } from "@/components/ui/top-tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
@@ -16,19 +16,26 @@ import { t } from "@/lib/i18n/t"
 import type { PedroClient } from "./types"
 import type { PedroCampaign } from "@/app/api/pedro/campaigns/route"
 
-// Pedro On-board flow — the "new client / new campaign from scratch" path.
+// Pedro On-board flow - the "new client / new campaign from scratch" path.
 // Two phases:
 //
-//   1. Voorbereiding — Brief + Research + Angles. Everything the CM
+//   1. Voorbereiding - Brief + Research + Angles. Everything the CM
 //      needs to lock in before generating deliverables.
-//   2. Deliverables  — Video scripts, LP (Lovable prompt), Creatives
-//      (Manus prompt), Ad copy. What gets handed to the client.
+//   2. Deliverables  - Video scripts, LP (Lovable prompt), Creatives
+//      & Ads (image creatives + Meta ad copy in one combined tab,
+//      Roy 2026-06-11). What gets handed to the client.
 //
 // The previous unified Pedro page also had a "Tools → Refresh" tab
 // which now lives at /pedro/optimize as its own route (Roy 2026-05-23):
 // "on-board" means starting a campaign from scratch, "optimize" means
 // iterating on what's already live. Splitting them removes ambiguity
 // and lets each flow grow independently.
+//
+// Section type keeps "ad-copy" for back-compat with deep links / saved
+// versions / URL params from before the merge — the section name still
+// resolves cleanly but the tab no longer shows in the rail. We coerce
+// "ad-copy" → "creatives" on tab change below so any drift bounces back
+// to the combined view automatically.
 type Section =
   | "brief"
   | "research"
@@ -54,13 +61,12 @@ const PHASE_SHAPE = [
     id: "deliverables",
     labelKey: "pedro.phase.deliverables" as const,
     tabs: [
-      // Order matters: LP defines the kernboodschap, creatives follow
-      // (headlines align to LP hero), ad copy aligns to BOTH so the
-      // creative + LP + copy all read as one campaign.
+      // Order matters: LP defines the kernboodschap, creatives + ad copy
+      // follow as one combined "Creatives & Ads" stage so headlines, copy
+      // and image briefs are reviewed together (the way they ship to Meta).
       { id: "script" as const, labelKey: "pedro.tab.script" as const, icon: Video },
       { id: "lp" as const, labelKey: "pedro.tab.lp" as const, icon: FileCode },
-      { id: "creatives" as const, labelKey: "pedro.tab.creatives" as const, icon: ImageIcon },
-      { id: "ad-copy" as const, labelKey: "pedro.tab.ad_copy" as const, icon: Megaphone },
+      { id: "creatives" as const, labelKey: "pedro.tab.creatives_ads" as const, icon: ImageIcon },
     ],
   },
 ] as const
@@ -93,9 +99,16 @@ export function PedroOnboardApp({ clients }: Props) {
   const searchParams = useSearchParams()
   const locale = useLocale()
 
+  // Back-compat coercion: the standalone "ad-copy" tab was merged into
+  // "creatives" (combined "Creatives & Ads" view) on 2026-06-11.
+  // Deep links from older saved sessions / URLs bounce to the combined
+  // tab so the CM still lands somewhere coherent.
+  const normalizeSection = (s: Section): Section =>
+    s === "ad-copy" ? "creatives" : s
+
   const initialSection: Section = (() => {
     const tab = searchParams.get("tab")
-    if (tab && VALID_SECTIONS.has(tab as Section)) return tab as Section
+    if (tab && VALID_SECTIONS.has(tab as Section)) return normalizeSection(tab as Section)
     return "brief"
   })()
 
@@ -104,7 +117,7 @@ export function PedroOnboardApp({ clients }: Props) {
   useEffect(() => {
     const tab = searchParams.get("tab")
     if (tab && VALID_SECTIONS.has(tab as Section)) {
-      setSection(tab as Section)
+      setSection(normalizeSection(tab as Section))
     }
   }, [searchParams])
 
@@ -149,7 +162,7 @@ export function PedroOnboardApp({ clients }: Props) {
   // / TOV strategies, possibly running in parallel). The picker shows the
   // most-recently-used one by default but the CM can flip to any older
   // campaign to keep building on it. "Nieuwe campagne" creates a fresh
-  // container — old work stays addressable via the picker.
+  // container - old work stays addressable via the picker.
   const queryClient = useQueryClient()
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null)
   // Bumps to force-remount Campaign + Research on a campaign switch so
@@ -279,7 +292,15 @@ export function PedroOnboardApp({ clients }: Props) {
         id: tab.id,
         label: t(tab.labelKey, locale),
         icon: tab.icon,
-        done: savedStages.has(tab.id),
+        // The combined "Creatives & Ads" tab is "done" when either
+        // sub-stage was saved — keeps the rail badge truthful after
+        // the 2026-06-11 merge without changing the saved-version
+        // data shape (creatives + ad-copy still saved as distinct
+        // stage rows).
+        done:
+          tab.id === "creatives"
+            ? savedStages.has("creatives") || savedStages.has("ad-copy")
+            : savedStages.has(tab.id),
       })),
     )
   }, [locale, savedVersionsQuery.data])
@@ -322,7 +343,7 @@ export function PedroOnboardApp({ clients }: Props) {
               {campaignsQuery.isLoading
                 ? "Campagnes laden…"
                 : campaigns.length === 0
-                  ? "Nog geen campagne voor deze klant — maak er één aan om te starten."
+                  ? "Nog geen campagne voor deze klant - maak er één aan om te starten."
                   : `${campaigns.length} ${campaigns.length === 1 ? "campagne" : "campagnes"} voor deze klant`}
             </div>
             <CampaignPicker
