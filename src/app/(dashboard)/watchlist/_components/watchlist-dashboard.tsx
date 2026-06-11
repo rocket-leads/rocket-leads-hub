@@ -1097,38 +1097,33 @@ const CATEGORY_CONFIG = {
   action: {
     icon: AlertCircle,
     iconColor: "text-red-500",
-    /** Whole-block wash (Roy 2026-06-11) - the bucket reads as a clearly
-     *  colored card instead of a section that disappears into the page bg. */
-    blockBg: "bg-red-500/[0.08]",
-    blockBorder: "border-red-500/40",
-    /** Header sits slightly stronger on top of the block wash. */
+    /** Roy 2026-06-11 v3: only the header is filled, body stays blank.
+     *  A continuous 4px left stripe on the body carries the category cue
+     *  down so the block reads as one unit without washing the rows. */
     headerBg: "bg-red-500/15",
     headerHover: "hover:bg-red-500/20",
-    rowBorder: "border-l-red-500/60",
-    insightColor: "text-red-300",
+    /** Continuous left stripe on the body. Solid + saturated so it's
+     *  visible on the blank body without competing with the insight text. */
+    stripeBorder: "border-red-500/70",
+    insightColor: "text-red-500/90",
     labelKey: "watchlist.section.action" as const,
   },
   watch: {
     icon: TrendingUp,
     iconColor: "text-amber-500",
-    blockBg: "bg-amber-500/[0.08]",
-    blockBorder: "border-amber-500/40",
     headerBg: "bg-amber-500/15",
     headerHover: "hover:bg-amber-500/20",
-    rowBorder: "border-l-amber-500/60",
-    insightColor: "text-amber-300",
+    stripeBorder: "border-amber-500/70",
+    insightColor: "text-amber-500/90",
     labelKey: "watchlist.section.watch" as const,
   },
   good: {
     icon: CheckCircle2,
     iconColor: "text-green-500",
-    /** Healthy gets a slightly softer wash - good news doesn't need to shout. */
-    blockBg: "bg-green-500/[0.06]",
-    blockBorder: "border-green-500/30",
     headerBg: "bg-green-500/10",
     headerHover: "hover:bg-green-500/15",
-    rowBorder: "border-l-green-500/60",
-    insightColor: "text-green-300",
+    stripeBorder: "border-green-500/60",
+    insightColor: "text-green-500/90",
     labelKey: "watchlist.section.good" as const,
   },
 } as const
@@ -1203,11 +1198,12 @@ function WatchSection({
   if (items.length === 0) return null
 
   return (
-    <div className={`rounded-2xl border ${config.blockBorder} ${config.blockBg} overflow-hidden`}>
-      {/* Section header - sits flat on the colored block, with a slightly
-          stronger wash so the chevron + label still reads against the
-          block tint. Roy 2026-06-11: full colored blocks, no more flat
-          sections on the page bg. */}
+    <div className="rounded-2xl border border-border/40 overflow-hidden bg-card">
+      {/* Header - only filled element. The body below stays blank with a
+          continuous colored left stripe carrying the category cue down.
+          Roy 2026-06-11 v3: ditched the full-block wash because the body
+          colour competed with insight text and washed out the per-row
+          left stripes. Header tint + one continuous stripe = cleaner. */}
       <button
         onClick={() => setOpen((v) => !v)}
         className={`flex items-center gap-2.5 w-full px-4 py-3 ${config.headerBg} ${config.headerHover} transition-colors`}
@@ -1219,7 +1215,7 @@ function WatchSection({
       </button>
 
       {open && (
-        <div className="overflow-hidden">
+        <div className={`overflow-hidden border-l-4 ${config.stripeBorder}`}>
           {/* Column headers - only render in wide mode. The compact variant
               (Watchlist + Healthy 2-col) drops the header strip and uses
               card-style rows with everything stacked vertically. */}
@@ -1347,7 +1343,7 @@ function WatchSection({
                   tabIndex={0}
                   onClick={() => onSelectClient(id)}
                   onKeyDown={onRowKeyDown}
-                  className={`flex items-start gap-3 px-4 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
+                  className="flex items-start gap-3 px-4 py-3 border-b border-border/40 hover:bg-muted/30 transition-colors cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
                 >
                   <div className="flex-1 min-w-0 space-y-1.5">
                     <div className="flex items-center gap-1.5">
@@ -1382,7 +1378,7 @@ function WatchSection({
                   tabIndex={0}
                   onClick={() => onSelectClient(id)}
                   onKeyDown={onRowKeyDown}
-                  className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
+                  className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-3 border-b border-border/40 hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
