@@ -116,10 +116,11 @@ export function NotificationBell() {
         <button
           type="button"
           onClick={() => setOpen((p) => !p)}
-          className={cn(
-            "relative flex items-center justify-center h-10 w-10 rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]",
-            badgeCount > 0 && "text-foreground",
-          )}
+          // Brand-purple chrome (Roy 2026-06-11): AI surfaces get the
+          // Rocket Leads primary purple so they read distinctly from
+          // scheduled-deliverable chrome (weekly updates = neutral
+          // calendar chip on the left).
+          className="relative flex items-center justify-center h-10 w-10 rounded-lg border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 hover:border-primary/60 transition-colors"
           aria-label="Notifications"
         >
           <Bell className="h-4 w-4" />

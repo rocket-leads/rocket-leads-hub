@@ -11,6 +11,7 @@ import {
   Search,
   SkipForward,
   RefreshCw,
+  CalendarDays,
 } from "lucide-react"
 import { DismissButton } from "@/components/ui/dismiss-button"
 
@@ -93,9 +94,13 @@ export function WeeklyUpdatesChip() {
         onClick={() => setSheetOpen(true)}
         title={`${count} wekelijkse update${count === 1 ? "" : "s"} te verzenden`}
         aria-label={`${count} wekelijkse updates te verzenden`}
-        className="inline-flex items-center gap-1.5 h-10 rounded-lg border border-violet-500/40 bg-violet-500/10 px-2.5 text-sm font-medium text-violet-600 dark:text-violet-300 hover:bg-violet-500/20 hover:border-violet-500/60 transition-colors"
+        className="inline-flex items-center gap-1.5 h-10 rounded-lg border border-border bg-card px-2.5 text-sm font-medium text-foreground hover:bg-muted/40 hover:text-foreground transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
       >
-        <Sparkles className="h-3.5 w-3.5 shrink-0" />
+        {/* Calendar icon + neutral chrome (Roy 2026-06-11): Sparkles +
+            violet read as "AI thing" alongside the AI Co-pilot bar /
+            Bell. Calendar + neutral surfaces this as a scheduled
+            deliverable; AI Bell carries the brand purple instead. */}
+        <CalendarDays className="h-3.5 w-3.5 shrink-0" />
         <span className="tabular-nums">{count}</span>
       </button>
       {sheetOpen && (

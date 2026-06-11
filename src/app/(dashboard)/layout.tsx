@@ -34,8 +34,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
               search field, not a full nav bar). z-40 sits beneath the
               client slide-over (z-50) so the panel still covers it. */}
           <header className="sticky top-0 z-40 flex h-14 items-center justify-end gap-2 px-8 bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/65">
-            <CommandBar />
+            {/* Order matters (Roy 2026-06-11): scheduled-deliverable chips
+                first (calendar), then the AI surfaces (Co-pilot command
+                bar + NotificationBell). Keeps the "agenda"-style work to
+                the left of the "AI"-style work so the two don't read as
+                the same thing. */}
             <WeeklyUpdatesChip />
+            <CommandBar />
             <NotificationBell />
             <ClientSearch />
           </header>
