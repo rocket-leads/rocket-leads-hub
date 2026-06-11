@@ -1142,6 +1142,47 @@ export const DICTIONARY = {
   },
   "onboarding.wizard.cm_comp.find_more": { nl: "Meer concurrenten vinden", en: "Find more competitors" },
 
+  // CM Stap 8 — landingspagina (Lovable prompt generator)
+  "onboarding.wizard.cm_lp.intro": {
+    nl: "Pedro genereert één Lovable prompt voor de landingspagina op basis van brief + geselecteerde angles. Kies stijl + lengte, vul tracking in, paste 'm in Lovable.",
+    en: "Pedro generates one Lovable prompt for the landing page based on brief + selected angles. Pick style + length, fill in tracking, paste it into Lovable.",
+  },
+  "onboarding.wizard.cm_lp.stijl.title": { nl: "Stijl", en: "Style" },
+  "onboarding.wizard.cm_lp.stijl.body": {
+    nl: "Bepaalt toon en visuele richting van de pagina.",
+    en: "Sets tone and visual direction of the page.",
+  },
+  "onboarding.wizard.cm_lp.lengte.title": { nl: "Lengte", en: "Length" },
+  "onboarding.wizard.cm_lp.lengte.body": {
+    nl: "Korter = sneller laden, minder ruis. Langer = meer overtuiging voor high-ticket.",
+    en: "Shorter = faster load, less noise. Longer = more persuasion for high-ticket.",
+  },
+  "onboarding.wizard.cm_lp.tracking.title": { nl: "Pixel & tracking", en: "Pixel & tracking" },
+  "onboarding.wizard.cm_lp.tracking.body": {
+    nl: "Wordt direct in de Lovable prompt verwerkt — fbq init + Lead event + form-POST.",
+    en: "Wired into the Lovable prompt directly — fbq init + Lead event + form-POST.",
+  },
+  "onboarding.wizard.cm_lp.tracking.pixel": { nl: "Meta Pixel ID", en: "Meta Pixel ID" },
+  "onboarding.wizard.cm_lp.tracking.webhook": { nl: "Zapier webhook URL", en: "Zapier webhook URL" },
+  "onboarding.wizard.cm_lp.tracking.utm": { nl: "UTM structuur", en: "UTM structure" },
+  "onboarding.wizard.cm_lp.generate.title": { nl: "Genereer prompt", en: "Generate prompt" },
+  "onboarding.wizard.cm_lp.generate.body": {
+    nl: "Pedro leest brief + angles uit eerdere stappen.",
+    en: "Pedro pulls brief + angles from earlier steps.",
+  },
+  "onboarding.wizard.cm_lp.generate.btn": { nl: "Genereer Lovable prompt", en: "Generate Lovable prompt" },
+  "onboarding.wizard.cm_lp.generate.regenerate": {
+    nl: "Opnieuw genereren",
+    en: "Re-generate",
+  },
+  "onboarding.wizard.cm_lp.steering.placeholder": {
+    nl: "Optionele steering — bv. 'meer urgentie', 'korter onder de fold'",
+    en: "Optional steering — e.g. 'more urgency', 'shorter below the fold'",
+  },
+  "onboarding.wizard.cm_lp.copy": { nl: "Kopieer prompt", en: "Copy prompt" },
+  "onboarding.wizard.cm_lp.open_lovable": { nl: "Open Lovable", en: "Open Lovable" },
+  "onboarding.wizard.cm_lp.mark_done": { nl: "Markeer als klaar", en: "Mark as done" },
+
   // Sidebar entries Roy 2026-06-11
   "nav.optimize": { nl: "Optimize", en: "Optimize" },
 

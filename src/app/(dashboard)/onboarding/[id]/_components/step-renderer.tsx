@@ -4,6 +4,7 @@ import type { Locale } from "@/lib/i18n/types"
 import { t } from "@/lib/i18n/t"
 import { CmBriefStep } from "./steps/cm-brief-step"
 import { CmCompetitorsStep } from "./steps/cm-competitors-step"
+import { CmLandingPageStep } from "./steps/cm-landing-page-step"
 import { CmAnglesStep, CmScriptsStep, CmCreativesStep } from "./steps/cm-pedro-step"
 import { HandoffStep } from "./steps/handoff-step"
 import { KickoffLiveStep } from "./steps/kickoff-live-step"
@@ -112,9 +113,12 @@ export function StepRenderer({
           <CmScriptsStep {...stepProps} />
         ) : step.action === "cm_creatives" ? (
           <CmCreativesStep {...stepProps} />
+        ) : step.action === "cm_landing_page" ? (
+          // Minimal one-shot Lovable prompt generator. Tot pedro-campaign
+          // de LP-sub-tab extraheert naar een echte LpRefresh sibling,
+          // doen we het hier inline met /api/pedro/lp-refresh.
+          <CmLandingPageStep {...stepProps} />
         ) : (
-          // cm_landing_page valt nog door — Pedro heeft geen standalone
-          // LP component (zit in pedro-campaign.tsx als sub-tab).
           <PlaceholderStep {...stepProps} />
         )}
       </div>
