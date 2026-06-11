@@ -28,7 +28,6 @@ export function ScriptRefresh({ selectedClientId, selectedClientName, autoStart,
     <RefreshShell<ScriptProposal>
       endpoint="/api/pedro/script-refresh"
       title="Video script refresh"
-      description="Voor elke winner schrijft Pedro 3 volledige UGC-style scripts (50-70 sec, NL) in dezelfde hook/angle DNA - klaar om te shooten."
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}

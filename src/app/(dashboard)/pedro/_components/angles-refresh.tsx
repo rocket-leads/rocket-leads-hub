@@ -23,7 +23,6 @@ export function AnglesRefresh({ selectedClientId, selectedClientName, autoStart,
     <RefreshShell<AnglesProposal>
       endpoint="/api/pedro/angles-refresh"
       title="Angles refresh"
-      description="Pedro leest live Meta performance + branche-patronen en stelt 3-5 nieuwe angles voor om te testen - naast de huidige winnaars."
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}

@@ -5,16 +5,17 @@ import {
   CheckCircle2,
   Target,
   Compass,
+  Megaphone,
   Video,
-  ImageIcon,
-  Type,
+  FileText,
+  ChevronRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AdPicker } from "./ad-picker"
 import { AnglesRefresh } from "./angles-refresh"
 import { ScriptRefresh } from "./script-refresh"
-import { CreativeRefresh } from "./creative-refresh"
-import { AdCopyRefresh } from "./ad-copy-refresh"
+import { LpRefresh } from "./lp-refresh"
+import { AdsRefresh } from "./ads-refresh"
 
 /**
  * OptimizeWizard - Roy 2026-06-11 v3 reorg. Vervangt de tab-based UX
@@ -35,7 +36,7 @@ import { AdCopyRefresh } from "./ad-copy-refresh"
  * wizard (Roy 2026-06-11: "no hard locks").
  */
 
-type StepKey = "pick_ad" | "angles" | "scripts" | "creatives" | "ad_copy"
+type StepKey = "pick_ad" | "angles" | "ads"
 
 type StepDef = {
   key: StepKey
@@ -45,12 +46,16 @@ type StepDef = {
   icon: typeof Compass
 }
 
+// Roy 2026-06-11 v6: terug naar de oude 3-stappen-flow zoals onboarding.
+// Stap 1 = winning ad, stap 2 = angles, stap 3 = ads (creative + copy).
+// Video scripts + LP prompt verhuizen naar de "Overig" sectie onder de
+// wizard - die deliverables hoeven niet steeds opnieuw in Optimize.
 const STEPS: StepDef[] = [
   {
     key: "pick_ad",
     order: 1,
     title: "Kies winning ad",
-    description: "Selecteer de bewezen ad waarop Pedro de iteraties baseert. Dit is de DNA-bron voor angles, scripts, creatives en copy.",
+    description: "Selecteer de bewezen ad waarop Pedro de iteraties baseert. Dit is de DNA-bron voor angles, creatives en copy.",
     icon: Target,
   },
   {
@@ -61,25 +66,11 @@ const STEPS: StepDef[] = [
     icon: Compass,
   },
   {
-    key: "scripts",
+    key: "ads",
     order: 3,
-    title: "Video scripts",
-    description: "Pedro schrijft 3 UGC-stijl scripts per winning ad.",
-    icon: Video,
-  },
-  {
-    key: "creatives",
-    order: 4,
-    title: "Creatives + image gen",
-    description: "Pedro genereert 3 zus-varianten van de gekozen ad + Gemini images per slot.",
-    icon: ImageIcon,
-  },
-  {
-    key: "ad_copy",
-    order: 5,
-    title: "Ad copy refresh",
-    description: "Primary text + headline + description varianten voor Meta dynamic creative.",
-    icon: Type,
+    title: "Creatives + ad copy",
+    description: "Pedro genereert 3 zus-varianten van de gekozen ad: image gen + primary text + headline + description.",
+    icon: Megaphone,
   },
 ]
 
@@ -269,34 +260,10 @@ export function OptimizeWizard({
                 </div>
               </StepGate>
             )}
-            {activeStep.key === "scripts" && (
+            {activeStep.key === "ads" && (
               <StepGate clientId={selectedClientId} pickedAd={pickedAd}>
-                <div onClick={() => markGenerated("scripts")}>
-                  <ScriptRefresh
-                    selectedClientId={selectedClientId}
-                    selectedClientName={selectedClientName}
-                    autoStart={autoStart}
-                    hideShellHeader
-                  />
-                </div>
-              </StepGate>
-            )}
-            {activeStep.key === "creatives" && (
-              <StepGate clientId={selectedClientId} pickedAd={pickedAd}>
-                <div onClick={() => markGenerated("creatives")}>
-                  <CreativeRefresh
-                    selectedClientId={selectedClientId}
-                    selectedClientName={selectedClientName}
-                    autoStart={autoStart}
-                    hideShellHeader
-                  />
-                </div>
-              </StepGate>
-            )}
-            {activeStep.key === "ad_copy" && (
-              <StepGate clientId={selectedClientId} pickedAd={pickedAd}>
-                <div onClick={() => markGenerated("ad_copy")}>
-                  <AdCopyRefresh
+                <div onClick={() => markGenerated("ads")}>
+                  <AdsRefresh
                     selectedClientId={selectedClientId}
                     selectedClientName={selectedClientName}
                     autoStart={autoStart}
@@ -306,6 +273,113 @@ export function OptimizeWizard({
               </StepGate>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Overig - separate vak onder de iteratie flow. Niet onderdeel
+          van de 1-2-3 main flow, maar wel zichtbaar voor as-needed
+          deliverables. Roy 2026-06-11 v6: "videoscripts hoeft niet bij
+          optimize opnieuw opgemaakt te worden + LP prompt + later misschien
+          meer AI deliverables". */}
+      <OtherDeliverables
+        clientId={selectedClientId}
+        clientName={selectedClientName}
+        autoStart={autoStart}
+      />
+    </div>
+  )
+}
+
+function OtherDeliverables({
+  clientId,
+  clientName,
+  autoStart,
+}: {
+  clientId: string
+  clientName: string
+  autoStart?: boolean
+}) {
+  const [openScripts, setOpenScripts] = useState(false)
+  const [openLp, setOpenLp] = useState(false)
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] overflow-hidden">
+      <div className="px-5 pt-5 pb-3 border-b border-border/40">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+          Overig
+        </div>
+        <h2 className="font-heading text-lg font-semibold leading-tight">
+          Aanvullende deliverables
+        </h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Niet onderdeel van de iteratie flow zelf - maar wanneer je ze nodig hebt staan ze hier klaar.
+        </p>
+      </div>
+      <div className="divide-y divide-border/40">
+        {/* LP prompt - inline expandable. Roy 2026-06-11: LP refresh is
+            primair "verbeter bestaande LP" (URL + steering), met scratch
+            als fallback. Niet meer deep-linked naar onboarding. */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setOpenLp((v) => !v)}
+            className="w-full flex items-center gap-3 px-5 py-3 hover:bg-accent/40 transition-colors text-left"
+          >
+            <FileText className="h-4 w-4 text-violet-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium">LP prompt</div>
+              <div className="text-xs text-muted-foreground">
+                Verbeter de bestaande LP (URL + wens) of bouw vanaf scratch.
+              </div>
+            </div>
+            <ChevronRight
+              className={cn(
+                "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
+                openLp && "rotate-90",
+              )}
+            />
+          </button>
+          {openLp && (
+            <div className="px-5 pb-5 pt-1">
+              <LpRefresh
+                selectedClientId={clientId}
+                selectedClientName={clientName}
+                hideShellHeader
+              />
+            </div>
+          )}
+        </div>
+        {/* Video scripts - inline expandable. Roy: "videoscripts hoeft
+            niet opnieuw in Optimize" - dus default dicht, on-demand open. */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setOpenScripts((v) => !v)}
+            className="w-full flex items-center gap-3 px-5 py-3 hover:bg-accent/40 transition-colors text-left"
+          >
+            <Video className="h-4 w-4 text-violet-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium">Video scripts</div>
+              <div className="text-xs text-muted-foreground">
+                Pedro schrijft 3 UGC-stijl scripts per winning ad - on demand.
+              </div>
+            </div>
+            <ChevronRight
+              className={cn(
+                "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
+                openScripts && "rotate-90",
+              )}
+            />
+          </button>
+          {openScripts && (
+            <div className="px-5 pb-5 pt-1">
+              <ScriptRefresh
+                selectedClientId={clientId}
+                selectedClientName={clientName}
+                autoStart={autoStart}
+                hideShellHeader
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

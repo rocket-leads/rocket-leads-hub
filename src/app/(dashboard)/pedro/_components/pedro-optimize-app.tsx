@@ -1,9 +1,8 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { Users, FolderOpen, FileText, ArrowRight } from "lucide-react"
+import { Users, FolderOpen } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { ClientPicker } from "./client-picker"
@@ -99,17 +98,6 @@ export function PedroOptimizeApp({ clients }: Props) {
               <FolderOpen className="h-4 w-4" />
               Drive
             </a>
-          )}
-          {selectedClient?.id && (
-            <Link
-              href={`/onboarding/${selectedClient.id}?step=cm_landing_page`}
-              className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors"
-              title="Landing-page prompt zit in de onboarding wizard"
-            >
-              <FileText className="h-4 w-4" />
-              LP prompt
-              <ArrowRight className="h-3 w-3" />
-            </Link>
           )}
           {selectedClient && (
             <span className="shrink-0 text-xs text-muted-foreground hidden md:inline">

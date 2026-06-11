@@ -129,7 +129,10 @@ type Props<TProposal> = {
    *  backwards compatibility with components that haven't passed it yet. */
   stage?: RefreshStage
   title: string
-  description: string
+  /** Optional explainer line under the title - Roy 2026-06-11 v5 asked
+   *  to strip these page-level descriptions across the Hub; the prop
+   *  stays for surfaces that genuinely need a one-liner. */
+  description?: string
   selectedClientId: string | null
   selectedClientName: string
   autoStart?: boolean
@@ -288,7 +291,9 @@ export function RefreshShell<TProposal>({
         {!hideShellHeader && (
           <div className="mb-4">
             <div className="font-heading font-semibold text-sm tracking-tight">{title}</div>
-            <div className="text-xs text-muted-foreground mt-1">{description}</div>
+            {description && (
+              <div className="text-xs text-muted-foreground mt-1">{description}</div>
+            )}
           </div>
         )}
 

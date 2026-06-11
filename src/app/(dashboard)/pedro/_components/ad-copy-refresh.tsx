@@ -29,7 +29,6 @@ export function AdCopyRefresh({ selectedClientId, selectedClientName, autoStart,
     <RefreshShell<AdCopyProposal>
       endpoint="/api/pedro/ad-copy-refresh"
       title="Ad copy refresh"
-      description="Voor elke winner schrijft Pedro 3 nieuwe primary text + headline + description varianten - zelfde angle, frisse executie voor de feed."
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}

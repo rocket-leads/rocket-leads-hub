@@ -464,7 +464,6 @@ export function CreativeRefresh({ selectedClientId, selectedClientName, autoStar
     <RefreshShell<CreativeProposal>
       endpoint="/api/pedro/creative-refresh"
       title="Creative refresh"
-      description="Kies een campagne en een specifieke ad - Pedro genereert 3 iteraties op die ad in dezelfde DNA. Geen window-confusie meer."
       selectedClientId={selectedClientId}
       selectedClientName={selectedClientName}
       autoStart={autoStart}
