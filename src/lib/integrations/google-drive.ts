@@ -55,6 +55,94 @@ export type CreatedDriveFolder = {
 }
 
 /**
+ * Download a file from a public URL and upload it to Drive in one shot.
+ * Used by the onboarding wizard to pull the klant's website logo + hero
+ * image straight into the per-klant Drive folder when the AM hits
+ * "Analyze website" — no separate upload step for the AM.
+ *
+ * `mimeType` is best-effort detected from the Content-Type header; we
+ * fall back to the extension when the server doesn't send one.
+ * Errors bubble up — the caller decides whether to swallow per-file
+ * failures or fail the whole batch.
+ */
+export async function uploadFromUrl(args: {
+  folderId: string
+  url: string
+  fileName: string
+}): Promise<CreatedDriveFile> {
+  const fetchRes = await fetch(args.url)
+  if (!fetchRes.ok) {
+    throw new Error(`Failed to fetch ${args.url}: HTTP ${fetchRes.status}`)
+  }
+  // Buffer the response so the Drive client can stream it cleanly. For
+  // hero images / logos this is < 5MB so in-memory is fine.
+  const arrayBuffer = await fetchRes.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+  const mimeType =
+    fetchRes.headers.get("content-type")?.split(";")[0]?.trim() ||
+    guessMimeFromExtension(args.fileName) ||
+    "application/octet-stream"
+
+  const auth = await getAuth()
+  const drive = google.drive({ version: "v3", auth })
+
+  // Drive's media body accepts a Readable stream — convert the buffer.
+  const { Readable } = await import("stream")
+  const bodyStream = Readable.from(buffer)
+
+  try {
+    const res = await drive.files.create({
+      requestBody: {
+        name: args.fileName,
+        parents: [args.folderId],
+        mimeType,
+      },
+      media: {
+        mimeType,
+        body: bodyStream,
+      },
+      fields: "id, name, webViewLink",
+      supportsAllDrives: true,
+    })
+    const data = res.data
+    if (!data.id) throw new Error("Drive create returned no file id")
+    return {
+      id: data.id,
+      name: data.name ?? args.fileName,
+      webViewLink: data.webViewLink ?? `https://drive.google.com/file/d/${data.id}/view`,
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (/permission|forbidden|insufficient|insufficientFilePermissions/i.test(msg)) {
+      throw new Error(
+        "Drive folder is niet als Editor gedeeld met het service-account. Open de folder, kies Share, en geef het service-account-emailadres Editor-rechten.",
+      )
+    }
+    throw e
+  }
+}
+
+/** Minimal extension → mime mapping for the asset types we round-trip
+ *  via uploadFromUrl. Anything else falls through to octet-stream and
+ *  Drive will still accept it (just won't preview nicely). */
+function guessMimeFromExtension(fileName: string): string | null {
+  const ext = fileName.split(".").pop()?.toLowerCase()
+  if (!ext) return null
+  const map: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    pdf: "application/pdf",
+    mp4: "video/mp4",
+    webm: "video/webm",
+  }
+  return map[ext] ?? null
+}
+
+/**
  * Create a single Drive folder underneath a parent folder. The parent
  * MUST be shared as Editor with the service account, otherwise Drive
  * returns a 403 (same precondition as `createMarkdownFile` above).

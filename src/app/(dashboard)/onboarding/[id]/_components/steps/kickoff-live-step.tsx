@@ -454,6 +454,54 @@ export function KickoffLiveStep({
       setBrandStyle(data.brandStyle)
       setBrandSwatches(data.extractedColors ?? [])
       setBrandDirty(true)
+      // Best-effort: kick off the logo + hero download to Drive in
+      // the background. Failures don't undo the brand-style update —
+      // the assets just won't be in Drive. The AM can re-run by
+      // hitting Analyze again, or manually drop the files in.
+      void fetch(`/api/clients/${mondayItemId}/onboarding/save-brand-assets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          logoUrl: data.brandStyle.logoUrl,
+          heroImageUrl: data.brandStyle.heroImageUrl,
+        }),
+      }).catch(() => undefined)
+    },
+  })
+
+  // ── Pre-fill brief from Monday updates + Trengo + meetings ──
+  // Reuses the existing Pedro auto-brief generator. Useful before the
+  // kick-off transcript lands — it pulls whatever Monday updates the
+  // sales team already wrote, plus any Trengo conversation history,
+  // and fills the brief fields from there. AM-typed values are
+  // preserved; AI output only fills the blanks.
+  const prefillBrief = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/pedro/auto-brief`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: mondayItemId }),
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error ?? "Pre-fill failed")
+      }
+      return res.json() as Promise<{ brief: Partial<BriefDraft> }>
+    },
+    onSuccess: ({ brief }) => {
+      // Merge in only the fields the AM hasn't filled yet — never
+      // overwrite work. trim() comparison so a stray space doesn't
+      // count as "already filled".
+      setBriefDraft((prev) => {
+        const next = { ...prev }
+        ;(Object.keys(EMPTY_BRIEF) as Array<keyof BriefDraft>).forEach((key) => {
+          if ((next[key] ?? "").trim() === "" && brief[key]) {
+            next[key] = brief[key] as string
+          }
+        })
+        return next
+      })
+      setBriefDirty(true)
     },
   })
 
@@ -793,18 +841,42 @@ export function KickoffLiveStep({
 
       {/* Brief template - fill live during the call */}
       <section className="rounded-xl border border-border/60 bg-card/50 p-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
           <h3 className="text-sm font-semibold">
             {t("onboarding.wizard.kickoff.brief.title", locale)}
           </h3>
-          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-            {briefDirty
-              ? t("onboarding.wizard.kickoff.brief.saving", locale)
-              : countFilled(briefDraft) > 0
-                ? t("onboarding.wizard.kickoff.brief.saved", locale)
-                : ""}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              {briefDirty
+                ? t("onboarding.wizard.kickoff.brief.saving", locale)
+                : countFilled(briefDraft) > 0
+                  ? t("onboarding.wizard.kickoff.brief.saved", locale)
+                  : ""}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => prefillBrief.mutate()}
+              disabled={prefillBrief.isPending}
+              className="gap-1.5 h-7 text-xs"
+              title={t("onboarding.wizard.kickoff.brief.prefill.hint", locale)}
+            >
+              {prefillBrief.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles className="h-3 w-3" />
+              )}
+              {t("onboarding.wizard.kickoff.brief.prefill.btn", locale)}
+            </Button>
+          </div>
         </div>
+        {prefillBrief.isError && (
+          <div className="mb-3 text-[11px] text-destructive">
+            {prefillBrief.error instanceof Error
+              ? prefillBrief.error.message
+              : "Pre-fill failed"}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Field label={t("onboarding.wizard.brief.field.bedrijf", locale)}>

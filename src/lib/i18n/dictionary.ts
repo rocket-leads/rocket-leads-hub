@@ -305,6 +305,16 @@ export const DICTIONARY = {
   "clients.filter.health": { nl: "Gezondheid", en: "Health" },
   "clients.filter.health_all": { nl: "Alle gezondheidsstatussen", en: "All Health Statuses" },
 
+  // Column-group toggles (current board only). Each user picks which
+  // groups to show; preference saved per browser via localStorage.
+  "clients.group.status": { nl: "Status", en: "Status" },
+  "clients.group.invoice": { nl: "Facturatie", en: "Billing" },
+  "clients.group.people": { nl: "Personen", en: "People" },
+  "clients.group.kpi": { nl: "Prestaties", en: "KPIs" },
+  "clients.groups.toolbar_label": { nl: "Toon kolommen", en: "Show columns" },
+  "clients.groups.show": { nl: "Toon {name}", en: "Show {name}" },
+  "clients.groups.hide": { nl: "Verberg {name}", en: "Hide {name}" },
+
   // Column headers
   "clients.col.client": { nl: "Klant", en: "Client" },
   "clients.col.status": { nl: "Status", en: "Status" },
@@ -762,6 +772,11 @@ export const DICTIONARY = {
   "onboarding.wizard.kickoff.brief.title": { nl: "Client brief (vul live in)", en: "Client brief (fill live)" },
   "onboarding.wizard.kickoff.brief.saving": { nl: "Opslaan…", en: "Saving…" },
   "onboarding.wizard.kickoff.brief.saved": { nl: "Auto-saved", en: "Auto-saved" },
+  "onboarding.wizard.kickoff.brief.prefill.btn": { nl: "Pre-fill uit Monday", en: "Pre-fill from Monday" },
+  "onboarding.wizard.kickoff.brief.prefill.hint": {
+    nl: "AI leest Monday updates + Trengo + meetings en vult lege velden in. Bestaande input wordt nooit overschreven.",
+    en: "AI reads Monday updates + Trengo + meetings and fills empty fields. Existing input is never overwritten.",
+  },
   "onboarding.wizard.kickoff.brief.needs_fields": {
     nl: "Vul minimaal 5 velden in voor je verder gaat.",
     en: "Fill at least 5 fields before continuing.",
