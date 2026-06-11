@@ -75,17 +75,11 @@ export function PedroInsightCard({ mondayItemId, locale }: Props) {
       </div>
 
       <p className="text-sm text-foreground/85 leading-relaxed">{parsed.conclusion}</p>
-
-      {parsed.actions.length > 0 && (
-        <ul className="space-y-1.5 pt-2 border-t border-violet-500/10">
-          {parsed.actions.map((action, i) => (
-            <li key={i} className="text-xs text-foreground/75 leading-relaxed flex gap-2">
-              <span className="text-violet-400/70 shrink-0">•</span>
-              <span>{action}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* Action bullets + divider removed 2026-06-11 - Roy wants Pedro
+          above the KPI cards as a short update only. The full actions
+          list still lives on the bullet form of this card elsewhere
+          (Pedro page) - this surface is the compact "what's the read?"
+          headline, no longer duplicated next to the weekly bullets. */}
     </div>
   )
 }

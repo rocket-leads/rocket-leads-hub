@@ -6,13 +6,9 @@ import { differenceInCalendarDays, format, isSameDay, startOfMonth, subDays, sub
 import {
   Euro,
   Users,
-  CreditCard,
   Activity,
-  ChevronRight,
-  ListTodo,
   TrendingUp,
   TrendingDown,
-  CalendarClock,
   Trophy,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -22,8 +18,8 @@ import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-rang
 import { useClientDateRange } from "@/app/(dashboard)/clients/[id]/_hooks/use-client-date-range"
 import { categorizeHealthVsBaseline, type WatchCategory } from "@/lib/watchlist/categorize"
 import { PedroInsightCard } from "./pedro-insight-card"
-import { PedroDeliverableCard } from "./pedro-deliverable-card"
 import { OnboardingChecklist } from "./onboarding-checklist"
+import { TrendChart } from "./trend-chart"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
@@ -31,14 +27,10 @@ import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { KpiResult } from "@/lib/clients/kpis"
 import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 import type { MondayClient } from "@/lib/integrations/monday"
-import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
-import type { InboxItem } from "@/types/inbox"
 import type { WatchlistExpandResponse } from "@/app/api/watchlist/[id]/expand/route"
 
 type Props = {
   client: MondayClient
-  supabaseClientId: string
-  canViewBilling: boolean
   canViewCampaigns: boolean
   /** Bumped by the page-level Refresh button. When > 0, kpisQuery includes
    *  it in the queryKey (forces a refetch) and passes `?forceRefresh=1` so
@@ -47,8 +39,6 @@ type Props = {
    *  cache keeps serving stale numbers. */
   refreshNonce: number
   onNavigateToCampaigns: () => void
-  onNavigateToInbox: () => void
-  onNavigateToBilling: () => void
 }
 
 /** Health tone classes (color) + dictionary label key per category. Label is
@@ -95,10 +85,6 @@ function fmtInt(n: number): string {
   return n.toLocaleString("en-GB")
 }
 
-function fmtCurrencyShort(n: number): string {
-  return `€${n.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`
-}
-
 /**
  * Compact label for a date window. Recognises the common presets exposed by
  * `useDateRange` ("Last 7 Days" → "7d", "MTD" → "MTD", "Last Month" → "Last
@@ -132,27 +118,6 @@ function describeWindow(start: Date, end: Date): string {
   // Fallback: literal day count, then a date range for long bespoke windows.
   if (days <= 365) return `${days}d`
   return `${format(start, "d MMM")} – ${format(end, "d MMM yyyy")}`
-}
-
-function summarizePayments(invoices: InvoiceRow[] | undefined) {
-  if (!invoices) return null
-  const overdue = invoices.filter((i) => i.status === "overdue")
-  const open = invoices.filter((i) => i.status === "open")
-  if (overdue.length > 0) {
-    return {
-      kind: "overdue" as const,
-      count: overdue.length,
-      amount: overdue.reduce((s, i) => s + (i.amountDue - i.amountPaid), 0),
-    }
-  }
-  if (open.length > 0) {
-    return {
-      kind: "open" as const,
-      count: open.length,
-      amount: open.reduce((s, i) => s + (i.amountDue - i.amountPaid), 0),
-    }
-  }
-  return { kind: "complete" as const }
 }
 
 function KpiCard({
@@ -287,185 +252,11 @@ function TopAdsCard({
     </Card>
   )
 }
-
-function PaymentBanner({
-  summary,
-  loading,
-  onClick,
-  locale,
-}: {
-  summary: ReturnType<typeof summarizePayments> | null
-  loading: boolean
-  onClick: () => void
-  locale: Locale
-}) {
-  if (loading) {
-    return (
-      <Card>
-        <CardContent className="p-4">
-          <Skeleton className="h-5 w-40" />
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (!summary) {
-    return (
-      <Card>
-        <CardContent className="p-4 text-sm text-muted-foreground/60">{t("client.home.payment.no_stripe", locale)}</CardContent>
-      </Card>
-    )
-  }
-
-  const tone = (() => {
-    if (summary.kind === "complete") return { bg: "bg-emerald-500/10", border: "border-emerald-500/40", text: "text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500" }
-    if (summary.kind === "open") return { bg: "bg-amber-500/10", border: "border-amber-500/40", text: "text-amber-600 dark:text-amber-400", dot: "bg-amber-500" }
-    return { bg: "bg-red-500/10", border: "border-red-500/40", text: "text-red-500 dark:text-red-400", dot: "bg-red-500" }
-  })()
-
-  const label = (() => {
-    if (summary.kind === "complete") return t("client.home.payment.paid", locale)
-    const amount = fmtCurrencyShort(summary.amount)
-    const count = String(summary.count)
-    if (summary.kind === "open") {
-      return t(summary.count === 1 ? "client.home.payment.open_one" : "client.home.payment.open_many", locale, { count, amount })
-    }
-    return t(summary.count === 1 ? "client.home.payment.overdue_one" : "client.home.payment.overdue_many", locale, { count, amount })
-  })()
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full text-left ${tone.bg} ${tone.border} border rounded-xl px-4 py-3.5 hover:brightness-110 hover:shadow-sm transition-all duration-150 cursor-pointer group`}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className={`h-9 w-9 rounded-lg ${tone.bg} flex items-center justify-center`}>
-            <CreditCard className={`h-4 w-4 ${tone.text}`} />
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium mb-0.5">{t("client.home.payment.label", locale)}</p>
-            <p className={`text-sm font-semibold ${tone.text}`}>{label}</p>
-          </div>
-        </div>
-        <span className={`inline-flex items-center gap-1 text-[11px] ${tone.text} opacity-60 group-hover:opacity-100 transition-opacity shrink-0`}>
-          {t("client.home.payment.open_billing", locale)}
-          <ChevronRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
-        </span>
-      </div>
-    </button>
-  )
-}
-
-function relativeDue(due: string | null, locale: Locale): { label: string; tone: string } {
-  if (!due) return { label: t("client.home.due.none", locale), tone: "text-muted-foreground/60" }
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const target = new Date(due); target.setHours(0, 0, 0, 0)
-  const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays < 0) return { label: t("client.home.due.overdue", locale, { n: String(Math.abs(diffDays)) }), tone: "text-red-500" }
-  if (diffDays === 0) return { label: t("client.home.due.today", locale), tone: "text-amber-500" }
-  if (diffDays === 1) return { label: t("client.home.due.tomorrow", locale), tone: "text-amber-500" }
-  if (diffDays <= 7) return { label: t("client.home.due.in_days", locale, { n: String(diffDays) }), tone: "text-foreground/70" }
-  return { label: t("client.home.due.on_date", locale, { date: due }), tone: "text-muted-foreground/60" }
-}
-
-function TasksList({
-  tasks,
-  loading,
-  onSeeAll,
-  locale,
-}: {
-  tasks: InboxItem[]
-  loading: boolean
-  onSeeAll: () => void
-  locale: Locale
-}) {
-  if (loading) {
-    return (
-      <Card>
-        <CardContent className="p-4 space-y-2">
-          <Skeleton className="h-4 w-32" />
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full" />
-          ))}
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Whole card is one big click target - keeps the hover/click semantics
-  // consistent with the Lead Analysis and Payment cards above. Individual
-  // tasks aren't separately clickable; they all route to the same place
-  // anyway, so adding nested buttons just adds noise.
-  return (
-    <button
-      type="button"
-      onClick={onSeeAll}
-      className="block w-full text-left rounded-xl border border-border/60 bg-card hover:bg-muted/40 hover:border-border hover:shadow-sm transition-all duration-150 cursor-pointer group p-4"
-    >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <ListTodo className="h-3.5 w-3.5 text-muted-foreground/60" />
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground/60 font-medium">
-            {t("client.home.tasks.title", locale)}
-          </span>
-          {tasks.length > 0 && (
-            <span className="inline-flex items-center justify-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-foreground/70">
-              {tasks.length}
-            </span>
-          )}
-        </div>
-        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground group-hover:text-foreground transition-colors">
-          {t("client.home.tasks.open_inbox", locale)}
-          <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-        </span>
-      </div>
-
-      {tasks.length === 0 ? (
-        <p className="text-sm text-muted-foreground/60 py-4 text-center">{t("client.home.tasks.empty", locale)}</p>
-      ) : (
-        <div className="space-y-1.5">
-          {tasks.slice(0, 5).map((task) => {
-            const due = relativeDue(task.dueDate, locale)
-            return (
-              <div
-                key={task.id}
-                className="flex items-center justify-between gap-3 rounded-md px-3 py-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{task.title}</p>
-                  <p className="text-[11px] text-muted-foreground/60">
-                    {t("client.home.tasks.assigned_to", locale, { name: task.assigneeName ?? "" })}
-                  </p>
-                </div>
-                <span className={`inline-flex items-center gap-1 text-[11px] shrink-0 ${due.tone}`}>
-                  <CalendarClock className="h-3 w-3" />
-                  {due.label}
-                </span>
-              </div>
-            )
-          })}
-          {tasks.length > 5 && (
-            <p className="w-full text-center text-[11px] text-muted-foreground py-1.5">
-              {t("client.home.tasks.more", locale, { n: String(tasks.length - 5) })}
-            </p>
-          )}
-        </div>
-      )}
-    </button>
-  )
-}
-
 export function HomeTab({
   client,
-  supabaseClientId,
-  canViewBilling,
   canViewCampaigns,
   refreshNonce,
   onNavigateToCampaigns: _onNavigateToCampaigns,
-  onNavigateToInbox,
-  onNavigateToBilling,
 }: Props) {
   const locale = useLocale()
   const queryClient = useQueryClient()
@@ -718,26 +509,6 @@ export function HomeTab({
     refetchOnWindowFocus: false,
   })
 
-  const billingQuery = useQuery<Partial<BillingData>>({
-    queryKey: ["billing-check", client.mondayItemId],
-    queryFn: () =>
-      client.stripeCustomerId
-        ? fetch(`/api/clients/${client.mondayItemId}/billing?stripeCustomerId=${client.stripeCustomerId}`).then((r) => r.json())
-        : Promise.resolve({}),
-    enabled: !!client.stripeCustomerId && canViewBilling,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const tasksQuery = useQuery<{ items: InboxItem[] }>({
-    queryKey: ["client-tasks", supabaseClientId],
-    queryFn: () =>
-      fetch(`/api/inbox?kind=task&clientId=${supabaseClientId}&statuses=open,in_progress`).then((r) => r.json()),
-    enabled: !!supabaseClientId,
-    staleTime: 60 * 1000,
-  })
-
-  const paymentSummary = summarizePayments(billingQuery.data?.invoices)
-
   // Display values for the KPI cards are derived once above (single source
   // of truth: `currentSpend / currentLeads / currentCpl` - kpi_summaries
   // for the canonical 7d window, live kpisQuery for custom ranges).
@@ -751,6 +522,12 @@ export function HomeTab({
   return (
     <div className="space-y-5">
       <OnboardingChecklist client={client} />
+
+      {/* Pedro now sits ABOVE the KPI cards - short conclusion-only
+          headline so the page opens with the read, not the raw numbers.
+          Action bullets removed; the weekly client update below already
+          carries the same content. */}
+      <PedroInsightCard mondayItemId={client.mondayItemId} locale={locale} />
 
       <div className="flex items-center gap-3 flex-wrap">
         <DateRangePicker
@@ -795,33 +572,16 @@ export function HomeTab({
         />
       </div>
 
-      {/* Single Pedro insight - replaces the old LeadAnalysisCard / Activity
-          Summary / Optimization Proposal stack. One AI voice across the platform. */}
-      <PedroInsightCard mondayItemId={client.mondayItemId} locale={locale} />
-
-      {/* Deliverable #1 - assembled markdown of every Pedro stage saved
-          for this client. Re-readable + downloadable as the formal hand-off. */}
-      <PedroDeliverableCard mondayItemId={client.mondayItemId} />
+      {/* CPL + Ad Spend line chart - answers "did CPL move because spend
+          changed, or independently?". Own 14d/30d/90d toggle (default
+          30d) independent of the KPI cards' date range picker. */}
+      {client.metaAdAccountId && (
+        <TrendChart mondayItemId={client.mondayItemId} />
+      )}
 
       {canViewCampaigns && client.metaAdAccountId && (
         <TopAdsCard ads={expandQuery.data?.topAds} loading={expandQuery.isLoading} locale={locale} />
       )}
-
-      {client.stripeCustomerId && canViewBilling && (
-        <PaymentBanner
-          summary={paymentSummary}
-          loading={billingQuery.isLoading}
-          onClick={onNavigateToBilling}
-          locale={locale}
-        />
-      )}
-
-      <TasksList
-        tasks={tasksQuery.data?.items ?? []}
-        loading={tasksQuery.isLoading}
-        onSeeAll={onNavigateToInbox}
-        locale={locale}
-      />
     </div>
   )
 }

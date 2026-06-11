@@ -140,20 +140,13 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
     setIsRefreshing(false)
   }
 
-  // Callbacks fired by inner panels that want to jump to another group. The
-  // HomeTab uses these for "open billing" / "open inbox" affordances on the
-  // payment banner + tasks card - we map them to the new top+sub state pair.
+  // HomeTab's "open campaigns" affordance maps to the campaigns sub-view
+  // under Performance. (Old "open billing" / "open inbox" affordances on
+  // the payment banner + tasks card were removed 2026-06-11 when the
+  // home tab was slimmed down to Pedro + KPIs + trend chart only.)
   const goToCampaigns = () => {
     setActiveGroup("performance")
     setPerformanceView("campaigns")
-  }
-  const goToInbox = () => {
-    setActiveGroup("conversations")
-    setConversationsView("inbox")
-  }
-  const goToBilling = () => {
-    setActiveGroup("admin")
-    if (access.canViewBilling) setAdminView("billing")
   }
   const goToSettings = () => {
     setActiveGroup("admin")
@@ -195,13 +188,9 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
           {performanceView === "overview" && (
             <HomeTab
               client={client}
-              supabaseClientId={supabaseClientId}
-              canViewBilling={access.canViewBilling}
               canViewCampaigns={access.canViewCampaigns}
               refreshNonce={refreshNonce}
               onNavigateToCampaigns={goToCampaigns}
-              onNavigateToInbox={goToInbox}
-              onNavigateToBilling={goToBilling}
             />
           )}
 
