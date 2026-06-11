@@ -17,6 +17,9 @@ import {
   fetchAdNamesInAccount,
 } from "@/lib/integrations/meta"
 import { getMaxAdNumberByFormat, formatAdName, type AdFormatHint } from "@/lib/pedro/refresh-naming"
+import { logWatchlistAction } from "@/lib/watchlist/log-action"
+import { readCache } from "@/lib/cache"
+import type { KpiSummary } from "@/app/api/kpi-summaries/route"
 
 /**
  * POST /api/pedro/proposals/[refreshId]/[proposalIndex]/push-to-meta
@@ -119,7 +122,7 @@ export async function POST(
   // ── 1. Resolve refresh + client + page + ad account ────────────────
   const { data: refreshRow, error: refreshErr } = await supabase
     .from("pedro_refreshes")
-    .select("id, client_id, envelope")
+    .select("id, client_id, envelope, saved_to_inbox_event_id")
     .eq("id", refreshId)
     .maybeSingle()
   if (refreshErr) throw refreshErr
@@ -612,6 +615,87 @@ export async function POST(
   }
 
   const successCount = results.filter((r) => r.ok).length
+
+  // ── 9. Auto-log to Watch List ──────────────────────────────────────
+  // When at least one variant landed live in Meta, this counts as a
+  // creative-iteration action on the client. Move the client to
+  // Watchlist "in review" + send the AM an Update so they know the
+  // campaign just got new creatives. Best-effort: a logging failure
+  // never fails the user-facing push response (the creatives are
+  // already in Meta - that's the work done).
+  if (successCount > 0) {
+    try {
+      const kpiCache = (await readCache<Record<string, KpiSummary>>("kpi_summaries")) ?? {}
+      const kpi = kpiCache[refreshRow.client_id]
+      const successfulVariantSummaries = results
+        .filter((r) => r.ok && r.metaAdName)
+        .map((r) => r.metaAdName)
+        .slice(0, 3)
+      const sourceAdName = proposal.basedOnAd?.adName?.trim() || "winner"
+      const angle = proposalAngle || "—"
+      const actionTextParts: string[] = []
+      actionTextParts.push(
+        `Pushed ${successCount} new creative variant(s) live via Pedro (angle: ${angle}).`,
+      )
+      if (successfulVariantSummaries.length > 0) {
+        actionTextParts.push(
+          `New ad${successfulVariantSummaries.length > 1 ? "s" : ""}: ${successfulVariantSummaries.join(", ")}.`,
+        )
+      }
+      actionTextParts.push(`Source ad: ${sourceAdName}. New ad set: ${newAdsetName} (paused).`)
+      const actionText = actionTextParts.join(" ").slice(0, 1900)
+
+      // Pedro creative iterations need 5d to get past Meta's learning
+      // phase + accumulate enough leads to compare CPL fairly. Manual
+      // mark-done defaults to 3d; Pedro overrides to 5d.
+      const PEDRO_REVIEW_DAYS = 5
+
+      const logResult = await logWatchlistAction({
+        supabase,
+        mondayItemId: refreshRow.client_id,
+        clientName: clientRow.name,
+        // accountManagerName omitted - helper reads monday_boards cache
+        // to look it up. Avoids a per-push Monday API call.
+        actionCategory: "creative",
+        actionText,
+        reviewDays: PEDRO_REVIEW_DAYS,
+        kpiSnapshot: kpi
+          ? {
+              adSpend: kpi.adSpend ?? null,
+              leads: kpi.leads ?? null,
+              cpl: kpi.cpl ?? null,
+              prevCpl: kpi.prevCpl ?? null,
+            }
+          : null,
+        insightAtTime: `Pedro push-to-Meta (refresh ${refreshId.slice(0, 8)})`,
+        createdByUserId: session.user.id,
+        // If save-to-inbox already notified the AM about this refresh,
+        // link the audit row to that existing event instead of writing
+        // a duplicate inbox Update.
+        existingInboxEventId: refreshRow.saved_to_inbox_event_id ?? null,
+        inboxSourceRefExtras: {
+          from: "pedro_push_to_meta",
+          pedro_refresh_id: refreshId,
+          proposal_index: proposalIndex,
+          new_ad_set_id: newAdsetId,
+          success_count: successCount,
+        },
+      })
+
+      if (!logResult.ok) {
+        console.error(
+          "[push-to-meta] watchlist action log failed (non-fatal):",
+          logResult.error,
+        )
+      }
+    } catch (e) {
+      console.error(
+        "[push-to-meta] watchlist action log threw (non-fatal):",
+        e instanceof Error ? e.message : e,
+      )
+    }
+  }
+
   return NextResponse.json({
     refreshId,
     proposalIndex,
