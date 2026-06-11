@@ -732,6 +732,7 @@ function CreateTaskButton({
   insight,
   kpi,
   locale,
+  compact = false,
 }: {
   mondayItemId: string
   clientName: string
@@ -740,6 +741,9 @@ function CreateTaskButton({
   insight: string
   kpi: KpiSummary | undefined
   locale: Locale
+  /** When true (Watchlist + Healthy 2-col layout), drops the label so
+   *  the button stays icon-only and matches the Move/Meta chrome. */
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [lastResult, setLastResult] = useState<"done" | "error" | null>(null)
@@ -783,7 +787,7 @@ function CreateTaskButton({
       <ActionIconButton
         tone="muted"
         label={t("watchlist.row.create_task", locale)}
-        showLabel
+        showLabel={!compact}
         disabled={!hasCm}
         state={lastResult}
         tooltip={tooltip}
@@ -1163,12 +1167,17 @@ function WatchSection({
   defaultOpen,
   onSelectClient,
   locale,
+  variant = "wide",
 }: {
   category: "action" | "watch" | "good"
   items: CategorizedClient[]
   defaultOpen: boolean
   onSelectClient: (mondayItemId: string) => void
   locale: Locale
+  /** "wide" = full-width banner with multi-column grid (Action Needed).
+   *  "compact" = card-style row that fits in a half-width column with
+   *  client+insight+KPIs stacked vertically (Watchlist + Healthy 2-col). */
+  variant?: "wide" | "compact"
 }) {
   const [open, setOpen] = useState(defaultOpen)
   const config = CATEGORY_CONFIG[category]
@@ -1191,24 +1200,159 @@ function WatchSection({
 
       {open && (
         <div className="rounded-xl border border-border/30 overflow-hidden">
-          {/* Column headers - kept tight per Roy's instruction: Client,
-              Insight, Spend, Leads, CPL, and one Create-task quick action.
-              AI Note / Appts / 14d CPL sparkline / Ask Pedro all removed
-              (rolled into the slide-over which opens on row click). */}
-          <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.client", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.insight", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.spend", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.leads", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.cpl", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.create_task", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold sr-only">{t("watchlist.col.move", locale)}</span>
-            <span className="text-[13px] text-foreground/80 font-semibold sr-only">{t("watchlist.col.ads_manager", locale)}</span>
-          </div>
+          {/* Column headers - only render in wide mode. The compact variant
+              (Watchlist + Healthy 2-col) drops the header strip and uses
+              card-style rows with everything stacked vertically. */}
+          {variant === "wide" && (
+            <div className="grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-2.5 border-b border-border/60 bg-muted/50">
+              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.client", locale)}</span>
+              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.insight", locale)}</span>
+              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.spend", locale)}</span>
+              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.leads", locale)}</span>
+              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.cpl", locale)}</span>
+              <span className="text-[13px] text-foreground/80 font-semibold">{t("watchlist.col.create_task", locale)}</span>
+              <span className="text-[13px] text-foreground/80 font-semibold sr-only">{t("watchlist.col.move", locale)}</span>
+              <span className="text-[13px] text-foreground/80 font-semibold sr-only">{t("watchlist.col.ads_manager", locale)}</span>
+            </div>
+          )}
 
           {/* Rows */}
           {items.map(({ client, insight, kpi, daysInBucket, isNewToday, manualOverride }) => {
             const id = client.mondayItemId
+
+            // Shared row interaction handlers - identical between wide and
+            // compact variants so a click anywhere on the row opens the
+            // slide-over (action buttons stopPropagation as before).
+            const onRowKeyDown = (e: React.KeyboardEvent) => {
+              // Skip when the keypress comes from an input / textarea /
+              // contenteditable. React synthetic events bubble through
+              // portals, so a Space pressed inside a portal-mounted
+              // dialog textarea (Move dialog, Create-task dialog) still
+              // reaches this handler - and preventDefault would block
+              // the literal space character from appearing in the
+              // field. Roy 2026-06-09.
+              const tag = (e.target as HTMLElement | null)?.tagName
+              if (
+                tag === "INPUT" ||
+                tag === "TEXTAREA" ||
+                tag === "SELECT" ||
+                (e.target as HTMLElement | null)?.isContentEditable
+              ) {
+                return
+              }
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault()
+                onSelectClient(id)
+              }
+            }
+
+            // Action button cluster - identical content in both layouts,
+            // just laid out differently (grid cells in wide, flex group
+            // in compact). CreateTask collapses to icon-only in compact
+            // so the cluster matches Move/Meta chrome.
+            const primaryAction = category === "action" ? (
+              <MarkDoneButton
+                mondayItemId={id}
+                clientName={client.name}
+                accountManager={client.accountManager}
+                insight={insight}
+                kpi={kpi}
+                locale={locale}
+              />
+            ) : (
+              <CreateTaskButton
+                mondayItemId={id}
+                clientName={client.name}
+                campaignManager={client.campaignManager}
+                category={category}
+                insight={insight}
+                kpi={kpi}
+                locale={locale}
+                compact={variant === "compact"}
+              />
+            )
+            const moveAction = (
+              <MoveButton
+                mondayItemId={id}
+                clientName={client.name}
+                category={category}
+                insight={insight}
+                kpi={kpi}
+                manualOverride={manualOverride}
+                locale={locale}
+              />
+            )
+            const metaAction = client.metaAdAccountId ? (
+              // Background-tab open with Cmd/Ctrl/middle-click fallback,
+              // per the in-row notes Roy added 2026-06-09. The anchor
+              // pre-empts the row's slide-over click via stopPropagation
+              // (incl. native immediate propagation) so it never opens
+              // alongside the new tab.
+              <a
+                href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId.replace("act_", "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  e.nativeEvent.stopImmediatePropagation?.()
+                }}
+                title={t("watchlist.row.open_ads_manager", locale)}
+                aria-label={t("watchlist.row.open_ads_manager", locale)}
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 hover:border-[#0866FF]/40 hover:bg-[#0866FF]/10 transition-colors"
+              >
+                <Image
+                  src="/logos/brands/meta.svg"
+                  alt=""
+                  width={14}
+                  height={14}
+                  className="h-3.5 w-3.5 object-contain"
+                  unoptimized
+                />
+              </a>
+            ) : null
+
+            const spendCell = kpi && kpi.adSpend > 0 ? fmtCurrency(kpi.adSpend) : "-"
+            const leadsCell = kpi && kpi.leads > 0 ? `${kpi.leads}` : kpi && kpi.adSpend > 0 ? "0" : "-"
+            const cplCell = kpi && kpi.cpl > 0
+              ? formatCurrency(kpi.cpl, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              : "-"
+
+            if (variant === "compact") {
+              return (
+                <div
+                  key={id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelectClient(id)}
+                  onKeyDown={onRowKeyDown}
+                  className={`flex items-start gap-3 px-4 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
+                >
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate">{client.name}</p>
+                      <BucketAge category={category} daysInBucket={daysInBucket} isNewToday={isNewToday} locale={locale} />
+                    </div>
+                    <p className={`text-xs leading-snug ${config.insightColor}`}>
+                      {insight}
+                    </p>
+                    <p className="text-[10px] tabular-nums text-muted-foreground/60">
+                      {spendCell} <span className="text-muted-foreground/30">·</span>{" "}
+                      {leadsCell === "-" ? "—" : leadsCell} leads{" "}
+                      <span className="text-muted-foreground/30">·</span> {cplCell} CPL
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/40 truncate">
+                      {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {primaryAction}
+                    {moveAction}
+                    {metaAction}
+                  </div>
+                </div>
+              )
+            }
 
             return (
               <div key={id}>
@@ -1216,31 +1360,9 @@ function WatchSection({
                   role="button"
                   tabIndex={0}
                   onClick={() => onSelectClient(id)}
-                  onKeyDown={(e) => {
-                    // Skip when the keypress comes from an input / textarea /
-                    // contenteditable. React synthetic events bubble through
-                    // portals, so a Space pressed inside a portal-mounted
-                    // dialog textarea (Move dialog, Create-task dialog) still
-                    // reaches this handler - and preventDefault would block
-                    // the literal space character from appearing in the
-                    // field. Roy 2026-06-09.
-                    const tag = (e.target as HTMLElement | null)?.tagName
-                    if (
-                      tag === "INPUT" ||
-                      tag === "TEXTAREA" ||
-                      tag === "SELECT" ||
-                      (e.target as HTMLElement | null)?.isContentEditable
-                    ) {
-                      return
-                    }
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault()
-                      onSelectClient(id)
-                    }
-                  }}
+                  onKeyDown={onRowKeyDown}
                   className={`grid grid-cols-[minmax(180px,1.2fr)_minmax(280px,3fr)_90px_70px_80px_140px_44px_44px] gap-x-4 px-5 py-3 border-b border-border/40 border-l-2 ${config.rowBorder} hover:bg-muted/30 transition-colors items-center cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/40`}
                 >
-                  {/* Client */}
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-medium truncate">{client.name}</p>
@@ -1250,124 +1372,13 @@ function WatchSection({
                       {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-
-                  {/* Insight */}
-                  <p className={`text-xs leading-snug ${config.insightColor}`}>
-                    {insight}
-                  </p>
-
-                  {/* Spend */}
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {kpi && kpi.adSpend > 0 ? fmtCurrency(kpi.adSpend) : "-"}
-                  </span>
-
-                  {/* Leads */}
-                  <span className="text-xs tabular-nums font-medium">
-                    {kpi && kpi.leads > 0 ? kpi.leads : kpi && kpi.adSpend > 0 ? "0" : "-"}
-                  </span>
-
-                  {/* CPL */}
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {kpi && kpi.cpl > 0 ? formatCurrency(kpi.cpl, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
-                  </span>
-
-                  {/* Action Needed: primary verb is "Mark done" - the inbox-zero
-                      workflow. CM picks category + types a 1-2 sentence AM update +
-                      picks review window. The client flips to Watchlist "in review"
-                      and the cron re-checks at review_due_at, auto-flipping back if
-                      still concerning.
-                      Watch / Good: keep Create Task as the proactive verb (e.g.
-                      "remind me to test new angle"). */}
-                  {category === "action" ? (
-                    <MarkDoneButton
-                      mondayItemId={id}
-                      clientName={client.name}
-                      accountManager={client.accountManager}
-                      insight={insight}
-                      kpi={kpi}
-                      locale={locale}
-                    />
-                  ) : (
-                    <CreateTaskButton
-                      mondayItemId={id}
-                      clientName={client.name}
-                      campaignManager={client.campaignManager}
-                      category={category}
-                      insight={insight}
-                      kpi={kpi}
-                      locale={locale}
-                    />
-                  )}
-
-                  {/* Manual override - moves the client between buckets with a
-                      required reason. Reason + KPI snapshot lands in the
-                      audit log as training signal for the AI adjustment layer. */}
-                  <MoveButton
-                    mondayItemId={id}
-                    clientName={client.name}
-                    category={category}
-                    insight={insight}
-                    kpi={kpi}
-                    manualOverride={manualOverride}
-                    locale={locale}
-                  />
-
-                  {/* Open the Meta Ads Manager for this client in a
-                      BACKGROUND tab. Two things to handle:
-                      (a) The row has its own onClick that opens the
-                          slide-over. Plain bubbling via stopPropagation
-                          isn't always enough across React's synthetic
-                          system, so we also pre-empt the row at
-                          mousedown + run nativeEvent.stopImmediatePropagation
-                          on click. preventDefault is mandatory - the
-                          anchor would otherwise navigate before our
-                          custom open logic fires.
-                      (b) Browsers don't expose a clean "open new tab
-                          but keep focus" API. window.open() + the
-                          blur/focus shim is the best-effort approach
-                          Chrome/Edge honour; Safari sometimes ignores
-                          it. The link still has target=_blank so middle-
-                          click / Cmd-click stays as a guaranteed
-                          background-open fallback.
-                      Hidden when the client has no Meta ad account.
-                      Roy 2026-06-09. */}
-                  {client.metaAdAccountId ? (
-                    <a
-                      href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${client.metaAdAccountId.replace("act_", "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        // Stop the row's onClick (slide-over) but DON'T
-                        // preventDefault - let the anchor navigate
-                        // natively. Foreground/background on
-                        // target="_blank" is a browser-level decision
-                        // tied to the user's gesture (plain click =
-                        // foreground; Cmd-/Ctrl-/middle-click =
-                        // background). Chrome 91+ blocks every JS
-                        // workaround we tried (synthetic modifier
-                        // dispatches, window.open + blur/focus shims)
-                        // for anti-malware reasons, so we land on
-                        // honest browser behaviour.
-                        e.stopPropagation()
-                        e.nativeEvent.stopImmediatePropagation?.()
-                      }}
-                      title={t("watchlist.row.open_ads_manager", locale)}
-                      aria-label={t("watchlist.row.open_ads_manager", locale)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/40 hover:border-[#0866FF]/40 hover:bg-[#0866FF]/10 transition-colors"
-                    >
-                      <Image
-                        src="/logos/brands/meta.svg"
-                        alt=""
-                        width={14}
-                        height={14}
-                        className="h-3.5 w-3.5 object-contain"
-                        unoptimized
-                      />
-                    </a>
-                  ) : (
-                    <span aria-hidden />
-                  )}
+                  <p className={`text-xs leading-snug ${config.insightColor}`}>{insight}</p>
+                  <span className="text-xs tabular-nums text-muted-foreground">{spendCell}</span>
+                  <span className="text-xs tabular-nums font-medium">{leadsCell}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">{cplCell}</span>
+                  {primaryAction}
+                  {moveAction}
+                  {metaAction ?? <span aria-hidden />}
                 </div>
               </div>
             )
@@ -1753,7 +1764,11 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           per Roy nobody read them on the watchlist; the AI commentary
           still surfaces inside the slide-over opened on row click. */}
 
-      {/* Sections */}
+      {/* Sections - Action Needed is the top banner (full width, wide
+          multi-column rows), Watchlist + Healthy share a 2-col grid below
+          with compact card-style rows so the visual hierarchy reads
+          "work-to-do first, monitoring second". No Data stays full-width
+          below the 2-col grid since it's collapsed by default anyway. */}
       <div className="space-y-6">
         <WatchSection
           category="action"
@@ -1761,24 +1776,29 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           defaultOpen={true}
           onSelectClient={handleSelectClient}
           locale={locale}
+          variant="wide"
         />
-        <WatchSection
-          category="watch"
-          items={categorized.watch}
-          defaultOpen={true}
-          onSelectClient={handleSelectClient}
-          locale={locale}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <WatchSection
+            category="watch"
+            items={categorized.watch}
+            defaultOpen={true}
+            onSelectClient={handleSelectClient}
+            locale={locale}
+            variant="compact"
+          />
+          <WatchSection
+            category="good"
+            items={categorized.good}
+            defaultOpen={false}
+            onSelectClient={handleSelectClient}
+            locale={locale}
+            variant="compact"
+          />
+        </div>
         <NoDataSection
           items={categorized.noData}
           defaultOpen={false}
-          locale={locale}
-        />
-        <WatchSection
-          category="good"
-          items={categorized.good}
-          defaultOpen={false}
-          onSelectClient={handleSelectClient}
           locale={locale}
         />
       </div>
