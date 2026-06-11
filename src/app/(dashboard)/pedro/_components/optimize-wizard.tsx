@@ -8,7 +8,6 @@ import {
   Megaphone,
   Video,
   FileText,
-  ChevronRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AdPicker } from "./ad-picker"
@@ -37,6 +36,8 @@ import { AdsRefresh } from "./ads-refresh"
  */
 
 type StepKey = "pick_ad" | "angles" | "ads"
+type OverigKey = "lp_prompt" | "video_scripts"
+type ActiveKey = StepKey | OverigKey
 
 type StepDef = {
   key: StepKey
@@ -46,10 +47,15 @@ type StepDef = {
   icon: typeof Compass
 }
 
+type OverigDef = {
+  key: OverigKey
+  title: string
+  description: string
+  icon: typeof Compass
+}
+
 // Roy 2026-06-11 v6: terug naar de oude 3-stappen-flow zoals onboarding.
 // Stap 1 = winning ad, stap 2 = angles, stap 3 = ads (creative + copy).
-// Video scripts + LP prompt verhuizen naar de "Overig" sectie onder de
-// wizard - die deliverables hoeven niet steeds opnieuw in Optimize.
 const STEPS: StepDef[] = [
   {
     key: "pick_ad",
@@ -71,6 +77,25 @@ const STEPS: StepDef[] = [
     title: "Creatives + ad copy",
     description: "Pedro genereert 3 zus-varianten van de gekozen ad: image gen + primary text + headline + description.",
     icon: Megaphone,
+  },
+]
+
+// Roy 2026-06-11 v7: video scripts + LP prompt zitten naast de iteratie
+// flow als losse rail-sectie "OVERIG", niet als grote banner onderaan.
+// Same chrome als de iteratie flow zelf - kleinere visuele footprint, en
+// blijft zichtbaar ongeacht welke stap actief is.
+const OVERIG: OverigDef[] = [
+  {
+    key: "lp_prompt",
+    title: "LP prompt",
+    description: "Verbeter de bestaande LP (URL + wens) of bouw vanaf scratch.",
+    icon: FileText,
+  },
+  {
+    key: "video_scripts",
+    title: "Video scripts",
+    description: "Pedro schrijft 3 UGC-stijl scripts per winning ad - on demand.",
+    icon: Video,
   },
 ]
 
@@ -125,7 +150,7 @@ export function OptimizeWizard({
   const [pickedAd, setPickedAd] = useState<PickedAd | null>(() =>
     readPickedAd(selectedClientId),
   )
-  const [activeKey, setActiveKey] = useState<StepKey>(() =>
+  const [activeKey, setActiveKey] = useState<ActiveKey>(() =>
     readPickedAd(selectedClientId) ? "angles" : "pick_ad",
   )
   // Done state per step is purely visual signal (green checkmark in
@@ -172,7 +197,10 @@ export function OptimizeWizard({
     [doneFor],
   )
 
-  const activeStep = STEPS.find((s) => s.key === activeKey) ?? STEPS[0]
+  const activeStep = STEPS.find((s) => s.key === activeKey)
+  const activeOverig = OVERIG.find((o) => o.key === activeKey)
+  // Always have a non-null active for the right pane. Default = first step.
+  const activeStepOrOverig: StepDef | OverigDef = activeStep ?? activeOverig ?? STEPS[0]
 
   return (
     <div className="space-y-4">
@@ -204,28 +232,52 @@ export function OptimizeWizard({
         />
       </div>
 
-      {/* Wizard body - rail + active step. Same grid as onboarding. */}
+      {/* Wizard body - rail + active step. Same grid as onboarding.
+          Roy 2026-06-11 v7: Overig zit nu in het rail (sibling sectie
+          onder Iteratie flow), niet meer als grote banner onder de
+          wizard. Same chrome als de iteratie flow zelf. */}
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
         {/* Rail */}
-        <nav className="space-y-1 rounded-2xl border border-border/60 bg-card p-2 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
-          <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
-            Iteratie flow
+        <nav className="space-y-3 rounded-2xl border border-border/60 bg-card p-2 shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]">
+          {/* Iteratie flow sectie */}
+          <div>
+            <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">
+              Iteratie flow
+            </div>
+            <div className="space-y-1">
+              {STEPS.map((step) => (
+                <StepRailItem
+                  key={step.key}
+                  step={step}
+                  active={activeKey === step.key}
+                  done={doneFor(step.key)}
+                  onClick={() => setActiveKey(step.key)}
+                />
+              ))}
+            </div>
           </div>
-          {STEPS.map((step) => (
-            <RailItem
-              key={step.key}
-              step={step}
-              active={activeStep.key === step.key}
-              done={doneFor(step.key)}
-              onClick={() => setActiveKey(step.key)}
-            />
-          ))}
+          {/* Overig sectie */}
+          <div>
+            <div className="px-3 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">
+              Overig
+            </div>
+            <div className="space-y-1">
+              {OVERIG.map((item) => (
+                <OverigRailItem
+                  key={item.key}
+                  item={item}
+                  active={activeKey === item.key}
+                  onClick={() => setActiveKey(item.key)}
+                />
+              ))}
+            </div>
+          </div>
         </nav>
 
         {/* Right pane - active step content */}
         <div className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] overflow-hidden">
-          <StepHeader step={activeStep} />
-          {pickedAd && activeStep.key !== "pick_ad" && (
+          <StepHeader item={activeStepOrOverig} />
+          {pickedAd && activeKey !== "pick_ad" && activeKey !== "lp_prompt" && (
             <SourceAdBanner
               picked={pickedAd}
               onReset={() => {
@@ -235,7 +287,7 @@ export function OptimizeWizard({
             />
           )}
           <div className="p-5">
-            {activeStep.key === "pick_ad" && (
+            {activeKey === "pick_ad" && (
               <PickAdStep
                 clientId={selectedClientId}
                 onPicked={(picked) => {
@@ -245,7 +297,7 @@ export function OptimizeWizard({
                 currentPicked={pickedAd}
               />
             )}
-            {activeStep.key === "angles" && (
+            {activeKey === "angles" && (
               <StepGate clientId={selectedClientId} pickedAd={pickedAd}>
                 <div onClick={() => markGenerated("angles")}>
                   <AnglesRefresh
@@ -257,7 +309,7 @@ export function OptimizeWizard({
                 </div>
               </StepGate>
             )}
-            {activeStep.key === "ads" && (
+            {activeKey === "ads" && (
               <StepGate clientId={selectedClientId} pickedAd={pickedAd}>
                 <div onClick={() => markGenerated("ads")}>
                   <AdsRefresh
@@ -269,121 +321,31 @@ export function OptimizeWizard({
                 </div>
               </StepGate>
             )}
+            {activeKey === "lp_prompt" && (
+              <LpRefresh
+                selectedClientId={selectedClientId}
+                selectedClientName={selectedClientName}
+                hideShellHeader
+              />
+            )}
+            {activeKey === "video_scripts" && (
+              <StepGate clientId={selectedClientId} pickedAd={pickedAd}>
+                <ScriptRefresh
+                  selectedClientId={selectedClientId}
+                  selectedClientName={selectedClientName}
+                  autoStart={autoStart}
+                  hideShellHeader
+                />
+              </StepGate>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Overig - separate vak onder de iteratie flow. Niet onderdeel
-          van de 1-2-3 main flow, maar wel zichtbaar voor as-needed
-          deliverables. Roy 2026-06-11 v6: "videoscripts hoeft niet bij
-          optimize opnieuw opgemaakt te worden + LP prompt + later misschien
-          meer AI deliverables". */}
-      <OtherDeliverables
-        clientId={selectedClientId}
-        clientName={selectedClientName}
-        autoStart={autoStart}
-      />
     </div>
   )
 }
 
-function OtherDeliverables({
-  clientId,
-  clientName,
-  autoStart,
-}: {
-  clientId: string
-  clientName: string
-  autoStart?: boolean
-}) {
-  const [openScripts, setOpenScripts] = useState(false)
-  const [openLp, setOpenLp] = useState(false)
-  return (
-    <div className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] overflow-hidden">
-      <div className="px-5 pt-5 pb-3 border-b border-border/40">
-        <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-          Overig
-        </div>
-        <h2 className="font-heading text-lg font-semibold leading-tight">
-          Aanvullende deliverables
-        </h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Niet onderdeel van de iteratie flow zelf - maar wanneer je ze nodig hebt staan ze hier klaar.
-        </p>
-      </div>
-      <div className="divide-y divide-border/40">
-        {/* LP prompt - inline expandable. Roy 2026-06-11: LP refresh is
-            primair "verbeter bestaande LP" (URL + steering), met scratch
-            als fallback. Niet meer deep-linked naar onboarding. */}
-        <div>
-          <button
-            type="button"
-            onClick={() => setOpenLp((v) => !v)}
-            className="w-full flex items-center gap-3 px-5 py-3 hover:bg-accent/40 transition-colors text-left"
-          >
-            <FileText className="h-4 w-4 text-violet-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">LP prompt</div>
-              <div className="text-xs text-muted-foreground">
-                Verbeter de bestaande LP (URL + wens) of bouw vanaf scratch.
-              </div>
-            </div>
-            <ChevronRight
-              className={cn(
-                "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
-                openLp && "rotate-90",
-              )}
-            />
-          </button>
-          {openLp && (
-            <div className="px-5 pb-5 pt-1">
-              <LpRefresh
-                selectedClientId={clientId}
-                selectedClientName={clientName}
-                hideShellHeader
-              />
-            </div>
-          )}
-        </div>
-        {/* Video scripts - inline expandable. Roy: "videoscripts hoeft
-            niet opnieuw in Optimize" - dus default dicht, on-demand open. */}
-        <div>
-          <button
-            type="button"
-            onClick={() => setOpenScripts((v) => !v)}
-            className="w-full flex items-center gap-3 px-5 py-3 hover:bg-accent/40 transition-colors text-left"
-          >
-            <Video className="h-4 w-4 text-violet-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium">Video scripts</div>
-              <div className="text-xs text-muted-foreground">
-                Pedro schrijft 3 UGC-stijl scripts per winning ad - on demand.
-              </div>
-            </div>
-            <ChevronRight
-              className={cn(
-                "h-4 w-4 text-muted-foreground shrink-0 transition-transform",
-                openScripts && "rotate-90",
-              )}
-            />
-          </button>
-          {openScripts && (
-            <div className="px-5 pb-5 pt-1">
-              <ScriptRefresh
-                selectedClientId={clientId}
-                selectedClientName={clientName}
-                autoStart={autoStart}
-                hideShellHeader
-              />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function RailItem({
+function StepRailItem({
   step,
   active,
   done,
@@ -423,18 +385,56 @@ function RailItem({
   )
 }
 
-function StepHeader({ step }: { step: StepDef }) {
-  const Icon = step.icon
+function OverigRailItem({
+  item,
+  active,
+  onClick,
+}: {
+  item: OverigDef
+  active: boolean
+  onClick: () => void
+}) {
+  const Icon = item.icon
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-colors",
+        active && "bg-primary/10 text-foreground",
+        !active && "hover:bg-muted/40 text-muted-foreground",
+      )}
+    >
+      <span
+        className={cn(
+          "shrink-0 h-5 w-5 flex items-center justify-center rounded-full",
+          active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+        )}
+      >
+        <Icon className="h-3 w-3" />
+      </span>
+      <span className="flex-1 truncate">{item.title}</span>
+    </button>
+  )
+}
+
+function isStepDef(x: StepDef | OverigDef): x is StepDef {
+  return (x as StepDef).order !== undefined
+}
+
+function StepHeader({ item }: { item: StepDef | OverigDef }) {
+  const Icon = item.icon
+  const label = isStepDef(item) ? `Stap ${item.order} / ${STEPS.length}` : "Overig"
   return (
     <div className="px-5 pt-5 pb-3 border-b border-border/40">
       <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-        <span>Stap {step.order} / {STEPS.length}</span>
+        <span>{label}</span>
       </div>
       <h2 className="font-heading text-lg font-semibold leading-tight flex items-center gap-2">
         <Icon className="h-4 w-4 text-primary" />
-        {step.title}
+        {item.title}
       </h2>
-      <p className="mt-1 text-xs text-muted-foreground">{step.description}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
     </div>
   )
 }
