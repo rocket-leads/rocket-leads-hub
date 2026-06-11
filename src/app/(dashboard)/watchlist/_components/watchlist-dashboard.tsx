@@ -421,6 +421,7 @@ function MarkDoneButton({
   insight,
   kpi,
   locale,
+  compact = false,
 }: {
   mondayItemId: string
   clientName: string
@@ -428,6 +429,9 @@ function MarkDoneButton({
   insight: string
   kpi: KpiSummary | undefined
   locale: Locale
+  /** When true (Action Needed in 2-col layout), collapses to icon-only
+   *  so the action cluster matches Move/Meta chrome. */
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [lastResult, setLastResult] = useState<"done" | "error" | null>(null)
@@ -467,7 +471,7 @@ function MarkDoneButton({
       <ActionIconButton
         tone="success"
         label={t("watchlist.row.mark_done", locale)}
-        showLabel
+        showLabel={!compact}
         state={lastResult}
         tooltip={tooltip}
         icon={lastResult === "done" ? <Check className="h-3.5 w-3.5" /> : <CheckCheck className="h-3.5 w-3.5" />}
@@ -1093,25 +1097,38 @@ const CATEGORY_CONFIG = {
   action: {
     icon: AlertCircle,
     iconColor: "text-red-500",
-    headerBg: "bg-red-500/5 border-red-500/20",
+    /** Whole-block wash (Roy 2026-06-11) - the bucket reads as a clearly
+     *  colored card instead of a section that disappears into the page bg. */
+    blockBg: "bg-red-500/[0.08]",
+    blockBorder: "border-red-500/40",
+    /** Header sits slightly stronger on top of the block wash. */
+    headerBg: "bg-red-500/15",
+    headerHover: "hover:bg-red-500/20",
     rowBorder: "border-l-red-500/60",
-    insightColor: "text-red-400",
+    insightColor: "text-red-300",
     labelKey: "watchlist.section.action" as const,
   },
   watch: {
     icon: TrendingUp,
     iconColor: "text-amber-500",
-    headerBg: "bg-amber-500/5 border-amber-500/20",
+    blockBg: "bg-amber-500/[0.08]",
+    blockBorder: "border-amber-500/40",
+    headerBg: "bg-amber-500/15",
+    headerHover: "hover:bg-amber-500/20",
     rowBorder: "border-l-amber-500/60",
-    insightColor: "text-amber-400",
+    insightColor: "text-amber-300",
     labelKey: "watchlist.section.watch" as const,
   },
   good: {
     icon: CheckCircle2,
     iconColor: "text-green-500",
-    headerBg: "bg-green-500/5 border-green-500/20",
+    /** Healthy gets a slightly softer wash - good news doesn't need to shout. */
+    blockBg: "bg-green-500/[0.06]",
+    blockBorder: "border-green-500/30",
+    headerBg: "bg-green-500/10",
+    headerHover: "hover:bg-green-500/15",
     rowBorder: "border-l-green-500/60",
-    insightColor: "text-green-500",
+    insightColor: "text-green-300",
     labelKey: "watchlist.section.good" as const,
   },
 } as const
@@ -1186,20 +1203,23 @@ function WatchSection({
   if (items.length === 0) return null
 
   return (
-    <div>
-      {/* Section header */}
+    <div className={`rounded-2xl border ${config.blockBorder} ${config.blockBg} overflow-hidden`}>
+      {/* Section header - sits flat on the colored block, with a slightly
+          stronger wash so the chevron + label still reads against the
+          block tint. Roy 2026-06-11: full colored blocks, no more flat
+          sections on the page bg. */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-2.5 w-full px-4 py-2.5 rounded-lg border ${config.headerBg} mb-3 transition-colors hover:opacity-80`}
+        className={`flex items-center gap-2.5 w-full px-4 py-3 ${config.headerBg} ${config.headerHover} transition-colors`}
       >
         {open ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground/50" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />}
         <Icon className={`h-4 w-4 ${config.iconColor}`} />
         <span className="text-sm font-medium">{t(config.labelKey, locale)}</span>
-        <span className="text-xs text-muted-foreground/50 tabular-nums">{items.length}</span>
+        <span className="text-xs text-muted-foreground/60 tabular-nums">{items.length}</span>
       </button>
 
       {open && (
-        <div className="rounded-xl border border-border/30 overflow-hidden">
+        <div className="overflow-hidden">
           {/* Column headers - only render in wide mode. The compact variant
               (Watchlist + Healthy 2-col) drops the header strip and uses
               card-style rows with everything stacked vertically. */}
@@ -1258,6 +1278,7 @@ function WatchSection({
                 insight={insight}
                 kpi={kpi}
                 locale={locale}
+                compact={variant === "compact"}
               />
             ) : (
               <CreateTaskButton
@@ -1764,21 +1785,22 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           per Roy nobody read them on the watchlist; the AI commentary
           still surfaces inside the slide-over opened on row click. */}
 
-      {/* Sections - Action Needed is the top banner (full width, wide
-          multi-column rows), Watchlist + Healthy share a 2-col grid below
-          with compact card-style rows so the visual hierarchy reads
-          "work-to-do first, monitoring second". No Data stays full-width
-          below the 2-col grid since it's collapsed by default anyway. */}
+      {/* Sections (Roy 2026-06-11): Action Needed + Watchlist share a
+          2-col grid at the top (red + amber, both daily attention), then
+          Healthy spans full-width below as a long green block (good news,
+          one glance suffices). Each section is a clearly framed colored
+          block instead of a flat header on the page bg. No Data stays
+          collapsed at the bottom. */}
       <div className="space-y-6">
-        <WatchSection
-          category="action"
-          items={categorized.action}
-          defaultOpen={true}
-          onSelectClient={handleSelectClient}
-          locale={locale}
-          variant="wide"
-        />
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <WatchSection
+            category="action"
+            items={categorized.action}
+            defaultOpen={true}
+            onSelectClient={handleSelectClient}
+            locale={locale}
+            variant="compact"
+          />
           <WatchSection
             category="watch"
             items={categorized.watch}
@@ -1787,15 +1809,15 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
             locale={locale}
             variant="compact"
           />
-          <WatchSection
-            category="good"
-            items={categorized.good}
-            defaultOpen={false}
-            onSelectClient={handleSelectClient}
-            locale={locale}
-            variant="compact"
-          />
         </div>
+        <WatchSection
+          category="good"
+          items={categorized.good}
+          defaultOpen={false}
+          onSelectClient={handleSelectClient}
+          locale={locale}
+          variant="wide"
+        />
         <NoDataSection
           items={categorized.noData}
           defaultOpen={false}
