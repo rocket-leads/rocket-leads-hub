@@ -75,12 +75,27 @@ async function describePhoto(
     const message = await anthropic.messages.create({
       model: VISION_MODEL,
       max_tokens: VISION_MAX_TOKENS,
-      system: `You are a creative assistant labeling stock photos for an ad-generation pipeline. Look at the image and write 1-2 short sentences (max 40 words total) describing:
-- The main subject (product, person, environment).
-- Any clearly readable on-image text (quote exactly).
-- The setting / context (kitchen, showroom, outdoor, abstract).
+      system: `You are a creative assistant labeling stock photos for an ad-generation pipeline.
 
-NEVER speculate about ROI, branding strategy, or fit for a campaign. Just describe what is visible. If the image is a logo, screenshot, document, or otherwise non-photographic, say so plainly ("logo only", "PDF screenshot", "brand pattern").`,
+ALWAYS start with a TYPE tag on its own line, then the description. Exactly this format:
+
+TYPE: <one of: headshot, team_photo, product, b_roll, lifestyle, location, screenshot, logo, document, illustration, other>
+DESCRIPTION: <1-2 short sentences, max 40 words total>
+
+Type definitions:
+- headshot: single person, framed shoulders-up or portrait
+- team_photo: 2+ identifiable people together (meeting shot, group portrait)
+- product: the offering itself in clear focus (machine, food item, packaging)
+- b_roll: hands-at-work, workshop / kitchen / install moments, motion / verb-action
+- lifestyle: people using or enjoying something in a real environment
+- location: building exterior, room interior, no people
+- screenshot: software UI, dashboard, captured screen
+- logo: brand mark only, no scene
+- document: PDF page, certificate, slide
+- illustration: drawn / vector / abstract art
+- other: anything that doesn't fit above
+
+Description rules: describe what is visible only. Subject, on-image text (quote exactly), setting. NEVER speculate about ROI, branding strategy, or campaign fit.`,
       messages: [
         {
           role: "user",
@@ -194,14 +209,19 @@ export async function rerankDrivePhotos(
       max_tokens: SCORE_MAX_TOKENS,
       system: `You are picking reference photos for an AI image generator that will produce a new Meta ad variant.
 
-You will receive: (a) campaign context, and (b) a numbered list of candidate photos with 1-sentence descriptions.
+You will receive: (a) campaign context including variant angle, and (b) a numbered list of candidate photos with a TYPE tag + description.
 
-Your job: rank the candidates from BEST to WORST as references for the new ad. Best = photos that clearly show the product, subject, or setting that matches the campaign and variant angle. Worst = photos that are off-topic, abstract logos, screenshots, low quality, or unrelated products.
+Your job: rank the candidates from BEST to WORST as references for the new ad. Use BOTH the variant angle AND the photo TYPE:
+- Variant about results / case study / who-we-serve → prefer headshot, team_photo, lifestyle
+- Variant about the product / offering itself → prefer product, b_roll
+- Variant about doing the work / process / craftsmanship → prefer b_roll, location
+- Variant about a specific location / facility → prefer location
+- Never put screenshot, logo, document, illustration at the top - those are almost never useful as image generation references.
 
 Output STRICTLY this format (no preamble, no markdown):
 RANK: <id1>, <id2>, <id3>, ...
 
-Use the candidate's id= value, comma-separated, best first. Include ALL candidates exactly once. If two photos are similar quality, pick the one with the clearer subject.`,
+Use the candidate's id= value, comma-separated, best first. Include ALL candidates exactly once. If two photos are similar quality, pick the one with the clearer subject and most appropriate TYPE for the angle.`,
       messages: [
         {
           role: "user",

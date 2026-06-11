@@ -20,6 +20,14 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { ConnectedEntity } from "@/components/connected-entity"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
@@ -555,6 +563,28 @@ export function KickoffLiveStep({
     setBriefDirty(true)
   }
 
+  // ── Recap dialog ──
+  // Opens a preview with the AI-generated recap message (or fallback
+  // skeleton when the transcript hasn't landed). AM edits + copies +
+  // sends via their preferred channel, then marks as sent so the
+  // timestamp persists.
+  const [recapOpen, setRecapOpen] = useState(false)
+  const handleMarkRecapSent = async () => {
+    await fetch(`/api/clients/${mondayItemId}/onboarding`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        stepKey: step.key,
+        done: false,
+        content: { ...content, recapSentAt: new Date().toISOString() },
+      }),
+    })
+    queryClient.invalidateQueries({
+      queryKey: ["onboarding-wizard", mondayItemId],
+    })
+    setRecapOpen(false)
+  }
+
   // ── Mark step done ──
   const markDone = useMutation({
     mutationFn: async () => {
@@ -1030,11 +1060,26 @@ export function KickoffLiveStep({
         locale={locale}
       />
 
+      <RecapDialog
+        open={recapOpen}
+        onOpenChange={setRecapOpen}
+        mondayItemId={mondayItemId}
+        sentAt={content.recapSentAt}
+        onMarkSent={handleMarkRecapSent}
+        locale={locale}
+      />
+
       {/* Footer actions */}
       <div className="flex items-center justify-between gap-3 pt-2 border-t border-border/40">
-        <Button variant="ghost" className="gap-1.5" disabled title="Sprint 2">
+        <Button
+          variant="ghost"
+          className="gap-1.5"
+          onClick={() => setRecapOpen(true)}
+        >
           <Send className="h-3.5 w-3.5" />
-          {t("onboarding.wizard.kickoff.send_recap", locale)}
+          {content.recapSentAt
+            ? t("onboarding.wizard.kickoff.send_recap.again", locale)
+            : t("onboarding.wizard.kickoff.send_recap", locale)}
         </Button>
         <Button
           onClick={() => markDone.mutate()}
@@ -1337,6 +1382,179 @@ function FormFieldRow({
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * Post-kick-off recap dialog. Renders the template-generated message
+ * in an editable textarea so the AM can tweak before sending, plus a
+ * Copy-to-clipboard button. Trengo-API-direct send wordt later wired —
+ * voor nu kopieert AM en plakt in Trengo / WhatsApp. "Markeer als
+ * verzonden" knop persistt de timestamp zodat we de status in de
+ * footer kunnen tonen.
+ */
+function RecapDialog({
+  open,
+  onOpenChange,
+  mondayItemId,
+  sentAt,
+  onMarkSent,
+  locale,
+}: {
+  open: boolean
+  onOpenChange: (next: boolean) => void
+  mondayItemId: string
+  sentAt?: string
+  onMarkSent: () => Promise<void> | void
+  locale: Locale
+}) {
+  const [draft, setDraft] = useState("")
+  const [copied, setCopied] = useState(false)
+  const [marking, setMarking] = useState(false)
+  const [source, setSource] = useState<
+    "ai_from_transcript" | "fallback_no_transcript" | "fallback_short_transcript" | null
+  >(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const generate = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(
+        `/api/clients/${mondayItemId}/onboarding/generate-recap`,
+        { method: "POST" },
+      )
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(body.error ?? "Generate failed")
+      }
+      const data = (await res.json()) as {
+        body: string
+        source:
+          | "ai_from_transcript"
+          | "fallback_no_transcript"
+          | "fallback_short_transcript"
+      }
+      setDraft(data.body)
+      setSource(data.source)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Generate failed")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Auto-fetch on open. If the dialog re-opens with content already in
+  // the draft we keep it (AM might have closed/reopened to copy again).
+  useEffect(() => {
+    if (open && draft.length === 0 && !loading) {
+      void generate()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(draft)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const handleMarkSent = async () => {
+    setMarking(true)
+    try {
+      await onMarkSent()
+    } finally {
+      setMarking(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{t("onboarding.wizard.kickoff.recap.title", locale)}</DialogTitle>
+          <DialogDescription>
+            {source === "ai_from_transcript"
+              ? t("onboarding.wizard.kickoff.recap.source.ai", locale)
+              : source === "fallback_no_transcript"
+                ? t("onboarding.wizard.kickoff.recap.source.no_transcript", locale)
+                : source === "fallback_short_transcript"
+                  ? t("onboarding.wizard.kickoff.recap.source.short_transcript", locale)
+                  : t("onboarding.wizard.kickoff.recap.description", locale)}
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading && draft.length === 0 ? (
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            <span className="text-sm">
+              {t("onboarding.wizard.kickoff.recap.generating", locale)}
+            </span>
+          </div>
+        ) : (
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={18}
+            className={cn(
+              "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
+              "placeholder:text-muted-foreground/50 resize-y",
+              "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-0",
+            )}
+          />
+        )}
+
+        {error && (
+          <p className="text-[11px] text-destructive">{error}</p>
+        )}
+
+        {sentAt && (
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+            {t("onboarding.wizard.kickoff.recap.sent_at", locale)}
+            {new Date(sentAt).toLocaleString(locale === "en" ? "en-GB" : "nl-NL", {
+              day: "numeric",
+              month: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </p>
+        )}
+        <DialogFooter className="gap-2">
+          <Button
+            variant="outline"
+            onClick={() => generate()}
+            disabled={loading}
+            className="gap-1.5"
+          >
+            {loading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {t("onboarding.wizard.kickoff.recap.regenerate", locale)}
+          </Button>
+          <Button variant="outline" onClick={handleCopy} className="gap-1.5" disabled={!draft}>
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-500" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+            {copied
+              ? t("onboarding.wizard.kickoff.recap.copied", locale)
+              : t("onboarding.wizard.kickoff.recap.copy", locale)}
+          </Button>
+          <Button onClick={handleMarkSent} disabled={marking || !draft} className="gap-1.5">
+            {marking ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="h-3.5 w-3.5" />
+            )}
+            {t("onboarding.wizard.kickoff.recap.mark_sent", locale)}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

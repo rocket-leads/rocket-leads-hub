@@ -788,9 +788,26 @@ export const DICTIONARY = {
   // Recap dialog
   "onboarding.wizard.kickoff.recap.title": { nl: "Post-kick-off recap", en: "Post kick-off recap" },
   "onboarding.wizard.kickoff.recap.description": {
-    nl: "Template gegenereerd uit het pakket + brief + resources. Edit naar smaak, kopieer naar Trengo, en markeer als verzonden.",
-    en: "Generated from the package + brief + resources. Edit as needed, copy to Trengo, then mark as sent.",
+    nl: "AI leest het transcript en schrijft een korte recap. Edit, kopieer naar Trengo, markeer als verzonden.",
+    en: "AI reads the transcript and writes a short recap. Edit, copy to Trengo, mark as sent.",
   },
+  "onboarding.wizard.kickoff.recap.source.ai": {
+    nl: "AI-gegenereerd uit kick-off transcript",
+    en: "AI-generated from kick-off transcript",
+  },
+  "onboarding.wizard.kickoff.recap.source.no_transcript": {
+    nl: "Geen transcript gekoppeld — fallback template. Vul de placeholder zelf in of koppel eerst de Fathom recording in Stap 2.",
+    en: "No transcript linked — fallback template. Fill the placeholder yourself or link the Fathom recording in Stap 2 first.",
+  },
+  "onboarding.wizard.kickoff.recap.source.short_transcript": {
+    nl: "Transcript te kort — fallback template. Wacht tot Fathom het volledige transcript heeft opgeleverd en klik 'Opnieuw genereren'.",
+    en: "Transcript too short — fallback template. Wait for Fathom to deliver the full transcript and click 'Re-generate'.",
+  },
+  "onboarding.wizard.kickoff.recap.generating": {
+    nl: "AI schrijft je recap…",
+    en: "AI writing your recap…",
+  },
+  "onboarding.wizard.kickoff.recap.regenerate": { nl: "Opnieuw genereren", en: "Re-generate" },
   "onboarding.wizard.kickoff.recap.copy": { nl: "Kopieer naar clipboard", en: "Copy to clipboard" },
   "onboarding.wizard.kickoff.recap.copied": { nl: "Gekopieerd", en: "Copied" },
   "onboarding.wizard.kickoff.recap.mark_sent": { nl: "Markeer als verzonden", en: "Mark as sent" },

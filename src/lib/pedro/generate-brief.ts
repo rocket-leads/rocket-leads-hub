@@ -4,6 +4,7 @@ import { fetchClientById, fetchItemUpdates } from "@/lib/integrations/monday"
 import { fetchConversations, fetchMessages } from "@/lib/integrations/trengo"
 import { loadPedroSystemPrompt } from "@/lib/pedro/knowledge"
 import { pastContextForStage } from "@/lib/pedro/past-campaigns"
+import { scrapeWebsiteForBrief } from "@/lib/pedro/website-scrape"
 
 /**
  * Pedro's auto-brief generator. Same logic that powers /api/pedro/auto-brief
@@ -30,6 +31,7 @@ export type FieldSource =
   | "trengo"
   | "client_metadata"
   | "past_campaign"
+  | "website"
   | "inferred"
   | "unknown"
 
@@ -63,6 +65,13 @@ export type GenerateBriefMeta = {
   clientId: string
   /** Display name resolved from Monday item. */
   clientName: string
+  /** Roy 2026-06-11: when the CM passed a website URL, did the scrape
+   *  return useful text? UI uses this to show "Op basis van: website
+   *  + Fathom kick-off …". */
+  hasWebsite: boolean
+  /** Final URL Pedro actually fetched (after normalization). Empty when
+   *  no URL was provided or fetch failed. */
+  websiteUrlUsed: string
 }
 
 const EMPTY: GeneratedBrief = {
@@ -89,6 +98,7 @@ const VALID_SOURCES: ReadonlySet<FieldSource> = new Set<FieldSource>([
   "trengo",
   "client_metadata",
   "past_campaign",
+  "website",
   "inferred",
   "unknown",
 ])
@@ -126,13 +136,19 @@ function trim(s: string, max: number): string {
 export async function generateAutoBrief(
   supabase: SupabaseClient,
   clientId: string,
+  opts: { websiteUrl?: string } = {},
 ): Promise<{ brief: GeneratedBrief; meta: GenerateBriefMeta }> {
   if (!clientId) throw new Error("clientId is verplicht")
 
-  // ── 1. Pull Monday client + recent updates in parallel ──
-  const [client, updates] = await Promise.all([
+  // ── 1. Pull Monday client + recent updates + (optional) website ──
+  // Website scrape runs in parallel with Monday so we don't pay for it
+  // when the kick-off is rich. Failed scrapes degrade silently - Claude
+  // works fine without it as long as something else is present.
+  const websiteUrlInput = opts.websiteUrl?.trim() ?? ""
+  const [client, updates, websiteScrape] = await Promise.all([
     fetchClientById(clientId).catch(() => null),
     fetchItemUpdates(clientId, 90).catch(() => []),
+    websiteUrlInput ? scrapeWebsiteForBrief(websiteUrlInput).catch(() => null) : Promise.resolve(null),
   ])
 
   if (!client) throw new Error("Klant niet gevonden in Monday")
@@ -237,6 +253,13 @@ export async function generateAutoBrief(
   if (trengoSnippet) {
     sections.push(`\n[RECENTE TRENGO BERICHTEN]\n${trim(trengoSnippet, 2500)}`)
   }
+  if (websiteScrape?.promptBlock) {
+    sections.push(
+      `\n[WEBSITE TEKST - ${websiteScrape.finalUrl}]\n` +
+        `Dit is de directe copy van de klant zelf. Gebruik dit voor positionering, doelgroep, propositie, USPs en marketing hooks.\n` +
+        trim(websiteScrape.promptBlock, 5000),
+    )
+  }
 
   const pastBrief = await pastContextForStage(clientId, "brief", 2)
 
@@ -284,6 +307,7 @@ Voor _sources: per veld een array met de input-bronnen waar je de waarde uit heb
 - "trengo"          : uit Trengo klant-berichten
 - "client_metadata" : uit het klant-record (naam, AM/CM/status)
 - "past_campaign"   : uit een eerder opgeslagen Pedro brief / campagne
+- "website"         : uit de WEBSITE TEKST sectie (klant's eigen copy)
 - "inferred"        : Pedro heeft het afgeleid uit aanbod/sector/etc., niet expliciet gevonden
 - "unknown"         : Pedro weet de bron niet zeker
 
@@ -331,6 +355,8 @@ Belangrijk:
       hasTrengo: Boolean(trengoSnippet),
       clientId,
       clientName: client.companyName || client.name,
+      hasWebsite: Boolean(websiteScrape?.promptBlock),
+      websiteUrlUsed: websiteScrape?.finalUrl ?? "",
     },
   }
 }

@@ -64,37 +64,73 @@ export function ImageSourcesPicker({ clientId }: Props) {
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
   const [savingStock, setSavingStock] = useState(false)
 
-  // Load on mount + when client changes.
-  useEffect(() => {
+  // Pull-to-refresh helper. Wrapped so we can call it from initial mount,
+  // tab-focus, and the manual reload button - all the paths that need to
+  // surface a freshly-linked Drive folder from the client page.
+  const reload = useCallback(async () => {
     if (!clientId) {
       setData(null)
       return
     }
-    let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(`/api/pedro/image-source-prefs/${encodeURIComponent(clientId)}`)
-      .then(async (r) => {
-        const json = await r.json().catch(() => ({}))
-        if (cancelled) return
-        if (!r.ok) {
-          setError(json.error || `HTTP ${r.status}`)
-          setData(null)
-          return
-        }
-        setData(json as ApiResponse)
+    try {
+      // cache: "no-store" zodat zelfs een proxy cache niet mee kan kijken -
+      // de Monday fetch achter dit endpoint is al cache-busted bij PATCH,
+      // we willen ook hier geen tussenlaag.
+      const r = await fetch(`/api/pedro/image-source-prefs/${encodeURIComponent(clientId)}`, {
+        cache: "no-store",
       })
-      .catch((e) => {
-        if (cancelled) return
-        setError(e instanceof Error ? e.message : "Laden mislukt")
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+      const json = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        setError(json.error || `HTTP ${r.status}`)
+        setData(null)
+        return
+      }
+      setData(json as ApiResponse)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Laden mislukt")
+    } finally {
+      setLoading(false)
+    }
+  }, [clientId])
+
+  // Load on mount + when client changes.
+  useEffect(() => {
+    let cancelled = false
+    void reload().then(() => {
+      if (cancelled) {
+        /* discard - clientId switched mid-fetch */
+      }
+    })
     return () => {
       cancelled = true
     }
-  }, [clientId])
+  }, [reload])
+
+  // Refetch when the tab becomes visible again - covers the "CM edits
+  // Drive folder on client page in another tab, comes back to Pedro"
+  // case so the picker reflects the new link without a hard reload.
+  // Roy 2026-06-11.
+  useEffect(() => {
+    if (!clientId) return
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reload()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    // Cross-component signal: anything in the Hub that mutates client
+    // metadata can `window.dispatchEvent(new CustomEvent("hub:client-updated", { detail: { clientId } }))`
+    // and active listeners scoped to that clientId will refresh.
+    const onClientUpdated = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { clientId?: string } | undefined
+      if (!detail?.clientId || detail.clientId === clientId) void reload()
+    }
+    window.addEventListener("hub:client-updated", onClientUpdated as EventListener)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("hub:client-updated", onClientUpdated as EventListener)
+    }
+  }, [clientId, reload])
 
   const toggleFolder = useCallback(
     async (folder: FolderRow) => {

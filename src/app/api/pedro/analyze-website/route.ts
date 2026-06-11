@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { analyzeWebsiteQuality } from "@/lib/pedro/website-quality";
+import { extractBrandColorsFromImages } from "@/lib/pedro/brand-vision";
+import { extractHomepageImages } from "@/lib/pedro/website-images";
 
 // ── Color utilities ──
 
@@ -498,6 +500,38 @@ export async function POST(req: NextRequest) {
     const logoUrl = extractLogoUrl(html, fetchUrl);
     const heroImageUrl = extractHeroImageUrl(html, fetchUrl, logoUrl);
     const tagline = extractTagline(html);
+    // Roy 2026-06-11: pull non-logo content images uit homepage zodat
+    // Pedro ze later kan downloaden + door rerank kan halen voor
+    // Gemini references. Exclude logo + hero (die hebben we al via
+    // dedicated extractors). Cap op 6 om payload klein te houden.
+    const homepageImages = extractHomepageImages(html, fetchUrl, {
+      excludeUrls: [logoUrl, heroImageUrl].filter((u): u is string => !!u),
+      maxImages: 6,
+    }).images;
+
+    // Vision-based brand color extraction (Roy 2026-06-11). Regex-based
+    // CSS scoring routinely picks the wrong color on modern utility-CSS
+    // sites where the real brand color sits in an SVG fill or image
+    // overlay. Vision on the logo (+ optional hero) returns the
+    // canonical palette directly and overrides CSS scoring when it
+    // succeeds. We fire it in parallel with the quality verdict so it
+    // adds negligible wall-clock time.
+    const visionPalettePromise =
+      logoUrl || heroImageUrl
+        ? extractBrandColorsFromImages({
+            websiteUrl: fetchUrl,
+            imageUrls: [
+              ...(logoUrl ? [{ url: logoUrl, tier: "logo" as const }] : []),
+              ...(heroImageUrl ? [{ url: heroImageUrl, tier: "hero" as const }] : []),
+            ],
+          }).catch((e) => {
+            console.error(
+              "[analyze-website] vision palette failed (continuing without):",
+              e instanceof Error ? e.message : e,
+            )
+            return null
+          })
+        : Promise.resolve(null)
 
     // Run the Haiku quality gate in parallel with the color/font pick
     // below. ~2-4s vision call; we await right before building the
@@ -523,19 +557,39 @@ export async function POST(req: NextRequest) {
       return null;
     });
 
-    if (scored.length === 0) {
+    // Resolve vision palette before we decide on primary/secondary so
+    // it can short-circuit CSS scoring when it succeeds. Vision is more
+    // reliable on JS-rendered sites where regex scoring picks accent /
+    // utility colors instead of the real brand mark.
+    const visionPalette = await visionPalettePromise
+
+    if (scored.length === 0 && !visionPalette) {
       return NextResponse.json({
         error: "Geen brand kleuren gevonden - de website gebruikt mogelijk alleen afbeeldingen of JavaScript-gerenderde kleuren"
       }, { status: 400 });
     }
 
-    // Pick primary: highest scoring color
-    const primary = scored[0];
+    // Pick primary: vision result wins when present. Falls back to
+    // highest scoring CSS color so old behavior persists for sites with
+    // strong declarative styling.
+    const primary = visionPalette
+      ? {
+          hex: visionPalette.primary,
+          score: 999,
+          source: "vision_logo",
+          luminance: 0,
+        }
+      : scored[0];
 
-    // Pick secondary: 2nd highest but visually different from primary
-    let secondary = scored.length > 1 ? scored[1] : null;
-    // Make sure secondary is visually different (different hue)
-    if (secondary) {
+    // Pick secondary: vision result first, else 2nd highest scored,
+    // visually different from primary.
+    type PickedColor = { hex: string; score: number; source: string; luminance: number }
+    let secondary: PickedColor | null = visionPalette?.secondary
+      ? { hex: visionPalette.secondary, score: 800, source: "vision_logo", luminance: 0 }
+      : scored.length > 1
+        ? scored[1]
+        : null;
+    if (secondary && !visionPalette) {
       const pRgb = hexToRgb(primary.hex);
       const sRgb = hexToRgb(secondary.hex);
       if (pRgb && sRgb) {
@@ -553,8 +607,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Pick accent: best color for dark background (luminance > 0.15)
-    const accent = scored.find(c => c.luminance > 0.15 && c.hex !== primary.hex) || primary;
+    // Pick accent: vision result first, else CSS-scored lighter color.
+    const accent: PickedColor = visionPalette?.accent
+      ? { hex: visionPalette.accent, score: 700, source: "vision_logo", luminance: 0 }
+      : scored.find(c => c.luminance > 0.15 && c.hex !== primary.hex) || primary;
 
     // Extract text content for industry/tone detection
     const textContent = html
@@ -594,6 +650,23 @@ export async function POST(req: NextRequest) {
         // treats null as "fingerprint is fine to use", same default as
         // pre-2026-06-10.
         qualityVerdict: qualityVerdict ?? undefined,
+        // Vision-derived palette + provenance. Lets the brief modal /
+        // brand-style UI show "via logo vision" badge so the CM trusts
+        // the result over a CSS-only pick. Roy 2026-06-11.
+        colorSource: visionPalette ? "vision_logo" : "css_scoring",
+        visionReason: visionPalette?.reason ?? undefined,
+        // Homepage content images - hero + body shots, gefilterd op
+        // niet-logo / niet-icoon. Pedro's generate-image route
+        // downloads deze + zet ze door dezelfde rerank pipeline als
+        // Drive photos. Geen storage gebruikt - URLs blijven verwijzen
+        // naar de live site.
+        websiteImages:
+          homepageImages.length > 0
+            ? homepageImages.map((img) => ({
+                url: img.url,
+                context: img.context,
+              }))
+            : undefined,
       },
       extractedColors: scored.slice(0, 8).map(c => ({
         hex: c.hex,

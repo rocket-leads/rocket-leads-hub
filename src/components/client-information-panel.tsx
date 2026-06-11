@@ -176,6 +176,16 @@ function SimpleField({ mondayItemId, fieldKey, value, label, type = "text", help
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 1500)
       router.refresh()
+      // Broadcast so live Pedro surfaces (ImageSourcesPicker, brand
+      // fingerprint preview, etc.) pick up the change without a tab
+      // reload. Roy 2026-06-11: koppeling moet real-time werken.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("hub:client-updated", {
+            detail: { clientId: mondayItemId, fieldKey },
+          }),
+        )
+      }
     },
   })
 

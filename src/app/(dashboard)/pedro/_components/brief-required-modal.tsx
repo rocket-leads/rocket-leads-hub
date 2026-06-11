@@ -187,19 +187,59 @@ export function BriefRequiredModal({
   const [error, setError] = useState<string | null>(null)
   const [autoBriefSourceNote, setAutoBriefSourceNote] = useState<string | null>(null)
 
+  // Website URL voor AI brief gen + brand fingerprint capture. Roy
+  // 2026-06-11: zonder een website heeft Pedro vrijwel niets om op te
+  // bouwen wanneer er geen kick-off / evaluation in het systeem zit.
+  // Optioneel - leeg laten = geen scrape, geen fingerprint.
+  const [websiteUrl, setWebsiteUrl] = useState<string>(() => {
+    if (!currentBrief) return ""
+    const u = (currentBrief as Record<string, unknown>).websiteUrl
+    return typeof u === "string" ? u : ""
+  })
+  // Brand fingerprint van analyze-website, opgevangen op generate en
+  // gepersist naar pedro_client_state.brand_style bij save. UI gebruikt
+  // dit alleen voor het "kleuren opgehaald" hintje.
+  const [capturedBrandStyle, setCapturedBrandStyle] = useState<Record<string, unknown> | null>(null)
+
   const generateDraft = useCallback(async () => {
     setAutoGenerating(true)
     setError(null)
     try {
-      const res = await fetch("/api/pedro/auto-brief", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId }),
-      })
-      const json = await res.json()
-      if (!res.ok || json.error) {
-        throw new Error(json.error || `HTTP ${res.status}`)
+      const trimmedUrl = websiteUrl.trim()
+      // Fire brief gen + brand fingerprint in parallel. Brand fingerprint
+      // is fail-soft - missing colors shouldn't block the brief.
+      const [briefRes, brandRes] = await Promise.all([
+        fetch("/api/pedro/auto-brief", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientId, websiteUrl: trimmedUrl }),
+        }),
+        trimmedUrl
+          ? fetch("/api/pedro/analyze-website", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: trimmedUrl }),
+            }).catch(() => null)
+          : Promise.resolve(null),
+      ])
+
+      const json = await briefRes.json()
+      if (!briefRes.ok || json.error) {
+        throw new Error(json.error || `HTTP ${briefRes.status}`)
       }
+
+      // Brand fingerprint: success = stash for save, failure = silent.
+      if (brandRes && brandRes.ok) {
+        try {
+          const brandJson = await brandRes.json()
+          if (brandJson?.brandStyle && typeof brandJson.brandStyle === "object") {
+            setCapturedBrandStyle(brandJson.brandStyle as Record<string, unknown>)
+          }
+        } catch {
+          /* fingerprint failure is non-blocking */
+        }
+      }
+
       // Endpoint returns { brief, meta }. Brief uses auto-brief field
       // names (doelgroep / pijnpunten / marketingHooks), so we remap.
       const briefSource = json.brief ?? json
@@ -226,6 +266,7 @@ export function BriefRequiredModal({
       // the CM knows what Pedro looked at.
       const m = json.meta ?? {}
       const bits: string[] = []
+      if (m.hasWebsite) bits.push("website tekst")
       if (m.hasKickoffMeeting) bits.push("Fathom kick-off")
       if (m.hasKickoffUpdate) bits.push("Monday kick-off update")
       if (m.hasLatestEval) bits.push("recente evaluatie")
@@ -241,7 +282,7 @@ export function BriefRequiredModal({
     } finally {
       setAutoGenerating(false)
     }
-  }, [clientId])
+  }, [clientId, websiteUrl])
 
   const canSave = brief.bedrijf.trim().length > 0 && brief.aanbod.trim().length > 0
 
@@ -259,14 +300,20 @@ export function BriefRequiredModal({
       //      Pedro Onboard does on "Save final version".
       // Step 1 must succeed; step 2 is best-effort so the gate unblocks
       // even if version history fails to write.
+      // Roy 2026-06-11: ook de captured brand fingerprint persist'en zodat
+      // Pedro direct kleuren + fonts heeft voor Gemini, zonder dat de CM
+      // het manueel naar Onboard hoeft te brengen. Alleen schrijven als
+      // we 'm hebben - laat een eerder opgeslagen fingerprint intact.
+      const liveBody: Record<string, unknown> = {
+        clientId,
+        campaignNumber: 1,
+        brief,
+      }
+      if (capturedBrandStyle) liveBody.brand_style = capturedBrandStyle
       const liveRes = await fetch("/api/pedro/client-state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId,
-          campaignNumber: 1,
-          brief,
-        }),
+        body: JSON.stringify(liveBody),
       })
       if (!liveRes.ok) {
         const json = await liveRes.json().catch(() => ({}))
@@ -292,7 +339,7 @@ export function BriefRequiredModal({
       setError(e instanceof Error ? e.message : "Opslaan mislukt")
       setSaving(false)
     }
-  }, [canSave, saving, clientId, brief, onSaved])
+  }, [canSave, saving, clientId, brief, capturedBrandStyle, onSaved])
 
   function setField<K extends keyof BriefData>(key: K, value: BriefData[K]) {
     setBrief((prev) => ({ ...prev, [key]: value }))
@@ -347,25 +394,55 @@ export function BriefRequiredModal({
         </div>
 
         {/* AI generate row */}
-        <div className="px-6 py-3 border-b border-border bg-muted/30 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={generateDraft}
-            disabled={autoGenerating || saving}
-            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-          >
-            {autoGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
+        <div className="px-6 py-3 border-b border-border bg-muted/30 space-y-2.5">
+          {/* Website URL: optioneel, maar in praktijk de sterkste bron
+              als er geen kick-off/eval is. Roy 2026-06-11. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <label
+              htmlFor="brief-website-url"
+              className="text-[11px] font-medium text-muted-foreground shrink-0"
+            >
+              Website van de klant
+            </label>
+            <input
+              id="brief-website-url"
+              type="url"
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              disabled={autoGenerating || saving}
+              placeholder="www.bedrijf.nl"
+              className="flex-1 min-w-[200px] h-8 px-2.5 text-sm rounded-md border border-border bg-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
+            />
+            <span className="text-[10.5px] text-muted-foreground/70">
+              Pedro scrape&apos;t homepage + over-ons en haalt brand kleuren / fonts op.
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={generateDraft}
+              disabled={autoGenerating || saving}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {autoGenerating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              {autoGenerating ? "Pedro analyseert context..." : "Genereer concept met Pedro"}
+            </button>
+            <span className="text-xs text-muted-foreground">
+              Vult alleen lege velden - laat wat je al typte intact.
+            </span>
+            {capturedBrandStyle && (
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
+                <Check className="h-3 w-3" />
+                Brand kleuren + fonts opgehaald van website
+              </span>
             )}
-            {autoGenerating ? "Pedro analyseert context..." : "Genereer concept met Pedro"}
-          </button>
-          <span className="text-xs text-muted-foreground">
-            Vult alleen lege velden - laat wat je al typte intact.
-          </span>
+          </div>
           {autoBriefSourceNote && (
-            <span className="text-[11px] text-muted-foreground/70 italic w-full">
+            <span className="text-[11px] text-muted-foreground/70 italic block">
               {autoBriefSourceNote}
             </span>
           )}

@@ -22,9 +22,11 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   let clientId: string
+  let websiteUrl = ""
   try {
     const body = await req.json()
     clientId = String(body.clientId ?? "")
+    websiteUrl = typeof body.websiteUrl === "string" ? body.websiteUrl.trim() : ""
     if (!clientId) {
       return NextResponse.json({ error: "clientId is verplicht" }, { status: 400 })
     }
@@ -34,7 +36,9 @@ export async function POST(req: NextRequest) {
 
   const supabase = await createAdminClient()
   try {
-    const { brief, meta } = await generateAutoBrief(supabase, clientId)
+    const { brief, meta } = await generateAutoBrief(supabase, clientId, {
+      websiteUrl: websiteUrl || undefined,
+    })
     return NextResponse.json({
       brief,
       meta: {
@@ -43,6 +47,8 @@ export async function POST(req: NextRequest) {
         hasKickoffMeeting: meta.hasKickoffMeeting,
         monthlyUpdateCount: meta.monthlyUpdateCount,
         hasTrengo: meta.hasTrengo,
+        hasWebsite: meta.hasWebsite,
+        websiteUrlUsed: meta.websiteUrlUsed,
       },
     })
   } catch (e) {

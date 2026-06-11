@@ -824,6 +824,32 @@ export async function getFolderImages(
   return ordered.slice(0, limit)
 }
 
+/**
+ * Download a single file as raw bytes. Used by Pedro brand-asset
+ * vision to fetch PDFs (kleuren.pdf, style-guide.pdf) and run them
+ * through Claude. Returns null on any error rather than throwing so
+ * callers can degrade gracefully.
+ *
+ * Roy 2026-06-11.
+ */
+export async function downloadDriveFileBytes(fileId: string): Promise<Buffer | null> {
+  try {
+    const auth = await getAuth()
+    const drive = google.drive({ version: "v3", auth })
+    const res = await drive.files.get(
+      { fileId, alt: "media", supportsAllDrives: true },
+      { responseType: "arraybuffer" },
+    )
+    return Buffer.from(res.data as ArrayBuffer)
+  } catch (e) {
+    console.error(
+      "[google-drive] downloadDriveFileBytes failed:",
+      e instanceof Error ? e.message : e,
+    )
+    return null
+  }
+}
+
 export async function listFolderFiles(folderId: string): Promise<DriveFile[]> {
   const auth = await getAuth()
   const drive = google.drive({ version: "v3", auth })

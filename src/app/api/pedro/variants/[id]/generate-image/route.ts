@@ -9,6 +9,13 @@ import {
 import { uploadVariantImage, getVariantImageSignedUrl } from "@/lib/integrations/pedro-image-storage"
 import { getFolderImages, type DriveImageRef } from "@/lib/integrations/google-drive"
 import { rerankDrivePhotos } from "@/lib/pedro/drive-photo-vision"
+import {
+  findBrandAssetsInDrive,
+  brandAssetsPromptBlock,
+  type BrandAsset,
+} from "@/lib/pedro/drive-brand-assets"
+import { extractColorsFromBrandPdf } from "@/lib/pedro/brand-vision"
+import { downloadDriveFileBytes } from "@/lib/integrations/google-drive"
 import { searchPexelsPhotos, deriveStockQueries } from "@/lib/integrations/pexels"
 import { resolveVisualStylePolicy } from "@/lib/pedro/visual-style-policy"
 import type { BrandStyle } from "@/lib/pedro/helpers"
@@ -431,10 +438,88 @@ export async function POST(
     // prefs + the visual-style policy.
     const sourcePrefs = await loadImageSourcePrefs()
 
+    // Roy 2026-06-11: download non-logo website images uit
+    // brand_style.websiteImages zodat ze in dezelfde reference pool als
+    // Drive photos terechtkomen. Was eerst genegeerd - Pedro had de
+    // beste klantfoto's onder zijn neus liggen en gebruikte ze niet.
+    async function fetchWebsiteImageRefs(): Promise<DriveImageRef[]> {
+      // Gating: website photos zijn een "real photo reference" net als
+      // Drive, dus we volgen useDrivePhotos. In "drive_only" mode wil
+      // de CM expliciet alleen Drive - dan overslaan. In
+      // "winning_ad_only" mode is useDrivePhotos al false dus die filter
+      // pakt 'm. In "website" + "custom" wordt 'ie gebruikt.
+      if (!policy.referenceImagePolicy.useDrivePhotos) return []
+      const briefMode = briefForPolicy?.visualStyleMode
+      if (briefMode === "drive_only") return []
+      const rawList = Array.isArray(brandStyleForPolicy?.websiteImages)
+        ? (brandStyleForPolicy?.websiteImages as Array<{ url: string; context?: string }>)
+        : []
+      if (rawList.length === 0) return []
+      const refs: DriveImageRef[] = []
+      for (const item of rawList.slice(0, 4)) {
+        if (!item?.url) continue
+        try {
+          const r = await fetch(item.url, {
+            signal: AbortSignal.timeout(7000),
+            headers: { "User-Agent": "PedroBot/1.0 website-images" },
+          })
+          if (!r.ok) continue
+          const buf = Buffer.from(await r.arrayBuffer())
+          if (buf.byteLength === 0 || buf.byteLength > 6 * 1024 * 1024) continue
+          const contentType = r.headers.get("content-type") ?? ""
+          // Gemini Nano Banana Pro accepteert JPEG en PNG. Webp/avif/etc
+          // forceren we naar jpeg label - de bytes blijven hetzelfde,
+          // de SDK gokt op extension. Roy 2026-06-11.
+          const mimeType: "image/jpeg" | "image/png" = contentType.includes("png")
+            ? "image/png"
+            : "image/jpeg"
+          refs.push({
+            id: `website:${item.url.split("/").pop()?.slice(0, 60) ?? Date.now()}`,
+            name: `website-${item.context ?? "section"}-${refs.length}`,
+            mimeType,
+            modifiedTime: new Date(0).toISOString(),
+            bytes: buf,
+          })
+        } catch {
+          /* skip failed download */
+        }
+      }
+      return refs
+    }
+
+    // Drive brand-asset detection (Roy 2026-06-11). Scant root + 1
+    // niveau diep voor brand book / style guide / kleuren / logo /
+    // fonts naar file-namen, en injecteert die als reference-list in
+    // de Gemini prompt. Geen vision-call - puur naming-based - dus
+    // goedkoop. Wanneer er geen Drive gekoppeld is of de policy zegt
+    // "geen Drive", overslaan.
+    async function fetchBrandAssets(): Promise<BrandAsset[]> {
+      if (!policy.referenceImagePolicy.useDrivePhotos) return []
+      try {
+        const { fetchClientById } = await import("@/lib/integrations/monday")
+        const mondayClient = await fetchClientById(variant.client_id).catch(() => null)
+        const driveId = mondayClient?.googleDriveId?.trim()
+        if (!driveId) return []
+        return await findBrandAssetsInDrive(driveId, { maxFiles: 25 })
+      } catch (e) {
+        console.error(
+          "[pedro/generate-image] brand-assets fetch failed (continuing):",
+          e instanceof Error ? e.message : e,
+        )
+        return []
+      }
+    }
+
     // Fetch refs in parallel - but skip the call entirely when the
     // policy says we won't use that source. Cuts the Meta + Drive
     // round-trips when they're going to be thrown away anyway.
-    const [winnerThumbRef, drivePhotoRefs, stockRefs] = await Promise.all([
+    const [
+      winnerThumbRef,
+      drivePhotoRefs,
+      stockRefs,
+      websiteImageRefs,
+      brandAssets,
+    ] = await Promise.all([
       policy.referenceImagePolicy.useWinnerThumbnail ? fetchWinnerThumbRef() : Promise.resolve(null),
       policy.referenceImagePolicy.useDrivePhotos
         ? fetchDrivePhotoRefs(sourcePrefs.deniedFolderIds)
@@ -445,13 +530,83 @@ export async function POST(
       sourcePrefs.useStock && policy.referenceImagePolicy.useDrivePhotos
         ? fetchStockRefs(briefSector)
         : Promise.resolve([] as DriveImageRef[]),
+      fetchWebsiteImageRefs(),
+      fetchBrandAssets(),
     ])
+    const brandAssetsBlock = brandAssetsPromptBlock(brandAssets)
+
+    // PDF brand-color extraction (Roy 2026-06-11). Wanneer Drive een
+    // kleuren.pdf / style-guide.pdf bevat, halen we daar de canonical
+    // hex codes uit en cachen het resultaat op brand_style. Volgende
+    // generaties lezen de cache. Faal-soft - PDF vision is een bonus
+    // signaal, geen blocker.
+    type PdfCache = NonNullable<typeof brandStyleForPolicy>["pdfDerivedPalette"]
+    let pdfPaletteForPrompt: PdfCache | null =
+      (brandStyleForPolicy?.pdfDerivedPalette as PdfCache) ?? null
+    const pdfCandidate = brandAssets.find(
+      (a) =>
+        a.mimeType === "application/pdf" &&
+        (a.category === "colors" || a.category === "brandbook" || a.category === "style_guide"),
+    )
+    if (pdfCandidate) {
+      const cached = pdfPaletteForPrompt
+      const cacheHit =
+        cached &&
+        cached.sourceFileId === pdfCandidate.fileId &&
+        Array.isArray(cached.hexCodes) &&
+        cached.hexCodes.length > 0
+      if (!cacheHit) {
+        try {
+          const bytes = await downloadDriveFileBytes(pdfCandidate.fileId)
+          if (bytes) {
+            const extracted = await extractColorsFromBrandPdf({
+              pdfBytes: bytes,
+              fileName: pdfCandidate.fileName,
+            })
+            if (extracted) {
+              pdfPaletteForPrompt = {
+                hexCodes: extracted.hexCodes,
+                sourceFileName: pdfCandidate.fileName,
+                sourceFileId: pdfCandidate.fileId,
+                reason: extracted.reason,
+                computedAt: extracted.computedAt,
+                model: extracted.model,
+              }
+              // Persist to pedro_client_state.brand_style so future calls
+              // for any variant on this client short-circuit. Best-effort.
+              const mergedBrandStyle = {
+                ...(brandStyleForPolicy ?? {}),
+                pdfDerivedPalette: pdfPaletteForPrompt,
+              }
+              await supabase
+                .from("pedro_client_state")
+                .update({ brand_style: mergedBrandStyle })
+                .eq("client_id", variant.client_id)
+              console.log(
+                `[pedro/generate-image] PDF palette cached for ${variant.client_id}: ${extracted.hexCodes.join(",")} from ${pdfCandidate.fileName}`,
+              )
+            }
+          }
+        } catch (e) {
+          console.error(
+            "[pedro/generate-image] PDF palette extraction failed (continuing):",
+            e instanceof Error ? e.message : e,
+          )
+        }
+      }
+    }
 
     // Build the reference pool. Order: winner thumbnail first (DNA),
-    // then Drive (real client product), then Stock (generic). Gemini
-    // Nano Banana Pro accepts up to 3 references - we cap at that.
+    // then Drive (real client product), then Website (klant's eigen
+    // hero / team / product shots van hun site), then Stock (generic).
+    // Gemini Nano Banana Pro accepts up to 3 references - we cap at that.
+    // Roy 2026-06-11: website images zitten BOVEN stock omdat ze real
+    // klantmateriaal zijn en vrijwel altijd beter dan Pexels generieks.
     const referenceImages: Ref[] = []
-    const referenceNames: Array<{ source: "winner" | "drive" | "stock"; name: string }> = []
+    const referenceNames: Array<{
+      source: "winner" | "drive" | "website" | "stock"
+      name: string
+    }> = []
     const REF_CAP = 3
     if (winnerThumbRef) {
       referenceImages.push(winnerThumbRef)
@@ -462,6 +617,11 @@ export async function POST(
       referenceImages.push({ bytes: p.bytes, mimeType: p.mimeType })
       referenceNames.push({ source: "drive", name: p.name })
     }
+    for (const p of websiteImageRefs) {
+      if (referenceImages.length >= REF_CAP) break
+      referenceImages.push({ bytes: p.bytes, mimeType: p.mimeType })
+      referenceNames.push({ source: "website", name: p.name })
+    }
     for (const p of stockRefs) {
       if (referenceImages.length >= REF_CAP) break
       referenceImages.push({ bytes: p.bytes, mimeType: p.mimeType })
@@ -469,7 +629,7 @@ export async function POST(
     }
 
     console.log(
-      `[pedro/generate-image] refs for ${variant.id}: campaign="${winnerCampaignName ?? "(unknown)"}", winner=${winnerThumbRef ? "yes" : "no"}, drive=${drivePhotoRefs.length}, stock=${stockRefs.length}, used=${referenceImages.length}/${REF_CAP}, prefs={denied:${sourcePrefs.deniedFolderIds.size},stock:${sourcePrefs.useStock}}, policy={winner:${policy.referenceImagePolicy.useWinnerThumbnail},drive:${policy.referenceImagePolicy.useDrivePhotos},notice:${policy.notice ? "yes" : "no"}}`,
+      `[pedro/generate-image] refs for ${variant.id}: campaign="${winnerCampaignName ?? "(unknown)"}", winner=${winnerThumbRef ? "yes" : "no"}, drive=${drivePhotoRefs.length}, website=${websiteImageRefs.length}, stock=${stockRefs.length}, brandAssets=${brandAssets.length}, used=${referenceImages.length}/${REF_CAP}, prefs={denied:${sourcePrefs.deniedFolderIds.size},stock:${sourcePrefs.useStock}}, policy={winner:${policy.referenceImagePolicy.useWinnerThumbnail},drive:${policy.referenceImagePolicy.useDrivePhotos},notice:${policy.notice ? "yes" : "no"}}`,
     )
 
     // Resolve target slots. Default: generate ALL 3 slots in parallel
@@ -603,8 +763,21 @@ COMPOSITION.
 
 NEGATIVE: badges, sticker overlays, price tags, comparison labels, duplicated text elements, competing brand watermarks, "€X" price callouts, "Nx" multiplier stickers, before/after split overlays, mixed fonts, mixed text weights, low-resolution rendering, collage-style layouts.`
 
+    // Brand asset block sits BEFORE the RL quality rules so Gemini
+    // reads "respect these brand references" as part of the user-level
+    // prompt, with the hardcoded quality rules as the final authoritative
+    // suffix. Empty string when no brand assets were detected.
+    const pdfPaletteLine =
+      pdfPaletteForPrompt && pdfPaletteForPrompt.hexCodes.length > 0
+        ? `\n\nCANONICAL BRAND COLORS (from ${pdfPaletteForPrompt.sourceFileName}, authoritative): ${pdfPaletteForPrompt.hexCodes.join(", ")}\nThese OVERRIDE any other color cue. Primary = first hex, secondary = second, accents follow.`
+        : ""
+    const brandAssetsAddendum =
+      brandAssetsBlock || pdfPaletteLine
+        ? `\n\n---\n${brandAssetsBlock}${pdfPaletteLine}\n---`
+        : ""
+
     const promptWithFeedback =
-      prompt + feedbackAddendum + RL_QUALITY_RULES + HEADLINE_LOCKDOWN
+      prompt + feedbackAddendum + brandAssetsAddendum + RL_QUALITY_RULES + HEADLINE_LOCKDOWN
     const aspectRatio = variant.format_hint === "Video" ? "9:16" : "1:1"
 
     // Generate all targets in parallel. Each variation gets a small

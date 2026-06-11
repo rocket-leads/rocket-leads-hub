@@ -91,4 +91,33 @@ export interface BrandStyle {
     computedAt: string
     model: string
   }
+  /** Roy 2026-06-11: provenance van de primary/secondary/accent color
+   *  picks. `vision_logo` betekent Claude Haiku heeft de palette uit
+   *  het logo (+ optional hero) afgeleid en CSS scoring overruled.
+   *  `css_scoring` is de legacy regex-pad. */
+  colorSource?: "vision_logo" | "css_scoring"
+  /** 1-sentence justification from the vision model when colorSource =
+   *  vision_logo. CM-readable. */
+  visionReason?: string
+  /** Roy 2026-06-11: niet-logo content images uit de homepage. Pedro
+   *  downloadt deze in de generate-image route + zet ze door dezelfde
+   *  Haiku rerank als Drive photos. Verschilt van `heroImageUrl` (die
+   *  is altijd de eerste grote img) - dit is de volledige set. */
+  websiteImages?: Array<{
+    url: string
+    context: "hero" | "section" | "about" | "other"
+  }>
+  /** Roy 2026-06-11: hex codes geparseerd uit een brand-asset PDF in
+   *  de Drive folder van de klant (kleuren.pdf / style-guide.pdf).
+   *  Override de logo-vision palette omdat deze de canonical bron
+   *  zijn. Wordt eenmalig opgehaald en gecached zodat we per variant
+   *  geen vision-call doen. */
+  pdfDerivedPalette?: {
+    hexCodes: string[]
+    sourceFileName: string
+    sourceFileId: string
+    reason: string
+    computedAt: string
+    model: string
+  }
 }
