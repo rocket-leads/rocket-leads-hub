@@ -769,12 +769,18 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
             </div>
           </>
         )}
+        {/* Visible-of-total count - shows "{shown} van {total} klanten" when
+            search / filters are narrowing the list, falls back to plain total
+            otherwise. Roy 2026-06-11 v4: "showing 12 out of 20 items" naast
+            de filter. */}
         {showAllToggle ? (
           <div className="ml-auto flex items-center gap-2 text-[11px] tabular-nums">
             <span className="text-muted-foreground/70">
-              {showAllToggle.showAll
-                ? t(clients.length === 1 ? "clients.count_total_one" : "clients.count_total_many", locale, { n: clients.length })
-                : t("clients.count_of", locale, { shown: clients.length, total: showAllToggle.totalCount })}
+              {sorted.length === clients.length
+                ? (showAllToggle.showAll
+                    ? t(clients.length === 1 ? "clients.count_total_one" : "clients.count_total_many", locale, { n: clients.length })
+                    : t("clients.count_of", locale, { shown: clients.length, total: showAllToggle.totalCount }))
+                : t("clients.count_of", locale, { shown: sorted.length, total: clients.length })}
             </span>
             {clients.length !== showAllToggle.totalCount || showAllToggle.showAll ? (
               <button
@@ -788,7 +794,9 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           </div>
         ) : (
           <span className="text-[11px] text-muted-foreground/60 ml-auto tabular-nums">
-            {t(sorted.length === 1 ? "clients.count_total_one" : "clients.count_total_many", locale, { n: sorted.length })}
+            {sorted.length === clients.length
+              ? t(sorted.length === 1 ? "clients.count_total_one" : "clients.count_total_many", locale, { n: sorted.length })
+              : t("clients.count_of", locale, { shown: sorted.length, total: clients.length })}
           </span>
         )}
         {boardType === "current" && (

@@ -3,9 +3,7 @@
 import { useState, useMemo, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
-import { RefreshCw, Users, Sparkles } from "lucide-react"
-import { TopTabs } from "@/components/ui/top-tabs"
-import type { TopTab } from "@/components/ui/top-tabs"
+import { RefreshCw } from "lucide-react"
 import { Panel } from "@/components/ui/panel"
 import { ClientsTable } from "./clients-table"
 import { ClientSlideOver } from "./client-slide-over"
@@ -68,7 +66,6 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
 
   const [showAll, setShowAll] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [activeTab, setActiveTab] = useState<"current" | "onboarding">("current")
   // The All Clients overview is the "is everyone OK?" surface - same
   // intent as the Watch List. KPI columns lock to the canonical 7d
   // window so they match Watch List + Home page + Pedro numbers
@@ -181,67 +178,43 @@ export function ClientsOverview({ onboarding, current, currentUser }: Props) {
     ? new Date(lastUpdated).toLocaleTimeString(locale === "nl" ? "nl-NL" : "en-GB", { hour: "2-digit", minute: "2-digit" })
     : null
 
-  const tabItems: TopTab<"current" | "onboarding">[] = [
-    { id: "current", label: t("clients.tab.current", locale), icon: Users, count: visibleCurrent.length },
-    { id: "onboarding", label: t("clients.tab.onboarding", locale), icon: Sparkles, count: onboarding.length },
-  ]
-
+  // Onboarding tab dropped 2026-06-11 (Roy: "onboarding hebben we nu
+  // in een aparte tab bij onboarding") - /clients is now current-
+  // clients-only. Refresh + last-updated stamp render inline above
+  // the table instead of inside a tab strip.
   return (
     <div className="space-y-6">
-      <TopTabs<"current" | "onboarding">
-        tabs={tabItems}
-        value={activeTab}
-        onChange={setActiveTab}
-        rightContent={
-          <>
-            {lastUpdatedLabel && (
-              <span className="text-[11px] text-muted-foreground/40">{t("clients.updated", locale, { time: lastUpdatedLabel })}</span>
-            )}
-            <button
-              className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
-              onClick={handleRefresh}
-              disabled={isFetching}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
-            </button>
-          </>
-        }
-      />
+      <div className="flex items-center justify-end gap-2 -mb-2">
+        {lastUpdatedLabel && (
+          <span className="text-[11px] text-muted-foreground/40">{t("clients.updated", locale, { time: lastUpdatedLabel })}</span>
+        )}
+        <button
+          className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-foreground hover:bg-muted/50 transition-all"
+          onClick={handleRefresh}
+          disabled={isFetching}
+          aria-label={t("clients.refresh", locale)}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+        </button>
+      </div>
 
-      {/* Content */}
-      {activeTab === "current" && (
-        <Panel className="p-5">
-          <ClientsTable
-            clients={visibleCurrent}
-            boardType="current"
-            billingSummaries={summariesQuery.data}
-            kpiSummaries={kpiQuery.data}
-            agreementSummaries={agreementsQuery.data}
-            mondayActiveMap={mondayActiveQuery.data}
-            lastClientUpdates={lastClientUpdatesQuery.data?.lastUpdates}
-            onSelectClient={handleSelectClient}
-            showAllToggle={{
-              showAll,
-              setShowAll,
-              totalCount: current.length,
-            }}
-          />
-        </Panel>
-      )}
-
-      {activeTab === "onboarding" && (
-        <Panel className="p-5">
-          <ClientsTable
-            clients={onboarding}
-            boardType="onboarding"
-            billingSummaries={summariesQuery.data}
-            kpiSummaries={kpiQuery.data}
-            agreementSummaries={agreementsQuery.data}
-            mondayActiveMap={mondayActiveQuery.data}
-            onSelectClient={handleSelectClient}
-          />
-        </Panel>
-      )}
+      <Panel className="p-5">
+        <ClientsTable
+          clients={visibleCurrent}
+          boardType="current"
+          billingSummaries={summariesQuery.data}
+          kpiSummaries={kpiQuery.data}
+          agreementSummaries={agreementsQuery.data}
+          mondayActiveMap={mondayActiveQuery.data}
+          lastClientUpdates={lastClientUpdatesQuery.data?.lastUpdates}
+          onSelectClient={handleSelectClient}
+          showAllToggle={{
+            showAll,
+            setShowAll,
+            totalCount: current.length,
+          }}
+        />
+      </Panel>
 
       {currentUser && (
         <ClientSlideOver

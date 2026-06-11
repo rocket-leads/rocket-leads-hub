@@ -84,30 +84,76 @@ export function InboxBlock({
       empty={totalCount === 0}
       emptyContent={<InboxZeroState />}
     >
-      <ul className="divide-y divide-border/30">
-        {items.map((item) => (
-          <li key={item.id}>
-            <Link
-              href={itemHref(item)}
-              className="flex items-start gap-3 px-4 py-3 hover:bg-muted/30 transition-colors group"
-            >
-              <span className="mt-1 shrink-0">{kindIcon(item.kind)}</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate">{item.title}</p>
-                <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
-                  {[item.clientName, item.authorName, timeAgo(item.createdAt)]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-                {item.body && (
-                  <p className="text-xs text-muted-foreground/50 mt-1 line-clamp-1">{item.body}</p>
-                )}
-              </div>
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors mt-1" />
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <SplitInboxList items={items} locale={locale} />
     </BlockShell>
+  )
+}
+
+/**
+ * Split the inbox preview into Taken (links) + Updates (rechts) sections
+ * so the AM lands on the same conceptual division the global Inbox uses
+ * (Roy 2026-06-11 v4: "duidelijk onderverdelen: misschien taken, updates").
+ * Chat items fold into Updates - keeping it a true 2-section split.
+ */
+function SplitInboxList({ items, locale }: { items: InboxItem[]; locale: Locale }) {
+  const tasks = items.filter((it) => it.kind === "task")
+  const updates = items.filter((it) => it.kind !== "task")
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border/30">
+      <SubList
+        title={t("home.block.inbox.split.tasks", locale)}
+        items={tasks}
+        emptyHint={t("home.block.inbox.split.tasks_empty", locale)}
+      />
+      <SubList
+        title={t("home.block.inbox.split.updates", locale)}
+        items={updates}
+        emptyHint={t("home.block.inbox.split.updates_empty", locale)}
+      />
+    </div>
+  )
+}
+
+function SubList({
+  title,
+  items,
+  emptyHint,
+}: {
+  title: string
+  items: InboxItem[]
+  emptyHint: string
+}) {
+  return (
+    <div className="flex flex-col">
+      <div className="px-4 pt-3 pb-1.5 flex items-baseline justify-between gap-2">
+        <h3 className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">{title}</h3>
+        <span className="text-[10px] tabular-nums text-muted-foreground/40">{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="px-4 pb-3 text-xs text-muted-foreground/40 italic">{emptyHint}</p>
+      ) : (
+        <ul className="divide-y divide-border/30">
+          {items.map((item) => (
+            <li key={item.id}>
+              <Link
+                href={itemHref(item)}
+                className="flex items-start gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors group"
+              >
+                <span className="mt-1 shrink-0">{kindIcon(item.kind)}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{item.title}</p>
+                  <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">
+                    {[item.clientName, item.authorName, timeAgo(item.createdAt)]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors mt-1" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }

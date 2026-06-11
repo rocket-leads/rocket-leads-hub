@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { AlertCircle, ArrowRight, Sparkles } from "lucide-react"
+import { AlertCircle, ArrowRight } from "lucide-react"
 import { BlockShell } from "./block-shell"
 import { t } from "@/lib/i18n/t"
 import type { Locale } from "@/lib/i18n/types"
@@ -59,9 +59,8 @@ export function ActionBlock({
                 </div>
                 <p className="text-xs text-red-400 leading-snug mt-0.5 line-clamp-1">{item.insight}</p>
                 {item.aiNote && (
-                  <p className="text-xs text-muted-foreground/80 leading-snug mt-1 line-clamp-2 flex items-start gap-1">
-                    <Sparkles className="h-2.5 w-2.5 text-violet-400 shrink-0 mt-[3px]" />
-                    <span>{item.aiNote}</span>
+                  <p className="text-xs text-muted-foreground/80 leading-snug mt-1 line-clamp-2">
+                    {item.aiNote}
                   </p>
                 )}
               </div>

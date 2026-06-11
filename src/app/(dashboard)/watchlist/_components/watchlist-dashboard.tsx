@@ -1358,9 +1358,6 @@ function WatchSection({
                       {leadsCell === "-" ? "—" : leadsCell} leads{" "}
                       <span className="text-muted-foreground/30">·</span> {cplCell} CPL
                     </p>
-                    <p className="text-[10px] text-muted-foreground/40 truncate">
-                      {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
-                    </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {primaryAction}
@@ -1385,9 +1382,6 @@ function WatchSection({
                       <p className="text-sm font-medium truncate">{client.name}</p>
                       <BucketAge category={category} daysInBucket={daysInBucket} isNewToday={isNewToday} locale={locale} />
                     </div>
-                    <p className="text-[10px] text-muted-foreground/40 truncate">
-                      {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
-                    </p>
                   </div>
                   <p className={`text-xs leading-snug ${config.insightColor}`}>{insight}</p>
                   <span className="text-xs tabular-nums text-muted-foreground">{spendCell}</span>
@@ -1453,9 +1447,6 @@ function NoDataSection({
             >
               <div className="min-w-0">
                 <p className="text-sm font-medium text-muted-foreground/80 truncate">{client.name}</p>
-                <p className="text-[10px] text-muted-foreground/40 truncate">
-                  {[client.campaignManager, client.accountManager].filter(Boolean).join(" · ")}
-                </p>
               </div>
 
               <p className="text-xs text-muted-foreground/70 leading-snug">{insight}</p>
@@ -1760,21 +1751,34 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           </StatusPill>
         </div>
 
-        <FiltersPopover
-          align="end"
-          filters={[
-            {
-              key: "cm",
-              label: t("watchlist.filter.cm_label", locale),
-              value: cmFilter,
-              onChange: setCmFilter,
-              options: [
-                { value: "All", label: t("watchlist.filter.all_cms", locale) },
-                ...campaignManagers.map((cm) => ({ value: cm, label: cm })),
-              ],
-            } satisfies FilterConfig,
-          ]}
-        />
+        <div className="flex items-center gap-2">
+          {/* Visible-of-total badge - only shows up when the CM filter is
+              active (cmFilter !== "All") so the chrome stays calm at full
+              scope. Roy 2026-06-11 v4. */}
+          {cmFilter !== "All" && (
+            <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+              {t("watchlist.filter.shown_of", locale, {
+                shown: filteredClients.length,
+                total: clients.length,
+              })}
+            </span>
+          )}
+          <FiltersPopover
+            align="end"
+            filters={[
+              {
+                key: "cm",
+                label: t("watchlist.filter.cm_label", locale),
+                value: cmFilter,
+                onChange: setCmFilter,
+                options: [
+                  { value: "All", label: t("watchlist.filter.all_cms", locale) },
+                  ...campaignManagers.map((cm) => ({ value: cm, label: cm })),
+                ],
+              } satisfies FilterConfig,
+            ]}
+          />
+        </div>
       </div>
 
       {/* Key Insights + Optimisation Proposal panels removed 2026-06-09 -
@@ -1788,7 +1792,10 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
           block instead of a flat header on the page bg. No Data stays
           collapsed at the bottom. */}
       <div className="space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* items-start so each section card sizes to its own content
+            instead of being stretched to match the tallest column -
+            Roy 2026-06-11 v4: "wit vlak onder Action Needed mag eruit". */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <WatchSection
             category="action"
             items={categorized.action}
@@ -1809,7 +1816,7 @@ export function WatchListDashboard({ clients, currentUser }: Props) {
         <WatchSection
           category="good"
           items={categorized.good}
-          defaultOpen={false}
+          defaultOpen={true}
           onSelectClient={handleSelectClient}
           locale={locale}
           variant="wide"
