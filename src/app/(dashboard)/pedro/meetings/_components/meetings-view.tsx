@@ -140,13 +140,6 @@ export function MeetingsView({ meetings, clientNameById, clients, isAdmin = fals
         <p className="text-[11px] text-muted-foreground">{matchSummary}</p>
       )}
 
-      <p className="text-[11px] text-muted-foreground">
-        {activeTab === "unlinked" && t("meetings.subtitle.unlinked", locale, { n: String(buckets.unlinked.length) })}
-        {activeTab === "recent" && t("meetings.subtitle.recent", locale, { n: String(buckets.recent.length) })}
-        {activeTab === "internal" && t("meetings.subtitle.internal", locale, { n: String(buckets.internal.length) })}
-        {activeTab === "archived" && t("meetings.subtitle.archived", locale, { n: String(buckets.archived.length) })}
-      </p>
-
       {visible.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">

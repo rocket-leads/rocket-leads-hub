@@ -264,7 +264,6 @@ export default async function BillingPage() {
     <div>
       <PageHeader
         title="Billing"
-        subtitle="Upcoming invoices grouped by when they need to go out. The invoice date is always 7 days before the new cycle starts - edit a client's cycle to move both dates in lockstep."
         actions={<RefreshBillingButton lastRefreshedAt={lastRefreshedAt} />}
       />
       <BillingTabs futureGroups={groups} pastInvoices={pastInvoices} adminOptions={adminOptions} />

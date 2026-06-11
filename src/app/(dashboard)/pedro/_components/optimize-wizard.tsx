@@ -186,9 +186,6 @@ export function OptimizeWizard({
           <h2 className="font-heading text-lg font-semibold tracking-tight leading-tight text-foreground mt-0.5">
             {selectedClientName || "Geen klant geselecteerd"}
           </h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Iteraties op een bewezen winning ad - elke stap is een aparte deliverable.
-          </p>
         </div>
         <div className="shrink-0 text-right">
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">

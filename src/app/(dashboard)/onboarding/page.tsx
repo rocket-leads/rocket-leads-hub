@@ -226,10 +226,7 @@ export default async function OnboardingOverviewPage() {
   const locale = await getUserLocale(session?.user?.id)
   return (
     <div className="space-y-4">
-      <PageHeader
-        title={t("onboarding.overview.title", locale)}
-        subtitle={t("onboarding.overview.subtitle", locale)}
-      />
+      <PageHeader title={t("onboarding.overview.title", locale)} />
       <Suspense fallback={<OnboardingLoading />}>
         <OnboardingData session={session} locale={locale} />
       </Suspense>

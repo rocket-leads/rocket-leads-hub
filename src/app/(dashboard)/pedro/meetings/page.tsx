@@ -48,10 +48,7 @@ export default async function MeetingsPage() {
 
   return (
     <div>
-      <PageHeader
-        title={t("meetings.title", locale)}
-        subtitle={t("meetings.subtitle", locale)}
-      />
+      <PageHeader title={t("meetings.title", locale)} />
 
       <MeetingsView
         meetings={meetings}

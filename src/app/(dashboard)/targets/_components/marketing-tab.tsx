@@ -220,7 +220,7 @@ export function MarketingTab() {
 
       {/* ── SECTION 1 - SUMMARY ── */}
       <section className="space-y-3">
-        <SectionHeader title={t("targets.section.summary.title", locale)} subtitle={t("targets.section.summary.subtitle", locale)} />
+        <SectionHeader title={t("targets.section.summary.title", locale)} />
         <PulseBanner monday={m} meta={meta} targets={tgt} range={range} isLoading={loading} />
         <HeroPillars monday={m} meta={meta} targets={tgt} isLoading={loading} />
         <RevenueProgressBar
@@ -242,7 +242,7 @@ export function MarketingTab() {
 
       {/* ── SECTION 2 - METRICS ── */}
       <section className="space-y-3">
-        <SectionHeader title={t("targets.section.metrics.title", locale)} subtitle={t("targets.section.metrics.subtitle", locale)} />
+        <SectionHeader title={t("targets.section.metrics.title", locale)} />
 
         <div className="space-y-2">
           <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground/60 px-1">{t("targets.section.volume_costs", locale)}</h3>
@@ -403,7 +403,7 @@ export function MarketingTab() {
 
       {/* ── SECTION 3 - BREAKDOWN ── */}
       <section className="space-y-3">
-        <SectionHeader title={t("targets.section.breakdown.title", locale)} subtitle={t("targets.section.breakdown.subtitle", locale)} />
+        <SectionHeader title={t("targets.section.breakdown.title", locale)} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <WeeklyOverview data={m?.weekly ?? []} isLoading={data.mondayLoading} />

@@ -106,7 +106,6 @@ export function BillingTab({
         // Distinguish the title only when both dates are visible - otherwise
         // the original "Next invoice" reads naturally for clients with one cadence.
         titleKey={showAdBudgetDate ? "client.billing.next_invoice.fee.title" : "client.billing.next_invoice.title"}
-        subtitleKey={showAdBudgetDate ? "client.billing.next_invoice.fee.subtitle" : "client.billing.next_invoice.subtitle"}
         initialDate={initialNextInvoiceDate ?? null}
       />
       {showAdBudgetDate && (
@@ -115,7 +114,6 @@ export function BillingTab({
           fieldKey="next_ad_budget_invoice_date"
           icon={Megaphone}
           titleKey="client.billing.next_invoice.ad_budget.title"
-          subtitleKey="client.billing.next_invoice.ad_budget.subtitle"
           initialDate={initialNextAdBudgetInvoiceDate ?? null}
         />
       )}
@@ -136,14 +134,12 @@ function InvoiceDateSection({
   fieldKey,
   icon,
   titleKey,
-  subtitleKey,
   initialDate,
 }: {
   mondayItemId: string
   fieldKey: "next_invoice_date" | "next_ad_budget_invoice_date"
   icon: LucideIcon
   titleKey: DictionaryKey
-  subtitleKey: DictionaryKey
   initialDate: string | null
 }) {
   const locale = useLocale()
@@ -181,7 +177,6 @@ function InvoiceDateSection({
     <BillingSectionShell
       icon={icon}
       title={t(titleKey, locale)}
-      subtitle={t(subtitleKey, locale)}
     >
       <div className="flex items-center gap-2 flex-wrap">
         <input
@@ -245,18 +240,19 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
   })
 
   const data = query.data
-  // Customer name + email (when available) acts as the subtitle. Fallback to
-  // the generic "what this client got billed" line - no need to translate the
-  // identity string itself.
+  // Customer name + email (when available) is the only subtitle we
+  // still surface - Roy 2026-06-11 v5 stripped the generic explainer
+  // fallback ("What this client got billed via Stripe") because the
+  // section title already says it.
   const subtitle = data?.customerName
     ? `${data.customerName}${data.customerEmail ? ` · ${data.customerEmail}` : ""}`
-    : t("client.billing.invoices.subtitle_fallback", locale)
+    : undefined
 
   const actions = stripeCustomerId ? <StripeLinkButton stripeCustomerId={stripeCustomerId} /> : null
 
   if (!stripeCustomerId) {
     return (
-      <BillingSectionShell icon={FileText} title={t("client.billing.invoices.title", locale)} subtitle={t("client.billing.invoices.subtitle_fallback", locale)}>
+      <BillingSectionShell icon={FileText} title={t("client.billing.invoices.title", locale)}>
         <div className="rounded-md border border-dashed border-border/50 p-6 text-center text-sm text-muted-foreground">
           {t("client.billing.invoices.no_stripe_id", locale)}
         </div>

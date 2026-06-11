@@ -50,10 +50,7 @@ export default async function SettingsPage({
   if (!isAdmin) {
     return (
       <div>
-        <PageHeader
-          title={t("settings.title", locale)}
-          subtitle={t("settings.subtitle", locale)}
-        />
+        <PageHeader title={t("settings.title", locale)} />
         <SettingsTabs
           isAdmin={false}
           initialTab={params.tab === "me" ? "me" : "me"}
@@ -140,10 +137,7 @@ export default async function SettingsPage({
 
   return (
     <div>
-      <PageHeader
-        title={t("settings.title", locale)}
-        subtitle={t("settings.subtitle", locale)}
-      />
+      <PageHeader title={t("settings.title", locale)} />
 
       <ApiHealthBar />
 

@@ -20,10 +20,7 @@ export default async function PedroInsightsPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Insights"
-        subtitle="Wat werkt op dit moment in elke branche, samengesteld uit winnende campagnes over alle Rocket Leads klanten heen. Geanonimiseerd - geen klantnamen, alleen patronen."
-      />
+      <PageHeader title="Insights" />
       <PedroInsights />
     </div>
   )

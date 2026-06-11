@@ -73,7 +73,7 @@ export function AgreementSection({ mondayItemId }: Props) {
 
   if (query.isLoading || !draft) {
     return (
-      <BillingSectionShell icon={Handshake} title={t("client.agreement.title", locale)} subtitle={t("client.agreement.subtitle", locale)}>
+      <BillingSectionShell icon={Handshake} title={t("client.agreement.title", locale)}>
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-40 w-full" />
       </BillingSectionShell>
@@ -82,7 +82,7 @@ export function AgreementSection({ mondayItemId }: Props) {
 
   if (query.isError) {
     return (
-      <BillingSectionShell icon={Handshake} title={t("client.agreement.title", locale)} subtitle={t("client.agreement.subtitle", locale)}>
+      <BillingSectionShell icon={Handshake} title={t("client.agreement.title", locale)}>
         <div className="py-6 text-sm text-destructive">
           {query.error instanceof Error ? query.error.message : t("client.agreement.error.load_failed", locale)}
         </div>
@@ -140,7 +140,6 @@ export function AgreementSection({ mondayItemId }: Props) {
     <BillingSectionShell
       icon={Handshake}
       title={t("client.agreement.title", locale)}
-      subtitle={t("client.agreement.subtitle", locale)}
     >
       {/* Totals - same SummaryCard pattern as the invoices section above */}
       <div className="grid grid-cols-2 gap-3">
