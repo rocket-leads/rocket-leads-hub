@@ -203,11 +203,16 @@ export async function POST(
     const winnerDetail = await resolveWinnerDetail()
     const winnerCampaignName = winnerDetail?.campaignName ?? null
 
-    async function fetchWinnerThumbRef(): Promise<Ref | null> {
+    type WinnerRef = (Ref & { isUploadedScreenshot: boolean }) | null
+    async function fetchWinnerThumbRef(): Promise<WinnerRef> {
       // Roy 2026-06-10: prio op handmatig-geüploade screenshot. Wanneer
       // de CM eentje heeft toegevoegd via de AdPicker (voor ads zonder
       // Meta thumbnail), gebruiken we DIE als reference. Anders val we
       // terug op de Meta thumbnail URL.
+      // Roy 2026-06-11 v2: track of het de uploaded screenshot is zodat
+      // we de visual-lock prompt erop kunnen aanzetten - dat is een
+      // hoge-resolutie screenshot van de WINNING ad, geen Meta-thumbnail
+      // van lage resolutie. CM verwacht dat varianten erop lijken.
       const screenshotPath = winnerDetail?.sourceScreenshotPath
       if (screenshotPath) {
         try {
@@ -216,13 +221,12 @@ export async function POST(
           )
           const bytes = await getVariantImageBytes(screenshotPath)
           if (bytes) {
-            // Detect MIME from path; default to JPEG.
             const mimeType: "image/jpeg" | "image/png" = screenshotPath
               .toLowerCase()
               .endsWith(".png")
               ? "image/png"
               : "image/jpeg"
-            return { bytes, mimeType }
+            return { bytes, mimeType, isUploadedScreenshot: true }
           }
         } catch (e) {
           console.error(
@@ -235,7 +239,9 @@ export async function POST(
       if (!url) return null
       try {
         const ref = await fetchReferenceImage(url)
-        return ref ? { bytes: ref.bytes, mimeType: ref.mimeType } : null
+        return ref
+          ? { bytes: ref.bytes, mimeType: ref.mimeType, isUploadedScreenshot: false }
+          : null
       } catch (e) {
         console.error(
           "[pedro/generate-image] winner-thumb fetch failed (continuing):",
@@ -609,8 +615,14 @@ export async function POST(
     }> = []
     const REF_CAP = 3
     if (winnerThumbRef) {
-      referenceImages.push(winnerThumbRef)
-      referenceNames.push({ source: "winner", name: "winner thumbnail" })
+      // Strip the flag-only field - Gemini accepts just bytes + mimeType.
+      referenceImages.push({ bytes: winnerThumbRef.bytes, mimeType: winnerThumbRef.mimeType })
+      referenceNames.push({
+        source: "winner",
+        name: winnerThumbRef.isUploadedScreenshot
+          ? "uploaded source screenshot"
+          : "winner thumbnail",
+      })
     }
     for (const p of drivePhotoRefs) {
       if (referenceImages.length >= REF_CAP) break
@@ -776,8 +788,44 @@ NEGATIVE: badges, sticker overlays, price tags, comparison labels, duplicated te
         ? `\n\n---\n${brandAssetsBlock}${pdfPaletteLine}\n---`
         : ""
 
+    // Roy 2026-06-11 v2: SOURCE VISUAL LOCK. Wanneer de CM een
+    // screenshot van de winning ad heeft geupload, is dat de eerste
+    // reference image (zie referenceImages assembly hierboven). We
+    // injecteren dan een harde instructie zodat Gemini begrijpt dat
+    // die screenshot de te-volgen visuele DNA is, niet zomaar een
+    // willekeurige reference. Voorkomt dat Pedro's variant in 3
+    // totaal verschillende visuele richtingen vertrekt.
+    const SOURCE_VISUAL_LOCK = winnerThumbRef?.isUploadedScreenshot
+      ? `
+
+---
+SOURCE AD VISUAL LOCK (CRITICAL):
+
+The FIRST reference image attached is the EXACT winning ad uploaded by the campaign manager. Your output must be a visual SIBLING of it - immediately recognisable as an iteration of the same ad.
+
+MATCH from the source:
+- Color palette (background tones, text color, accent / badge colors)
+- Composition + framing (subject placement, headline placement, badge placement)
+- Photographic style (lighting, mood, depth of field, art direction)
+- On-image text treatment (font weight, size relationship, alignment)
+- Badge / sticker style if present (shape, fill, treatment)
+- Subject category (robot / product / person / scene - keep same category)
+
+ONLY CHANGE:
+- The exact Dutch headline text (use the headline supplied in this prompt verbatim)
+- The specific subject details enough to make it a fresh execution, not a copy
+
+DO NOT:
+- Pick a completely different scene type (source = robot in dark teal? do not generate a smiling human in white office).
+- Switch color palettes.
+- Move text from top to bottom or vice versa (keep the source's headline placement).
+- Add new badges that aren't in the source.
+
+A buitenstaander must recognise your output and the source screenshot as 'iteraties van dezelfde ad', not 'twee verschillende campagnes'.`
+      : ""
+
     const promptWithFeedback =
-      prompt + feedbackAddendum + brandAssetsAddendum + RL_QUALITY_RULES + HEADLINE_LOCKDOWN
+      prompt + feedbackAddendum + brandAssetsAddendum + SOURCE_VISUAL_LOCK + RL_QUALITY_RULES + HEADLINE_LOCKDOWN
     const aspectRatio = variant.format_hint === "Video" ? "9:16" : "1:1"
 
     // Generate all targets in parallel. Each variation gets a small

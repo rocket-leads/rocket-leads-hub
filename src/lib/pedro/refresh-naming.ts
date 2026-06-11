@@ -77,6 +77,13 @@ export type NamedVariant = {
    *  bestaan. Empty string voor legacy multi-winner refreshes. Surfaced
    *  in de UI als bewijs van source-anchoring. */
   sourceHookQuote: string
+  /** Roy 2026-06-11 v2: minimaal 5 zinsdelen (2-6 woorden elk) die
+   *  WOORD-VOOR-WOORD uit de source-copy komen en die deze variant
+   *  ook gebruikt. Bewijs dat de variant in dezelfde DNA box blijft -
+   *  geen nieuwe propositie, geen nieuwe USPs, geen nieuwe doelgroep.
+   *  Surfaced in de UI zodat de CM in één oogopslag ziet of de iteratie
+   *  trouw is aan de source. Empty array voor legacy refreshes. */
+  phrasesReused: string[]
   newHook: string
   scriptOutline: string
   primaryCopySnippet: string
@@ -164,6 +171,7 @@ export function assignAdNamesToVariants(
     formatHint?: unknown
     topicLabel?: unknown
     sourceHookQuote?: unknown
+    phrasesReused?: unknown
     newHook?: unknown
     scriptOutline?: unknown
     primaryCopySnippet?: unknown
@@ -202,8 +210,27 @@ export function assignAdNamesToVariants(
       formatHint,
       topicLabel: topic || "Untitled",
       adName: formatAdName({ format: formatHint, number, topic }),
-      sourceHookQuote:
-        typeof v.sourceHookQuote === "string" ? v.sourceHookQuote.trim() : "",
+      sourceHookQuote: (() => {
+        // Roy 2026-06-11: actief filteren van de verboden fallback string
+        // die Pedro voorheen produceerde ("[Primary copy niet beschikbaar
+        // - afleiden uit briefing: X]"). Liever leeg dan misleidend.
+        const raw =
+          typeof v.sourceHookQuote === "string" ? v.sourceHookQuote.trim() : ""
+        if (!raw) return ""
+        if (/primary copy niet beschikbaar/i.test(raw)) return ""
+        if (/afleiden uit briefing/i.test(raw)) return ""
+        if (/afleiden uit usps/i.test(raw)) return ""
+        return raw
+      })(),
+      phrasesReused: asStringArray(v.phrasesReused, 8)
+        // Filter de bekende fallback strings die we expliciet verbieden
+        // - als Pedro toch een fallback-zin produceert, hier strippen
+        // zodat de UI er niet door wordt vervuild. Roy 2026-06-11.
+        .filter((p) => !/primary copy niet beschikbaar/i.test(p))
+        .filter((p) => !/afleiden uit briefing/i.test(p))
+        .filter((p) => !/afleiden uit usps/i.test(p))
+        // 2+ woorden minimum - losse woorden zijn geen "phrase".
+        .filter((p) => p.split(/\s+/).length >= 2),
       newHook: typeof v.newHook === "string" ? v.newHook : "",
       scriptOutline: typeof v.scriptOutline === "string" ? v.scriptOutline : "",
       primaryCopySnippet: typeof v.primaryCopySnippet === "string" ? v.primaryCopySnippet : "",

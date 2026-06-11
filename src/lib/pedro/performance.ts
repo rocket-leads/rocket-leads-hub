@@ -146,7 +146,10 @@ export function computeTrend(
  * Body is trimmed to BODY_CHAR_LIMIT to keep prompt cost predictable
  * (~150 tokens per ad worst-case). HTML/whitespace normalised.
  */
-const BODY_CHAR_LIMIT = 500
+// Roy 2026-06-11: bumped van 500 naar 2000. Dynamic creatives kunnen
+// nu meerdere bodies bevatten (joined met \n\n in fetchMetaAdDetails) -
+// op 500 chars zag Pedro alleen body 1 en miste de rest van de DNA.
+const BODY_CHAR_LIMIT = 2000
 
 function normalizeAdBody(body: string | undefined | null): string {
   if (!body) return ""
@@ -180,13 +183,15 @@ export function renderAdsForPrompt(
     const creativeType = a.creativeType ?? "unknown"
     const header = `[${a.verdict.toUpperCase().padEnd(7)}] "${a.adName}" (${creativeType}) - €${a.spend.toFixed(0)} spend, ${a.leads} leads, CPL ${cpl}, CTR ${ctr}% - ${a.reason}`
     const lines: string[] = [header]
-    if (a.title) lines.push(`  Headline: "${a.title.slice(0, 200)}"`)
+    // Roy 2026-06-11: dynamic creatives join meerdere titles met \n\n.
+    // Bump van 200 naar 800 zodat álle headlines mee gaan.
+    if (a.title) lines.push(`  Headline: "${a.title.slice(0, 800)}"`)
     if (body) {
       lines.push(`  Primary copy: "${body}${body.length === BODY_CHAR_LIMIT ? "…" : ""}"`)
     } else {
       lines.push(`  Primary copy: (not available)`)
     }
-    if (a.description) lines.push(`  Description: "${a.description.slice(0, 200)}"`)
+    if (a.description) lines.push(`  Description: "${a.description.slice(0, 600)}"`)
     if (a.callToActionType) lines.push(`  CTA button: ${a.callToActionType}`)
     if (a.linkUrl) lines.push(`  Landing page: ${a.linkUrl.slice(0, 100)}`)
     if (a.assetFeedSummary) {

@@ -22,6 +22,10 @@ type CreativeVariant = {
    *  description waar deze variant op gebaseerd is. Bewijs van
    *  source-anchoring. Empty voor legacy refreshes. */
   sourceHookQuote?: string
+  /** Roy 2026-06-11 v2: 5+ zinsdelen die woord-voor-woord uit de source
+   *  komen en die deze variant hergebruikt. Bewijs dat de variant in
+   *  dezelfde DNA-box blijft. Empty array voor legacy refreshes. */
+  phrasesReused?: string[]
   newHook: string
   scriptOutline: string
   primaryCopySnippet: string
@@ -224,6 +228,29 @@ function VariantCard({
           </div>
           <div className="text-xs italic text-foreground">
             &ldquo;{variant.sourceHookQuote}&rdquo;
+          </div>
+        </div>
+      )}
+
+      {/* Phrases reused from source - Roy 2026-06-11 v2: harde bewijsvoering
+          dat de variant in dezelfde DNA-box blijft. Toont 5+ verbatim
+          zinsdelen uit de source. Groen = DNA-trouw. Geen badge = variant
+          mist source-anchoring (zou eigenlijk niet moeten voorkomen na
+          de prompt-rewrite). */}
+      {variant.phrasesReused && variant.phrasesReused.length > 0 && (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-emerald-700 dark:text-emerald-400 font-semibold mb-1">
+            Behoudt uit source ({variant.phrasesReused.length})
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {variant.phrasesReused.map((p, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30"
+              >
+                &laquo;{p}&raquo;
+              </span>
+            ))}
           </div>
         </div>
       )}

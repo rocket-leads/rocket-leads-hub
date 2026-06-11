@@ -377,54 +377,78 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
 
   const winnersBlock = renderAdsForPrompt(winners, 5, visionByAdId)
 
+  // Roy 2026-06-11 v2: forbidden fallback. Als de source body écht
+  // niet beschikbaar is (lege ad, geen dynamic creative), STOP voordat
+  // we Claude bellen. Beter een duidelijke 422 dan Pedro die uit
+  // briefing gaat raden en compleet andere angles produceert. Roy
+  // 2026-06-11: "[Primary copy niet beschikbaar - afleiden uit briefing]"
+  // was de fallback die we WILLEN voorkomen.
+  const sourceBodyLength = (picked.body ?? "").replace(/\s+/g, "").length
+  const sourceTitleLength = (picked.title ?? "").replace(/\s+/g, "").length
+  if (sourceBodyLength + sourceTitleLength < 80) {
+    return NextResponse.json(
+      {
+        error:
+          "De gekozen ad heeft geen leesbare primary copy of headline in Meta. Pedro kan niet itereren zonder source tekst. Kies een andere ad, of upload eerst een screenshot zodat de tekst zichtbaar is.",
+        errorCode: "no_source_copy",
+      },
+      { status: 422 },
+    )
+  }
+
   // Roy 2026-06-11: prompt-flow is volledig handmatig - CM heeft 1
   // specifieke ad gekozen, Pedro itereert op DIE ad. Geen window/winner
   // detection meer, geen losers vergelijking.
-  const promptIntro = `Je bent Pedro, senior campaign manager bij Rocket Leads. De CM heeft EEN specifieke ad gekozen om op te itereren. Je taak: 3 nieuwe varianten genereren die elk een DUIDELIJK BESTAANDE hook/angle uit de source-copy amplificeren.
+  // Roy 2026-06-11 v2: framing volledig herschreven - GEEN "extract
+  // hooks + amplify" methode meer (Pedro maakte er nieuwe campagnes
+  // van). Nu: 3 zus-varianten die DIRECT herleidbaar zijn als
+  // iteraties van DEZE ad. Same propositie, same doelgroep, same
+  // USPs, andere woorden.
+  const promptIntro = `Je bent Pedro, senior campaign manager bij Rocket Leads. De CM heeft één bewezen ad gekozen. Je taak: **3 micro-varianten** die naast elkaar gelegd direct herkenbaar zijn als iteraties van DEZE ad - niet als 3 nieuwe campagnes.
 
 KLANT: ${client.name} (Monday item ${clientId})
 
-${clientContext?.block ?? "CLIENT CONTEXT: niet beschikbaar - wees expliciet voorzichtig met aannames over wat klant verkoopt of wie de doelgroep is."}
+${clientContext?.block ?? "CLIENT CONTEXT: niet beschikbaar."}
 
-GEKOZEN AD (door CM geselecteerd - DIT is de DNA-bron voor hooks/angles):
+GEKOZEN AD (DIT is je ENIGE bron - geen briefing-context erbij halen):
 ${winnersBlock}
 ${voiceCorpus ? `\n${voiceCorpus}\n` : ""}
 ${pastCreatives}
 ${pastBrief}
-DE METHODE (verplicht, geen shortcuts):
+DE OPDRACHT - geen herformulering naar een nieuwe campagne, geen 3 verschillende invalshoeken. Drie zus-varianten van DEZE specifieke ad.
 
-STAP 1 - EXTRACTIE: lees de primary copy + headline + description van de gekozen ad woord-voor-woord. Identificeer ELKE distincte hook/angle/pijnpunt die er expliciet in voorkomt. Een typische Zumex-achtige ad heeft 3-5 hooks verspreid over verschillende zinnen/alinea's. Voorbeelden van hooks die je moet detecteren:
-- ROI / "vanaf €X per dag" / kostenargument
-- Ruimte-argument / "neemt weinig plek in"
-- Gemak / "snel te reinigen" / "iedereen kan ermee werken"
-- Financiering / "leasen mogelijk" / "geen directe investering"
-- Verse sappen-trend / klantvraag
-- Service / Nederlandse support
-- Garantie / kwaliteit
-- Marktleider / sociale bewijs
+**WAT BLIJFT IDENTIEK** (heilig, mag NIET veranderen tussen source en jouw 3 varianten):
+1. De propositie - wat verkoopt de klant exact in deze ad
+2. De doelgroep - wie spreekt de ad aan
+3. De pijnpunt/aanleiding - waarom doet de doelgroep iets
+4. De USP-lijst / bullet points uit de primary copy - mogen geherformuleerd worden, NIET vervangen door andere USPs
+5. De CTA-actie - zelfde gewenste actie (mag andere bewoording)
+6. De vocabulary - alleen woorden die ook in de source-copy of voice-corpus voorkomen
 
-Output deze hooks in het \`extractedHooks\` array per proposal: 3-5 items, elk met een KORTE LABEL én een DIRECTE QUOTE uit de source-copy.
+**WAT MAG VARIËREN** (zo creëer je verschil tussen A/B/C):
+- De openingsvraag / hook-zin - elke variant een eigen entry, MAAR zelfde pijnpunt
+- Volgorde van USPs
+- Lengte van primary copy (40-100 woorden)
+- Headline-formulering (max 35 char, behoudt kernwoord uit source headline)
 
-STAP 2 - AMPLIFICATIE: kies 3 van die geëxtraheerde hooks (een variant per hook) en maak van elke ervan een nieuwe variant die DIE specifieke hook als spine heeft. De variant herformuleert de hook, maar laat de KERN ervan herkenbaar. Forbid: nieuwe hooks bedenken die NIET in de source-copy staan.
+**VERPLICHTE BEWIJSVOERING per variant** - dit is hoe ik kan zien dat je je werk hebt gedaan:
+- \`phrasesReused\` array: MINIMAAL 5 zinsdelen die WOORD-VOOR-WOORD uit de source komen. Geen losse woorden ("klant", "wij") - echte phrases (2-6 woorden). Voorbeelden van goed: "AI-assisted development", "1 betaalbare prijs", "100% tevredenheidsgarantie", "Uniek in NL", "Te weinig budget voor softwareontwikkeling".
+- \`sourceHookQuote\`: één quote uit source (gevraagd in oude flow) - blijft een directe quote uit de source-copy.
 
-STAP 3 - BEWIJS: per variant moet \`sourceHookQuote\` een DIRECTE quote uit de source bevatten die jouw variant amplificeert. Als je die quote niet kunt vinden in de source, is je variant FOUT - gooi 'm weg en kies een andere hook.
+**ABSOLUUT VERBODEN** - variant wordt weggegooid:
+- Een NIEUWE angle/pijnpunt verzinnen die niet expliciet in source primary copy staat. Source over "AI-assisted development voor lager budget"? Dan GEEN variant over "krappe arbeidsmarkt", "scaling problemen", "vibecoding methodiek" of welke andere angle dan ook.
+- Een NIEUWE propositie of USP toevoegen die niet in source staat.
+- De doelgroep verschuiven (source spreekt budget-aware MKB aan? Blijf daar - ga niet over op recruitment-managers).
+- De fallback "[Primary copy niet beschikbaar - afleiden uit X]" als sourceHookQuote of phrasesReused gebruiken. Source body is gegarandeerd aanwezig (het systeem heeft het al gecontroleerd) - haal je quotes uit de gerenderde primary copy hierboven.
 
-STAP 4 - VOCABULARY LOCK: gebruik UITSLUITEND product/dienst-omschrijvingen die ook in de KLANT VOICE CORPUS hierboven voorkomen. Klanten zijn picky op hoe hun eigen product beschreven wordt. Voorbeelden van waar dit fout gaat:
-- Klant zegt "sappenautomaat" → je schrijft NIET "sappenmachine" of "sapmachine" of "sapautomaat" (al die varianten zijn FOUT, alleen het exacte woord uit de corpus mag).
-- Klant zegt "Nederlandse service" → niet "lokale service" of "service in Nederland".
-- Klant zegt "verse sappen" → niet "verse jus" of "vers sap".
-- Hooks/openers/angles mogen creatief afwijken, MAAR product- en dienstomschrijvingen moeten woord-voor-woord matchen met de corpus.
-- Twijfel? Kies het meest-gebruikte woord uit de corpus.
+**TEST VOORDAT JE OUTPUTS** - lees jouw variant naast de source primary copy:
+- Een buitenstaander moet ze direct als "iteraties van dezelfde ad" herkennen
+- Als je variant ook had gekund voor een totaal andere klant in dezelfde branche → FOUT, te generiek
+- Als jouw 3 varianten 3 verschillende campagnes lijken → FOUT, te ver uit elkaar
 
-VERBODEN - typische faalmodi:
-- Nieuwe angles bedenken die nergens in de source staan ("marge", "klantenvraag", "service-defect" als die niet expliciet in de source-copy genoemd worden).
-- Nieuwe productnamen bedenken die niet in de voice corpus staan ("sappenmachine" als de klant "sappenautomaat" zegt).
-- Generieke marketing-claims toevoegen waar de source er niet over begint.
-- Alle 3 varianten op dezelfde extracted hook bouwen (Meta dynamic creative wil VARIATIE).
+FORMAT: format van source bepaalt format van alle 3 varianten (Photo → Photo, Video → Video).
 
-FORMAT: het format van de gekozen ad bepaalt het format van alle 3 varianten (Photo → Photo, Video → Video).
-
-Output: EXACT 1 proposal (de gekozen ad) met \`extractedHooks\` + 3 varianten die elk een andere extracted hook amplificeren.`
+Output: EXACT 1 proposal (de gekozen ad) met 3 zus-varianten.`
 
   const promptTail = `
 
@@ -458,19 +482,14 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
         "angle": "marketing angle (bv. 'subsidie-savings', 'voor/na transformatie')",
         "format": "format (bv. 'AI avatar talking-head 9:16', 'photo carousel')"
       },
-      "extractedHooks": [
-        {
-          "label": "Korte 2-3 woord label, bv. 'ROI €3/dag' of 'Ruimte-argument'",
-          "quote": "Directe quote uit de source primary copy/headline/description, max 200 char."
-        }
-      ],
       "variants": [
         {
-          "label": "Variant A - korte beschrijvende naam",
+          "label": "Variant A - korte beschrijvende naam (mag verwijzen naar de variatie, niet naar een nieuwe angle)",
           "formatHint": "Photo" | "Video",
-          "topicLabel": "kort thema-label in NL, max 4 woorden, bv. 'Subsidie savings', 'Voor/na transformatie', 'Pijnpunt opener'. Geen jaartal, geen datum.",
-          "sourceHookQuote": "VERPLICHT - directe quote uit de source-copy van DE hook die deze variant amplificeert. Moet matchen met één van extractedHooks[].quote. Geen quote = geen variant.",
-          "newHook": "een nieuwe opener-zin in NL die de gekozen extractedHook[].label amplificeert. Quote-niveau verbinding met de source moet er zijn, niet alleen 'gerelateerd'.",
+          "topicLabel": "kort thema-label in NL, max 4 woorden. Moet aansluiten op de SOURCE-thema, niet een nieuw thema introduceren.",
+          "sourceHookQuote": "VERPLICHT - directe quote uit de source primary copy of headline die deze variant herwerkt. Géén briefing-fallback toegestaan.",
+          "phrasesReused": ["VERPLICHT - array van MINIMAAL 5 zinsdelen (2-6 woorden elk) die WOORD-VOOR-WOORD uit de source-copy of source-headline komen en die jouw variant ook gebruikt. Geen losse woorden. Geen parafrases. Voorbeeld: ['AI-assisted development', '1 betaalbare prijs', '100% tevredenheidsgarantie', 'Uniek in NL', 'Te weinig budget voor softwareontwikkeling']."],
+          "newHook": "een nieuwe opener-zin in NL die DEZELFDE pijnpunt aanspreekt als de source. Geen nieuwe pijnpunt.",
           "scriptOutline": "3-5 bullet points van de script-flow (in NL)",
           "primaryCopySnippet": "primary text van 40-80 woorden in NL. Begint met de hook of een vergelijkbare pijnpunt-opener; vertelt 2-3 zinnen waarom RL/klant dit oplost; sluit af met soft CTA.",
           "headline": "ÉÉN korte Meta headline van max 35 char in NL. Pijnpunt-vraag of herkenbare situatie uit DOELGROEP-perspectief (niet product-claim). Voorbeelden: 'Vragen je gasten ook naar verse sappen?' / 'Te hoge stookkosten ondanks isolatie?'. GEEN punt op het eind, GEEN merknaam, GEEN brand-slogan.",
@@ -478,7 +497,7 @@ ALLEEN JSON output (geen markdown, geen code fences), exact dit format:
           "altPrimaryTexts": ["VERPLICHT: 2 alternatieve primary texts in NL, 40-80 woorden, andere opener dan primary. Format: array van 2 strings. Meta draait dynamic creative met deze 3 totaal - varieer hook + bewijs zodat Meta verschillende segmenten kan raken."],
           "linkDescription": "Optionele ~30 char link description in NL (mag lege string zijn). Korte ondersteunende regel onder de headline, niet verplicht.",
           "imagePrompt": "ENGLISH visual brief van max 140 woorden voor de image-gen (Gemini Nano Banana Pro). Gemini krijgt straks tot 3 reference images. Beschrijf: scene/setting, ONE clear subject, mood, lighting, ONE clean on-image headline. Verwijs naar references zo: 'using the client product visible in the reference photos'. Schrijf in English voor model fidelity. \n\nHARDE REGELS - RL is een marketingbureau, deze creatives moeten LEVERBAAR zijn. Bij twijfel = TE WEINIG, niet te veel:\n(A) EXACTLY ONE on-image text element. The exact Dutch headline. NIETS anders. NO badges, NO price labels (€..), NO comparison stickers (LAGE/3x MARGE), NO sticker/sign overlays, NO secondary captions, NO photo captions. The model often duplicates the same badge twice - explicitly forbid: 'Do not duplicate any text element. Render the headline exactly ONCE.'\n(B) Brand handling. NO competing brand names visible (no QualityFry/Blendtec/etc in a Zumex shot). NO large logo. Subtle brand presence only if it occurs naturally on a product surface.\n(C) Typography quality. ONE consistent sans-serif typeface for the whole headline. Even letter spacing. Center-aligned or left-aligned consistently. Sufficient padding around the headline (≥8% of canvas on each side). NO mixed weights within the same line unless explicitly framed. NO outline + fill mixed. Use the BRAND IDENTITY hex codes from context for color accents.\n(D) Composition. Clean photographic background. ONE subject in focus. The headline sits in clear negative space - never on top of busy detail. Resolution must look professional, not collage-y.\n(E) On-image text is the headline. Pijnpunt-vraag/situatie uit doelgroep-perspectief, GEEN product-claim. Use the variant's 'headline' field verbatim where possible.\n(F) Honoreer KLANT-FEEDBACK PATRONEN uit context als wetten.\n\nExplicit deny list (write these as 'NEGATIVE: ...' at the end of the prompt): no badges, no sticker overlays, no price tags, no comparison labels, no duplicated text, no competing brand watermarks, no '€X' price callouts, no '3x'/'2x' multiplier stickers, no before/after split overlays, no mixed fonts.",
-          "why": "1 zin: 'Amplificeert hook \"<extractedHook label>\": <quote>'. Geen vage 'respecteert DNA' - wees expliciet welke hook deze variant pakt."
+          "why": "1 zin: 'Behoudt source-DNA via <hoofd-hook>; varieert op <wat varieert>'. Wees expliciet welke source-elementen je behoudt en wat je laat variëren. Geen vage 'respecteert DNA'."
         }
       ]
     }

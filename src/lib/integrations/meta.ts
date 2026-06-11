@@ -657,22 +657,54 @@ export async function fetchMetaAdDetails(
             const vid = oss?.video_data
             const feed = creative?.asset_feed_spec
 
-            // Fallback chain: top-level → object_story_spec → asset_feed first item
+            // Roy 2026-06-11: dynamic creatives kunnen meerdere bodies /
+            // titles bevatten waar de eerste vaak NIET de meest representatieve
+            // is. Voor Pedro's iteration-on-source-ad flow moet ALLE tekst van
+            // de winning ad bereikbaar zijn als één primary-copy block,
+            // anders ziet Pedro "Primary copy: (not available)" terwijl
+            // de echte tekst in asset_feed_spec.bodies zit. Concat alle
+            // bodies / titles met dubbel-newline scheiding wanneer er meer
+            // dan één is - downstream consumers behandelen het dan als
+            // gewone primary copy.
+            function joinFeedTexts(items: Array<{ text?: string }> | undefined): string {
+              if (!items || items.length === 0) return ""
+              const seen = new Set<string>()
+              const out: string[] = []
+              for (const it of items) {
+                const t = (it.text ?? "").trim()
+                if (!t) continue
+                if (seen.has(t)) continue
+                seen.add(t)
+                out.push(t)
+                if (out.length >= 5) break
+              }
+              return out.join("\n\n")
+            }
+
+            // Fallback chain: top-level → object_story_spec → asset_feed first item.
+            // When feed bodies/titles exist met meer dan 1 entry, gebruiken
+            // we de joined versie zodat alle DNA mee gaat naar Pedro.
+            const feedJoinedBody = joinFeedTexts(feed?.bodies)
+            const feedJoinedTitle = joinFeedTexts(feed?.titles)
+            const feedJoinedDescription = joinFeedTexts(feed?.descriptions)
             const body =
               creative?.body
               || link?.message
               || vid?.message
+              || feedJoinedBody
               || feed?.bodies?.[0]?.text
               || ""
             const title =
               creative?.title
               || link?.name
               || vid?.title
+              || feedJoinedTitle
               || feed?.titles?.[0]?.text
               || ""
             const description =
               link?.description
               || vid?.description
+              || feedJoinedDescription
               || feed?.descriptions?.[0]?.text
               || ""
             const callToActionType =
