@@ -18,6 +18,7 @@ import { extractColorsFromBrandPdf } from "@/lib/pedro/brand-vision"
 import { downloadDriveFileBytes } from "@/lib/integrations/google-drive"
 import { searchPexelsPhotos, deriveStockQueries } from "@/lib/integrations/pexels"
 import { resolveVisualStylePolicy } from "@/lib/pedro/visual-style-policy"
+import { fetchInspirationRefForStyle } from "@/lib/pedro/visual-reference-library"
 import type { BrandStyle } from "@/lib/pedro/helpers"
 
 /**
@@ -918,28 +919,67 @@ RL QUALITY RULES (composite-allowed):
     // direction (real photo / real+AI / composite / lifestyle) so the
     // CM krijgt echte variatie, niet 3x dezelfde scene. Tekst (headline)
     // blijft identiek across slots - alleen de visuele uitvoering varieert.
+    //
+    // Roy 2026-06-12: per slot proberen we ook één visual-library
+    // referentie op te halen uit de matching AD CREATIVES INSPIRATION
+    // subfolder. Wanneer beschikbaar wordt die als EERSTE reference
+    // image meegestuurd met expliciete "quality bar" framing - Gemini
+    // matcht 'm dan op compositie, lighting, typography. Geen ref =
+    // fallback op de bestaande referencePool zonder kwaliteitsbar.
     const resolvedSlotStyles = body.slotStyles ?? {}
-    const slotResults = await Promise.allSettled(
+
+    const inspirationRefs = await Promise.all(
       targetSlots.map((slot) => {
         const style: SlotStyleKey =
           resolvedSlotStyles[slot] ?? DEFAULT_SLOT_STYLES[slot] ?? "real_ai_polish"
+        return fetchInspirationRefForStyle(style).catch(() => null)
+      }),
+    )
+
+    const slotResults = await Promise.allSettled(
+      targetSlots.map((slot, idx) => {
+        const style: SlotStyleKey =
+          resolvedSlotStyles[slot] ?? DEFAULT_SLOT_STYLES[slot] ?? "real_ai_polish"
         const directive = styleDirective(style, brandHexForPrompt)
+        const inspiration = inspirationRefs[idx]
         // Composite style krijgt z'n eigen versoepelde rules; andere
         // styles houden de originele strikte versie.
         const qualityRules = allowsComposite(style)
           ? RL_QUALITY_RULES_COMPOSITE
           : RL_QUALITY_RULES
+
+        // Inspiration-library framing: when we have a ref from the
+        // AD CREATIVES INSPIRATION/<category>/ subfolder, prepend it to
+        // the reference pool AND tell Gemini it's the quality bar.
+        const slotRefImages: Ref[] = [...referenceImages]
+        let inspirationFraming = ""
+        if (inspiration) {
+          slotRefImages.unshift({
+            bytes: inspiration.bytes,
+            mimeType: inspiration.mimeType,
+          })
+          inspirationFraming = `\n\nQUALITY BAR REFERENCE (FIRST attached image):\nThe first reference image is a winning ad from the "${inspiration.subfolderName}" inspiration library. It defines the quality bar for this output: composition, lighting, typography weight + treatment, brand chrome usage, mood. MATCH that level. DO NOT copy specific text, subjects, product details, or layout from it - use only its visual-quality DNA.`
+        }
+
         const styledPrompt =
           prompt +
           feedbackAddendum +
           brandAssetsAddendum +
           SOURCE_VISUAL_LOCK +
           directive +
+          inspirationFraming +
           qualityRules +
           HEADLINE_LOCKDOWN
+
+        // Gemini accepts up to 3 reference images effectively; trim the
+        // pool to the most relevant: inspiration first (when present),
+        // then winner thumbnail, then Drive photos. Anything past 3 hurts
+        // fidelity more than helps.
+        const refsForGemini = slotRefImages.slice(0, 3)
+
         return generateImageWithReference({
           prompt: styledPrompt,
-          referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
+          referenceImages: refsForGemini.length > 0 ? refsForGemini : undefined,
           aspectRatio,
         })
       }),
@@ -1121,6 +1161,19 @@ RL QUALITY RULES (composite-allowed):
         stockPhotoNames: referenceNames
           .filter((r) => r.source === "stock")
           .map((r) => r.name),
+        // Roy 2026-06-12: surface which slots got an inspiration-library
+        // ref + from which subfolder. Helps the CM see in the UI that
+        // slot B was anchored on an "AI Content" winner from the library.
+        inspirationBySlot: targetSlots.reduce<Record<number, { subfolder: string; fileName: string } | null>>(
+          (acc, slot, idx) => {
+            const insp = inspirationRefs[idx]
+            acc[slot] = insp
+              ? { subfolder: insp.subfolderName, fileName: insp.fileName }
+              : null
+            return acc
+          },
+          {},
+        ),
       },
       hadReference: referenceImages.length > 0,
     })
