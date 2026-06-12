@@ -5,11 +5,17 @@ import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import {
   addDays,
+  addMonths,
   addWeeks,
+  endOfDay,
+  endOfMonth,
   endOfWeek,
   format,
+  isSameMonth,
   isToday,
+  parseISO,
   startOfDay,
+  startOfMonth,
   startOfWeek,
 } from "date-fns"
 import { ChevronLeft, ChevronRight, MapPin, Plus, Video } from "lucide-react"
@@ -38,9 +44,13 @@ const TOTAL_HOURS = HOUR_END - HOUR_START
 const TIME_COL_WIDTH = "w-14"
 
 const VISIBILITY_STORAGE_KEY = "rl-calendar-visibility"
+const VIEW_STORAGE_KEY = "rl-calendar-view"
 
 type Visibility = { meetings: boolean; tasks: boolean }
 const DEFAULT_VISIBILITY: Visibility = { meetings: true, tasks: true }
+
+type CalendarViewMode = "day" | "week" | "month"
+const DEFAULT_VIEW: CalendarViewMode = "week"
 
 type Props = {
   initialConnected: boolean
@@ -53,6 +63,27 @@ export function CalendarView({ initialConnected }: Props) {
   const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [dialog, setDialog] = useState<EventDialogMode | null>(null)
   const [taskDialogId, setTaskDialogId] = useState<string | null>(null)
+
+  // View mode (day/week/month) persisted in localStorage. Lazy initial
+  // read — never write state from an effect.
+  const [view, setView] = useState<CalendarViewMode>(() => {
+    if (typeof window === "undefined") return DEFAULT_VIEW
+    try {
+      const raw = window.localStorage.getItem(VIEW_STORAGE_KEY)
+      if (raw === "day" || raw === "week" || raw === "month") return raw
+    } catch {
+      // Ignore — defaults are fine.
+    }
+    return DEFAULT_VIEW
+  })
+  const updateView = (next: CalendarViewMode) => {
+    setView(next)
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, next)
+    } catch {
+      // Ignore.
+    }
+  }
 
   // Stream visibility toggles in the toolbar. Persisted in localStorage
   // so the AM's preferences ("show only tasks") survive page reloads.
@@ -89,21 +120,64 @@ export function CalendarView({ initialConnected }: Props) {
     })
   }
 
-  const weekStart = useMemo(
-    () => startOfWeek(anchor, { weekStartsOn: 1 }),
-    [anchor],
-  )
-  const weekEnd = useMemo(
-    () => endOfWeek(anchor, { weekStartsOn: 1 }),
-    [anchor],
-  )
-  const days = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
-    [weekStart],
-  )
+  // Range derives from view:
+  //   day   → one calendar day
+  //   week  → Mon–Sun containing the anchor
+  //   month → six-week grid that covers the anchor's month (the standard
+  //           month-view layout — partial weeks at the start/end show as
+  //           muted days from the prior/next month)
+  const { rangeStart, rangeEnd, days, label } = useMemo(() => {
+    if (view === "day") {
+      const dayStart = startOfDay(anchor)
+      const dayEnd = endOfDay(anchor)
+      return {
+        rangeStart: dayStart,
+        rangeEnd: dayEnd,
+        days: [dayStart],
+        label: format(anchor, "EEEE, d MMM yyyy"),
+      }
+    }
+    if (view === "month") {
+      const monthStart = startOfMonth(anchor)
+      const monthEnd = endOfMonth(anchor)
+      const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+      const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
+      const out: Date[] = []
+      let cursor = gridStart
+      while (cursor <= gridEnd) {
+        out.push(cursor)
+        cursor = addDays(cursor, 1)
+      }
+      return {
+        rangeStart: gridStart,
+        rangeEnd: gridEnd,
+        days: out,
+        label: format(anchor, "MMMM yyyy"),
+      }
+    }
+    const weekStart = startOfWeek(anchor, { weekStartsOn: 1 })
+    const weekEnd = endOfWeek(anchor, { weekStartsOn: 1 })
+    return {
+      rangeStart: weekStart,
+      rangeEnd: weekEnd,
+      days: Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+      label: `${format(weekStart, "d MMM")} – ${format(weekEnd, "d MMM yyyy")}`,
+    }
+  }, [anchor, view])
 
-  const timeMinIso = weekStart.toISOString()
-  const timeMaxIso = endOfWeek(anchor, { weekStartsOn: 1 }).toISOString()
+  const timeMinIso = rangeStart.toISOString()
+  const timeMaxIso = rangeEnd.toISOString()
+
+  const stepForward = () => {
+    setAnchor((d) =>
+      view === "day" ? addDays(d, 1) : view === "month" ? addMonths(d, 1) : addWeeks(d, 1),
+    )
+  }
+  const stepBack = () => {
+    setAnchor((d) =>
+      view === "day" ? addDays(d, -1) : view === "month" ? addMonths(d, -1) : addWeeks(d, -1),
+    )
+  }
 
   const query = useQuery<CalendarEventsResponse>({
     queryKey: ["calendar-events", timeMinIso, timeMaxIso],
@@ -173,26 +247,25 @@ export function CalendarView({ initialConnected }: Props) {
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Previous week"
-              onClick={() => setAnchor((d) => addWeeks(d, -1))}
+              aria-label={`Previous ${view}`}
+              onClick={stepBack}
             >
               <ChevronLeft className="size-4" />
             </Button>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Next week"
-              onClick={() => setAnchor((d) => addWeeks(d, 1))}
+              aria-label={`Next ${view}`}
+              onClick={stepForward}
             >
               <ChevronRight className="size-4" />
             </Button>
           </div>
-          <div className="text-sm font-medium text-foreground">
-            {format(weekStart, "d MMM")} – {format(weekEnd, "d MMM yyyy")}
-          </div>
+          <div className="text-sm font-medium text-foreground">{label}</div>
         </div>
 
         <div className="flex items-center gap-2">
+          <ViewModeSwitcher view={view} onChange={updateView} />
           <VisibilityToggle
             label="Meetings"
             color="#8967F3"
@@ -226,74 +299,31 @@ export function CalendarView({ initialConnected }: Props) {
         <UndatedTasksBanner count={data!.undatedTaskCount} />
       )}
 
-      {/* Grid container */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
-        {/* Header row */}
-        <div className="grid grid-cols-[56px_repeat(7,minmax(0,1fr))] border-b border-border bg-muted/30">
-          <div className={cn(TIME_COL_WIDTH, "border-r border-border")} />
-          {days.map((d) => (
-            <div
-              key={d.toISOString()}
-              className={cn(
-                "py-2 px-2 text-center border-r border-border last:border-r-0",
-                isToday(d) && "bg-primary/5",
-              )}
-            >
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                {format(d, "EEE")}
-              </div>
-              <div
-                className={cn(
-                  "text-sm font-medium tabular-nums",
-                  isToday(d) ? "text-primary" : "text-foreground",
-                )}
-              >
-                {format(d, "d MMM")}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* All-day / tasks row */}
-        <AllDayRow
+      {view === "month" ? (
+        <MonthGrid
           days={days}
+          anchor={anchor}
+          eventsByDay={timedByDay}
           allDayByDay={allDayByDay}
           tasksByDay={tasksByDay}
           onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
           onOpenTask={(id) => setTaskDialogId(id)}
+          onJumpToDay={(d) => {
+            setAnchor(d)
+            updateView("day")
+          }}
         />
-
-        {/* Hour grid */}
-        <div className="relative grid grid-cols-[56px_repeat(7,minmax(0,1fr))]">
-          {/* Time column */}
-          <div className={cn(TIME_COL_WIDTH, "border-r border-border")}>
-            {Array.from({ length: TOTAL_HOURS }, (_, i) => (
-              <div
-                key={i}
-                className="h-14 px-2 pt-1 text-[10px] text-muted-foreground border-b border-border/60"
-              >
-                {String(HOUR_START + i).padStart(2, "0")}:00
-              </div>
-            ))}
-          </div>
-
-          {/* Day columns */}
-          {days.map((d) => {
-            const key = format(d, "yyyy-MM-dd")
-            return (
-              <DayColumn
-                key={key}
-                day={d}
-                events={timedByDay[key] ?? []}
-                onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
-                onCreateAt={(when) =>
-                  setDialog({ kind: "create", initialStart: when })
-                }
-              />
-            )
-          })}
-        </div>
-      </div>
+      ) : (
+        <TimeGrid
+          days={days}
+          timedByDay={timedByDay}
+          allDayByDay={allDayByDay}
+          tasksByDay={tasksByDay}
+          onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
+          onOpenTask={(id) => setTaskDialogId(id)}
+          onCreateAt={(when) => setDialog({ kind: "create", initialStart: when })}
+        />
+      )}
 
       {query.isError && (
         <p className="text-sm text-destructive">
@@ -316,6 +346,258 @@ export function CalendarView({ initialConnected }: Props) {
           onOpenChange={(o) => !o && setTaskDialogId(null)}
         />
       )}
+    </div>
+  )
+}
+
+function ViewModeSwitcher({
+  view,
+  onChange,
+}: {
+  view: CalendarViewMode
+  onChange: (v: CalendarViewMode) => void
+}) {
+  const modes: { value: CalendarViewMode; label: string }[] = [
+    { value: "day", label: "Day" },
+    { value: "week", label: "Week" },
+    { value: "month", label: "Month" },
+  ]
+  return (
+    <div className="inline-flex items-center rounded-md border border-border bg-muted/30 p-0.5">
+      {modes.map((m) => (
+        <button
+          key={m.value}
+          type="button"
+          onClick={() => onChange(m.value)}
+          className={cn(
+            "px-2.5 py-1 text-xs font-medium rounded transition-colors",
+            view === m.value
+              ? "bg-card text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function TimeGrid({
+  days,
+  timedByDay,
+  allDayByDay,
+  tasksByDay,
+  onOpenEvent,
+  onOpenTask,
+  onCreateAt,
+}: {
+  days: Date[]
+  timedByDay: Record<string, CalendarEventsResponse["events"]>
+  allDayByDay: Record<string, CalendarEventsResponse["events"]>
+  tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
+  onOpenEvent: (id: string) => void
+  onOpenTask: (id: string) => void
+  onCreateAt: (when: Date) => void
+}) {
+  // grid-cols template = 56px gutter + N flexible columns. Built as an
+  // inline style because Tailwind's JIT can't generate dynamic counts.
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `56px repeat(${days.length}, minmax(0, 1fr))`,
+  }
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      {/* Header row */}
+      <div
+        className="grid border-b border-border bg-muted/30"
+        style={gridStyle}
+      >
+        <div className={cn(TIME_COL_WIDTH, "border-r border-border")} />
+        {days.map((d) => (
+          <div
+            key={d.toISOString()}
+            className={cn(
+              "py-2 px-2 text-center border-r border-border last:border-r-0",
+              isToday(d) && "bg-primary/5",
+            )}
+          >
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              {format(d, "EEE")}
+            </div>
+            <div
+              className={cn(
+                "text-sm font-medium tabular-nums",
+                isToday(d) ? "text-primary" : "text-foreground",
+              )}
+            >
+              {format(d, "d MMM")}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <AllDayRow
+        days={days}
+        allDayByDay={allDayByDay}
+        tasksByDay={tasksByDay}
+        onOpenEvent={onOpenEvent}
+        onOpenTask={onOpenTask}
+        gridStyle={gridStyle}
+      />
+
+      {/* Hour grid */}
+      <div className="relative grid" style={gridStyle}>
+        <div className={cn(TIME_COL_WIDTH, "border-r border-border")}>
+          {Array.from({ length: TOTAL_HOURS }, (_, i) => (
+            <div
+              key={i}
+              className="h-14 px-2 pt-1 text-[10px] text-muted-foreground border-b border-border/60"
+            >
+              {String(HOUR_START + i).padStart(2, "0")}:00
+            </div>
+          ))}
+        </div>
+        {days.map((d) => {
+          const key = format(d, "yyyy-MM-dd")
+          return (
+            <DayColumn
+              key={key}
+              day={d}
+              events={timedByDay[key] ?? []}
+              onOpenEvent={onOpenEvent}
+              onCreateAt={onCreateAt}
+            />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function MonthGrid({
+  days,
+  anchor,
+  eventsByDay,
+  allDayByDay,
+  tasksByDay,
+  onOpenEvent,
+  onOpenTask,
+  onJumpToDay,
+}: {
+  days: Date[]
+  anchor: Date
+  eventsByDay: Record<string, CalendarEventsResponse["events"]>
+  allDayByDay: Record<string, CalendarEventsResponse["events"]>
+  tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
+  onOpenEvent: (id: string) => void
+  onOpenTask: (id: string) => void
+  onJumpToDay: (day: Date) => void
+}) {
+  const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+  const MAX_CHIPS_PER_DAY = 3
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      {/* Weekday header */}
+      <div className="grid grid-cols-7 border-b border-border bg-muted/30">
+        {WEEKDAY_LABELS.map((d) => (
+          <div
+            key={d}
+            className="py-2 px-2 text-center text-[11px] uppercase tracking-wide text-muted-foreground border-r border-border last:border-r-0"
+          >
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* 6-week grid */}
+      <div className="grid grid-cols-7 grid-rows-6">
+        {days.map((d) => {
+          const key = format(d, "yyyy-MM-dd")
+          const inMonth = isSameMonth(d, anchor)
+          const today = isToday(d)
+          const allDay = allDayByDay[key] ?? []
+          const timed = eventsByDay[key] ?? []
+          const tasks = tasksByDay[key] ?? []
+          const eventChips = [...allDay, ...timed].slice(0, MAX_CHIPS_PER_DAY)
+          const overflowCount =
+            allDay.length + timed.length - eventChips.length
+          const taskChips = tasks.slice(0, MAX_CHIPS_PER_DAY)
+          const taskOverflow = tasks.length - taskChips.length
+          return (
+            <button
+              type="button"
+              key={key}
+              onClick={() => onJumpToDay(d)}
+              className={cn(
+                "relative min-h-[110px] border-r border-b border-border last:border-r-0 px-1.5 py-1 text-left",
+                "hover:bg-muted/30 transition-colors",
+                today && "bg-primary/5",
+                !inMonth && "bg-muted/10",
+              )}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span
+                  className={cn(
+                    "inline-flex size-6 items-center justify-center rounded-full text-xs font-medium tabular-nums",
+                    today
+                      ? "bg-primary text-primary-foreground"
+                      : inMonth
+                        ? "text-foreground"
+                        : "text-muted-foreground/60",
+                  )}
+                >
+                  {format(d, "d")}
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {eventChips.map((ev) => (
+                  <button
+                    key={ev.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onOpenEvent(ev.id)
+                    }}
+                    className="block w-full truncate rounded px-1 py-0.5 text-[10px] text-left bg-[#8967F3]/15 border-l-2 border-[#8967F3] hover:bg-[#8967F3]/25"
+                  >
+                    {!ev.allDay && (
+                      <span className="tabular-nums text-muted-foreground mr-1">
+                        {format(parseISO(ev.start), "HH:mm")}
+                      </span>
+                    )}
+                    {ev.title}
+                  </button>
+                ))}
+                {taskChips.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onOpenTask(t.id)
+                    }}
+                    className={cn(
+                      "block w-full truncate rounded px-1 py-0.5 text-[10px] text-left border-l-2",
+                      t.status === "done"
+                        ? "bg-emerald-500/15 border-emerald-500 line-through decoration-emerald-500/60 text-foreground/70"
+                        : t.bucket === "overdue"
+                          ? "bg-red-500/15 border-red-500 hover:bg-red-500/25"
+                          : "bg-amber-500/15 border-amber-500 hover:bg-amber-500/25",
+                    )}
+                  >
+                    {t.title}
+                  </button>
+                ))}
+                {(overflowCount > 0 || taskOverflow > 0) && (
+                  <div className="text-[10px] text-muted-foreground pl-1">
+                    + {overflowCount + taskOverflow} more
+                  </div>
+                )}
+              </div>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -420,17 +702,22 @@ function AllDayRow({
   tasksByDay,
   onOpenEvent,
   onOpenTask,
+  gridStyle,
 }: {
   days: Date[]
   allDayByDay: Record<string, CalendarEventsResponse["events"]>
   tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
   onOpenEvent: (id: string) => void
   onOpenTask: (id: string) => void
+  gridStyle: React.CSSProperties
 }) {
   // Reserve some minimum height even when empty so the row doesn't collapse
   // into an invisible 0px strip on slow weeks.
   return (
-    <div className="grid grid-cols-[56px_repeat(7,minmax(0,1fr))] border-b border-border bg-muted/10">
+    <div
+      className="grid border-b border-border bg-muted/10"
+      style={gridStyle}
+    >
       <div
         className={cn(
           TIME_COL_WIDTH,
