@@ -444,6 +444,7 @@ export const DICTIONARY = {
   "settings.health.cadence.weekly": { nl: "wekelijks", en: "weekly" },
   "settings.health.cadence.hourly_gated": { nl: "elk uur (gated)", en: "hourly (gated)" },
   "settings.health.cadence.daily_7utc": { nl: "dagelijks 07:00 UTC", en: "daily 7:00 UTC" },
+  "settings.health.cadence.every_15min": { nl: "elke 15 min", en: "every 15 min" },
 
   // ─── Inbox ────────────────────────────────────────────────────────────
   "inbox.title": { nl: "Inbox", en: "Inbox" },

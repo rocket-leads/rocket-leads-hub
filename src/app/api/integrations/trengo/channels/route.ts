@@ -4,6 +4,7 @@ import {
   deriveTrengoChannelDisplayName,
   fetchTrengoChannels,
 } from "@/lib/integrations/trengo"
+import { createAdminClient } from "@/lib/supabase/server"
 
 /**
  * GET /api/integrations/trengo/channels
@@ -81,7 +82,32 @@ export async function GET(req: NextRequest) {
         return a.name.localeCompare(b.name)
       })
 
-    return NextResponse.json({ channels: filtered })
+    // Per-channel diagnostic: count Trengo events ingested into inbox_events
+    // in the last 7 days, grouped by trengo_channel_id. Silent channels stand
+    // out instantly in the picker (Roy 2026-06-12: "why are my emails not
+    // showing up" - this answers the question without needing a DB query).
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString()
+    const supabase = await createAdminClient()
+    const { data: eventRows } = await supabase
+      .from("inbox_events")
+      .select("trengo_channel_id")
+      .eq("source", "trengo")
+      .gte("created_at", sevenDaysAgo)
+      .not("trengo_channel_id", "is", null)
+      .limit(20000)
+
+    const eventCounts = new Map<number, number>()
+    for (const r of (eventRows ?? []) as Array<{ trengo_channel_id: number | null }>) {
+      if (r.trengo_channel_id == null) continue
+      eventCounts.set(r.trengo_channel_id, (eventCounts.get(r.trengo_channel_id) ?? 0) + 1)
+    }
+
+    const enriched = filtered.map((c) => ({
+      ...c,
+      eventsLast7d: eventCounts.get(c.id) ?? 0,
+    }))
+
+    return NextResponse.json({ channels: enriched })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to load Trengo channels" },

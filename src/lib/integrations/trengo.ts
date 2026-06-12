@@ -683,3 +683,72 @@ export async function fetchMessages(ticketId: number): Promise<TrengoMessage[]> 
 
   return all.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 }
+
+/**
+ * Per-user GET against the Trengo v2 API, using the user's personal token
+ * instead of the workspace one. Used by the private-channel polling cron:
+ * private/personal email inboxes don't trigger the workspace webhook, so we
+ * pull tickets on each user's behalf via *their* token (which has read
+ * access to their own private inbox).
+ *
+ * No retry/backoff loop here - the cron runs on a 15-min cadence so a
+ * single failed cycle just resyncs next time. Rate-limit (429) is bubbled
+ * up so the cron tracker logs it as an error rather than silently
+ * succeeding.
+ */
+async function trengoFetchAsUser<T>(path: string, userToken: string): Promise<T> {
+  const url = `https://app.trengo.com/api/v2${path}`
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${userToken.trim()}`,
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(
+      `Trengo user-token API error ${res.status} on ${path}: ${text.slice(0, 200)}`,
+    )
+  }
+  return res.json() as Promise<T>
+}
+
+/**
+ * List the first page of tickets on a channel using the user's personal
+ * token. Returns tickets sorted by Trengo's default (most recent first).
+ *
+ * Why only page 1: the polling cron runs every 15 min - any ticket older
+ * than the lookback window is already either ingested (by an earlier
+ * cycle) or never going to be. One page (50 tickets default) is plenty
+ * for that window for any single user.
+ */
+export async function fetchUserTicketsForChannel(args: {
+  userToken: string
+  channelId: number
+}): Promise<TrengoConversation[]> {
+  const { userToken, channelId } = args
+  const data = await trengoFetchAsUser<TicketPage>(
+    `/tickets?channel_id=${channelId}&page=1`,
+    userToken,
+  )
+  return data.data
+}
+
+/**
+ * List the first page of messages on a ticket using the user's personal
+ * token. Mirrors `fetchMessages(ticketId)` but goes through the user's
+ * auth so private-inbox tickets (which the workspace token can't read)
+ * are accessible.
+ */
+export async function fetchUserTicketMessages(args: {
+  userToken: string
+  ticketId: number
+}): Promise<TrengoMessage[]> {
+  const { userToken, ticketId } = args
+  const data = await trengoFetchAsUser<MessagePage>(
+    `/tickets/${ticketId}/messages?page=1`,
+    userToken,
+  )
+  return data.data
+}

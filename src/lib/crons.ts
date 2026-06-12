@@ -36,4 +36,5 @@ export const EXPECTED_CRONS: ReadonlyArray<ExpectedCron> = [
   { name: "slack-daily-watchlist", description: "Personal watchlist Slack DMs", cadenceKey: "settings.health.cadence.hourly_gated", cadenceMinutes: 60 },
   { name: "slack-team-sales", description: "Team sales Slack post", cadenceKey: "settings.health.cadence.hourly_gated", cadenceMinutes: 60 },
   { name: "slack-personal-sales", description: "Personal sales Slack DMs", cadenceKey: "settings.health.cadence.hourly_gated", cadenceMinutes: 60 },
+  { name: "pull-trengo-private-channels", description: "Per-user pull of Trengo private/personal inboxes (webhook doesn't fire for those)", cadenceKey: "settings.health.cadence.every_15min", cadenceMinutes: 15 },
 ] as const

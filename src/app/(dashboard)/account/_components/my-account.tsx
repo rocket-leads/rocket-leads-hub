@@ -331,7 +331,15 @@ function TokenInputCard({
 
 // --- Trengo channel subscriptions ---
 
-type TrengoChannelOption = { id: number; name: string; type: string }
+type TrengoChannelOption = {
+  id: number
+  name: string
+  type: string
+  /** Trengo events ingested into inbox_events for this channel in the last
+   *  7 days. Lets Roy spot subscribed-but-silent channels at a glance -
+   *  e.g. "Roy Personal: 0" while WA channels show 100+. */
+  eventsLast7d?: number
+}
 
 function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) {
   const [channels, setChannels] = useState<TrengoChannelOption[] | null>(null)
@@ -480,6 +488,12 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                         {grouped[group].map((c) => {
                           const isSelected = selected.has(c.id)
+                          const events = c.eventsLast7d ?? 0
+                          // Subscribed channel with zero traffic = strong
+                          // "webhook isn't actually delivering" signal. We
+                          // only highlight when subscribed - an unsubscribed
+                          // silent channel is normal noise.
+                          const silentSubscribed = isSelected && events === 0
                           return (
                             <label
                               key={c.id}
@@ -492,7 +506,22 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
                                 disabled={pending}
                                 className="h-3.5 w-3.5 rounded border-border accent-foreground"
                               />
-                              <span className="text-xs truncate">{c.name}</span>
+                              <span className="text-xs truncate flex-1 min-w-0">{c.name}</span>
+                              <span
+                                className={
+                                  "text-[10px] tabular-nums shrink-0 " +
+                                  (silentSubscribed
+                                    ? "text-amber-600 dark:text-amber-500 font-medium"
+                                    : "text-muted-foreground/50")
+                                }
+                                title={
+                                  silentSubscribed
+                                    ? "Subscribed but no events ingested in the last 7 days - webhook may not be delivering for this channel"
+                                    : `${events} events ingested in last 7 days`
+                                }
+                              >
+                                {events}/7d
+                              </span>
                             </label>
                           )
                         })}
