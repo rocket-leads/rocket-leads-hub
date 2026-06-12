@@ -1,6 +1,5 @@
 "use client"
 
-import { useCallback, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   AlertCircle,
@@ -16,33 +15,28 @@ import { ActionIconButton } from "@/components/ui/action-icon-button"
 import { StatusPill } from "@/components/ui/status-pill"
 import { executeAction } from "@/lib/copilot/executors"
 import type { CopilotDraft } from "@/lib/copilot/tools"
-import type { ClientSearchResult } from "@/app/api/clients/search/route"
 import { useCompleteDraft, useCopilotDrafts } from "./use-copilot-drafts"
-import { ConfirmDialog } from "./confirm-dialog"
-
-type UserRow = { id: string; name: string | null; email: string; role: string | null }
 
 /**
  * Drafts panel rendered inside the AI Co-pilot command bar dialog.
  *
- * Replaces the standalone notification bell - Roy 2026-06-12: "alles
- * onder de Copilot-knop, één surface". The badge counter that used to
- * live on the bell now sits on the ⌘J button (see useCopilotDraftsBadge).
+ * Editor state (editingDraft + roster + ConfirmDialog rendering) lives
+ * one level up in CommandBar — Roy 2026-06-12: clicking a draft used to
+ * close the parent Dialog which unmounted this panel (and the
+ * ConfirmDialog inside it) before the editor could show. Lifting it
+ * means the editor survives the parent close.
  *
  * Row chrome is identical to the inbox row (chip, status pill, 36×36
  * ActionIconButtons) so the AI Draft surface visually belongs to the
  * same family as Tasks / Updates.
  */
 export function DraftsPanel({
-  onParentOpenChange,
+  onEditDraft,
   pendingInputs = [],
 }: {
-  /** Called when the panel needs to take over the modal surface (entering
-   *  the editor) or hand it back (user clicked back). Lets the Copilot
-   *  command bar close itself to reveal the editor and re-open when the
-   *  user backs out. Optional - omit when this panel is rendered outside
-   *  a parent dialog. */
-  onParentOpenChange?: (open: boolean) => void
+  /** Called when the user clicks a ready draft (body or pencil icon).
+   *  Parent owns the editor state — see CommandBar. */
+  onEditDraft: (draft: CopilotDraft) => void
   /** Optimistic in-flight queue submissions from the parent. Each entry
    *  renders as a "Queuing…" placeholder row at the top of the list so the
    *  user sees their command land without the input locking up. Cleared
@@ -50,30 +44,6 @@ export function DraftsPanel({
   pendingInputs?: Array<{ tempId: string; text: string }>
 }) {
   const router = useRouter()
-  const [editingDraft, setEditingDraft] = useState<CopilotDraft | null>(null)
-
-  // Roster lazily loaded on first roster-requiring interaction (edit) so
-  // the panel renders without a roundtrip on first open.
-  const [users, setUsers] = useState<UserRow[]>([])
-  const [clients, setClients] = useState<ClientSearchResult[]>([])
-  const rosterLoadedRef = useRef(false)
-  const loadRoster = useCallback(async () => {
-    if (rosterLoadedRef.current) return
-    rosterLoadedRef.current = true
-    try {
-      const [uRes, cRes] = await Promise.all([
-        fetch("/api/inbox/users"),
-        fetch("/api/clients/search"),
-      ])
-      if (uRes.ok) setUsers((await uRes.json()).users ?? [])
-      if (cRes.ok) {
-        const data = await cRes.json()
-        setClients(Array.isArray(data) ? data : [])
-      }
-    } catch {
-      // Non-fatal - the editor still renders with raw ids.
-    }
-  }, [])
 
   const { data } = useCopilotDrafts()
   const completeDraft = useCompleteDraft()
@@ -93,19 +63,6 @@ export function DraftsPanel({
     if (result.navigateTo) router.push(result.navigateTo)
   }
 
-  function openEditor(draft: CopilotDraft) {
-    void loadRoster()
-    // Close the parent (Copilot command bar) so the editor takes the full
-    // modal surface. The back-arrow in ConfirmDialog will re-open it.
-    onParentOpenChange?.(false)
-    setEditingDraft(draft)
-  }
-
-  function backToParent() {
-    setEditingDraft(null)
-    onParentOpenChange?.(true)
-  }
-
   async function dismiss(draft: CopilotDraft) {
     await completeDraft.mutateAsync({ id: draft.id, status: "dismissed" })
   }
@@ -117,63 +74,42 @@ export function DraftsPanel({
   const isEmpty = drafts.length === 0 && pendingInputs.length === 0
 
   return (
-    <>
-      <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border/40 bg-muted/30 px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Drafts
-            </span>
-          </div>
-          <span className="text-[10px] tabular-nums text-muted-foreground/70">
-            {pendingInputs.length > 0 && `${pendingInputs.length} queuing · `}
-            {actionable.length} ready · {pending.length} pending
+    <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
+      <div className="flex items-center justify-between border-b border-border/40 bg-muted/30 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Drafts
           </span>
         </div>
-        <div className="max-h-[22rem] overflow-y-auto p-2 space-y-2">
-          {pendingInputs.map((p) => (
-            <QueueingPlaceholderRow key={p.tempId} input={p.text} />
-          ))}
-          {drafts.map((d) => (
-            <DraftRow
-              key={d.id}
-              draft={d}
-              onApprove={quickApprove}
-              onEdit={openEditor}
-              onDismiss={dismiss}
-            />
-          ))}
-          {isEmpty && (
-            <div className="px-3 py-8 text-center">
-              <Sparkles className="h-5 w-5 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground/70">
-                Nog geen drafts. Type een command hierboven en hij verschijnt hier.
-              </p>
-            </div>
-          )}
-        </div>
+        <span className="text-[10px] tabular-nums text-muted-foreground/70">
+          {pendingInputs.length > 0 && `${pendingInputs.length} queuing · `}
+          {actionable.length} ready · {pending.length} pending
+        </span>
       </div>
-
-      <ConfirmDialog
-        open={editingDraft !== null}
-        onOpenChange={(o) => {
-          if (!o) setEditingDraft(null)
-        }}
-        draft={editingDraft}
-        users={users}
-        clients={clients}
-        onApprove={async (id) => {
-          await completeDraft.mutateAsync({ id, status: "approved" })
-          setEditingDraft(null)
-        }}
-        onDismiss={async (id) => {
-          await completeDraft.mutateAsync({ id, status: "dismissed" })
-          setEditingDraft(null)
-        }}
-        onBack={onParentOpenChange ? backToParent : undefined}
-      />
-    </>
+      <div className="max-h-[22rem] overflow-y-auto p-2 space-y-2">
+        {pendingInputs.map((p) => (
+          <QueueingPlaceholderRow key={p.tempId} input={p.text} />
+        ))}
+        {drafts.map((d) => (
+          <DraftRow
+            key={d.id}
+            draft={d}
+            onApprove={quickApprove}
+            onEdit={onEditDraft}
+            onDismiss={dismiss}
+          />
+        ))}
+        {isEmpty && (
+          <div className="px-3 py-8 text-center">
+            <Sparkles className="h-5 w-5 text-muted-foreground/40 mx-auto mb-2" />
+            <p className="text-xs text-muted-foreground/70">
+              Nog geen drafts. Type een command hierboven en hij verschijnt hier.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

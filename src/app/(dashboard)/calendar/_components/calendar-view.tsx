@@ -154,6 +154,8 @@ export function CalendarView({ initialConnected }: Props) {
 
       {!connected && <ConnectPrompt />}
 
+      {data?.error && <CalendarErrorBanner error={data.error} />}
+
       {/* Grid container */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         {/* Header row */}
@@ -221,6 +223,25 @@ export function CalendarView({ initialConnected }: Props) {
         <p className="text-sm text-destructive">
           Couldn&apos;t load calendar. Try refreshing.
         </p>
+      )}
+    </div>
+  )
+}
+
+function CalendarErrorBanner({
+  error,
+}: {
+  error: NonNullable<CalendarEventsResponse["error"]>
+}) {
+  return (
+    <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
+      <p className="font-medium text-foreground">
+        Google Calendar fout
+        {error.status > 0 ? ` (HTTP ${error.status})` : ""}
+      </p>
+      <p className="mt-1 text-muted-foreground break-words">{error.message}</p>
+      {error.hint && (
+        <p className="mt-2 text-foreground">→ {error.hint}</p>
       )}
     </div>
   )

@@ -179,17 +179,10 @@ export function OptimizeWizard({
   } | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
-  const [selectedVariantKeys, setSelectedVariantKeys] = useState<Set<string>>(
-    new Set(),
-  )
-  // Image-gen state. Roy 2026-06-12 v8: Step 3's "Genereer creatives"
-  // CTA fires gen for elke geselecteerde variant in parallel; Step 4
-  // shows progress + iteratie. inFlight = variantIds currently being
-  // generated; resultsByVariant = laatste gen-uitkomst per variantId.
-  const [imageGenInFlight, setImageGenInFlight] = useState<Set<string>>(new Set())
-  const [imageGenResultsByVariant, setImageGenResultsByVariant] = useState<
-    Record<string, { ok: boolean; error?: string; completedAt: string }>
-  >({})
+  // Roy 2026-06-12 v9: single-variant flow. Pedro genereert 3 angles,
+  // CM kiest er één om mee verder te gaan. selectedVariantKey is een
+  // "pi:vi" string, exact zoals voorheen, maar er kan er max 1 zijn.
+  const [selectedVariantKey, setSelectedVariantKey] = useState<string | null>(null)
 
   // Draft state - Roy 2026-06-12 v9: variants gegenereerd in Stap 2 zijn
   // dure Claude calls. We persist al via /api/pedro/refreshes - de wizard
@@ -207,9 +200,7 @@ export function OptimizeWizard({
     setRefreshResult(null)
     setIsGenerating(false)
     setGenerateError(null)
-    setSelectedVariantKeys(new Set())
-    setImageGenInFlight(new Set())
-    setImageGenResultsByVariant({})
+    setSelectedVariantKey(null)
     setDraftGeneratedAt(null)
 
     if (!selectedClientId) {
@@ -245,16 +236,10 @@ export function OptimizeWizard({
             proposals: fullJson.proposals,
           })
           setDraftGeneratedAt(head.generatedAt)
-          // Default selection = eerste variant van elk proposal (zoals
-          // bij een verse generate).
-          const firstOnly = new Set<string>()
-          fullJson.proposals.forEach((p, pi) => {
-            if (p.variants.length > 0) firstOnly.add(`${pi}:0`)
-          })
-          setSelectedVariantKeys(firstOnly)
-          // Move past pick_ad als we een draft hebben.
+          // Default selection in single-variant flow: NIETS - de CM moet
+          // bewust kiezen welke van de 3 angles hij wil iteraten.
+          setSelectedVariantKey(null)
           setActiveKey("select_variants")
-          // Sync pickedAd uit de draft als er geen localStorage is.
           if (!stored) {
             const firstProposal = fullJson.proposals[0]
             const basedOn = firstProposal?.basedOnAd
@@ -289,9 +274,7 @@ export function OptimizeWizard({
    */
   const startFresh = useCallback(() => {
     setRefreshResult(null)
-    setSelectedVariantKeys(new Set())
-    setImageGenInFlight(new Set())
-    setImageGenResultsByVariant({})
+    setSelectedVariantKey(null)
     setDraftGeneratedAt(null)
     setGenerateError(null)
     setActiveKey("pick_ad")
@@ -306,7 +289,7 @@ export function OptimizeWizard({
   )
 
   // Fire the creative-refresh call from Step 1's generate button.
-  // Step 2 reads from refreshResult; Step 3 reads from selectedVariantKeys.
+  // Step 2 reads from refreshResult; Step 3 reads from selectedVariantKey.
   const startGenerate = useCallback(
     async (sourceAdId: string, sourceScreenshotPath?: string) => {
       setIsGenerating(true)
@@ -336,15 +319,8 @@ export function OptimizeWizard({
           throw new Error("Pedro gaf geen varianten terug. Probeer opnieuw.")
         }
         setRefreshResult({ refreshId, proposals })
-        // Roy 2026-06-12: default selection = alleen Variant A (de
-        // bijna-verbatim kopie van de source). CM vinkt zelf de andere
-        // iteraties aan als die ook gewenst zijn. Voorheen waren alle 3
-        // standaard aan, wat de CM dwong om uit te vinken ipv te kiezen.
-        const firstOnly = new Set<string>()
-        proposals.forEach((p, pi) => {
-          if (p.variants.length > 0) firstOnly.add(`${pi}:0`)
-        })
-        setSelectedVariantKeys(firstOnly)
+        // Single-variant flow: geen default selectie. De CM kiest in Stap 2.
+        setSelectedVariantKey(null)
       } catch (e) {
         setGenerateError(e instanceof Error ? e.message : "Genereren mislukt")
       } finally {
@@ -354,98 +330,20 @@ export function OptimizeWizard({
     [selectedClientId],
   )
 
-  const toggleVariantSelected = useCallback((key: string) => {
-    setSelectedVariantKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
+  const pickVariant = useCallback((key: string) => {
+    setSelectedVariantKey((prev) => (prev === key ? null : key))
   }, [])
-
-  /**
-   * Fire image-generation in parallel for all selected variants.
-   * Used by Step 3's "Genereer creatives" CTA - moves the CM to
-   * Step 4 immediately and Step 4 polls the per-variant GET endpoint
-   * via VariantImagePanel's own useEffect.
-   */
-  const startBulkImageGen = useCallback(
-    async (variantIds: string[]) => {
-      if (variantIds.length === 0) return
-      setImageGenInFlight(new Set(variantIds))
-      setImageGenResultsByVariant({})
-      // Fire all in parallel - each is bounded by maxDuration=60 on
-      // the route. We track completions individually so the panel can
-      // un-loader per variant as soon as its own POST returns.
-      await Promise.allSettled(
-        variantIds.map(async (vid) => {
-          try {
-            const res = await fetch(
-              `/api/pedro/variants/${encodeURIComponent(vid)}/generate-image`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ slots: 3 }),
-              },
-            )
-            const json = await res.json().catch(() => ({}))
-            const ok = res.ok && !json.error
-            setImageGenResultsByVariant((prev) => ({
-              ...prev,
-              [vid]: {
-                ok,
-                error: ok ? undefined : (json.error ?? `HTTP ${res.status}`),
-                completedAt: new Date().toISOString(),
-              },
-            }))
-          } catch (e) {
-            setImageGenResultsByVariant((prev) => ({
-              ...prev,
-              [vid]: {
-                ok: false,
-                error: e instanceof Error ? e.message : "Image gen failed",
-                completedAt: new Date().toISOString(),
-              },
-            }))
-          } finally {
-            setImageGenInFlight((prev) => {
-              const next = new Set(prev)
-              next.delete(vid)
-              return next
-            })
-          }
-        }),
-      )
-    },
-    [],
-  )
 
   const doneFor = useCallback(
     (key: StepKey): boolean => {
       if (key === "pick_ad") return !!pickedAd
-      if (key === "select_variants") return !!refreshResult
-      if (key === "edit_copy") return selectedVariantKeys.size > 0 && !!refreshResult
-      if (key === "generate_creatives") {
-        // Done = all selected variants have a successful gen result
-        // (or images already exist - we treat presence as done, but
-        // that lives in VariantImagePanel's own state. Here we only
-        // know about gens we kicked off from Step 3.)
-        if (!refreshResult || selectedVariantKeys.size === 0) return false
-        const variantIds: string[] = []
-        refreshResult.proposals.forEach((p, pi) => {
-          p.variants.forEach((v, vi) => {
-            if (selectedVariantKeys.has(`${pi}:${vi}`) && v.variantId) {
-              variantIds.push(v.variantId)
-            }
-          })
-        })
-        if (variantIds.length === 0) return false
-        return variantIds.every((id) => imageGenResultsByVariant[id]?.ok)
-      }
-      if (key === "push_meta") return false // tracked elsewhere; visual only
+      if (key === "select_variants") return !!refreshResult && !!selectedVariantKey
+      if (key === "edit_copy") return !!selectedVariantKey && !!refreshResult
+      if (key === "generate_creatives") return false // visual only - panel manages its own state
+      if (key === "push_meta") return false
       return false
     },
-    [pickedAd, refreshResult, selectedVariantKeys, imageGenResultsByVariant],
+    [pickedAd, refreshResult, selectedVariantKey],
   )
 
   const totalDone = useMemo(
@@ -595,8 +493,8 @@ export function OptimizeWizard({
                   isGenerating={isGenerating}
                   error={generateError}
                   result={refreshResult}
-                  selectedKeys={selectedVariantKeys}
-                  onToggle={toggleVariantSelected}
+                  selectedKey={selectedVariantKey}
+                  onPick={pickVariant}
                   onContinue={() => setActiveKey("edit_copy")}
                   onRetry={() =>
                     pickedAd?.adId
@@ -609,25 +507,10 @@ export function OptimizeWizard({
             {activeKey === "edit_copy" && (
               <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
                 <EditCopyStep
-                  clientId={selectedClientId}
                   result={refreshResult}
-                  selectedKeys={selectedVariantKeys}
+                  selectedKey={selectedVariantKey}
                   onBackToSelection={() => setActiveKey("select_variants")}
-                  onGenerateCreatives={async () => {
-                    if (!refreshResult) return
-                    const variantIds: string[] = []
-                    refreshResult.proposals.forEach((p, pi) => {
-                      p.variants.forEach((v, vi) => {
-                        if (selectedVariantKeys.has(`${pi}:${vi}`) && v.variantId) {
-                          variantIds.push(v.variantId)
-                        }
-                      })
-                    })
-                    // Move forward immediately so the CM ziet de
-                    // progress UI op Step 4 - geen wachten op alle gens.
-                    setActiveKey("generate_creatives")
-                    await startBulkImageGen(variantIds)
-                  }}
+                  onGenerateCreatives={() => setActiveKey("generate_creatives")}
                 />
               </StepGate>
             )}
@@ -636,12 +519,9 @@ export function OptimizeWizard({
                 <GenerateCreativesStep
                   clientId={selectedClientId}
                   result={refreshResult}
-                  selectedKeys={selectedVariantKeys}
-                  inFlightVariantIds={imageGenInFlight}
-                  resultsByVariant={imageGenResultsByVariant}
+                  selectedKey={selectedVariantKey}
                   onBackToCopy={() => setActiveKey("edit_copy")}
                   onContinueToPush={() => setActiveKey("push_meta")}
-                  onRetryVariant={(vid) => startBulkImageGen([vid])}
                 />
               </StepGate>
             )}
@@ -650,7 +530,7 @@ export function OptimizeWizard({
                 <PushMetaStep
                   clientId={selectedClientId}
                   result={refreshResult}
-                  selectedKeys={selectedVariantKeys}
+                  selectedKey={selectedVariantKey}
                   onBackToCreatives={() => setActiveKey("generate_creatives")}
                 />
               </StepGate>

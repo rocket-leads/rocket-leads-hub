@@ -119,12 +119,35 @@ type RawGoogleEvent = {
   end?: { dateTime?: string; date?: string; timeZone?: string }
 }
 
+export type CalendarFetchError = {
+  /** HTTP status from Google, or 0 when we never even got that far. */
+  status: number
+  /** Short human-readable summary the UI shows verbatim. */
+  message: string
+  /** Hint for what to fix (enable API, re-consent, …). */
+  hint?: string
+}
+
+export type ListEventsResult = {
+  events: CalendarEvent[]
+  error: CalendarFetchError | null
+}
+
 export async function listCalendarEvents(
   userId: string,
   opts: { timeMin: Date; timeMax: Date },
-): Promise<CalendarEvent[]> {
+): Promise<ListEventsResult> {
   const token = await getValidAccessToken(userId)
-  if (!token) return []
+  if (!token) {
+    return {
+      events: [],
+      error: {
+        status: 0,
+        message: "No valid Google access token stored for this user.",
+        hint: "Sign out and sign back in to grant Calendar access.",
+      },
+    }
+  }
 
   const url = new URL(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events",
@@ -141,12 +164,34 @@ export async function listCalendarEvents(
   })
 
   if (!res.ok) {
-    console.error("Google Calendar events fetch failed:", res.status, await res.text())
-    return []
+    const rawText = await res.text()
+    console.error("Google Calendar events fetch failed:", res.status, rawText)
+
+    // Translate the most common failure modes into actionable hints —
+    // saves a round-trip to DevTools when one of the standard config
+    // gotchas bites.
+    let hint: string | undefined
+    const lower = rawText.toLowerCase()
+    if (res.status === 403 && lower.includes("has not been used")) {
+      hint = "Enable the Google Calendar API in the Google Cloud project that owns your OAuth client."
+    } else if (res.status === 403 && lower.includes("insufficient")) {
+      hint = "Calendar scope wasn't granted. Sign out, sign back in, and approve the calendar.readonly scope on the consent screen."
+    } else if (res.status === 401) {
+      hint = "Access token rejected. Sign out and sign back in to refresh the connection."
+    }
+
+    return {
+      events: [],
+      error: {
+        status: res.status,
+        message: extractErrorMessage(rawText) ?? `Google API returned ${res.status}`,
+        hint,
+      },
+    }
   }
 
   const json = (await res.json()) as { items?: RawGoogleEvent[] }
-  return (json.items ?? [])
+  const events = (json.items ?? [])
     .filter((it) => it.status !== "cancelled")
     .map((it) => {
       const allDay = !!it.start?.date
@@ -162,4 +207,21 @@ export async function listCalendarEvents(
       } satisfies CalendarEvent
     })
     .filter((e) => e.start && e.end)
+
+  return { events, error: null }
+}
+
+function extractErrorMessage(rawText: string): string | null {
+  try {
+    const parsed = JSON.parse(rawText) as {
+      error?: { message?: string; errors?: Array<{ message?: string }> }
+    }
+    return (
+      parsed.error?.message ??
+      parsed.error?.errors?.[0]?.message ??
+      null
+    )
+  } catch {
+    return null
+  }
 }

@@ -4,6 +4,7 @@ import {
   hasCalendarConnected,
   listCalendarEvents,
   type CalendarEvent,
+  type CalendarFetchError,
 } from "@/lib/integrations/google-calendar"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -33,6 +34,8 @@ export type CalendarEventsResponse = {
   connected: boolean
   events: CalendarEvent[]
   tasks: Array<TaskRow & { clientName: string | null }>
+  /** Non-null when we tried to talk to Google Calendar and it failed. */
+  error: CalendarFetchError | null
 }
 
 export async function GET(req: NextRequest) {
@@ -88,17 +91,18 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const events = connected
+  const result = connected
     ? await listCalendarEvents(session.user.id, { timeMin, timeMax })
-    : []
+    : { events: [], error: null }
 
   const body: CalendarEventsResponse = {
     connected,
-    events,
+    events: result.events,
     tasks: tasks.map((t) => ({
       ...t,
       clientName: t.client_id ? clientNameById[t.client_id] ?? null : null,
     })),
+    error: result.error,
   }
   return NextResponse.json(body)
 }

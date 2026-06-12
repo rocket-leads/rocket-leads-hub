@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
 import { Sparkles, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -8,8 +8,13 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { buildPageContext } from "@/lib/copilot/context"
 import { executeAction } from "@/lib/copilot/executors"
-import { useQueueCommand } from "./use-copilot-drafts"
+import type { CopilotDraft } from "@/lib/copilot/tools"
+import type { ClientSearchResult } from "@/app/api/clients/search/route"
+import { useCompleteDraft, useQueueCommand } from "./use-copilot-drafts"
 import { DraftsPanel, useCopilotDraftsBadge } from "./drafts-panel"
+import { ConfirmDialog } from "./confirm-dialog"
+
+type UserRow = { id: string; name: string | null; email: string; role: string | null }
 
 /**
  * AI Co-pilot command bar (⌘J).
@@ -44,6 +49,45 @@ export function CommandBar() {
     Array<{ tempId: string; text: string }>
   >([])
   const queueCommand = useQueueCommand()
+  const completeDraft = useCompleteDraft()
+
+  // Draft editor state lives here (not in DraftsPanel) so it survives the
+  // parent Dialog closing. Clicking a draft used to close the parent which
+  // unmounted the panel before the editor could appear — Roy 2026-06-12.
+  const [editingDraft, setEditingDraft] = useState<CopilotDraft | null>(null)
+  const [users, setUsers] = useState<UserRow[]>([])
+  const [clients, setClients] = useState<ClientSearchResult[]>([])
+  const rosterLoadedRef = useRef(false)
+  const loadRoster = useCallback(async () => {
+    if (rosterLoadedRef.current) return
+    rosterLoadedRef.current = true
+    try {
+      const [uRes, cRes] = await Promise.all([
+        fetch("/api/inbox/users"),
+        fetch("/api/clients/search"),
+      ])
+      if (uRes.ok) setUsers((await uRes.json()).users ?? [])
+      if (cRes.ok) {
+        const data = await cRes.json()
+        setClients(Array.isArray(data) ? data : [])
+      }
+    } catch {
+      // Non-fatal - the editor still renders with raw ids.
+    }
+  }, [])
+
+  function openEditor(draft: CopilotDraft) {
+    void loadRoster()
+    // Close the command bar so the editor takes the modal surface; the
+    // back-arrow in ConfirmDialog re-opens it.
+    setOpen(false)
+    setEditingDraft(draft)
+  }
+
+  function backToCommandBar() {
+    setEditingDraft(null)
+    setOpen(true)
+  }
 
   // ⌘J / Ctrl+J opens from anywhere; Esc closes.
   useEffect(() => {
@@ -151,12 +195,34 @@ export function CommandBar() {
                 sees the panel even when empty, and the in-flight Queuing…
                 indicator surfaces here instead of locking the input. */}
             <DraftsPanel
-              onParentOpenChange={setOpen}
+              onEditDraft={openEditor}
               pendingInputs={pendingInputs}
             />
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Editor sits outside the command bar Dialog so it survives the
+          parent close — and the back-arrow in its header returns to the
+          command bar without losing draft state. */}
+      <ConfirmDialog
+        open={editingDraft !== null}
+        onOpenChange={(o) => {
+          if (!o) setEditingDraft(null)
+        }}
+        draft={editingDraft}
+        users={users}
+        clients={clients}
+        onApprove={async (id) => {
+          await completeDraft.mutateAsync({ id, status: "approved" })
+          setEditingDraft(null)
+        }}
+        onDismiss={async (id) => {
+          await completeDraft.mutateAsync({ id, status: "dismissed" })
+          setEditingDraft(null)
+        }}
+        onBack={backToCommandBar}
+      />
     </>
   )
 }

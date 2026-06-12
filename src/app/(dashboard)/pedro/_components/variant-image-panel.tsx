@@ -70,6 +70,16 @@ type Props = {
    *  enrichment). When true, we trigger a fresh GET to load all slot
    *  states + signed URLs on mount. */
   initialHasImage: boolean
+  /** Roy 2026-06-12 v9: in de wizard's Stap 4 willen we dat het paneel
+   *  zelf de bulk-generate aftraps zodra het mount, mits er nog geen
+   *  slot een image heeft. Voorkomt dubbele "Genereer" knoppen (één in
+   *  de wizard, één in het paneel) en houdt de progress UI binnen één
+   *  state machine. */
+  autoGenerateOnMount?: boolean
+  /** Roy 2026-06-12 v9: standalone creative-refresh flow heeft een
+   *  losse "Genereer 3 images" knop. In de wizard hoeft die niet -
+   *  autoGenerateOnMount triggert de eerste gen, regen werkt per slot. */
+  hideBulkButton?: boolean
 }
 
 export function VariantImagePanel({
@@ -78,6 +88,8 @@ export function VariantImagePanel({
   adName,
   initialImagePrompt,
   initialHasImage,
+  autoGenerateOnMount,
+  hideBulkButton,
 }: Props) {
   const [slots, setSlots] = useState<SlotState[]>(() =>
     Array.from({ length: SLOT_COUNT }, (_, i) => ({
@@ -140,16 +152,18 @@ export function VariantImagePanel({
     }
   }, [feedbackDraft, clientId, variantId, adName, feedbackBusy])
 
-  // Lazy-load slot states on mount if variant already has at least one
-  // image (from the envelope enrichment). Single round-trip.
+  // Lazy-load slot states on mount. Roy 2026-06-12 v9: dit gebeurde
+  // vroeger alleen wanneer `initialHasImage=true`, maar in de wizard
+  // krijgt het paneel altijd `false` (kort na een verse refresh) en
+  // misten we het signaal dat er ondertussen images zijn aangemaakt.
+  // Nu altijd één GET op mount.
   useEffect(() => {
-    if (!variantId || !initialHasImage) return
+    if (!variantId) return
     let cancelled = false
     fetch(`/api/pedro/variants/${variantId}/image`)
       .then((r) => r.json())
       .then((json) => {
         if (cancelled || !Array.isArray(json.slots)) return
-        // Merge - keep empty slots for positions the server didn't return.
         setSlots((prev) =>
           prev.map((p) => {
             const found = (json.slots as SlotState[]).find((s) => s.position === p.position)
@@ -160,6 +174,15 @@ export function VariantImagePanel({
           setImagePrompt(json.imagePrompt)
           setPromptDraft(json.imagePrompt)
         }
+        // Auto-gen-on-mount: pas afvuren NA het bekijken van de slots,
+        // anders dubbelen we wanneer er al images zijn. Alleen vuren
+        // wanneer geen enkele slot een image heeft.
+        if (autoGenerateOnMount) {
+          const anyImage = (json.slots as SlotState[]).some((s) => !!s.hasImage)
+          if (!anyImage) {
+            void generateAll()
+          }
+        }
       })
       .catch(() => {
         /* best-effort */
@@ -167,7 +190,10 @@ export function VariantImagePanel({
     return () => {
       cancelled = true
     }
-  }, [variantId, initialHasImage])
+    // generateAll is captured via closure - intentionally not in deps
+    // (we only want this to run once on mount per variantId).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variantId])
 
   const setSlotBusyAt = useCallback((pos: number, state: "generating" | "uploading" | null) => {
     setSlotBusy((prev) => ({ ...prev, [pos]: state }))
@@ -501,29 +527,39 @@ export function VariantImagePanel({
         </div>
       )}
 
-      {/* Bulk generate button - primary action */}
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={generateAll}
-          disabled={bulkBusy}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-        >
-          {bulkBusy ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="h-3.5 w-3.5" />
+      {/* Bulk generate button - primary action. Verstopt in de wizard
+          waar autoGenerateOnMount het werk al doet. */}
+      {!hideBulkButton && (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={generateAll}
+            disabled={bulkBusy}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+          >
+            {bulkBusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {bulkBusy
+              ? "Pedro tekent 3 varianten…"
+              : filledCount > 0
+                ? `Genereer 3 nieuwe images`
+                : `Genereer 3 images`}
+          </button>
+          {bulkBusy && (
+            <span className="text-[11px] text-muted-foreground">~30-60s</span>
           )}
-          {bulkBusy
-            ? "Pedro tekent 3 varianten…"
-            : filledCount > 0
-              ? `Genereer 3 nieuwe images`
-              : `Genereer 3 images`}
-        </button>
-        {bulkBusy && (
-          <span className="text-[11px] text-muted-foreground">~30-60s</span>
-        )}
-      </div>
+        </div>
+      )}
+      {/* Inline progress when auto-gen runs - vervangt de bulk knop */}
+      {hideBulkButton && bulkBusy && (
+        <div className="flex items-center gap-2 text-xs text-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+          Pedro tekent 3 varianten… <span className="text-muted-foreground">~30-60s</span>
+        </div>
+      )}
 
       {/* Slot grid */}
       <div className="grid grid-cols-3 gap-2">
