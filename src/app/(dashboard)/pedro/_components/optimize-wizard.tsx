@@ -47,7 +47,12 @@ import { t } from "@/lib/i18n/t"
  * wizard (Roy 2026-06-11: "no hard locks").
  */
 
-type StepKey = "pick_ad" | "select_variants" | "edit_creatives" | "push_meta"
+type StepKey =
+  | "pick_ad"
+  | "select_variants"
+  | "edit_copy"
+  | "generate_creatives"
+  | "push_meta"
 type OverigKey = "lp_prompt" | "video_scripts"
 type ActiveKey = StepKey | OverigKey
 
@@ -64,14 +69,20 @@ type OverigDef = {
   icon: typeof Compass
 }
 
-// Roy 2026-06-12 v7: flow herstructureerd. Step 1 vuurt de generate
-// API meteen af; Step 2 toont de gegenereerde varianten + multi-select;
-// Step 3 doet alleen image gen + push voor de gekozen varianten.
+// Roy 2026-06-12 v8: 5-step flow. Edit copy + creative-gen leven nu
+// als losse steps zodat de CM eerst rustig de copy kan bijschaven en
+// daarna op een eigen surface de Gemini-images genereert/itereert.
+//   1. pick_ad             - Kies winning ad in Meta
+//   2. select_variants     - Multi-select gegenereerde Pedro-varianten
+//   3. edit_copy           - Edit headline + primary + alt copy (geen images)
+//   4. generate_creatives  - Genereer 3 Gemini-images per variant + itereren
+//   5. push_meta           - Review + budget + naar Meta
 const STEPS: StepDef[] = [
   { key: "pick_ad", order: 1, title: "Kies winning ad", icon: Target },
   { key: "select_variants", order: 2, title: "Kies varianten", icon: Compass },
-  { key: "edit_creatives", order: 3, title: "Edit + creatives", icon: Sparkles },
-  { key: "push_meta", order: 4, title: "Push naar Meta", icon: Megaphone },
+  { key: "edit_copy", order: 3, title: "Edit copy", icon: FileText },
+  { key: "generate_creatives", order: 4, title: "Genereer creatives", icon: Sparkles },
+  { key: "push_meta", order: 5, title: "Push naar Meta", icon: Megaphone },
 ]
 
 // Roy 2026-06-11 v7: video scripts + LP prompt zitten naast de iteratie
@@ -149,6 +160,14 @@ export function OptimizeWizard({
   const [selectedVariantKeys, setSelectedVariantKeys] = useState<Set<string>>(
     new Set(),
   )
+  // Image-gen state. Roy 2026-06-12 v8: Step 3's "Genereer creatives"
+  // CTA fires gen for elke geselecteerde variant in parallel; Step 4
+  // shows progress + iteratie. inFlight = variantIds currently being
+  // generated; resultsByVariant = laatste gen-uitkomst per variantId.
+  const [imageGenInFlight, setImageGenInFlight] = useState<Set<string>>(new Set())
+  const [imageGenResultsByVariant, setImageGenResultsByVariant] = useState<
+    Record<string, { ok: boolean; error?: string; completedAt: string }>
+  >({})
 
   // Reset when client changes.
   useEffect(() => {
@@ -159,6 +178,8 @@ export function OptimizeWizard({
     setIsGenerating(false)
     setGenerateError(null)
     setSelectedVariantKeys(new Set())
+    setImageGenInFlight(new Set())
+    setImageGenResultsByVariant({})
   }, [selectedClientId])
 
   const updatePickedAd = useCallback(
@@ -227,15 +248,89 @@ export function OptimizeWizard({
     })
   }, [])
 
+  /**
+   * Fire image-generation in parallel for all selected variants.
+   * Used by Step 3's "Genereer creatives" CTA - moves the CM to
+   * Step 4 immediately and Step 4 polls the per-variant GET endpoint
+   * via VariantImagePanel's own useEffect.
+   */
+  const startBulkImageGen = useCallback(
+    async (variantIds: string[]) => {
+      if (variantIds.length === 0) return
+      setImageGenInFlight(new Set(variantIds))
+      setImageGenResultsByVariant({})
+      // Fire all in parallel - each is bounded by maxDuration=60 on
+      // the route. We track completions individually so the panel can
+      // un-loader per variant as soon as its own POST returns.
+      await Promise.allSettled(
+        variantIds.map(async (vid) => {
+          try {
+            const res = await fetch(
+              `/api/pedro/variants/${encodeURIComponent(vid)}/generate-image`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ slots: 3 }),
+              },
+            )
+            const json = await res.json().catch(() => ({}))
+            const ok = res.ok && !json.error
+            setImageGenResultsByVariant((prev) => ({
+              ...prev,
+              [vid]: {
+                ok,
+                error: ok ? undefined : (json.error ?? `HTTP ${res.status}`),
+                completedAt: new Date().toISOString(),
+              },
+            }))
+          } catch (e) {
+            setImageGenResultsByVariant((prev) => ({
+              ...prev,
+              [vid]: {
+                ok: false,
+                error: e instanceof Error ? e.message : "Image gen failed",
+                completedAt: new Date().toISOString(),
+              },
+            }))
+          } finally {
+            setImageGenInFlight((prev) => {
+              const next = new Set(prev)
+              next.delete(vid)
+              return next
+            })
+          }
+        }),
+      )
+    },
+    [],
+  )
+
   const doneFor = useCallback(
     (key: StepKey): boolean => {
       if (key === "pick_ad") return !!pickedAd
       if (key === "select_variants") return !!refreshResult
-      if (key === "edit_creatives") return selectedVariantKeys.size > 0 && !!refreshResult
+      if (key === "edit_copy") return selectedVariantKeys.size > 0 && !!refreshResult
+      if (key === "generate_creatives") {
+        // Done = all selected variants have a successful gen result
+        // (or images already exist - we treat presence as done, but
+        // that lives in VariantImagePanel's own state. Here we only
+        // know about gens we kicked off from Step 3.)
+        if (!refreshResult || selectedVariantKeys.size === 0) return false
+        const variantIds: string[] = []
+        refreshResult.proposals.forEach((p, pi) => {
+          p.variants.forEach((v, vi) => {
+            if (selectedVariantKeys.has(`${pi}:${vi}`) && v.variantId) {
+              variantIds.push(v.variantId)
+            }
+          })
+        })
+        if (variantIds.length === 0) return false
+        return variantIds.every((id) => imageGenResultsByVariant[id]?.ok)
+      }
       if (key === "push_meta") return false // tracked elsewhere; visual only
       return false
     },
-    [pickedAd, refreshResult, selectedVariantKeys],
+    [pickedAd, refreshResult, selectedVariantKeys, imageGenResultsByVariant],
   )
 
   const totalDone = useMemo(
@@ -356,7 +451,7 @@ export function OptimizeWizard({
                   result={refreshResult}
                   selectedKeys={selectedVariantKeys}
                   onToggle={toggleVariantSelected}
-                  onContinue={() => setActiveKey("edit_creatives")}
+                  onContinue={() => setActiveKey("edit_copy")}
                   onRetry={() =>
                     pickedAd?.adId
                       ? startGenerate(pickedAd.adId, pickedAd.screenshotPath ?? undefined)
@@ -365,14 +460,42 @@ export function OptimizeWizard({
                 />
               </StepGate>
             )}
-            {activeKey === "edit_creatives" && (
+            {activeKey === "edit_copy" && (
               <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
-                <CreativesStep
+                <EditCopyStep
                   clientId={selectedClientId}
                   result={refreshResult}
                   selectedKeys={selectedVariantKeys}
                   onBackToSelection={() => setActiveKey("select_variants")}
+                  onGenerateCreatives={async () => {
+                    if (!refreshResult) return
+                    const variantIds: string[] = []
+                    refreshResult.proposals.forEach((p, pi) => {
+                      p.variants.forEach((v, vi) => {
+                        if (selectedVariantKeys.has(`${pi}:${vi}`) && v.variantId) {
+                          variantIds.push(v.variantId)
+                        }
+                      })
+                    })
+                    // Move forward immediately so the CM ziet de
+                    // progress UI op Step 4 - geen wachten op alle gens.
+                    setActiveKey("generate_creatives")
+                    await startBulkImageGen(variantIds)
+                  }}
+                />
+              </StepGate>
+            )}
+            {activeKey === "generate_creatives" && (
+              <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
+                <GenerateCreativesStep
+                  clientId={selectedClientId}
+                  result={refreshResult}
+                  selectedKeys={selectedVariantKeys}
+                  inFlightVariantIds={imageGenInFlight}
+                  resultsByVariant={imageGenResultsByVariant}
+                  onBackToCopy={() => setActiveKey("edit_copy")}
                   onContinueToPush={() => setActiveKey("push_meta")}
+                  onRetryVariant={(vid) => startBulkImageGen([vid])}
                 />
               </StepGate>
             )}
@@ -382,7 +505,7 @@ export function OptimizeWizard({
                   clientId={selectedClientId}
                   result={refreshResult}
                   selectedKeys={selectedVariantKeys}
-                  onBackToCreatives={() => setActiveKey("edit_creatives")}
+                  onBackToCreatives={() => setActiveKey("generate_creatives")}
                 />
               </StepGate>
             )}
@@ -953,27 +1076,21 @@ function VariantSelectionCard({
   )
 }
 
-function CreativesStep({
-  clientId,
-  result,
-  selectedKeys,
-  onBackToSelection,
-  onContinueToPush,
-}: {
-  clientId: string
-  result: { refreshId: string; proposals: CreativeProposal[] } | null
-  selectedKeys: Set<string>
-  onBackToSelection: () => void
-  onContinueToPush: () => void
-}) {
-  if (!result) {
-    return (
-      <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-        Geen gegenereerde varianten. Ga terug naar Stap 1.
-      </div>
-    )
-  }
-  const selectedPairs: Array<{
+/**
+ * Resolve the selected variants into pairs - shared helper for the
+ * 3 wizard steps that all read from refreshResult + selectedKeys.
+ */
+function resolveSelectedPairs(
+  result: { refreshId: string; proposals: CreativeProposal[] } | null,
+  selectedKeys: Set<string>,
+): Array<{
+  proposalIndex: number
+  proposal: CreativeProposal
+  variantIndex: number
+  variant: CreativeVariant
+}> {
+  if (!result) return []
+  const out: Array<{
     proposalIndex: number
     proposal: CreativeProposal
     variantIndex: number
@@ -982,15 +1099,41 @@ function CreativesStep({
   result.proposals.forEach((p, pi) => {
     p.variants.forEach((v, vi) => {
       if (selectedKeys.has(`${pi}:${vi}`)) {
-        selectedPairs.push({
-          proposalIndex: pi,
-          proposal: p,
-          variantIndex: vi,
-          variant: v,
-        })
+        out.push({ proposalIndex: pi, proposal: p, variantIndex: vi, variant: v })
       }
     })
   })
+  return out
+}
+
+/**
+ * EditCopyStep - Roy 2026-06-12 v8 (Stap 3 in 5-step wizard).
+ * Inline-editable copy fields per geselecteerde variant: tekst op
+ * afbeelding, primary copy, alt headlines, alt primary texts, link
+ * description. GEEN image-gen hier; CTA "Genereer creatives" triggert
+ * de batch gen en navigeert naar Stap 4.
+ */
+function EditCopyStep({
+  clientId,
+  result,
+  selectedKeys,
+  onBackToSelection,
+  onGenerateCreatives,
+}: {
+  clientId: string
+  result: { refreshId: string; proposals: CreativeProposal[] } | null
+  selectedKeys: Set<string>
+  onBackToSelection: () => void
+  onGenerateCreatives: () => void | Promise<void>
+}) {
+  if (!result) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        Geen gegenereerde varianten. Ga terug naar Stap 1.
+      </div>
+    )
+  }
+  const selectedPairs = resolveSelectedPairs(result, selectedKeys)
   if (selectedPairs.length === 0) {
     return (
       <div className="space-y-3">
@@ -1007,10 +1150,13 @@ function CreativesStep({
       </div>
     )
   }
+  // Roy 2026-06-12: defensive check - als een variant geen variantId
+  // heeft (persist faalde), kunnen we noch inline editen noch images
+  // genereren. Banner met actie om verder te gaan zonder te crashen.
+  const missingVariantIdCount = selectedPairs.filter((p) => !p.variant.variantId).length
+  const allMissing = missingVariantIdCount === selectedPairs.length
   return (
     <div className="space-y-4">
-      {/* CTA bar TOP - Roy 2026-06-12: alignment over de hele Optimize
-          pagina, alle CTAs bovenaan. Tekst + Terug links, Volgende rechts. */}
       <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <button
@@ -1022,24 +1168,34 @@ function CreativesStep({
           </button>
           <div className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{selectedPairs.length} varianten</span>{" "}
-            klaar voor image-generatie. Edit tekst + genereer images per kaart.
+            klaar. Edit eerst de tekst, dan klik op &ldquo;Genereer creatives&rdquo;.
           </div>
         </div>
         <button
           type="button"
-          onClick={onContinueToPush}
-          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          onClick={() => void onGenerateCreatives()}
+          disabled={allMissing}
+          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          title={
+            allMissing
+              ? "Geen bruikbare variant-IDs - regenereer in Stap 1"
+              : "Pedro genereert 3 images per variant"
+          }
         >
-          Naar push instellingen
-          <ArrowRight className="h-3.5 w-3.5" />
+          <Sparkles className="h-3.5 w-3.5" />
+          Genereer creatives
         </button>
       </div>
-      {/* Image bronnen picker - Drive folders die Pedro mag gebruiken
-          als reference voor Gemini. Roy 2026-06-12: was kwijt uit het
-          nieuwe wizard-pad, dit was bewust zichtbaar zodat de CM kan
-          tunen WAAR de creative-references vandaan komen voordat 'ie
-          genereert. */}
-      <ImageSourcesPicker clientId={clientId} />
+      {missingVariantIdCount > 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <div>
+            {missingVariantIdCount} van {selectedPairs.length} varianten heeft geen variant-ID
+            (persist faalde). Inline editen en image-gen werken niet voor die varianten.
+            Ga terug naar Stap 1 en regenereer om het op te lossen.
+          </div>
+        </div>
+      )}
       <div className="space-y-4">
         {selectedPairs.map(({ proposalIndex, proposal, variant }) => (
           <VariantCard
@@ -1050,8 +1206,148 @@ function CreativesStep({
             proposalIndex={proposalIndex}
             proposalAngle={proposal.preserve.angle}
             hidePush
+            hideImagePanel
           />
         ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * GenerateCreativesStep - Roy 2026-06-12 v8 (Stap 4 in 5-step wizard).
+ * Mount per geselecteerde variant het VariantImagePanel (3-slot image
+ * gallery + regen + upload + feedback). Stap 3 heeft de bulk-gen
+ * gestart; per variant tonen we óf een loading indicator (terwijl de
+ * POST loopt) óf de 3 images zoals VariantImagePanel ze auto-loadt.
+ * CTA: "Push naar Meta".
+ */
+function GenerateCreativesStep({
+  clientId,
+  result,
+  selectedKeys,
+  inFlightVariantIds,
+  resultsByVariant,
+  onBackToCopy,
+  onContinueToPush,
+  onRetryVariant,
+}: {
+  clientId: string
+  result: { refreshId: string; proposals: CreativeProposal[] } | null
+  selectedKeys: Set<string>
+  inFlightVariantIds: Set<string>
+  resultsByVariant: Record<string, { ok: boolean; error?: string; completedAt: string }>
+  onBackToCopy: () => void
+  onContinueToPush: () => void
+  onRetryVariant: (variantId: string) => void
+}) {
+  if (!result) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        Geen gegenereerde varianten. Ga terug naar Stap 1.
+      </div>
+    )
+  }
+  const selectedPairs = resolveSelectedPairs(result, selectedKeys)
+  if (selectedPairs.length === 0) {
+    return (
+      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
+        Geen varianten geselecteerd.
+      </div>
+    )
+  }
+  const totalInFlight = inFlightVariantIds.size
+  const totalFailed = Object.values(resultsByVariant).filter((r) => !r.ok).length
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={onBackToCopy}
+            className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Terug naar copy
+          </button>
+          <div className="text-xs text-muted-foreground">
+            {totalInFlight > 0 ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                Pedro genereert images voor{" "}
+                <span className="font-medium text-foreground">{totalInFlight}</span>{" "}
+                {totalInFlight === 1 ? "variant" : "varianten"}…
+              </span>
+            ) : totalFailed > 0 ? (
+              <span className="text-amber-700 dark:text-amber-400">
+                {totalFailed} {totalFailed === 1 ? "variant" : "varianten"} faalde - klik regen of upload zelf
+              </span>
+            ) : (
+              <span>
+                <span className="font-medium text-foreground">{selectedPairs.length} varianten</span>{" "}
+                klaar. Itereer of klik door naar Push.
+              </span>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onContinueToPush}
+          disabled={totalInFlight > 0}
+          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          title={
+            totalInFlight > 0
+              ? "Wacht tot Pedro klaar is met genereren"
+              : "Door naar Push naar Meta"
+          }
+        >
+          Naar Push naar Meta
+          <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <ImageSourcesPicker clientId={clientId} />
+      <div className="space-y-4">
+        {selectedPairs.map(({ proposalIndex, proposal, variant }) => {
+          const vid = variant.variantId ?? ""
+          const inFlight = vid ? inFlightVariantIds.has(vid) : false
+          const genResult = vid ? resultsByVariant[vid] : undefined
+          return (
+            <div key={`${proposalIndex}-${variant.adName}`} className="space-y-2">
+              {inFlight && (
+                <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground inline-flex items-center gap-2">
+                  <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+                  <span>
+                    Pedro genereert 3 images voor{" "}
+                    <span className="font-medium">{variant.label}</span>… (5-25s)
+                  </span>
+                </div>
+              )}
+              {genResult && !genResult.ok && vid && (
+                <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-400 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium">Genereren mislukt voor {variant.label}</div>
+                    <div className="text-[11px] opacity-80 whitespace-pre-line">{genResult.error}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onRetryVariant(vid)}
+                    className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium rounded-md bg-red-500/10 hover:bg-red-500/20 text-red-700 dark:text-red-400 transition-colors"
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    Probeer opnieuw
+                  </button>
+                </div>
+              )}
+              <VariantCard
+                variant={variant}
+                clientId={clientId}
+                refreshId={result.refreshId}
+                proposalIndex={proposalIndex}
+                proposalAngle={proposal.preserve.angle}
+                hidePush
+              />
+            </div>
+          )
+        })}
       </div>
     </div>
   )

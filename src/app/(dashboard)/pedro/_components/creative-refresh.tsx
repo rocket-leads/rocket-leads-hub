@@ -102,6 +102,7 @@ export function VariantCard({
   proposalIndex,
   proposalAngle,
   hidePush,
+  hideImagePanel,
 }: {
   variant: CreativeVariant
   clientId: string | null
@@ -113,6 +114,11 @@ export function VariantCard({
    *  voor edit + image-gen, dus de per-variant Push knop moet weg om
    *  dubbele CTAs te voorkomen. */
   hidePush?: boolean
+  /** Roy 2026-06-12 v8: in de 5-step wizard staat image-gen los van
+   *  edit copy. Stap 3 (Edit copy) hide het VariantImagePanel; Stap 4
+   *  (Genereer creatives) toont 'm. Zo blijven copy + creative-gen
+   *  visueel gescheiden. */
+  hideImagePanel?: boolean
 }) {
   // Local "live" state - InlineEditField writes back via PATCH, success
   // updates these so the rest of the card (e.g. the CopyButton text)
@@ -371,14 +377,17 @@ export function VariantCard({
       </div>
 
       {/* Image generation panel - 3 slots side-by-side per variant.
-          Roy 2026-06-09. */}
-      <VariantImagePanel
-        variantId={variantId}
-        clientId={clientId}
-        adName={variant.adName}
-        initialImagePrompt={variant.image?.imagePrompt ?? variant.imagePrompt ?? null}
-        initialHasImage={variant.image?.hasImage ?? false}
-      />
+          Roy 2026-06-09. Verstopt in Stap 3 (Edit copy) van de wizard
+          waar image-gen pas in Stap 4 gebeurt. */}
+      {!hideImagePanel && (
+        <VariantImagePanel
+          variantId={variantId}
+          clientId={clientId}
+          adName={variant.adName}
+          initialImagePrompt={variant.image?.imagePrompt ?? variant.imagePrompt ?? null}
+          initialHasImage={variant.image?.hasImage ?? false}
+        />
+      )}
 
       <div className="text-xs text-muted-foreground italic pt-1 border-t border-border/40">
         Waarom: {variant.why}
