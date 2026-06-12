@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useRef } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   Sparkles,
@@ -12,6 +13,7 @@ import {
   SkipForward,
   RefreshCw,
   CalendarDays,
+  X,
 } from "lucide-react"
 import { DismissButton } from "@/components/ui/dismiss-button"
 
@@ -75,7 +77,32 @@ import type {
  */
 export function WeeklyUpdatesChip() {
   const queryClient = useQueryClient()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [sheetOpen, setSheetOpen] = useState(false)
+  // When the Co-pilot's `prepare_client_update` executor finishes, it
+  // navigates to `/?focusUpdate=<mondayItemId>` so this surface
+  // auto-opens with the just-queued draft pre-selected. We consume the
+  // param once + strip it so a back-button or page refresh doesn't
+  // re-trigger the open.
+  const focusUpdateParam = searchParams?.get("focusUpdate") ?? null
+  const [focusMondayItemId, setFocusMondayItemId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!focusUpdateParam) return
+    setFocusMondayItemId(focusUpdateParam)
+    setSheetOpen(true)
+    // Strip the param so the chip doesn't re-open on every render.
+    const next = new URLSearchParams(searchParams ?? undefined)
+    next.delete("focusUpdate")
+    const q = next.toString()
+    router.replace(`${pathname}${q ? `?${q}` : ""}`, { scroll: false })
+    // Force a refetch — the draft was just inserted server-side and the
+    // 30s staleTime would otherwise leave the sheet rendering an empty
+    // list for up to half a minute.
+    void queryClient.invalidateQueries({ queryKey: ["weekly-update-drafts"] })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusUpdateParam])
 
   const draftsQuery = useQuery<WeeklyUpdateDraftListResponse>({
     queryKey: ["weekly-update-drafts"],
@@ -85,7 +112,10 @@ export function WeeklyUpdatesChip() {
   })
 
   const count = draftsQuery.data?.count ?? 0
-  if (count === 0) return null
+  // Keep the chip visible while a deep-link is being resolved even when
+  // the count is briefly stale at 0 — otherwise the sheet's parent
+  // unmounts before the refetch lands and the focus is lost.
+  if (count === 0 && !sheetOpen) return null
 
   return (
     <>
@@ -110,9 +140,13 @@ export function WeeklyUpdatesChip() {
       {sheetOpen && (
         <WeeklyUpdateQueueSheet
           open={sheetOpen}
-          onOpenChange={setSheetOpen}
+          onOpenChange={(next) => {
+            setSheetOpen(next)
+            if (!next) setFocusMondayItemId(null)
+          }}
           drafts={draftsQuery.data?.drafts ?? []}
           isRefreshing={draftsQuery.isFetching}
+          focusMondayItemId={focusMondayItemId}
           onRefresh={() => {
             void draftsQuery.refetch()
           }}
@@ -193,6 +227,7 @@ function WeeklyUpdateQueueSheet({
   onDraftConsumed,
   onRefresh,
   isRefreshing,
+  focusMondayItemId = null,
 }: {
   open: boolean
   onOpenChange: (next: boolean) => void
@@ -200,12 +235,30 @@ function WeeklyUpdateQueueSheet({
   onDraftConsumed: () => void
   onRefresh: () => void
   isRefreshing: boolean
+  /** When set, pre-select the draft whose mondayItemId matches this id
+   *  as soon as it shows up in the list. Used by the AI Co-pilot's
+   *  prepare_client_update deep-link. */
+  focusMondayItemId?: string | null
 }) {
   // User-clicked draft id. When null, the active draft is derived as the
   // first visible draft (auto-select on open + auto-advance after a send).
   // Storing the user pick separately keeps the derivation pure and avoids
   // a setState-in-effect cascade.
   const [userPickedId, setUserPickedId] = useState<string | null>(null)
+  // Apply the focus deep-link once: when the matching draft lands in the
+  // list (the freshly-queued draft may arrive on the next refetch tick),
+  // set it as the user pick so the editor lands on it. Only fires once
+  // per focus id so a user click after the auto-select still wins.
+  const lastAppliedFocusRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!focusMondayItemId) return
+    if (lastAppliedFocusRef.current === focusMondayItemId) return
+    const match = drafts.find((d) => d.mondayItemId === focusMondayItemId)
+    if (match) {
+      setUserPickedId(match.id)
+      lastAppliedFocusRef.current = focusMondayItemId
+    }
+  }, [focusMondayItemId, drafts])
   // Free-text search over clientName / contactFirstName / accountManager.
   // 51-row sidebars are scroll-heavy; the AM almost always knows which
   // company they're looking for so a filter beats scrolling.
@@ -438,16 +491,26 @@ function WeeklyUpdateQueueSheet({
           1440-class screens. Height is tighter (80vh) so the editor pane
           doesn't trail off with white space below short message bodies;
           the sidebar scrolls internally when it has more rows than fit. */}
-      <DialogContent className="sm:max-w-[1400px] w-[96vw] h-[80vh] p-0 gap-0 overflow-hidden flex flex-col">
+      <DialogContent
+        showCloseButton={false}
+        className="sm:max-w-[1400px] w-[96vw] h-[80vh] p-0 gap-0 overflow-hidden flex flex-col"
+      >
         <DialogTitle className="sr-only">
-          Wekelijkse updates ({visibleDrafts.length})
+          Client updates ({visibleDrafts.length})
         </DialogTitle>
-        <header className="flex items-center justify-between border-b border-border/60 px-5 py-3 shrink-0">
+        {/* Header: single 56px row, action cluster on the right matches the
+            ActionIconButton chrome used everywhere else in the Hub. Single
+            X-close — the Dialog primitive's built-in X is suppressed via
+            showCloseButton={false} above so we don't stack two. */}
+        <header className="flex items-center justify-between gap-3 border-b border-border/60 bg-muted/20 dark:bg-zinc-900/40 px-5 h-14 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="flex items-center gap-2 min-w-0">
               <Sparkles className="h-4 w-4 text-violet-500 shrink-0" />
-              <h2 className="text-sm font-semibold truncate">
-                Wekelijkse updates · {notConsumed.length} open
+              <h2 className="text-[13px] font-semibold tracking-tight truncate">
+                Client updates
+                <span className="text-muted-foreground/60 font-medium ml-1.5">
+                  · {notConsumed.length} open
+                </span>
                 {search && visibleDrafts.length !== notConsumed.length && (
                   <span className="text-muted-foreground/60 font-normal ml-1">
                     · {visibleDrafts.length} match
@@ -462,18 +525,26 @@ function WeeklyUpdateQueueSheet({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
             <button
               type="button"
               onClick={onRefresh}
               disabled={isRefreshing}
               title="Refresh queue"
-              className="rounded-md p-1 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
               aria-label="Refresh queue"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
             </button>
-            <DismissButton onClick={() => onOpenChange(false)} stopPropagation={false} />
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              title="Sluit"
+              aria-label="Sluit"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </header>
 
@@ -842,11 +913,20 @@ function ActiveDraftEditor({
   const dismissMutation = useMutation({
     mutationFn: async () => {
       setError(null)
-      await fetch(`/api/weekly-update-drafts/${draft.id}`, {
+      // Previously this awaited the fetch without checking res.ok, so a 4xx/5xx
+      // looked like a silent success — the local row got cleared client-side
+      // but the server still held the draft as `status='pending'`. Next refetch
+      // resurrected the row. Roy 2026-06-12: surface the actual server error
+      // so the AM sees why skip didn't take.
+      const res = await fetch(`/api/weekly-update-drafts/${draft.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "dismissed" }),
       })
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(err.error ?? `Skip failed (${res.status})`)
+      }
     },
     onSuccess: () => onResolved(draft.id),
     onError: (e: Error) => setError(e.message),
@@ -887,18 +967,22 @@ function ActiveDraftEditor({
 
   return (
     <>
-      <div className="flex items-center justify-between border-b border-border/60 px-5 py-3 shrink-0">
+      {/* Inner header: 56px to match the outer header so the split-pane
+          horizontal seams line up. Template chip moved to a subtle muted
+          pill (was an unstyled <code> tag that visually fought with the
+          title weight). */}
+      <div className="flex items-center justify-between gap-3 border-b border-border/60 px-5 h-14 shrink-0">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold truncate">{draft.clientName}</h3>
-          <p className="text-[11px] text-muted-foreground/70">
+          <h3 className="text-[13px] font-semibold tracking-tight truncate">{draft.clientName}</h3>
+          <p className="text-[11px] text-muted-foreground/70 leading-tight mt-0.5 truncate">
             {draft.contactFirstName ? `${draft.contactFirstName} · ` : ""}
             AM: {draft.accountManager || "-"}
           </p>
         </div>
         {draft.templateName && (
-          <code className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="hidden sm:inline-flex items-center rounded-md bg-muted/60 px-2 py-1 font-mono text-[10px] text-muted-foreground/80 ring-1 ring-border/40">
             {draft.templateName}
-          </code>
+          </span>
         )}
       </div>
 
@@ -921,11 +1005,11 @@ function ActiveDraftEditor({
         )}
       </div>
 
-      <footer className="border-t border-border/60 px-5 py-3 flex items-center justify-between shrink-0 bg-muted/20 dark:bg-zinc-900/40">
+      {/* Footer: 56px row to mirror both headers; outlined skip + filled
+          violet send anchor opposite sides. Autosave marker tucks between
+          them so it stays visible without crowding either action. */}
+      <footer className="border-t border-border/60 bg-muted/20 dark:bg-zinc-900/40 px-5 h-14 flex items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-3">
-          {/* Outlined button with skip icon - was a ghost button with the
-              English "Dismiss" label that read as cancellation of the whole
-              dialog instead of "skip this client this week". */}
           <Button
             variant="outline"
             size="sm"
@@ -944,13 +1028,13 @@ function ActiveDraftEditor({
           {/* Autosave indicator - only renders when something has happened.
               "Opslaan…" during PATCH, "Opgeslagen" briefly after success. */}
           {saveState === "saving" && (
-            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+            <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin" />
               Opslaan…
             </span>
           )}
           {saveState === "saved" && (
-            <span className="text-[11px] text-muted-foreground/70 flex items-center gap-1">
+            <span className="text-[11px] text-muted-foreground/70 flex items-center gap-1.5">
               <Check className="h-3 w-3 text-emerald-500" />
               Opgeslagen
             </span>
@@ -960,7 +1044,7 @@ function ActiveDraftEditor({
           size="sm"
           onClick={() => sendMutation.mutate()}
           disabled={inputsDisabled || sendMutation.isPending}
-          className="bg-violet-500 hover:bg-violet-600 text-white"
+          className="bg-violet-500 hover:bg-violet-600 text-white shadow-sm"
         >
           {sent ? (
             <>
