@@ -22,6 +22,8 @@ import {
   type CreativeProposal,
   type CreativeVariant,
 } from "./creative-refresh"
+import { ImageSourcesPicker } from "./image-sources-picker"
+import { PushToMetaModal } from "./push-to-meta-modal"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 
@@ -44,7 +46,7 @@ import { t } from "@/lib/i18n/t"
  * wizard (Roy 2026-06-11: "no hard locks").
  */
 
-type StepKey = "pick_ad" | "select_variants" | "creatives"
+type StepKey = "pick_ad" | "select_variants" | "edit_creatives" | "push_meta"
 type OverigKey = "lp_prompt" | "video_scripts"
 type ActiveKey = StepKey | OverigKey
 
@@ -67,7 +69,8 @@ type OverigDef = {
 const STEPS: StepDef[] = [
   { key: "pick_ad", order: 1, title: "Kies winning ad", icon: Target },
   { key: "select_variants", order: 2, title: "Kies varianten", icon: Compass },
-  { key: "creatives", order: 3, title: "Creatives + push", icon: Megaphone },
+  { key: "edit_creatives", order: 3, title: "Edit + creatives", icon: Sparkles },
+  { key: "push_meta", order: 4, title: "Push naar Meta", icon: Megaphone },
 ]
 
 // Roy 2026-06-11 v7: video scripts + LP prompt zitten naast de iteratie
@@ -227,7 +230,8 @@ export function OptimizeWizard({
     (key: StepKey): boolean => {
       if (key === "pick_ad") return !!pickedAd
       if (key === "select_variants") return !!refreshResult
-      if (key === "creatives") return selectedVariantKeys.size > 0 && !!refreshResult
+      if (key === "edit_creatives") return selectedVariantKeys.size > 0 && !!refreshResult
+      if (key === "push_meta") return false // tracked elsewhere; visual only
       return false
     },
     [pickedAd, refreshResult, selectedVariantKeys],
@@ -351,7 +355,7 @@ export function OptimizeWizard({
                   result={refreshResult}
                   selectedKeys={selectedVariantKeys}
                   onToggle={toggleVariantSelected}
-                  onContinue={() => setActiveKey("creatives")}
+                  onContinue={() => setActiveKey("edit_creatives")}
                   onRetry={() =>
                     pickedAd?.adId
                       ? startGenerate(pickedAd.adId, pickedAd.screenshotPath ?? undefined)
@@ -360,13 +364,24 @@ export function OptimizeWizard({
                 />
               </StepGate>
             )}
-            {activeKey === "creatives" && (
+            {activeKey === "edit_creatives" && (
               <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
                 <CreativesStep
                   clientId={selectedClientId}
                   result={refreshResult}
                   selectedKeys={selectedVariantKeys}
                   onBackToSelection={() => setActiveKey("select_variants")}
+                  onContinueToPush={() => setActiveKey("push_meta")}
+                />
+              </StepGate>
+            )}
+            {activeKey === "push_meta" && (
+              <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
+                <PushMetaStep
+                  clientId={selectedClientId}
+                  result={refreshResult}
+                  selectedKeys={selectedVariantKeys}
+                  onBackToCreatives={() => setActiveKey("edit_creatives")}
                 />
               </StepGate>
             )}
@@ -942,11 +957,13 @@ function CreativesStep({
   result,
   selectedKeys,
   onBackToSelection,
+  onContinueToPush,
 }: {
   clientId: string
   result: { refreshId: string; proposals: CreativeProposal[] } | null
   selectedKeys: Set<string>
   onBackToSelection: () => void
+  onContinueToPush: () => void
 }) {
   if (!result) {
     return (
@@ -991,19 +1008,37 @@ function CreativesStep({
   }
   return (
     <div className="space-y-4">
+      {/* CTA bar TOP - Roy 2026-06-12: alignment over de hele Optimize
+          pagina, alle CTAs bovenaan. Tekst + Terug links, Volgende rechts. */}
       <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
-        <div className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{selectedPairs.length} varianten</span>{" "}
-          klaar voor image gen + Push to Meta. Per kaart eigen image-generatie.
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={onBackToSelection}
+            className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Terug
+          </button>
+          <div className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{selectedPairs.length} varianten</span>{" "}
+            klaar voor image-generatie. Edit tekst + genereer images per kaart.
+          </div>
         </div>
         <button
           type="button"
-          onClick={onBackToSelection}
-          className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          onClick={onContinueToPush}
+          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
         >
-          ← Terug naar variant-keuze
+          Naar push instellingen
+          <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
+      {/* Image bronnen picker - Drive folders die Pedro mag gebruiken
+          als reference voor Gemini. Roy 2026-06-12: was kwijt uit het
+          nieuwe wizard-pad, dit was bewust zichtbaar zodat de CM kan
+          tunen WAAR de creative-references vandaan komen voordat 'ie
+          genereert. */}
+      <ImageSourcesPicker clientId={clientId} />
       <div className="space-y-4">
         {selectedPairs.map(({ proposalIndex, proposal, variant }) => (
           <VariantCard
@@ -1013,9 +1048,158 @@ function CreativesStep({
             refreshId={result.refreshId}
             proposalIndex={proposalIndex}
             proposalAngle={proposal.preserve.angle}
+            hidePush
           />
         ))}
       </div>
+    </div>
+  )
+}
+
+function PushMetaStep({
+  clientId,
+  result,
+  selectedKeys,
+  onBackToCreatives,
+}: {
+  clientId: string
+  result: { refreshId: string; proposals: CreativeProposal[] } | null
+  selectedKeys: Set<string>
+  onBackToCreatives: () => void
+}) {
+  const [openPushFor, setOpenPushFor] = useState<{
+    proposalIndex: number
+    variantId: string
+    variantLabel: string
+    adName: string
+    angle: string
+    headline: string
+    proposal: CreativeProposal
+  } | null>(null)
+
+  if (!result) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        Geen gegenereerde varianten. Ga terug naar Stap 1.
+      </div>
+    )
+  }
+  const selectedPairs: Array<{
+    proposalIndex: number
+    proposal: CreativeProposal
+    variantIndex: number
+    variant: CreativeVariant
+  }> = []
+  result.proposals.forEach((p, pi) => {
+    p.variants.forEach((v, vi) => {
+      if (selectedKeys.has(`${pi}:${vi}`)) {
+        selectedPairs.push({
+          proposalIndex: pi,
+          proposal: p,
+          variantIndex: vi,
+          variant: v,
+        })
+      }
+    })
+  })
+  if (selectedPairs.length === 0) {
+    return (
+      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
+        Geen varianten geselecteerd.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* CTA bar TOP - back to Stap 3 */}
+      <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={onBackToCreatives}
+            className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Terug naar creatives
+          </button>
+          <div className="text-xs text-muted-foreground">
+            Open per variant de push-instellingen: ad set naam, daily budget,
+            template-bron. Alles gaat naar Meta als{" "}
+            <span className="font-medium text-amber-700 dark:text-amber-400">PAUSED</span>.
+          </div>
+        </div>
+      </div>
+      <div className="space-y-3">
+        {selectedPairs.map(({ proposalIndex, proposal, variant }) => {
+          const variantId = variant.variantId ?? ""
+          return (
+            <div
+              key={`${proposalIndex}-${variant.adName}`}
+              className="rounded-2xl border border-border/60 bg-card p-4 space-y-3"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="font-heading font-semibold text-sm">
+                    {variant.label}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground font-mono">
+                    {variant.adName}
+                  </div>
+                  {variant.headline && (
+                    <div className="text-xs text-violet-600 dark:text-violet-400 font-medium">
+                      {variant.headline}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={!variantId}
+                  onClick={() =>
+                    setOpenPushFor({
+                      proposalIndex,
+                      variantId,
+                      variantLabel: variant.label,
+                      adName: variant.adName,
+                      angle: proposal.preserve.angle,
+                      headline: variant.headline ?? "",
+                      proposal,
+                    })
+                  }
+                  className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  title={
+                    !variantId
+                      ? "Variant heeft geen variantId - regenereer in Stap 2"
+                      : "Open push instellingen voor deze variant"
+                  }
+                >
+                  <Megaphone className="h-3.5 w-3.5" />
+                  Push instellingen
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      {openPushFor && (
+        <PushToMetaModal
+          open={!!openPushFor}
+          onClose={() => setOpenPushFor(null)}
+          refreshId={result.refreshId}
+          proposalIndex={openPushFor.proposalIndex}
+          winnerAdName={openPushFor.proposal.basedOnAd.adName}
+          proposalAngle={openPushFor.angle}
+          variantHeadline={openPushFor.headline}
+          clientId={clientId}
+          variants={[
+            {
+              variantId: openPushFor.variantId,
+              adName: openPushFor.adName,
+              label: openPushFor.variantLabel,
+              topicLabel: "",
+            },
+          ]}
+        />
+      )}
     </div>
   )
 }

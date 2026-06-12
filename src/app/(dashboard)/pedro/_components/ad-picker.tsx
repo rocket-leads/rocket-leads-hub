@@ -276,6 +276,46 @@ export function AdPicker({ clientId, loading, hasOutput, onGenerate }: Props) {
 
   return (
     <div className="space-y-3">
+      {/* CTA bar TOP - Roy 2026-06-12: alignment over de hele Optimize
+          pagina, CTA bovenaan op elke stap. Helper-tekst beweegt mee
+          met de selectie state (geen ad → "kies", ad gekozen → "iteratie"). */}
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+        <div className="text-xs text-muted-foreground">
+          {pickedAdId ? (
+            <>
+              Pedro itereert op deze ad → 3 nieuwe varianten in dezelfde DNA.
+              {screenshots[pickedAdId] && (
+                <span className="ml-1 text-emerald-700 dark:text-emerald-400 font-medium">
+                  + screenshot als reference.
+                </span>
+              )}
+            </>
+          ) : (
+            "Kies een ad uit de lijst om Pedro 3 iteraties te laten genereren."
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={!pickedAdId || loading || hasOutput}
+          title={
+            hasOutput
+              ? "Refresh al gegenereerd - scroll naar de proposals."
+              : !pickedAdId
+                ? "Kies eerst een ad"
+                : "Genereer 3 varianten op deze ad"
+          }
+          className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {loading ? "Pedro denkt na…" : "Genereer 3 varianten"}
+        </button>
+      </div>
+
       {/* Campaign selector */}
       <div>
         <label className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
@@ -345,44 +385,6 @@ export function AdPicker({ clientId, loading, hasOutput, onGenerate }: Props) {
           )}
         </div>
       )}
-
-      {/* Generate button */}
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 mt-2">
-        <div className="text-xs text-muted-foreground">
-          {pickedAdId ? (
-            <>
-              Pedro itereert op deze ad → 3 nieuwe varianten in dezelfde DNA.
-              {screenshots[pickedAdId] && (
-                <span className="ml-1 text-emerald-700 dark:text-emerald-400 font-medium">
-                  + screenshot als reference.
-                </span>
-              )}
-            </>
-          ) : (
-            "Kies een ad uit de lijst om Pedro 3 iteraties te laten genereren."
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={!pickedAdId || loading || hasOutput}
-          title={
-            hasOutput
-              ? "Refresh al gegenereerd - scroll naar de proposals."
-              : !pickedAdId
-                ? "Kies eerst een ad"
-                : "Genereer 3 varianten op deze ad"
-          }
-          className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm whitespace-nowrap"
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Sparkles className="h-4 w-4" />
-          )}
-          {loading ? "Pedro denkt na…" : "Genereer 3 varianten"}
-        </button>
-      </div>
 
       {/* Screenshot preview modal */}
       {previewAdId && screenshots[previewAdId]?.signedUrl && (

@@ -101,12 +101,18 @@ export function VariantCard({
   refreshId,
   proposalIndex,
   proposalAngle,
+  hidePush,
 }: {
   variant: CreativeVariant
   clientId: string | null
   refreshId: string | null
   proposalIndex: number
   proposalAngle: string
+  /** Roy 2026-06-12: in de 4-step wizard zit Push naar Meta in Stap 4
+   *  (PushMetaStep). Stap 3 (CreativesStep) gebruikt VariantCard alleen
+   *  voor edit + image-gen, dus de per-variant Push knop moet weg om
+   *  dubbele CTAs te voorkomen. */
+  hidePush?: boolean
 }) {
   // Local "live" state - InlineEditField writes back via PATCH, success
   // updates these so the rest of the card (e.g. the CopyButton text)
@@ -190,8 +196,9 @@ export function VariantCard({
         <div className="flex items-center gap-1.5">
           {/* Per-variant Push-to-Meta - Roy 2026-06-10: één variant =
               één ad set met de 3 image slots als ads. CM kan los kiezen
-              welke variant ze willen testen. */}
-          {refreshId && variantId && (
+              welke variant ze willen testen. Verstopt in de wizard-flow
+              waar Push een eigen step (Stap 4) is. */}
+          {refreshId && variantId && !hidePush && (
             <button
               type="button"
               onClick={() => setPushOpen(true)}
@@ -378,8 +385,9 @@ export function VariantCard({
       </div>
 
       {/* Push modal scoped to THIS variant - single ad set with up to
-          3 ads (the 3 image slots). Roy 2026-06-10. */}
-      {refreshId && variantId && clientId && (
+          3 ads (the 3 image slots). Roy 2026-06-10. Niet gemount in
+          de wizard-flow waar Step 4 z'n eigen push UI heeft. */}
+      {refreshId && variantId && clientId && !hidePush && (
         <PushToMetaModal
           open={pushOpen}
           onClose={() => setPushOpen(false)}
