@@ -103,6 +103,24 @@ function pickedAdKey(clientId: string): string {
   return `pedro.optimize.pickedAd.${clientId}`
 }
 
+/** Short relative-time formatter for the draft banner. "5 min geleden",
+ *  "2 uur geleden", "3 dagen geleden". For older drafts we fall back to
+ *  the absolute date so it's still readable. */
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  const now = Date.now()
+  const diffMs = now - then
+  if (!Number.isFinite(diffMs) || diffMs < 0) return "zojuist"
+  const min = Math.floor(diffMs / 60000)
+  if (min < 1) return "zojuist"
+  if (min < 60) return `${min} min geleden`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr} uur geleden`
+  const days = Math.floor(hr / 24)
+  if (days < 14) return `${days} ${days === 1 ? "dag" : "dagen"} geleden`
+  return new Date(iso).toLocaleDateString("nl-NL", { day: "numeric", month: "short" })
+}
+
 function readPickedAd(clientId: string | null): PickedAd | null {
   if (!clientId || typeof window === "undefined") return null
   try {
@@ -169,18 +187,111 @@ export function OptimizeWizard({
     Record<string, { ok: boolean; error?: string; completedAt: string }>
   >({})
 
-  // Reset when client changes.
+  // Draft state - Roy 2026-06-12 v9: variants gegenereerd in Stap 2 zijn
+  // dure Claude calls. We persist al via /api/pedro/refreshes - de wizard
+  // laadt de meest recente refresh van deze klant terug zodat hij niet
+  // helemaal opnieuw hoeft te genereren na een page reload of client switch.
+  const [isLoadingDraft, setIsLoadingDraft] = useState(false)
+  const [draftGeneratedAt, setDraftGeneratedAt] = useState<string | null>(null)
+
+  // Reset + draft load when client changes. Two phases:
+  // 1. Sync clear all in-memory state.
+  // 2. Async fetch the most recent refresh and re-hydrate refreshResult.
   useEffect(() => {
     const stored = readPickedAd(selectedClientId)
     setPickedAd(stored)
-    setActiveKey(stored ? "select_variants" : "pick_ad")
     setRefreshResult(null)
     setIsGenerating(false)
     setGenerateError(null)
     setSelectedVariantKeys(new Set())
     setImageGenInFlight(new Set())
     setImageGenResultsByVariant({})
+    setDraftGeneratedAt(null)
+
+    if (!selectedClientId) {
+      setActiveKey("pick_ad")
+      return
+    }
+
+    // Default landing: pick_ad als er geen ad is, anders kies_varianten.
+    // De draft-load kan hier nog overheen schrijven als er een draft is.
+    setActiveKey(stored ? "select_variants" : "pick_ad")
+
+    let cancelled = false
+    setIsLoadingDraft(true)
+    ;(async () => {
+      try {
+        const listRes = await fetch(
+          `/api/pedro/refreshes?clientId=${encodeURIComponent(selectedClientId)}&stage=creatives&limit=1`,
+        )
+        const listJson = (await listRes.json().catch(() => ({}))) as {
+          refreshes?: Array<{ id: string; generatedAt: string }>
+        }
+        const head = listJson.refreshes?.[0]
+        if (cancelled || !head) return
+        const fullRes = await fetch(`/api/pedro/refreshes/${encodeURIComponent(head.id)}`)
+        const fullJson = (await fullRes.json().catch(() => ({}))) as {
+          refreshId?: string
+          proposals?: CreativeProposal[]
+        }
+        if (cancelled) return
+        if (fullJson.refreshId && Array.isArray(fullJson.proposals) && fullJson.proposals.length > 0) {
+          setRefreshResult({
+            refreshId: fullJson.refreshId,
+            proposals: fullJson.proposals,
+          })
+          setDraftGeneratedAt(head.generatedAt)
+          // Default selection = eerste variant van elk proposal (zoals
+          // bij een verse generate).
+          const firstOnly = new Set<string>()
+          fullJson.proposals.forEach((p, pi) => {
+            if (p.variants.length > 0) firstOnly.add(`${pi}:0`)
+          })
+          setSelectedVariantKeys(firstOnly)
+          // Move past pick_ad als we een draft hebben.
+          setActiveKey("select_variants")
+          // Sync pickedAd uit de draft als er geen localStorage is.
+          if (!stored) {
+            const firstProposal = fullJson.proposals[0]
+            const basedOn = firstProposal?.basedOnAd
+            if (basedOn?.adId) {
+              const reconstructed: PickedAd = {
+                adId: basedOn.adId,
+                adName: basedOn.adName ?? basedOn.adId,
+                campaignName: "",
+                screenshotPath: null,
+              }
+              setPickedAd(reconstructed)
+              writePickedAd(selectedClientId, reconstructed)
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[pedro/optimize] draft load failed:", e instanceof Error ? e.message : e)
+      } finally {
+        if (!cancelled) setIsLoadingDraft(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [selectedClientId])
+
+  /**
+   * Begin opnieuw - clear de draft uit memory zodat de CM van scratch
+   * kan beginnen. Verwijdert de DB-rij NIET (Roy kan later terug);
+   * volgende mount laadt 'm gewoon weer in. Dit is een visuele reset.
+   */
+  const startFresh = useCallback(() => {
+    setRefreshResult(null)
+    setSelectedVariantKeys(new Set())
+    setImageGenInFlight(new Set())
+    setImageGenResultsByVariant({})
+    setDraftGeneratedAt(null)
+    setGenerateError(null)
+    setActiveKey("pick_ad")
+  }, [])
 
   const updatePickedAd = useCallback(
     (next: PickedAd | null) => {
@@ -372,6 +483,37 @@ export function OptimizeWizard({
           style={{ width: `${Math.round((totalDone / STEPS.length) * 100)}%` }}
         />
       </div>
+
+      {/* Draft banner - Roy 2026-06-12 v9: laat zien dat er een eerder
+          gegenereerde refresh is geladen + bied "Begin opnieuw" knop. */}
+      {isLoadingDraft && (
+        <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2 text-xs text-muted-foreground inline-flex items-center gap-2">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          Draft van vorige sessie laden…
+        </div>
+      )}
+      {!isLoadingDraft && refreshResult && draftGeneratedAt && (
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="text-muted-foreground">
+              Draft van{" "}
+              <span className="font-medium text-foreground">
+                {formatRelativeTime(draftGeneratedAt)}
+              </span>{" "}
+              geladen ({refreshResult.proposals.reduce((n, p) => n + p.variants.length, 0)}{" "}
+              varianten). Ga door waar je gebleven was, of klik &ldquo;Begin opnieuw&rdquo;.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={startFresh}
+            className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors"
+          >
+            Begin opnieuw
+          </button>
+        </div>
+      )}
 
       {/* Wizard body - rail + active step. Same grid as onboarding.
           Roy 2026-06-11 v7: Overig zit nu in het rail (sibling sectie

@@ -19,11 +19,25 @@ type Supabase = Awaited<ReturnType<typeof createAdminClient>>
 
 /**
  * Insert one `pedro_variants` row per variant in the proposals array.
- * `ON CONFLICT (client_id, ad_name) DO NOTHING` - if the CM somehow
- * gets two refreshes proposing the same ad_name (shouldn't happen
- * because the assignAdNamesToVariants helper monotonically increments),
- * the first writer wins. Errors are caught + logged because the
- * refresh response should not fail when the learning-loop write fails.
+ *
+ * Roy 2026-06-12 bug fix: previously this used
+ * `{ onConflict: "client_id,ad_name", ignoreDuplicates: true }`. Pedro's
+ * ad_names are deterministic ("Photo 1 | <topic>") so a second refresh
+ * on the same source ad SILENTLY DROPPED its rows. The enrich step
+ * (which filters by the new refresh_id) found nothing → UI received
+ * `variantId: null` → inline edits + image-gen were disabled.
+ *
+ * Fix: drop `ignoreDuplicates` and drop `outcome` from the payload.
+ *   - On INSERT: row is created with outcome = DB default 'pending'.
+ *   - On CONFLICT (client_id, ad_name): Supabase emits
+ *     `DO UPDATE SET col = EXCLUDED.col` for each column in the payload.
+ *     Since `outcome` (+ meta_ad_id, leads, spend, cpl, ctr,
+ *     account_avg_cpl_at_sync) are NOT in the payload, they are
+ *     preserved - so the learning history the cron wrote stays intact
+ *     while the row's refresh_id + content fields get refreshed.
+ *
+ * Errors are caught + logged because a learning-loop write failure
+ * should not tank the refresh response itself.
  */
 export async function fanOutVariantsToTable(args: {
   supabase: Supabase
@@ -59,7 +73,7 @@ export async function fanOutVariantsToTable(args: {
         alt_headlines: v.altHeadlines.length > 0 ? v.altHeadlines : null,
         alt_primary_texts: v.altPrimaryTexts.length > 0 ? v.altPrimaryTexts : null,
         link_description: v.linkDescription || null,
-        outcome: "pending",
+        // outcome intentionally omitted - see header comment.
       })
     }
   }
@@ -68,7 +82,7 @@ export async function fanOutVariantsToTable(args: {
   try {
     const { error } = await args.supabase
       .from("pedro_variants")
-      .upsert(rows, { onConflict: "client_id,ad_name", ignoreDuplicates: true })
+      .upsert(rows, { onConflict: "client_id,ad_name" })
     if (error) throw error
     return { inserted: rows.length }
   } catch (e) {
