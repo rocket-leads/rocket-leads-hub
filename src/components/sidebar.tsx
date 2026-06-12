@@ -140,6 +140,15 @@ export async function Sidebar() {
         }
       : {}),
   }
+  // Calendar shows the signed-in user's Google Calendar events + their
+  // open Hub tasks color-coded in one week view. Sits directly above
+  // Meetings so an AM lands on "today's agenda" before drilling into
+  // Fathom recordings.
+  const CALENDAR: NavItem = {
+    href: "/calendar",
+    label: t("nav.calendar", locale),
+    icon: "Calendar",
+  }
 
   const TOP_GROUP: NavItem[] = [
     HOME,
@@ -151,7 +160,7 @@ export async function Sidebar() {
     ...(isFinance
       ? []
       : [{ href: "/onboarding", label: t("nav.onboarding", locale), icon: "ClipboardCheck" as const }]),
-    ...(isFinance ? [] : [OPTIMIZE, MEETINGS]),
+    ...(isFinance ? [] : [OPTIMIZE, CALENDAR, MEETINGS]),
   ]
 
   // ── Bottom group: ops / admin stack ──

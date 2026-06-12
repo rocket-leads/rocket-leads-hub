@@ -28,6 +28,7 @@ export const DICTIONARY = {
   "nav.watch_list": { nl: "Watch list", en: "Watch list" }, // brand term
   "nav.clients": { nl: "Huidige klanten", en: "Current clients" },
   "nav.inbox": { nl: "Inbox", en: "Inbox" },
+  "nav.calendar": { nl: "Kalender", en: "Calendar" },
   "nav.meetings": { nl: "Meetings", en: "Meetings" },
   "nav.pedro": { nl: "Pedro", en: "Pedro" },
   "nav.pedro_onboard": { nl: "On-board", en: "On-board" },
@@ -1295,6 +1296,9 @@ export const DICTIONARY = {
   "watchlist.sparkline.no_leads": { nl: "{date}: geen leads (carry €{cpl})", en: "{date}: no leads (carry €{cpl})" },
   "watchlist.sparkline.no_spend": { nl: "{date}: geen spend", en: "{date}: no spend" },
   "watchlist.sparkline.day_summary": { nl: "{date}: €{cpl} CPL · {leads} leads · €{spend} spend", en: "{date}: €{cpl} CPL · {leads} leads · €{spend} spend" },
+
+  // ─── Calendar page ────────────────────────────────────────────────────
+  "calendar.title": { nl: "Kalender", en: "Calendar" },
 
   // ─── Meetings page ────────────────────────────────────────────────────
   "meetings.title": { nl: "Meetings", en: "Meetings" },

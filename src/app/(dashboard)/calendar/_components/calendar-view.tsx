@@ -1,0 +1,486 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import Link from "next/link"
+import { useQuery } from "@tanstack/react-query"
+import {
+  addDays,
+  addWeeks,
+  endOfWeek,
+  format,
+  isToday,
+  startOfDay,
+  startOfWeek,
+} from "date-fns"
+import { ChevronLeft, ChevronRight, MapPin, Video } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import type { CalendarEventsResponse } from "@/app/api/calendar/events/route"
+
+/**
+ * Week-view calendar showing the user's Google Calendar events + Hub
+ * tasks side-by-side. Brand purple = events (primary integration),
+ * amber = tasks (Hub-native to-dos). The split is purely visual — both
+ * streams are queried in one /api/calendar/events round-trip.
+ *
+ * Day grid is 6:00–22:00 (HOUR_START–HOUR_END). Events outside that
+ * range get clipped to the visible window with their original time
+ * still surfaced in the title tooltip. Tasks have no time, so they
+ * render in the all-day row at the top of their due_date column.
+ */
+
+const HOUR_START = 6
+const HOUR_END = 22
+const HOUR_HEIGHT_PX = 56
+const TOTAL_HOURS = HOUR_END - HOUR_START
+const TIME_COL_WIDTH = "w-14"
+
+type Props = {
+  initialConnected: boolean
+}
+
+export function CalendarView({ initialConnected }: Props) {
+  // Anchor is "any day in the week we're viewing". The week range is
+  // derived (Mon-Sun) so users always see a full work-week regardless
+  // of which day they click into.
+  const [anchor, setAnchor] = useState<Date>(() => new Date())
+
+  const weekStart = useMemo(
+    () => startOfWeek(anchor, { weekStartsOn: 1 }),
+    [anchor],
+  )
+  const weekEnd = useMemo(
+    () => endOfWeek(anchor, { weekStartsOn: 1 }),
+    [anchor],
+  )
+  const days = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+    [weekStart],
+  )
+
+  const timeMinIso = weekStart.toISOString()
+  const timeMaxIso = endOfWeek(anchor, { weekStartsOn: 1 }).toISOString()
+
+  const query = useQuery<CalendarEventsResponse>({
+    queryKey: ["calendar-events", timeMinIso, timeMaxIso],
+    queryFn: async () => {
+      const url = new URL("/api/calendar/events", window.location.origin)
+      url.searchParams.set("timeMin", timeMinIso)
+      url.searchParams.set("timeMax", timeMaxIso)
+      const res = await fetch(url, { credentials: "include" })
+      if (!res.ok) throw new Error("Failed to load calendar")
+      return (await res.json()) as CalendarEventsResponse
+    },
+  })
+
+  const data = query.data
+  const connected = data?.connected ?? initialConnected
+
+  // Split events into all-day vs timed for layout.
+  const { allDayByDay, timedByDay, tasksByDay } = useMemo(() => {
+    const allDay: Record<string, CalendarEventsResponse["events"]> = {}
+    const timed: Record<string, CalendarEventsResponse["events"]> = {}
+    const tasks: Record<string, CalendarEventsResponse["tasks"]> = {}
+    for (const d of days) {
+      const key = format(d, "yyyy-MM-dd")
+      allDay[key] = []
+      timed[key] = []
+      tasks[key] = []
+    }
+    for (const ev of data?.events ?? []) {
+      // All-day events come back as YYYY-MM-DD; render them on that date.
+      // Timed events come back as ISO datetimes.
+      if (ev.allDay) {
+        const key = ev.start.slice(0, 10)
+        if (allDay[key]) allDay[key].push(ev)
+      } else {
+        const start = new Date(ev.start)
+        const key = format(start, "yyyy-MM-dd")
+        if (timed[key]) timed[key].push(ev)
+      }
+    }
+    for (const tk of data?.tasks ?? []) {
+      if (tasks[tk.due_date]) tasks[tk.due_date].push(tk)
+    }
+    return { allDayByDay: allDay, timedByDay: timed, tasksByDay: tasks }
+  }, [data, days])
+
+  return (
+    <div className="space-y-4">
+      {/* Toolbar — week navigator + today button + range label */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAnchor(new Date())}
+          >
+            Today
+          </Button>
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Previous week"
+              onClick={() => setAnchor((d) => addWeeks(d, -1))}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Next week"
+              onClick={() => setAnchor((d) => addWeeks(d, 1))}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          <div className="text-sm font-medium text-foreground">
+            {format(weekStart, "d MMM")} – {format(weekEnd, "d MMM yyyy")}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block size-2.5 rounded-sm bg-[#8967F3]" />
+            Meetings
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block size-2.5 rounded-sm bg-amber-500" />
+            Tasks
+          </span>
+        </div>
+      </div>
+
+      {!connected && <ConnectPrompt />}
+
+      {/* Grid container */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        {/* Header row */}
+        <div className="grid grid-cols-[56px_repeat(7,minmax(0,1fr))] border-b border-border bg-muted/30">
+          <div className={cn(TIME_COL_WIDTH, "border-r border-border")} />
+          {days.map((d) => (
+            <div
+              key={d.toISOString()}
+              className={cn(
+                "py-2 px-2 text-center border-r border-border last:border-r-0",
+                isToday(d) && "bg-primary/5",
+              )}
+            >
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                {format(d, "EEE")}
+              </div>
+              <div
+                className={cn(
+                  "text-sm font-medium tabular-nums",
+                  isToday(d) ? "text-primary" : "text-foreground",
+                )}
+              >
+                {format(d, "d MMM")}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* All-day / tasks row */}
+        <AllDayRow
+          days={days}
+          allDayByDay={allDayByDay}
+          tasksByDay={tasksByDay}
+        />
+
+        {/* Hour grid */}
+        <div className="relative grid grid-cols-[56px_repeat(7,minmax(0,1fr))]">
+          {/* Time column */}
+          <div className={cn(TIME_COL_WIDTH, "border-r border-border")}>
+            {Array.from({ length: TOTAL_HOURS }, (_, i) => (
+              <div
+                key={i}
+                className="h-14 px-2 pt-1 text-[10px] text-muted-foreground border-b border-border/60"
+              >
+                {String(HOUR_START + i).padStart(2, "0")}:00
+              </div>
+            ))}
+          </div>
+
+          {/* Day columns */}
+          {days.map((d) => {
+            const key = format(d, "yyyy-MM-dd")
+            return (
+              <DayColumn
+                key={key}
+                day={d}
+                events={timedByDay[key] ?? []}
+              />
+            )
+          })}
+        </div>
+      </div>
+
+      {query.isError && (
+        <p className="text-sm text-destructive">
+          Couldn&apos;t load calendar. Try refreshing.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ConnectPrompt() {
+  return (
+    <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+      <p className="font-medium text-foreground">
+        Google Calendar is not connected
+      </p>
+      <p className="mt-1 text-muted-foreground">
+        Sign out and sign back in to grant calendar access. Hub tasks below
+        will still show.{" "}
+        <Link href="/auth/signin" className="underline underline-offset-2">
+          Re-sign-in
+        </Link>
+      </p>
+    </div>
+  )
+}
+
+function AllDayRow({
+  days,
+  allDayByDay,
+  tasksByDay,
+}: {
+  days: Date[]
+  allDayByDay: Record<string, CalendarEventsResponse["events"]>
+  tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
+}) {
+  // Reserve some minimum height even when empty so the row doesn't collapse
+  // into an invisible 0px strip on slow weeks.
+  return (
+    <div className="grid grid-cols-[56px_repeat(7,minmax(0,1fr))] border-b border-border bg-muted/10">
+      <div
+        className={cn(
+          TIME_COL_WIDTH,
+          "border-r border-border py-2 px-2 text-[10px] text-muted-foreground",
+        )}
+      >
+        all-day
+      </div>
+      {days.map((d) => {
+        const key = format(d, "yyyy-MM-dd")
+        const allDayEvents = allDayByDay[key] ?? []
+        const tasks = tasksByDay[key] ?? []
+        return (
+          <div
+            key={key}
+            className={cn(
+              "border-r border-border last:border-r-0 p-1.5 space-y-1 min-h-[44px]",
+              isToday(d) && "bg-primary/5",
+            )}
+          >
+            {allDayEvents.map((ev) => (
+              <EventChip key={ev.id} title={ev.title} href={ev.htmlLink} />
+            ))}
+            {tasks.map((t) => (
+              <TaskChip
+                key={t.id}
+                title={t.title}
+                clientName={t.clientName}
+              />
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function DayColumn({
+  day,
+  events,
+}: {
+  day: Date
+  events: CalendarEventsResponse["events"]
+}) {
+  const dayStart = startOfDay(day)
+
+  return (
+    <div
+      className={cn(
+        "relative border-r border-border last:border-r-0",
+        isToday(day) && "bg-primary/5",
+      )}
+      style={{ height: TOTAL_HOURS * HOUR_HEIGHT_PX }}
+    >
+      {/* Hour grid lines */}
+      {Array.from({ length: TOTAL_HOURS }, (_, i) => (
+        <div
+          key={i}
+          className="absolute left-0 right-0 border-b border-border/60"
+          style={{ top: (i + 1) * HOUR_HEIGHT_PX }}
+        />
+      ))}
+
+      {/* Now-indicator (red line at current time, only on today's column) */}
+      {isToday(day) && <NowIndicator />}
+
+      {/* Timed events */}
+      {events.map((ev) => {
+        const start = new Date(ev.start)
+        const end = new Date(ev.end)
+        // Clamp into the visible 06:00–22:00 window so an event that
+        // started yesterday or runs past 22:00 still renders cleanly.
+        const startHour =
+          (start.getTime() - dayStart.getTime()) / 3_600_000
+        const endHour = (end.getTime() - dayStart.getTime()) / 3_600_000
+        const top = Math.max(0, (startHour - HOUR_START)) * HOUR_HEIGHT_PX
+        const bottom = Math.min(TOTAL_HOURS, endHour - HOUR_START) * HOUR_HEIGHT_PX
+        const height = Math.max(20, bottom - top)
+        return (
+          <EventBlock
+            key={ev.id}
+            top={top}
+            height={height}
+            title={ev.title}
+            timeLabel={`${format(start, "HH:mm")} – ${format(end, "HH:mm")}`}
+            location={ev.location}
+            hangoutLink={ev.hangoutLink}
+            htmlLink={ev.htmlLink}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+function NowIndicator() {
+  // Cheap re-render hack: rerender every minute by re-reading Date.now().
+  // Avoids pulling in a timer for a single red line.
+  const now = new Date()
+  const hours = now.getHours() + now.getMinutes() / 60
+  if (hours < HOUR_START || hours > HOUR_END) return null
+  const top = (hours - HOUR_START) * HOUR_HEIGHT_PX
+  return (
+    <div
+      className="absolute left-0 right-0 z-10 pointer-events-none"
+      style={{ top }}
+    >
+      <div className="h-px bg-red-500" />
+      <div className="absolute -left-1 -top-1 size-2 rounded-full bg-red-500" />
+    </div>
+  )
+}
+
+function EventBlock({
+  top,
+  height,
+  title,
+  timeLabel,
+  location,
+  hangoutLink,
+  htmlLink,
+}: {
+  top: number
+  height: number
+  title: string
+  timeLabel: string
+  location: string | null
+  hangoutLink: string | null
+  htmlLink: string | null
+}) {
+  const className = cn(
+    "absolute left-1 right-1 rounded-md border-l-2 px-1.5 py-1 overflow-hidden",
+    "bg-[#8967F3]/15 border-[#8967F3] text-foreground",
+    "hover:bg-[#8967F3]/25 transition-colors",
+    htmlLink && "cursor-pointer",
+  )
+  const style = { top, height }
+  const tooltip = `${timeLabel} — ${title}${location ? ` @ ${location}` : ""}`
+  const inner = (
+    <>
+      <div className="text-[11px] font-medium leading-tight line-clamp-2">
+        {title}
+      </div>
+      <div className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">
+        {timeLabel}
+      </div>
+      {(location || hangoutLink) && height >= 50 && (
+        <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+          {hangoutLink && <Video className="size-3" />}
+          {location && (
+            <span className="inline-flex items-center gap-0.5 truncate">
+              <MapPin className="size-3 shrink-0" />
+              <span className="truncate">{location}</span>
+            </span>
+          )}
+        </div>
+      )}
+    </>
+  )
+  if (htmlLink) {
+    return (
+      <a
+        href={htmlLink}
+        target="_blank"
+        rel="noreferrer"
+        className={className}
+        style={style}
+        title={tooltip}
+      >
+        {inner}
+      </a>
+    )
+  }
+  return (
+    <div className={className} style={style} title={tooltip}>
+      {inner}
+    </div>
+  )
+}
+
+function EventChip({ title, href }: { title: string; href: string | null }) {
+  const className = cn(
+    "block truncate rounded px-1.5 py-0.5 text-[11px]",
+    "bg-[#8967F3]/15 border-l-2 border-[#8967F3] text-foreground",
+    href && "cursor-pointer hover:bg-[#8967F3]/25",
+  )
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className={className}
+        title={title}
+      >
+        {title}
+      </a>
+    )
+  }
+  return (
+    <div className={className} title={title}>
+      {title}
+    </div>
+  )
+}
+
+function TaskChip({
+  title,
+  clientName,
+}: {
+  title: string
+  clientName: string | null
+}) {
+  return (
+    <div
+      className={cn(
+        "truncate rounded px-1.5 py-0.5 text-[11px]",
+        "bg-amber-500/15 border-l-2 border-amber-500 text-foreground",
+      )}
+      title={clientName ? `${title} — ${clientName}` : title}
+    >
+      {title}
+      {clientName && (
+        <span className="text-muted-foreground"> · {clientName}</span>
+      )}
+    </div>
+  )
+}
