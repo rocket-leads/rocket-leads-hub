@@ -21,6 +21,21 @@ export type CreateTaskAction = {
   priority?: "low" | "normal" | "high"
 }
 
+/** Self-targeted scheduled reminder. Surfaces in the user's own inbox on
+ *  `remindAt` (interpreted as 09:00 Europe/Amsterdam by the executor). The
+ *  classifier picks `kind`: action-on-someone-else → "task" (can be ticked
+ *  off), pure heads-up → "update" (read-once). assigneeId is filled
+ *  server-side to the signed-in user and is not part of the LLM input. */
+export type CreateReminderAction = {
+  type: "create_reminder"
+  kind: "task" | "update"
+  title: string
+  body?: string
+  remindAt: string
+  assigneeId: string
+  clientId?: string
+}
+
 export type TriggerPedroRefreshAction = {
   type: "trigger_pedro_refresh"
   clientId: string
@@ -35,6 +50,7 @@ export type NavigateToClientAction = {
 
 export type CopilotAction =
   | CreateTaskAction
+  | CreateReminderAction
   | TriggerPedroRefreshAction
   | NavigateToClientAction
 
@@ -77,6 +93,41 @@ export const COPILOT_TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ["title", "assigneeId"],
+    },
+  },
+  {
+    name: "create_reminder",
+    description:
+      "Schedule a reminder for the SIGNED-IN USER themselves, hidden until the target date. Use when the user says 'remind me', 'herinner me', 'reminder voor mezelf', 'op X juni laat me weten...', etc. Pick `kind`: \"task\" if the reminder is an action you need to take and tick off (chase the invoice, call the client, send creatives); \"update\" if it's pure information you want to be reminded of (campaign goes live tuesday, deadline X). When in doubt, prefer \"task\" - a tickable item is safer than an info-blip that gets read and forgotten. Do NOT use this for delegating to someone else - use create_task for that.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: ["task", "update"],
+          description:
+            "\"task\" = something the user has to DO on/before that date (chase, check, send, call). \"update\" = a heads-up the user wants to be reminded of (event, deadline, milestone). Default to \"task\" when ambiguous.",
+        },
+        title: {
+          type: "string",
+          description: "Short reminder title in the user's voice (e.g. 'Check of factuur Vlex Vending is betaald').",
+        },
+        body: {
+          type: "string",
+          description: "Optional longer context for the reminder. Usually empty - the title is enough.",
+        },
+        remindAt: {
+          type: "string",
+          description:
+            "Reminder date in YYYY-MM-DD. Resolve relative phrases like 'morgen', 'volgende week dinsdag', 'aanstaande vrijdag', 'over 3 dagen', 'dinsdag 24 juni' against the current date in the system prompt.",
+        },
+        clientId: {
+          type: "string",
+          description:
+            "Monday item ID of the client this reminder relates to. Pick from the provided client roster when the user mentions a client. Required when a client is named or implied by page context.",
+        },
+      },
+      required: ["kind", "title", "remindAt"],
     },
   },
   {

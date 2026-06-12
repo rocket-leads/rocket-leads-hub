@@ -2,7 +2,6 @@ import { Sidebar } from "@/components/sidebar"
 import { Providers } from "@/components/providers"
 import { ClientSearch } from "@/components/client-search"
 import { CommandBar } from "@/components/copilot/command-bar"
-import { NotificationBell } from "@/components/copilot/notification-bell"
 import { ApiHealthBanner } from "@/components/api-health-banner"
 import { GlobalClientSlideOver } from "@/components/global-client-slide-over"
 import { WeeklyUpdatesChip } from "@/app/(dashboard)/clients/_components/weekly-update-drafts-banner"
@@ -35,13 +34,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
               client slide-over (z-50) so the panel still covers it. */}
           <header className="sticky top-0 z-40 flex h-14 items-center justify-end gap-2 px-8 bg-background/75 backdrop-blur-md supports-[backdrop-filter]:bg-background/65">
             {/* Order matters (Roy 2026-06-11): scheduled-deliverable chips
-                first (calendar), then the AI surfaces (Co-pilot command
-                bar + NotificationBell). Keeps the "agenda"-style work to
-                the left of the "AI"-style work so the two don't read as
-                the same thing. */}
+                first (calendar), then the AI surface (Co-pilot command bar).
+                Keeps the "agenda"-style work to the left of the "AI"-style
+                work so the two don't read as the same thing. Roy 2026-06-12:
+                the standalone notification bell collapsed into the Co-pilot
+                button - one button, badge counter + drafts panel both live
+                on/inside the ⌘J surface now. */}
             <WeeklyUpdatesChip />
             <CommandBar />
-            <NotificationBell />
             <ClientSearch />
           </header>
           {/* Global API health banner - visible on every page when any

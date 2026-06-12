@@ -77,6 +77,11 @@ export type CreateInboxItemInput = {
   dueDate?: string
   source?: InboxSource
   sourceRef?: Record<string, unknown>
+  /** Hide the item from the active list until this moment. Accepts a full ISO
+   *  timestamp OR a plain YYYY-MM-DD (server expands the latter to 09:00
+   *  Europe/Amsterdam). Used by Copilot-scheduled reminders so a self-task
+   *  created today only surfaces on the target date. */
+  snoozedUntil?: string
 }
 
 export type UpdateInboxItemInput = {

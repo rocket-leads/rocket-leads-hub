@@ -1,8 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { createPortal } from "react-dom"
-import { usePathname, useSearchParams, useRouter } from "next/navigation"
+import { useCallback, useEffect, useState } from "react"
+import { usePathname, useSearchParams } from "next/navigation"
 import { Sparkles, Loader2, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -10,6 +9,7 @@ import { AutoTextarea } from "@/components/ui/auto-textarea"
 import { buildPageContext } from "@/lib/copilot/context"
 import { executeAction } from "@/lib/copilot/executors"
 import { useQueueCommand } from "./use-copilot-drafts"
+import { DraftsPanel, useCopilotDraftsBadge } from "./drafts-panel"
 
 /**
  * AI Co-pilot command bar (⌘J).
@@ -32,11 +32,9 @@ import { useQueueCommand } from "./use-copilot-drafts"
 export function CommandBar() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const router = useRouter()
 
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState("")
-  const [toast, setToast] = useState<string | null>(null)
   const queueCommand = useQueueCommand()
 
   // ⌘J / Ctrl+J opens from anywhere; Esc closes.
@@ -57,28 +55,23 @@ export function CommandBar() {
     if (open) setInput("")
   }, [open])
 
-  // Auto-clear toast after 4s.
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 4000)
-    return () => clearTimeout(t)
-  }, [toast])
-
   const submit = useCallback(async () => {
     if (!input.trim() || queueCommand.isPending) return
     const userInput = input.trim()
     const sp = searchParams ? new URLSearchParams(searchParams.toString()) : null
     const context = buildPageContext(pathname ?? "/", sp)
 
-    // Optimistically close the dialog so the user can keep working -
-    // the actual queue insert happens in parallel.
-    setOpen(false)
-    setToast(`Working on "${truncate(userInput, 60)}"… Check 🔔 when ready.`)
+    // Roy 2026-06-12: dialog stays open after submit. The user watches the
+    // freshly-queued draft appear in the Drafts panel below as "Processing"
+    // and flips to Ready in-place, so they can approve right there without
+    // reopening anything. Clear the input so a second command can be
+    // dictated immediately.
+    setInput("")
 
     try {
       await queueCommand.mutateAsync({ input: userInput, context })
     } catch (e) {
-      setToast(`Queue failed: ${e instanceof Error ? e.message : "unknown error"}`)
+      console.error("Queue failed:", e instanceof Error ? e.message : "unknown error")
     }
   }, [input, queueCommand, pathname, searchParams])
 
@@ -89,6 +82,8 @@ export function CommandBar() {
     }
   }
 
+  const badgeCount = useCopilotDraftsBadge()
+
   return (
     <>
       <button
@@ -96,16 +91,24 @@ export function CommandBar() {
         onClick={() => setOpen(true)}
         // Brand-purple chrome (Roy 2026-06-11 v2): the AI Co-pilot is
         // where the CM actually creates tasks + updates, so it gets the
-        // primary purple. NotificationBell stays neutral (passive
-        // "look at this" surface) and the weekly-update chip stays
-        // neutral (scheduled deliverable, not AI).
-        className="flex items-center gap-2 h-10 rounded-lg border border-primary/40 bg-primary/10 px-3.5 text-sm text-primary hover:bg-primary/20 hover:border-primary/60 transition-colors"
+        // primary purple. Roy 2026-06-12: the notification bell merged
+        // into this surface, so the badge counter that lived on the bell
+        // now sits here - one button, one place to look.
+        className="relative flex items-center gap-2 h-10 rounded-lg border border-primary/40 bg-primary/10 px-3.5 text-sm text-primary hover:bg-primary/20 hover:border-primary/60 transition-colors"
         aria-label="Open AI co-pilot"
       >
         <Sparkles className="h-3.5 w-3.5 shrink-0" />
         <kbd className="hidden sm:inline-flex h-5 items-center gap-0.5 rounded-md border border-primary/30 bg-primary/10 px-1.5 text-[10px] font-medium text-primary/80">
           <span className="text-xs">⌘</span>J
         </kbd>
+        {badgeCount > 0 && (
+          <span
+            className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground shadow-sm"
+            aria-label={`${badgeCount} drafts ready`}
+          >
+            {badgeCount}
+          </span>
+        )}
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -142,30 +145,16 @@ export function CommandBar() {
                 )}
               </Button>
             </div>
-            <p className="text-[11px] text-muted-foreground/70 -mt-1">
-              Dialog sluit direct. Je krijgt een melding 🔔 zodra het concept klaar is om te
-              approven.
-            </p>
+            {/* Drafts panel - drafts queue lives directly below the input
+                so the user watches their submission appear as Processing
+                and flip to Ready in-place. Renders nothing when the queue
+                is empty so the dialog stays compact for new users. */}
+            <DraftsPanel onParentOpenChange={setOpen} />
           </div>
         </DialogContent>
       </Dialog>
-
-      {toast && typeof document !== "undefined" &&
-        createPortal(
-          <div className="fixed bottom-6 right-6 z-[60] max-w-sm rounded-lg border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-xl">
-            <div className="flex items-start gap-2">
-              <Sparkles className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-              <div className="flex-1">{toast}</div>
-            </div>
-          </div>,
-          document.body,
-        )}
     </>
   )
-}
-
-function truncate(s: string, max: number): string {
-  return s.length <= max ? s : s.slice(0, max - 1) + "…"
 }
 
 // Re-export executeAction so any future component-level callers can use it

@@ -168,15 +168,26 @@ async function processDraft(args: {
       return
     }
 
-    const action = normalizeAction(toolUse.name, toolUse.input as Record<string, unknown>)
+    const action = normalizeAction(
+      toolUse.name,
+      toolUse.input as Record<string, unknown>,
+      { sessionUserId: userId },
+    )
     if (!action) {
       await markFailed(supabase, draftId, `Unknown tool '${toolUse.name}'.`)
       return
     }
 
-    // Enrichment pass - only for task creation with a real client.
+    // Enrichment pass - runs for both create_task and create_reminder when
+    // a client is set. Roy 2026-06-12: reminders MUST capture today's
+    // client snapshot in the body so future-you opening the surfaced task
+    // has immediate context (CPL trend, invoice state, Pedro note) without
+    // needing to re-pull anything.
     let sourcesUsed: string[] = []
-    if (action.type === "create_task" && action.clientId) {
+    if (
+      (action.type === "create_task" || action.type === "create_reminder") &&
+      action.clientId
+    ) {
       const client = visibleClients.find((c) => c.mondayItemId === action.clientId)
       if (client) {
         const assigneeName =
@@ -190,6 +201,11 @@ async function processDraft(args: {
           client,
           supabase,
           assigneeName,
+          taskKind: action.type === "create_reminder" ? "reminder" : "task",
+          remindAt:
+            action.type === "create_reminder"
+              ? action.remindAt
+              : action.dueDate ?? null,
         })
         action.body = enrichment.body || action.body
         sourcesUsed = enrichment.sourcesUsed
@@ -259,11 +275,26 @@ function buildSystemPrompt(args: {
 
   return `You are the Rocket Leads Hub co-pilot. You parse natural-language commands (Dutch or English) into structured tool calls. Always call exactly one tool - never reply with prose unless the input is genuinely ambiguous or unsupported, in which case return a short clarifying question as plain text.
 
+LANGUAGE MATCHING (important): Mirror the user's input language in every string field you fill (title, body, clarifying questions). If the user typed Dutch, write the title in Dutch. If the user typed English, write English. Never mix - "Check performance TMM Technology - kost per lead verlaagd?" is wrong; it should be either "Check TMM Technology performance - cost per lead dropped?" (all English) or "Check performance TMM Technology - kost per lead verlaagd?" → rewrite to "Performance TMM Technology checken - kost per lead verlaagd?" (all Dutch). For Dutch inputs, prefer Dutch verbs ("checken", "bellen", "chasen", "controleren") over English verbs.
+
 Today is ${args.today}. The signed-in user is ${args.sessionUser.name} (id=${args.sessionUser.id}).
 
 ${pageHint}
 
-When resolving relative dates: "today"/"vandaag" → ${args.today}; "tomorrow"/"morgen" → ${addDays(args.today, 1)}; weekday names → the next occurrence of that weekday (or today if it matches). Always return YYYY-MM-DD.
+TOOL SELECTION (the single most important rule: SELF vs OTHER):
+- The signed-in user is ${args.sessionUser.name} (id=${args.sessionUser.id}). If the task / reminder belongs to THEM (phrasings like "remind me", "herinner me", "maak een taak voor mij", "voor mezelf", "task for me", "ik moet…", "stuur mezelf", "op X laat me weten", or an unattributed self-action like "bel Zumex dinsdag") → ALWAYS use create_reminder. The user is assigning themselves something. NEVER use create_task in this case, even if the phrasing literally contains "taak" or "task".
+- Only when the task is for ANOTHER named person ("maak een taak voor Mike", "wijs aan Sanne toe", "create a task for Roy", "Lara moet X doen") → use create_task with that person's id from the roster.
+- Pedro / new creatives / ad variants → trigger_pedro_refresh.
+- "open / show / ga naar [client]" → navigate_to_client.
+
+When you pick create_reminder you must still classify the 'kind' parameter:
+
+REMINDER KIND CLASSIFIER (create_reminder.kind):
+- "task" when the reminder is an action the user must DO and tick off: chase invoice, call client, send creatives, check if X happened, follow up on Y.
+- "update" only when it's purely informational with no action: "remind me campaign goes live tuesday", "deadline X is friday", "Pedro launch dinsdag".
+- When in doubt, pick "task" - a tickable item is safer than a read-once update that gets forgotten.
+
+When resolving relative dates: "today"/"vandaag" → ${args.today}; "tomorrow"/"morgen" → ${addDays(args.today, 1)}; "overmorgen" → ${addDays(args.today, 2)}; weekday names ("dinsdag", "tuesday") → the next occurrence of that weekday (or today if it matches); "volgende week dinsdag" / "next tuesday" → the Tuesday of the following ISO week; "aanstaande X" → same as bare weekday name; "over N dagen" / "in N days" → today + N. Always return YYYY-MM-DD.
 
 When resolving people names: pick the best match from the roster below. "Mike", "Miek", "Maik" likely all map to whoever in the roster has "Mike" or similar. If multiple people share a first name, prefer the one who fits the role implied by the task (e.g. campaign manager for creative work).
 
@@ -287,6 +318,7 @@ function addDays(isoDate: string, days: number): string {
 function normalizeAction(
   name: string,
   input: Record<string, unknown>,
+  ctx: { sessionUserId: string },
 ): CopilotAction | null {
   switch (name) {
     case "create_task":
@@ -302,6 +334,25 @@ function normalizeAction(
           input.priority === "low" || input.priority === "normal" || input.priority === "high"
             ? input.priority
             : undefined,
+      }
+    case "create_reminder":
+      if (
+        typeof input.title !== "string" ||
+        typeof input.remindAt !== "string" ||
+        (input.kind !== "task" && input.kind !== "update")
+      ) {
+        return null
+      }
+      // assigneeId is filled server-side - the LLM never picks it for
+      // reminders, which are always self-targeted by definition.
+      return {
+        type: "create_reminder",
+        kind: input.kind,
+        title: input.title,
+        body: typeof input.body === "string" ? input.body : undefined,
+        remindAt: input.remindAt,
+        assigneeId: ctx.sessionUserId,
+        clientId: typeof input.clientId === "string" ? input.clientId : undefined,
       }
     case "trigger_pedro_refresh":
       if (typeof input.clientId !== "string") return null
@@ -343,6 +394,12 @@ function describeAction(
       if (action.clientId) parts.push(`Client: ${clientName(action.clientId)}`)
       if (action.dueDate) parts.push(`Due: ${action.dueDate}`)
       if (action.priority && action.priority !== "normal") parts.push(`Priority: ${action.priority}`)
+      return parts.join(" · ")
+    }
+    case "create_reminder": {
+      const label = action.kind === "task" ? "Reminder (task)" : "Reminder (update)"
+      const parts = [`${label}: "${action.title}"`, `Remind: ${action.remindAt}`]
+      if (action.clientId) parts.push(`Client: ${clientName(action.clientId)}`)
       return parts.join(" · ")
     }
     case "trigger_pedro_refresh":

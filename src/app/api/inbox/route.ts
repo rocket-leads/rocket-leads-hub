@@ -70,6 +70,19 @@ export async function POST(req: NextRequest) {
   const initialStatus: UpdateStatus | TaskStatus =
     body.kind === "update" ? "unread" : "open"
 
+  // Scheduled reminders pass `snoozedUntil` either as a full ISO timestamp
+  // or a plain YYYY-MM-DD. The plain form means "09:00 Europe/Amsterdam on
+  // that day" - resolveSnoozedUntil handles DST so a Tuesday reminder lands
+  // at 09:00 NL whether it's summer or winter.
+  let snoozedUntil: string | null = null
+  if (body.snoozedUntil) {
+    try {
+      snoozedUntil = resolveSnoozedUntil(body.snoozedUntil)
+    } catch {
+      return NextResponse.json({ error: "Invalid snoozedUntil" }, { status: 400 })
+    }
+  }
+
   const supabase = await createAdminClient()
   const { data, error } = await supabase
     .from("inbox_events")
@@ -85,6 +98,7 @@ export async function POST(req: NextRequest) {
       due_date: body.kind === "task" ? body.dueDate ?? null : null,
       source: body.source ?? "manual",
       source_ref: body.sourceRef ?? null,
+      snoozed_until: snoozedUntil,
     })
     .select("id, title")
     .single()
@@ -98,8 +112,17 @@ export async function POST(req: NextRequest) {
 
   // Push notification: notify the assignee about a new task on their plate.
   // Skip self-assigned items (you don't ping yourself when creating a task
-  // for yourself). Updates are noisier; only push for tasks for now.
-  if (body.kind === "task" && body.assigneeId !== session.user.id) {
+  // for yourself). Updates are noisier; only push for tasks for now. Also
+  // skip when the item is scheduled for the future - the user doesn't want
+  // a "new task" ping at creation time for something that's hidden until
+  // next Tuesday; the surface-time push is a separate concern (cron-driven,
+  // fase 2).
+  const isScheduledFuture = snoozedUntil !== null && new Date(snoozedUntil).getTime() > Date.now()
+  if (
+    body.kind === "task" &&
+    body.assigneeId !== session.user.id &&
+    !isScheduledFuture
+  ) {
     sendPushToUser(body.assigneeId, {
       title: "Nieuwe taak op je naam",
       body: data.title.length > 120 ? data.title.slice(0, 117) + "…" : data.title,
@@ -109,4 +132,35 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ id: data.id }, { status: 201 })
+}
+
+/** Expand `snoozedUntil` input to a canonical ISO timestamp.
+ *
+ * - Plain YYYY-MM-DD → 09:00 Europe/Amsterdam on that day (DST-aware).
+ * - Anything else is fed to `new Date()`; if it parses, we return its ISO.
+ *
+ * The Intl roundtrip resolves the Amsterdam UTC offset on the target date
+ * (CEST=+02:00 in summer, CET=+01:00 in winter) without needing date-fns-tz.
+ */
+function resolveSnoozedUntil(input: string): string {
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.exec(input)
+  if (dateOnly) {
+    const probe = new Date(`${input}T09:00:00Z`)
+    const tzName = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Amsterdam",
+      timeZoneName: "shortOffset",
+    })
+      .formatToParts(probe)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT+1"
+    const offsetMatch = /GMT([+-]\d+)/.exec(tzName)
+    const offsetHours = offsetMatch ? parseInt(offsetMatch[1], 10) : 1
+    const utcHour = 9 - offsetHours
+    const hh = String(utcHour).padStart(2, "0")
+    return `${input}T${hh}:00:00.000Z`
+  }
+  const parsed = new Date(input)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Invalid date")
+  }
+  return parsed.toISOString()
 }

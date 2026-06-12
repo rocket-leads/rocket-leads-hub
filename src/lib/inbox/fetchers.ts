@@ -261,9 +261,12 @@ export async function listInboxItems(
     else if (filters.kind === "task") query = query.in("status", ["open", "in_progress"])
   }
 
-  // Snooze handling - defaults to hiding snoozed items in "active" task views.
-  // PostgREST `or` lets us express "snoozed_until IS NULL OR snoozed_until <= now".
-  const snoozeMode = filters.snoozed ?? (filters.kind === "task" ? "active" : "all")
+  // Snooze handling - defaults to hiding snoozed items in active views for
+  // both Tasks AND Updates. Copilot-scheduled reminder Updates store their
+  // surface-on date in snoozed_until, so without this default they'd appear
+  // in today's Updates list the moment they're created. PostgREST `or` lets
+  // us express "snoozed_until IS NULL OR snoozed_until <= now".
+  const snoozeMode = filters.snoozed ?? "active"
   if (snoozeMode === "active") {
     const nowIso = new Date().toISOString()
     query = query.or(`snoozed_until.is.null,snoozed_until.lte.${nowIso}`)
@@ -499,9 +502,9 @@ export async function getInboxBadgeCounts(
   const subscribedChannelIds = await getUserTrengoChannelIds(userId)
 
   if (audienceRole === "cm_only") {
-    // CM: assignee/author by default, plus rows on any channel the CM
-    // explicitly subscribed to in /account. Without that path the
-    // Kanalen tab would always be empty for CMs.
+    // CM-only: assignee/author by default, plus rows on any channel the
+    // CM explicitly subscribed to in /account. Without the channel sub
+    // path the Kanalen tab is empty for CMs even when they're connected.
     const channelClause =
       subscribedChannelIds.length > 0
         ? `,trengo_channel_id.in.(${subscribedChannelIds.join(",")})`

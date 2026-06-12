@@ -18,6 +18,8 @@ export async function executeAction(
   switch (action.type) {
     case "create_task":
       return executeCreateTask(action)
+    case "create_reminder":
+      return executeCreateReminder(action)
     case "trigger_pedro_refresh":
       return executeTriggerPedroRefresh(action)
     case "navigate_to_client":
@@ -51,6 +53,39 @@ async function executeCreateTask(action: Extract<CopilotAction, { type: "create_
   }
 
   return { ok: true, message: "Task created", navigateTo: "/inbox" }
+}
+
+async function executeCreateReminder(
+  action: Extract<CopilotAction, { type: "create_reminder" }>,
+): Promise<ExecuteResult> {
+  if (!action.clientId) {
+    return { ok: false, message: "Pick a client before scheduling the reminder." }
+  }
+
+  const res = await fetch("/api/inbox", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: action.kind,
+      clientId: action.clientId,
+      assigneeId: action.assigneeId,
+      title: action.title,
+      body: action.body,
+      priority: action.kind === "task" ? "normal" : undefined,
+      // due_date and snoozed_until both point at the reminder day for tasks
+      // so the row sorts correctly in the Tasks list once it surfaces.
+      dueDate: action.kind === "task" ? action.remindAt : undefined,
+      snoozedUntil: action.remindAt,
+      source: "manual",
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Failed to schedule reminder" }))
+    return { ok: false, message: err.error ?? "Failed to schedule reminder" }
+  }
+
+  return { ok: true, message: "Reminder scheduled", navigateTo: "/inbox" }
 }
 
 async function executeTriggerPedroRefresh(

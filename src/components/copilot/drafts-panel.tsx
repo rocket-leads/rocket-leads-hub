@@ -1,53 +1,53 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
-  Bell,
-  Loader2,
   AlertCircle,
-  Sparkles,
-  Check,
-  Pencil,
-  Trash2,
   Calendar,
+  Check,
+  Loader2,
+  Pencil,
+  Sparkles,
+  Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
 import { StatusPill } from "@/components/ui/status-pill"
 import { executeAction } from "@/lib/copilot/executors"
-import type { CopilotAction, CopilotDraft } from "@/lib/copilot/tools"
+import type { CopilotDraft } from "@/lib/copilot/tools"
 import type { ClientSearchResult } from "@/app/api/clients/search/route"
-import {
-  useCompleteDraft,
-  useCopilotDrafts,
-} from "./use-copilot-drafts"
+import { useCompleteDraft, useCopilotDrafts } from "./use-copilot-drafts"
 import { ConfirmDialog } from "./confirm-dialog"
 
 type UserRow = { id: string; name: string | null; email: string; role: string | null }
 
 /**
- * AI Co-pilot notification bell. Visual language mirrors the inbox row
- * card 1:1 per Roy's directive (2026-05-22) so dismiss/approve/edit on
- * an AI draft feels identical to mark-done/delete on a regular task:
+ * Drafts panel rendered inside the AI Co-pilot command bar dialog.
  *
- *   - Colored left rail (primary brand purple - AI is the "third type"
- *     next to violet=Task, sky=Update)
- *   - Type chip top-left ("AI Draft" with Sparkles icon)
- *   - StatusPill (Ready / Processing / Failed) in the same row
- *   - Title using inbox `text-[15px] font-medium`
- *   - Meta row with `text-xs text-muted-foreground/80` and `·` separators
- *   - Right-side 36×36 ActionIconButtons (success/danger/muted) - same
- *     component the inbox row uses, so the chrome is literally identical
+ * Replaces the standalone notification bell - Roy 2026-06-12: "alles
+ * onder de Copilot-knop, één surface". The badge counter that used to
+ * live on the bell now sits on the ⌘J button (see useCopilotDraftsBadge).
+ *
+ * Row chrome is identical to the inbox row (chip, status pill, 36×36
+ * ActionIconButtons) so the AI Draft surface visually belongs to the
+ * same family as Tasks / Updates.
  */
-export function NotificationBell() {
+export function DraftsPanel({
+  onParentOpenChange,
+}: {
+  /** Called when the panel needs to take over the modal surface (entering
+   *  the editor) or hand it back (user clicked back). Lets the Copilot
+   *  command bar close itself to reveal the editor and re-open when the
+   *  user backs out. Optional - omit when this panel is rendered outside
+   *  a parent dialog. */
+  onParentOpenChange?: (open: boolean) => void
+}) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
   const [editingDraft, setEditingDraft] = useState<CopilotDraft | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
 
-  // Roster lazily loaded once - same pattern the command bar uses for
-  // the editable confirmation card.
+  // Roster lazily loaded on first roster-requiring interaction (edit) so
+  // the panel renders without a roundtrip on first open.
   const [users, setUsers] = useState<UserRow[]>([])
   const [clients, setClients] = useState<ClientSearchResult[]>([])
   const rosterLoadedRef = useRef(false)
@@ -65,7 +65,7 @@ export function NotificationBell() {
         setClients(Array.isArray(data) ? data : [])
       }
     } catch {
-      // Non-fatal - the bell still renders with raw ids.
+      // Non-fatal - the editor still renders with raw ids.
     }
   }, [])
 
@@ -75,19 +75,6 @@ export function NotificationBell() {
   const drafts = data?.drafts ?? []
   const actionable = drafts.filter((d) => d.status === "ready" || d.status === "failed")
   const pending = drafts.filter((d) => d.status === "pending")
-  const badgeCount = actionable.length
-
-  // Click outside to close.
-  useEffect(() => {
-    if (!open) return
-    function onClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", onClick)
-    return () => document.removeEventListener("mousedown", onClick)
-  }, [open])
 
   async function quickApprove(draft: CopilotDraft) {
     if (!draft.draftAction) return
@@ -102,80 +89,50 @@ export function NotificationBell() {
 
   function openEditor(draft: CopilotDraft) {
     void loadRoster()
+    // Close the parent (Copilot command bar) so the editor takes the full
+    // modal surface. The back-arrow in ConfirmDialog will re-open it.
+    onParentOpenChange?.(false)
     setEditingDraft(draft)
-    setOpen(false)
+  }
+
+  function backToParent() {
+    setEditingDraft(null)
+    onParentOpenChange?.(true)
   }
 
   async function dismiss(draft: CopilotDraft) {
     await completeDraft.mutateAsync({ id: draft.id, status: "dismissed" })
   }
 
+  // Empty state: don't render the panel at all when there's nothing to
+  // show. Keeps the command bar tight when the user has no backlog.
+  if (drafts.length === 0) return null
+
   return (
     <>
-      <div ref={containerRef} className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen((p) => !p)}
-          // Neutral chrome (Roy 2026-06-11 v2): the AI Co-pilot command
-          // bar carries the brand purple; this notification bell is the
-          // passive "you have something to look at" surface and stays
-          // grey so it doesn't double-up on the purple language.
-          className={cn(
-            "relative flex items-center justify-center h-10 w-10 rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]",
-            badgeCount > 0 && "text-foreground",
-          )}
-          aria-label="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-          {badgeCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground">
-              {badgeCount}
+      <div className="rounded-xl border border-border bg-card/40 overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border/40 bg-muted/30 px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Drafts
             </span>
-          )}
-          {pending.length > 0 && badgeCount === 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-muted">
-              <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
-            </span>
-          )}
-        </button>
-
-        {open && (
-          <div className="absolute top-full right-0 mt-1 w-[28rem] rounded-xl border border-border bg-popover shadow-xl z-50 overflow-hidden">
-            <div className="flex items-center justify-between border-b border-border/40 px-4 py-2.5 bg-muted/30">
-              <div className="flex items-center gap-2">
-                <Bell className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Notifications
-                </span>
-              </div>
-              <span className="text-[10px] text-muted-foreground/70 tabular-nums">
-                {actionable.length} ready · {pending.length} pending
-              </span>
-            </div>
-            <div className="max-h-[28rem] overflow-y-auto p-2 space-y-2">
-              {drafts.length === 0 ? (
-                <div className="px-3 py-10 text-center">
-                  <Sparkles className="h-5 w-5 text-muted-foreground/40 mx-auto mb-2" />
-                  <div className="text-xs text-muted-foreground/70">
-                    Niks open. Druk{" "}
-                    <kbd className="rounded bg-muted px-1.5 py-0.5 text-[10px]">⌘J</kbd> om een
-                    command te starten.
-                  </div>
-                </div>
-              ) : (
-                drafts.map((d) => (
-                  <DraftRow
-                    key={d.id}
-                    draft={d}
-                    onApprove={quickApprove}
-                    onEdit={openEditor}
-                    onDismiss={dismiss}
-                  />
-                ))
-              )}
-            </div>
           </div>
-        )}
+          <span className="text-[10px] tabular-nums text-muted-foreground/70">
+            {actionable.length} ready · {pending.length} pending
+          </span>
+        </div>
+        <div className="max-h-[22rem] overflow-y-auto p-2 space-y-2">
+          {drafts.map((d) => (
+            <DraftRow
+              key={d.id}
+              draft={d}
+              onApprove={quickApprove}
+              onEdit={openEditor}
+              onDismiss={dismiss}
+            />
+          ))}
+        </div>
       </div>
 
       <ConfirmDialog
@@ -190,9 +147,22 @@ export function NotificationBell() {
           await completeDraft.mutateAsync({ id, status: "approved" })
           setEditingDraft(null)
         }}
+        onDismiss={async (id) => {
+          await completeDraft.mutateAsync({ id, status: "dismissed" })
+          setEditingDraft(null)
+        }}
+        onBack={onParentOpenChange ? backToParent : undefined}
       />
     </>
   )
+}
+
+/** Actionable-drafts count for the ⌘J button badge. Returns 0 when the
+ *  query hasn't resolved yet so the badge doesn't flicker on mount. */
+export function useCopilotDraftsBadge(): number {
+  const { data } = useCopilotDrafts()
+  const drafts = data?.drafts ?? []
+  return drafts.filter((d) => d.status === "ready" || d.status === "failed").length
 }
 
 // ─── Row card - mirrors inbox-list-row.tsx 1:1 ─────────────────────────────
@@ -203,7 +173,8 @@ const RAIL = {
   failed: "bg-red-500",
 } as const
 
-const KIND_CHIP = "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0 bg-primary/10 text-primary border-primary/20"
+const KIND_CHIP =
+  "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide shrink-0 bg-primary/10 text-primary border-primary/20"
 
 function DraftRow({
   draft,
@@ -220,10 +191,7 @@ function DraftRow({
   const isFailed = draft.status === "failed"
   const isPending = draft.status === "pending"
 
-  // Row body click-area opens the editor for ready drafts; pending/failed
-  // don't have an editor target so the body just sits inert.
   const bodyClickable = isReady
-
   function handleBodyClick() {
     if (bodyClickable) onEdit(draft)
   }
@@ -235,18 +203,16 @@ function DraftRow({
     }
   }
 
-  // Action mapping per status - matches inbox row semantics:
-  //   ready  → success (Approve, Check) + muted (Edit, Pencil) + danger (Dismiss, Trash)
-  //   failed → danger (Dismiss only)
-  //   pending → no actions; just the spinner glyph
   const titleText = isReady ? draft.summary ?? "Ready" : draft.input
 
   return (
     <div className="relative rounded-lg border border-border bg-card hover:bg-muted/40 hover:shadow-sm transition-all overflow-hidden">
-      {/* Left rail - same visual language as the inbox type rail */}
       <span
         aria-hidden
-        className={cn("absolute left-0 top-0 bottom-0 w-1", RAIL[draft.status as keyof typeof RAIL] ?? "bg-muted")}
+        className={cn(
+          "absolute left-0 top-0 bottom-0 w-1",
+          RAIL[draft.status as keyof typeof RAIL] ?? "bg-muted",
+        )}
       />
 
       <div className="pl-4 pr-3 py-3 flex items-start gap-3">
@@ -255,10 +221,7 @@ function DraftRow({
           tabIndex={bodyClickable ? 0 : -1}
           onClick={handleBodyClick}
           onKeyDown={handleBodyKeyDown}
-          className={cn(
-            "flex-1 min-w-0",
-            bodyClickable && "cursor-pointer",
-          )}
+          className={cn("flex-1 min-w-0", bodyClickable && "cursor-pointer")}
         >
           <div className="flex items-center gap-2 flex-wrap">
             <span className={KIND_CHIP} title="AI Co-pilot draft">
@@ -294,7 +257,6 @@ function DraftRow({
           </div>
         </div>
 
-        {/* Right-side actions - identical chrome to inbox row */}
         <div className="flex items-center gap-1 shrink-0 pt-0.5">
           {isReady && (
             <>
