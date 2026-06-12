@@ -492,18 +492,29 @@ export async function getInboxBadgeCounts(
     .eq("scope", "external")
     .eq("status", "unread")
 
+  // Channel subscriptions broaden visibility for every role - CMs included
+  // (Roy 2026-06-12: CMs need their private email channels in the Kanalen
+  // tab, not just assignment-driven chat). Resolved up front so the CM
+  // and AM branches can share the value.
+  const subscribedChannelIds = await getUserTrengoChannelIds(userId)
+
   if (audienceRole === "cm_only") {
-    // CM-only: strict assignee/author - no channel-sub, no client-access.
+    // CM: assignee/author by default, plus rows on any channel the CM
+    // explicitly subscribed to in /account. Without that path the
+    // Kanalen tab would always be empty for CMs.
+    const channelClause =
+      subscribedChannelIds.length > 0
+        ? `,trengo_channel_id.in.(${subscribedChannelIds.join(",")})`
+        : ""
     chatQuery = chatQuery.or(
-      `author_id.eq.${userId},assignee_id.eq.${userId}`,
+      `author_id.eq.${userId},assignee_id.eq.${userId}${channelClause}`,
     )
   } else {
     // AM / admin / other: channel-subscription narrowing always applies,
     // then role-based access on top for non-admins.
-    const channelIds = await getUserTrengoChannelIds(userId)
-    if (channelIds.length > 0) {
+    if (subscribedChannelIds.length > 0) {
       chatQuery = chatQuery.or(
-        `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+        `trengo_channel_id.in.(${subscribedChannelIds.join(",")}),source.neq.trengo`,
       )
     }
     if (role !== "admin") {
@@ -511,7 +522,9 @@ export async function getInboxBadgeCounts(
       if (allowed !== "all") {
         const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
         const channelClause =
-          channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+          subscribedChannelIds.length > 0
+            ? `,trengo_channel_id.in.(${subscribedChannelIds.join(",")})`
+            : ""
         chatQuery = chatQuery.or(
           `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
         )
@@ -547,11 +560,13 @@ export async function getInboxBadgeCounts(
   ])
 
   const unreadChats = chatsRes.count ?? 0
-  // For CMs, unreadChats is already the strict assignee count - same
-  // signal that previously drove `clientInboxMentionCount`. Tab opens
-  // when they have any assigned chat row to handle.
+  // CM gets the Kanalen tab when (a) they have an assigned chat row,
+  // OR (b) they've subscribed to any Trengo channels in /account. Roy
+  // 2026-06-12: CMs need their private email channels available even
+  // before the first message arrives, so the gate is "are they wired
+  // up to receive" not "have they already received something".
   const showClientInbox =
-    audienceRole !== "cm_only" || unreadChats > 0
+    audienceRole !== "cm_only" || unreadChats > 0 || subscribedChannelIds.length > 0
 
   return {
     unreadUpdates: updatesRes.count ?? 0,
@@ -785,15 +800,22 @@ export async function listChatThreads(
     // because we group post-hoc. 1k is generous for now.
     .limit(1000)
 
-  // CM-only audience: chat rows are visible ONLY when the CM is explicitly
-  // assigned or authored the row. No channel-subscription path, no client-
-  // access bulk visibility. The Client Inbox tab is also hidden for CMs by
-  // default - this gate is the source of truth for the rare case where the
-  // tab does open (hand-routed conversation).
+  // Channel subscriptions broaden visibility for every role. Roy
+  // 2026-06-12: CMs are mapped to "Kanalen" too - their private email
+  // channels show in the inbox when they've subscribed in /account.
   const audienceRole = await resolveInboxAudienceRole(userId, role)
+  const subscribedChannelIds = await getUserTrengoChannelIds(userId)
+
   if (audienceRole === "cm_only") {
+    // CM: assignee/author by default; channel-subscription adds rows on
+    // any channel the CM explicitly picked. Without that path the
+    // Kanalen tab would always be empty for CMs.
+    const channelClause =
+      subscribedChannelIds.length > 0
+        ? `,trengo_channel_id.in.(${subscribedChannelIds.join(",")})`
+        : ""
     query = query.or(
-      `author_id.eq.${userId},assignee_id.eq.${userId}`,
+      `author_id.eq.${userId},assignee_id.eq.${userId}${channelClause}`,
     )
   } else {
     // Trengo channel subscriptions ALWAYS narrow the Client Inbox down to the
@@ -801,10 +823,9 @@ export async function listChatThreads(
     // sees every Trengo conversation in the workspace regardless of which
     // channels they actually want to follow. Non-Trengo events bypass this
     // filter via `source.neq.trengo`.
-    const channelIds = await getUserTrengoChannelIds(userId)
-    if (channelIds.length > 0) {
+    if (subscribedChannelIds.length > 0) {
       query = query.or(
-        `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+        `trengo_channel_id.in.(${subscribedChannelIds.join(",")}),source.neq.trengo`,
       )
     }
 
@@ -813,7 +834,9 @@ export async function listChatThreads(
       if (allowed !== "all") {
         const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
         const channelClause =
-          channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+          subscribedChannelIds.length > 0
+            ? `,trengo_channel_id.in.(${subscribedChannelIds.join(",")})`
+            : ""
         query = query.or(
           `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
         )

@@ -465,8 +465,11 @@ export const DICTIONARY = {
   "inbox.tab.client_inbox": { nl: "Klanten Inbox", en: "Client Inbox" },
   "inbox.tab.meetings": { nl: "Meetings", en: "Meetings" },
 
-  // Global inbox scope tabs (AM / admin only) + 2-column split headers
-  "inbox.scope.klanten": { nl: "Klanten", en: "Clients" },
+  // Global inbox scope tabs + 2-column split headers. The "klanten" key
+  // predates the rename to "Kanalen / Channels" (Roy 2026-06-12: CMs
+  // also have private email channels, so the tab represents the
+  // subscribed-channel inbox - not just client conversations).
+  "inbox.scope.klanten": { nl: "Kanalen", en: "Channels" },
   "inbox.scope.intern": { nl: "Intern", en: "Internal" },
   "inbox.split.tasks": { nl: "Taken", en: "Tasks" },
   "inbox.split.updates": { nl: "Updates", en: "Updates" },

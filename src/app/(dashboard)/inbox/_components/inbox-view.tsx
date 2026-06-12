@@ -658,19 +658,16 @@ export function InboxView({
   const nowCount = tabBadge
     ? tabBadge.unreadUpdates + tabBadge.openTasks + tabBadge.unreadChats
     : undefined
-  // Roy 2026-06-09: CMs don't get Client Inbox by default - it's an AM
-  // workflow. The server signals CM-only via `showClientInbox=false` on
-  // the badge; the UI hides the tab entirely. @-mentions land in the
-  // CM's Updates tab via the Trengo webhook fan-out - there's no
-  // dedicated Mentions tab.
+  // Channels (formerly "Klanten Inbox") tab visibility. Roy 2026-06-12:
+  // CMs also have private email channels and need access to this tab -
+  // gate is purely "does this user have any subscribed channels" rather
+  // than "are they an AM". `showClientInbox` from the server still
+  // signals the AM/admin baseline; the channel-subscription path opens
+  // it for CMs too (see `getInboxBadgeCounts` + `listChatThreads`).
   //
-  // Defaults to true (= treat as non-CM) while the badge query resolves,
-  // so the layout doesn't flicker between the two states on every reload.
+  // Defaults to true while the badge query resolves so the layout
+  // doesn't flicker between visible / hidden on every reload.
   const showClientInboxTab = tabBadge?.showClientInbox ?? true
-  // Pure-CM signal: the badge endpoint returns showClientInbox=false ONLY
-  // for users mapped exclusively as campaign_manager. Used to render the
-  // simpler 1-view global inbox for CMs (Roy 2026-06-11).
-  const isPureCm = tabBadge?.showClientInbox === false
   const mainTabs: TopTab<MainTab>[] = lockedClient
     ? [
         { id: "tasks", label: t("inbox.tab.tasks", locale), icon: ListTodo, count: tasks.length, accent: "violet" as const },
@@ -919,12 +916,13 @@ export function InboxView({
         <TopTabs<MainTab> tabs={mainTabs} value={activeTab} onChange={setActiveTab} />
       )}
 
-      {/* Global inbox: 2-column split (Taken / Updates). AM + admin get a
-          scope strip on top to flip between Klanten (client-linked) and
-          Intern (no client). CMs go straight into the unscoped split since
-          they only ever see items assigned to them. Roy 2026-06-11:
-          "veel te gecompliceerd". */}
-      {!lockedClient && !isPureCm && (
+      {/* Global inbox: 2-column split (Taken / Updates) on Intern,
+          ChatPane on Kanalen. Available for AM / admin / CM alike -
+          everyone can have email and/or WhatsApp channel subscriptions
+          (Roy 2026-06-12). CMs without any subscribed channels still
+          see the toggle; the Kanalen view just renders empty until they
+          subscribe via /account. */}
+      {!lockedClient && (
         <SegmentedTabs<"klanten" | "intern">
           items={[
             { id: "intern", label: t("inbox.scope.intern", locale) },
@@ -936,10 +934,10 @@ export function InboxView({
       )}
 
       <div className="space-y-4">
-        {/* Intern tab (AM/admin) + CM single-view both render the 2-column
-            Taken / Updates split. Klanten tab (AM/admin only) renders the
-            old Trengo Client Inbox below. */}
-        {!lockedClient && (isPureCm || globalScope === "intern") && (
+        {/* Intern scope = 2-column Taken / Updates split (everyone has
+            personal tasks + updates). Kanalen scope = ChatPane on
+            subscribed Trengo channels (rendered below). */}
+        {!lockedClient && globalScope === "intern" && (
           <>
             {searchBar}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -1073,12 +1071,12 @@ export function InboxView({
           </>
         )}
 
-        {/* Klanten tab (AM/admin only): the old Trengo Client Inbox.
-            Roy 2026-06-11 round 3: single ChatPane render (no docked-
-            detail variant) so the conversation panel sits naturally
-            next to the list - same flex parent, identical top edge.
-            Layout = 50/50 split (see ChatPane internal grid). */}
-        {!lockedClient && !isPureCm && globalScope === "klanten" && (
+        {/* Kanalen scope (everyone): Trengo subscribed-channel inbox.
+            Single ChatPane render (no docked-detail variant) so the
+            conversation panel sits naturally next to the list - same
+            flex parent, identical top edge. Layout = 50/50 split (see
+            ChatPane internal grid). */}
+        {!lockedClient && globalScope === "klanten" && (
           <ChatPane
             scope="external"
             users={users}
