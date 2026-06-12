@@ -456,9 +456,14 @@ DE OPDRACHT - geen herformulering naar een nieuwe campagne, geen 3 verschillende
 5. De CTA-actie - zelfde gewenste actie (mag andere bewoording)
 6. De vocabulary - alleen woorden die ook in de source-copy of voice-corpus voorkomen
 
-**WAT MAG VARIËREN** (zo creëer je verschil tussen A/B/C):
-- De openingsvraag / hook-zin - elke variant een eigen entry, MAAR zelfde pijnpunt
-- Volgorde van USPs
+**ROL PER VARIANT - HEILIG, MAG NIET ANDERS** (Roy 2026-06-12):
+- **Variant A = "Near-verbatim hercreatie"**: maximaal 90% woord-voor-woord identiek aan de source. Headline = exact dezelfde tekst als source headline (of een minimale herformulering). Primary copy = bijna identiek, alleen kleine stijlpolissh (1-2 zinsdelen mogen vernieuwen). USPs = WOORD-VOOR-WOORD overnemen. Dit is de "veilige" baseline iteratie - de CM moet deze direct kunnen herkennen als "dat is gewoon mijn ad". Doel: A/B test waar slecht de creative wisselt en de copy nagenoeg gelijk blijft.
+- **Variant B = "Hook-twist iteratie"**: zelfde pijnpunt, andere opener. Headline en de eerste zin van primary copy variëren, maar USPs + propositie + CTA blijven identiek aan source.
+- **Variant C = "Hook-twist iteratie 2"**: zelfde pijnpunt, weer andere opener. Stilistisch onderscheidend van B maar dezelfde pijnpunt-DNA als A en B.
+
+**WAT MAG VARIËREN tussen B en C** (binnen het kader hierboven):
+- De openingsvraag / hook-zin
+- Volgorde van USPs (Variant A behoudt de exacte source-volgorde)
 - Lengte van primary copy (40-100 woorden)
 - Headline-formulering (max 35 char, behoudt kernwoord uit source headline)
 

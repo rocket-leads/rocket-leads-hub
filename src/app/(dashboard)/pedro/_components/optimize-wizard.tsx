@@ -196,12 +196,15 @@ export function OptimizeWizard({
           throw new Error("Pedro gaf geen varianten terug. Probeer opnieuw.")
         }
         setRefreshResult({ refreshId, proposals })
-        // Default selection: all variants checked so the CM can deselect.
-        const allKeys = new Set<string>()
+        // Roy 2026-06-12: default selection = alleen Variant A (de
+        // bijna-verbatim kopie van de source). CM vinkt zelf de andere
+        // iteraties aan als die ook gewenst zijn. Voorheen waren alle 3
+        // standaard aan, wat de CM dwong om uit te vinken ipv te kiezen.
+        const firstOnly = new Set<string>()
         proposals.forEach((p, pi) => {
-          p.variants.forEach((_, vi) => allKeys.add(`${pi}:${vi}`))
+          if (p.variants.length > 0) firstOnly.add(`${pi}:0`)
         })
-        setSelectedVariantKeys(allKeys)
+        setSelectedVariantKeys(firstOnly)
       } catch (e) {
         setGenerateError(e instanceof Error ? e.message : "Genereren mislukt")
       } finally {
@@ -785,7 +788,7 @@ function VariantSelectionCard({
       type="button"
       onClick={onToggle}
       className={cn(
-        "text-left rounded-lg border-2 p-3 space-y-2 transition-colors",
+        "text-left rounded-lg border-2 p-4 space-y-3 transition-colors w-full",
         checked
           ? "border-primary bg-primary/5"
           : "border-border bg-background hover:bg-accent/40",
@@ -809,14 +812,48 @@ function VariantSelectionCard({
       <div className="text-[11px] text-muted-foreground font-mono truncate">
         {variant.adName}
       </div>
+      {/* Tekst op afbeelding (Meta headline) - Roy 2026-06-12: opvallend
+          weergeven want dit is wat de doelgroep als eerste leest. Paars,
+          bold, geen quotes. */}
       {variant.headline && (
-        <div className="text-xs text-foreground line-clamp-2 italic">
-          &ldquo;{variant.headline}&rdquo;
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
+            Tekst op afbeelding
+          </div>
+          <div className="text-sm font-bold leading-snug text-violet-600 dark:text-violet-400">
+            {variant.headline}
+          </div>
         </div>
       )}
+      {/* Primary copy - volledig zichtbaar, geen line-clamp meer. CM
+          moet de hele invalshoek kunnen lezen om te beslissen. */}
       {variant.primaryCopySnippet && (
-        <div className="text-[11px] text-muted-foreground line-clamp-3">
-          {variant.primaryCopySnippet}
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
+            Primary copy
+          </div>
+          <div className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
+            {variant.primaryCopySnippet}
+          </div>
+        </div>
+      )}
+      {/* Meta headline veld (kort, naast on-image). Vaak iets korter
+          dan de on-image tekst, geoptimaliseerd voor onder de creative. */}
+      {variant.altHeadlines && variant.altHeadlines.length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
+            Headline (Meta veld)
+          </div>
+          <div className="text-xs text-foreground space-y-0.5">
+            {variant.altHeadlines.filter((h) => h.trim()).slice(0, 2).map((h, i) => (
+              <div key={i}>{h}</div>
+            ))}
+          </div>
+        </div>
+      )}
+      {variant.sourceHookQuote && (
+        <div className="text-[10px] text-muted-foreground italic border-t border-border/40 pt-2">
+          Bron-hook: &ldquo;{variant.sourceHookQuote}&rdquo;
         </div>
       )}
     </button>
