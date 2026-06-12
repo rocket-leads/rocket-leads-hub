@@ -1,10 +1,12 @@
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import {
+  createEvent,
   hasCalendarConnected,
   listCalendarEvents,
   type CalendarEvent,
   type CalendarFetchError,
+  type EventCreate,
 } from "@/lib/integrations/google-calendar"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -105,4 +107,31 @@ export async function GET(req: NextRequest) {
     error: result.error,
   }
   return NextResponse.json(body)
+}
+
+/**
+ * Create a new event on the user's primary calendar. Body matches
+ * EventCreate. When `addMeetLink: true`, Google provisions a Meet link
+ * (visible afterwards as `hangoutLink` on the returned event).
+ */
+export async function POST(req: NextRequest) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  const input = (await req.json()) as EventCreate
+  if (!input.title || !input.start || !input.end) {
+    return NextResponse.json(
+      { error: "title, start, and end are required" },
+      { status: 400 },
+    )
+  }
+  const result = await createEvent(session.user.id, input)
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error },
+      { status: result.error.status || 500 },
+    )
+  }
+  return NextResponse.json({ event: result.data })
 }

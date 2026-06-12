@@ -12,10 +12,11 @@ import {
   startOfDay,
   startOfWeek,
 } from "date-fns"
-import { ChevronLeft, ChevronRight, MapPin, Video } from "lucide-react"
+import { ChevronLeft, ChevronRight, MapPin, Plus, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { CalendarEventsResponse } from "@/app/api/calendar/events/route"
+import { EventDialog, type EventDialogMode } from "./event-dialog"
 
 /**
  * Week-view calendar showing the user's Google Calendar events + Hub
@@ -44,6 +45,7 @@ export function CalendarView({ initialConnected }: Props) {
   // derived (Mon-Sun) so users always see a full work-week regardless
   // of which day they click into.
   const [anchor, setAnchor] = useState<Date>(() => new Date())
+  const [dialog, setDialog] = useState<EventDialogMode | null>(null)
 
   const weekStart = useMemo(
     () => startOfWeek(anchor, { weekStartsOn: 1 }),
@@ -140,15 +142,26 @@ export function CalendarView({ initialConnected }: Props) {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block size-2.5 rounded-sm bg-[#8967F3]" />
-            Meetings
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block size-2.5 rounded-sm bg-amber-500" />
-            Tasks
-          </span>
+        <div className="flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block size-2.5 rounded-sm bg-[#8967F3]" />
+              Meetings
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block size-2.5 rounded-sm bg-amber-500" />
+              Tasks
+            </span>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setDialog({ kind: "create" })}
+            disabled={!connected}
+            title={!connected ? "Connect Google Calendar to create events" : undefined}
+          >
+            <Plus className="size-4" />
+            New event
+          </Button>
         </div>
       </div>
 
@@ -189,6 +202,7 @@ export function CalendarView({ initialConnected }: Props) {
           days={days}
           allDayByDay={allDayByDay}
           tasksByDay={tasksByDay}
+          onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
         />
 
         {/* Hour grid */}
@@ -213,6 +227,10 @@ export function CalendarView({ initialConnected }: Props) {
                 key={key}
                 day={d}
                 events={timedByDay[key] ?? []}
+                onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
+                onCreateAt={(when) =>
+                  setDialog({ kind: "create", initialStart: when })
+                }
               />
             )
           })}
@@ -223,6 +241,14 @@ export function CalendarView({ initialConnected }: Props) {
         <p className="text-sm text-destructive">
           Couldn&apos;t load calendar. Try refreshing.
         </p>
+      )}
+
+      {dialog && (
+        <EventDialog
+          open={true}
+          onOpenChange={(o) => !o && setDialog(null)}
+          mode={dialog}
+        />
       )}
     </div>
   )
@@ -268,10 +294,12 @@ function AllDayRow({
   days,
   allDayByDay,
   tasksByDay,
+  onOpenEvent,
 }: {
   days: Date[]
   allDayByDay: Record<string, CalendarEventsResponse["events"]>
   tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
+  onOpenEvent: (id: string) => void
 }) {
   // Reserve some minimum height even when empty so the row doesn't collapse
   // into an invisible 0px strip on slow weeks.
@@ -298,7 +326,11 @@ function AllDayRow({
             )}
           >
             {allDayEvents.map((ev) => (
-              <EventChip key={ev.id} title={ev.title} href={ev.htmlLink} />
+              <EventChip
+                key={ev.id}
+                title={ev.title}
+                onClick={() => onOpenEvent(ev.id)}
+              />
             ))}
             {tasks.map((t) => (
               <TaskChip
@@ -317,25 +349,44 @@ function AllDayRow({
 function DayColumn({
   day,
   events,
+  onOpenEvent,
+  onCreateAt,
 }: {
   day: Date
   events: CalendarEventsResponse["events"]
+  onOpenEvent: (id: string) => void
+  onCreateAt: (when: Date) => void
 }) {
   const dayStart = startOfDay(day)
+
+  // Click on an empty slot in the column → open the create dialog
+  // pre-seeded to the slot the user clicked. The event blocks have
+  // their own click handlers and stop propagation.
+  const onColumnClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const y = e.clientY - rect.top
+    const hourFloat = HOUR_START + y / HOUR_HEIGHT_PX
+    const hour = Math.floor(hourFloat)
+    const minute = Math.round(((hourFloat - hour) * 60) / 15) * 15
+    const when = new Date(day)
+    when.setHours(hour, Math.min(minute, 45), 0, 0)
+    onCreateAt(when)
+  }
 
   return (
     <div
       className={cn(
-        "relative border-r border-border last:border-r-0",
+        "relative border-r border-border last:border-r-0 cursor-pointer",
         isToday(day) && "bg-primary/5",
       )}
       style={{ height: TOTAL_HOURS * HOUR_HEIGHT_PX }}
+      onClick={onColumnClick}
     >
       {/* Hour grid lines */}
       {Array.from({ length: TOTAL_HOURS }, (_, i) => (
         <div
           key={i}
-          className="absolute left-0 right-0 border-b border-border/60"
+          className="absolute left-0 right-0 border-b border-border/60 pointer-events-none"
           style={{ top: (i + 1) * HOUR_HEIGHT_PX }}
         />
       ))}
@@ -364,7 +415,10 @@ function DayColumn({
             timeLabel={`${format(start, "HH:mm")} – ${format(end, "HH:mm")}`}
             location={ev.location}
             hangoutLink={ev.hangoutLink}
-            htmlLink={ev.htmlLink}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenEvent(ev.id)
+            }}
           />
         )
       })}
@@ -397,7 +451,7 @@ function EventBlock({
   timeLabel,
   location,
   hangoutLink,
-  htmlLink,
+  onClick,
 }: {
   top: number
   height: number
@@ -405,18 +459,20 @@ function EventBlock({
   timeLabel: string
   location: string | null
   hangoutLink: string | null
-  htmlLink: string | null
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
 }) {
-  const className = cn(
-    "absolute left-1 right-1 rounded-md border-l-2 px-1.5 py-1 overflow-hidden",
-    "bg-[#8967F3]/15 border-[#8967F3] text-foreground",
-    "hover:bg-[#8967F3]/25 transition-colors",
-    htmlLink && "cursor-pointer",
-  )
-  const style = { top, height }
-  const tooltip = `${timeLabel} — ${title}${location ? ` @ ${location}` : ""}`
-  const inner = (
-    <>
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "absolute left-1 right-1 rounded-md border-l-2 px-1.5 py-1 overflow-hidden text-left cursor-pointer",
+        "bg-[#8967F3]/15 border-[#8967F3] text-foreground",
+        "hover:bg-[#8967F3]/25 transition-colors",
+      )}
+      style={{ top, height }}
+      title={`${timeLabel} — ${title}${location ? ` @ ${location}` : ""}`}
+    >
       <div className="text-[11px] font-medium leading-tight line-clamp-2">
         {title}
       </div>
@@ -434,52 +490,30 @@ function EventBlock({
           )}
         </div>
       )}
-    </>
-  )
-  if (htmlLink) {
-    return (
-      <a
-        href={htmlLink}
-        target="_blank"
-        rel="noreferrer"
-        className={className}
-        style={style}
-        title={tooltip}
-      >
-        {inner}
-      </a>
-    )
-  }
-  return (
-    <div className={className} style={style} title={tooltip}>
-      {inner}
-    </div>
+    </button>
   )
 }
 
-function EventChip({ title, href }: { title: string; href: string | null }) {
-  const className = cn(
-    "block truncate rounded px-1.5 py-0.5 text-[11px]",
-    "bg-[#8967F3]/15 border-l-2 border-[#8967F3] text-foreground",
-    href && "cursor-pointer hover:bg-[#8967F3]/25",
-  )
-  if (href) {
-    return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className={className}
-        title={title}
-      >
-        {title}
-      </a>
-    )
-  }
+function EventChip({
+  title,
+  onClick,
+}: {
+  title: string
+  onClick: () => void
+}) {
   return (
-    <div className={className} title={title}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "block w-full truncate rounded px-1.5 py-0.5 text-[11px] text-left cursor-pointer",
+        "bg-[#8967F3]/15 border-l-2 border-[#8967F3] text-foreground",
+        "hover:bg-[#8967F3]/25",
+      )}
+      title={title}
+    >
       {title}
-    </div>
+    </button>
   )
 }
 
