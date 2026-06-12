@@ -37,9 +37,9 @@ import { TaskDialog } from "./task-dialog"
  * render in the all-day row at the top of their due_date column.
  */
 
-const HOUR_START = 6
+const HOUR_START = 7
 const HOUR_END = 22
-const HOUR_HEIGHT_PX = 56
+const HOUR_HEIGHT_PX = 80
 const TOTAL_HOURS = HOUR_END - HOUR_START
 const TIME_COL_WIDTH = "w-14"
 
@@ -494,6 +494,10 @@ function TimeGrid({
         onOpenTask={onOpenTask}
         onUnscheduleTask={(taskId) => onRescheduleTask(taskId, null)}
         gridStyle={gridStyle}
+        hasAnyContent={
+          Object.values(allDayByDay).some((arr) => arr.length > 0) ||
+          Object.values(tasksAllDayByDay).some((arr) => arr.length > 0)
+        }
       />
 
       {/* Hour grid */}
@@ -763,6 +767,7 @@ function AllDayRow({
   onOpenTask,
   onUnscheduleTask,
   gridStyle,
+  hasAnyContent,
 }: {
   days: Date[]
   allDayByDay: Record<string, CalendarEventsResponse["events"]>
@@ -771,9 +776,14 @@ function AllDayRow({
   onOpenTask: (id: string) => void
   onUnscheduleTask: (taskId: string) => void
   gridStyle: React.CSSProperties
+  /** When false, the row collapses to a slim divider — still present
+   *  so unscheduled-task drops work, but it doesn't waste vertical
+   *  space when there's nothing to show. */
+  hasAnyContent: boolean
 }) {
-  // Reserve some minimum height even when empty so the row doesn't collapse
-  // into an invisible 0px strip on slow weeks.
+  // When the row has no content, collapse to a slim 16px strip — still
+  // present as a drop target so users can drag tasks back to "unscheduled",
+  // but doesn't steal vertical space above the time grid.
   return (
     <div
       className="grid border-b border-border bg-muted/10"
@@ -782,10 +792,11 @@ function AllDayRow({
       <div
         className={cn(
           TIME_COL_WIDTH,
-          "border-r border-border py-2 px-2 text-[10px] text-muted-foreground",
+          "border-r border-border text-[10px] text-muted-foreground",
+          hasAnyContent ? "py-2 px-2" : "px-2",
         )}
       >
-        all-day
+        {hasAnyContent ? "all-day" : ""}
       </div>
       {days.map((d) => {
         const key = format(d, "yyyy-MM-dd")
@@ -796,6 +807,7 @@ function AllDayRow({
             key={key}
             isToday={isToday(d)}
             onUnscheduleTask={onUnscheduleTask}
+            slim={!hasAnyContent}
           >
             {allDayEvents.map((ev) => (
               <EventChip
@@ -827,10 +839,14 @@ function AllDayCell({
   children,
   isToday,
   onUnscheduleTask,
+  slim,
 }: {
   children: React.ReactNode
   isToday: boolean
   onUnscheduleTask: (taskId: string) => void
+  /** Compact mode used when the all-day row has no content this week —
+   *  shrinks to a slim divider that still accepts task drops. */
+  slim?: boolean
 }) {
   const [dragOver, setDragOver] = useState(false)
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -851,7 +867,8 @@ function AllDayCell({
   return (
     <div
       className={cn(
-        "border-r border-border last:border-r-0 p-1.5 space-y-1 min-h-[44px]",
+        "border-r border-border last:border-r-0",
+        slim ? "min-h-[14px]" : "p-1.5 space-y-1 min-h-[44px]",
         isToday && "bg-primary/5",
         dragOver && "bg-amber-500/10 ring-2 ring-inset ring-amber-500/40",
       )}
@@ -864,8 +881,12 @@ function AllDayCell({
   )
 }
 
-type LaidOutEvent = {
-  event: CalendarEventsResponse["events"][number]
+type GridItem =
+  | { kind: "event"; event: CalendarEventsResponse["events"][number] }
+  | { kind: "task"; task: CalendarEventsResponse["tasks"][number] }
+
+type LaidOutItem = {
+  item: GridItem
   top: number
   height: number
   leftPct: number
@@ -873,35 +894,51 @@ type LaidOutEvent = {
 }
 
 /**
- * Layout overlapping events as columns within their cluster. Standard
+ * Layout overlapping items as columns within their cluster. Standard
  * calendar algorithm:
  *
- *   1. Compute each event's pixel top/bottom in the visible window.
- *   2. Sort by start time, longer events first when starts tie.
+ *   1. Compute each item's pixel top/bottom in the visible window.
+ *   2. Sort by start time, longer items first when starts tie.
  *   3. Sweep top→bottom collecting "clusters" — connected groups where
- *      each event overlaps with at least one other in the cluster.
- *   4. Within each cluster, greedily place events into columns: take
- *      the first column whose last event ends before this one starts.
- *   5. Each event gets `width = 1 / clusterCols`, `left = col * width`.
+ *      each item overlaps with at least one other in the cluster.
+ *   4. Within each cluster, greedily place items into columns: take
+ *      the first column whose last item ends before this one starts.
+ *   5. Each item gets `width = 1 / clusterCols`, `left = col * width`.
  *
- * The result is the same packing Google Calendar uses, so two events
- * at the same time become side-by-side half-width blocks instead of
- * stacking on top of each other.
+ * Tasks and events share this packing so a 30-min task at 09:00 next
+ * to a 15-min meeting at 09:00 split the column 50/50 instead of the
+ * task being pinned to a separate strip. Heights are accurate to time
+ * (no min-height clamp) so a 15-min meeting renders at exactly 1/4 of
+ * the hour-row height.
  */
-function layoutDayEvents(
-  events: CalendarEventsResponse["events"],
+function layoutDayItems(
+  items: GridItem[],
   dayStart: Date,
-): LaidOutEvent[] {
-  const positioned = events.map((event) => {
-    const start = new Date(event.start)
-    const end = new Date(event.end)
+): LaidOutItem[] {
+  const positioned = items.map((item) => {
+    let start: Date
+    let end: Date
+    if (item.kind === "event") {
+      start = new Date(item.event.start)
+      end = new Date(item.event.end)
+    } else {
+      start = parseISO(item.task.scheduled_at!)
+      // Default task duration = 30 min. Could become configurable per
+      // task once Roy wants to drag-resize, but a uniform 30 keeps the
+      // drop-snap UX predictable.
+      end = new Date(start.getTime() + 30 * 60 * 1000)
+    }
     const startHour = (start.getTime() - dayStart.getTime()) / 3_600_000
     const endHour = (end.getTime() - dayStart.getTime()) / 3_600_000
     const top = Math.max(0, startHour - HOUR_START) * HOUR_HEIGHT_PX
     const bottom =
       Math.min(TOTAL_HOURS, endHour - HOUR_START) * HOUR_HEIGHT_PX
-    const height = Math.max(20, bottom - top)
-    return { event, top, height, endPx: top + height }
+    // Honest height — no clamp. With HOUR_HEIGHT_PX=80 the smallest
+    // realistic event (15 min) renders at 20px which is enough for a
+    // single line. Even shorter events keep their actual proportion
+    // so the grid stays accurate rather than visually rounded up.
+    const height = bottom - top
+    return { item, top, height, endPx: top + height }
   })
 
   // Sort by top asc, then longer events first when starts tie.
@@ -930,7 +967,7 @@ function layoutDayEvents(
   if (currentCluster.length > 0) clusters.push(currentCluster)
 
   // Assign columns within each cluster.
-  const result: LaidOutEvent[] = []
+  const result: LaidOutItem[] = []
   for (const cluster of clusters) {
     const colEnds: number[] = []
     const colByIdx = new Map<number, number>()
@@ -950,7 +987,7 @@ function layoutDayEvents(
       const p = positioned[idx]
       const col = colByIdx.get(idx) ?? 0
       result.push({
-        event: p.event,
+        item: p.item,
         top: p.top,
         height: p.height,
         leftPct: (col / totalCols) * 100,
@@ -1016,10 +1053,13 @@ function DayColumn({
   onRescheduleTask: (taskId: string, when: Date | null) => void
 }) {
   const dayStart = startOfDay(day)
-  const laidOut = useMemo(
-    () => layoutDayEvents(events, dayStart),
-    [events, dayStart],
-  )
+  const laidOut = useMemo(() => {
+    const items: GridItem[] = [
+      ...events.map((event) => ({ kind: "event" as const, event })),
+      ...scheduledTasks.map((task) => ({ kind: "task" as const, task })),
+    ]
+    return layoutDayItems(items, dayStart)
+  }, [events, scheduledTasks, dayStart])
   // previewTop = pixel-top of the half-hour cell the cursor is in,
   // or null when nothing is being dragged over this column. Updated
   // on every dragOver tick so the ghost block tracks the cursor.
@@ -1097,10 +1137,11 @@ function DayColumn({
       ))}
 
       {/* Drag-snap ghost — the half-hour cell the cursor is currently in.
-          Reads as "drop here". Updates live on every dragOver tick. */}
+          Spans the full column width since tasks now share column packing
+          with events. Updates live on every dragOver tick. */}
       {previewTop !== null && (
         <div
-          className="absolute left-[50%] right-1 z-20 rounded-md border-l-2 border-amber-500 bg-amber-500/30 pointer-events-none"
+          className="absolute left-1 right-1 z-20 rounded-md border-l-2 border-amber-500 bg-amber-500/30 pointer-events-none"
           style={{ top: previewTop, height: halfHourPx }}
         >
           <div className="px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 tabular-nums">
@@ -1112,44 +1153,42 @@ function DayColumn({
       {/* Now-indicator (red line at current time, only on today's column) */}
       {isToday(day) && <NowIndicator />}
 
-      {/* Timed events laid out in columns to avoid stacking */}
-      {laidOut.map(({ event: ev, top, height, leftPct, widthPct }) => {
-        const start = new Date(ev.start)
-        const end = new Date(ev.end)
+      {/* Unified column-packed render — events and tasks share the same
+          layout so a meeting and a task at the same time go side-by-side
+          at half width rather than stacking or claiming separate halves. */}
+      {laidOut.map(({ item, top, height, leftPct, widthPct }) => {
+        if (item.kind === "event") {
+          const ev = item.event
+          const start = new Date(ev.start)
+          const end = new Date(ev.end)
+          return (
+            <EventBlock
+              key={`ev-${ev.id}`}
+              top={top}
+              height={height}
+              leftPct={leftPct}
+              widthPct={widthPct}
+              title={ev.title}
+              timeLabel={`${format(start, "HH:mm")} – ${format(end, "HH:mm")}`}
+              location={ev.location}
+              hangoutLink={ev.hangoutLink}
+              onClick={(e) => {
+                e.stopPropagation()
+                onOpenEvent(ev.id)
+              }}
+            />
+          )
+        }
+        const tk = item.task
+        const start = parseISO(tk.scheduled_at!)
         return (
-          <EventBlock
-            key={ev.id}
+          <TaskBlock
+            key={`tk-${tk.id}`}
+            taskId={tk.id}
             top={top}
             height={height}
             leftPct={leftPct}
             widthPct={widthPct}
-            title={ev.title}
-            timeLabel={`${format(start, "HH:mm")} – ${format(end, "HH:mm")}`}
-            location={ev.location}
-            hangoutLink={ev.hangoutLink}
-            onClick={(e) => {
-              e.stopPropagation()
-              onOpenEvent(ev.id)
-            }}
-          />
-        )
-      })}
-
-      {/* Scheduled tasks rendered as 30-min draggable blocks on the right
-          half of the column so they don't collide with the event column
-          packing on the left. Done = green, overdue still = red. */}
-      {scheduledTasks.map((tk) => {
-        const start = parseISO(tk.scheduled_at!)
-        const startHourF =
-          (start.getTime() - dayStart.getTime()) / 3_600_000
-        const top = Math.max(0, startHourF - HOUR_START) * HOUR_HEIGHT_PX
-        const height = HOUR_HEIGHT_PX / 2 // 30 min default
-        return (
-          <TaskBlock
-            key={tk.id}
-            taskId={tk.id}
-            top={top}
-            height={height}
             title={tk.title}
             done={tk.status === "done"}
             overdue={tk.bucket === "overdue" && tk.status !== "done"}
@@ -1169,6 +1208,8 @@ function TaskBlock({
   taskId,
   top,
   height,
+  leftPct,
+  widthPct,
   title,
   done,
   overdue,
@@ -1178,6 +1219,8 @@ function TaskBlock({
   taskId: string
   top: number
   height: number
+  leftPct: number
+  widthPct: number
   title: string
   done: boolean
   overdue: boolean
@@ -1194,6 +1237,12 @@ function TaskBlock({
     : overdue
       ? "bg-red-500/15 border-red-500 hover:bg-red-500/25"
       : "bg-amber-500/15 border-amber-500 hover:bg-amber-500/25"
+  const style: React.CSSProperties = {
+    top,
+    height,
+    left: `calc(${leftPct}% + 2px)`,
+    width: `calc(${widthPct}% - 4px)`,
+  }
   return (
     <button
       type="button"
@@ -1202,10 +1251,10 @@ function TaskBlock({
       onClick={onClick}
       className={cn(
         "absolute rounded-md border-l-2 px-1.5 py-0.5 overflow-hidden text-left",
-        "left-[50%] right-1 cursor-grab active:cursor-grabbing",
+        "cursor-grab active:cursor-grabbing hover:z-10",
         palette,
       )}
-      style={{ top, height }}
+      style={style}
       title={`${timeLabel} — ${title}`}
     >
       <div className="text-[11px] font-medium leading-tight truncate">
