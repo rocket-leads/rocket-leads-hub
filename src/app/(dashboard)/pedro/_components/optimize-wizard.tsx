@@ -809,16 +809,16 @@ function SelectVariantsStep({
   isGenerating,
   error,
   result,
-  selectedKeys,
-  onToggle,
+  selectedKey,
+  onPick,
   onContinue,
   onRetry,
 }: {
   isGenerating: boolean
   error: string | null
   result: { refreshId: string; proposals: CreativeProposal[] } | null
-  selectedKeys: Set<string>
-  onToggle: (key: string) => void
+  selectedKey: string | null
+  onPick: (key: string) => void
   onContinue: () => void
   onRetry: () => void
 }) {
@@ -857,28 +857,23 @@ function SelectVariantsStep({
     (n, p) => n + p.variants.length,
     0,
   )
-  const totalSelected = selectedKeys.size
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
         <div className="text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{totalVariants} varianten</span>{" "}
-          gegenereerd op basis van source ad. Vink uit wat je niet wil, dan ga je naar Creatives.
+          gegenereerd. Kies één om mee verder te gaan - we maken straks 3 ad creatives op die ene variant.
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="text-[11px] text-muted-foreground tabular-nums">
-            {totalSelected} / {totalVariants} geselecteerd
-          </div>
-          <button
-            type="button"
-            onClick={onContinue}
-            disabled={totalSelected === 0}
-            className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-          >
-            Naar creatives
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={!selectedKey}
+          className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          title={!selectedKey ? "Kies eerst één van de varianten" : "Verder naar Edit copy"}
+        >
+          Naar Edit copy
+          <ArrowRight className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div className="space-y-4">
         {result.proposals.map((p, pi) => (
@@ -886,8 +881,8 @@ function SelectVariantsStep({
             key={`${p.basedOnAd.adId}-${pi}`}
             proposal={p}
             proposalIndex={pi}
-            selectedKeys={selectedKeys}
-            onToggle={onToggle}
+            selectedKey={selectedKey}
+            onPick={onPick}
           />
         ))}
       </div>
@@ -898,13 +893,13 @@ function SelectVariantsStep({
 function ProposalSelectionCard({
   proposal,
   proposalIndex,
-  selectedKeys,
-  onToggle,
+  selectedKey,
+  onPick,
 }: {
   proposal: CreativeProposal
   proposalIndex: number
-  selectedKeys: Set<string>
-  onToggle: (key: string) => void
+  selectedKey: string | null
+  onPick: (key: string) => void
 }) {
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
@@ -914,13 +909,13 @@ function ProposalSelectionCard({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {proposal.variants.map((v, vi) => {
           const key = `${proposalIndex}:${vi}`
-          const checked = selectedKeys.has(key)
+          const checked = selectedKey === key
           return (
             <VariantSelectionCard
               key={key}
               variant={v}
               checked={checked}
-              onToggle={() => onToggle(key)}
+              onToggle={() => onPick(key)}
             />
           )
         })}
@@ -1103,55 +1098,48 @@ function VariantSelectionCard({
 }
 
 /**
- * Resolve the selected variants into pairs - shared helper for the
- * 3 wizard steps that all read from refreshResult + selectedKeys.
+ * Resolve the chosen variant key ("pi:vi") into a full pair object,
+ * or null when nothing is selected or the key doesn't match. Used by
+ * Steps 3, 4 en 5 die allemaal op de single-variant flow draaien.
  */
-function resolveSelectedPairs(
+function resolveSelectedVariant(
   result: { refreshId: string; proposals: CreativeProposal[] } | null,
-  selectedKeys: Set<string>,
-): Array<{
+  selectedKey: string | null,
+): {
   proposalIndex: number
   proposal: CreativeProposal
   variantIndex: number
   variant: CreativeVariant
-}> {
-  if (!result) return []
-  const out: Array<{
-    proposalIndex: number
-    proposal: CreativeProposal
-    variantIndex: number
-    variant: CreativeVariant
-  }> = []
-  result.proposals.forEach((p, pi) => {
-    p.variants.forEach((v, vi) => {
-      if (selectedKeys.has(`${pi}:${vi}`)) {
-        out.push({ proposalIndex: pi, proposal: p, variantIndex: vi, variant: v })
-      }
-    })
-  })
-  return out
+} | null {
+  if (!result || !selectedKey) return null
+  const [piStr, viStr] = selectedKey.split(":")
+  const pi = parseInt(piStr, 10)
+  const vi = parseInt(viStr, 10)
+  if (!Number.isFinite(pi) || !Number.isFinite(vi)) return null
+  const proposal = result.proposals[pi]
+  const variant = proposal?.variants[vi]
+  if (!proposal || !variant) return null
+  return { proposalIndex: pi, proposal, variantIndex: vi, variant }
 }
 
 /**
- * EditCopyStep - Roy 2026-06-12 v8 (Stap 3 in 5-step wizard).
- * Inline-editable copy fields per geselecteerde variant: tekst op
- * afbeelding, primary copy, alt headlines, alt primary texts, link
- * description. GEEN image-gen hier; CTA "Genereer creatives" triggert
- * de batch gen en navigeert naar Stap 4.
+ * EditCopyStep - Roy 2026-06-12 v9 (Stap 3 in 5-step single-variant wizard).
+ * Inline-editable copy fields voor de gekozen variant. CTA "Genereer
+ * creatives" navigeert door naar Stap 4 - daar trapt het ImagePanel
+ * zelf de Gemini-gen af.
  */
 function EditCopyStep({
-  clientId,
   result,
-  selectedKeys,
+  selectedKey,
   onBackToSelection,
   onGenerateCreatives,
 }: {
-  clientId: string
   result: { refreshId: string; proposals: CreativeProposal[] } | null
-  selectedKeys: Set<string>
+  selectedKey: string | null
   onBackToSelection: () => void
-  onGenerateCreatives: () => void | Promise<void>
+  onGenerateCreatives: () => void
 }) {
+  const picked = resolveSelectedVariant(result, selectedKey)
   if (!result) {
     return (
       <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
@@ -1159,12 +1147,11 @@ function EditCopyStep({
       </div>
     )
   }
-  const selectedPairs = resolveSelectedPairs(result, selectedKeys)
-  if (selectedPairs.length === 0) {
+  if (!picked) {
     return (
       <div className="space-y-3">
         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
-          Geen varianten geselecteerd. Ga terug naar Stap 2 om er minimaal één te kiezen.
+          Nog geen variant gekozen. Ga terug naar Stap 2 om er één te kiezen.
         </div>
         <button
           type="button"
@@ -1176,11 +1163,7 @@ function EditCopyStep({
       </div>
     )
   }
-  // Roy 2026-06-12: defensive check - als een variant geen variantId
-  // heeft (persist faalde), kunnen we noch inline editen noch images
-  // genereren. Banner met actie om verder te gaan zonder te crashen.
-  const missingVariantIdCount = selectedPairs.filter((p) => !p.variant.variantId).length
-  const allMissing = missingVariantIdCount === selectedPairs.length
+  const missingVariantId = !picked.variant.variantId
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
@@ -1193,43 +1176,35 @@ function EditCopyStep({
             ← Terug
           </button>
           <div className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{selectedPairs.length} varianten</span>{" "}
-            klaar. Edit eerst de tekst, dan klik op &ldquo;Genereer creatives&rdquo;.
+            <span className="font-medium text-foreground">{picked.variant.label}</span> klaar.
+            Edit de tekst, dan klik &ldquo;Genereer creatives&rdquo;.
           </div>
         </div>
         <button
           type="button"
-          onClick={() => void onGenerateCreatives()}
-          disabled={allMissing}
+          onClick={onGenerateCreatives}
+          disabled={missingVariantId}
           className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
           title={
-            allMissing
-              ? "Geen bruikbare variant-IDs - regenereer in Stap 1"
-              : "Pedro genereert 3 images per variant"
+            missingVariantId
+              ? "Geen bruikbaar variant-ID - regenereer in Stap 1"
+              : "Pedro genereert 3 images op basis van deze copy"
           }
         >
           <Sparkles className="h-3.5 w-3.5" />
           Genereer creatives
         </button>
       </div>
-      {missingVariantIdCount > 0 && (
+      {missingVariantId && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
           <div>
-            {missingVariantIdCount} van {selectedPairs.length} varianten heeft geen variant-ID
-            (persist faalde). Inline editen en image-gen werken niet voor die varianten.
+            Deze variant heeft geen variant-ID. Inline editen en image-gen werken niet.
             Ga terug naar Stap 1 en regenereer om het op te lossen.
           </div>
         </div>
       )}
-      <div className="space-y-6">
-        {selectedPairs.map(({ proposalIndex, variant }) => (
-          <EditCopyVariantCard
-            key={`${proposalIndex}-${variant.adName}`}
-            variant={variant}
-          />
-        ))}
-      </div>
+      <EditCopyVariantCard variant={picked.variant} />
     </div>
   )
 }
@@ -1526,61 +1501,24 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
 function GenerateCreativesStep({
   clientId,
   result,
-  selectedKeys,
-  inFlightVariantIds,
-  resultsByVariant,
+  selectedKey,
   onBackToCopy,
   onContinueToPush,
-  onRetryVariant,
 }: {
   clientId: string
   result: { refreshId: string; proposals: CreativeProposal[] } | null
-  selectedKeys: Set<string>
-  inFlightVariantIds: Set<string>
-  resultsByVariant: Record<string, { ok: boolean; error?: string; completedAt: string }>
+  selectedKey: string | null
   onBackToCopy: () => void
   onContinueToPush: () => void
-  onRetryVariant: (variantId: string) => void
 }) {
-  if (!result) {
+  const picked = resolveSelectedVariant(result, selectedKey)
+  if (!result || !picked) {
     return (
       <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-        Geen gegenereerde varianten. Ga terug naar Stap 1.
+        Nog geen variant gekozen. Ga terug naar Stap 2.
       </div>
     )
   }
-  const selectedPairs = resolveSelectedPairs(result, selectedKeys)
-  if (selectedPairs.length === 0) {
-    return (
-      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
-        Geen varianten geselecteerd.
-      </div>
-    )
-  }
-
-  // Roy 2026-06-12 v9: Stap 4 zit visueel apart van Stap 3. Wanneer
-  // alle geselecteerde varianten nog in-flight zijn EN nog geen image
-  // resultaat hebben → tonen we de full-page generating progress (zelfde
-  // chrome als Stap 2's GeneratingProgress, zo voelt het als één samen-
-  // hangend AI moment). Pas wanneer er ten minste één resultaat is
-  // (success of fail), schakelen we om naar de per-variant image-only view.
-  const allInFlight = selectedPairs.every(({ variant }) => {
-    const vid = variant.variantId ?? ""
-    return vid && inFlightVariantIds.has(vid)
-  })
-  const anyResults = selectedPairs.some(({ variant }) => {
-    const vid = variant.variantId ?? ""
-    return vid && resultsByVariant[vid] !== undefined
-  })
-  const showFullProgress = allInFlight && !anyResults
-
-  const totalInFlight = inFlightVariantIds.size
-  const totalFailed = Object.values(resultsByVariant).filter((r) => !r.ok).length
-
-  if (showFullProgress) {
-    return <GeneratingImagesProgress variantCount={selectedPairs.length} />
-  }
-
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
@@ -1593,144 +1531,37 @@ function GenerateCreativesStep({
             ← Terug naar copy
           </button>
           <div className="text-xs text-muted-foreground">
-            {totalInFlight > 0 ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                {totalInFlight} {totalInFlight === 1 ? "variant" : "varianten"} nog bezig…
-              </span>
-            ) : totalFailed > 0 ? (
-              <span className="text-amber-700 dark:text-amber-400">
-                {totalFailed} {totalFailed === 1 ? "variant" : "varianten"} faalde - regen of upload zelf
-              </span>
-            ) : (
-              <span>
-                <span className="font-medium text-foreground">{selectedPairs.length} varianten</span>{" "}
-                klaar. Itereer of door naar Push.
-              </span>
-            )}
+            <span className="font-medium text-foreground">{picked.variant.label}</span> · 3 images
+            via Gemini Nano Banana Pro · winnende ad + Drive folders + brand identity als referentie.
           </div>
         </div>
         <button
           type="button"
           onClick={onContinueToPush}
-          disabled={totalInFlight > 0}
-          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-          title={
-            totalInFlight > 0
-              ? "Wacht tot Pedro klaar is met genereren"
-              : "Door naar Push naar Meta"
-          }
+          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
         >
           <Megaphone className="h-3.5 w-3.5" />
           Push naar Meta
         </button>
       </div>
       <ImageSourcesPicker clientId={clientId} />
-      <div className="space-y-4">
-        {selectedPairs.map(({ proposalIndex, variant }) => {
-          const vid = variant.variantId ?? ""
-          const inFlight = vid ? inFlightVariantIds.has(vid) : false
-          const genResult = vid ? resultsByVariant[vid] : undefined
-          return (
-            <GenerateCreativeImageCard
-              key={`${proposalIndex}-${variant.adName}`}
-              variant={variant}
-              clientId={clientId}
-              inFlight={inFlight}
-              error={genResult && !genResult.ok ? (genResult.error ?? null) : null}
-              onRetry={vid ? () => onRetryVariant(vid) : null}
-            />
-          )
-        })}
-      </div>
+      <GenerateCreativeImageCard variant={picked.variant} clientId={clientId} />
     </div>
   )
 }
 
 /**
- * GeneratingImagesProgress - same UX als Stap 2's GeneratingProgress,
- * voor de overgang tussen Stap 3 (edit copy) en Stap 4 (de definitieve
- * images). Asymptotische curve naar 99% zodat de bar nooit stilstaat
- * ongeacht of Gemini in 8 of 35 seconden klaar is.
- */
-const IMAGE_GEN_STAGES: Array<{ label: string; weight: number }> = [
-  { label: "Pedro analyseert je copy + brand identity…", weight: 0.10 },
-  { label: "Pedro selecteert reference photos uit Drive…", weight: 0.15 },
-  { label: "Pedro schrijft de visuele brief voor Gemini…", weight: 0.12 },
-  { label: "Gemini genereert image A (close-up van het subject)…", weight: 0.20 },
-  { label: "Gemini genereert image B (lifestyle / setting)…", weight: 0.18 },
-  { label: "Gemini genereert image C (alternatieve hoek)…", weight: 0.15 },
-  { label: "Images uploaden + signed URLs aanmaken…", weight: 0.10 },
-]
-
-function GeneratingImagesProgress({ variantCount }: { variantCount: number }) {
-  const [elapsed, setElapsed] = useState(0)
-  useEffect(() => {
-    const start = Date.now()
-    const id = setInterval(() => {
-      setElapsed(Date.now() - start)
-    }, 200)
-    return () => clearInterval(id)
-  }, [])
-  const progress = 0.99 * (1 - Math.exp(-elapsed / 28000))
-  let cumulativeWeight = 0
-  let currentStageIdx = IMAGE_GEN_STAGES.length - 1
-  for (let i = 0; i < IMAGE_GEN_STAGES.length; i++) {
-    cumulativeWeight += IMAGE_GEN_STAGES[i].weight
-    if (progress < cumulativeWeight) {
-      currentStageIdx = i
-      break
-    }
-  }
-  const currentLabel = IMAGE_GEN_STAGES[currentStageIdx].label
-  return (
-    <div className="rounded-2xl border border-border/60 bg-muted/20 p-10 space-y-6">
-      <div className="space-y-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <div className="font-heading font-semibold text-lg">
-            Pedro genereert creatives…
-          </div>
-          <div className="text-xs text-muted-foreground tabular-nums">
-            {Math.round(progress * 100)}%
-          </div>
-        </div>
-        <div className="h-2 rounded-full bg-muted/60 overflow-hidden">
-          <div
-            className="h-full bg-primary transition-[width] duration-300 ease-out"
-            style={{ width: `${progress * 100}%` }}
-          />
-        </div>
-        <div className="text-xs text-muted-foreground">
-          3 images per variant · {variantCount}{" "}
-          {variantCount === 1 ? "variant" : "varianten"} via Gemini Nano Banana Pro
-        </div>
-      </div>
-      <div className="flex items-center gap-2.5 text-sm text-foreground">
-        <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
-        <span className="leading-tight">{currentLabel}</span>
-      </div>
-    </div>
-  )
-}
-
-/**
- * GenerateCreativeImageCard - per variant op Stap 4: alleen images
- * (3 slots via VariantImagePanel) + één regel context bovenaan zodat
- * de CM weet welke variant hij ziet. Geen copy fields meer - die
- * leven op Stap 3.
+ * GenerateCreativeImageCard - Stap 4: alleen images. VariantImagePanel
+ * auto-fired generateAll() bij mount wanneer er nog geen slots gevuld
+ * zijn. Eigen progress UI in het paneel, geen extern orkestratie. Geen
+ * copy fields - die leven op Stap 3.
  */
 function GenerateCreativeImageCard({
   variant,
   clientId,
-  inFlight,
-  error,
-  onRetry,
 }: {
   variant: CreativeVariant
   clientId: string
-  inFlight: boolean
-  error: string | null
-  onRetry: (() => void) | null
 }) {
   const variantId = variant.variantId ?? null
   return (
@@ -1748,28 +1579,6 @@ function GenerateCreativeImageCard({
           </div>
         )}
       </header>
-      {inFlight && (
-        <div className="mx-6 mt-4 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground inline-flex items-center gap-2">
-          <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
-          Pedro genereert 3 images…
-        </div>
-      )}
-      {error && onRetry && (
-        <div className="mx-6 mt-4 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-400 flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="font-medium">Genereren mislukt</div>
-            <div className="text-[11px] opacity-80 whitespace-pre-line">{error}</div>
-          </div>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium rounded-md bg-red-500/10 hover:bg-red-500/20 text-red-700 dark:text-red-400 transition-colors"
-          >
-            <Sparkles className="h-3 w-3" />
-            Probeer opnieuw
-          </button>
-        </div>
-      )}
       <div className="px-6 py-5">
         <VariantImagePanel
           variantId={variantId}
@@ -1777,6 +1586,8 @@ function GenerateCreativeImageCard({
           adName={variant.adName}
           initialImagePrompt={variant.image?.imagePrompt ?? variant.imagePrompt ?? null}
           initialHasImage={variant.image?.hasImage ?? false}
+          autoGenerateOnMount
+          hideBulkButton
         />
       </div>
     </article>
@@ -1786,60 +1597,26 @@ function GenerateCreativeImageCard({
 function PushMetaStep({
   clientId,
   result,
-  selectedKeys,
+  selectedKey,
   onBackToCreatives,
 }: {
   clientId: string
   result: { refreshId: string; proposals: CreativeProposal[] } | null
-  selectedKeys: Set<string>
+  selectedKey: string | null
   onBackToCreatives: () => void
 }) {
-  const [openPushFor, setOpenPushFor] = useState<{
-    proposalIndex: number
-    variantId: string
-    variantLabel: string
-    adName: string
-    angle: string
-    headline: string
-    proposal: CreativeProposal
-  } | null>(null)
-
-  if (!result) {
+  const [openPush, setOpenPush] = useState(false)
+  const picked = resolveSelectedVariant(result, selectedKey)
+  if (!result || !picked) {
     return (
       <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
-        Geen gegenereerde varianten. Ga terug naar Stap 1.
+        Nog geen variant gekozen. Ga terug naar Stap 2.
       </div>
     )
   }
-  const selectedPairs: Array<{
-    proposalIndex: number
-    proposal: CreativeProposal
-    variantIndex: number
-    variant: CreativeVariant
-  }> = []
-  result.proposals.forEach((p, pi) => {
-    p.variants.forEach((v, vi) => {
-      if (selectedKeys.has(`${pi}:${vi}`)) {
-        selectedPairs.push({
-          proposalIndex: pi,
-          proposal: p,
-          variantIndex: vi,
-          variant: v,
-        })
-      }
-    })
-  })
-  if (selectedPairs.length === 0) {
-    return (
-      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
-        Geen varianten geselecteerd.
-      </div>
-    )
-  }
-
+  const variantId = picked.variant.variantId ?? ""
   return (
     <div className="space-y-4">
-      {/* CTA bar TOP - back to Stap 3 */}
       <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <button
@@ -1850,46 +1627,30 @@ function PushMetaStep({
             ← Terug naar creatives
           </button>
           <div className="text-xs text-muted-foreground">
-            Open per variant de push-instellingen: ad set naam, daily budget,
-            template-bron. Alles gaat naar Meta als{" "}
+            Laatste check: copy, images, budget. Alles gaat naar Meta als{" "}
             <span className="font-medium text-amber-700 dark:text-amber-400">PAUSED</span>.
           </div>
         </div>
       </div>
-      <div className="space-y-3">
-        {selectedPairs.map(({ proposalIndex, proposal, variant }) => (
-          <PushVariantReviewCard
-            key={`${proposalIndex}-${variant.adName}`}
-            variant={variant}
-            onOpenPush={() =>
-              setOpenPushFor({
-                proposalIndex,
-                variantId: variant.variantId ?? "",
-                variantLabel: variant.label,
-                adName: variant.adName,
-                angle: proposal.preserve.angle,
-                headline: variant.headline ?? "",
-                proposal,
-              })
-            }
-          />
-        ))}
-      </div>
-      {openPushFor && (
+      <PushVariantReviewCard
+        variant={picked.variant}
+        onOpenPush={() => setOpenPush(true)}
+      />
+      {openPush && variantId && (
         <PushToMetaModal
-          open={!!openPushFor}
-          onClose={() => setOpenPushFor(null)}
+          open={openPush}
+          onClose={() => setOpenPush(false)}
           refreshId={result.refreshId}
-          proposalIndex={openPushFor.proposalIndex}
-          winnerAdName={openPushFor.proposal.basedOnAd.adName}
-          proposalAngle={openPushFor.angle}
-          variantHeadline={openPushFor.headline}
+          proposalIndex={picked.proposalIndex}
+          winnerAdName={picked.proposal.basedOnAd.adName}
+          proposalAngle={picked.proposal.preserve.angle}
+          variantHeadline={picked.variant.headline ?? ""}
           clientId={clientId}
           variants={[
             {
-              variantId: openPushFor.variantId,
-              adName: openPushFor.adName,
-              label: openPushFor.variantLabel,
+              variantId,
+              adName: picked.variant.adName,
+              label: picked.variant.label,
               topicLabel: "",
             },
           ]}
