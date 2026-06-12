@@ -425,7 +425,16 @@ export async function GET(req: NextRequest) {
       await tracker.ok(metrics)
     }
 
-    return NextResponse.json({ ok: true, ...metrics, ...(debug ? { debugSamples } : {}) })
+    // Per-user error list is always returned so an admin can spot a
+    // stale/revoked Trengo token without re-running with ?debug=1. We
+    // strip the userId to keep the response self-contained (admin can
+    // map by email already).
+    return NextResponse.json({
+      ok: true,
+      ...metrics,
+      perUserErrors: perUserErrors.map(({ email, error }) => ({ email, error })),
+      ...(debug ? { debugSamples } : {}),
+    })
   } catch (e) {
     await tracker.fail(e)
     return NextResponse.json(
