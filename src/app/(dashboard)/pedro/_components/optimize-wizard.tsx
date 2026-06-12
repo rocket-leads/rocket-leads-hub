@@ -8,13 +8,20 @@ import {
   Megaphone,
   Video,
   FileText,
+  Loader2,
+  AlertTriangle,
+  ArrowRight,
+  Sparkles,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AdPicker } from "./ad-picker"
-import { AnglesRefresh } from "./angles-refresh"
 import { ScriptRefresh } from "./script-refresh"
 import { LpRefresh } from "./lp-refresh"
-import { AdsRefresh } from "./ads-refresh"
+import {
+  VariantCard,
+  type CreativeProposal,
+  type CreativeVariant,
+} from "./creative-refresh"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 
@@ -37,38 +44,37 @@ import { t } from "@/lib/i18n/t"
  * wizard (Roy 2026-06-11: "no hard locks").
  */
 
-type StepKey = "pick_ad" | "angles" | "ads"
+type StepKey = "pick_ad" | "select_variants" | "creatives"
 type OverigKey = "lp_prompt" | "video_scripts"
 type ActiveKey = StepKey | OverigKey
 
 type StepDef = {
   key: StepKey
   order: number
-  titleKey: "pedro.optimize.step.pick_ad.title" | "pedro.optimize.step.angles.title" | "pedro.optimize.step.ads.title"
+  title: string
   icon: typeof Compass
 }
 
 type OverigDef = {
   key: OverigKey
-  titleKey: "pedro.optimize.step.lp_prompt.title" | "pedro.optimize.step.video_scripts.title"
+  title: string
   icon: typeof Compass
 }
 
-// Roy 2026-06-11 v6: terug naar de oude 3-stappen-flow zoals onboarding.
-// Stap 1 = winning ad, stap 2 = angles, stap 3 = ads (creative + copy).
-// Step descriptions stripped (Roy 2026-06-11) - titles + numbered rail
-// already explain the flow; the sub-headlines added clutter.
+// Roy 2026-06-12 v7: flow herstructureerd. Step 1 vuurt de generate
+// API meteen af; Step 2 toont de gegenereerde varianten + multi-select;
+// Step 3 doet alleen image gen + push voor de gekozen varianten.
 const STEPS: StepDef[] = [
-  { key: "pick_ad", order: 1, titleKey: "pedro.optimize.step.pick_ad.title", icon: Target },
-  { key: "angles", order: 2, titleKey: "pedro.optimize.step.angles.title", icon: Compass },
-  { key: "ads", order: 3, titleKey: "pedro.optimize.step.ads.title", icon: Megaphone },
+  { key: "pick_ad", order: 1, title: "Kies winning ad", icon: Target },
+  { key: "select_variants", order: 2, title: "Kies varianten", icon: Compass },
+  { key: "creatives", order: 3, title: "Creatives + push", icon: Megaphone },
 ]
 
 // Roy 2026-06-11 v7: video scripts + LP prompt zitten naast de iteratie
 // flow als losse rail-sectie "OVERIG", niet als grote banner onderaan.
 const OVERIG: OverigDef[] = [
-  { key: "lp_prompt", titleKey: "pedro.optimize.step.lp_prompt.title", icon: FileText },
-  { key: "video_scripts", titleKey: "pedro.optimize.step.video_scripts.title", icon: Video },
+  { key: "lp_prompt", title: "LP prompt", icon: FileText },
+  { key: "video_scripts", title: "Video scripts", icon: Video },
 ]
 
 type PickedAd = {
@@ -124,20 +130,31 @@ export function OptimizeWizard({
     readPickedAd(selectedClientId),
   )
   const [activeKey, setActiveKey] = useState<ActiveKey>(() =>
-    readPickedAd(selectedClientId) ? "angles" : "pick_ad",
+    readPickedAd(selectedClientId) ? "select_variants" : "pick_ad",
   )
-  // Done state per step is purely visual signal (green checkmark in
-  // rail). For pick_ad: true when an ad is picked. For 2-5: true when
-  // the CM has actually generated a refresh in this session. We track
-  // the generation state via a flag per step.
-  const [generatedSteps, setGeneratedSteps] = useState<Set<StepKey>>(new Set())
+  // Generation result + state. Roy 2026-06-12 v7: Step 1's generate
+  // button fires /api/pedro/creative-refresh; the proposals land in
+  // refreshResult and Step 2 renders them. selectedVariants drives
+  // what Step 3 shows (image gen + push).
+  const [refreshResult, setRefreshResult] = useState<{
+    refreshId: string
+    proposals: CreativeProposal[]
+  } | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
+  const [selectedVariantKeys, setSelectedVariantKeys] = useState<Set<string>>(
+    new Set(),
+  )
 
   // Reset when client changes.
   useEffect(() => {
     const stored = readPickedAd(selectedClientId)
     setPickedAd(stored)
-    setActiveKey(stored ? "angles" : "pick_ad")
-    setGeneratedSteps(new Set())
+    setActiveKey(stored ? "select_variants" : "pick_ad")
+    setRefreshResult(null)
+    setIsGenerating(false)
+    setGenerateError(null)
+    setSelectedVariantKeys(new Set())
   }, [selectedClientId])
 
   const updatePickedAd = useCallback(
@@ -148,11 +165,57 @@ export function OptimizeWizard({
     [selectedClientId],
   )
 
-  const markGenerated = useCallback((step: StepKey) => {
-    setGeneratedSteps((prev) => {
-      if (prev.has(step)) return prev
+  // Fire the creative-refresh call from Step 1's generate button.
+  // Step 2 reads from refreshResult; Step 3 reads from selectedVariantKeys.
+  const startGenerate = useCallback(
+    async (sourceAdId: string, sourceScreenshotPath?: string) => {
+      setIsGenerating(true)
+      setGenerateError(null)
+      setRefreshResult(null)
+      setActiveKey("select_variants")
+      try {
+        const res = await fetch("/api/pedro/creative-refresh", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId: selectedClientId,
+            sourceAdId,
+            ...(sourceScreenshotPath ? { sourceScreenshotPath } : {}),
+            days: 90,
+          }),
+        })
+        const json = await res.json()
+        if (!res.ok || json.error) {
+          throw new Error(json.error || `HTTP ${res.status}`)
+        }
+        const proposals: CreativeProposal[] = Array.isArray(json.proposals)
+          ? json.proposals
+          : []
+        const refreshId: string = typeof json.refreshId === "string" ? json.refreshId : ""
+        if (!refreshId || proposals.length === 0) {
+          throw new Error("Pedro gaf geen varianten terug. Probeer opnieuw.")
+        }
+        setRefreshResult({ refreshId, proposals })
+        // Default selection: all variants checked so the CM can deselect.
+        const allKeys = new Set<string>()
+        proposals.forEach((p, pi) => {
+          p.variants.forEach((_, vi) => allKeys.add(`${pi}:${vi}`))
+        })
+        setSelectedVariantKeys(allKeys)
+      } catch (e) {
+        setGenerateError(e instanceof Error ? e.message : "Genereren mislukt")
+      } finally {
+        setIsGenerating(false)
+      }
+    },
+    [selectedClientId],
+  )
+
+  const toggleVariantSelected = useCallback((key: string) => {
+    setSelectedVariantKeys((prev) => {
       const next = new Set(prev)
-      next.add(step)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }, [])
@@ -160,9 +223,11 @@ export function OptimizeWizard({
   const doneFor = useCallback(
     (key: StepKey): boolean => {
       if (key === "pick_ad") return !!pickedAd
-      return generatedSteps.has(key)
+      if (key === "select_variants") return !!refreshResult
+      if (key === "creatives") return selectedVariantKeys.size > 0 && !!refreshResult
+      return false
     },
-    [pickedAd, generatedSteps],
+    [pickedAd, refreshResult, selectedVariantKeys],
   )
 
   const totalDone = useMemo(
@@ -266,36 +331,40 @@ export function OptimizeWizard({
             {activeKey === "pick_ad" && (
               <PickAdStep
                 clientId={selectedClientId}
-                onPicked={(picked) => {
-                  updatePickedAd(picked)
-                  setActiveKey("angles")
-                }}
                 currentPicked={pickedAd}
+                onGenerate={async (picked, screenshotPath) => {
+                  updatePickedAd(picked)
+                  await startGenerate(picked.adId, screenshotPath ?? undefined)
+                }}
+                isGenerating={isGenerating}
                 locale={locale}
               />
             )}
-            {activeKey === "angles" && (
+            {activeKey === "select_variants" && (
               <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
-                <div onClick={() => markGenerated("angles")}>
-                  <AnglesRefresh
-                    selectedClientId={selectedClientId}
-                    selectedClientName={selectedClientName}
-                    autoStart={autoStart}
-                    hideShellHeader
-                  />
-                </div>
+                <SelectVariantsStep
+                  isGenerating={isGenerating}
+                  error={generateError}
+                  result={refreshResult}
+                  selectedKeys={selectedVariantKeys}
+                  onToggle={toggleVariantSelected}
+                  onContinue={() => setActiveKey("creatives")}
+                  onRetry={() =>
+                    pickedAd?.adId
+                      ? startGenerate(pickedAd.adId, pickedAd.screenshotPath ?? undefined)
+                      : null
+                  }
+                />
               </StepGate>
             )}
-            {activeKey === "ads" && (
+            {activeKey === "creatives" && (
               <StepGate clientId={selectedClientId} pickedAd={pickedAd} locale={locale}>
-                <div onClick={() => markGenerated("ads")}>
-                  <AdsRefresh
-                    selectedClientId={selectedClientId}
-                    selectedClientName={selectedClientName}
-                    autoStart={autoStart}
-                    hideShellHeader
-                  />
-                </div>
+                <CreativesStep
+                  clientId={selectedClientId}
+                  result={refreshResult}
+                  selectedKeys={selectedVariantKeys}
+                  onBackToSelection={() => setActiveKey("select_variants")}
+                />
               </StepGate>
             )}
             {activeKey === "lp_prompt" && (
@@ -358,7 +427,7 @@ function StepRailItem({
         {done ? <CheckCircle2 className="h-3 w-3" /> : step.order}
       </span>
       <span className={cn("flex-1 truncate", done && "text-muted-foreground/70")}>
-        {t(step.titleKey, locale)}
+        {step.title}
       </span>
     </button>
   )
@@ -394,7 +463,7 @@ function OverigRailItem({
       >
         <Icon className="h-3 w-3" />
       </span>
-      <span className="flex-1 truncate">{t(item.titleKey, locale)}</span>
+      <span className="flex-1 truncate">{item.title}</span>
     </button>
   )
 }
@@ -421,7 +490,7 @@ function StepHeader({
       </div>
       <h2 className="font-heading text-lg font-semibold leading-tight flex items-center gap-2">
         <Icon className="h-4 w-4 text-primary" />
-        {t(item.titleKey, locale)}
+        {item.title}
       </h2>
     </div>
   )
@@ -499,23 +568,25 @@ function StepGate({
  */
 function PickAdStep({
   clientId,
-  onPicked,
   currentPicked,
+  onGenerate,
+  isGenerating,
   locale,
 }: {
   clientId: string
-  onPicked: (picked: PickedAd) => void
   currentPicked: PickedAd | null
+  onGenerate: (picked: PickedAd, screenshotPath: string | null) => Promise<void>
+  isGenerating: boolean
   locale: import("@/lib/i18n/types").Locale
 }) {
-  // We hijack AdPicker's onGenerate as our "pick confirmation": the
-  // picker calls it with sourceAdId (+ optional screenshotPath) when
-  // the CM clicks "Genereer". We don't actually call any backend - we
-  // just save the pick and advance.
-  const handlePick = useCallback(
+  // Roy 2026-06-12 v7: AdPicker's "Genereer" knop fires the actual
+  // creative-refresh API call. We enrich the picked ad metadata (name,
+  // campaignName) before firing so Step 2's source-ad banner has full
+  // info to show.
+  const handleGenerate = useCallback(
     async (extra: { sourceAdId: string; sourceScreenshotPath?: string }) => {
-      // We need adName + campaignName but AdPicker only passes the id.
-      // Quick fetch of the campaigns-with-ads endpoint to enrich.
+      let adName = ""
+      let campaignName = ""
       try {
         const res = await fetch(
           `/api/pedro/campaigns-with-ads/${encodeURIComponent(clientId)}`,
@@ -526,8 +597,6 @@ function PickAdStep({
             ads: Array<{ adId: string; adName: string }>
           }>
         }
-        let adName = ""
-        let campaignName = ""
         for (const c of json.campaigns ?? []) {
           const hit = c.ads.find((a) => a.adId === extra.sourceAdId)
           if (hit) {
@@ -536,22 +605,18 @@ function PickAdStep({
             break
           }
         }
-        onPicked({
-          adId: extra.sourceAdId,
-          adName: adName || extra.sourceAdId,
-          campaignName,
-          screenshotPath: extra.sourceScreenshotPath ?? null,
-        })
       } catch {
-        onPicked({
-          adId: extra.sourceAdId,
-          adName: extra.sourceAdId,
-          campaignName: "",
-          screenshotPath: extra.sourceScreenshotPath ?? null,
-        })
+        /* fall through to id-only enrichment */
       }
+      const picked: PickedAd = {
+        adId: extra.sourceAdId,
+        adName: adName || extra.sourceAdId,
+        campaignName,
+        screenshotPath: extra.sourceScreenshotPath ?? null,
+      }
+      await onGenerate(picked, picked.screenshotPath)
     },
-    [clientId, onPicked],
+    [clientId, onGenerate],
   )
 
   return (
@@ -564,10 +629,279 @@ function PickAdStep({
       )}
       <AdPicker
         clientId={clientId}
-        loading={false}
+        loading={isGenerating}
         hasOutput={false}
-        onGenerate={handlePick}
+        onGenerate={handleGenerate}
       />
+    </div>
+  )
+}
+
+function SelectVariantsStep({
+  isGenerating,
+  error,
+  result,
+  selectedKeys,
+  onToggle,
+  onContinue,
+  onRetry,
+}: {
+  isGenerating: boolean
+  error: string | null
+  result: { refreshId: string; proposals: CreativeProposal[] } | null
+  selectedKeys: Set<string>
+  onToggle: (key: string) => void
+  onContinue: () => void
+  onRetry: () => void
+}) {
+  if (isGenerating) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-muted/20 p-10 flex flex-col items-center justify-center gap-3 text-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <div className="font-heading font-semibold text-base">
+          Pedro genereert varianten…
+        </div>
+        <p className="text-xs text-muted-foreground max-w-md">
+          Lezen van source ad → angles + ad copy + image prompts. Duurt meestal 20-40 seconden bij dynamic creatives.
+        </p>
+      </div>
+    )
+  }
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-500/30 bg-red-500/5 p-5 space-y-3">
+        <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-400">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-medium">Genereren mislukt</div>
+            <div className="text-xs whitespace-pre-line">{error}</div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Probeer opnieuw
+        </button>
+      </div>
+    )
+  }
+  if (!result) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        Nog geen varianten gegenereerd. Ga terug naar Stap 1 en klik &quot;Genereer 3 varianten&quot;.
+      </div>
+    )
+  }
+  const totalVariants = result.proposals.reduce(
+    (n, p) => n + p.variants.length,
+    0,
+  )
+  const totalSelected = selectedKeys.size
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
+        <div className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{totalVariants} varianten</span>{" "}
+          gegenereerd op basis van source ad. Vink uit wat je niet wil, dan ga je naar Creatives.
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-[11px] text-muted-foreground tabular-nums">
+            {totalSelected} / {totalVariants} geselecteerd
+          </div>
+          <button
+            type="button"
+            onClick={onContinue}
+            disabled={totalSelected === 0}
+            className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          >
+            Naar creatives
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      <div className="space-y-4">
+        {result.proposals.map((p, pi) => (
+          <ProposalSelectionCard
+            key={`${p.basedOnAd.adId}-${pi}`}
+            proposal={p}
+            proposalIndex={pi}
+            selectedKeys={selectedKeys}
+            onToggle={onToggle}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ProposalSelectionCard({
+  proposal,
+  proposalIndex,
+  selectedKeys,
+  onToggle,
+}: {
+  proposal: CreativeProposal
+  proposalIndex: number
+  selectedKeys: Set<string>
+  onToggle: (key: string) => void
+}) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-3">
+      <div className="text-[10px] uppercase tracking-[0.12em] text-violet-600 dark:text-violet-400 font-semibold">
+        Iteratie op {proposal.basedOnAd.adName}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {proposal.variants.map((v, vi) => {
+          const key = `${proposalIndex}:${vi}`
+          const checked = selectedKeys.has(key)
+          return (
+            <VariantSelectionCard
+              key={key}
+              variant={v}
+              checked={checked}
+              onToggle={() => onToggle(key)}
+            />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function VariantSelectionCard({
+  variant,
+  checked,
+  onToggle,
+}: {
+  variant: CreativeVariant
+  checked: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={cn(
+        "text-left rounded-lg border-2 p-3 space-y-2 transition-colors",
+        checked
+          ? "border-primary bg-primary/5"
+          : "border-border bg-background hover:bg-accent/40",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="font-heading font-semibold text-sm leading-tight">
+          {variant.label}
+        </div>
+        <div
+          className={cn(
+            "shrink-0 h-4 w-4 rounded-md border-2 flex items-center justify-center",
+            checked
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-card",
+          )}
+        >
+          {checked && <CheckCircle2 className="h-3 w-3" />}
+        </div>
+      </div>
+      <div className="text-[11px] text-muted-foreground font-mono truncate">
+        {variant.adName}
+      </div>
+      {variant.headline && (
+        <div className="text-xs text-foreground line-clamp-2 italic">
+          &ldquo;{variant.headline}&rdquo;
+        </div>
+      )}
+      {variant.primaryCopySnippet && (
+        <div className="text-[11px] text-muted-foreground line-clamp-3">
+          {variant.primaryCopySnippet}
+        </div>
+      )}
+    </button>
+  )
+}
+
+function CreativesStep({
+  clientId,
+  result,
+  selectedKeys,
+  onBackToSelection,
+}: {
+  clientId: string
+  result: { refreshId: string; proposals: CreativeProposal[] } | null
+  selectedKeys: Set<string>
+  onBackToSelection: () => void
+}) {
+  if (!result) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        Geen gegenereerde varianten. Ga terug naar Stap 1.
+      </div>
+    )
+  }
+  const selectedPairs: Array<{
+    proposalIndex: number
+    proposal: CreativeProposal
+    variantIndex: number
+    variant: CreativeVariant
+  }> = []
+  result.proposals.forEach((p, pi) => {
+    p.variants.forEach((v, vi) => {
+      if (selectedKeys.has(`${pi}:${vi}`)) {
+        selectedPairs.push({
+          proposalIndex: pi,
+          proposal: p,
+          variantIndex: vi,
+          variant: v,
+        })
+      }
+    })
+  })
+  if (selectedPairs.length === 0) {
+    return (
+      <div className="space-y-3">
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
+          Geen varianten geselecteerd. Ga terug naar Stap 2 om er minimaal één te kiezen.
+        </div>
+        <button
+          type="button"
+          onClick={onBackToSelection}
+          className="inline-flex items-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-border hover:bg-accent transition-colors"
+        >
+          ← Terug naar variant-keuze
+        </button>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-4">
+      <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
+        <div className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{selectedPairs.length} varianten</span>{" "}
+          klaar voor image gen + Push to Meta. Per kaart eigen image-generatie.
+        </div>
+        <button
+          type="button"
+          onClick={onBackToSelection}
+          className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ← Terug naar variant-keuze
+        </button>
+      </div>
+      <div className="space-y-4">
+        {selectedPairs.map(({ proposalIndex, proposal, variant }) => (
+          <VariantCard
+            key={`${proposalIndex}-${variant.adName}`}
+            variant={variant}
+            clientId={clientId}
+            refreshId={result.refreshId}
+            proposalIndex={proposalIndex}
+            proposalAngle={proposal.preserve.angle}
+          />
+        ))}
+      </div>
     </div>
   )
 }

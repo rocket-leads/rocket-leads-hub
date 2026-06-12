@@ -10,7 +10,7 @@ import { InlineEditField } from "./inline-edit-field"
 import { AdPicker } from "./ad-picker"
 import { cn } from "@/lib/utils"
 
-type CreativeVariant = {
+export type CreativeVariant = {
   label: string
   /** Canonical RL ad name - CM copies this 1:1 into Meta. The UTM later
    *  ties incoming leads back to this exact variant so Pedro can learn
@@ -45,7 +45,7 @@ type CreativeVariant = {
   image?: { hasImage: boolean; provider?: string | null; model?: string | null; generatedAt?: string | null; imagePrompt?: string | null }
 }
 
-type CreativeProposal = {
+export type CreativeProposal = {
   basedOnAd: { adId: string; adName: string; cpl: number | null; verdict: string }
   preserve: { hook: string; angle: string; format: string }
   variants: CreativeVariant[]
@@ -95,7 +95,7 @@ function AdNameChip({ adName }: { adName: string }) {
  *  - Push naar Meta zit nu OP variant-niveau - één ad set per variant
  *    met de 3 slots erin. Geen proposal-level bundeling meer.
  */
-function VariantCard({
+export function VariantCard({
   variant,
   clientId,
   refreshId,
