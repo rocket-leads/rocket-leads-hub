@@ -24,6 +24,8 @@ export async function executeAction(
       return executeTriggerPedroRefresh(action)
     case "navigate_to_client":
       return executeNavigate(action, router)
+    case "create_calendar_event":
+      return executeCreateCalendarEvent(action)
   }
 }
 
@@ -116,4 +118,57 @@ function executeNavigate(
   const url = `/clients/${encodeURIComponent(action.clientId)}${action.tab ? `?tab=${action.tab}` : ""}`
   router.push(url)
   return { ok: true, message: "Opening client…" }
+}
+
+async function executeCreateCalendarEvent(
+  action: Extract<CopilotAction, { type: "create_calendar_event" }>,
+): Promise<ExecuteResult> {
+  // Attendee resolution order:
+  //   1. action.attendeeEmail — explicit override from the editor / parser.
+  //   2. action.clientId  → MondayClient.email (Monday email column).
+  //   3. neither → create the event without an invitee.
+  let attendeeEmail = action.attendeeEmail?.trim() ?? ""
+  if (!attendeeEmail && action.clientId) {
+    try {
+      const clientRes = await fetch(`/api/clients/${encodeURIComponent(action.clientId)}`)
+      if (clientRes.ok) {
+        const payload = (await clientRes.json()) as { client?: { email?: string } }
+        attendeeEmail = payload.client?.email?.trim() ?? ""
+      }
+    } catch {
+      // Swallow — we still create the event.
+    }
+  }
+
+  const durationMin = action.durationMin ?? 30
+  const startMs = Date.parse(action.start)
+  if (Number.isNaN(startMs)) {
+    return { ok: false, message: `Invalid start datetime: ${action.start}` }
+  }
+  const end = new Date(startMs + durationMin * 60_000).toISOString()
+  const addMeetLink = action.addMeetLink !== false
+
+  const res = await fetch("/api/calendar/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: action.title ?? "Meeting",
+      start: action.start,
+      end,
+      allDay: false,
+      attendees: attendeeEmail ? [{ email: attendeeEmail }] : [],
+      addMeetLink,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Failed to create event" }))
+    const msg = typeof err.error === "string" ? err.error : err.error?.message ?? "Failed to create event"
+    return { ok: false, message: msg }
+  }
+
+  const okMessage = attendeeEmail
+    ? "Event created — invite sent"
+    : "Event created (no attendee email — add one in Google Calendar)"
+  return { ok: true, message: okMessage, navigateTo: "/calendar" }
 }

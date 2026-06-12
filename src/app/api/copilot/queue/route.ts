@@ -264,8 +264,19 @@ function buildSystemPrompt(args: {
     .join("\n")
 
   const clientRoster = args.clients
-    .map((c) => `- ${c.name} id=${c.mondayItemId}`)
+    .map((c) => {
+      // Include companyName + firstName so the LLM can render the calendar
+      // event title without needing a separate roster lookup. Falls back to
+      // `name` when neither is set (matches how the panel renders it).
+      const company = c.companyName?.trim()
+      const first = c.firstName?.trim()
+      const labelBits = [company || c.name]
+      if (first) labelBits.push(`first=${first}`)
+      return `- ${labelBits.join(" ")} id=${c.mondayItemId}`
+    })
     .join("\n")
+
+  const userFirstName = firstNameOf(args.sessionUser.name)
 
   const pageHint = args.pageContext.currentClientId
     ? `User is currently viewing client id=${args.pageContext.currentClientId}${
@@ -277,7 +288,7 @@ function buildSystemPrompt(args: {
 
 LANGUAGE MATCHING (important): Mirror the user's input language in every string field you fill (title, body, clarifying questions). If the user typed Dutch, write the title in Dutch. If the user typed English, write English. Never mix - "Check performance TMM Technology - kost per lead verlaagd?" is wrong; it should be either "Check TMM Technology performance - cost per lead dropped?" (all English) or "Check performance TMM Technology - kost per lead verlaagd?" → rewrite to "Performance TMM Technology checken - kost per lead verlaagd?" (all Dutch). For Dutch inputs, prefer Dutch verbs ("checken", "bellen", "chasen", "controleren") over English verbs.
 
-Today is ${args.today}. The signed-in user is ${args.sessionUser.name} (id=${args.sessionUser.id}).
+Today is ${args.today}. The signed-in user is ${args.sessionUser.name} (id=${args.sessionUser.id}); their first name is "${userFirstName}". The Hub operates in Europe/Amsterdam time — CET (+01:00) in winter, CEST (+02:00) in summer. For dates from May through October, treat the timezone as +02:00; for November through March, +01:00; April + October are DST transition months — default to the offset the bulk of the month uses (+02:00 in April, +01:00 in October).
 
 ${pageHint}
 
@@ -286,6 +297,7 @@ TOOL SELECTION (the single most important rule: SELF vs OTHER):
 - Only when the task is for ANOTHER named person ("maak een taak voor Mike", "wijs aan Sanne toe", "create a task for Roy", "Lara moet X doen") → use create_task with that person's id from the roster.
 - Pedro / new creatives / ad variants → trigger_pedro_refresh.
 - "open / show / ga naar [client]" → navigate_to_client.
+- "nodig [naam] uit", "plan meeting met [naam]", "invite X for a meeting", "meeting met X dinsdag 10u", "schiet een meeting in voor dinsdag 10 uur" → create_calendar_event. The host is always the signed-in user. The invitee can be (a) an existing client in the roster → set clientId, OR (b) someone NOT in the roster → set attendeeName as a free-form label. If the user pastes an email in the command, set attendeeEmail too. The action stays valid even when the named person is unknown or no person is named at all — the user fills in the missing pieces in the editor. Title defaults: clientId set → "{Company or ClientFirstName} x ${userFirstName} Meeting"; attendeeName set → "{AttendeeName} x ${userFirstName} Meeting"; neither → "Meeting". Default duration 30 min and addMeetLink=true unless the user said otherwise.
 
 When you pick create_reminder you must still classify the 'kind' parameter:
 
@@ -313,6 +325,17 @@ function addDays(isoDate: string, days: number): string {
   const d = new Date(isoDate)
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
+}
+
+/** Strip the user's display name down to their first name for things
+ *  like calendar-event titles. Falls back to the whole string when the
+ *  name is a single token (e.g. just "Roy" or an email). */
+function firstNameOf(displayName: string): string {
+  const trimmed = displayName.trim()
+  if (!trimmed) return ""
+  // For email-shaped names, take the part before the @ and only its first piece.
+  const beforeAt = trimmed.includes("@") ? trimmed.split("@")[0] : trimmed
+  return beforeAt.split(/[\s.]+/)[0] ?? trimmed
 }
 
 function normalizeAction(
@@ -374,6 +397,18 @@ function normalizeAction(
             ? input.tab
             : undefined,
       }
+    case "create_calendar_event":
+      if (typeof input.start !== "string") return null
+      return {
+        type: "create_calendar_event",
+        clientId: typeof input.clientId === "string" ? input.clientId : undefined,
+        attendeeName: typeof input.attendeeName === "string" ? input.attendeeName : undefined,
+        attendeeEmail: typeof input.attendeeEmail === "string" ? input.attendeeEmail : undefined,
+        start: input.start,
+        durationMin: typeof input.durationMin === "number" ? input.durationMin : undefined,
+        title: typeof input.title === "string" ? input.title : undefined,
+        addMeetLink: typeof input.addMeetLink === "boolean" ? input.addMeetLink : undefined,
+      }
     default:
       return null
   }
@@ -406,5 +441,17 @@ function describeAction(
       return `Run Pedro creative refresh for ${clientName(action.clientId)}${action.days ? ` (${action.days}d lookback)` : ""}`
     case "navigate_to_client":
       return `Open ${clientName(action.clientId)}${action.tab ? ` → ${action.tab}` : ""}`
+    case "create_calendar_event": {
+      const parts = [`Calendar invite: "${action.title ?? "Meeting"}"`]
+      if (action.clientId) {
+        parts.push(`Client: ${clientName(action.clientId)}`)
+      } else if (action.attendeeName) {
+        parts.push(`Attendee: ${action.attendeeName}`)
+      }
+      if (action.attendeeEmail) parts.push(`Email: ${action.attendeeEmail}`)
+      parts.push(`Start: ${action.start}`, `Duration: ${action.durationMin ?? 30} min`)
+      if (action.addMeetLink === false) parts.push("No Meet link")
+      return parts.join(" · ")
+    }
   }
 }

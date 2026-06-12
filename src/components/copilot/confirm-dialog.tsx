@@ -110,7 +110,9 @@ export function ConfirmDialog({
         ? t("copilot.confirm.btn.schedule_reminder", locale)
         : editAction.type === "trigger_pedro_refresh"
           ? t("copilot.confirm.btn.run_pedro", locale)
-          : t("copilot.confirm.btn.open", locale)
+          : editAction.type === "create_calendar_event"
+            ? t("copilot.confirm.btn.create_event", locale)
+            : t("copilot.confirm.btn.open", locale)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -194,6 +196,9 @@ export function ConfirmDialog({
           )}
           {editAction.type === "navigate_to_client" && (
             <NavigateFields draft={editAction} onChange={setEditAction} clients={clients} locale={locale} />
+          )}
+          {editAction.type === "create_calendar_event" && (
+            <CreateCalendarEventFields draft={editAction} onChange={setEditAction} clients={clients} locale={locale} />
           )}
 
           {error && (
@@ -416,6 +421,167 @@ function PedroRefreshFields({
       <p className="text-xs text-muted-foreground">{t("copilot.pedro.eta_hint", locale)}</p>
     </div>
   )
+}
+
+/**
+ * Calendar-event editor. Splits the action's single ISO `start` into two
+ * inputs (date + time-of-day) so the user can tweak either independently,
+ * then rebuilds the ISO string with the Europe/Amsterdam offset on every
+ * change. Duration + Meet toggle + title are independent fields.
+ *
+ * Roy 2026-06-12: the invite goes to the client's Monday-mirrored email
+ * (`MondayClient.email`) server-side via the executor, so we just surface
+ * a hint here instead of asking the user to retype it.
+ */
+function CreateCalendarEventFields({
+  draft,
+  onChange,
+  clients,
+  locale,
+}: {
+  draft: Extract<CopilotAction, { type: "create_calendar_event" }>
+  onChange: (d: CopilotAction) => void
+  clients: ClientSearchResult[]
+  locale: ReturnType<typeof useLocale>
+}) {
+  const update = (patch: Partial<typeof draft>) => onChange({ ...draft, ...patch })
+
+  // Derive date + time inputs from the action's ISO start. We treat the
+  // value as Europe/Amsterdam wall-clock — the parser is instructed to
+  // emit `…T…+02:00` (or +01:00 in winter), and the editor doesn't try
+  // to be smarter than the parser about DST. If the user changes either
+  // input, we rebuild the ISO with the same offset that was on the action.
+  const parsed = useMemo(() => splitIsoToDateTime(draft.start), [draft.start])
+
+  function rebuildStart(date: string, time: string): string {
+    return `${date}T${time}:00${parsed.offset}`
+  }
+
+  // When a client is picked, the attendee name + email fields collapse
+  // (the executor pulls the email from the client). When no client is
+  // picked, attendee fields are the only way to address the invite, and
+  // we warn if email is missing — the event would create without an
+  // invitee otherwise.
+  const hasClient = !!draft.clientId
+  const missingEmail = !hasClient && !(draft.attendeeEmail ?? "").trim()
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Field label={t("copilot.field.title", locale)}>
+        <input
+          type="text"
+          value={draft.title ?? ""}
+          onChange={(e) => update({ title: e.target.value })}
+          className={fieldClass}
+        />
+      </Field>
+      <Field label={t("copilot.field.client", locale)}>
+        <select
+          value={draft.clientId ?? ""}
+          onChange={(e) => update({ clientId: e.target.value || undefined })}
+          className={fieldClass}
+        >
+          <option value="">{t("copilot.field.client_none", locale)}</option>
+          {clients.map((c) => (
+            <option key={c.mondayItemId} value={c.mondayItemId}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      {!hasClient && (
+        <div className="grid grid-cols-2 gap-2">
+          <Field label={t("copilot.field.attendee_name", locale)}>
+            <input
+              type="text"
+              value={draft.attendeeName ?? ""}
+              onChange={(e) => update({ attendeeName: e.target.value || undefined })}
+              placeholder={t("copilot.field.attendee_name_placeholder", locale)}
+              className={fieldClass}
+            />
+          </Field>
+          <Field label={t("copilot.field.attendee_email", locale)}>
+            <input
+              type="email"
+              value={draft.attendeeEmail ?? ""}
+              onChange={(e) => update({ attendeeEmail: e.target.value || undefined })}
+              placeholder="naam@bedrijf.nl"
+              className={fieldClass}
+            />
+          </Field>
+        </div>
+      )}
+      <div className="grid grid-cols-[1fr_120px_120px] gap-2">
+        <Field label={t("copilot.field.start_at", locale)}>
+          <input
+            type="date"
+            value={parsed.date}
+            onChange={(e) => update({ start: rebuildStart(e.target.value, parsed.time) })}
+            className={fieldClass}
+          />
+        </Field>
+        <Field label="&nbsp;">
+          <input
+            type="time"
+            value={parsed.time}
+            onChange={(e) => update({ start: rebuildStart(parsed.date, e.target.value) })}
+            className={fieldClass}
+          />
+        </Field>
+        <Field label={t("copilot.field.duration_min", locale)}>
+          <input
+            type="number"
+            min={5}
+            step={5}
+            value={draft.durationMin ?? 30}
+            onChange={(e) => update({ durationMin: Number(e.target.value) || 30 })}
+            className={fieldClass}
+          />
+        </Field>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={draft.addMeetLink !== false}
+          onChange={(e) => update({ addMeetLink: e.target.checked })}
+        />
+        <span>{t("copilot.field.add_meet_link", locale)}</span>
+      </label>
+      <p
+        className={cn(
+          "text-xs leading-snug",
+          missingEmail ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+        )}
+      >
+        {hasClient
+          ? t("copilot.calendar.invitee_hint", locale)
+          : missingEmail
+            ? t("copilot.calendar.invitee_missing", locale)
+            : t("copilot.calendar.invitee_external", locale)}
+      </p>
+    </div>
+  )
+}
+
+/** Split an ISO datetime like `2026-06-16T10:00:00+02:00` into the bits
+ *  the <input type="date|time"> fields want, preserving the offset so we
+ *  can reattach it on rebuild. Falls back to today/now/+01:00 for an
+ *  unparseable input so the editor never renders empty. */
+function splitIsoToDateTime(iso: string): { date: string; time: string; offset: string } {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2})?([+-]\d{2}:\d{2}|Z)?$/.exec(iso)
+  if (m) {
+    return {
+      date: m[1],
+      time: m[2],
+      offset: m[3] && m[3] !== "Z" ? m[3] : "+01:00",
+    }
+  }
+  const now = new Date()
+  return {
+    date: now.toISOString().slice(0, 10),
+    time: "10:00",
+    offset: "+01:00",
+  }
 }
 
 function NavigateFields({

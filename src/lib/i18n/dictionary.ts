@@ -2067,6 +2067,31 @@ export const DICTIONARY = {
     nl: "Dit duurt 40-90 seconden. Het resultaat wordt opgeslagen als Pedro-deliverable en getoond op het Campagnes-tabblad van de klant.",
     en: "This can take 40-90 seconds. The result will be saved as a Pedro deliverable and shown on the client's Campaigns tab.",
   },
+  "copilot.confirm.btn.create_event": {
+    nl: "Verstuur uitnodiging",
+    en: "Send invite",
+  },
+  "copilot.field.start_at": { nl: "Start", en: "Start" },
+  "copilot.field.duration_min": { nl: "Duur (min)", en: "Duration (min)" },
+  "copilot.field.add_meet_link": {
+    nl: "Google Meet-link toevoegen",
+    en: "Add Google Meet link",
+  },
+  "copilot.calendar.invitee_hint": {
+    nl: "Uitnodiging gaat naar het e-mailadres uit Monday (Client › Settings › Contact). Geen e-mail bekend → vul 'm in op de klant of voeg 'm later toe in Google Calendar.",
+    en: "Invite goes to the client's Monday email (Client › Settings › Contact). Missing → fill it in there, or add the attendee manually in Google Calendar later.",
+  },
+  "copilot.calendar.invitee_external": {
+    nl: "Externe genodigde — uitnodiging gaat naar het e-mailadres hieronder.",
+    en: "External attendee — the invite goes to the email above.",
+  },
+  "copilot.calendar.invitee_missing": {
+    nl: "Geen e-mail ingevuld — event wordt aangemaakt zonder genodigde tenzij je 'm hierboven toevoegt.",
+    en: "No email filled in — the event is created without an invitee unless you add one above.",
+  },
+  "copilot.field.attendee_name": { nl: "Naam genodigde", en: "Attendee name" },
+  "copilot.field.attendee_name_placeholder": { nl: "Pieter, Lisa, …", en: "Pieter, Lisa, …" },
+  "copilot.field.attendee_email": { nl: "E-mail genodigde", en: "Attendee email" },
 } as const satisfies Record<string, LocalizedString>
 
 export type DictionaryKey = keyof typeof DICTIONARY

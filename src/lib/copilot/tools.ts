@@ -48,11 +48,50 @@ export type NavigateToClientAction = {
   tab?: "campaigns" | "billing" | "communication" | "settings"
 }
 
+/** Schedule a Google Calendar event with the signed-in user as host.
+ *
+ *  Attendee resolution (executor, in order):
+ *    1. `attendeeEmail` if the parser captured one (free-form input wins).
+ *    2. `clientId` → fetch `MondayClient.email` via /api/clients/[id].
+ *    3. Neither → create the event without an invitee; editor surfaces a hint.
+ *
+ *  `attendeeName` is a free-form label used for the title default when no
+ *  client roster match exists (e.g. "Meeting met Pieter dinsdag 10 uur"
+ *  → attendeeName="Pieter", no clientId). The editor lets the user fill
+ *  in a missing email before approving.
+ *
+ *  `start` is ISO-with-offset (Europe/Amsterdam unless the user said otherwise).
+ *  `durationMin` defaults to 30. `addMeetLink` defaults to true. `title` is
+ *  pre-filled by the parser as one of:
+ *    - `{ClientCompany or ClientFirstName} x {UserFirstName} Meeting`
+ *    - `{AttendeeName} x {UserFirstName} Meeting`
+ *    - `Meeting` (when neither is known). */
+export type CreateCalendarEventAction = {
+  type: "create_calendar_event"
+  /** Optional — present when the LLM matched a client in the roster. */
+  clientId?: string
+  /** Free-form display name for the invitee. Used for the title default
+   *  when no roster match is found. */
+  attendeeName?: string
+  /** Optional email override. When set, the executor uses this verbatim
+   *  instead of looking up the client's stored email. */
+  attendeeEmail?: string
+  /** ISO datetime with timezone offset (e.g. 2026-06-16T10:00:00+02:00). */
+  start: string
+  /** Defaults to 30 in the executor when omitted. */
+  durationMin?: number
+  /** Pre-filled by the parser; editable in ConfirmDialog. */
+  title?: string
+  /** Defaults to true. */
+  addMeetLink?: boolean
+}
+
 export type CopilotAction =
   | CreateTaskAction
   | CreateReminderAction
   | TriggerPedroRefreshAction
   | NavigateToClientAction
+  | CreateCalendarEventAction
 
 export const COPILOT_TOOLS: Anthropic.Tool[] = [
   {
@@ -167,6 +206,50 @@ export const COPILOT_TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ["clientId"],
+    },
+  },
+  {
+    name: "create_calendar_event",
+    description:
+      "Schedule a Google Calendar event with the signed-in user as host. The invitee can be a known client (roster match → clientId) OR an external person / lead not yet in the system (use attendeeName + optionally attendeeEmail). Use when the user says 'nodig X uit voor een meeting', 'plan een call met X', 'meeting X dinsdag 10 uur', 'invite X for a meeting', 'schiet een meeting in voor dinsdag 10 uur', etc. The executor adds a Google Meet link by default and the user reviews + fills any missing data in the editor before approving.",
+    input_schema: {
+      type: "object",
+      properties: {
+        clientId: {
+          type: "string",
+          description:
+            "OPTIONAL. Monday item ID of an existing client when the user names someone who matches the roster (e.g. 'Vlex Vending', 'met Roy van TMM'). Omit when the user names someone who is NOT in the roster (external contact, new lead, generic person). Never invent — only set when there's a clear roster match.",
+        },
+        attendeeName: {
+          type: "string",
+          description:
+            "Free-form invitee name when no roster match exists. Example: user says 'meeting met Pieter dinsdag 10 uur' → attendeeName='Pieter' (no clientId). When an email is given but no name, derive a name from the local-part (e.g. 'pieter@example.com' → 'Pieter'). Omit when clientId is set.",
+        },
+        attendeeEmail: {
+          type: "string",
+          description:
+            "Email override. Set ONLY when the user explicitly types an email address in the command. Don't guess. When omitted with a clientId, the executor pulls the client's stored email. When omitted without a clientId, the editor will ask the user to fill it in before approving.",
+        },
+        start: {
+          type: "string",
+          description:
+            "Start datetime in ISO 8601 with Europe/Amsterdam offset (CEST=+02:00, CET=+01:00). Resolve relative phrases like 'volgende week dinsdag om 10 uur', 'morgen 14:00', 'aanstaande dinsdag', 'next monday at 3pm' against the current date in the system prompt. Always pick the next future occurrence. Example: '2026-06-16T10:00:00+02:00'.",
+        },
+        durationMin: {
+          type: "number",
+          description: "Meeting length in minutes. Default 30 — only set explicitly when the user says e.g. '15 min', 'een uur', '45 minuten'.",
+        },
+        title: {
+          type: "string",
+          description:
+            "Event title. Default format options, in priority order: (1) clientId set → '{ClientCompany or ClientFirstName} x {SignedInUserFirstName} Meeting' (e.g. 'Vlex Vending x Roy Meeting'); (2) attendeeName set → '{AttendeeName} x {SignedInUserFirstName} Meeting' (e.g. 'Pieter x Roy Meeting'); (3) neither → 'Meeting'. Override only when the user explicitly gives a title.",
+        },
+        addMeetLink: {
+          type: "boolean",
+          description: "Whether to attach a Google Meet link. Default true. Set false only when the user explicitly says 'no Meet', 'geen Meet', 'in person'.",
+        },
+      },
+      required: ["start"],
     },
   },
 ]
