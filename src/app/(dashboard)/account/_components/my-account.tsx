@@ -49,11 +49,7 @@ export function MyAccount({
       </div>
 
       <div>
-        <h2 className="text-sm font-medium mb-1">Platform connections</h2>
-        <p className="text-xs text-muted-foreground/60 mb-4">
-          Tokens are AES-256-GCM encrypted before they touch the database. They&apos;re only used when you reply to a chat from the Hub.
-        </p>
-
+        <h2 className="text-sm font-medium mb-3">Platform connections</h2>
         <div className="space-y-3">
           <SlackCard connection={slack} initialError={slackError} />
           <TrengoCard connection={trengo} />
@@ -62,18 +58,12 @@ export function MyAccount({
       </div>
 
       <div>
-        <h2 className="text-sm font-medium mb-1">Browser notifications</h2>
-        <p className="text-xs text-muted-foreground/60 mb-4">
-          Krijg een melding op je desktop of telefoon zodra er een nieuwe taak op je naam komt - ook als de Hub-tab dicht is.
-        </p>
+        <h2 className="text-sm font-medium mb-3">Browser notifications</h2>
         <BrowserNotificationsCard />
       </div>
 
       <div>
-        <h2 className="text-sm font-medium mb-1">Inbox subscriptions</h2>
-        <p className="text-xs text-muted-foreground/60 mb-4">
-          Pick which Trengo channels surface in your Client Inbox - including conversations from contacts that aren&apos;t linked to a client yet.
-        </p>
+        <h2 className="text-sm font-medium mb-3">Inbox subscriptions</h2>
         <TrengoChannelsCard initialSelected={trengoChannelIds} />
       </div>
     </div>
@@ -479,13 +469,13 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
                   No channels found in this Trengo workspace.
                 </p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {groupOrder.map((group) => (
                     <div key={group}>
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium mb-1.5">
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 font-medium mb-2">
                         {group}
                       </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                         {grouped[group].map((c) => {
                           const isSelected = selected.has(c.id)
                           const events = c.eventsLast7d ?? 0
@@ -495,34 +485,47 @@ function TrengoChannelsCard({ initialSelected }: { initialSelected: number[] }) 
                           // silent channel is normal noise.
                           const silentSubscribed = isSelected && events === 0
                           return (
-                            <label
+                            <button
                               key={c.id}
-                              className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/40 cursor-pointer transition-colors"
+                              type="button"
+                              role="checkbox"
+                              aria-checked={isSelected}
+                              onClick={() => toggle(c.id)}
+                              disabled={pending}
+                              className={
+                                "group flex items-center gap-2.5 px-2.5 py-2 rounded-md border text-left transition-colors disabled:opacity-60 " +
+                                (isSelected
+                                  ? "border-foreground/20 bg-foreground/[0.04] hover:bg-foreground/[0.06]"
+                                  : "border-border/40 hover:bg-muted/40")
+                              }
                             >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggle(c.id)}
-                                disabled={pending}
-                                className="h-3.5 w-3.5 rounded border-border accent-foreground"
-                              />
-                              <span className="text-xs truncate flex-1 min-w-0">{c.name}</span>
                               <span
                                 className={
-                                  "text-[10px] tabular-nums shrink-0 " +
-                                  (silentSubscribed
-                                    ? "text-amber-600 dark:text-amber-500 font-medium"
-                                    : "text-muted-foreground/50")
-                                }
-                                title={
-                                  silentSubscribed
-                                    ? "Subscribed but no events ingested in the last 7 days - webhook may not be delivering for this channel"
-                                    : `${events} events ingested in last 7 days`
+                                  "h-4 w-4 rounded-[5px] border flex items-center justify-center shrink-0 transition-colors " +
+                                  (isSelected
+                                    ? "border-foreground bg-foreground text-background"
+                                    : "border-border bg-background")
                                 }
                               >
-                                {events}/7d
+                                {isSelected && <Check className="h-3 w-3" strokeWidth={3} />}
                               </span>
-                            </label>
+                              <span className="text-xs truncate flex-1 min-w-0">{c.name}</span>
+                              {silentSubscribed ? (
+                                <span
+                                  className="text-[10px] tabular-nums shrink-0 text-amber-600 dark:text-amber-500 font-medium"
+                                  title="Subscribed but no events ingested in the last 7 days - webhook may not be delivering for this channel"
+                                >
+                                  0/7d
+                                </span>
+                              ) : (
+                                <span
+                                  className="text-[10px] tabular-nums shrink-0 text-muted-foreground/40"
+                                  title={`${events} events ingested in last 7 days`}
+                                >
+                                  {events}/7d
+                                </span>
+                              )}
+                            </button>
                           )
                         })}
                       </div>

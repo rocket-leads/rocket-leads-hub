@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/ui/page-header"
 import { ActionBlock } from "./_components/action-block"
 import { InboxBlock } from "./_components/inbox-block"
+import { ChannelsBlock } from "./_components/channels-block"
 import { BillingBlock } from "./_components/billing-block"
 import { safeFetch } from "@/lib/safe-fetch"
 
@@ -139,17 +140,16 @@ async function HomeData() {
   const totalOutstanding = overdueClients.reduce((s, x) => s + x.summary.outstanding, 0)
   const topOverdue = overdueClients.slice(0, 5)
 
-  // Inbox - preview list still shows the 5 most recent tasks/updates (those
-  // are the items with a discrete title we can render in a row), but the
-  // total count + empty-state check use the badge counts which ALSO include
-  // unread chat messages. Without this, the block flipped to "Inbox Zero"
-  // while the sidebar badge still showed unread Trengo/Slack threads (Roy
-  // 2026-05).
-  const topInbox = myInboxItems.slice(0, 5)
-  const unreadInboxCount =
-    inboxBadgeCounts.unreadUpdates +
-    inboxBadgeCounts.openTasks +
-    inboxBadgeCounts.unreadChats
+  // Inbox preview = Tasks + Updates only. Chat threads live in their own
+  // ChannelsBlock (Roy 2026-06-12: "client gesprekken horen onder Channels,
+  // niet bij Updates"). The block count mirrors that split so "Your Inbox"
+  // doesn't claim chat unreads it isn't actually showing.
+  const taskUpdateItems = myInboxItems.filter((it) => it.kind !== "chat")
+  const chatItems = myInboxItems.filter((it) => it.kind === "chat")
+  const topInbox = taskUpdateItems.slice(0, 5)
+  const topChannels = chatItems.slice(0, 5)
+  const unreadInboxCount = inboxBadgeCounts.unreadUpdates + inboxBadgeCounts.openTasks
+  const unreadChannelsCount = inboxBadgeCounts.unreadChats
 
   return (
     <div className="space-y-6">
@@ -204,6 +204,12 @@ async function HomeData() {
           totalOutstanding={totalOutstanding}
           teamMrr={teamMrr}
           teamMrrClientCount={teamMrrClientCount}
+          locale={locale}
+        />
+
+        <ChannelsBlock
+          items={topChannels}
+          totalCount={unreadChannelsCount}
           locale={locale}
         />
       </div>

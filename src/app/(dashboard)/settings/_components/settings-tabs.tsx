@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { KeyRound, Database, Users, Bell, Building2, Inbox as InboxIcon, Sparkles, UserCircle2, Activity } from "lucide-react"
+import { KeyRound, Database, Users, Zap, Building2, UserCircle2, Activity } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { useLocale } from "@/lib/i18n/client"
@@ -10,23 +10,19 @@ import { useUrlState } from "@/lib/use-url-state"
 import { ApiTokensTab } from "./api-tokens-tab"
 import { BoardConfigTab } from "./board-config-tab"
 import { UsersTab } from "./users-tab"
-import { NotificationsTab } from "./notifications-tab"
 import { ClientsTab } from "./clients-tab"
-import { InboxAutomationTab } from "./inbox-tab"
-import { PedroSettingsTab } from "./pedro-tab"
+import { AutomationsTab } from "./automations-tab"
 import { MeTab, type MeTabData } from "./me-tab"
 import { HealthTab } from "./health-tab"
 import type { InboxAutomationRules } from "../types"
 
 type SettingsTabId =
   | "me"
-  | "clients"
-  | "tokens"
-  | "board"
   | "users"
-  | "notifications"
-  | "inbox"
-  | "pedro"
+  | "tokens"
+  | "automations"
+  | "clients"
+  | "board"
   | "health"
 
 type AdminProps = {
@@ -41,10 +37,10 @@ type AdminProps = {
   inboxAutomationRules: InboxAutomationRules
   notifications: {
     slackConnected: boolean
-    recipients: React.ComponentProps<typeof NotificationsTab>["recipients"]
+    recipients: React.ComponentProps<typeof AutomationsTab>["recipients"]
     teamChannelId: string | null
     salesChannelId: string | null
-    closers: React.ComponentProps<typeof NotificationsTab>["closers"]
+    closers: React.ComponentProps<typeof AutomationsTab>["closers"]
   }
 }
 
@@ -58,13 +54,11 @@ type Props = AdminProps | MeOnlyProps
 
 const ALL_TAB_IDS: SettingsTabId[] = [
   "me",
-  "clients",
-  "tokens",
-  "board",
   "users",
-  "notifications",
-  "inbox",
-  "pedro",
+  "tokens",
+  "automations",
+  "clients",
+  "board",
   "health",
 ]
 
@@ -83,9 +77,8 @@ export function SettingsTabs(props: Props) {
   const activeTab: SettingsTabId = isAdmin ? resolvedTab : "me"
   const locale = useLocale()
 
-  // Tabs are rebuilt per render so labels flip with the locale toggle. Me is
-  // always first; admin tabs only show for admins. Visual ordering follows
-  // the Me / Team / System grouping even though TopTabs renders a flat row.
+  // Order matches what the user-facing nav reads top-to-bottom: own profile
+  // first, then team management, then platform-wide config, then health.
   const tabs: TopTab<SettingsTabId>[] = useMemo(() => {
     const base: TopTab<SettingsTabId>[] = [
       { id: "me", label: t("settings.tab.me", locale), icon: UserCircle2 },
@@ -93,15 +86,11 @@ export function SettingsTabs(props: Props) {
     if (!isAdmin) return base
     return [
       ...base,
-      // Team
       { id: "users", label: t("settings.tab.users", locale), icon: Users },
-      { id: "notifications", label: t("settings.tab.notifications", locale), icon: Bell },
-      // System
-      { id: "clients", label: t("settings.tab.clients", locale), icon: Building2 },
-      { id: "inbox", label: t("settings.tab.inbox", locale), icon: InboxIcon },
-      { id: "pedro", label: t("settings.tab.pedro", locale), icon: Sparkles },
-      { id: "board", label: t("settings.tab.board", locale), icon: Database },
       { id: "tokens", label: t("settings.tab.tokens", locale), icon: KeyRound },
+      { id: "automations", label: t("settings.tab.automations", locale), icon: Zap },
+      { id: "clients", label: t("settings.tab.clients", locale), icon: Building2 },
+      { id: "board", label: t("settings.tab.board", locale), icon: Database },
       { id: "health", label: t("settings.tab.health", locale), icon: Activity },
     ]
   }, [locale, isAdmin])
@@ -112,16 +101,13 @@ export function SettingsTabs(props: Props) {
 
       {activeTab === "me" && <MeTab data={meTab} />}
 
-      {isAdmin && activeTab === "clients" && <ClientsTab />}
-      {isAdmin && activeTab === "tokens" && <ApiTokensTab statuses={props.tokenStatuses} />}
-      {isAdmin && activeTab === "board" && (
-        <BoardConfigTab config={props.boardConfig} defaults={props.defaultBoardConfig} />
-      )}
       {isAdmin && activeTab === "users" && (
         <UsersTab users={props.users} currentUserId={props.currentUserId} />
       )}
-      {isAdmin && activeTab === "notifications" && (
-        <NotificationsTab
+      {isAdmin && activeTab === "tokens" && <ApiTokensTab statuses={props.tokenStatuses} />}
+      {isAdmin && activeTab === "automations" && (
+        <AutomationsTab
+          inboxRules={props.inboxAutomationRules}
           slackConnected={props.notifications.slackConnected}
           recipients={props.notifications.recipients}
           teamChannelId={props.notifications.teamChannelId}
@@ -129,8 +115,10 @@ export function SettingsTabs(props: Props) {
           closers={props.notifications.closers}
         />
       )}
-      {isAdmin && activeTab === "inbox" && <InboxAutomationTab rules={props.inboxAutomationRules} />}
-      {isAdmin && activeTab === "pedro" && <PedroSettingsTab />}
+      {isAdmin && activeTab === "clients" && <ClientsTab />}
+      {isAdmin && activeTab === "board" && (
+        <BoardConfigTab config={props.boardConfig} defaults={props.defaultBoardConfig} />
+      )}
       {isAdmin && activeTab === "health" && <HealthTab />}
     </div>
   )

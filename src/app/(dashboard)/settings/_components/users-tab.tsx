@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Check, Loader2, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import {
@@ -66,8 +65,22 @@ type Props = {
   currentUserId: string
 }
 
+/** Sentinel value used by every "clear / unset" SelectItem. Display via the
+ *  `labelFor` helper below so the trigger reads blank instead of the raw
+ *  sentinel - Base UI's SelectValue falls back to printing the value when
+ *  there's no matching item label to render. */
 const NONE = "__none__"
-const UNSET_LABEL = "-"
+
+/** Resolve the displayed label for a selected value. Returns empty for the
+ *  NONE sentinel so the trigger looks empty when nothing is picked. */
+function labelFor(value: string | null | undefined, options: { value: string; label: string }[]): string {
+  if (!value || value === NONE) return ""
+  return options.find((o) => o.value === value)?.label ?? value
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Tab
+// ────────────────────────────────────────────────────────────────────────────
 
 export function UsersTab({ users: initial, currentUserId }: Props) {
   const locale = useLocale()
@@ -135,6 +148,37 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
 
   const emailChannelOptions = trengoChannels.filter((c) => c.isEmail)
   const waChannelOptions = trengoChannels.filter((c) => c.isWa)
+
+  // Option lists used by labelFor() so the trigger renders an empty cell
+  // when value === NONE.
+  const hubRoleOpts = useMemo(
+    () => [
+      { value: "admin", label: t("settings.users.role.admin", locale) },
+      { value: "member", label: t("settings.users.role.member", locale) },
+      { value: "guest", label: t("settings.users.role.guest", locale) },
+    ],
+    [locale],
+  )
+  const mondayRoleOpts = useMemo(
+    () => (Object.keys(MONDAY_ROLE_LABELS) as MondayRole[]).map((r) => ({ value: r, label: MONDAY_ROLE_LABELS[r] })),
+    [],
+  )
+  const mondayPeopleOpts = useMemo(
+    () => mondayPeople.map((name) => ({ value: name, label: name })),
+    [mondayPeople],
+  )
+  const emailChannelOpts = useMemo(
+    () => emailChannelOptions.map((c) => ({ value: c.id.toString(), label: c.name })),
+    [emailChannelOptions],
+  )
+  const waChannelOpts = useMemo(
+    () => waChannelOptions.map((c) => ({ value: c.id.toString(), label: c.name })),
+    [waChannelOptions],
+  )
+  const fathomOpts = useMemo(
+    () => fathomTeamMembers.map((m) => ({ value: m.email, label: m.name })),
+    [fathomTeamMembers],
+  )
 
   async function handleRoleChange(userId: string, role: Role) {
     setUsers((u) => u.map((user) => (user.id === userId ? { ...user, role } : user)))
@@ -337,420 +381,443 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          handleInvite()
-        }}
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2 rounded-md border p-4"
-      >
-        <div className="lg:col-span-3">
-          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.first_name", locale)}</label>
-          <Input
-            placeholder="Roy"
-            value={inviteFirstName}
-            onChange={(e) => setInviteFirstName(e.target.value)}
-          />
-        </div>
-        <div className="lg:col-span-3">
-          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.last_name", locale)}</label>
-          <Input
-            placeholder="Vosters"
-            value={inviteLastName}
-            onChange={(e) => setInviteLastName(e.target.value)}
-          />
-        </div>
-        <div className="lg:col-span-2">
-          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.email", locale)}</label>
-          <Input
-            type="email"
-            required
-            placeholder="name@example.com"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.hub_role", locale)}</label>
-          <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="admin">{t("settings.users.role.admin", locale)}</SelectItem>
-              <SelectItem value="member">{t("settings.users.role.member", locale)}</SelectItem>
-              <SelectItem value="guest">{t("settings.users.role.guest", locale)}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.monday_role", locale)}</label>
-          <Select
-            value={inviteMondayRole ?? NONE}
-            onValueChange={(v) => {
-              const next = v === NONE ? null : (v as MondayRole)
-              setInviteMondayRole(next)
-              if (!next || !ROLES_NEEDING_MONDAY_NAME.has(next)) setInviteMondayName(null)
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={UNSET_LABEL} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>{UNSET_LABEL}</SelectItem>
-              {(Object.keys(MONDAY_ROLE_LABELS) as MondayRole[]).map((r) => (
-                <SelectItem key={r} value={r}>
-                  {MONDAY_ROLE_LABELS[r]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.monday_name", locale)}</label>
-          <Select
-            value={inviteMondayName ?? NONE}
-            onValueChange={(v) => setInviteMondayName(v === NONE ? null : v)}
-            disabled={!inviteMondayRole || !ROLES_NEEDING_MONDAY_NAME.has(inviteMondayRole)}
-          >
-            <SelectTrigger>
-              <SelectValue
-                placeholder={
-                  !inviteMondayRole
-                    ? UNSET_LABEL
-                    : !ROLES_NEEDING_MONDAY_NAME.has(inviteMondayRole)
-                    ? t("settings.users.select.not_applicable", locale)
-                    : t("settings.users.select.pick_person", locale)
-                }
-              />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE}>{UNSET_LABEL}</SelectItem>
-              {mondayPeople.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <label className="mb-1.5 block text-sm font-medium">{t("settings.users.invite.slack_id", locale)}</label>
-          <Input
-            placeholder="U01ABC234XY"
-            className="font-mono"
-            value={inviteSlackId}
-            onChange={(e) => setInviteSlackId(e.target.value)}
-          />
-        </div>
-        <div className="lg:col-span-6 flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {t("settings.users.invite.helper", locale)}
-          </p>
-          <Button type="submit" disabled={inviting}>
-            {inviting ? t("settings.users.invite.action.adding", locale) : t("settings.users.invite.action.add", locale)}
-          </Button>
-        </div>
-        {error && <p className="lg:col-span-6 text-sm text-destructive">{error}</p>}
-      </form>
+    <div className="space-y-8">
+      <section>
+        <h2 className="text-sm font-medium mb-3">{t("settings.users.invite.action.add", locale)}</h2>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleInvite()
+          }}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 rounded-xl border border-border/60 bg-card p-5"
+        >
+          <FieldLabel className="lg:col-span-3" label={t("settings.users.invite.first_name", locale)}>
+            <Input
+              placeholder="Roy"
+              value={inviteFirstName}
+              onChange={(e) => setInviteFirstName(e.target.value)}
+            />
+          </FieldLabel>
+          <FieldLabel className="lg:col-span-3" label={t("settings.users.invite.last_name", locale)}>
+            <Input
+              placeholder="Vosters"
+              value={inviteLastName}
+              onChange={(e) => setInviteLastName(e.target.value)}
+            />
+          </FieldLabel>
+          <FieldLabel className="lg:col-span-2" label={t("settings.users.invite.email", locale)}>
+            <Input
+              type="email"
+              required
+              placeholder="name@example.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+            />
+          </FieldLabel>
+          <FieldLabel label={t("settings.users.invite.hub_role", locale)}>
+            <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
+              <SelectTrigger className="w-full">
+                <SelectValue>{labelFor(inviteRole, hubRoleOpts)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">{t("settings.users.role.admin", locale)}</SelectItem>
+                <SelectItem value="member">{t("settings.users.role.member", locale)}</SelectItem>
+                <SelectItem value="guest">{t("settings.users.role.guest", locale)}</SelectItem>
+              </SelectContent>
+            </Select>
+          </FieldLabel>
+          <FieldLabel label={t("settings.users.invite.monday_role", locale)}>
+            <Select
+              value={inviteMondayRole ?? NONE}
+              onValueChange={(v) => {
+                const next = v === NONE ? null : (v as MondayRole)
+                setInviteMondayRole(next)
+                if (!next || !ROLES_NEEDING_MONDAY_NAME.has(next)) setInviteMondayName(null)
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder=" ">
+                  {labelFor(inviteMondayRole, mondayRoleOpts)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>&nbsp;</SelectItem>
+                {mondayRoleOpts.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FieldLabel>
+          <FieldLabel label={t("settings.users.invite.monday_name", locale)}>
+            <Select
+              value={inviteMondayName ?? NONE}
+              onValueChange={(v) => setInviteMondayName(v === NONE ? null : v)}
+              disabled={!inviteMondayRole || !ROLES_NEEDING_MONDAY_NAME.has(inviteMondayRole)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder=" ">
+                  {labelFor(inviteMondayName, mondayPeopleOpts)}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>&nbsp;</SelectItem>
+                {mondayPeopleOpts.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FieldLabel>
+          <FieldLabel label={t("settings.users.invite.slack_id", locale)}>
+            <Input
+              placeholder="U01ABC234XY"
+              className="font-mono"
+              value={inviteSlackId}
+              onChange={(e) => setInviteSlackId(e.target.value)}
+            />
+          </FieldLabel>
+          <div className="lg:col-span-6 flex items-center justify-end">
+            <Button type="submit" disabled={inviting}>
+              {inviting ? t("settings.users.invite.action.adding", locale) : t("settings.users.invite.action.add", locale)}
+            </Button>
+          </div>
+          {error && <p className="lg:col-span-6 text-sm text-destructive">{error}</p>}
+        </form>
+      </section>
 
-      <div className="rounded-md border overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("settings.users.col.user", locale)}</TableHead>
-              <TableHead className="w-[130px]">{t("settings.users.col.hub_role", locale)}</TableHead>
-              <TableHead className="w-[180px]">{t("settings.users.col.monday_role", locale)}</TableHead>
-              <TableHead className="w-[200px]">{t("settings.users.col.monday_name", locale)}</TableHead>
-              <TableHead className="w-[200px]">{t("settings.users.col.slack_id", locale)}</TableHead>
-              <TableHead className="w-[210px]" title="Trengo email channel outbound client-updates leave through for this user's clients.">
-                Email channel
-              </TableHead>
-              <TableHead className="w-[210px]" title="Trengo WhatsApp channel the AM's HSM template is approved on.">
-                WhatsApp channel
-              </TableHead>
-              <TableHead className="w-[220px]">{t("settings.users.col.fathom_email", locale)}</TableHead>
-              <TableHead className="w-[100px]">{t("settings.users.col.joined", locale)}</TableHead>
-              <TableHead className="w-[60px]"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map((user) => {
-              const slackDraft = slackDrafts[user.id] ?? user.slack_user_id ?? ""
-              const slackSaved = user.slack_user_id ?? ""
-              const slackTrimmed = slackDraft.trim()
-              const slackIsSaving = !!slackSaving[user.id]
-              const slackIsDirty = slackTrimmed !== slackSaved
-              const slackIsSaved = !slackIsDirty && slackTrimmed.length > 0
+      <section>
+        <h2 className="text-sm font-medium mb-3">Team members</h2>
 
-              const nameDraft = nameDrafts[user.id] ?? user.name ?? ""
-              const nameTrimmed = nameDraft.trim()
-              const nameIsSaving = !!nameSaving[user.id]
-              const nameIsDirty = nameTrimmed !== (user.name ?? "")
-              const nameIsSaved = !nameIsDirty && nameTrimmed.length > 0
+        <div className="rounded-xl border border-border/60 bg-card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border/50">
+                <UsersHeadCell className="w-[200px]">{t("settings.users.col.user", locale)}</UsersHeadCell>
+                <UsersHeadCell className="w-[120px]">{t("settings.users.col.hub_role", locale)}</UsersHeadCell>
+                <UsersHeadCell className="w-[170px]">{t("settings.users.col.monday_role", locale)}</UsersHeadCell>
+                <UsersHeadCell className="w-[180px]">{t("settings.users.col.monday_name", locale)}</UsersHeadCell>
+                <UsersHeadCell className="w-[180px]">{t("settings.users.col.slack_id", locale)}</UsersHeadCell>
+                <UsersHeadCell
+                  className="w-[190px]"
+                  title="Trengo email channel outbound client-updates leave through for this user's clients."
+                >
+                  Email channel
+                </UsersHeadCell>
+                <UsersHeadCell
+                  className="w-[190px]"
+                  title="Trengo WhatsApp channel the AM's HSM template is approved on."
+                >
+                  WhatsApp channel
+                </UsersHeadCell>
+                <UsersHeadCell className="w-[200px]">{t("settings.users.col.fathom_email", locale)}</UsersHeadCell>
+                <UsersHeadCell className="w-[100px]">{t("settings.users.col.joined", locale)}</UsersHeadCell>
+                <UsersHeadCell className="w-[44px]"> </UsersHeadCell>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user, idx) => {
+                const slackDraft = slackDrafts[user.id] ?? user.slack_user_id ?? ""
+                const slackSaved = user.slack_user_id ?? ""
+                const slackTrimmed = slackDraft.trim()
+                const slackIsSaving = !!slackSaving[user.id]
+                const slackIsDirty = slackTrimmed !== slackSaved
+                const slackIsSaved = !slackIsDirty && slackTrimmed.length > 0
 
-              return (
-                <TableRow key={user.id}>
-                  <TableCell>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <Input
-                          placeholder={t("settings.users.row.name_placeholder", locale)}
-                          className="h-8 max-w-[200px] font-medium"
-                          value={nameDraft}
-                          onChange={(e) =>
-                            setNameDrafts((d) => ({ ...d, [user.id]: e.target.value }))
-                          }
-                          onBlur={() => handleNameSave(user.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault()
-                              ;(e.target as HTMLInputElement).blur()
-                            }
-                          }}
-                        />
-                        <div className="w-4 shrink-0 flex items-center justify-center">
-                          {nameIsSaving && (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                          )}
-                          {!nameIsSaving && nameIsDirty && nameTrimmed.length > 0 && (
-                            <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title={t("settings.users.row.unsaved", locale)} />
-                          )}
-                          {!nameIsSaving && nameIsSaved && (
-                            <Check className="h-3.5 w-3.5 text-green-500" aria-label={t("settings.users.row.saved", locale)} />
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                        {user.email}
-                      </p>
-                    </div>
-                  </TableCell>
+                const nameDraft = nameDrafts[user.id] ?? user.name ?? ""
+                const nameTrimmed = nameDraft.trim()
+                const nameIsSaving = !!nameSaving[user.id]
+                const nameIsDirty = nameTrimmed !== (user.name ?? "")
+                const nameIsSaved = !nameIsDirty && nameTrimmed.length > 0
 
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <Select
+                const isLast = idx === users.length - 1
+
+                return (
+                  <tr
+                    key={user.id}
+                    className={
+                      "transition-colors hover:bg-muted/30 " +
+                      (isLast ? "" : "border-b border-border/40")
+                    }
+                  >
+                    <UsersBodyCell>
+                      <GhostField
+                        value={nameDraft}
+                        placeholder={t("settings.users.row.name_placeholder", locale)}
+                        onChange={(v) => setNameDrafts((d) => ({ ...d, [user.id]: v }))}
+                        onCommit={() => handleNameSave(user.id)}
+                        status={
+                          nameIsSaving
+                            ? "saving"
+                            : nameIsDirty && nameTrimmed.length > 0
+                              ? "dirty"
+                              : nameIsSaved
+                                ? "saved"
+                                : "idle"
+                        }
+                        font="font-medium"
+                      />
+                    </UsersBodyCell>
+
+                    <UsersBodyCell>
+                      <GhostSelect
                         value={user.role}
                         onValueChange={(v) => handleRoleChange(user.id, v as Role)}
                         disabled={user.id === currentUserId}
-                      >
-                        <SelectTrigger className="h-8 w-[110px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="admin">{t("settings.users.role.admin", locale)}</SelectItem>
-                          <SelectItem value="member">{t("settings.users.role.member", locale)}</SelectItem>
-                          <SelectItem value="guest">{t("settings.users.role.guest", locale)}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {roleSaving[user.id] && (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                      )}
-                    </div>
-                  </TableCell>
+                        saving={!!roleSaving[user.id]}
+                        options={hubRoleOpts}
+                      />
+                    </UsersBodyCell>
 
-                  <TableCell>
-                    <Select
-                      value={user.monday_role ?? NONE}
-                      onValueChange={(v) => handleMondayRoleChange(user.id, v ?? NONE)}
-                    >
-                      <SelectTrigger className="h-8 w-[170px]">
-                        <SelectValue placeholder={UNSET_LABEL} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NONE}>{UNSET_LABEL}</SelectItem>
-                        {(Object.keys(MONDAY_ROLE_LABELS) as MondayRole[]).map((r) => (
-                          <SelectItem key={r} value={r}>
-                            {MONDAY_ROLE_LABELS[r]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
+                    <UsersBodyCell>
+                      <GhostSelect
+                        value={user.monday_role ?? NONE}
+                        onValueChange={(v) => handleMondayRoleChange(user.id, v ?? NONE)}
+                        saving={!!mondaySaving[user.id]}
+                        options={mondayRoleOpts}
+                        includeUnset
+                      />
+                    </UsersBodyCell>
 
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <Select
+                    <UsersBodyCell>
+                      <GhostSelect
                         value={user.monday_person_name ?? NONE}
                         onValueChange={(v) => handleMondayNameChange(user.id, v ?? NONE)}
                         disabled={!user.monday_role || !ROLES_NEEDING_MONDAY_NAME.has(user.monday_role)}
-                      >
-                        <SelectTrigger className="h-8 w-[180px]">
-                          <SelectValue
-                            placeholder={
-                              !user.monday_role
-                                ? UNSET_LABEL
-                                : !ROLES_NEEDING_MONDAY_NAME.has(user.monday_role)
-                                ? t("settings.users.select.not_applicable", locale)
-                                : t("settings.users.select.pick_person", locale)
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>{UNSET_LABEL}</SelectItem>
-                          {mondayPeople.map((name) => (
-                            <SelectItem key={name} value={name}>
-                              {name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {mondaySaving[user.id] && (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                      )}
-                    </div>
-                  </TableCell>
-
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <Input
-                        placeholder="U01ABC234XY"
-                        className="h-8 font-mono text-xs"
-                        value={slackDraft}
-                        onChange={(e) =>
-                          setSlackDrafts((d) => ({ ...d, [user.id]: e.target.value }))
-                        }
-                        onBlur={() => handleSlackIdSave(user.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            ;(e.target as HTMLInputElement).blur()
-                          }
-                        }}
+                        saving={!!mondaySaving[user.id]}
+                        options={mondayPeopleOpts}
+                        includeUnset
                       />
-                      <div className="w-4 shrink-0 flex items-center justify-center">
-                        {slackIsSaving && (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                        )}
-                        {!slackIsSaving && slackIsDirty && slackTrimmed.length > 0 && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title={t("settings.users.row.unsaved", locale)} />
-                        )}
-                        {!slackIsSaving && slackIsSaved && (
-                          <Check className="h-3.5 w-3.5 text-green-500" aria-label={t("settings.users.row.saved", locale)} />
-                        )}
-                      </div>
-                    </div>
-                  </TableCell>
+                    </UsersBodyCell>
 
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <Select
+                    <UsersBodyCell>
+                      <GhostField
+                        value={slackDraft}
+                        placeholder="U01ABC234XY"
+                        onChange={(v) => setSlackDrafts((d) => ({ ...d, [user.id]: v }))}
+                        onCommit={() => handleSlackIdSave(user.id)}
+                        status={
+                          slackIsSaving
+                            ? "saving"
+                            : slackIsDirty && slackTrimmed.length > 0
+                              ? "dirty"
+                              : slackIsSaved
+                                ? "saved"
+                                : "idle"
+                        }
+                        font="font-mono text-xs"
+                      />
+                    </UsersBodyCell>
+
+                    <UsersBodyCell>
+                      <GhostSelect
                         value={user.primary_email_channel_id?.toString() ?? NONE}
                         onValueChange={(v) => handleEmailChannelChange(user.id, v ?? NONE)}
-                        disabled={emailChannelOptions.length === 0}
-                      >
-                        <SelectTrigger className="h-8 w-[200px]">
-                          <SelectValue
-                            placeholder={
-                              emailChannelOptions.length === 0
-                                ? "No email channels"
-                                : "Pick email channel"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>-</SelectItem>
-                          {emailChannelOptions.map((c) => (
-                            <SelectItem key={c.id} value={c.id.toString()}>
-                              {c.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {emailChannelSaving[user.id] && (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                      )}
-                    </div>
-                  </TableCell>
+                        disabled={emailChannelOpts.length === 0}
+                        saving={!!emailChannelSaving[user.id]}
+                        options={emailChannelOpts}
+                        includeUnset
+                      />
+                    </UsersBodyCell>
 
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <Select
+                    <UsersBodyCell>
+                      <GhostSelect
                         value={user.primary_wa_channel_id?.toString() ?? NONE}
                         onValueChange={(v) => handleWaChannelChange(user.id, v ?? NONE)}
-                        disabled={waChannelOptions.length === 0}
-                      >
-                        <SelectTrigger className="h-8 w-[200px]">
-                          <SelectValue
-                            placeholder={
-                              waChannelOptions.length === 0
-                                ? "No WA channels"
-                                : "Pick WhatsApp channel"
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>-</SelectItem>
-                          {waChannelOptions.map((c) => (
-                            <SelectItem key={c.id} value={c.id.toString()}>
-                              {c.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {waChannelSaving[user.id] && (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                      )}
-                    </div>
-                  </TableCell>
+                        disabled={waChannelOpts.length === 0}
+                        saving={!!waChannelSaving[user.id]}
+                        options={waChannelOpts}
+                        includeUnset
+                      />
+                    </UsersBodyCell>
 
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <Select
+                    <UsersBodyCell>
+                      <GhostSelect
                         value={user.fathom_email ?? NONE}
                         onValueChange={(v) => handleFathomEmailChange(user.id, v ?? NONE)}
-                        disabled={fathomTeamMembers.length === 0}
-                      >
-                        <SelectTrigger className="h-8 w-[210px]">
-                          <SelectValue
-                            placeholder={
-                              fathomTeamMembers.length === 0 ? t("settings.users.select.connect_fathom", locale) : t("settings.users.select.pick_fathom", locale)
-                            }
-                          />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>-</SelectItem>
-                          {fathomTeamMembers.map((m) => (
-                            <SelectItem key={m.email} value={m.email}>
-                              {m.name} <span className="text-muted-foreground">({m.email})</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {fathomSaving[user.id] && (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        disabled={fathomOpts.length === 0}
+                        saving={!!fathomSaving[user.id]}
+                        options={fathomOpts}
+                        includeUnset
+                      />
+                    </UsersBodyCell>
+
+                    <UsersBodyCell className="text-xs text-muted-foreground/70 tabular-nums">
+                      {new Date(user.created_at).toLocaleDateString(locale === "nl" ? "nl-NL" : "en-GB")}
+                    </UsersBodyCell>
+
+                    <UsersBodyCell className="text-right">
+                      {user.id !== currentUserId && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemove(user.id, user.email)}
+                          title={t("settings.users.row.remove_title", locale)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       )}
-                    </div>
-                  </TableCell>
+                    </UsersBodyCell>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  )
+}
 
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(user.created_at).toLocaleDateString(locale === "nl" ? "nl-NL" : "en-GB")}
-                  </TableCell>
+// ────────────────────────────────────────────────────────────────────────────
+//  Cells, fields, selects
+// ────────────────────────────────────────────────────────────────────────────
 
-                  <TableCell>
-                    {user.id !== currentUserId && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleRemove(user.id, user.email)}
-                        title={t("settings.users.row.remove_title", locale)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </div>
+function FieldLabel({
+  label,
+  className,
+  children,
+}: {
+  label: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className={className}>
+      <label className="mb-1.5 block text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
 
-      <p className="text-xs text-muted-foreground">
-        {t("settings.users.footer", locale)}
-      </p>
+function UsersHeadCell({
+  children,
+  className,
+  title,
+}: {
+  children: React.ReactNode
+  className?: string
+  title?: string
+}) {
+  return (
+    <th
+      title={title}
+      className={
+        "px-3 py-2.5 text-left text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70 " +
+        (className ?? "")
+      }
+    >
+      {children}
+    </th>
+  )
+}
+
+function UsersBodyCell({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
+  return <td className={"px-3 py-2 align-middle " + (className ?? "")}>{children}</td>
+}
+
+/** Borderless input with an inline status dot. Border + bg appear only on
+ *  hover / focus so a row of these reads as one flowing line instead of a
+ *  collage of 8 disconnected pills. */
+function GhostField({
+  value,
+  placeholder,
+  onChange,
+  onCommit,
+  status,
+  font,
+}: {
+  value: string
+  placeholder?: string
+  onChange: (next: string) => void
+  onCommit: () => void
+  status: "idle" | "saving" | "dirty" | "saved"
+  font?: string
+}) {
+  return (
+    <div className="group flex items-center gap-1.5">
+      <input
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onCommit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault()
+            ;(e.target as HTMLInputElement).blur()
+          }
+        }}
+        className={
+          "h-8 w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 text-sm outline-none transition-colors placeholder:text-muted-foreground/40 hover:border-border/60 hover:bg-background focus-visible:border-ring focus-visible:bg-background focus-visible:ring-3 focus-visible:ring-ring/30 " +
+          (font ?? "")
+        }
+      />
+      <StatusGlyph status={status} />
+    </div>
+  )
+}
+
+function StatusGlyph({ status }: { status: "idle" | "saving" | "dirty" | "saved" }) {
+  return (
+    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+      {status === "saving" && (
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/70" />
+      )}
+      {status === "dirty" && (
+        <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" title="Unsaved" />
+      )}
+      {status === "saved" && (
+        <Check className="h-3.5 w-3.5 text-emerald-500" aria-label="Saved" />
+      )}
+    </span>
+  )
+}
+
+/** Borderless select trigger - matches GhostField's chrome. */
+function GhostSelect({
+  value,
+  onValueChange,
+  options,
+  disabled,
+  saving,
+  includeUnset,
+}: {
+  value: string
+  onValueChange: (next: string) => void
+  options: { value: string; label: string }[]
+  disabled?: boolean
+  saving?: boolean
+  /** When true, a NONE / unset row appears at the top of the menu. */
+  includeUnset?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <Select value={value} onValueChange={(v) => onValueChange(v ?? NONE)} disabled={disabled}>
+        <SelectTrigger className="h-8 w-full border-transparent bg-transparent hover:border-border/60 hover:bg-background data-[popup-open]:border-ring data-[popup-open]:bg-background">
+          <SelectValue placeholder=" ">{labelFor(value, options)}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {includeUnset && <SelectItem value={NONE}>&nbsp;</SelectItem>}
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+        {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground/70" />}
+      </span>
     </div>
   )
 }

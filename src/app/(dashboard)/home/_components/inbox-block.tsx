@@ -32,7 +32,7 @@ function kindIcon(kind: InboxItem["kind"]) {
  * already-loaded list. Better than dumping them into the wrong tab.
  */
 function itemHref(item: InboxItem): string {
-  if (item.kind === "chat") return "/inbox?tab=client-inbox"
+  if (item.kind === "chat") return "/inbox?scope=klanten"
   return `/inbox?id=${item.id}`
 }
 
@@ -90,14 +90,14 @@ export function InboxBlock({
 }
 
 /**
- * Split the inbox preview into Taken (links) + Updates (rechts) sections
- * so the AM lands on the same conceptual division the global Inbox uses
- * (Roy 2026-06-11 v4: "duidelijk onderverdelen: misschien taken, updates").
- * Chat items fold into Updates - keeping it a true 2-section split.
+ * Split the inbox preview into Taken (links) + Updates (rechts) sections.
+ * Chat threads have their own block (ChannelsBlock) - they are deliberately
+ * excluded here so "Updates" only contains Monday/Fathom update items.
+ * (Roy 2026-06-12: "chat hoort onder Channels, niet bij Updates".)
  */
 function SplitInboxList({ items, locale }: { items: InboxItem[]; locale: Locale }) {
   const tasks = items.filter((it) => it.kind === "task")
-  const updates = items.filter((it) => it.kind !== "task")
+  const updates = items.filter((it) => it.kind === "update")
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-border/30">
       <SubList

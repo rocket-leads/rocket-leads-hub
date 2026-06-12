@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   Plus,
@@ -179,6 +180,18 @@ export function InboxView({
     "inbox.globalScope.v2",
     "intern",
   )
+  // Honour ?scope=klanten / ?scope=intern from the URL once on mount so deep
+  // links from /home (Open Channels) land on the right scope, overriding the
+  // stickied localStorage choice. Only runs when the param is explicitly
+  // present so reloads without a query string keep the user's last pick.
+  const searchParams = useSearchParams()
+  useEffect(() => {
+    const scopeParam = searchParams?.get("scope")
+    if (scopeParam === "klanten" || scopeParam === "intern") {
+      setGlobalScope(scopeParam)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [assignedToMe, setAssignedToMe] = usePersistedState(
     "inbox.assignedToMe",
     true,
@@ -235,10 +248,10 @@ export function InboxView({
     return [taskFilter] as TaskStatus[]
   }, [taskFilter])
 
-  // Always request the "active" (non-snoozed) set. Snoozed tasks are
-  // surfaced by the dedicated Snoozed task action; they don't need their
-  // own filter view since they'll pop back into Open once their clock
-  // expires.
+  // Always request the "active" (non-snoozed) set for BOTH tabs. Tasks
+  // snoozed via the dedicated action pop back into Open once their clock
+  // expires; Copilot-scheduled reminder Updates (snoozed_until = remind
+  // date) need the same gate so they only surface on the target day.
   const taskSnoozeMode: "active" | "snoozed" = "active"
 
   const buildUrl = (kind: "update" | "task", statuses: string[]) => {
@@ -247,6 +260,7 @@ export function InboxView({
     if (lockedClient) params.set("clientId", lockedClient.id)
     params.set("statuses", statuses.join(","))
     if (kind === "task") params.set("snoozed", taskSnoozeMode)
+    else params.set("snoozed", "active")
     return `/api/inbox?${params.toString()}`
   }
 

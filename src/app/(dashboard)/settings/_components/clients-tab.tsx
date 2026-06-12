@@ -146,12 +146,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-medium mb-1">{t("settings.clients.title", locale)}</h3>
-        <p className="text-xs text-muted-foreground/60 mb-4">
-          {t("settings.clients.subtitle", locale)}
-        </p>
-      </div>
+      <h2 className="text-sm font-medium mb-3">{t("settings.clients.title", locale)}</h2>
 
       {/* Status tabs - default Live so the rolodex of churned clients
           isn't the first thing the admin sees. The Broken filter sits to
@@ -253,7 +248,7 @@ export function ClientsTab({ clients: clientsProp }: Props) {
           return (
             <div
               key={client.mondayItemId}
-              className="rounded-lg border border-border/60 overflow-hidden"
+              className="rounded-xl border border-border/60 bg-card overflow-hidden"
             >
               <button
                 type="button"

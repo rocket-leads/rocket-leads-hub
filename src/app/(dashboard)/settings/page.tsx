@@ -184,15 +184,13 @@ export default async function SettingsPage({
             initialTab={
               params.tab === "me" ||
               params.tab === "users" ||
-              params.tab === "notifications" ||
-              params.tab === "clients" ||
-              params.tab === "inbox" ||
-              params.tab === "pedro" ||
-              params.tab === "board" ||
               params.tab === "tokens" ||
+              params.tab === "automations" ||
+              params.tab === "clients" ||
+              params.tab === "board" ||
               params.tab === "health"
                 ? params.tab
-                : "clients"
+                : "me"
             }
             meTab={meTab}
             tokenStatuses={tokenStatuses}
