@@ -3,7 +3,7 @@ import { fetchBothBoards } from "@/lib/integrations/monday"
 import { readCache } from "@/lib/cache"
 import { fetchBillingData } from "@/lib/integrations/stripe"
 import { fetchConversations, fetchMessages } from "@/lib/integrations/trengo"
-import { detectMostActiveTrengoChannel } from "@/lib/inbox/channel-detect"
+import { detectClientChannel } from "@/lib/inbox/channel-detect"
 import { sendInboxAssignmentPush } from "@/lib/notifications/inbox-trigger"
 import { mondayStatusToHub } from "@/lib/clients/status"
 import Anthropic from "@anthropic-ai/sdk"
@@ -266,10 +266,7 @@ async function ensurePaymentOverdueTask(
   let draftMessage: string | null = null
   let draftChannel: "email" | "whatsapp" = "email"
   try {
-    const detected = client.trengoContactId
-      ? await detectMostActiveTrengoChannel(client.trengoContactId)
-      : null
-    draftChannel = detected ?? "email"
+    draftChannel = detectClientChannel(client) ?? "email"
     draftMessage = await draftPaymentReminderMessage({
       firstName: client.firstName || client.name,
       invoiceNumber: invoice.number ?? invoice.id,
@@ -965,10 +962,7 @@ async function ensurePositiveCplDropTask(
   let draftMessage: string | null = message
   let draftChannel: "email" | "whatsapp" = "email"
   try {
-    const detected = client.trengoContactId
-      ? await detectMostActiveTrengoChannel(client.trengoContactId)
-      : null
-    draftChannel = detected ?? "email"
+    draftChannel = detectClientChannel(client) ?? "email"
     if (draftChannel === "whatsapp") {
       draftMessage = adaptMessageForWhatsappTemplate(message, client.firstName || client.name)
     }

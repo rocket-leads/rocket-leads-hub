@@ -38,7 +38,7 @@ export type ClientUpdateResponse = {
    *  channels or when users.name can't be parsed into an ASCII first name. */
   whatsappTemplateName: string | null
   whatsappTemplateSource: WeeklyUpdateDraftResult["whatsappTemplateSource"]
-  /** Email + phone resolved from the client's Trengo contact, so the
+  /** Email + phone read straight from Monday's client columns, so the
    *  dialog can render "To: <address>" for verification before send. */
   recipientEmail: string | null
   recipientPhone: string | null
@@ -88,16 +88,13 @@ export async function POST(
       }>()
 
     if (cachedDraft?.parts) {
-      // Pull recipient email/phone live (cheap; shared trengoFetch cache)
-      // so the "To: …" line in the dialog reflects current contact data.
-      // Best-effort - null when no Trengo contact is linked or the fetch
-      // fails. This is the only network call left on the hot path.
+      // Read recipient email/phone straight from Monday (no Trengo
+      // roundtrip). The send path now uses these columns directly, so
+      // the dialog preview should match exactly what gets sent.
       const { fetchClientById } = await import("@/lib/integrations/monday")
-      const { fetchTrengoContact } = await import("@/lib/integrations/trengo")
+      const { resolveClientSendChannel } = await import("@/lib/clients/send-channel")
       const client = await fetchClientById(mondayItemId)
-      const trengoContact = client?.trengoContactId
-        ? await fetchTrengoContact(client.trengoContactId).catch(() => null)
-        : null
+      const resolved = client ? resolveClientSendChannel(client) : null
       const channel: ClientUpdateChannel =
         cachedDraft.channel === "email" || cachedDraft.channel === "whatsapp"
           ? cachedDraft.channel
@@ -108,14 +105,14 @@ export async function POST(
         preview: renderFromParts(cachedDraft.parts),
         channel,
         channelLabel: client?.contactChannel ?? "",
-        trengoContactLinked: !!client?.trengoContactId,
+        trengoContactLinked: !!(resolved && resolved.ok),
         whatsappTemplateName: cachedDraft.template_name,
         // The cron resolved the slug via the same `hardcodedTemplateName`
         // helper, so the dialog's branching logic on the source field
         // should treat it as "hardcoded" too.
         whatsappTemplateSource: cachedDraft.template_name ? "hardcoded" : "none",
-        recipientEmail: trengoContact?.email ?? null,
-        recipientPhone: trengoContact?.phone ?? null,
+        recipientEmail: client?.email || null,
+        recipientPhone: client?.phone || null,
       })
     }
   } catch (e) {

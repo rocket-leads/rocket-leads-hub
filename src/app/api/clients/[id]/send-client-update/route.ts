@@ -2,17 +2,13 @@ import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById } from "@/lib/integrations/monday"
 import {
-  fetchConversations,
   findAmEmailChannel,
   findAmWaChannel,
   findOrCreateTrengoEmailContact,
   createEmailMessageForContact,
-  type TrengoConversation,
 } from "@/lib/integrations/trengo"
 import {
-  sendTrengoTemplateAsUser,
   sendTrengoTemplateToPhoneAsUser,
-  sendTrengoReplyAsUser,
   sanitizeWaTemplateParam,
   NeedsConnectError,
 } from "@/lib/inbox/reply"
@@ -23,66 +19,51 @@ import {
   partsToWeeklyUpdateParams,
   type EditableParts,
 } from "@/lib/clients/client-update-template"
+import { resolveClientSendChannel } from "@/lib/clients/send-channel"
 import { NextRequest, NextResponse } from "next/server"
 
 /**
  * Send a Hub-composed client update via Trengo.
  *
- * Hooks into the existing reply pipeline: find the latest inbox_event for the
- * client (which carries the Trengo channel + ticket + thread context), then
- * call `replyToInboxEvent` so the message lands in the right conversation AND
- * gets mirrored into Hub history the same way regular replies do.
+ * 2026-06-12 rewrite: routing is now driven by Monday's `phone` + `email`
+ * columns + the `contactChannel` preferred-channel status, NOT by a stored
+ * `trengo_contact_id` + ticket lookup. The old flow kept 404'ing on
+ * create-ticket / 422'ing on private-vs-public contact mismatches because
+ * the Trengo contact-id record drifted from the channel the AM tried to
+ * send on.
  *
- * Send shape: WhatsApp HSM TEMPLATE, not free-text. The AM's personal
- * `whatsapp_template_name` (e.g. `rl_universal_roy`) is the Meta-approved
- * wrapper, and the rendered weekly update goes into `{{1}}`. This works
- * inside AND outside the 24h conversation window - Meta requires templates
- * for any outbound outside the window, and templates are also safe inside.
+ * The new flow:
+ *  - WhatsApp: `sendTrengoTemplateToPhoneAsUser` posts the HSM template
+ *    straight to `/v2/wa_sessions` with `recipient_phone_number`. Trengo
+ *    spawns the contact + ticket server-side. No lookup needed.
+ *  - Email: `findOrCreateTrengoEmailContact` resolves/creates a Trengo
+ *    contact bound to the AM's email channel, then
+ *    `createEmailMessageForContact` opens a fresh ticket with the body.
+ *    Each weekly update spawns a fresh email thread - matches how AMs
+ *    actually expect "wekelijkse update" to appear in the customer's
+ *    inbox (one mail, one subject, no growing thread).
  *
- * Requires the AM to have connected their personal Trengo token at /account -
- * we send as them, not as a generic system bot, so the client sees the AM's
- * name in WhatsApp / on the email "From" line.
+ * Channel preference (`resolveClientSendChannel`):
+ *  - Monday `contactChannel` status wins (WhatsApp / Email)
+ *  - Falls back to whichever column is filled, WhatsApp first
+ *  - Returns a structured error when neither column is set
  *
- * Threading: when the Hub already has an `inbox_events` row from this Trengo
- * conversation we use that as the anchor (drops us into the existing reply
- * pipeline with mirror writes for free). When there's no Hub anchor yet -
- * webhook hasn't backfilled, brand-new ticket - we send the template
- * DIRECTLY to the latest Trengo WhatsApp ticket and write the mirror row
- * ourselves. The AM should never have to "open the Inbox tab first" just
- * to unblock a send.
+ * Test mode (`testEmail` / `testPhone`) bypasses the Monday contact info
+ * and addresses the supplied test recipient via the same send paths.
+ * Useful for AMs sanity-checking a template's HSM resolution against
+ * their own phone without touching a real client.
  *
- * Failure modes (all surface as JSON errors so the composer can render them):
- *   - No Trengo contact linked on the Monday item → 400, "no_trengo_contact"
+ * Sends as the AM (not the logged-in user) so the customer sees the
+ * AM's name + the AM's selected outbound channel as the From - Roy
+ * clicking Send for Roel's client should land as Roel in Trengo.
+ *
+ * Failure modes:
+ *   - Neither phone nor email on Monday → 400, "no_contact_info"
  *   - AM has no WhatsApp template registered → 400, "no_wa_template"
- *   - WhatsApp send with no existing WA ticket → 400, "no_channel_match"
- *     (email sends auto-bootstrap a new ticket; WhatsApp can't without an
- *     existing approved channel + template)
- *   - User hasn't connected Trengo → 401, "needs_connect"
+ *   - AM has no outbound channel selected → 400, "am_*_channel_missing"
+ *   - AM hasn't connected Trengo → 400, "am_trengo_not_connected"
+ *   - User hasn't connected Trengo (test mode) → 401, "needs_connect"
  */
-
-/** Trengo's channel.type for WhatsApp varies slightly across workspaces
- *  ("WA_BUSINESS", "whatsapp", "WHATSAPP_BUSINESS", …) so we match
- *  permissively. Returns false on null/undefined types so non-WhatsApp
- *  channels (email, voice) sort to the bottom of the picker. */
-function isWhatsAppChannel(type: string | null | undefined): boolean {
-  if (!type) return false
-  return /whats/i.test(type) || /^wa[_-]?/i.test(type)
-}
-
-/** Email channel detector - same shape as the WhatsApp one. Used to pick the
- *  right ticket when we have no Hub anchor for an email send. */
-function isEmailChannel(type: string | null | undefined): boolean {
-  if (!type) return false
-  return /e?mail/i.test(type)
-}
-
-/** Channel preference from the Monday `contact_channel` column label. Mirrors
- *  the detectChannel in /client-update; kept here so the send route is
- *  self-contained (no shared import for one tiny function). */
-function preferEmail(contactChannel: string | null | undefined): boolean {
-  if (!contactChannel) return false
-  return /e?mail/i.test(contactChannel)
-}
 
 export async function POST(
   req: NextRequest,
@@ -121,17 +102,30 @@ export async function POST(
     const client = await fetchClientById(mondayItemId)
     if (!client) return NextResponse.json({ error: "Client not found" }, { status: 404 })
 
-    if (!client.trengoContactId) {
-      return NextResponse.json(
-        { error: "no_trengo_contact", message: "This client has no Trengo contact linked." },
-        { status: 400 },
-      )
+    // Resolve outbound channel from Monday columns. The new canonical
+    // routing - replaces the old `client.trengoContactId` + conversation
+    // lookup. Test mode overrides the channel kind via test inputs below
+    // (testEmail forces email, testPhone forces WhatsApp), so the
+    // resolve-failure branch only matters for real client sends.
+    const resolved = resolveClientSendChannel(client)
+
+    // Channel kind for the rest of the route. In test mode we force the
+    // kind from which test input is filled, falling back to the resolved
+    // client channel when no test input was set.
+    let channelKind: "whatsapp" | "email"
+    if (testMode) {
+      channelKind = testEmail ? "email" : testPhone ? "whatsapp" : resolved.ok ? resolved.channel.kind : "whatsapp"
+    } else {
+      if (!resolved.ok) {
+        return NextResponse.json(
+          { error: "no_contact_info", message: resolved.message },
+          { status: 400 },
+        )
+      }
+      channelKind = resolved.channel.kind
     }
 
-    // Channel routes the send: email goes as free-text with a subject (no HSM
-    // template needed - Meta's template-only rule is WhatsApp-specific),
-    // WhatsApp goes through one of two HSM templates.
-    const sendAsEmail = preferEmail(client.contactChannel)
+    const sendAsEmail = channelKind === "email"
 
     // WhatsApp send always uses the assigned AM's weekly template
     // (`rl_weekly_<voornaam>`), regardless of who's logged in. Roy
@@ -163,85 +157,25 @@ export async function POST(
       ? partsToWeeklyUpdateParams(editableParts)
       : [message]
 
-    // Test mode: short-circuit the entire conversation-routing dance and
-    // deliver the rendered message to an ad-hoc address supplied at send
-    // time (no persisted "test contact" lookup - testing is rare, the
-    // dialog just remembers via localStorage). Uses the AM's outbound
-    // channels + token + template, so the test is end-to-end faithful -
-    // only the destination is swapped. Skips the inbox_events mirror +
-    // client_updates audit (this isn't a real client communication).
-    if (testMode) {
-      if (sendAsEmail) {
+    // Recipient address - test inputs win when set, else use the
+    // resolved client channel. Test mode keeps both branches symmetrical
+    // with regular sends (same send fn, same AM channel, same token).
+    let recipientPhone = ""
+    let recipientEmail = ""
+    if (sendAsEmail) {
+      if (testMode) {
         if (!testEmail) {
           return NextResponse.json(
-            {
-              error: "test_email_required",
-              message: "Vul een test email-adres in het send-dialog in.",
-            },
+            { error: "test_email_required", message: "Vul een test email-adres in het send-dialog in." },
             { status: 400 },
           )
         }
-        const emailChannel = await findAmEmailChannel(amUserId)
-        if (!emailChannel) {
-          return NextResponse.json(
-            {
-              error: "am_email_channel_missing",
-              message:
-                "De AM van deze klant heeft geen outbound email-channel geselecteerd in Settings → Users. Kies daar één email-channel en probeer opnieuw.",
-            },
-            { status: 400 },
-          )
-        }
-        const amToken = await getUserPlatformToken(amUserId, "trengo")
-        if (!amToken) {
-          return NextResponse.json(
-            {
-              error: "am_trengo_not_connected",
-              message:
-                "De AM van deze klant heeft Trengo nog niet verbonden in /account.",
-            },
-            { status: 400 },
-          )
-        }
-        try {
-          const contact = await findOrCreateTrengoEmailContact({
-            userToken: amToken,
-            channelId: emailChannel.id,
-            email: testEmail,
-            name: "Hub Test",
-          })
-          const sent = await createEmailMessageForContact({
-            userToken: amToken,
-            contactId: String(contact.id),
-            channelId: emailChannel.id,
-            subject:
-              subjectOverride ||
-              `Wekelijkse update ${client.companyName || client.name}`,
-            body: message,
-          })
-          return NextResponse.json({
-            test: true,
-            channel: "email",
-            outboundMsgId: sent.messageId,
-            ticketId: sent.ticketId,
-            recipientEmail: testEmail,
-          })
-        } catch (e) {
-          return NextResponse.json(
-            {
-              error: "test_email_send_failed",
-              message: `Test email send mislukt: ${
-                e instanceof Error ? e.message : "unknown"
-              }`,
-            },
-            { status: 502 },
-          )
-        }
-      } else {
-        // WhatsApp test: skip the existing-ticket requirement entirely
-        // and go straight to /v2/wa_sessions with the supplied phone.
-        // Requires AM to have set primary_wa_channel_id (the channel
-        // the HSM template is approved on).
+        recipientEmail = testEmail
+      } else if (resolved.ok && resolved.channel.kind === "email") {
+        recipientEmail = resolved.channel.email
+      }
+    } else {
+      if (testMode) {
         if (!testPhone) {
           return NextResponse.json(
             {
@@ -251,119 +185,52 @@ export async function POST(
             { status: 400 },
           )
         }
-        const waChannel = await findAmWaChannel(amUserId)
-        if (!waChannel) {
-          return NextResponse.json(
-            {
-              error: "am_wa_channel_missing",
-              message:
-                "De AM heeft geen outbound WhatsApp channel geselecteerd in Settings → Users. Kies daar de channel waar de HSM template approved is en probeer opnieuw.",
-            },
-            { status: 400 },
-          )
-        }
-        try {
-          const sent = await sendTrengoTemplateToPhoneAsUser(
-            amUserId,
-            testPhone,
-            templateName,
-            templateParams,
-            waChannel.id,
-          )
-          return NextResponse.json({
-            test: true,
-            channel: "whatsapp",
-            outboundMsgId: sent.message_id,
-            recipientPhone: testPhone,
-          })
-        } catch (e) {
-          if (e instanceof NeedsConnectError) {
-            return NextResponse.json(
-              {
-                error: "am_trengo_not_connected",
-                message: "De AM van deze klant heeft Trengo nog niet verbonden in /account.",
-              },
-              { status: 400 },
-            )
-          }
-          return NextResponse.json(
-            {
-              error: "test_wa_send_failed",
-              message: `Test WhatsApp send mislukt: ${
-                e instanceof Error ? e.message : "unknown"
-              }`,
-            },
-            { status: 502 },
-          )
-        }
+        recipientPhone = testPhone
+      } else if (resolved.ok && resolved.channel.kind === "whatsapp") {
+        recipientPhone = resolved.channel.phone
       }
     }
 
-    // Strategy: look for an existing Trengo-sourced inbox_event we can reuse
-    // as the threading anchor. The reply pipeline propagates source_thread +
-    // trengo_channel_id from the anchor, so the template send lands in the same
-    // ticket the AM was previously chatting in.
+    // Look up the Hub-side client row for the mirror + audit writes.
+    // Test mode skips audit/mirror (it's not a real client send), so we
+    // only need this for the production paths.
     const supabase = await createAdminClient()
-    const { data: clientRow } = await supabase
-      .from("clients")
-      .select("id")
-      .eq("monday_item_id", mondayItemId)
-      .maybeSingle()
-    if (!clientRow?.id) {
+    let clientRowId: string | null = null
+    if (!testMode) {
+      const { data: clientRow } = await supabase
+        .from("clients")
+        .select("id")
+        .eq("monday_item_id", mondayItemId)
+        .maybeSingle()
+      if (!clientRow?.id) {
+        return NextResponse.json(
+          { error: "client_not_synced", message: "Open the client page once to sync, then retry." },
+          { status: 400 },
+        )
+      }
+      clientRowId = clientRow.id as string
+    }
+
+    // Need the AM's Trengo token + the right outbound channel for both
+    // paths. We resolve them up-front so we can return a single, clear
+    // error before any side effects fire.
+    const amToken = await getUserPlatformToken(amUserId, "trengo")
+    if (!amToken) {
       return NextResponse.json(
-        { error: "client_not_synced", message: "Open the client page once to sync, then retry." },
+        {
+          error: "am_trengo_not_connected",
+          message:
+            "De AM van deze klant heeft Trengo nog niet verbonden in /account. Laat 'm Trengo daar koppelen en probeer opnieuw - anders kunnen we niet als hen versturen.",
+        },
         { status: 400 },
       )
     }
 
-    // Channel routing for client-update sends is ALWAYS done via the live
-    // Trengo conversation list - we no longer use a "last inbox_event"
-    // anchor for threading. Two bugs the anchor caused:
-    //   1. Email sends could land in a WhatsApp ticket when the latest
-    //      inbox_event happened to be a WA message (Dr. Ludidi case).
-    //      Trengo rejected with "outside 24h window / SMS fallback" -
-    //      WhatsApp constraints triggered by email content.
-    //   2. WhatsApp sends could pick a channel where the AM's template
-    //      isn't approved when the latest event was on a different WA
-    //      channel than the one with the approved template.
-    // Trade-off: slightly worse threading (a brand-new ticket may be
-    // created when an old one would have worked). Worth it - sends are
-    // rare, wrong channel breaks them entirely.
-    const conversations = await fetchConversations(client.trengoContactId).catch(
-      () => [] as TrengoConversation[],
-    )
+    let outboundId: string
+    let ticketId: string | null = null
+    let channelId: number | null = null
 
-    // No early return on `conversations.length === 0` here - for email
-    // sends we bootstrap a brand-new email ticket a few lines down (the
-    // exact reason that fallback was built). Bailing out before it could
-    // run meant weekly-update sends to clients without a pre-existing
-    // Trengo ticket failed with "geen gesprek in Trengo" even though the
-    // bootstrap path was designed to handle that case. Roy 2026-05-23.
-    //
-    // Strict channel-type matching - no silent fallback to `conversations[0]`
-    // because that's exactly how the email-into-WA-ticket bug used to land.
-    let ticket = sendAsEmail
-      ? conversations.find((c) => isEmailChannel(c.channel?.type))
-      : conversations.find((c) => isWhatsAppChannel(c.channel?.type))
-
-    // Email fallback: when the contact has no email ticket yet (e.g.
-    // Dr. Ludidi who's email-primary on Monday but has never been
-    // emailed through Trengo before), bootstrap a fresh email ticket
-    // on the AM's PERSONAL email channel - NOT the workspace's first
-    // catch-all. Using `findFirstEmailChannel` previously caused the
-    // mail to go out from `rocket-lea-mail.*@trengomail.com` (Trengo's
-    // generic) instead of `roel@rocketleads.nl` (the channel Roel
-    // actually selected in /account → Trengo Channels).
-    //
-    // We also send via the AM's own Trengo token now, so the ticket
-    // gets attributed to the AM agent in Trengo - Roy clicking Send for
-    // Roel's client should never make Roy the sender of record.
-    //
-    // WhatsApp has no equivalent fallback - outbound WhatsApp requires
-    // an approved HSM template AND a known channel-with-approval combo,
-    // which the bootstrap path can't produce safely.
-    let bootstrappedEmail: { ticketId: string; messageId: string } | null = null
-    if (!ticket && sendAsEmail) {
+    if (sendAsEmail) {
       const emailChannel = await findAmEmailChannel(amUserId)
       if (!emailChannel) {
         return NextResponse.json(
@@ -375,27 +242,26 @@ export async function POST(
           { status: 400 },
         )
       }
-      const userToken = await getUserPlatformToken(amUserId, "trengo")
-      if (!userToken) {
-        return NextResponse.json(
-          {
-            error: "am_trengo_not_connected",
-            message:
-              "De AM van deze klant heeft Trengo nog niet verbonden in /account. Laat 'm Trengo daar koppelen en probeer opnieuw - anders kunnen we niet als hen versturen.",
-          },
-          { status: 400 },
-        )
-      }
+      channelId = emailChannel.id
+
       try {
-        bootstrappedEmail = await createEmailMessageForContact({
-          userToken,
-          contactId: client.trengoContactId,
+        const contact = await findOrCreateTrengoEmailContact({
+          userToken: amToken,
+          channelId: emailChannel.id,
+          email: recipientEmail,
+          name: testMode ? "Hub Test" : (client.companyName || client.name || recipientEmail),
+        })
+        const sent = await createEmailMessageForContact({
+          userToken: amToken,
+          contactId: String(contact.id),
           channelId: emailChannel.id,
           subject:
             subjectOverride ||
             `Wekelijkse update ${client.companyName || client.name}`,
           body: message,
         })
+        outboundId = sent.messageId
+        ticketId = sent.ticketId
       } catch (e) {
         return NextResponse.json(
           {
@@ -407,88 +273,65 @@ export async function POST(
           { status: 502 },
         )
       }
-      // Fake a ticket object so the mirror-insert below has the IDs.
-      ticket = {
-        id: Number(bootstrappedEmail.ticketId),
-        status: "open",
-        subject: null,
-        channel: emailChannel,
-        contact: null,
-        latest_message: null,
-        latest_message_at: null,
-        latest_received_message_at: null,
-        messages_count: 0,
-        created_at: new Date().toISOString(),
-        closed_at: null,
-        assignee: null,
+    } else {
+      const waChannel = await findAmWaChannel(amUserId)
+      if (!waChannel) {
+        return NextResponse.json(
+          {
+            error: "am_wa_channel_missing",
+            message:
+              "De AM heeft geen outbound WhatsApp channel geselecteerd in /account → Outbound sender channels. Kies daar de channel waar de HSM template approved is en probeer opnieuw.",
+          },
+          { status: 400 },
+        )
       }
-    }
+      channelId = waChannel.id
 
-    if (!ticket) {
-      const want = sendAsEmail ? "email" : "WhatsApp"
-      const haveTypes = conversations
-        .map((c) => c.channel?.type ?? "unknown")
-        .filter((v, i, a) => a.indexOf(v) === i)
-        .join(", ")
-      return NextResponse.json(
-        {
-          error: "no_channel_match",
-          message: `Geen ${want}-ticket gevonden voor deze klant in Trengo (beschikbare channels: ${haveTypes || "geen"}). Open eerst een ${want}-gesprek met de klant in Trengo.`,
-        },
-        { status: 400 },
-      )
-    }
-    const ticketId = String(ticket.id)
-    const channelId = ticket.channel?.id ?? null
-
-    let outboundId: string
-    try {
-      // Bootstrapped email already sent during create - skip the second
-      // post, just adopt the new message id.
-      if (bootstrappedEmail) {
-        outboundId = bootstrappedEmail.messageId
-      } else if (sendAsEmail) {
-        // Reply path uses the AM's token too (same reasoning as the
-        // bootstrap branch above): Roy clicking Send for Roel's client
-        // should land as Roel in Trengo, with Roel's selected email
-        // channel as the From - not session.user's.
-        const amToken = await getUserPlatformToken(amUserId, "trengo")
-        if (!amToken) {
+      try {
+        const sent = await sendTrengoTemplateToPhoneAsUser(
+          amUserId,
+          recipientPhone,
+          templateName,
+          templateParams,
+          waChannel.id,
+        )
+        outboundId = sent.message_id
+      } catch (e) {
+        if (e instanceof NeedsConnectError) {
           return NextResponse.json(
             {
               error: "am_trengo_not_connected",
-              message:
-                "De AM van deze klant heeft Trengo nog niet verbonden in /account. Laat 'm Trengo daar koppelen en probeer opnieuw - anders kunnen we niet als hen versturen.",
+              message: "De AM van deze klant heeft Trengo nog niet verbonden in /account.",
             },
             { status: 400 },
           )
         }
-        const sent = await sendTrengoReplyAsUser(
-          amUserId,
-          ticketId,
-          message,
-          false,
-          [],
-          subjectOverride ? { subject: subjectOverride } : undefined,
+        return NextResponse.json(
+          {
+            error: "wa_send_failed",
+            message: `WhatsApp send mislukt: ${e instanceof Error ? e.message : "unknown"}`,
+          },
+          { status: 502 },
         )
-        outboundId = sent.message_id
-      } else {
-        const sent = await sendTrengoTemplateAsUser(
-          session.user.id,
-          ticketId,
-          templateName,
-          "nl",
-          templateParams,
-          channelId,
-        )
-        outboundId = sent.message_id
       }
-    } catch (e) {
-      if (e instanceof NeedsConnectError) throw e
-      throw e
     }
 
-    // Mirror the outbound into inbox_events so chat-pane history matches.
+    if (testMode) {
+      return NextResponse.json({
+        test: true,
+        channel: sendAsEmail ? "email" : "whatsapp",
+        outboundMsgId: outboundId,
+        ticketId,
+        recipientEmail: sendAsEmail ? recipientEmail : undefined,
+        recipientPhone: sendAsEmail ? undefined : recipientPhone,
+      })
+    }
+
+    // Mirror the outbound into inbox_events so the chat-pane history
+    // matches what the customer received. Thread key falls back to the
+    // Hub client id when no Trengo contact id is known - chat pane
+    // groups by thread_key, so the client id is the right anchor when
+    // we no longer rely on stored Trengo contact records.
     const { data: hubUser } = await supabase
       .from("users")
       .select("id, name, email")
@@ -505,20 +348,27 @@ export async function POST(
     const bodyFull = previewSource.length > 100 ? previewSource : null
     const createdAtSrc = new Date().toISOString()
 
+    const threadKey = client.trengoContactId
+      ? `trengo:contact:${client.trengoContactId}`
+      : `client:${clientRowId}`
+    const sourceThread = ticketId
+      ? `trengo:ticket:${ticketId}`
+      : `client:${clientRowId}:${sendAsEmail ? "email" : "whatsapp"}`
+
     const { data: inserted } = await supabase
       .from("inbox_events")
       .insert({
         kind: "chat",
-        client_id: clientRow.id,
+        client_id: clientRowId,
         author_id: session.user.id,
         assignee_id: session.user.id,
         title: titlePreview,
         body: bodyFull,
         status: "read",
         source: "trengo",
-        source_thread: `trengo:ticket:${ticketId}`,
+        source_thread: sourceThread,
         source_msg_id: `trengo:msg:${outboundId}`,
-        thread_key: `trengo:contact:${client.trengoContactId}`,
+        thread_key: threadKey,
         scope: "external",
         author_kind: "rl_team",
         author_external: null,
@@ -531,12 +381,8 @@ export async function POST(
       .select("id")
       .single()
 
-    const result: {
-      source: "trengo" | "slack"
-      outboundMsgId: string
-      inboxEventId: string
-    } = {
-      source: "trengo",
+    const result = {
+      source: "trengo" as const,
       outboundMsgId: outboundId,
       inboxEventId: (inserted?.id as string) ?? "",
     }
@@ -546,15 +392,13 @@ export async function POST(
     // list query cheap (no aggregate, no extra join). Both writes are
     // best-effort: a Supabase outage shouldn't undo the WhatsApp send.
     const sentAt = new Date().toISOString()
-    // Same flattening rule as the inbox mirror: WhatsApp snippet matches the
-    // sanitised body the customer received; email snippet keeps newlines.
     const snippetSource = sendAsEmail ? message : sanitizeWaTemplateParam(message)
     const previewSnippet =
       snippetSource.length > 240 ? snippetSource.slice(0, 237) + "…" : snippetSource
     try {
       await Promise.all([
         supabase.from("client_updates").insert({
-          client_id: clientRow.id,
+          client_id: clientRowId,
           sent_at: sentAt,
           sent_by_user_id: session.user.id,
           message_preview: previewSnippet,
@@ -564,7 +408,7 @@ export async function POST(
         supabase
           .from("clients")
           .update({ last_client_update_at: sentAt })
-          .eq("id", clientRow.id),
+          .eq("id", clientRowId),
       ])
     } catch (e) {
       console.error(

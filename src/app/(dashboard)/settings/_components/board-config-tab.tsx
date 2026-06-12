@@ -38,7 +38,9 @@ const ONBOARDING_FIELDS = [
   { key: "cycle_start_date", label: "New cycle start (Monday date column)" },
   { key: "next_invoice_date", label: "Invoice date (derived; cycle − 7d)" },
   { key: "contact_direction", label: "Contact direction" },
-  { key: "contact_channel", label: "Contact channel" },
+  { key: "contact_channel", label: "Contact channel (WhatsApp / Email)" },
+  { key: "phone", label: "Client phone (WhatsApp number)" },
+  { key: "email", label: "Client email" },
   { key: "campaign_status", label: "Campaign status / phase" },
   { key: "meta_connected", label: "Meta connected" },
 ]
@@ -61,7 +63,9 @@ const CURRENT_FIELDS = [
   { key: "cycle_start_date", label: "New cycle start (Monday date column)" },
   { key: "next_invoice_date", label: "Invoice date (derived; cycle − 7d)" },
   { key: "contact_direction", label: "Contact direction" },
-  { key: "contact_channel", label: "Contact channel" },
+  { key: "contact_channel", label: "Contact channel (WhatsApp / Email)" },
+  { key: "phone", label: "Client phone (WhatsApp number)" },
+  { key: "email", label: "Client email" },
   { key: "campaign_status", label: "Campaign status" },
 ]
 

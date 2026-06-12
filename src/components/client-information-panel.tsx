@@ -36,6 +36,28 @@ export function ClientInformationPanel({ client }: Props) {
         />
       </Section>
 
+      <Section title="Contact">
+        <SimpleField
+          mondayItemId={client.mondayItemId}
+          fieldKey="email"
+          value={client.email}
+          label="Email"
+          help="Monday column. Used as the invitee on Co-pilot calendar invites and to bootstrap a fresh Trengo email ticket from the Hub send flow."
+        />
+        <SimpleField
+          mondayItemId={client.mondayItemId}
+          fieldKey="phone"
+          value={client.phone}
+          label="Phone"
+          help="Monday column. Used as the WhatsApp recipient for Hub-side sends; falls back to Trengo contact-id lookups when empty."
+        />
+        <ContactChannelField
+          mondayItemId={client.mondayItemId}
+          value={client.contactChannel}
+          label="Preferred channel"
+        />
+      </Section>
+
       <Section title="Team">
         <PersonField
           mondayItemId={client.mondayItemId}
@@ -406,6 +428,111 @@ function PersonField({ mondayItemId, fieldKey, value, label, multi = false }: Pe
                 </button>
               ))}
             </>
+          )}
+        </PopoverContent>
+      </Popover>
+      <div className="flex items-center min-w-[64px] justify-end">
+        {mutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+      </div>
+    </div>
+  )
+}
+
+const CONTACT_CHANNEL_OPTIONS = ["WhatsApp", "Email"] as const
+
+type ContactChannelFieldProps = {
+  mondayItemId: string
+  value: string
+  label: string
+}
+
+/**
+ * Preferred-channel picker for the Trengo send paths. Writes to Monday's
+ * `contact_channel` status column via the same PATCH endpoint as other
+ * status fields. Picks between WhatsApp and Email (the only two channels
+ * the send pipeline routes); leaves any other Monday label (e.g. "Phone",
+ * legacy "App") visible but read-only-looking until the user changes it.
+ */
+function ContactChannelField({ mondayItemId, value, label }: ContactChannelFieldProps) {
+  const router = useRouter()
+  const [optimistic, setOptimistic] = useState(value)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => setOptimistic(value), [value])
+
+  const mutation = useHubMutation({
+    invalidates: ["CLIENT_DETAIL"],
+    mutationFn: async (next: string) => {
+      const res = await fetch(`/api/clients/${mondayItemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fieldKey: "contact_channel", label: next }),
+      })
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(err.error ?? "Failed to update preferred channel")
+      }
+    },
+    onError: () => setOptimistic(value),
+    onSuccess: () => {
+      router.refresh()
+    },
+  })
+
+  const handleSelect = (next: string) => {
+    setOpen(false)
+    if (next === optimistic) return
+    setOptimistic(next)
+    mutation.mutate(next)
+  }
+
+  return (
+    <div className="grid grid-cols-[160px_1fr_auto] gap-3 items-center">
+      <Label className="text-[12px] text-muted-foreground inline-flex items-center gap-1.5">
+        {label}
+        <span
+          title="WhatsApp uses the Phone column; Email uses the Email column. If empty, the send path falls back to WhatsApp when phone is filled, else Email."
+          className="inline-flex text-muted-foreground/50 hover:text-muted-foreground cursor-help"
+          aria-label="What does Preferred channel control?"
+        >
+          <HelpCircle className="h-3 w-3" />
+        </span>
+      </Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        {/* Base UI's render-prop equivalent of Radix's `asChild`. */}
+        <PopoverTrigger
+          disabled={mutation.isPending}
+          render={
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-full justify-between text-sm font-normal"
+            />
+          }
+        >
+          <span>{optimistic || "Auto (phone wins)"}</span>
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-[220px] p-1">
+          {CONTACT_CHANNEL_OPTIONS.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => handleSelect(opt)}
+              className="w-full flex items-center justify-between rounded-md px-2.5 py-1.5 text-[13px] hover:bg-muted transition-colors"
+            >
+              <span>{opt}</span>
+              {optimistic === opt && <Check className="h-3.5 w-3.5 text-foreground/70" />}
+            </button>
+          ))}
+          {optimistic && (
+            <button
+              type="button"
+              onClick={() => handleSelect("")}
+              className="w-full flex items-center rounded-md px-2.5 py-1.5 text-[13px] text-muted-foreground hover:bg-muted transition-colors"
+            >
+              Clear (auto)
+            </button>
           )}
         </PopoverContent>
       </Popover>

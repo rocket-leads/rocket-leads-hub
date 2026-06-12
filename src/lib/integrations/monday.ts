@@ -94,6 +94,18 @@ export type MondayClient = {
    *  Client Update composer so AMs see which channel a generated update will land
    *  on without having to flip to Trengo. */
   contactChannel: string
+  /** Client phone number for WhatsApp sends. Monday column ID `text6` on
+   *  onboarding, `tekst7` on current-clients. Filled for every Live client so
+   *  it can serve as backup channel when `contactChannel` is unset. Used by
+   *  the Client Update + automation send paths to address WhatsApp templates
+   *  directly via `recipient_phone_number`, sidestepping the Trengo contact-id
+   *  lookup that kept 404'ing on private-vs-public channel mismatches. */
+  phone: string
+  /** Client email address. Monday column ID `text_mm48jn2c` on onboarding,
+   *  `text_mm48f2j9` on current-clients. Same role as `phone` but for the
+   *  email send path - bootstraps a fresh Trengo email ticket per send via
+   *  `findOrCreateTrengoEmailContact`, no stored contact-id dependency. */
+  email: string
   metaAdAccountId: string
   stripeCustomerId: string
   trengoContactId: string
@@ -265,6 +277,15 @@ function mapItem(
     // (status_11 on onboarding, status_17 on current - see settings/page.tsx).
     contactChannel:
       cv[columns.contact_channel] ?? cv["status_11"] ?? cv["status_17"] ?? "",
+    // Onboarding board uses `text6` (phone) + `text_mm48jn2c` (email).
+    // Current-clients board uses `tekst7` (phone) + `text_mm48f2j9` (email).
+    // Same literal-fallback pattern as contactChannel above - existing
+    // board_config rows don't have these keys yet but the column IDs are
+    // stable so reads keep working until Settings is resaved.
+    phone:
+      cv[columns.phone] ?? cv["text6"] ?? cv["tekst7"] ?? "",
+    email:
+      cv[columns.email] ?? cv["text_mm48jn2c"] ?? cv["text_mm48f2j9"] ?? "",
     metaAdAccountId: cv[columns.meta_ad_account_id] ?? "",
     stripeCustomerId: cv[columns.stripe_customer_id] ?? "",
     trengoContactId: cv[columns.trengo_contact_id] ?? "",

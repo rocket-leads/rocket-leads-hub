@@ -84,11 +84,14 @@ export async function GET(req: NextRequest) {
     const cached = await readCache<{ current: MondayClient[] }>("monday_boards")
     const data = cached ?? (await fetchBothBoards())
 
-    // Live + Trengo-linked. Skip Onboarding / On Hold / Churned (no point
+    // Live + reachable. Skip Onboarding / On Hold / Churned (no point
     // sending a weekly report when nothing's running) and skip clients
-    // without a Trengo contact (we can't send anyway).
+    // without a phone or email on Monday (the new send path needs at
+    // least one to address the outbound message). The old filter checked
+    // `trengoContactId` - retired with the Trengo contact-id refactor on
+    // 2026-06-12.
     const candidates = data.current.filter(
-      (c) => c.campaignStatus === "Live" && !!c.trengoContactId,
+      (c) => c.campaignStatus === "Live" && (!!c.phone || !!c.email),
     )
 
     const amNameToUserId = await loadAmNameToUserId(supabase)

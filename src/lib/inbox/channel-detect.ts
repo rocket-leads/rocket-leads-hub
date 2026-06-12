@@ -1,39 +1,47 @@
-import { fetchConversations } from "@/lib/integrations/trengo"
+import type { MondayClient } from "@/lib/integrations/monday"
+import { resolveClientSendChannel } from "@/lib/clients/send-channel"
 
 /**
- * Detect the client's most-active Trengo channel by counting recent
- * conversations per channel-type. Returns 'email' or 'whatsapp' (the only
- * two we differentiate for now), or null when no Trengo history exists.
+ * Detect the client's preferred outbound channel from Monday columns.
  *
- * Heuristic: most recent ~20 conversations weigh equal - channel that owns
- * the majority wins. Ties go to email (more appropriate for finance + admin
- * comms by default).
+ * Was an aggregate query over Trengo conversation history (most-active
+ * channel-type wins); retired 2026-06-12 in favour of Monday's canonical
+ * `contactChannel` + `phone` + `email` columns - the same signal the
+ * send pipeline now uses, so drafter + sender agree on channel.
  *
- * Failure mode: when Trengo is unreachable we return null so callers default
- * to email-tone - safer than guessing.
+ * Returns 'email' or 'whatsapp' (the only two we differentiate), or null
+ * when neither column is filled. Callers default to email-tone on null -
+ * safer than guessing.
  *
  * Used by every smart-inbox drafter (payment reminder, CPL drop signal,
  * Fathom follow-up) so the channel pick is consistent across rules.
  */
+export function detectClientChannel(
+  client: Pick<MondayClient, "phone" | "email" | "contactChannel"> | null | undefined,
+): "email" | "whatsapp" | null {
+  if (!client) return null
+  const resolved = resolveClientSendChannel({
+    phone: client.phone,
+    email: client.email,
+    contactChannel: client.contactChannel,
+  })
+  if (!resolved.ok) return null
+  return resolved.channel.kind
+}
+
+/**
+ * Back-compat alias. The old function took a Trengo contact id and went
+ * over the network; the new behaviour is a synchronous Monday read. Kept
+ * the original name with the old async signature so the call sites in
+ * `lib/inbox/automations.ts` can be migrated one rule at a time without
+ * a flag day.
+ *
+ * Prefer `detectClientChannel(client)` in new code - the Trengo contact
+ * id argument is ignored and only kept for the type signature.
+ */
 export async function detectMostActiveTrengoChannel(
-  trengoContactId: string,
+  _trengoContactId: string,
+  client?: Pick<MondayClient, "phone" | "email" | "contactChannel"> | null,
 ): Promise<"email" | "whatsapp" | null> {
-  try {
-    const all = await fetchConversations(trengoContactId)
-    if (all.length === 0) return null
-    const recent = all.slice(0, 20)
-    let email = 0
-    let whatsapp = 0
-    for (const c of recent) {
-      const type = (c.channel?.type ?? "").toLowerCase()
-      if (type.includes("email") || type.includes("mail")) email++
-      else if (type.includes("whats") || type.includes("wa_")) whatsapp++
-    }
-    if (whatsapp > email) return "whatsapp"
-    if (email > 0 || whatsapp > 0) return "email"
-    return null
-  } catch (e) {
-    console.error("Channel detection failed for", trengoContactId, e)
-    return null
-  }
+  return detectClientChannel(client ?? null)
 }

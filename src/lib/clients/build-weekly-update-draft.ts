@@ -1,6 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchClientById, type MondayClient } from "@/lib/integrations/monday"
-import { fetchTrengoContact } from "@/lib/integrations/trengo"
 import {
   fetchOverdueInvoices,
   type OverdueInvoice,
@@ -18,6 +17,7 @@ import {
   resolveWeeklyUpdateTemplate,
   type WaTemplateResolution,
 } from "@/lib/clients/resolve-wa-template"
+import { resolveClientSendChannel } from "@/lib/clients/send-channel"
 
 /**
  * Shared "build a weekly update draft for ONE client" pipeline.
@@ -44,16 +44,22 @@ export type WeeklyUpdateDraftResult = {
   parts: EditableParts
   channel: WeeklyUpdateChannel
   channelLabel: string
+  /** Whether the draft has enough contact info on Monday (phone for
+   *  WhatsApp, email for Email) to be sent. Was named after the legacy
+   *  trengo_contact_id link; semantics now driven by Monday's phone +
+   *  email columns. Kept under the same field name so existing dialog
+   *  client code (client-update-button.tsx) keeps working unchanged. */
   trengoContactLinked: boolean
   /** Resolved `rl_weekly_<voornaam>` slug for the WhatsApp path. Null for
    *  email channels or when we can't derive a clean first name from
    *  users.name (rare; user row needs fixing). */
   whatsappTemplateName: string | null
   whatsappTemplateSource: WaTemplateResolution["source"]
-  /** Email + phone resolved from the linked Trengo contact, shown in the
-   *  dialog as "To: <address>" so the user verifies the actual recipient
-   *  before pressing send. Either can be null when the contact record
-   *  doesn't carry it or when no contact is linked at all. */
+  /** Email + phone pulled directly from Monday's client columns, shown
+   *  in the dialog as "To: <address>" so the user verifies the actual
+   *  recipient before pressing send. Used to come from a Trengo contact
+   *  lookup; now sourced from Monday so the preview matches what the
+   *  send path will actually use. */
   recipientEmail: string | null
   recipientPhone: string | null
 }
@@ -223,12 +229,11 @@ export async function buildWeeklyUpdateDraft(args: {
           .catch(() => null)
 
   // Always resolve the weekly template for WhatsApp. Email skips it.
-  // Overdue invoices + Trengo contact fire in parallel too - best-effort,
-  // null / [] on failure so the rest of the pipeline still produces a draft.
-  // (The Trengo contact used to be fetched sequentially AFTER this block,
-  // adding 200-800 ms of dialog open latency on top of the slowest call.
-  // Moving it into the all-batch shaves that off the user-visible wait.)
-  const [kpi, pedro, waTemplate, hubUser, overdueInvoices, trengoContact] = await Promise.all([
+  // No more Trengo contact fetch - recipient is read straight from the
+  // Monday phone/email columns via resolveClientSendChannel. Saves the
+  // 200-800 ms Trengo roundtrip on every dialog open and makes the
+  // preview match what the send path actually uses.
+  const [kpi, pedro, waTemplate, hubUser, overdueInvoices] = await Promise.all([
     kpiPromise,
     loadPedroBody(args.mondayItemId),
     isEmail
@@ -238,10 +243,17 @@ export async function buildWeeklyUpdateDraft(args: {
     client.stripeCustomerId
       ? fetchOverdueInvoices(client.stripeCustomerId).catch(() => [] as OverdueInvoice[])
       : Promise.resolve([] as OverdueInvoice[]),
-    client.trengoContactId
-      ? fetchTrengoContact(client.trengoContactId).catch(() => null)
-      : Promise.resolve(null),
   ])
+
+  const resolvedChannel = resolveClientSendChannel(client)
+  const recipientPhone =
+    resolvedChannel.ok && resolvedChannel.channel.kind === "whatsapp"
+      ? resolvedChannel.channel.phone
+      : client.phone || null
+  const recipientEmail =
+    resolvedChannel.ok && resolvedChannel.channel.kind === "email"
+      ? resolvedChannel.channel.email
+      : client.email || null
 
   // AM first name for the email sign-off + WhatsApp preview. Prefer
   // `users.name` because the resolved template slug may carry a
@@ -274,10 +286,10 @@ export async function buildWeeklyUpdateDraft(args: {
     parts: composed.parts,
     channel,
     channelLabel: client.contactChannel,
-    trengoContactLinked: !!client.trengoContactId,
+    trengoContactLinked: resolvedChannel.ok,
     whatsappTemplateName: waTemplate.name,
     whatsappTemplateSource: waTemplate.source,
-    recipientEmail: trengoContact?.email ?? null,
-    recipientPhone: trengoContact?.phone ?? null,
+    recipientEmail,
+    recipientPhone,
   }
 }

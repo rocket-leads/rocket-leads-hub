@@ -24,6 +24,11 @@ const SIMPLE_FIELDS = [
   "client_board_id",
   "google_drive_id",
   "kick_off_date",
+  // Client contact details, Monday-canonical (board_config keys `email` +
+  // `phone`). Used by the Co-pilot calendar-invite flow as the invitee
+  // address, and by the Trengo send paths for WhatsApp template targeting.
+  "email",
+  "phone",
   // The cycle-start drives the invoice date - see updateClientField below for
   // the dual-write that keeps Monday's `date_mm3297df` in lockstep with this.
   "cycle_start_date",
@@ -281,13 +286,16 @@ const SIMPLE_TO_CLIENT_PROP: Partial<Record<SimpleFieldKey, keyof MondayClient>>
   kick_off_date: "kickOffDate",
   cycle_start_date: "cycleStartDate",
   next_invoice_date: "nextInvoiceDate",
+  email: "email",
+  phone: "phone",
 }
 
 const STATUS_TO_CLIENT_PROP: Partial<Record<StatusFieldKey, keyof MondayClient>> = {
   campaign_status: "campaignStatus",
-  // `country`, `contact_channel`, `administration` aren't on the
-  // MondayClient shape today - they're parsed lazily where needed. If we
-  // add them later, mirror them here so the cache patch covers them too.
+  contact_channel: "contactChannel",
+  // `country` and `administration` aren't on the MondayClient shape today
+  // - they're parsed lazily where needed. If we add them later, mirror
+  // them here so the cache patch covers them too.
 }
 
 const PERSON_TO_CLIENT_PROP: Record<PersonFieldKey, keyof MondayClient> = {
@@ -428,3 +436,4 @@ async function syncCycleToSiblings(
     }
   }
 }
+
