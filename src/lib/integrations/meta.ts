@@ -651,7 +651,18 @@ export async function fetchMetaAdDetails(
                 images?: Array<{ url?: string; hash?: string }>
               }
             }
-            const creative = (adData as { creative?: { data?: RawCreative } }).creative?.data
+            // Roy 2026-06-12 BUG FIX: Meta's response voor
+            // ?ids=...&fields=creative{...} is { adId: { creative: {...} } }
+            // - niet { creative: { data: {...} } }. De .data wrapper bestaat
+            // alleen voor paginated edges. Door .data te lezen kwamen body
+            // / title / description allemaal als lege strings terug, ook
+            // bij ads die in Meta zelf rijke copy hebben. Beide paden
+            // proberen voor backwards-compat met edge-style responses.
+            const raw = adData as {
+              creative?: RawCreative & { data?: RawCreative }
+            }
+            const creative: RawCreative | undefined =
+              raw.creative?.data ?? raw.creative
             const oss = creative?.object_story_spec
             const link = oss?.link_data
             const vid = oss?.video_data
