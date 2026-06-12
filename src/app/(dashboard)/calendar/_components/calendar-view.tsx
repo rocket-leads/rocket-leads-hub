@@ -37,6 +37,11 @@ const HOUR_HEIGHT_PX = 56
 const TOTAL_HOURS = HOUR_END - HOUR_START
 const TIME_COL_WIDTH = "w-14"
 
+const VISIBILITY_STORAGE_KEY = "rl-calendar-visibility"
+
+type Visibility = { meetings: boolean; tasks: boolean }
+const DEFAULT_VISIBILITY: Visibility = { meetings: true, tasks: true }
+
 type Props = {
   initialConnected: boolean
 }
@@ -48,6 +53,41 @@ export function CalendarView({ initialConnected }: Props) {
   const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [dialog, setDialog] = useState<EventDialogMode | null>(null)
   const [taskDialogId, setTaskDialogId] = useState<string | null>(null)
+
+  // Stream visibility toggles in the toolbar. Persisted in localStorage
+  // so the AM's preferences ("show only tasks") survive page reloads.
+  // Read lazily on first render so we never write state from an effect
+  // (the project's set-state-in-effect lint rule). SSR has no window —
+  // fall back to defaults; hydration then matches the localStorage value
+  // on the client tick.
+  const [visibility, setVisibility] = useState<Visibility>(() => {
+    if (typeof window === "undefined") return DEFAULT_VISIBILITY
+    try {
+      const raw = window.localStorage.getItem(VISIBILITY_STORAGE_KEY)
+      if (!raw) return DEFAULT_VISIBILITY
+      const parsed = JSON.parse(raw) as Partial<Visibility>
+      return {
+        meetings: parsed.meetings ?? true,
+        tasks: parsed.tasks ?? true,
+      }
+    } catch {
+      return DEFAULT_VISIBILITY
+    }
+  })
+  const toggleVisibility = (key: keyof Visibility) => {
+    setVisibility((prev) => {
+      const next = { ...prev, [key]: !prev[key] }
+      try {
+        window.localStorage.setItem(
+          VISIBILITY_STORAGE_KEY,
+          JSON.stringify(next),
+        )
+      } catch {
+        // Ignore — visibility just won't survive the next reload.
+      }
+      return next
+    })
+  }
 
   const weekStart = useMemo(
     () => startOfWeek(anchor, { weekStartsOn: 1 }),
@@ -80,7 +120,9 @@ export function CalendarView({ initialConnected }: Props) {
   const data = query.data
   const connected = data?.connected ?? initialConnected
 
-  // Split events into all-day vs timed for layout.
+  // Split events into all-day vs timed for layout. Visibility toggles
+  // are applied here so a flipped-off stream simply contributes nothing
+  // to the day buckets — the grid layout stays identical.
   const { allDayByDay, timedByDay, tasksByDay } = useMemo(() => {
     const allDay: Record<string, CalendarEventsResponse["events"]> = {}
     const timed: Record<string, CalendarEventsResponse["events"]> = {}
@@ -91,23 +133,29 @@ export function CalendarView({ initialConnected }: Props) {
       timed[key] = []
       tasks[key] = []
     }
-    for (const ev of data?.events ?? []) {
-      // All-day events come back as YYYY-MM-DD; render them on that date.
-      // Timed events come back as ISO datetimes.
-      if (ev.allDay) {
-        const key = ev.start.slice(0, 10)
-        if (allDay[key]) allDay[key].push(ev)
-      } else {
-        const start = new Date(ev.start)
-        const key = format(start, "yyyy-MM-dd")
-        if (timed[key]) timed[key].push(ev)
+    if (visibility.meetings) {
+      for (const ev of data?.events ?? []) {
+        // All-day events come back as YYYY-MM-DD; render them on that date.
+        // Timed events come back as ISO datetimes.
+        if (ev.allDay) {
+          const key = ev.start.slice(0, 10)
+          if (allDay[key]) allDay[key].push(ev)
+        } else {
+          const start = new Date(ev.start)
+          const key = format(start, "yyyy-MM-dd")
+          if (timed[key]) timed[key].push(ev)
+        }
       }
     }
-    for (const tk of data?.tasks ?? []) {
-      if (tasks[tk.due_date]) tasks[tk.due_date].push(tk)
+    if (visibility.tasks) {
+      for (const tk of data?.tasks ?? []) {
+        // displayDate equals due_date for in-window tasks and gets
+        // collapsed to the earliest visible day for overdue ones.
+        if (tasks[tk.displayDate]) tasks[tk.displayDate].push(tk)
+      }
     }
     return { allDayByDay: allDay, timedByDay: timed, tasksByDay: tasks }
-  }, [data, days])
+  }, [data, days, visibility])
 
   return (
     <div className="space-y-4">
@@ -144,22 +192,25 @@ export function CalendarView({ initialConnected }: Props) {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="hidden md:flex items-center gap-4 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block size-2.5 rounded-sm bg-[#8967F3]" />
-              Meetings
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="inline-block size-2.5 rounded-sm bg-amber-500" />
-              Tasks
-            </span>
-          </div>
+        <div className="flex items-center gap-2">
+          <VisibilityToggle
+            label="Meetings"
+            color="#8967F3"
+            on={visibility.meetings}
+            onClick={() => toggleVisibility("meetings")}
+          />
+          <VisibilityToggle
+            label="Tasks"
+            color="#f59e0b"
+            on={visibility.tasks}
+            onClick={() => toggleVisibility("tasks")}
+          />
           <Button
             size="sm"
             onClick={() => setDialog({ kind: "create" })}
             disabled={!connected}
             title={!connected ? "Connect Google Calendar to create events" : undefined}
+            className="ml-2"
           >
             <Plus className="size-4" />
             New event
@@ -170,6 +221,10 @@ export function CalendarView({ initialConnected }: Props) {
       {!connected && <ConnectPrompt />}
 
       {data?.error && <CalendarErrorBanner error={data.error} />}
+
+      {visibility.tasks && (data?.undatedTaskCount ?? 0) > 0 && (
+        <UndatedTasksBanner count={data!.undatedTaskCount} />
+      )}
 
       {/* Grid container */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -265,6 +320,64 @@ export function CalendarView({ initialConnected }: Props) {
   )
 }
 
+function VisibilityToggle({
+  label,
+  color,
+  on,
+  onClick,
+}: {
+  label: string
+  color: string
+  on: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      title={`${on ? "Hide" : "Show"} ${label.toLowerCase()}`}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+        on
+          ? "border-border bg-card text-foreground hover:bg-muted/40"
+          : "border-border bg-transparent text-muted-foreground/70 hover:text-foreground",
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block size-2.5 rounded-sm transition-opacity",
+          !on && "opacity-30",
+        )}
+        style={{ backgroundColor: color }}
+      />
+      <span className={cn(!on && "line-through decoration-muted-foreground/40")}>
+        {label}
+      </span>
+    </button>
+  )
+}
+
+function UndatedTasksBanner({ count }: { count: number }) {
+  return (
+    <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-sm flex items-center justify-between gap-3">
+      <p className="text-foreground">
+        You have{" "}
+        <span className="font-medium">
+          {count} task{count === 1 ? "" : "s"} without a due date
+        </span>
+        . Add a due date in the Inbox and they&apos;ll show up here.
+      </p>
+      <Link
+        href="/inbox?tab=tasks"
+        className="shrink-0 text-xs font-medium text-foreground underline underline-offset-2 hover:text-primary"
+      >
+        Open Inbox
+      </Link>
+    </div>
+  )
+}
+
 function CalendarErrorBanner({
   error,
 }: {
@@ -350,6 +463,8 @@ function AllDayRow({
                 key={t.id}
                 title={t.title}
                 clientName={t.clientName}
+                overdue={t.bucket === "overdue"}
+                originalDueDate={t.due_date}
                 onClick={() => onOpenTask(t.id)}
               />
             ))}
@@ -643,23 +758,37 @@ function EventChip({
 function TaskChip({
   title,
   clientName,
+  overdue,
+  originalDueDate,
   onClick,
 }: {
   title: string
   clientName: string | null
+  overdue: boolean
+  originalDueDate: string | null
   onClick: () => void
 }) {
+  // Overdue tasks get the destructive red tint so they read at a glance
+  // as "this needed doing already". Tooltip surfaces the actual missed
+  // due date so the AM can decide whether to bump it.
+  const tooltipParts = [
+    title,
+    clientName && `— ${clientName}`,
+    overdue && originalDueDate && `(overdue since ${originalDueDate})`,
+  ].filter(Boolean) as string[]
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
         "block w-full truncate rounded px-1.5 py-0.5 text-[11px] text-left cursor-pointer",
-        "bg-amber-500/15 border-l-2 border-amber-500 text-foreground",
-        "hover:bg-amber-500/25",
+        overdue
+          ? "bg-red-500/15 border-l-2 border-red-500 text-foreground hover:bg-red-500/25"
+          : "bg-amber-500/15 border-l-2 border-amber-500 text-foreground hover:bg-amber-500/25",
       )}
-      title={clientName ? `${title} — ${clientName}` : title}
+      title={tooltipParts.join(" ")}
     >
+      {overdue && <span className="font-semibold text-red-600 dark:text-red-400">⚠ </span>}
       {title}
       {clientName && (
         <span className="text-muted-foreground"> · {clientName}</span>

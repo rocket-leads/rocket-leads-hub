@@ -26,16 +26,32 @@ export const dynamic = "force-dynamic"
 type TaskRow = {
   id: string
   title: string
-  due_date: string
+  due_date: string | null
   client_id: string | null
   status: string
   priority: string | null
 }
 
+export type CalendarTask = TaskRow & {
+  clientName: string | null
+  /** Server-side classification so the client doesn't need to re-derive it. */
+  bucket: "in_window" | "overdue"
+  /**
+   * Effective day to render this task on (YYYY-MM-DD). For `in_window`
+   * this equals `due_date`. For `overdue` it's the earliest visible
+   * day in the requested window so the user always sees the overdue
+   * pile, even if `due_date` was weeks ago.
+   */
+  displayDate: string
+}
+
 export type CalendarEventsResponse = {
   connected: boolean
   events: CalendarEvent[]
-  tasks: Array<TaskRow & { clientName: string | null }>
+  tasks: CalendarTask[]
+  /** Open tasks the user owns that have no due_date at all (won't
+   *  render on the grid but worth surfacing as a banner → Inbox link). */
+  undatedTaskCount: number
   /** Non-null when we tried to talk to Google Calendar and it failed. */
   error: CalendarFetchError | null
 }
@@ -62,26 +78,35 @@ export async function GET(req: NextRequest) {
 
   const connected = await hasCalendarConnected(session.user.id)
 
-  // Tasks come from inbox_events. due_date is a DATE column, so compare on
-  // YYYY-MM-DD strings. Status filter mirrors the Tasks tab in /inbox.
+  // Pull every open task the user owns. We classify afterwards so a
+  // task with due_date last month still surfaces (as "overdue" on the
+  // earliest visible day) and we can count undated tasks for the
+  // banner. Caps at 200 to bound the payload — anyone with that many
+  // open tasks has bigger problems than the calendar paint cost.
   const supabase = await createAdminClient()
+  const windowStart = timeMin.toISOString().slice(0, 10)
+  const windowEnd = timeMax.toISOString().slice(0, 10)
   const { data: taskRows } = await supabase
     .from("inbox_events")
     .select("id, title, due_date, client_id, status, priority")
     .eq("assignee_id", session.user.id)
     .eq("kind", "task")
     .in("status", ["open", "in_progress"])
-    .not("due_date", "is", null)
-    .gte("due_date", timeMin.toISOString().slice(0, 10))
-    .lte("due_date", timeMax.toISOString().slice(0, 10))
+    .lte("due_date", windowEnd)
+    .order("due_date", { ascending: true })
+    .limit(200)
 
-  const tasks = (taskRows ?? []) as TaskRow[]
+  const allOpenTasks = (taskRows ?? []) as TaskRow[]
 
   // Resolve client names for the tasks (display-only — keeps a calendar
   // entry like "Send invoice — Acme Corp" instead of a bare title).
   let clientNameById: Record<string, string> = {}
   const clientIds = Array.from(
-    new Set(tasks.map((t) => t.client_id).filter((id): id is string => !!id)),
+    new Set(
+      allOpenTasks
+        .map((t) => t.client_id)
+        .filter((id): id is string => !!id),
+    ),
   )
   if (clientIds.length > 0) {
     const { data: clientRows } = await supabase
@@ -93,6 +118,36 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  // Classify into buckets the client can render directly.
+  const renderedTasks: CalendarTask[] = []
+  let undatedTaskCount = 0
+  for (const t of allOpenTasks) {
+    const clientName = t.client_id
+      ? clientNameById[t.client_id] ?? null
+      : null
+    if (!t.due_date) {
+      undatedTaskCount++
+      continue
+    }
+    if (t.due_date < windowStart) {
+      // Overdue — collapse onto the earliest visible day so it stays
+      // on the user's radar instead of vanishing into an off-screen week.
+      renderedTasks.push({
+        ...t,
+        clientName,
+        bucket: "overdue",
+        displayDate: windowStart,
+      })
+    } else {
+      renderedTasks.push({
+        ...t,
+        clientName,
+        bucket: "in_window",
+        displayDate: t.due_date,
+      })
+    }
+  }
+
   const result = connected
     ? await listCalendarEvents(session.user.id, { timeMin, timeMax })
     : { events: [], error: null }
@@ -100,10 +155,8 @@ export async function GET(req: NextRequest) {
   const body: CalendarEventsResponse = {
     connected,
     events: result.events,
-    tasks: tasks.map((t) => ({
-      ...t,
-      clientName: t.client_id ? clientNameById[t.client_id] ?? null : null,
-    })),
+    tasks: renderedTasks,
+    undatedTaskCount,
     error: result.error,
   }
   return NextResponse.json(body)
