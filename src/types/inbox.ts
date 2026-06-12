@@ -38,6 +38,10 @@ export type InboxItem = {
   status: UpdateStatus | TaskStatus
   priority: InboxPriority | null
   dueDate: string | null
+  /** ISO timestamp pinning the task to a specific time-of-day on the
+   *  calendar grid. Null = no specific time (renders in the all-day
+   *  strip on its due_date). Only meaningful for tasks. */
+  scheduledAt: string | null
   source: InboxSource
   /** Trengo channel medium when source==='trengo'. Null otherwise. */
   channelKind: InboxChannelKind
@@ -97,4 +101,8 @@ export type UpdateInboxItemInput = {
    *  Chat tabs when the AI classifier got it wrong. Server resets status +
    *  priority to sane defaults for the new kind. */
   kind?: InboxKind | "chat"
+  /** ISO timestamp pinning a task to a specific time-of-day on the
+   *  calendar grid. Null = no specific time, falls back to all-day strip
+   *  on the due_date. Set by drag-and-drop in /calendar. */
+  scheduledAt?: string | null
 }

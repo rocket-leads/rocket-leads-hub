@@ -29,6 +29,10 @@ type RawInboxRow = {
   status: string
   priority: InboxPriority | null
   due_date: string | null
+  /** Optional ISO timestamp pinning a task to a specific time of day on
+   *  the calendar. Null when the user hasn't dragged it onto the time
+   *  grid yet (falls back to the all-day strip). */
+  scheduled_at: string | null
   snoozed_until: string | null
   source: InboxSource
   source_ref: Record<string, unknown> | null
@@ -183,6 +187,7 @@ function rowToItem(
     status: row.status as UpdateStatus | TaskStatus,
     priority: row.priority,
     dueDate: row.due_date,
+    scheduledAt: row.scheduled_at,
     source: row.source,
     channelKind,
     sourceRef: row.source_ref,
@@ -198,7 +203,7 @@ function rowToItem(
 
 const ITEM_SELECT = `
   id, kind, client_id, author_id, assignee_id, title, body, status, priority,
-  due_date, snoozed_until, source, source_ref, monday_update_id, trengo_channel_id,
+  due_date, scheduled_at, snoozed_until, source, source_ref, monday_update_id, trengo_channel_id,
   trengo_assignee_user_id,
   author_name_cached, author_external,
   created_at, updated_at, completed_at,

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   addDays,
   addMonths,
@@ -194,42 +194,79 @@ export function CalendarView({ initialConnected }: Props) {
   const data = query.data
   const connected = data?.connected ?? initialConnected
 
-  // Split events into all-day vs timed for layout. Visibility toggles
-  // are applied here so a flipped-off stream simply contributes nothing
-  // to the day buckets — the grid layout stays identical.
-  const { allDayByDay, timedByDay, tasksByDay } = useMemo(() => {
-    const allDay: Record<string, CalendarEventsResponse["events"]> = {}
-    const timed: Record<string, CalendarEventsResponse["events"]> = {}
-    const tasks: Record<string, CalendarEventsResponse["tasks"]> = {}
-    for (const d of days) {
-      const key = format(d, "yyyy-MM-dd")
-      allDay[key] = []
-      timed[key] = []
-      tasks[key] = []
-    }
-    if (visibility.meetings) {
-      for (const ev of data?.events ?? []) {
-        // All-day events come back as YYYY-MM-DD; render them on that date.
-        // Timed events come back as ISO datetimes.
-        if (ev.allDay) {
-          const key = ev.start.slice(0, 10)
-          if (allDay[key]) allDay[key].push(ev)
-        } else {
-          const start = new Date(ev.start)
-          const key = format(start, "yyyy-MM-dd")
-          if (timed[key]) timed[key].push(ev)
+  // Split events + tasks into buckets per day. Visibility toggles are
+  // applied here so a flipped-off stream contributes nothing — the
+  // grid layout stays identical. Tasks split into two buckets:
+  //   tasksAllDayByDay  — no scheduled_at; renders in all-day strip
+  //   tasksTimedByDay   — has scheduled_at; renders as 30-min block
+  //                       in the time grid at that time
+  const { allDayByDay, timedByDay, tasksAllDayByDay, tasksTimedByDay } =
+    useMemo(() => {
+      const allDay: Record<string, CalendarEventsResponse["events"]> = {}
+      const timed: Record<string, CalendarEventsResponse["events"]> = {}
+      const tasksAllDay: Record<string, CalendarEventsResponse["tasks"]> = {}
+      const tasksTimed: Record<string, CalendarEventsResponse["tasks"]> = {}
+      for (const d of days) {
+        const key = format(d, "yyyy-MM-dd")
+        allDay[key] = []
+        timed[key] = []
+        tasksAllDay[key] = []
+        tasksTimed[key] = []
+      }
+      if (visibility.meetings) {
+        for (const ev of data?.events ?? []) {
+          if (ev.allDay) {
+            const key = ev.start.slice(0, 10)
+            if (allDay[key]) allDay[key].push(ev)
+          } else {
+            const start = new Date(ev.start)
+            const key = format(start, "yyyy-MM-dd")
+            if (timed[key]) timed[key].push(ev)
+          }
         }
       }
-    }
-    if (visibility.tasks) {
-      for (const tk of data?.tasks ?? []) {
-        // displayDate equals due_date for in-window tasks and gets
-        // collapsed to the earliest visible day for overdue ones.
-        if (tasks[tk.displayDate]) tasks[tk.displayDate].push(tk)
+      if (visibility.tasks) {
+        for (const tk of data?.tasks ?? []) {
+          if (tk.scheduled_at) {
+            const key = format(parseISO(tk.scheduled_at), "yyyy-MM-dd")
+            if (tasksTimed[key]) tasksTimed[key].push(tk)
+          } else if (tasksAllDay[tk.displayDate]) {
+            tasksAllDay[tk.displayDate].push(tk)
+          }
+        }
       }
-    }
-    return { allDayByDay: allDay, timedByDay: timed, tasksByDay: tasks }
-  }, [data, days, visibility])
+      return {
+        allDayByDay: allDay,
+        timedByDay: timed,
+        tasksAllDayByDay: tasksAllDay,
+        tasksTimedByDay: tasksTimed,
+      }
+    }, [data, days, visibility])
+
+  const queryClient = useQueryClient()
+  const rescheduleTaskMut = useMutation({
+    mutationFn: async ({
+      taskId,
+      scheduledAt,
+    }: {
+      taskId: string
+      scheduledAt: string | null
+    }) => {
+      const res = await fetch(
+        `/api/inbox/${encodeURIComponent(taskId)}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduledAt }),
+        },
+      )
+      if (!res.ok) throw new Error("Failed to reschedule task")
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] })
+    },
+  })
 
   return (
     <div className="space-y-4">
@@ -305,7 +342,8 @@ export function CalendarView({ initialConnected }: Props) {
           anchor={anchor}
           eventsByDay={timedByDay}
           allDayByDay={allDayByDay}
-          tasksByDay={tasksByDay}
+          tasksByDay={tasksAllDayByDay}
+          tasksTimedByDay={tasksTimedByDay}
           onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
           onOpenTask={(id) => setTaskDialogId(id)}
           onJumpToDay={(d) => {
@@ -318,10 +356,17 @@ export function CalendarView({ initialConnected }: Props) {
           days={days}
           timedByDay={timedByDay}
           allDayByDay={allDayByDay}
-          tasksByDay={tasksByDay}
+          tasksAllDayByDay={tasksAllDayByDay}
+          tasksTimedByDay={tasksTimedByDay}
           onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
           onOpenTask={(id) => setTaskDialogId(id)}
           onCreateAt={(when) => setDialog({ kind: "create", initialStart: when })}
+          onRescheduleTask={(taskId, when) =>
+            rescheduleTaskMut.mutate({
+              taskId,
+              scheduledAt: when ? when.toISOString() : null,
+            })
+          }
         />
       )}
 
@@ -387,18 +432,23 @@ function TimeGrid({
   days,
   timedByDay,
   allDayByDay,
-  tasksByDay,
+  tasksAllDayByDay,
+  tasksTimedByDay,
   onOpenEvent,
   onOpenTask,
   onCreateAt,
+  onRescheduleTask,
 }: {
   days: Date[]
   timedByDay: Record<string, CalendarEventsResponse["events"]>
   allDayByDay: Record<string, CalendarEventsResponse["events"]>
-  tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
+  tasksAllDayByDay: Record<string, CalendarEventsResponse["tasks"]>
+  tasksTimedByDay: Record<string, CalendarEventsResponse["tasks"]>
   onOpenEvent: (id: string) => void
   onOpenTask: (id: string) => void
   onCreateAt: (when: Date) => void
+  /** Drop handler. when=null clears the time (back to all-day strip). */
+  onRescheduleTask: (taskId: string, when: Date | null) => void
 }) {
   // grid-cols template = 56px gutter + N flexible columns. Built as an
   // inline style because Tailwind's JIT can't generate dynamic counts.
@@ -439,9 +489,10 @@ function TimeGrid({
       <AllDayRow
         days={days}
         allDayByDay={allDayByDay}
-        tasksByDay={tasksByDay}
+        tasksByDay={tasksAllDayByDay}
         onOpenEvent={onOpenEvent}
         onOpenTask={onOpenTask}
+        onUnscheduleTask={(taskId) => onRescheduleTask(taskId, null)}
         gridStyle={gridStyle}
       />
 
@@ -464,8 +515,11 @@ function TimeGrid({
               key={key}
               day={d}
               events={timedByDay[key] ?? []}
+              scheduledTasks={tasksTimedByDay[key] ?? []}
               onOpenEvent={onOpenEvent}
+              onOpenTask={onOpenTask}
               onCreateAt={onCreateAt}
+              onRescheduleTask={onRescheduleTask}
             />
           )
         })}
@@ -480,6 +534,7 @@ function MonthGrid({
   eventsByDay,
   allDayByDay,
   tasksByDay,
+  tasksTimedByDay,
   onOpenEvent,
   onOpenTask,
   onJumpToDay,
@@ -489,6 +544,7 @@ function MonthGrid({
   eventsByDay: Record<string, CalendarEventsResponse["events"]>
   allDayByDay: Record<string, CalendarEventsResponse["events"]>
   tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
+  tasksTimedByDay: Record<string, CalendarEventsResponse["tasks"]>
   onOpenEvent: (id: string) => void
   onOpenTask: (id: string) => void
   onJumpToDay: (day: Date) => void
@@ -517,7 +573,10 @@ function MonthGrid({
           const today = isToday(d)
           const allDay = allDayByDay[key] ?? []
           const timed = eventsByDay[key] ?? []
-          const tasks = tasksByDay[key] ?? []
+          const tasks = [
+            ...(tasksByDay[key] ?? []),
+            ...(tasksTimedByDay[key] ?? []),
+          ]
           const eventChips = [...allDay, ...timed].slice(0, MAX_CHIPS_PER_DAY)
           const overflowCount =
             allDay.length + timed.length - eventChips.length
@@ -702,6 +761,7 @@ function AllDayRow({
   tasksByDay,
   onOpenEvent,
   onOpenTask,
+  onUnscheduleTask,
   gridStyle,
 }: {
   days: Date[]
@@ -709,6 +769,7 @@ function AllDayRow({
   tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
   onOpenEvent: (id: string) => void
   onOpenTask: (id: string) => void
+  onUnscheduleTask: (taskId: string) => void
   gridStyle: React.CSSProperties
 }) {
   // Reserve some minimum height even when empty so the row doesn't collapse
@@ -731,12 +792,10 @@ function AllDayRow({
         const allDayEvents = allDayByDay[key] ?? []
         const tasks = tasksByDay[key] ?? []
         return (
-          <div
+          <AllDayCell
             key={key}
-            className={cn(
-              "border-r border-border last:border-r-0 p-1.5 space-y-1 min-h-[44px]",
-              isToday(d) && "bg-primary/5",
-            )}
+            isToday={isToday(d)}
+            onUnscheduleTask={onUnscheduleTask}
           >
             {allDayEvents.map((ev) => (
               <EventChip
@@ -748,6 +807,7 @@ function AllDayRow({
             {tasks.map((t) => (
               <TaskChip
                 key={t.id}
+                taskId={t.id}
                 title={t.title}
                 clientName={t.clientName}
                 overdue={t.bucket === "overdue" && t.status !== "done"}
@@ -756,9 +816,50 @@ function AllDayRow({
                 onClick={() => onOpenTask(t.id)}
               />
             ))}
-          </div>
+          </AllDayCell>
         )
       })}
+    </div>
+  )
+}
+
+function AllDayCell({
+  children,
+  isToday,
+  onUnscheduleTask,
+}: {
+  children: React.ReactNode
+  isToday: boolean
+  onUnscheduleTask: (taskId: string) => void
+}) {
+  const [dragOver, setDragOver] = useState(false)
+  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (Array.from(e.dataTransfer.types).includes(TASK_DRAG_MIME)) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "move"
+      if (!dragOver) setDragOver(true)
+    }
+  }
+  const onDragLeave = () => setDragOver(false)
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const taskId = e.dataTransfer.getData(TASK_DRAG_MIME)
+    setDragOver(false)
+    if (!taskId) return
+    e.preventDefault()
+    onUnscheduleTask(taskId)
+  }
+  return (
+    <div
+      className={cn(
+        "border-r border-border last:border-r-0 p-1.5 space-y-1 min-h-[44px]",
+        isToday && "bg-primary/5",
+        dragOver && "bg-amber-500/10 ring-2 ring-inset ring-amber-500/40",
+      )}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {children}
     </div>
   )
 }
@@ -860,35 +961,71 @@ function layoutDayEvents(
   return result
 }
 
+const TASK_DRAG_MIME = "application/x-rl-task-id"
+
+function pointerToTime(
+  e: { clientY: number },
+  rect: DOMRect,
+  day: Date,
+): Date {
+  const y = e.clientY - rect.top
+  const hourFloat = HOUR_START + y / HOUR_HEIGHT_PX
+  const hour = Math.floor(hourFloat)
+  const minute = Math.round(((hourFloat - hour) * 60) / 15) * 15
+  const when = new Date(day)
+  when.setHours(hour, Math.min(minute, 45), 0, 0)
+  return when
+}
+
 function DayColumn({
   day,
   events,
+  scheduledTasks,
   onOpenEvent,
+  onOpenTask,
   onCreateAt,
+  onRescheduleTask,
 }: {
   day: Date
   events: CalendarEventsResponse["events"]
+  scheduledTasks: CalendarEventsResponse["tasks"]
   onOpenEvent: (id: string) => void
+  onOpenTask: (id: string) => void
   onCreateAt: (when: Date) => void
+  onRescheduleTask: (taskId: string, when: Date | null) => void
 }) {
   const dayStart = startOfDay(day)
   const laidOut = useMemo(
     () => layoutDayEvents(events, dayStart),
     [events, dayStart],
   )
+  const [dragOver, setDragOver] = useState(false)
 
   // Click on an empty slot in the column → open the create dialog
   // pre-seeded to the slot the user clicked. The event blocks have
   // their own click handlers and stop propagation.
   const onColumnClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
-    const y = e.clientY - rect.top
-    const hourFloat = HOUR_START + y / HOUR_HEIGHT_PX
-    const hour = Math.floor(hourFloat)
-    const minute = Math.round(((hourFloat - hour) * 60) / 15) * 15
-    const when = new Date(day)
-    when.setHours(hour, Math.min(minute, 45), 0, 0)
+    const when = pointerToTime(e, rect, day)
     onCreateAt(when)
+  }
+
+  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (Array.from(e.dataTransfer.types).includes(TASK_DRAG_MIME)) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "move"
+      if (!dragOver) setDragOver(true)
+    }
+  }
+  const onDragLeave = () => setDragOver(false)
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const taskId = e.dataTransfer.getData(TASK_DRAG_MIME)
+    setDragOver(false)
+    if (!taskId) return
+    e.preventDefault()
+    const rect = e.currentTarget.getBoundingClientRect()
+    const when = pointerToTime(e, rect, day)
+    onRescheduleTask(taskId, when)
   }
 
   return (
@@ -896,9 +1033,13 @@ function DayColumn({
       className={cn(
         "relative border-r border-border last:border-r-0 cursor-pointer",
         isToday(day) && "bg-primary/5",
+        dragOver && "bg-amber-500/10 ring-2 ring-inset ring-amber-500/40",
       )}
       style={{ height: TOTAL_HOURS * HOUR_HEIGHT_PX }}
       onClick={onColumnClick}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
     >
       {/* Hour grid lines */}
       {Array.from({ length: TOTAL_HOURS }, (_, i) => (
@@ -934,7 +1075,93 @@ function DayColumn({
           />
         )
       })}
+
+      {/* Scheduled tasks rendered as 30-min draggable blocks on the right
+          half of the column so they don't collide with the event column
+          packing on the left. Done = green, overdue still = red. */}
+      {scheduledTasks.map((tk) => {
+        const start = parseISO(tk.scheduled_at!)
+        const startHourF =
+          (start.getTime() - dayStart.getTime()) / 3_600_000
+        const top = Math.max(0, startHourF - HOUR_START) * HOUR_HEIGHT_PX
+        const height = HOUR_HEIGHT_PX / 2 // 30 min default
+        return (
+          <TaskBlock
+            key={tk.id}
+            taskId={tk.id}
+            top={top}
+            height={height}
+            title={tk.title}
+            done={tk.status === "done"}
+            overdue={tk.bucket === "overdue" && tk.status !== "done"}
+            timeLabel={format(start, "HH:mm")}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpenTask(tk.id)
+            }}
+          />
+        )
+      })}
     </div>
+  )
+}
+
+function TaskBlock({
+  taskId,
+  top,
+  height,
+  title,
+  done,
+  overdue,
+  timeLabel,
+  onClick,
+}: {
+  taskId: string
+  top: number
+  height: number
+  title: string
+  done: boolean
+  overdue: boolean
+  timeLabel: string
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
+}) {
+  const onDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.dataTransfer.setData(TASK_DRAG_MIME, taskId)
+    e.dataTransfer.setData("text/plain", taskId)
+    e.dataTransfer.effectAllowed = "move"
+  }
+  const palette = done
+    ? "bg-emerald-500/15 border-emerald-500 line-through decoration-emerald-500/60 text-foreground/70"
+    : overdue
+      ? "bg-red-500/15 border-red-500 hover:bg-red-500/25"
+      : "bg-amber-500/15 border-amber-500 hover:bg-amber-500/25"
+  return (
+    <button
+      type="button"
+      draggable
+      onDragStart={onDragStart}
+      onClick={onClick}
+      className={cn(
+        "absolute rounded-md border-l-2 px-1.5 py-0.5 overflow-hidden text-left",
+        "left-[50%] right-1 cursor-grab active:cursor-grabbing",
+        palette,
+      )}
+      style={{ top, height }}
+      title={`${timeLabel} — ${title}`}
+    >
+      <div className="text-[11px] font-medium leading-tight truncate">
+        {done && (
+          <span className="text-emerald-600 dark:text-emerald-400 mr-0.5">✓</span>
+        )}
+        {!done && overdue && (
+          <span className="font-semibold text-red-600 dark:text-red-400">⚠ </span>
+        )}
+        <span className="tabular-nums text-muted-foreground mr-1">
+          {timeLabel}
+        </span>
+        {title}
+      </div>
+    </button>
   )
 }
 
@@ -1069,6 +1296,7 @@ function EventChip({
 
 function TaskChip({
   title,
+  taskId,
   clientName,
   overdue,
   done,
@@ -1076,12 +1304,18 @@ function TaskChip({
   onClick,
 }: {
   title: string
+  taskId: string
   clientName: string | null
   overdue: boolean
   done: boolean
   originalDueDate: string | null
   onClick: () => void
 }) {
+  const onDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.dataTransfer.setData(TASK_DRAG_MIME, taskId)
+    e.dataTransfer.setData("text/plain", taskId)
+    e.dataTransfer.effectAllowed = "move"
+  }
   // Three colour states:
   //   done    — emerald, line-through. Shows "you shipped this".
   //   overdue — red + ⚠. Shows "you missed this".
@@ -1100,9 +1334,12 @@ function TaskChip({
   return (
     <button
       type="button"
+      draggable
+      onDragStart={onDragStart}
       onClick={onClick}
       className={cn(
-        "block w-full truncate rounded px-1.5 py-0.5 text-[11px] text-left cursor-pointer",
+        "block w-full truncate rounded px-1.5 py-0.5 text-[11px] text-left",
+        "cursor-grab active:cursor-grabbing",
         palette,
         done && "line-through decoration-emerald-500/60 text-foreground/70",
       )}

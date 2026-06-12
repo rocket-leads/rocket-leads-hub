@@ -128,6 +128,24 @@ export async function PATCH(
     }
   }
 
+  // scheduledAt is also a personal-triage move (the assignee's calendar
+  // planning), not an authorial edit. Same gating as snoozedUntil —
+  // assignee-or-admin can set it, only meaningful for tasks. Null
+  // sends the task back to the all-day strip on its due_date.
+  if (patch.scheduledAt !== undefined && item.kind === "task") {
+    if (patch.scheduledAt === null) {
+      update.scheduled_at = null
+    } else if (typeof patch.scheduledAt === "string") {
+      const ts = new Date(patch.scheduledAt)
+      if (Number.isNaN(ts.getTime())) {
+        return NextResponse.json({ error: "Invalid scheduledAt timestamp" }, { status: 400 })
+      }
+      update.scheduled_at = ts.toISOString()
+    } else {
+      return NextResponse.json({ error: "scheduledAt must be ISO string or null" }, { status: 400 })
+    }
+  }
+
   if (canEditMeta) {
     if (patch.title !== undefined) update.title = patch.title.trim()
     if (patch.body !== undefined) update.body = patch.body?.trim() || null

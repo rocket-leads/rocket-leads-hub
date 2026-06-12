@@ -27,6 +27,7 @@ type TaskRow = {
   id: string
   title: string
   due_date: string | null
+  scheduled_at: string | null
   client_id: string | null
   status: string
   priority: string | null
@@ -90,7 +91,7 @@ export async function GET(req: NextRequest) {
   const windowEnd = timeMax.toISOString().slice(0, 10)
   const { data: openRows } = await supabase
     .from("inbox_events")
-    .select("id, title, due_date, client_id, status, priority")
+    .select("id, title, due_date, scheduled_at, client_id, status, priority")
     .eq("assignee_id", session.user.id)
     .eq("kind", "task")
     .in("status", ["open", "in_progress"])
@@ -99,7 +100,7 @@ export async function GET(req: NextRequest) {
     .limit(200)
   const { data: doneRows } = await supabase
     .from("inbox_events")
-    .select("id, title, due_date, client_id, status, priority")
+    .select("id, title, due_date, scheduled_at, client_id, status, priority")
     .eq("assignee_id", session.user.id)
     .eq("kind", "task")
     .eq("status", "done")
