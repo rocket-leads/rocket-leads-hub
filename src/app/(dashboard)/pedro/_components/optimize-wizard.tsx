@@ -765,23 +765,37 @@ function ProposalSelectionCard({
 }
 
 /**
- * GeneratingProgress - Roy 2026-06-12: vervangt de spinner door een
- * progress bar die in stages oploopt, met statusteksten die meelopen
- * met wat Pedro feitelijk doet. Geen echte server progress events -
- * tijd-based simulatie - maar voelt veel sneller dan een statische
- * spinner van 40 seconden.
+ * GeneratingProgress - Roy 2026-06-12 v2: vervangt de statische
+ * spinner door een asymptotische progress bar die altijd doortikt
+ * (nooit stilstaat) en asymptotisch naar 99% kruipt zonder ooit
+ * te raken. Geen "blocked at 95%" gevoel meer.
+ *
+ * Curve: progress(t) = 0.99 * (1 - exp(-t/TAU))
+ *   t=10s → 39%
+ *   t=20s → 63%
+ *   t=30s → 77%
+ *   t=45s → 89%
+ *   t=60s → 94%
+ *   t=90s → 98%
+ *   t→∞ → 99%
+ *
+ * Stages cyclen door de bekende fases - na de laatste fase
+ * herhalen we de polish-melding zodat er altijd iets te lezen is.
  */
-const GENERATE_STAGES: Array<{ label: string; durationMs: number }> = [
-  { label: "Pedro leest de source ad…", durationMs: 4000 },
-  { label: "Pedro analyseert de primary copy + headline…", durationMs: 5000 },
-  { label: "Pedro bekijkt branche-strategie + voice corpus…", durationMs: 6000 },
-  { label: "Pedro denkt: hoe behoud ik dezelfde DNA?", durationMs: 4000 },
-  { label: "Pedro schrijft Variant A (near-verbatim hercreatie)…", durationMs: 6000 },
-  { label: "Pedro schrijft Variant B (hook-twist iteratie)…", durationMs: 5000 },
-  { label: "Pedro schrijft Variant C (hook-twist iteratie)…", durationMs: 5000 },
-  { label: "Pedro polisht de output + spelling check…", durationMs: 5000 },
+const GENERATE_STAGES: Array<{ label: string; weight: number }> = [
+  { label: "Pedro leest de source ad…", weight: 0.08 },
+  { label: "Pedro analyseert de primary copy + headline…", weight: 0.10 },
+  { label: "Pedro bekijkt branche-strategie + voice corpus…", weight: 0.13 },
+  { label: "Pedro denkt: hoe behoud ik dezelfde DNA?", weight: 0.10 },
+  { label: "Pedro schrijft Variant A (near-verbatim hercreatie)…", weight: 0.15 },
+  { label: "Pedro schrijft Variant B (hook-twist iteratie)…", weight: 0.13 },
+  { label: "Pedro schrijft Variant C (hook-twist iteratie)…", weight: 0.13 },
+  { label: "Pedro polisht de output + spelling check…", weight: 0.18 },
 ]
-const TOTAL_DURATION_MS = GENERATE_STAGES.reduce((s, x) => s + x.durationMs, 0)
+// TAU controls hoe snel de bar oploopt. 22s = redelijk mid-tempo:
+// na 30s zit je rond 76%, na 60s rond 94% - voelt nooit te traag of
+// te snel ongeacht of de API in 25 of 90 seconden klaar is.
+const TAU_MS = 22000
 
 function GeneratingProgress() {
   const [elapsed, setElapsed] = useState(0)
@@ -793,23 +807,23 @@ function GeneratingProgress() {
     return () => clearInterval(id)
   }, [])
 
-  // Determine current stage from cumulative duration.
-  let cum = 0
-  let currentStageIdx = 0
+  // Asymptotische curve: 0.99 * (1 - e^(-t/TAU)). Kapt asymptotisch
+  // naar 99% maar raakt 'm nooit, dus de bar tikt altijd door.
+  const progress = 0.99 * (1 - Math.exp(-elapsed / TAU_MS))
+
+  // Stage label uit dezelfde curve - elke stage krijgt zijn aandeel
+  // van de curve gebaseerd op weight. Pedro's output polish blijft
+  // staan zodra we voorbij de laatste stage zijn.
+  let cumulativeWeight = 0
+  let currentStageIdx = GENERATE_STAGES.length - 1
   for (let i = 0; i < GENERATE_STAGES.length; i++) {
-    cum += GENERATE_STAGES[i].durationMs
-    if (elapsed < cum) {
+    cumulativeWeight += GENERATE_STAGES[i].weight
+    if (progress < cumulativeWeight) {
       currentStageIdx = i
       break
     }
-    currentStageIdx = i
   }
-  // Cap progress at 95% so we never look "done" while waiting for the
-  // actual response; the parent will swap to results when fetch resolves.
-  const rawProgress = Math.min(1, elapsed / TOTAL_DURATION_MS)
-  const progress = Math.min(0.95, rawProgress)
-  const currentLabel = GENERATE_STAGES[currentStageIdx]?.label ?? GENERATE_STAGES[GENERATE_STAGES.length - 1].label
-  const isOvertime = elapsed > TOTAL_DURATION_MS
+  const currentLabel = GENERATE_STAGES[currentStageIdx].label
 
   return (
     <div className="rounded-2xl border border-border/60 bg-muted/20 p-8 space-y-5">
@@ -833,11 +847,6 @@ function GeneratingProgress() {
         <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
         <span className="leading-tight">{currentLabel}</span>
       </div>
-      {isOvertime && (
-        <div className="text-[11px] text-muted-foreground/70 italic">
-          Duurt iets langer dan verwacht - hou de lijn open, Pedro is bijna klaar.
-        </div>
-      )}
     </div>
   )
 }
