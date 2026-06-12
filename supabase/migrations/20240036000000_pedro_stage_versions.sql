@@ -58,6 +58,7 @@ create index if not exists pedro_stage_versions_recent_idx
 
 alter table pedro_stage_versions enable row level security;
 
+drop policy if exists "No anon access" on pedro_stage_versions;
 create policy "No anon access"
   on pedro_stage_versions
   for all

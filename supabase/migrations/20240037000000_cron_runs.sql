@@ -53,6 +53,7 @@ create index if not exists cron_runs_errors_recent_idx
 
 alter table cron_runs enable row level security;
 
+drop policy if exists "No anon access" on cron_runs;
 create policy "No anon access"
   on cron_runs
   for all

@@ -48,6 +48,7 @@ create index if not exists pedro_deliverables_client_idx
 
 alter table pedro_deliverables enable row level security;
 
+drop policy if exists "No anon access" on pedro_deliverables;
 create policy "No anon access"
   on pedro_deliverables
   for all

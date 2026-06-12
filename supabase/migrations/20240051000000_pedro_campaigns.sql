@@ -53,6 +53,7 @@ create index if not exists pedro_campaigns_recent_idx
 
 alter table pedro_campaigns enable row level security;
 
+drop policy if exists "No anon access" on pedro_campaigns;
 create policy "No anon access"
   on pedro_campaigns
   for all

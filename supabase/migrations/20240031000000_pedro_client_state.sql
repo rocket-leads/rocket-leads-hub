@@ -39,6 +39,7 @@ create index if not exists pedro_client_state_client_recent_idx
 -- pedro_research and the rest of the Hub).
 alter table pedro_client_state enable row level security;
 
+drop policy if exists "No anon access" on pedro_client_state;
 create policy "No anon access"
   on pedro_client_state
   for all

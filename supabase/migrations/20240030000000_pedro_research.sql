@@ -17,6 +17,7 @@ create table if not exists pedro_research (
 -- Block all anon access; service role bypasses RLS.
 alter table pedro_research enable row level security;
 
+drop policy if exists "No anon access" on pedro_research;
 create policy "No anon access"
   on pedro_research
   for all

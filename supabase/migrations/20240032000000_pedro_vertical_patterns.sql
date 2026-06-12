@@ -60,6 +60,7 @@ create index if not exists pedro_vertical_patterns_refreshed_idx
 -- pedro_research and pedro_client_state).
 alter table pedro_vertical_patterns enable row level security;
 
+drop policy if exists "No anon access" on pedro_vertical_patterns;
 create policy "No anon access"
   on pedro_vertical_patterns
   for all

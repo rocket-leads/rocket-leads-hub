@@ -55,6 +55,7 @@ create index if not exists pedro_knowledge_proposals_vertical_idx
 
 alter table pedro_knowledge_proposals enable row level security;
 
+drop policy if exists "No anon access" on pedro_knowledge_proposals;
 create policy "No anon access"
   on pedro_knowledge_proposals
   for all

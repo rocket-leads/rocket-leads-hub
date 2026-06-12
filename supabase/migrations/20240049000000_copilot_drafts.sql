@@ -63,6 +63,7 @@ create index if not exists copilot_drafts_pending_created_idx
 
 alter table copilot_drafts enable row level security;
 
+drop policy if exists "No anon access" on copilot_drafts;
 create policy "No anon access"
   on copilot_drafts
   for all

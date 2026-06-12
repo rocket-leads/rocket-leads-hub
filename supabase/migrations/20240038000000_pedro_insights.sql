@@ -91,6 +91,7 @@ create index if not exists pedro_insights_type_idx
 
 alter table pedro_insights enable row level security;
 
+drop policy if exists "No anon access" on pedro_insights;
 create policy "No anon access"
   on pedro_insights
   for all
