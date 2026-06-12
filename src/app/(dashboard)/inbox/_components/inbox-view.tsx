@@ -954,9 +954,16 @@ export function InboxView({
         {!lockedClient && globalScope === "intern" && (
           <>
             {searchBar}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            {/* Roy 2026-06-12: split was `xl:grid-cols-2` which kicks in
+                only at ≥1280px. Between ~900-1280px the QuickAdd inputs
+                inside each column still demand their own 1fr space, so
+                they bled into each other when the sidebar swallowed
+                screen width. Bumping the split to `2xl` (≥1536px) +
+                `min-w-0` per column lets the quick-add bar wrap inside
+                the column instead of pushing across the gap. */}
+            <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
               {/* Taken column */}
-              <div className="space-y-3">
+              <div className="space-y-3 min-w-0">
                 <div className="flex items-baseline justify-between gap-2">
                   <h2 className="text-sm font-semibold tracking-tight">{t("inbox.split.tasks", locale)}</h2>
                   <span className="text-[10px] uppercase tracking-widest text-muted-foreground/40 tabular-nums">
@@ -1023,7 +1030,7 @@ export function InboxView({
                 )}
               </div>
               {/* Updates column */}
-              <div className="space-y-3">
+              <div className="space-y-3 min-w-0">
                 <div className="flex items-baseline justify-between gap-2">
                   <h2 className="text-sm font-semibold tracking-tight">{t("inbox.split.updates", locale)}</h2>
                   <span className="text-[10px] uppercase tracking-widest text-muted-foreground/40 tabular-nums">

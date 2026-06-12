@@ -29,6 +29,7 @@ import {
   ListTodo,
   Sparkles,
 } from "lucide-react"
+import { ActionIconButton } from "@/components/ui/action-icon-button"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { cn } from "@/lib/utils"
@@ -338,10 +339,11 @@ export function ChatPane({
       <div
         className={cn(
           "grid grid-cols-1 h-[calc(100vh-280px)] min-h-[500px]",
-          // Non-docked = 50/50 split (Roy 2026-06-11 round 3:
-          // "verdeling 50-50, het gesprek is een stuk belangrijker").
-          // Was 360px fixed list which left the conversation cramped.
-          dockedDetail ? "" : "lg:grid-cols-2 gap-4",
+          // Non-docked: list 30% / chat 70% (Roy 2026-06-12). Previously
+          // 50/50 which left the actual conversation cramped on email
+          // threads with long quoted history. fr units stay clean once
+          // gap-4 is in play (% units would overflow by the gap).
+          dockedDetail ? "" : "lg:grid-cols-[3fr_7fr] gap-4",
         )}
       >
         <ThreadList
@@ -363,6 +365,7 @@ export function ChatPane({
             onReplied={refresh}
             users={users}
             onMakeTaskFromMessage={onMakeTaskFromMessage}
+            onMarkThread={markThread}
           />
         )}
       </div>
@@ -597,33 +600,11 @@ function ThreadRow({
                   pure visual noise. Roy: dubbel-op. */}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Mark read/unread toggle. Always visible when the thread
-                  is unread - Roy 2026-06-11 round 3: opening a thread no
-                  longer auto-marks it read, so the AM needs a one-click
-                  affordance to "I read this, leave it for later" vs.
-                  "klaar, weg uit Unread". Stays hover-only when already
-                  read so the row stays calm. */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onMark(isUnread ? "mark_read" : "mark_unread")
-                }}
-                title={isUnread ? "Markeer als gelezen" : "Markeer als ongelezen"}
-                aria-label={isUnread ? "Markeer als gelezen" : "Markeer als ongelezen"}
-                className={cn(
-                  "h-6 w-6 inline-flex items-center justify-center rounded-md transition-all",
-                  isUnread
-                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
-                    : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                {isUnread ? (
-                  <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-                ) : (
-                  <Mail className="h-3.5 w-3.5" />
-                )}
-              </button>
+              {/* Roy 2026-06-12: list-row mark-read affordance moved to
+                  the open-conversation header (ThreadView). The row
+                  keeps just the unread-count chip as the at-a-glance
+                  cue; the action itself lives where the user is
+                  actually reading the conversation. */}
               {thread.unreadCount > 0 && (
                 <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums">
                   {thread.unreadCount}
@@ -843,12 +824,17 @@ export function ThreadView({
   onReplied,
   users,
   onMakeTaskFromMessage,
+  onMarkThread,
   mergedLeftEdge,
 }: {
   thread: ChatThreadSummary | null
   onReplied: () => void
   users?: InboxUser[]
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
+  /** Mark-read/unread toggle. Lives on the open-conversation header
+   *  (Roy 2026-06-12) instead of the list-row affordance it used to be -
+   *  the action lives where the user is actually reading. */
+  onMarkThread?: (thread: ChatThreadSummary, action: MarkAction) => void
   mergedLeftEdge?: boolean
 }) {
   const wrapperRadius = mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl"
@@ -860,7 +846,7 @@ export function ThreadView({
     )
   }
 
-  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} mergedLeftEdge={mergedLeftEdge} />
+  return <ThreadMessages thread={thread} onReplied={onReplied} users={users} onMakeTaskFromMessage={onMakeTaskFromMessage} onMarkThread={onMarkThread} mergedLeftEdge={mergedLeftEdge} />
 }
 
 type ComposerMode = "reply" | "internal"
@@ -901,12 +887,14 @@ function ThreadMessages({
   onReplied,
   users,
   onMakeTaskFromMessage,
+  onMarkThread,
   mergedLeftEdge,
 }: {
   thread: ChatThreadSummary
   onReplied: () => void
   users?: InboxUser[]
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
+  onMarkThread?: (thread: ChatThreadSummary, action: MarkAction) => void
   mergedLeftEdge?: boolean
 }) {
   const queryClient = useQueryClient()
@@ -915,6 +903,14 @@ function ThreadMessages({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [reply, setReply] = useState("")
   const [composerMode, setComposerMode] = useState<ComposerMode>("reply")
+  // Email composer collapses by default per thread (Roy 2026-06-12).
+  // Email threads carry long quoted history + signature blocks - having
+  // the composer always-open eats the conversation's vertical space and
+  // makes scrolling the actual messages painful. WhatsApp / Slack keep
+  // the composer always-open since their messages are short and the
+  // textarea is the main affordance. Reset to closed on every thread
+  // switch via the effect below.
+  const [emailComposerOpen, setEmailComposerOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const [needsConnect, setNeedsConnect] = useState<"trengo" | "slack" | null>(null)
@@ -1046,6 +1042,11 @@ function ThreadMessages({
     setAttachments([])
     setUploadError(null)
     setIsDragOver(false)
+    // Collapse the email composer on every thread switch - "give me back
+    // the room to read first" (Roy 2026-06-12). WhatsApp/Slack composer
+    // state is governed elsewhere and isn't email-specific so it's left
+    // alone here.
+    setEmailComposerOpen(false)
     prevThreadKeyRef.current = newKey
   }, [thread.threadKey])
 
@@ -1455,6 +1456,12 @@ function ThreadMessages({
                   ? `${thread.clientName} · via ${thread.channelName}`
                   : thread.clientName
                 : `via ${thread.channelName}`}
+              {thread.totalCount > 0 && (
+                <span className="ml-1.5 text-muted-foreground/50 tabular-nums">
+                  · {thread.totalCount}{" "}
+                  {thread.totalCount === 1 ? "message" : "messages"}
+                </span>
+              )}
             </p>
           )}
           {/* Unlinked threads (Trengo contact has no matching Hub client)
@@ -1487,9 +1494,36 @@ function ThreadMessages({
               clientName={thread.clientName}
             />
           )}
-          <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-            {thread.totalCount} {thread.totalCount === 1 ? "message" : "messages"}
-          </span>
+          {/* Mark-read toggle. Same chrome as the Internal Tasks "done"
+              action (ActionIconButton success-tone) so the inbox feels
+              uniform - per Roy 2026-06-12: "in dezelfde stijl als de
+              internal inbox, dezelfde kleur als het huidige vinkje".
+              Only renders when the parent passes onMarkThread (i.e.
+              ChatPane mode, not the docked-detail variant which has
+              its own surface for the action). */}
+          {onMarkThread && (
+            <ActionIconButton
+              tone="success"
+              label={
+                thread.unreadCount > 0
+                  ? "Markeer als gelezen"
+                  : "Markeer als ongelezen"
+              }
+              icon={
+                thread.unreadCount > 0 ? (
+                  <Check className="h-4 w-4" strokeWidth={2.5} />
+                ) : (
+                  <Mail className="h-4 w-4" />
+                )
+              }
+              onClick={() =>
+                onMarkThread(
+                  thread,
+                  thread.unreadCount > 0 ? "mark_read" : "mark_unread",
+                )
+              }
+            />
+          )}
         </div>
       </div>
 
@@ -1528,11 +1562,29 @@ function ThreadMessages({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Email composer rail. When closed, the chat pane gets the full
+          vertical space back so the conversation is actually readable -
+          for a quoted-history-laden email thread the always-on composer
+          ate half the viewport. Tap "Reply" to expand into the full
+          composer below. Roy 2026-06-12. */}
+      {replyable && isEmail && !emailComposerOpen && (
+        <div className="border-t border-border bg-muted/20 px-3 py-2 shrink-0 flex items-center justify-end gap-2">
+          <Button
+            size="sm"
+            onClick={() => setEmailComposerOpen(true)}
+            className="gap-1.5"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            Reply
+          </Button>
+        </div>
+      )}
+
       {/* Reply box. Drag-drop handlers moved up here from the textarea row
           so dropping ANYWHERE in the composer area uploads the file -
           particularly useful for email mode (no visible textarea) and
           template mode (textarea hidden). */}
-      {replyable && (
+      {replyable && (!isEmail || emailComposerOpen) && (
         <div
           className={cn(
             "border-t border-border p-3 transition-colors shrink-0 relative",
@@ -1564,34 +1616,49 @@ function ThreadMessages({
           {/* Reply / Internal note toggle. Internal note posts as a Trengo
               `internal_note: true` (team-only bubble) AND fans out @-mention
               notifications to tagged teammates. Slack threads hide the
-              toggle entirely - Slack has no native internal-note concept. */}
-          {supportsInternalNote && (
-            <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5 mb-3 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setComposerMode("reply")}
-                className={cn(
-                  "px-4 h-8 rounded-md text-xs font-medium transition-colors",
-                  composerMode === "reply"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                )}
-              >
-                Reply
-              </button>
-              <button
-                type="button"
-                onClick={() => setComposerMode("internal")}
-                className={cn(
-                  "px-4 h-8 rounded-md text-xs font-medium transition-colors",
-                  composerMode === "internal"
-                    ? "bg-amber-500 text-amber-950 shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted",
-                )}
-                title="Team-only note - invisible to the client; @-mention to ping a teammate"
-              >
-                Internal note
-              </button>
+              toggle entirely - Slack has no native internal-note concept.
+              Email mode also gets a collapse-X here so the AM can hand
+              the viewport back to the conversation without sending. */}
+          {(supportsInternalNote || isEmail) && (
+            <div className="flex items-center justify-between gap-2 mb-3">
+              {supportsInternalNote ? (
+                <div className="inline-flex items-center rounded-lg border border-border bg-card p-0.5 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setComposerMode("reply")}
+                    className={cn(
+                      "px-4 h-8 rounded-md text-xs font-medium transition-colors",
+                      composerMode === "reply"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                    )}
+                  >
+                    Reply
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setComposerMode("internal")}
+                    className={cn(
+                      "px-4 h-8 rounded-md text-xs font-medium transition-colors",
+                      composerMode === "internal"
+                        ? "bg-amber-500 text-amber-950 shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted",
+                    )}
+                    title="Team-only note - invisible to the client; @-mention to ping a teammate"
+                  >
+                    Internal note
+                  </button>
+                </div>
+              ) : (
+                <span />
+              )}
+              {isEmail && (
+                <DismissButton
+                  size="xs"
+                  label="Sluit composer"
+                  onClick={() => setEmailComposerOpen(false)}
+                />
+              )}
             </div>
           )}
           {needsConnect && (
