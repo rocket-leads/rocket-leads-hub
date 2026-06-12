@@ -117,7 +117,11 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
   const clientId = String(body.clientId ?? "")
-  const days = 30 // Roy 2026-06-11: window-instellingen weg, flow is volledig handmatig
+  // Roy 2026-06-12: window 30 → 90 dagen. AdPicker toonde al 90d ads
+  // maar creative-refresh zocht maar in 30d → picked ads van 30-90d
+  // gaven "ad niet meer gevonden" terwijl ze in Meta nog gewoon
+  // bestonden. Beide moeten dezelfde window gebruiken.
+  const days = 90
   const sourceAdId = body.sourceAdId?.trim() || ""
   const sourceScreenshotPath = body.sourceScreenshotPath?.trim() || ""
   if (!clientId) {
@@ -299,10 +303,24 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
   const scored: ScoredAd[] = adsRaw.map((a) => scoreAd(a, stats.avgCpl))
   const picked = scored.find((a) => a.adId === sourceAdId)
   if (!picked) {
+    // Roy 2026-06-12: diagnostic logging - hierdoor zien we WAT er
+    // in de adsRaw zat zodat we kunnen achterhalen waarom de gekozen
+    // ad ontbreekt (verkeerde campagne filter, kapotte cache, etc.).
+    console.error(
+      `[creative-refresh] picked ad ${sourceAdId} not found. window=${cur.start}→${cur.end}, account=${client.meta_ad_account_id}, ` +
+        `selectedCampaigns=[${[...selectedCampaignIds].slice(0, 5).join(",")}${selectedCampaignIds.size > 5 ? "..." : ""}], ` +
+        `fetchedAds=${adsRaw.length}, fetchedAdIds=[${adsRaw.slice(0, 5).map((a) => a.adId).join(",")}${adsRaw.length > 5 ? "..." : ""}]`,
+    )
     return NextResponse.json(
       {
         error:
-          "Gekozen ad niet meer gevonden in dit Meta account (laatste 30d). Mogelijk verwijderd; pak een andere ad uit de lijst.",
+          "Gekozen ad niet gevonden in Meta API response (90d window). Mogelijke oorzaken: (1) de campagne van deze ad is niet geselecteerd onder Campaign Selection in Pedro instellingen, (2) Meta API gaf een gefilterde response. Check de campagne-selectie of pak een andere ad uit de lijst.",
+        diagnostic: {
+          sourceAdId,
+          windowDays: days,
+          adsFetched: adsRaw.length,
+          selectedCampaignCount: selectedCampaignIds.size,
+        },
       },
       { status: 404 },
     )
