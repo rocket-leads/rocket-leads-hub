@@ -48,6 +48,7 @@ export function UserMenu({
   return (
     <Popover>
       <PopoverTrigger
+        data-user-menu-trigger=""
         className="w-full flex items-center gap-3 px-2 py-2 rounded-xl border border-border/60 bg-card hover:bg-muted/50 transition-colors duration-150 group text-left shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)]"
         title={accountTitle}
       >

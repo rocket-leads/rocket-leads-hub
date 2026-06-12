@@ -106,7 +106,7 @@ export async function Sidebar() {
   const OPTIMIZE: NavItem = {
     href: "/optimize",
     label: t("nav.optimize", locale),
-    icon: "Wrench",
+    icon: "TrendingUp",
   }
   // Calendar shows the signed-in user's Google Calendar events + their
   // open Hub tasks color-coded in one week view, with a "Recordings"
@@ -251,8 +251,14 @@ export async function Sidebar() {
       />
 
       {/* User section - collapsed to just the avatar + name. Locale, theme,
-          Settings + Sign out live behind a popover that opens on click. */}
-      <div className="mt-auto border-t border-sidebar-border p-3 flex items-center gap-2">
+          Settings + Sign out live behind a popover that opens on click.
+          data-sidebar-bottom: hook for globals.css to stack vertically
+          when the sidebar is in 64px collapsed mode (otherwise the
+          UserMenu + toggle don't fit side-by-side). */}
+      <div
+        data-sidebar-bottom=""
+        className="mt-auto border-t border-sidebar-border p-3 flex items-center gap-2"
+      >
         <div className="flex-1 min-w-0">
           <UserMenu
             initialLocale={locale}

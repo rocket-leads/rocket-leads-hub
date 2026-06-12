@@ -83,6 +83,44 @@
   white-space: nowrap;
 }
 
+/* Collapsed sidebar adjustments — at 64px wide the nav rows otherwise
+ * overflow (padding eats the icon) and the bottom UserMenu+toggle row
+ * cannot fit side-by-side. Reset those constraints so icons read
+ * cleanly and the toggle stays reachable.
+ *
+ *   - nav rows: center the icon, drop horizontal padding + gap
+ *   - sidebar logo block: still hidden via .sidebar-label
+ *   - bottom row: stack vertical, shrink avatar, keep toggle visible
+ */
+:root[data-sidebar-collapsed="1"] [data-nav-row] {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+  gap: 0;
+}
+:root[data-sidebar-collapsed="1"] [data-sidebar-bottom] {
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+:root[data-sidebar-collapsed="1"] [data-sidebar-bottom] > div:first-child {
+  width: 100%;
+}
+:root[data-sidebar-collapsed="1"] [data-user-menu-trigger] {
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  justify-content: center;
+}
+:root[data-sidebar-collapsed="1"] [data-user-menu-trigger] > div:first-child > div:first-child {
+  /* Shrink the 40px avatar to 32px so it sits cleanly inside 64px width. */
+  height: 2rem;
+  width: 2rem;
+  font-size: 0.75rem;
+}
+
 :root {
   --background: #F8F4EE;
   --foreground: #1F2024;

@@ -78,15 +78,17 @@ export async function GET(req: NextRequest) {
 
   const connected = await hasCalendarConnected(session.user.id)
 
-  // Pull every open task the user owns. We classify afterwards so a
-  // task with due_date last month still surfaces (as "overdue" on the
-  // earliest visible day) and we can count undated tasks for the
-  // banner. Caps at 200 to bound the payload — anyone with that many
-  // open tasks has bigger problems than the calendar paint cost.
+  // Pull every open task the user owns plus any task that was completed
+  // with a due_date inside the visible window — done tasks still render
+  // (in green) so an AM can scan what they shipped this week. We classify
+  // afterwards so a task with due_date last month still surfaces (as
+  // "overdue" on the earliest visible day) and we can count undated
+  // tasks for the banner. Caps at 200 to bound the payload — anyone with
+  // that many open tasks has bigger problems than the calendar paint cost.
   const supabase = await createAdminClient()
   const windowStart = timeMin.toISOString().slice(0, 10)
   const windowEnd = timeMax.toISOString().slice(0, 10)
-  const { data: taskRows } = await supabase
+  const { data: openRows } = await supabase
     .from("inbox_events")
     .select("id, title, due_date, client_id, status, priority")
     .eq("assignee_id", session.user.id)
@@ -95,8 +97,20 @@ export async function GET(req: NextRequest) {
     .lte("due_date", windowEnd)
     .order("due_date", { ascending: true })
     .limit(200)
+  const { data: doneRows } = await supabase
+    .from("inbox_events")
+    .select("id, title, due_date, client_id, status, priority")
+    .eq("assignee_id", session.user.id)
+    .eq("kind", "task")
+    .eq("status", "done")
+    .not("due_date", "is", null)
+    .gte("due_date", windowStart)
+    .lte("due_date", windowEnd)
+    .order("due_date", { ascending: true })
+    .limit(200)
+  const taskRows = [...(openRows ?? []), ...(doneRows ?? [])]
 
-  const allOpenTasks = (taskRows ?? []) as TaskRow[]
+  const allOpenTasks = taskRows as TaskRow[]
 
   // Resolve client names for the tasks (display-only — keeps a calendar
   // entry like "Send invoice — Acme Corp" instead of a bare title).

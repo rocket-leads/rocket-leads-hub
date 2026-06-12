@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
-import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers, Rocket, Wrench, ClipboardCheck, Calendar, ChevronRight } from "lucide-react"
+import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers, Rocket, Wrench, ClipboardCheck, Calendar, TrendingUp, ChevronRight } from "lucide-react"
 
 // Note: lucide's `Receipt` ships with a $ glyph baked into the SVG. Roy
 // flagged it as off-brand for a Hub that talks Euros - we use `CreditCard`
@@ -12,7 +12,7 @@ import { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home
 // quiet, matching the abstract style of the rest of the sidebar items
 // (Users, Inbox, Megaphone, Target, etc.). Home uses lucide's `Home`
 // (literal house glyph) per Roy's 2026-05-21 ask.
-const ICONS = { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers, Rocket, Wrench, ClipboardCheck, Calendar }
+const ICONS = { Users, Eye, Target, Settings, Inbox, Video, CreditCard, Megaphone, Home, Layers, Rocket, Wrench, ClipboardCheck, Calendar, TrendingUp }
 
 type IconKey = keyof typeof ICONS
 
@@ -150,7 +150,12 @@ function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClic
       : "text-foreground/75 hover:text-foreground hover:bg-muted/60"
 
   return (
-    <Link href={item.href} onClick={onClick} className={`${baseClasses} ${sizing} ${stateClasses}`}>
+    <Link
+      href={item.href}
+      onClick={onClick}
+      data-nav-row=""
+      className={`${baseClasses} ${sizing} ${stateClasses}`}
+    >
       {indent ? (
         <span
           className={`h-1.5 w-1.5 rounded-full transition-colors ${

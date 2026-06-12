@@ -463,7 +463,8 @@ function AllDayRow({
                 key={t.id}
                 title={t.title}
                 clientName={t.clientName}
-                overdue={t.bucket === "overdue"}
+                overdue={t.bucket === "overdue" && t.status !== "done"}
+                done={t.status === "done"}
                 originalDueDate={t.due_date}
                 onClick={() => onOpenTask(t.id)}
               />
@@ -699,34 +700,58 @@ function EventBlock({
     left: `calc(${leftPct}% + 2px)`,
     width: `calc(${widthPct}% - 4px)`,
   }
+  // Adapt content density to the block's vertical real estate so a
+  // 30-minute meeting never spills its time label into the next row.
+  //   < 32px → single line, time + title inline
+  //   < 52px → title (clamped to 1 line) + time on its own line
+  //   ≥ 52px → title (2 lines) + time + optional location/Meet icons
+  const tightLayout = height < 32
+  const mediumLayout = height < 52
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "absolute rounded-md border-l-2 px-1.5 py-1 overflow-hidden text-left cursor-pointer",
+        "absolute rounded-md border-l-2 overflow-hidden text-left cursor-pointer",
+        tightLayout ? "px-1.5 py-0.5" : "px-1.5 py-1",
         "bg-[#8967F3]/15 border-[#8967F3] text-foreground",
         "hover:bg-[#8967F3]/25 hover:z-10 transition-colors",
       )}
       style={style}
       title={`${timeLabel} — ${title}${location ? ` @ ${location}` : ""}`}
     >
-      <div className="text-[11px] font-medium leading-tight line-clamp-2">
-        {title}
-      </div>
-      <div className="text-[10px] text-muted-foreground mt-0.5 tabular-nums">
-        {timeLabel}
-      </div>
-      {(location || hangoutLink) && height >= 50 && (
-        <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
-          {hangoutLink && <Video className="size-3 shrink-0" />}
-          {location && (
-            <span className="inline-flex items-center gap-0.5 truncate">
-              <MapPin className="size-3 shrink-0" />
-              <span className="truncate">{location}</span>
-            </span>
-          )}
+      {tightLayout ? (
+        <div className="text-[10px] font-medium leading-tight truncate">
+          <span className="text-muted-foreground tabular-nums mr-1">
+            {timeLabel.split(" – ")[0]}
+          </span>
+          {title}
         </div>
+      ) : (
+        <>
+          <div
+            className={cn(
+              "text-[11px] font-medium leading-tight",
+              mediumLayout ? "truncate" : "line-clamp-2",
+            )}
+          >
+            {title}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5 tabular-nums truncate">
+            {timeLabel}
+          </div>
+          {(location || hangoutLink) && !mediumLayout && height >= 70 && (
+            <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+              {hangoutLink && <Video className="size-3 shrink-0" />}
+              {location && (
+                <span className="inline-flex items-center gap-0.5 truncate">
+                  <MapPin className="size-3 shrink-0" />
+                  <span className="truncate">{location}</span>
+                </span>
+              )}
+            </div>
+          )}
+        </>
       )}
     </button>
   )
@@ -759,36 +784,49 @@ function TaskChip({
   title,
   clientName,
   overdue,
+  done,
   originalDueDate,
   onClick,
 }: {
   title: string
   clientName: string | null
   overdue: boolean
+  done: boolean
   originalDueDate: string | null
   onClick: () => void
 }) {
-  // Overdue tasks get the destructive red tint so they read at a glance
-  // as "this needed doing already". Tooltip surfaces the actual missed
-  // due date so the AM can decide whether to bump it.
+  // Three colour states:
+  //   done    — emerald, line-through. Shows "you shipped this".
+  //   overdue — red + ⚠. Shows "you missed this".
+  //   open    — amber. Default state.
   const tooltipParts = [
     title,
     clientName && `— ${clientName}`,
     overdue && originalDueDate && `(overdue since ${originalDueDate})`,
+    done && "(done)",
   ].filter(Boolean) as string[]
+  const palette = done
+    ? "bg-emerald-500/15 border-l-2 border-emerald-500 text-foreground hover:bg-emerald-500/25"
+    : overdue
+      ? "bg-red-500/15 border-l-2 border-red-500 text-foreground hover:bg-red-500/25"
+      : "bg-amber-500/15 border-l-2 border-amber-500 text-foreground hover:bg-amber-500/25"
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
         "block w-full truncate rounded px-1.5 py-0.5 text-[11px] text-left cursor-pointer",
-        overdue
-          ? "bg-red-500/15 border-l-2 border-red-500 text-foreground hover:bg-red-500/25"
-          : "bg-amber-500/15 border-l-2 border-amber-500 text-foreground hover:bg-amber-500/25",
+        palette,
+        done && "line-through decoration-emerald-500/60 text-foreground/70",
       )}
       title={tooltipParts.join(" ")}
     >
-      {overdue && <span className="font-semibold text-red-600 dark:text-red-400">⚠ </span>}
+      {!done && overdue && (
+        <span className="font-semibold text-red-600 dark:text-red-400">⚠ </span>
+      )}
+      {done && (
+        <span className="text-emerald-600 dark:text-emerald-400 mr-0.5">✓</span>
+      )}
       {title}
       {clientName && (
         <span className="text-muted-foreground"> · {clientName}</span>
