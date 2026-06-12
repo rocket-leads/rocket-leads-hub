@@ -46,26 +46,34 @@ type SlotState = {
   regenAvailable?: boolean
 }
 
-/** Roy 2026-06-12: 4 style categorieën die de CM per slot kan kiezen
- *  voor het krijgen van echte variatie tussen de 3 images ipv 3x
- *  dezelfde clean photo. Mapped 1:1 met SlotStyleKey backend-side. */
-type SlotStyle = "real_photo" | "real_ai_polish" | "branded_composite" | "lifestyle"
+/** Roy 2026-06-12 v2: 5 style categorieën die 1:1 mappen met de
+ *  AD CREATIVES INSPIRATION subfolders. Pedro pulls per slot één
+ *  visual reference uit de matching subfolder als structural
+ *  template + style-specific layout directive in de prompt. */
+type SlotStyle =
+  | "client_content"
+  | "client_content_ai"
+  | "ai_content"
+  | "ai_animation"
+  | "stock_content"
 
 const SLOT_STYLE_LABELS: Record<SlotStyle, string> = {
-  real_photo: "Echte foto",
-  real_ai_polish: "Real + AI polish",
-  branded_composite: "Branded composite",
-  lifestyle: "Lifestyle",
+  client_content: "Client content",
+  client_content_ai: "Client content + AI",
+  ai_content: "AI Content",
+  ai_animation: "AI Animation",
+  stock_content: "Stock content",
 }
 
 const SLOT_STYLE_DESCRIPTIONS: Record<SlotStyle, string> = {
-  real_photo: "Klant-foto's as-is, minimale post-processing.",
-  real_ai_polish: "Klant-foto's + atmospheric AI scene-enhancement.",
-  branded_composite: "Volledig composite ad: brand-kleuren panel, graphic overlay, mixed headline. Marketing-agency look.",
-  lifestyle: "Subject in candid environment, cinematic licht.",
+  client_content: "Klant-foto's as-is, alleen lichte color grade. Editorial documentary feel.",
+  client_content_ai: "Klant-foto's + atmospheric brand-color lighting + AI scene-enhancement.",
+  ai_content: "Volledig composite ad: brand-color panel, graphic overlay, CTA-button, mixed-weight headline. Marketing-agency deliverable.",
+  ai_animation: "Kinetic still met motion streaks, holografische elementen, brand-accent glow.",
+  stock_content: "Stock-photography aesthetic met brand-color treatment overlaid.",
 }
 
-const DEFAULT_SLOT_STYLES: SlotStyle[] = ["real_ai_polish", "branded_composite", "lifestyle"]
+const DEFAULT_SLOT_STYLES: SlotStyle[] = ["client_content_ai", "ai_content", "ai_animation"]
 
 type GenerateReferences = {
   winnerThumbnail: boolean

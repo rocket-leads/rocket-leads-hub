@@ -30,15 +30,19 @@ import { createAdminClient } from "@/lib/supabase/server"
  * when needed.
  */
 
-type SlotStyle = "real_photo" | "real_ai_polish" | "branded_composite" | "lifestyle"
+type SlotStyle =
+  | "client_content"
+  | "client_content_ai"
+  | "ai_content"
+  | "ai_animation"
+  | "stock_content"
 
 const SUBFOLDER_BY_STYLE: Record<SlotStyle, string[]> = {
-  real_photo: ["Client content"],
-  real_ai_polish: ["Client content + AI", "Client content"],
-  branded_composite: ["AI Content"],
-  // Lifestyle leans on client photos with cinematic light - Client content
-  // gives the most authentic reference, with Client + AI as fallback.
-  lifestyle: ["Client content", "Client content + AI"],
+  client_content: ["Client content"],
+  client_content_ai: ["Client content + AI", "Client content"],
+  ai_content: ["AI Content"],
+  ai_animation: ["AI Animation", "AI Content"],
+  stock_content: ["Stock content"],
 }
 
 const CACHE_TTL_MS = 60 * 60 * 1000

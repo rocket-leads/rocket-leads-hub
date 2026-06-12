@@ -118,9 +118,10 @@ export async function generateImageWithReference(args: {
   referenceImages?: Array<{ bytes: Buffer; mimeType: "image/jpeg" | "image/png" }>
   /** Override model - defaults to Gemini 3 Pro Image (Nano Banana Pro). */
   model?: string
-  /** Aspect ratio target. Image-only MVP → square (Feed) default. Pass
-   *  "9:16" if/when we add video/Reels support. */
-  aspectRatio?: "1:1" | "1.91:1" | "9:16"
+  /** Aspect ratio target. Roy 2026-06-12: 4:5 is the new RL default
+   *  (Meta Feed portrait, the standard for paid social), with 1:1 + 9:16
+   *  available when explicitly needed. */
+  aspectRatio?: "1:1" | "4:5" | "1.91:1" | "9:16"
 }): Promise<GeminiImageResult> {
   const apiKey = await getApiKey()
   const model = args.model ?? DEFAULT_IMAGE_MODEL

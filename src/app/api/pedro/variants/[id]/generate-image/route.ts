@@ -41,51 +41,108 @@ import type { BrandStyle } from "@/lib/pedro/helpers"
 export const maxDuration = 60 // Gemini image gen routinely takes 5-20s; cap at 60 for safety
 
 /**
- * Per-slot style direction. Roy 2026-06-12: TMM Technology's Manus ads
- * zijn composite branded creatives (navy panel, cyan circuit overlay,
- * gemixte typografie). De default RL_QUALITY_RULES verbieden zulke
- * chrome, dus we softenen ze conditioneel op basis van de gekozen slot
- * style. Per-slot direction wordt ook in de Gemini prompt geforceerd
- * zodat de 3 slots een echte variatie aan looks geven ipv 3x dezelfde.
+ * Per-slot style direction. Roy 2026-06-12 v2: 5 categorieën die 1:1
+ * mappen naar de AD CREATIVES INSPIRATION subfolders. De prompt
+ * directives zijn nu LAYOUT-FIRST (waar dingen staan op het canvas)
+ * ipv mood-only - dat sluit de 'kind in Canva vs 20-jaar designer'
+ * gap die we eerder zagen.
  */
 type SlotStyleKey =
-  | "real_photo"
-  | "real_ai_polish"
-  | "branded_composite"
-  | "lifestyle"
+  | "client_content"      // → Client content/         (folder)
+  | "client_content_ai"   // → Client content + AI/    (folder)
+  | "ai_content"          // → AI Content/             (folder) - composite branded
+  | "ai_animation"        // → AI Animation/           (folder) - kinetic still
+  | "stock_content"       // → Stock content/          (folder)
 
-/** Default mix wanneer de CM niets stuurt - varied palette voor de
- *  eerste auto-gen zodat hij meteen contrast ziet en kan kiezen. */
+/** Default mix wanneer de CM niets stuurt - 3 verschillende richtingen
+ *  zodat hij in één blik kan vergelijken: enhanced klant-foto, fully
+ *  composite branded, kinetic AI still. */
 const DEFAULT_SLOT_STYLES: Record<number, SlotStyleKey> = {
-  0: "real_ai_polish",
-  1: "branded_composite",
-  2: "lifestyle",
+  0: "client_content_ai",
+  1: "ai_content",
+  2: "ai_animation",
 }
 
 function styleDirective(style: SlotStyleKey, brandHex: string[] | null): string {
   const accent = brandHex && brandHex.length > 0 ? brandHex.slice(0, 3).join(", ") : "the brand's accent colors"
+  const primary = brandHex && brandHex.length > 0 ? brandHex[0] : "deep navy or brand-primary"
   switch (style) {
-    case "real_photo":
-      return `\n\nSLOT STYLE: REAL PHOTO. Use the client photo references as-is. Authentic, professional, unposed photography. Minimal post-processing - color grade for cohesion only. NO composite overlays, NO graphic chrome, NO color panels. Just the clean photo plus the on-image headline floating in negative space. Think editorial documentary photography.`
-    case "real_ai_polish":
-      return `\n\nSLOT STYLE: REAL + AI POLISH. Take the client photo subject from the references and composite them into a polished marketing scene. Atmospheric brand-color lighting (accent: ${accent}), shallow depth-of-field, subtle environmental haze or motion blur for depth. Real subject, AI-enhanced atmosphere. The subject's identity must match the reference; only the scene around them changes. Subtle brand-accent rim lighting on the subject.`
-    case "branded_composite":
-      return `\n\nSLOT STYLE: BRANDED COMPOSITE (MARKETING-AGENCY DELIVERABLE). Generate a fully composite ad scene matching how a top-tier brand agency would deliver. REQUIRED:\n  - Brand-color panel/background using ${accent}. Dark navy + accent variant is a strong default for tech/AI verticals; use the actual brand colors above.\n  - Subtle thematic graphic overlay matching the brand's vertical (circuit-board pattern for tech/AI, geometric lines for finance, organic shapes for wellness). Overlay must be subtle (8-15% opacity), never dominate the subject.\n  - Bold mixed-weight on-image headline: most words in white/dark, key 1-2 brand words in accent color (${accent}). Use ONE typeface, two weights.\n  - The subject (use references for identity if available) lives in the right half of the canvas; headline + brand panel on the left.\n  - Atmospheric glow / motion light streaks in the accent color to suggest dynamism.\n  - The output must look like a paid agency deliverable, NOT stock photography with text on it.`
-    case "lifestyle":
-      return `\n\nSLOT STYLE: LIFESTYLE / CANDID. Place the subject (use references for identity if available) in a real environment that matches the brand's vertical. Cinematic lighting, golden-hour or soft-window light, candid expression, shallow depth-of-field. The scene tells a story about the brand without on-image graphic chrome. Headline floats cleanly in negative space. Think editorial brand campaign, not stock photo.`
+    case "client_content":
+      return `\n\nSLOT STYLE: CLIENT CONTENT (authentic photography, minimal AI).
+- Use the client photo references AS-IS. Light color grade for cohesion only.
+- Authentic, professional, unposed photography. Magazine documentary feel.
+- NO composite overlays, NO graphic chrome, NO color panels.
+- Headline floats cleanly in upper-left negative space, single weight, white or accent (${accent}). No decoration.
+QUALITY BAR: Time magazine portrait. National Geographic editorial. Veteran photographer, not stock.`
+
+    case "client_content_ai":
+      return `\n\nSLOT STYLE: CLIENT CONTENT + AI (real subject, enhanced atmosphere).
+LAYOUT:
+- Subject from the client photo references occupies the right-center of the canvas.
+- Headline lives in the upper-left negative space, in white or accent (${accent}), single sans-serif typeface.
+- Optional thin accent-color line/curve behind the subject (single element, not a panel).
+ATMOSPHERE:
+- Atmospheric brand-color lighting (${accent}) - rim lighting on the subject, ambient color cast in the background.
+- Shallow depth-of-field. Subtle environmental haze or soft motion blur in the accent color for depth.
+- Subject identity is locked to the references; only the scene atmosphere changes.
+QUALITY BAR: editorial brand photography with light retouching. Veteran retoucher, not stock-with-filter.`
+
+    case "ai_content":
+      return `\n\nSLOT STYLE: AI CONTENT (full composite ad, marketing-agency deliverable).
+
+LAYOUT (60/40 split, mandatory):
+- LEFT 60%: dark brand-primary panel using ${primary} as the base color.
+  - The exact Dutch headline lives here, in mixed weight: most words white/light, the key 1-2 BRAND words in accent color (${accent}).
+  - Strong typographic hierarchy: large headline (taking ~60% of panel vertical space), optional thin sub-headline below.
+  - Padding ≥8% on every side of the headline.
+  - If the variant headline contains a CTA word (Bekijk / Vraag aan / Plan / Ontdek / Start), render a pill-shaped CTA button bottom-left of the panel using the accent color (${accent}) with white text. Keep the button compact (~22% panel width).
+- RIGHT 40%: photographic subject from the references. Composite with rim lighting in the accent color.
+
+OVERLAY ON THE RIGHT 40%:
+- Subtle thematic graphic overlay matching the brand vertical: circuit-board / geometric lines for tech-AI-SaaS, geometric data lines for finance, organic curves for wellness, architectural lines for B2B. Overlay at 10-15% opacity in the accent color.
+- Atmospheric glow / motion light streaks in the accent color suggesting dynamism (3-5 streaks, not many).
+- Subject sharp focus, environment soft.
+
+PHOTOGRAPHY QUALITY:
+- The subject must look like a magazine cover - photographic realism, sharp detail, professional lighting.
+- Subject identity matches the references when provided. No stock-photo-with-text aesthetic.
+
+QUALITY BAR: Nike / Apple / Shopify / Stripe brand campaign. Twenty-year veteran graphic designer. Layered composition with depth, atmosphere, deliberate spacing. Every element earns its place.`
+
+    case "ai_animation":
+      return `\n\nSLOT STYLE: AI ANIMATION (still that captures motion + dynamic energy).
+
+COMPOSITION:
+- Dark background to make accent-color motion pop.
+- Subject (from references when available) with sharp focus in the right-center.
+- Headline in the upper-left in still negative space, single weight white or accent (${accent}).
+
+MOTION ELEMENTS:
+- Light streaks / motion blur trails in accent color (${accent}) flowing across the canvas (4-6 streaks, layered for depth).
+- Holographic / data-stream elements integrated into the scene (glowing lines, particle effects, geometric trails). For tech verticals: code-particles / circuit-lines. For others: geometric motion.
+- Subject has subtle directional blur or rim-light bloom to suggest forward motion.
+
+QUALITY BAR: tech-brand kinetic campaign (think Tesla / Nvidia ad), sports-brand action ad (Nike kinetic typography), or financial-tech brand stinger. Energy and clarity simultaneously.`
+
+    case "stock_content":
+      return `\n\nSLOT STYLE: STOCK CONTENT (high-quality stock + brand color treatment).
+- Clean editorial-stock composition with one clear subject (use references when present).
+- Light brand-color overlay / gradient (${accent}) for brand cohesion.
+- Headline in clean negative space, single weight.
+- Authentic, polished, magazine-quality - NEVER generic Shutterstock-with-text aesthetic.
+QUALITY BAR: Unsplash editor's pick + brand color grade. Better than stock-photo template.`
+
     default:
       return ""
   }
 }
 
-/** Composite styles vragen om graphic overlays die de standaard
- *  RL_QUALITY_RULES verbieden. Wanneer de slot style composite is,
- *  versoepelen we de "geen overlays / chrome / panels" regels zodat
- *  Gemini de branded look daadwerkelijk durft op te bouwen. We blijven
- *  WEL hard op de "geen badges, geen comparison labels, geen dubbele
- *  tekst" rules - dat zijn de echte amateuristische tekenen. */
-function allowsComposite(style: SlotStyleKey): boolean {
-  return style === "branded_composite"
+/** Creative-chrome styles (composite + animation) krijgen versoepelde
+ *  RL_QUALITY_RULES omdat graphic overlays + brand panels + motion lines
+ *  daar EXPECTED zijn. Andere styles houden de strikte "geen chrome" rules
+ *  omdat het daar amateuristisch is. */
+function allowsCreativeChrome(style: SlotStyleKey): boolean {
+  return style === "ai_content" || style === "ai_animation"
 }
 
 export async function POST(
@@ -913,25 +970,27 @@ RL QUALITY RULES (composite-allowed):
 - NO badges, NO price tags, NO comparison stickers (LAGE/3x), NO duplicated text, NO competing brand logos.
 - Looks like a paid agency deliverable. Marketing-agency quality bar.`
 
-    const aspectRatio = variant.format_hint === "Video" ? "9:16" : "1:1"
+    // Roy 2026-06-12 v2: aspect ratio gehardcodeerd op 4:5 (Meta Feed
+    // portrait, RL paid-social standaard). 9:16 sloop de headline
+    // layout, 1:1 voelt nu gedateerd. Geen uitzonderingen.
+    const aspectRatio: "4:5" = "4:5"
 
     // Generate all targets in parallel. Each slot has its own STYLE
-    // direction (real photo / real+AI / composite / lifestyle) so the
-    // CM krijgt echte variatie, niet 3x dezelfde scene. Tekst (headline)
-    // blijft identiek across slots - alleen de visuele uitvoering varieert.
+    // direction so de CM 3 verschillende looks ziet ipv 3x dezelfde scene.
     //
-    // Roy 2026-06-12: per slot proberen we ook één visual-library
-    // referentie op te halen uit de matching AD CREATIVES INSPIRATION
-    // subfolder. Wanneer beschikbaar wordt die als EERSTE reference
-    // image meegestuurd met expliciete "quality bar" framing - Gemini
-    // matcht 'm dan op compositie, lighting, typography. Geen ref =
-    // fallback op de bestaande referencePool zonder kwaliteitsbar.
+    // Roy 2026-06-12: per slot pulls 1 inspiration ref uit de matching
+    // AD CREATIVES INSPIRATION/<style>/ subfolder. Wanneer beschikbaar
+    // wordt die als EERSTE reference image meegestuurd met "structural
+    // template" framing - Gemini matcht layout + compositie + typography
+    // ervan, substitutes alleen de tekst + subject + kleuren. Was eerder
+    // "do not copy" framing die Gemini de ref liet negeren - nieuwe
+    // framing forceert 'm de structuur over te nemen.
     const resolvedSlotStyles = body.slotStyles ?? {}
 
     const inspirationRefs = await Promise.all(
       targetSlots.map((slot) => {
         const style: SlotStyleKey =
-          resolvedSlotStyles[slot] ?? DEFAULT_SLOT_STYLES[slot] ?? "real_ai_polish"
+          resolvedSlotStyles[slot] ?? DEFAULT_SLOT_STYLES[slot] ?? "client_content_ai"
         return fetchInspirationRefForStyle(style).catch(() => null)
       }),
     )
@@ -939,18 +998,21 @@ RL QUALITY RULES (composite-allowed):
     const slotResults = await Promise.allSettled(
       targetSlots.map((slot, idx) => {
         const style: SlotStyleKey =
-          resolvedSlotStyles[slot] ?? DEFAULT_SLOT_STYLES[slot] ?? "real_ai_polish"
+          resolvedSlotStyles[slot] ?? DEFAULT_SLOT_STYLES[slot] ?? "client_content_ai"
         const directive = styleDirective(style, brandHexForPrompt)
         const inspiration = inspirationRefs[idx]
-        // Composite style krijgt z'n eigen versoepelde rules; andere
-        // styles houden de originele strikte versie.
-        const qualityRules = allowsComposite(style)
+        // Creative-chrome styles (composite + animation) krijgen
+        // versoepelde rules zodat overlays + panels niet geblocked
+        // worden. Andere styles houden de strikte "geen chrome" rules.
+        const qualityRules = allowsCreativeChrome(style)
           ? RL_QUALITY_RULES_COMPOSITE
           : RL_QUALITY_RULES
 
-        // Inspiration-library framing: when we have a ref from the
-        // AD CREATIVES INSPIRATION/<category>/ subfolder, prepend it to
-        // the reference pool AND tell Gemini it's the quality bar.
+        // Inspiration-library framing: de eerste reference is een
+        // STRUCTURAL TEMPLATE - layout / compositie / typography /
+        // lighting overnemen. Tekst + subject + brand colors zijn van
+        // ons. Eerdere "do not copy" framing maakte Gemini de ref
+        // negeren, nieuwe framing forceert structurele overname.
         const slotRefImages: Ref[] = [...referenceImages]
         let inspirationFraming = ""
         if (inspiration) {
@@ -958,7 +1020,7 @@ RL QUALITY RULES (composite-allowed):
             bytes: inspiration.bytes,
             mimeType: inspiration.mimeType,
           })
-          inspirationFraming = `\n\nQUALITY BAR REFERENCE (FIRST attached image):\nThe first reference image is a winning ad from the "${inspiration.subfolderName}" inspiration library. It defines the quality bar for this output: composition, lighting, typography weight + treatment, brand chrome usage, mood. MATCH that level. DO NOT copy specific text, subjects, product details, or layout from it - use only its visual-quality DNA.`
+          inspirationFraming = `\n\nSTRUCTURAL TEMPLATE (FIRST attached image):\nThe first reference image is a winning ad from the "${inspiration.subfolderName}" inspiration library and serves as the STRUCTURAL TEMPLATE for this output. MATCH closely:\n  - Overall LAYOUT (panel positions, headline placement, subject placement, CTA position).\n  - COMPOSITION proportions (split ratios, focal hierarchy).\n  - LIGHTING direction + atmospheric treatment.\n  - TYPOGRAPHY hierarchy (relative size, weight contrast).\n  - CHROME treatment (overlay style + intensity).\nSUBSTITUTE:\n  - The exact Dutch headline supplied in this prompt.\n  - The subject from the OTHER attached reference photos when present.\n  - The brand color palette from this prompt.\nIn other words: take the reference's "how", inject our "what". A new viewer should recognise the result as built from the same playbook as the reference.`
         }
 
         const styledPrompt =
@@ -971,10 +1033,9 @@ RL QUALITY RULES (composite-allowed):
           qualityRules +
           HEADLINE_LOCKDOWN
 
-        // Gemini accepts up to 3 reference images effectively; trim the
-        // pool to the most relevant: inspiration first (when present),
-        // then winner thumbnail, then Drive photos. Anything past 3 hurts
-        // fidelity more than helps.
+        // Gemini sweet spot is 3 refs total: inspiration template first,
+        // then winner thumbnail, then up to 1 client photo. Past 3 the
+        // model dilutes the structural template guidance.
         const refsForGemini = slotRefImages.slice(0, 3)
 
         return generateImageWithReference({

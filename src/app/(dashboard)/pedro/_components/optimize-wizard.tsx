@@ -1177,7 +1177,7 @@ function EditCopyStep({
           </button>
           <div className="text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{picked.variant.label}</span> klaar.
-            Edit de tekst, dan klik &ldquo;Genereer creatives&rdquo;.
+            Edit de copy, dan ga je door naar Stap 4 om de creatives te genereren.
           </div>
         </div>
         <button
@@ -1188,11 +1188,11 @@ function EditCopyStep({
           title={
             missingVariantId
               ? "Geen bruikbaar variant-ID - regenereer in Stap 1"
-              : "Pedro genereert 3 images op basis van deze copy"
+              : "Door naar Stap 4 om style mix te kiezen + creatives te genereren"
           }
         >
-          <Sparkles className="h-3.5 w-3.5" />
-          Genereer creatives
+          <ArrowRight className="h-3.5 w-3.5" />
+          Naar creatives stap
         </button>
       </div>
       {missingVariantId && (
@@ -1531,8 +1531,8 @@ function GenerateCreativesStep({
             ← Terug naar copy
           </button>
           <div className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{picked.variant.label}</span> · 3 images
-            via Gemini Nano Banana Pro · winnende ad + Drive folders + brand identity als referentie.
+            <span className="font-medium text-foreground">{picked.variant.label}</span> · Kies eerst
+            per slot de style mix → klik &ldquo;Genereer 3 images&rdquo;.
           </div>
         </div>
         <button
@@ -1580,14 +1580,16 @@ function GenerateCreativeImageCard({
         )}
       </header>
       <div className="px-6 py-5">
+        {/* Roy 2026-06-12 v2: GEEN auto-gen meer. Step 4 surface = style
+            pickers + explicit "Genereer creatives" knop. CM kiest eerst
+            de 3 slot-styles, klikt dan Genereer. Voorkomt verspilling
+            van credits aan de default mix wanneer hij wat anders wil. */}
         <VariantImagePanel
           variantId={variantId}
           clientId={clientId}
           adName={variant.adName}
           initialImagePrompt={variant.image?.imagePrompt ?? variant.imagePrompt ?? null}
           initialHasImage={variant.image?.hasImage ?? false}
-          autoGenerateOnMount
-          hideBulkButton
         />
       </div>
     </article>
