@@ -50,31 +50,10 @@ export async function Sidebar() {
       // Silent - never block the sidebar render.
     }
   }
-  const isAccountManager = mondayRole === "account_manager"
-
-  // ── Unmatched-meeting badge (Pedro parent + Meetings child) ──
-  // Only AMs see this - they're the ones who need to confirm/match Fathom
-  // recordings to clients. Counts meetings recorded by the current user
-  // whose link_status still needs human action. Roy 2026-05-23.
-  let unmatchedMeetingsCount = 0
-  if (isAccountManager && session?.user?.email) {
-    try {
-      const supabase = await createAdminClient()
-      const { count } = await supabase
-        .from("meetings")
-        .select("id", { count: "exact", head: true })
-        .ilike("recorded_by_email", session.user.email)
-        .in("link_status", ["unlinked", "suggested", "prospect"])
-        // Sales calls are intentionally ingested without a client link (matched
-        // later if the deal closes). Excluding them keeps the AM unmatched-
-        // meetings badge limited to genuinely actionable kick-offs / evals
-        // that need a human to confirm the client mapping.
-        .neq("meeting_type", "sales")
-      unmatchedMeetingsCount = count ?? 0
-    } catch {
-      // Silent.
-    }
-  }
+  // Note: the unmatched-meetings badge used to live here as a child of the
+  // Meetings sidebar entry. Meetings became a "Recordings" tab inside
+  // Calendar (Roy 2026-06-12), so the badge moves to that tab — handled in
+  // the calendar-tabs component, not at the sidebar level.
 
   // ── Billing "due today" badge ──
   // Replaces the previous "due this week" finance-only badge. Roy wants a
@@ -129,21 +108,9 @@ export async function Sidebar() {
     label: t("nav.optimize", locale),
     icon: "Wrench",
   }
-  const MEETINGS: NavItem = {
-    href: "/meetings",
-    label: t("nav.meetings", locale),
-    icon: "Video",
-    ...(unmatchedMeetingsCount > 0
-      ? {
-          badge: unmatchedMeetingsCount,
-          badgeTitle: `${unmatchedMeetingsCount} unmatched meeting${unmatchedMeetingsCount === 1 ? "" : "s"} need linking to a client`,
-        }
-      : {}),
-  }
   // Calendar shows the signed-in user's Google Calendar events + their
-  // open Hub tasks color-coded in one week view. Sits directly above
-  // Meetings so an AM lands on "today's agenda" before drilling into
-  // Fathom recordings.
+  // open Hub tasks color-coded in one week view, with a "Recordings"
+  // tab linking to the Fathom meetings archive at /meetings.
   const CALENDAR: NavItem = {
     href: "/calendar",
     label: t("nav.calendar", locale),
@@ -160,7 +127,9 @@ export async function Sidebar() {
     ...(isFinance
       ? []
       : [{ href: "/onboarding", label: t("nav.onboarding", locale), icon: "ClipboardCheck" as const }]),
-    ...(isFinance ? [] : [OPTIMIZE, CALENDAR, MEETINGS]),
+    // MEETINGS verhuisde naar een tab onder Calendar ("Recordings"),
+    // dus hier alleen nog Calendar als top-level entry.
+    ...(isFinance ? [] : [OPTIMIZE, CALENDAR]),
   ]
 
   // ── Bottom group: ops / admin stack ──

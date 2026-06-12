@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { CalendarEventsResponse } from "@/app/api/calendar/events/route"
 import { EventDialog, type EventDialogMode } from "./event-dialog"
+import { TaskDialog } from "./task-dialog"
 
 /**
  * Week-view calendar showing the user's Google Calendar events + Hub
@@ -46,6 +47,7 @@ export function CalendarView({ initialConnected }: Props) {
   // of which day they click into.
   const [anchor, setAnchor] = useState<Date>(() => new Date())
   const [dialog, setDialog] = useState<EventDialogMode | null>(null)
+  const [taskDialogId, setTaskDialogId] = useState<string | null>(null)
 
   const weekStart = useMemo(
     () => startOfWeek(anchor, { weekStartsOn: 1 }),
@@ -203,6 +205,7 @@ export function CalendarView({ initialConnected }: Props) {
           allDayByDay={allDayByDay}
           tasksByDay={tasksByDay}
           onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
+          onOpenTask={(id) => setTaskDialogId(id)}
         />
 
         {/* Hour grid */}
@@ -250,6 +253,14 @@ export function CalendarView({ initialConnected }: Props) {
           mode={dialog}
         />
       )}
+
+      {taskDialogId && (
+        <TaskDialog
+          taskId={taskDialogId}
+          open={true}
+          onOpenChange={(o) => !o && setTaskDialogId(null)}
+        />
+      )}
     </div>
   )
 }
@@ -295,11 +306,13 @@ function AllDayRow({
   allDayByDay,
   tasksByDay,
   onOpenEvent,
+  onOpenTask,
 }: {
   days: Date[]
   allDayByDay: Record<string, CalendarEventsResponse["events"]>
   tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
   onOpenEvent: (id: string) => void
+  onOpenTask: (id: string) => void
 }) {
   // Reserve some minimum height even when empty so the row doesn't collapse
   // into an invisible 0px strip on slow weeks.
@@ -337,6 +350,7 @@ function AllDayRow({
                 key={t.id}
                 title={t.title}
                 clientName={t.clientName}
+                onClick={() => onOpenTask(t.id)}
               />
             ))}
           </div>
@@ -344,6 +358,103 @@ function AllDayRow({
       })}
     </div>
   )
+}
+
+type LaidOutEvent = {
+  event: CalendarEventsResponse["events"][number]
+  top: number
+  height: number
+  leftPct: number
+  widthPct: number
+}
+
+/**
+ * Layout overlapping events as columns within their cluster. Standard
+ * calendar algorithm:
+ *
+ *   1. Compute each event's pixel top/bottom in the visible window.
+ *   2. Sort by start time, longer events first when starts tie.
+ *   3. Sweep top→bottom collecting "clusters" — connected groups where
+ *      each event overlaps with at least one other in the cluster.
+ *   4. Within each cluster, greedily place events into columns: take
+ *      the first column whose last event ends before this one starts.
+ *   5. Each event gets `width = 1 / clusterCols`, `left = col * width`.
+ *
+ * The result is the same packing Google Calendar uses, so two events
+ * at the same time become side-by-side half-width blocks instead of
+ * stacking on top of each other.
+ */
+function layoutDayEvents(
+  events: CalendarEventsResponse["events"],
+  dayStart: Date,
+): LaidOutEvent[] {
+  const positioned = events.map((event) => {
+    const start = new Date(event.start)
+    const end = new Date(event.end)
+    const startHour = (start.getTime() - dayStart.getTime()) / 3_600_000
+    const endHour = (end.getTime() - dayStart.getTime()) / 3_600_000
+    const top = Math.max(0, startHour - HOUR_START) * HOUR_HEIGHT_PX
+    const bottom =
+      Math.min(TOTAL_HOURS, endHour - HOUR_START) * HOUR_HEIGHT_PX
+    const height = Math.max(20, bottom - top)
+    return { event, top, height, endPx: top + height }
+  })
+
+  // Sort by top asc, then longer events first when starts tie.
+  const indices = positioned.map((_, i) => i)
+  indices.sort((a, b) => {
+    if (positioned[a].top !== positioned[b].top) {
+      return positioned[a].top - positioned[b].top
+    }
+    return positioned[b].endPx - positioned[a].endPx
+  })
+
+  // Sweep into clusters of transitively-overlapping events.
+  const clusters: number[][] = []
+  let currentCluster: number[] = []
+  let clusterMaxEnd = -Infinity
+  for (const idx of indices) {
+    const p = positioned[idx]
+    if (p.top >= clusterMaxEnd && currentCluster.length > 0) {
+      clusters.push(currentCluster)
+      currentCluster = []
+      clusterMaxEnd = -Infinity
+    }
+    currentCluster.push(idx)
+    clusterMaxEnd = Math.max(clusterMaxEnd, p.endPx)
+  }
+  if (currentCluster.length > 0) clusters.push(currentCluster)
+
+  // Assign columns within each cluster.
+  const result: LaidOutEvent[] = []
+  for (const cluster of clusters) {
+    const colEnds: number[] = []
+    const colByIdx = new Map<number, number>()
+    for (const idx of cluster) {
+      const p = positioned[idx]
+      let col = colEnds.findIndex((endPx) => endPx <= p.top)
+      if (col === -1) {
+        col = colEnds.length
+        colEnds.push(p.endPx)
+      } else {
+        colEnds[col] = p.endPx
+      }
+      colByIdx.set(idx, col)
+    }
+    const totalCols = colEnds.length
+    for (const idx of cluster) {
+      const p = positioned[idx]
+      const col = colByIdx.get(idx) ?? 0
+      result.push({
+        event: p.event,
+        top: p.top,
+        height: p.height,
+        leftPct: (col / totalCols) * 100,
+        widthPct: 100 / totalCols,
+      })
+    }
+  }
+  return result
 }
 
 function DayColumn({
@@ -358,6 +469,10 @@ function DayColumn({
   onCreateAt: (when: Date) => void
 }) {
   const dayStart = startOfDay(day)
+  const laidOut = useMemo(
+    () => layoutDayEvents(events, dayStart),
+    [events, dayStart],
+  )
 
   // Click on an empty slot in the column → open the create dialog
   // pre-seeded to the slot the user clicked. The event blocks have
@@ -394,23 +509,17 @@ function DayColumn({
       {/* Now-indicator (red line at current time, only on today's column) */}
       {isToday(day) && <NowIndicator />}
 
-      {/* Timed events */}
-      {events.map((ev) => {
+      {/* Timed events laid out in columns to avoid stacking */}
+      {laidOut.map(({ event: ev, top, height, leftPct, widthPct }) => {
         const start = new Date(ev.start)
         const end = new Date(ev.end)
-        // Clamp into the visible 06:00–22:00 window so an event that
-        // started yesterday or runs past 22:00 still renders cleanly.
-        const startHour =
-          (start.getTime() - dayStart.getTime()) / 3_600_000
-        const endHour = (end.getTime() - dayStart.getTime()) / 3_600_000
-        const top = Math.max(0, (startHour - HOUR_START)) * HOUR_HEIGHT_PX
-        const bottom = Math.min(TOTAL_HOURS, endHour - HOUR_START) * HOUR_HEIGHT_PX
-        const height = Math.max(20, bottom - top)
         return (
           <EventBlock
             key={ev.id}
             top={top}
             height={height}
+            leftPct={leftPct}
+            widthPct={widthPct}
             title={ev.title}
             timeLabel={`${format(start, "HH:mm")} – ${format(end, "HH:mm")}`}
             location={ev.location}
@@ -447,6 +556,8 @@ function NowIndicator() {
 function EventBlock({
   top,
   height,
+  leftPct,
+  widthPct,
   title,
   timeLabel,
   location,
@@ -455,22 +566,34 @@ function EventBlock({
 }: {
   top: number
   height: number
+  leftPct: number
+  widthPct: number
   title: string
   timeLabel: string
   location: string | null
   hangoutLink: string | null
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
 }) {
+  // Compress the right edge slightly so adjacent columns inside a
+  // cluster have a 2px gutter between them. The first column starts
+  // at the left padding (4px in CSS), the last column reaches almost
+  // to the right edge minus that padding.
+  const style: React.CSSProperties = {
+    top,
+    height,
+    left: `calc(${leftPct}% + 2px)`,
+    width: `calc(${widthPct}% - 4px)`,
+  }
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "absolute left-1 right-1 rounded-md border-l-2 px-1.5 py-1 overflow-hidden text-left cursor-pointer",
+        "absolute rounded-md border-l-2 px-1.5 py-1 overflow-hidden text-left cursor-pointer",
         "bg-[#8967F3]/15 border-[#8967F3] text-foreground",
-        "hover:bg-[#8967F3]/25 transition-colors",
+        "hover:bg-[#8967F3]/25 hover:z-10 transition-colors",
       )}
-      style={{ top, height }}
+      style={style}
       title={`${timeLabel} — ${title}${location ? ` @ ${location}` : ""}`}
     >
       <div className="text-[11px] font-medium leading-tight line-clamp-2">
@@ -481,7 +604,7 @@ function EventBlock({
       </div>
       {(location || hangoutLink) && height >= 50 && (
         <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
-          {hangoutLink && <Video className="size-3" />}
+          {hangoutLink && <Video className="size-3 shrink-0" />}
           {location && (
             <span className="inline-flex items-center gap-0.5 truncate">
               <MapPin className="size-3 shrink-0" />
@@ -520,15 +643,20 @@ function EventChip({
 function TaskChip({
   title,
   clientName,
+  onClick,
 }: {
   title: string
   clientName: string | null
+  onClick: () => void
 }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       className={cn(
-        "truncate rounded px-1.5 py-0.5 text-[11px]",
+        "block w-full truncate rounded px-1.5 py-0.5 text-[11px] text-left cursor-pointer",
         "bg-amber-500/15 border-l-2 border-amber-500 text-foreground",
+        "hover:bg-amber-500/25",
       )}
       title={clientName ? `${title} — ${clientName}` : title}
     >
@@ -536,6 +664,6 @@ function TaskChip({
       {clientName && (
         <span className="text-muted-foreground"> · {clientName}</span>
       )}
-    </div>
+    </button>
   )
 }

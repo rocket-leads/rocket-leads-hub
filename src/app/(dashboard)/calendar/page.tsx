@@ -1,10 +1,8 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { hasCalendarConnected } from "@/lib/integrations/google-calendar"
-import { PageHeader } from "@/components/ui/page-header"
-import { getUserLocale } from "@/lib/i18n/server"
-import { t } from "@/lib/i18n/t"
 import { CalendarView } from "./_components/calendar-view"
+import { CalendarTabs } from "./_components/calendar-tabs"
 
 export const dynamic = "force-dynamic"
 export const metadata = { title: "Calendar - Rocket Leads Hub" }
@@ -22,12 +20,11 @@ export default async function CalendarPage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
 
-  const locale = await getUserLocale(session.user.id)
   const connected = await hasCalendarConnected(session.user.id)
 
   return (
     <div>
-      <PageHeader title={t("calendar.title", locale)} />
+      <CalendarTabs active="calendar" />
       <CalendarView initialConnected={connected} />
     </div>
   )

@@ -3,12 +3,10 @@ import { redirect } from "next/navigation"
 import { createAdminClient } from "@/lib/supabase/server"
 import { MEETING_ROW_COLUMNS, type MeetingRow } from "@/lib/meetings/types"
 import { MeetingsView } from "../pedro/meetings/_components/meetings-view"
-import { PageHeader } from "@/components/ui/page-header"
-import { getUserLocale } from "@/lib/i18n/server"
-import { t } from "@/lib/i18n/t"
+import { CalendarTabs } from "../calendar/_components/calendar-tabs"
 
 export const dynamic = "force-dynamic"
-export const metadata = { title: "Meetings - Rocket Leads Hub" }
+export const metadata = { title: "Recordings - Rocket Leads Hub" }
 
 /**
  * Top-level Meetings route. Roy 2026-06-11: Meetings was a subtab onder
@@ -21,7 +19,6 @@ export default async function MeetingsPage() {
   if (!session?.user?.id) redirect("/auth/signin")
 
   const supabase = await createAdminClient()
-  const locale = await getUserLocale(session.user.id)
 
   // Pull a generous window - last 60 days, max 300 rows. The view splits this
   // into Unlinked / Recent / Internal tabs client-side.
@@ -50,7 +47,7 @@ export default async function MeetingsPage() {
 
   return (
     <div>
-      <PageHeader title={t("meetings.title", locale)} />
+      <CalendarTabs active="recordings" />
 
       <MeetingsView
         meetings={meetings}
