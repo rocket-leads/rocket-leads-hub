@@ -370,12 +370,12 @@ export async function POST(
   }
   void usedCampaignFallback // tracked via fallbackInfo
 
-  // Ad set name - CM-supplied override wins. Default: true Meta-style
-  // duplicate of the winner's ad set name with " - Copy" suffix.
-  // Roy 2026-06-12: stapte af van de NT-naming + interest strips. De
-  // winning ad set is winning vanwege ZIJN targeting; we duplicaten 'm
-  // 1:1 zodat nieuwe ads dezelfde audience reach krijgen ipv vanaf nul
-  // te moeten leren op Advantage+.
+  // Ad set name - CM-supplied override wins. Roy 2026-06-12: de naam
+  // moet WEL overschreven worden (niet "- Copy" van de winner) zodat
+  // je in Ads Manager direct ziet welke angle/hook Pedro test, niet een
+  // duplicate met dezelfde naam. Targeting + audience zijn 1:1
+  // gedupliceerd (zie launchTemplate hieronder); alleen de naam krijgt
+  // een nieuwe identiteit.
   const sanitizeAdsetName = (s: string): string =>
     s.replace(/\s+/g, " ").trim().slice(0, 200)
 
@@ -383,10 +383,8 @@ export async function POST(
   let newAdsetName: string
   if (overrideAdsetName) {
     newAdsetName = overrideAdsetName
-  } else if (winnerLive.adsetName) {
-    newAdsetName = `${winnerLive.adsetName} - Copy`.slice(0, 200)
   } else if (proposalAngle) {
-    newAdsetName = `${proposalAngle} - Copy`.slice(0, 200)
+    newAdsetName = proposalAngle.slice(0, 200)
   } else {
     const today = new Date()
     const dd = String(today.getDate()).padStart(2, "0")

@@ -154,15 +154,13 @@ export function PushToMetaModal({
   //   1. variant headline (Pedro's on-image text, often the strongest
   //      summary of what the ad set tests) - Roy 2026-06-10.
   //   2. proposal.preserve.angle (shared theme across the proposal).
-  //   3. Empty NT | placeholder.
-  // CM can always overwrite in the input. Trailing punctuation gets
-  // stripped so "3x hogere marge?" doesn't end up as "NT | 3x hogere
-  // marge?" in the ad set name.
+  //   3. Empty placeholder.
+  // Roy 2026-06-12: "NT | " prefix laten vallen - we strippen targeting
+  // niet meer (true duplicate van de winning ad set), dus "NT" = no
+  // targeting is een verkeerde label. Naam is gewoon de angle/headline.
   const cleanedHeadline = variantHeadline?.replace(/[?!.]+\s*$/, "").trim()
   const defaultSegment = cleanedHeadline || proposalAngle || ""
-  const defaultAdsetName = defaultSegment
-    ? `NT | ${defaultSegment}`.slice(0, 200)
-    : "NT | "
+  const defaultAdsetName = defaultSegment.slice(0, 200)
   const [adsetName, setAdsetName] = useState(defaultAdsetName)
   const [dailyBudgetEuros, setDailyBudgetEuros] = useState<string>("")
 
@@ -356,9 +354,9 @@ export function PushToMetaModal({
               Itereren op {winnerAdName}
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Eén nieuwe ad set (NT - no interest targeting) wordt aangemaakt in
-              dezelfde campagne, met dezelfde geo / leeftijd / placements als de
-              winner.{" "}
+              Eén nieuwe ad set wordt aangemaakt in dezelfde campagne, met dezelfde
+              targeting / audience / placements als de winning ad set (true
+              duplicate).{" "}
               <span className="font-medium text-amber-700 dark:text-amber-400">
                 Status: PAUSED (= concept).
               </span>{" "}
@@ -500,12 +498,13 @@ export function PushToMetaModal({
                   </button>
                 </div>
               )}
-              {/* Ad set config - top-level container. Roy 2026-06-10: NT
-                  ad set with the angle in the name, daily budget editable
-                  per launch. */}
+              {/* Ad set config - top-level container. Roy 2026-06-12:
+                  true duplicate van de winning ad set (full targeting +
+                  audience behouden), alleen de naam wordt overschreven
+                  zodat de iteratie in Ads Manager direct herkenbaar is. */}
               <div className="rounded-lg border border-sky-500/40 bg-sky-500/5 p-3 space-y-3">
                 <div className="text-[10px] uppercase tracking-[0.12em] text-sky-700 dark:text-sky-400 font-semibold">
-                  Ad set (NT - no interest targeting)
+                  Ad set (duplicate van winner)
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-2 space-y-1">
@@ -522,7 +521,7 @@ export function PushToMetaModal({
                       onChange={(e) => setAdsetName(e.target.value)}
                       disabled={launching}
                       maxLength={200}
-                      placeholder="NT | verse sappen = hogere marges"
+                      placeholder="bv. Budget-pain / Vibecoding methodiek"
                       className="w-full h-9 px-2.5 text-sm rounded-md border border-border bg-background focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50 font-mono"
                     />
                   </div>
@@ -546,9 +545,9 @@ export function PushToMetaModal({
                   </div>
                 </div>
                 <div className="text-[11px] text-muted-foreground/80">
-                  Geo, leeftijd, placements en optimization goal worden 1:1
-                  overgenomen van winner&apos;s ad set. Interests &amp; behaviors
-                  worden weggehaald.
+                  Volledige targeting + audience + placements + optimization goal
+                  worden 1:1 overgenomen van winner&apos;s ad set. Alleen de naam
+                  krijgt een eigen identiteit.
                 </div>
               </div>
 
