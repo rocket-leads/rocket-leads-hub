@@ -46,6 +46,27 @@ type SlotState = {
   regenAvailable?: boolean
 }
 
+/** Roy 2026-06-12: 4 style categorieën die de CM per slot kan kiezen
+ *  voor het krijgen van echte variatie tussen de 3 images ipv 3x
+ *  dezelfde clean photo. Mapped 1:1 met SlotStyleKey backend-side. */
+type SlotStyle = "real_photo" | "real_ai_polish" | "branded_composite" | "lifestyle"
+
+const SLOT_STYLE_LABELS: Record<SlotStyle, string> = {
+  real_photo: "Echte foto",
+  real_ai_polish: "Real + AI polish",
+  branded_composite: "Branded composite",
+  lifestyle: "Lifestyle",
+}
+
+const SLOT_STYLE_DESCRIPTIONS: Record<SlotStyle, string> = {
+  real_photo: "Klant-foto's as-is, minimale post-processing.",
+  real_ai_polish: "Klant-foto's + atmospheric AI scene-enhancement.",
+  branded_composite: "Volledig composite ad: brand-kleuren panel, graphic overlay, mixed headline. Marketing-agency look.",
+  lifestyle: "Subject in candid environment, cinematic licht.",
+}
+
+const DEFAULT_SLOT_STYLES: SlotStyle[] = ["real_ai_polish", "branded_composite", "lifestyle"]
+
 type GenerateReferences = {
   winnerThumbnail: boolean
   clientPhotos: number
@@ -108,6 +129,10 @@ export function VariantImagePanel({
   const [editingPrompt, setEditingPrompt] = useState(false)
   const [promptDraft, setPromptDraft] = useState(initialImagePrompt ?? "")
   const [references, setReferences] = useState<GenerateReferences | null>(null)
+  // Roy 2026-06-12: per-slot style choices. Drive de variatie tussen de
+  // 3 slots zodat de CM 3 verschillende looks krijgt ipv 3x dezelfde.
+  // Gestuurd naar de backend bij elke gen-call.
+  const [slotStyles, setSlotStyles] = useState<SlotStyle[]>(DEFAULT_SLOT_STYLES.slice())
 
   // Explicit-feedback state - the textarea is the strongest signal Pedro
   // gets back ("logos altijd klein", "klant haat te witte tanden", etc.).
@@ -204,7 +229,19 @@ export function VariantImagePanel({
     setBulkBusy(true)
     setError(null)
     try {
-      const reqBody: { promptOverride?: string; slots: number } = { slots: SLOT_COUNT }
+      const reqBody: {
+        promptOverride?: string
+        slots: number
+        slotStyles: Record<number, SlotStyle>
+      } = {
+        slots: SLOT_COUNT,
+        // Roy 2026-06-12: stuur de per-slot style mix mee zodat de
+        // backend per slot een ander style-directive aan Gemini geeft.
+        slotStyles: slotStyles.reduce<Record<number, SlotStyle>>((acc, s, i) => {
+          acc[i] = s
+          return acc
+        }, {}),
+      }
       if (editingPrompt && promptDraft.trim()) {
         reqBody.promptOverride = promptDraft.trim()
       }
@@ -249,7 +286,7 @@ export function VariantImagePanel({
     } finally {
       setBulkBusy(false)
     }
-  }, [variantId, bulkBusy, editingPrompt, promptDraft])
+  }, [variantId, bulkBusy, editingPrompt, promptDraft, slotStyles])
 
   // Single-slot generation. Two flavours:
   //   - First-time fill (slot is empty)         → direct call, no feedback modal
@@ -268,6 +305,10 @@ export function VariantImagePanel({
           body: JSON.stringify({
             position,
             regenFeedback: feedback,
+            // Pass the slot's chosen style zodat regen ook de juiste
+            // chrome krijgt (default style was real_ai_polish; CM
+            // kan via picker omschakelen voordat regen).
+            slotStyles: { [position]: slotStyles[position] ?? DEFAULT_SLOT_STYLES[position] ?? "real_ai_polish" },
           }),
         })
         const json = await res.json()
@@ -314,7 +355,7 @@ export function VariantImagePanel({
         setSlotBusyAt(position, null)
       }
     },
-    [variantId, setSlotBusyAt],
+    [variantId, setSlotBusyAt, slotStyles],
   )
 
   // State voor de gestructureerde regen-feedback modal.
@@ -560,6 +601,48 @@ export function VariantImagePanel({
           Pedro tekent 3 varianten… <span className="text-muted-foreground">~30-60s</span>
         </div>
       )}
+
+      {/* Per-slot style picker - Roy 2026-06-12. Drijft variatie tussen
+          de 3 slots: CM kiest per slot of het een real photo, real+AI
+          enhancement, branded composite of lifestyle moet zijn. Slaat
+          de mix op state, gestuurd naar /generate-image bij elke
+          (bulk of single-slot) gen-call. */}
+      <div className="space-y-1.5">
+        <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold inline-flex items-center gap-1.5">
+          <Sparkles className="h-3 w-3" />
+          Style mix · per slot
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {[0, 1, 2].map((idx) => (
+            <div key={idx} className="space-y-0.5">
+              <div className="text-[10px] text-muted-foreground tabular-nums">
+                Slot {SLOT_LABELS[idx]}
+              </div>
+              <select
+                value={slotStyles[idx] ?? DEFAULT_SLOT_STYLES[idx]}
+                onChange={(e) => {
+                  const next = [...slotStyles]
+                  next[idx] = e.target.value as SlotStyle
+                  setSlotStyles(next)
+                }}
+                disabled={bulkBusy || (slotBusy[idx] ?? null) !== null}
+                title={SLOT_STYLE_DESCRIPTIONS[slotStyles[idx] ?? DEFAULT_SLOT_STYLES[idx]]}
+                className="w-full h-8 text-xs rounded-md border border-border bg-background px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
+              >
+                {(Object.keys(SLOT_STYLE_LABELS) as SlotStyle[]).map((s) => (
+                  <option key={s} value={s}>
+                    {SLOT_STYLE_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+        <div className="text-[10px] text-muted-foreground/70">
+          Wijzigingen gelden voor de volgende generatie. Branded composite =
+          marketing-agency look (brand-kleuren panel, graphic overlay).
+        </div>
+      </div>
 
       {/* Slot grid */}
       <div className="grid grid-cols-3 gap-2">

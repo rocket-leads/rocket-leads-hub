@@ -39,6 +39,54 @@ import type { BrandStyle } from "@/lib/pedro/helpers"
 
 export const maxDuration = 60 // Gemini image gen routinely takes 5-20s; cap at 60 for safety
 
+/**
+ * Per-slot style direction. Roy 2026-06-12: TMM Technology's Manus ads
+ * zijn composite branded creatives (navy panel, cyan circuit overlay,
+ * gemixte typografie). De default RL_QUALITY_RULES verbieden zulke
+ * chrome, dus we softenen ze conditioneel op basis van de gekozen slot
+ * style. Per-slot direction wordt ook in de Gemini prompt geforceerd
+ * zodat de 3 slots een echte variatie aan looks geven ipv 3x dezelfde.
+ */
+type SlotStyleKey =
+  | "real_photo"
+  | "real_ai_polish"
+  | "branded_composite"
+  | "lifestyle"
+
+/** Default mix wanneer de CM niets stuurt - varied palette voor de
+ *  eerste auto-gen zodat hij meteen contrast ziet en kan kiezen. */
+const DEFAULT_SLOT_STYLES: Record<number, SlotStyleKey> = {
+  0: "real_ai_polish",
+  1: "branded_composite",
+  2: "lifestyle",
+}
+
+function styleDirective(style: SlotStyleKey, brandHex: string[] | null): string {
+  const accent = brandHex && brandHex.length > 0 ? brandHex.slice(0, 3).join(", ") : "the brand's accent colors"
+  switch (style) {
+    case "real_photo":
+      return `\n\nSLOT STYLE: REAL PHOTO. Use the client photo references as-is. Authentic, professional, unposed photography. Minimal post-processing - color grade for cohesion only. NO composite overlays, NO graphic chrome, NO color panels. Just the clean photo plus the on-image headline floating in negative space. Think editorial documentary photography.`
+    case "real_ai_polish":
+      return `\n\nSLOT STYLE: REAL + AI POLISH. Take the client photo subject from the references and composite them into a polished marketing scene. Atmospheric brand-color lighting (accent: ${accent}), shallow depth-of-field, subtle environmental haze or motion blur for depth. Real subject, AI-enhanced atmosphere. The subject's identity must match the reference; only the scene around them changes. Subtle brand-accent rim lighting on the subject.`
+    case "branded_composite":
+      return `\n\nSLOT STYLE: BRANDED COMPOSITE (MARKETING-AGENCY DELIVERABLE). Generate a fully composite ad scene matching how a top-tier brand agency would deliver. REQUIRED:\n  - Brand-color panel/background using ${accent}. Dark navy + accent variant is a strong default for tech/AI verticals; use the actual brand colors above.\n  - Subtle thematic graphic overlay matching the brand's vertical (circuit-board pattern for tech/AI, geometric lines for finance, organic shapes for wellness). Overlay must be subtle (8-15% opacity), never dominate the subject.\n  - Bold mixed-weight on-image headline: most words in white/dark, key 1-2 brand words in accent color (${accent}). Use ONE typeface, two weights.\n  - The subject (use references for identity if available) lives in the right half of the canvas; headline + brand panel on the left.\n  - Atmospheric glow / motion light streaks in the accent color to suggest dynamism.\n  - The output must look like a paid agency deliverable, NOT stock photography with text on it.`
+    case "lifestyle":
+      return `\n\nSLOT STYLE: LIFESTYLE / CANDID. Place the subject (use references for identity if available) in a real environment that matches the brand's vertical. Cinematic lighting, golden-hour or soft-window light, candid expression, shallow depth-of-field. The scene tells a story about the brand without on-image graphic chrome. Headline floats cleanly in negative space. Think editorial brand campaign, not stock photo.`
+    default:
+      return ""
+  }
+}
+
+/** Composite styles vragen om graphic overlays die de standaard
+ *  RL_QUALITY_RULES verbieden. Wanneer de slot style composite is,
+ *  versoepelen we de "geen overlays / chrome / panels" regels zodat
+ *  Gemini de branded look daadwerkelijk durft op te bouwen. We blijven
+ *  WEL hard op de "geen badges, geen comparison labels, geen dubbele
+ *  tekst" rules - dat zijn de echte amateuristische tekenen. */
+function allowsComposite(style: SlotStyleKey): boolean {
+  return style === "branded_composite"
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -66,6 +114,17 @@ export async function POST(
       designFeedback?: string
       otherFeedback?: string
     }
+    /** Roy 2026-06-12: per-slot style direction. CM kiest in de UI welke
+     *  van de 4 categorieën elke slot moet zijn zodat we variatie krijgen
+     *  ipv 3x dezelfde clean photo. Slot index → style key.
+     *  Mappings:
+     *   - real_photo        → klant-foto's as-is, minimal post-processing
+     *   - real_ai_polish    → klant-foto's + atmospheric AI enhancement
+     *   - branded_composite → fully composite ad met brand chrome
+     *                         (graphic overlays, color panels, accent kleuren)
+     *   - lifestyle         → subject in candid environment, cinematic
+     */
+    slotStyles?: Record<number, SlotStyleKey>
   } = {}
   try {
     body = await req.json()
@@ -824,22 +883,62 @@ DO NOT:
 A buitenstaander must recognise your output and the source screenshot as 'iteraties van dezelfde ad', not 'twee verschillende campagnes'.`
       : ""
 
-    const promptWithFeedback =
-      prompt + feedbackAddendum + brandAssetsAddendum + SOURCE_VISUAL_LOCK + RL_QUALITY_RULES + HEADLINE_LOCKDOWN
+    // Roy 2026-06-12: pull canonical brand colors uit pdfPaletteForPrompt
+    // OF uit brand_style.colors zodat de styleDirective hex codes kan
+    // injecteren ipv het generieke "brand accent colors".
+    const brandHexFromPdf = pdfPaletteForPrompt?.hexCodes ?? null
+    const brandHexFromStyle =
+      brandStyleForPolicy &&
+      typeof brandStyleForPolicy === "object" &&
+      Array.isArray((brandStyleForPolicy as { colors?: unknown }).colors)
+        ? ((brandStyleForPolicy as { colors: Array<{ hex?: string }> }).colors
+            .map((c) => c?.hex)
+            .filter((h): h is string => typeof h === "string" && /^#[0-9a-f]{6}$/i.test(h)))
+        : null
+    const brandHexForPrompt = brandHexFromPdf ?? brandHexFromStyle ?? null
+
+    // Composite slots krijgen versoepelde RL_QUALITY_RULES (allowed:
+    // graphic overlays, brand-color panels). Andere styles houden de
+    // originele "geen overlays" rules omdat composite chrome daar
+    // amateuristisch oogt.
+    const RL_QUALITY_RULES_COMPOSITE = `
+
+---
+RL QUALITY RULES (composite-allowed):
+- ONE on-image headline text element rendered ONCE. Mixed weight is OK (key brand words in accent color), but only one block, never duplicated.
+- Brand-color background panel + subtle graphic overlay (circuit/lines/geometry) ARE expected for composite ads.
+- Subject (when present from reference): identity preserved, integrated with composite via lighting, not cut-and-paste.
+- Headline placement: clean negative space, ≥8% padding. Mixed-weight typography only when intentional (key brand word in accent color), never random.
+- NO badges, NO price tags, NO comparison stickers (LAGE/3x), NO duplicated text, NO competing brand logos.
+- Looks like a paid agency deliverable. Marketing-agency quality bar.`
+
     const aspectRatio = variant.format_hint === "Video" ? "9:16" : "1:1"
 
-    // Generate all targets in parallel. Each variation gets a small
-    // delta in the prompt so Gemini doesn't return near-duplicates.
-    // Roy 2026-06-11: variationHint instrueert nu ALLEEN de visuele
-    // compositie - niet de tekst. Tekst is gelockdownt op de exacte
-    // Dutch headline (zie HEADLINE_LOCKDOWN hierboven).
+    // Generate all targets in parallel. Each slot has its own STYLE
+    // direction (real photo / real+AI / composite / lifestyle) so the
+    // CM krijgt echte variatie, niet 3x dezelfde scene. Tekst (headline)
+    // blijft identiek across slots - alleen de visuele uitvoering varieert.
+    const resolvedSlotStyles = body.slotStyles ?? {}
     const slotResults = await Promise.allSettled(
       targetSlots.map((slot) => {
-        const variationHint = targetSlots.length > 1
-          ? `\n\nVISUAL VARIATION ONLY for this output (#${slot + 1} of ${targetSlots.length}): ${["lead with the product/subject in close-up", "emphasize the environment/setting around the subject", "balance product and people, lifestyle angle"][slot] ?? "fresh angle, different composition than the others"}. The on-image text remains IDENTICAL across all slots - only the visual scene differs.`
-          : ""
+        const style: SlotStyleKey =
+          resolvedSlotStyles[slot] ?? DEFAULT_SLOT_STYLES[slot] ?? "real_ai_polish"
+        const directive = styleDirective(style, brandHexForPrompt)
+        // Composite style krijgt z'n eigen versoepelde rules; andere
+        // styles houden de originele strikte versie.
+        const qualityRules = allowsComposite(style)
+          ? RL_QUALITY_RULES_COMPOSITE
+          : RL_QUALITY_RULES
+        const styledPrompt =
+          prompt +
+          feedbackAddendum +
+          brandAssetsAddendum +
+          SOURCE_VISUAL_LOCK +
+          directive +
+          qualityRules +
+          HEADLINE_LOCKDOWN
         return generateImageWithReference({
-          prompt: promptWithFeedback + variationHint,
+          prompt: styledPrompt,
           referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
           aspectRatio,
         })
