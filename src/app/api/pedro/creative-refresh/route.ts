@@ -282,7 +282,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
     : ""
   const [adsRaw, adsCorpusRaw] = await Promise.all([
     cachedFetch(
-      `pedro_perf:${client.meta_ad_account_id}:${cur.start}:${cur.end}${filterTag}`,
+      `pedro_perf_v2_creative_fix:${client.meta_ad_account_id}:${cur.start}:${cur.end}${filterTag}`,
       () => fetchMetaAdDetails(client.meta_ad_account_id, cur.start, cur.end, campaignFilter),
     ).catch(() => [] as Awaited<ReturnType<typeof fetchMetaAdDetails>>),
     cachedFetch(

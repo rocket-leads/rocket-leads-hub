@@ -153,7 +153,7 @@ export async function loadCrossClientExamples(
   for (const c of ranked) {
     if (!c.adAccountId) continue
     try {
-      const ads = await cachedFetch(`pedro_perf:${c.adAccountId}:${start}:${end}`, () =>
+      const ads = await cachedFetch(`pedro_perf_v2_creative_fix:${c.adAccountId}:${start}:${end}`, () =>
         fetchMetaAdDetails(c.adAccountId as string, start, end),
       )
       const stats = computeAccountStats(ads)

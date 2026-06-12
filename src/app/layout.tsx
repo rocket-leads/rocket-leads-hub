@@ -27,26 +27,25 @@ export const metadata: Metadata = {
 }
 
 /**
- * Pre-React theme bootstrap. Runs synchronously before first paint to:
- *   1. Honour the `theme` cookie when present (user picked light/dark before)
- *   2. Otherwise mirror the OS preference via `prefers-color-scheme`
+ * Pre-React theme bootstrap. Runs synchronously before first paint to honour
+ * the `theme` cookie when present (user picked light/dark before). Without a
+ * cookie, we stay on light mode - Roy 2026-06-12: house default is light, OS
+ * `prefers-color-scheme` is intentionally ignored so colleagues with a dark
+ * OS still land on light on first visit and can switch from the sidebar.
  *
- * Without this, a colleague who lands on the Hub for the first time always
- * gets light mode regardless of their system setting, and has to hunt for the
- * sidebar toggle to flip it. Inline so it can't be deferred / split into a
- * bundle that paints after first render - that would cause a white flash.
- *
- * The cookie-painted `dark` class on <html> (set below from the server) still
- * wins when a cookie is present; this script only kicks in for the unset
- * case.
+ * Inline so it can't be deferred / split into a bundle that paints after
+ * first render - that would cause a white flash. The cookie-painted `dark`
+ * class on <html> (set from the server below) still wins when a cookie is
+ * present; this script only kicks in when a stale `dark` class survives a
+ * cookie flip to light.
  */
 const themeInitScript = `(function(){try{
   var m=document.cookie.match(/(?:^|;\\s*)theme=([^;]+)/);
   var cookie=m?decodeURIComponent(m[1]):null;
-  var dark=cookie==='dark'||(!cookie&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+  var dark=cookie==='dark';
   var c=document.documentElement.classList;
   if(dark&&!c.contains('dark'))c.add('dark');
-  if(!dark&&c.contains('dark')&&cookie==='light')c.remove('dark');
+  if(!dark&&c.contains('dark'))c.remove('dark');
 }catch(e){}})();`
 
 export default async function RootLayout({

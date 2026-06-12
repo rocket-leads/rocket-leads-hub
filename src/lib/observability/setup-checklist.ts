@@ -57,11 +57,9 @@ export async function fetchSetupChecklist(): Promise<SetupChecklist> {
   try {
     const supabase = await createAdminClient()
 
-    const [tokensRes, boardCfgRes, usersRes, mappingsRes] = await Promise.all([
+    const [tokensRes, boardCfgRes] = await Promise.all([
       supabase.from("api_tokens").select("service, is_valid"),
       supabase.from("settings").select("key").eq("key", "board_config").maybeSingle(),
-      supabase.from("users").select("id, role"),
-      supabase.from("user_column_mappings").select("user_id, monday_column_role"),
     ])
 
     const items: ChecklistItem[] = []
@@ -106,22 +104,13 @@ export async function fetchSetupChecklist(): Promise<SetupChecklist> {
       })
     }
 
-    // (3) Users without a Monday role mapping - non-admin non-finance
-    //     users need this so the per-user client filter (Watch List,
-    //     All campaigns) returns the right rows. Finance is org-level
-    //     and explicitly doesn't map to a Monday column.
-    const mapped = new Set((mappingsRes.data ?? []).map((m) => m.user_id))
-    const unmapped = (usersRes.data ?? []).filter(
-      (u) => u.role !== "admin" && !mapped.has(u.id),
-    )
-    if (unmapped.length > 0) {
-      items.push({
-        id: "users-without-mapping",
-        label: `${unmapped.length} user${unmapped.length === 1 ? "" : "s"} missing Monday role mapping`,
-        tab: "users",
-        priority: 3,
-      })
-    }
+    // (3) Monday role mapping is intentionally optional — finance is org-
+    //     level (no client column), guests don't need client filtering, and
+    //     some seats are admins of one role and observers of another. The
+    //     previous "N users missing Monday role mapping" warning surfaced
+    //     these as setup gaps and Roy wanted it gone (2026-06-12). The
+    //     per-user filter still silently falls back to "see everything"
+    //     when the mapping is absent, which is the desired behaviour.
 
     items.sort((a, b) => a.priority - b.priority)
     return { items, incompleteCount: items.length }

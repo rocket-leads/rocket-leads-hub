@@ -1359,7 +1359,7 @@ function WatchSection({
                       <span className="text-muted-foreground/30">·</span> {cplCell} CPL
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex flex-col items-center gap-1 shrink-0">
                     {primaryAction}
                     {moveAction}
                     {metaAction}

@@ -174,10 +174,10 @@ export async function runPedroRefresh<TProposal>(args: {
   const cur = dateRange(days)
   const prior = priorRange(days)
   const [adsRaw, adsPriorRaw] = await Promise.all([
-    cachedFetch(`pedro_perf:${client.meta_ad_account_id}:${cur.start}:${cur.end}`, () =>
+    cachedFetch(`pedro_perf_v2_creative_fix:${client.meta_ad_account_id}:${cur.start}:${cur.end}`, () =>
       fetchMetaAdDetails(client.meta_ad_account_id, cur.start, cur.end),
     ).catch(() => [] as Awaited<ReturnType<typeof fetchMetaAdDetails>>),
-    cachedFetch(`pedro_perf:${client.meta_ad_account_id}:${prior.start}:${prior.end}`, () =>
+    cachedFetch(`pedro_perf_v2_creative_fix:${client.meta_ad_account_id}:${prior.start}:${prior.end}`, () =>
       fetchMetaAdDetails(client.meta_ad_account_id, prior.start, prior.end),
     ).catch(() => [] as Awaited<ReturnType<typeof fetchMetaAdDetails>>),
   ])

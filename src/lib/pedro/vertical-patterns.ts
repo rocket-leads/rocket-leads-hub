@@ -217,7 +217,7 @@ async function loadWinnersForClient(client: ClientRow): Promise<VerticalWinnerEn
   const start = startDate.toISOString().slice(0, 10)
 
   try {
-    const ads = await cachedFetch(`pedro_perf:${client.meta_ad_account_id}:${start}:${end}`, () =>
+    const ads = await cachedFetch(`pedro_perf_v2_creative_fix:${client.meta_ad_account_id}:${start}:${end}`, () =>
       fetchMetaAdDetails(client.meta_ad_account_id as string, start, end),
     )
     const stats = computeAccountStats(ads)

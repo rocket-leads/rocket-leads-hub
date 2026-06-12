@@ -124,7 +124,7 @@ export async function GET(
   // creative-refresh route de Meta call uit de cache haalt (~5-10s
   // bespaard wanneer de cache warm is).
   const filterTag = `:cf:${[...selectedCampaignIds].sort().join(",")}`
-  const cacheKey = `pedro_perf:${client.meta_ad_account_id}:${start}:${end}${filterTag}`
+  const cacheKey = `pedro_perf_v2_creative_fix:${client.meta_ad_account_id}:${start}:${end}${filterTag}`
   let ads: Awaited<ReturnType<typeof fetchMetaAdDetails>> = []
   try {
     ads = await cachedFetch(cacheKey, () =>
