@@ -216,7 +216,7 @@ function HealthBadge({ health, locale }: { health: HealthResult; locale: Locale 
   )
 }
 
-type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "phase" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "paymentStatus" | "outstanding" | "health" | "mrr" | "nextInvoice" | "clientUpdate"
+type SortKey = "client" | "accountManager" | "campaignManager" | "status" | "phase" | "kickOff" | "adspend" | "leads" | "cpl" | "cplDelta" | "paymentStatus" | "overdue" | "health" | "mrr" | "nextInvoice" | "clientUpdate"
 type SortDir = "asc" | "desc"
 
 // Toggleable column groups (current board only). Each user picks which
@@ -581,7 +581,14 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           break
         }
         case "paymentStatus": valA = billingA?.status ?? ""; valB = billingB?.status ?? ""; break
-        case "outstanding": valA = billingA?.outstanding ?? 0; valB = billingB?.outstanding ?? 0; break
+        case "overdue": {
+          // Stale cache rows may lack overdueAmount; fall back to outstanding
+          // when the row is "overdue" so the column still sorts meaningfully
+          // until the next Stripe refresh writes the new field.
+          valA = billingA?.overdueAmount ?? (billingA?.status === "overdue" ? billingA.outstanding : 0)
+          valB = billingB?.overdueAmount ?? (billingB?.status === "overdue" ? billingB.outstanding : 0)
+          break
+        }
         case "mrr":
           valA = agreementSummaries?.[a.mondayItemId]?.mrr ?? 0
           valB = agreementSummaries?.[b.mondayItemId]?.mrr ?? 0
@@ -851,10 +858,10 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                   <TableHead className="text-[13px] text-foreground/80 font-semibold w-[95px] border-r border-border/60">{t("clients.col.payment", locale)}</TableHead>
                 </>
               )}
-              {/* Invoice group: Outstanding + MRR + Next */}
+              {/* Invoice group: Overdue + MRR + Next */}
               {boardType === "current" && showInvoiceGroup && (
                 <>
-                  <TableHead className="text-[13px] text-foreground/80 font-semibold w-[100px]">{t("clients.col.outstanding", locale)}</TableHead>
+                  <SortableHead label={t("clients.col.overdue", locale)} sortKey="overdue" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px]" />
                   <SortableHead label={t("clients.col.mrr", locale)} sortKey="mrr" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[110px]" />
                   <SortableHead label={t("clients.col.next", locale)} sortKey="nextInvoice" currentKey={sortKey} currentDir={sortDir} onSort={handleSort} className="text-[13px] text-foreground/80 font-semibold w-[80px] border-r border-border/60" />
                 </>
@@ -1013,16 +1020,39 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                         </TableCell>
                       </>
                     )}
-                    {/* Invoice group: Outstanding + MRR + Next */}
+                    {/* Invoice group: Overdue + MRR + Next */}
                     {showInvoiceGroup && (
                       <>
                         <TableCell className="text-xs tabular-nums">
-                          {summary && summary.outstanding > 0 && (
-                            <span className={summary.status === "overdue" ? "text-red-400 font-medium" : "text-muted-foreground"}>{fmt(summary.outstanding)}</span>
-                          )}
-                          {!billingSummaries && client.stripeCustomerId && (
-                            <span className="text-muted-foreground/40">...</span>
-                          )}
+                          {(() => {
+                            if (!billingSummaries && client.stripeCustomerId) {
+                              return <span className="text-muted-foreground/40">...</span>
+                            }
+                            if (!summary || summary.outstanding <= 0) return null
+                            // Stale cache fallback: rows written before the
+                            // overdueAmount field existed only carry the
+                            // boolean `status: "overdue"` + total `outstanding`.
+                            // Treat the whole outstanding as overdue then so
+                            // the column doesn't silently flip to 0 until the
+                            // next refresh-stripe cron rewrites the entry.
+                            const overdue =
+                              summary.overdueAmount ??
+                              (summary.status === "overdue" ? summary.outstanding : 0)
+                            // MRR-style stacked cell: red bold overdue amount
+                            // on top, total outstanding (muted) below so the
+                            // AM can read "€1.5k overdue of €3k total" in one
+                            // glance without a second column.
+                            return (
+                              <div className="leading-tight">
+                                <p className="text-xs tabular-nums font-medium text-red-400">
+                                  {fmt(overdue)}
+                                </p>
+                                <p className="text-[10px] tabular-nums text-muted-foreground/60">
+                                  {t("clients.overdue.of", locale, { total: fmt(summary.outstanding) })}
+                                </p>
+                              </div>
+                            )
+                          })()}
                         </TableCell>
                         <TableCell>
                           {(() => {

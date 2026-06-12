@@ -125,8 +125,13 @@ async function HomeData() {
   // Top action clients - sorted by severity desc (same ranking as watchlist).
   const topAction = [...action].sort((a, b) => b.severity - a.severity).slice(0, 5)
 
-  // Overdue / open billing - clients with non-zero outstanding, sorted by
-  // amount desc. Filtered to user-visible clients.
+  // Overdue / open billing - clients with non-zero outstanding, ordered so
+  // genuinely-late accounts sit at the top of the home block (overdue desc),
+  // then merely-open accounts by total outstanding. Pre-rollout cache rows
+  // without `overdueAmount` fall back to outstanding when status==='overdue'
+  // so sorting still reflects reality until the next Stripe refresh.
+  const effectiveOverdue = (s: BillingSummary): number =>
+    s.overdueAmount ?? (s.status === "overdue" ? s.outstanding : 0)
   const overdueClients = visibleClients
     .map((client) => {
       if (!client.stripeCustomerId) return null
@@ -135,7 +140,11 @@ async function HomeData() {
       return { client, summary }
     })
     .filter((x): x is { client: MondayClient; summary: BillingSummary } => x !== null)
-    .sort((a, b) => b.summary.outstanding - a.summary.outstanding)
+    .sort((a, b) => {
+      const overdueDiff = effectiveOverdue(b.summary) - effectiveOverdue(a.summary)
+      if (overdueDiff !== 0) return overdueDiff
+      return b.summary.outstanding - a.summary.outstanding
+    })
 
   const totalOutstanding = overdueClients.reduce((s, x) => s + x.summary.outstanding, 0)
   const topOverdue = overdueClients.slice(0, 5)
@@ -198,6 +207,13 @@ async function HomeData() {
             mondayItemId: x.client.mondayItemId,
             name: x.client.name,
             outstanding: x.summary.outstanding,
+            // Stale cache fallback: pre-rollout BillingSummary rows lack
+            // overdueAmount. Treat the whole outstanding as overdue when
+            // status is "overdue" so the row still tells the truth until
+            // the next Stripe refresh writes the new field.
+            overdueAmount:
+              x.summary.overdueAmount ??
+              (x.summary.status === "overdue" ? x.summary.outstanding : 0),
             status: x.summary.status,
           }))}
           totalCount={overdueClients.length}

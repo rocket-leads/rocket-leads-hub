@@ -53,7 +53,19 @@ function deriveStatus(inv: Stripe.Invoice): InvoiceRow["status"] {
 
 export type BillingSummary = {
   customerId: string
+  /** Total open amount across every open Stripe invoice - includes invoices
+   *  that aren't past their due date yet. This is "what the client still owes
+   *  in total", not "what's late". */
   outstanding: number
+  /** Subset of `outstanding` that has actually passed its due date. Used to
+   *  surface the late-payment portion separately so a client with one €1.5k
+   *  overdue + one €1.5k freshly-sent invoice doesn't look like €3k overdue.
+   *  Equal to `outstanding` when every open invoice is past due, 0 when none
+   *  are (= `status: "open"`). Optional because the field was added later -
+   *  cached BillingSummary rows written before this rollout don't have it,
+   *  so consumers must default to 0 (or fall back to `outstanding` when
+   *  `status === "overdue"`) until the next Stripe refresh writes new rows. */
+  overdueAmount?: number
   status: "complete" | "open" | "overdue"
 }
 
@@ -183,10 +195,13 @@ export async function fetchBillingSummary(customerId: string): Promise<BillingSu
   }
 
   const outstanding = all.reduce((sum, inv) => sum + inv.amount_due / 100, 0)
-  const hasOverdue = all.some((inv) => inv.due_date && inv.due_date < now)
-  const status = outstanding === 0 ? "complete" : hasOverdue ? "overdue" : "open"
+  const overdueAmount = all.reduce(
+    (sum, inv) => (inv.due_date && inv.due_date < now ? sum + inv.amount_due / 100 : sum),
+    0,
+  )
+  const status = outstanding === 0 ? "complete" : overdueAmount > 0 ? "overdue" : "open"
 
-  return { customerId, outstanding, status }
+  return { customerId, outstanding, overdueAmount, status }
 }
 
 /** Single overdue invoice, pre-trimmed to what the weekly-update block needs:

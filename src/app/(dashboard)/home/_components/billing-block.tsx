@@ -9,6 +9,10 @@ type BillingRow = {
   mondayItemId: string
   name: string
   outstanding: number
+  /** Subset of `outstanding` that has actually passed its due date. Drives the
+   *  red amount in the row; the rest of `outstanding` is "owed but not late
+   *  yet" and shows in muted next to it. */
+  overdueAmount: number
   status: "complete" | "open" | "overdue"
 }
 
@@ -79,31 +83,49 @@ export function BillingBlock({
         </div>
       </div>
       <ul className="divide-y divide-border/30">
-        {items.map((item) => (
-          <li key={item.mondayItemId}>
-            <Link
-              href={`/clients/${item.mondayItemId}?tab=billing`}
-              className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors group"
-            >
-              <span
-                className={
-                  "mt-0 inline-block h-1.5 w-1.5 rounded-full shrink-0 " +
-                  (item.status === "overdue" ? "bg-red-500" : "bg-amber-400")
-                }
-              />
-              <p className="text-sm font-medium truncate flex-1">{item.name}</p>
-              <span
-                className={
-                  "text-sm font-mono tabular-nums shrink-0 " +
-                  (item.status === "overdue" ? "text-red-400" : "text-muted-foreground")
-                }
+        {items.map((item) => {
+          // MRR-style stacked amount: red bold overdue on top, the total
+          // outstanding muted underneath so a row reads "€1.5k overdue · of
+          // €3k total" in one glance. When nothing is overdue, only the total
+          // shows (in muted) - the row is still on the list because there's
+          // an open invoice, just not a late one.
+          const hasOverdue = item.overdueAmount > 0
+          return (
+            <li key={item.mondayItemId}>
+              <Link
+                href={`/clients/${item.mondayItemId}?tab=billing`}
+                className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/30 transition-colors group"
               >
-                {formatCurrency(item.outstanding, locale)}
-              </span>
-              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors" />
-            </Link>
-          </li>
-        ))}
+                <span
+                  className={
+                    "mt-0 inline-block h-1.5 w-1.5 rounded-full shrink-0 " +
+                    (item.status === "overdue" ? "bg-red-500" : "bg-amber-400")
+                  }
+                />
+                <p className="text-sm font-medium truncate flex-1">{item.name}</p>
+                <div className="leading-tight text-right shrink-0">
+                  {hasOverdue ? (
+                    <>
+                      <p className="text-sm font-mono tabular-nums font-medium text-red-400">
+                        {formatCurrency(item.overdueAmount, locale)}
+                      </p>
+                      <p className="text-[10px] tabular-nums text-muted-foreground/60">
+                        {t("home.block.billing.of_total", locale, {
+                          total: formatCurrency(item.outstanding, locale),
+                        })}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm font-mono tabular-nums text-muted-foreground">
+                      {formatCurrency(item.outstanding, locale)}
+                    </p>
+                  )}
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/0 group-hover:text-muted-foreground/40 transition-colors" />
+              </Link>
+            </li>
+          )
+        })}
       </ul>
     </BlockShell>
   )
