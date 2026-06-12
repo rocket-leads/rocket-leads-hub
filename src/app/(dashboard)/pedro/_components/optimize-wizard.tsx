@@ -658,17 +658,7 @@ function SelectVariantsStep({
   onRetry: () => void
 }) {
   if (isGenerating) {
-    return (
-      <div className="rounded-2xl border border-border/60 bg-muted/20 p-10 flex flex-col items-center justify-center gap-3 text-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        <div className="font-heading font-semibold text-base">
-          Pedro genereert varianten…
-        </div>
-        <p className="text-xs text-muted-foreground max-w-md">
-          Lezen van source ad → angles + ad copy + image prompts. Duurt meestal 20-40 seconden bij dynamic creatives.
-        </p>
-      </div>
-    )
+    return <GeneratingProgress />
   }
   if (error) {
     return (
@@ -770,6 +760,84 @@ function ProposalSelectionCard({
           )
         })}
       </div>
+    </div>
+  )
+}
+
+/**
+ * GeneratingProgress - Roy 2026-06-12: vervangt de spinner door een
+ * progress bar die in stages oploopt, met statusteksten die meelopen
+ * met wat Pedro feitelijk doet. Geen echte server progress events -
+ * tijd-based simulatie - maar voelt veel sneller dan een statische
+ * spinner van 40 seconden.
+ */
+const GENERATE_STAGES: Array<{ label: string; durationMs: number }> = [
+  { label: "Pedro leest de source ad…", durationMs: 4000 },
+  { label: "Pedro analyseert de primary copy + headline…", durationMs: 5000 },
+  { label: "Pedro bekijkt branche-strategie + voice corpus…", durationMs: 6000 },
+  { label: "Pedro denkt: hoe behoud ik dezelfde DNA?", durationMs: 4000 },
+  { label: "Pedro schrijft Variant A (near-verbatim hercreatie)…", durationMs: 6000 },
+  { label: "Pedro schrijft Variant B (hook-twist iteratie)…", durationMs: 5000 },
+  { label: "Pedro schrijft Variant C (hook-twist iteratie)…", durationMs: 5000 },
+  { label: "Pedro polisht de output + spelling check…", durationMs: 5000 },
+]
+const TOTAL_DURATION_MS = GENERATE_STAGES.reduce((s, x) => s + x.durationMs, 0)
+
+function GeneratingProgress() {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    const start = Date.now()
+    const id = setInterval(() => {
+      setElapsed(Date.now() - start)
+    }, 200)
+    return () => clearInterval(id)
+  }, [])
+
+  // Determine current stage from cumulative duration.
+  let cum = 0
+  let currentStageIdx = 0
+  for (let i = 0; i < GENERATE_STAGES.length; i++) {
+    cum += GENERATE_STAGES[i].durationMs
+    if (elapsed < cum) {
+      currentStageIdx = i
+      break
+    }
+    currentStageIdx = i
+  }
+  // Cap progress at 95% so we never look "done" while waiting for the
+  // actual response; the parent will swap to results when fetch resolves.
+  const rawProgress = Math.min(1, elapsed / TOTAL_DURATION_MS)
+  const progress = Math.min(0.95, rawProgress)
+  const currentLabel = GENERATE_STAGES[currentStageIdx]?.label ?? GENERATE_STAGES[GENERATE_STAGES.length - 1].label
+  const isOvertime = elapsed > TOTAL_DURATION_MS
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-muted/20 p-8 space-y-5">
+      <div className="space-y-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="font-heading font-semibold text-base">
+            Pedro genereert varianten…
+          </div>
+          <div className="text-xs text-muted-foreground tabular-nums">
+            {Math.round(progress * 100)}%
+          </div>
+        </div>
+        <div className="h-2 rounded-full bg-muted/60 overflow-hidden">
+          <div
+            className="h-full bg-primary transition-[width] duration-300 ease-out"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 text-sm text-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+        <span className="leading-tight">{currentLabel}</span>
+      </div>
+      {isOvertime && (
+        <div className="text-[11px] text-muted-foreground/70 italic">
+          Duurt iets langer dan verwacht - hou de lijn open, Pedro is bijna klaar.
+        </div>
+      )}
     </div>
   )
 }
