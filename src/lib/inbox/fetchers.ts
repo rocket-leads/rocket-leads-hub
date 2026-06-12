@@ -1175,12 +1175,20 @@ export async function getChatThreadMessages(
 
   return ((data ?? []) as unknown as RawChatRow[]).map((r) => {
     const authorKind = (r.author_kind ?? null) as ChatMessage["authorKind"]
+    // Defensive HTML strip: ingest paths (webhook, polling cron) should
+    // already strip at write time, but legacy rows + email tickets
+    // (where the body is raw HTML with signature blocks + tracking
+    // wrappers) need a fallback so the chat bubble doesn't render
+    // <p><span ...> literally. Cheap on the 99% of rows that are
+    // already plain text - the `<` check skips the regex pass entirely.
+    const rawBody = (r.body ?? r.title ?? "").trim()
+    const body = rawBody.includes("<") ? stripHtml(rawBody).trim() : rawBody
     return {
       id: r.id,
       authorKind,
       authorName: rowAuthorName(r),
       authorExternal: r.author_external ?? null,
-      body: (r.body ?? r.title ?? "").trim(),
+      body,
       at: rowDisplayAt(r),
       source: r.source,
       status: r.status,

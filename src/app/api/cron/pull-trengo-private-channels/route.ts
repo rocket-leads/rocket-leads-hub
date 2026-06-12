@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { authorizeCronOrAdmin } from "@/lib/slack/cron-auth"
 import { startCronRun } from "@/lib/observability/cron-runs"
 import { getUserPlatformToken } from "@/lib/inbox/user-platform-tokens"
+import { stripHtml } from "@/lib/html"
 import {
   fetchUserTicketsForChannel,
   fetchUserTicketMessages,
@@ -143,11 +144,34 @@ function eventsFromMessageList(
     // but accept `body` so we don't drop legacy-shaped rows.
     const raw = (m.message ?? m.body ?? "").trim()
     if (!raw) continue
-    const body = raw
+    // Strip HTML at ingest so the body lands as readable text - email
+    // tickets carry raw HTML in `message`/`body` (signature blocks,
+    // marketing wrappers, the works) and the chat bubble's
+    // whitespace-pre-wrap rendering otherwise dumps "<p><span ...>"
+    // literally. The webhook already strips at write time (since
+    // 2026-05-05); polling cron now matches.
+    const body = stripHtml(raw).trim()
+    if (!body) continue
     const contact = ticket.contact
     const contactId = String(contact?.id ?? "")
     if (!contactId) continue
-    const authorKind: "rl_team" | "client" = m.author_type === "Contact" ? "client" : "rl_team"
+    // Direction comes from Trengo's `type` field (INBOUND / OUTBOUND /
+    // NOTE / INTERNAL_*) which is reliable across plans. `author_type`
+    // is a secondary signal - emails frequently arrive with it null,
+    // which used to flip every inbound mail to "rl_team" → purple bubble
+    // (Roy 2026-06-12 screenshot: Saxo email appeared as if sent BY us).
+    const messageType = (m.type ?? "").toUpperCase()
+    const inboundType =
+      messageType === "INBOUND" || messageType === "INBOUND_MESSAGE"
+    const outboundType =
+      messageType.startsWith("OUTBOUND") || messageType.startsWith("NOTE") || messageType.includes("INTERNAL")
+    const authorKind: "rl_team" | "client" = inboundType
+      ? "client"
+      : outboundType
+        ? "rl_team"
+        : m.author_type === "Contact"
+          ? "client"
+          : "rl_team"
     out.push({
       sourceMsgId: `trengo:msg:${m.id}`,
       channelId,
@@ -163,6 +187,17 @@ function eventsFromMessageList(
   return out
 }
 
+/**
+ * Returns the subset of source_msg_ids whose rows came from the live
+ * webhook (i.e. carry a non-null `raw` payload). Polling-cron rows
+ * leave `raw` null, so this lets the cron skip webhook-authoritative
+ * rows (don't blow away the AI classify_conf / source_ref / attachments
+ * Trengo's webhook captured) while still re-upserting earlier polling
+ * rows that may have been written with stale field shapes. Roy
+ * 2026-06-12: early polling-cron ingests stored raw HTML body and
+ * mis-attributed inbound mail to "rl_team" - the upsert path needs to
+ * be able to refresh those.
+ */
 async function findExistingMsgIds(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   sourceMsgIds: string[],
@@ -170,10 +205,14 @@ async function findExistingMsgIds(
   if (sourceMsgIds.length === 0) return new Set()
   const { data } = await supabase
     .from("inbox_events")
-    .select("source_msg_id")
+    .select("source_msg_id, raw")
     .eq("source", "trengo")
     .in("source_msg_id", sourceMsgIds)
-  return new Set((data ?? []).map((r) => r.source_msg_id as string))
+  return new Set(
+    (data ?? [])
+      .filter((r) => r.raw != null)
+      .map((r) => r.source_msg_id as string),
+  )
 }
 
 type InsertResult = { inserted: number; lastError: string | null }
@@ -227,22 +266,29 @@ async function insertEvents(
     }
   })
 
-  // Batch insert first - cheap when nothing conflicts. If anything
-  // fails (most likely an in-batch duplicate that slipped past the
-  // pre-dedupe), fall back to per-row inserts so one bad apple doesn't
-  // sink the whole batch.
-  const batchResult = await supabase.from("inbox_events").insert(rows)
+  // Upsert on (source, source_msg_id) so a re-run refreshes any rows
+  // ingested earlier with stale fields (early polling-cron runs had a
+  // bad author-kind heuristic + un-stripped HTML body, see the row
+  // shaping above). The unique index in migration 20240017 is exactly
+  // (source, source_msg_id) which is what supabase-js needs to merge.
+  // Per-row fallback kicks in if the batch upsert fails so one bad
+  // apple doesn't sink the whole batch.
+  const batchResult = await supabase
+    .from("inbox_events")
+    .upsert(rows, { onConflict: "source,source_msg_id" })
   if (!batchResult.error) return { inserted: rows.length, lastError: null }
 
   console.error(
-    "[pull-trengo-private-channels] batch insert failed, falling back to per-row:",
+    "[pull-trengo-private-channels] batch upsert failed, falling back to per-row:",
     batchResult.error.message,
   )
 
   let inserted = 0
   let lastError: string | null = batchResult.error.message
   for (const row of rows) {
-    const { error } = await supabase.from("inbox_events").insert(row)
+    const { error } = await supabase
+      .from("inbox_events")
+      .upsert(row, { onConflict: "source,source_msg_id" })
     if (error) {
       lastError = error.message
       continue
