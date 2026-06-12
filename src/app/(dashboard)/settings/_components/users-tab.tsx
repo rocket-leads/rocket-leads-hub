@@ -537,6 +537,7 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
                 return (
                   <tr
                     key={user.id}
+                    title={`Logs in with ${user.email}`}
                     className={
                       "transition-colors hover:bg-muted/30 " +
                       (isLast ? "" : "border-b border-border/40")
@@ -559,6 +560,16 @@ export function UsersTab({ users: initial, currentUserId }: Props) {
                         }
                         font="font-medium"
                       />
+                      {/* Sign-in email under the name — makes it easy to
+                          tell at a glance which Google account each user
+                          authenticates with (relevant when adding test
+                          users in the Google Cloud Console). */}
+                      <div
+                        className="mt-0.5 text-[11px] text-muted-foreground truncate"
+                        title={user.email}
+                      >
+                        {user.email}
+                      </div>
                     </UsersBodyCell>
 
                     <UsersBodyCell>
