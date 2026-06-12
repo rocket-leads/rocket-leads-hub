@@ -126,6 +126,14 @@ export function ChatPane({
     setSelectedInternal(next)
     if (dockedDetail) onSelectedChange?.(next)
   }
+  // "User just emptied the inbox via mark-read" intent. When true, the
+  // auto-select-first effect below stays its hand so the inbox-zero
+  // empty state can render. Cleared as soon as the user manually picks
+  // a thread, switches filter/scope, or a fresh thread arrives. Roy
+  // 2026-06-12: marking the current ticket read should advance to the
+  // next unread, and when there's no next unread leave the right pane
+  // empty with an "all caught up" message.
+  const inboxZeroRef = useRef(false)
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
   // Filter strip state - All / Unread / Read. Persisted per scope so the
   // Client Inbox and Team Inbox keep their own preferences (an AM might
@@ -214,8 +222,23 @@ export function ChatPane({
     setSelectedKeys(new Set())
   }
 
+  /** Walk the current thread list in display order (newest first) and
+   *  return the first thread that is still unread - skipping the one
+   *  we just marked. Used to auto-advance the open conversation after
+   *  the user hits the green ✓ mark-read button. */
+  function pickNextUnread(skipKey: string): ChatThreadSummary | null {
+    for (const t of threads) {
+      if (t.threadKey === skipKey) continue
+      if (t.unreadCount > 0) return t
+    }
+    return null
+  }
+
   /** Optimistically flip a thread's unread state and PATCH the server.
-   *  On failure we invalidate so the server's authoritative state wins. */
+   *  On failure we invalidate so the server's authoritative state wins.
+   *  When the user marks the currently-open thread as read, also advance
+   *  to the next unread thread (or land on the inbox-zero empty state
+   *  if there is none) - Roy 2026-06-12. */
   function markThread(thread: ChatThreadSummary, action: MarkAction) {
     const optimisticUnread = action === "mark_read" ? 0 : Math.max(thread.unreadCount, 1)
     queryClient.setQueryData<{ threads: ChatThreadSummary[] }>(
@@ -229,6 +252,23 @@ export function ChatPane({
         }
       },
     )
+
+    // Advance when the user closed the OPEN ticket via mark-read. Bulk
+    // marks and list-row clicks (if either is ever re-added) deliberately
+    // skip this so they don't yank the selection out from under the user.
+    if (
+      action === "mark_read" &&
+      selected?.threadKey === thread.threadKey
+    ) {
+      const next = pickNextUnread(thread.threadKey)
+      if (next) {
+        inboxZeroRef.current = false
+        setSelected(next)
+      } else {
+        inboxZeroRef.current = true
+        setSelected(null)
+      }
+    }
     fetch(`/api/inbox/threads/${encodeURIComponent(thread.threadKey)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -259,22 +299,36 @@ export function ChatPane({
    * marks it read via the per-row checkbox.
    */
   function selectAndMarkRead(thread: ChatThreadSummary) {
+    // Picking a row clears the inbox-zero intent - the user is back in
+    // an active conversation and the auto-select hands-off behaviour
+    // should resume on the next mount.
+    inboxZeroRef.current = false
     setSelected(thread)
   }
+
+  // Filter or scope change resets the inbox-zero intent - flipping to
+  // All conversations after emptying Unread should land on the first
+  // available thread, not the celebratory empty state.
+  useEffect(() => {
+    inboxZeroRef.current = false
+  }, [filter, scope])
 
   // Auto-select the first thread when the list loads, so the empty right
   // pane doesn't sit there waiting for a click. Selection only - no
   // mark-as-read side effect anymore (see comment on selectAndMarkRead).
   // Skip in docked mode - the parent owns whether/when to open a thread.
+  // Skip when the user has just cleared via mark-read (inbox zero state).
   useEffect(() => {
     if (dockedDetail) return
+    if (inboxZeroRef.current) return
     if (!selected && threads.length > 0) setSelected(threads[0])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, threads, dockedDetail])
 
   // Re-select the same thread by key when threads refresh, so the selection
-  // survives query invalidations.
+  // survives query invalidations. Same inbox-zero gate as above.
   useEffect(() => {
+    if (inboxZeroRef.current) return
     if (selected && !threads.some((t) => t.threadKey === selected.threadKey)) {
       setSelected(threads[0] ?? null)
     }
@@ -366,6 +420,7 @@ export function ChatPane({
             users={users}
             onMakeTaskFromMessage={onMakeTaskFromMessage}
             onMarkThread={markThread}
+            inboxZero={!selected && inboxZeroRef.current}
           />
         )}
       </div>
@@ -825,6 +880,7 @@ export function ThreadView({
   users,
   onMakeTaskFromMessage,
   onMarkThread,
+  inboxZero,
   mergedLeftEdge,
 }: {
   thread: ChatThreadSummary | null
@@ -835,10 +891,27 @@ export function ThreadView({
    *  (Roy 2026-06-12) instead of the list-row affordance it used to be -
    *  the action lives where the user is actually reading. */
   onMarkThread?: (thread: ChatThreadSummary, action: MarkAction) => void
+  /** True when the user just cleared the inbox via mark-read and no
+   *  more unread threads remain - swaps the neutral "Select a
+   *  conversation" placeholder for a celebratory all-caught-up state. */
+  inboxZero?: boolean
   mergedLeftEdge?: boolean
 }) {
   const wrapperRadius = mergedLeftEdge ? "rounded-r-xl rounded-l-none border-l-0" : "rounded-xl"
   if (!thread) {
+    if (inboxZero) {
+      return (
+        <div className={cn("h-full border border-border bg-card shadow-sm flex flex-col items-center justify-center gap-3 text-center px-6", wrapperRadius)}>
+          <div className="h-12 w-12 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <CheckCheck className="h-6 w-6" strokeWidth={2.5} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Je inbox is volledig up-to-date</p>
+            <p className="text-xs text-muted-foreground/70 mt-1">Alle tickets bijgewerkt. Lekker bezig.</p>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className={cn("h-full border border-border bg-card shadow-sm flex items-center justify-center text-sm text-muted-foreground/60", wrapperRadius)}>
         Select a conversation
