@@ -187,32 +187,47 @@ function eventsFromMessageList(
   return out
 }
 
+/** Per-existing-row state used by the upsert path. */
+type ExistingRowState = {
+  /** Webhook-origin row (carries a non-null `raw` payload). Webhook
+   *  rows are authoritative - the cron should leave them alone. */
+  isWebhook: boolean
+  /** Current status in the DB. Polling-cron upserts must preserve a
+   *  user's explicit `mark_read` action: when the user closed the
+   *  ticket via the green ✓ the row is `status='read'`. Without this
+   *  check the next cron cycle would flip it back to `unread` (every
+   *  inbound mail derives to `unread` from authorKind), undoing the
+   *  user's gesture. Roy 2026-06-12. */
+  status: string
+}
+
 /**
- * Returns the subset of source_msg_ids whose rows came from the live
- * webhook (i.e. carry a non-null `raw` payload). Polling-cron rows
- * leave `raw` null, so this lets the cron skip webhook-authoritative
- * rows (don't blow away the AI classify_conf / source_ref / attachments
- * Trengo's webhook captured) while still re-upserting earlier polling
- * rows that may have been written with stale field shapes. Roy
- * 2026-06-12: early polling-cron ingests stored raw HTML body and
- * mis-attributed inbound mail to "rl_team" - the upsert path needs to
- * be able to refresh those.
+ * Look up which of the candidate source_msg_ids already exist in
+ * inbox_events, together with the info the upsert path needs to make
+ * the right call: webhook-origin rows are skipped entirely (their
+ * `raw` payload + AI classify metadata is authoritative); polling-
+ * origin rows are eligible for refresh, but their existing `status`
+ * is preserved so the cron doesn't re-flip a user-marked-read ticket
+ * back to unread on the next cycle.
  */
-async function findExistingMsgIds(
+async function findExistingRows(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   sourceMsgIds: string[],
-): Promise<Set<string>> {
-  if (sourceMsgIds.length === 0) return new Set()
+): Promise<Map<string, ExistingRowState>> {
+  const out = new Map<string, ExistingRowState>()
+  if (sourceMsgIds.length === 0) return out
   const { data } = await supabase
     .from("inbox_events")
-    .select("source_msg_id, raw")
+    .select("source_msg_id, raw, status")
     .eq("source", "trengo")
     .in("source_msg_id", sourceMsgIds)
-  return new Set(
-    (data ?? [])
-      .filter((r) => r.raw != null)
-      .map((r) => r.source_msg_id as string),
-  )
+  for (const r of data ?? []) {
+    out.set(r.source_msg_id as string, {
+      isWebhook: r.raw != null,
+      status: (r.status as string) ?? "unread",
+    })
+  }
+  return out
 }
 
 type InsertResult = { inserted: number; lastError: string | null }
@@ -221,6 +236,7 @@ async function insertEvents(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   systemAuthorId: string,
   events: EventToInsert[],
+  existing: Map<string, ExistingRowState>,
 ): Promise<InsertResult> {
   if (events.length === 0) return { inserted: 0, lastError: null }
 
@@ -241,6 +257,19 @@ async function insertEvents(
   const rows = events.map((e) => {
     const titlePreview = e.body.length > 100 ? e.body.slice(0, 100) + "…" : e.body
     const bodyFull = e.body.length > 100 ? e.body : null
+    // Status policy:
+    //   - new row: derive from authorKind (inbound from client -> unread)
+    //   - existing polling row that the user already marked read: keep
+    //     'read' so the cron doesn't undo the user's gesture
+    //   - existing polling row still unread: keep deriving (so the
+    //     authorKind fix actually flips the row back to unread on the
+    //     stale-data refresh path)
+    const existingState = existing.get(e.sourceMsgId)
+    const derivedStatus = e.authorKind === "client" ? "unread" : "read"
+    const status =
+      existingState && existingState.status === "read"
+        ? "read"
+        : derivedStatus
     return {
       kind: "chat" as const,
       client_id: clientByContact.get(e.contactId)?.monday_item_id ?? "",
@@ -248,7 +277,7 @@ async function insertEvents(
       assignee_id: systemAuthorId,
       title: titlePreview || `Message from ${e.authorName}`,
       body: bodyFull,
-      status: e.authorKind === "client" ? "unread" : "read",
+      status,
       source: "trengo",
       source_thread: `trengo:ticket:${e.ticketId}`,
       source_msg_id: e.sourceMsgId,
@@ -418,19 +447,33 @@ export async function GET(req: NextRequest) {
                 e instanceof Error ? e.message : e,
               )
             }
+            // Throttle: ~10 req/sec ceiling so a single-user backfill
+            // (?since=168 walks ~150 fresh tickets on a busy private
+            // inbox) doesn't 429 the user's Trengo token. Roy
+            // 2026-06-12: the front-end started showing "Trengo token
+            // werkt niet (429): Too Many Attempts" after wide
+            // backfills. Steady-state cycle (60-min lookback, typically
+            // <10 fresh tickets per channel) shrugs this delay off.
+            await new Promise((r) => setTimeout(r, 100))
           }
           totalCandidates += candidates.length
 
           // Dedupe by source_msg_id - the webhook may have inserted
           // these for shared channels; private channels pass through
           // fresh on first run.
-          const existing = await findExistingMsgIds(
+          const existing = await findExistingRows(
             supabase,
             candidates.map((c) => c.sourceMsgId),
           )
-          totalDeduped += existing.size
-          const toInsert = candidates.filter((c) => !existing.has(c.sourceMsgId))
-          const result = await insertEvents(supabase, hq.id, toInsert)
+          // Skip webhook-origin rows (their `raw` payload + classify_conf
+          // is authoritative). Polling-origin rows + brand-new rows
+          // flow through the upsert with the status-preservation rules
+          // applied inside insertEvents.
+          totalDeduped += Array.from(existing.values()).filter((e) => e.isWebhook).length
+          const toInsert = candidates.filter(
+            (c) => !existing.get(c.sourceMsgId)?.isWebhook,
+          )
+          const result = await insertEvents(supabase, hq.id, toInsert, existing)
           totalEventsInserted += result.inserted
           if (result.lastError) lastInsertError = result.lastError
         } catch (e) {
