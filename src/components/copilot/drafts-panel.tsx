@@ -35,6 +35,7 @@ type UserRow = { id: string; name: string | null; email: string; role: string | 
  */
 export function DraftsPanel({
   onParentOpenChange,
+  pendingInputs = [],
 }: {
   /** Called when the panel needs to take over the modal surface (entering
    *  the editor) or hand it back (user clicked back). Lets the Copilot
@@ -42,6 +43,11 @@ export function DraftsPanel({
    *  user backs out. Optional - omit when this panel is rendered outside
    *  a parent dialog. */
   onParentOpenChange?: (open: boolean) => void
+  /** Optimistic in-flight queue submissions from the parent. Each entry
+   *  renders as a "Queuing…" placeholder row at the top of the list so the
+   *  user sees their command land without the input locking up. Cleared
+   *  by the parent when the server responds. */
+  pendingInputs?: Array<{ tempId: string; text: string }>
 }) {
   const router = useRouter()
   const [editingDraft, setEditingDraft] = useState<CopilotDraft | null>(null)
@@ -104,9 +110,11 @@ export function DraftsPanel({
     await completeDraft.mutateAsync({ id: draft.id, status: "dismissed" })
   }
 
-  // Empty state: don't render the panel at all when there's nothing to
-  // show. Keeps the command bar tight when the user has no backlog.
-  if (drafts.length === 0) return null
+  // Roy 2026-06-12: the panel is always rendered, even when empty, so the
+  // dialog has consistent structure and the optimistic Queuing… placeholder
+  // has somewhere to land. The header counter folds in pending submissions
+  // so "1 queuing" shows up the moment the user hits Enter.
+  const isEmpty = drafts.length === 0 && pendingInputs.length === 0
 
   return (
     <>
@@ -119,10 +127,14 @@ export function DraftsPanel({
             </span>
           </div>
           <span className="text-[10px] tabular-nums text-muted-foreground/70">
+            {pendingInputs.length > 0 && `${pendingInputs.length} queuing · `}
             {actionable.length} ready · {pending.length} pending
           </span>
         </div>
         <div className="max-h-[22rem] overflow-y-auto p-2 space-y-2">
+          {pendingInputs.map((p) => (
+            <QueueingPlaceholderRow key={p.tempId} input={p.text} />
+          ))}
           {drafts.map((d) => (
             <DraftRow
               key={d.id}
@@ -132,6 +144,14 @@ export function DraftsPanel({
               onDismiss={dismiss}
             />
           ))}
+          {isEmpty && (
+            <div className="px-3 py-8 text-center">
+              <Sparkles className="h-5 w-5 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-xs text-muted-foreground/70">
+                Nog geen drafts. Type een command hierboven en hij verschijnt hier.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -163,6 +183,35 @@ export function useCopilotDraftsBadge(): number {
   const { data } = useCopilotDrafts()
   const drafts = data?.drafts ?? []
   return drafts.filter((d) => d.status === "ready" || d.status === "failed").length
+}
+
+/** Optimistic placeholder shown the moment the user submits a command,
+ *  until the server's pending row arrives via the next drafts refetch.
+ *  Visually matches the Processing state so the swap is seamless. */
+function QueueingPlaceholderRow({ input }: { input: string }) {
+  return (
+    <div className="relative rounded-lg border border-border bg-card overflow-hidden opacity-90">
+      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500" />
+      <div className="pl-4 pr-3 py-3 flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={KIND_CHIP} title="AI Co-pilot draft">
+              <Sparkles className="h-3 w-3" />
+              AI Draft
+            </span>
+            <StatusPill tone="warning">Queuing…</StatusPill>
+          </div>
+          <div className="text-[15px] font-medium text-foreground mt-1.5 line-clamp-2">
+            {input}
+          </div>
+          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground/80">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Versturen…</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Row card - mirrors inbox-list-row.tsx 1:1 ─────────────────────────────

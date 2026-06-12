@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Sparkles, Loader2, ArrowRight } from "lucide-react"
+import { Sparkles, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { AutoTextarea } from "@/components/ui/auto-textarea"
@@ -35,6 +35,14 @@ export function CommandBar() {
 
   const [open, setOpen] = useState(false)
   const [input, setInput] = useState("")
+  // Optimistic queue list: each submit pushes one entry until the server
+  // returns, then it gets popped (the real draft from the refetched query
+  // takes its place). Lets Roy fire several commands back-to-back without
+  // waiting on the previous round-trip - the textarea stays open and each
+  // command surfaces as a "Queuing…" placeholder in the drafts panel.
+  const [pendingInputs, setPendingInputs] = useState<
+    Array<{ tempId: string; text: string }>
+  >([])
   const queueCommand = useQueueCommand()
 
   // ⌘J / Ctrl+J opens from anywhere; Esc closes.
@@ -56,22 +64,25 @@ export function CommandBar() {
   }, [open])
 
   const submit = useCallback(async () => {
-    if (!input.trim() || queueCommand.isPending) return
+    if (!input.trim()) return
     const userInput = input.trim()
     const sp = searchParams ? new URLSearchParams(searchParams.toString()) : null
     const context = buildPageContext(pathname ?? "/", sp)
 
-    // Roy 2026-06-12: dialog stays open after submit. The user watches the
-    // freshly-queued draft appear in the Drafts panel below as "Processing"
-    // and flips to Ready in-place, so they can approve right there without
-    // reopening anything. Clear the input so a second command can be
-    // dictated immediately.
+    // Roy 2026-06-12: dialog stays open and the textarea stays unlocked
+    // during the round-trip - the "Queuing…" indicator appears as a
+    // placeholder row in the drafts panel instead of disabling the form.
+    // Lets the user dictate multiple commands back-to-back.
+    const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     setInput("")
+    setPendingInputs((prev) => [...prev, { tempId, text: userInput }])
 
     try {
       await queueCommand.mutateAsync({ input: userInput, context })
     } catch (e) {
       console.error("Queue failed:", e instanceof Error ? e.message : "unknown error")
+    } finally {
+      setPendingInputs((prev) => prev.filter((p) => p.tempId !== tempId))
     }
   }, [input, queueCommand, pathname, searchParams])
 
@@ -126,30 +137,23 @@ export function CommandBar() {
               minRows={3}
               maxRows={10}
               autoFocus
-              disabled={queueCommand.isPending}
             />
             <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>
                 <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">Enter</kbd> to queue ·{" "}
                 <kbd className="rounded bg-muted px-1 py-0.5 text-[10px]">Shift+Enter</kbd> for newline
               </span>
-              <Button onClick={submit} disabled={!input.trim() || queueCommand.isPending} size="sm">
-                {queueCommand.isPending ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Queuing…
-                  </>
-                ) : (
-                  <>
-                    Queue <ArrowRight className="h-3.5 w-3.5" />
-                  </>
-                )}
+              <Button onClick={submit} disabled={!input.trim()} size="sm">
+                Queue <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </div>
-            {/* Drafts panel - drafts queue lives directly below the input
-                so the user watches their submission appear as Processing
-                and flip to Ready in-place. Renders nothing when the queue
-                is empty so the dialog stays compact for new users. */}
-            <DraftsPanel onParentOpenChange={setOpen} />
+            {/* Drafts panel - always rendered (Roy 2026-06-12) so the user
+                sees the panel even when empty, and the in-flight Queuing…
+                indicator surfaces here instead of locking the input. */}
+            <DraftsPanel
+              onParentOpenChange={setOpen}
+              pendingInputs={pendingInputs}
+            />
           </div>
         </DialogContent>
       </Dialog>
