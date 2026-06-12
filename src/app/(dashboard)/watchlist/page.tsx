@@ -1,4 +1,6 @@
 import { Suspense } from "react"
+import Link from "next/link"
+import { AlertTriangle, ArrowRight } from "lucide-react"
 import { fetchBothBoards } from "@/lib/integrations/monday"
 import { readCache } from "@/lib/cache"
 import { WatchListDashboard } from "./_components/watchlist-dashboard"
@@ -31,7 +33,25 @@ async function WatchListData() {
     "monday_boards",
     60 * 60 * 1000,
   )
-  const data = cached ?? (await fetchBothBoards())
+
+  // Roy 2026-06-12: graceful fallback when Monday token is missing. Was
+  // throwing "Monday token not configured" + crashing the whole watchlist
+  // page. Now we surface a clear CTA to Settings → API Tokens so the AM
+  // can fix it without seeing a Next.js error overlay.
+  let data: { onboarding: MondayClient[]; current: MondayClient[] }
+  if (cached) {
+    data = cached
+  } else {
+    try {
+      data = await fetchBothBoards()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Monday fetch failed"
+      if (/monday token|not configured|api token/i.test(msg)) {
+        return <MissingTokenState message={msg} />
+      }
+      throw e
+    }
+  }
 
   let current = data.current
   if (session?.user?.id && session.user.role) {
@@ -60,6 +80,31 @@ async function WatchListData() {
       userName={session?.user?.name ?? "there"}
       currentUser={currentUser}
     />
+  )
+}
+
+function MissingTokenState({ message }: { message: string }) {
+  return (
+    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 space-y-4">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <h2 className="font-heading text-lg font-semibold">Monday API token ontbreekt</h2>
+          <p className="text-sm text-muted-foreground">
+            De Watch List leest klanten + statussen uit Monday, dus zonder
+            geconfigureerde token kunnen we niets tonen. Voeg de token toe in Settings.
+          </p>
+          <p className="text-[11px] text-muted-foreground/70 font-mono">{message}</p>
+        </div>
+      </div>
+      <Link
+        href="/settings?tab=api-tokens"
+        className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
+      >
+        Open Settings → API Tokens
+        <ArrowRight className="h-3.5 w-3.5" />
+      </Link>
+    </div>
   )
 }
 
