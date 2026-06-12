@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Sparkles,
   ImageIcon,
+  ChevronDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AdPicker } from "./ad-picker"
@@ -25,8 +26,11 @@ import {
 } from "./creative-refresh"
 import { ImageSourcesPicker } from "./image-sources-picker"
 import { PushToMetaModal } from "./push-to-meta-modal"
+import { InlineEditField } from "./inline-edit-field"
+import { VariantImagePanel } from "./variant-image-panel"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
+import { Copy } from "lucide-react"
 
 /**
  * OptimizeWizard - Roy 2026-06-11 v3 reorg. Vervangt de tab-based UX
@@ -1338,21 +1342,296 @@ function EditCopyStep({
           </div>
         </div>
       )}
-      <div className="space-y-4">
-        {selectedPairs.map(({ proposalIndex, proposal, variant }) => (
-          <VariantCard
+      <div className="space-y-6">
+        {selectedPairs.map(({ proposalIndex, variant }) => (
+          <EditCopyVariantCard
             key={`${proposalIndex}-${variant.adName}`}
             variant={variant}
-            clientId={clientId}
-            refreshId={result.refreshId}
-            proposalIndex={proposalIndex}
-            proposalAngle={proposal.preserve.angle}
-            hidePush
-            hideImagePanel
           />
         ))}
       </div>
     </div>
+  )
+}
+
+/**
+ * EditCopyVariantCard - Roy 2026-06-12 v9: cleane, luxe layout voor
+ * de copy-editing step. Volledig click-to-edit. Whitespace-pre-wrap
+ * voor primary copy zodat Pedro's paragraaf-structuur (\n\n) zichtbaar
+ * blijft. Sectie-headers in een consistente subtle hierarchy. Bron-DNA
+ * info (bron-hook, behouden zinsdelen) staat onderaan, niet in het
+ * gezicht van de CM wanneer hij wil editen.
+ */
+function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
+  const variantId = variant.variantId ?? null
+  const editable = !!variantId
+
+  const [headline, setHeadline] = useState(variant.headline ?? "")
+  const [primaryCopy, setPrimaryCopy] = useState(variant.primaryCopySnippet)
+  const [altHeadlines, setAltHeadlines] = useState<string[]>(
+    variant.altHeadlines && variant.altHeadlines.length > 0
+      ? variant.altHeadlines
+      : ["", ""],
+  )
+  const [altPrimaryTexts, setAltPrimaryTexts] = useState<string[]>(
+    variant.altPrimaryTexts && variant.altPrimaryTexts.length > 0
+      ? variant.altPrimaryTexts
+      : ["", ""],
+  )
+  const [linkDescription, setLinkDescription] = useState(variant.linkDescription ?? "")
+  const [copied, setCopied] = useState(false)
+
+  const patchVariant = useCallback(
+    async (patch: Record<string, unknown>): Promise<void> => {
+      if (!variantId) {
+        throw new Error("Variant id ontbreekt - regenereer in Stap 1.")
+      }
+      const res = await fetch(`/api/pedro/variants/${variantId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || json.error) {
+        throw new Error(json.error || `HTTP ${res.status}`)
+      }
+    },
+    [variantId],
+  )
+
+  const altHeadlineSlots = Array.from(
+    { length: Math.max(2, altHeadlines.length) },
+    (_, i) => altHeadlines[i] ?? "",
+  )
+  const altPrimarySlots = Array.from(
+    { length: Math.max(2, altPrimaryTexts.length) },
+    (_, i) => altPrimaryTexts[i] ?? "",
+  )
+
+  const copyFullPackage = useCallback(() => {
+    const lines = [
+      `Ad name: ${variant.adName}`,
+      ``,
+      `Tekst op afbeelding:`,
+      headline,
+      ``,
+      `Primary copy:`,
+      primaryCopy,
+    ]
+    void navigator.clipboard.writeText(lines.join("\n"))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }, [variant.adName, headline, primaryCopy])
+
+  return (
+    <article className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_3px_0_rgb(0_0_0_/_0.04)] overflow-hidden">
+      {/* Header */}
+      <header className="px-6 pt-6 pb-4 flex items-start justify-between gap-4 border-b border-border/40">
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-violet-600 dark:text-violet-400 font-semibold mb-1">
+            Variant
+          </div>
+          <h3 className="font-heading text-xl font-semibold tracking-tight leading-tight">
+            {variant.label}
+          </h3>
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-mono rounded-md border border-border bg-muted/40 px-2 py-1 text-muted-foreground">
+            <Copy className="h-3 w-3" />
+            {variant.adName}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={copyFullPackage}
+          className={cn(
+            "shrink-0 inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md text-xs font-medium transition-colors",
+            copied
+              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30"
+              : "border border-border hover:bg-accent",
+          )}
+        >
+          <Copy className="h-3.5 w-3.5" />
+          {copied ? "Gekopieerd" : "Kopieer alles"}
+        </button>
+      </header>
+
+      <div className="px-6 py-6 space-y-7">
+        {/* Tekst op afbeelding - de meest zichtbare claim */}
+        <section className="space-y-2">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
+            Tekst op afbeelding
+          </div>
+          <InlineEditField
+            value={headline}
+            onSave={async (next) => {
+              await patchVariant({ headline: next })
+              setHeadline(next)
+            }}
+            variant="single"
+            placeholder="(leeg - klik om te bewerken)"
+            maxLength={80}
+            disabled={!editable}
+            className="text-lg font-bold text-violet-600 dark:text-violet-400 leading-snug"
+          />
+        </section>
+
+        {/* Primary copy - whitespace-pre-wrap is afgehandeld in InlineEditField */}
+        <section className="space-y-2">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
+            Primary copy
+          </div>
+          <InlineEditField
+            value={primaryCopy}
+            onSave={async (next) => {
+              await patchVariant({ primaryCopySnippet: next })
+              setPrimaryCopy(next)
+            }}
+            variant="multi"
+            placeholder="(leeg - klik om te bewerken)"
+            maxLength={2000}
+            minRows={8}
+            disabled={!editable}
+            className="text-[15px] leading-[1.6] text-foreground"
+          />
+        </section>
+
+        {/* Dynamic creative pool - alt headlines + alt primary texts */}
+        <section className="space-y-4 rounded-xl border border-border/40 bg-muted/20 p-5">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+            <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
+              Meta dynamic creative pool · 3 headlines × 3 primary texts
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-medium">
+              Alternatieve headlines
+            </div>
+            <div className="space-y-2">
+              {altHeadlineSlots.map((value, idx) => (
+                <InlineEditField
+                  key={idx}
+                  value={value}
+                  onSave={async (next) => {
+                    const updated = [...altHeadlines]
+                    while (updated.length <= idx) updated.push("")
+                    updated[idx] = next
+                    await patchVariant({ altHeadlines: updated })
+                    setAltHeadlines(updated)
+                  }}
+                  variant="single"
+                  placeholder={`Alt headline ${idx + 1}`}
+                  maxLength={80}
+                  allowEmpty
+                  disabled={!editable}
+                  className="text-sm"
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-medium">
+              Alternatieve primary texts
+            </div>
+            <div className="space-y-3">
+              {altPrimarySlots.map((value, idx) => (
+                <InlineEditField
+                  key={idx}
+                  value={value}
+                  onSave={async (next) => {
+                    const updated = [...altPrimaryTexts]
+                    while (updated.length <= idx) updated.push("")
+                    updated[idx] = next
+                    await patchVariant({ altPrimaryTexts: updated })
+                    setAltPrimaryTexts(updated)
+                  }}
+                  variant="multi"
+                  placeholder={`Alt primary text ${idx + 1}`}
+                  maxLength={2000}
+                  minRows={6}
+                  allowEmpty
+                  disabled={!editable}
+                  className="text-[14px] leading-[1.55]"
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-medium">
+              Link description (optioneel)
+            </div>
+            <InlineEditField
+              value={linkDescription}
+              onSave={async (next) => {
+                await patchVariant({ linkDescription: next })
+                setLinkDescription(next)
+              }}
+              variant="single"
+              placeholder="Korte ondersteunende regel onder de headline"
+              maxLength={200}
+              allowEmpty
+              disabled={!editable}
+              className="text-sm"
+            />
+          </div>
+        </section>
+
+        {/* Source-DNA evidence - blijft beschikbaar maar visueel rustig */}
+        {(variant.sourceHookQuote || (variant.phrasesReused && variant.phrasesReused.length > 0)) && (
+          <details className="group rounded-lg border border-border/40 bg-muted/10">
+            <summary className="cursor-pointer list-none px-4 py-2.5 flex items-center justify-between text-[11px] text-muted-foreground hover:bg-muted/30 transition-colors">
+              <span className="inline-flex items-center gap-1.5">
+                <Sparkles className="h-3 w-3" />
+                Source-DNA bewijs
+                {variant.phrasesReused && variant.phrasesReused.length > 0 && (
+                  <span className="text-[10px] tabular-nums">({variant.phrasesReused.length} zinsdelen)</span>
+                )}
+              </span>
+              <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="px-4 pb-4 pt-1 space-y-3 border-t border-border/40">
+              {variant.sourceHookQuote && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground font-medium mb-1">
+                    Bron-hook uit source ad
+                  </div>
+                  <div className="text-[13px] italic text-foreground">
+                    &ldquo;{variant.sourceHookQuote}&rdquo;
+                  </div>
+                </div>
+              )}
+              {variant.phrasesReused && variant.phrasesReused.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground font-medium mb-1.5">
+                    Behoudt uit source
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {variant.phrasesReused.map((p, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center px-2 py-0.5 rounded text-[11px] bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20"
+                      >
+                        &laquo;{p}&raquo;
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </details>
+        )}
+      </div>
+
+      {variant.why && (
+        <footer className="px-6 py-3 border-t border-border/40 bg-muted/15">
+          <div className="text-[11px] text-muted-foreground italic leading-relaxed">
+            <span className="font-medium not-italic text-foreground">Waarom:</span> {variant.why}
+          </div>
+        </footer>
+      )}
+    </article>
   )
 }
 
@@ -1398,8 +1677,30 @@ function GenerateCreativesStep({
       </div>
     )
   }
+
+  // Roy 2026-06-12 v9: Stap 4 zit visueel apart van Stap 3. Wanneer
+  // alle geselecteerde varianten nog in-flight zijn EN nog geen image
+  // resultaat hebben → tonen we de full-page generating progress (zelfde
+  // chrome als Stap 2's GeneratingProgress, zo voelt het als één samen-
+  // hangend AI moment). Pas wanneer er ten minste één resultaat is
+  // (success of fail), schakelen we om naar de per-variant image-only view.
+  const allInFlight = selectedPairs.every(({ variant }) => {
+    const vid = variant.variantId ?? ""
+    return vid && inFlightVariantIds.has(vid)
+  })
+  const anyResults = selectedPairs.some(({ variant }) => {
+    const vid = variant.variantId ?? ""
+    return vid && resultsByVariant[vid] !== undefined
+  })
+  const showFullProgress = allInFlight && !anyResults
+
   const totalInFlight = inFlightVariantIds.size
   const totalFailed = Object.values(resultsByVariant).filter((r) => !r.ok).length
+
+  if (showFullProgress) {
+    return <GeneratingImagesProgress variantCount={selectedPairs.length} />
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
@@ -1415,18 +1716,16 @@ function GenerateCreativesStep({
             {totalInFlight > 0 ? (
               <span className="inline-flex items-center gap-1.5">
                 <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                Pedro genereert images voor{" "}
-                <span className="font-medium text-foreground">{totalInFlight}</span>{" "}
-                {totalInFlight === 1 ? "variant" : "varianten"}…
+                {totalInFlight} {totalInFlight === 1 ? "variant" : "varianten"} nog bezig…
               </span>
             ) : totalFailed > 0 ? (
               <span className="text-amber-700 dark:text-amber-400">
-                {totalFailed} {totalFailed === 1 ? "variant" : "varianten"} faalde - klik regen of upload zelf
+                {totalFailed} {totalFailed === 1 ? "variant" : "varianten"} faalde - regen of upload zelf
               </span>
             ) : (
               <span>
                 <span className="font-medium text-foreground">{selectedPairs.length} varianten</span>{" "}
-                klaar. Itereer of klik door naar Push.
+                klaar. Itereer of door naar Push.
               </span>
             )}
           </div>
@@ -1442,56 +1741,165 @@ function GenerateCreativesStep({
               : "Door naar Push naar Meta"
           }
         >
-          Naar Push naar Meta
-          <ArrowRight className="h-3.5 w-3.5" />
+          <Megaphone className="h-3.5 w-3.5" />
+          Push naar Meta
         </button>
       </div>
       <ImageSourcesPicker clientId={clientId} />
       <div className="space-y-4">
-        {selectedPairs.map(({ proposalIndex, proposal, variant }) => {
+        {selectedPairs.map(({ proposalIndex, variant }) => {
           const vid = variant.variantId ?? ""
           const inFlight = vid ? inFlightVariantIds.has(vid) : false
           const genResult = vid ? resultsByVariant[vid] : undefined
           return (
-            <div key={`${proposalIndex}-${variant.adName}`} className="space-y-2">
-              {inFlight && (
-                <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground inline-flex items-center gap-2">
-                  <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
-                  <span>
-                    Pedro genereert 3 images voor{" "}
-                    <span className="font-medium">{variant.label}</span>… (5-25s)
-                  </span>
-                </div>
-              )}
-              {genResult && !genResult.ok && vid && (
-                <div className="rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-400 flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-medium">Genereren mislukt voor {variant.label}</div>
-                    <div className="text-[11px] opacity-80 whitespace-pre-line">{genResult.error}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onRetryVariant(vid)}
-                    className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium rounded-md bg-red-500/10 hover:bg-red-500/20 text-red-700 dark:text-red-400 transition-colors"
-                  >
-                    <Sparkles className="h-3 w-3" />
-                    Probeer opnieuw
-                  </button>
-                </div>
-              )}
-              <VariantCard
-                variant={variant}
-                clientId={clientId}
-                refreshId={result.refreshId}
-                proposalIndex={proposalIndex}
-                proposalAngle={proposal.preserve.angle}
-                hidePush
-              />
-            </div>
+            <GenerateCreativeImageCard
+              key={`${proposalIndex}-${variant.adName}`}
+              variant={variant}
+              clientId={clientId}
+              inFlight={inFlight}
+              error={genResult && !genResult.ok ? (genResult.error ?? null) : null}
+              onRetry={vid ? () => onRetryVariant(vid) : null}
+            />
           )
         })}
       </div>
     </div>
+  )
+}
+
+/**
+ * GeneratingImagesProgress - same UX als Stap 2's GeneratingProgress,
+ * voor de overgang tussen Stap 3 (edit copy) en Stap 4 (de definitieve
+ * images). Asymptotische curve naar 99% zodat de bar nooit stilstaat
+ * ongeacht of Gemini in 8 of 35 seconden klaar is.
+ */
+const IMAGE_GEN_STAGES: Array<{ label: string; weight: number }> = [
+  { label: "Pedro analyseert je copy + brand identity…", weight: 0.10 },
+  { label: "Pedro selecteert reference photos uit Drive…", weight: 0.15 },
+  { label: "Pedro schrijft de visuele brief voor Gemini…", weight: 0.12 },
+  { label: "Gemini genereert image A (close-up van het subject)…", weight: 0.20 },
+  { label: "Gemini genereert image B (lifestyle / setting)…", weight: 0.18 },
+  { label: "Gemini genereert image C (alternatieve hoek)…", weight: 0.15 },
+  { label: "Images uploaden + signed URLs aanmaken…", weight: 0.10 },
+]
+
+function GeneratingImagesProgress({ variantCount }: { variantCount: number }) {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    const start = Date.now()
+    const id = setInterval(() => {
+      setElapsed(Date.now() - start)
+    }, 200)
+    return () => clearInterval(id)
+  }, [])
+  const progress = 0.99 * (1 - Math.exp(-elapsed / 28000))
+  let cumulativeWeight = 0
+  let currentStageIdx = IMAGE_GEN_STAGES.length - 1
+  for (let i = 0; i < IMAGE_GEN_STAGES.length; i++) {
+    cumulativeWeight += IMAGE_GEN_STAGES[i].weight
+    if (progress < cumulativeWeight) {
+      currentStageIdx = i
+      break
+    }
+  }
+  const currentLabel = IMAGE_GEN_STAGES[currentStageIdx].label
+  return (
+    <div className="rounded-2xl border border-border/60 bg-muted/20 p-10 space-y-6">
+      <div className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <div className="font-heading font-semibold text-lg">
+            Pedro genereert creatives…
+          </div>
+          <div className="text-xs text-muted-foreground tabular-nums">
+            {Math.round(progress * 100)}%
+          </div>
+        </div>
+        <div className="h-2 rounded-full bg-muted/60 overflow-hidden">
+          <div
+            className="h-full bg-primary transition-[width] duration-300 ease-out"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
+        <div className="text-xs text-muted-foreground">
+          3 images per variant · {variantCount}{" "}
+          {variantCount === 1 ? "variant" : "varianten"} via Gemini Nano Banana Pro
+        </div>
+      </div>
+      <div className="flex items-center gap-2.5 text-sm text-foreground">
+        <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+        <span className="leading-tight">{currentLabel}</span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * GenerateCreativeImageCard - per variant op Stap 4: alleen images
+ * (3 slots via VariantImagePanel) + één regel context bovenaan zodat
+ * de CM weet welke variant hij ziet. Geen copy fields meer - die
+ * leven op Stap 3.
+ */
+function GenerateCreativeImageCard({
+  variant,
+  clientId,
+  inFlight,
+  error,
+  onRetry,
+}: {
+  variant: CreativeVariant
+  clientId: string
+  inFlight: boolean
+  error: string | null
+  onRetry: (() => void) | null
+}) {
+  const variantId = variant.variantId ?? null
+  return (
+    <article className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_3px_0_rgb(0_0_0_/_0.04)] overflow-hidden">
+      <header className="px-6 pt-5 pb-4 border-b border-border/40">
+        <div className="text-[10px] uppercase tracking-[0.16em] text-violet-600 dark:text-violet-400 font-semibold mb-1">
+          Variant
+        </div>
+        <h3 className="font-heading text-lg font-semibold tracking-tight leading-tight">
+          {variant.label}
+        </h3>
+        {variant.headline && (
+          <div className="mt-2 text-sm text-violet-600 dark:text-violet-400 font-medium">
+            {variant.headline}
+          </div>
+        )}
+      </header>
+      {inFlight && (
+        <div className="mx-6 mt-4 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-foreground inline-flex items-center gap-2">
+          <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+          Pedro genereert 3 images…
+        </div>
+      )}
+      {error && onRetry && (
+        <div className="mx-6 mt-4 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-xs text-red-700 dark:text-red-400 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="font-medium">Genereren mislukt</div>
+            <div className="text-[11px] opacity-80 whitespace-pre-line">{error}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-medium rounded-md bg-red-500/10 hover:bg-red-500/20 text-red-700 dark:text-red-400 transition-colors"
+          >
+            <Sparkles className="h-3 w-3" />
+            Probeer opnieuw
+          </button>
+        </div>
+      )}
+      <div className="px-6 py-5">
+        <VariantImagePanel
+          variantId={variantId}
+          clientId={clientId}
+          adName={variant.adName}
+          initialImagePrompt={variant.image?.imagePrompt ?? variant.imagePrompt ?? null}
+          initialHasImage={variant.image?.hasImage ?? false}
+        />
+      </div>
+    </article>
   )
 }
 
