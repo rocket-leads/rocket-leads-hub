@@ -6,7 +6,6 @@ import {
   Calendar,
   Check,
   Loader2,
-  Pencil,
   Sparkles,
   Trash2,
 } from "lucide-react"
@@ -253,15 +252,6 @@ function DraftRow({
                   onApprove(draft)
                 }}
                 icon={<Check className="h-4 w-4" />}
-              />
-              <ActionIconButton
-                tone="muted"
-                label="Edit"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onEdit(draft)
-                }}
-                icon={<Pencil className="h-4 w-4" />}
               />
               <ActionIconButton
                 tone="danger"
