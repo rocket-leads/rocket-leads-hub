@@ -963,6 +963,27 @@ function layoutDayEvents(
 
 const TASK_DRAG_MIME = "application/x-rl-task-id"
 
+/** Y-pixel of the half-hour slot the cursor is currently inside.
+ *  Floor-based, matches the visible half-hour grid lines so the
+ *  ghost preview lines up cell-by-cell as the user drags. */
+function snapYToHalfHour(clientY: number, rect: DOMRect): number {
+  const y = Math.max(0, Math.min(rect.height, clientY - rect.top))
+  const halfHourPx = HOUR_HEIGHT_PX / 2
+  return Math.floor(y / halfHourPx) * halfHourPx
+}
+
+/** Converts a snapped pixel-top back into a wall-clock Date on `day`. */
+function topToTime(top: number, day: Date): Date {
+  const minutesFromGridStart = (top / HOUR_HEIGHT_PX) * 60
+  const totalMinutes = HOUR_START * 60 + Math.round(minutesFromGridStart)
+  const when = new Date(day)
+  when.setHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0)
+  return when
+}
+
+/** Used by the click-to-create-event flow (not drag). 15-minute snap
+ *  feels natural for "I want to type out a 9:15 standup" — keeps the
+ *  finer resolution for events, which are not constrained to 30 min. */
 function pointerToTime(
   e: { clientY: number },
   rect: DOMRect,
@@ -999,7 +1020,11 @@ function DayColumn({
     () => layoutDayEvents(events, dayStart),
     [events, dayStart],
   )
-  const [dragOver, setDragOver] = useState(false)
+  // previewTop = pixel-top of the half-hour cell the cursor is in,
+  // or null when nothing is being dragged over this column. Updated
+  // on every dragOver tick so the ghost block tracks the cursor.
+  const [previewTop, setPreviewTop] = useState<number | null>(null)
+  const halfHourPx = HOUR_HEIGHT_PX / 2
 
   // Click on an empty slot in the column → open the create dialog
   // pre-seeded to the slot the user clicked. The event blocks have
@@ -1011,21 +1036,34 @@ function DayColumn({
   }
 
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    if (Array.from(e.dataTransfer.types).includes(TASK_DRAG_MIME)) {
-      e.preventDefault()
-      e.dataTransfer.dropEffect = "move"
-      if (!dragOver) setDragOver(true)
+    if (!Array.from(e.dataTransfer.types).includes(TASK_DRAG_MIME)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+    const rect = e.currentTarget.getBoundingClientRect()
+    const snapped = snapYToHalfHour(e.clientY, rect)
+    if (snapped !== previewTop) setPreviewTop(snapped)
+  }
+  const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    // Only clear when the cursor truly leaves the column box —
+    // dragleave also fires when crossing into a child element.
+    const rect = e.currentTarget.getBoundingClientRect()
+    if (
+      e.clientX < rect.left ||
+      e.clientX >= rect.right ||
+      e.clientY < rect.top ||
+      e.clientY >= rect.bottom
+    ) {
+      setPreviewTop(null)
     }
   }
-  const onDragLeave = () => setDragOver(false)
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     const taskId = e.dataTransfer.getData(TASK_DRAG_MIME)
-    setDragOver(false)
+    setPreviewTop(null)
     if (!taskId) return
     e.preventDefault()
     const rect = e.currentTarget.getBoundingClientRect()
-    const when = pointerToTime(e, rect, day)
-    onRescheduleTask(taskId, when)
+    const snapped = snapYToHalfHour(e.clientY, rect)
+    onRescheduleTask(taskId, topToTime(snapped, day))
   }
 
   return (
@@ -1033,7 +1071,6 @@ function DayColumn({
       className={cn(
         "relative border-r border-border last:border-r-0 cursor-pointer",
         isToday(day) && "bg-primary/5",
-        dragOver && "bg-amber-500/10 ring-2 ring-inset ring-amber-500/40",
       )}
       style={{ height: TOTAL_HOURS * HOUR_HEIGHT_PX }}
       onClick={onColumnClick}
@@ -1041,14 +1078,36 @@ function DayColumn({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      {/* Hour grid lines */}
+      {/* Hour grid lines (full) + half-hour grid lines (subtle dashed).
+          The half-hour ticks make the 30-min snap target visible during
+          drag so the user can see exactly where the ghost will land. */}
       {Array.from({ length: TOTAL_HOURS }, (_, i) => (
         <div
-          key={i}
+          key={`hr-${i}`}
           className="absolute left-0 right-0 border-b border-border/60 pointer-events-none"
           style={{ top: (i + 1) * HOUR_HEIGHT_PX }}
         />
       ))}
+      {Array.from({ length: TOTAL_HOURS }, (_, i) => (
+        <div
+          key={`hh-${i}`}
+          className="absolute left-0 right-0 border-b border-dashed border-border/35 pointer-events-none"
+          style={{ top: i * HOUR_HEIGHT_PX + halfHourPx }}
+        />
+      ))}
+
+      {/* Drag-snap ghost — the half-hour cell the cursor is currently in.
+          Reads as "drop here". Updates live on every dragOver tick. */}
+      {previewTop !== null && (
+        <div
+          className="absolute left-[50%] right-1 z-20 rounded-md border-l-2 border-amber-500 bg-amber-500/30 pointer-events-none"
+          style={{ top: previewTop, height: halfHourPx }}
+        >
+          <div className="px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300 tabular-nums">
+            {format(topToTime(previewTop, day), "HH:mm")}
+          </div>
+        </div>
+      )}
 
       {/* Now-indicator (red line at current time, only on today's column) */}
       {isToday(day) && <NowIndicator />}
