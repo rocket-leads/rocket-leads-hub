@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Sparkles,
+  ImageIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { AdPicker } from "./ad-picker"
@@ -1130,55 +1131,23 @@ function PushMetaStep({
         </div>
       </div>
       <div className="space-y-3">
-        {selectedPairs.map(({ proposalIndex, proposal, variant }) => {
-          const variantId = variant.variantId ?? ""
-          return (
-            <div
-              key={`${proposalIndex}-${variant.adName}`}
-              className="rounded-2xl border border-border/60 bg-card p-4 space-y-3"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 space-y-1">
-                  <div className="font-heading font-semibold text-sm">
-                    {variant.label}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground font-mono">
-                    {variant.adName}
-                  </div>
-                  {variant.headline && (
-                    <div className="text-xs text-violet-600 dark:text-violet-400 font-medium">
-                      {variant.headline}
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  disabled={!variantId}
-                  onClick={() =>
-                    setOpenPushFor({
-                      proposalIndex,
-                      variantId,
-                      variantLabel: variant.label,
-                      adName: variant.adName,
-                      angle: proposal.preserve.angle,
-                      headline: variant.headline ?? "",
-                      proposal,
-                    })
-                  }
-                  className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
-                  title={
-                    !variantId
-                      ? "Variant heeft geen variantId - regenereer in Stap 2"
-                      : "Open push instellingen voor deze variant"
-                  }
-                >
-                  <Megaphone className="h-3.5 w-3.5" />
-                  Push instellingen
-                </button>
-              </div>
-            </div>
-          )
-        })}
+        {selectedPairs.map(({ proposalIndex, proposal, variant }) => (
+          <PushVariantReviewCard
+            key={`${proposalIndex}-${variant.adName}`}
+            variant={variant}
+            onOpenPush={() =>
+              setOpenPushFor({
+                proposalIndex,
+                variantId: variant.variantId ?? "",
+                variantLabel: variant.label,
+                adName: variant.adName,
+                angle: proposal.preserve.angle,
+                headline: variant.headline ?? "",
+                proposal,
+              })
+            }
+          />
+        ))}
       </div>
       {openPushFor && (
         <PushToMetaModal
@@ -1200,6 +1169,207 @@ function PushMetaStep({
           ]}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * PushVariantReviewCard - Roy 2026-06-12. Laatste check vóór de
+ * Push-instellingen modal: toont per variant de 3 gegenereerde
+ * Gemini-afbeeldingen + headline + primary copy. CM verifieert in één
+ * oogopslag dat alles klopt voordat hij budget invult en pushed.
+ *
+ * Slot data komt uit GET /api/pedro/variants/[id]/image. Signed URLs
+ * vervallen na ±1u; we re-fetchen niet automatisch want de CM zit
+ * meestal binnen die window. Bij refresh van de pagina worden ze
+ * opnieuw opgehaald.
+ */
+type PushSlot = {
+  position: number
+  hasImage: boolean
+  signedUrl: string | null
+}
+
+function PushVariantReviewCard({
+  variant,
+  onOpenPush,
+}: {
+  variant: CreativeVariant
+  onOpenPush: () => void
+}) {
+  const variantId = variant.variantId ?? ""
+  const [slots, setSlots] = useState<PushSlot[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!variantId) {
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    fetch(`/api/pedro/variants/${variantId}/image`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (cancelled) return
+        if (json.error) {
+          setError(json.error)
+          return
+        }
+        const rawSlots = Array.isArray(json.slots) ? json.slots : []
+        setSlots(
+          rawSlots.map((s: { position: number; hasImage: boolean; signedUrl: string | null }) => ({
+            position: s.position,
+            hasImage: !!s.hasImage,
+            signedUrl: s.signedUrl ?? null,
+          })),
+        )
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : "Kon images niet laden")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [variantId])
+
+  const filledCount = slots.filter((s) => s.hasImage).length
+  // Render 3 slot-tiles regardless of how many came back, so the CM
+  // ziet meteen wanneer er minder dan 3 zijn gegenereerd.
+  const tiles: Array<PushSlot> = Array.from({ length: 3 }, (_, i) => {
+    const found = slots.find((s) => s.position === i)
+    return found ?? { position: i, hasImage: false, signedUrl: null }
+  })
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-4 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <div className="font-heading font-semibold text-sm">{variant.label}</div>
+          <div className="text-[11px] text-muted-foreground font-mono truncate">
+            {variant.adName}
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={!variantId}
+          onClick={onOpenPush}
+          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-opacity"
+          title={
+            !variantId
+              ? "Variant heeft geen variantId - regenereer in Stap 2"
+              : "Open push instellingen + budget voor deze variant"
+          }
+        >
+          <Megaphone className="h-3.5 w-3.5" />
+          Push instellingen + budget
+        </button>
+      </div>
+
+      {/* 3-image preview - Roy 2026-06-12: laatste check vóór push.
+          Geen image = waarschuwing zodat CM terug kan naar Stap 3. */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold inline-flex items-center gap-1">
+            <ImageIcon className="h-3 w-3" />
+            Images ({filledCount}/3)
+          </div>
+          {filledCount === 0 && (
+            <div className="text-[11px] text-amber-700 dark:text-amber-400 inline-flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              Nog geen images - ga terug naar Stap 3
+            </div>
+          )}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {tiles.map((slot) => (
+            <div
+              key={slot.position}
+              className="aspect-square rounded-md border border-border/60 bg-muted/30 overflow-hidden flex items-center justify-center"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : slot.hasImage && slot.signedUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={slot.signedUrl}
+                  alt={`Slot ${slot.position + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="text-[10px] text-muted-foreground/70 text-center px-2">
+                  Slot {String.fromCharCode(65 + slot.position)} leeg
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {error && (
+          <div className="mt-2 text-[11px] text-red-600 dark:text-red-400 inline-flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3" />
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* Headline (tekst op afbeelding) */}
+      {variant.headline && (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
+            Tekst op afbeelding (headline)
+          </div>
+          <div className="text-sm font-bold text-violet-600 dark:text-violet-400 leading-snug">
+            {variant.headline}
+          </div>
+        </div>
+      )}
+
+      {/* Primary copy - volledig zichtbaar zodat CM kan dubbelchecken
+          dat de body klopt voordat hij naar Meta pushed. */}
+      {variant.primaryCopySnippet && (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
+            Primary copy
+          </div>
+          <div className="text-xs text-foreground whitespace-pre-wrap leading-relaxed bg-muted/30 rounded-md px-3 py-2 border border-border/40">
+            {variant.primaryCopySnippet}
+          </div>
+        </div>
+      )}
+
+      {/* Headline (Meta veld) - de korte tekst onder de afbeelding. */}
+      {variant.altHeadlines && variant.altHeadlines.filter((h) => h.trim()).length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
+            Headline (Meta veld)
+          </div>
+          <div className="text-xs text-foreground space-y-0.5">
+            {variant.altHeadlines.filter((h) => h.trim()).slice(0, 2).map((h, i) => (
+              <div key={i}>{h}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Link description */}
+      {variant.linkDescription && (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-1">
+            Link description
+          </div>
+          <div className="text-xs text-muted-foreground">{variant.linkDescription}</div>
+        </div>
+      )}
+
+      <div className="text-[11px] text-muted-foreground italic pt-2 border-t border-border/40">
+        Budget wordt ingevuld in de modal die opent bij &ldquo;Push instellingen + budget&rdquo;.
+      </div>
     </div>
   )
 }
