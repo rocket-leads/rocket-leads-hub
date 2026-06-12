@@ -80,7 +80,22 @@ export type TrengoConversation = {
   subject: string | null
   channel: TrengoChannel | null
   contact: { id: number; name: string; email?: string } | null
-  latest_message: { id: number; message: string; type: string; created_at: string } | null
+  /** Trengo's /tickets list endpoint returns activity timestamps, NOT a
+   *  `latest_message` object. The shape they document on GET /tickets:
+   *    - latest_message_at         "YYYY-MM-DD HH:mm:ss" (any direction)
+   *    - latest_received_message_at "YYYY-MM-DD HH:mm:ss" (inbound only)
+   *  Both omitted on tickets with no message activity yet. We pull these
+   *  to bound the polling-cron's per-ticket /messages fetch to tickets
+   *  that actually moved in the lookback window. */
+  latest_message_at: string | null
+  latest_received_message_at: string | null
+  messages_count: number | null
+  /** @deprecated Some Hub callers historically read `c.latest_message`
+   *  on /tickets results. The endpoint doesn't populate it - those code
+   *  paths fell silent (preview never rendered). Kept optional so the
+   *  type still compiles for legacy readers; new code should call
+   *  `fetchMessages(ticketId)` or rely on `latest_message_at`. */
+  latest_message?: { id: number; message: string; type: string; created_at: string } | null
   created_at: string
   closed_at: string | null
   assignee: { name: string } | null
@@ -88,7 +103,12 @@ export type TrengoConversation = {
 
 export type TrengoMessage = {
   id: number
-  body: string
+  /** Trengo's `GET /tickets/{id}/messages` returns the text in `message`,
+   *  not `body` (confirmed via probe). Some plans / legacy callers used
+   *  `body` so we keep both optional - readers should prefer
+   *  `message ?? body`. */
+  body?: string
+  message?: string
   author_type: "User" | "Contact" | string
   author: { id: number; name: string } | null
   created_at: string

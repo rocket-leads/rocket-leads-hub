@@ -102,38 +102,27 @@ type EventToInsert = {
   createdAtSrc: string
 }
 
-function inboundFromLatestMessage(
-  channelId: number,
-  ticket: TrengoConversation,
-  cutoffMs: number,
-): EventToInsert | null {
-  const latest = ticket.latest_message
-  if (!latest) return null
-  const createdMs = new Date(latest.created_at).getTime()
-  if (!Number.isFinite(createdMs) || createdMs < cutoffMs) return null
-  const body = (latest.message ?? "").trim()
-  if (!body) return null
+/** Trengo's parseable timestamp format is "YYYY-MM-DD HH:mm:ss" in UTC.
+ *  Native Date parsing handles ISO but not the space-separated form on
+ *  all engines, so we coerce explicitly. */
+function parseTrengoTimestamp(s: string | null): number | null {
+  if (!s) return null
+  const iso = s.includes("T") ? s : s.replace(" ", "T") + "Z"
+  const ms = new Date(iso).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
 
-  const contact = ticket.contact
-  const contactId = String(contact?.id ?? "")
-  if (!contactId) return null
-
-  // Trengo's latest_message doesn't carry author_type. Use the contact
-  // name as the inbound author - cron only ingests INBOUND-shaped rows
-  // anyway since outbound replies originate from the Hub composer itself
-  // and already write to inbox_events via the existing send path.
-  const contactName = contact?.name ?? null
-  return {
-    sourceMsgId: `trengo:msg:${latest.id}`,
-    channelId,
-    ticketId: ticket.id,
-    contactId,
-    contactName,
-    body,
-    authorKind: "client",
-    authorName: contactName ?? "Unknown",
-    createdAtSrc: latest.created_at,
-  }
+/** True when the ticket has had message activity inside the lookback
+ *  window per Trengo's `latest_message_at` / `latest_received_message_at`
+ *  bookkeeping. We prefer the inbound timestamp (we ingest inbound rows)
+ *  but fall back to the any-direction one so tickets with only outbound
+ *  activity still surface for de-duped inserts. */
+function ticketIsFresh(ticket: TrengoConversation, cutoffMs: number): boolean {
+  const received = parseTrengoTimestamp(ticket.latest_received_message_at)
+  if (received != null && received >= cutoffMs) return true
+  const anyDirection = parseTrengoTimestamp(ticket.latest_message_at)
+  if (anyDirection != null && anyDirection >= cutoffMs) return true
+  return false
 }
 
 function eventsFromMessageList(
@@ -144,10 +133,17 @@ function eventsFromMessageList(
 ): EventToInsert[] {
   const out: EventToInsert[] = []
   for (const m of messages) {
-    const createdMs = new Date(m.created_at).getTime()
-    if (!Number.isFinite(createdMs) || createdMs < cutoffMs) continue
-    const body = (m.body ?? "").trim()
-    if (!body) continue
+    // Same timestamp normalization as the ticket-level check - Trengo's
+    // "YYYY-MM-DD HH:mm:ss" doesn't parse uniformly without coercing
+    // to ISO+Z first.
+    const createdMs = parseTrengoTimestamp(m.created_at)
+    if (createdMs == null || createdMs < cutoffMs) continue
+    // Trengo's /messages endpoint returns the text in `message` for
+    // some plans and `body` for others. Prefer `message` (current API)
+    // but accept `body` so we don't drop legacy-shaped rows.
+    const raw = (m.message ?? m.body ?? "").trim()
+    if (!raw) continue
+    const body = raw
     const contact = ticket.contact
     const contactId = String(contact?.id ?? "")
     if (!contactId) continue
@@ -180,12 +176,14 @@ async function findExistingMsgIds(
   return new Set((data ?? []).map((r) => r.source_msg_id as string))
 }
 
+type InsertResult = { inserted: number; lastError: string | null }
+
 async function insertEvents(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   systemAuthorId: string,
   events: EventToInsert[],
-): Promise<number> {
-  if (events.length === 0) return 0
+): Promise<InsertResult> {
+  if (events.length === 0) return { inserted: 0, lastError: null }
 
   // Look up linked clients for the contact ids in this batch. Same shape
   // the webhook uses - so listChatThreads etc. group these rows under
@@ -220,18 +218,38 @@ async function insertEvents(
       author_kind: e.authorKind,
       author_external: e.authorKind === "client" ? e.contactId : "",
       author_name_cached: e.authorName,
-      classify_method: "polling_backfill",
+      // Allowed values per migration 20240017's CHECK constraint are
+      // 'ai' | 'manual' | NULL. Polling-cron ingest isn't AI-classified
+      // (we don't infer kind, we just mirror the row) so use 'manual'.
+      classify_method: "manual",
       created_at_src: e.createdAtSrc,
       trengo_channel_id: e.channelId,
     }
   })
 
-  const { error } = await supabase.from("inbox_events").insert(rows)
-  if (error) {
-    console.error("[pull-trengo-private-channels] insert failed:", error.message)
-    return 0
+  // Batch insert first - cheap when nothing conflicts. If anything
+  // fails (most likely an in-batch duplicate that slipped past the
+  // pre-dedupe), fall back to per-row inserts so one bad apple doesn't
+  // sink the whole batch.
+  const batchResult = await supabase.from("inbox_events").insert(rows)
+  if (!batchResult.error) return { inserted: rows.length, lastError: null }
+
+  console.error(
+    "[pull-trengo-private-channels] batch insert failed, falling back to per-row:",
+    batchResult.error.message,
+  )
+
+  let inserted = 0
+  let lastError: string | null = batchResult.error.message
+  for (const row of rows) {
+    const { error } = await supabase.from("inbox_events").insert(row)
+    if (error) {
+      lastError = error.message
+      continue
+    }
+    inserted++
   }
-  return rows.length
+  return { inserted, lastError }
 }
 
 export async function GET(req: NextRequest) {
@@ -242,7 +260,19 @@ export async function GET(req: NextRequest) {
 
   const tracker = startCronRun("pull-trengo-private-channels")
   const startedAt = Date.now()
-  const cutoffMs = startedAt - LOOKBACK_MINUTES * 60 * 1000
+
+  // `?since=<hours>` widens the lookback for one-shot manual triggers
+  // (initial backfill, troubleshooting a missed cycle). Default stays at
+  // the 60-min window since that's all the scheduled run needs. Capped
+  // at 30 days because dedupe gets quadratic-ish on huge result sets and
+  // anything older than a month is irrelevant for the chat inbox.
+  const sinceHoursParam = req.nextUrl.searchParams.get("since")
+  const sinceHours =
+    sinceHoursParam && Number.isFinite(Number(sinceHoursParam))
+      ? Math.min(Math.max(Number(sinceHoursParam), 1), 24 * 30)
+      : null
+  const lookbackMinutes = sinceHours != null ? sinceHours * 60 : LOOKBACK_MINUTES
+  const cutoffMs = startedAt - lookbackMinutes * 60 * 1000
 
   try {
     const supabase = await createAdminClient()
@@ -262,7 +292,25 @@ export async function GET(req: NextRequest) {
     let totalChannelsScanned = 0
     let totalTicketsSeen = 0
     let totalEventsInserted = 0
+    let totalFreshTickets = 0
+    let totalCandidates = 0
+    let totalDeduped = 0
+    let lastInsertError: string | null = null
     const perUserErrors: Array<{ userId: string; email: string; error: string }> = []
+
+    // ?debug=1 returns the keys + a sample of the first ticket seen so
+    // we can diagnose unexpected Trengo response shapes without poking
+    // around in SQL. Strictly diagnostic - leaves the database alone
+    // when set.
+    const debug = req.nextUrl.searchParams.get("debug") === "1"
+    type DebugSample = {
+      userEmail: string
+      channelId: number
+      ticketCount: number
+      firstTicketKeys: string[]
+      firstTicketSample: Record<string, unknown>
+    }
+    const debugSamples: DebugSample[] = []
 
     for (const user of users) {
       const token = await getUserPlatformToken(user.id, "trengo")
@@ -277,59 +325,68 @@ export async function GET(req: NextRequest) {
           })
           totalTicketsSeen += tickets.length
 
-          // First pass: collect just the latest_message-derived rows for
-          // tickets that updated in the lookback window.
-          const candidates: EventToInsert[] = []
-          for (const ticket of tickets) {
-            const single = inboundFromLatestMessage(channelId, ticket, cutoffMs)
-            if (single) candidates.push(single)
+          if (debug && tickets.length > 0 && debugSamples.length < 6) {
+            const first = tickets[0] as unknown as Record<string, unknown>
+            debugSamples.push({
+              userEmail: user.email,
+              channelId,
+              ticketCount: tickets.length,
+              firstTicketKeys: Object.keys(first),
+              firstTicketSample: Object.fromEntries(
+                Object.entries(first).filter(
+                  ([k]) =>
+                    k === "id" ||
+                    k === "status" ||
+                    k === "subject" ||
+                    k.includes("latest") ||
+                    k.includes("message") ||
+                    k === "created_at" ||
+                    k === "updated_at",
+                ),
+              ),
+            })
           }
 
-          // Dedupe by source_msg_id - the webhook may have inserted these
-          // for shared channels; private channels will pass through fresh.
+          // Trengo's /tickets list endpoint returns activity timestamps
+          // (`latest_message_at` / `latest_received_message_at`), not a
+          // `latest_message` object. So we can't derive an event from
+          // the ticket payload alone - we have to fetch /messages for
+          // each ticket that moved in the lookback window. Filtering on
+          // the activity stamps caps the API budget to "tickets that
+          // actually changed" instead of "first page of every channel".
+          const freshTickets = tickets.filter((t) => ticketIsFresh(t, cutoffMs))
+          totalFreshTickets += freshTickets.length
+          const candidates: EventToInsert[] = []
+          for (const ticket of freshTickets) {
+            try {
+              const messages = await fetchUserTicketMessages({
+                userToken: token,
+                ticketId: ticket.id,
+              })
+              candidates.push(
+                ...eventsFromMessageList(channelId, ticket, messages, cutoffMs),
+              )
+            } catch (e) {
+              console.error(
+                `[pull-trengo-private-channels] /messages failed for ticket ${ticket.id}:`,
+                e instanceof Error ? e.message : e,
+              )
+            }
+          }
+          totalCandidates += candidates.length
+
+          // Dedupe by source_msg_id - the webhook may have inserted
+          // these for shared channels; private channels pass through
+          // fresh on first run.
           const existing = await findExistingMsgIds(
             supabase,
             candidates.map((c) => c.sourceMsgId),
           )
-          const fresh = candidates.filter((c) => !existing.has(c.sourceMsgId))
-
-          // Per-ticket follow-up: pull the full message list only when the
-          // latest-message ingest told us this ticket is in scope AND the
-          // ticket is genuinely fresh (not deduped). Keeps the API budget
-          // bounded - max one /messages call per *new* ticket per cycle.
-          const expanded: EventToInsert[] = []
-          for (const freshEvent of fresh) {
-            try {
-              const messages = await fetchUserTicketMessages({
-                userToken: token,
-                ticketId: freshEvent.ticketId,
-              })
-              const fromList = eventsFromMessageList(channelId, tickets.find((t) => t.id === freshEvent.ticketId)!, messages, cutoffMs)
-              if (fromList.length > 0) {
-                expanded.push(...fromList)
-              } else {
-                expanded.push(freshEvent)
-              }
-            } catch (e) {
-              // Fall back to the latest_message row if the per-ticket
-              // expand fails - better than dropping the conversation.
-              console.error(
-                `[pull-trengo-private-channels] /messages failed for ticket ${freshEvent.ticketId}:`,
-                e instanceof Error ? e.message : e,
-              )
-              expanded.push(freshEvent)
-            }
-          }
-
-          // Final dedupe against existing rows after the per-ticket
-          // expand may have surfaced extra message ids.
-          const existing2 = await findExistingMsgIds(
-            supabase,
-            expanded.map((c) => c.sourceMsgId),
-          )
-          const toInsert = expanded.filter((c) => !existing2.has(c.sourceMsgId))
-          const inserted = await insertEvents(supabase, hq.id, toInsert)
-          totalEventsInserted += inserted
+          totalDeduped += existing.size
+          const toInsert = candidates.filter((c) => !existing.has(c.sourceMsgId))
+          const result = await insertEvents(supabase, hq.id, toInsert)
+          totalEventsInserted += result.inserted
+          if (result.lastError) lastInsertError = result.lastError
         } catch (e) {
           perUserErrors.push({
             userId: user.id,
@@ -344,9 +401,13 @@ export async function GET(req: NextRequest) {
       users: users.length,
       channelsScanned: totalChannelsScanned,
       ticketsSeen: totalTicketsSeen,
+      freshTickets: totalFreshTickets,
+      candidates: totalCandidates,
+      deduped: totalDeduped,
       eventsInserted: totalEventsInserted,
+      lastInsertError,
       perUserErrorCount: perUserErrors.length,
-      lookbackMinutes: LOOKBACK_MINUTES,
+      lookbackMinutes,
       durationMs: Date.now() - startedAt,
     }
 
@@ -364,7 +425,7 @@ export async function GET(req: NextRequest) {
       await tracker.ok(metrics)
     }
 
-    return NextResponse.json({ ok: true, ...metrics })
+    return NextResponse.json({ ok: true, ...metrics, ...(debug ? { debugSamples } : {}) })
   } catch (e) {
     await tracker.fail(e)
     return NextResponse.json(

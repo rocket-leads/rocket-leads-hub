@@ -863,10 +863,10 @@ async function generatePositiveSignalMessage(args: {
         if (collected.length >= 30) break
       }
       const fromRL = collected
-        .filter((m) => m.author_type === "User" && m.body?.trim())
+        .filter((m) => m.author_type === "User" && (m.message ?? m.body)?.trim())
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 10)
-      toneSamples = fromRL.map((m) => m.body.trim()).join("\n---\n")
+      toneSamples = fromRL.map((m) => (m.message ?? m.body ?? "").trim()).join("\n---\n")
     } catch {
       // proceed without tone samples
     }

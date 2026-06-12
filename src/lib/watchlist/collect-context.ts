@@ -142,7 +142,7 @@ export async function collectTrengoContext(client: MondayClient): Promise<string
 
       const msgLines: string[] = []
       for (const msg of recentMessages) {
-        const body = stripHtml(msg.body).slice(0, 200)
+        const body = stripHtml(msg.message ?? msg.body ?? "").slice(0, 200)
         if (!body) continue
 
         const who = msg.author_type === "Contact" ? "CLIENT" : "RL"
