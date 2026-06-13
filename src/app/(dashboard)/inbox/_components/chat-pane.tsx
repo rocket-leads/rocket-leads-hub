@@ -637,58 +637,132 @@ function ThreadRow({
           {isChecked && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
         </button>
 
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2 mb-0.5">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <SourceIcon thread={thread} />
-              <span
-                className={cn(
-                  "text-sm truncate",
-                  isUnread ? "font-semibold text-foreground" : "font-medium text-foreground/90",
-                )}
-              >
-                {thread.primaryName}
-              </span>
-              {/* No ChannelBadge here - the SourceIcon already encodes the
-                  channel (WhatsApp brand, email mail icon, Slack purple,
-                  …) so repeating the channel name as a text pill was
-                  pure visual noise. Roy: dubbel-op. */}
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {/* Roy 2026-06-12: list-row mark-read affordance moved to
-                  the open-conversation header (ThreadView). The row
-                  keeps just the unread-count chip as the at-a-glance
-                  cue; the action itself lives where the user is
-                  actually reading the conversation. */}
-              {thread.unreadCount > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums">
-                  {thread.unreadCount}
-                </span>
-              )}
-            </div>
-          </div>
-          {/* Subtitle line: only show the client name when the thread is
-              actually linked. Previously fell back to `channelName` which
-              is just the channel owner ("Roy Vosters") for our setup -
-              repeats info the AM already knows and clutters the row. */}
-          {thread.clientName && (
-            <p className="text-[10px] text-muted-foreground/70 truncate mb-1">
-              {thread.clientName}
-            </p>
-          )}
-          <p
+        {/* Row content branches by channel kind. Email rows lead with
+            the SUBJECT (Roy 2026-06-13: "subject is wat de mail is, niet
+            de body-preview die voor marketing-mails toch alleen Google
+            Fonts CSS is"); WhatsApp/Slack rows keep the sender-name +
+            body-preview format that makes sense for short chat
+            messages. */}
+        {thread.channelKind === "email" ? (
+          <EmailListRowBody thread={thread} isUnread={isUnread} />
+        ) : (
+          <ChatListRowBody thread={thread} isUnread={isUnread} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Email-thread row body. Layout:
+ *   [SourceIcon] [Sender name · time]                              [unread chip]
+ *   [Subject in bold / larger]
+ *   [client name OR latest-preview]
+ *
+ * Subject is the dominant signal so it sits on its own line at a
+ * slightly heavier weight than the rest of the row. Unread rows get
+ * `font-bold` on the subject + `text-foreground` on the sender so
+ * they stand out against the read tail of the inbox.
+ */
+function EmailListRowBody({
+  thread,
+  isUnread,
+}: {
+  thread: ChatThreadSummary
+  isUnread: boolean
+}) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <SourceIcon thread={thread} />
+          <span
             className={cn(
-              "text-[11px] truncate leading-snug",
-              isUnread ? "text-foreground/80" : "text-muted-foreground/80",
+              "text-xs truncate",
+              isUnread ? "text-foreground font-semibold" : "text-muted-foreground/80",
             )}
           >
-            {thread.latestPreview || <span className="italic">No preview</span>}
-          </p>
-          <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-            {fmtRelative(thread.latestAt)}
-          </p>
+            {thread.primaryName}
+          </span>
+          <span className="text-[10px] text-muted-foreground/60 shrink-0">
+            · {fmtRelative(thread.latestAt)}
+          </span>
         </div>
+        {thread.unreadCount > 0 && (
+          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums shrink-0">
+            {thread.unreadCount}
+          </span>
+        )}
       </div>
+      <p
+        className={cn(
+          "text-[13px] leading-snug truncate",
+          isUnread
+            ? "font-bold text-foreground"
+            : "font-medium text-foreground/85",
+        )}
+      >
+        {thread.latestSubject || thread.latestPreview || (
+          <span className="italic text-muted-foreground/60">No subject</span>
+        )}
+      </p>
+      {thread.clientName && (
+        <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">
+          {thread.clientName}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * WhatsApp / Slack row body. Sender name leads (short messages don't
+ * need a subject line) followed by a one-line body preview - the same
+ * format the rest of the inbox already uses for chat threads.
+ */
+function ChatListRowBody({
+  thread,
+  isUnread,
+}: {
+  thread: ChatThreadSummary
+  isUnread: boolean
+}) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-start justify-between gap-2 mb-0.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <SourceIcon thread={thread} />
+          <span
+            className={cn(
+              "text-sm truncate",
+              isUnread ? "font-bold text-foreground" : "font-medium text-foreground/85",
+            )}
+          >
+            {thread.primaryName}
+          </span>
+        </div>
+        {thread.unreadCount > 0 && (
+          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums">
+            {thread.unreadCount}
+          </span>
+        )}
+      </div>
+      {thread.clientName && (
+        <p className="text-[10px] text-muted-foreground/70 truncate mb-1">
+          {thread.clientName}
+        </p>
+      )}
+      <p
+        className={cn(
+          "text-[11px] truncate leading-snug",
+          isUnread ? "text-foreground/85" : "text-muted-foreground/80",
+        )}
+      >
+        {thread.latestPreview || <span className="italic">No preview</span>}
+      </p>
+      <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+        {fmtRelative(thread.latestAt)}
+      </p>
     </div>
   )
 }
@@ -1611,27 +1685,12 @@ function ThreadMessages({
             No messages in this thread.
           </p>
         ) : (
-          messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              msg={msg}
-              isEmailThread={isEmail}
-              onMakeTask={
-                onMakeTaskFromMessage && thread.clientId
-                  ? () => {
-                      const preview = msg.body.trim().replace(/\s+/g, " ")
-                      const title =
-                        preview.length > 80 ? preview.slice(0, 77) + "…" : preview || "Follow up"
-                      onMakeTaskFromMessage({
-                        clientId: thread.clientId!,
-                        title,
-                        body: preview.length > 80 ? msg.body : undefined,
-                      })
-                    }
-                  : undefined
-              }
-            />
-          ))
+          <ThreadMessagesList
+            messages={messages}
+            isEmailThread={isEmail}
+            clientId={thread.clientId}
+            onMakeTaskFromMessage={onMakeTaskFromMessage}
+          />
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -2739,6 +2798,133 @@ function AttachmentChip({
       </span>
       <DismissButton size="xs" onClick={onRemove} label="Remove attachment" stopPropagation={false} />
     </div>
+  )
+}
+
+/**
+ * Renders the messages inside a single thread. For non-email threads
+ * (WhatsApp / Slack) it's just a flat list - those messages are tiny
+ * so showing all of them is fine. For email threads it adopts the
+ * Gmail collapse pattern (Roy 2026-06-13):
+ *
+ *   - 1-3 messages       → all expanded
+ *   - 4 messages         → first expanded, last 2 expanded, middle
+ *                          collapsed into a single button
+ *   - 5+ messages        → first expanded, last 2 expanded, middle
+ *                          messages (2 ... N-2) hidden behind a
+ *                          "Show N earlier messages" button
+ *
+ * The button reveals the middle stack and stays out of the way after.
+ * Internal team notes (yellow) always render fully so the AM doesn't
+ * miss a flag inside a long quoted thread.
+ */
+function ThreadMessagesList({
+  messages,
+  isEmailThread,
+  clientId,
+  onMakeTaskFromMessage,
+}: {
+  messages: ChatMessage[]
+  isEmailThread: boolean
+  clientId: string | null
+  onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
+}) {
+  const [middleExpanded, setMiddleExpanded] = useState(false)
+
+  // Reset the middle-collapsed state whenever the thread changes -
+  // the parent re-mounts ThreadMessagesList per thread switch by
+  // virtue of the messages array identity changing, but the user-
+  // intent reset is explicit so it survives query refetches inside
+  // the same thread (which preserve identity in some edge cases).
+  const firstMessageId = messages[0]?.id ?? null
+  useEffect(() => {
+    setMiddleExpanded(false)
+  }, [firstMessageId])
+
+  function makeTask(msg: ChatMessage) {
+    if (!onMakeTaskFromMessage || !clientId) return undefined
+    return () => {
+      const preview = msg.body.trim().replace(/\s+/g, " ")
+      const title = preview.length > 80 ? preview.slice(0, 77) + "…" : preview || "Follow up"
+      onMakeTaskFromMessage({
+        clientId,
+        title,
+        body: preview.length > 80 ? msg.body : undefined,
+      })
+    }
+  }
+
+  // Flat list for non-email threads + short email threads.
+  if (!isEmailThread || messages.length <= 3) {
+    return (
+      <>
+        {messages.map((msg) => (
+          <MessageBubble
+            key={msg.id}
+            msg={msg}
+            isEmailThread={isEmailThread}
+            onMakeTask={makeTask(msg)}
+          />
+        ))}
+      </>
+    )
+  }
+
+  // Gmail-style collapse: first + last 2 expanded, middle behind a
+  // toggle. Internal notes inside the middle always render so the
+  // AM doesn't miss a flag (Trengo internal_note has the yellow tint
+  // the rest of the Hub uses for team-only annotations).
+  const first = messages[0]
+  const tail = messages.slice(-2)
+  const middle = messages.slice(1, -2)
+  const middleInternal = middle.filter((m) => m.isInternal === true)
+  const collapsedMiddle = middle.filter((m) => m.isInternal !== true)
+
+  return (
+    <>
+      <MessageBubble
+        msg={first}
+        isEmailThread={isEmailThread}
+        onMakeTask={makeTask(first)}
+      />
+      {!middleExpanded && collapsedMiddle.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setMiddleExpanded(true)}
+          className="w-full px-4 py-2 rounded-lg border border-dashed border-border bg-muted/30 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground transition-colors"
+        >
+          Show {collapsedMiddle.length} earlier message
+          {collapsedMiddle.length === 1 ? "" : "s"}
+        </button>
+      )}
+      {/* Internal notes always visible - never collapse a team flag. */}
+      {!middleExpanded &&
+        middleInternal.map((msg) => (
+          <MessageBubble
+            key={msg.id}
+            msg={msg}
+            isEmailThread={isEmailThread}
+            onMakeTask={makeTask(msg)}
+          />
+        ))}
+      {middleExpanded &&
+        middle.map((msg) => (
+          <MessageBubble
+            key={msg.id}
+            msg={msg}
+            isEmailThread={isEmailThread}
+            onMakeTask={makeTask(msg)}
+          />
+        ))}
+      {tail.map((msg) => (
+        <MessageBubble
+          key={msg.id}
+          msg={msg}
+          isEmailThread={isEmailThread}
+          onMakeTask={makeTask(msg)}
+        />
+      ))}
+    </>
   )
 }
 

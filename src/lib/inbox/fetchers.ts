@@ -634,6 +634,12 @@ export type ChatThreadSummary = {
   trengoChannelId: number | null
   /** Most recent message preview (truncated). */
   latestPreview: string
+  /** Latest email subject across the thread - drives the bold title on
+   *  email rows in the list. Null when the thread is WhatsApp/Slack or
+   *  the latest email row didn't carry a subject (rare for real mail).
+   *  Roy 2026-06-13: email rows should headline the subject, not the
+   *  body preview - subject is the actual "what is this" signal. */
+  latestSubject: string | null
   /** Most recent message timestamp (uses created_at_src when available). */
   latestAt: string
   /** Latest event id - used by the reply UI to derive source/thread metadata. */
@@ -956,6 +962,17 @@ async function groupAndDecorateChatRows(
     const previewSrc = latest.body ?? latest.title ?? ""
     const latestPreview =
       previewSrc.length > 120 ? previewSrc.slice(0, 120) + "…" : previewSrc
+    // Surface the freshest email subject across the thread so the list
+    // row can headline it. Walk newest-first since `threadRows` is
+    // already DESC by created_at; the first non-empty subject wins.
+    let latestSubject: string | null = null
+    for (const r of threadRows) {
+      const s = r.email_subject?.trim()
+      if (s) {
+        latestSubject = s
+        break
+      }
+    }
     const unreadCount = threadRows.filter((r) => r.status === "unread").length
 
     // Resolve channel kind/name from the most recent Trengo channel id we
@@ -989,6 +1006,7 @@ async function groupAndDecorateChatRows(
       channelName,
       trengoChannelId,
       latestPreview,
+      latestSubject,
       latestAt: rowDisplayAt(latest),
       latestEventId: latest.id,
       totalCount: threadRows.length,
