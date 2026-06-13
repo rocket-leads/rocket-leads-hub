@@ -147,7 +147,7 @@ function GoogleCalendarCard({
     <PlatformCard
       icon={<CalendarIcon className="h-4 w-4" />}
       tone="cyan"
-      name="Google Calendar"
+      name="Connect different Google Calendar"
       description={description}
       connected={connected}
       meta={null}
