@@ -83,42 +83,104 @@
   white-space: nowrap;
 }
 
-/* Collapsed sidebar adjustments — at 64px wide the nav rows otherwise
- * overflow (padding eats the icon) and the bottom UserMenu+toggle row
- * cannot fit side-by-side. Reset those constraints so icons read
- * cleanly and the toggle stays reachable.
+/* Collapsed sidebar adjustments — at 64px wide we re-center every chrome
+ * element on the same 12px-padded vertical column so the icons / avatar /
+ * toggle / mini-logo all share one centerline. Anything that has a
+ * horizontal lockup (the full Rocket Leads logo, the user-menu name +
+ * chevron) hides; its mini counterpart (.sidebar-label-mini, the half-
+ * logo brand-mark) shows in its place.
  *
  *   - nav rows: center the icon, drop horizontal padding + gap
- *   - sidebar logo block: still hidden via .sidebar-label
- *   - bottom row: stack vertical, shrink avatar, keep toggle visible
+ *   - logo zone: full lockup hides; mini brand-mark fades in centered
+ *   - bottom row: stack vertical with the same 12px column as the nav
+ *   - UserMenu: chevron + name hide; avatar shrinks to a 36×36 square
+ *     matching the collapse toggle so both bottom items have the same
+ *     visual weight on the same axis
  */
 :root[data-sidebar-collapsed="1"] [data-nav-row] {
-  justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
-  gap: 0;
+  justify-content: center !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  gap: 0 !important;
 }
+/* Trailing badge/chevron span has Tailwind `ml-auto`, which in flex
+ * containers consumes ALL remaining horizontal space and parks itself
+ * (and any sibling) at the right edge — even with width: 0. That was
+ * pushing the actual icon off-center to the left in 64px mode. Removing
+ * the .sidebar-label children from the flex layout entirely (instead of
+ * just zeroing their width) lets justify-content: center genuinely
+ * center the single remaining child (the icon). */
+:root[data-sidebar-collapsed="1"] [data-nav-row] > .sidebar-label {
+  display: none !important;
+}
+
+/* Logo zone — swap full lockup for the half-logo brand-mark. The wrapper
+ * div keeps its padding so the top breathing room above the nav stays
+ * consistent across both modes. !important guards against Tailwind
+ * display utilities that may be loaded after this block. */
+.sidebar-label-mini {
+  display: none !important;
+}
+:root[data-sidebar-collapsed="1"] .sidebar-label-mini {
+  display: block !important;
+}
+
+/* Bottom row — stack vertically on the same 12px-padded column the nav
+ * rows live in, so avatar + toggle share the nav icons' vertical
+ * centerline. items-center centers both 36×36 squares in the 40px
+ * interior. !important across the board so Tailwind utilities loaded
+ * later in the cascade (p-3, flex, items-center) can't fight us. */
 :root[data-sidebar-collapsed="1"] [data-sidebar-bottom] {
-  flex-direction: column;
-  gap: 0.5rem;
-  padding-left: 0.5rem;
-  padding-right: 0.5rem;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
 }
 :root[data-sidebar-collapsed="1"] [data-sidebar-bottom] > div:first-child {
-  width: 100%;
+  /* The UserMenu wrapper should size to its child (the trigger) instead
+   * of stretching to fill — otherwise the trigger's centering applies
+   * to a wider strip than the toggle below, breaking the column. */
+  width: auto !important;
+  flex: 0 0 auto !important;
 }
+
+/* UserMenu trigger — strip gap + padding + border so only the avatar is
+ * visible and it sits cleanly on the 32px centerline. */
 :root[data-sidebar-collapsed="1"] [data-user-menu-trigger] {
-  padding: 0.25rem;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  justify-content: center;
+  width: auto !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  justify-content: center !important;
 }
 :root[data-sidebar-collapsed="1"] [data-user-menu-trigger] > div:first-child > div:first-child {
-  /* Shrink the 40px avatar to 32px so it sits cleanly inside 64px width. */
-  height: 2rem;
-  width: 2rem;
-  font-size: 0.75rem;
+  /* Match the collapse toggle's 36×36 footprint so both bottom items
+   * present as the same-size square block on the same axis. */
+  height: 2.25rem !important;
+  width: 2.25rem !important;
+  font-size: 0.8125rem !important;
+}
+/* Hide the user-name + chevron entirely (instead of zeroing their
+ * width) so the trigger sizes cleanly to just the avatar, mirroring the
+ * nav-row treatment above. */
+:root[data-sidebar-collapsed="1"] [data-user-menu-trigger] > .sidebar-label {
+  display: none !important;
+}
+
+/* Collapse toggle — drop the framed-button chrome in collapsed mode so
+ * it visually matches the naked icon-row pattern (nav icons + avatar are
+ * all unframed at 64px wide). The button stays hoverable + focusable.
+ * !important is required because Tailwind's bg-card / border / shadow
+ * utilities share class specificity (010) with this attribute selector
+ * (020) — but Tailwind utilities are usually loaded AFTER this block in
+ * the production cascade, so they'd otherwise win on source order. */
+:root[data-sidebar-collapsed="1"] [data-sidebar-toggle] {
+  border-color: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 
 :root {

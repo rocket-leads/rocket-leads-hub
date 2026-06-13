@@ -140,8 +140,13 @@ function NavRow({ item, pathname, healthSummary, indent, isParentSection, onClic
   const healthDotTitle = showHealthDot ? buildHealthDotTitle(healthSummary) : undefined
   const badgeCount = item.badge ?? 0
 
+  // w-full guarantees the row (and its rounded-lg active background) spans
+  // the full nav column. Without it the <a> sized to its content — fine in
+  // expanded mode where icon + label fill it, but in collapsed mode the
+  // highlight would be just an 18px square sitting on the left instead of
+  // a centered 40px-wide rounded box.
   const baseClasses =
-    "group flex items-center gap-3 rounded-lg text-[15px] transition-colors duration-150"
+    "group w-full flex items-center gap-3 rounded-lg text-[15px] transition-colors duration-150"
   const sizing = indent ? "pl-9 pr-3 py-1.5 text-[14px]" : "px-3 py-2"
   const stateClasses = active
     ? "bg-primary/10 text-primary font-medium"

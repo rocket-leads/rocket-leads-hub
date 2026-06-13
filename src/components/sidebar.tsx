@@ -220,11 +220,20 @@ export async function Sidebar() {
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 w-[var(--sidebar-w)] border-r border-sidebar-border bg-sidebar flex flex-col transition-[width] duration-150 overflow-hidden">
-      {/* Logo - sized to herMon's brand-mark scale per Roy's 2026-05-21 ask:
-          read as a brand block, not a footnote. Wrapped in .sidebar-label
-          so the full lockup hides in collapsed mode. */}
-      <div className="px-5 pt-7 pb-6 sidebar-label">
-        <Link href={isFinance ? "/billing" : "/watchlist"} className="block">
+      {/* Logo zone. Two variants: full horizontal lockup for expanded mode,
+          mini brand-mark (the half-logo "R + rocket") for collapsed mode.
+          Switched via globals.css [data-sidebar-collapsed] selectors so the
+          collapsed sidebar reads as a brand block instead of an empty void
+          where the full lockup used to be (the old `sidebar-label` hide kept
+          the vertical space). */}
+      <div
+        data-sidebar-logo=""
+        className="flex items-center justify-center pt-7 pb-6"
+      >
+        <Link
+          href={isFinance ? "/billing" : "/watchlist"}
+          className="block sidebar-label px-5"
+        >
           <Image
             src="/logos/logo-white-purple.svg"
             alt="Rocket Leads"
@@ -239,6 +248,24 @@ export async function Sidebar() {
             width={200}
             height={52}
             className="h-10 w-auto block dark:hidden"
+            priority
+          />
+        </Link>
+        <Link
+          href={isFinance ? "/billing" : "/watchlist"}
+          aria-label="Rocket Leads"
+          className="sidebar-label-mini"
+        >
+          {/* Single circular brand-mark for both themes — white interior
+              + gradient ring reads cleanly on the warm-cream light
+              sidebar AND the dark navy sidebar, so we don't need a
+              dark-mode variant (Roy 2026-06-12). */}
+          <Image
+            src="/logos/logo-mark-circular.svg"
+            alt="Rocket Leads"
+            width={64}
+            height={64}
+            className="h-9 w-9 block"
             priority
           />
         </Link>

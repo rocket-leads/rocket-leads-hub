@@ -57,6 +57,7 @@ export function SidebarCollapseToggle() {
     <button
       type="button"
       onClick={() => setCollapsed((v) => !v)}
+      data-sidebar-toggle=""
       title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       className={cn(
