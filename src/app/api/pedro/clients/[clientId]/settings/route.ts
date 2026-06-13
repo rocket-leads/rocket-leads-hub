@@ -105,22 +105,33 @@ async function loadOverride(
   row: { id: string; creative_settings: unknown; brand_style: Record<string, unknown> | null } | null
   override: PedroCreativeSettings
   detected: DetectedBrand
+  global: PedroCreativeSettings
 }> {
-  const { data } = await supabase
-    .from("pedro_client_state")
-    .select("id, creative_settings, brand_style")
-    .eq("client_id", clientId)
-    .order("campaign_number", { ascending: false })
-    .limit(1)
-    .maybeSingle<{
-      id: string
-      creative_settings: unknown
-      brand_style: Record<string, unknown> | null
-    }>()
+  // Load per-klant row + global defaults in parallel so the panel can
+  // resolve effective state in one round-trip. Roy 2026-06-13.
+  const [stateRes, globalRes] = await Promise.all([
+    supabase
+      .from("pedro_client_state")
+      .select("id, creative_settings, brand_style")
+      .eq("client_id", clientId)
+      .order("campaign_number", { ascending: false })
+      .limit(1)
+      .maybeSingle<{
+        id: string
+        creative_settings: unknown
+        brand_style: Record<string, unknown> | null
+      }>(),
+    supabase
+      .from("settings")
+      .select("value")
+      .eq("key", "pedro_global_creative_defaults")
+      .maybeSingle<{ value: unknown }>(),
+  ])
   return {
-    row: data ?? null,
-    override: sanitiseCreativeSettings(data?.creative_settings),
-    detected: extractDetectedBrand(data?.brand_style ?? null),
+    row: stateRes.data ?? null,
+    override: sanitiseCreativeSettings(stateRes.data?.creative_settings),
+    detected: extractDetectedBrand(stateRes.data?.brand_style ?? null),
+    global: sanitiseCreativeSettings(globalRes.data?.value),
   }
 }
 
@@ -138,11 +149,12 @@ export async function GET(
   }
 
   const supabase = await createAdminClient()
-  const { override, detected } = await loadOverride(supabase, clientId)
+  const { override, detected, global } = await loadOverride(supabase, clientId)
   return NextResponse.json({
     override,
-    effective: resolveEffectiveSettings(override),
+    effective: resolveEffectiveSettings(override, global),
     defaults: DEFAULT_CREATIVE_SETTINGS,
+    global,
     detected,
   })
 }
@@ -168,7 +180,7 @@ export async function PUT(
   }
 
   const supabase = await createAdminClient()
-  const { row, override: current, detected } = await loadOverride(supabase, clientId)
+  const { row, override: current, detected, global } = await loadOverride(supabase, clientId)
 
   let next: PedroCreativeSettings | null
   if (body.reset === true) {
@@ -218,8 +230,9 @@ export async function PUT(
   const override = next ?? {}
   return NextResponse.json({
     override,
-    effective: resolveEffectiveSettings(override),
+    effective: resolveEffectiveSettings(override, global),
     defaults: DEFAULT_CREATIVE_SETTINGS,
+    global,
     detected,
   })
 }

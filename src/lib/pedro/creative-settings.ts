@@ -280,36 +280,52 @@ export function sanitiseCreativeSettings(raw: unknown): PedroCreativeSettings {
   return out
 }
 
-/** Effective settings = defaults overlaid with the saved overrides.
- *  Used by generate-image to read final values; used by the UI to
- *  display the current effective state. */
+/** Three-layer resolution chain (most specific wins):
+ *    1. per-klant override (`override` arg)
+ *    2. global admin defaults (`global` arg) — Pedro tab in /settings
+ *    3. hardcoded DEFAULT_CREATIVE_SETTINGS
+ *
+ *  Used by generate-image to read final values, and by both the per-klant
+ *  panel and the global-defaults form to display the current effective
+ *  state. Sub-objects (slotStyleDefaults / inspirationSubfolders) are
+ *  merged at each layer so an empty override doesn't wipe partial globals.
+ *  Roy 2026-06-13. */
 export function resolveEffectiveSettings(
   override: PedroCreativeSettings | null | undefined,
+  global?: PedroCreativeSettings | null,
 ): typeof DEFAULT_CREATIVE_SETTINGS {
-  if (!override) return DEFAULT_CREATIVE_SETTINGS
+  const ov = override ?? {}
+  const gl = global ?? {}
+  const pick = <K extends keyof typeof DEFAULT_CREATIVE_SETTINGS>(
+    key: K,
+  ): (typeof DEFAULT_CREATIVE_SETTINGS)[K] => {
+    const fromOv = (ov as PedroCreativeSettings)[key as keyof PedroCreativeSettings]
+    if (fromOv !== undefined) return fromOv as (typeof DEFAULT_CREATIVE_SETTINGS)[K]
+    const fromGl = (gl as PedroCreativeSettings)[key as keyof PedroCreativeSettings]
+    if (fromGl !== undefined) return fromGl as (typeof DEFAULT_CREATIVE_SETTINGS)[K]
+    return DEFAULT_CREATIVE_SETTINGS[key]
+  }
   return {
-    aspectRatio: override.aspectRatio ?? DEFAULT_CREATIVE_SETTINGS.aspectRatio,
-    aiIntensity: override.aiIntensity ?? DEFAULT_CREATIVE_SETTINGS.aiIntensity,
-    variantsPerRefresh:
-      override.variantsPerRefresh ?? DEFAULT_CREATIVE_SETTINGS.variantsPerRefresh,
+    aspectRatio: pick("aspectRatio"),
+    aiIntensity: pick("aiIntensity"),
+    variantsPerRefresh: pick("variantsPerRefresh"),
     slotStyleDefaults: {
       ...DEFAULT_CREATIVE_SETTINGS.slotStyleDefaults,
-      ...(override.slotStyleDefaults ?? {}),
+      ...(gl.slotStyleDefaults ?? {}),
+      ...(ov.slotStyleDefaults ?? {}),
     },
     inspirationSubfolders: {
       ...DEFAULT_CREATIVE_SETTINGS.inspirationSubfolders,
-      ...(override.inspirationSubfolders ?? {}),
+      ...(gl.inspirationSubfolders ?? {}),
+      ...(ov.inspirationSubfolders ?? {}),
     },
-    brandColorInjection:
-      override.brandColorInjection ?? DEFAULT_CREATIVE_SETTINGS.brandColorInjection,
-    brandColorIntensity:
-      override.brandColorIntensity ?? DEFAULT_CREATIVE_SETTINGS.brandColorIntensity,
-    brandBookDriveFileId:
-      override.brandBookDriveFileId ?? DEFAULT_CREATIVE_SETTINGS.brandBookDriveFileId,
-    brandBookSource: override.brandBookSource ?? DEFAULT_CREATIVE_SETTINGS.brandBookSource,
-    brandColors: override.brandColors ?? DEFAULT_CREATIVE_SETTINGS.brandColors,
-    visualStyle: override.visualStyle ?? DEFAULT_CREATIVE_SETTINGS.visualStyle,
-    lightingStyle: override.lightingStyle ?? DEFAULT_CREATIVE_SETTINGS.lightingStyle,
-    compositionDensity: override.compositionDensity ?? DEFAULT_CREATIVE_SETTINGS.compositionDensity,
+    brandColorInjection: pick("brandColorInjection"),
+    brandColorIntensity: pick("brandColorIntensity"),
+    brandBookDriveFileId: pick("brandBookDriveFileId"),
+    brandBookSource: pick("brandBookSource"),
+    brandColors: pick("brandColors"),
+    visualStyle: pick("visualStyle"),
+    lightingStyle: pick("lightingStyle"),
+    compositionDensity: pick("compositionDensity"),
   }
 }

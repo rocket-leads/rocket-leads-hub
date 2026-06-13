@@ -585,27 +585,39 @@ export async function POST(
     // prompt" modes in the brief actually do something at image-gen
     // time. Without it, Pedro always used every reference it could
     // find regardless of the CM's intent.
-    const { data: stateRow } = await supabase
-      .from("pedro_client_state")
-      .select("brief, brand_style, creative_settings")
-      .eq("client_id", variant.client_id)
-      .order("campaign_number", { ascending: false })
-      .limit(1)
-      .maybeSingle<{
-        brief: Record<string, unknown> | null
-        brand_style: Record<string, unknown> | null
-        creative_settings: Record<string, unknown> | null
-      }>()
+    // Per-klant state + global Pedro defaults in parallel. Global defaults
+    // live in settings.pedro_global_creative_defaults (jsonb) and form the
+    // middle layer of the resolver chain (hardcoded → global → per-klant).
+    const [stateRes, globalDefaultsRes] = await Promise.all([
+      supabase
+        .from("pedro_client_state")
+        .select("brief, brand_style, creative_settings")
+        .eq("client_id", variant.client_id)
+        .order("campaign_number", { ascending: false })
+        .limit(1)
+        .maybeSingle<{
+          brief: Record<string, unknown> | null
+          brand_style: Record<string, unknown> | null
+          creative_settings: Record<string, unknown> | null
+        }>(),
+      supabase
+        .from("settings")
+        .select("value")
+        .eq("key", "pedro_global_creative_defaults")
+        .maybeSingle<{ value: unknown }>(),
+    ])
+    const stateRow = stateRes.data
     const briefForPolicy = (stateRow?.brief ?? null) as Record<string, unknown> | null
     const brandStyleForPolicy = (stateRow?.brand_style ?? null) as Partial<BrandStyle> | null
 
-    // Roy 2026-06-13: pull the per-client creative_settings override and
-    // overlay it on the hardcoded defaults. Drives aspect ratio, slot
-    // style defaults, inspiration-subfolder scoping, and the brand-color
-    // injection toggle. Body args still win over settings (the wizard's
-    // inline picker overrides the saved default for a single run).
+    // Roy 2026-06-13: three-layer resolver — hardcoded → global → per-klant.
+    // Drives aspect ratio, slot style defaults, inspiration-subfolder scoping,
+    // brand-color injection toggle, and the look & feel dropdowns. Body args
+    // still win over all of these (the wizard's inline picker overrides for
+    // a single run).
     const creativeOverride = sanitiseCreativeSettings(stateRow?.creative_settings)
-    const effectiveSettings = resolveEffectiveSettings(creativeOverride)
+    const creativeGlobal = sanitiseCreativeSettings(globalDefaultsRes.data?.value)
+    const effectiveSettings = resolveEffectiveSettings(creativeOverride, creativeGlobal)
     const policy = resolveVisualStylePolicy(
       briefForPolicy
         ? {
