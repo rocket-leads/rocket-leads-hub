@@ -26,6 +26,8 @@ export async function executeAction(
       return executeNavigate(action, router)
     case "create_calendar_event":
       return executeCreateCalendarEvent(action)
+    case "prepare_client_update":
+      return executePrepareClientUpdate(action)
   }
 }
 
@@ -118,6 +120,30 @@ function executeNavigate(
   const url = `/clients/${encodeURIComponent(action.clientId)}${action.tab ? `?tab=${action.tab}` : ""}`
   router.push(url)
   return { ok: true, message: "Opening client…" }
+}
+
+async function executePrepareClientUpdate(
+  action: Extract<CopilotAction, { type: "prepare_client_update" }>,
+): Promise<ExecuteResult> {
+  const res = await fetch(
+    `/api/clients/${encodeURIComponent(action.clientId)}/client-update/queue`,
+    { method: "POST", headers: { "Content-Type": "application/json" } },
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Failed to queue update" }))
+    const msg = typeof err.error === "string" ? err.error : "Failed to queue update"
+    return { ok: false, message: msg }
+  }
+
+  // Deep-link the AM into the WeeklyUpdatesChip queue sheet with this
+  // client's draft pre-selected. The chip reads `?focusUpdate=<id>` from
+  // the URL and auto-opens its sheet.
+  return {
+    ok: true,
+    message: "Update queued — review + send",
+    navigateTo: `/?focusUpdate=${encodeURIComponent(action.clientId)}`,
+  }
 }
 
 async function executeCreateCalendarEvent(

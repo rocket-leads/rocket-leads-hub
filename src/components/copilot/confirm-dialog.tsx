@@ -112,7 +112,9 @@ export function ConfirmDialog({
           ? t("copilot.confirm.btn.run_pedro", locale)
           : editAction.type === "create_calendar_event"
             ? t("copilot.confirm.btn.create_event", locale)
-            : t("copilot.confirm.btn.open", locale)
+            : editAction.type === "prepare_client_update"
+              ? t("copilot.confirm.btn.prepare_update", locale)
+              : t("copilot.confirm.btn.open", locale)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -199,6 +201,9 @@ export function ConfirmDialog({
           )}
           {editAction.type === "create_calendar_event" && (
             <CreateCalendarEventFields draft={editAction} onChange={setEditAction} clients={clients} locale={locale} />
+          )}
+          {editAction.type === "prepare_client_update" && (
+            <PrepareClientUpdateFields draft={editAction} onChange={setEditAction} clients={clients} locale={locale} />
           )}
 
           {error && (
@@ -582,6 +587,46 @@ function splitIsoToDateTime(iso: string): { date: string; time: string; offset: 
     time: "10:00",
     offset: "+01:00",
   }
+}
+
+/** Tiny editor for the weekly client-update action. Only the client is
+ *  user-pickable — everything else (KPI snapshot, Pedro note, overdue
+ *  invoices, channel, template) is composed server-side from the
+ *  client's Monday + cached Hub state when the executor runs. After
+ *  approval, the AM lands in the existing weekly-update queue sheet
+ *  pre-focused on this draft to fine-tune copy + send. */
+function PrepareClientUpdateFields({
+  draft,
+  onChange,
+  clients,
+  locale,
+}: {
+  draft: Extract<CopilotAction, { type: "prepare_client_update" }>
+  onChange: (d: CopilotAction) => void
+  clients: ClientSearchResult[]
+  locale: ReturnType<typeof useLocale>
+}) {
+  const update = (patch: Partial<typeof draft>) => onChange({ ...draft, ...patch })
+  return (
+    <div className="flex flex-col gap-2">
+      <Field label={t("copilot.field.client", locale)}>
+        <select
+          value={draft.clientId}
+          onChange={(e) => update({ clientId: e.target.value })}
+          className={fieldClass}
+        >
+          {clients.map((c) => (
+            <option key={c.mondayItemId} value={c.mondayItemId}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <p className="text-xs text-muted-foreground leading-snug">
+        {t("copilot.client_update.hint", locale)}
+      </p>
+    </div>
+  )
 }
 
 function NavigateFields({

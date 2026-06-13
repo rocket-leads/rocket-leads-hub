@@ -293,10 +293,11 @@ Today is ${args.today}. The signed-in user is ${args.sessionUser.name} (id=${arg
 ${pageHint}
 
 TOOL SELECTION (the single most important rule: SELF vs OTHER):
-- The signed-in user is ${args.sessionUser.name} (id=${args.sessionUser.id}). If the task / reminder belongs to THEM (phrasings like "remind me", "herinner me", "maak een taak voor mij", "voor mezelf", "task for me", "ik moet…", "stuur mezelf", "op X laat me weten", or an unattributed self-action like "bel Zumex dinsdag") → ALWAYS use create_reminder. The user is assigning themselves something. NEVER use create_task in this case, even if the phrasing literally contains "taak" or "task".
+- The signed-in user is ${args.sessionUser.name} (id=${args.sessionUser.id}). If the task / reminder belongs to THEM (phrasings like "remind me", "herinner me", "maak een taak voor mij", "voor mezelf", "task for me", "ik moet…", "stuur mezelf", "op X laat me weten", or an unattributed self-action like "bel Zumex dinsdag") → ALWAYS use create_reminder. The user is assigning themselves something. NEVER use create_task in this case, even if the phrasing literally contains "taak" or "task". EXCEPTION: inputs with the keyword "update" + a client name (e.g. "update zumex", "X update", "schrijf update voor X") are NEVER create_reminder OR create_task — they are always prepare_client_update, see below.
 - Only when the task is for ANOTHER named person ("maak een taak voor Mike", "wijs aan Sanne toe", "create a task for Roy", "Lara moet X doen") → use create_task with that person's id from the roster.
 - Pedro / new creatives / ad variants → trigger_pedro_refresh.
 - "open / show / ga naar [client]" → navigate_to_client.
+- ANY input where the keyword "update" appears next to a client name in the roster → prepare_client_update. This includes terse forms like "update zumex", "zumex update", "X update", "update voor X", and longer ones like "schrijf update voor [klant]", "stuur [klant] een update", "maak een update voor [klant]", "kort appje met update voor [klant]", "check-in [klant]", "wekelijkse update X" (still mid-week — the cron handles the Monday digest). CRITICAL: never reinterpret "update [client]" as create_task or create_reminder. The word "update" + a known client name is an unambiguous signal for this tool. Don't require a verb like "schrijf"/"maak"/"stuur" — the noun alone is enough. This is the AD-HOC MID-WEEK update — casual, AI-generated, varies in tone per send, covers multi-window performance trends + recent actions + last contact. Channel is automatic — don't pass any channel-related fields.
 - "nodig [naam] uit", "plan meeting met [naam]", "invite X for a meeting", "meeting met X dinsdag 10u", "schiet een meeting in voor dinsdag 10 uur" → create_calendar_event. The host is always the signed-in user. The invitee can be (a) an existing client in the roster → set clientId, OR (b) someone NOT in the roster → set attendeeName as a free-form label. If the user pastes an email in the command, set attendeeEmail too. The action stays valid even when the named person is unknown or no person is named at all — the user fills in the missing pieces in the editor. Title defaults: clientId set → "{Company or ClientFirstName} x ${userFirstName} Meeting"; attendeeName set → "{AttendeeName} x ${userFirstName} Meeting"; neither → "Meeting". Default duration 30 min and addMeetLink=true unless the user said otherwise.
 
 When you pick create_reminder you must still classify the 'kind' parameter:
@@ -409,6 +410,12 @@ function normalizeAction(
         title: typeof input.title === "string" ? input.title : undefined,
         addMeetLink: typeof input.addMeetLink === "boolean" ? input.addMeetLink : undefined,
       }
+    case "prepare_client_update":
+      if (typeof input.clientId !== "string") return null
+      return {
+        type: "prepare_client_update",
+        clientId: input.clientId,
+      }
     default:
       return null
   }
@@ -441,6 +448,8 @@ function describeAction(
       return `Run Pedro creative refresh for ${clientName(action.clientId)}${action.days ? ` (${action.days}d lookback)` : ""}`
     case "navigate_to_client":
       return `Open ${clientName(action.clientId)}${action.tab ? ` → ${action.tab}` : ""}`
+    case "prepare_client_update":
+      return `Queue weekly update for ${clientName(action.clientId)} (review + send from queue)`
     case "create_calendar_event": {
       const parts = [`Calendar invite: "${action.title ?? "Meeting"}"`]
       if (action.clientId) {

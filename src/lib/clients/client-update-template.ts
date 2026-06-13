@@ -266,7 +266,7 @@ function buildKpiBlock(kpi: KpiSummary | null, channel: Channel): string {
  *  most formatting. Email uses the same shape; HTML rendering of the
  *  URL is up to Trengo's email pipeline.
  */
-function buildOverdueBlock(invoices: OverdueInvoiceForBlock[] | undefined): string {
+export function buildOverdueBlock(invoices: OverdueInvoiceForBlock[] | undefined): string {
   if (!invoices || invoices.length === 0) return ""
   const usable = invoices.filter((i) => !!i.hostedUrl)
   if (usable.length === 0) return ""
