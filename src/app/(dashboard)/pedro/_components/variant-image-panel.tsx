@@ -44,6 +44,12 @@ type SlotState = {
    *  Regen-knop te disablen + tooltip te tonen. */
   regenCount?: number
   regenAvailable?: boolean
+  /** Roy 2026-06-13: which inspiration-library ref Gemini anchored on
+   *  for this slot. Null = library didn't fire (root not configured,
+   *  matching subfolder empty, etc.). Surface so CM can see whether
+   *  refs actually anchored the structural template. */
+  inspirationSubfolder?: string | null
+  inspirationFileName?: string | null
 }
 
 /** Roy 2026-06-12 v2: 5 style categorieën die 1:1 mappen met de
@@ -270,11 +276,18 @@ export function VariantImagePanel({
         model?: string
         error?: string
       }
+      // Roy 2026-06-13: pluck `inspirationBySlot` from the references
+      // envelope. Map keys are stringified by JSON, so we cast carefully.
+      const inspirationMap = (json.references?.inspirationBySlot ?? {}) as Record<
+        string,
+        { subfolder?: string; fileName?: string } | null
+      >
       if (Array.isArray(json.slots)) {
         setSlots((prev) =>
           prev.map((p) => {
             const gen = (json.slots as GenSlot[]).find((g) => g.position === p.position)
             if (!gen || !gen.ok) return p
+            const insp = inspirationMap[String(p.position)] ?? null
             return {
               position: p.position,
               hasImage: true,
@@ -282,6 +295,8 @@ export function VariantImagePanel({
               provider: gen.provider ?? "gemini",
               model: gen.model ?? null,
               generatedAt: new Date().toISOString(),
+              inspirationSubfolder: insp?.subfolder ?? null,
+              inspirationFileName: insp?.fileName ?? null,
             }
           }),
         )
@@ -334,6 +349,11 @@ export function VariantImagePanel({
         const gen = Array.isArray(json.slots)
           ? (json.slots as GenSlot[]).find((g) => g.position === position)
           : undefined
+        const inspirationMapSingle = (json.references?.inspirationBySlot ?? {}) as Record<
+          string,
+          { subfolder?: string; fileName?: string } | null
+        >
+        const inspSingle = inspirationMapSingle[String(position)] ?? null
         if (gen && gen.ok) {
           setSlots((prev) =>
             prev.map((p) =>
@@ -350,6 +370,8 @@ export function VariantImagePanel({
                     // server-side; UI mirrors that.
                     regenCount: feedback ? 1 : (p.regenCount ?? 0),
                     regenAvailable: feedback ? false : (p.regenAvailable ?? true),
+                    inspirationSubfolder: inspSingle?.subfolder ?? null,
+                    inspirationFileName: inspSingle?.fileName ?? null,
                   }
                 : p,
             ),
@@ -410,6 +432,10 @@ export function VariantImagePanel({
                   provider: "manual_upload",
                   model: null,
                   generatedAt: new Date().toISOString(),
+                  // Manual upload has no inspiration anchor — clear any
+                  // stale reference from a prior gen on this slot.
+                  inspirationSubfolder: null,
+                  inspirationFileName: null,
                 }
               : p,
           ),
@@ -759,6 +785,24 @@ function SlotCard({
           </div>
         )}
       </div>
+
+      {/* Inspiration anchor — only shown when the visual reference library
+          fired for this slot. Tells the CM "this generation was structurally
+          templated on AI Content/file.jpg" so they can verify refs actually
+          land. Hidden when null so empty slots + uploads stay clean. */}
+      {slot.hasImage && slot.inspirationSubfolder && (
+        <div
+          className="border-t border-border/60 px-2 py-1 text-[10px] text-muted-foreground/80 truncate"
+          title={
+            slot.inspirationFileName
+              ? `Anchored on: ${slot.inspirationSubfolder} / ${slot.inspirationFileName}`
+              : `Anchored on: ${slot.inspirationSubfolder}`
+          }
+        >
+          <span className="font-medium text-foreground/70">{slot.inspirationSubfolder}</span>
+          {slot.inspirationFileName ? ` · ${slot.inspirationFileName}` : ""}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex border-t border-border/60 divide-x divide-border/40 text-[11px]">
