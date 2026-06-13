@@ -2754,6 +2754,24 @@ function MessageBubble({
 }) {
   const isUs = msg.authorKind === "rl_team"
   const isInternal = msg.isInternal === true
+  // Email rendering branch (Roy 2026-06-13). Emails that carry their
+  // original HTML get a wide email-card layout with a sandboxed iframe
+  // body, instead of the cramped plain-text chat bubble. Internal
+  // notes stay on the bubble path so the yellow team-only signal is
+  // preserved.
+  if (msg.bodyHtml && !isInternal) {
+    return (
+      <div className="group flex items-stretch gap-2 justify-stretch">
+        {isUs && onMakeTask && (
+          <MakeTaskInlineButton onClick={onMakeTask} />
+        )}
+        <EmailMessageCard msg={msg} isUs={isUs} />
+        {!isUs && onMakeTask && (
+          <MakeTaskInlineButton onClick={onMakeTask} />
+        )}
+      </div>
+    )
+  }
   // Internal notes get a distinct yellow tint regardless of author -
   // signals "team-only annotation, not part of the customer-visible
   // conversation." Same convention Trengo uses on their own UI.
@@ -2799,6 +2817,98 @@ function MessageBubble({
       {!isUs && onMakeTask && (
         <MakeTaskInlineButton onClick={onMakeTask} />
       )}
+    </div>
+  )
+}
+
+/**
+ * Full-width email card with a sandboxed iframe body. Renders the raw
+ * HTML the way an email client would - paragraphs, images, links -
+ * instead of the stripped plain-text bubble. Roy 2026-06-13: "het
+ * moet echt beter, opmaak, afbeeldingen, structuur".
+ *
+ * Iframe safety: `sandbox="allow-same-origin"` (no allow-scripts).
+ * Scripts inside the email are blocked; same-origin is set so the
+ * parent can read `contentDocument` to measure the rendered height
+ * and resize the iframe to fit (otherwise we'd get a fixed-height
+ * box with internal scroll, which feels broken). All external
+ * resources (images, fonts, etc.) load straight from the email's
+ * own URLs - we don't proxy.
+ */
+function EmailMessageCard({
+  msg,
+  isUs,
+}: {
+  msg: ChatMessage
+  isUs: boolean
+}) {
+  const [height, setHeight] = useState<number>(120)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  function measure() {
+    const iframe = iframeRef.current
+    if (!iframe) return
+    try {
+      const doc = iframe.contentDocument
+      if (!doc) return
+      const h = doc.documentElement.scrollHeight
+      if (h > 0 && h !== height) setHeight(h)
+    } catch {
+      // Same-origin access blocked by some browsers when iframe is
+      // sandboxed without allow-same-origin. Fall back to current
+      // height; the user can still scroll inside the iframe.
+    }
+  }
+
+  // Wrap the email body in a minimal document shell so emails that
+  // expect viewport-rules / image-max-width behave reasonably inside
+  // the constrained iframe. Inline styles cap images at 100% width and
+  // give body sensible system fonts so plaintext-ish wrappers don't
+  // look ridiculous either.
+  const srcDoc = `<!doctype html>
+<html><head><meta charset="utf-8">
+<base target="_blank">
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    color: #1a1a1a;
+    line-height: 1.5;
+    word-wrap: break-word;
+  }
+  img { max-width: 100% !important; height: auto !important; }
+  a { color: #6d28d9; }
+  table { max-width: 100% !important; }
+</style>
+</head><body>${msg.bodyHtml ?? ""}</body></html>`
+
+  return (
+    <div
+      className={cn(
+        "flex-1 min-w-0 rounded-xl border bg-card overflow-hidden",
+        isUs ? "border-primary/30" : "border-border/60",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-baseline gap-2 px-3 py-2 border-b",
+          isUs ? "border-primary/20 bg-primary/5" : "border-border/40 bg-muted/30",
+        )}
+      >
+        <span className="text-[11px] font-semibold">{msg.authorName}</span>
+        <span className="text-[10px] tabular-nums text-muted-foreground/70">
+          {fmtTime(msg.at)}
+        </span>
+      </div>
+      <iframe
+        ref={iframeRef}
+        title={`Email from ${msg.authorName}`}
+        srcDoc={srcDoc}
+        sandbox="allow-same-origin allow-popups"
+        onLoad={measure}
+        style={{ width: "100%", height, border: "none", display: "block" }}
+      />
     </div>
   )
 }

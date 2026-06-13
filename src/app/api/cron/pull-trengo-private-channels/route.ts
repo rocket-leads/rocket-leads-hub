@@ -98,6 +98,11 @@ type EventToInsert = {
   contactId: string
   contactName: string | null
   body: string
+  /** Original HTML body, preserved for email messages so the chat pane
+   *  can render the mail with formatting/images instead of the stripped
+   *  plain text. Null for WhatsApp/Slack where the source is already
+   *  plain text. */
+  bodyHtml: string | null
   authorKind: "rl_team" | "client"
   authorName: string
   createdAtSrc: string
@@ -172,6 +177,11 @@ function eventsFromMessageList(
         : m.author_type === "Contact"
           ? "client"
           : "rl_team"
+    // Preserve original HTML when the payload looks HTML-ish so the
+    // chat pane can render a real email layout. Heuristic: any `<`
+    // suggests markup; plain-text WhatsApp / Slack messages stay null
+    // so the renderer falls back to the plain-text bubble.
+    const bodyHtml = raw.includes("<") ? raw : null
     out.push({
       sourceMsgId: `trengo:msg:${m.id}`,
       channelId,
@@ -179,6 +189,7 @@ function eventsFromMessageList(
       contactId,
       contactName: contact?.name ?? null,
       body,
+      bodyHtml,
       authorKind,
       authorName: m.author?.name ?? contact?.name ?? "Unknown",
       createdAtSrc: m.created_at,
@@ -199,6 +210,13 @@ type ExistingRowState = {
    *  inbound mail derives to `unread` from authorKind), undoing the
    *  user's gesture. Roy 2026-06-12. */
   status: string
+  /** authorKind currently stored for this row. Compared against the
+   *  freshly-derived value to detect bug-ridden rows: if the existing
+   *  authorKind disagrees with what we now derive, the row was ingested
+   *  with the old broken heuristic (every inbound mail was tagged
+   *  `rl_team`) and its `status='read'` is a side-effect of that bug,
+   *  NOT a user gesture. Reset to derived status. */
+  authorKind: string | null
 }
 
 /**
@@ -218,13 +236,14 @@ async function findExistingRows(
   if (sourceMsgIds.length === 0) return out
   const { data } = await supabase
     .from("inbox_events")
-    .select("source_msg_id, raw, status")
+    .select("source_msg_id, raw, status, author_kind")
     .eq("source", "trengo")
     .in("source_msg_id", sourceMsgIds)
   for (const r of data ?? []) {
     out.set(r.source_msg_id as string, {
       isWebhook: r.raw != null,
       status: (r.status as string) ?? "unread",
+      authorKind: (r.author_kind as string | null) ?? null,
     })
   }
   return out
@@ -259,15 +278,22 @@ async function insertEvents(
     const bodyFull = e.body.length > 100 ? e.body : null
     // Status policy:
     //   - new row: derive from authorKind (inbound from client -> unread)
-    //   - existing polling row that the user already marked read: keep
-    //     'read' so the cron doesn't undo the user's gesture
-    //   - existing polling row still unread: keep deriving (so the
-    //     authorKind fix actually flips the row back to unread on the
-    //     stale-data refresh path)
+    //   - existing polling row, correctly attributed, user marked read:
+    //     keep 'read' so the cron doesn't undo the user's gesture
+    //   - existing polling row whose authorKind we are CORRECTING (was
+    //     'rl_team' under the old bug, now 'client'): the stored
+    //     status='read' is a bug-relict, not a user gesture. Reset to
+    //     derived so emails the user never saw as unread surface in
+    //     the Unread filter.
+    //   - existing polling row still unread: derive as normal.
     const existingState = existing.get(e.sourceMsgId)
     const derivedStatus = e.authorKind === "client" ? "unread" : "read"
+    const authorKindMatches =
+      !existingState || existingState.authorKind === e.authorKind
     const status =
-      existingState && existingState.status === "read"
+      existingState &&
+      existingState.status === "read" &&
+      authorKindMatches
         ? "read"
         : derivedStatus
     return {
@@ -277,6 +303,7 @@ async function insertEvents(
       assignee_id: systemAuthorId,
       title: titlePreview || `Message from ${e.authorName}`,
       body: bodyFull,
+      body_html: e.bodyHtml,
       status,
       source: "trengo",
       source_thread: `trengo:ticket:${e.ticketId}`,

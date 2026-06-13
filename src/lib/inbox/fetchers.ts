@@ -648,6 +648,13 @@ export type ChatMessage = {
   authorName: string
   authorExternal: string | null
   body: string
+  /** Original HTML body for email messages, when the ingest path
+   *  captured it (Roy 2026-06-13). When present the chat pane renders
+   *  the message in a sandboxed iframe so the email shows up with
+   *  proper paragraphs, images, and links instead of the stripped
+   *  plain-text bubble. Null for plain-text sources (WhatsApp, Slack,
+   *  Monday updates). */
+  bodyHtml: string | null
   /** Display-time timestamp - created_at_src when the source provided one. */
   at: string
   source: InboxSource
@@ -671,6 +678,7 @@ type RawChatRow = {
   author_name_cached: string | null
   title: string
   body: string | null
+  body_html: string | null
   status: string
   created_at: string
   created_at_src: string | null
@@ -683,7 +691,7 @@ type RawChatRow = {
 
 const CHAT_SELECT = `
   id, source, scope, thread_key, client_id, author_id, assignee_id,
-  author_kind, author_external, author_name_cached, title, body, status,
+  author_kind, author_external, author_name_cached, title, body, body_html, status,
   created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
@@ -1194,6 +1202,7 @@ export async function getChatThreadMessages(
       authorName: rowAuthorName(r),
       authorExternal: r.author_external ?? null,
       body,
+      bodyHtml: r.body_html ?? null,
       at: rowDisplayAt(r),
       source: r.source,
       status: r.status,
