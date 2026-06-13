@@ -107,6 +107,14 @@ type EventToInsert = {
    *  plain text. Null for WhatsApp/Slack where the source is already
    *  plain text. */
   bodyHtml: string | null
+  /** Email subject line, captured from `email_message.subject` on the
+   *  Trengo /messages response. Drives the prominent subject header in
+   *  EmailMessageCard. Null for WhatsApp/Slack. */
+  emailSubject: string | null
+  /** Sender's email address (envelope From), so the chat pane can show
+   *  `noreply@vueling.com` next to the display name and the AM can spot
+   *  phishing at a glance. Null for non-email rows. */
+  emailFrom: string | null
   authorKind: "rl_team" | "client"
   authorName: string
   createdAtSrc: string
@@ -182,10 +190,18 @@ function eventsFromMessageList(
           ? "client"
           : "rl_team"
     // Preserve original HTML when the payload looks HTML-ish so the
-    // chat pane can render a real email layout. Heuristic: any `<`
-    // suggests markup; plain-text WhatsApp / Slack messages stay null
-    // so the renderer falls back to the plain-text bubble.
-    const bodyHtml = raw.includes("<") ? raw : null
+    // chat pane can render a real email layout. Trengo sometimes ships
+    // a richer HTML version in `email_message.html` (with images, the
+    // signature block, the works) than what the top-level `message`
+    // field carries — prefer that when present. Heuristic: any `<` in
+    // either source suggests markup; plain-text WhatsApp/Slack stays
+    // null so the renderer falls back to the plain-text bubble.
+    const emailHtml = m.email_message?.html?.trim() ?? null
+    const bodyHtml = emailHtml && emailHtml.includes("<")
+      ? emailHtml
+      : raw.includes("<") ? raw : null
+    const emailSubject = m.email_message?.subject?.trim() || null
+    const emailFrom = m.email_message?.from?.trim() || null
     // Author name resolution depends on direction:
     //   - INBOUND (client): the sender is the contact, even when
     //     Trengo's `author` field points at the assigned agent. Without
@@ -204,6 +220,8 @@ function eventsFromMessageList(
       contactName: contact?.name ?? null,
       body,
       bodyHtml,
+      emailSubject,
+      emailFrom,
       authorKind,
       authorName,
       createdAtSrc: m.created_at,
@@ -318,6 +336,8 @@ async function insertEvents(
       title: titlePreview || `Message from ${e.authorName}`,
       body: bodyFull,
       body_html: e.bodyHtml,
+      email_subject: e.emailSubject,
+      email_from: e.emailFrom,
       status,
       source: "trengo",
       source_thread: `trengo:ticket:${e.ticketId}`,

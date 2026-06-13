@@ -655,6 +655,13 @@ export type ChatMessage = {
    *  plain-text bubble. Null for plain-text sources (WhatsApp, Slack,
    *  Monday updates). */
   bodyHtml: string | null
+  /** Email subject - prominent header on the email card. Null for
+   *  non-email sources. */
+  emailSubject: string | null
+  /** Sender's email address (the envelope From), shown next to the
+   *  display name so the AM can spot phishing at a glance. Null for
+   *  non-email sources. */
+  emailFromAddress: string | null
   /** Display-time timestamp - created_at_src when the source provided one. */
   at: string
   source: InboxSource
@@ -679,6 +686,8 @@ type RawChatRow = {
   title: string
   body: string | null
   body_html: string | null
+  email_subject: string | null
+  email_from: string | null
   status: string
   created_at: string
   created_at_src: string | null
@@ -691,7 +700,8 @@ type RawChatRow = {
 
 const CHAT_SELECT = `
   id, source, scope, thread_key, client_id, author_id, assignee_id,
-  author_kind, author_external, author_name_cached, title, body, body_html, status,
+  author_kind, author_external, author_name_cached, title, body, body_html,
+  email_subject, email_from, status,
   created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
@@ -1203,6 +1213,8 @@ export async function getChatThreadMessages(
       authorExternal: r.author_external ?? null,
       body,
       bodyHtml: r.body_html ?? null,
+      emailSubject: r.email_subject ?? null,
+      emailFromAddress: r.email_from ?? null,
       at: rowDisplayAt(r),
       source: r.source,
       status: r.status,

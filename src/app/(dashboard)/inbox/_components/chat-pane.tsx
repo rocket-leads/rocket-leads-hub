@@ -2865,11 +2865,47 @@ function EmailMessageCard({
       const doc = iframe.contentDocument
       if (!doc) return
       const h = doc.documentElement.scrollHeight
-      if (h > 0 && h !== height) setHeight(h)
+      if (h > 0 && Math.abs(h - height) > 4) setHeight(h)
     } catch {
       // Same-origin access blocked by some browsers when iframe is
       // sandboxed without allow-same-origin. Fall back to current
       // height; the user can still scroll inside the iframe.
+    }
+  }
+
+  // Re-measure on load + after every image inside the iframe resolves.
+  // Email bodies routinely load 5-15 external images, each of which
+  // pushes the content height. Without this, the iframe stays sized
+  // for the empty layout and the bottom 80% of the mail is hidden
+  // behind a scroll bar inside the iframe. Roy 2026-06-13.
+  function handleLoad() {
+    measure()
+    const iframe = iframeRef.current
+    if (!iframe) return
+    let cancelled = false
+    try {
+      const doc = iframe.contentDocument
+      if (!doc) return
+      const images = Array.from(doc.querySelectorAll("img"))
+      for (const img of images) {
+        if (img.complete) continue
+        img.addEventListener("load", measure, { once: true })
+        img.addEventListener("error", measure, { once: true })
+      }
+      // Polling backup for things that don't fire image-load
+      // (background-images via inline CSS, web fonts shifting
+      // baselines). 4 seconds is enough for the dominant case;
+      // longer-running async stays scrollable in-iframe.
+      const timer = setInterval(() => {
+        if (cancelled) return
+        measure()
+      }, 200)
+      setTimeout(() => {
+        cancelled = true
+        clearInterval(timer)
+      }, 4000)
+    } catch {
+      // Same-origin access denied - polling alone won't help. Skip.
     }
   }
 
@@ -2908,6 +2944,17 @@ function EmailMessageCard({
 
   return (
     <div className="flex-1 min-w-0 rounded-xl border border-border/60 bg-card overflow-hidden shadow-sm">
+      {/* Subject bar - prominent at the top of the card so the AM sees
+          "Bevestiging van je reservering ONUTYA" before anything else.
+          Hidden when Trengo didn't ship a subject (legacy rows + non-
+          email channels that slipped through). */}
+      {msg.emailSubject && (
+        <div className="px-4 pt-3 pb-1.5 bg-card">
+          <h3 className="text-sm font-semibold text-foreground leading-snug break-words">
+            {msg.emailSubject}
+          </h3>
+        </div>
+      )}
       {/* Email header — full-width, neutral background. Roy 2026-06-13:
           "geen WhatsApp-bubble-uitlijning". Avatar circle + author block
           on the left, timestamp on the right. */}
@@ -2933,8 +2980,16 @@ function EmailMessageCard({
               </span>
             )}
           </div>
-          <div className="text-[11px] text-muted-foreground/70">
-            {isUs ? "From you" : "To you"}
+          <div className="text-[11px] text-muted-foreground/70 truncate">
+            {msg.emailFromAddress ? (
+              <>
+                <span className="font-mono">{msg.emailFromAddress}</span>
+                {" · "}
+                {isUs ? "from you" : "to you"}
+              </>
+            ) : (
+              isUs ? "From you" : "To you"
+            )}
           </div>
         </div>
         <span className="text-[11px] tabular-nums text-muted-foreground/70 shrink-0 mt-0.5">
@@ -2951,7 +3006,7 @@ function EmailMessageCard({
           title={`Email from ${msg.authorName}`}
           srcDoc={srcDoc}
           sandbox="allow-same-origin allow-popups"
-          onLoad={measure}
+          onLoad={handleLoad}
           style={{ width: "100%", height, border: "none", display: "block", background: "#fff" }}
         />
       ) : (

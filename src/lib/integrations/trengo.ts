@@ -114,6 +114,18 @@ export type TrengoMessage = {
   created_at: string
   type: string
   attachments: Array<{ name: string; url: string }> | null
+  /** Email-specific envelope, present only for messages on Trengo email
+   *  channels. Subject + From/To/Cc come through here even when the
+   *  outer `message` field is the plain-text or HTML body. Used by the
+   *  Hub's polling cron to capture subject + sender address into
+   *  inbox_events.email_subject / email_from. */
+  email_message?: {
+    subject?: string | null
+    from?: string | null
+    to?: string | null
+    cc?: string | null
+    html?: string | null
+  } | null
 }
 
 type TicketPage = {
