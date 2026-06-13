@@ -382,6 +382,7 @@ export const DICTIONARY = {
   "settings.tab.board": { nl: "Board Config", en: "Board Config" },
   "settings.tab.users": { nl: "Gebruikers", en: "Users" },
   "settings.tab.automations": { nl: "Automations", en: "Automations" },
+  "settings.tab.pedro": { nl: "Pedro", en: "Pedro" },
   "settings.tab.health": { nl: "Health", en: "Health" },
 
   // ApiHealthBar
@@ -433,11 +434,89 @@ export const DICTIONARY = {
   "settings.health.status.error": { nl: "Fout", en: "Error" },
   "settings.health.status.partial": { nl: "Gedeeltelijk", en: "Partial" },
   "settings.health.status.never_ran": { nl: "Nooit gedraaid", en: "Never ran" },
+  "settings.health.status.hiccup": { nl: "Tijdelijk", en: "Hiccup" },
   "settings.health.integration.valid": { nl: "Geldig", en: "Valid" },
   "settings.health.integration.invalid": { nl: "Ongeldig", en: "Invalid" },
   "settings.health.integration.no_token": { nl: "Geen token", en: "No token" },
   "settings.health.integration.never": { nl: "Nooit", en: "Never" },
+  "settings.health.integration.fix_hint": {
+    nl: "Open de API Tokens tab om ongeldige tokens te vervangen.",
+    en: "Open the API Tokens tab to replace any invalid tokens.",
+  },
   "settings.health.recent_errors.no_message": { nl: "(geen bericht)", en: "(no message)" },
+
+  // Overall banner (plain-English verdict at the top of the Health tab)
+  "settings.health.overall.all_running": {
+    nl: "Alle Hub-functies draaien",
+    en: "All Hub features are running",
+  },
+  "settings.health.overall.all_running_sub": {
+    nl: "Niets om naar te kijken. Data is vers.",
+    en: "Nothing to look at. Data is fresh.",
+  },
+  "settings.health.overall.also_hiccup_one": {
+    nl: "1 functie heeft een tijdelijke hapering — herstelt zichzelf bij de volgende run.",
+    en: "1 feature has a temporary hiccup — it will recover on the next run.",
+  },
+  "settings.health.overall.also_hiccup_many": {
+    nl: "{n} functies hebben tijdelijke haperingen — herstellen zichzelf bij de volgende run.",
+    en: "{n} features have temporary hiccups — they will recover on the next run.",
+  },
+  "settings.health.overall.hiccup_one": {
+    nl: "1 functie haperde even — geen actie nodig",
+    en: "1 feature had a hiccup — no action needed",
+  },
+  "settings.health.overall.hiccup_many": {
+    nl: "{n} functies haperden even — geen actie nodig",
+    en: "{n} features had hiccups — no action needed",
+  },
+  "settings.health.overall.hiccup_sub": {
+    nl: "Eén of meer runs faalden, maar binnen het normale retry-venster. Komt zelf goed.",
+    en: "One or more runs failed, but within the normal retry window. It'll catch up on its own.",
+  },
+  "settings.health.overall.broken_one": {
+    nl: "1 functie is stuk — actie nodig",
+    en: "1 feature is broken — action needed",
+  },
+  "settings.health.overall.broken_many": {
+    nl: "{n} functies zijn stuk — actie nodig",
+    en: "{n} features are broken — action needed",
+  },
+  "settings.health.overall.broken_sub": {
+    nl: "Een of meer functies hebben langer dan hun retry-venster gefaald. Bekijk de details hieronder.",
+    en: "One or more features have been failing past their retry window. Check the details below.",
+  },
+
+  // Hub features section
+  "settings.health.features.title": { nl: "Hub-functies", en: "Hub features" },
+  "settings.health.feature.last_fresh": {
+    nl: "Vers · {age}",
+    en: "Fresh · {age}",
+  },
+  "settings.health.feature.never_fresh": {
+    nl: "Nog geen verse data",
+    en: "No fresh data yet",
+  },
+
+  // Recurring errors (rolled up from the raw error list)
+  "settings.health.recurring.title": {
+    nl: "Terugkerende fouten",
+    en: "Recurring errors",
+  },
+  "settings.health.recurring.subtitle": {
+    nl: "{n} losse foutregels gegroepeerd per oorzaak",
+    en: "{n} raw error rows grouped by root cause",
+  },
+  "settings.health.recurring.count": {
+    nl: "{n}× in 24u · laatst {last}",
+    en: "{n}× in 24h · last {last}",
+  },
+
+  // Technical details toggle
+  "settings.health.tech.toggle": {
+    nl: "Technische details (cron-niveau) tonen",
+    en: "Show technical details (cron level)",
+  },
 
   // Cadence labels - short, used in the crons table second-row sub-line
   "settings.health.cadence.daily_5utc": { nl: "dagelijks 05:00 UTC", en: "daily 5:00 UTC" },

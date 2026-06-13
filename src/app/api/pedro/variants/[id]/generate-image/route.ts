@@ -23,6 +23,9 @@ import {
   resolveEffectiveSettings,
   sanitiseCreativeSettings,
   type InspirationSubfolderFlags,
+  type VisualStyleKey,
+  type LightingStyleKey,
+  type CompositionDensityKey,
 } from "@/lib/pedro/creative-settings"
 import type { BrandStyle } from "@/lib/pedro/helpers"
 
@@ -140,6 +143,71 @@ QUALITY BAR: Unsplash editor's pick + brand color grade. Better than stock-photo
     default:
       return ""
   }
+}
+
+/**
+ * Look & feel clauses (Roy 2026-06-13). Each non-auto pick from the
+ * per-klant settings panel appends one short directive sentence to the
+ * styleDirective so Gemini biases the aesthetic in that direction.
+ * Kept terse on purpose — long clauses overflow the prompt budget and
+ * dilute the structural-template anchor. "auto" returns empty string so
+ * Pedro keeps doing whatever the brief + style category dictates.
+ */
+const VISUAL_STYLE_CLAUSES: Record<VisualStyleKey, string> = {
+  auto: "",
+  professional:
+    "Aesthetic: corporate authority. Restrained palette, sans-serif typography, geometric layouts. Trustworthy, composed, no flourish.",
+  modern_clean:
+    "Aesthetic: modern & minimalist. Generous negative space, restrained palette, single accent color, crisp geometric type. Apple/Notion editorial cleanliness.",
+  luxurious:
+    "Aesthetic: premium luxury. Refined materials (matte black, brushed metal, marble or paper-grain), restrained palette, generous negative space, gold-or-accent typography, deep blacks or pearl whites. Hermès / Aesop / luxury watchmaker editorial.",
+  feminine_soft:
+    "Aesthetic: soft & feminine. Pastel palette (blush, sage, cream), organic curved shapes, soft diffuse lighting, serif headline, generous breathing space. Glossier / Goop / luxury wellness editorial.",
+  mysterious_dark:
+    "Aesthetic: enigmatic & dark. Low-key lighting with heavy shadow, restricted palette of one accent color against deep black or near-black, atmospheric haze, suspenseful negative space. Cinematic noir.",
+  playful_energetic:
+    "Aesthetic: playful & energetic. Bold saturated palette, kinetic angles, oversized typography with mixed-weight contrast, hand-drawn or geometric decorations. Energetic, optimistic, bold.",
+  robust_industrial:
+    "Aesthetic: robust & industrial. Earthy palette (concrete grey, rust, deep navy), heavyweight sans typography, grid-anchored layout, raw materials in scene, utilitarian honesty. Patagonia / Carhartt editorial.",
+  vintage_editorial:
+    "Aesthetic: vintage editorial. Warm cream / mocha / faded teal palette, serif headline with subtle texture, film-grain or paper-grain overlay, balanced asymmetric layout. 70s magazine editorial feel.",
+}
+
+const LIGHTING_CLAUSES: Record<LightingStyleKey, string> = {
+  auto: "",
+  studio_clean:
+    "Lighting: studio clean. Soft diffused key light, fill light to lift shadows, near-shadowless backdrop, even tonal range across the subject.",
+  natural_daylight:
+    "Lighting: natural daylight. Window-quality soft light from a single direction, gentle shadows, slight warm cast, documentary realism.",
+  golden_hour:
+    "Lighting: golden hour. Warm low-angle sun, long soft shadows, amber rim light on the subject's edges, atmospheric haze in the background.",
+  moody_dark:
+    "Lighting: moody / low-key. Strong directional key with deep shadows, restricted highlight range, atmospheric depth, single accent rim light on the subject.",
+  high_key_bright:
+    "Lighting: high-key bright. Wash of even bright light, near-shadowless, soft highlights, light tonal range across the frame. Optimistic, clean, airy.",
+}
+
+const COMPOSITION_CLAUSES: Record<CompositionDensityKey, string> = {
+  auto: "",
+  minimal:
+    "Composition density: minimal. Generous negative space (≥40% of canvas), one focal subject, no secondary objects competing for attention.",
+  balanced:
+    "Composition density: balanced. Focal subject occupies ~50-60% of canvas; supporting context elements present but secondary; clear visual hierarchy.",
+  rich:
+    "Composition density: rich layered. Multiple visual elements at different depths, layered textures, atmospheric haze separating planes, full canvas use without clutter.",
+}
+
+function lookAndFeelAddendum(
+  visualStyle: VisualStyleKey,
+  lightingStyle: LightingStyleKey,
+  compositionDensity: CompositionDensityKey,
+): string {
+  const lines: string[] = []
+  if (VISUAL_STYLE_CLAUSES[visualStyle]) lines.push(`- ${VISUAL_STYLE_CLAUSES[visualStyle]}`)
+  if (LIGHTING_CLAUSES[lightingStyle]) lines.push(`- ${LIGHTING_CLAUSES[lightingStyle]}`)
+  if (COMPOSITION_CLAUSES[compositionDensity]) lines.push(`- ${COMPOSITION_CLAUSES[compositionDensity]}`)
+  if (lines.length === 0) return ""
+  return `\n\nLOOK & FEEL OVERRIDE (per-klant panel keuze — vóór alle andere style directives):\n${lines.join("\n")}`
 }
 
 /** Creative-chrome styles (composite + animation) krijgen versoepelde
@@ -967,7 +1035,20 @@ A buitenstaander must recognise your output and the source screenshot as 'iterat
             .map((c) => c?.hex)
             .filter((h): h is string => typeof h === "string" && /^#[0-9a-f]{6}$/i.test(h)))
         : null
-    const brandHexForPrompt = brandHexFromPdf ?? brandHexFromStyle ?? null
+    // Roy 2026-06-13: per-klant override van de brand-colour set in
+    // creative_settings.brandColors wins over auto-detected. Only enabled
+    // entries (default true when unset) are forwarded to Gemini.
+    const brandHexFromOverride =
+      Array.isArray(effectiveSettings.brandColors) && effectiveSettings.brandColors.length > 0
+        ? effectiveSettings.brandColors
+            .filter((c) => c.enabled !== false)
+            .map((c) => c.hex)
+            .filter((h) => /^#[0-9a-f]{3,6}$/i.test(h))
+        : null
+    const brandHexForPrompt =
+      brandHexFromOverride && brandHexFromOverride.length > 0
+        ? brandHexFromOverride
+        : brandHexFromPdf ?? brandHexFromStyle ?? null
 
     // Composite slots krijgen versoepelde RL_QUALITY_RULES (allowed:
     // graphic overlays, brand-color panels). Andere styles houden de
@@ -1033,6 +1114,15 @@ RL QUALITY RULES (composite-allowed):
       ? brandHexForPrompt
       : null
 
+    // Roy 2026-06-13: Look & feel addendum (single string for all slots
+    // since these are per-klant panel choices, not per-slot). Empty when
+    // all three dropdowns are on "auto".
+    const lookAndFeelText = lookAndFeelAddendum(
+      effectiveSettings.visualStyle,
+      effectiveSettings.lightingStyle,
+      effectiveSettings.compositionDensity,
+    )
+
     const slotResults = await Promise.allSettled(
       targetSlots.map((slot, idx) => {
         const style: SlotStyleKey =
@@ -1040,7 +1130,7 @@ RL QUALITY RULES (composite-allowed):
           settingsSlotDefaults[slot] ??
           DEFAULT_SLOT_STYLES[slot] ??
           "client_content_ai"
-        const directive = styleDirective(style, brandHexForDirective)
+        const directive = styleDirective(style, brandHexForDirective) + lookAndFeelText
         const inspiration = inspirationRefs[idx]
         // Creative-chrome styles (composite + animation) krijgen
         // versoepelde rules zodat overlays + panels niet geblocked

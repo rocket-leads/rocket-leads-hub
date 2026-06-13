@@ -8,31 +8,36 @@ import {
   AlertCircle,
   Loader2,
   RotateCcw,
+  Trash2,
+  Plus,
+  Settings as SettingsIcon,
 } from "lucide-react"
+import Link from "next/link"
 import { cn } from "@/lib/utils"
 import type {
   PedroCreativeSettings,
   AspectRatio,
   SlotStyleKey,
   InspirationSubfolderFlags,
+  VisualStyleKey,
+  LightingStyleKey,
+  CompositionDensityKey,
 } from "@/lib/pedro/creative-settings"
 
 /**
  * Inline settings panel that opens below the client picker on the Pedro
- * Optimize page. Three sections:
- *   - Bronnen   : inspiration root URL (global), per-client subfolder
- *                 checkboxes, klant-Drive link
- *   - Output    : aspect ratio, AI intensity, variants per refresh,
- *                 per-slot style defaults
- *   - Brand     : brand colors (read-only v1), fonts (read-only), brand
- *                 book ref (read-only v1)
+ * Optimize page. Four sections (Roy 2026-06-13):
+ *   - Bronnen      : status banner + per-klant subfolder checkboxes +
+ *                    klant-Drive link. URL editor verhuisd naar
+ *                    /settings → Pedro omdat 't een globale setting is.
+ *   - Output       : aspect ratio, AI intensity, slot styles.
+ *   - Look & feel  : visuele stijl + lichtstijl + compositiedichtheid.
+ *   - Brand identity: brand-color editor + fonts (read-only) +
+ *                    brand book link (Drive picker/upload in v2).
  *
  * Save flow is explicit (Bewaar button); dirty state highlights the
  * button + shows "X wijzigingen". Reset wipes the per-client override
  * back to defaults (PUT { reset: true }).
- *
- * Brand-book picker/upload is deferred to v2 — for now we show whatever
- * `brand_style.brandBookSource` told us the source was. Roy 2026-06-13.
  */
 
 type VerifyResponseSubfolder = {
@@ -47,6 +52,15 @@ type VerifyResponse =
   | { connected: false; folderId: string | null; error?: string }
   | { connected: true; folderId: string; subfolders: VerifyResponseSubfolder[] }
 
+type DetectedBrand = {
+  colors: string[]
+  source: "pdf" | "website" | "none"
+  headingFont: string | null
+  bodyFont: string | null
+  brandBookFileId: string | null
+  brandBookFileName: string | null
+}
+
 type SettingsResponse = {
   override: PedroCreativeSettings
   effective: {
@@ -59,8 +73,13 @@ type SettingsResponse = {
     brandColorIntensity: number
     brandBookDriveFileId: string | null
     brandBookSource?: string
+    brandColors?: Array<{ hex: string; enabled?: boolean }>
+    visualStyle: VisualStyleKey
+    lightingStyle: LightingStyleKey
+    compositionDensity: CompositionDensityKey
   }
   defaults: SettingsResponse["effective"]
+  detected: DetectedBrand
 }
 
 const ASPECT_RATIOS: AspectRatio[] = ["4:5", "1:1", "9:16", "1.91:1"]
@@ -81,6 +100,36 @@ const SUBFOLDER_LABELS: Record<keyof InspirationSubfolderFlags, string> = {
   stock_content: "Stock content",
 }
 
+const VISUAL_STYLE_OPTIONS: Array<{ value: VisualStyleKey; label: string }> = [
+  { value: "auto", label: "Auto (geen voorkeur)" },
+  { value: "professional", label: "Professioneel" },
+  { value: "modern_clean", label: "Modern & clean" },
+  { value: "luxurious", label: "Luxueus / premium" },
+  { value: "feminine_soft", label: "Vrouwelijk & zacht" },
+  { value: "mysterious_dark", label: "Geheimzinnig / donker" },
+  { value: "playful_energetic", label: "Speels & energiek" },
+  { value: "robust_industrial", label: "Robuust / industrieel" },
+  { value: "vintage_editorial", label: "Vintage / editorial" },
+]
+
+const LIGHTING_OPTIONS: Array<{ value: LightingStyleKey; label: string }> = [
+  { value: "auto", label: "Auto (geen voorkeur)" },
+  { value: "studio_clean", label: "Studio clean" },
+  { value: "natural_daylight", label: "Natuurlijk daglicht" },
+  { value: "golden_hour", label: "Golden hour" },
+  { value: "moody_dark", label: "Moody / donker" },
+  { value: "high_key_bright", label: "High-key bright" },
+]
+
+const COMPOSITION_OPTIONS: Array<{ value: CompositionDensityKey; label: string }> = [
+  { value: "auto", label: "Auto (geen voorkeur)" },
+  { value: "minimal", label: "Minimal (veel ruimte)" },
+  { value: "balanced", label: "Gebalanceerd" },
+  { value: "rich", label: "Rich layered" },
+]
+
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
+
 type Props = {
   open: boolean
   clientId: string
@@ -92,7 +141,6 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
   const [settings, setSettings] = useState<SettingsResponse | null>(null)
   const [loadingSettings, setLoadingSettings] = useState(false)
   const [verifyState, setVerifyState] = useState<VerifyResponse | null>(null)
-  const [verifyBusy, setVerifyBusy] = useState(false)
 
   // Override draft = the unsaved-yet edits, layered on top of the
   // server-known override. Save POSTs draft, refetches into `settings`.
@@ -100,11 +148,6 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedFlash, setSavedFlash] = useState(false)
-
-  // Inspiration root URL editor — global setting, separate save path.
-  const [rootDraft, setRootDraft] = useState<string>("")
-  const [rootDirty, setRootDirty] = useState(false)
-  const [rootSaving, setRootSaving] = useState(false)
 
   // Load per-client settings + verify root on open. We re-fetch every
   // time the panel opens for a new client so saving on one client and
@@ -124,12 +167,6 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
         setSettings(s as SettingsResponse)
         setDraft({})
         setVerifyState(v as VerifyResponse)
-        if ((v as VerifyResponse).folderId) {
-          setRootDraft((v as VerifyResponse).folderId ?? "")
-        } else {
-          setRootDraft("")
-        }
-        setRootDirty(false)
       })
       .catch((e) => {
         if (seq !== requestSeq.current) return
@@ -145,10 +182,21 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
   // render every field's current value.
   const effective = useMemo(() => {
     if (!settings) return null
+    // Brand colours follow a slightly different precedence: an explicit
+    // draft (including an empty array — "exclude all") wins; else the
+    // server override; else the auto-detected hex list as the editor's
+    // starting point so the CM sees something to tweak immediately.
+    let brandColors: Array<{ hex: string; enabled?: boolean }>
+    if (draft.brandColors !== undefined) {
+      brandColors = draft.brandColors
+    } else if (settings.effective.brandColors !== undefined) {
+      brandColors = settings.effective.brandColors
+    } else {
+      brandColors = settings.detected.colors.map((hex) => ({ hex, enabled: true }))
+    }
     return {
       aspectRatio: draft.aspectRatio ?? settings.effective.aspectRatio,
       aiIntensity: draft.aiIntensity ?? settings.effective.aiIntensity,
-      variantsPerRefresh: draft.variantsPerRefresh ?? settings.effective.variantsPerRefresh,
       slotStyleDefaults: {
         ...settings.effective.slotStyleDefaults,
         ...(draft.slotStyleDefaults ?? {}),
@@ -158,19 +206,22 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
         ...(draft.inspirationSubfolders ?? {}),
       },
       brandColorInjection: draft.brandColorInjection ?? settings.effective.brandColorInjection,
-      brandColorIntensity: draft.brandColorIntensity ?? settings.effective.brandColorIntensity,
       brandBookDriveFileId:
         draft.brandBookDriveFileId !== undefined
           ? draft.brandBookDriveFileId
           : settings.effective.brandBookDriveFileId,
       brandBookSource: draft.brandBookSource ?? settings.effective.brandBookSource,
+      brandColors,
+      visualStyle: draft.visualStyle ?? settings.effective.visualStyle,
+      lightingStyle: draft.lightingStyle ?? settings.effective.lightingStyle,
+      compositionDensity: draft.compositionDensity ?? settings.effective.compositionDensity,
     }
   }, [settings, draft])
 
   const dirty = useMemo(() => {
     // Count keys present in draft. Empty sub-objects don't count.
     let n = 0
-    for (const [k, v] of Object.entries(draft)) {
+    for (const [, v] of Object.entries(draft)) {
       if (v === undefined) continue
       if (typeof v === "object" && v !== null && !Array.isArray(v) && Object.keys(v).length === 0) continue
       n++
@@ -195,6 +246,16 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
         ...prev,
         inspirationSubfolders: { ...(prev.inspirationSubfolders ?? {}), [key]: value },
       }))
+    },
+    [],
+  )
+
+  // Brand color editor helpers. All operate on the effective list so the
+  // CM sees their edits immediately; we persist the whole array to the
+  // override on save. Roy 2026-06-13.
+  const updateBrandColors = useCallback(
+    (next: Array<{ hex: string; enabled?: boolean }>) => {
+      setDraft((prev) => ({ ...prev, brandColors: next }))
     },
     [],
   )
@@ -244,44 +305,6 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
       setSaving(false)
     }
   }, [clientId])
-
-  // Inspiration root URL save — parses a Drive URL down to a folder ID
-  // ("https://drive.google.com/drive/folders/<id>") or accepts a bare ID.
-  const handleRootSave = useCallback(async () => {
-    const raw = rootDraft.trim()
-    if (!raw) return
-    const idMatch = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/)
-    const folderId = idMatch ? idMatch[1] : raw
-    setRootSaving(true)
-    setError(null)
-    try {
-      const res = await fetch("/api/pedro/inspiration-folder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ folderId }),
-      })
-      const json = await res.json()
-      if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`)
-      setRootDirty(false)
-      // Re-verify so the subfolder counts refresh.
-      const v = await fetch("/api/pedro/inspiration-folder/verify").then((r) => r.json())
-      setVerifyState(v as VerifyResponse)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Inspiration root opslaan mislukt")
-    } finally {
-      setRootSaving(false)
-    }
-  }, [rootDraft])
-
-  const handleVerify = useCallback(async () => {
-    setVerifyBusy(true)
-    try {
-      const v = await fetch("/api/pedro/inspiration-folder/verify").then((r) => r.json())
-      setVerifyState(v as VerifyResponse)
-    } finally {
-      setVerifyBusy(false)
-    }
-  }, [])
 
   if (!open) return null
 
@@ -350,10 +373,8 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
           {/* ─────────── BRONNEN ─────────── */}
           <Section title="Bronnen">
             <div className="space-y-4">
-              {/* Connection status (prominent at top — read-only summary).
-                  The URL editor zelf staat gedempt onderaan deze sectie
-                  omdat 't een globale instelling is die per definitie
-                  voor élke klant gelijk is. Roy 2026-06-13. */}
+              {/* Connection status — read-only summary. URL editor leeft
+                  in /settings → Pedro want het is een globale setting. */}
               {verifyState?.connected ? (
                 <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
@@ -379,24 +400,36 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
                   </a>
                 </div>
               ) : verifyState ? (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2">
-                  <div className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {verifyState.folderId
-                      ? "Inspiration root niet bereikbaar"
-                      : "Inspiration root nog niet geconfigureerd"}
-                  </div>
-                  {verifyState.folderId && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Drive zegt: {verifyState.error ?? "onbekende fout"}. Opgeslagen ID:{" "}
-                      <code className="font-mono">{verifyState.folderId}</code>. Onderaan kun je 'm
-                      aanpassen.
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 dark:text-amber-400">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      {verifyState.folderId
+                        ? "Inspiration root niet bereikbaar"
+                        : "Inspiration root nog niet geconfigureerd"}
                     </div>
-                  )}
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {verifyState.folderId ? (
+                        <>
+                          Drive zegt: {verifyState.error ?? "onbekende fout"}. Opgeslagen ID:{" "}
+                          <code className="font-mono">{verifyState.folderId}</code>.
+                        </>
+                      ) : (
+                        <>De inspiration library wordt per Hub centraal beheerd.</>
+                      )}
+                    </div>
+                  </div>
+                  <Link
+                    href="/settings?tab=pedro"
+                    className="shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-border bg-card text-xs font-medium hover:bg-accent transition-colors"
+                  >
+                    <SettingsIcon className="h-3.5 w-3.5" />
+                    Beheer
+                  </Link>
                 </div>
               ) : null}
 
-              {/* Inspiration subfolders */}
+              {/* Inspiration subfolders (per-klant) */}
               <div>
                 <Label>
                   Inspiration subfolders <span className="font-normal text-muted-foreground">(per klant)</span>
@@ -462,82 +495,25 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
                   Per-folder selecties (welke klant-mappen Pedro mag gebruiken voor bron-fotos) worden beheerd via de bestaande image-source-prefs picker in de wizard.
                 </div>
               </div>
-
-              {/* Globale instelling, onderaan + gedempt. Geldt voor élke
-                  klant; zelden aangeraakt. Hier laten staan zodat 'm
-                  vindbaar is wanneer de library hard down is, maar
-                  visueel niet competen met de per-klant toggles erboven. */}
-              <div className="mt-6 pt-4 border-t border-border/40">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mb-1">
-                  Globale instelling · zelfde voor alle klanten
-                </div>
-                <Label>
-                  <span className="font-normal text-muted-foreground/80">Inspiration root (Drive folder URL of folder-ID)</span>
-                </Label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={rootDraft}
-                    onChange={(e) => {
-                      setRootDraft(e.target.value)
-                      setRootDirty(true)
-                    }}
-                    placeholder="https://drive.google.com/drive/folders/…"
-                    className="flex-1 h-8 px-2 rounded-md border border-border/50 bg-background/40 text-xs font-mono text-muted-foreground focus:text-foreground focus:bg-background focus:border-border transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleRootSave}
-                    disabled={!rootDirty || rootSaving}
-                    className="h-8 px-3 rounded-md border border-border/60 bg-card text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
-                  >
-                    {rootSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Opslaan"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleVerify}
-                    disabled={verifyBusy}
-                    className="h-8 px-3 rounded-md border border-border/60 bg-card text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
-                  >
-                    {verifyBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : "Verifieer"}
-                  </button>
-                </div>
-              </div>
             </div>
           </Section>
 
           {/* ─────────── OUTPUT ─────────── */}
           <Section title="Output">
             <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label>Aspect ratio</Label>
-                  <select
-                    value={effective.aspectRatio}
-                    onChange={(e) => patchDraft({ aspectRatio: e.target.value as AspectRatio })}
-                    className="w-full h-9 px-3 rounded-md border border-border bg-background text-sm"
-                  >
-                    {ASPECT_RATIOS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>
-                    Variants per refresh{" "}
-                    <span className="font-normal text-muted-foreground">{effective.variantsPerRefresh}</span>
-                  </Label>
-                  <input
-                    type="range"
-                    min={1}
-                    max={10}
-                    value={effective.variantsPerRefresh}
-                    onChange={(e) => patchDraft({ variantsPerRefresh: Number(e.target.value) })}
-                    className="w-full accent-primary"
-                  />
-                </div>
+              <div>
+                <Label>Aspect ratio</Label>
+                <select
+                  value={effective.aspectRatio}
+                  onChange={(e) => patchDraft({ aspectRatio: e.target.value as AspectRatio })}
+                  className="w-full sm:w-1/3 h-9 px-3 rounded-md border border-border bg-background text-sm"
+                >
+                  {ASPECT_RATIOS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -590,6 +566,61 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
             </div>
           </Section>
 
+          {/* ─────────── LOOK & FEEL ─────────── */}
+          <Section title="Look & feel">
+            <div className="space-y-4">
+              <p className="text-[11px] text-muted-foreground -mt-1 mb-2">
+                Stuur de uitstraling van de gegenereerde ads. Elke keuze voegt
+                een korte richtlijn toe aan de Gemini-prompt. Auto = laat
+                Pedro het kiezen op basis van de brief.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <Label>Stijl</Label>
+                  <select
+                    value={effective.visualStyle}
+                    onChange={(e) => patchDraft({ visualStyle: e.target.value as VisualStyleKey })}
+                    className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
+                  >
+                    {VISUAL_STYLE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>Lichtstijl</Label>
+                  <select
+                    value={effective.lightingStyle}
+                    onChange={(e) => patchDraft({ lightingStyle: e.target.value as LightingStyleKey })}
+                    className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
+                  >
+                    {LIGHTING_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>Compositie</Label>
+                  <select
+                    value={effective.compositionDensity}
+                    onChange={(e) => patchDraft({ compositionDensity: e.target.value as CompositionDensityKey })}
+                    className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
+                  >
+                    {COMPOSITION_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </Section>
+
           {/* ─────────── BRAND IDENTITY ─────────── */}
           <Section title="Brand identity">
             <div className="space-y-4">
@@ -605,32 +636,46 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
                 </label>
               </div>
 
-              <div className={cn(!effective.brandColorInjection && "opacity-50")}>
-                <Label>
-                  Color presence{" "}
-                  <span className="font-normal text-muted-foreground">
-                    {effective.brandColorIntensity} — {colorPresenceLabel(effective.brandColorIntensity)}
-                  </span>
-                </Label>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={effective.brandColorIntensity}
-                  onChange={(e) => patchDraft({ brandColorIntensity: Number(e.target.value) })}
-                  disabled={!effective.brandColorInjection}
-                  className="w-full accent-primary"
-                />
-                <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
-                  <span>Subtiel accent (0)</span>
-                  <span>Panel-dominant (100)</span>
+              {/* Brand colours editor */}
+              <BrandColorsEditor
+                colors={effective.brandColors}
+                detectedSource={settings.detected.source}
+                disabled={!effective.brandColorInjection}
+                onChange={updateBrandColors}
+              />
+
+              {/* Fonts (read-only v1) */}
+              <div>
+                <Label>Fonts</Label>
+                <div className="text-sm text-muted-foreground">
+                  {settings.detected.headingFont || settings.detected.bodyFont ? (
+                    <span>
+                      {settings.detected.headingFont ?? "—"}
+                      {settings.detected.bodyFont && settings.detected.bodyFont !== settings.detected.headingFont
+                        ? ` · ${settings.detected.bodyFont}`
+                        : ""}
+                    </span>
+                  ) : (
+                    <span className="italic">Niet gedetecteerd uit website / brand book.</span>
+                  )}
                 </div>
               </div>
 
+              {/* Brand book */}
               <div>
                 <Label>Brand book</Label>
-                {effective.brandBookDriveFileId ? (
+                {settings.detected.brandBookFileId ? (
+                  <a
+                    href={`https://drive.google.com/file/d/${settings.detected.brandBookFileId}/view`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm hover:bg-accent transition-colors"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    {settings.detected.brandBookFileName ?? "Open brand book"}
+                    <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                  </a>
+                ) : effective.brandBookDriveFileId ? (
                   <a
                     href={`https://drive.google.com/file/d/${effective.brandBookDriveFileId}/view`}
                     target="_blank"
@@ -638,13 +683,13 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
                     className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm hover:bg-accent transition-colors"
                   >
                     <FolderOpen className="h-4 w-4" />
-                    Open brand book ({effective.brandBookSource ?? "drive"})
+                    Open brand book
                     <ExternalLink className="h-3 w-3 text-muted-foreground" />
                   </a>
                 ) : (
                   <div className="text-xs text-muted-foreground italic">
-                    Geen brand book gekoppeld. Drive-picker + upload komen in v2 — Pedro valt
-                    voorlopig terug op de uit de website gescrapete brand_style (colors + fonts).
+                    Geen brand book gedetecteerd in de klant-Drive. Pedro valt terug op de uit de
+                    website gescrapete kleuren + fonts.
                   </div>
                 )}
               </div>
@@ -652,6 +697,124 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
           </Section>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Editor voor de brand-colour set die generate-image injecteert. List
+ * van chips met hex preview + tekstinvoer + enable-checkbox + remove.
+ * Standaard initialiseren we vanuit `detected.colors` zodat de CM ziet
+ * wat er automatisch gevonden is en daar incremental edits op kan doen.
+ */
+function BrandColorsEditor({
+  colors,
+  detectedSource,
+  disabled,
+  onChange,
+}: {
+  colors: Array<{ hex: string; enabled?: boolean }>
+  detectedSource: "pdf" | "website" | "none"
+  disabled: boolean
+  onChange: (next: Array<{ hex: string; enabled?: boolean }>) => void
+}) {
+  const sourceLabel =
+    detectedSource === "pdf"
+      ? "uit brand book PDF"
+      : detectedSource === "website"
+        ? "uit website scrape"
+        : "geen detectie — voeg ze handmatig toe"
+
+  function patch(idx: number, p: Partial<{ hex: string; enabled: boolean }>) {
+    const next = colors.map((c, i) => (i === idx ? { ...c, ...p } : c))
+    onChange(next)
+  }
+  function remove(idx: number) {
+    onChange(colors.filter((_, i) => i !== idx))
+  }
+  function add() {
+    onChange([...colors, { hex: "#000000", enabled: true }])
+  }
+
+  return (
+    <div className={cn(disabled && "opacity-50")}>
+      <Label>
+        Brand colors <span className="font-normal text-muted-foreground">({sourceLabel})</span>
+      </Label>
+      <div className="space-y-2">
+        {colors.length === 0 && (
+          <div className="text-xs text-muted-foreground italic">
+            Nog geen kleuren — voeg er één toe of hercheck de detectie via analyze-website.
+          </div>
+        )}
+        {colors.map((c, idx) => {
+          const enabled = c.enabled !== false
+          const valid = HEX_RE.test(c.hex)
+          return (
+            <div
+              key={idx}
+              className={cn(
+                "flex items-center gap-2 px-2 py-1.5 rounded-md border border-border/60 bg-background/40",
+                !enabled && "opacity-60",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={enabled}
+                disabled={disabled}
+                onChange={(e) => patch(idx, { enabled: e.target.checked })}
+                className="h-4 w-4 accent-primary shrink-0"
+                title={enabled ? "Sluit deze kleur uit bij generatie" : "Gebruik deze kleur weer"}
+              />
+              <span
+                className="h-6 w-6 rounded border border-border/60 shrink-0"
+                style={{ backgroundColor: valid ? c.hex : "transparent" }}
+              />
+              <input
+                type="text"
+                value={c.hex}
+                disabled={disabled}
+                onChange={(e) => patch(idx, { hex: e.target.value })}
+                className={cn(
+                  "h-7 px-2 rounded border border-border/60 bg-background text-xs font-mono w-28",
+                  !valid && "border-red-500/50 text-red-600 dark:text-red-400",
+                )}
+                placeholder="#000000"
+                spellCheck={false}
+              />
+              <input
+                type="color"
+                value={valid ? c.hex : "#000000"}
+                disabled={disabled}
+                onChange={(e) => patch(idx, { hex: e.target.value })}
+                className="h-7 w-9 rounded border border-border/60 cursor-pointer disabled:cursor-not-allowed"
+                title="Color picker"
+              />
+              <span className="text-[10px] text-muted-foreground ml-auto">
+                {valid ? "" : "ongeldig"}
+              </span>
+              <button
+                type="button"
+                onClick={() => remove(idx)}
+                disabled={disabled}
+                className="inline-flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                title="Verwijder deze kleur"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )
+        })}
+        <button
+          type="button"
+          onClick={add}
+          disabled={disabled}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Voeg kleur toe
+        </button>
+      </div>
     </div>
   )
 }
@@ -674,10 +837,4 @@ function aiIntensityLabel(n: number): string {
   if (n <= 50) return "lichte AI-bewerking"
   if (n <= 80) return "stevige AI-bewerking"
   return "vrijwel volledig AI"
-}
-
-function colorPresenceLabel(n: number): string {
-  if (n <= 25) return "subtiel"
-  if (n <= 60) return "duidelijk aanwezig"
-  return "dominant"
 }

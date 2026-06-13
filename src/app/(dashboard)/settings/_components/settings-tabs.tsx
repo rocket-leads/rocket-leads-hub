@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import { KeyRound, Database, Users, Zap, Building2, UserCircle2, Activity } from "lucide-react"
+import { KeyRound, Database, Users, Zap, Building2, UserCircle2, Activity, Sparkles } from "lucide-react"
 import { TopTabs } from "@/components/ui/top-tabs"
 import type { TopTab } from "@/components/ui/top-tabs"
 import { useLocale } from "@/lib/i18n/client"
@@ -14,6 +14,7 @@ import { ClientsTab } from "./clients-tab"
 import { AutomationsTab } from "./automations-tab"
 import { MeTab, type MeTabData } from "./me-tab"
 import { HealthTab } from "./health-tab"
+import { PedroTab } from "./pedro-tab"
 import type { InboxAutomationRules } from "../types"
 
 type SettingsTabId =
@@ -23,6 +24,7 @@ type SettingsTabId =
   | "automations"
   | "clients"
   | "board"
+  | "pedro"
   | "health"
 
 type AdminProps = {
@@ -59,6 +61,7 @@ const ALL_TAB_IDS: SettingsTabId[] = [
   "automations",
   "clients",
   "board",
+  "pedro",
   "health",
 ]
 
@@ -91,6 +94,7 @@ export function SettingsTabs(props: Props) {
       { id: "automations", label: t("settings.tab.automations", locale), icon: Zap },
       { id: "clients", label: t("settings.tab.clients", locale), icon: Building2 },
       { id: "board", label: t("settings.tab.board", locale), icon: Database },
+      { id: "pedro", label: t("settings.tab.pedro", locale), icon: Sparkles },
       { id: "health", label: t("settings.tab.health", locale), icon: Activity },
     ]
   }, [locale, isAdmin])
@@ -119,6 +123,7 @@ export function SettingsTabs(props: Props) {
       {isAdmin && activeTab === "board" && (
         <BoardConfigTab config={props.boardConfig} defaults={props.defaultBoardConfig} />
       )}
+      {isAdmin && activeTab === "pedro" && <PedroTab />}
       {isAdmin && activeTab === "health" && <HealthTab />}
     </div>
   )

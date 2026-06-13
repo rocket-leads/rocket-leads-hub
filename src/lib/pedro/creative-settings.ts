@@ -41,27 +41,83 @@ export type BrandBookSource =
   | "upload"          // CM uploaded a PDF directly
   | "website_fallback" // Pedro generated a brand-style summary from the website
 
+/** Visual style language — what the ad "radiates". Single-select; Pedro
+ *  appends a 1-sentence clause to the styleDirective so Gemini biases the
+ *  aesthetic. "auto" leaves it untouched (default: hard-coded RL look). */
+export type VisualStyleKey =
+  | "auto"
+  | "professional"
+  | "modern_clean"
+  | "luxurious"
+  | "feminine_soft"
+  | "mysterious_dark"
+  | "playful_energetic"
+  | "robust_industrial"
+  | "vintage_editorial"
+
+/** Lighting / atmosphere — how the scene is lit. Influences composition
+ *  + photo mood. */
+export type LightingStyleKey =
+  | "auto"
+  | "studio_clean"
+  | "natural_daylight"
+  | "golden_hour"
+  | "moody_dark"
+  | "high_key_bright"
+
+/** Composition density — how much visual weight the canvas carries. */
+export type CompositionDensityKey = "auto" | "minimal" | "balanced" | "rich"
+
 export type PedroCreativeSettings = {
   aspectRatio?: AspectRatio
   /** 0 = keep the original photo as-is, 100 = fully AI-edited composite. */
   aiIntensity?: number
+  /** Deprecated 2026-06-13: kept in jsonb for back-compat, no longer
+   *  surfaced in the panel. creative-refresh still reads via override. */
   variantsPerRefresh?: number
   slotStyleDefaults?: Partial<Record<number, SlotStyleKey>>
   inspirationSubfolders?: Partial<InspirationSubfolderFlags>
   brandColorInjection?: boolean
-  /** 0 = subtle accent, 100 = panel-dominant brand-color treatment. */
+  /** Deprecated 2026-06-13: color presence slider removed from the panel
+   *  per Roy. Kept in jsonb so old saves don't blow up sanitising. */
   brandColorIntensity?: number
   brandBookDriveFileId?: string | null
   brandBookSource?: BrandBookSource
+
+  // Look & feel dimensions (Roy 2026-06-13). Each is single-select with
+  // an "auto" escape hatch. Each non-auto value appends a one-line
+  // clause to the Gemini styleDirective. See generate-image route for
+  // the mapping from key → clause text.
+  visualStyle?: VisualStyleKey
+  lightingStyle?: LightingStyleKey
+  compositionDensity?: CompositionDensityKey
+
+  /** Per-klant override of auto-detected brand colors. When set + non-
+   *  empty, generate-image uses these in place of the website/PDF
+   *  scraping. Each entry has its own `enabled` toggle so the CM can
+   *  exclude a colour without deleting it (handy for "we don't want
+   *  the off-white in ads but keep it on the website"). Roy 2026-06-13. */
+  brandColors?: Array<{ hex: string; enabled?: boolean }>
 }
 
 export const DEFAULT_CREATIVE_SETTINGS: Required<
-  Omit<PedroCreativeSettings, "brandBookDriveFileId" | "brandBookSource">
-> & Pick<PedroCreativeSettings, "brandBookDriveFileId" | "brandBookSource"> = {
+  Omit<PedroCreativeSettings, "brandBookDriveFileId" | "brandBookSource" | "brandColors">
+> & Pick<PedroCreativeSettings, "brandBookDriveFileId" | "brandBookSource" | "brandColors"> = {
   aspectRatio: "4:5",
-  aiIntensity: 60,
+  // Roy 2026-06-13: was 60, lowered to 40 so default output stays closer
+  // to the client's own photography. Composite/heavy-AI is opt-in via
+  // the panel rather than the default.
+  aiIntensity: 40,
   variantsPerRefresh: 3,
-  slotStyleDefaults: { 0: "client_content_ai", 1: "ai_content", 2: "ai_animation" },
+  // Roy 2026-06-13: was 0=client_content_ai / 1=ai_content / 2=ai_animation.
+  // Default all three to client_content_ai so a fresh refresh is consistent
+  // "real photo with light AI polish" across all slots. CM upgrades
+  // specific slots to AI Content / AI Animation when they want variation.
+  slotStyleDefaults: {
+    0: "client_content_ai",
+    1: "client_content_ai",
+    2: "client_content_ai",
+  },
   inspirationSubfolders: {
     client_content: true,
     client_content_ai: true,
@@ -73,6 +129,10 @@ export const DEFAULT_CREATIVE_SETTINGS: Required<
   brandColorIntensity: 60,
   brandBookDriveFileId: null,
   brandBookSource: undefined,
+  brandColors: undefined,
+  visualStyle: "auto",
+  lightingStyle: "auto",
+  compositionDensity: "auto",
 }
 
 const VALID_ASPECTS = new Set<AspectRatio>(["4:5", "1:1", "9:16", "1.91:1"])
@@ -89,6 +149,32 @@ const VALID_BRAND_BOOK_SOURCES = new Set<BrandBookSource>([
   "upload",
   "website_fallback",
 ])
+const VALID_VISUAL_STYLES = new Set<VisualStyleKey>([
+  "auto",
+  "professional",
+  "modern_clean",
+  "luxurious",
+  "feminine_soft",
+  "mysterious_dark",
+  "playful_energetic",
+  "robust_industrial",
+  "vintage_editorial",
+])
+const VALID_LIGHTING_STYLES = new Set<LightingStyleKey>([
+  "auto",
+  "studio_clean",
+  "natural_daylight",
+  "golden_hour",
+  "moody_dark",
+  "high_key_bright",
+])
+const VALID_COMPOSITION_DENSITIES = new Set<CompositionDensityKey>([
+  "auto",
+  "minimal",
+  "balanced",
+  "rich",
+])
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 const SUBFOLDER_KEYS: Array<keyof InspirationSubfolderFlags> = [
   "client_content",
   "client_content_ai",
@@ -161,6 +247,36 @@ export function sanitiseCreativeSettings(raw: unknown): PedroCreativeSettings {
     out.brandBookSource = r.brandBookSource as BrandBookSource
   }
 
+  // Look & feel dropdowns (Roy 2026-06-13).
+  if (typeof r.visualStyle === "string" && VALID_VISUAL_STYLES.has(r.visualStyle as VisualStyleKey)) {
+    out.visualStyle = r.visualStyle as VisualStyleKey
+  }
+  if (typeof r.lightingStyle === "string" && VALID_LIGHTING_STYLES.has(r.lightingStyle as LightingStyleKey)) {
+    out.lightingStyle = r.lightingStyle as LightingStyleKey
+  }
+  if (
+    typeof r.compositionDensity === "string" &&
+    VALID_COMPOSITION_DENSITIES.has(r.compositionDensity as CompositionDensityKey)
+  ) {
+    out.compositionDensity = r.compositionDensity as CompositionDensityKey
+  }
+
+  // Per-klant brand colour override (Roy 2026-06-13).
+  if (Array.isArray(r.brandColors)) {
+    const cleaned: Array<{ hex: string; enabled?: boolean }> = []
+    for (const entry of r.brandColors) {
+      if (!entry || typeof entry !== "object") continue
+      const e = entry as Record<string, unknown>
+      const hex = typeof e.hex === "string" ? e.hex.trim() : ""
+      if (!HEX_RE.test(hex)) continue
+      const item: { hex: string; enabled?: boolean } = { hex: hex.toLowerCase() }
+      if (typeof e.enabled === "boolean") item.enabled = e.enabled
+      cleaned.push(item)
+    }
+    // Empty array is meaningful — "explicitly no colours". Preserve it.
+    out.brandColors = cleaned
+  }
+
   return out
 }
 
@@ -191,5 +307,9 @@ export function resolveEffectiveSettings(
     brandBookDriveFileId:
       override.brandBookDriveFileId ?? DEFAULT_CREATIVE_SETTINGS.brandBookDriveFileId,
     brandBookSource: override.brandBookSource ?? DEFAULT_CREATIVE_SETTINGS.brandBookSource,
+    brandColors: override.brandColors ?? DEFAULT_CREATIVE_SETTINGS.brandColors,
+    visualStyle: override.visualStyle ?? DEFAULT_CREATIVE_SETTINGS.visualStyle,
+    lightingStyle: override.lightingStyle ?? DEFAULT_CREATIVE_SETTINGS.lightingStyle,
+    compositionDensity: override.compositionDensity ?? DEFAULT_CREATIVE_SETTINGS.compositionDensity,
   }
 }

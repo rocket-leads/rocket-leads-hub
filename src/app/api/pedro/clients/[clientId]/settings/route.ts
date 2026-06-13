@@ -24,20 +24,103 @@ import {
 
 export const dynamic = "force-dynamic"
 
+type DetectedBrand = {
+  /** Hex codes Pedro currently uses when no `brandColors` override is set
+   *  — derived from brand_style.primaryColor / secondaryColor / accentColor
+   *  plus brand_style.pdfDerivedPalette when present. Used by the panel
+   *  to seed the brand-colors editor with the auto-detected starting set. */
+  colors: string[]
+  /** Provenance label for the colours so the UI can tell the CM where they
+   *  came from ("Uit website" / "Uit brand book PDF"). */
+  source: "pdf" | "website" | "none"
+  headingFont: string | null
+  bodyFont: string | null
+  brandBookFileId: string | null
+  brandBookFileName: string | null
+}
+
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
+
+function normaliseHex(raw: unknown): string | null {
+  if (typeof raw !== "string") return null
+  const trimmed = raw.trim().toLowerCase()
+  if (!trimmed) return null
+  const withHash = trimmed.startsWith("#") ? trimmed : `#${trimmed}`
+  return HEX_RE.test(withHash) ? withHash : null
+}
+
+function extractDetectedBrand(brandStyle: Record<string, unknown> | null): DetectedBrand {
+  if (!brandStyle) {
+    return {
+      colors: [],
+      source: "none",
+      headingFont: null,
+      bodyFont: null,
+      brandBookFileId: null,
+      brandBookFileName: null,
+    }
+  }
+
+  // PDF palette wins when present — it's the canonical source per existing
+  // generate-image precedence (`brandHexFromPdf ?? brandHexFromStyle`).
+  const pdfPalette = (brandStyle.pdfDerivedPalette ?? null) as
+    | { hexCodes?: unknown; sourceFileId?: unknown; sourceFileName?: unknown }
+    | null
+  const pdfCodes = Array.isArray(pdfPalette?.hexCodes)
+    ? (pdfPalette!.hexCodes as unknown[]).map(normaliseHex).filter((h): h is string => !!h)
+    : []
+
+  if (pdfCodes.length > 0) {
+    return {
+      colors: pdfCodes,
+      source: "pdf",
+      headingFont: (brandStyle.headingFont as string | undefined) ?? null,
+      bodyFont: (brandStyle.bodyFont as string | undefined) ?? null,
+      brandBookFileId: (pdfPalette?.sourceFileId as string | undefined) ?? null,
+      brandBookFileName: (pdfPalette?.sourceFileName as string | undefined) ?? null,
+    }
+  }
+
+  // Fall back to website-scraped primary/secondary/accent.
+  const candidates = [
+    normaliseHex(brandStyle.primaryColor),
+    normaliseHex(brandStyle.secondaryColor),
+    normaliseHex(brandStyle.accentColor),
+  ].filter((h): h is string => !!h)
+
+  return {
+    colors: candidates,
+    source: candidates.length > 0 ? "website" : "none",
+    headingFont: (brandStyle.headingFont as string | undefined) ?? null,
+    bodyFont: (brandStyle.bodyFont as string | undefined) ?? null,
+    brandBookFileId: null,
+    brandBookFileName: null,
+  }
+}
+
 async function loadOverride(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   clientId: string,
-): Promise<{ row: { id: string; creative_settings: unknown } | null; override: PedroCreativeSettings }> {
+): Promise<{
+  row: { id: string; creative_settings: unknown; brand_style: Record<string, unknown> | null } | null
+  override: PedroCreativeSettings
+  detected: DetectedBrand
+}> {
   const { data } = await supabase
     .from("pedro_client_state")
-    .select("id, creative_settings")
+    .select("id, creative_settings, brand_style")
     .eq("client_id", clientId)
     .order("campaign_number", { ascending: false })
     .limit(1)
-    .maybeSingle<{ id: string; creative_settings: unknown }>()
+    .maybeSingle<{
+      id: string
+      creative_settings: unknown
+      brand_style: Record<string, unknown> | null
+    }>()
   return {
     row: data ?? null,
     override: sanitiseCreativeSettings(data?.creative_settings),
+    detected: extractDetectedBrand(data?.brand_style ?? null),
   }
 }
 
@@ -55,11 +138,12 @@ export async function GET(
   }
 
   const supabase = await createAdminClient()
-  const { override } = await loadOverride(supabase, clientId)
+  const { override, detected } = await loadOverride(supabase, clientId)
   return NextResponse.json({
     override,
     effective: resolveEffectiveSettings(override),
     defaults: DEFAULT_CREATIVE_SETTINGS,
+    detected,
   })
 }
 
@@ -84,7 +168,7 @@ export async function PUT(
   }
 
   const supabase = await createAdminClient()
-  const { row, override: current } = await loadOverride(supabase, clientId)
+  const { row, override: current, detected } = await loadOverride(supabase, clientId)
 
   let next: PedroCreativeSettings | null
   if (body.reset === true) {
@@ -136,5 +220,6 @@ export async function PUT(
     override,
     effective: resolveEffectiveSettings(override),
     defaults: DEFAULT_CREATIVE_SETTINGS,
+    detected,
   })
 }
