@@ -1003,6 +1003,32 @@ export function parseStripeCustomerIds(raw: string | null | undefined): string[]
  */
 const KNOWN_COLUMN_FALLBACKS: Record<string, string> = {
   administration: "status_16",
+  // Date columns used by the post-invoice-send cycle advance. Both boards
+  // happen to share the same IDs (see Settings defaults), and `mapItem`
+  // reads them with the same literal fallbacks - keep the write path in
+  // sync so a stored board_config without these keys (legacy or empty
+  // string) doesn't break the Monday sync after a successful Stripe send.
+  cycle_start_date: "date3",
+  next_invoice_date: "date_mm3297df",
+}
+
+/**
+ * Some legacy `board_config` rows still have `next_invoice_date: "date3"`
+ * - that's the cycle column, from before we split cycle vs invoice into
+ * two columns. Reading or writing to it as the invoice column would
+ * clobber the cycle date. Detect and treat as unmapped so the literal
+ * fallback (`date_mm3297df`) takes over - same defensive pattern
+ * `mapItem` uses on the read path.
+ */
+function resolvedColumnId(
+  columns: Record<string, string>,
+  columnKey: string,
+): string | undefined {
+  const configured = columns[columnKey]
+  if (columnKey === "next_invoice_date" && configured === "date3") {
+    return KNOWN_COLUMN_FALLBACKS[columnKey]
+  }
+  return configured || KNOWN_COLUMN_FALLBACKS[columnKey]
 }
 
 export async function setItemColumnValue(
@@ -1016,7 +1042,7 @@ export async function setItemColumnValue(
 
   const boardId = boardType === "onboarding" ? config.onboarding_board_id : config.current_board_id
   const columns = boardType === "onboarding" ? config.onboarding_columns : config.current_columns
-  const columnId = columns[columnKey] ?? KNOWN_COLUMN_FALLBACKS[columnKey]
+  const columnId = resolvedColumnId(columns, columnKey)
   if (!columnId) throw new Error(`Column "${columnKey}" is not mapped for the ${boardType} board.`)
 
   const mutation = `
@@ -1051,7 +1077,7 @@ export async function setItemColumnValueRaw(
 
   const boardId = boardType === "onboarding" ? config.onboarding_board_id : config.current_board_id
   const columns = boardType === "onboarding" ? config.onboarding_columns : config.current_columns
-  const columnId = columns[columnKey] ?? KNOWN_COLUMN_FALLBACKS[columnKey]
+  const columnId = resolvedColumnId(columns, columnKey)
   if (!columnId) throw new Error(`Column "${columnKey}" is not mapped for the ${boardType} board.`)
 
   const mutation = `
