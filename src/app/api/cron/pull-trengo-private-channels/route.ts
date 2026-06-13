@@ -182,6 +182,16 @@ function eventsFromMessageList(
     // suggests markup; plain-text WhatsApp / Slack messages stay null
     // so the renderer falls back to the plain-text bubble.
     const bodyHtml = raw.includes("<") ? raw : null
+    // Author name resolution depends on direction:
+    //   - INBOUND (client): the sender is the contact, even when
+    //     Trengo's `author` field points at the assigned agent. Without
+    //     this, the chat row showed "Roy Vosters" for emails from
+    //     external senders like La Plage Casanis (Roy 2026-06-13).
+    //   - OUTBOUND (rl_team): the sender is the agent.
+    const authorName =
+      authorKind === "client"
+        ? contact?.name ?? m.author?.name ?? "Unknown"
+        : m.author?.name ?? contact?.name ?? "Unknown"
     out.push({
       sourceMsgId: `trengo:msg:${m.id}`,
       channelId,
@@ -191,7 +201,7 @@ function eventsFromMessageList(
       body,
       bodyHtml,
       authorKind,
-      authorName: m.author?.name ?? contact?.name ?? "Unknown",
+      authorName,
       createdAtSrc: m.created_at,
     })
   }
@@ -474,14 +484,15 @@ export async function GET(req: NextRequest) {
                 e instanceof Error ? e.message : e,
               )
             }
-            // Throttle: ~10 req/sec ceiling so a single-user backfill
+            // Throttle: ~5 req/sec ceiling so a single-user backfill
             // (?since=168 walks ~150 fresh tickets on a busy private
             // inbox) doesn't 429 the user's Trengo token. Roy
-            // 2026-06-12: the front-end started showing "Trengo token
-            // werkt niet (429): Too Many Attempts" after wide
-            // backfills. Steady-state cycle (60-min lookback, typically
-            // <10 fresh tickets per channel) shrugs this delay off.
-            await new Promise((r) => setTimeout(r, 100))
+            // 2026-06-13 still hit 429 with 100ms; bumped to 200ms.
+            // Trengo's stated rate is 60/min ≈ 1/sec - 5/sec leaves
+            // headroom for repeat-triggered manual backfills within
+            // the same minute. Steady-state cycle (60-min lookback,
+            // typically <10 fresh tickets per channel) shrugs this off.
+            await new Promise((r) => setTimeout(r, 200))
           }
           totalCandidates += candidates.length
 
