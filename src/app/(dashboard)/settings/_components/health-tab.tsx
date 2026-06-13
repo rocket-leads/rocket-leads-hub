@@ -1,14 +1,32 @@
 "use client"
 
+import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { CheckCircle2, AlertCircle, AlertTriangle, Clock, Loader2, Database } from "lucide-react"
+import {
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  Clock,
+  Loader2,
+  Database,
+  ChevronDown,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
-import { KpiTile, type KpiValueTone } from "@/components/ui/kpi-tile"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { formatTimeAgo } from "@/lib/i18n/format"
 import type { Locale } from "@/lib/i18n/types"
-import type { DictionaryKey } from "@/lib/i18n/dictionary"
+import {
+  EXPECTED_CRONS,
+  HUB_FEATURES,
+  classifyCron,
+  rollUpFeature,
+  rollUpErrors,
+  overallVerdict,
+  type FeatureStatus,
+  type FeatureVerdict,
+  type CronVerdict,
+} from "@/lib/health/features"
 
 type CronRow = {
   cron_name: string
@@ -28,24 +46,6 @@ type HealthData = {
   errorRows: ErrorRow[]
   renderNow: number
 }
-
-const EXPECTED_CRONS: ReadonlyArray<{ name: string; description: string; cadenceKey: DictionaryKey }> = [
-  { name: "refresh-kpi", description: "KPI summaries + daily rollup cache", cadenceKey: "settings.health.cadence.daily_5utc" },
-  { name: "refresh-cache", description: "Watch List context, billing, AI proposals overview", cadenceKey: "settings.health.cadence.daily_530utc" },
-  { name: "refresh-billing-summaries", description: "Stripe billing summaries + past invoices", cadenceKey: "settings.health.cadence.hourly" },
-  { name: "refresh-invoice-readiness", description: "AI invoice readiness verdicts", cadenceKey: "settings.health.cadence.every_6h" },
-  { name: "refresh-proposals", description: "Per-client AI optimisation proposals", cadenceKey: "settings.health.cadence.daily" },
-  { name: "refresh-watchlist-context", description: "Monday updates + Trengo summaries for watchlist AI", cadenceKey: "settings.health.cadence.daily" },
-  { name: "refresh-pedro-patterns", description: "Pedro vertical-pattern synthesis", cadenceKey: "settings.health.cadence.nightly" },
-  { name: "refresh-pedro-insights", description: "Unified Pedro insights cache (replaces watchlist-summaries + per-client AI calls)", cadenceKey: "settings.health.cadence.hourly" },
-  { name: "pedro-auto-tasks", description: "Pedro background co-pilot - auto-creates inbox tasks for stuck-in-Action clients (with anti-spam guardrails)", cadenceKey: "settings.health.cadence.daily_7utc" },
-  { name: "pedro-knowledge-proposals", description: "Pedro knowledge-base scan", cadenceKey: "settings.health.cadence.weekly" },
-  { name: "inbox-automations", description: "Inbox snooze / auto-resolve rules", cadenceKey: "settings.health.cadence.hourly" },
-  { name: "slack-team-watchlist", description: "Team watchlist Slack post", cadenceKey: "settings.health.cadence.hourly_gated" },
-  { name: "slack-daily-watchlist", description: "Personal watchlist Slack DMs", cadenceKey: "settings.health.cadence.hourly_gated" },
-  { name: "slack-team-sales", description: "Team sales Slack post", cadenceKey: "settings.health.cadence.hourly_gated" },
-  { name: "slack-personal-sales", description: "Personal sales Slack DMs", cadenceKey: "settings.health.cadence.hourly_gated" },
-] as const
 
 const SERVICES_EXPECTED = ["monday", "meta", "stripe", "trengo", "slack", "fathom", "anthropic"] as const
 
@@ -71,120 +71,43 @@ export function HealthTab() {
     )
   }
   if (error || !data) {
-    return (
-      <div className="text-xs text-destructive px-1 py-4">
-        Failed to load health snapshot.
-      </div>
-    )
+    return <div className="text-xs text-destructive px-1 py-4">Failed to load health snapshot.</div>
   }
 
+  const renderNow = data.renderNow
   const latestByCron = new Map<string, CronRow>()
   for (const row of data.cronRows) {
     if (!latestByCron.has(row.cron_name)) latestByCron.set(row.cron_name, row)
   }
+
+  // Per-cron verdicts (works / hiccup / broken / never_ran)
+  const cronVerdicts = new Map<string, CronVerdict>()
+  for (const cron of EXPECTED_CRONS) {
+    cronVerdicts.set(cron.name, classifyCron(cron, latestByCron.get(cron.name), renderNow))
+  }
+
+  // Hub-feature rollups
+  const featureVerdicts: FeatureVerdict[] = HUB_FEATURES.map((f) => rollUpFeature(f, cronVerdicts))
+  const overall = overallVerdict(featureVerdicts)
+
+  // Rolled-up errors (group 30 retry rows into ~3 root causes)
+  const errorGroups = rollUpErrors(data.errorRows)
+
   const tokenStatuses = Object.fromEntries(
     data.tokenRows.map((t) => [t.service, { is_valid: t.is_valid, last_verified: t.last_verified }]),
   )
-
-  const totalCrons = EXPECTED_CRONS.length
-  const okCrons = EXPECTED_CRONS.filter((c) => latestByCron.get(c.name)?.status === "ok").length
-  const errorCrons = EXPECTED_CRONS.filter((c) => latestByCron.get(c.name)?.status === "error").length
-  const partialCrons = EXPECTED_CRONS.filter((c) => latestByCron.get(c.name)?.status === "partial").length
-  const neverRanCrons = EXPECTED_CRONS.filter((c) => !latestByCron.has(c.name)).length
-  const validIntegrations = SERVICES_EXPECTED.filter((s) => tokenStatuses[s]?.is_valid).length
-  const totalIntegrations = SERVICES_EXPECTED.length
-  const cronStatusBreakdown = [
-    errorCrons > 0 ? t("settings.health.kpi.crons_errored_one", locale, { n: errorCrons }) : null,
-    partialCrons > 0 ? t("settings.health.kpi.crons_partial_one", locale, { n: partialCrons }) : null,
-    neverRanCrons > 0 ? t("settings.health.kpi.crons_never_one", locale, { n: neverRanCrons }) : null,
-  ].filter(Boolean).join(" · ")
-
-  const renderNow = data.renderNow
+  const invalidIntegrations = SERVICES_EXPECTED.filter((s) => tokenStatuses[s]?.is_valid === false)
 
   return (
     <div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <SummaryCard
-          label={t("settings.health.kpi.crons_ok", locale)}
-          value={`${okCrons}/${totalCrons}`}
-          status={okCrons === totalCrons ? "good" : okCrons >= totalCrons * 0.75 ? "warn" : "bad"}
-          subtitle={
-            errorCrons === 0 && partialCrons === 0 && neverRanCrons === 0
-              ? t("settings.health.kpi.crons_clear", locale)
-              : cronStatusBreakdown
-          }
-        />
-        <SummaryCard
-          label={t("settings.health.kpi.integrations_valid", locale)}
-          value={`${validIntegrations}/${totalIntegrations}`}
-          status={validIntegrations === totalIntegrations ? "good" : validIntegrations >= 5 ? "warn" : "bad"}
-          subtitle={
-            validIntegrations === totalIntegrations
-              ? t("settings.health.kpi.integrations_all_valid", locale)
-              : t("settings.health.kpi.integrations_need_attention", locale, { n: totalIntegrations - validIntegrations })
-          }
-        />
-        <SummaryCard
-          label={t("settings.health.kpi.errors_24h", locale)}
-          value={`${data.errorRows.length}`}
-          status={data.errorRows.length === 0 ? "good" : "bad"}
-          subtitle={
-            data.errorRows.length === 0
-              ? t("settings.health.kpi.errors_clean", locale)
-              : t("settings.health.kpi.errors_subtitle", locale)
-          }
-        />
-        <SummaryCard
-          label={t("settings.health.kpi.last_kpi", locale)}
-          value={formatRelativeFrom(latestByCron.get("refresh-kpi")?.started_at, renderNow, locale)}
-          status={(() => {
-            const last = latestByCron.get("refresh-kpi")
-            if (!last) return "bad"
-            if (last.status !== "ok") return "bad"
-            const ageH = (renderNow - new Date(last.started_at).getTime()) / 3600000
-            return ageH > 30 ? "warn" : "good"
-          })()}
-          subtitle={t("settings.health.kpi.last_kpi_subtitle", locale)}
-        />
-      </div>
+      <OverallBanner overall={overall} locale={locale} />
 
-      <section className="mb-8">
-        <h2 className="text-sm font-medium mb-3">{t("settings.health.section.crons", locale)}</h2>
-        <div className="rounded-lg border border-border/40 overflow-hidden">
-          <div className="grid grid-cols-[1.5fr_1.5fr_100px_120px_100px_2fr] gap-x-4 px-4 py-2.5 border-b border-border/40 bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground/70">
-            <span>{t("settings.health.col.cron", locale)}</span>
-            <span>{t("settings.health.col.description", locale)}</span>
-            <span>{t("settings.health.col.status", locale)}</span>
-            <span>{t("settings.health.col.last_run", locale)}</span>
-            <span>{t("settings.health.col.duration", locale)}</span>
-            <span>{t("settings.health.col.notes", locale)}</span>
-          </div>
-          {EXPECTED_CRONS.map((c) => {
-            const row = latestByCron.get(c.name)
-            const status = row?.status ?? "never_ran"
-            return (
-              <div
-                key={c.name}
-                className="grid grid-cols-[1.5fr_1.5fr_100px_120px_100px_2fr] gap-x-4 px-4 py-2.5 border-b border-border/30 last:border-b-0 items-center text-xs"
-              >
-                <div>
-                  <div className="font-mono text-[12px]">{c.name}</div>
-                  <div className="text-[10px] text-muted-foreground/50">{t(c.cadenceKey, locale)}</div>
-                </div>
-                <span className="text-muted-foreground leading-snug">{c.description}</span>
-                <CronStatusPill status={status} locale={locale} />
-                <span className="text-muted-foreground tabular-nums">
-                  {row ? formatRelativeFrom(row.started_at, renderNow, locale) : "-"}
-                </span>
-                <span className="text-muted-foreground tabular-nums">
-                  {row ? formatDuration(row.duration_ms) : "-"}
-                </span>
-                <span className="text-muted-foreground/70 truncate" title={row?.error_message ?? ""}>
-                  {row?.error_message ?? (row?.metrics ? formatMetrics(row.metrics) : "-")}
-                </span>
-              </div>
-            )
-          })}
+      <section className="mb-8 mt-6">
+        <h2 className="text-sm font-medium mb-3">{t("settings.health.features.title", locale)}</h2>
+        <div className="rounded-lg border border-border/40 divide-y divide-border/30">
+          {featureVerdicts.map((fv) => (
+            <FeatureRow key={fv.feature.id} verdict={fv} renderNow={renderNow} locale={locale} />
+          ))}
         </div>
       </section>
 
@@ -214,32 +137,230 @@ export function HealthTab() {
             )
           })}
         </div>
+        {invalidIntegrations.length > 0 && (
+          <p className="text-[11px] text-muted-foreground mt-2">
+            {t("settings.health.integration.fix_hint", locale)}
+          </p>
+        )}
       </section>
 
-      <MigrationDriftSection />
+      <MigrationDriftSection locale={locale} />
 
-      {data.errorRows.length > 0 && (
+      {errorGroups.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-sm font-medium mb-3">{t("settings.health.section.recent_errors", locale)}</h2>
-          <div className="rounded-lg border border-red-500/20 bg-red-500/5 overflow-hidden">
-            {data.errorRows.map((row, idx) => (
-              <div
-                key={idx}
-                className="grid grid-cols-[1fr_140px_3fr] gap-x-4 px-4 py-2 border-b border-red-500/10 last:border-b-0 items-center text-xs"
-              >
-                <span className="font-mono text-[11px]">{row.cron_name}</span>
-                <span className="text-muted-foreground tabular-nums">
-                  {formatRelativeFrom(row.started_at, renderNow, locale)}
-                </span>
-                <span className="text-red-400 truncate" title={row.error_message ?? ""}>
-                  {row.error_message ?? t("settings.health.recent_errors.no_message", locale)}
-                </span>
+          <h2 className="text-sm font-medium mb-3">
+            {t("settings.health.recurring.title", locale)}{" "}
+            <span className="text-[11px] text-muted-foreground/60 font-normal">
+              {t("settings.health.recurring.subtitle", locale, { n: data.errorRows.length })}
+            </span>
+          </h2>
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 divide-y divide-amber-500/15">
+            {errorGroups.map((g) => (
+              <div key={g.cronName} className="px-4 py-3 text-xs">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="font-mono text-[12px]">{g.cronName}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {t("settings.health.recurring.count", locale, {
+                      n: g.count,
+                      last: formatRelativeFrom(g.lastSeen, renderNow, locale),
+                    })}
+                  </span>
+                </div>
+                <ul className="text-muted-foreground/80 ml-5 list-disc">
+                  {g.uniqueMessages.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
         </section>
       )}
+
+      <TechnicalDetails
+        crons={EXPECTED_CRONS}
+        cronVerdicts={cronVerdicts}
+        latestByCron={latestByCron}
+        renderNow={renderNow}
+        locale={locale}
+      />
     </div>
+  )
+}
+
+function OverallBanner({
+  overall,
+  locale,
+}: {
+  overall: { status: FeatureStatus; brokenCount: number; hiccupCount: number }
+  locale: Locale
+}) {
+  const tone =
+    overall.status === "working" ? "good" : overall.status === "hiccup" ? "warn" : "bad"
+  const Icon =
+    overall.status === "working" ? CheckCircle2 : overall.status === "hiccup" ? AlertTriangle : AlertCircle
+  const title =
+    overall.status === "working"
+      ? t("settings.health.overall.all_running", locale)
+      : overall.status === "hiccup"
+        ? overall.hiccupCount === 1
+          ? t("settings.health.overall.hiccup_one", locale)
+          : t("settings.health.overall.hiccup_many", locale, { n: overall.hiccupCount })
+        : overall.brokenCount === 1
+          ? t("settings.health.overall.broken_one", locale)
+          : t("settings.health.overall.broken_many", locale, { n: overall.brokenCount })
+  const subtitle =
+    overall.status === "working"
+      ? overall.hiccupCount > 0
+        ? overall.hiccupCount === 1
+          ? t("settings.health.overall.also_hiccup_one", locale)
+          : t("settings.health.overall.also_hiccup_many", locale, { n: overall.hiccupCount })
+        : t("settings.health.overall.all_running_sub", locale)
+      : overall.status === "hiccup"
+        ? t("settings.health.overall.hiccup_sub", locale)
+        : t("settings.health.overall.broken_sub", locale)
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-4 py-3 flex items-start gap-3",
+        tone === "good" && "border-emerald-500/30 bg-emerald-500/5",
+        tone === "warn" && "border-amber-500/30 bg-amber-500/5",
+        tone === "bad" && "border-red-500/30 bg-red-500/5",
+      )}
+    >
+      <Icon
+        className={cn(
+          "h-5 w-5 mt-0.5 shrink-0",
+          tone === "good" && "text-emerald-500",
+          tone === "warn" && "text-amber-500",
+          tone === "bad" && "text-red-500",
+        )}
+      />
+      <div>
+        <div className="text-sm font-medium">{title}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{subtitle}</div>
+      </div>
+    </div>
+  )
+}
+
+function FeatureRow({
+  verdict,
+  renderNow,
+  locale,
+}: {
+  verdict: FeatureVerdict
+  renderNow: number
+  locale: Locale
+}) {
+  const tone =
+    verdict.status === "working" ? "good" : verdict.status === "hiccup" ? "warn" : "bad"
+  return (
+    <div className="px-4 py-3 grid grid-cols-[200px_1fr_140px] gap-x-4 items-start text-xs">
+      <div className="flex items-center gap-2">
+        <StatusDot tone={tone} />
+        <span className="font-medium text-foreground">{verdict.feature.name}</span>
+      </div>
+      <div className="text-muted-foreground leading-snug">
+        {verdict.summary}
+        {verdict.status !== "working" && (
+          <div className="text-[11px] text-muted-foreground/60 mt-0.5">
+            {verdict.feature.description}
+          </div>
+        )}
+      </div>
+      <div className="text-[11px] text-muted-foreground/70 tabular-nums text-right">
+        {verdict.freshAgeMs !== null
+          ? t("settings.health.feature.last_fresh", locale, {
+              age: formatTimeAgo(new Date(renderNow - verdict.freshAgeMs).toISOString(), locale, renderNow),
+            })
+          : t("settings.health.feature.never_fresh", locale)}
+      </div>
+    </div>
+  )
+}
+
+function StatusDot({ tone }: { tone: "good" | "warn" | "bad" }) {
+  return (
+    <span
+      className={cn(
+        "h-2 w-2 rounded-full shrink-0",
+        tone === "good" && "bg-emerald-500",
+        tone === "warn" && "bg-amber-500",
+        tone === "bad" && "bg-red-500",
+      )}
+    />
+  )
+}
+
+function TechnicalDetails({
+  crons,
+  cronVerdicts,
+  latestByCron,
+  renderNow,
+  locale,
+}: {
+  crons: typeof EXPECTED_CRONS
+  cronVerdicts: Map<string, CronVerdict>
+  latestByCron: Map<string, CronRow>
+  renderNow: number
+  locale: Locale
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <section className="mb-8">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ChevronDown
+          className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")}
+        />
+        {t("settings.health.tech.toggle", locale)}
+      </button>
+      {open && (
+        <div className="mt-3 rounded-lg border border-border/40 overflow-hidden">
+          <div className="grid grid-cols-[1.5fr_1.5fr_100px_120px_100px_2fr] gap-x-4 px-4 py-2.5 border-b border-border/40 bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground/70">
+            <span>{t("settings.health.col.cron", locale)}</span>
+            <span>{t("settings.health.col.description", locale)}</span>
+            <span>{t("settings.health.col.status", locale)}</span>
+            <span>{t("settings.health.col.last_run", locale)}</span>
+            <span>{t("settings.health.col.duration", locale)}</span>
+            <span>{t("settings.health.col.notes", locale)}</span>
+          </div>
+          {crons.map((c) => {
+            const row = latestByCron.get(c.name)
+            const verdict = cronVerdicts.get(c.name)
+            const status = row?.status ?? "never_ran"
+            return (
+              <div
+                key={c.name}
+                className="grid grid-cols-[1.5fr_1.5fr_100px_120px_100px_2fr] gap-x-4 px-4 py-2.5 border-b border-border/30 last:border-b-0 items-center text-xs"
+              >
+                <div>
+                  <div className="font-mono text-[12px]">{c.name}</div>
+                  <div className="text-[10px] text-muted-foreground/50">{t(c.cadenceKey, locale)}</div>
+                </div>
+                <span className="text-muted-foreground leading-snug">{c.description}</span>
+                <CronStatusPill status={status} verdict={verdict?.status} locale={locale} />
+                <span className="text-muted-foreground tabular-nums">
+                  {row ? formatRelativeFrom(row.started_at, renderNow, locale) : "-"}
+                </span>
+                <span className="text-muted-foreground tabular-nums">
+                  {row ? formatDuration(row.duration_ms) : "-"}
+                </span>
+                <span className="text-muted-foreground/70 truncate" title={row?.error_message ?? ""}>
+                  {row?.error_message ?? (row?.metrics ? formatMetrics(row.metrics) : "-")}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -250,7 +371,7 @@ type MigrationsResp = {
   pending: Array<{ version: string; label: string; file: string }>
 }
 
-function MigrationDriftSection() {
+function MigrationDriftSection({ locale }: { locale: Locale }) {
   const { data, isLoading, error } = useQuery<MigrationsResp>({
     queryKey: ["admin-migrations"],
     queryFn: async () => {
@@ -286,6 +407,10 @@ function MigrationDriftSection() {
 
   const hasDrift = data.pendingCount > 0
 
+  // Skip the whole section when nothing's pending - the overall banner already
+  // signals green and a "0 pending" line is just noise.
+  if (!hasDrift) return null
+
   return (
     <section className="mb-8">
       <h2 className="text-sm font-medium mb-3 inline-flex items-center gap-2">
@@ -294,77 +419,59 @@ function MigrationDriftSection() {
           {data.appliedCount}/{data.totalFiles} applied
         </span>
       </h2>
-      {!hasDrift ? (
-        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-xs inline-flex items-center gap-2">
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-          All migrations applied.
+      <div className="rounded-lg border border-red-500/30 bg-red-500/5 overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-red-500/20 text-xs flex items-center gap-2">
+          <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+          <span className="font-medium text-red-500">
+            {data.pendingCount} pending migration{data.pendingCount === 1 ? "" : "s"}
+          </span>
+          <span className="text-muted-foreground">
+            - run <code className="font-mono text-[11px]">supabase db push</code> or apply via the Supabase SQL Editor.
+          </span>
         </div>
-      ) : (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/5 overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-red-500/20 text-xs flex items-center gap-2">
-            <AlertCircle className="h-3.5 w-3.5 text-red-500" />
-            <span className="font-medium text-red-500">
-              {data.pendingCount} pending migration{data.pendingCount === 1 ? "" : "s"}
-            </span>
-            <span className="text-muted-foreground">
-              - run <code className="font-mono text-[11px]">supabase db push</code> or apply via the Supabase SQL Editor.
+        {data.pending.map((p) => (
+          <div
+            key={p.version}
+            className="grid grid-cols-[140px_1fr] gap-x-4 px-4 py-2 border-b border-red-500/10 last:border-b-0 items-center text-xs"
+          >
+            <span className="font-mono text-[11px] text-muted-foreground">{p.version}</span>
+            <span className="text-muted-foreground" title={p.file}>
+              {p.label}
             </span>
           </div>
-          {data.pending.map((p) => (
-            <div
-              key={p.version}
-              className="grid grid-cols-[140px_1fr] gap-x-4 px-4 py-2 border-b border-red-500/10 last:border-b-0 items-center text-xs"
-            >
-              <span className="font-mono text-[11px] text-muted-foreground">{p.version}</span>
-              <span className="text-muted-foreground" title={p.file}>
-                {p.label}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
     </section>
-  )
-}
-
-type CardStatus = "good" | "warn" | "bad" | "neutral"
-
-function SummaryCard({
-  label,
-  value,
-  subtitle,
-  status,
-}: {
-  label: string
-  value: string
-  subtitle: string
-  status: CardStatus
-}) {
-  return (
-    <KpiTile
-      label={label}
-      value={value}
-      valueTone={status as KpiValueTone}
-      sub={subtitle}
-    />
   )
 }
 
 function CronStatusPill({
   status,
+  verdict,
   locale,
 }: {
   status: "ok" | "error" | "partial" | "never_ran"
+  verdict: CronVerdict["status"] | undefined
   locale: Locale
 }) {
-  if (status === "ok") {
+  // Use the rolled-up verdict to show "hiccup" instead of "error" when the
+  // failure is fresh enough to retry on its own — keeps the pill aligned with
+  // the feature-level summary so a green feature can't show a red cron pill.
+  if (verdict === "ok" || status === "ok") {
     return (
       <span className="inline-flex items-center gap-1.5 text-green-500 text-[11px] font-medium">
         <CheckCircle2 className="h-3 w-3" /> {t("settings.health.status.ok", locale)}
       </span>
     )
   }
-  if (status === "error") {
+  if (verdict === "hiccup") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-amber-400 text-[11px] font-medium">
+        <AlertTriangle className="h-3 w-3" /> {t("settings.health.status.hiccup", locale)}
+      </span>
+    )
+  }
+  if (status === "error" || verdict === "broken") {
     return (
       <span className="inline-flex items-center gap-1.5 text-red-500 text-[11px] font-medium">
         <AlertCircle className="h-3 w-3" /> {t("settings.health.status.error", locale)}

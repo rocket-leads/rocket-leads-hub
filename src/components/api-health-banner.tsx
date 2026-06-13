@@ -1,10 +1,11 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import Link from "next/link"
-import { AlertTriangle, ArrowRight } from "lucide-react"
+import { AlertTriangle, ArrowRight, RefreshCw } from "lucide-react"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { useState } from "react"
+import { cn } from "@/lib/utils"
 import type { ApiHealthStatusResponse } from "@/app/api/settings/health/status/route"
 
 /**
@@ -28,6 +29,8 @@ import type { ApiHealthStatusResponse } from "@/app/api/settings/health/status/r
  */
 export function ApiHealthBanner() {
   const [dismissed, setDismissed] = useState(false)
+  const [reverifying, setReverifying] = useState(false)
+  const queryClient = useQueryClient()
 
   const { data } = useQuery<ApiHealthStatusResponse>({
     queryKey: ["api-health-status"],
@@ -41,6 +44,24 @@ export function ApiHealthBanner() {
     retry: 1,
   })
 
+  // Roy 2026-06-13: the DB-cached invalidity flag often lags behind reality —
+  // a transient outage during the hourly refresh-api-health cron flips
+  // is_valid=false and the banner shouts "expired!" even when the token is
+  // fine. Re-verify hits the live `/api/settings/health` endpoint which
+  // actually calls Monday/Meta/Stripe/Trengo/Fathom now and updates the DB,
+  // then we re-query the status so the banner can disappear without a full
+  // page reload.
+  async function reverify() {
+    if (reverifying) return
+    setReverifying(true)
+    try {
+      await fetch("/api/settings/health", { cache: "no-store" })
+      await queryClient.invalidateQueries({ queryKey: ["api-health-status"] })
+    } finally {
+      setReverifying(false)
+    }
+  }
+
   if (!data || data.invalid.length === 0 || dismissed) return null
 
   const services = data.invalid.map((s) => s.label).join(", ")
@@ -51,11 +72,24 @@ export function ApiHealthBanner() {
       <div className="px-8 py-2.5 flex items-center gap-3">
         <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
         <div className="flex-1 text-sm font-medium leading-tight">
-          {isPlural ? "API tokens verlopen" : "API token verlopen"}
+          {isPlural ? "API tokens may be expired" : "API token may be expired"}
           <span className="font-normal text-amber-900/70 dark:text-amber-100/70 ml-2">
-            · {services} - reconnect via Settings om data te blijven verversen.
+            · {services} — verify live or reconnect via Settings.
           </span>
         </div>
+        <button
+          type="button"
+          onClick={reverify}
+          disabled={reverifying}
+          className={cn(
+            "inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-100 text-xs font-medium transition-colors disabled:opacity-50",
+            reverifying && "cursor-wait",
+          )}
+          title="Re-check the token live against the provider"
+        >
+          <RefreshCw className={cn("h-3 w-3", reverifying && "animate-spin")} />
+          {reverifying ? "Checking…" : "Re-check"}
+        </button>
         <Link
           href="/settings?tab=tokens"
           className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 dark:text-amber-100 text-xs font-semibold transition-colors"
