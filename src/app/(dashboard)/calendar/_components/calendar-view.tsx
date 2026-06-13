@@ -31,7 +31,7 @@ import { TaskDialog } from "./task-dialog"
  * amber = tasks (Hub-native to-dos). The split is purely visual — both
  * streams are queried in one /api/calendar/events round-trip.
  *
- * Day grid is 6:00–22:00 (HOUR_START–HOUR_END). Events outside that
+ * Day grid is 7:00–22:00 (HOUR_START–HOUR_END). Events outside that
  * range get clipped to the visible window with their original time
  * still surfaced in the title tooltip. Tasks have no time, so they
  * render in the all-day row at the top of their due_date column.
@@ -506,7 +506,8 @@ function TimeGrid({
           {Array.from({ length: TOTAL_HOURS }, (_, i) => (
             <div
               key={i}
-              className="h-14 px-2 pt-1 text-[10px] text-muted-foreground border-b border-border/60"
+              className="px-2 pt-1 text-[10px] text-muted-foreground border-b border-border/60"
+              style={{ height: HOUR_HEIGHT_PX }}
             >
               {String(HOUR_START + i).padStart(2, "0")}:00
             </div>

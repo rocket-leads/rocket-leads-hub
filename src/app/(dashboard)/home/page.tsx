@@ -295,6 +295,7 @@ async function fetchMyInbox(
         status: "unread",
         priority: null,
         dueDate: null,
+        scheduledAt: null,
         source: t.source,
         channelKind:
           t.channelKind === "whatsapp" || t.channelKind === "email"
