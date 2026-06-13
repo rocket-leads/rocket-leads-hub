@@ -125,6 +125,7 @@ export function PedroOptimizeApp({ clients }: Props) {
           clientId={selectedClient.id}
           clientName={selectedClient.name}
           googleDriveId={selectedClient.googleDriveId || null}
+          onClose={() => setSettingsOpen(false)}
         />
       )}
 

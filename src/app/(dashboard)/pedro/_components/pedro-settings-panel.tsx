@@ -20,8 +20,6 @@ import type {
   SlotStyleKey,
   InspirationSubfolderFlags,
   VisualStyleKey,
-  LightingStyleKey,
-  CompositionDensityKey,
 } from "@/lib/pedro/creative-settings"
 
 /**
@@ -61,6 +59,11 @@ type DetectedBrand = {
   brandBookFileName: string | null
 }
 
+type BriefContext = {
+  sector: string | null
+  filled: boolean
+}
+
 type SettingsResponse = {
   override: PedroCreativeSettings
   effective: {
@@ -74,12 +77,11 @@ type SettingsResponse = {
     brandBookDriveFileId: string | null
     brandBookSource?: string
     brandColors?: Array<{ hex: string; enabled?: boolean }>
-    visualStyle: VisualStyleKey
-    lightingStyle: LightingStyleKey
-    compositionDensity: CompositionDensityKey
+    visualStyles: VisualStyleKey[]
   }
   defaults: SettingsResponse["effective"]
   detected: DetectedBrand
+  brief: BriefContext
 }
 
 const ASPECT_RATIOS: AspectRatio[] = ["4:5", "1:1", "9:16", "1.91:1"]
@@ -100,32 +102,18 @@ const SUBFOLDER_LABELS: Record<keyof InspirationSubfolderFlags, string> = {
   stock_content: "Stock content",
 }
 
-const VISUAL_STYLE_OPTIONS: Array<{ value: VisualStyleKey; label: string }> = [
-  { value: "auto", label: "Auto (geen voorkeur)" },
+// Multi-select chips voor de Stijl picker. "auto" is een sentinel — leeg
+// array == auto, dus die staat niet in deze lijst.
+const VISUAL_STYLE_OPTIONS: Array<{ value: Exclude<VisualStyleKey, "auto">; label: string }> = [
   { value: "professional", label: "Professioneel" },
   { value: "modern_clean", label: "Modern & clean" },
   { value: "luxurious", label: "Luxueus / premium" },
+  { value: "tech_ai", label: "Tech / AI / SaaS" },
   { value: "feminine_soft", label: "Vrouwelijk & zacht" },
   { value: "mysterious_dark", label: "Geheimzinnig / donker" },
   { value: "playful_energetic", label: "Speels & energiek" },
   { value: "robust_industrial", label: "Robuust / industrieel" },
   { value: "vintage_editorial", label: "Vintage / editorial" },
-]
-
-const LIGHTING_OPTIONS: Array<{ value: LightingStyleKey; label: string }> = [
-  { value: "auto", label: "Auto (geen voorkeur)" },
-  { value: "studio_clean", label: "Studio clean" },
-  { value: "natural_daylight", label: "Natuurlijk daglicht" },
-  { value: "golden_hour", label: "Golden hour" },
-  { value: "moody_dark", label: "Moody / donker" },
-  { value: "high_key_bright", label: "High-key bright" },
-]
-
-const COMPOSITION_OPTIONS: Array<{ value: CompositionDensityKey; label: string }> = [
-  { value: "auto", label: "Auto (geen voorkeur)" },
-  { value: "minimal", label: "Minimal (veel ruimte)" },
-  { value: "balanced", label: "Gebalanceerd" },
-  { value: "rich", label: "Rich layered" },
 ]
 
 const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
@@ -135,9 +123,13 @@ type Props = {
   clientId: string
   clientName: string
   googleDriveId: string | null
+  /** Parent toggle callback. Used so the panel can auto-collapse itself
+   *  after a successful save — Roy 2026-06-13 vibes the collapse as the
+   *  visual confirmation that the save landed. */
+  onClose?: () => void
 }
 
-export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }: Props) {
+export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, onClose }: Props) {
   const [settings, setSettings] = useState<SettingsResponse | null>(null)
   const [loadingSettings, setLoadingSettings] = useState(false)
   const [verifyState, setVerifyState] = useState<VerifyResponse | null>(null)
@@ -212,9 +204,7 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
           : settings.effective.brandBookDriveFileId,
       brandBookSource: draft.brandBookSource ?? settings.effective.brandBookSource,
       brandColors,
-      visualStyle: draft.visualStyle ?? settings.effective.visualStyle,
-      lightingStyle: draft.lightingStyle ?? settings.effective.lightingStyle,
-      compositionDensity: draft.compositionDensity ?? settings.effective.compositionDensity,
+      visualStyles: draft.visualStyles ?? settings.effective.visualStyles,
     }
   }, [settings, draft])
 
@@ -260,6 +250,23 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
     [],
   )
 
+  /** Toggle one visualStyle in/out of the multi-select array. Pushing it
+   *  always replaces the saved array completely (not a sparse sub-merge)
+   *  so the order remains stable: toggling the same value twice ends up
+   *  back where you started instead of duplicating. */
+  const toggleVisualStyle = useCallback(
+    (value: Exclude<VisualStyleKey, "auto">) => {
+      setDraft((prev) => {
+        const current = (prev.visualStyles ?? settings?.effective.visualStyles ?? []).slice()
+        const idx = current.indexOf(value)
+        if (idx === -1) current.push(value)
+        else current.splice(idx, 1)
+        return { ...prev, visualStyles: current }
+      })
+    },
+    [settings],
+  )
+
   const handleSave = useCallback(async () => {
     if (!clientId || dirty === 0) return
     setSaving(true)
@@ -275,13 +282,19 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
       setSettings(json as SettingsResponse)
       setDraft({})
       setSavedFlash(true)
-      setTimeout(() => setSavedFlash(false), 1500)
+      // Roy 2026-06-13: Bewaar collapses the panel as the visual ack of
+      // a successful save. The flash still fires so the next-open shows
+      // "Opgeslagen" briefly when the user re-expands.
+      setTimeout(() => {
+        setSavedFlash(false)
+        onClose?.()
+      }, 600)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Opslaan mislukt")
     } finally {
       setSaving(false)
     }
-  }, [clientId, draft, dirty])
+  }, [clientId, draft, dirty, onClose])
 
   const handleReset = useCallback(async () => {
     if (!clientId) return
@@ -308,8 +321,12 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
 
   if (!open) return null
 
+  // Picker card carries `mb-5`, so the panel only needs its own bottom
+  // margin to sit symmetrically above the wizard. The negative top
+  // margin pulls it close to the picker so they read as a stacked pair.
+  // Roy 2026-06-13.
   return (
-    <div className="mt-3 rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
+    <div className="-mt-2 mb-5 rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.04)]">
       <div className="border-b border-border/60 px-5 py-3 flex items-center justify-between">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -568,54 +585,61 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId }
 
           {/* ─────────── LOOK & FEEL ─────────── */}
           <Section title="Look & feel">
-            <div className="space-y-4">
-              <p className="text-[11px] text-muted-foreground -mt-1 mb-2">
-                Stuur de uitstraling van de gegenereerde ads. Elke keuze voegt
-                een korte richtlijn toe aan de Gemini-prompt. Auto = laat
-                Pedro het kiezen op basis van de brief.
+            <div className="space-y-3">
+              <p className="text-[11px] text-muted-foreground -mt-1">
+                Selecteer één of meer stijl-attributen — Pedro combineert ze
+                in één coherent beeld (bv. <em>professioneel</em> +{" "}
+                <em>modern & clean</em> + <em>luxe</em>).
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <Label>Stijl</Label>
-                  <select
-                    value={effective.visualStyle}
-                    onChange={(e) => patchDraft({ visualStyle: e.target.value as VisualStyleKey })}
-                    className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
-                  >
-                    {VISUAL_STYLE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
+
+              {/* Branche-context: laat zien wat Pedro automatisch al weet
+                  zodat de CM begrijpt of de auto-mode iets aan zich heeft. */}
+              <div className="rounded-md border border-border/60 bg-background/40 px-3 py-2 text-xs flex items-start gap-2">
+                <span className="text-muted-foreground shrink-0">Branche uit brief:</span>
+                {settings.brief.sector ? (
+                  <span className="font-medium text-foreground">{settings.brief.sector}</span>
+                ) : (
+                  <span className="text-amber-600 dark:text-amber-400">
+                    niet ingevuld — Pedro&apos;s auto-mode mist branche-signaal. Selecteer hieronder
+                    expliciet welke stijlen je wil.
+                  </span>
+                )}
+                {!settings.brief.filled && (
+                  <span className="ml-auto text-amber-600 dark:text-amber-400">
+                    brief incompleet
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <Label>
+                  Stijl{" "}
+                  <span className="font-normal text-muted-foreground">
+                    {effective.visualStyles.length === 0
+                      ? "(geen — auto-mode)"
+                      : `(${effective.visualStyles.length} geselecteerd)`}
+                  </span>
+                </Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {VISUAL_STYLE_OPTIONS.map((opt) => {
+                    const active = effective.visualStyles.includes(opt.value)
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => toggleVisualStyle(opt.value)}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-medium border transition-colors",
+                          active
+                            ? "bg-primary/15 border-primary/40 text-primary"
+                            : "bg-background border-border text-foreground/70 hover:bg-accent hover:text-foreground",
+                        )}
+                      >
+                        {active && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
                         {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>Lichtstijl</Label>
-                  <select
-                    value={effective.lightingStyle}
-                    onChange={(e) => patchDraft({ lightingStyle: e.target.value as LightingStyleKey })}
-                    className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
-                  >
-                    {LIGHTING_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <Label>Compositie</Label>
-                  <select
-                    value={effective.compositionDensity}
-                    onChange={(e) => patchDraft({ compositionDensity: e.target.value as CompositionDensityKey })}
-                    className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
-                  >
-                    {COMPOSITION_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             </div>

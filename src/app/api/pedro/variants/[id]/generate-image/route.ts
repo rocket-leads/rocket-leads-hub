@@ -24,8 +24,6 @@ import {
   sanitiseCreativeSettings,
   type InspirationSubfolderFlags,
   type VisualStyleKey,
-  type LightingStyleKey,
-  type CompositionDensityKey,
 } from "@/lib/pedro/creative-settings"
 import type { BrandStyle } from "@/lib/pedro/helpers"
 
@@ -146,21 +144,25 @@ QUALITY BAR: Unsplash editor's pick + brand color grade. Better than stock-photo
 }
 
 /**
- * Look & feel clauses (Roy 2026-06-13). Each non-auto pick from the
- * per-klant settings panel appends one short directive sentence to the
- * styleDirective so Gemini biases the aesthetic in that direction.
- * Kept terse on purpose — long clauses overflow the prompt budget and
- * dilute the structural-template anchor. "auto" returns empty string so
- * Pedro keeps doing whatever the brief + style category dictates.
+ * Visual style clauses (Roy 2026-06-13). Multi-select in de panel; elke
+ * geselecteerde stijl voegt één korte directive-zin toe aan de
+ * styleDirective zodat Gemini de aesthetic in die richting biast. "auto"
+ * verschijnt niet in de array — de CM laat 'm leeg om Pedro het zelf te
+ * laten bepalen op basis van brief.sector (de vertical-aware logic in
+ * de imagePrompt vangt dat geval al af).
+ *
+ * Lichtstijl + compositie zijn op 2026-06-13 uit de UI gehaald (Roy: te
+ * abstract om handmatig in te vullen); hun clauses zijn verwijderd.
  */
-const VISUAL_STYLE_CLAUSES: Record<VisualStyleKey, string> = {
-  auto: "",
+const VISUAL_STYLE_CLAUSES: Record<Exclude<VisualStyleKey, "auto">, string> = {
   professional:
     "Aesthetic: corporate authority. Restrained palette, sans-serif typography, geometric layouts. Trustworthy, composed, no flourish.",
   modern_clean:
     "Aesthetic: modern & minimalist. Generous negative space, restrained palette, single accent color, crisp geometric type. Apple/Notion editorial cleanliness.",
   luxurious:
     "Aesthetic: premium luxury. Refined materials (matte black, brushed metal, marble or paper-grain), restrained palette, generous negative space, gold-or-accent typography, deep blacks or pearl whites. Hermès / Aesop / luxury watchmaker editorial.",
+  tech_ai:
+    "Aesthetic: tech / AI / SaaS. Dark navy or near-black background with electric brand-accent highlights, geometric circuit / data-stream / particle overlays at 10-15% opacity, holographic or neon rim lighting, futuristic crisp sans-serif typography. Nvidia / Stripe / Linear product campaign feel.",
   feminine_soft:
     "Aesthetic: soft & feminine. Pastel palette (blush, sage, cream), organic curved shapes, soft diffuse lighting, serif headline, generous breathing space. Glossier / Goop / luxury wellness editorial.",
   mysterious_dark:
@@ -173,41 +175,26 @@ const VISUAL_STYLE_CLAUSES: Record<VisualStyleKey, string> = {
     "Aesthetic: vintage editorial. Warm cream / mocha / faded teal palette, serif headline with subtle texture, film-grain or paper-grain overlay, balanced asymmetric layout. 70s magazine editorial feel.",
 }
 
-const LIGHTING_CLAUSES: Record<LightingStyleKey, string> = {
-  auto: "",
-  studio_clean:
-    "Lighting: studio clean. Soft diffused key light, fill light to lift shadows, near-shadowless backdrop, even tonal range across the subject.",
-  natural_daylight:
-    "Lighting: natural daylight. Window-quality soft light from a single direction, gentle shadows, slight warm cast, documentary realism.",
-  golden_hour:
-    "Lighting: golden hour. Warm low-angle sun, long soft shadows, amber rim light on the subject's edges, atmospheric haze in the background.",
-  moody_dark:
-    "Lighting: moody / low-key. Strong directional key with deep shadows, restricted highlight range, atmospheric depth, single accent rim light on the subject.",
-  high_key_bright:
-    "Lighting: high-key bright. Wash of even bright light, near-shadowless, soft highlights, light tonal range across the frame. Optimistic, clean, airy.",
-}
-
-const COMPOSITION_CLAUSES: Record<CompositionDensityKey, string> = {
-  auto: "",
-  minimal:
-    "Composition density: minimal. Generous negative space (≥40% of canvas), one focal subject, no secondary objects competing for attention.",
-  balanced:
-    "Composition density: balanced. Focal subject occupies ~50-60% of canvas; supporting context elements present but secondary; clear visual hierarchy.",
-  rich:
-    "Composition density: rich layered. Multiple visual elements at different depths, layered textures, atmospheric haze separating planes, full canvas use without clutter.",
-}
-
-function lookAndFeelAddendum(
-  visualStyle: VisualStyleKey,
-  lightingStyle: LightingStyleKey,
-  compositionDensity: CompositionDensityKey,
-): string {
+function lookAndFeelAddendum(visualStyles: VisualStyleKey[] | undefined): string {
+  if (!visualStyles || visualStyles.length === 0) return ""
   const lines: string[] = []
-  if (VISUAL_STYLE_CLAUSES[visualStyle]) lines.push(`- ${VISUAL_STYLE_CLAUSES[visualStyle]}`)
-  if (LIGHTING_CLAUSES[lightingStyle]) lines.push(`- ${LIGHTING_CLAUSES[lightingStyle]}`)
-  if (COMPOSITION_CLAUSES[compositionDensity]) lines.push(`- ${COMPOSITION_CLAUSES[compositionDensity]}`)
+  const seen = new Set<string>()
+  for (const v of visualStyles) {
+    if (v === "auto" || seen.has(v)) continue
+    const clause = VISUAL_STYLE_CLAUSES[v as Exclude<VisualStyleKey, "auto">]
+    if (clause) {
+      lines.push(`- ${clause}`)
+      seen.add(v)
+    }
+  }
   if (lines.length === 0) return ""
-  return `\n\nLOOK & FEEL OVERRIDE (per-klant panel keuze — vóór alle andere style directives):\n${lines.join("\n")}`
+  // Multi-select: present de gekozen aspecten als overlappende lagen die
+  // Gemini moet samenbrengen, niet als losse losstaande directives.
+  const header =
+    lines.length === 1
+      ? "LOOK & FEEL (per-klant panel keuze — leidende aesthetic):"
+      : `LOOK & FEEL (per-klant panel keuze — combineer DEZE ${lines.length} aspecten in één coherent beeld):`
+  return `\n\n${header}\n${lines.join("\n")}`
 }
 
 /** Creative-chrome styles (composite + animation) krijgen versoepelde
@@ -1127,13 +1114,10 @@ RL QUALITY RULES (composite-allowed):
       : null
 
     // Roy 2026-06-13: Look & feel addendum (single string for all slots
-    // since these are per-klant panel choices, not per-slot). Empty when
-    // all three dropdowns are on "auto".
-    const lookAndFeelText = lookAndFeelAddendum(
-      effectiveSettings.visualStyle,
-      effectiveSettings.lightingStyle,
-      effectiveSettings.compositionDensity,
-    )
+    // — panel-level keuze, niet per-slot). Empty wanneer geen visualStyles
+    // zijn aangevinkt (auto-mode: laat Pedro het kiezen op basis van
+    // brief.sector via de vertical-aware logic in de imagePrompt).
+    const lookAndFeelText = lookAndFeelAddendum(effectiveSettings.visualStyles)
 
     const slotResults = await Promise.allSettled(
       targetSlots.map((slot, idx) => {

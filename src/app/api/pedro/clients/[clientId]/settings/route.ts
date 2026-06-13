@@ -98,6 +98,32 @@ function extractDetectedBrand(brandStyle: Record<string, unknown> | null): Detec
   }
 }
 
+type BriefContext = {
+  /** Vertical / branche, used by generate-image's vertical-aware
+   *  imagePrompt directives. Shown read-only in the panel so the CM can
+   *  see what "auto-mode" has to work with — if empty, auto-mode has no
+   *  branche signal and the CM should pick styles explicitly. */
+  sector: string | null
+  /** Whether the brief carries enough to be considered "filled" by the
+   *  rest of Pedro. Mirrors the bedrijf+aanbod check in creative-refresh. */
+  filled: boolean
+}
+
+function extractBriefContext(brief: Record<string, unknown> | null): BriefContext {
+  if (!brief) return { sector: null, filled: false }
+  const sectorRaw = brief.sector
+  const bedrijfRaw = brief.bedrijf
+  const aanbodRaw = brief.aanbod
+  const sector =
+    typeof sectorRaw === "string" && sectorRaw.trim().length > 0 ? sectorRaw.trim() : null
+  const filled =
+    typeof bedrijfRaw === "string" &&
+    bedrijfRaw.trim().length > 0 &&
+    typeof aanbodRaw === "string" &&
+    aanbodRaw.trim().length > 0
+  return { sector, filled }
+}
+
 async function loadOverride(
   supabase: Awaited<ReturnType<typeof createAdminClient>>,
   clientId: string,
@@ -106,13 +132,14 @@ async function loadOverride(
   override: PedroCreativeSettings
   detected: DetectedBrand
   global: PedroCreativeSettings
+  brief: BriefContext
 }> {
   // Load per-klant row + global defaults in parallel so the panel can
   // resolve effective state in one round-trip. Roy 2026-06-13.
   const [stateRes, globalRes] = await Promise.all([
     supabase
       .from("pedro_client_state")
-      .select("id, creative_settings, brand_style")
+      .select("id, creative_settings, brand_style, brief")
       .eq("client_id", clientId)
       .order("campaign_number", { ascending: false })
       .limit(1)
@@ -120,6 +147,7 @@ async function loadOverride(
         id: string
         creative_settings: unknown
         brand_style: Record<string, unknown> | null
+        brief: Record<string, unknown> | null
       }>(),
     supabase
       .from("settings")
@@ -132,6 +160,7 @@ async function loadOverride(
     override: sanitiseCreativeSettings(stateRes.data?.creative_settings),
     detected: extractDetectedBrand(stateRes.data?.brand_style ?? null),
     global: sanitiseCreativeSettings(globalRes.data?.value),
+    brief: extractBriefContext(stateRes.data?.brief ?? null),
   }
 }
 
@@ -149,13 +178,14 @@ export async function GET(
   }
 
   const supabase = await createAdminClient()
-  const { override, detected, global } = await loadOverride(supabase, clientId)
+  const { override, detected, global, brief } = await loadOverride(supabase, clientId)
   return NextResponse.json({
     override,
     effective: resolveEffectiveSettings(override, global),
     defaults: DEFAULT_CREATIVE_SETTINGS,
     global,
     detected,
+    brief,
   })
 }
 
@@ -180,7 +210,7 @@ export async function PUT(
   }
 
   const supabase = await createAdminClient()
-  const { row, override: current, detected, global } = await loadOverride(supabase, clientId)
+  const { row, override: current, detected, global, brief } = await loadOverride(supabase, clientId)
 
   let next: PedroCreativeSettings | null
   if (body.reset === true) {
@@ -234,5 +264,6 @@ export async function PUT(
     defaults: DEFAULT_CREATIVE_SETTINGS,
     global,
     detected,
+    brief,
   })
 }

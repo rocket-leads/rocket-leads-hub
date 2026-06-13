@@ -16,8 +16,6 @@ import type {
   SlotStyleKey,
   InspirationSubfolderFlags,
   VisualStyleKey,
-  LightingStyleKey,
-  CompositionDensityKey,
 } from "@/lib/pedro/creative-settings"
 
 /**
@@ -54,9 +52,7 @@ type GlobalDefaultsResponse = {
     slotStyleDefaults: Record<number, SlotStyleKey>
     inspirationSubfolders: InspirationSubfolderFlags
     brandColorInjection: boolean
-    visualStyle: VisualStyleKey
-    lightingStyle: LightingStyleKey
-    compositionDensity: CompositionDensityKey
+    visualStyles: VisualStyleKey[]
   }
   hardcoded: GlobalDefaultsResponse["effective"]
 }
@@ -79,32 +75,18 @@ const SUBFOLDER_LABELS: Record<keyof InspirationSubfolderFlags, string> = {
   stock_content: "Stock content",
 }
 
-const VISUAL_STYLE_OPTIONS: Array<{ value: VisualStyleKey; label: string }> = [
-  { value: "auto", label: "Auto (geen voorkeur)" },
+// Multi-select chips voor de Stijl picker. "auto" is een sentinel — leeg
+// array == auto, dus die staat niet in deze lijst.
+const VISUAL_STYLE_OPTIONS: Array<{ value: Exclude<VisualStyleKey, "auto">; label: string }> = [
   { value: "professional", label: "Professioneel" },
   { value: "modern_clean", label: "Modern & clean" },
   { value: "luxurious", label: "Luxueus / premium" },
+  { value: "tech_ai", label: "Tech / AI / SaaS" },
   { value: "feminine_soft", label: "Vrouwelijk & zacht" },
   { value: "mysterious_dark", label: "Geheimzinnig / donker" },
   { value: "playful_energetic", label: "Speels & energiek" },
   { value: "robust_industrial", label: "Robuust / industrieel" },
   { value: "vintage_editorial", label: "Vintage / editorial" },
-]
-
-const LIGHTING_OPTIONS: Array<{ value: LightingStyleKey; label: string }> = [
-  { value: "auto", label: "Auto (geen voorkeur)" },
-  { value: "studio_clean", label: "Studio clean" },
-  { value: "natural_daylight", label: "Natuurlijk daglicht" },
-  { value: "golden_hour", label: "Golden hour" },
-  { value: "moody_dark", label: "Moody / donker" },
-  { value: "high_key_bright", label: "High-key bright" },
-]
-
-const COMPOSITION_OPTIONS: Array<{ value: CompositionDensityKey; label: string }> = [
-  { value: "auto", label: "Auto (geen voorkeur)" },
-  { value: "minimal", label: "Minimal (veel ruimte)" },
-  { value: "balanced", label: "Gebalanceerd" },
-  { value: "rich", label: "Rich layered" },
 ]
 
 export function PedroTab() {
@@ -336,9 +318,7 @@ function GlobalDefaultsCard() {
         ...(draft.inspirationSubfolders ?? {}),
       },
       brandColorInjection: draft.brandColorInjection ?? state.effective.brandColorInjection,
-      visualStyle: draft.visualStyle ?? state.effective.visualStyle,
-      lightingStyle: draft.lightingStyle ?? state.effective.lightingStyle,
-      compositionDensity: draft.compositionDensity ?? state.effective.compositionDensity,
+      visualStyles: draft.visualStyles ?? state.effective.visualStyles,
     }
   }, [state, draft])
 
@@ -371,6 +351,19 @@ function GlobalDefaultsCard() {
       }))
     },
     [],
+  )
+
+  const toggleVisualStyle = useCallback(
+    (value: Exclude<VisualStyleKey, "auto">) => {
+      setDraft((prev) => {
+        const current = (prev.visualStyles ?? state?.effective.visualStyles ?? []).slice()
+        const idx = current.indexOf(value)
+        if (idx === -1) current.push(value)
+        else current.splice(idx, 1)
+        return { ...prev, visualStyles: current }
+      })
+    },
+    [state],
   )
 
   const handleSave = useCallback(async () => {
@@ -548,48 +541,43 @@ function GlobalDefaultsCard() {
 
           {/* Look & feel */}
           <Section title="Look & feel">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-3">
+              <p className="text-[11px] text-muted-foreground -mt-1">
+                Default stijlcombinatie voor nieuwe klanten. Multi-select —
+                Pedro combineert de gekozen aspecten in één coherent beeld.
+                Klanten kunnen op de Pedro Optimize wizard hun eigen subset
+                overschrijven.
+              </p>
               <div>
-                <Label>Stijl</Label>
-                <select
-                  value={effective.visualStyle}
-                  onChange={(e) => patchDraft({ visualStyle: e.target.value as VisualStyleKey })}
-                  className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
-                >
-                  {VISUAL_STYLE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label>Lichtstijl</Label>
-                <select
-                  value={effective.lightingStyle}
-                  onChange={(e) => patchDraft({ lightingStyle: e.target.value as LightingStyleKey })}
-                  className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
-                >
-                  {LIGHTING_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label>Compositie</Label>
-                <select
-                  value={effective.compositionDensity}
-                  onChange={(e) => patchDraft({ compositionDensity: e.target.value as CompositionDensityKey })}
-                  className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
-                >
-                  {COMPOSITION_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <Label>
+                  Stijl{" "}
+                  <span className="font-normal text-muted-foreground">
+                    {effective.visualStyles.length === 0
+                      ? "(geen — auto-mode, brief.sector bepaalt richting)"
+                      : `(${effective.visualStyles.length} geselecteerd)`}
+                  </span>
+                </Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {VISUAL_STYLE_OPTIONS.map((opt) => {
+                    const active = effective.visualStyles.includes(opt.value)
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => toggleVisualStyle(opt.value)}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-medium border transition-colors",
+                          active
+                            ? "bg-primary/15 border-primary/40 text-primary"
+                            : "bg-background border-border text-foreground/70 hover:bg-accent hover:text-foreground",
+                        )}
+                      >
+                        {active && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </Section>

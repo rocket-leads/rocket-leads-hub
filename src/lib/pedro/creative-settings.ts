@@ -41,22 +41,29 @@ export type BrandBookSource =
   | "upload"          // CM uploaded a PDF directly
   | "website_fallback" // Pedro generated a brand-style summary from the website
 
-/** Visual style language — what the ad "radiates". Single-select; Pedro
- *  appends a 1-sentence clause to the styleDirective so Gemini biases the
- *  aesthetic. "auto" leaves it untouched (default: hard-coded RL look). */
+/** Visual style language — what the ad "radiates". Multi-select per Roy
+ *  2026-06-13: een ad is zelden alleen "professioneel" of alleen "luxe",
+ *  meestal een combinatie ("professioneel + modern & clean + luxe"). De
+ *  CM kan er meerdere aanvinken; Pedro append elke clause aan de
+ *  styleDirective in volgorde. "auto" is een sentinel — verschijnt niet
+ *  in de array en betekent "geen overrides; laat Pedro het kiezen op
+ *  basis van de brief.sector". */
 export type VisualStyleKey =
   | "auto"
   | "professional"
   | "modern_clean"
   | "luxurious"
+  | "tech_ai"
   | "feminine_soft"
   | "mysterious_dark"
   | "playful_energetic"
   | "robust_industrial"
   | "vintage_editorial"
 
-/** Lighting / atmosphere — how the scene is lit. Influences composition
- *  + photo mood. */
+/** Lighting + composition were removed from the per-klant panel and the
+ *  global tab on 2026-06-13 (Roy: te abstract, CM weet niet wat te kiezen).
+ *  Types blijven bestaan zodat oude saves niet breken; de UI rendert ze
+ *  niet meer en generate-image leest ze niet meer. */
 export type LightingStyleKey =
   | "auto"
   | "studio_clean"
@@ -65,7 +72,6 @@ export type LightingStyleKey =
   | "moody_dark"
   | "high_key_bright"
 
-/** Composition density — how much visual weight the canvas carries. */
 export type CompositionDensityKey = "auto" | "minimal" | "balanced" | "rich"
 
 export type PedroCreativeSettings = {
@@ -84,12 +90,21 @@ export type PedroCreativeSettings = {
   brandBookDriveFileId?: string | null
   brandBookSource?: BrandBookSource
 
-  // Look & feel dimensions (Roy 2026-06-13). Each is single-select with
-  // an "auto" escape hatch. Each non-auto value appends a one-line
-  // clause to the Gemini styleDirective. See generate-image route for
-  // the mapping from key → clause text.
+  // Look & feel (Roy 2026-06-13). Multi-select voor visuele stijl —
+  // een ad combineert meestal meerdere attributen ("professioneel +
+  // modern & clean + luxe"). Empty/missing array = auto = laat Pedro
+  // het kiezen op basis van brief.sector.
+  visualStyles?: VisualStyleKey[]
+
+  /** @deprecated 2026-06-13: vervangen door visualStyles[]. Sanitiser
+   *  coerceert een legacy string-waarde naar een 1-element array zodat
+   *  oude saves blijven werken zonder migration. */
   visualStyle?: VisualStyleKey
+
+  /** @deprecated 2026-06-13: lichtstijl uit panel verwijderd; type
+   *  blijft voor back-compat met oude saves. */
   lightingStyle?: LightingStyleKey
+  /** @deprecated 2026-06-13: compositiedichtheid uit panel verwijderd. */
   compositionDensity?: CompositionDensityKey
 
   /** Per-klant override of auto-detected brand colors. When set + non-
@@ -130,6 +145,7 @@ export const DEFAULT_CREATIVE_SETTINGS: Required<
   brandBookDriveFileId: null,
   brandBookSource: undefined,
   brandColors: undefined,
+  visualStyles: [],
   visualStyle: "auto",
   lightingStyle: "auto",
   compositionDensity: "auto",
@@ -154,6 +170,7 @@ const VALID_VISUAL_STYLES = new Set<VisualStyleKey>([
   "professional",
   "modern_clean",
   "luxurious",
+  "tech_ai",
   "feminine_soft",
   "mysterious_dark",
   "playful_energetic",
@@ -247,9 +264,33 @@ export function sanitiseCreativeSettings(raw: unknown): PedroCreativeSettings {
     out.brandBookSource = r.brandBookSource as BrandBookSource
   }
 
-  // Look & feel dropdowns (Roy 2026-06-13).
-  if (typeof r.visualStyle === "string" && VALID_VISUAL_STYLES.has(r.visualStyle as VisualStyleKey)) {
-    out.visualStyle = r.visualStyle as VisualStyleKey
+  // Look & feel (Roy 2026-06-13). Multi-select voor visualStyles; legacy
+  // singular `visualStyle` wordt gecoerced naar een 1-element array zodat
+  // oude saves blijven werken. "auto" entries worden weggefilterd
+  // (empty array == auto). Lichtstijl + compositie blijven sanitiseren
+  // voor back-compat maar verschijnen niet meer in de UI.
+  if (Array.isArray(r.visualStyles)) {
+    const cleaned: VisualStyleKey[] = []
+    const seen = new Set<VisualStyleKey>()
+    for (const v of r.visualStyles) {
+      if (
+        typeof v === "string" &&
+        VALID_VISUAL_STYLES.has(v as VisualStyleKey) &&
+        v !== "auto" &&
+        !seen.has(v as VisualStyleKey)
+      ) {
+        cleaned.push(v as VisualStyleKey)
+        seen.add(v as VisualStyleKey)
+      }
+    }
+    out.visualStyles = cleaned
+  } else if (typeof r.visualStyle === "string" && VALID_VISUAL_STYLES.has(r.visualStyle as VisualStyleKey)) {
+    // Legacy singular coercion: wrap in array; "auto" → empty array.
+    if (r.visualStyle === "auto") {
+      out.visualStyles = []
+    } else {
+      out.visualStyles = [r.visualStyle as VisualStyleKey]
+    }
   }
   if (typeof r.lightingStyle === "string" && VALID_LIGHTING_STYLES.has(r.lightingStyle as LightingStyleKey)) {
     out.lightingStyle = r.lightingStyle as LightingStyleKey
@@ -324,6 +365,7 @@ export function resolveEffectiveSettings(
     brandBookDriveFileId: pick("brandBookDriveFileId"),
     brandBookSource: pick("brandBookSource"),
     brandColors: pick("brandColors"),
+    visualStyles: ov.visualStyles ?? gl.visualStyles ?? DEFAULT_CREATIVE_SETTINGS.visualStyles,
     visualStyle: pick("visualStyle"),
     lightingStyle: pick("lightingStyle"),
     compositionDensity: pick("compositionDensity"),
