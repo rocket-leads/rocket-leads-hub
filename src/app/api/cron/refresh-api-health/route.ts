@@ -128,14 +128,26 @@ async function checkStripe(token: string): Promise<Verdict> {
 }
 
 async function checkTrengo(token: string): Promise<Verdict> {
-  // Multi-endpoint walk because individual endpoints fail with 403 when
-  // the token lacks per-endpoint scope (admin etc.) — that's not a bad
-  // token. The decisive verdict comes from the WORST signal across all
-  // endpoints:
-  //   - any 2xx        → true (token works for at least one endpoint)
-  //   - 401 anywhere   → false (auth invalid across the board)
-  //   - all transient  → null (every endpoint was 429/5xx/network — retry)
-  //   - all 4xx-other  → false (nothing reachable with this token)
+  // Multi-endpoint walk because individual endpoints can fail per-scope
+  // even for a perfectly valid token. Roy 2026-06-13: the API health
+  // banner kept flipping red because `/users` is admin-scoped and
+  // Trengo returns 401 (not 403) for non-admin tokens - we used to
+  // bail-with-false on that, marking the WHOLE token invalid. Now any
+  // 401 from a single endpoint is treated the same as 403: continue
+  // walking, only declare the token bad when nothing comes back 2xx
+  // AND no endpoint was transient (in which case we retry).
+  //
+  // Decisive verdict comes from the WORST signal across all endpoints:
+  //   - any 2xx                          → true (token works)
+  //   - all transient                    → null (every endpoint was
+  //                                        429/5xx/network — retry)
+  //   - all 4xx with at least one transient → null (don't flap red on
+  //                                        a half-broken cascade)
+  //   - all 4xx, none transient          → false (genuinely unreachable)
+  //
+  // /channels is tried first because it works for every token grade
+  // (workspace-wide read), so a healthy token short-circuits to true
+  // on the first call.
   return retryTransient(async () => {
     let sawTransient = false
     for (const endpoint of ["/channels", "/labels", "/users"]) {
@@ -145,12 +157,12 @@ async function checkTrengo(token: string): Promise<Verdict> {
           { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
         )
         if (res.ok) return true
-        if (res.status === 401) return false
         if (TRANSIENT_STATUSES.has(res.status)) {
           sawTransient = true
           continue
         }
-        // 403 / non-JSON page / other 4xx → try the next endpoint
+        // 401 / 403 / other 4xx → could be scope mismatch on this
+        // endpoint only. Try the next one before declaring the token bad.
       } catch {
         sawTransient = true
         continue

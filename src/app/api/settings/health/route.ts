@@ -46,21 +46,51 @@ async function checkStripe(token: string): Promise<Omit<ServiceResult, "checkedA
 }
 
 async function checkTrengo(token: string): Promise<Omit<ServiceResult, "checkedAt">> {
-  for (const endpoint of ["/users", "/labels", "/channels"]) {
+  // Roy 2026-06-13: previous version returned `Invalid token` the
+  // moment ANY single endpoint returned non-2xx. `/users` is admin-
+  // scoped and Trengo replies with 401 (not 403) for team-grade
+  // tokens, so the on-demand checker kept marking a perfectly valid
+  // workspace token as broken. Now we walk all 3 endpoints (channels
+  // first so a healthy token short-circuits) and only declare the
+  // token bad when nothing reachable returns 2xx. Transient errors
+  // (429 / 5xx / network) are surfaced separately so the banner
+  // doesn't flap red on a rate-limit cascade.
+  let sawTransient = false
+  let lastErrorMessage: string | null = null
+  for (const endpoint of ["/channels", "/labels", "/users"]) {
     try {
       const res = await fetch(`https://app.trengo.com/api/v2${endpoint}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       })
-      const contentType = res.headers.get("content-type") ?? ""
-      if (!contentType.includes("application/json")) continue
-      const data = await res.json()
       if (res.ok) return { ok: true, message: "Trengo connected" }
-      return { ok: false, message: data.message ?? `HTTP ${res.status}` }
+      if ([408, 425, 429, 500, 502, 503, 504].includes(res.status)) {
+        sawTransient = true
+        lastErrorMessage = `HTTP ${res.status} (transient - retried)`
+        continue
+      }
+      // 401 / 403 / other 4xx → could be scope mismatch on this
+      // endpoint only. Try the next one. Stash the message for
+      // a useful banner if nothing else works either.
+      const contentType = res.headers.get("content-type") ?? ""
+      if (contentType.includes("application/json")) {
+        const data = await res.json().catch(() => ({ message: null }))
+        lastErrorMessage = (data as { message?: string }).message ?? `HTTP ${res.status}`
+      } else {
+        lastErrorMessage = `HTTP ${res.status}`
+      }
     } catch {
+      sawTransient = true
+      lastErrorMessage = "Connection failed (transient)"
       continue
     }
   }
-  return { ok: false, message: "Invalid token" }
+  if (sawTransient) {
+    // Treat as ok-with-warning so the UI doesn't flip red on a
+    // transient blip - the cron's hourly check has retry logic that
+    // gives a more authoritative verdict.
+    return { ok: true, message: lastErrorMessage ?? "Trengo transient, treated as up" }
+  }
+  return { ok: false, message: lastErrorMessage ?? "Invalid token" }
 }
 
 async function checkFathom(token: string): Promise<Omit<ServiceResult, "checkedAt">> {
