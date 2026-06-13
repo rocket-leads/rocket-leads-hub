@@ -15,7 +15,10 @@
  * Roy 2026-06-13.
  */
 
-export type AspectRatio = "4:5" | "1:1" | "9:16" | "16:9"
+/** Aligned with Gemini's supported aspect ratios — 4:5 is the Meta Feed
+ *  portrait (RL paid-social default), 1:1 the square, 9:16 the Reel/Story
+ *  vertical, and 1.91:1 the Meta landscape format. Roy 2026-06-13. */
+export type AspectRatio = "4:5" | "1:1" | "9:16" | "1.91:1"
 
 export type SlotStyleKey =
   | "client_content"
@@ -72,7 +75,7 @@ export const DEFAULT_CREATIVE_SETTINGS: Required<
   brandBookSource: undefined,
 }
 
-const VALID_ASPECTS = new Set<AspectRatio>(["4:5", "1:1", "9:16", "16:9"])
+const VALID_ASPECTS = new Set<AspectRatio>(["4:5", "1:1", "9:16", "1.91:1"])
 const VALID_SLOT_STYLES = new Set<SlotStyleKey>([
   "client_content",
   "client_content_ai",

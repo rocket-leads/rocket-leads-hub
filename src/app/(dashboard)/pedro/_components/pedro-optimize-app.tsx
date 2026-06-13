@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
-import { Users, FolderOpen } from "lucide-react"
+import { Users, Settings as SettingsIcon } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { PageHeader } from "@/components/ui/page-header"
 import { ClientPicker } from "./client-picker"
 import { OptimizeWizard } from "./optimize-wizard"
+import { PedroSettingsPanel } from "./pedro-settings-panel"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import type { PedroClient } from "./types"
@@ -62,6 +64,11 @@ export function PedroOptimizeApp({ clients }: Props) {
     [clients, selectedClientId],
   )
 
+  // Inline accordion below the client-picker card. Toggle via the ⚙ button
+  // that replaces the old "Drive" shortcut — the Drive link still lives
+  // inside the panel itself (Bronnen → Klant-Drive). Roy 2026-06-13.
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
   return (
     <div className="pedro-root">
       <PageHeader
@@ -87,17 +94,22 @@ export function PedroOptimizeApp({ clients }: Props) {
               hideAutoFill
             />
           </div>
-          {selectedClient?.googleDriveId && (
-            <a
-              href={`https://drive.google.com/drive/folders/${selectedClient.googleDriveId}`}
-              target="_blank"
-              rel="noreferrer"
-              className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border bg-card text-sm font-medium text-foreground hover:bg-accent transition-colors"
-              title="Open de Drive folder van deze klant in een nieuw tab"
+          {selectedClient && (
+            <button
+              type="button"
+              onClick={() => setSettingsOpen((s) => !s)}
+              className={cn(
+                "shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-md border text-sm font-medium transition-colors",
+                settingsOpen
+                  ? "border-primary/40 bg-primary/10 text-primary"
+                  : "border-border bg-card text-foreground hover:bg-accent",
+              )}
+              title="Pedro instellingen voor deze klant"
+              aria-expanded={settingsOpen}
             >
-              <FolderOpen className="h-4 w-4" />
-              Drive
-            </a>
+              <SettingsIcon className="h-4 w-4" />
+              Instellingen
+            </button>
           )}
           {selectedClient && (
             <span className="shrink-0 text-xs text-muted-foreground hidden md:inline">
@@ -106,6 +118,15 @@ export function PedroOptimizeApp({ clients }: Props) {
           )}
         </div>
       </div>
+
+      {selectedClient && (
+        <PedroSettingsPanel
+          open={settingsOpen}
+          clientId={selectedClient.id}
+          clientName={selectedClient.name}
+          googleDriveId={selectedClient.googleDriveId || null}
+        />
+      )}
 
       {selectedClientId ? (
         <OptimizeWizard

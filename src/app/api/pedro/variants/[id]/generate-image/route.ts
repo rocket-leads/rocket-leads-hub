@@ -19,6 +19,11 @@ import { downloadDriveFileBytes } from "@/lib/integrations/google-drive"
 import { searchPexelsPhotos, deriveStockQueries } from "@/lib/integrations/pexels"
 import { resolveVisualStylePolicy } from "@/lib/pedro/visual-style-policy"
 import { fetchInspirationRefForStyle } from "@/lib/pedro/visual-reference-library"
+import {
+  resolveEffectiveSettings,
+  sanitiseCreativeSettings,
+  type InspirationSubfolderFlags,
+} from "@/lib/pedro/creative-settings"
 import type { BrandStyle } from "@/lib/pedro/helpers"
 
 /**
@@ -514,16 +519,25 @@ export async function POST(
     // find regardless of the CM's intent.
     const { data: stateRow } = await supabase
       .from("pedro_client_state")
-      .select("brief, brand_style")
+      .select("brief, brand_style, creative_settings")
       .eq("client_id", variant.client_id)
       .order("campaign_number", { ascending: false })
       .limit(1)
       .maybeSingle<{
         brief: Record<string, unknown> | null
         brand_style: Record<string, unknown> | null
+        creative_settings: Record<string, unknown> | null
       }>()
     const briefForPolicy = (stateRow?.brief ?? null) as Record<string, unknown> | null
     const brandStyleForPolicy = (stateRow?.brand_style ?? null) as Partial<BrandStyle> | null
+
+    // Roy 2026-06-13: pull the per-client creative_settings override and
+    // overlay it on the hardcoded defaults. Drives aspect ratio, slot
+    // style defaults, inspiration-subfolder scoping, and the brand-color
+    // injection toggle. Body args still win over settings (the wizard's
+    // inline picker overrides the saved default for a single run).
+    const creativeOverride = sanitiseCreativeSettings(stateRow?.creative_settings)
+    const effectiveSettings = resolveEffectiveSettings(creativeOverride)
     const policy = resolveVisualStylePolicy(
       briefForPolicy
         ? {
@@ -970,10 +984,11 @@ RL QUALITY RULES (composite-allowed):
 - NO badges, NO price tags, NO comparison stickers (LAGE/3x), NO duplicated text, NO competing brand logos.
 - Looks like a paid agency deliverable. Marketing-agency quality bar.`
 
-    // Roy 2026-06-12 v2: aspect ratio gehardcodeerd op 4:5 (Meta Feed
-    // portrait, RL paid-social standaard). 9:16 sloop de headline
-    // layout, 1:1 voelt nu gedateerd. Geen uitzonderingen.
-    const aspectRatio: "4:5" = "4:5"
+    // Roy 2026-06-13: aspect ratio is now per-klant configureerbaar in
+    // creative_settings (default still 4:5 for Meta Feed portrait, RL
+    // paid-social standaard). 9:16 sloop de headline layout — alleen
+    // gebruiken wanneer een klant het bewust kiest in de panel.
+    const aspectRatio = effectiveSettings.aspectRatio
 
     // Generate all targets in parallel. Each slot has its own STYLE
     // direction so de CM 3 verschillende looks ziet ipv 3x dezelfde scene.
@@ -985,21 +1000,47 @@ RL QUALITY RULES (composite-allowed):
     // ervan, substitutes alleen de tekst + subject + kleuren. Was eerder
     // "do not copy" framing die Gemini de ref liet negeren - nieuwe
     // framing forceert 'm de structuur over te nemen.
+    // Slot-style resolution order (most specific wins):
+    //   1. body.slotStyles[slot]                 — wizard's inline picker for THIS run
+    //   2. effectiveSettings.slotStyleDefaults   — per-klant saved default
+    //   3. DEFAULT_SLOT_STYLES                   — hardcoded Hub default
+    //   4. "client_content_ai"                   — last-resort fallback
+    const settingsSlotDefaults = effectiveSettings.slotStyleDefaults as Record<number, SlotStyleKey>
     const resolvedSlotStyles = body.slotStyles ?? {}
+
+    // Per-klant subfolder scoping: if the CM disabled e.g. AI Animation
+    // for this klant in the panel, skip the library fetch for any slot
+    // whose style maps to that subfolder. Generation still proceeds, just
+    // without an inspiration anchor for that slot.
+    const subfolderEnabled = effectiveSettings.inspirationSubfolders as InspirationSubfolderFlags
 
     const inspirationRefs = await Promise.all(
       targetSlots.map((slot) => {
         const style: SlotStyleKey =
-          resolvedSlotStyles[slot] ?? DEFAULT_SLOT_STYLES[slot] ?? "client_content_ai"
+          resolvedSlotStyles[slot] ??
+          settingsSlotDefaults[slot] ??
+          DEFAULT_SLOT_STYLES[slot] ??
+          "client_content_ai"
+        if (!subfolderEnabled[style]) return null
         return fetchInspirationRefForStyle(style).catch(() => null)
       }),
     )
 
+    // When brand-color injection is toggled off in the panel, pass null
+    // to styleDirective so it falls back to the generic "brand's accent
+    // colors" phrasing instead of explicit hex codes. Toggle is per-klant.
+    const brandHexForDirective = effectiveSettings.brandColorInjection
+      ? brandHexForPrompt
+      : null
+
     const slotResults = await Promise.allSettled(
       targetSlots.map((slot, idx) => {
         const style: SlotStyleKey =
-          resolvedSlotStyles[slot] ?? DEFAULT_SLOT_STYLES[slot] ?? "client_content_ai"
-        const directive = styleDirective(style, brandHexForPrompt)
+          resolvedSlotStyles[slot] ??
+          settingsSlotDefaults[slot] ??
+          DEFAULT_SLOT_STYLES[slot] ??
+          "client_content_ai"
+        const directive = styleDirective(style, brandHexForDirective)
         const inspiration = inspirationRefs[idx]
         // Creative-chrome styles (composite + animation) krijgen
         // versoepelde rules zodat overlays + panels niet geblocked
