@@ -135,9 +135,13 @@ function GoogleCalendarCard({
   const connected = !!connection.connectedEmail
   const usingSignIn = connection.isSignInAccount
   const accountLabel = connection.connectedEmail ?? signInEmail
+  // The card is *always* connected (sign-in seeds calendar by default),
+  // so the meaningful question for the user is "which Google account?",
+  // not "is it connected?". Description + button copy are written
+  // around that distinction.
   const description = usingSignIn
-    ? "Reading calendar from your sign-in account. Connect a different Google account if your work calendar lives elsewhere."
-    : "Calendar events read from this Google account instead of your sign-in account."
+    ? "Your Calendar page reads from the same Google account you signed in with. Use a different Google account if your work calendar lives elsewhere (e.g. a shared team account)."
+    : "Your Calendar page reads from this account instead of the one you signed in with. Switch back any time."
 
   return (
     <PlatformCard
@@ -146,12 +150,35 @@ function GoogleCalendarCard({
       name="Google Calendar"
       description={description}
       connected={connected}
-      meta={connected ? { account: accountLabel } : null}
+      meta={null}
       connectedAt={undefined}
     >
+      {/* Current-account chip — the load-bearing piece of information.
+          Sits above the action so the user reads "which account first,
+          then "switch / reset". */}
+      {connected && (
+        <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2 mb-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground/70 font-medium">
+            Currently using
+          </p>
+          <div className="mt-0.5 flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium">{accountLabel}</span>
+            <span
+              className={`text-[10px] font-medium rounded-full px-2 py-0.5 ${
+                usingSignIn
+                  ? "bg-muted text-muted-foreground"
+                  : "bg-cyan-500/15 text-cyan-700 dark:text-cyan-300"
+              }`}
+            >
+              {usingSignIn ? "Sign-in account" : "Different account"}
+            </span>
+          </div>
+        </div>
+      )}
+
       {connection.justConnected && (
         <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 mb-3 text-xs">
-          Connected as <span className="font-medium">{connection.justConnected}</span>
+          Switched to <span className="font-medium">{connection.justConnected}</span>
         </div>
       )}
       {error && (
@@ -165,7 +192,9 @@ function GoogleCalendarCard({
           href="/api/auth/google-calendar/start"
           className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted/40 transition-colors"
         >
-          {connected ? "Connect a different Google account" : "Connect Google account"}
+          {connected
+            ? "Switch to a different Google Calendar account"
+            : "Connect a Google Calendar account"}
         </a>
         {connected && !usingSignIn && (
           <Button
@@ -177,7 +206,7 @@ function GoogleCalendarCard({
             {pending === "disconnecting" && (
               <Loader2 className="size-3.5 animate-spin" />
             )}
-            Reset to sign-in account
+            Use my sign-in account instead
           </Button>
         )}
       </div>
