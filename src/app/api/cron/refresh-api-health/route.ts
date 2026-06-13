@@ -24,70 +24,142 @@ export const maxDuration = 60
 
 const SERVICES = ["monday", "meta", "stripe", "trengo", "fathom"] as const
 
-async function checkMonday(token: string): Promise<boolean> {
+/** Statuses that mean "the server is alive but having a moment" — never
+ *  treat these as a token failure. Retry, and if every attempt is also
+ *  transient, return null so the cron preserves the previous is_valid
+ *  value rather than flapping the banner red. */
+const TRANSIENT_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504])
+
+const REQUEST_TIMEOUT_MS = 10_000
+const RETRY_ATTEMPTS = 3
+const RETRY_BACKOFF_MS = 1500
+
+/** Verdict semantics shared by every checker:
+ *   true   - decisive: the token works
+ *   false  - decisive: the token is bad (401/403 from a definitive endpoint)
+ *   null   - transient (429/5xx/network/timeout) — preserve previous state
+ */
+type Verdict = boolean | null
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
-    const res = await fetch("https://api.monday.com/v2", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: token },
-      body: JSON.stringify({ query: "{ me { name } }" }),
-    })
-    const data = await res.json()
-    return !!data?.data?.me?.name
-  } catch {
-    return false
+    return await fetch(url, { ...init, signal: ctrl.signal, cache: "no-store" })
+  } finally {
+    clearTimeout(timer)
   }
 }
 
-async function checkMeta(token: string): Promise<boolean> {
-  try {
-    const res = await fetch(`https://graph.facebook.com/me?access_token=${token}`)
-    const data = await res.json()
-    return typeof data?.id === "string" && data.id.length > 0
-  } catch {
-    return false
+/** Run `fn` up to RETRY_ATTEMPTS times with linear backoff. Returns the
+ *  first decisive verdict (true/false); only returns null if every
+ *  attempt was transient. Keeps total worst-case at ~10s × 3 + backoff. */
+async function retryTransient(fn: () => Promise<Verdict>): Promise<Verdict> {
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS * attempt))
+    }
+    const v = await fn()
+    if (v !== null) return v
   }
+  return null
 }
 
-async function checkStripe(token: string): Promise<boolean> {
-  try {
-    const res = await fetch("https://api.stripe.com/v1/balance", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
-async function checkTrengo(token: string): Promise<boolean> {
-  // Roy 2026-06-09: previous early-return was flagging the Trengo token as
-  // expired even when the app was happily calling /contacts + /channels +
-  // /tickets all day. Root cause: `/users` requires the `admin` scope -
-  // app-integration tokens typically don't have that, so it returns 403 on
-  // the first endpoint. The old comment assumed "JSON 4xx is decisive" but
-  // that's only true for 401 (auth invalid). 403 = scope mismatch on THIS
-  // endpoint, not "token expired" - keep trying the others.
-  //
-  // Verdict semantics now:
-  //   - any 2xx          → return true (some endpoint succeeded → token works)
-  //   - 401 anywhere     → return false (auth genuinely invalid)
-  //   - 403 / 5xx / etc. → keep trying - endpoint-specific scope failures
-  //                         must not gate the whole-token verdict
-  //   - all failed       → return false (no endpoint reachable with this token)
-  for (const endpoint of ["/channels", "/labels", "/users"]) {
+async function checkMonday(token: string): Promise<Verdict> {
+  return retryTransient(async () => {
     try {
-      const res = await fetch(`https://app.trengo.com/api/v2${endpoint}`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      const res = await fetchWithTimeout("https://api.monday.com/v2", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: token },
+        body: JSON.stringify({ query: "{ me { name } }" }),
+      })
+      if (res.status === 401 || res.status === 403) return false
+      if (TRANSIENT_STATUSES.has(res.status)) return null
+      const data = await res.json().catch(() => null)
+      // Monday returns 200 with an `errors` array for auth failures —
+      // missing me.name on a 200 also means the query failed (typically
+      // bad/expired token).
+      if (data?.data?.me?.name) return true
+      return false
+    } catch {
+      return null
+    }
+  })
+}
+
+async function checkMeta(token: string): Promise<Verdict> {
+  return retryTransient(async () => {
+    try {
+      const res = await fetchWithTimeout(
+        `https://graph.facebook.com/me?access_token=${token}`,
+        {},
+      )
+      if (TRANSIENT_STATUSES.has(res.status)) return null
+      const data = await res.json().catch(() => null)
+      if (typeof data?.id === "string" && data.id.length > 0) return true
+      // Meta surfaces auth errors as 4xx + an `error` object. Anything
+      // other than a transient status + no id = bad token.
+      return false
+    } catch {
+      return null
+    }
+  })
+}
+
+async function checkStripe(token: string): Promise<Verdict> {
+  return retryTransient(async () => {
+    try {
+      const res = await fetchWithTimeout("https://api.stripe.com/v1/balance", {
+        headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) return true
-      // 401 = decisive auth failure across all endpoints
-      if (res.status === 401) return false
-      // 403 / 429 / 5xx / non-JSON page → try the next endpoint
+      if (res.status === 401 || res.status === 403) return false
+      if (TRANSIENT_STATUSES.has(res.status)) return null
+      // Stripe rarely returns other 4xx for /balance — treat as bad token.
+      return false
     } catch {
-      continue
+      return null
     }
-  }
-  return false
+  })
+}
+
+async function checkTrengo(token: string): Promise<Verdict> {
+  // Multi-endpoint walk because individual endpoints fail with 403 when
+  // the token lacks per-endpoint scope (admin etc.) — that's not a bad
+  // token. The decisive verdict comes from the WORST signal across all
+  // endpoints:
+  //   - any 2xx        → true (token works for at least one endpoint)
+  //   - 401 anywhere   → false (auth invalid across the board)
+  //   - all transient  → null (every endpoint was 429/5xx/network — retry)
+  //   - all 4xx-other  → false (nothing reachable with this token)
+  return retryTransient(async () => {
+    let sawTransient = false
+    for (const endpoint of ["/channels", "/labels", "/users"]) {
+      try {
+        const res = await fetchWithTimeout(
+          `https://app.trengo.com/api/v2${endpoint}`,
+          { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
+        )
+        if (res.ok) return true
+        if (res.status === 401) return false
+        if (TRANSIENT_STATUSES.has(res.status)) {
+          sawTransient = true
+          continue
+        }
+        // 403 / non-JSON page / other 4xx → try the next endpoint
+      } catch {
+        sawTransient = true
+        continue
+      }
+    }
+    // If at least one endpoint was transient, the whole check is
+    // transient — retry the outer loop before deciding the token is bad.
+    return sawTransient ? null : false
+  })
 }
 
 /**
@@ -110,47 +182,41 @@ async function checkTrengo(token: string): Promise<boolean> {
  *  app's actual operations (which call /meetings + /team_members both,
  *  but only /team_members would fail with the lower-scope keys).
  */
-async function checkFathom(token: string): Promise<boolean | null> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt))
+async function checkFathom(token: string): Promise<Verdict> {
+  return retryTransient(async () => {
     try {
-      const tm = await fetch("https://api.fathom.ai/external/v1/team_members", {
-        headers: { "X-Api-Key": token, Accept: "application/json" },
-        cache: "no-store",
-      })
+      const tm = await fetchWithTimeout(
+        "https://api.fathom.ai/external/v1/team_members",
+        { headers: { "X-Api-Key": token, Accept: "application/json" } },
+      )
       if (tm.ok) return true
       if (tm.status === 401) return false
       if (tm.status === 403) {
-        // Scope-mismatch on /team_members - try /meetings as a less-strict
+        // Scope-mismatch on /team_members — try /meetings as a less-strict
         // fallback. Same X-Api-Key auth; if /meetings answers ok, the token
         // works for the Hub's actual day-to-day usage.
-        const mt = await fetch(
+        const mt = await fetchWithTimeout(
           "https://api.fathom.ai/external/v1/meetings?limit=1",
-          {
-            headers: { "X-Api-Key": token, Accept: "application/json" },
-            cache: "no-store",
-          },
+          { headers: { "X-Api-Key": token, Accept: "application/json" } },
         )
         if (mt.ok) return true
         if (mt.status === 401 || mt.status === 403) return false
-        // /meetings transient too - fall through to the retry loop
+        if (TRANSIENT_STATUSES.has(mt.status)) return null
+        return false
       }
-      // 429 / 5xx / anything else → retry
+      if (TRANSIENT_STATUSES.has(tm.status)) return null
+      return false
     } catch {
-      // network blip → retry
+      return null
     }
-  }
-  return null
+  })
 }
 
-/** A checker returns boolean for a decisive verdict (token works or
- *  doesn't), or `null` when the call hit a transient failure (429 /
- *  5xx / network) and the cron should preserve the previous
- *  is_valid value rather than write a false negative. Only Fathom
- *  uses the `null` path today; the other services' checkers are
- *  still single-try since Roy hasn't flagged false-positive trouble
- *  on those. */
-const checkers: Record<(typeof SERVICES)[number], (token: string) => Promise<boolean | null>> = {
+/** Every checker now returns the unified Verdict (boolean | null) — see
+ *  the type docstring. `null` from any checker preserves the previous
+ *  `is_valid` on the row instead of flapping the banner red on a
+ *  one-off transient. */
+const checkers: Record<(typeof SERVICES)[number], (token: string) => Promise<Verdict>> = {
   monday: checkMonday,
   meta: checkMeta,
   stripe: checkStripe,
