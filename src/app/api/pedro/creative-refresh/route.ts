@@ -371,7 +371,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<RefreshRespon
       `[creative-refresh] context sources for ${clientId}:`,
       JSON.stringify(clientContext.sources),
       `chars=${clientContext.charCount}`,
-      `brand=${clientContext.sources.brandStyle ? "y" : "n"} feedback=${clientContext.sources.feedbackCount}`,
+      `brand=${clientContext.sources.brandStyle ? "y" : "n"} feedback=${clientContext.sources.feedbackCount} globalFeedback=${clientContext.sources.globalFeedbackCount}`,
     )
   }
 

@@ -536,17 +536,126 @@ De vraag/pijn moet **uit de doelgroep zelf komen** - wat ze dénken of zéggen, 
 - Pedro's image-prompt verwijst expliciet naar de hex codes ("use #FF6B00 as accent color for the headline overlay") en font ("Sans-serif body in style of Inter / Clash Grotesk").
 - **Geen brand identity vastgelegd = Pedro waarschuwt + valt terug op kleur-extractie uit reference photos**, maar markeert de output als "brand-identity missing".
 
-### 5. Feedback-loop: CM iteraties verbreden Pedro's knowledge base
+### 4b. Brand-colour roles (primary / secondary / accent) — wat betekent welke kleur
 
-Elke keer dat een CM een gegenereerde image afkeurt, een prompt aanpast, of opmerkingen toevoegt na een regen-actie wordt dat **opgeslagen per klant** als `pedro_creative_feedback`. Bij de volgende refresh injecteert Pedro die feedback in de image-prompt voor diezelfde klant.
+> Roy 2026-06-13. De auto-classifier voor kleur-rollen (luminantie + hue afstand) raakte te vaak mis: donkerblauw werd accent, lichtblauw werd panel, etc. CM tagt nu expliciet per kleur welke rol 'ie speelt. De drie rollen mappen op hoe een ad daadwerkelijk in elkaar zit:
 
-Voorbeelden van feedback die Pedro moet onthouden:
-- "Logo's altijd klein voor deze klant" → Pedro neemt mee in alle volgende prompts voor die klant
-- "Headlines altijd in form van een pijnpunt-vraag uit doelgroep" → preserve dit format
-- "Klant haat stock-photo's met te witte tanden" → vermijd
-- "Klant wil altijd minimaal één persoon in beeld" → bake into prompt
+| Rol | Wat het is in de ad |
+|---|---|
+| **Primary** | De canvas / panel-achtergrond waar headline + subject op zitten. Dominante vlak. ("Donkerblauw" in de Sneller-software LP). |
+| **Secondary** | De **nadruk-kleur binnen de headline** — niet de hele tekstkleur. **1-2 sleutel-woorden** (ideaal 1) krijgen deze tint: de benefit of pain point, niet artikels/filler. De rest van de headline blijft wit. Drijft ook één positief typografisch accent op diezelfde woorden (cleane underline / gevuld marker-vlak met witte tekst / soft highlighter bar / dunne cirkel om één woord). ("Lichtblauw" in de LP: "software laten ontwikkelen" + "minder budget" lit up, "Sneller" + "voor" wit). |
+| **Accent** | De brand-highlight kleur voor **scene elementen**: graphic overlays, glow, particles, rim-light, gehighlighte props/icons. Eventueel óók de CTA-knop achtergrond — maar CTAs zijn **optioneel**, niet verplicht. Een schone ad zonder knop is beter dan een geforceerde knop. ("Groene" tint op de CTA én de hover-glow in de LP). |
 
-Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om de eerste-versie goed te krijgen. **Iteratie is leerdata, geen kosten-post.**
+Wit + zwart zijn altijd impliciet beschikbaar voor base tekst en elementen — die hoeven niet in de brand-color set te staan.
+
+**Headline emphasis treatment — POSITIEVE emphasis, twee lagen tegelijk, op dezelfde 1-2 woorden:**
+
+> Roy 2026-06-13. Eerste versie liet "DIAGONAL STRIKE-OUT" als optie staan; Gemini interpreteerde dat als letterlijke kruisstreepjes door élk woord (ziet eruit alsof de tekst doorgestreept is). Die optie is verwijderd — alle treatments moeten **positief** lezen, nooit als ontkenning of correctie.
+
+1. **Kleur-emphasis** — de geselecteerde 1-2 nadruk-woorden krijgen de emphasis-kleur (secondary, of accent als fallback). Idealiter slechts ÉÉN woord/frase per headline; twee is het absolute max. Less is more.
+2. **Typografisch accent** op DIEZELFDE woorden — kies precies één van:
+   - **Cleane underline** — een enkele rechte of zacht-gebogen lijn onder het woord. Vector-clean, niet sloppy.
+   - **Gevuld marker-vlak (highlighter)** — een gevulde rechthoek (of afgerond) in de emphasis-kleur achter het woord, met het woord **opnieuw gerenderd in WIT** zodat het leesbaar blijft op de fill. Sterke high-confidence treatment voor het hero-woord.
+   - **Soft highlighter bar** — low-opacity (~30%) afgeronde rechthoek achter het woord; oorspronkelijke woord-kleur (emphasis colour van laag 1) schijnt erdoor.
+   - **Dunne cirkel / ovaal** — een ring AROM één key word. De ring loopt ALLEEN langs de perimeter, NOOIT door de letters.
+
+**Verboden treatments** (lezen als negatie/correctie):
+- ❌ Diagonale strepen door een woord
+- ❌ Horizontale strikethrough door een woord
+- ❌ X-marks, slashes, scribbles op letters
+- ❌ Sloppy / multi-stroke marks zoals een correctie
+- ❌ Meerdere lijnen op hetzelfde woord
+
+Nooit meer dan één typografisch accent per ad. Beide lagen versterken altijd DEZELFDE woorden — niet kleur op woord X en cirkel op woord Y.
+
+**Implementatie:** `creative-settings.ts` slaat per kleur een `role` op (`primary` / `secondary` / `accent` / unset). `generate-image/route.ts` resolvert die naar een `BrandPalette` met positionele fallback (1e enabled = primary, 2e = accent, 3e = secondary) wanneer de CM niet expliciet getagd heeft. De `styleDirective` injecteert per slot-style de juiste rol-uitleg + het `headlineAccentBlock`.
+
+### 4c. Reference photos = inspiratie, geen blueprint — gegarandeerde scene-variatie tussen iteraties
+
+> Roy 2026-06-13. Een TMM creative kwam terug die letterlijk de Drive-foto (2 mannen aan een laptop met groen-blauwe circuit-board achtergrond) overnam: zelfde mensen, zelfde houding, zelfde environment, zelfde lighting. Alleen het text-panel was nieuw. Dat is geen iteratie maar een re-skin — Meta krijgt onvoldoende variantie om te leren wat werkt.
+
+**Regel:** alle aangehechte real-photo references (Drive klant-foto's, website-images, stock) zijn er voor de **WAT** (wie is de klant, wat verkoopt 'ie, welke brand-look familie) — niet voor de **HOE** (de scene, het camera-angle, de pose, de lighting).
+
+| Wel overnemen (WAT) | Niet overnemen (HOE) |
+|---|---|
+| Subject identity / appearance (als het de klant is) | De exacte scene / setting / environment |
+| Product- of dienst-context | Het exacte camera-angle, framing, pose |
+| Brand-look familie (kleur-temperatuur, polish-niveau) | De compositie-layout |
+| Brand colour cues (via de RL roles) | Lighting setup, atmosfeer, time-of-day |
+
+**De bar:** als de CM de output naast het reference photo legt, moet het oordeel zijn "zelfde klant, zelfde product, **compleet andere shot**" — niet "zelfde shot met een tekstpaneel".
+
+**Per-slot variatie (gegarandeerde 3-up differentiatie):** zelfs binnen dezelfde slot-style krijgt elke slot een andere variation direction:
+- Slot A → **ENVIRONMENT** swap (andere setting / background / time-of-day dan de references)
+- Slot B → **FRAMING + POSE** swap (andere camera-distance + subject-actie)
+- Slot C → **ATMOSPHERE + MOOD** swap (andere lighting + colour temperature + ambient feel)
+
+Dit is hardcoded in `slotVariationHint()` zodat ook wanneer de CM 3x dezelfde slot-style kiest, de 3-up echt 3 verschillende uitvoeringen oplevert.
+
+**Implementatie:** `REFERENCE_PHOTO_ANTI_COPY` block in `generate-image/route.ts` fires zodra `drive + website + stock` count > 0. De `slotVariationHint(slotIndex)` cycle wordt per slot ge-appended aan de prompt.
+
+### 4d. Subject scale & canvas density — vul de ruimte op
+
+> Roy 2026-06-13. Een TMM creative kwam terug met 2 personen relatief klein in beeld + grote lege donkere lucht eromheen. Probleem: Meta-feed scroll geeft een **split-second** om aandacht te wekken. Lege achtergrondruimte vult dat moment niet — die ruimte schreeuwt "niet kijken". De hero subject moet de canvas vullen, niet erin zwemmen.
+
+**Regel:** het hero subject (persoon / product / hero-element / animatie) bezet ongeveer **60-80% van het zichtbare canvas**.
+
+| Aspect | Wel | Niet |
+|---|---|---|
+| Mensen | Tight chest-up of three-quarters crop, schouders raken bijna de canvas-randen | Klein figuur in groot vertrek met meters lege achtergrond |
+| Producten | Confidently filling the frame; productdelen mogen off-canvas croppen voor presence | Product centred met dikke padding alle kanten op |
+| Animaties / elementen | Vullen ook de ruimte op met motion / particles / accent overlays | Alleen de tekst-panel + één klein object in een grote leegte |
+| Negatieve ruimte | Alleen voor het headline-panel | Niet voor "atmosfeer padding" rond de subject |
+
+**Belangrijke override op de reference-foto's:** als de Drive klant-foto een klein subject in een grote ruimte toont, **crop in tighter** in de output. Het reference photo is een hint over WIE het subject is, niet over hoeveel ruimte 'ie inneemt.
+
+**Headline-panel + subject zijn de twee zwaargewichten** van de compositie. Samen claimen ze vrijwel de hele canvas. Onclaimed canvas-vlak = ruimte die niet werkt voor je.
+
+**Implementatie:** `subjectScaleRule` in `generate-image/route.ts` wordt in elke `styleDirective` ge-appended (alle 5 styles) + apart genoemd in `RL_QUALITY_RULES_COMPOSITE` als defense-in-depth.
+
+### 5. Dual feedback-loop: per-klant STRIKT + globaal ADVISORY
+
+> Roy 2026-06-13. Eerst was alle feedback strict per-klant. Maar sommige feedback ("geen doorstreping op tekst", "subjects groter in beeld") is geen brand-voorkeur — het is een craft-les die voor ALLE klanten geldt. Tegelijk: een Zumex-voorkeur ("logo's altijd klein") mag niet leaken naar Blendtec. Dus splitsen we de feedback in twee loops met aparte strengheid.
+
+Elke keer dat een CM een gegenereerde image afkeurt, een prompt aanpast, of opmerkingen toevoegt na een regen-actie wordt dat opgeslagen als `pedro_creative_feedback`. Een **Haiku 4.5 classifier** loopt bij elke insert en plaatst de feedback in één van drie scopes:
+
+| Scope | Wat | Strengheid |
+|---|---|---|
+| **`client`** | Brand / taste / audience / industrie-specifiek. Geldt alleen voor DEZE klant. | STRICT — Pedro mag deze fout nooit meer maken op deze klant. |
+| **`global`** | Generieke craft / design / quality lessen die voor ALLE RL klanten gelden. | ADVISORY — Pedro beoordeelt per generatie of het past in de context. |
+| **`both`** | Begon klant-specifiek, maar het onderliggende principe is breder. | STRIKT op de bron-klant ÉN beschikbaar in de globale pool voor andere klanten. |
+
+**Voorbeelden classificatie:**
+
+| Feedback | Scope | Reden |
+|---|---|---|
+| "Logo's altijd klein voor Zumex" | `client` | Brand-specifiek voor Zumex |
+| "Klant haat stock-foto's met te witte tanden" | `client` | Per-klant taste |
+| "Altijd minimaal 1 persoon in beeld" | `client` | Klant-instructie, niet universeel |
+| "Geen doorstreping op tekst — leest als ontkenning" | `global` | Universele design-les |
+| "Subjects groter in beeld — Meta-feed scan moment" | `global` | Universele craft-les |
+| "Geen glow op letters — slechte leesbaarheid" | `global` | Universele typografie-regel |
+| "Deze klant haat dat tekst glowed" | `both` | Klant-klacht waarvan het principe (geen glow op letters) globaal geldt |
+
+**Hoe Pedro de twee loops leest bij generatie:**
+
+1. **Per-klant strict block** (KLANT-FEEDBACK PATRONEN — STRIKT):
+   - Pulled: rows met `scope IN ('client','both')` voor `client_id = current`, laatste 90d
+   - Framing in de prompt: "Pedro moet ELKE volgende imagePrompt voor deze klant hierop afstemmen; deze regels zijn brand/taste/audience-specifiek en niet onderhandelbaar"
+
+2. **Globale advisory block** (GLOBALE CRAFT-NOTES):
+   - Pulled: rows met `scope IN ('global','both')` van ALLE klanten behalve de huidige, laatste 180d (langere window want craft-lessen verouderen langzamer), gededupliceerd op text-similarity
+   - Framing in de prompt: "Pedro beoordeelt PER GENERATIE of een note relevant is voor deze specifieke variant — pas alleen toe wanneer het past in de context, negeer wanneer het botst met klant-specifieke voorkeuren of brief-richting"
+
+Bij botsing wint de per-klant block altijd (framing zegt het expliciet). Pedro krijgt zo de "double feedback loop": fouten van klant X worden nooit herhaald op klant X, EN als die fout van klant X eigenlijk een algemene les was, leert klant Y daar ook van.
+
+**Implementatie:**
+- Migratie `20240075000000_pedro_creative_feedback_scope.sql` voegt `scope` + `scope_rationale` toe aan de bestaande tabel (default `'client'` voor backwards-compat)
+- `src/lib/pedro/feedback-scope-classifier.ts` — Haiku 4.5 classifier (~$0.0003/call, ~1s); failt open naar `'client'`
+- `src/lib/pedro/feedback-insert.ts` — shared insert helper; alle 4 inserts gaan hier doorheen (explicit feedback button / regen feedback / prompt edit / handmatige upload)
+- `src/lib/pedro/creative-refresh-context.ts` — `fetchCreativeFeedback` (strict, per-klant) + `fetchGlobalCreativeFeedback` (advisory, cross-klant) + twee aparte format-blocks
+
+**Doel:** hoe meer iteraties over de hele klantbasis, hoe sneller Pedro het algemene craft-niveau optilt — terwijl per-klant fouten geïsoleerd blijven. **Iteratie is leerdata, geen kosten-post.**
 
 ### 6. Typografie + alignment quality bar - marketing-agency deliverable
 
@@ -565,6 +674,9 @@ Doel: hoe meer iteraties op een klant, hoe minder credits Pedro nodig heeft om d
 | 7 | **Eén foto-subject in focus** - geen split-screen of collage, tenzij expliciet gevraagd | Drukte = onleesbaar in feed |
 | 8 | **Geen concurrerende brand-namen** zichtbaar (geen QualityFry/Blendtec in een Zumex shot) | Confuses brand-attribution |
 | 9 | **Brand-aanwezigheid alleen subtiel + natuurlijk** op productoppervlak (klein, in-context) | Grote logo's verkopen niet |
+| 10 | **Headline TEXT rendert schoon** — geen glow halo om de letters, geen kleur-gradient binnen de letters, geen blur op de tekst. Glow/atmosfeer hoort op SCENE-elementen (overlays, particles, omgeving), niet op de letterforms. Tight 1-2px harde drop-shadow is OK; diffuse glow rond text is NIET OK | Roy 2026-06-13: TMM creative had glow-gradient onder de tekst die de leesbaarheid pakte. Tekst is een graphic-design element, geen verlicht object |
+| 11 | **CTA buttons zijn OPTIONEEL** — alleen renderen wanneer de headline er om vraagt (Bekijk / Vraag aan / Plan / Ontdek / Start) EN de compositie ruimte heeft. Een schone ad zonder CTA is beter dan een geforceerde knop | Roy 2026-06-13: CTA is geen hero-element, accent-kleur landt liever op scene elementen dan op een verplichte knop |
+| 12 | **Subject domineert canvas (~60-80%)**. Tight crop op mensen/producten/hero element. Geen "klein figuur in groot vertrek"-composities. Lege achtergrond = verspilde stopping-power op Meta-feed | Roy 2026-06-13: TMM creative had 2 mannen klein in beeld met veel donkere lucht eromheen — split-second scroll-attentie wordt verloren. Zie §4d voor de volle regel |
 
 **Implementatie (Hub side):**
 - Pedro's `imagePrompt` JSON-veld bevat A-F regels per variant.

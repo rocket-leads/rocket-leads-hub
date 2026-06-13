@@ -109,11 +109,46 @@ export type PedroCreativeSettings = {
 
   /** Per-klant override of auto-detected brand colors. When set + non-
    *  empty, generate-image uses these in place of the website/PDF
-   *  scraping. Each entry has its own `enabled` toggle so the CM can
-   *  exclude a colour without deleting it (handy for "we don't want
-   *  the off-white in ads but keep it on the website"). Roy 2026-06-13. */
-  brandColors?: Array<{ hex: string; enabled?: boolean }>
+   *  scraping.
+   *
+   *  Each entry has:
+   *   - `hex`     — the colour itself (#RGB or #RRGGBB).
+   *   - `enabled` — toggle so the CM can exclude a colour without
+   *                 deleting it.
+   *   - `role`    — semantic role the CM explicitly assigns. The role
+   *                 system mirrors how an ad is built:
+   *                   • `primary`   = canvas / panel background
+   *                   • `secondary` = headline + body text tint
+   *                                   (against the primary panel)
+   *                   • `accent`    = CTA button / brand-highlight word
+   *                 White + black are always implicitly available as
+   *                 text/element colours; they don't need to live in
+   *                 this list. Roy 2026-06-13.
+   *
+   *  Roles used to be auto-classified from luminance/hue but the CM has
+   *  the brand context the algorithm doesn't — letting the panel set
+   *  the role explicitly avoids the donkerblauw-as-accent / lichtblauw-
+   *  as-panel mix-up that the auto-classifier kept producing. */
+  brandColors?: Array<{
+    hex: string
+    enabled?: boolean
+    role?: BrandColorRole
+  }>
 }
+
+/** Semantic role tags for brand colours. Drives where each colour lands
+ *  in the generated ad: primary = background / panel fill, secondary =
+ *  text / headline tint sitting on top of the primary, accent = CTA
+ *  button + brand-word highlight. Untagged colours fall back to a
+ *  best-effort default (first enabled = primary, second = accent) so
+ *  legacy saves keep working. Roy 2026-06-13. */
+export type BrandColorRole = "primary" | "secondary" | "accent"
+
+const VALID_BRAND_COLOR_ROLES = new Set<BrandColorRole>([
+  "primary",
+  "secondary",
+  "accent",
+])
 
 export const DEFAULT_CREATIVE_SETTINGS: Required<
   Omit<PedroCreativeSettings, "brandBookDriveFileId" | "brandBookSource" | "brandColors">
@@ -302,16 +337,29 @@ export function sanitiseCreativeSettings(raw: unknown): PedroCreativeSettings {
     out.compositionDensity = r.compositionDensity as CompositionDensityKey
   }
 
-  // Per-klant brand colour override (Roy 2026-06-13).
+  // Per-klant brand colour override (Roy 2026-06-13). `role` is preserved
+  // when present — the CM explicitly tags each colour (primary panel /
+  // secondary text / accent CTA) in the panel and the renderer honours
+  // that. Unknown role strings are dropped (legacy values land here too);
+  // the entry survives without a role and the resolver applies a
+  // positional fallback.
   if (Array.isArray(r.brandColors)) {
-    const cleaned: Array<{ hex: string; enabled?: boolean }> = []
+    const cleaned: Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }> = []
     for (const entry of r.brandColors) {
       if (!entry || typeof entry !== "object") continue
       const e = entry as Record<string, unknown>
       const hex = typeof e.hex === "string" ? e.hex.trim() : ""
       if (!HEX_RE.test(hex)) continue
-      const item: { hex: string; enabled?: boolean } = { hex: hex.toLowerCase() }
+      const item: { hex: string; enabled?: boolean; role?: BrandColorRole } = {
+        hex: hex.toLowerCase(),
+      }
       if (typeof e.enabled === "boolean") item.enabled = e.enabled
+      if (
+        typeof e.role === "string" &&
+        VALID_BRAND_COLOR_ROLES.has(e.role as BrandColorRole)
+      ) {
+        item.role = e.role as BrandColorRole
+      }
       cleaned.push(item)
     }
     // Empty array is meaningful — "explicitly no colours". Preserve it.

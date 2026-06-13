@@ -22,6 +22,7 @@ import { fetchInspirationRefForStyle } from "@/lib/pedro/visual-reference-librar
 import {
   resolveEffectiveSettings,
   sanitiseCreativeSettings,
+  type BrandColorRole,
   type InspirationSubfolderFlags,
   type VisualStyleKey,
 } from "@/lib/pedro/creative-settings"
@@ -69,74 +70,279 @@ const DEFAULT_SLOT_STYLES: Record<number, SlotStyleKey> = {
   2: "ai_animation",
 }
 
-function styleDirective(style: SlotStyleKey, brandHex: string[] | null): string {
-  const accent = brandHex && brandHex.length > 0 ? brandHex.slice(0, 3).join(", ") : "the brand's accent colors"
-  const primary = brandHex && brandHex.length > 0 ? brandHex[0] : "deep navy or brand-primary"
+/**
+ * Resolved brand palette voor de directive. Drie semantische rollen
+ * matchen de creative-settings BrandColorRole:
+ *
+ *   - primary   = canvas / panel BACKGROUND (the "donkerblauw" in the
+ *                 landing-page example) — the colour the headline and
+ *                 subject sit on top of.
+ *   - secondary = HEADLINE + body TEXT tint sitting against the primary
+ *                 panel (the "lichtblauw" in the landing-page example).
+ *                 When null, headline defaults to white for readability.
+ *   - accent    = CTA button background + brand-highlight word colour
+ *                 (the "groen" in the landing-page example).
+ *
+ * Wanneer de CM een rol niet expliciet heeft toegekend in de panel,
+ * vult de resolver de gaten op een positionele manier (eerste enabled
+ * colour → primary, tweede → accent, derde → secondary). White and
+ * black blijven daarbuiten — die zijn altijd impliciet beschikbaar voor
+ * text/elements zonder dat ze in de brand-color set hoeven te staan.
+ * Roy 2026-06-13.
+ */
+type BrandPalette = {
+  primary: string
+  accent: string
+  /** Headline / text tint that sits on the primary panel. `null` =
+   *  no explicit secondary; renderer falls back to white. */
+  secondary: string | null
+  paletteList: string[]
+}
+
+function resolveBrandPalette(
+  override: Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }> | null | undefined,
+  fallbackHex: string[] | null,
+): BrandPalette | null {
+  const hexRe = /^#[0-9a-f]{3,6}$/i
+  const enabledOverride = (override ?? [])
+    .filter((c) => c.enabled !== false && typeof c.hex === "string" && hexRe.test(c.hex))
+
+  if (enabledOverride.length > 0) {
+    const byRole = (r: BrandColorRole) => enabledOverride.find((c) => c.role === r)?.hex
+    // Positional fallback when a role isn't explicitly tagged: walk the
+    // list in order, skipping any hex already claimed by another role.
+    const claimed = new Set<string>()
+    const claim = (hex: string | undefined) => {
+      if (hex) claimed.add(hex)
+      return hex
+    }
+    const nextUnclaimed = () =>
+      enabledOverride.find((c) => !claimed.has(c.hex))?.hex
+    const primary = claim(byRole("primary") ?? nextUnclaimed() ?? enabledOverride[0].hex)!
+    const accent = claim(byRole("accent") ?? nextUnclaimed() ?? primary)!
+    const secondary = byRole("secondary") ?? nextUnclaimed() ?? null
+    if (secondary) claim(secondary)
+    return {
+      primary,
+      accent,
+      secondary,
+      paletteList: enabledOverride.map((c) => c.hex),
+    }
+  }
+
+  if (fallbackHex && fallbackHex.length > 0) {
+    return {
+      primary: fallbackHex[0],
+      accent: fallbackHex[1] ?? fallbackHex[0],
+      secondary: fallbackHex[2] ?? null,
+      paletteList: fallbackHex,
+    }
+  }
+
+  return null
+}
+
+/**
+ * Universal depth & layering principle (Roy 2026-06-13). Magazine-grade
+ * ads create depth by layering: a coloured text-panel sits in the
+ * mid-ground, the subject is cut out and crosses IN FRONT of part of
+ * that panel while soft background atmosphere recedes behind. Without
+ * this principle Gemini produces flat side-by-side compositions (panel
+ * left, subject right, no overlap) which read as Canva-template, not
+ * agency-deliverable. Applies to every style that uses a composite
+ * panel; pure photo styles (`client_content`, `stock_content`) get a
+ * lighter foreground/background-separation note instead. */
+const DEPTH_LAYERING_FULL = `
+
+DEPTH & LAYERING (mandatory — distinguishes agency work from template):
+- Build the scene in three planes: BACKGROUND (atmospheric, soft, recedes), MID-GROUND (the coloured text-panel / brand shape carrying the headline), FOREGROUND (the cut-out photographic subject).
+- The subject must OVERLAP the text-panel edge — cut out cleanly so the figure crosses IN FRONT of part of the panel and BEHIND part of the background atmosphere. No flat side-by-side split where panel + subject occupy separate halves with a hard seam.
+- Use the panel's edge as a depth cue: the subject's shoulder, arm, or hair extends past the panel into negative space. The headline remains fully readable, never blocked by the subject.
+- Background carries soft accent-color light, mist, or out-of-focus environment — never empty or flat. This separates BACKGROUND from MID-GROUND visually.
+- Subtle cast shadow under the subject (low opacity, soft) anchors the cut-out and prevents floating-sticker feel.`
+
+const DEPTH_LAYERING_LIGHT = `
+
+DEPTH & LAYERING (light variant — photo-led):
+- Keep the subject sharp in the foreground; let the background recede with soft falloff (haze, bokeh, atmospheric color cast). Build genuine foreground / background separation — never flat.`
+
+function styleDirective(style: SlotStyleKey, palette: BrandPalette | null): string {
+  // Semantic roles drive the directive:
+  //   - primary   = panel/canvas BACKGROUND
+  //   - secondary = WORD-LEVEL HIGHLIGHT inside the headline (the colour
+  //                 the CM uses to draw the eye to 1-3 key words, like
+  //                 "software laten ontwikkelen" + "minder budget" in
+  //                 the LP example). The BASE headline text remains
+  //                 white or black for legibility — secondary is an
+  //                 EMPHASIS treatment, not a full-headline tint.
+  //   - accent    = BRAND HIGHLIGHT colour for visual elements in the
+  //                 scene: scene props with brand colouring, graphic
+  //                 chrome overlays, particles, motion glow, rim light,
+  //                 highlighted icons, etc. Also the CTA button colour
+  //                 when a CTA is rendered — but CTAs are OPTIONAL, not
+  //                 required. Roy 2026-06-13: accent is no longer
+  //                 "the CTA colour" — it's the brand-vibrant colour
+  //                 we sprinkle across the composition, of which the
+  //                 CTA is one possible use.
+  // White and black are ALWAYS available as text/element colours — they
+  // don't live in the palette but the directive mentions them so Gemini
+  // doesn't shy away from using them. Roy 2026-06-13.
+  const accent = palette ? palette.accent : "the brand's accent color"
+  const primary = palette ? palette.primary : "deep navy or brand-primary"
+  // Word-level highlight colour for emphasis inside the headline.
+  // Prefer secondary when present; otherwise fall back to accent so we
+  // still produce mixed-weight emphasis instead of flat white.
+  const emphasisNote = palette?.secondary
+    ? `the brand's secondary colour (${palette.secondary})`
+    : `the brand's accent colour (${accent})`
+  const bgClause = palette
+    ? `Scene background filled with ${primary} (the brand's primary / canvas colour), softened with subtle atmosphere — gradient, light haze, or low-opacity geometric texture, never a flat fill.`
+    : "Scene background dark and atmospheric to make the accent color pop."
+  // Standard line we paste into every style so Gemini knows the
+  // unwritten rules: white and black are first-class text choices and
+  // can be used freely alongside the palette.
+  const whiteBlackNote = `White and black are always allowed as text/element colours for legibility — use them freely against the brand colours whenever contrast asks for it.`
+  // Roy 2026-06-13: subject scale + canvas density. Meta-feed scroll
+  // gives a 1-second attention window. Empty background is wasted
+  // stopping-power. The subject (people / product / hero element)
+  // must DOMINATE the canvas — not float in the centre with metres
+  // of background around it. This rule is global; it overrides any
+  // earlier "respect the reference framing" instruction.
+  const subjectScaleRule = `
+SUBJECT SCALE + CANVAS DENSITY (mandatory):
+- The hero subject (person, product, key element, or animation) must occupy roughly 60-80% of the visible canvas — substantially larger than a "centred-with-padding" stock framing.
+- People: tight three-quarters or chest-up framing by default; the subject's shoulders should approach the canvas edges. NEVER show the subject as a small figure with vast empty environment around them.
+- Products / hero objects: fill the frame confidently — let parts of the object crop off-canvas if it makes the object feel larger and more present.
+- Empty background space is wasted stopping-power on Meta feed. Fill the canvas with the subject + supporting accent elements (graphic chrome, particles, motion) so every quadrant has visual interest. Negative space is for the headline panel only, not for "atmosphere padding".
+- If the reference photo shows a small subject in a large room, your output must CROP IN tighter so the subject dominates. Treat the reference as a hint about WHO the subject is, not about how much room they occupy.
+- The headline panel and the subject are the two heavyweights of the composition — together they should leave very little un-claimed canvas.`
+  // Headline accent treatment vocabulary (Roy 2026-06-13). Reused
+  // across every style that renders a headline. Two layers of accent:
+  //   (a) COLOUR — 1-3 key words in the headline tinted with the
+  //       emphasis colour (secondary, or accent as fallback).
+  //   (b) TYPOGRAPHIC — optional treatments like a highlighter bar
+  //       behind a word, a hand-drawn underline, a circle around a
+  //       single word, or a marker-style stroke. Pick at most ONE
+  //       typographic treatment per ad so it stays editorial, not
+  //       cluttered. The colour for the treatment matches the
+  //       emphasis colour. Always rendered cleanly (vector-like, not
+  //       sketchy unless the brand voice calls for hand-drawn).
+  const headlineAccentBlock = `
+HEADLINE EMPHASIS — POSITIVE emphasis only (apply BOTH layers — colour + ONE typographic accent on the SAME words):
+
+(a) COLOUR emphasis: render 1-2 of the most charged words in the headline (the BENEFIT or the PAIN POINT — not articles or filler) in ${emphasisNote}. The REST of the headline stays white (or black when contrast demands). Ideally only ONE word/phrase is emphasised; two is the absolute max. Picture the LP example "Sneller [software laten ontwikkelen] voor [minder budget]?" — the bracketed phrase lit up in the emphasis colour, everything else in white. Less is more — if in doubt, emphasise fewer words.
+
+(b) TYPOGRAPHIC accent — pick exactly ONE of these treatments and apply it to the SAME word(s) the colour emphasis lit up. The treatment ALWAYS reads as positive / supportive emphasis (like a designer marking up an important word) — NEVER as negation, correction, or cancellation:
+  - **CLEAN UNDERLINE**: a single straight or gently-curved line UNDER the word(s). Crisp, vector-clean, sits below the baseline with breathing room. Emphasis colour. NOT sloppy, NOT scribbled, NOT a strike-through.
+  - **FILLED MARKER RECTANGLE (highlighter-style)**: a solid filled rectangle (or rounded-rectangle) in the emphasis colour that wraps the word(s), with the word(s) RE-RENDERED in WHITE so they stay clearly readable on the filled background. Think of a marker swipe behind a word, with the word inverted to white for contrast. This is a strong, high-confidence treatment — works great for the single hero word.
+  - **SOFT HIGHLIGHTER BAR**: a low-opacity (~30%) rounded rectangle in the emphasis colour sitting BEHIND the word(s). The original word colour (the emphasis colour from layer (a)) shows through. Subtler than the filled marker.
+  - **CLEAN CIRCLE / OVAL**: a thin ring in the emphasis colour drawn AROUND a single key word. The word stays in the emphasis colour underneath. The ring must NOT cross THROUGH any letter — it goes around the perimeter only, sitting outside the letterforms. Hand-drawn casualness is OK but it must read as a circle, not a strikethrough.
+
+ABSOLUTELY FORBIDDEN typographic treatments (these read as negation / cancellation, not emphasis):
+- NO diagonal strike-through lines crossing through any word ("kruisen door").
+- NO horizontal line going THROUGH a word (strikethrough).
+- NO X-marks, slashes, or scribbles ON TOP of letters.
+- NO sloppy / scribbled / multi-stroke marks that look like a correction.
+- NO multiple lines or marks on the SAME word — a single, clean, deliberate accent only.
+
+Never apply more than one typographic treatment per ad. Both layers (colour + treatment) ALWAYS reinforce the SAME word(s) — never colour on word X and the treatment on word Y. Emphasis is a confident, designer-level lift of the key word, not visual noise.
+
+HEADLINE LEGIBILITY (mandatory):
+- Letterforms must render CLEANLY. NO glow halo bleeding into the letters, NO colour gradient inside the letters that fades from one tone to another, NO blur / soft-focus / motion smear on the text, NO drop-shadow that reads as a glow-aura around the type. The text is a graphic-design element, not a lit object.
+- A subtle, tight drop-shadow (1-2px offset, low opacity, hard edge) for layered depth on a busy background is OK. A diffuse glow around the letters is NOT.
+- The headline must be effortlessly readable in a 1-second Meta-feed scan. If the chosen treatment compromises legibility, simplify it.`
   switch (style) {
     case "client_content":
       return `\n\nSLOT STYLE: CLIENT CONTENT (authentic photography, minimal AI).
 - Use the client photo references AS-IS. Light color grade for cohesion only.
 - Authentic, professional, unposed photography. Magazine documentary feel.
 - NO composite overlays, NO graphic chrome, NO color panels.
-- Headline floats cleanly in upper-left negative space, single weight, white or accent (${accent}). No decoration.
-QUALITY BAR: Time magazine portrait. National Geographic editorial. Veteran photographer, not stock.`
+- Headline floats cleanly in upper-left negative space. Base text in white (or black if it improves legibility against the photo). Single sans-serif typeface.
+- ${headlineAccentBlock}
+- ${subjectScaleRule}
+- ${whiteBlackNote}
+QUALITY BAR: Time magazine portrait. National Geographic editorial. Veteran photographer, not stock.${DEPTH_LAYERING_LIGHT}`
 
     case "client_content_ai":
       return `\n\nSLOT STYLE: CLIENT CONTENT + AI (real subject, enhanced atmosphere).
 LAYOUT:
-- Subject from the client photo references occupies the right-center of the canvas.
-- Headline lives in the upper-left negative space, in white or accent (${accent}), single sans-serif typeface.
-- Optional thin accent-color line/curve behind the subject (single element, not a panel).
+- Subject from the client photo references occupies the right-center of the canvas, CUT OUT so the figure crosses in front of an upper-left tinted shape carrying the headline.
+- Headline lives in that upper-left text-shape (soft gradient or low-opacity primary-tinted panel — never a hard rectangle). Base text in WHITE (or black where contrast demands), single sans-serif typeface.
+- The subject's shoulder / arm / hair OVERLAPS the panel edge so the figure reads as in FRONT of the text-shape, not next to it. The headline itself stays fully visible.
+- ${headlineAccentBlock}
+- ${subjectScaleRule}
 ATMOSPHERE:
-- Atmospheric brand-color lighting (${accent}) - rim lighting on the subject, ambient color cast in the background.
-- Shallow depth-of-field. Subtle environmental haze or soft motion blur in the accent color for depth.
+- Atmospheric brand-color lighting — rim lighting on the subject in ${accent}, ambient colour cast pulling from the primary (${primary}) in the background.
+- Shallow depth-of-field. Subtle environmental haze or soft motion blur in the accent colour for depth.
 - Subject identity is locked to the references; only the scene atmosphere changes.
-QUALITY BAR: editorial brand photography with light retouching. Veteran retoucher, not stock-with-filter.`
+- ${whiteBlackNote}
+QUALITY BAR: editorial brand photography with light retouching. Veteran retoucher, not stock-with-filter.${DEPTH_LAYERING_FULL}`
 
     case "ai_content":
       return `\n\nSLOT STYLE: AI CONTENT (full composite ad, marketing-agency deliverable).
 
-LAYOUT (60/40 split, mandatory):
-- LEFT 60%: dark brand-primary panel using ${primary} as the base color.
-  - The exact Dutch headline lives here, in mixed weight: most words white/light, the key 1-2 BRAND words in accent color (${accent}).
-  - Strong typographic hierarchy: large headline (taking ~60% of panel vertical space), optional thin sub-headline below.
-  - Padding ≥8% on every side of the headline.
-  - If the variant headline contains a CTA word (Bekijk / Vraag aan / Plan / Ontdek / Start), render a pill-shaped CTA button bottom-left of the panel using the accent color (${accent}) with white text. Keep the button compact (~22% panel width).
-- RIGHT 40%: photographic subject from the references. Composite with rim lighting in the accent color.
+COLOUR ROLES (mandatory — these map 1:1 to the brand-colour roles the CM tagged):
+- PRIMARY (${primary}) = the panel / canvas BACKGROUND that everything sits on. This is the dominant area of the ad.
+- SECONDARY (${palette?.secondary ?? "—"}) = the HEADLINE EMPHASIS colour used to tint 1-3 key words inside the headline (NOT the whole headline). Base headline text stays WHITE. Also drives any typographic accent treatment (highlighter bar / underline / circle).
+- ACCENT (${accent}) = BRAND HIGHLIGHT colour for visual ELEMENTS in the scene — graphic chrome overlays, geometric lines, particles, motion glow, rim-light on the subject, highlighted icons / props. Sprinkle it across the composition where it earns attention. Accent is NOT specifically a CTA colour; it earns its place by tinting scene elements that belong in the brand vibe.
+- ${whiteBlackNote}
 
-OVERLAY ON THE RIGHT 40%:
-- Subtle thematic graphic overlay matching the brand vertical: circuit-board / geometric lines for tech-AI-SaaS, geometric data lines for finance, organic curves for wellness, architectural lines for B2B. Overlay at 10-15% opacity in the accent color.
-- Atmospheric glow / motion light streaks in the accent color suggesting dynamism (3-5 streaks, not many).
+LAYOUT (panel + cut-out subject, layered for depth):
+- TEXT-PANEL: large area filled with the PRIMARY colour (${primary}). Anchored to the LEFT side, occupying roughly 50-60% of the canvas width. Subtle inner shadow or soft edge so it reads as a defined plane, not a flat rectangle.
+  - The exact Dutch headline lives here. BASE text in WHITE.
+  - Strong typographic hierarchy: large headline (taking ~55% of panel vertical space), optional thin sub-headline below in white at reduced opacity.
+  - Padding ≥8% on every side of the headline.
+- ${headlineAccentBlock}
+- CTA BUTTON (OPTIONAL — only render when it fits the composition): IF the headline contains an explicit CTA word (Bekijk / Vraag aan / Plan / Ontdek / Start) AND the panel has room without crowding, render a small pill-shaped button bottom-left of the panel using the ACCENT colour (${accent}) with white text, compact (~22% panel width). Otherwise SKIP the CTA — a cleaner ad without a button is preferred over a forced one. The CTA is not a required element.
+- SUBJECT: photographic subject from the references, CUT OUT cleanly and placed on the RIGHT side so the figure's shoulder / arm / body OVERLAPS the right edge of the text-panel. The subject reads as IN FRONT of the panel — not in a separate right-hand box. The headline stays fully visible (subject does not cover text).
+- ${subjectScaleRule}
+- ${bgClause}
+
+OVERLAY (mid-ground graphic chrome — accent's natural home):
+- Subtle thematic graphic overlay matching the brand vertical: circuit-board / geometric lines for tech-AI-SaaS, geometric data lines for finance, organic curves for wellness, architectural lines for B2B. Overlay at 10-15% opacity in the ACCENT colour (${accent}), behind the subject so the subject pops forward.
+- Atmospheric glow / motion light streaks in the ACCENT colour suggesting dynamism (3-5 streaks, not many), placed BEHIND the subject for depth.
+- ACCENT-tinted highlights on scene props or environment details so the brand colour earns visibility across the composition (not just one CTA button).
 - Subject sharp focus, environment soft.
 
 PHOTOGRAPHY QUALITY:
-- The subject must look like a magazine cover - photographic realism, sharp detail, professional lighting.
+- The subject must look like a magazine cover — photographic realism, sharp detail, professional lighting.
 - Subject identity matches the references when provided. No stock-photo-with-text aesthetic.
 
-QUALITY BAR: Nike / Apple / Shopify / Stripe brand campaign. Twenty-year veteran graphic designer. Layered composition with depth, atmosphere, deliberate spacing. Every element earns its place.`
+QUALITY BAR: Nike / Apple / Shopify / Stripe brand campaign. Twenty-year veteran graphic designer. Layered composition with real depth, atmosphere, deliberate spacing. Every element earns its place.${DEPTH_LAYERING_FULL}`
 
     case "ai_animation":
       return `\n\nSLOT STYLE: AI ANIMATION (still that captures motion + dynamic energy).
 
+COLOUR ROLES:
+- PRIMARY (${primary}) = background atmosphere the motion sits in.
+- SECONDARY (${palette?.secondary ?? "—"}) = headline EMPHASIS colour for the 1-3 key words inside the headline + any typographic accent treatment. Base headline text stays WHITE.
+- ACCENT (${accent}) = BRAND HIGHLIGHT on scene elements — motion streaks, holographic glow, particle bursts, rim-light on the subject, glowing icons / props. CTA-button is OPTIONAL; only render when the headline naturally implies one.
+- ${whiteBlackNote}
+
 COMPOSITION:
-- Dark background to make accent-color motion pop.
-- Subject (from references when available) with sharp focus in the right-center.
-- Headline in the upper-left in still negative space, single weight white or accent (${accent}).
+- ${bgClause}
+- Subject (from references when available) CUT OUT with sharp focus, placed right-center, OVERLAPPING any text-shape or motion element so the subject sits in the FOREGROUND while motion + headline recede behind.
+- Headline in the upper-left in a soft text-shape (not a hard rectangle) in still negative space. Base text in WHITE. The subject's silhouette may cross the shape's edge for depth.
+- ${headlineAccentBlock}
+- ${subjectScaleRule}
 
-MOTION ELEMENTS:
-- Light streaks / motion blur trails in accent color (${accent}) flowing across the canvas (4-6 streaks, layered for depth).
-- Holographic / data-stream elements integrated into the scene (glowing lines, particle effects, geometric trails). For tech verticals: code-particles / circuit-lines. For others: geometric motion.
-- Subject has subtle directional blur or rim-light bloom to suggest forward motion.
+MOTION ELEMENTS (mid-ground, behind subject):
+- Light streaks / motion blur trails in the ACCENT colour (${accent}) flowing across the canvas (4-6 streaks, layered at different depths for parallax — some sharp, some blurred).
+- Holographic / data-stream elements integrated into the scene (glowing lines, particle effects, geometric trails). For tech verticals: code-particles / circuit-lines. For others: geometric motion. All sit BEHIND the subject.
+- Subject has subtle directional blur or rim-light bloom (ACCENT colour) to suggest forward motion.
 
-QUALITY BAR: tech-brand kinetic campaign (think Tesla / Nvidia ad), sports-brand action ad (Nike kinetic typography), or financial-tech brand stinger. Energy and clarity simultaneously.`
+QUALITY BAR: tech-brand kinetic campaign (think Tesla / Nvidia ad), sports-brand action ad (Nike kinetic typography), or financial-tech brand stinger. Energy and clarity simultaneously.${DEPTH_LAYERING_FULL}`
 
     case "stock_content":
       return `\n\nSLOT STYLE: STOCK CONTENT (high-quality stock + brand color treatment).
 - Clean editorial-stock composition with one clear subject (use references when present).
-- Light brand-color overlay / gradient (${accent}) for brand cohesion.
-- Headline in clean negative space, single weight.
+- Light brand-color overlay / gradient pulling from the PRIMARY (${primary}) for cohesion, with ACCENT (${accent}) accents on key elements only.
+- Headline in clean negative space. Base text in WHITE (or black against light photos for legibility).
+- ${headlineAccentBlock}
+- ${subjectScaleRule}
+- ${whiteBlackNote}
 - Authentic, polished, magazine-quality - NEVER generic Shutterstock-with-text aesthetic.
-QUALITY BAR: Unsplash editor's pick + brand color grade. Better than stock-photo template.`
+QUALITY BAR: Unsplash editor's pick + brand color grade. Better than stock-photo template.${DEPTH_LAYERING_LIGHT}`
 
     default:
       return ""
@@ -203,6 +409,33 @@ function lookAndFeelAddendum(visualStyles: VisualStyleKey[] | undefined): string
  *  omdat het daar amateuristisch is. */
 function allowsCreativeChrome(style: SlotStyleKey): boolean {
   return style === "ai_content" || style === "ai_animation"
+}
+
+/** Per-slot variation directions (Roy 2026-06-13). When the CM picks
+ *  the same slot-style for all 3 slots (e.g. "Client content + AI" x3),
+ *  Gemini tends to produce 3 near-identical outputs. We force each
+ *  slot to take a DIFFERENT variation direction so the 3-up genuinely
+ *  reads as 3 distinct executions instead of "same ad rendered three
+ *  times". The directions cover the four dimensions where iteration
+ *  actually matters in Meta: environment, framing, atmosphere, pose.
+ *
+ *  Cycling by slot index keeps it deterministic per refresh — the CM
+ *  knows slot A always gets direction 0, slot B direction 1, slot C
+ *  direction 2. A single-slot regen also picks deterministically so
+ *  the regen result differs from the original output of that slot. */
+const SLOT_VARIATION_DIRECTIONS: string[] = [
+  // Slot 0 — environment swap
+  `Lean into ENVIRONMENT variation: pick a setting / background / time-of-day that's DISTINCTLY DIFFERENT from any environment shown in the reference photos. If references show an office, go outdoor, studio, or abstract. If references show daytime, go evening / night / golden hour. The subject category (people / product / scene) stays consistent; everything around it changes.`,
+  // Slot 1 — framing + pose swap
+  `Lean into FRAMING + POSE variation: pick a DIFFERENT camera distance + subject pose than any reference shows. If references are mid-shot at desk, try a tighter portrait, an over-the-shoulder angle, a wide environmental shot, or a subject mid-action (walking, gesturing, looking up). Composition layout shifts accordingly.`,
+  // Slot 2 — atmosphere + mood swap
+  `Lean into ATMOSPHERE + MOOD variation: pick a DIFFERENT lighting + colour temperature + ambient feeling than any reference shows. If references are cool-teal tech-lit, try warm-amber, high-key bright-and-airy, or moody low-key cinematic. The brand-colour roles still anchor the palette; only the ambient atmosphere changes.`,
+]
+
+function slotVariationHint(slotIndex: number): string {
+  const direction =
+    SLOT_VARIATION_DIRECTIONS[slotIndex % SLOT_VARIATION_DIRECTIONS.length]
+  return `\n\n---\nPER-SLOT VARIATION DIRECTION (slot ${String.fromCharCode(65 + slotIndex)}):\n${direction}\n\nThis variation direction is MANDATORY — even when other slots use the same slot-style, the 3-up grid must read as 3 different scenes, not 3 takes on the same scene.`
 }
 
 export async function POST(
@@ -845,8 +1078,9 @@ export async function POST(
     // Resolve target slots. Default: generate ALL 3 slots in parallel
     // so the CM gets a 3-up to pick from. When `position` is set: only
     // that slot (used by "Regenereer slot N" in the UI). Each Gemini
-    // call gets its own randomization via a slot-index hint in the
-    // prompt so we don't get 3 identical outputs.
+    // call gets its own variation direction (see `slotVariationHint`
+    // below) so 3 slots in the SAME style don't collapse into 3
+    // near-identical outputs.
     let targetSlots: number[] = []
     if (typeof body.position === "number") {
       const p = Math.max(0, Math.min(9, Math.floor(body.position)))
@@ -961,6 +1195,7 @@ ON-IMAGE TEXT - render EXACTLY the Dutch headline ONCE.
 TYPOGRAPHY - must read as a professionally designed ad.
 - ONE sans-serif typeface across the whole headline (no mixed fonts within a line).
 - Even letter-spacing. Consistent weight. Sharp anti-aliased edges.
+- Letters render CLEANLY: no glow halo around letters, no internal colour gradient inside the letters, no blur / soft-focus / motion smear on the text. The text is a graphic-design element, not a lit object. Tight 1-2px hard-edged drop-shadow is acceptable; diffuse glow is not.
 - Minimum 8% canvas padding on all sides around the headline.
 - Headline sits in clean negative space - never on top of visually busy detail.
 - Color: use a single brand-consistent accent OR pure black/white. No mixed fills + outlines.
@@ -986,40 +1221,71 @@ NEGATIVE: badges, sticker overlays, price tags, comparison labels, duplicated te
         ? `\n\n---\n${brandAssetsBlock}${pdfPaletteLine}\n---`
         : ""
 
-    // Roy 2026-06-11 v2: SOURCE VISUAL LOCK. Wanneer de CM een
-    // screenshot van de winning ad heeft geupload, is dat de eerste
-    // reference image (zie referenceImages assembly hierboven). We
-    // injecteren dan een harde instructie zodat Gemini begrijpt dat
-    // die screenshot de te-volgen visuele DNA is, niet zomaar een
-    // willekeurige reference. Voorkomt dat Pedro's variant in 3
-    // totaal verschillende visuele richtingen vertrekt.
+    // Roy 2026-06-13: SOURCE INSPIRATION (was SOURCE VISUAL LOCK).
+    // De screenshot van de winning ad blijft de DNA-anker, maar we
+    // willen GEEN copy-paste: same idee, different executie. Het CM-
+    // feedback signaal van 2026-06-13 was: de vorige variant was bijna
+    // letterlijk dezelfde scene met een ander gezicht — dat brengt
+    // geen iteratie-ruimte in Meta. Nu sturen we op concept-overname
+    // (proposition / headline-angle / brand-emotion) ipv scene-clone.
     const SOURCE_VISUAL_LOCK = winnerThumbRef?.isUploadedScreenshot
       ? `
 
 ---
-SOURCE AD VISUAL LOCK (CRITICAL):
+SOURCE AD INSPIRATION (critical — borrow the IDEA, not the execution):
 
-The FIRST reference image attached is the EXACT winning ad uploaded by the campaign manager. Your output must be a visual SIBLING of it - immediately recognisable as an iteration of the same ad.
+The FIRST reference image is the winning ad screenshot that the campaign manager uploaded. Treat it as INSPIRATION: the underlying idea, proposition, and brand-emotion are proven to work. Your job is to deliver a FRESH execution of that same idea — not a near-duplicate of the scene.
 
-MATCH from the source:
-- Color palette (background tones, text color, accent / badge colors)
-- Composition + framing (subject placement, headline placement, badge placement)
-- Photographic style (lighting, mood, depth of field, art direction)
-- On-image text treatment (font weight, size relationship, alignment)
-- Badge / sticker style if present (shape, fill, treatment)
-- Subject category (robot / product / person / scene - keep same category)
+BORROW from the source (the "idea"):
+- The CORE PROPOSITION + headline angle (the same hook works — only the exact wording changes per the headline supplied in this prompt).
+- The BRAND EMOTION / vibe (confidence, urgency, warmth — match the feeling).
+- The ROUGH BRAND PALETTE family — but apply it via the colour ROLES defined elsewhere in this prompt (PRIMARY = background, SECONDARY = text, ACCENT = CTA / highlight). Do NOT lift exact pixel-colours; honour the role mapping.
 
-ONLY CHANGE:
-- The exact Dutch headline text (use the headline supplied in this prompt verbatim)
-- The specific subject details enough to make it a fresh execution, not a copy
+CHANGE (mandatory — the output must NOT read as a copy):
+- Use a DIFFERENT setting, scene, camera angle, or composition than the source — the new ad should feel like a freshly art-directed sibling, not a re-skin.
+- Change the subjects / people / props enough that a viewer doesn't think "same shoot, different headline".
+- Vary the lighting style or environment so the executions read as a CAMPAIGN (multiple shots) rather than one ad with the model swapped.
 
 DO NOT:
-- Pick a completely different scene type (source = robot in dark teal? do not generate a smiling human in white office).
-- Switch color palettes.
-- Move text from top to bottom or vice versa (keep the source's headline placement).
-- Add new badges that aren't in the source.
+- Reproduce the source's exact scene with only minor edits — Meta needs real iteration variance to learn.
+- Copy badges, stickers, or graphic chrome from the source unless they're literally the brand's design system.
+- Lock yourself into the source's exact camera angle, framing crop, or subject pose.
 
-A buitenstaander must recognise your output and the source screenshot as 'iteraties van dezelfde ad', not 'twee verschillende campagnes'.`
+The bar: a buitenstaander sees both ads side-by-side and recognises them as "different ads from the same campaign", not as "the same ad rendered twice".`
+      : ""
+
+    // Roy 2026-06-13: REFERENCE PHOTO ANTI-COPY. Triggers as soon as
+    // ANY real-photo reference is attached (Drive klant-foto / website
+    // image / stock). Symptom Roy raised: Pedro takes a Drive photo of
+    // 2 men + circuit-board background, then "iterates" by adding a
+    // text panel — but the entire scene is preserved. Same people,
+    // same poses, same environment. That's not iteration, that's a
+    // re-skin. SOURCE_VISUAL_LOCK only fired for uploaded winning-ad
+    // screenshots; this block covers the Drive/website/stock path.
+    const realPhotoRefCount =
+      drivePhotoRefs.length + websiteImageRefs.length + stockRefs.length
+    const REFERENCE_PHOTO_ANTI_COPY = realPhotoRefCount > 0
+      ? `
+
+---
+REFERENCE PHOTO USAGE (critical — borrow the BRAND DNA, not the SCENE):
+
+Real-photo references are attached (klant-foto's from Drive, website images, or stock). They exist so you understand WHO the client is, WHAT they make, and the BRAND-LOOK family — NOT so you reproduce the scene shown in them.
+
+USE the references for (the "WHAT"):
+- Subject identity / appearance / brand-look continuity (if the reference shows the client's actual team or product, the same people / product should appear).
+- General product or service context (what the client sells / does).
+- Brand-look family (colour temperature, level of polish, photography style).
+
+DO NOT use the references for (the "HOW"):
+- The exact scene, setting, environment, or background — invent a fresh one.
+- The exact camera angle, framing, or subject pose — vary it deliberately.
+- The composition layout or how on-image elements are arranged — let the slot-style directive lead.
+- Lighting setup, atmosphere, time of day, or graphic overlays — pick a different combination.
+
+The bar: when the CM compares the generated ad to the reference photo, the verdict must be "same client, same product family, COMPLETELY different shot" — not "same shot with a text panel added".
+
+If the reference shows 2 people at a desk in a teal-lit office with circuit-board graphics, your output must NOT be 2 people at a desk in a teal-lit office with circuit-board graphics. Change the SETTING (different room, outdoor, abstract studio, different time of day), the POSE (different action — looking up, walking, holding product), the COMPOSITION (different framing — closer in, wider out, vertical emphasis), or the ATMOSPHERE (different lighting mood, different ambient colour). Multiple of these together is even better.`
       : ""
 
     // Roy 2026-06-12: pull canonical brand colors uit pdfPaletteForPrompt
@@ -1036,19 +1302,18 @@ A buitenstaander must recognise your output and the source screenshot as 'iterat
         : null
     // Roy 2026-06-13: per-klant override van de brand-colour set in
     // creative_settings.brandColors wins over auto-detected. Only enabled
-    // entries (default true when unset) are forwarded to Gemini.
-    const brandHexFromOverride =
-      Array.isArray(effectiveSettings.brandColors) && effectiveSettings.brandColors.length > 0
-        ? effectiveSettings.brandColors
-            .filter((c) => c.enabled !== false)
-            .map((c) => c.hex)
-            .filter((h) => /^#[0-9a-f]{3,6}$/i.test(h))
-        : null
-    const brandHexForPrompt =
-      brandHexFromOverride && brandHexFromOverride.length > 0
-        ? brandHexFromOverride
-        : brandHexFromPdf ?? brandHexFromStyle ?? null
-
+    // entries (default true when unset) are forwarded to Gemini. The
+    // override carries semantic roles (primary panel / secondary text /
+    // accent CTA) when the CM has tagged them in the panel; the
+    // resolver below applies those roles and falls back to a positional
+    // default when untagged or absent.
+    const brandPaletteForDirective = resolveBrandPalette(
+      effectiveSettings.brandColors as
+        | Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }>
+        | null
+        | undefined,
+      brandHexFromPdf ?? brandHexFromStyle ?? null,
+    )
     // Composite slots krijgen versoepelde RL_QUALITY_RULES (allowed:
     // graphic overlays, brand-color panels). Andere styles houden de
     // originele "geen overlays" rules omdat composite chrome daar
@@ -1061,6 +1326,9 @@ RL QUALITY RULES (composite-allowed):
 - Brand-color background panel + subtle graphic overlay (circuit/lines/geometry) ARE expected for composite ads.
 - Subject (when present from reference): identity preserved, integrated with composite via lighting, not cut-and-paste.
 - Headline placement: clean negative space, ≥8% padding. Mixed-weight typography only when intentional (key brand word in accent color), never random.
+- Headline TEXT renders CLEANLY: NO glow halo around letters, NO internal colour gradient inside letters, NO blur on the text. Glow/atmosphere belongs on SCENE elements (overlay graphics, particles, environment) — not on the letterforms themselves. Tight 1-2px hard drop-shadow OK; diffuse glow around text NOT OK.
+- Hero SUBJECT must DOMINATE the canvas (~60-80% of visible area). No tiny figure-in-large-room compositions. Crop in tight on people / products; let the subject approach the canvas edges. Empty background = wasted stopping-power on Meta feed.
+- CTA buttons are OPTIONAL. Only render a CTA when the headline naturally calls for one AND it doesn't crowd the composition. A clean ad without a button is better than a forced button.
 - NO badges, NO price tags, NO comparison stickers (LAGE/3x), NO duplicated text, NO competing brand logos.
 - Looks like a paid agency deliverable. Marketing-agency quality bar.`
 
@@ -1108,9 +1376,9 @@ RL QUALITY RULES (composite-allowed):
 
     // When brand-color injection is toggled off in the panel, pass null
     // to styleDirective so it falls back to the generic "brand's accent
-    // colors" phrasing instead of explicit hex codes. Toggle is per-klant.
-    const brandHexForDirective = effectiveSettings.brandColorInjection
-      ? brandHexForPrompt
+    // color" phrasing instead of explicit hex codes. Toggle is per-klant.
+    const paletteForDirective = effectiveSettings.brandColorInjection
+      ? brandPaletteForDirective
       : null
 
     // Roy 2026-06-13: Look & feel addendum (single string for all slots
@@ -1126,7 +1394,7 @@ RL QUALITY RULES (composite-allowed):
           settingsSlotDefaults[slot] ??
           DEFAULT_SLOT_STYLES[slot] ??
           "client_content_ai"
-        const directive = styleDirective(style, brandHexForDirective) + lookAndFeelText
+        const directive = styleDirective(style, paletteForDirective) + lookAndFeelText
         const inspiration = inspirationRefs[idx]
         // Creative-chrome styles (composite + animation) krijgen
         // versoepelde rules zodat overlays + panels niet geblocked
@@ -1135,11 +1403,13 @@ RL QUALITY RULES (composite-allowed):
           ? RL_QUALITY_RULES_COMPOSITE
           : RL_QUALITY_RULES
 
-        // Inspiration-library framing: de eerste reference is een
-        // STRUCTURAL TEMPLATE - layout / compositie / typography /
-        // lighting overnemen. Tekst + subject + brand colors zijn van
-        // ons. Eerdere "do not copy" framing maakte Gemini de ref
-        // negeren, nieuwe framing forceert structurele overname.
+        // Inspiration-library framing (Roy 2026-06-13). Eerdere versie
+        // ("STRUCTURAL TEMPLATE / MATCH closely") liet Gemini de ref
+        // bijna kopiëren, waardoor de output 1-op-1 op de source landde.
+        // Roy's regel: inspiratie ja, namaken nee. Nu sturen we op
+        // playbook-overname (compositie-principes, depth/lighting-
+        // logica, typography-hiërarchie) ZONDER de exacte scene over
+        // te nemen.
         const slotRefImages: Ref[] = [...referenceImages]
         let inspirationFraming = ""
         if (inspiration) {
@@ -1147,7 +1417,7 @@ RL QUALITY RULES (composite-allowed):
             bytes: inspiration.bytes,
             mimeType: inspiration.mimeType,
           })
-          inspirationFraming = `\n\nSTRUCTURAL TEMPLATE (FIRST attached image):\nThe first reference image is a winning ad from the "${inspiration.subfolderName}" inspiration library and serves as the STRUCTURAL TEMPLATE for this output. MATCH closely:\n  - Overall LAYOUT (panel positions, headline placement, subject placement, CTA position).\n  - COMPOSITION proportions (split ratios, focal hierarchy).\n  - LIGHTING direction + atmospheric treatment.\n  - TYPOGRAPHY hierarchy (relative size, weight contrast).\n  - CHROME treatment (overlay style + intensity).\nSUBSTITUTE:\n  - The exact Dutch headline supplied in this prompt.\n  - The subject from the OTHER attached reference photos when present.\n  - The brand color palette from this prompt.\nIn other words: take the reference's "how", inject our "what". A new viewer should recognise the result as built from the same playbook as the reference.`
+          inspirationFraming = `\n\nINSPIRATION REFERENCE (FIRST attached image):\nThe first reference image is a winning ad from the "${inspiration.subfolderName}" inspiration library. Treat it as INSPIRATION for the PLAYBOOK that makes it work — not as a scene to clone.\n\nLEARN from the reference:\n  - The depth + layering principles (foreground subject crossing a mid-ground panel, atmospheric background).\n  - Typographic hierarchy logic (relative size + weight contrast, alignment relationship).\n  - Lighting style + atmosphere intensity.\n  - The overall quality bar (composition discipline, breathing room, deliberate spacing).\n\nDO NOT reproduce:\n  - The exact subject, props, setting, or scene of the reference.\n  - The reference's specific colour values — apply the brand-colour ROLES defined elsewhere in this prompt instead.\n  - Identical headline placement or panel proportions — let the playbook guide composition, not lock it.\n\nThe goal: a viewer should feel "this is built with the same craftsmanship" as the reference, NOT "this is the same ad in a different colourway". Build a fresh execution that honours the principles without copying the picture.`
         }
 
         const styledPrompt =
@@ -1155,8 +1425,10 @@ RL QUALITY RULES (composite-allowed):
           feedbackAddendum +
           brandAssetsAddendum +
           SOURCE_VISUAL_LOCK +
+          REFERENCE_PHOTO_ANTI_COPY +
           directive +
           inspirationFraming +
+          slotVariationHint(targetSlots[idx]) +
           qualityRules +
           HEADLINE_LOCKDOWN
 
@@ -1268,13 +1540,16 @@ RL QUALITY RULES (composite-allowed):
     // heeft uitgelegd wat fout was.
     if (fbParts.length > 0) {
       try {
-        await supabase.from("pedro_creative_feedback").insert({
-          client_id: variant.client_id,
-          variant_id: variant.id,
-          refresh_id: variant.refresh_id,
-          feedback_type: "explicit",
-          feedback_text: `[Regen feedback op variant "${variant.ad_name ?? ""}" slot ${typeof body.position === "number" ? String.fromCharCode(65 + body.position) : "?"}]\n${fbParts.join("\n")}`,
-          created_by_email: session.user.email ?? null,
+        const { insertCreativeFeedback } = await import(
+          "@/lib/pedro/feedback-insert"
+        )
+        await insertCreativeFeedback({
+          clientId: variant.client_id,
+          variantId: variant.id,
+          refreshId: variant.refresh_id,
+          feedbackType: "explicit",
+          feedbackText: `[Regen feedback op variant "${variant.ad_name ?? ""}" slot ${typeof body.position === "number" ? String.fromCharCode(65 + body.position) : "?"}]\n${fbParts.join("\n")}`,
+          createdByEmail: session.user.email ?? null,
         })
       } catch (e) {
         console.error(
@@ -1302,13 +1577,16 @@ RL QUALITY RULES (composite-allowed):
       // the new version (it's the signal of where the CM steered).
       if (newPrompt !== previous.trim()) {
         try {
-          await supabase.from("pedro_creative_feedback").insert({
-            client_id: variant.client_id,
-            variant_id: variant.id,
-            refresh_id: variant.refresh_id,
-            feedback_type: "prompt_edit",
-            feedback_text: `[Prompt edit op variant "${variant.ad_name ?? ""}"]\n${newPrompt.slice(0, 1500)}`,
-            created_by_email: session.user.email ?? null,
+          const { insertCreativeFeedback } = await import(
+            "@/lib/pedro/feedback-insert"
+          )
+          await insertCreativeFeedback({
+            clientId: variant.client_id,
+            variantId: variant.id,
+            refreshId: variant.refresh_id,
+            feedbackType: "prompt_edit",
+            feedbackText: `[Prompt edit op variant "${variant.ad_name ?? ""}"]\n${newPrompt.slice(0, 1500)}`,
+            createdByEmail: session.user.email ?? null,
           })
         } catch (e) {
           console.error(

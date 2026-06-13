@@ -173,11 +173,20 @@ async function fetchBrandStyle(
  *  prompt edits, manual uploads. Pulled into the prompt so Pedro learns
  *  per-client preferences (logo size, headline format, photo style) and
  *  needs fewer iterations to land the first-shot output. Roy 2026-06-10
- *  per knowledge/campaigns.md §Image Creative Principles #5. */
+ *  per knowledge/campaigns.md §Image Creative Principles #5.
+ *
+ *  Roy 2026-06-13: split into a dual loop. Per-client (scope in
+ *  'client','both') is STRICT — Pedro must never repeat the same
+ *  mistake on this client. Global (scope in 'global','both') is
+ *  ADVISORY — general craft notes from all clients; Pedro decides
+ *  per-generation whether each one applies in context. */
 type FeedbackRow = {
   feedback_type: "explicit" | "prompt_edit" | "regen" | "upload"
   feedback_text: string
   created_at: string
+  /** Source client — only set on global-pool rows so the prompt can
+   *  hint "deze tip is uit een andere klant" without exposing IDs. */
+  source_client_id?: string | null
 }
 
 async function fetchCreativeFeedback(
@@ -187,14 +196,74 @@ async function fetchCreativeFeedback(
   try {
     const supabase = await createAdminClient()
     const since = new Date(Date.now() - 90 * 86_400_000).toISOString()
+    // Per-client strict loop: rows that the classifier tagged as
+    // 'client' or 'both' for THIS client_id. These bind tightly to
+    // this brand / audience / industry.
     const { data } = await supabase
       .from("pedro_creative_feedback")
       .select("feedback_type, feedback_text, created_at")
       .eq("client_id", mondayItemId)
+      .in("scope", ["client", "both"])
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(limit)
     return (data ?? []) as FeedbackRow[]
+  } catch {
+    return []
+  }
+}
+
+/** Global advisory pool — feedback the classifier flagged as broadly
+ *  applicable ('global' or 'both'). Pulled across ALL clients; Pedro
+ *  picks the ones that fit the current generation's context.
+ *
+ *  We pull a slightly larger window (180d) here because globally-
+ *  applicable craft notes age more slowly than per-client preferences.
+ *  De-dup is best-effort via text-similarity below. */
+async function fetchGlobalCreativeFeedback(
+  excludeClientId: string,
+  limit = 18,
+): Promise<FeedbackRow[]> {
+  try {
+    const supabase = await createAdminClient()
+    const since = new Date(Date.now() - 180 * 86_400_000).toISOString()
+    const { data } = await supabase
+      .from("pedro_creative_feedback")
+      .select("feedback_type, feedback_text, created_at, client_id")
+      .in("scope", ["global", "both"])
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(limit * 3) // over-fetch to leave headroom for dedup
+    const rows = (data ?? []) as Array<{
+      feedback_type: FeedbackRow["feedback_type"]
+      feedback_text: string
+      created_at: string
+      client_id: string
+    }>
+    // Skip rows that came from THIS client — they're already in the
+    // per-client strict block, no need to repeat advisory-side.
+    const filtered = rows.filter((r) => r.client_id !== excludeClientId)
+    // Naive dedup: collapse near-identical feedback text (first 80 chars,
+    // case-insensitive, whitespace-normalised). Keeps the most recent.
+    const seen = new Set<string>()
+    const deduped: FeedbackRow[] = []
+    for (const r of filtered) {
+      const key = r.feedback_text
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80)
+      if (seen.has(key)) continue
+      seen.add(key)
+      deduped.push({
+        feedback_type: r.feedback_type,
+        feedback_text: r.feedback_text,
+        created_at: r.created_at,
+        source_client_id: r.client_id,
+      })
+      if (deduped.length >= limit) break
+    }
+    return deduped
   } catch {
     return []
   }
@@ -403,7 +472,31 @@ function fmtFeedbackBlock(rows: FeedbackRow[]): string {
     const body = r.feedback_text.replace(/\s+/g, " ").trim().slice(0, 240)
     return `- [${date} · ${tag}] ${body}`
   })
-  return `KLANT-FEEDBACK PATRONEN (laatste 90d - Pedro moet ELKE volgende imagePrompt voor deze klant hierop afstemmen; recente feedback wint van oude):\n${lines.join("\n")}`
+  // STRICT framing — Pedro mag deze NOOIT meer missen op deze klant.
+  // Same wording als de eerdere block; classifier-tag verandert alleen
+  // welke rows hier landen, niet hoe ze worden ingeleest.
+  return `KLANT-FEEDBACK PATRONEN — STRIKT (laatste 90d, Pedro moet ELKE volgende imagePrompt voor deze klant hierop afstemmen; recente feedback wint van oude; deze regels zijn brand/taste/audience-specifiek en niet onderhandelbaar):\n${lines.join("\n")}`
+}
+
+/** Advisory block — globally-applicable craft notes from the rest of
+ *  the client portfolio. Different framing from the strict per-client
+ *  block: Pedro decides PER GENERATION whether each note applies given
+ *  the current variant's context. Roy 2026-06-13. */
+function fmtGlobalFeedbackBlock(rows: FeedbackRow[]): string {
+  if (rows.length === 0) return ""
+  const weighted = rows.filter((r) => r.feedback_type !== "regen")
+  if (weighted.length === 0) return ""
+  const lines = weighted.slice(0, 10).map((r) => {
+    const date = r.created_at.slice(0, 10)
+    const tag = r.feedback_type === "explicit"
+      ? "CM"
+      : r.feedback_type === "prompt_edit"
+        ? "edit"
+        : "upload"
+    const body = r.feedback_text.replace(/\s+/g, " ").trim().slice(0, 200)
+    return `- [${date} · ${tag}] ${body}`
+  })
+  return `GLOBALE CRAFT-NOTES (laatste 180d uit andere klanten - ADVISORY, geen STRIKTE regels): dit zijn algemene design / quality / craft lessen die CMs op andere creatives hebben gegeven. Pedro beoordeelt PER GENERATIE of een note relevant is voor deze specifieke variant — pas alleen toe wanneer het past in de context, negeer wanneer het botst met klant-specifieke voorkeuren of brief-richting:\n${lines.join("\n")}`
 }
 
 function fmtDriveBlock(drive: Awaited<ReturnType<typeof fetchDriveContext>>): string {
@@ -445,6 +538,10 @@ export type CreativeRefreshContextResult = {
     /** Number of weighted CM-feedback rows pulled into the prompt
      *  (excludes raw regen events). 0 = no feedback loop yet. */
     feedbackCount: number
+    /** Number of globally-applicable craft notes pulled in from other
+     *  clients' history (scope in 'global','both', excludes regen).
+     *  Roy 2026-06-13: dual feedback loop signal. */
+    globalFeedbackCount: number
   }
   /** Rough char budget - useful to log/track token cost growth. */
   charCount: number
@@ -461,12 +558,13 @@ export type CreativeRefreshContextResult = {
 export async function buildCreativeRefreshContext(
   client: MondayClient,
 ): Promise<CreativeRefreshContextResult> {
-  const [ctx, drive, brief, brand, feedback] = await Promise.all([
+  const [ctx, drive, brief, brand, feedback, globalFeedback] = await Promise.all([
     collectClientAiContext(client),
     fetchDriveContext(client.googleDriveId ?? ""),
     fetchBrief(client.mondayItemId),
     fetchBrandStyle(client.mondayItemId),
     fetchCreativeFeedback(client.mondayItemId, 12),
+    fetchGlobalCreativeFeedback(client.mondayItemId, 18),
   ])
 
   const briefBlock = fmtBriefBlock(brief)
@@ -476,10 +574,16 @@ export async function buildCreativeRefreshContext(
   // the block here changes shape accordingly.
   const brandBlock = fmtBrandStyleBlock(brand, brief)
   const feedbackBlock = fmtFeedbackBlock(feedback)
+  // Global advisory block sits AFTER the strict per-client block so
+  // Pedro reads it as the lower-priority signal. When per-client and
+  // global notes conflict, the per-client wins (the framing above says
+  // so explicitly).
+  const globalFeedbackBlock = fmtGlobalFeedbackBlock(globalFeedback)
   const sections = [
     briefBlock,
     brandBlock,
     feedbackBlock,
+    globalFeedbackBlock,
     fmtAgreementBlock(ctx),
     fmtMondayUpdatesBlock(ctx),
     fmtFathomBlock(ctx),
@@ -505,6 +609,7 @@ export async function buildCreativeRefreshContext(
       driveFileCount: drive.files.length,
       brandStyle: brandBlock.length > 0,
       feedbackCount: feedback.filter((r) => r.feedback_type !== "regen").length,
+      globalFeedbackCount: globalFeedback.filter((r) => r.feedback_type !== "regen").length,
     },
     charCount: block.length,
   }

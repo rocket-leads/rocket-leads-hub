@@ -748,8 +748,10 @@ function SlotCard({
         {slotLabel}
       </div>
 
-      {/* Image / placeholder */}
-      <div className="relative aspect-square bg-muted/40">
+      {/* Image / placeholder — 4:5 matches the Pedro default aspect ratio
+          (Meta Feed portrait) so the preview shows the full creative
+          instead of cropping it. */}
+      <div className="relative aspect-[4/5] bg-muted/40">
         {slot.hasImage && slot.signedUrl ? (
           <>
             {/* eslint-disable-next-line @next/next/no-img-element */}

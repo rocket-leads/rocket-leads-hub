@@ -100,14 +100,17 @@ export async function POST(
     // this variant. Future creative-refresh prompts for this client
     // see this and can adjust direction. Best-effort, never blocking.
     try {
-      await supabase.from("pedro_creative_feedback").insert({
-        client_id: variantRow.client_id,
-        variant_id: variantRow.id,
-        variant_image_position: position,
-        refresh_id: variantRow.refresh_id,
-        feedback_type: "upload",
-        feedback_text: `[CM uploadte eigen image voor variant "${variantRow.ad_name ?? ""}" slot ${String.fromCharCode(65 + position)}]\nAI-output was niet bruikbaar - overrule met handmatige upload.`,
-        created_by_email: session.user.email ?? null,
+      const { insertCreativeFeedback } = await import(
+        "@/lib/pedro/feedback-insert"
+      )
+      await insertCreativeFeedback({
+        clientId: variantRow.client_id,
+        variantId: variantRow.id,
+        variantImagePosition: position,
+        refreshId: variantRow.refresh_id,
+        feedbackType: "upload",
+        feedbackText: `[CM uploadte eigen image voor variant "${variantRow.ad_name ?? ""}" slot ${String.fromCharCode(65 + position)}]\nAI-output was niet bruikbaar - overrule met handmatige upload.`,
+        createdByEmail: session.user.email ?? null,
       })
     } catch (e) {
       console.error(

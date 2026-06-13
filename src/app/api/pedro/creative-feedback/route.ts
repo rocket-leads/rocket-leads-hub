@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
+import { insertCreativeFeedback } from "@/lib/pedro/feedback-insert"
 
 /**
  * Pedro creative feedback capture + lookup.
@@ -53,24 +54,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "feedbackText is verplicht" }, { status: 400 })
   }
 
-  const supabase = await createAdminClient()
   try {
-    const { data, error } = await supabase
-      .from("pedro_creative_feedback")
-      .insert({
-        client_id: clientId,
-        variant_id: body.variantId ?? null,
-        variant_image_position:
-          typeof body.variantImagePosition === "number" ? body.variantImagePosition : null,
-        refresh_id: body.refreshId ?? null,
-        feedback_type: feedbackType,
-        feedback_text: feedbackText.slice(0, 2000),
-        created_by_email: session.user.email ?? null,
-      })
-      .select("id")
-      .single()
-    if (error) throw error
-    return NextResponse.json({ id: data.id, ok: true })
+    const result = await insertCreativeFeedback({
+      clientId,
+      variantId: body.variantId ?? null,
+      variantImagePosition: body.variantImagePosition ?? null,
+      refreshId: body.refreshId ?? null,
+      feedbackType,
+      feedbackText,
+      createdByEmail: session.user.email ?? null,
+    })
+    if (!result.id) {
+      return NextResponse.json({ error: "Insert failed" }, { status: 500 })
+    }
+    return NextResponse.json({
+      id: result.id,
+      ok: true,
+      scope: result.scope,
+      scopeRationale: result.rationale,
+    })
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Insert failed" },
@@ -102,7 +104,9 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await supabase
     .from("pedro_creative_feedback")
-    .select("id, feedback_type, feedback_text, created_at, created_by_email, variant_image_position")
+    .select(
+      "id, feedback_type, feedback_text, created_at, created_by_email, variant_image_position, scope, scope_rationale",
+    )
     .eq("client_id", clientId)
     .gte("created_at", since)
     .order("created_at", { ascending: false })

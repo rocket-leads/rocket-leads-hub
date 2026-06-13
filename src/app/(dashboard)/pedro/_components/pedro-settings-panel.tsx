@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import type {
   PedroCreativeSettings,
   AspectRatio,
+  BrandColorRole,
   SlotStyleKey,
   InspirationSubfolderFlags,
   VisualStyleKey,
@@ -76,7 +77,7 @@ type SettingsResponse = {
     brandColorIntensity: number
     brandBookDriveFileId: string | null
     brandBookSource?: string
-    brandColors?: Array<{ hex: string; enabled?: boolean }>
+    brandColors?: Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }>
     visualStyles: VisualStyleKey[]
   }
   defaults: SettingsResponse["effective"]
@@ -178,13 +179,21 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
     // draft (including an empty array — "exclude all") wins; else the
     // server override; else the auto-detected hex list as the editor's
     // starting point so the CM sees something to tweak immediately.
-    let brandColors: Array<{ hex: string; enabled?: boolean }>
+    // When auto-seeding from `detected.colors`, we apply best-guess role
+    // tags by position (1st = primary panel, 2nd = secondary text, 3rd =
+    // accent CTA) so the CM has a sane starting state to override.
+    let brandColors: Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }>
     if (draft.brandColors !== undefined) {
       brandColors = draft.brandColors
     } else if (settings.effective.brandColors !== undefined) {
       brandColors = settings.effective.brandColors
     } else {
-      brandColors = settings.detected.colors.map((hex) => ({ hex, enabled: true }))
+      const positionRoles: BrandColorRole[] = ["primary", "secondary", "accent"]
+      brandColors = settings.detected.colors.map((hex, i) => ({
+        hex,
+        enabled: true,
+        role: positionRoles[i],
+      }))
     }
     return {
       aspectRatio: draft.aspectRatio ?? settings.effective.aspectRatio,
@@ -242,9 +251,13 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
 
   // Brand color editor helpers. All operate on the effective list so the
   // CM sees their edits immediately; we persist the whole array to the
-  // override on save. Roy 2026-06-13.
+  // override on save. Roy 2026-06-13: roles are now CM-controlled per
+  // colour (primary = background, secondary = headline text, accent =
+  // CTA / brand-highlight word). The auto-classifier was wrong too
+  // often — having the CM tag explicitly avoids the donkerblauw-as-
+  // accent / lichtblauw-as-panel mix-ups.
   const updateBrandColors = useCallback(
-    (next: Array<{ hex: string; enabled?: boolean }>) => {
+    (next: Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }>) => {
       setDraft((prev) => ({ ...prev, brandColors: next }))
     },
     [],
@@ -727,20 +740,32 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
 
 /**
  * Editor voor de brand-colour set die generate-image injecteert. List
- * van chips met hex preview + tekstinvoer + enable-checkbox + remove.
- * Standaard initialiseren we vanuit `detected.colors` zodat de CM ziet
- * wat er automatisch gevonden is en daar incremental edits op kan doen.
+ * van chips met hex preview + tekstinvoer + enable-checkbox + role-
+ * dropdown + remove. Standaard initialiseren we vanuit
+ * `detected.colors` zodat de CM ziet wat er automatisch gevonden is en
+ * daar incremental edits op kan doen. Roy 2026-06-13: roles zijn nu
+ * CM-controlled (primary / secondary / accent) — de auto-classifier
+ * vergiste zich te vaak over welke kleur de panel-kleur was en welke
+ * de CTA-kleur.
  */
+
+const ROLE_OPTIONS: Array<{ value: "" | BrandColorRole; label: string; hint: string }> = [
+  { value: "", label: "Geen rol", hint: "Pedro plaatst 'm op een vrije positie" },
+  { value: "primary", label: "Primary · achtergrond", hint: "Canvas / panel-vlak waar de headline op staat" },
+  { value: "secondary", label: "Secondary · headline accent", hint: "Kleur voor 1-2 nadruk-woorden in je headline + ÉÉN typografisch accent op diezelfde woorden (cleane underline, gevuld marker-vlak met witte tekst, soft highlighter bar, of cirkel om één woord). Geen doorstreping. Base headline blijft wit." },
+  { value: "accent", label: "Accent · brand highlight", hint: "Brand-kleur voor scene elementen — graphic overlays, glow, particles, rim-light, highlighted props. Eventueel ook CTA-knop wanneer er één past, maar CTA is optioneel." },
+]
+
 function BrandColorsEditor({
   colors,
   detectedSource,
   disabled,
   onChange,
 }: {
-  colors: Array<{ hex: string; enabled?: boolean }>
+  colors: Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }>
   detectedSource: "pdf" | "website" | "none"
   disabled: boolean
-  onChange: (next: Array<{ hex: string; enabled?: boolean }>) => void
+  onChange: (next: Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }>) => void
 }) {
   const sourceLabel =
     detectedSource === "pdf"
@@ -749,8 +774,19 @@ function BrandColorsEditor({
         ? "uit website scrape"
         : "geen detectie — voeg ze handmatig toe"
 
-  function patch(idx: number, p: Partial<{ hex: string; enabled: boolean }>) {
-    const next = colors.map((c, i) => (i === idx ? { ...c, ...p } : c))
+  function patch(
+    idx: number,
+    p: Partial<{ hex: string; enabled: boolean; role: BrandColorRole | undefined }>,
+  ) {
+    const next = colors.map((c, i) => {
+      if (i !== idx) return c
+      const updated: { hex: string; enabled?: boolean; role?: BrandColorRole } = { ...c, ...p }
+      // When the CM picks "Geen rol", role is set to undefined — strip
+      // the key so the persisted blob stays tight (sanitiser tolerates
+      // missing role and applies positional fallback at render time).
+      if (p.role === undefined && "role" in p) delete updated.role
+      return updated
+    })
     onChange(next)
   }
   function remove(idx: number) {
@@ -760,11 +796,53 @@ function BrandColorsEditor({
     onChange([...colors, { hex: "#000000", enabled: true }])
   }
 
+  // Surface which roles are already taken so the CM sees a hint when a
+  // second colour tries to claim the same role. We don't block it —
+  // the resolver only honours the FIRST entry per role — but the chip
+  // makes the duplication visible.
+  const roleCounts = colors.reduce<Record<BrandColorRole, number>>(
+    (acc, c) => {
+      if (c.role) acc[c.role] = (acc[c.role] ?? 0) + 1
+      return acc
+    },
+    { primary: 0, secondary: 0, accent: 0 },
+  )
+
   return (
     <div className={cn(disabled && "opacity-50")}>
       <Label>
         Brand colors <span className="font-normal text-muted-foreground">({sourceLabel})</span>
       </Label>
+      <div className="text-[11px] text-muted-foreground/80 -mt-1 mb-2 leading-snug space-y-0.5">
+        <div>
+          Tag elke kleur met een rol zodat Pedro weet waar &apos;ie hoort:
+        </div>
+        <ul className="ml-3 list-disc space-y-0.5">
+          <li>
+            <span className="font-medium text-foreground/80">Primary</span> = de
+            achtergrond / panel-kleur waar je headline op staat
+          </li>
+          <li>
+            <span className="font-medium text-foreground/80">Secondary</span> =
+            de <em>nadruk-kleur</em> binnen de headline: 1-2 sleutel-woorden
+            (idealiter 1) krijgen deze tint plus één positief typografisch
+            accent — cleane underline, gevuld marker-vlak met witte tekst,
+            soft highlighter bar, of dunne cirkel om één woord. Geen
+            doorstreping of kruisstreepjes. Base headline blijft wit.
+          </li>
+          <li>
+            <span className="font-medium text-foreground/80">Accent</span> = de
+            brand-kleur voor <em>scene elementen</em>: graphic overlays, glow,
+            particles, rim-light, gehighlighte props. Eventueel ook de
+            CTA-knop wanneer er één past — maar CTA is optioneel, niet
+            verplicht.
+          </li>
+        </ul>
+        <div className="pt-0.5">
+          Wit en zwart zijn altijd impliciet beschikbaar voor tekst &amp;
+          elementen — die hoef je niet hier toe te voegen.
+        </div>
+      </div>
       <div className="space-y-2">
         {colors.length === 0 && (
           <div className="text-xs text-muted-foreground italic">
@@ -774,11 +852,13 @@ function BrandColorsEditor({
         {colors.map((c, idx) => {
           const enabled = c.enabled !== false
           const valid = HEX_RE.test(c.hex)
+          const role = c.role
+          const isDuplicateRole = role !== undefined && roleCounts[role] > 1
           return (
             <div
               key={idx}
               className={cn(
-                "flex items-center gap-2 px-2 py-1.5 rounded-md border border-border/60 bg-background/40",
+                "flex items-center gap-2 px-2 py-1.5 rounded-md border border-border/60 bg-background/40 flex-wrap",
                 !enabled && "opacity-60",
               )}
             >
@@ -814,8 +894,35 @@ function BrandColorsEditor({
                 className="h-7 w-9 rounded border border-border/60 cursor-pointer disabled:cursor-not-allowed"
                 title="Color picker"
               />
+              <select
+                value={role ?? ""}
+                disabled={disabled}
+                onChange={(e) =>
+                  patch(idx, {
+                    role: e.target.value === "" ? undefined : (e.target.value as BrandColorRole),
+                  })
+                }
+                className={cn(
+                  "h-7 px-2 rounded border border-border/60 bg-background text-xs",
+                  isDuplicateRole && "border-amber-500/50 text-amber-700 dark:text-amber-400",
+                )}
+                title={
+                  ROLE_OPTIONS.find((o) => o.value === (role ?? ""))?.hint ??
+                  "Kies welke rol deze kleur speelt in de ad"
+                }
+              >
+                {ROLE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
               <span className="text-[10px] text-muted-foreground ml-auto">
-                {valid ? "" : "ongeldig"}
+                {!valid
+                  ? "ongeldig"
+                  : isDuplicateRole
+                    ? "dubbele rol — eerste wint"
+                    : ""}
               </span>
               <button
                 type="button"
