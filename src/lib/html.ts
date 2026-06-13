@@ -24,11 +24,13 @@ export function stripHtml(html: string | null | undefined): string {
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
     .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ")
-    // 2. Convert structural tags to whitespace before stripping the
-    //    rest, so paragraph + line-break boundaries survive as spaces
-    //    in the resulting plain text.
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<\/p>/gi, " ")
+    // 2. Convert structural tags to newlines BEFORE stripping the
+    //    rest, so paragraphs / list items / table rows survive as
+    //    line breaks in the resulting plain text. The chat-pane
+    //    renders with `whitespace-pre-wrap` so the user actually
+    //    sees the paragraph breaks instead of one long wall.
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6]|tr|blockquote)>/gi, "\n")
     // 3. Strip every remaining tag, preserving inner text.
     .replace(/<[^>]+>/g, "")
     // 4. Defensive truncation guard: a 100-char title cap sometimes
@@ -52,6 +54,12 @@ export function stripHtml(html: string | null | undefined): string {
     //    regex: only matches `(http(s)://…)` so plain prose with
     //    parens stays intact.
     .replace(/\s?\(https?:\/\/[^\s)]+\)/g, "")
-    .replace(/\s+/g, " ")
+    // Collapse spaces/tabs inside a line, but PRESERVE newlines so
+    // paragraph structure survives to whitespace-pre-wrap rendering.
+    // Also collapse 3+ consecutive newlines to a double-newline so
+    // hand-formatted emails don't blow up vertically.
+    .replace(/[ \t ]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^[ \t]+|[ \t]+$/gm, "")
     .trim()
 }

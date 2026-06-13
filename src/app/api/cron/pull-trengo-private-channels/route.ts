@@ -49,10 +49,14 @@ import {
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
-/** How far back to look at message timestamps. 4× the cron cadence (15
- *  min) so a temporarily-failed cycle doesn't permanently drop a
- *  message - the next cycle re-tries the same window. */
-const LOOKBACK_MINUTES = 60
+/** How far back to look at message timestamps. 8× the cron cadence
+ *  (15 min) so several missed cycles in a row (Vercel hiccup, rate
+ *  limit, downtime) still catch up automatically on the next
+ *  successful run. Roy 2026-06-13: 60-min window meant a 6-hour-old
+ *  Vueling email never made it in after the polling cron got stuck
+ *  on a 429 cascade. 120 min is a safer baseline; the dedupe path
+ *  makes re-seeing the same row free. */
+const LOOKBACK_MINUTES = 120
 
 type UserToScan = {
   id: string

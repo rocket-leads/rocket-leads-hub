@@ -1615,6 +1615,7 @@ function ThreadMessages({
             <MessageBubble
               key={msg.id}
               msg={msg}
+              isEmailThread={isEmail}
               onMakeTask={
                 onMakeTaskFromMessage && thread.clientId
                   ? () => {
@@ -2743,9 +2744,18 @@ function AttachmentChip({
 
 function MessageBubble({
   msg,
+  isEmailThread,
   onMakeTask,
 }: {
   msg: ChatMessage
+  /** When the parent thread is an email channel, every message renders
+   *  in the Gmail-style EmailMessageCard layout (full-width card,
+   *  prominent sender header, iframe body if HTML is available, paragraph-
+   *  preserving plain text otherwise). Chat bubbles are for WhatsApp /
+   *  Slack only - emails need to look like emails, not WhatsApp chat
+   *  (Roy 2026-06-13). Internal team notes always stay on the bubble
+   *  path so the yellow team-only signal is preserved. */
+  isEmailThread?: boolean
   /** When defined, a hover-revealed "Make task" button appears next to the
    *  bubble. Closes the Phase D loop: any inbox message can become an
    *  actionable task in one click. Hidden when the thread isn't linked to
@@ -2754,14 +2764,14 @@ function MessageBubble({
 }) {
   const isUs = msg.authorKind === "rl_team"
   const isInternal = msg.isInternal === true
-  // Email rendering branch (Roy 2026-06-13). Emails that carry their
-  // original HTML get a wide email-card layout with a sandboxed iframe
-  // body, instead of the cramped plain-text chat bubble. Internal
-  // notes stay on the bubble path so the yellow team-only signal is
-  // preserved.
-  if (msg.bodyHtml && !isInternal) {
+  // Email rendering branch - any message in an email thread (or any
+  // message that carries an HTML body, e.g. a forwarded HTML chunk in
+  // a different channel) renders as a full-width email card. Internal
+  // team notes stay on the bubble path so the yellow team-only signal
+  // is preserved.
+  if ((isEmailThread || msg.bodyHtml) && !isInternal) {
     return (
-      <div className="group flex items-stretch gap-2 justify-stretch">
+      <div className="group flex items-stretch gap-2">
         {isUs && onMakeTask && (
           <MakeTaskInlineButton onClick={onMakeTask} />
         )}
@@ -2824,16 +2834,19 @@ function MessageBubble({
 /**
  * Full-width email card with a sandboxed iframe body. Renders the raw
  * HTML the way an email client would - paragraphs, images, links -
- * instead of the stripped plain-text bubble. Roy 2026-06-13: "het
- * moet echt beter, opmaak, afbeeldingen, structuur".
+ * instead of the stripped plain-text bubble. Roy 2026-06-13: emails
+ * need to look like emails, not WhatsApp chat. Gmail-style header
+ * (avatar circle + sender name in bold + to-line below + date right-
+ * aligned) sits above the body; the body itself uses the iframe
+ * render path when bodyHtml is present, and falls back to paragraph-
+ * preserving plain text otherwise so even legacy rows ingested
+ * before the body_html column existed don't render as one wall.
  *
  * Iframe safety: `sandbox="allow-same-origin"` (no allow-scripts).
  * Scripts inside the email are blocked; same-origin is set so the
  * parent can read `contentDocument` to measure the rendered height
- * and resize the iframe to fit (otherwise we'd get a fixed-height
- * box with internal scroll, which feels broken). All external
- * resources (images, fonts, etc.) load straight from the email's
- * own URLs - we don't proxy.
+ * and resize the iframe to fit. External resources (images, fonts,
+ * etc.) load straight from the email's own URLs - we don't proxy.
  */
 function EmailMessageCard({
   msg,
@@ -2842,7 +2855,7 @@ function EmailMessageCard({
   msg: ChatMessage
   isUs: boolean
 }) {
-  const [height, setHeight] = useState<number>(120)
+  const [height, setHeight] = useState<number>(140)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   function measure() {
@@ -2860,55 +2873,94 @@ function EmailMessageCard({
     }
   }
 
+  // Avatar - circle with the first letter of the sender's name. Color
+  // varies by author kind so RL outgoing mails read as ours and
+  // inbound as the customer's. Same convention Gmail uses when the
+  // sender has no Gravatar.
+  const avatarInitial = (msg.authorName ?? "?").trim().charAt(0).toUpperCase() || "?"
+
   // Wrap the email body in a minimal document shell so emails that
   // expect viewport-rules / image-max-width behave reasonably inside
   // the constrained iframe. Inline styles cap images at 100% width and
   // give body sensible system fonts so plaintext-ish wrappers don't
   // look ridiculous either.
-  const srcDoc = `<!doctype html>
+  const srcDoc = msg.bodyHtml
+    ? `<!doctype html>
 <html><head><meta charset="utf-8">
 <base target="_blank">
 <style>
-  html, body { margin: 0; padding: 0; }
+  html, body { margin: 0; padding: 0; background: #ffffff; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     font-size: 14px;
     color: #1a1a1a;
-    line-height: 1.5;
+    line-height: 1.55;
     word-wrap: break-word;
+    padding: 14px 16px;
   }
   img { max-width: 100% !important; height: auto !important; }
   a { color: #6d28d9; }
   table { max-width: 100% !important; }
+  blockquote { border-left: 3px solid #e4e4e7; padding-left: 12px; color: #525252; margin-left: 0; }
 </style>
-</head><body>${msg.bodyHtml ?? ""}</body></html>`
+</head><body>${msg.bodyHtml}</body></html>`
+    : null
 
   return (
-    <div
-      className={cn(
-        "flex-1 min-w-0 rounded-xl border bg-card overflow-hidden",
-        isUs ? "border-primary/30" : "border-border/60",
-      )}
-    >
-      <div
-        className={cn(
-          "flex items-baseline gap-2 px-3 py-2 border-b",
-          isUs ? "border-primary/20 bg-primary/5" : "border-border/40 bg-muted/30",
-        )}
-      >
-        <span className="text-[11px] font-semibold">{msg.authorName}</span>
-        <span className="text-[10px] tabular-nums text-muted-foreground/70">
+    <div className="flex-1 min-w-0 rounded-xl border border-border/60 bg-card overflow-hidden shadow-sm">
+      {/* Email header — full-width, neutral background. Roy 2026-06-13:
+          "geen WhatsApp-bubble-uitlijning". Avatar circle + author block
+          on the left, timestamp on the right. */}
+      <div className="flex items-start gap-3 px-4 py-3 border-b border-border/40 bg-muted/20">
+        <div
+          className={cn(
+            "h-9 w-9 shrink-0 rounded-full inline-flex items-center justify-center text-sm font-semibold",
+            isUs
+              ? "bg-primary/15 text-primary"
+              : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+          )}
+        >
+          {avatarInitial}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-semibold text-foreground truncate">
+              {msg.authorName}
+            </span>
+            {isUs && (
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
+                Sent
+              </span>
+            )}
+          </div>
+          <div className="text-[11px] text-muted-foreground/70">
+            {isUs ? "From you" : "To you"}
+          </div>
+        </div>
+        <span className="text-[11px] tabular-nums text-muted-foreground/70 shrink-0 mt-0.5">
           {fmtTime(msg.at)}
         </span>
       </div>
-      <iframe
-        ref={iframeRef}
-        title={`Email from ${msg.authorName}`}
-        srcDoc={srcDoc}
-        sandbox="allow-same-origin allow-popups"
-        onLoad={measure}
-        style={{ width: "100%", height, border: "none", display: "block" }}
-      />
+      {/* Body — iframe when we have the raw HTML (real email layout
+          with images + tables + links), otherwise paragraph-preserving
+          plain text in a styled prose block so older rows still read
+          properly. */}
+      {srcDoc ? (
+        <iframe
+          ref={iframeRef}
+          title={`Email from ${msg.authorName}`}
+          srcDoc={srcDoc}
+          sandbox="allow-same-origin allow-popups"
+          onLoad={measure}
+          style={{ width: "100%", height, border: "none", display: "block", background: "#fff" }}
+        />
+      ) : (
+        <div className="px-4 py-3 bg-background text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">
+          {msg.body || (
+            <span className="italic text-muted-foreground/60">No body content.</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
