@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Bell,
   BellOff,
+  Calendar as CalendarIcon,
 } from "lucide-react"
 import {
   connectMyPlatform,
@@ -20,6 +21,7 @@ import {
 } from "../actions"
 import { Button } from "@/components/ui/button"
 import type { UserPlatformConnection, Platform } from "@/lib/inbox/user-platform-tokens"
+import type { GoogleCalendarConnection } from "@/app/(dashboard)/settings/_components/me-tab"
 
 type Props = {
   userName: string
@@ -29,6 +31,7 @@ type Props = {
   monday: UserPlatformConnection | null
   trengoChannelIds: number[]
   slackError: string | null
+  googleCalendar: GoogleCalendarConnection
 }
 
 export function MyAccount({
@@ -39,6 +42,7 @@ export function MyAccount({
   monday,
   trengoChannelIds,
   slackError,
+  googleCalendar,
 }: Props) {
   return (
     <div className="space-y-6 max-w-3xl">
@@ -51,6 +55,10 @@ export function MyAccount({
       <div>
         <h2 className="text-sm font-medium mb-3">Platform connections</h2>
         <div className="space-y-3">
+          <GoogleCalendarCard
+            connection={googleCalendar}
+            signInEmail={userEmail}
+          />
           <SlackCard connection={slack} initialError={slackError} />
           <TrengoCard connection={trengo} />
           <MondayCard connection={monday} />
@@ -67,6 +75,113 @@ export function MyAccount({
         <TrengoChannelsCard initialSelected={trengoChannelIds} />
       </div>
     </div>
+  )
+}
+
+// --- Google Calendar (custom OAuth, separate from sign-in) ---
+
+const GOOGLE_CAL_ERROR_MESSAGES: Record<string, string> = {
+  oauth_not_configured: "Google OAuth isn't configured for this deployment yet.",
+  access_denied: "You cancelled the Google authorization.",
+  missing_code_or_state: "Google returned without a code. Try connecting again.",
+  missing_state_cookie:
+    "Your browser blocked the OAuth state cookie. Try again in a non-incognito window.",
+  state_mismatch: "OAuth state mismatch — possible CSRF or expired flow. Try again.",
+  session_mismatch:
+    "Your sign-in session changed during the OAuth flow. Sign in again, then retry.",
+  exchange_failed: "Google rejected the OAuth code exchange. Try again.",
+  no_refresh_token:
+    "Google didn't return a refresh token. Sign out of the account at google.com first and try again.",
+  userinfo_failed: "Connected but Google didn't return the picked email — try again.",
+  store_failed: "Couldn't save the calendar tokens. Try again or contact an admin.",
+  oauth_failed: "Google reported an OAuth failure. Try again.",
+}
+
+function GoogleCalendarCard({
+  connection,
+  signInEmail,
+}: {
+  connection: GoogleCalendarConnection
+  signInEmail: string
+}) {
+  const [pending, setPending] = useState<"disconnecting" | null>(null)
+  const [error, setError] = useState<string | null>(
+    connection.error
+      ? GOOGLE_CAL_ERROR_MESSAGES[connection.error] ??
+          `Google Calendar connect failed (${connection.error}).`
+      : null,
+  )
+  const [, startTransition] = useTransition()
+
+  function disconnect() {
+    setPending("disconnecting")
+    setError(null)
+    startTransition(async () => {
+      try {
+        const res = await fetch("/api/auth/google-calendar/disconnect", {
+          method: "POST",
+          credentials: "include",
+        })
+        if (!res.ok) throw new Error("Failed to disconnect")
+        // Soft refresh so the server-rendered card re-reads from the DB.
+        window.location.reload()
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to disconnect")
+        setPending(null)
+      }
+    })
+  }
+
+  const connected = !!connection.connectedEmail
+  const usingSignIn = connection.isSignInAccount
+  const accountLabel = connection.connectedEmail ?? signInEmail
+  const description = usingSignIn
+    ? "Reading calendar from your sign-in account. Connect a different Google account if your work calendar lives elsewhere."
+    : "Calendar events read from this Google account instead of your sign-in account."
+
+  return (
+    <PlatformCard
+      icon={<CalendarIcon className="h-4 w-4" />}
+      tone="cyan"
+      name="Google Calendar"
+      description={description}
+      connected={connected}
+      meta={connected ? { account: accountLabel } : null}
+      connectedAt={undefined}
+    >
+      {connection.justConnected && (
+        <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 mb-3 text-xs">
+          Connected as <span className="font-medium">{connection.justConnected}</span>
+        </div>
+      )}
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 mb-3 text-xs text-foreground">
+          {error}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+        <a
+          href="/api/auth/google-calendar/start"
+          className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted/40 transition-colors"
+        >
+          {connected ? "Connect a different Google account" : "Connect Google account"}
+        </a>
+        {connected && !usingSignIn && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={disconnect}
+            disabled={pending === "disconnecting"}
+          >
+            {pending === "disconnecting" && (
+              <Loader2 className="size-3.5 animate-spin" />
+            )}
+            Reset to sign-in account
+          </Button>
+        )}
+      </div>
+    </PlatformCard>
   )
 }
 

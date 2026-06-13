@@ -47,27 +47,50 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Google Calendar v3 with the user's identity later. Encrypted with
       // the same AES-256-GCM helper as api_tokens. Google only includes
       // refresh_token on the first consent — preserve any existing one
-      // when a later sign-in omits it (e.g. the user re-signed-in without
-      // a full consent screen).
+      // when a later sign-in omits it.
+      //
+      // IMPORTANT: if the user has explicitly connected a *different*
+      // Google account for Calendar via /api/auth/google-calendar/* (so
+      // google_calendar_email is set to an email other than this
+      // sign-in email), do NOT overwrite the stored tokens — that would
+      // silently undo their deliberate connection on every login. Their
+      // sign-in then has no Calendar access via this path, but the
+      // calendar-account path stays intact. Roy 2026-06-13.
       if (account?.provider === "google" && account.access_token) {
         try {
           const supabase = await createAdminClient()
-          const expiresAt =
-            typeof account.expires_at === "number"
-              ? new Date(account.expires_at * 1000).toISOString()
-              : null
-          const update: Record<string, string | null> = {
-            google_access_token: encrypt(account.access_token),
-            google_token_expires_at: expiresAt,
-          }
-          if (account.refresh_token) {
-            update.google_refresh_token = encrypt(account.refresh_token)
-          }
-          const { error } = await supabase
+
+          const { data: existing } = await supabase
             .from("users")
-            .update(update)
+            .select("google_calendar_email")
             .eq("email", email)
-          if (error) console.error("Supabase Google token persist error:", error)
+            .maybeSingle<{ google_calendar_email: string | null }>()
+          const linkedTo = existing?.google_calendar_email?.toLowerCase() ?? null
+          const customAccountLinked = linkedTo !== null && linkedTo !== email
+
+          if (!customAccountLinked) {
+            const expiresAt =
+              typeof account.expires_at === "number"
+                ? new Date(account.expires_at * 1000).toISOString()
+                : null
+            const update: Record<string, string | null> = {
+              google_access_token: encrypt(account.access_token),
+              google_token_expires_at: expiresAt,
+              // Stamp the calendar_email with the sign-in email so a
+              // later disconnect (`reset to sign-in account`) knows the
+              // tokens are "owned" by this account and the conditional
+              // above still works on subsequent logins.
+              google_calendar_email: email,
+            }
+            if (account.refresh_token) {
+              update.google_refresh_token = encrypt(account.refresh_token)
+            }
+            const { error } = await supabase
+              .from("users")
+              .update(update)
+              .eq("email", email)
+            if (error) console.error("Supabase Google token persist error:", error)
+          }
         } catch (err) {
           console.error("Failed to persist Google OAuth tokens:", err)
         }

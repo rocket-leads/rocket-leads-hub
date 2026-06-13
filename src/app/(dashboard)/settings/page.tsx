@@ -20,7 +20,13 @@ import { fetchSetupChecklist } from "@/lib/observability/setup-checklist"
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ tab?: string; slack_error?: string; slack?: string }>
+  searchParams?: Promise<{
+    tab?: string
+    slack_error?: string
+    slack?: string
+    google_calendar_error?: string
+    google_calendar_connected?: string
+  }>
 }) {
   const session = await auth()
   if (!session?.user?.id) redirect("/auth/signin")
@@ -31,11 +37,22 @@ export default async function SettingsPage({
 
   // Me tab - every signed-in user can see this. Lightweight: just their own
   // platform connections + Trengo channel subscriptions.
-  const [meConnections, meTrengoChannelIds] = await Promise.all([
+  const meSupabase = await createAdminClient()
+  const [meConnections, meTrengoChannelIds, googleCalendarRow] = await Promise.all([
     listUserPlatformConnections(session.user.id),
     getUserTrengoChannelIds(session.user.id),
+    meSupabase
+      .from("users")
+      .select("google_calendar_email, google_refresh_token")
+      .eq("id", session.user.id)
+      .maybeSingle<{
+        google_calendar_email: string | null
+        google_refresh_token: string | null
+      }>(),
   ])
   const meConnectionMap = Object.fromEntries(meConnections.map((c) => [c.platform, c]))
+  const calendarEmail = googleCalendarRow.data?.google_calendar_email ?? null
+  const calendarConnected = !!googleCalendarRow.data?.google_refresh_token
   const meTab = {
     userName: session.user.name ?? session.user.email,
     userEmail: session.user.email,
@@ -44,6 +61,15 @@ export default async function SettingsPage({
     monday: meConnectionMap.monday ?? null,
     trengoChannelIds: meTrengoChannelIds,
     slackError: params.slack_error ?? null,
+    googleCalendar: {
+      connectedEmail: calendarConnected ? calendarEmail : null,
+      isSignInAccount:
+        calendarConnected &&
+        calendarEmail !== null &&
+        calendarEmail.toLowerCase() === session.user.email.toLowerCase(),
+      error: params.google_calendar_error ?? null,
+      justConnected: params.google_calendar_connected ?? null,
+    },
   }
 
   // Non-admins only see the Me tab - skip every heavy admin fetch below.
