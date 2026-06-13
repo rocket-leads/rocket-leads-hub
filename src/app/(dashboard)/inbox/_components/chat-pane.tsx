@@ -28,6 +28,8 @@ import {
   ChevronDown,
   ListTodo,
   Sparkles,
+  Star,
+  Archive,
 } from "lucide-react"
 import { ActionIconButton } from "@/components/ui/action-icon-button"
 import { Button } from "@/components/ui/button"
@@ -78,12 +80,23 @@ type Props = {
   underTabsSlot?: React.ReactNode
 }
 
-type MarkAction = "mark_read" | "mark_unread"
-// Roy 2026-06-09: "Read" filter dropped. The Client Inbox AM only ever
-// wants "what's still red" (unread) and "everything" - a Read-only
-// filter was never the anchor view. Same minimalism as the Updates
-// strip in inbox-view.
-type ChatFilter = "all" | "unread"
+/** All thread-level triage signals share one server endpoint
+ *  (`PATCH /api/inbox/threads/{key}`) so they share the wire format
+ *  here. New entries need a corresponding optimistic update inside
+ *  `markThread` so the list reacts instantly. */
+type MarkAction =
+  | "mark_read"
+  | "mark_unread"
+  | "star"
+  | "unstar"
+  | "archive"
+  | "unarchive"
+  | "snooze"
+  | "unsnooze"
+/** Snoozed and archived join Unread + All as discoverable filter
+ *  buckets. Starred is a per-row icon toggle, not a filter view -
+ *  scope kept tight so the strip stays a clean 4-up. */
+type ChatFilter = "all" | "unread" | "snoozed" | "archived"
 
 /**
  * Two-pane chat view for the Team Inbox / Client Inbox tabs.
@@ -160,14 +173,57 @@ export function ChatPane({
   // Tab counts come off the unfiltered set - flipping to "Unread" shouldn't
   // make the Unread tab claim "0 unread" when there are still unread items
   // hiding behind the filter.
+  // Visibility helpers shared by the tab counts and the filter
+  // memo so the badges always match what the list actually renders.
+  // "Active" = the default Inbox-zero view: not archived, snooze
+  // already passed (or never set), and not claimed in Trengo (the
+  // server already drops claimed rows).
+  const nowMs = Date.now()
+  function isSnoozedThread(t: ChatThreadSummary): boolean {
+    if (!t.snoozedUntil) return false
+    return new Date(t.snoozedUntil).getTime() > nowMs
+  }
+  function isActiveThread(t: ChatThreadSummary): boolean {
+    return !t.isArchived && !isSnoozedThread(t)
+  }
+
   const tabCounts = useMemo(() => {
     let unread = 0
-    for (const t of threads) if (t.unreadCount > 0) unread += 1
-    return { all: threads.length, unread }
+    let snoozed = 0
+    let archived = 0
+    let active = 0
+    for (const t of threads) {
+      const snoozedNow = isSnoozedThread(t)
+      if (t.isArchived) archived += 1
+      else if (snoozedNow) snoozed += 1
+      else {
+        active += 1
+        if (t.unreadCount > 0) unread += 1
+      }
+    }
+    return { all: active, unread, snoozed, archived }
+    // nowMs is only sampled once per render so the count doesn't
+    // jitter mid-paint; reactive over `threads`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads])
 
   const filteredThreads = useMemo(() => {
-    const base = filter === "all" ? threads : threads.filter((t) => t.unreadCount > 0)
+    let base: ChatThreadSummary[]
+    switch (filter) {
+      case "snoozed":
+        base = threads.filter((t) => !t.isArchived && isSnoozedThread(t))
+        break
+      case "archived":
+        base = threads.filter((t) => t.isArchived)
+        break
+      case "all":
+        base = threads.filter(isActiveThread)
+        break
+      case "unread":
+      default:
+        base = threads.filter((t) => isActiveThread(t) && t.unreadCount > 0)
+        break
+    }
     const q = searchQuery.trim().toLowerCase()
     if (!q) return base
     // AND semantics across whitespace-separated words, same as the
@@ -234,30 +290,53 @@ export function ChatPane({
     return null
   }
 
-  /** Optimistically flip a thread's unread state and PATCH the server.
-   *  On failure we invalidate so the server's authoritative state wins.
-   *  When the user marks the currently-open thread as read, also advance
-   *  to the next unread thread (or land on the inbox-zero empty state
-   *  if there is none) - Roy 2026-06-12. */
-  function markThread(thread: ChatThreadSummary, action: MarkAction) {
-    const optimisticUnread = action === "mark_read" ? 0 : Math.max(thread.unreadCount, 1)
+  /** Optimistically apply a triage action to a thread and PATCH the
+   *  server. On failure we invalidate so the server's authoritative
+   *  state wins. Roy 2026-06-12: mark-read advances to the next
+   *  unread; 2026-06-13: star / archive / snooze are first-class
+   *  here too so the hover quick-actions feel instant. */
+  function markThread(
+    thread: ChatThreadSummary,
+    action: MarkAction,
+    payload?: { until?: string | null },
+  ) {
     queryClient.setQueryData<{ threads: ChatThreadSummary[] }>(
       ["inbox-threads", scope],
       (prev) => {
         if (!prev) return prev
         return {
-          threads: prev.threads.map((t) =>
-            t.threadKey === thread.threadKey ? { ...t, unreadCount: optimisticUnread } : t,
-          ),
+          threads: prev.threads.map((t) => {
+            if (t.threadKey !== thread.threadKey) return t
+            switch (action) {
+              case "mark_read":
+                return { ...t, unreadCount: 0 }
+              case "mark_unread":
+                return { ...t, unreadCount: Math.max(t.unreadCount, 1) }
+              case "star":
+                return { ...t, isStarred: true }
+              case "unstar":
+                return { ...t, isStarred: false }
+              case "archive":
+                return { ...t, isArchived: true }
+              case "unarchive":
+                return { ...t, isArchived: false }
+              case "snooze":
+                return { ...t, snoozedUntil: payload?.until ?? t.snoozedUntil }
+              case "unsnooze":
+                return { ...t, snoozedUntil: null }
+              default:
+                return t
+            }
+          }),
         }
       },
     )
 
-    // Advance when the user closed the OPEN ticket via mark-read. Bulk
-    // marks and list-row clicks (if either is ever re-added) deliberately
-    // skip this so they don't yank the selection out from under the user.
+    // Advance when the user closes the OPEN ticket via mark-read OR
+    // archive - both move the thread out of the Active view so the
+    // chat pane should automatically reach for the next unread.
     if (
-      action === "mark_read" &&
+      (action === "mark_read" || action === "archive") &&
       selected?.threadKey === thread.threadKey
     ) {
       const next = pickNextUnread(thread.threadKey)
@@ -272,7 +351,7 @@ export function ChatPane({
     fetch(`/api/inbox/threads/${encodeURIComponent(thread.threadKey)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, until: payload?.until }),
     })
       .then((res) => {
         if (!res.ok) throw new Error(`${action} failed (${res.status})`)
@@ -280,7 +359,7 @@ export function ChatPane({
         queryClient.invalidateQueries({ queryKey: ["inbox-thread", thread.threadKey] })
       })
       .catch((e) => {
-        console.error("Failed to update thread read state", e)
+        console.error("Failed to update thread triage state", e)
         queryClient.invalidateQueries({ queryKey: ["inbox-threads", scope] })
       })
   }
@@ -366,10 +445,13 @@ export function ChatPane({
 
   const filterTabs: TopTab<ChatFilter>[] = [
     // Roy 2026-06-09: Unread on the LEFT (anchor / default), All on the
-    // RIGHT (scan-everything fallback) - mirrors the Tasks + Updates
-    // strips so the chip positions feel consistent across tabs.
+    // RIGHT (scan-everything fallback). 2026-06-13: Snoozed + Archived
+    // join the strip so the triage actions on the row have a discoverable
+    // home for what they hide.
     { id: "unread", label: "Unread", icon: Mail, count: tabCounts.unread },
     { id: "all", label: "All conversations", icon: LayoutList, count: tabCounts.all },
+    { id: "snoozed", label: "Snoozed", icon: Clock3, count: tabCounts.snoozed },
+    { id: "archived", label: "Archived", icon: Inbox, count: tabCounts.archived },
   ]
 
   return (
@@ -461,7 +543,7 @@ function ThreadList({
   onToggleSelect: (key: string) => void
   onSelectAll: () => void
   onClearSelection: () => void
-  onMarkThread: (thread: ChatThreadSummary, action: MarkAction) => void
+  onMarkThread: (thread: ChatThreadSummary, action: MarkAction, payload?: { until?: string | null }) => void
   scope: ChatScope
   /** When true, the right edge of this panel butts up against the
    *  ThreadView panel - drop the right border-radius so the two cards
@@ -564,7 +646,7 @@ function ThreadList({
               isUnread={isUnread}
               onSelect={() => onSelect(thread)}
               onToggleCheck={() => onToggleSelect(thread.threadKey)}
-              onMark={(action) => onMarkThread(thread, action)}
+              onMark={(action, payload) => onMarkThread(thread, action, payload)}
             />
           )
         })}
@@ -588,7 +670,7 @@ function ThreadRow({
   isUnread: boolean
   onSelect: () => void
   onToggleCheck: () => void
-  onMark: (action: MarkAction) => void
+  onMark: (action: MarkAction, payload?: { until?: string | null }) => void
 }) {
   return (
     <div
@@ -648,8 +730,138 @@ function ThreadRow({
         ) : (
           <ChatListRowBody thread={thread} isUnread={isUnread} />
         )}
+
+        {/* Hover quick-actions on the right edge. Star stays pinned
+            when active so the AM sees which rows are starred at a
+            glance; the rest are hidden until hover so the row stays
+            calm. Each action stops propagation so clicking doesn't
+            select the row. */}
+        <ThreadRowQuickActions
+          thread={thread}
+          isUnread={isUnread}
+          onMark={onMark}
+        />
       </div>
     </div>
+  )
+}
+
+/**
+ * Right-edge stack of triage buttons on each thread row. Star pinned
+ * when active; mark-read / snooze / archive hover-revealed.
+ * Roy 2026-06-13: AMs want to clear marketing mail without opening
+ * each one — hover, click, gone.
+ */
+function ThreadRowQuickActions({
+  thread,
+  isUnread,
+  onMark,
+}: {
+  thread: ChatThreadSummary
+  isUnread: boolean
+  onMark: (action: MarkAction, payload?: { until?: string | null }) => void
+}) {
+  const isSnoozed =
+    thread.snoozedUntil != null &&
+    new Date(thread.snoozedUntil).getTime() > Date.now()
+
+  // 8 hours from now is the default snooze. Picking "later vandaag" is
+  // the dominant case for the marketing-mail / "deal with this after
+  // lunch" pattern; explicit until-picker stays a follow-up.
+  function snoozeLater() {
+    const until = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()
+    onMark("snooze", { until })
+  }
+
+  return (
+    <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
+      <RowActionButton
+        icon={
+          <Check
+            className={cn(
+              "h-3.5 w-3.5",
+              isUnread ? "text-emerald-600 dark:text-emerald-400" : "",
+            )}
+            strokeWidth={2.5}
+          />
+        }
+        label={isUnread ? "Markeer gelezen" : "Markeer ongelezen"}
+        onClick={(e) => {
+          e.stopPropagation()
+          onMark(isUnread ? "mark_read" : "mark_unread")
+        }}
+        alwaysVisible={false}
+      />
+      <RowActionButton
+        icon={
+          <Star
+            className={cn(
+              "h-3.5 w-3.5",
+              thread.isStarred ? "fill-amber-400 text-amber-400" : "",
+            )}
+          />
+        }
+        label={thread.isStarred ? "Unstar" : "Star"}
+        onClick={(e) => {
+          e.stopPropagation()
+          onMark(thread.isStarred ? "unstar" : "star")
+        }}
+        alwaysVisible={thread.isStarred}
+      />
+      <RowActionButton
+        icon={
+          <Clock3
+            className={cn(
+              "h-3.5 w-3.5",
+              isSnoozed ? "text-sky-600 dark:text-sky-400" : "",
+            )}
+          />
+        }
+        label={isSnoozed ? "Verwijder snooze" : "Snooze 8u"}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (isSnoozed) onMark("unsnooze")
+          else snoozeLater()
+        }}
+        alwaysVisible={isSnoozed}
+      />
+      <RowActionButton
+        icon={<Archive className="h-3.5 w-3.5" />}
+        label={thread.isArchived ? "Terug naar Inbox" : "Archiveer"}
+        onClick={(e) => {
+          e.stopPropagation()
+          onMark(thread.isArchived ? "unarchive" : "archive")
+        }}
+        alwaysVisible={false}
+      />
+    </div>
+  )
+}
+
+function RowActionButton({
+  icon,
+  label,
+  onClick,
+  alwaysVisible,
+}: {
+  icon: React.ReactNode
+  label: string
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void
+  alwaysVisible: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={cn(
+        "h-6 w-6 inline-flex items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-all",
+        alwaysVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+      )}
+    >
+      {icon}
+    </button>
   )
 }
 
@@ -964,7 +1176,7 @@ export function ThreadView({
   /** Mark-read/unread toggle. Lives on the open-conversation header
    *  (Roy 2026-06-12) instead of the list-row affordance it used to be -
    *  the action lives where the user is actually reading. */
-  onMarkThread?: (thread: ChatThreadSummary, action: MarkAction) => void
+  onMarkThread?: (thread: ChatThreadSummary, action: MarkAction, payload?: { until?: string | null }) => void
   /** True when the user just cleared the inbox via mark-read and no
    *  more unread threads remain - swaps the neutral "Select a
    *  conversation" placeholder for a celebratory all-caught-up state. */
@@ -1041,7 +1253,7 @@ function ThreadMessages({
   onReplied: () => void
   users?: InboxUser[]
   onMakeTaskFromMessage?: (args: { clientId: string; title: string; body?: string }) => void
-  onMarkThread?: (thread: ChatThreadSummary, action: MarkAction) => void
+  onMarkThread?: (thread: ChatThreadSummary, action: MarkAction, payload?: { until?: string | null }) => void
   mergedLeftEdge?: boolean
 }) {
   const queryClient = useQueryClient()

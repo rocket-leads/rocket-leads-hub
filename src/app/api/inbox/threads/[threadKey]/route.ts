@@ -4,6 +4,9 @@ import {
   getChatThreadMessages,
   markChatThreadRead,
   markChatThreadUnread,
+  setChatThreadArchived,
+  setChatThreadSnoozedUntil,
+  setChatThreadStarred,
 } from "@/lib/inbox/fetchers"
 
 /**
@@ -74,32 +77,75 @@ export async function PATCH(
     return NextResponse.json({ error: "threadKey required" }, { status: 400 })
   }
 
-  const body = (await req.json().catch(() => ({}))) as { action?: string }
-  if (body.action !== "mark_read" && body.action !== "mark_unread") {
+  const body = (await req.json().catch(() => ({}))) as {
+    action?: string
+    /** ISO timestamp for `snooze`. Required when action='snooze'; null
+     *  or omitted clears the snooze. */
+    until?: string | null
+  }
+  const action = body.action
+  const supportedActions = new Set([
+    "mark_read",
+    "mark_unread",
+    "star",
+    "unstar",
+    "archive",
+    "unarchive",
+    "snooze",
+    "unsnooze",
+  ])
+  if (!action || !supportedActions.has(action)) {
     return NextResponse.json({ error: "Unknown action" }, { status: 400 })
   }
 
+  const userId = session.user.id
+  const role = session.user.role ?? "member"
+
   try {
-    const result =
-      body.action === "mark_read"
-        ? await markChatThreadRead(
-            threadKey,
-            session.user.id,
-            session.user.role ?? "member",
+    let result: { updated: number } = { updated: 0 }
+    switch (action) {
+      case "mark_read":
+        result = await markChatThreadRead(threadKey, userId, role)
+        break
+      case "mark_unread":
+        result = await markChatThreadUnread(threadKey, userId, role)
+        break
+      case "star":
+        result = await setChatThreadStarred(threadKey, userId, role, true)
+        break
+      case "unstar":
+        result = await setChatThreadStarred(threadKey, userId, role, false)
+        break
+      case "archive":
+        result = await setChatThreadArchived(threadKey, userId, role, true)
+        break
+      case "unarchive":
+        result = await setChatThreadArchived(threadKey, userId, role, false)
+        break
+      case "snooze": {
+        // Validate the until timestamp before writing it - silently
+        // accepting null would clear the snooze (which is what
+        // `unsnooze` is for), and accepting garbage would corrupt the
+        // rollup. Require a parseable future ISO string.
+        const until = body.until ?? null
+        if (!until || isNaN(new Date(until).getTime())) {
+          return NextResponse.json(
+            { error: "snooze requires a valid `until` ISO timestamp" },
+            { status: 400 },
           )
-        : await markChatThreadUnread(
-            threadKey,
-            session.user.id,
-            session.user.role ?? "member",
-          )
+        }
+        result = await setChatThreadSnoozedUntil(threadKey, userId, role, until)
+        break
+      }
+      case "unsnooze":
+        result = await setChatThreadSnoozedUntil(threadKey, userId, role, null)
+        break
+    }
     return NextResponse.json({ ok: true, ...result })
   } catch (e) {
     return NextResponse.json(
       {
-        error:
-          e instanceof Error
-            ? e.message
-            : `Failed to ${body.action === "mark_read" ? "mark thread read" : "mark thread unread"}`,
+        error: e instanceof Error ? e.message : `Failed to ${action}`,
       },
       { status: 500 },
     )

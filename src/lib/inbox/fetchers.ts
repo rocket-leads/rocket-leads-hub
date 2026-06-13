@@ -646,6 +646,19 @@ export type ChatThreadSummary = {
   latestEventId: string
   totalCount: number
   unreadCount: number
+  /** Triage state derived per thread (Roy 2026-06-13):
+   *   - isStarred  : true when any row in the thread is starred
+   *   - isArchived : true when the LATEST row is archived (thread-level
+   *                  archive moves the whole conversation out of the
+   *                  Active inbox; an old archived ancestor + fresh new
+   *                  inbound un-archives at thread level naturally)
+   *   - snoozedUntil : max snoozed_until across the thread, or null when
+   *                    nothing is snoozed past now. Drives the client-side
+   *                    "Snoozed" filter and the "hide while snoozed"
+   *                    default in Active views. */
+  isStarred: boolean
+  isArchived: boolean
+  snoozedUntil: string | null
 }
 
 export type ChatMessage = {
@@ -695,6 +708,9 @@ type RawChatRow = {
   email_subject: string | null
   email_from: string | null
   status: string
+  starred: boolean | null
+  archived_at: string | null
+  snoozed_until: string | null
   created_at: string
   created_at_src: string | null
   trengo_channel_id: number | null
@@ -707,7 +723,7 @@ type RawChatRow = {
 const CHAT_SELECT = `
   id, source, scope, thread_key, client_id, author_id, assignee_id,
   author_kind, author_external, author_name_cached, title, body, body_html,
-  email_subject, email_from, status,
+  email_subject, email_from, status, starred, archived_at, snoozed_until,
   created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
@@ -974,6 +990,18 @@ async function groupAndDecorateChatRows(
       }
     }
     const unreadCount = threadRows.filter((r) => r.status === "unread").length
+    // Triage flags rolled up across the thread. isArchived follows the
+    // freshest row so a new inbound un-archives the thread naturally
+    // ("klant heeft op je archive geantwoord → back in inbox").
+    const isStarred = threadRows.some((r) => r.starred === true)
+    const isArchived = latest.archived_at != null
+    let snoozedUntil: string | null = null
+    for (const r of threadRows) {
+      if (!r.snoozed_until) continue
+      if (snoozedUntil == null || r.snoozed_until > snoozedUntil) {
+        snoozedUntil = r.snoozed_until
+      }
+    }
 
     // Resolve channel kind/name from the most recent Trengo channel id we
     // saw on this thread. Walk back through events because the latest one
@@ -1011,6 +1039,9 @@ async function groupAndDecorateChatRows(
       latestEventId: latest.id,
       totalCount: threadRows.length,
       unreadCount,
+      isStarred,
+      isArchived,
+      snoozedUntil,
     })
   }
 
@@ -1161,6 +1192,115 @@ export async function markChatThreadUnread(
   if (updErr) throw new Error(`Failed to mark thread unread: ${updErr.message}`)
 
   return { updated: 1 }
+}
+
+/**
+ * Visibility filter helper shared by the triage actions below. Returns
+ * the list of inbox_events ids in `threadKey` that the caller can
+ * actually act on - mirrors the channel-subscription + client-access
+ * gate the read path uses, so a user can't star/archive/snooze rows
+ * they couldn't see in the first place.
+ */
+async function visibleThreadEventIds(
+  supabase: Awaited<ReturnType<typeof createAdminClient>>,
+  threadKey: string,
+  userId: string,
+  role: Role,
+): Promise<string[]> {
+  let query = supabase
+    .from("inbox_events")
+    .select("id")
+    .eq("thread_key", threadKey)
+
+  const channelIds = await getUserTrengoChannelIds(userId)
+  if (channelIds.length > 0) {
+    query = query.or(
+      `trengo_channel_id.in.(${channelIds.join(",")}),source.neq.trengo`,
+    )
+  }
+  if (role !== "admin") {
+    const allowed = await getAllowedClientIds(userId, role)
+    if (allowed !== "all") {
+      const inClause = allowed.length > 0 ? `,client_id.in.(${allowed.join(",")})` : ""
+      const channelClause =
+        channelIds.length > 0 ? `,trengo_channel_id.in.(${channelIds.join(",")})` : ""
+      query = query.or(
+        `author_id.eq.${userId},assignee_id.eq.${userId}${inClause}${channelClause}`,
+      )
+    }
+  }
+
+  const { data, error } = await query
+  if (error) throw new Error(`Failed to load thread events: ${error.message}`)
+  return (data ?? []).map((r) => (r as { id: string }).id)
+}
+
+/**
+ * Star / unstar every event in a chat thread (Roy 2026-06-13 triage).
+ * Mirror-flip at the row level so the rolled-up `isStarred` thread
+ * flag toggles in lockstep.
+ */
+export async function setChatThreadStarred(
+  threadKey: string,
+  userId: string,
+  role: Role,
+  starred: boolean,
+): Promise<{ updated: number }> {
+  const supabase = await createAdminClient()
+  const ids = await visibleThreadEventIds(supabase, threadKey, userId, role)
+  if (ids.length === 0) return { updated: 0 }
+  const { error } = await supabase
+    .from("inbox_events")
+    .update({ starred })
+    .in("id", ids)
+  if (error) throw new Error(`Failed to update star: ${error.message}`)
+  return { updated: ids.length }
+}
+
+/**
+ * Archive / un-archive every event in a chat thread. Archived rows
+ * stop showing in the Active inbox views; the rollup uses LATEST
+ * row's archived_at so a fresh inbound on an archived thread naturally
+ * pops it back into the inbox.
+ */
+export async function setChatThreadArchived(
+  threadKey: string,
+  userId: string,
+  role: Role,
+  archived: boolean,
+): Promise<{ updated: number }> {
+  const supabase = await createAdminClient()
+  const ids = await visibleThreadEventIds(supabase, threadKey, userId, role)
+  if (ids.length === 0) return { updated: 0 }
+  const { error } = await supabase
+    .from("inbox_events")
+    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .in("id", ids)
+  if (error) throw new Error(`Failed to update archive: ${error.message}`)
+  return { updated: ids.length }
+}
+
+/**
+ * Snooze a chat thread until `until` (ISO timestamp) or clear the
+ * snooze when `until` is null. Stamps every row so the rollup-MAX
+ * inside groupAndDecorate sees the snooze regardless of which row
+ * is the latest.
+ */
+export async function setChatThreadSnoozedUntil(
+  threadKey: string,
+  userId: string,
+  role: Role,
+  until: string | null,
+): Promise<{ updated: number }> {
+  const supabase = await createAdminClient()
+  const ids = await visibleThreadEventIds(supabase, threadKey, userId, role)
+  if (ids.length === 0) return { updated: 0 }
+  const { error } = await supabase
+    .from("inbox_events")
+    .update({ snoozed_until: until })
+    .in("id", ids)
+  if (error) throw new Error(`Failed to update snooze: ${error.message}`)
+  return { updated: ids.length }
 }
 
 export async function getChatThreadMessages(
