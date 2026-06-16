@@ -740,12 +740,13 @@ export async function POST(
         (variant.headline?.trim() || "") ||
         (variant.hook ?? "").split(/[.!?]\s/)[0]?.slice(0, 80) ||
         ""
-      const altTitles = Array.isArray(variant.alt_headlines)
-        ? variant.alt_headlines.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-        : []
-      const altBodies = Array.isArray(variant.alt_primary_texts)
-        ? variant.alt_primary_texts.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-        : []
+      // Roy 2026-06-16: NO dynamic creative. Push each slot as a single
+      // ad with 1 body + 1 title (link_data only, no asset_feed_spec).
+      // Variation comes from the 3 slots themselves (different image +
+      // angle per slot), not from Meta permuting texts within one ad.
+      // Pedro still produces alt_headlines / alt_primary_texts, but we
+      // ignore them on the push - they remain available in the proposal
+      // for the CM to reference manually if needed.
       const { creativeId } = await createAdCreative({
         adAccountId: clientRow.meta_ad_account_id,
         name: adName,
@@ -774,9 +775,6 @@ export async function POST(
         // same instant form. Roy 2026-06-10.
         instagramActorId: winnerLive.instagramActorId || undefined,
         leadGenFormId: winnerLive.leadGenFormId || undefined,
-        // Multi-variant copy → asset_feed_spec for dynamic creative.
-        altTitles: altTitles.length > 0 ? altTitles : undefined,
-        altBodies: altBodies.length > 0 ? altBodies : undefined,
       })
       // 8d. Ad
       const { adId } = await createAd({

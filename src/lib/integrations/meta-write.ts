@@ -305,7 +305,7 @@ async function postToMeta<T>(path: string, body: Record<string, unknown>): Promi
       `user_title=${(err.error_user_title ?? "").slice(0, 200)}`,
       `user_msg=${(err.error_user_msg ?? "").slice(0, 400)}`,
       `error_data=${JSON.stringify(err.error_data ?? {}).slice(0, 400)}`,
-      `payload=${JSON.stringify(payloadForLog).slice(0, 800)}`,
+      `payload=${JSON.stringify(payloadForLog).slice(0, 4000)}`,
     )
     const verbose = bestMetaErrorMessage(err)
     const message = explainMetaError(verbose, err.code, err.error_subcode)
@@ -470,6 +470,12 @@ export type MetaAdSetTemplate = {
   startTime: string | null
   endTime: string | null
   publisherPlatforms: string[] | null
+  /** Whether the source ad set is configured for Dynamic Creative
+   *  (asset_feed_spec). When the source is dynamic, the cloned ad set
+   *  MUST also be dynamic — otherwise Meta rejects ads with subcode
+   *  1885998 ("Cannot create dynamic creative ad in non-dynamic
+   *  creative ad set"). Roy 2026-06-16. */
+  isDynamicCreative: boolean
 }
 
 export async function fetchAdSetTemplate(adsetId: string): Promise<MetaAdSetTemplate> {
@@ -486,6 +492,7 @@ export async function fetchAdSetTemplate(adsetId: string): Promise<MetaAdSetTemp
     "promoted_object",
     "start_time",
     "end_time",
+    "is_dynamic_creative",
   ].join(",")
   const res = await fetch(
     `${META_API_BASE}/${adsetId}?fields=${fields}&access_token=${token}`,
@@ -521,6 +528,7 @@ export async function fetchAdSetTemplate(adsetId: string): Promise<MetaAdSetTemp
     promoted_object?: Record<string, unknown>
     start_time?: string
     end_time?: string
+    is_dynamic_creative?: boolean
   }
 
   // Pull publisher_platforms out of targeting for easier UI display;
@@ -544,6 +552,7 @@ export async function fetchAdSetTemplate(adsetId: string): Promise<MetaAdSetTemp
     startTime: json.start_time ?? null,
     endTime: json.end_time ?? null,
     publisherPlatforms,
+    isDynamicCreative: json.is_dynamic_creative === true,
   }
   // Roy 2026-06-14: log which fields Meta actually populated. When key
   // fields (targeting / bid_strategy / optimization_goal) come back
@@ -561,6 +570,7 @@ export async function fetchAdSetTemplate(adsetId: string): Promise<MetaAdSetTemp
     `optimizationGoal=${template.optimizationGoal ?? "NULL"}`,
     `destinationType=${template.destinationType ?? "NULL"}`,
     `promotedObject=${template.promotedObject ? "yes" : "NULL"}`,
+    `isDynamicCreative=${template.isDynamicCreative}`,
   )
   return template
 }
@@ -683,6 +693,10 @@ export async function createAdSet(args: {
   if (args.template.destinationType) body.destination_type = args.template.destinationType
   if (args.template.promotedObject) body.promoted_object = args.template.promotedObject
   if (args.template.targeting) body.targeting = args.template.targeting
+  // Roy 2026-06-16: keep the new ad set NON-dynamic by default. Pedro
+  // pushes single-copy ads (link_data only). Variation = 3 slots × 1
+  // ad each. Dynamic ad sets aren't needed and add UI confusion in Ads
+  // Manager. CM can still convert to dynamic in Ads Manager if wanted.
   // Roy 2026-06-10: NIET de winner's start_time / end_time overnemen.
   // De AM stelt het schema in tijdens de pre-launch review in Meta
   // Ads Manager. Inheriten zou de nieuwe ad set met een verlopen
@@ -822,10 +836,20 @@ export async function createAdCreative(args: {
   // type — without one, Meta has no way to surface the form. Default to
   // SIGN_UP when leadGenFormId is set but the source didn't carry a
   // CTA type (common when the source itself was deeply customised in
-  // Ads Manager). Non-lead-gen ads keep their explicit CTA or none at all.
+  // Ads Manager).
+  //
+  // Roy 2026-06-16: Non-lead-gen ads (landing page conversions) ALSO
+  // need a CTA on OUTCOME_LEADS / OUTCOME_TRAFFIC campaigns — Meta's
+  // object_story_spec validator rejects creatives without one as
+  // "ill-formed". The Diamondflame TMM case hit this: template was a
+  // landing-page-conversions ad with implicit CTA in Ads Manager, the
+  // snapshot didn't carry it across, and our payload had no
+  // call_to_action at all. Default to LEARN_MORE for non-lead-gen —
+  // it's the safest universal CTA across objectives and Meta auto-fits
+  // the button copy ("Meer informatie") to the locale.
   const effectiveCtaType =
     args.callToActionType ||
-    (args.leadGenFormId ? "SIGN_UP" : undefined)
+    (args.leadGenFormId ? "SIGN_UP" : "LEARN_MORE")
 
   // Choose CTA value - lead form id wins when present (Meta replaces
   // the link with the form modal); otherwise the destination link.
@@ -844,19 +868,14 @@ export async function createAdCreative(args: {
   }
   if (urlTags) creativeBody.url_tags = urlTags
 
-  // Roy 2026-06-15: Meta's API v20.0 silently rejects creatives on
-  // newer accounts when `degrees_of_freedom_spec` is missing. Setting
-  // standard_enhancements to OPT_OUT explicitly tells Meta we don't
-  // want Advantage+ creative auto-changes (which Pedro doesn't control).
-  // Without this field, accounts that have Advantage+ enabled at the
-  // account level get the generic "object_story_spec is ill-formed"
-  // error even though every other field is correct. Diamondflame's TMM
-  // case hit this exact issue.
-  creativeBody.degrees_of_freedom_spec = {
-    creative_features_spec: {
-      standard_enhancements: { enroll_status: "OPT_OUT" },
-    },
-  }
+  // Roy 2026-06-16: NO degrees_of_freedom_spec.standard_enhancements.
+  // Meta deprecated that field; sending it triggers code=100
+  // subcode=3858504 ("Creative should not include standard enhancements
+  // ... has been deprecated"). Meta now expects per-feature opt-outs
+  // (image_enhancement / text_optimisations / etc.) but we genuinely
+  // don't need to set any of them - account-level Advantage+ settings
+  // apply by default. Leaving the whole degrees_of_freedom_spec out is
+  // the correct path for our use case.
 
   // Always send object_story_spec - it's required even for asset-feed
   // creatives as the "fallback" identity (page + IG actor).
@@ -888,17 +907,12 @@ export async function createAdCreative(args: {
       if (assetFeedSpec[k] === undefined) delete assetFeedSpec[k]
     }
     creativeBody.asset_feed_spec = assetFeedSpec
-    // Fallback object_story_spec - uses the FIRST body/title so the
-    // creative still has a renderable preview if Meta can't yet permute.
-    const linkData: Record<string, unknown> = {
-      image_hash: args.imageHash,
-      link: effectiveLinkUrl,
-      message: allBodies[0] ?? "",
-    }
-    if (allTitles[0]) linkData.name = allTitles[0]
-    if (args.description) linkData.description = args.description
-    if (callToAction) linkData.call_to_action = callToAction
-    objectStorySpec.link_data = linkData
+    // Roy 2026-06-16: in asset_feed_spec mode, object_story_spec MUST
+    // contain ONLY page_id (+ optional instagram_actor_id). Adding
+    // link_data here triggers Meta error code 100 subcode 1443048
+    // ("object_story_spec param is invalid"). Even though Meta's docs
+    // suggest both can co-exist as fallback, real-world behaviour on
+    // v20.0 is strict rejection. Diamondflame TMM push proved this.
     creativeBody.object_story_spec = objectStorySpec
   } else {
     // Single-copy creative - classic link_data only.
@@ -932,7 +946,7 @@ export async function createAdCreative(args: {
     `titleLen=${(args.title ?? "").length}`,
     `descLen=${(args.description ?? "").length}`,
     `dynamicCreative=${dynamicCreative}`,
-    `payload=${JSON.stringify(creativeBody).slice(0, 1500)}`,
+    `payload=${JSON.stringify(creativeBody).slice(0, 4000)}`,
   )
 
   const json = await postToMeta<{ id?: string }>(
