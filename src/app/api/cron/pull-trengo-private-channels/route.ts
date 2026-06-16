@@ -115,6 +115,10 @@ type EventToInsert = {
    *  `noreply@vueling.com` next to the display name and the AM can spot
    *  phishing at a glance. Null for non-email rows. */
   emailFrom: string | null
+  /** Contact's phone number, for WhatsApp tickets. Same purpose as
+   *  `emailFrom` — surface the real identifier next to the display name
+   *  so the AM can verify who they're talking to. Null for email rows. */
+  contactPhone: string | null
   authorKind: "rl_team" | "client"
   authorName: string
   createdAtSrc: string
@@ -212,6 +216,10 @@ function eventsFromMessageList(
       authorKind === "client"
         ? contact?.name ?? m.author?.name ?? "Unknown"
         : m.author?.name ?? contact?.name ?? "Unknown"
+    const contactPhone =
+      typeof contact?.phone === "string" && contact.phone.trim().length > 0
+        ? contact.phone.trim()
+        : null
     out.push({
       sourceMsgId: `trengo:msg:${m.id}`,
       channelId,
@@ -222,6 +230,7 @@ function eventsFromMessageList(
       bodyHtml,
       emailSubject,
       emailFrom,
+      contactPhone,
       authorKind,
       authorName,
       createdAtSrc: m.created_at,
@@ -338,6 +347,7 @@ async function insertEvents(
       body_html: e.bodyHtml,
       email_subject: e.emailSubject,
       email_from: e.emailFrom,
+      contact_phone: e.contactPhone,
       status,
       source: "trengo",
       source_thread: `trengo:ticket:${e.ticketId}`,

@@ -79,7 +79,7 @@ export type TrengoConversation = {
   status: string
   subject: string | null
   channel: TrengoChannel | null
-  contact: { id: number; name: string; email?: string } | null
+  contact: { id: number; name: string; email?: string; phone?: string | null } | null
   /** Trengo's /tickets list endpoint returns activity timestamps, NOT a
    *  `latest_message` object. The shape they document on GET /tickets:
    *    - latest_message_at         "YYYY-MM-DD HH:mm:ss" (any direction)
@@ -278,70 +278,52 @@ export async function sendEmailToAddressAsUser(args: {
   const { userToken, channelId, email, name, subject, body } = args
   const displayName = name ?? email
 
-  // Each candidate is a different shape of body that `POST /v2/tickets`
-  // might accept. We try them in order; first 2xx that returns a ticket
-  // id wins. Trengo's API doesn't document the exact shape for "create
-  // ticket by identifier" — these are the three most likely patterns
-  // based on how their other endpoints (wa_sessions, contacts, ticket
-  // responses) are structured.
-  const candidates: Array<Record<string, unknown>> = [
-    // Nested contact - mirrors the GET /tickets response shape.
-    {
+  // Try the single most-likely body shape — nested `contact` object,
+  // which mirrors the GET /tickets response. If Trengo doesn't accept
+  // it on this workspace, fall back to the legacy 2-step flow.
+  // Previously we iterated 3 candidate shapes back-to-back, but every
+  // failed shape burned a rate-limited API call (each user-token gets
+  // ~30 calls/min on Trengo's free tier), and after a few sends we'd
+  // hit 429s that wedged everything. Roy 2026-06-16.
+  const directRes = await fetch(`https://app.trengo.com/api/v2/tickets`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${userToken}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
       channel_id: channelId,
       subject,
       contact: { email, name: displayName },
-    },
-    // Flat fields - same convention as wa_sessions' recipient_phone_number.
-    {
-      channel_id: channelId,
-      subject,
-      contact_email: email,
-      contact_name: displayName,
-    },
-    // Generic identifier - some Trengo endpoints accept this for any
-    // channel type.
-    {
-      channel_id: channelId,
-      subject,
-      identifier: email,
-      contact_name: displayName,
-    },
-  ]
-
-  let lastErr = ""
-  let lastStatus = 0
-  for (const payload of candidates) {
-    const res = await fetch(`https://app.trengo.com/api/v2/tickets`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${userToken}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(payload),
-    })
-    if (res.ok) {
-      const json = (await res.json()) as {
-        id?: number | string
-        ticket_id?: number | string
-        data?: { id?: number | string; ticket_id?: number | string }
-      }
-      const ticketId =
-        json.id ?? json.ticket_id ?? json.data?.id ?? json.data?.ticket_id
-      if (ticketId) {
-        return sendBodyIntoTicket({ userToken, ticketId: String(ticketId), subject, body })
-      }
-    } else {
-      lastStatus = res.status
-      lastErr = await res.text().catch(() => "")
+    }),
+  })
+  if (directRes.ok) {
+    const json = (await directRes.json()) as {
+      id?: number | string
+      ticket_id?: number | string
+      data?: { id?: number | string; ticket_id?: number | string }
+    }
+    const ticketId =
+      json.id ?? json.ticket_id ?? json.data?.id ?? json.data?.ticket_id
+    if (ticketId) {
+      return sendBodyIntoTicket({ userToken, ticketId: String(ticketId), subject, body })
     }
   }
+  // 429 → fail loud rather than burning another call on the fallback
+  // flow. The user needs to wait for the rate-limit to clear, not pile
+  // on more requests.
+  if (directRes.status === 429) {
+    throw new Error(
+      "Trengo rate limit (429): te veel API-calls in een korte tijd. Wacht een minuut en probeer opnieuw.",
+    )
+  }
+  const directErr = directRes.ok ? "" : await directRes.text().catch(() => "")
+  const directStatus = directRes.status
 
-  // Direct shapes all rejected — fall back to the legacy 2-step flow.
-  // findOrCreateTrengoEmailContact now prefers channel-scoped lookups
-  // first, so this still avoids the privacy-mismatch most of the time;
-  // the surfaced error mentions which path we tried last so the AM
-  // sees something actionable rather than "unknown".
+  // Fall back to the legacy 2-step flow (find-or-create contact, then
+  // create ticket with that contact_id). findOrCreateTrengoEmailContact
+  // does its own 429 bail-out, so we don't compound rate-limit pressure.
   try {
     const contact = await findOrCreateTrengoEmailContact({
       userToken,
@@ -359,7 +341,7 @@ export async function sendEmailToAddressAsUser(args: {
   } catch (e) {
     const fallbackMsg = e instanceof Error ? e.message : String(e)
     throw new Error(
-      `Trengo email-send failed via every shape we know. Last direct-send response (${lastStatus}): ${lastErr.slice(0, 200)}. Fallback flow: ${fallbackMsg.slice(0, 300)}`,
+      `Trengo email-send failed. Direct ticket-create (${directStatus}): ${directErr.slice(0, 150)}. Contact-then-ticket fallback: ${fallbackMsg.slice(0, 200)}`,
     )
   }
 }
@@ -814,6 +796,12 @@ export async function findOrCreateTrengoEmailContact(args: {
       },
     },
   )
+  // 429 → bail immediately so we don't compound the rate-limit.
+  if (scopedSearch.status === 429) {
+    throw new Error(
+      "Trengo rate limit (429) op contact-search. Wacht een minuut.",
+    )
+  }
   if (scopedSearch.ok) {
     const json = (await scopedSearch.json()) as {
       data?: Array<{ id?: number | string; email?: string; channel_id?: number | string }>
@@ -845,6 +833,11 @@ export async function findOrCreateTrengoEmailContact(args: {
       body: JSON.stringify({ email, name: name ?? email }),
     },
   )
+  if (scopedCreate.status === 429) {
+    throw new Error(
+      "Trengo rate limit (429) op channel-scoped contact-create. Wacht een minuut.",
+    )
+  }
   if (scopedCreate.ok) {
     const json = (await scopedCreate.json()) as {
       id?: number | string
@@ -871,6 +864,11 @@ export async function findOrCreateTrengoEmailContact(args: {
       name: name ?? email,
     }),
   })
+  if (createRes.status === 429) {
+    throw new Error(
+      "Trengo rate limit (429) op global contact-create. Wacht een minuut.",
+    )
+  }
   if (createRes.ok) {
     const json = (await createRes.json()) as {
       id?: number | string
@@ -880,24 +878,9 @@ export async function findOrCreateTrengoEmailContact(args: {
     if (id != null) return { id: Number(id) }
   }
 
-  const searchRes = await fetch(
-    `https://app.trengo.com/api/v2/contacts?term=${encodeURIComponent(email)}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${userToken}`,
-        Accept: "application/json",
-      },
-    },
-  )
-  if (searchRes.ok) {
-    const json = (await searchRes.json()) as {
-      data?: Array<{ id?: number | string; email?: string }>
-    }
-    const match = json.data?.find((c) => c.email === email)
-    if (match?.id != null) return { id: Number(match.id) }
-  }
-
+  // Skip the redundant global search — `scopedSearch` above already
+  // checks workspace-wide when Trengo ignores the channel filter, so
+  // a separate search call is just another 429-risk for the same data.
   const errText = await createRes.text().catch(() => "")
   throw new Error(
     `Couldn't find or create a Trengo contact for ${email}: ${errText.slice(0, 200)}`,

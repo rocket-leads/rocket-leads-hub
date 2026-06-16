@@ -1818,6 +1818,21 @@ function ThreadMessages({
               )}
             </p>
           )}
+          {/* Contact's actual envelope address / phone number — Trengo's
+              primaryName is often a display name ("Fons") with no
+              indication of the underlying email or phone. Surface the
+              raw identifier here so the AM can spot phishing / wrong-
+              recipient at a glance. */}
+          {thread.channelKind === "email" && thread.contactEmail && (
+            <p className="text-[11px] text-muted-foreground/60 truncate font-mono">
+              {thread.contactEmail}
+            </p>
+          )}
+          {thread.channelKind === "whatsapp" && thread.contactPhone && (
+            <p className="text-[11px] text-muted-foreground/60 truncate font-mono">
+              {thread.contactPhone}
+            </p>
+          )}
           {/* Unlinked threads (Trengo contact has no matching Hub client)
               get an inline "Link to client" picker so the AM can attach
               the conversation without leaving the inbox. Hidden once a

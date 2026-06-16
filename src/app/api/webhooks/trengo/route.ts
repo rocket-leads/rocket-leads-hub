@@ -100,6 +100,11 @@ type NormalizedPayload = {
   emailSubject: string | null
   emailFrom: string | null
   bodyHtml: string | null
+  /** Contact's phone number — present on WhatsApp tickets where Trengo
+   *  carries `ticket.contact.phone`. Stored on inbox_events.contact_phone
+   *  so the chat-pane header can show "Fons · +31 6 …" without a
+   *  separate contact-fetch round-trip. Null for email / non-Trengo. */
+  contactPhone: string | null
   /** Original parsed payload - stored on the row's `raw` field for debugging. */
   raw: Record<string, unknown>
 }
@@ -156,6 +161,10 @@ function parseFormPayload(body: string): NormalizedPayload | null {
     emailSubject: null,
     emailFrom: null,
     bodyHtml: null,
+    // Form payloads also don't carry contact metadata beyond contact_id /
+    // contact_name. Phone arrives only on JSON payloads via
+    // `ticket.contact.phone`.
+    contactPhone: null,
     raw: Object.fromEntries(params.entries()),
   }
 }
@@ -165,7 +174,7 @@ type LegacyJsonPayload = {
   type?: string
   ticket?: {
     id?: number | string
-    contact?: { id?: number | string; name?: string }
+    contact?: { id?: number | string; name?: string; phone?: string | null }
     channel?: { id?: number | string; name?: string; type?: string }
     channel_id?: number | string
   }
@@ -219,6 +228,10 @@ function parseJsonPayload(body: string): NormalizedPayload | null {
 
   const contactId = String(ticket.contact?.id ?? "")
   const contactName = ticket.contact?.name ?? null
+  const contactPhone =
+    typeof ticket.contact?.phone === "string" && ticket.contact.phone.trim().length > 0
+      ? ticket.contact.phone.trim()
+      : null
 
   // Pull the email envelope when Trengo's payload carried one. Mirrors
   // the polling cron's extraction so webhook-ingested email rows land
@@ -252,6 +265,7 @@ function parseJsonPayload(body: string): NormalizedPayload | null {
     emailSubject,
     emailFrom,
     bodyHtml,
+    contactPhone,
     raw: p as unknown as Record<string, unknown>,
   }
 }
@@ -571,6 +585,7 @@ export async function POST(req: NextRequest) {
       body_html: payload.bodyHtml,
       email_subject: payload.emailSubject,
       email_from: payload.emailFrom,
+      contact_phone: payload.contactPhone,
       status,
       priority,
       source: "trengo",

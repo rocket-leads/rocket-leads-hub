@@ -41,6 +41,10 @@ export type TrengoIdentity = {
   hasEmail: boolean
   hasWhatsapp: boolean
   error: string | null
+  /** True when the latest validate-call returned a transient error
+   *  (429 / 5xx / network). The token is still valid; the banner
+   *  should stay hidden and the poll will retry on the next tick. */
+  transient?: boolean
 }
 
 export async function GET() {
@@ -131,6 +135,25 @@ export async function GET() {
       cache: "no-store",
     })
     if (!validateRes.ok) {
+      // 429 / transient 5xx / network are NOT "token rejected" — the
+      // token is still valid, Trengo's just rate-limiting or briefly
+      // down. Don't pop the alarming red banner; return a `null` error
+      // so the banner stays hidden and the next 1-minute poll retries.
+      // Roy 2026-06-16: the validator's 429 was scaring users into
+      // re-pasting their token even though it was fine.
+      const transient = [408, 425, 429, 500, 502, 503, 504].includes(validateRes.status)
+      if (transient) {
+        return NextResponse.json<TrengoIdentity>({
+          connected: true,
+          trengoUser: null,
+          channelIds,
+          channels,
+          hasEmail,
+          hasWhatsapp,
+          error: null,
+          transient: true,
+        })
+      }
       const text = await validateRes.text().catch(() => "")
       error = `Trengo token rejected (${validateRes.status}): ${text.slice(0, 200) || "no body"}`
       return NextResponse.json<TrengoIdentity>({

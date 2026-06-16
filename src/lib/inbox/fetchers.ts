@@ -644,6 +644,18 @@ export type ChatThreadSummary = {
    *  Roy 2026-06-13: email rows should headline the subject, not the
    *  body preview - subject is the actual "what is this" signal. */
   latestSubject: string | null
+  /** Contact's email address — the most recent inbound `email_from` we
+   *  saw on the thread. Surfaced in the chat-pane header so the AM
+   *  knows who they're replying to (Trengo's primaryName can be a
+   *  display name; the actual envelope address lives here). Null for
+   *  WhatsApp threads and email threads with no inbound mail yet
+   *  (e.g. a freshly-started outbound). */
+  contactEmail: string | null
+  /** Contact's phone number — most recent `contact_phone` we saw on
+   *  the thread. WhatsApp counterpart of `contactEmail`; lets the AM
+   *  see the raw +31... number under the display name instead of just
+   *  "Fons". Null for email / non-Trengo / legacy rows. */
+  contactPhone: string | null
   /** Most recent message timestamp (uses created_at_src when available). */
   latestAt: string
   /** Latest event id - used by the reply UI to derive source/thread metadata. */
@@ -711,6 +723,7 @@ type RawChatRow = {
   body_html: string | null
   email_subject: string | null
   email_from: string | null
+  contact_phone: string | null
   status: string
   starred: boolean | null
   archived_at: string | null
@@ -727,7 +740,7 @@ type RawChatRow = {
 const CHAT_SELECT = `
   id, source, scope, thread_key, client_id, author_id, assignee_id,
   author_kind, author_external, author_name_cached, title, body, body_html,
-  email_subject, email_from, status, starred, archived_at, snoozed_until,
+  email_subject, email_from, contact_phone, status, starred, archived_at, snoozed_until,
   created_at, created_at_src, trengo_channel_id, trengo_assignee_user_id, is_internal,
   author:users!inbox_items_author_id_fkey(id, name, email),
   assignee:users!inbox_items_assignee_id_fkey(id, name, email)
@@ -992,12 +1005,22 @@ async function groupAndDecorateChatRows(
     // row can headline it. Walk newest-first since `threadRows` is
     // already DESC by created_at; the first non-empty subject wins.
     let latestSubject: string | null = null
+    let contactEmail: string | null = null
+    let contactPhone: string | null = null
     for (const r of threadRows) {
-      const s = r.email_subject?.trim()
-      if (s) {
-        latestSubject = s
-        break
+      if (!latestSubject) {
+        const s = r.email_subject?.trim()
+        if (s) latestSubject = s
       }
+      if (!contactEmail) {
+        const f = r.email_from?.trim()
+        if (f) contactEmail = f
+      }
+      if (!contactPhone) {
+        const p = r.contact_phone?.trim()
+        if (p) contactPhone = p
+      }
+      if (latestSubject && contactEmail && contactPhone) break
     }
     const unreadCount = threadRows.filter((r) => r.status === "unread").length
     // Triage flags rolled up across the thread. isArchived follows the
@@ -1081,6 +1104,8 @@ async function groupAndDecorateChatRows(
       trengoChannelId,
       latestPreview,
       latestSubject,
+      contactEmail,
+      contactPhone,
       latestAt: rowDisplayAt(latest),
       latestEventId: latest.id,
       totalCount: threadRows.length,
