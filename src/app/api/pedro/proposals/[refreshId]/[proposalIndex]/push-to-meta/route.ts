@@ -8,6 +8,8 @@ import {
   createAdSet,
   createAdCreative,
   createAd,
+  assertWriteScopes,
+  summariseTemplate,
 } from "@/lib/integrations/meta-write"
 import {
   fetchMetaAdDetails,
@@ -79,6 +81,137 @@ type Body = {
     templateAdId?: string
     templateAdName?: string
   }
+  /** Roy 2026-06-14: inline retry overrides — the CM can tweak these
+   *  in the modal after a Meta failure and push again without leaving.
+   *  Each is optional; absent = inherit from winner template. */
+  /** Wipe all targeting (geo/age/gender/interests/audiences). Let Meta
+   *  Advantage+ pick the audience from scratch. Useful when winner's
+   *  targeting references a deleted custom audience or expired filter. */
+  stripTargeting?: boolean
+  /** Override bid_strategy (e.g. "LOWEST_COST_WITHOUT_CAP",
+   *  "LOWEST_COST_WITH_BID_CAP", "COST_CAP", "LOWEST_COST_WITH_MIN_ROAS"). */
+  bidStrategy?: string
+  /** Override optimization_goal (e.g. "OFFSITE_CONVERSIONS",
+   *  "LINK_CLICKS", "LEAD_GENERATION", "IMPRESSIONS"). */
+  optimizationGoal?: string
+  /** Roy 2026-06-15: CM-provided landing page URL. For "Landing page
+   *  conversions" winners the Marketing API sometimes returns an empty
+   *  linkUrl even when the ad has a real landing page (creative type
+   *  variant Meta API doesn't fully expose). When this is set, it wins
+   *  over the resolved winnerLive.linkUrl so the new ads route to the
+   *  right destination. */
+  linkUrl?: string
+}
+
+/** Hints we attach to error responses so the modal knows which input
+ *  to highlight + what to suggest. Roy 2026-06-14. */
+type ParamHint = {
+  /** The field the CM can change in the modal to retry.
+   *  - `daily_budget` → highlight the budget input
+   *  - `adset_name` → highlight the name input
+   *  - `targeting` → suggest stripTargeting toggle
+   *  - `bid_strategy` → suggest bid strategy dropdown
+   *  - `optimization_goal` → suggest optimization goal dropdown */
+  field: "daily_budget" | "adset_name" | "targeting" | "bid_strategy" | "optimization_goal"
+  /** Optional suggested value (e.g. a budget number Meta hinted at). */
+  suggested?: string | number
+  /** One-line CM-facing reason ("Daily budget too low — Meta vereist
+   *  minimaal €5/dag voor dit accent type"). */
+  reason: string
+}
+
+/** Extract a ParamHint from a Meta error message + the original payload.
+ *  Best-effort pattern match — runs on the verbose Dutch error string
+ *  the API builds + the raw Meta `error_user_msg` when available.
+ *
+ *  Roy 2026-06-14: short-circuit when the actual error is Lead Gen TOS.
+ *  Otherwise we'd fire false targeting / bid / optimization hints which
+ *  send the CM down the wrong rabbit hole. */
+function extractParamHints(rawMessage: string): ParamHint[] {
+  const lc = rawMessage.toLowerCase()
+  // Lead Gen TOS is its own fix path — no inline override helps.
+  if (
+    lc.includes("terms of service not accepted") ||
+    lc.includes("lead generation terms") ||
+    lc.includes("lead ads terms") ||
+    lc.includes("leadgen tos")
+  ) {
+    return []
+  }
+  // object_story_spec / creative failures are downstream of createAdSet —
+  // ad-set override dropdowns won't help. Roy 2026-06-14.
+  if (lc.includes("object_story_spec") || lc.includes("object story spec")) {
+    return []
+  }
+  const hints: ParamHint[] = []
+  // Budget — Meta usually says "daily budget too low/high" or names a
+  // minimum / maximum. Try to extract the number.
+  if (
+    lc.includes("daily budget") ||
+    lc.includes("dagbudget") ||
+    lc.includes("minimum daily") ||
+    lc.includes("minimum budget")
+  ) {
+    const euros = rawMessage.match(/€\s*([0-9]+(?:[.,][0-9]+)?)/)?.[1]
+    const cents = rawMessage.match(/\b([0-9]+)\s*cents?\b/i)?.[1]
+    const usd = rawMessage.match(/\$\s*([0-9]+(?:[.,][0-9]+)?)/)?.[1]
+    const suggested =
+      euros ?? (cents ? String(Math.ceil(Number(cents) / 100)) : usd) ?? undefined
+    hints.push({
+      field: "daily_budget",
+      suggested,
+      reason: lc.includes("too high") || lc.includes("maximum")
+        ? `Daily budget te hoog volgens Meta. ${suggested ? `Suggestie: max €${suggested}.` : "Verlaag het bedrag."}`
+        : `Daily budget te laag of botst met de campagne. ${suggested ? `Suggestie: minimaal €${suggested}.` : "Verhoog het bedrag of probeer een ander getal."}`,
+    })
+  }
+  // Targeting / audience
+  if (
+    lc.includes("targeting") ||
+    lc.includes("audience") ||
+    lc.includes("custom_audiences") ||
+    lc.includes("geo_locations") ||
+    lc.includes("specs.targeting")
+  ) {
+    hints.push({
+      field: "targeting",
+      reason:
+        "Winner's targeting is door Meta afgewezen — kan een verlopen custom audience, ontoegankelijke lookalike, of ongeldige geo-target zijn. Probeer 'Targeting strippen' aan zodat Meta Advantage+ de doelgroep kiest.",
+    })
+  }
+  // Bid strategy
+  if (lc.includes("bid_strategy") || lc.includes("bidstrategy") || lc.includes("bid strategy")) {
+    hints.push({
+      field: "bid_strategy",
+      reason:
+        "Bid strategy is niet (langer) geldig voor deze campagne — kies een andere strategie hieronder.",
+    })
+  }
+  // Optimization goal
+  if (
+    lc.includes("optimization_goal") ||
+    lc.includes("optimization goal") ||
+    lc.includes("optimisation goal") ||
+    lc.includes("doelstelling") ||
+    lc.includes("optimisatie")
+  ) {
+    hints.push({
+      field: "optimization_goal",
+      reason:
+        "Optimization goal botst met de campagne (objective / destination_type). Kies een andere goal hieronder.",
+    })
+  }
+  // Adset name
+  if (
+    lc.includes("name") &&
+    (lc.includes("too long") || lc.includes("invalid name") || lc.includes("duplicate"))
+  ) {
+    hints.push({
+      field: "adset_name",
+      reason: "Ad set name is te lang of conflicteert met een bestaande naam. Pas hem aan.",
+    })
+  }
+  return hints
 }
 
 export async function POST(
@@ -113,6 +246,23 @@ export async function POST(
     )
   if (selections.length === 0) {
     return NextResponse.json({ error: "Geen variants geselecteerd" }, { status: 400 })
+  }
+
+  // ── 0. Pre-flight: verify the Meta token actually has write scopes.
+  // Calls Meta's /debug_token and throws a CM-actionable error before
+  // we spin up any of the Meta API calls below. Roy 2026-06-14: the
+  // old code blamed scope for any code-200 / code-190 error which
+  // could be a totally different cause (page access, ad-account
+  // assignment, etc.). This makes the diagnosis authoritative.
+  try {
+    await assertWriteScopes()
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    console.error("[push-to-meta] scope assertion failed:", message)
+    return NextResponse.json(
+      { error: message, errorCode: "token_scope" },
+      { status: 403 },
+    )
   }
 
   const supabase = await createAdminClient()
@@ -299,6 +449,22 @@ export async function POST(
     )
   }
 
+  // Roy 2026-06-15: log what we actually resolved from the winner so
+  // we can diagnose "empty linkUrl" / "missing CTA" failures from the
+  // Vercel logs without guessing.
+  console.log(
+    `[push-to-meta] winnerLive resolved`,
+    `adId=${winnerLive.adId}`,
+    `adsetId=${winnerLive.adsetId}`,
+    `campaignId=${winnerLive.campaignId}`,
+    `pageId=${winnerLive.pageId || "EMPTY"}`,
+    `linkUrl=${winnerLive.linkUrl || "EMPTY"}`,
+    `callToActionType=${winnerLive.callToActionType || "EMPTY"}`,
+    `leadGenFormId=${winnerLive.leadGenFormId || "EMPTY"}`,
+    `instagramActorId=${winnerLive.instagramActorId || "EMPTY"}`,
+    `cmOverrideLinkUrl=${body.linkUrl || "(none)"}`,
+  )
+
   const pageId = winnerLive.pageId
   if (!pageId) {
     return NextResponse.json(
@@ -415,6 +581,25 @@ export async function POST(
       : {}),
   }
 
+  // Roy 2026-06-14: inline retry overrides — applied AFTER the budget
+  // override so the CM can stack them ("strip targeting AND use this
+  // bid strategy AND this budget").
+  if (body.stripTargeting === true) {
+    launchTemplate.targeting = null
+  }
+  if (typeof body.bidStrategy === "string" && body.bidStrategy.trim()) {
+    launchTemplate.bidStrategy = body.bidStrategy.trim()
+  }
+  if (typeof body.optimizationGoal === "string" && body.optimizationGoal.trim()) {
+    launchTemplate.optimizationGoal = body.optimizationGoal.trim()
+  }
+
+  // Roy 2026-06-14: summary of which template fields we actually pulled
+  // from Meta. Surfaces in the error response so the modal can suggest
+  // a smart retry ("Pedro kon de targeting niet ophalen — kies handmatig
+  // een andere ad set") instead of generic "fix bid_strategy" hints.
+  const templateSummary = summariseTemplate(winnerLive.adsetId, launchTemplate)
+
   // ── 5. Create the new ad set (PAUSED) ───────────────────────────────
   let newAdsetId: string
   try {
@@ -426,8 +611,22 @@ export async function POST(
     })
     newAdsetId = res.adSetId
   } catch (e) {
+    const message = e instanceof Error ? e.message : "createAdSet failed"
+    // If we couldn't pull the template's targeting/bid/goal from Meta,
+    // the "Invalid parameter" complaint is almost certainly a downstream
+    // symptom — the modal should offer "pick a different ad set" before
+    // the CM fights with bid-strategy/goal dropdowns.
+    const templateIncomplete = templateSummary.missingFields.length > 0
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "createAdSet failed" },
+      {
+        error: message,
+        // Inline-retry hints so the modal can highlight the matching
+        // input + pre-fill suggested values. Roy 2026-06-14.
+        paramHints: templateIncomplete ? [] : extractParamHints(message),
+        templateSummary,
+        templateIncomplete,
+        stage: "create_adset",
+      },
       { status: 502 },
     )
   }
@@ -557,7 +756,18 @@ export async function POST(
         description: variant.link_description?.trim() || undefined,
         // Inherit link + CTA from winner when available - same destination
         // so UTM tracking keeps working.
-        linkUrl: winnerLive.linkUrl || "https://www.facebook.com",
+        // Roy 2026-06-15: previously fell back to bare "https://www.facebook.com"
+        // which Meta rejected for landing-page conversion ads. Now:
+        // (1) CM-supplied body.linkUrl wins (modal input);
+        // (2) else use winnerLive.linkUrl from the resolved source ad;
+        // (3) else leave EMPTY so createAdCreative's lead-gen-aware
+        //     fallback (Page Facebook URL) decides whether to use a
+        //     placeholder or surface the error. The bare facebook.com
+        //     hardcode is gone.
+        linkUrl:
+          (body.linkUrl && body.linkUrl.trim().length > 0
+            ? body.linkUrl.trim()
+            : winnerLive.linkUrl) || "",
         callToActionType: winnerLive.callToActionType || "LEARN_MORE",
         // Inherit IG actor + lead-gen form from winner - keeps the new
         // ad on the same IG account and (for ON_AD lead-form ads) the

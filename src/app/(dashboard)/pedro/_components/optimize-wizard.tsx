@@ -28,6 +28,7 @@ import { ImageSourcesPicker } from "./image-sources-picker"
 import { PushToMetaModal } from "./push-to-meta-modal"
 import { InlineEditField } from "./inline-edit-field"
 import { VariantImagePanel } from "./variant-image-panel"
+import { BriefRequiredModal } from "./brief-required-modal"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
 import { Copy } from "lucide-react"
@@ -179,6 +180,17 @@ export function OptimizeWizard({
   } | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
+  // Brief-gate state. When /api/pedro/creative-refresh returns 409 with
+  // requires_brief, open the briefing modal instead of surfacing the
+  // error text — the CM otherwise has no obvious way to fill the brief
+  // from inside the wizard. Mirrors refresh-shell.tsx behaviour.
+  const [briefRequired, setBriefRequired] = useState<{
+    clientId: string
+    clientName: string
+    currentBrief: Record<string, unknown> | null
+    retrySourceAdId: string
+    retrySourceScreenshotPath?: string
+  } | null>(null)
   // Roy 2026-06-12 v9: single-variant flow. Pedro genereert 3 angles,
   // CM kiest er één om mee verder te gaan. selectedVariantKey is een
   // "pi:vi" string, exact zoals voorheen, maar er kan er max 1 zijn.
@@ -200,6 +212,7 @@ export function OptimizeWizard({
     setRefreshResult(null)
     setIsGenerating(false)
     setGenerateError(null)
+    setBriefRequired(null)
     setSelectedVariantKey(null)
     setDraftGeneratedAt(null)
 
@@ -294,6 +307,7 @@ export function OptimizeWizard({
     async (sourceAdId: string, sourceScreenshotPath?: string) => {
       setIsGenerating(true)
       setGenerateError(null)
+      setBriefRequired(null)
       setRefreshResult(null)
       setActiveKey("select_variants")
       try {
@@ -308,6 +322,20 @@ export function OptimizeWizard({
           }),
         })
         const json = await res.json()
+        // 409 + requires_brief → open the briefing modal instead of
+        // dumping the raw error. After save, the modal calls back into
+        // startGenerate so the original request auto-retries with the
+        // same source ad + screenshot. Mirrors refresh-shell.tsx.
+        if (res.status === 409 && json?.requires_brief) {
+          setBriefRequired({
+            clientId: String(json.clientId ?? selectedClientId),
+            clientName: String(json.clientName ?? selectedClientName),
+            currentBrief: (json.current_brief as Record<string, unknown> | null) ?? null,
+            retrySourceAdId: sourceAdId,
+            retrySourceScreenshotPath: sourceScreenshotPath,
+          })
+          return
+        }
         if (!res.ok || json.error) {
           throw new Error(json.error || `HTTP ${res.status}`)
         }
@@ -327,7 +355,7 @@ export function OptimizeWizard({
         setIsGenerating(false)
       }
     },
-    [selectedClientId],
+    [selectedClientId, selectedClientName],
   )
 
   const pickVariant = useCallback((key: string) => {
@@ -358,6 +386,23 @@ export function OptimizeWizard({
 
   return (
     <div className="space-y-4">
+      {/* Brief gate modal — opens when /api/pedro/creative-refresh returns
+          409 + requires_brief. Without this the CM only sees "Brief
+          ontbreekt" and has no path to fill it in. After save we
+          auto-retry the original generate call with the same source ad. */}
+      {briefRequired && (
+        <BriefRequiredModal
+          clientId={briefRequired.clientId}
+          clientName={briefRequired.clientName}
+          currentBrief={briefRequired.currentBrief}
+          onSaved={() => {
+            const retry = briefRequired
+            setBriefRequired(null)
+            void startGenerate(retry.retrySourceAdId, retry.retrySourceScreenshotPath)
+          }}
+          onCancel={() => setBriefRequired(null)}
+        />
+      )}
       {/* Progress bar - same chrome as the onboarding wizard, so the
           Pedro Optimize page feels like a sibling surface. */}
       <div className="flex items-end justify-between gap-4">

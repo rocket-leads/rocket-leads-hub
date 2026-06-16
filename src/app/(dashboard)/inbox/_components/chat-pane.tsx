@@ -31,7 +31,6 @@ import {
   Star,
   Archive,
 } from "lucide-react"
-import { ActionIconButton } from "@/components/ui/action-icon-button"
 import { Button } from "@/components/ui/button"
 import { DismissButton } from "@/components/ui/dismiss-button"
 import { cn } from "@/lib/utils"
@@ -773,25 +772,13 @@ function ThreadRowQuickActions({
     onMark("snooze", { until })
   }
 
+  // Row-level read/unread is communicated by the purple left-edge bar
+  // alone (Roy 2026-06-16: "het vinkje in de linkerbalk mag WEG, alleen
+  // read/unread onderscheid via paarse balk"). The mark-read affordance
+  // lives in the chat-pane header instead. Star / snooze / archive stay
+  // as hover-revealed quick actions so the row remains scannable.
   return (
     <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
-      <RowActionButton
-        icon={
-          <Check
-            className={cn(
-              "h-3.5 w-3.5",
-              isUnread ? "text-emerald-600 dark:text-emerald-400" : "",
-            )}
-            strokeWidth={2.5}
-          />
-        }
-        label={isUnread ? "Markeer gelezen" : "Markeer ongelezen"}
-        onClick={(e) => {
-          e.stopPropagation()
-          onMark(isUnread ? "mark_read" : "mark_unread")
-        }}
-        alwaysVisible={false}
-      />
       <RowActionButton
         icon={
           <Star
@@ -900,8 +887,12 @@ function EmailListRowBody({
             · {fmtRelative(thread.latestAt)}
           </span>
         </div>
-        {thread.unreadCount > 0 && (
-          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums shrink-0">
+        {/* Only show a count chip when there are multiple unread messages —
+            single unread is already communicated by bold + purple bar, so
+            a "1" badge is just noise. Muted gray instead of bright purple
+            (Roy 2026-06-16). */}
+        {thread.unreadCount > 1 && (
+          <span className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-muted text-muted-foreground text-[10px] font-medium tabular-nums shrink-0">
             {thread.unreadCount}
           </span>
         )}
@@ -953,8 +944,12 @@ function ChatListRowBody({
             {thread.primaryName}
           </span>
         </div>
-        {thread.unreadCount > 0 && (
-          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold tabular-nums">
+        {/* Only show a count chip when there are multiple unread messages —
+            single unread is already communicated by bold + purple bar, so
+            a "1" badge is just noise. Muted gray instead of bright purple
+            (Roy 2026-06-16). */}
+        {thread.unreadCount > 1 && (
+          <span className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full bg-muted text-muted-foreground text-[10px] font-medium tabular-nums">
             {thread.unreadCount}
           </span>
         )}
@@ -1853,29 +1848,17 @@ function ThreadMessages({
               clientName={thread.clientName}
             />
           )}
-          {/* Mark-read toggle. Same chrome as the Internal Tasks "done"
-              action (ActionIconButton success-tone) so the inbox feels
-              uniform - per Roy 2026-06-12: "in dezelfde stijl als de
-              internal inbox, dezelfde kleur als het huidige vinkje".
-              Only renders when the parent passes onMarkThread (i.e.
-              ChatPane mode, not the docked-detail variant which has
-              its own surface for the action). */}
+          {/* Mark-read checkbox. Explicit checkbox affordance instead of a
+              toggling icon - same visual square at all times, just
+              filled/empty so the AM can tell at a glance whether this
+              thread is "done" (read) without having to read the tooltip.
+              Roy 2026-06-15: icon-toggle was unpredictable, especially on
+              email rows where "afvinken" should look like an actual
+              checkbox. */}
           {onMarkThread && (
-            <ActionIconButton
-              tone="success"
-              label={
-                thread.unreadCount > 0
-                  ? "Markeer als gelezen"
-                  : "Markeer als ongelezen"
-              }
-              icon={
-                thread.unreadCount > 0 ? (
-                  <Check className="h-4 w-4" strokeWidth={2.5} />
-                ) : (
-                  <Mail className="h-4 w-4" />
-                )
-              }
-              onClick={() =>
+            <ReadCheckbox
+              isUnread={thread.unreadCount > 0}
+              onToggle={() =>
                 onMarkThread(
                   thread,
                   thread.unreadCount > 0 ? "mark_read" : "mark_unread",
@@ -3432,6 +3415,41 @@ function MakeTaskInlineButton({ onClick }: { onClick: () => void }) {
     >
       <ListTodo className="h-3.5 w-3.5" />
       Task
+    </button>
+  )
+}
+
+/** Prominent emerald "afvink" button in the chat-pane header, matching
+ *  the internal inbox's Done action (inbox-list-row.tsx ~L475). Always
+ *  shows the green check — unread threads make the button solid so the
+ *  AM has an obvious "wegwerken"-target; read threads dim it to a muted
+ *  outline so it's still clickable to mark-back-as-unread without
+ *  dominating the header. Roy 2026-06-16: empty box was confusing, the
+ *  channel rows lost their inline check button so this is now the only
+ *  surface for the action. */
+function ReadCheckbox({
+  isUnread,
+  onToggle,
+}: {
+  isUnread: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={!isUnread}
+      onClick={onToggle}
+      title={isUnread ? "Markeer als gelezen" : "Markeer als ongelezen"}
+      aria-label={isUnread ? "Markeer als gelezen" : "Markeer als ongelezen"}
+      className={cn(
+        "h-8 w-8 inline-flex items-center justify-center rounded-md border-2 transition-colors shrink-0 shadow-sm",
+        isUnread
+          ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600 hover:border-emerald-600"
+          : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 hover:border-emerald-500 hover:bg-emerald-500/20 dark:text-emerald-400",
+      )}
+    >
+      <Check className="h-4 w-4" strokeWidth={3} />
     </button>
   )
 }

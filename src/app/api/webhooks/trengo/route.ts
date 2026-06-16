@@ -91,6 +91,15 @@ type NormalizedPayload = {
   authorExternal: string
   createdAtSrc: string
   attachments: Array<{ name?: string; url?: string }> | null
+  /** Email envelope data, present only when Trengo's payload included a
+   *  `message.email_message` block (i.e. the message arrived through an
+   *  email channel). Used to populate inbox_events.email_subject /
+   *  email_from / body_html so the Hub can tag the thread as email even
+   *  when the channel lookup classifies the Trengo channel as something
+   *  else. */
+  emailSubject: string | null
+  emailFrom: string | null
+  bodyHtml: string | null
   /** Original parsed payload - stored on the row's `raw` field for debugging. */
   raw: Record<string, unknown>
 }
@@ -142,6 +151,11 @@ function parseFormPayload(body: string): NormalizedPayload | null {
     authorExternal: authorKind === "client" ? get("contact_id") : "",
     createdAtSrc,
     attachments: null,
+    // Form payloads don't carry email envelope fields - those only appear
+    // in JSON payloads via `message.email_message`. Stays null here.
+    emailSubject: null,
+    emailFrom: null,
+    bodyHtml: null,
     raw: Object.fromEntries(params.entries()),
   }
 }
@@ -163,6 +177,13 @@ type LegacyJsonPayload = {
     author?: { id?: number | string; name?: string }
     created_at?: string
     attachments?: Array<{ name?: string; url?: string }>
+    /** Trengo's email-specific envelope. Present only on messages that
+     *  arrived through an email channel; absent / null for WhatsApp. */
+    email_message?: {
+      subject?: string | null
+      from?: string | null
+      html?: string | null
+    } | null
   }
   data?: {
     ticket?: LegacyJsonPayload["ticket"]
@@ -199,6 +220,20 @@ function parseJsonPayload(body: string): NormalizedPayload | null {
   const contactId = String(ticket.contact?.id ?? "")
   const contactName = ticket.contact?.name ?? null
 
+  // Pull the email envelope when Trengo's payload carried one. Mirrors
+  // the polling cron's extraction so webhook-ingested email rows land
+  // with the same email_subject/email_from/body_html fields the fetcher
+  // uses to override a drift-prone channel classification.
+  const em = message.email_message
+  const emailSubject =
+    em && typeof em.subject === "string" && em.subject.trim().length > 0
+      ? em.subject
+      : null
+  const emailFrom =
+    em && typeof em.from === "string" && em.from.trim().length > 0 ? em.from : null
+  const bodyHtml =
+    em && typeof em.html === "string" && em.html.trim().length > 0 ? em.html : null
+
   return {
     eventType: (p.event_type ?? p.type ?? "").toString().toUpperCase(),
     ticketId,
@@ -214,6 +249,9 @@ function parseJsonPayload(body: string): NormalizedPayload | null {
     createdAtSrc: message.created_at ?? new Date().toISOString(),
     attachments:
       message.attachments && message.attachments.length > 0 ? message.attachments : null,
+    emailSubject,
+    emailFrom,
+    bodyHtml,
     raw: p as unknown as Record<string, unknown>,
   }
 }
@@ -432,6 +470,9 @@ export async function POST(req: NextRequest) {
       assignee_id: assigneeId,
       title: titlePreview || `Message from ${payload.authorName}`,
       body: bodyFull,
+      body_html: payload.bodyHtml,
+      email_subject: payload.emailSubject,
+      email_from: payload.emailFrom,
       status,
       priority,
       source: "trengo",

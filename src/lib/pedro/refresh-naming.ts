@@ -199,6 +199,30 @@ export function assignAdNamesToVariants(
     }
     return out
   }
+  // Variant of asStringArray that preserves paragraph structure for
+  // multi-line bodies (alt primary texts). Same prompt asks for the
+  // 4-paragraph structure with \n\n separators as primaryCopySnippet;
+  // collapsing all whitespace flattened the ✅-bullets and CTA into
+  // one wall of text. We normalise CRLF, cap consecutive blank lines
+  // at one (so \n\n stays, \n\n\n collapses), and trim per line so
+  // stray padding doesn't bloat the field.
+  const asMultilineStringArray = (raw: unknown, max: number): string[] => {
+    if (!Array.isArray(raw)) return []
+    const out: string[] = []
+    for (const v of raw) {
+      if (typeof v !== "string") continue
+      const normalised = v
+        .replace(/\r\n?/g, "\n")
+        .split("\n")
+        .map((line) => line.replace(/[ \t]+/g, " ").trim())
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+      if (normalised) out.push(normalised)
+      if (out.length >= max) break
+    }
+    return out
+  }
   for (const v of variants) {
     const formatHint: AdFormatHint =
       typeof v.formatHint === "string" && /^video$/i.test(v.formatHint) ? "Video" : "Photo"
@@ -236,7 +260,7 @@ export function assignAdNamesToVariants(
       primaryCopySnippet: typeof v.primaryCopySnippet === "string" ? v.primaryCopySnippet : "",
       headline: typeof v.headline === "string" ? v.headline.trim() : "",
       altHeadlines: asStringArray(v.altHeadlines, 2),
-      altPrimaryTexts: asStringArray(v.altPrimaryTexts, 2),
+      altPrimaryTexts: asMultilineStringArray(v.altPrimaryTexts, 2),
       linkDescription: typeof v.linkDescription === "string" ? v.linkDescription.trim() : "",
       imagePrompt: typeof v.imagePrompt === "string" ? v.imagePrompt : "",
       why: typeof v.why === "string" ? v.why : "",

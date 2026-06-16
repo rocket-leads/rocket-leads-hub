@@ -166,6 +166,46 @@ const DEPTH_LAYERING_LIGHT = `
 DEPTH & LAYERING (light variant — photo-led):
 - Keep the subject sharp in the foreground; let the background recede with soft falloff (haze, bokeh, atmospheric color cast). Build genuine foreground / background separation — never flat.`
 
+/** Roy 2026-06-14: the headline's argument should be VISIBLE in the
+ *  scene, not just printed on top of generic brand-vertical chrome.
+ *
+ *  Concrete trigger: a TMM creative used "Geen zin in honderdduizenden
+ *  euro's aan softwareontwikkeling..?" as headline (budget complaint,
+ *  targeting cost-conscious clients) — but the AI animation behind the
+ *  subject was generic tech-circuit chrome. The visual missed the
+ *  whole money-/budget-/waste angle of the headline. The scene must
+ *  earn its place by REINFORCING what the headline says.
+ *
+ *  Applies fully to ai_content / ai_animation / stock_content where
+ *  Pedro controls the scene. For client_content / client_content_ai
+ *  the locked subject stays — but ACCENT overlays / atmosphere cues
+ *  / props in negative space should still tilt toward the headline's
+ *  concept rather than defaulting to circuit boards. */
+const HEADLINE_SEMANTIC_CONTEXT_RULE = `
+
+---
+HEADLINE SEMANTIC CONTEXT (scene must reinforce the headline's argument):
+
+Read the headline's core message FIRST, then design the scene around it. The headline is the ad's argument; the scene's job is to VISUALLY back that argument up — never to undermine or ignore it.
+
+Headline → scene-element mapping (examples):
+- MONEY / BUDGET / WASTE / SAVINGS → financial illustrations: coins, banknotes flying off, calculator, wallet, stacked stacks of cash, scale tipping, "burning money" metaphor, downward red arrow on a price tag implied via composition (NOT literal price labels).
+- SPEED / FAST DELIVERY → speed lines, motion trails, sprinting subject, clock with fast hands, fast-forward arrows.
+- QUALITY / CRAFTSMANSHIP → premium materials, polished surfaces, close-up texture, deliberate hand on product, precision-tool imagery.
+- SCALE / GROWTH → upward arrows, ascending bar chart implied, expanding composition, multiplying / stacking subjects.
+- PAIN / PROBLEM → tension cues: cracked surface, falling object, subject's worried look, broken chain.
+- SOLUTION / RELIEF → resolution cues: smooth flow, lit path forward, subject confident and forward-facing, sun breaking through.
+- TIME / DEADLINE → calendar / clock / hourglass / countdown imagery.
+- COMPLEXITY → tangled web; SIMPLICITY → one clean line.
+
+For ai_content / ai_animation / stock_content: graphic chrome, motion elements, props, and environment should CONCRETELY map to the headline's domain. If the headline talks about money, the scene shows money cues — not circuit boards.
+
+For client_content / client_content_ai: the locked subject stays. But ACCENT overlays, brand-coloured highlights, atmosphere cues, and any negative-space props should still tilt toward the headline's concept rather than defaulting to generic brand-vertical chrome.
+
+FORBIDDEN: defaulting to circuit-board / data-stream / code-particles for EVERY tech-adjacent client regardless of headline. That's the laziest possible scene and ignores the headline's argument. If the headline is about money / waste / savings, circuit boards are the wrong choice even for a SaaS client.
+
+If the headline references something concrete (money, time, tool, place, action) and the slot style allows scene freedom, that concrete reference must be PRESENT in the scene somewhere as a visual cue — not literal copy, but unmistakable visual association.`
+
 function styleDirective(style: SlotStyleKey, palette: BrandPalette | null): string {
   // Semantic roles drive the directive:
   //   - primary   = panel/canvas BACKGROUND
@@ -250,10 +290,29 @@ Never apply more than one typographic treatment per ad. Both layers (colour + tr
 HEADLINE LEGIBILITY (mandatory):
 - Letterforms must render CLEANLY. NO glow halo bleeding into the letters, NO colour gradient inside the letters that fades from one tone to another, NO blur / soft-focus / motion smear on the text, NO drop-shadow that reads as a glow-aura around the type. The text is a graphic-design element, not a lit object.
 - A subtle, tight drop-shadow (1-2px offset, low opacity, hard edge) for layered depth on a busy background is OK. A diffuse glow around the letters is NOT.
-- The headline must be effortlessly readable in a 1-second Meta-feed scan. If the chosen treatment compromises legibility, simplify it.`
+- The headline must be effortlessly readable in a 1-second Meta-feed scan. If the chosen treatment compromises legibility, simplify it.
+
+HEADLINE LINE-BREAKING + ALIGNMENT (mandatory — bad line-breaks killed a TMM creative on 2026-06-14):
+- NEVER hyphenate a word mid-word across two lines. "softwareontwikkeling" must NOT become "softwareont-" on line N and "wikkeling" on line N+1 — that reads as a typo. NEVER cut a word in the middle of a morpheme/syllable.
+- DUTCH COMPOUND WORDS (compounds built from 2+ root words: "softwareontwikkeling" = software + ontwikkeling, "klantenservice" = klanten + service, "verduurzaming" = ver + duurzaming, "energierekening" = energie + rekening): when the compound is too long for a single line, you MAY break at the MORPHEME BOUNDARY without a hyphen — "software" on line N, "ontwikkeling" on line N+1 (no hyphen, no dash). This reads cleanly because each fragment is itself a whole Dutch word.
+- SOLITARY (non-compound) words: always stay whole. If a solitary word doesn't fit, choose ONE of these solutions in priority order:
+  (1) REDUCE the headline font size until the word fits whole on its line.
+  (2) RE-FLOW the line breaks so the long word starts (or ends) a line whole.
+  (3) WIDEN the text panel slightly (within the slot-style's allowed canvas-width range) to accommodate.
+- Line breaks land between WHOLE WORDS or at MORPHEME BOUNDARIES of Dutch compounds. Ideally at natural phrase boundaries. Never mid-morpheme, never after a single letter.
+- LITERAL HEADLINE RENDERING: render the supplied headline string word-for-word, character-for-character. NO duplicated tokens within the headline (e.g. do NOT render "software software ontwikkeling" when the string is "softwareontwikkeling"). NO inserted words. NO omitted words. NO reordering. If you can't fit the headline cleanly, simplify the SCENE — never edit the text.
+- Vertical line spacing is CONSISTENT — no wider gap between line 2 and line 3 than between line 1 and line 2. Each line baseline equally distant.
+- LEFT EDGE alignment is consistent across all lines (or centred consistently — but NOT a mix where one line is indented and others are flush).
+- AVOID excessive empty space inside the text panel. If the headline is short, TIGHTEN the panel height so the text fills it comfortably with even padding. Don't leave a 40% empty bottom area — that reads as a layout bug.
+- The panel exists to FRAME the headline; the headline doesn't exist to fill a fixed panel. Panel dimensions adjust to headline length, not the other way around.`
   switch (style) {
     case "client_content":
       return `\n\nSLOT STYLE: CLIENT CONTENT (authentic photography, minimal AI).
+
+SUBJECT IDENTITY LOCK (non-negotiable for this slot):
+- The PERSON(s) / PRODUCT in the output MUST match the attached reference photos exactly — same face, same hair, same skin tone, same product shape and branding. The CM picked "Client content" because they want THIS client's real material on screen.
+- NEVER invent a new person or swap the product. If references are absent, fall back to brand-cohesive stock-quality but flag the output as identity-uncertain.
+
 - Use the client photo references AS-IS. Light color grade for cohesion only.
 - Authentic, professional, unposed photography. Magazine documentary feel.
 - NO composite overlays, NO graphic chrome, NO color panels.
@@ -264,7 +323,14 @@ HEADLINE LEGIBILITY (mandatory):
 QUALITY BAR: Time magazine portrait. National Geographic editorial. Veteran photographer, not stock.${DEPTH_LAYERING_LIGHT}`
 
     case "client_content_ai":
-      return `\n\nSLOT STYLE: CLIENT CONTENT + AI (real subject, enhanced atmosphere).
+      return `\n\nSLOT STYLE: CLIENT CONTENT + AI (REAL subject, AI-enhanced atmosphere).
+
+SUBJECT IDENTITY LOCK (non-negotiable for this slot — this is the WHOLE POINT of the slot):
+- The PERSON(s) / PRODUCT shown in the attached client photo references IS the person / product in the output. Same face, same hair, same skin tone, same build. Same product shape, colour, branding. Side-by-side viewer must say: "yes, same human / same product, fresh scene".
+- The "+ AI" part is for the SCENE AROUND THE SUBJECT — new background, new atmospheric lighting, new ambient mood. NOT for replacing the human with a different-looking person.
+- If you cannot preserve identity given the variation direction asked of you, vary FEWER scene elements rather than swap the subject. Identity > variation.
+- If NO real-photo references are attached, escalate gracefully: produce a brand-cohesive composite but flag uncertainty rather than fabricate a stock-looking person.
+
 LAYOUT:
 - Subject from the client photo references occupies the right-center of the canvas, CUT OUT so the figure crosses in front of an upper-left tinted shape carrying the headline.
 - Headline lives in that upper-left text-shape (soft gradient or low-opacity primary-tinted panel — never a hard rectangle). Base text in WHITE (or black where contrast demands), single sans-serif typeface.
@@ -411,19 +477,28 @@ function allowsCreativeChrome(style: SlotStyleKey): boolean {
   return style === "ai_content" || style === "ai_animation"
 }
 
-/** Per-slot variation directions (Roy 2026-06-13). When the CM picks
+/** Per-slot variation directions (Roy 2026-06-13/14). When the CM picks
  *  the same slot-style for all 3 slots (e.g. "Client content + AI" x3),
  *  Gemini tends to produce 3 near-identical outputs. We force each
  *  slot to take a DIFFERENT variation direction so the 3-up genuinely
  *  reads as 3 distinct executions instead of "same ad rendered three
- *  times". The directions cover the four dimensions where iteration
- *  actually matters in Meta: environment, framing, atmosphere, pose.
+ *  times".
+ *
+ *  Slot-style aware: AI-heavy styles get full freedom to swap scene /
+ *  framing / pose. Client-content styles MUST preserve subject identity,
+ *  so their variation menu is constrained to colour grade / mood /
+ *  environment around the locked subject — never the subject itself.
+ *  Roy 2026-06-14: previously the variation hint said "swap subjects /
+ *  people / props" even for client_content_ai, which was leaking into
+ *  Pedro generating brand-new people instead of the client's actual team.
  *
  *  Cycling by slot index keeps it deterministic per refresh — the CM
  *  knows slot A always gets direction 0, slot B direction 1, slot C
  *  direction 2. A single-slot regen also picks deterministically so
  *  the regen result differs from the original output of that slot. */
-const SLOT_VARIATION_DIRECTIONS: string[] = [
+
+// Directions for AI-heavy styles — full freedom on scene + pose.
+const SLOT_VARIATION_DIRECTIONS_FREE: string[] = [
   // Slot 0 — environment swap
   `Lean into ENVIRONMENT variation: pick a setting / background / time-of-day that's DISTINCTLY DIFFERENT from any environment shown in the reference photos. If references show an office, go outdoor, studio, or abstract. If references show daytime, go evening / night / golden hour. The subject category (people / product / scene) stays consistent; everything around it changes.`,
   // Slot 1 — framing + pose swap
@@ -432,10 +507,43 @@ const SLOT_VARIATION_DIRECTIONS: string[] = [
   `Lean into ATMOSPHERE + MOOD variation: pick a DIFFERENT lighting + colour temperature + ambient feeling than any reference shows. If references are cool-teal tech-lit, try warm-amber, high-key bright-and-airy, or moody low-key cinematic. The brand-colour roles still anchor the palette; only the ambient atmosphere changes.`,
 ]
 
-function slotVariationHint(slotIndex: number): string {
-  const direction =
-    SLOT_VARIATION_DIRECTIONS[slotIndex % SLOT_VARIATION_DIRECTIONS.length]
-  return `\n\n---\nPER-SLOT VARIATION DIRECTION (slot ${String.fromCharCode(65 + slotIndex)}):\n${direction}\n\nThis variation direction is MANDATORY — even when other slots use the same slot-style, the 3-up grid must read as 3 different scenes, not 3 takes on the same scene.`
+// Directions for "Client content + AI" — subject identity stays LOCKED;
+// only the scene around them changes. Never asks for a swap of people.
+const SLOT_VARIATION_DIRECTIONS_CLIENT_AI: string[] = [
+  // Slot 0 — environment around the locked subject
+  `Lean into ENVIRONMENT variation AROUND the locked subject: keep the EXACT person / product from the reference photos, but invent a new scene around them. Different background, different setting (outdoor / studio / abstract), different time-of-day. The HUMAN stays identical; the WORLD around them changes.`,
+  // Slot 1 — framing + subtle pose adjustment, identity locked
+  `Lean into FRAMING variation: keep the SAME person / product from the reference photos, but shoot them from a different camera distance / angle. Tighter portrait, wider environmental, over-the-shoulder. A subtle pose shift (head turn, hand position) is OK — identity stays locked, framing changes.`,
+  // Slot 2 — atmosphere swap on the locked subject
+  `Lean into ATMOSPHERE + MOOD variation on the locked subject: keep the SAME person / product, but change the lighting + colour temperature + ambient mood. Cinematic warm, high-key bright, moody low-key. The HUMAN stays identical; the lighting + atmosphere around them shifts.`,
+]
+
+// Directions for pure "Client content" — minimal AI. Variation is about
+// post-processing + framing within the existing scene, not new scenes.
+const SLOT_VARIATION_DIRECTIONS_CLIENT_PURE: string[] = [
+  // Slot 0 — colour grade
+  `Lean into COLOUR GRADE variation: keep the EXACT reference photo and scene. Apply a different colour grade (cooler vs warmer tones, brighter vs moodier exposure, different vignette intensity). Same shot, different post-processing feel.`,
+  // Slot 1 — crop / framing within the same shot
+  `Lean into CROP variation: keep the EXACT reference photo, scene, subject, and identity. Choose a DIFFERENT crop — tighter portrait, wider environmental, different aspect-emphasis. Same source material, different framing.`,
+  // Slot 2 — light treatment on the same shot
+  `Lean into LIGHT TREATMENT variation: keep the EXACT reference photo, scene, subject, and identity. Apply a different lighting feel via post-processing (golden-hour warmth, cool-blue cinematic, high-contrast editorial). Subject and setting unchanged; only the light treatment shifts.`,
+]
+
+function slotVariationHint(slotIndex: number, style: SlotStyleKey): string {
+  let directions: string[]
+  let lockNote: string
+  if (style === "client_content") {
+    directions = SLOT_VARIATION_DIRECTIONS_CLIENT_PURE
+    lockNote = `Subject identity AND scene stay locked to the references — this variation is purely a post-processing / framing choice within that source material.`
+  } else if (style === "client_content_ai") {
+    directions = SLOT_VARIATION_DIRECTIONS_CLIENT_AI
+    lockNote = `Subject identity is LOCKED to the references (same human / same product). The variation swings around them.`
+  } else {
+    directions = SLOT_VARIATION_DIRECTIONS_FREE
+    lockNote = `This slot has full freedom on scene + composition — references are loose brand-DNA inspiration, not a blueprint.`
+  }
+  const direction = directions[slotIndex % directions.length]
+  return `\n\n---\nPER-SLOT VARIATION DIRECTION (slot ${String.fromCharCode(65 + slotIndex)}):\n${direction}\n\n${lockNote}\n\nThis variation direction is MANDATORY — even when other slots use the same slot-style, the 3-up grid must read as 3 different executions, not 3 takes on the same one.`
 }
 
 export async function POST(
@@ -1190,12 +1298,15 @@ ON-IMAGE TEXT - render EXACTLY the Dutch headline ONCE.
 - No comparison labels (LAGE/HOGE, before/after, vs).
 - No secondary captions, no sub-headlines, no photo captions, no watermarks.
 - Do NOT duplicate any text element. Render the headline ONCE in ONE position.
-- If the headline doesn't fit cleanly, simplify the scene - do not break it across boxes.
+- LITERAL RENDER: the rendered headline must match the supplied headline string word-for-word and character-for-character. NO duplicated tokens within the headline (e.g. do NOT render "software software ontwikkeling" when the supplied string is "softwareontwikkeling"). NO inserted words. NO omitted words. NO reordering. If the headline doesn't fit cleanly, simplify the SCENE — never edit the text.
 
 TYPOGRAPHY - must read as a professionally designed ad.
 - ONE sans-serif typeface across the whole headline (no mixed fonts within a line).
 - Even letter-spacing. Consistent weight. Sharp anti-aliased edges.
 - Letters render CLEANLY: no glow halo around letters, no internal colour gradient inside the letters, no blur / soft-focus / motion smear on the text. The text is a graphic-design element, not a lit object. Tight 1-2px hard-edged drop-shadow is acceptable; diffuse glow is not.
+- Words NEVER hyphenated mid-word across two lines (no "softwareont-" / "wikkeling"). For Dutch COMPOUND words (e.g. "softwareontwikkeling" = software + ontwikkeling, "klantenservice" = klanten + service), if the compound is too long for one line, break at the MORPHEME boundary without a hyphen — "software" on line N, "ontwikkeling" on line N+1. Solitary (non-compound) words always stay whole; if a solitary word doesn't fit, shrink the headline OR reflow line breaks OR widen the panel.
+- Line breaks at WHOLE-WORD or MORPHEME boundaries only. Consistent line spacing. Consistent left (or centred) alignment across all lines.
+- Panel sizes to the headline, not the other way around — no big empty bottom in the text panel.
 - Minimum 8% canvas padding on all sides around the headline.
 - Headline sits in clean negative space - never on top of visually busy detail.
 - Color: use a single brand-consistent accent OR pure black/white. No mixed fills + outlines.
@@ -1254,27 +1365,89 @@ DO NOT:
 The bar: a buitenstaander sees both ads side-by-side and recognises them as "different ads from the same campaign", not as "the same ad rendered twice".`
       : ""
 
-    // Roy 2026-06-13: REFERENCE PHOTO ANTI-COPY. Triggers as soon as
-    // ANY real-photo reference is attached (Drive klant-foto / website
-    // image / stock). Symptom Roy raised: Pedro takes a Drive photo of
-    // 2 men + circuit-board background, then "iterates" by adding a
-    // text panel — but the entire scene is preserved. Same people,
-    // same poses, same environment. That's not iteration, that's a
-    // re-skin. SOURCE_VISUAL_LOCK only fired for uploaded winning-ad
-    // screenshots; this block covers the Drive/website/stock path.
+    // Roy 2026-06-13/14: slot-style-aware reference-photo usage block.
+    //
+    // The same reference photos (Drive klant-foto / website image /
+    // stock) mean DIFFERENT things per slot style:
+    //
+    //   - client_content / client_content_ai → HARD subject-identity
+    //     lock. The person in the photo IS the person in the output.
+    //     "+ AI" allows scene/atmosphere variation but the human stays
+    //     identical. Symptom Roy raised 2026-06-14: he picked
+    //     "Client content + AI" and Pedro generated a brand-new person
+    //     who isn't in the Drive — that breaks the contract of the
+    //     slot style.
+    //
+    //   - ai_content / ai_animation / stock_content → loose anti-copy.
+    //     References are inspiration for WHO the client is, not the
+    //     scene. Symptom Roy raised 2026-06-13: Pedro takes a Drive
+    //     photo of 2 men + circuit-board background, then "iterates"
+    //     by adding a text panel — but the entire scene is preserved.
+    //     For these AI-heavy styles we want fresh scene/composition.
     const realPhotoRefCount =
       drivePhotoRefs.length + websiteImageRefs.length + stockRefs.length
-    const REFERENCE_PHOTO_ANTI_COPY = realPhotoRefCount > 0
-      ? `
+    function referencePhotoUsageBlockFor(style: SlotStyleKey): string {
+      if (realPhotoRefCount === 0) return ""
+
+      if (style === "client_content") {
+        return `
 
 ---
-REFERENCE PHOTO USAGE (critical — borrow the BRAND DNA, not the SCENE):
+CLIENT CONTENT — HARD FIDELITY (subject identity AND scene are locked):
 
-Real-photo references are attached (klant-foto's from Drive, website images, or stock). They exist so you understand WHO the client is, WHAT they make, and the BRAND-LOOK family — NOT so you reproduce the scene shown in them.
+The attached real-photo references are the client's actual team / product. This slot style is "Client content" — pure photography, minimal AI lift. The references are the SOURCE TRUTH, not inspiration.
+
+PRESERVE:
+- The exact PERSON(s) shown — same face, same hair, same skin tone, same build. A viewer must immediately recognise them as the same human.
+- The exact PRODUCT (if shown) — same shape, same colour, same branding details.
+- The setting / scene / pose / environment shown in the reference — keep it. Light colour grade for brand cohesion is the ONLY allowed modification.
+
+FORBIDDEN for this slot:
+- NEVER swap the human for a different-looking person.
+- NEVER swap the product for a different-looking product.
+- NEVER invent a new scene; this is documentary photography.
+
+Output reads as a magazine-grade crop of the original reference shot, with the headline laid in cleanly.`
+      }
+
+      if (style === "client_content_ai") {
+        return `
+
+---
+CLIENT CONTENT + AI — SUBJECT IDENTITY LOCK (people/product are locked; scene + atmosphere swing):
+
+The attached real-photo references are the client's actual team / product. This slot style is "Client content + AI": real subject, AI-enhanced atmosphere. The "+ AI" is for the SCENE around the subject — NOT for replacing the subject.
+
+PRESERVE (non-negotiable — the whole point of this slot):
+- The PERSON(s) in the output must be the SAME HUMAN(s) as the reference photo — same face, same hair, same skin tone, same build, same age. A side-by-side viewer must say "yes, that's the same person, new scene".
+- If a product is shown, it's the SAME product — same shape, same colour, same branding.
+
+ALLOWED to change (this is what makes it "+ AI"):
+- Setting / background / environment — invent a fresh atmospheric scene around the locked subject.
+- Lighting + colour grade + atmosphere — push it more cinematic, brand-tinted, dynamic than the original.
+- Subtle pose adjustments (head turn, hand position) are OK as long as identity stays locked. The reference is the IDENTITY ANCHOR; the new world wraps around them.
+
+FORBIDDEN:
+- NEVER generate a person who is not in the reference photo. If the reference shows Mike, the output must show Mike — not "a man at a desk".
+- NEVER replace the client's real team with a stock-looking generic person.
+- If you cannot preserve identity given the variation direction, choose to vary FEWER elements rather than swap the human.
+
+The contract: when the CM picks "Client content + AI", they're committing to one specific human in the photo. Honour that commitment.`
+      }
+
+      // ai_content / ai_animation / stock_content — loose anti-copy.
+      // Refs are inspiration about WHO the client is; scene + composition
+      // are yours to invent.
+      return `
+
+---
+REFERENCE PHOTO USAGE (borrow the BRAND DNA, not the SCENE):
+
+Real-photo references are attached (klant-foto's from Drive, website images, or stock). For this slot style (${style}), they exist so you understand WHO the client is, WHAT they make, and the BRAND-LOOK family — NOT so you reproduce the scene shown in them.
 
 USE the references for (the "WHAT"):
-- Subject identity / appearance / brand-look continuity (if the reference shows the client's actual team or product, the same people / product should appear).
-- General product or service context (what the client sells / does).
+- General subject category / appearance hints (if the client is in tech, references show their tech aesthetic).
+- Product or service context (what the client sells / does).
 - Brand-look family (colour temperature, level of polish, photography style).
 
 DO NOT use the references for (the "HOW"):
@@ -1285,8 +1458,8 @@ DO NOT use the references for (the "HOW"):
 
 The bar: when the CM compares the generated ad to the reference photo, the verdict must be "same client, same product family, COMPLETELY different shot" — not "same shot with a text panel added".
 
-If the reference shows 2 people at a desk in a teal-lit office with circuit-board graphics, your output must NOT be 2 people at a desk in a teal-lit office with circuit-board graphics. Change the SETTING (different room, outdoor, abstract studio, different time of day), the POSE (different action — looking up, walking, holding product), the COMPOSITION (different framing — closer in, wider out, vertical emphasis), or the ATMOSPHERE (different lighting mood, different ambient colour). Multiple of these together is even better.`
-      : ""
+If the reference shows 2 people at a desk in a teal-lit office with circuit-board graphics, your output must NOT be 2 people at a desk in a teal-lit office with circuit-board graphics. Change the SETTING, POSE, COMPOSITION, or ATMOSPHERE — multiple of these together is even better.`
+    }
 
     // Roy 2026-06-12: pull canonical brand colors uit pdfPaletteForPrompt
     // OF uit brand_style.colors zodat de styleDirective hex codes kan
@@ -1323,10 +1496,12 @@ If the reference shows 2 people at a desk in a teal-lit office with circuit-boar
 ---
 RL QUALITY RULES (composite-allowed):
 - ONE on-image headline text element rendered ONCE. Mixed weight is OK (key brand words in accent color), but only one block, never duplicated.
+- LITERAL RENDER: the headline matches the supplied string word-for-word, character-for-character. NO duplicated tokens within the headline ("software software ontwikkeling" while string was "softwareontwikkeling"), NO inserted words, NO omitted words, NO reordering. If it doesn't fit, simplify the SCENE — never edit the text.
 - Brand-color background panel + subtle graphic overlay (circuit/lines/geometry) ARE expected for composite ads.
 - Subject (when present from reference): identity preserved, integrated with composite via lighting, not cut-and-paste.
 - Headline placement: clean negative space, ≥8% padding. Mixed-weight typography only when intentional (key brand word in accent color), never random.
 - Headline TEXT renders CLEANLY: NO glow halo around letters, NO internal colour gradient inside letters, NO blur on the text. Glow/atmosphere belongs on SCENE elements (overlay graphics, particles, environment) — not on the letterforms themselves. Tight 1-2px hard drop-shadow OK; diffuse glow around text NOT OK.
+- Words NEVER hyphenated mid-word across two lines (no "softwareont-" / "wikkeling"). For Dutch COMPOUND words ("softwareontwikkeling" = software + ontwikkeling, "klantenservice" = klanten + service): if the compound is too long for one line, break at the MORPHEME boundary without a hyphen — "software" on line N, "ontwikkeling" on line N+1. Solitary (non-compound) words always stay whole — shrink the font, reflow, or widen the panel. Line breaks at whole-word or morpheme boundaries only. Consistent line spacing + consistent left-alignment across all lines. Panel sizes to headline, no big empty bottom.
 - Hero SUBJECT must DOMINATE the canvas (~60-80% of visible area). No tiny figure-in-large-room compositions. Crop in tight on people / products; let the subject approach the canvas edges. Empty background = wasted stopping-power on Meta feed.
 - CTA buttons are OPTIONAL. Only render a CTA when the headline naturally calls for one AND it doesn't crowd the composition. A clean ad without a button is better than a forced button.
 - NO badges, NO price tags, NO comparison stickers (LAGE/3x), NO duplicated text, NO competing brand logos.
@@ -1425,10 +1600,11 @@ RL QUALITY RULES (composite-allowed):
           feedbackAddendum +
           brandAssetsAddendum +
           SOURCE_VISUAL_LOCK +
-          REFERENCE_PHOTO_ANTI_COPY +
+          referencePhotoUsageBlockFor(style) +
+          HEADLINE_SEMANTIC_CONTEXT_RULE +
           directive +
           inspirationFraming +
-          slotVariationHint(targetSlots[idx]) +
+          slotVariationHint(targetSlots[idx], style) +
           qualityRules +
           HEADLINE_LOCKDOWN
 

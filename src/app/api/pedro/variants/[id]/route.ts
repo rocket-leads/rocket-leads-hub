@@ -37,6 +37,34 @@ function sanitiseArray(raw: unknown, maxLen: number, maxChars: number): string[]
   return out
 }
 
+// Same as sanitiseArray but preserves paragraph structure (\n\n) so
+// multi-paragraph fields like alt primary texts keep their hook/body/
+// bullets/CTA layout. Collapses 3+ blank lines to a single blank line
+// and trims per-line padding.
+function sanitiseMultilineArray(
+  raw: unknown,
+  maxLen: number,
+  maxChars: number,
+): string[] | null {
+  if (raw === null) return null
+  if (!Array.isArray(raw)) return null
+  const out: string[] = []
+  for (const v of raw) {
+    if (typeof v !== "string") continue
+    const normalised = v
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+/g, " ").trim())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+    if (!normalised) continue
+    out.push(normalised.slice(0, maxChars))
+    if (out.length >= maxLen) break
+  }
+  return out
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -90,7 +118,7 @@ export async function PATCH(
     update.alt_headlines = arr && arr.length > 0 ? arr : null
   }
   if (body.altPrimaryTexts !== undefined) {
-    const arr = sanitiseArray(body.altPrimaryTexts, MAX_ALT_ITEMS, MAX_PRIMARY_CHARS)
+    const arr = sanitiseMultilineArray(body.altPrimaryTexts, MAX_ALT_ITEMS, MAX_PRIMARY_CHARS)
     update.alt_primary_texts = arr && arr.length > 0 ? arr : null
   }
 

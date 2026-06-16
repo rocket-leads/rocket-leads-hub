@@ -239,7 +239,11 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
 
       {/* PEDRO - single view, no sub-toggle */}
       {activeGroup === "pedro" && (
-        <PedroTab mondayItemId={client.mondayItemId} clientName={client.name} />
+        <PedroTab
+          mondayItemId={client.mondayItemId}
+          clientName={client.name}
+          googleDriveId={client.googleDriveId || null}
+        />
       )}
 
       {/* ADMIN - per-client Settings + Billing.

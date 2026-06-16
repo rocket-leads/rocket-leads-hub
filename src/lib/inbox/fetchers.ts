@@ -1,7 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { readCache } from "@/lib/cache"
 import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
-import { fetchTrengoChannels } from "@/lib/integrations/trengo"
+import {
+  fetchTrengoChannels,
+  isEmailChannelType,
+  isWhatsAppChannelType,
+} from "@/lib/integrations/trengo"
 import { filterClientsByUser } from "@/lib/clients/filter"
 import { getUserTrengoChannelIds } from "@/lib/inbox/user-prefs"
 import { stripHtml } from "@/lib/html"
@@ -751,20 +755,26 @@ async function getTrengoChannelLookup(): Promise<
   try {
     const channels = await fetchTrengoChannels()
     for (const c of channels) {
-      const t = (c.type ?? "").toUpperCase()
+      // Use the canonical helpers from trengo.ts so the lookup agrees with
+      // every other place that decides "is this WA / email" - the previous
+      // exact-match `t === "EMAIL"` missed IMAP / OUTLOOK / mail-prefixed
+      // channel types and tagged them as "other", which made every email
+      // thread fall through ChatListRowBody (generic chat icon, composer
+      // stays open) instead of EmailListRowBody (Mail icon, collapsed reply).
       let kind: ChatChannelKind = "other"
-      if (t === "WA_BUSINESS" || t === "WHATSAPP" || t.includes("WHATSAPP")) {
+      if (isWhatsAppChannelType(c.type)) {
         kind = "whatsapp"
-      } else if (t === "EMAIL") {
+      } else if (isEmailChannelType(c.type)) {
         kind = "email"
       }
       // Mirror the display logic from /api/integrations/trengo/channels:
       // prefer `title` (Trengo sidebar label), fall back to display_name and
       // finally `Channel <id>` so the UI never shows a blank.
+      const typeUpper = (c.type ?? "").toUpperCase()
       const title = typeof c.title === "string" ? c.title.trim() : ""
       const display = typeof c.display_name === "string" ? c.display_name.trim() : ""
       const name =
-        title && title.toLowerCase() !== t.toLowerCase()
+        title && title.toLowerCase() !== typeUpper.toLowerCase()
           ? title
           : display || `Channel ${c.id}`
       map.set(c.id, { kind, name })
@@ -1020,6 +1030,42 @@ async function groupAndDecorateChatRows(
           }
           break
         }
+      }
+      // Content-based email signal OVERRIDES the channel classification.
+      // Some Trengo workspaces route mail through "multi-channel" inboxes
+      // that show up as wa_business in /channels (root cause of the
+      // persistent "WhatsApp icon on a clearly-email row" bug). We trust
+      // the content over the channel type. Two layers:
+      //   1) `email_subject` / `email_from` / `body_html` — set by the
+      //      polling cron (and outbound email sends) only for emails.
+      //   2) HTML/MIME markers in `body` — webhook-ingested rows don't
+      //      fill the email_* columns, but emails still arrive with
+      //      HTML structure that WhatsApp messages never have.
+      // Roy 2026-06-15. Aggressive override is safe because WhatsApp
+      // never serves `<!doctype>` / `<table>` / `Content-Type:` headers.
+      const hasEmailFields = threadRows.some(
+        (r) =>
+          (r.email_subject && r.email_subject.length > 0) ||
+          (r.email_from && r.email_from.length > 0) ||
+          (r.body_html && r.body_html.length > 0),
+      )
+      const looksLikeEmail =
+        hasEmailFields ||
+        threadRows.some((r) => {
+          const b = r.body
+          if (!b || b.length === 0) return false
+          const lower = b.toLowerCase()
+          return (
+            lower.includes("<!doctype") ||
+            lower.includes("<html") ||
+            lower.includes("<table") ||
+            lower.includes("<head>") ||
+            lower.includes("content-type: text/html") ||
+            lower.includes("mime-version:")
+          )
+        })
+      if (looksLikeEmail) {
+        channelKind = "email"
       }
     }
 

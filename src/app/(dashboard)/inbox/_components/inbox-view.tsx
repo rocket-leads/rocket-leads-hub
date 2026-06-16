@@ -1691,7 +1691,11 @@ function QuickAddTaskBar({
 
   return (
     <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
-      <div className="flex items-center gap-2">
+      {/* flex-wrap so the bar gracefully breaks onto multiple lines when the
+          column gets too narrow to fit input + client + assignee + due date
+          + Add button on one row. Without this the input refused to shrink
+          and the Add button bled across into the placeholder area. */}
+      <div className="flex items-center gap-2 flex-wrap">
         <Plus className="h-5 w-5 text-muted-foreground/70 shrink-0" />
         <input
           ref={titleRef}
@@ -1711,7 +1715,7 @@ function QuickAddTaskBar({
           }}
           placeholder="Add a task - type and Enter"
           disabled={submitting}
-          className="flex-1 bg-transparent text-[15px] placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
+          className="flex-1 min-w-[140px] bg-transparent text-[15px] placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
         />
         {showClient && (
           <div ref={clientWrapRef} className="w-44 shrink-0">
@@ -1851,7 +1855,11 @@ function QuickAddUpdateBar({
 
   return (
     <div className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
-      <div className="flex items-center gap-2">
+      {/* flex-wrap so the bar gracefully breaks onto multiple lines when the
+          column gets too narrow to fit input + client + assignee + Add
+          button on one row. Without this the input refused to shrink and
+          the Add button bled across into the placeholder area. */}
+      <div className="flex items-center gap-2 flex-wrap">
         <Plus className="h-5 w-5 text-muted-foreground/70 shrink-0" />
         <input
           ref={titleRef}
@@ -1871,7 +1879,7 @@ function QuickAddUpdateBar({
           }}
           placeholder="Add an update - type and Enter"
           disabled={submitting}
-          className="flex-1 bg-transparent text-[15px] placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
+          className="flex-1 min-w-[140px] bg-transparent text-[15px] placeholder:text-muted-foreground/50 focus-visible:outline-none disabled:opacity-50"
         />
         {showClient && (
           <div ref={clientWrapRef} className="w-44 shrink-0">

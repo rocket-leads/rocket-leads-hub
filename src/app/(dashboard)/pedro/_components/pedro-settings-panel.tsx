@@ -8,8 +8,6 @@ import {
   AlertCircle,
   Loader2,
   RotateCcw,
-  Trash2,
-  Plus,
   Settings as SettingsIcon,
 } from "lucide-react"
 import Link from "next/link"
@@ -22,6 +20,10 @@ import type {
   InspirationSubfolderFlags,
   VisualStyleKey,
 } from "@/lib/pedro/creative-settings"
+import {
+  BrandColorsEditor,
+  VisualStyleChips,
+} from "./brand-identity-controls"
 
 /**
  * Inline settings panel that opens below the client picker on the Pedro
@@ -102,22 +104,6 @@ const SUBFOLDER_LABELS: Record<keyof InspirationSubfolderFlags, string> = {
   ai_animation: "AI Animation",
   stock_content: "Stock content",
 }
-
-// Multi-select chips voor de Stijl picker. "auto" is een sentinel — leeg
-// array == auto, dus die staat niet in deze lijst.
-const VISUAL_STYLE_OPTIONS: Array<{ value: Exclude<VisualStyleKey, "auto">; label: string }> = [
-  { value: "professional", label: "Professioneel" },
-  { value: "modern_clean", label: "Modern & clean" },
-  { value: "luxurious", label: "Luxueus / premium" },
-  { value: "tech_ai", label: "Tech / AI / SaaS" },
-  { value: "feminine_soft", label: "Vrouwelijk & zacht" },
-  { value: "mysterious_dark", label: "Geheimzinnig / donker" },
-  { value: "playful_energetic", label: "Speels & energiek" },
-  { value: "robust_industrial", label: "Robuust / industrieel" },
-  { value: "vintage_editorial", label: "Vintage / editorial" },
-]
-
-const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 type Props = {
   open: boolean
@@ -267,19 +253,6 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
    *  always replaces the saved array completely (not a sparse sub-merge)
    *  so the order remains stable: toggling the same value twice ends up
    *  back where you started instead of duplicating. */
-  const toggleVisualStyle = useCallback(
-    (value: Exclude<VisualStyleKey, "auto">) => {
-      setDraft((prev) => {
-        const current = (prev.visualStyles ?? settings?.effective.visualStyles ?? []).slice()
-        const idx = current.indexOf(value)
-        if (idx === -1) current.push(value)
-        else current.splice(idx, 1)
-        return { ...prev, visualStyles: current }
-      })
-    },
-    [settings],
-  )
-
   const handleSave = useCallback(async () => {
     if (!clientId || dirty === 0) return
     setSaving(true)
@@ -624,37 +597,12 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
                 )}
               </div>
 
-              <div>
-                <Label>
-                  Stijl{" "}
-                  <span className="font-normal text-muted-foreground">
-                    {effective.visualStyles.length === 0
-                      ? "(geen — auto-mode)"
-                      : `(${effective.visualStyles.length} geselecteerd)`}
-                  </span>
-                </Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {VISUAL_STYLE_OPTIONS.map((opt) => {
-                    const active = effective.visualStyles.includes(opt.value)
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        onClick={() => toggleVisualStyle(opt.value)}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 h-7 px-3 rounded-full text-xs font-medium border transition-colors",
-                          active
-                            ? "bg-primary/15 border-primary/40 text-primary"
-                            : "bg-background border-border text-foreground/70 hover:bg-accent hover:text-foreground",
-                        )}
-                      >
-                        {active && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
-                        {opt.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
+              <VisualStyleChips
+                value={effective.visualStyles}
+                onChange={(next) =>
+                  setDraft((prev) => ({ ...prev, visualStyles: next }))
+                }
+              />
             </div>
           </Section>
 
@@ -738,217 +686,6 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
   )
 }
 
-/**
- * Editor voor de brand-colour set die generate-image injecteert. List
- * van chips met hex preview + tekstinvoer + enable-checkbox + role-
- * dropdown + remove. Standaard initialiseren we vanuit
- * `detected.colors` zodat de CM ziet wat er automatisch gevonden is en
- * daar incremental edits op kan doen. Roy 2026-06-13: roles zijn nu
- * CM-controlled (primary / secondary / accent) — de auto-classifier
- * vergiste zich te vaak over welke kleur de panel-kleur was en welke
- * de CTA-kleur.
- */
-
-const ROLE_OPTIONS: Array<{ value: "" | BrandColorRole; label: string; hint: string }> = [
-  { value: "", label: "Geen rol", hint: "Pedro plaatst 'm op een vrije positie" },
-  { value: "primary", label: "Primary · achtergrond", hint: "Canvas / panel-vlak waar de headline op staat" },
-  { value: "secondary", label: "Secondary · headline accent", hint: "Kleur voor 1-2 nadruk-woorden in je headline + ÉÉN typografisch accent op diezelfde woorden (cleane underline, gevuld marker-vlak met witte tekst, soft highlighter bar, of cirkel om één woord). Geen doorstreping. Base headline blijft wit." },
-  { value: "accent", label: "Accent · brand highlight", hint: "Brand-kleur voor scene elementen — graphic overlays, glow, particles, rim-light, highlighted props. Eventueel ook CTA-knop wanneer er één past, maar CTA is optioneel." },
-]
-
-function BrandColorsEditor({
-  colors,
-  detectedSource,
-  disabled,
-  onChange,
-}: {
-  colors: Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }>
-  detectedSource: "pdf" | "website" | "none"
-  disabled: boolean
-  onChange: (next: Array<{ hex: string; enabled?: boolean; role?: BrandColorRole }>) => void
-}) {
-  const sourceLabel =
-    detectedSource === "pdf"
-      ? "uit brand book PDF"
-      : detectedSource === "website"
-        ? "uit website scrape"
-        : "geen detectie — voeg ze handmatig toe"
-
-  function patch(
-    idx: number,
-    p: Partial<{ hex: string; enabled: boolean; role: BrandColorRole | undefined }>,
-  ) {
-    const next = colors.map((c, i) => {
-      if (i !== idx) return c
-      const updated: { hex: string; enabled?: boolean; role?: BrandColorRole } = { ...c, ...p }
-      // When the CM picks "Geen rol", role is set to undefined — strip
-      // the key so the persisted blob stays tight (sanitiser tolerates
-      // missing role and applies positional fallback at render time).
-      if (p.role === undefined && "role" in p) delete updated.role
-      return updated
-    })
-    onChange(next)
-  }
-  function remove(idx: number) {
-    onChange(colors.filter((_, i) => i !== idx))
-  }
-  function add() {
-    onChange([...colors, { hex: "#000000", enabled: true }])
-  }
-
-  // Surface which roles are already taken so the CM sees a hint when a
-  // second colour tries to claim the same role. We don't block it —
-  // the resolver only honours the FIRST entry per role — but the chip
-  // makes the duplication visible.
-  const roleCounts = colors.reduce<Record<BrandColorRole, number>>(
-    (acc, c) => {
-      if (c.role) acc[c.role] = (acc[c.role] ?? 0) + 1
-      return acc
-    },
-    { primary: 0, secondary: 0, accent: 0 },
-  )
-
-  return (
-    <div className={cn(disabled && "opacity-50")}>
-      <Label>
-        Brand colors <span className="font-normal text-muted-foreground">({sourceLabel})</span>
-      </Label>
-      <div className="text-[11px] text-muted-foreground/80 -mt-1 mb-2 leading-snug space-y-0.5">
-        <div>
-          Tag elke kleur met een rol zodat Pedro weet waar &apos;ie hoort:
-        </div>
-        <ul className="ml-3 list-disc space-y-0.5">
-          <li>
-            <span className="font-medium text-foreground/80">Primary</span> = de
-            achtergrond / panel-kleur waar je headline op staat
-          </li>
-          <li>
-            <span className="font-medium text-foreground/80">Secondary</span> =
-            de <em>nadruk-kleur</em> binnen de headline: 1-2 sleutel-woorden
-            (idealiter 1) krijgen deze tint plus één positief typografisch
-            accent — cleane underline, gevuld marker-vlak met witte tekst,
-            soft highlighter bar, of dunne cirkel om één woord. Geen
-            doorstreping of kruisstreepjes. Base headline blijft wit.
-          </li>
-          <li>
-            <span className="font-medium text-foreground/80">Accent</span> = de
-            brand-kleur voor <em>scene elementen</em>: graphic overlays, glow,
-            particles, rim-light, gehighlighte props. Eventueel ook de
-            CTA-knop wanneer er één past — maar CTA is optioneel, niet
-            verplicht.
-          </li>
-        </ul>
-        <div className="pt-0.5">
-          Wit en zwart zijn altijd impliciet beschikbaar voor tekst &amp;
-          elementen — die hoef je niet hier toe te voegen.
-        </div>
-      </div>
-      <div className="space-y-2">
-        {colors.length === 0 && (
-          <div className="text-xs text-muted-foreground italic">
-            Nog geen kleuren — voeg er één toe of hercheck de detectie via analyze-website.
-          </div>
-        )}
-        {colors.map((c, idx) => {
-          const enabled = c.enabled !== false
-          const valid = HEX_RE.test(c.hex)
-          const role = c.role
-          const isDuplicateRole = role !== undefined && roleCounts[role] > 1
-          return (
-            <div
-              key={idx}
-              className={cn(
-                "flex items-center gap-2 px-2 py-1.5 rounded-md border border-border/60 bg-background/40 flex-wrap",
-                !enabled && "opacity-60",
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={enabled}
-                disabled={disabled}
-                onChange={(e) => patch(idx, { enabled: e.target.checked })}
-                className="h-4 w-4 accent-primary shrink-0"
-                title={enabled ? "Sluit deze kleur uit bij generatie" : "Gebruik deze kleur weer"}
-              />
-              <span
-                className="h-6 w-6 rounded border border-border/60 shrink-0"
-                style={{ backgroundColor: valid ? c.hex : "transparent" }}
-              />
-              <input
-                type="text"
-                value={c.hex}
-                disabled={disabled}
-                onChange={(e) => patch(idx, { hex: e.target.value })}
-                className={cn(
-                  "h-7 px-2 rounded border border-border/60 bg-background text-xs font-mono w-28",
-                  !valid && "border-red-500/50 text-red-600 dark:text-red-400",
-                )}
-                placeholder="#000000"
-                spellCheck={false}
-              />
-              <input
-                type="color"
-                value={valid ? c.hex : "#000000"}
-                disabled={disabled}
-                onChange={(e) => patch(idx, { hex: e.target.value })}
-                className="h-7 w-9 rounded border border-border/60 cursor-pointer disabled:cursor-not-allowed"
-                title="Color picker"
-              />
-              <select
-                value={role ?? ""}
-                disabled={disabled}
-                onChange={(e) =>
-                  patch(idx, {
-                    role: e.target.value === "" ? undefined : (e.target.value as BrandColorRole),
-                  })
-                }
-                className={cn(
-                  "h-7 px-2 rounded border border-border/60 bg-background text-xs",
-                  isDuplicateRole && "border-amber-500/50 text-amber-700 dark:text-amber-400",
-                )}
-                title={
-                  ROLE_OPTIONS.find((o) => o.value === (role ?? ""))?.hint ??
-                  "Kies welke rol deze kleur speelt in de ad"
-                }
-              >
-                {ROLE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <span className="text-[10px] text-muted-foreground ml-auto">
-                {!valid
-                  ? "ongeldig"
-                  : isDuplicateRole
-                    ? "dubbele rol — eerste wint"
-                    : ""}
-              </span>
-              <button
-                type="button"
-                onClick={() => remove(idx)}
-                disabled={disabled}
-                className="inline-flex items-center justify-center h-7 w-7 rounded text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors disabled:opacity-50"
-                title="Verwijder deze kleur"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )
-        })}
-        <button
-          type="button"
-          onClick={add}
-          disabled={disabled}
-          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-dashed border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Voeg kleur toe
-        </button>
-      </div>
-    </div>
-  )
-}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (

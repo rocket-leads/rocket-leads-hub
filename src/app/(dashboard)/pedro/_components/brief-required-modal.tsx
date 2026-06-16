@@ -1,8 +1,14 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Sparkles, Loader2, X, AlertTriangle, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  BrandColorsEditor,
+  VisualStyleChips,
+  type BrandColorRow,
+} from "./brand-identity-controls"
+import type { VisualStyleKey } from "@/lib/pedro/creative-settings"
 
 /**
  * BriefRequiredModal - inline brief flow for Pedro Optimize.
@@ -201,6 +207,51 @@ export function BriefRequiredModal({
   // dit alleen voor het "kleuren opgehaald" hintje.
   const [capturedBrandStyle, setCapturedBrandStyle] = useState<Record<string, unknown> | null>(null)
 
+  // Brand identity from pedro_creative_settings — same data the Optimizer
+  // settings panel edits. Roy 2026-06-14: the CM wants to tag primary /
+  // secondary / accent + pick look-and-feel chips while filling the
+  // briefing, instead of having to navigate to a separate panel after.
+  // Loaded on mount, saved alongside the brief.
+  const [brandColors, setBrandColors] = useState<BrandColorRow[]>([])
+  const [visualStyles, setVisualStyles] = useState<VisualStyleKey[]>([])
+  const [detectedSource, setDetectedSource] = useState<"pdf" | "website" | "none">("none")
+  const [brandColorInjection, setBrandColorInjection] = useState<boolean>(true)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/pedro/clients/${encodeURIComponent(clientId)}/settings`,
+          { cache: "no-store" },
+        )
+        if (!res.ok) return
+        const json = await res.json()
+        if (cancelled) return
+        const effective = (json?.effective ?? {}) as {
+          brandColors?: BrandColorRow[]
+          visualStyles?: VisualStyleKey[]
+          brandColorInjection?: boolean
+        }
+        const detected = (json?.detected ?? {}) as { source?: "pdf" | "website" | "none" }
+        setBrandColors(Array.isArray(effective.brandColors) ? effective.brandColors : [])
+        setVisualStyles(Array.isArray(effective.visualStyles) ? effective.visualStyles : [])
+        setDetectedSource(detected.source ?? "none")
+        if (typeof effective.brandColorInjection === "boolean") {
+          setBrandColorInjection(effective.brandColorInjection)
+        }
+      } catch {
+        /* non-blocking — the modal still saves the brief without brand-identity */
+      } finally {
+        if (!cancelled) setSettingsLoaded(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [clientId])
+
   const generateDraft = useCallback(async () => {
     setAutoGenerating(true)
     setError(null)
@@ -334,12 +385,43 @@ export function BriefRequiredModal({
         console.warn("[brief-required-modal] saved-versions write failed (non-blocking):", e)
       })
 
+      // Brand identity (brand colours + look & feel chips) goes to
+      // pedro_creative_settings via the same endpoint the Optimizer panel
+      // uses. Best-effort: the brief save is the gate, this is a UX-only
+      // convenience so the CM doesn't have to re-open the settings panel.
+      if (settingsLoaded) {
+        fetch(`/api/pedro/clients/${encodeURIComponent(clientId)}/settings`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            settings: {
+              brandColors,
+              visualStyles,
+              brandColorInjection,
+            },
+          }),
+        }).catch((e) => {
+          console.warn("[brief-required-modal] settings write failed (non-blocking):", e)
+        })
+      }
+
       onSaved()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Opslaan mislukt")
       setSaving(false)
     }
-  }, [canSave, saving, clientId, brief, capturedBrandStyle, onSaved])
+  }, [
+    canSave,
+    saving,
+    clientId,
+    brief,
+    capturedBrandStyle,
+    onSaved,
+    settingsLoaded,
+    brandColors,
+    visualStyles,
+    brandColorInjection,
+  ])
 
   function setField<K extends keyof BriefData>(key: K, value: BriefData[K]) {
     setBrief((prev) => ({ ...prev, [key]: value }))
@@ -639,6 +721,59 @@ export function BriefRequiredModal({
                   ),
                 )}
               </select>
+            </div>
+
+            {/* Look & feel chips — Roy 2026-06-14. Same picker as in the
+                Optimizer settings panel; binds to the same
+                pedro_creative_settings.visualStyles array so what you
+                pick here drives what Pedro composes. */}
+            <div className="rounded-md border border-border/40 bg-background/60 px-3 py-2.5 space-y-2">
+              <div className="text-[11px] font-medium text-muted-foreground">
+                Look &amp; feel
+                <span className="text-muted-foreground/50">
+                  {" "}· stijl-attributen die Pedro combineert in het beeld
+                </span>
+              </div>
+              {settingsLoaded ? (
+                <VisualStyleChips value={visualStyles} onChange={setVisualStyles} />
+              ) : (
+                <div className="text-[11px] text-muted-foreground/60 italic">
+                  Look &amp; feel laden…
+                </div>
+              )}
+            </div>
+
+            {/* Brand colour role editor — Roy 2026-06-14. Same editor as
+                in the Optimizer settings panel; binds to the same
+                pedro_creative_settings.brandColors blob so the primary /
+                secondary / accent tags survive across both surfaces. */}
+            <div className="rounded-md border border-border/40 bg-background/60 px-3 py-2.5 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-medium text-muted-foreground">
+                  Brand colours · primary / secondary / accent
+                </div>
+                <label className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={brandColorInjection}
+                    onChange={(e) => setBrandColorInjection(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-primary"
+                  />
+                  Injecteer in image prompts
+                </label>
+              </div>
+              {settingsLoaded ? (
+                <BrandColorsEditor
+                  colors={brandColors}
+                  detectedSource={detectedSource}
+                  disabled={!brandColorInjection}
+                  onChange={setBrandColors}
+                />
+              ) : (
+                <div className="text-[11px] text-muted-foreground/60 italic">
+                  Brand colours laden…
+                </div>
+              )}
             </div>
           </div>
         </div>

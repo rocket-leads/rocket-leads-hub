@@ -592,7 +592,53 @@ Nooit meer dan één typografisch accent per ad. Beide lagen versterken altijd D
 
 Dit is hardcoded in `slotVariationHint()` zodat ook wanneer de CM 3x dezelfde slot-style kiest, de 3-up echt 3 verschillende uitvoeringen oplevert.
 
-**Implementatie:** `REFERENCE_PHOTO_ANTI_COPY` block in `generate-image/route.ts` fires zodra `drive + website + stock` count > 0. De `slotVariationHint(slotIndex)` cycle wordt per slot ge-appended aan de prompt.
+**Implementatie:** `referencePhotoUsageBlockFor(style)` in `generate-image/route.ts` fires zodra `drive + website + stock` count > 0 EN past zich aan per slot-style (zie §4c-bis). De `slotVariationHint(slotIndex, style)` cycle wordt per slot ge-appended aan de prompt.
+
+### 4e. Scene reinforces the headline's argument (geen default tech-chrome)
+
+> Roy 2026-06-14. Een TMM creative had de headline "Geen zin in honderdduizenden euro's aan softwareontwikkeling..?" — duidelijk een budget / geld-verspilling angle, gericht op kostenbewuste klanten. Pedro's AI Animation renderde generic circuit-board chrome + code particles. De headline argumenteert "stop met te veel geld uitgeven" en de visuele context zegt "dit gaat over tech". Mismatch — de scene ondersteunt de hook niet.
+
+**Regel:** elke variant heeft een argument (de headline) en een scene. Pedro leest de headline EERST en ontwerpt de scene daaromheen zodat het argument visueel ondersteund wordt.
+
+**Headline → scene-element mapping (richtinggevend):**
+
+| Headline-thema | Scene cues |
+|---|---|
+| Geld / budget / verspilling / besparen | Munten, biljetten die wegvliegen, calculator, portemonnee, prijslabel met pijl omlaag (geen letterlijke €-bedragen), weegschaal die kantelt |
+| Snelheid / fast delivery | Speedlines, motion trails, sprintende subject, klok met snelle wijzers, fast-forward pijlen |
+| Kwaliteit / vakmanschap | Premium materialen, gepolijste oppervlakken, close-up texture, hand op product, precision tools |
+| Schaal / groei | Pijlen omhoog, ascending bar chart, expanding compositie, multiplying subjects |
+| Pijn / probleem | Tension cues: gebroken oppervlak, vallend object, bezorgde blik, verbroken keten |
+| Oplossing / verlichting | Resolution cues: glad pad, lit forward path, confident subject, zon die doorbreekt |
+| Tijd / deadline | Kalender, klok, hourglass, countdown |
+
+**Wat NOOIT te doen:** circuit-board / data-stream / code-particles default chrome voor ELKE tech-adjacent klant ongeacht headline. Dat is de luiste keus en negeert de hook. Als de headline over geld gaat, zijn circuit boards de verkeerde scene zelfs voor een SaaS klant.
+
+**Per slot style:**
+- **`ai_content`** / **`ai_animation`** / **`stock_content`**: scene wordt volledig naar het headline-thema gestuurd.
+- **`client_content`** / **`client_content_ai`**: locked subject blijft. Maar accent overlays / brand-coloured highlights / atmosphere cues / props in negative space tilten naar het headline-thema, niet default tech-chrome.
+
+**Concrete test:** als je de headline weghaalt en alleen de scene laat staan, moet een buitenstaander nog steeds het thema kunnen raden binnen 2 seconden. Lukt dat niet — geen geld-cue te bekennen op een budget-headline — dan klopt de match niet.
+
+**Implementatie:** `HEADLINE_SEMANTIC_CONTEXT_RULE` constante in `generate-image/route.ts`, wordt per slot tussen `referencePhotoUsageBlockFor(style)` en `directive` ge-injecteerd zodat Gemini de headline-mapping leest VÓÓR de stylistische directives.
+
+### 4c-bis. Slot-style → reference-photo gedrag (slot-style is een CONTRACT)
+
+> Roy 2026-06-14. Eerste versie van §4c paste het anti-copy framing uniform toe op álle slot styles. Resultaat: bij "Client content + AI" genereerde Pedro een totaal nieuwe persoon die niet in de Drive zat — terwijl de hele bedoeling van die slot is om de echte klant-foto te gebruiken en alleen de scene met AI te enhancen. Slot-style is geen suggestie maar een contract; reference-photo behaviour moet daar 1:1 op aansluiten.
+
+| Slot style | Subject identity (mens / product) | Scene / environment / atmosfeer | Variation hint richtingen |
+|---|---|---|---|
+| **`client_content`** | LOCKED — exact same person + product uit refs | LOCKED — same scene, alleen colour grade / crop / light treatment | Colour grade / crop / light treatment (binnen dezelfde shot) |
+| **`client_content_ai`** | LOCKED — exact same person + product uit refs | FREE — invent new background / environment / atmosphere | Environment / framing / atmosphere AROUND de locked subject |
+| **`ai_content`** | LOOSE — refs zijn brand-DNA inspiratie (mag wel lijken op het team, mag ook anders) | FREE — fully composed AI scene | Environment / framing+pose / atmosphere+mood (full freedom) |
+| **`ai_animation`** | LOOSE — subject is één van vele kinetic elementen | FREE — fully composed kinetic scene | idem `ai_content` |
+| **`stock_content`** | n/a — geen subject lock | FREE — editorial stock aesthetic | idem `ai_content` |
+
+**Waarom dit een hard contract is:** de CM kiest de slot style bewust. "Client content + AI" betekent expliciet "ik wil ECHT mijn klant in beeld, met AI als atmosfeer-laag eromheen". Als Pedro daar een vreemde stockey-looking man van maakt, is het contract gebroken — ongeacht hoe goed de output er verder uitziet.
+
+**Wat als er geen real-photo refs zijn?** Voor `client_content` / `client_content_ai`: Pedro moet escaleren — brand-cohesive composite produceren maar de output flagaen als identity-uncertain. Niet stilletjes een willekeurig persoon verzinnen.
+
+**Implementatie:** `referencePhotoUsageBlockFor(style: SlotStyleKey)` returnt drie verschillende blocks (HARD FIDELITY voor `client_content`, SUBJECT IDENTITY LOCK voor `client_content_ai`, loose anti-copy voor de AI-styles). `slotVariationHint(slotIndex, style)` kiest uit drie verschillende direction-sets per style zodat een "Client content + AI" slot nooit een "swap the subject" instructie krijgt.
 
 ### 4d. Subject scale & canvas density — vul de ruimte op
 
@@ -677,6 +723,9 @@ Bij botsing wint de per-klant block altijd (framing zegt het expliciet). Pedro k
 | 10 | **Headline TEXT rendert schoon** — geen glow halo om de letters, geen kleur-gradient binnen de letters, geen blur op de tekst. Glow/atmosfeer hoort op SCENE-elementen (overlays, particles, omgeving), niet op de letterforms. Tight 1-2px harde drop-shadow is OK; diffuse glow rond text is NIET OK | Roy 2026-06-13: TMM creative had glow-gradient onder de tekst die de leesbaarheid pakte. Tekst is een graphic-design element, geen verlicht object |
 | 11 | **CTA buttons zijn OPTIONEEL** — alleen renderen wanneer de headline er om vraagt (Bekijk / Vraag aan / Plan / Ontdek / Start) EN de compositie ruimte heeft. Een schone ad zonder CTA is beter dan een geforceerde knop | Roy 2026-06-13: CTA is geen hero-element, accent-kleur landt liever op scene elementen dan op een verplichte knop |
 | 12 | **Subject domineert canvas (~60-80%)**. Tight crop op mensen/producten/hero element. Geen "klein figuur in groot vertrek"-composities. Lege achtergrond = verspilde stopping-power op Meta-feed | Roy 2026-06-13: TMM creative had 2 mannen klein in beeld met veel donkere lucht eromheen — split-second scroll-attentie wordt verloren. Zie §4d voor de volle regel |
+| 13 | **Geen mid-woord afbrekingen**. Een woord wordt NOOIT mid-woord gesplitst met een streepje (geen "softwareont-" op regel N + "wikkeling" op regel N+1) — dat leest als een typo. **Nederlandse samengestelde woorden** (compounds: "softwareontwikkeling" = software + ontwikkeling, "klantenservice" = klanten + service, "verduurzaming" = ver + duurzaming) MOGEN op de **morpheem-grens** breken zonder streepje wanneer de compound te lang is voor één regel — "software" op regel N, "ontwikkeling" op regel N+1 (zonder hyphen). Solitaire (niet-samengestelde) woorden blijven ALTIJD intact; past 'm niet: (1) kleiner font, (2) re-flow line breaks, (3) panel iets breder — kies één. Line breaks landen alleen op whole-word of morpheem-boundaries; lijnspacing + linker-edge alignment consistent; panel sized to headline, niet andersom (geen 40% lege onderkant) | Roy 2026-06-14: TMM creative renderde "softwareont-/wikkeling" — leest als typo. Roy 2026-06-14 update: alternatief voor te lange compounds is morpheem-break ("software"/"ontwikkeling"), niet halverwege "ont-". Bij solitaire woorden gewoon shrinken |
+| 14 | **Scene reinforces the headline's argument**. Read the headline FIRST, design scene to back it up VISUALLY. Money/budget/waste → financiële illustraties, geld dat wegvliegt, calculator. Speed → speedlines / motion trails. Quality → premium materials, polished texture. Pain → tension cues. Geen default circuit-board chrome voor ELKE tech-klant ongeacht headline | Roy 2026-06-14: TMM headline ging over "honderdduizenden euro's verspillen aan softwareontwikkeling" — Pedro renderde generic circuit-board animatie. Headline argument (geld / budget) en visuele context (tech generic) sloten niet op elkaar aan |
+| 15 | **Headline rendert LETTERLIJK**. De op-image tekst is een woord-voor-woord, karakter-voor-karakter weergave van de supplied headline string. Geen verdubbelde tokens binnen de headline ("software software ontwikkeling" terwijl de string "softwareontwikkeling" was), geen ingevoegde woorden, geen weggelaten woorden, geen volgorde-wijzigingen. Image-gen modellen "stotteren" graag op compound-achtige tekst — expliciet verbieden | Roy 2026-06-14: TMM Variant B renderde "software" twee keer in de op-image headline terwijl de supplied string het woord één keer bevatte. Rule #1 verbiedt dubbele tekst-elementen maar niet token-verdubbeling binnen één element |
 
 **Implementatie (Hub side):**
 - Pedro's `imagePrompt` JSON-veld bevat A-F regels per variant.

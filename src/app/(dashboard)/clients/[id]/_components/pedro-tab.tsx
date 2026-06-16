@@ -1,45 +1,37 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import Link from "next/link"
-import { Sparkles, RefreshCw, ExternalLink, AlertCircle, Calendar, TrendingDown, TrendingUp, Minus, History, RotateCcw, Check } from "lucide-react"
+import {
+  Sparkles,
+  AlertCircle,
+  ExternalLink,
+  Globe,
+  Loader2,
+  CheckCircle2,
+  Wand2,
+} from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useLocale } from "@/lib/i18n/client"
 import { t } from "@/lib/i18n/t"
-import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { Locale } from "@/lib/i18n/types"
+import { PedroSettingsPanel } from "@/app/(dashboard)/pedro/_components/pedro-settings-panel"
 
 /**
- * Pedro tab on the client detail page. Shows what Pedro has done for this
- * client: brief status (draft / edited / not started) + the full refresh
- * history timeline. Source of truth: pedro_client_state via the existing
- * /api/pedro/client-state endpoint (reuses the same shape Pedro UI uses).
+ * Per-client Pedro configuration. Roy 2026-06-14: replaced the old
+ * version/refresh history view — the client modal is now the canonical
+ * surface for *setting up* Pedro per klant (brief, kick-off scan,
+ * branding, creative settings) instead of just reporting on it. Advanced
+ * authoring (angles, script, creatives) still lives in /pedro itself.
+ *
+ * Three stacked sections under the header:
+ *   1. Creative Briefing — read-only snapshot + auto-create + edit-in-pedro
+ *   2. Kick-off — website scan that persists detected brand_style
+ *   3. PedroSettingsPanel — reuse of the optimize-page panel (Bronnen /
+ *      Output / Look & feel / Brand identity incl. brand-colour editor)
  */
-
-type RefreshEntry = {
-  generatedAt: string
-  window: { start: string; end: string; days: number }
-  stats: {
-    totalSpend: number
-    totalLeads: number
-    avgCpl: number | null
-    winnerCount: number
-    loserCount: number
-  }
-  trend: {
-    spendDeltaPct: number | null
-    leadsDeltaPct: number | null
-    cplDeltaPct: number | null
-  }
-  summary: string
-  proposals: Array<{
-    basedOnAd: { adName: string; cpl: number | null }
-    preserve: { hook: string; angle: string; format: string }
-    variants: Array<{ label: string; newHook: string; primaryCopySnippet: string }>
-  }>
-}
 
 type AutoBriefMeta = {
   source?: string
@@ -49,21 +41,21 @@ type AutoBriefMeta = {
   fathomRecordingId?: string | null
 }
 
-type ClientStateResponse = {
-  state: null | {
-    client_id: string
-    campaign_number: number
-    brief: Record<string, string> | null
-    selected_angles: unknown[] | null
-    script_text: string | null
-    creatives: { refreshes?: RefreshEntry[]; manusPrompt?: string } | null
-    lp: unknown
-    ad_copy: unknown
-    auto_brief_meta: AutoBriefMeta | null
-    created_at: string
-    updated_at: string
-  }
+type ClientState = {
+  client_id: string
+  campaign_number: number
+  brief: Record<string, string> | null
+  selected_angles: unknown[] | null
+  script_text: string | null
+  creatives: unknown
+  lp: unknown
+  ad_copy: unknown
+  auto_brief_meta: AutoBriefMeta | null
+  created_at: string
+  updated_at: string
 }
+
+type ClientStateResponse = { state: ClientState | null }
 
 function fmtDate(iso: string, locale: Locale): string {
   return new Date(iso).toLocaleDateString(locale === "nl" ? "nl-NL" : "en-GB", {
@@ -73,38 +65,7 @@ function fmtDate(iso: string, locale: Locale): string {
   })
 }
 
-function fmtEuro(n: number, locale: Locale): string {
-  return `€${n.toLocaleString(locale === "nl" ? "nl-NL" : "en-GB", { maximumFractionDigits: 0 })}`
-}
-
-function TrendCell({ pct, goodIs, locale }: { pct: number | null; goodIs: "up" | "down"; locale: Locale }) {
-  if (pct == null || Math.abs(pct) < 5) {
-    return (
-      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/60">
-        <Minus className="h-3 w-3" />
-        {t("client.pedro.refresh.trend.flat", locale)}
-      </span>
-    )
-  }
-  const isGood = goodIs === "up" ? pct > 0 : pct < 0
-  const color = isGood ? "text-emerald-500" : "text-red-500"
-  const Icon = pct > 0 ? TrendingUp : TrendingDown
-  return (
-    <span className={`inline-flex items-center gap-1 text-xs ${color}`}>
-      <Icon className="h-3 w-3" />
-      {pct >= 0 ? "+" : ""}
-      {pct.toFixed(0)}%
-    </span>
-  )
-}
-
-function StatusPill({
-  state,
-  locale,
-}: {
-  state: NonNullable<ClientStateResponse["state"]> | null
-  locale: Locale
-}) {
+function StatusPill({ state, locale }: { state: ClientState | null; locale: Locale }) {
   if (!state) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground">
@@ -134,8 +95,27 @@ function StatusPill({
   )
 }
 
-export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; clientName: string }) {
+type Props = {
+  mondayItemId: string
+  clientName: string
+  googleDriveId: string | null
+  initialWebsiteUrl?: string | null
+}
+
+export function PedroTab({
+  mondayItemId,
+  clientName,
+  googleDriveId,
+  initialWebsiteUrl,
+}: Props) {
   const locale = useLocale()
+
+  // Bump on writes that change `brand_style` (kick-off scan), so the
+  // embedded PedroSettingsPanel re-mounts and re-fetches `detected.*`.
+  // The panel only loads on (open, clientId) — without this it'd render
+  // stale colours after a successful scan.
+  const [panelRefreshKey, setPanelRefreshKey] = useState(0)
+
   const { data, isLoading } = useQuery<ClientStateResponse>({
     queryKey: ["pedro-client-state", mondayItemId],
     queryFn: () =>
@@ -144,15 +124,12 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
   })
 
   const state = data?.state ?? null
-  const refreshes = state?.creatives?.refreshes ?? []
-  const sortedRefreshes = [...refreshes].sort((a, b) =>
-    (b.generatedAt ?? "").localeCompare(a.generatedAt ?? ""),
-  )
 
   if (isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-20 rounded-2xl" />
+        <Skeleton className="h-32 rounded-2xl" />
         <Skeleton className="h-40 rounded-2xl" />
       </div>
     )
@@ -160,83 +137,186 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
 
   return (
     <div className="space-y-5">
-      {/* Header card - status + open in Pedro.
-          Mode hint at the bottom clarifies this tab is the *insight-mode*
-          per-client surface (status, brief snapshot, refresh history) and
-          full build-mode lives on /pedro. */}
+      {/* ── Header card ── */}
       <Card>
-        <CardContent className="flex items-center justify-between gap-4 py-5">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <h3 className="font-heading font-semibold text-base">Pedro</h3>
-              <StatusPill state={state} locale={locale} />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {state
-                ? t(
-                    refreshes.length === 1
-                      ? "client.pedro.header.last_edited_one"
-                      : "client.pedro.header.last_edited_many",
-                    locale,
-                    { date: fmtDate(state.updated_at, locale), n: String(refreshes.length) },
-                  )
-                : t("client.pedro.header.empty", locale)}
-            </p>
-            {state?.auto_brief_meta?.source && (
-              <p className="text-xs text-muted-foreground/70 italic">
-                {state.auto_brief_meta.source}
-              </p>
-            )}
-            <p className="text-[11px] text-muted-foreground/60 pt-1">
-              {t("client.pedro.mode_hint", locale)}
-            </p>
+        <CardContent className="py-5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-heading font-semibold text-base">Pedro</h3>
+            <StatusPill state={state} locale={locale} />
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Link
-              href={`/pedro/onboard?tab=brief&clientId=${mondayItemId}`}
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              {t("client.pedro.action.open", locale)}
-            </Link>
-            <Link
-              href={`/pedro/optimize?clientId=${mondayItemId}&auto=1`}
-              className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md border border-border text-foreground hover:bg-accent transition-colors"
-              title={t("client.pedro.action.refresh_title", locale)}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              {t("client.pedro.action.refresh", locale)}
-            </Link>
-          </div>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            {state
+              ? `Brief en instellingen voor ${clientName}. Laatste wijziging ${fmtDate(state.updated_at, locale)}.`
+              : `Configureer brief, branding en creative-instellingen voor ${clientName}.`}
+          </p>
+          {state?.auto_brief_meta?.source && (
+            <p className="text-xs text-muted-foreground/70 italic mt-1">
+              {state.auto_brief_meta.source}
+            </p>
+          )}
         </CardContent>
       </Card>
 
-      {/* Brief snapshot (if exists) */}
-      {state?.brief && (
-        <Card>
-          <CardContent className="py-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-heading font-semibold text-sm">{t("client.pedro.brief.title", locale)}</h4>
-              <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/60 font-semibold">
-                {t("client.pedro.brief.campaign", locale, { n: String(state.campaign_number) })}
-              </span>
-            </div>
+      {/* ── Creative Briefing ── */}
+      <BriefingSection
+        mondayItemId={mondayItemId}
+        clientName={clientName}
+        state={state}
+      />
+
+      {/* ── Kick-off · website scan + branding ── */}
+      <KickoffSection
+        mondayItemId={mondayItemId}
+        initialUrl={initialWebsiteUrl ?? ""}
+        onScanned={() => setPanelRefreshKey((k) => k + 1)}
+      />
+
+      {/* ── Pedro instellingen (Bronnen / Output / Look & feel / Brand identity) ──
+          Re-use the same panel that lives on /pedro/optimize. `open` is
+          always true here because this tab IS the settings surface; the
+          panel's own auto-close-after-save is suppressed by omitting the
+          onClose callback. The `key` bump above forces a re-mount + fresh
+          fetch of `detected.*` after a website scan lands new colours. */}
+      <PedroSettingsPanel
+        key={`pedro-settings-${panelRefreshKey}`}
+        open
+        clientId={mondayItemId}
+        clientName={clientName}
+        googleDriveId={googleDriveId}
+      />
+
+      {/* ── Footer: advanced authoring lives in /pedro ── */}
+      <p className="text-[11px] text-muted-foreground/60 text-center pt-2">
+        Voor angles, scripts en het maken van creatives:{" "}
+        <Link
+          href={`/pedro/onboard?clientId=${mondayItemId}`}
+          className="text-primary hover:underline inline-flex items-center gap-1"
+        >
+          open Pedro
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      </p>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Creative Briefing
+// Read-only snapshot of the existing brief, plus the two CM actions
+// that matter most from this surface: auto-create (for clients without
+// any brief yet) and regenerate / hand off to full Pedro for editing.
+// ──────────────────────────────────────────────────────────────────────
+
+const BRIEF_FIELDS: Array<{ key: string; label: string }> = [
+  { key: "bedrijf", label: "Bedrijf" },
+  { key: "sector", label: "Sector" },
+  { key: "doel", label: "Doelgroep" },
+  { key: "pijn", label: "Pijnpunten" },
+  { key: "aanbod", label: "Aanbod" },
+  { key: "usps", label: "USPs" },
+  { key: "hooksAM", label: "Marketing hooks" },
+]
+
+function BriefingSection({
+  mondayItemId,
+  clientName,
+  state,
+}: {
+  mondayItemId: string
+  clientName: string
+  state: ClientState | null
+}) {
+  const queryClient = useQueryClient()
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const hasBrief =
+    !!state?.brief &&
+    Object.values(state.brief).some((v) => typeof v === "string" && v.trim().length > 0)
+
+  const runAutoBrief = useCallback(async () => {
+    setGenerating(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/pedro/auto-brief", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: mondayItemId }),
+      })
+      const json = await res.json()
+      if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`)
+
+      // /api/pedro/auto-brief returns the brief in API field-names
+      // (doelgroep / pijnpunten / marketingHooks). The Pedro client-state
+      // schema uses the form-key shape (doel / pijn / hooksAM). Translate.
+      const b = json.brief as {
+        bedrijf?: string
+        sector?: string
+        doelgroep?: string
+        pijnpunten?: string
+        aanbod?: string
+        usps?: string
+        marketingHooks?: string
+        source?: string
+      }
+      const brief = {
+        bedrijf: b.bedrijf ?? "",
+        sector: b.sector ?? "",
+        doel: b.doelgroep ?? "",
+        pijn: b.pijnpunten ?? "",
+        aanbod: b.aanbod ?? "",
+        usps: b.usps ?? "",
+        hooksAM: b.marketingHooks ?? "",
+      }
+      const targetCampaign = state?.campaign_number ?? 1
+      const saveRes = await fetch("/api/pedro/client-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: mondayItemId,
+          campaignNumber: targetCampaign,
+          brief,
+          auto_brief_meta: {
+            source: b.source ?? "auto-brief",
+            autoTriggered: true,
+            triggeredAt: new Date().toISOString(),
+          },
+        }),
+      })
+      if (!saveRes.ok) {
+        const j = await saveRes.json().catch(() => ({}))
+        throw new Error(j.error || `Brief opslaan mislukt (HTTP ${saveRes.status})`)
+      }
+      await queryClient.invalidateQueries({ queryKey: ["pedro-client-state", mondayItemId] })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Brief aanmaken mislukt")
+    } finally {
+      setGenerating(false)
+    }
+  }, [mondayItemId, queryClient, state])
+
+  return (
+    <Card>
+      <CardContent className="py-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h4 className="font-heading font-semibold text-sm">Creative Briefing</h4>
+          {state?.campaign_number != null && (
+            <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/60 font-semibold">
+              Campagne #{state.campaign_number}
+            </span>
+          )}
+        </div>
+
+        {hasBrief ? (
+          <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-              {(["sector", "doel", "pijn", "aanbod", "usps", "hooksAM"] as const).map((field) => {
-                const labelKeys: Record<string, DictionaryKey> = {
-                  sector: "client.pedro.brief.field.sector",
-                  doel: "client.pedro.brief.field.doel",
-                  pijn: "client.pedro.brief.field.pijn",
-                  aanbod: "client.pedro.brief.field.aanbod",
-                  usps: "client.pedro.brief.field.usps",
-                  hooksAM: "client.pedro.brief.field.hooksAM",
-                }
-                const value = state.brief?.[field] ?? ""
-                if (!value) return null
+              {BRIEF_FIELDS.map(({ key, label }) => {
+                const value = state?.brief?.[key] ?? ""
+                if (!value.trim()) return null
                 return (
-                  <div key={field} className="space-y-1">
+                  <div key={key} className="space-y-1">
                     <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-                      {t(labelKeys[field], locale)}
+                      {label}
                     </div>
                     <div className="text-sm text-foreground whitespace-pre-line line-clamp-3">
                       {value}
@@ -245,418 +325,236 @@ export function PedroTab({ mondayItemId, clientName }: { mondayItemId: string; c
                 )
               })}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Saved-version timeline - Pedro's full per-stage history for this client */}
-      <SavedVersionTimeline mondayItemId={mondayItemId} />
-
-      {/* Refresh history timeline */}
-      <Card>
-        <CardContent className="py-5">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-heading font-semibold text-sm">{t("client.pedro.refresh.title", locale)}</h4>
-            <span className="text-xs text-muted-foreground/60">{t("client.pedro.refresh.total", locale, { n: String(refreshes.length) })}</span>
-          </div>
-
-          {sortedRefreshes.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
-              {t("client.pedro.refresh.empty_lead", locale)}{" "}
+            <div className="flex items-center gap-2 pt-3 border-t border-border/40">
               <Link
-                href={`/pedro/optimize?clientId=${mondayItemId}&auto=1`}
-                className="text-primary hover:underline"
+                href={`/pedro/onboard?tab=brief&clientId=${mondayItemId}`}
+                className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md border border-border text-foreground hover:bg-accent transition-colors"
               >
-                {t("client.pedro.refresh.empty_cta", locale)}
+                <Sparkles className="h-3.5 w-3.5" />
+                Bewerk in Pedro
+              </Link>
+              <button
+                type="button"
+                onClick={runAutoBrief}
+                disabled={generating}
+                className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                title="Vul de brief opnieuw met AI op basis van Monday, Trengo en website"
+              >
+                {generating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="h-3.5 w-3.5" />
+                )}
+                Regenereer met AI
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-md border border-dashed border-border bg-muted/20 px-4 py-6 space-y-3 text-center">
+            <p className="text-sm text-muted-foreground">
+              Nog geen brief voor{" "}
+              <span className="font-medium text-foreground">{clientName}</span>. Pedro pakt
+              context uit Monday, Trengo en de website en vult automatisch in.
+            </p>
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={runAutoBrief}
+                disabled={generating}
+                className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {generating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Wand2 className="h-3.5 w-3.5" />
+                )}
+                Maak brief aan met AI
+              </button>
+              <Link
+                href={`/pedro/onboard?tab=brief&clientId=${mondayItemId}`}
+                className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-md border border-border text-foreground hover:bg-accent transition-colors"
+              >
+                Of vul handmatig in
               </Link>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {sortedRefreshes.map((r, i) => (
-                <div
-                  key={`${r.generatedAt}-${i}`}
-                  className="rounded-lg border border-border/60 bg-background p-4 space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Calendar className="h-3 w-3" />
-                      {fmtDate(r.generatedAt, locale)}
-                      <span className="text-muted-foreground/40">·</span>
-                      <span>{t("client.pedro.refresh.window", locale, { days: String(r.window.days), start: r.window.start, end: r.window.end })}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="text-muted-foreground">
-                        {t("client.pedro.refresh.winners_losers", locale, { w: String(r.stats.winnerCount), l: String(r.stats.loserCount) })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {r.summary && (
-                    <p className="text-sm text-foreground leading-relaxed">{r.summary}</p>
-                  )}
-
-                  {/* Stat grid */}
-                  <div className="grid grid-cols-3 gap-3 text-xs">
-                    <div className="space-y-0.5">
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-                        {t("client.pedro.refresh.stat.spend", locale)}
-                      </div>
-                      <div className="font-medium tabular-nums">{fmtEuro(r.stats.totalSpend, locale)}</div>
-                      <TrendCell pct={r.trend.spendDeltaPct} goodIs="up" locale={locale} />
-                    </div>
-                    <div className="space-y-0.5">
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-                        {t("client.pedro.refresh.stat.leads", locale)}
-                      </div>
-                      <div className="font-medium tabular-nums">{r.stats.totalLeads}</div>
-                      <TrendCell pct={r.trend.leadsDeltaPct} goodIs="up" locale={locale} />
-                    </div>
-                    <div className="space-y-0.5">
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold">
-                        {t("client.pedro.refresh.stat.avg_cpl", locale)}
-                      </div>
-                      <div className="font-medium tabular-nums">
-                        {r.stats.avgCpl != null ? `€${r.stats.avgCpl.toFixed(2)}` : "-"}
-                      </div>
-                      <TrendCell pct={r.trend.cplDeltaPct} goodIs="down" locale={locale} />
-                    </div>
-                  </div>
-
-                  {/* Proposals teaser */}
-                  {r.proposals.length > 0 && (
-                    <div className="pt-2 border-t border-border/40">
-                      <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold mb-2">
-                        {t(
-                          r.proposals.length === 1 ? "client.pedro.refresh.proposals_one" : "client.pedro.refresh.proposals_many",
-                          locale,
-                          { n: String(r.proposals.length) },
-                        )}
-                      </div>
-                      <ul className="space-y-1.5 text-sm">
-                        {r.proposals.map((p, j) => (
-                          <li key={j} className="flex items-start gap-2 text-foreground">
-                            <span className="text-primary shrink-0">→</span>
-                            <span className="truncate">
-                              <span className="font-medium">{p.basedOnAd.adName}</span>
-                              {p.basedOnAd.cpl != null && (
-                                <span className="text-muted-foreground"> · CPL €{p.basedOnAd.cpl.toFixed(2)}</span>
-                              )}
-                              <span className="text-muted-foreground"> - {t("client.pedro.refresh.variants", locale, { n: String(p.variants.length) })}</span>
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-4 pt-3 border-t border-border/40 text-center">
-            <Link
-              href={`/pedro/optimize?clientId=${mondayItemId}`}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              {t("client.pedro.refresh.open_full", locale)} <ExternalLink className="h-3 w-3" />
-            </Link>
           </div>
-        </CardContent>
-      </Card>
+        )}
 
-      <p className="text-[11px] text-muted-foreground/60 text-center pt-2">
-        {t("client.pedro.footer", locale, { client: clientName })}
-      </p>
-    </div>
+        {error && (
+          <div className="text-xs text-red-600 dark:text-red-400 inline-flex items-center gap-1.5">
+            <AlertCircle className="h-3 w-3" />
+            {error}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Saved-version timeline - cross-stage history of Pedro's explicit
-// "Save naar klant" snapshots for this client. Filterable by stage.
-// Each entry can be expanded to peek at the data, or restored back into
-// the current draft (overwrites pedro_client_state). Restore is the
-// way to "rewind to v2" if a later version went sideways.
+// Kick-off · website scan
+// Run analyze-website and persist the resulting brand_style to the
+// client-state row so PedroSettingsPanel (below) shows the freshly
+// detected colours / fonts. onScanned bumps the panel's key so it
+// re-mounts and re-fetches its `detected.*` block.
 // ──────────────────────────────────────────────────────────────────────
 
-type StageId = "brief" | "angles" | "script" | "creatives" | "lp" | "ad-copy" | "research"
-
-/** Dictionary key per stage. Used for both filter chips and per-row stage
- *  labels in the saved-version timeline. */
-const STAGE_LABEL_KEY: Record<StageId, DictionaryKey> = {
-  brief: "client.pedro.stage.brief",
-  research: "client.pedro.stage.research",
-  angles: "client.pedro.stage.angles",
-  script: "client.pedro.stage.script",
-  creatives: "client.pedro.stage.creatives",
-  lp: "client.pedro.stage.lp",
-  "ad-copy": "client.pedro.stage.ad_copy",
-}
-
-type SavedVersionRow = {
-  id: string
-  client_id: string
-  campaign_number: number
-  stage: StageId
-  version_number: number
-  data: unknown
-  label: string | null
-  saved_by: string | null
-  saved_at: string
-}
-
-function fmtDateTime(iso: string, locale: Locale): string {
-  return new Date(iso).toLocaleString(locale === "nl" ? "nl-NL" : "en-GB", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
-function previewForStage(stage: StageId, data: unknown): string {
-  if (data == null) return ""
-  if (stage === "brief") {
-    const b = data as Record<string, string>
-    return [b.bedrijf, b.sector].filter(Boolean).join(" - ").slice(0, 200) || "-"
-  }
-  if (stage === "angles") {
-    const arr = data as Array<{ titel?: string }>
-    return arr.map((a) => a.titel).filter(Boolean).join(" / ").slice(0, 200) || `${arr.length} angles`
-  }
-  if (stage === "script") {
-    const s = data as { script_text?: string }
-    return (s.script_text ?? "").slice(0, 160) + ((s.script_text?.length ?? 0) > 160 ? "…" : "")
-  }
-  if (stage === "creatives") {
-    const c = data as { qty?: number; formats?: string[] }
-    // "X creatives" / "X formats" left as a compact data preview - the labels
-    // here are part of the data shape, not chrome.
-    return `${c.qty ?? "?"} creatives · ${(c.formats ?? []).join(", ") || "-"}`
-  }
-  if (stage === "lp") {
-    const l = data as { stijl?: string; lengte?: string }
-    return `${l.stijl ?? "?"} · ${l.lengte ?? "?"}`
-  }
-  if (stage === "ad-copy") {
-    const a = data as { variantA?: string }
-    return (a.variantA ?? "").slice(0, 160) + ((a.variantA?.length ?? 0) > 160 ? "…" : "")
-  }
-  if (stage === "research") {
-    const r = data as { branche?: string }
-    return r.branche ?? "-"
-  }
-  return ""
-}
-
-function SavedVersionTimeline({ mondayItemId }: { mondayItemId: string }) {
-  const locale = useLocale()
+function KickoffSection({
+  mondayItemId,
+  initialUrl,
+  onScanned,
+}: {
+  mondayItemId: string
+  initialUrl: string
+  onScanned: () => void
+}) {
   const queryClient = useQueryClient()
-  const [stageFilter, setStageFilter] = useState<StageId | "all">("all")
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const [restoreState, setRestoreState] = useState<Record<string, "idle" | "saving" | "ok" | "err">>({})
+  const [url, setUrl] = useState(initialUrl)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [result, setResult] = useState<null | {
+    colors: string[]
+    headingFont: string | null
+    bodyFont: string | null
+    logoUrl: string | null
+  }>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const { data, isLoading } = useQuery<{ versions: SavedVersionRow[] }>({
-    queryKey: ["pedro-saved-versions", mondayItemId],
-    queryFn: () =>
-      fetch(`/api/pedro/saved-versions?clientId=${encodeURIComponent(mondayItemId)}`).then((r) => r.json()),
-    staleTime: 60 * 1000,
-  })
-
-  const versions = data?.versions ?? []
-  const filtered = stageFilter === "all" ? versions : versions.filter((v) => v.stage === stageFilter)
-  const stagesPresent = Array.from(new Set(versions.map((v) => v.stage)))
-
-  async function handleRestore(v: SavedVersionRow) {
-    setRestoreState((s) => ({ ...s, [v.id]: "saving" }))
+  const handleAnalyze = useCallback(async () => {
+    if (!url.trim()) {
+      setError("Vul eerst een website-URL in")
+      return
+    }
+    setAnalyzing(true)
+    setError(null)
+    setResult(null)
     try {
-      // Map stage data back to the draft's column-shape, then upsert
-      // pedro_client_state (the draft slot) so opening Pedro shows
-      // this version as the working draft.
-      const patch: Record<string, unknown> = {
-        clientId: mondayItemId,
-        campaignNumber: v.campaign_number,
-      }
-      if (v.stage === "brief") patch.brief = v.data
-      else if (v.stage === "angles") patch.selected_angles = v.data
-      else if (v.stage === "script") {
-        const s = v.data as { script_text?: string; script_videos?: unknown[] }
-        patch.script_text = s.script_text ?? null
-        patch.script_videos = s.script_videos ?? []
-      } else if (v.stage === "creatives") patch.creatives = v.data
-      else if (v.stage === "lp") patch.lp = v.data
-      else if (v.stage === "ad-copy") patch.ad_copy = v.data
-
-      const res = await fetch("/api/pedro/client-state", {
+      const res = await fetch("/api/pedro/analyze-website", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
+        body: JSON.stringify({ url: url.trim() }),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setRestoreState((s) => ({ ...s, [v.id]: "ok" }))
+      const json = await res.json()
+      if (!res.ok || json.error) throw new Error(json.error || `HTTP ${res.status}`)
+      const brandStyle = json.brandStyle as Record<string, unknown> | undefined
+      if (!brandStyle) throw new Error("Geen brand-data uit website")
+      const saveRes = await fetch("/api/pedro/client-state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId: mondayItemId,
+          campaignNumber: 1,
+          brand_style: brandStyle,
+        }),
+      })
+      if (!saveRes.ok) {
+        const j = await saveRes.json().catch(() => ({}))
+        throw new Error(j.error || `Brand opslaan mislukt (HTTP ${saveRes.status})`)
+      }
+      const colors = [
+        brandStyle.primaryColor,
+        brandStyle.secondaryColor,
+        brandStyle.accentColor,
+      ].filter((c): c is string => typeof c === "string" && c.startsWith("#"))
+      setResult({
+        colors,
+        headingFont: (brandStyle.headingFont as string | null) ?? null,
+        bodyFont: (brandStyle.bodyFont as string | null) ?? null,
+        logoUrl: (brandStyle.logoUrl as string | null) ?? null,
+      })
       await queryClient.invalidateQueries({ queryKey: ["pedro-client-state", mondayItemId] })
-      setTimeout(() => {
-        setRestoreState((s) => {
-          const { [v.id]: _drop, ...rest } = s
-          return rest
-        })
-      }, 2500)
-    } catch {
-      setRestoreState((s) => ({ ...s, [v.id]: "err" }))
-      setTimeout(() => {
-        setRestoreState((s) => {
-          const { [v.id]: _drop, ...rest } = s
-          return rest
-        })
-      }, 3000)
+      onScanned()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Website-scan mislukt")
+    } finally {
+      setAnalyzing(false)
     }
-  }
-
-  if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="py-5">
-          <Skeleton className="h-32 rounded-lg" />
-        </CardContent>
-      </Card>
-    )
-  }
+  }, [mondayItemId, queryClient, url, onScanned])
 
   return (
     <Card>
-      <CardContent className="py-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <History className="h-4 w-4 text-muted-foreground" />
-            <h4 className="font-heading font-semibold text-sm">{t("client.pedro.versions.title", locale)}</h4>
-          </div>
-          <span className="text-xs text-muted-foreground/60">
-            {t(
-              versions.length === 1 ? "client.pedro.versions.count_one" : "client.pedro.versions.count_many",
-              locale,
-              { n: String(versions.length) },
+      <CardContent className="py-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Globe className="h-4 w-4 text-muted-foreground" />
+          <h4 className="font-heading font-semibold text-sm">
+            Kick-off · website + branding
+          </h4>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-1">
+          Scrape de website van de klant zodat Pedro kleuren, fonts en logo kent. Het
+          resultaat landt automatisch in de Brand identity sectie hieronder.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://klant-website.nl"
+            className="flex-1 h-9 px-3 rounded-md border border-border bg-background text-sm"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+          <button
+            type="button"
+            onClick={handleAnalyze}
+            disabled={analyzing || !url.trim()}
+            className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            {analyzing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Globe className="h-3.5 w-3.5" />
             )}
-          </span>
+            Analyseer
+          </button>
         </div>
 
-        {versions.length === 0 ? (
-          <div className="text-sm text-muted-foreground py-4 text-center border border-dashed border-border rounded-lg">
-            {t("client.pedro.versions.empty_lead", locale)}{" "}
-            <Link href={`/pedro/onboard?tab=brief&clientId=${mondayItemId}`} className="text-primary hover:underline">
-              {t("client.pedro.versions.empty_cta", locale)}
-            </Link>
+        {result && (
+          <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 space-y-2">
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Website gescand — branding bijgewerkt
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {result.colors.map((c) => (
+                <div
+                  key={c}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded border border-border/60 bg-background text-xs"
+                >
+                  <span
+                    className="h-3 w-3 rounded border border-border/60"
+                    style={{ backgroundColor: c }}
+                  />
+                  <code className="font-mono">{c}</code>
+                </div>
+              ))}
+              {(result.headingFont || result.bodyFont) && (
+                <span className="text-xs text-muted-foreground">
+                  {result.headingFont ?? "—"}
+                  {result.bodyFont && result.bodyFont !== result.headingFont
+                    ? ` · ${result.bodyFont}`
+                    : ""}
+                </span>
+              )}
+              {result.logoUrl && (
+                <a
+                  href={result.logoUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  Logo <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
           </div>
-        ) : (
-          <>
-            {/* Stage filter chips */}
-            <div className="flex flex-wrap items-center gap-1.5 mb-3">
-              <button
-                type="button"
-                onClick={() => setStageFilter("all")}
-                className={`text-[11px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
-                  stageFilter === "all"
-                    ? "bg-primary/10 text-primary border-primary/30"
-                    : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:bg-accent"
-                }`}
-              >
-                {t("client.pedro.versions.filter.all", locale, { n: String(versions.length) })}
-              </button>
-              {stagesPresent.map((s) => {
-                const count = versions.filter((v) => v.stage === s).length
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setStageFilter(s)}
-                    className={`text-[11px] font-medium px-2 py-0.5 rounded-md border transition-colors ${
-                      stageFilter === s
-                        ? "bg-primary/10 text-primary border-primary/30"
-                        : "bg-transparent text-muted-foreground border-border hover:text-foreground hover:bg-accent"
-                    }`}
-                  >
-                    {t("client.pedro.versions.stage_filter_count", locale, { stage: t(STAGE_LABEL_KEY[s], locale), n: String(count) })}
-                  </button>
-                )
-              })}
-            </div>
+        )}
 
-            {/* Timeline list */}
-            <div className="divide-y divide-border/40 border border-border/40 rounded-lg overflow-hidden">
-              {filtered.map((v) => {
-                const isOpen = expanded === v.id
-                const rState = restoreState[v.id]
-                return (
-                  <div key={v.id} className="bg-background">
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setExpanded(isOpen ? null : v.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault()
-                          setExpanded(isOpen ? null : v.id)
-                        }
-                      }}
-                      className="px-4 py-3 flex items-center justify-between gap-3 hover:bg-muted/30 cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <span className="inline-flex items-center justify-center min-w-[28px] h-5 px-1.5 text-[10px] font-semibold rounded bg-primary/10 text-primary tabular-nums">
-                          v{v.version_number}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold shrink-0">
-                          {t(STAGE_LABEL_KEY[v.stage], locale)}
-                        </span>
-                        <span className="text-xs text-muted-foreground truncate">
-                          {previewForStage(v.stage, v.data)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-[11px] text-muted-foreground/70">{fmtDateTime(v.saved_at, locale)}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void handleRestore(v)
-                          }}
-                          disabled={rState === "saving"}
-                          className={`inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium border rounded-md transition-colors ${
-                            rState === "ok"
-                              ? "text-emerald-600 dark:text-emerald-400 border-emerald-500/40"
-                              : rState === "err"
-                                ? "text-red-600 dark:text-red-400 border-red-500/40"
-                                : "text-muted-foreground hover:text-foreground hover:bg-accent border-border"
-                          }`}
-                          title={t("client.pedro.versions.action.title", locale)}
-                        >
-                          {rState === "ok" ? <Check className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
-                          {rState === "saving"
-                            ? "..."
-                            : rState === "ok"
-                              ? t("client.pedro.versions.action.restored", locale)
-                              : rState === "err"
-                                ? t("client.pedro.versions.action.error", locale)
-                                : t("client.pedro.versions.action.restore", locale)}
-                        </button>
-                      </div>
-                    </div>
-                    {isOpen && (
-                      <div className="px-4 py-3 bg-muted/20 border-t border-border/40 text-xs">
-                        <pre className="whitespace-pre-wrap break-words text-muted-foreground/80 max-h-64 overflow-y-auto">
-                          {JSON.stringify(v.data, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {filtered.length === 0 && (
-              <div className="text-xs text-muted-foreground italic mt-3 text-center">
-                {t("client.pedro.versions.empty_filtered", locale)}
-              </div>
-            )}
-          </>
+        {error && (
+          <div className="text-xs text-red-600 dark:text-red-400 inline-flex items-center gap-1.5">
+            <AlertCircle className="h-3 w-3" />
+            {error}
+          </div>
         )}
       </CardContent>
     </Card>
