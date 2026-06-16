@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth"
-import { NextRequest, NextResponse } from "next/server"
+import { after, NextRequest, NextResponse } from "next/server"
 import {
   getChatThreadMessages,
   markChatThreadRead,
@@ -8,6 +8,7 @@ import {
   setChatThreadSnoozedUntil,
   setChatThreadStarred,
 } from "@/lib/inbox/fetchers"
+import { syncThreadArchiveToTrengo } from "@/lib/inbox/trengo-sync"
 
 /**
  * GET /api/inbox/threads/{threadKey}
@@ -118,9 +119,18 @@ export async function PATCH(
         break
       case "archive":
         result = await setChatThreadArchived(threadKey, userId, role, true)
+        // `after()` keeps the serverless function alive after we've
+        // returned the JSON response, so the Trengo close-call gets to
+        // finish reliably. A plain `void promise` would race the
+        // function-instance shutdown on Vercel and silently lose ~5%
+        // of mirror writes. The archive-state in Supabase is
+        // authoritative; the Trengo mirror is best-effort either way,
+        // but `after()` makes "best-effort" actually best-effort.
+        after(syncThreadArchiveToTrengo({ threadKey, userId, archived: true }))
         break
       case "unarchive":
         result = await setChatThreadArchived(threadKey, userId, role, false)
+        after(syncThreadArchiveToTrengo({ threadKey, userId, archived: false }))
         break
       case "snooze": {
         // Validate the until timestamp before writing it - silently

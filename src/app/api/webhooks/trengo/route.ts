@@ -287,6 +287,61 @@ const MESSAGE_EVENT_TYPES = new Set<string>([
   "INTERNAL_MESSAGE",
 ])
 
+/** Event types that mirror a Trengo ticket-status change back to the Hub.
+ *  CLOSED → archive Hub rows; REOPENED → un-archive. Covers the modern and
+ *  legacy event naming Trengo has shipped over time. */
+const TICKET_CLOSED_EVENTS = new Set<string>([
+  "TICKET.CLOSED",
+  "TICKET_CLOSED",
+  "TICKET.CLOSE",
+  "CLOSED",
+])
+const TICKET_REOPENED_EVENTS = new Set<string>([
+  "TICKET.REOPENED",
+  "TICKET_REOPENED",
+  "TICKET.REOPEN",
+  "REOPENED",
+])
+
+/** Extract `{ eventType, ticketId }` from a webhook body for ticket-status
+ *  events that don't carry a `message` block. Returns null when the body
+ *  isn't recognisable as a ticket-status event — caller falls through to
+ *  the regular message parser. Tolerates both JSON and form payloads. */
+function parseTrengoTicketStatusEvent(
+  rawBody: string,
+  contentType: string,
+): { eventType: string; ticketId: string } | null {
+  const trimmed = rawBody.trimStart()
+  let eventType = ""
+  let ticketId = ""
+
+  if (trimmed.startsWith("{") || contentType.includes("application/json")) {
+    try {
+      const p = JSON.parse(rawBody) as {
+        event_type?: string
+        type?: string
+        ticket?: { id?: number | string }
+        data?: { ticket?: { id?: number | string } }
+      }
+      eventType = (p.event_type ?? p.type ?? "").toString().toUpperCase()
+      const tid = p.ticket?.id ?? p.data?.ticket?.id
+      ticketId = tid != null ? String(tid) : ""
+    } catch {
+      return null
+    }
+  } else {
+    const params = new URLSearchParams(rawBody)
+    eventType = (params.get("event_type") ?? params.get("type") ?? "").toString().toUpperCase()
+    ticketId = params.get("ticket_id") ?? ""
+  }
+
+  if (!eventType || !ticketId) return null
+  if (!TICKET_CLOSED_EVENTS.has(eventType) && !TICKET_REOPENED_EVENTS.has(eventType)) {
+    return null
+  }
+  return { eventType, ticketId }
+}
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text()
   const haveSecret = !!req.nextUrl.searchParams.get("secret")
@@ -306,6 +361,49 @@ export async function POST(req: NextRequest) {
 
   if (!verifyAuth(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Ticket-status mirror (close / reopen). Handled FIRST and short-circuit
+  // because the regular `parseTrengoPayload` requires a `message` block
+  // and these events don't carry one. The action is idempotent — if the
+  // matching Hub rows are already in the target state, the UPDATE is a
+  // cheap no-op, which terminates the Hub→Trengo→Hub echo loop we'd
+  // otherwise create when our own closeTrengoTicket call triggers
+  // Trengo's TICKET.CLOSED webhook.
+  const ticketEvent = parseTrengoTicketStatusEvent(rawBody, contentType)
+  if (ticketEvent) {
+    const supabase = await createAdminClient()
+    const isClose = TICKET_CLOSED_EVENTS.has(ticketEvent.eventType)
+    const targetArchivedAt = isClose ? new Date().toISOString() : null
+    const sourceThread = `trengo:ticket:${ticketEvent.ticketId}`
+    // Only flip rows that aren't already in the target state. Without
+    // this filter we'd needlessly touch every row on every webhook
+    // re-fire and bump updated_at, which causes downstream cache
+    // invalidations to thrash. It's also what terminates the
+    // Hub→Trengo→Hub echo loop after our own closeTrengoTicket call:
+    // the rows we just archived will be skipped here.
+    let query = supabase
+      .from("inbox_events")
+      .update({ archived_at: targetArchivedAt }, { count: "exact" })
+      .eq("source", "trengo")
+      .eq("source_thread", sourceThread)
+    query = isClose
+      ? query.is("archived_at", null)
+      : query.not("archived_at", "is", null)
+    const { error: updErr, count } = await query
+    if (updErr) {
+      console.error("[trengo-webhook] ticket-status mirror failed:", updErr.message)
+      return NextResponse.json(
+        { ok: false, error: updErr.message },
+        { status: 500 },
+      )
+    }
+    return NextResponse.json({
+      ok: true,
+      ticketEvent: ticketEvent.eventType,
+      ticketId: ticketEvent.ticketId,
+      mirrored: count ?? 0,
+    })
   }
 
   const payload = parseTrengoPayload(rawBody, contentType)

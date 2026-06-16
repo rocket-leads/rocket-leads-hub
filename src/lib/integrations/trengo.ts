@@ -941,6 +941,110 @@ export async function updateTrengoContactName(
   return { id, name: (data.name ?? data.data?.name ?? name) as string }
 }
 
+/**
+ * Close a Trengo ticket. Mirrors what the Hub's archive action means:
+ * "this conversation is done, get it out of the inbox." Uses the user's
+ * personal token so the close attribution lands as them in Trengo.
+ *
+ * Tries the canonical `POST /v2/tickets/{id}/close` endpoint first; if
+ * that 404/405's on this workspace's Trengo version, falls back to
+ * `PUT /v2/tickets/{id}` with `{ status: "CLOSED" }`.
+ *
+ * Idempotent: a 404 on the close call (ticket already gone) and 4xx
+ * "already closed" responses are swallowed — the goal is "end state =
+ * closed", not "we closed it now". Throws on auth/transport failures
+ * so the caller can decide whether to surface to the user.
+ *
+ * Roy 2026-06-16: Hub archive should reflect in Trengo so AMs that
+ * still occasionally open the Trengo UI don't see a wall of phantom
+ * open tickets they already wegwerked in the Hub.
+ */
+export async function closeTrengoTicket(args: {
+  userToken: string
+  ticketId: string | number
+}): Promise<{ ok: boolean }> {
+  const { userToken, ticketId } = args
+  const headers = {
+    Authorization: `Bearer ${userToken}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  }
+
+  // Primary: canonical Trengo close endpoint
+  const res = await fetch(
+    `https://app.trengo.com/api/v2/tickets/${ticketId}/close`,
+    { method: "POST", headers },
+  )
+  if (res.ok) return { ok: true }
+  if (res.status === 404) return { ok: true } // ticket gone or already closed
+
+  // Fallback: status-update via PUT
+  if (res.status === 405 || res.status === 422) {
+    const putRes = await fetch(
+      `https://app.trengo.com/api/v2/tickets/${ticketId}`,
+      {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ status: "CLOSED" }),
+      },
+    )
+    if (putRes.ok) return { ok: true }
+    const txt = await putRes.text().catch(() => "")
+    throw new Error(
+      `Trengo close-ticket fallback PUT failed (${putRes.status}, ticket=${ticketId}): ${txt.slice(0, 200)}`,
+    )
+  }
+
+  const txt = await res.text().catch(() => "")
+  throw new Error(
+    `Trengo close-ticket failed (${res.status}, ticket=${ticketId}): ${txt.slice(0, 200)}`,
+  )
+}
+
+/**
+ * Reopen a previously-closed Trengo ticket. Mirrors the Hub's unarchive
+ * action. Same primary + fallback strategy as `closeTrengoTicket`.
+ */
+export async function reopenTrengoTicket(args: {
+  userToken: string
+  ticketId: string | number
+}): Promise<{ ok: boolean }> {
+  const { userToken, ticketId } = args
+  const headers = {
+    Authorization: `Bearer ${userToken}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  }
+
+  const res = await fetch(
+    `https://app.trengo.com/api/v2/tickets/${ticketId}/reopen`,
+    { method: "POST", headers },
+  )
+  if (res.ok) return { ok: true }
+  if (res.status === 404) return { ok: true }
+
+  if (res.status === 405 || res.status === 422) {
+    const putRes = await fetch(
+      `https://app.trengo.com/api/v2/tickets/${ticketId}`,
+      {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ status: "OPEN" }),
+      },
+    )
+    if (putRes.ok) return { ok: true }
+    const txt = await putRes.text().catch(() => "")
+    throw new Error(
+      `Trengo reopen-ticket fallback PUT failed (${putRes.status}, ticket=${ticketId}): ${txt.slice(0, 200)}`,
+    )
+  }
+
+  const txt = await res.text().catch(() => "")
+  throw new Error(
+    `Trengo reopen-ticket failed (${res.status}, ticket=${ticketId}): ${txt.slice(0, 200)}`,
+  )
+}
+
 export async function fetchMessages(ticketId: number): Promise<TrengoMessage[]> {
   const all: TrengoMessage[] = []
   let page = 1
