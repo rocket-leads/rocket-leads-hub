@@ -45,9 +45,19 @@ export async function GET(req: NextRequest) {
   authUrl.searchParams.set("client_id", clientId)
   authUrl.searchParams.set("redirect_uri", redirectUri)
   authUrl.searchParams.set("response_type", "code")
+  // calendar.events  → read/write events on existing calendars
+  // calendar.calendarlist.readonly → list the user's subcalendars so the
+  //                                  Hub can show a "which calendars?"
+  //                                  picker. Without this scope the
+  //                                  CalendarList endpoint returns 403.
   authUrl.searchParams.set(
     "scope",
-    "openid email https://www.googleapis.com/auth/calendar.events",
+    [
+      "openid",
+      "email",
+      "https://www.googleapis.com/auth/calendar.events",
+      "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+    ].join(" "),
   )
   authUrl.searchParams.set("access_type", "offline")
   // Force the account-chooser AND a fresh consent so we always receive a

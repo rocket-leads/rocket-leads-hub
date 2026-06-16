@@ -23,13 +23,18 @@ export const dynamic = "force-dynamic"
 
 type RouteContext = { params: Promise<{ id: string }> }
 
-export async function GET(_req: NextRequest, { params }: RouteContext) {
+export async function GET(req: NextRequest, { params }: RouteContext) {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const { id } = await params
-  const result = await getEvent(session.user.id, id)
+  // ?calendarId lets the dialog open events that live on subcalendars
+  // (e.g. "Roel" on the contact@rocket-leads.nl account). Falls back to
+  // primary for the existing single-calendar flow.
+  const calendarId =
+    req.nextUrl.searchParams.get("calendarId") || "primary"
+  const result = await getEvent(session.user.id, id, calendarId)
   if (!result.ok) {
     return NextResponse.json(
       { error: result.error },

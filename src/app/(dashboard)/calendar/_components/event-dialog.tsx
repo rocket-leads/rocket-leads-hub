@@ -48,7 +48,7 @@ import type {
 
 export type EventDialogMode =
   | { kind: "create"; initialStart?: Date }
-  | { kind: "view"; eventId: string }
+  | { kind: "view"; eventId: string; calendarId: string }
 
 type Props = {
   open: boolean
@@ -64,7 +64,11 @@ export function EventDialog({ open, onOpenChange, mode }: Props) {
         showCloseButton={false}
       >
         {mode.kind === "view" ? (
-          <ViewMode eventId={mode.eventId} onClose={() => onOpenChange(false)} />
+          <ViewMode
+            eventId={mode.eventId}
+            calendarId={mode.calendarId}
+            onClose={() => onOpenChange(false)}
+          />
         ) : (
           <CreateMode
             initialStart={mode.initialStart}
@@ -82,9 +86,11 @@ export function EventDialog({ open, onOpenChange, mode }: Props) {
 
 function ViewMode({
   eventId,
+  calendarId,
   onClose,
 }: {
   eventId: string
+  calendarId: string
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -92,11 +98,14 @@ function ViewMode({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const detailQuery = useQuery<{ event: CalendarEvent }>({
-    queryKey: ["calendar-event", eventId],
+    queryKey: ["calendar-event", calendarId, eventId],
     queryFn: async () => {
-      const res = await fetch(`/api/calendar/events/${encodeURIComponent(eventId)}`, {
-        credentials: "include",
-      })
+      const url = new URL(
+        `/api/calendar/events/${encodeURIComponent(eventId)}`,
+        window.location.origin,
+      )
+      url.searchParams.set("calendarId", calendarId)
+      const res = await fetch(url, { credentials: "include" })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body?.error?.message ?? "Failed to load event")
@@ -107,10 +116,12 @@ function ViewMode({
 
   const deleteMut = useMutation({
     mutationFn: async () => {
-      const res = await fetch(
+      const url = new URL(
         `/api/calendar/events/${encodeURIComponent(eventId)}`,
-        { method: "DELETE", credentials: "include" },
+        window.location.origin,
       )
+      url.searchParams.set("calendarId", calendarId)
+      const res = await fetch(url, { method: "DELETE", credentials: "include" })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body?.error?.message ?? "Failed to delete event")

@@ -18,10 +18,12 @@ import {
   startOfMonth,
   startOfWeek,
 } from "date-fns"
-import { ChevronLeft, ChevronRight, MapPin, Plus, Video } from "lucide-react"
+import { Check, ChevronLeft, ChevronDown, ChevronRight, MapPin, Plus, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import type { CalendarEventsResponse } from "@/app/api/calendar/events/route"
+import type { CalendarsResponse } from "@/app/api/calendar/calendars/route"
 import { EventDialog, type EventDialogMode } from "./event-dialog"
 import { TaskDialog } from "./task-dialog"
 
@@ -303,11 +305,10 @@ export function CalendarView({ initialConnected }: Props) {
 
         <div className="flex items-center gap-2">
           <ViewModeSwitcher view={view} onChange={updateView} />
-          <VisibilityToggle
-            label="Meetings"
-            color="#8967F3"
+          <CalendarSelector
+            disabled={!connected}
             on={visibility.meetings}
-            onClick={() => toggleVisibility("meetings")}
+            onMeetingsToggle={() => toggleVisibility("meetings")}
           />
           <VisibilityToggle
             label="Tasks"
@@ -344,7 +345,9 @@ export function CalendarView({ initialConnected }: Props) {
           allDayByDay={allDayByDay}
           tasksByDay={tasksAllDayByDay}
           tasksTimedByDay={tasksTimedByDay}
-          onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
+          onOpenEvent={(id, calendarId) =>
+            setDialog({ kind: "view", eventId: id, calendarId })
+          }
           onOpenTask={(id) => setTaskDialogId(id)}
           onJumpToDay={(d) => {
             setAnchor(d)
@@ -358,7 +361,9 @@ export function CalendarView({ initialConnected }: Props) {
           allDayByDay={allDayByDay}
           tasksAllDayByDay={tasksAllDayByDay}
           tasksTimedByDay={tasksTimedByDay}
-          onOpenEvent={(id) => setDialog({ kind: "view", eventId: id })}
+          onOpenEvent={(id, calendarId) =>
+            setDialog({ kind: "view", eventId: id, calendarId })
+          }
           onOpenTask={(id) => setTaskDialogId(id)}
           onCreateAt={(when) => setDialog({ kind: "create", initialStart: when })}
           onRescheduleTask={(taskId, when) =>
@@ -444,7 +449,7 @@ function TimeGrid({
   allDayByDay: Record<string, CalendarEventsResponse["events"]>
   tasksAllDayByDay: Record<string, CalendarEventsResponse["tasks"]>
   tasksTimedByDay: Record<string, CalendarEventsResponse["tasks"]>
-  onOpenEvent: (id: string) => void
+  onOpenEvent: (id: string, calendarId: string) => void
   onOpenTask: (id: string) => void
   onCreateAt: (when: Date) => void
   /** Drop handler. when=null clears the time (back to all-day strip). */
@@ -550,7 +555,7 @@ function MonthGrid({
   allDayByDay: Record<string, CalendarEventsResponse["events"]>
   tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
   tasksTimedByDay: Record<string, CalendarEventsResponse["tasks"]>
-  onOpenEvent: (id: string) => void
+  onOpenEvent: (id: string, calendarId: string) => void
   onOpenTask: (id: string) => void
   onJumpToDay: (day: Date) => void
 }) {
@@ -620,9 +625,13 @@ function MonthGrid({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation()
-                      onOpenEvent(ev.id)
+                      onOpenEvent(ev.id, ev.calendarId)
                     }}
-                    className="block w-full truncate rounded px-1 py-0.5 text-[10px] text-left bg-[#8967F3]/15 border-l-2 border-[#8967F3] hover:bg-[#8967F3]/25"
+                    className="block w-full truncate rounded px-1 py-0.5 text-[10px] text-left border-l-2 hover:brightness-110 transition-[filter]"
+                    style={{
+                      backgroundColor: `${ev.calendarColor}26`,
+                      borderLeftColor: ev.calendarColor,
+                    }}
                   >
                     {!ev.allDay && (
                       <span className="tabular-nums text-muted-foreground mr-1">
@@ -662,6 +671,217 @@ function MonthGrid({
           )
         })}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Subcalendar picker in the toolbar. Replaces the old single
+ * "Meetings on/off" chip with a popover listing every subcalendar from
+ * the connected Google account, each with its own colour swatch + tick.
+ *
+ * Behaviour:
+ *  - Trigger button doubles as the meetings on/off toggle. Click toggles
+ *    the global meetings stream; the chevron opens the picker.
+ *  - Picker checkboxes save instantly to the user row in Supabase so
+ *    "I want only Roy + Roel" survives across devices.
+ *  - Saving the selection invalidates the events query so the grid
+ *    re-paints with only the chosen calendars.
+ */
+function CalendarSelector({
+  disabled,
+  on,
+  onMeetingsToggle,
+}: {
+  disabled: boolean
+  on: boolean
+  onMeetingsToggle: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+
+  const q = useQuery<CalendarsResponse>({
+    queryKey: ["calendar-list"],
+    queryFn: async () => {
+      const res = await fetch("/api/calendar/calendars", {
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Failed to load calendars")
+      return (await res.json()) as CalendarsResponse
+    },
+    enabled: !disabled,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Effective selection — the list of IDs that are actually included
+  // right now, accounting for the "null = follow Google's selected"
+  // fallback. Used both to render the checkbox state and to compute
+  // optimistic updates when the user toggles a row.
+  const effectiveSelected = useMemo<Set<string>>(() => {
+    if (!q.data) return new Set()
+    if (q.data.selectedIds === null) {
+      const ids = q.data.calendars
+        .filter((c) => c.selectedByDefault || c.primary)
+        .map((c) => c.id)
+      return new Set(ids.length > 0 ? ids : q.data.calendars.map((c) => c.id))
+    }
+    return new Set(q.data.selectedIds)
+  }, [q.data])
+
+  const saveMut = useMutation({
+    mutationFn: async (selectedIds: string[]) => {
+      const res = await fetch("/api/calendar/calendars", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedIds }),
+      })
+      if (!res.ok) throw new Error("Failed to save selection")
+    },
+    onMutate: async (selectedIds) => {
+      await queryClient.cancelQueries({ queryKey: ["calendar-list"] })
+      const previous = queryClient.getQueryData<CalendarsResponse>([
+        "calendar-list",
+      ])
+      if (previous) {
+        queryClient.setQueryData<CalendarsResponse>(["calendar-list"], {
+          ...previous,
+          selectedIds,
+        })
+      }
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(["calendar-list"], ctx.previous)
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar-list"] })
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] })
+    },
+  })
+
+  const toggleCalendar = (id: string) => {
+    const next = new Set(effectiveSelected)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    saveMut.mutate(Array.from(next))
+  }
+
+  const calendars = q.data?.calendars ?? []
+  const visibleCount = effectiveSelected.size
+  const totalCount = calendars.length
+
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center rounded-md border transition-colors",
+        on
+          ? "border-border bg-card text-foreground"
+          : "border-border bg-transparent text-muted-foreground/70",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onMeetingsToggle}
+        aria-pressed={on}
+        title={`${on ? "Hide" : "Show"} meetings`}
+        className="inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1 text-xs font-medium hover:text-foreground"
+      >
+        <span
+          className="inline-block size-2.5 rounded-sm shrink-0"
+          style={{ backgroundColor: "#8967F3", opacity: on ? 1 : 0.3 }}
+        />
+        <span className={cn(!on && "line-through decoration-muted-foreground/40")}>
+          Meetings
+        </span>
+        {on && totalCount > 0 && (
+          <span className="tabular-nums text-[10px] text-muted-foreground">
+            {visibleCount}/{totalCount}
+          </span>
+        )}
+      </button>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          render={(props) => (
+            <button
+              {...props}
+              type="button"
+              disabled={disabled}
+              title={disabled ? "Connect Google Calendar first" : "Pick which calendars to show"}
+              className={cn(
+                "inline-flex items-center justify-center px-1.5 py-1 border-l border-border/60",
+                "hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed",
+              )}
+            >
+              <ChevronDown className="size-3.5" />
+            </button>
+          )}
+        />
+        <PopoverContent align="end" className="w-72 p-0">
+          <div className="px-3 py-2.5 border-b border-border/60">
+            <div className="text-xs font-medium text-foreground">Calendars</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              Pick which Google subcalendars feed the Hub view.
+            </div>
+          </div>
+          <div className="max-h-80 overflow-y-auto py-1">
+            {q.isLoading && (
+              <div className="px-3 py-4 text-xs text-muted-foreground">
+                Loading…
+              </div>
+            )}
+            {q.data?.error && (
+              <div className="px-3 py-2 text-xs text-destructive">
+                {q.data.error.message}
+                {q.data.error.hint && (
+                  <div className="mt-1 text-foreground/80">→ {q.data.error.hint}</div>
+                )}
+              </div>
+            )}
+            {!q.isLoading && calendars.length === 0 && !q.data?.error && (
+              <div className="px-3 py-4 text-xs text-muted-foreground">
+                No calendars found on this account.
+              </div>
+            )}
+            {calendars.map((cal) => {
+              const checked = effectiveSelected.has(cal.id)
+              return (
+                <button
+                  key={cal.id}
+                  type="button"
+                  onClick={() => toggleCalendar(cal.id)}
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-left hover:bg-muted/40"
+                >
+                  <span
+                    className={cn(
+                      "inline-flex items-center justify-center size-4 rounded-sm border transition-colors shrink-0",
+                      checked ? "border-transparent" : "border-border bg-transparent",
+                    )}
+                    style={checked ? { backgroundColor: cal.backgroundColor } : undefined}
+                  >
+                    {checked && (
+                      <Check
+                        className="size-3"
+                        style={{ color: cal.foregroundColor }}
+                      />
+                    )}
+                  </span>
+                  <span className="flex-1 truncate text-foreground">
+                    {cal.summary}
+                  </span>
+                  {cal.primary && (
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      Primary
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   )
 }
@@ -773,7 +993,7 @@ function AllDayRow({
   days: Date[]
   allDayByDay: Record<string, CalendarEventsResponse["events"]>
   tasksByDay: Record<string, CalendarEventsResponse["tasks"]>
-  onOpenEvent: (id: string) => void
+  onOpenEvent: (id: string, calendarId: string) => void
   onOpenTask: (id: string) => void
   onUnscheduleTask: (taskId: string) => void
   gridStyle: React.CSSProperties
@@ -814,7 +1034,8 @@ function AllDayRow({
               <EventChip
                 key={ev.id}
                 title={ev.title}
-                onClick={() => onOpenEvent(ev.id)}
+                color={ev.calendarColor}
+                onClick={() => onOpenEvent(ev.id, ev.calendarId)}
               />
             ))}
             {tasks.map((t) => (
@@ -1048,7 +1269,7 @@ function DayColumn({
   day: Date
   events: CalendarEventsResponse["events"]
   scheduledTasks: CalendarEventsResponse["tasks"]
-  onOpenEvent: (id: string) => void
+  onOpenEvent: (id: string, calendarId: string) => void
   onOpenTask: (id: string) => void
   onCreateAt: (when: Date) => void
   onRescheduleTask: (taskId: string, when: Date | null) => void
@@ -1170,12 +1391,13 @@ function DayColumn({
               leftPct={leftPct}
               widthPct={widthPct}
               title={ev.title}
+              color={ev.calendarColor}
               timeLabel={`${format(start, "HH:mm")} – ${format(end, "HH:mm")}`}
               location={ev.location}
               hangoutLink={ev.hangoutLink}
               onClick={(e) => {
                 e.stopPropagation()
-                onOpenEvent(ev.id)
+                onOpenEvent(ev.id, ev.calendarId)
               }}
             />
           )
@@ -1298,6 +1520,7 @@ function EventBlock({
   leftPct,
   widthPct,
   title,
+  color,
   timeLabel,
   location,
   hangoutLink,
@@ -1308,6 +1531,8 @@ function EventBlock({
   leftPct: number
   widthPct: number
   title: string
+  /** Hex colour from the source calendar — drives bg tint + left border. */
+  color: string
   timeLabel: string
   location: string | null
   hangoutLink: string | null
@@ -1322,6 +1547,8 @@ function EventBlock({
     height,
     left: `calc(${leftPct}% + 2px)`,
     width: `calc(${widthPct}% - 4px)`,
+    backgroundColor: `${color}26`, // ~15% alpha (0x26/0xFF)
+    borderLeftColor: color,
   }
   // Adapt content density to the block's vertical real estate so a
   // 30-minute meeting never spills its time label into the next row.
@@ -1335,10 +1562,9 @@ function EventBlock({
       type="button"
       onClick={onClick}
       className={cn(
-        "absolute rounded-md border-l-2 overflow-hidden text-left cursor-pointer",
+        "absolute rounded-md border-l-2 overflow-hidden text-left cursor-pointer text-foreground",
         tightLayout ? "px-1.5 py-0.5" : "px-1.5 py-1",
-        "bg-[#8967F3]/15 border-[#8967F3] text-foreground",
-        "hover:bg-[#8967F3]/25 hover:z-10 transition-colors",
+        "hover:brightness-110 hover:z-10 transition-[filter]",
       )}
       style={style}
       title={`${timeLabel} — ${title}${location ? ` @ ${location}` : ""}`}
@@ -1382,9 +1608,11 @@ function EventBlock({
 
 function EventChip({
   title,
+  color,
   onClick,
 }: {
   title: string
+  color: string
   onClick: () => void
 }) {
   return (
@@ -1393,9 +1621,9 @@ function EventChip({
       onClick={onClick}
       className={cn(
         "block w-full truncate rounded px-1.5 py-0.5 text-[11px] text-left cursor-pointer",
-        "bg-[#8967F3]/15 border-l-2 border-[#8967F3] text-foreground",
-        "hover:bg-[#8967F3]/25",
+        "border-l-2 text-foreground hover:brightness-110 transition-[filter]",
       )}
+      style={{ backgroundColor: `${color}26`, borderLeftColor: color }}
       title={title}
     >
       {title}

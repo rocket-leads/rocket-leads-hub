@@ -18,12 +18,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      // calendar.events is the read/write event scope — supersedes
-      // calendar.readonly so the Hub can also create, edit, and delete
-      // events from the in-Hub Event Dialog. We intentionally don't ask
-      // for the full `calendar` scope (which adds calendar-level CRUD —
-      // creating new calendars, ACL changes, etc.) since we only need
-      // event-level access against the user's primary calendar.
+      // calendar.events  → read/write event scope (Hub's Event Dialog)
+      // calendar.calendarlist.readonly → list the user's subcalendars
+      //                                  for the "which calendars?" picker
+      //                                  in the calendar toolbar
+      //
+      // We intentionally don't ask for the full `calendar` scope (which
+      // adds calendar-level CRUD — creating new calendars, ACL changes,
+      // etc.) since we only need event-level access against the user's
+      // primary calendar.
       //
       // offline + consent are mandatory to receive a refresh_token
       // (Google only hands one out on explicit consent; without it we'd
@@ -31,7 +34,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // access_token expires).
       authorization: {
         params: {
-          scope: "openid email profile https://www.googleapis.com/auth/calendar.events",
+          scope: [
+            "openid",
+            "email",
+            "profile",
+            "https://www.googleapis.com/auth/calendar.events",
+            "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+          ].join(" "),
           access_type: "offline",
           prompt: "consent",
         },

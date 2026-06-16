@@ -31,6 +31,26 @@ export type CalendarEvent = {
   attendees?: CalendarAttendee[]
   /** True when this is on a calendar the viewer can edit (owner/writer). */
   canEdit?: boolean
+  /** ID of the source calendar this event lives on. */
+  calendarId: string
+  /** Display colour from the calendar's CalendarList entry (hex). */
+  calendarColor: string
+  /** Human label for the source calendar (used in tooltips). */
+  calendarName: string
+}
+
+export type CalendarListEntry = {
+  id: string
+  summary: string
+  /** Hex colour like "#7BD148" — pulled from Google's CalendarList. */
+  backgroundColor: string
+  foregroundColor: string
+  /** Google's own "show on web" flag — useful default for new Hub users. */
+  selectedByDefault: boolean
+  /** True for the account owner's primary calendar. */
+  primary: boolean
+  /** "owner" | "writer" | "reader" | "freeBusyReader" — drives canEdit. */
+  accessRole: string
 }
 
 export type CalendarAttendee = {
@@ -230,7 +250,10 @@ type RawGoogleEvent = {
   creator?: { email?: string; self?: boolean }
 }
 
-function normaliseEvent(it: RawGoogleEvent): CalendarEvent {
+function normaliseEvent(
+  it: RawGoogleEvent,
+  source: { id: string; name: string; color: string; accessRole: string },
+): CalendarEvent {
   const allDay = !!it.start?.date
   const attendees: CalendarAttendee[] = (it.attendees ?? []).map((a) => ({
     email: a.email,
@@ -241,10 +264,11 @@ function normaliseEvent(it: RawGoogleEvent): CalendarEvent {
     self: !!a.self,
     optional: !!a.optional,
   }))
-  // The viewer can edit when they're the organizer, OR the calendar
-  // belongs to them. For "primary" we always treat the viewer as the
-  // owner — they can always edit their own calendar's events.
-  const canEdit = !!it.organizer?.self || !!it.creator?.self || true
+  // Editable when the viewer organised the event OR has write access on
+  // the source calendar. Read-only subcalendars (e.g. shared "Verjaardagen")
+  // come through as accessRole=reader and shouldn't get edit affordances.
+  const writable = source.accessRole === "owner" || source.accessRole === "writer"
+  const canEdit = !!it.organizer?.self || !!it.creator?.self || writable
 
   return {
     id: it.id,
@@ -258,6 +282,9 @@ function normaliseEvent(it: RawGoogleEvent): CalendarEvent {
     description: it.description ?? null,
     attendees,
     canEdit,
+    calendarId: source.id,
+    calendarColor: source.color,
+    calendarName: source.name,
   }
 }
 
@@ -270,42 +297,195 @@ export type ListEventsResult = {
   error: CalendarFetchError | null
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// CalendarList
+// ─────────────────────────────────────────────────────────────────────
+
+type RawCalendarListEntry = {
+  id: string
+  summary?: string
+  summaryOverride?: string
+  backgroundColor?: string
+  foregroundColor?: string
+  selected?: boolean
+  primary?: boolean
+  accessRole?: string
+  deleted?: boolean
+  hidden?: boolean
+}
+
+const FALLBACK_CALENDAR_COLOR = "#8967F3"
+
+export async function listMyCalendars(
+  userId: string,
+): Promise<GoogleResult<CalendarListEntry[]>> {
+  const result = await googleFetch<{ items?: RawCalendarListEntry[] }>(
+    userId,
+    "/users/me/calendarList",
+    { searchParams: { minAccessRole: "freeBusyReader", maxResults: "250" } },
+  )
+  if (!result.ok) return result
+  const items = (result.data.items ?? [])
+    .filter((it) => !it.deleted && !it.hidden && it.id)
+    .map<CalendarListEntry>((it) => ({
+      id: it.id,
+      summary: (it.summaryOverride ?? it.summary ?? it.id).trim(),
+      backgroundColor: it.backgroundColor ?? FALLBACK_CALENDAR_COLOR,
+      foregroundColor: it.foregroundColor ?? "#FFFFFF",
+      selectedByDefault: !!it.selected,
+      primary: !!it.primary,
+      accessRole: it.accessRole ?? "reader",
+    }))
+    // Stable ordering: primary first, then by name. Matches what users
+    // see in Google's own sidebar so the Hub picker doesn't surprise.
+    .sort((a, b) => {
+      if (a.primary !== b.primary) return a.primary ? -1 : 1
+      return a.summary.localeCompare(b.summary)
+    })
+  return { ok: true, data: items }
+}
+
+/**
+ * Resolves which calendar IDs to read events from. Priority order:
+ *
+ *   1. Explicit `calendarIds` argument (from API caller).
+ *   2. Stored `google_calendar_ids` on the user row (Hub picker state).
+ *   3. Google's `selected` flag on each CalendarList entry (matches what
+ *      the user sees on calendar.google.com out of the box).
+ *
+ * Returns the full CalendarList metadata too so the events fetcher can
+ * stamp each event with the right colour/name without an extra round trip.
+ */
+async function resolveSelectedCalendars(
+  userId: string,
+  calendarIds?: string[],
+): Promise<GoogleResult<CalendarListEntry[]>> {
+  const allRes = await listMyCalendars(userId)
+  if (!allRes.ok) return allRes
+  const all = allRes.data
+
+  // 1. Explicit override from caller.
+  if (calendarIds && calendarIds.length > 0) {
+    const allow = new Set(calendarIds)
+    return { ok: true, data: all.filter((c) => allow.has(c.id)) }
+  }
+  if (calendarIds && calendarIds.length === 0) {
+    return { ok: true, data: [] }
+  }
+
+  // 2. Saved Hub selection.
+  const supabase = await createAdminClient()
+  const { data: row } = await supabase
+    .from("users")
+    .select("google_calendar_ids")
+    .eq("id", userId)
+    .maybeSingle<{ google_calendar_ids: string[] | null }>()
+  const saved = row?.google_calendar_ids
+  if (Array.isArray(saved)) {
+    if (saved.length === 0) return { ok: true, data: [] }
+    const allow = new Set(saved)
+    return { ok: true, data: all.filter((c) => allow.has(c.id)) }
+  }
+
+  // 3. Google's own selected flag — primary always counts so a brand-new
+  //    user still sees their own events even if Google didn't mark it.
+  const defaults = all.filter((c) => c.selectedByDefault || c.primary)
+  return { ok: true, data: defaults.length > 0 ? defaults : all }
+}
+
 export async function listCalendarEvents(
   userId: string,
-  opts: { timeMin: Date; timeMax: Date },
+  opts: { timeMin: Date; timeMax: Date; calendarIds?: string[] },
 ): Promise<ListEventsResult> {
-  const result = await googleFetch<{ items?: RawGoogleEvent[] }>(
-    userId,
-    "/calendars/primary/events",
-    {
-      searchParams: {
-        timeMin: opts.timeMin.toISOString(),
-        timeMax: opts.timeMax.toISOString(),
-        singleEvents: "true",
-        orderBy: "startTime",
-        maxResults: "250",
-      },
-    },
-  )
-  if (!result.ok) return { events: [], error: result.error }
+  const resolved = await resolveSelectedCalendars(userId, opts.calendarIds)
+  if (!resolved.ok) return { events: [], error: resolved.error }
+  const sources = resolved.data
+  if (sources.length === 0) return { events: [], error: null }
 
-  const events = (result.data.items ?? [])
-    .filter((it) => it.status !== "cancelled")
-    .map(normaliseEvent)
-    .filter((e) => e.start && e.end)
-  return { events, error: null }
+  // Fan out — Google Calendar has no "events across calendars" endpoint,
+  // so we hit each source in parallel and merge. With 10-15 subcalendars
+  // this is still well under a second.
+  const results = await Promise.all(
+    sources.map(async (cal) => {
+      const result = await googleFetch<{ items?: RawGoogleEvent[] }>(
+        userId,
+        `/calendars/${encodeURIComponent(cal.id)}/events`,
+        {
+          searchParams: {
+            timeMin: opts.timeMin.toISOString(),
+            timeMax: opts.timeMax.toISOString(),
+            singleEvents: "true",
+            orderBy: "startTime",
+            maxResults: "250",
+          },
+        },
+      )
+      return { cal, result }
+    }),
+  )
+
+  const events: CalendarEvent[] = []
+  // First non-OK error wins for surfacing in the UI banner. Per-calendar
+  // failures (one shared calendar revoked, others fine) shouldn't blank
+  // the whole grid — we keep the partial successes.
+  let firstError: CalendarFetchError | null = null
+  for (const { cal, result } of results) {
+    if (!result.ok) {
+      if (!firstError) firstError = result.error
+      continue
+    }
+    for (const raw of result.data.items ?? []) {
+      if (raw.status === "cancelled") continue
+      const ev = normaliseEvent(raw, {
+        id: cal.id,
+        name: cal.summary,
+        color: cal.backgroundColor,
+        accessRole: cal.accessRole,
+      })
+      if (ev.start && ev.end) events.push(ev)
+    }
+  }
+  // Keep the merged stream sorted — Google sorted each subcalendar but
+  // not across them.
+  events.sort((a, b) => a.start.localeCompare(b.start))
+  return { events, error: firstError }
 }
 
 export async function getEvent(
   userId: string,
   eventId: string,
+  calendarId: string = "primary",
 ): Promise<GoogleResult<CalendarEvent>> {
+  // Resolve the source calendar's metadata so the returned event carries
+  // its colour/name. For the primary calendar shortcut we skip the lookup
+  // and stamp brand purple — the dialog doesn't need the real swatch when
+  // it's the user's own calendar.
+  let source = {
+    id: calendarId,
+    name: "Primary",
+    color: FALLBACK_CALENDAR_COLOR,
+    accessRole: "owner",
+  }
+  if (calendarId !== "primary") {
+    const all = await listMyCalendars(userId)
+    if (all.ok) {
+      const match = all.data.find((c) => c.id === calendarId)
+      if (match) {
+        source = {
+          id: match.id,
+          name: match.summary,
+          color: match.backgroundColor,
+          accessRole: match.accessRole,
+        }
+      }
+    }
+  }
   const result = await googleFetch<RawGoogleEvent>(
     userId,
-    `/calendars/primary/events/${encodeURIComponent(eventId)}`,
+    `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
   )
   if (!result.ok) return result
-  return { ok: true, data: normaliseEvent(result.data) }
+  return { ok: true, data: normaliseEvent(result.data, source) }
 }
 
 export type EventPatch = {
@@ -363,7 +543,15 @@ export async function updateEvent(
     },
   )
   if (!result.ok) return result
-  return { ok: true, data: normaliseEvent(result.data) }
+  return {
+    ok: true,
+    data: normaliseEvent(result.data, {
+      id: "primary",
+      name: "Primary",
+      color: FALLBACK_CALENDAR_COLOR,
+      accessRole: "owner",
+    }),
+  }
 }
 
 export async function deleteEvent(
@@ -431,5 +619,13 @@ export async function createEvent(
     },
   )
   if (!result.ok) return result
-  return { ok: true, data: normaliseEvent(result.data) }
+  return {
+    ok: true,
+    data: normaliseEvent(result.data, {
+      id: "primary",
+      name: "Primary",
+      color: FALLBACK_CALENDAR_COLOR,
+      accessRole: "owner",
+    }),
+  }
 }
