@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
-import { format, startOfMonth, subDays, subMonths } from "date-fns"
+import { endOfWeek, format, startOfMonth, startOfWeek, subDays, subMonths, subWeeks } from "date-fns"
 import type { DateRange, QuickPreset } from "@/types/targets"
 
 /**
@@ -45,6 +45,20 @@ export function useClientDateRange() {
     {
       label: "Last 7 Days",
       getRange: () => ({ startDate: subDays(new Date(), 7), endDate: yesterday() }),
+    },
+    {
+      // Previous calendar week, Mon–Sun. Matches Monday.com's built-in
+      // "Date created is Last week" filter exactly, so the Hub leads count
+      // can be reconciled 1:1 with Monday on any weekday (the rolling
+      // "Last 7 Days" only coincides with it when today is a Monday).
+      label: "Last week",
+      getRange: () => {
+        const lastWeek = subWeeks(new Date(), 1)
+        return {
+          startDate: startOfWeek(lastWeek, { weekStartsOn: 1 }),
+          endDate: endOfWeek(lastWeek, { weekStartsOn: 1 }),
+        }
+      },
     },
     {
       label: "Last 14 Days",

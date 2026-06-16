@@ -113,22 +113,31 @@ function fmtDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-// Last 7 days INCLUDING today (Roy 2026-05-22). Was previously
-// "yesterday + 6 days back" but leads landing during the day stayed
-// invisible until the next morning's cron. Today is included even
-// though Meta's intraday spend is partial - freshness > stability.
+// Last 7 days ENDING YESTERDAY (today-7 .. yesterday). Roy 2026-06-16:
+// reverted the 2026-05-22 "include today" variant. The picker default,
+// the date pill, `isCronSevenDayWindow` (home-tab), every other preset,
+// and Monday's "last week" filter are all yesterday-ending. The
+// today-inclusive window meant the Home-tab cards displayed a number for
+// [today-6 .. today] under a pill that read [today-7 .. yesterday]: the
+// 7-days-ago day (the first day of the labelled week) silently dropped
+// out, while today - still ~0 leads in the morning cron snapshot - added
+// nothing back. Net: leads under-reported by exactly that first day
+// (Zenovo 10->6, Keukentrend 33->27, 2026-06). Yesterday-ending keeps the
+// number == its label == Monday. Trade-off: a lead landing today shows up
+// the next morning, not same-day.
 function getLast7DaysRange() {
   const end = new Date()
+  end.setDate(end.getDate() - 1) // yesterday
   const start = new Date(end)
-  start.setDate(start.getDate() - 6) // 7 days total, today inclusive
+  start.setDate(start.getDate() - 6) // 7 days total, ending yesterday
   return { startDate: fmtDate(start), endDate: fmtDate(end) }
 }
 
 // Previous 7 days = the week immediately BEFORE the current window.
-// end = today - 7, start = today - 13.
+// end = today - 8 (day before the current window starts), start = today - 14.
 function getPrevious7DaysRange() {
   const end = new Date()
-  end.setDate(end.getDate() - 7)
+  end.setDate(end.getDate() - 8)
   const start = new Date(end)
   start.setDate(start.getDate() - 6) // 7 days total
   return { startDate: fmtDate(start), endDate: fmtDate(end) }

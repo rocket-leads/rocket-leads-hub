@@ -1544,6 +1544,13 @@ export const DICTIONARY = {
   "client.home.health.good": { nl: "Healthy", en: "Healthy" },
   "client.home.health.no_data": { nl: "Geen data", en: "No data" },
 
+  // Meta-fallback notice (shown when the leads number is Meta-reported because
+  // Monday returned 0 - keeps a broken Monday link from looking like a real count)
+  "client.home.meta_fallback.prefix": { nl: "Leads via Meta-rapportage —", en: "Leads from Meta reporting —" },
+  "client.home.meta_fallback.monday_zero": { nl: "Monday gaf 0 leads terug", en: "Monday returned 0 leads" },
+  "client.home.meta_fallback.monday_unlinked": { nl: "Monday CRM niet gekoppeld", en: "Monday CRM not linked" },
+  "client.home.meta_fallback.suffix": { nl: "voor dit venster. Dit kan afwijken van de Monday-telling.", en: "for this window. This may differ from the Monday count." },
+
   // Lead Analysis card
   "client.home.lead_analysis.title": { nl: "Lead Analysis · Quantity", en: "Lead Analysis · Quantity" },
   "client.home.lead_analysis.verdict.good": { nl: "good", en: "good" },

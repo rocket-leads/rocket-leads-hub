@@ -455,6 +455,16 @@ export function HomeTab({
   const currentSpend = isCronSevenDayWindow
     ? kpiSummary?.adSpend ?? 0
     : kpisQuery.data?.adSpend ?? 0
+  // Whether the displayed leads number is the Meta-reported count substituted
+  // because Monday returned 0 (no board linked / fetch failed / wrong mapping).
+  // Read from whichever source is active so the silent fallback - which makes a
+  // broken Monday link look like a plausible-but-wrong number - is never hidden.
+  const isMetaFallback = isCronSevenDayWindow
+    ? kpiSummary?.metaFallback ?? false
+    : kpisQuery.data?.metaFallback ?? false
+  const mondayCrmConnected = isCronSevenDayWindow
+    ? kpiSummary?.mondayCrmConnected ?? false
+    : kpisQuery.data?.mondayCrmConnected ?? false
   const health = useMemo(() => {
     const baseline = kpisBaselineQuery.data
     const longBaseline = kpisLongBaselineQuery.data
@@ -549,6 +559,19 @@ export function HomeTab({
           ))}
         </div>
       </div>
+
+      {isMetaFallback && !kpisLoading && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-700 dark:text-amber-400">
+          <Activity className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>
+            {t("client.home.meta_fallback.prefix", locale)}{" "}
+            {mondayCrmConnected
+              ? t("client.home.meta_fallback.monday_zero", locale)
+              : t("client.home.meta_fallback.monday_unlinked", locale)}{" "}
+            {t("client.home.meta_fallback.suffix", locale)}
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Ad Spend" icon={Euro} value={fmtCurrency(adSpendValue)} windowLabel={currentWindowLabel} loading={kpisLoading} />

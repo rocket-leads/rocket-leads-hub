@@ -13,6 +13,12 @@ export type KpiResult = {
   revenue: number
   roi: number
   utmBreakdown: UtmRow[]
+  // Set by the /api/clients/[id]/kpis route (not calculateKpis): true when the
+  // Monday lead count came back 0 and we substituted Meta's reported leads.
+  // Surfaced so the UI can flag that the number isn't the Monday CRM count.
+  metaFallback?: boolean
+  // Whether the Monday client board was linked + fetched OK for this request.
+  mondayCrmConnected?: boolean
 }
 
 export type UtmRow = {

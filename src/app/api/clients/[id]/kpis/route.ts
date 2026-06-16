@@ -119,10 +119,13 @@ export async function GET(
   // reports leads - covers no board, access denied, broken Zapier sync, wrong column mapping.
   // Deals stay as-is since Meta can't track those.
   const metaLeadsReported = relevantInsights.reduce((sum, i) => sum + i.leads, 0)
-  if (kpis.leads === 0 && metaLeadsReported > 0) {
+  const metaFallback = kpis.leads === 0 && metaLeadsReported > 0
+  if (metaFallback) {
     kpis.leads = metaLeadsReported
     kpis.costPerLead = adSpend / metaLeadsReported
   }
+  kpis.metaFallback = metaFallback
+  kpis.mondayCrmConnected = monday.ok
 
   // Auto-detect Monday activity and update Supabase (fire-and-forget)
   if (leadItems.length > 0 && client?.id) {
