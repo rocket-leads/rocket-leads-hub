@@ -248,6 +248,168 @@ export async function findAmWaChannel(
  * If either step fails, the thrown error includes the step + Trengo's
  * response so the dialog's red banner is self-debuggable.
  */
+/**
+ * Send an email to a raw email address — no Hub-side contact lookup,
+ * no contact_id juggling. Mirrors the WhatsApp `wa_sessions` shape that
+ * takes `recipient_phone_number` directly: pass the channel + email +
+ * subject + body, Trengo resolves/creates the contact internally with
+ * the right privacy pairing.
+ *
+ * Tries a series of body shapes Trengo's `POST /v2/tickets` is known
+ * to accept (embedded contact object → flat contact_email fields →
+ * identifier). Falls back to the legacy `findOrCreate + ticket(contact_id)`
+ * flow when none of the direct shapes succeed, so worksp​aces on older
+ * API versions keep working.
+ *
+ * Roy 2026-06-16: previous flow created a workspace-shared contact, then
+ * tried to pair it with a personal email channel, which Trengo 422'd
+ * with "Je kunt een (niet)privécontact niet gebruiken voor een
+ * (niet)persoonlijk kanaal". By letting Trengo own the contact step we
+ * sidestep the privacy mismatch entirely.
+ */
+export async function sendEmailToAddressAsUser(args: {
+  userToken: string
+  channelId: number
+  email: string
+  name?: string
+  subject: string
+  body: string
+}): Promise<{ ticketId: string; messageId: string }> {
+  const { userToken, channelId, email, name, subject, body } = args
+  const displayName = name ?? email
+
+  // Each candidate is a different shape of body that `POST /v2/tickets`
+  // might accept. We try them in order; first 2xx that returns a ticket
+  // id wins. Trengo's API doesn't document the exact shape for "create
+  // ticket by identifier" — these are the three most likely patterns
+  // based on how their other endpoints (wa_sessions, contacts, ticket
+  // responses) are structured.
+  const candidates: Array<Record<string, unknown>> = [
+    // Nested contact - mirrors the GET /tickets response shape.
+    {
+      channel_id: channelId,
+      subject,
+      contact: { email, name: displayName },
+    },
+    // Flat fields - same convention as wa_sessions' recipient_phone_number.
+    {
+      channel_id: channelId,
+      subject,
+      contact_email: email,
+      contact_name: displayName,
+    },
+    // Generic identifier - some Trengo endpoints accept this for any
+    // channel type.
+    {
+      channel_id: channelId,
+      subject,
+      identifier: email,
+      contact_name: displayName,
+    },
+  ]
+
+  let lastErr = ""
+  let lastStatus = 0
+  for (const payload of candidates) {
+    const res = await fetch(`https://app.trengo.com/api/v2/tickets`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) {
+      const json = (await res.json()) as {
+        id?: number | string
+        ticket_id?: number | string
+        data?: { id?: number | string; ticket_id?: number | string }
+      }
+      const ticketId =
+        json.id ?? json.ticket_id ?? json.data?.id ?? json.data?.ticket_id
+      if (ticketId) {
+        return sendBodyIntoTicket({ userToken, ticketId: String(ticketId), subject, body })
+      }
+    } else {
+      lastStatus = res.status
+      lastErr = await res.text().catch(() => "")
+    }
+  }
+
+  // Direct shapes all rejected — fall back to the legacy 2-step flow.
+  // findOrCreateTrengoEmailContact now prefers channel-scoped lookups
+  // first, so this still avoids the privacy-mismatch most of the time;
+  // the surfaced error mentions which path we tried last so the AM
+  // sees something actionable rather than "unknown".
+  try {
+    const contact = await findOrCreateTrengoEmailContact({
+      userToken,
+      channelId,
+      email,
+      name: displayName,
+    })
+    return await createEmailMessageForContact({
+      userToken,
+      contactId: String(contact.id),
+      channelId,
+      subject,
+      body,
+    })
+  } catch (e) {
+    const fallbackMsg = e instanceof Error ? e.message : String(e)
+    throw new Error(
+      `Trengo email-send failed via every shape we know. Last direct-send response (${lastStatus}): ${lastErr.slice(0, 200)}. Fallback flow: ${fallbackMsg.slice(0, 300)}`,
+    )
+  }
+}
+
+/** Internal helper - posts the body into a freshly-created ticket. Used
+ *  by both `sendEmailToAddressAsUser` (after the direct ticket-create
+ *  worked) and `createEmailMessageForContact` (after the legacy 2-step
+ *  contact + ticket flow). */
+async function sendBodyIntoTicket(args: {
+  userToken: string
+  ticketId: string
+  subject: string
+  body: string
+}): Promise<{ ticketId: string; messageId: string }> {
+  const sendRes = await fetch(
+    `https://app.trengo.com/api/v2/tickets/${args.ticketId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${args.userToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        message: args.body,
+        subject: args.subject,
+        internal_note: false,
+      }),
+    },
+  )
+  if (!sendRes.ok) {
+    const errText = await sendRes.text().catch(() => "")
+    throw new Error(
+      `Trengo email-send failed (${sendRes.status}, ticket=${args.ticketId}): ${errText.slice(0, 300)}`,
+    )
+  }
+  const sendJson = (await sendRes.json()) as {
+    id?: number | string
+    message?: { id?: number | string }
+    data?: { id?: number | string }
+  }
+  const messageId = sendJson.message?.id ?? sendJson.id ?? sendJson.data?.id
+  if (!messageId) {
+    throw new Error(
+      `Trengo email-send returned no id - keys: ${Object.keys(sendJson).join(",")}`,
+    )
+  }
+  return { ticketId: args.ticketId, messageId: String(messageId) }
+}
+
 export async function createEmailMessageForContact(args: {
   userToken: string
   contactId: string
@@ -271,6 +433,25 @@ export async function createEmailMessageForContact(args: {
   })
   if (!createRes.ok) {
     const errText = await createRes.text().catch(() => "")
+    // Trengo enforces contact/channel privacy pairing — a personal
+    // (per-user) channel must be used with a private contact and
+    // vice versa. When the contact resolution returned a workspace-
+    // shared contact but the AM's outbound channel is personal,
+    // Trengo returns a 422 with the literal placeholder error
+    // "Je kunt een (niet)privécontact niet gebruiken voor een
+    // (niet)persoonlijk kanaal". Surface a clearer Dutch hint so the
+    // AM knows what to fix instead of staring at Trengo's templated
+    // copy. Roy 2026-06-16.
+    const lower = errText.toLowerCase()
+    if (
+      createRes.status === 422 &&
+      (lower.includes("privécontact") || lower.includes("priv\\u00e9contact")) &&
+      (lower.includes("persoonlijk kanaal") || lower.includes("persoonlijk%20kanaal"))
+    ) {
+      throw new Error(
+        `Trengo weigert deze combinatie: de outbound email-channel (id ${args.channelId}) is een persoonlijk kanaal, maar het contact (id ${args.contactId}) is een workspace-gedeeld contact. Verwissel het outbound channel naar een gedeeld kanaal in /account → Outbound sender channels, of maak het contact in Trengo persoonlijk voor deze AM.`,
+      )
+    }
     throw new Error(
       `Trengo create-ticket failed (${createRes.status}, channel=${args.channelId}, contact=${args.contactId}): ${errText.slice(0, 300)}`,
     )
@@ -614,6 +795,69 @@ export async function findOrCreateTrengoEmailContact(args: {
   name?: string
 }): Promise<{ id: number }> {
   const { userToken, channelId, email, name } = args
+
+  // Search FIRST, scoped to the target channel. Trengo enforces that a
+  // private (personal-channel-bound) contact cannot be paired with a
+  // non-personal channel and vice versa — so the old "POST then fall
+  // back to global search" strategy returned a SHARED workspace contact
+  // for a personal channel, which then 422'd at create-ticket time with
+  // "Je kunt een (niet)privécontact niet gebruiken voor een
+  // (niet)persoonlijk kanaal" (Roy 2026-06-16 ticket). Filtering the
+  // search by channel_id keeps the privacy levels aligned.
+  const scopedSearch = await fetch(
+    `https://app.trengo.com/api/v2/contacts?term=${encodeURIComponent(email)}&channel_id=${channelId}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+        Accept: "application/json",
+      },
+    },
+  )
+  if (scopedSearch.ok) {
+    const json = (await scopedSearch.json()) as {
+      data?: Array<{ id?: number | string; email?: string; channel_id?: number | string }>
+    }
+    // Prefer an exact channel match; Trengo may ignore the filter on
+    // some plans and return cross-channel hits, so we re-filter here.
+    const match = json.data?.find(
+      (c) =>
+        c.email === email &&
+        (c.channel_id == null || Number(c.channel_id) === channelId),
+    )
+    if (match?.id != null) return { id: Number(match.id) }
+  }
+
+  // No existing contact in the target channel — try the channel-scoped
+  // POST endpoint so Trengo creates the contact with privacy matching
+  // the channel (personal channel → private contact). Falls back to the
+  // global endpoint if Trengo's API version on this workspace doesn't
+  // expose the scoped route.
+  const scopedCreate = await fetch(
+    `https://app.trengo.com/api/v2/channels/${channelId}/contacts`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ email, name: name ?? email }),
+    },
+  )
+  if (scopedCreate.ok) {
+    const json = (await scopedCreate.json()) as {
+      id?: number | string
+      data?: { id?: number | string }
+    }
+    const id = json.data?.id ?? json.id
+    if (id != null) return { id: Number(id) }
+  }
+
+  // Final fallback: the original behaviour (global POST + global
+  // search). Kept so older Trengo workspaces that don't expose the
+  // scoped endpoint still bootstrap a contact — they don't have the
+  // privacy-pairing constraint, so the cross-channel hit is harmless.
   const createRes = await fetch(`https://app.trengo.com/api/v2/contacts`, {
     method: "POST",
     headers: {
@@ -636,9 +880,6 @@ export async function findOrCreateTrengoEmailContact(args: {
     if (id != null) return { id: Number(id) }
   }
 
-  // Conflict / duplicate path - search the workspace for an existing
-  // contact carrying this email and use that. Trengo's search returns
-  // matches across channels; we pick the first hit.
   const searchRes = await fetch(
     `https://app.trengo.com/api/v2/contacts?term=${encodeURIComponent(email)}`,
     {

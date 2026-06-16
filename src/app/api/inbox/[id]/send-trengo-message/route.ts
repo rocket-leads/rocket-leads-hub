@@ -3,8 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import {
   findAmEmailChannel,
   findAmWaChannel,
-  findOrCreateTrengoEmailContact,
-  createEmailMessageForContact,
+  sendEmailToAddressAsUser,
 } from "@/lib/integrations/trengo"
 import { fetchClientById } from "@/lib/integrations/monday"
 import {
@@ -257,18 +256,16 @@ export async function POST(
       )
     }
     try {
-      const contact = await findOrCreateTrengoEmailContact({
+      const subject =
+        (task.source_ref as Record<string, unknown> | null)?.draft_subject as string | undefined
+      // Direct send — same shape as wa_sessions, Trengo owns the contact
+      // step internally so we sidestep the private/personal contact-
+      // channel pairing mismatch entirely.
+      const sent = await sendEmailToAddressAsUser({
         userToken,
         channelId: emailChannel.id,
         email: recipientEmail,
         name: mondayClient.companyName || mondayClient.name || recipientEmail,
-      })
-      const subject =
-        (task.source_ref as Record<string, unknown> | null)?.draft_subject as string | undefined
-      const sent = await createEmailMessageForContact({
-        userToken,
-        contactId: String(contact.id),
-        channelId: emailChannel.id,
         subject:
           (subject && subject.trim()) ||
           `${mondayClient.companyName || mondayClient.name}`,

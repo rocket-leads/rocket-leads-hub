@@ -4,8 +4,7 @@ import { fetchClientById } from "@/lib/integrations/monday"
 import {
   findAmEmailChannel,
   findAmWaChannel,
-  findOrCreateTrengoEmailContact,
-  createEmailMessageForContact,
+  sendEmailToAddressAsUser,
 } from "@/lib/integrations/trengo"
 import {
   sendTrengoTemplateToPhoneAsUser,
@@ -245,16 +244,14 @@ export async function POST(
       channelId = emailChannel.id
 
       try {
-        const contact = await findOrCreateTrengoEmailContact({
+        // Direct send: Trengo resolves the contact internally from the
+        // email address — same shape as wa_sessions for WhatsApp. No
+        // contact_id juggling, no privacy-pairing mismatch.
+        const sent = await sendEmailToAddressAsUser({
           userToken: amToken,
           channelId: emailChannel.id,
           email: recipientEmail,
           name: testMode ? "Hub Test" : (client.companyName || client.name || recipientEmail),
-        })
-        const sent = await createEmailMessageForContact({
-          userToken: amToken,
-          contactId: String(contact.id),
-          channelId: emailChannel.id,
           subject:
             subjectOverride ||
             `Wekelijkse update ${client.companyName || client.name}`,
