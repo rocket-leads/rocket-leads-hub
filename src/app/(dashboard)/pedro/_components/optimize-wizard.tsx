@@ -108,6 +108,40 @@ function pickedAdKey(clientId: string): string {
   return `pedro.optimize.pickedAd.${clientId}`
 }
 
+/** Roy 2026-06-16: persist the wizard's current step + selected variant
+ *  per-client so the CM lands BACK where they were after a browser
+ *  refresh. Previously the wizard always reset to "select_variants" on
+ *  mount which dropped CMs back two steps when they were editing copy
+ *  or generating creatives. */
+function wizardStateKey(clientId: string): string {
+  return `pedro.optimize.wizardState.${clientId}`
+}
+type WizardState = {
+  activeKey: string
+  selectedVariantKey: string | null
+}
+function readWizardState(clientId: string | null): WizardState | null {
+  if (!clientId || typeof window === "undefined") return null
+  try {
+    const raw = window.localStorage.getItem(wizardStateKey(clientId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as WizardState
+    if (!parsed?.activeKey) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+function writeWizardState(clientId: string, state: WizardState | null): void {
+  if (typeof window === "undefined") return
+  try {
+    if (state) window.localStorage.setItem(wizardStateKey(clientId), JSON.stringify(state))
+    else window.localStorage.removeItem(wizardStateKey(clientId))
+  } catch {
+    /* private mode / quota - ignore */
+  }
+}
+
 /** Short relative-time formatter for the draft banner. "5 min geleden",
  *  "2 uur geleden", "3 dagen geleden". For older drafts we fall back to
  *  the absolute date so it's still readable. */
@@ -167,9 +201,15 @@ export function OptimizeWizard({
   const [pickedAd, setPickedAd] = useState<PickedAd | null>(() =>
     readPickedAd(selectedClientId),
   )
-  const [activeKey, setActiveKey] = useState<ActiveKey>(() =>
-    readPickedAd(selectedClientId) ? "select_variants" : "pick_ad",
-  )
+  const [activeKey, setActiveKey] = useState<ActiveKey>(() => {
+    // Roy 2026-06-16: prefer persisted wizard state so refresh resumes
+    // the CM at the step they were on (edit_copy / generate_creatives /
+    // push_to_meta). Falls back to pick_ad / select_variants when no
+    // state was persisted.
+    const persisted = readWizardState(selectedClientId)
+    if (persisted?.activeKey) return persisted.activeKey as ActiveKey
+    return readPickedAd(selectedClientId) ? "select_variants" : "pick_ad"
+  })
   // Generation result + state. Roy 2026-06-12 v7: Step 1's generate
   // button fires /api/pedro/creative-refresh; the proposals land in
   // refreshResult and Step 2 renders them. selectedVariants drives
@@ -194,7 +234,11 @@ export function OptimizeWizard({
   // Roy 2026-06-12 v9: single-variant flow. Pedro genereert 3 angles,
   // CM kiest er één om mee verder te gaan. selectedVariantKey is een
   // "pi:vi" string, exact zoals voorheen, maar er kan er max 1 zijn.
-  const [selectedVariantKey, setSelectedVariantKey] = useState<string | null>(null)
+  // Roy 2026-06-16: rehydrate from localStorage so refresh resumes the
+  // selection alongside the active step.
+  const [selectedVariantKey, setSelectedVariantKey] = useState<string | null>(
+    () => readWizardState(selectedClientId)?.selectedVariantKey ?? null,
+  )
 
   // Draft state - Roy 2026-06-12 v9: variants gegenereerd in Stap 2 zijn
   // dure Claude calls. We persist al via /api/pedro/refreshes - de wizard
@@ -208,12 +252,15 @@ export function OptimizeWizard({
   // 2. Async fetch the most recent refresh and re-hydrate refreshResult.
   useEffect(() => {
     const stored = readPickedAd(selectedClientId)
+    const persistedState = readWizardState(selectedClientId)
     setPickedAd(stored)
     setRefreshResult(null)
     setIsGenerating(false)
     setGenerateError(null)
     setBriefRequired(null)
-    setSelectedVariantKey(null)
+    // Roy 2026-06-16: rehydrate the persisted selected variant when
+    // switching client so the CM doesn't lose their selection.
+    setSelectedVariantKey(persistedState?.selectedVariantKey ?? null)
     setDraftGeneratedAt(null)
 
     if (!selectedClientId) {
@@ -221,9 +268,12 @@ export function OptimizeWizard({
       return
     }
 
-    // Default landing: pick_ad als er geen ad is, anders kies_varianten.
-    // De draft-load kan hier nog overheen schrijven als er een draft is.
-    setActiveKey(stored ? "select_variants" : "pick_ad")
+    // Default landing: persisted activeKey wins. Otherwise pick_ad als
+    // er geen ad is, anders kies_varianten.
+    setActiveKey(
+      (persistedState?.activeKey as ActiveKey) ??
+        (stored ? "select_variants" : "pick_ad"),
+    )
 
     let cancelled = false
     setIsLoadingDraft(true)
@@ -249,10 +299,15 @@ export function OptimizeWizard({
             proposals: fullJson.proposals,
           })
           setDraftGeneratedAt(head.generatedAt)
-          // Default selection in single-variant flow: NIETS - de CM moet
-          // bewust kiezen welke van de 3 angles hij wil iteraten.
-          setSelectedVariantKey(null)
-          setActiveKey("select_variants")
+          // Roy 2026-06-16: only force landing on select_variants when
+          // there's no persisted wizard state. With persisted state, the
+          // CM resumes at their actual step (edit_copy / generate /
+          // push). Same for selectedVariantKey - the rehydrate above
+          // already restored it from localStorage.
+          if (!persistedState) {
+            setSelectedVariantKey(null)
+            setActiveKey("select_variants")
+          }
           if (!stored) {
             const firstProposal = fullJson.proposals[0]
             const basedOn = firstProposal?.basedOnAd
@@ -280,6 +335,16 @@ export function OptimizeWizard({
     }
   }, [selectedClientId])
 
+  // Roy 2026-06-16: auto-persist wizard state on every change so
+  // refresh resumes exactly where the CM was. Per-client key.
+  useEffect(() => {
+    if (!selectedClientId) return
+    writeWizardState(selectedClientId, {
+      activeKey: activeKey as string,
+      selectedVariantKey,
+    })
+  }, [selectedClientId, activeKey, selectedVariantKey])
+
   /**
    * Begin opnieuw - clear de draft uit memory zodat de CM van scratch
    * kan beginnen. Verwijdert de DB-rij NIET (Roy kan later terug);
@@ -291,7 +356,10 @@ export function OptimizeWizard({
     setDraftGeneratedAt(null)
     setGenerateError(null)
     setActiveKey("pick_ad")
-  }, [])
+    // Clear persisted wizard state too so the CM lands back on pick_ad
+    // after refresh (matches the "fresh" intent).
+    if (selectedClientId) writeWizardState(selectedClientId, null)
+  }, [selectedClientId])
 
   const updatePickedAd = useCallback(
     (next: PickedAd | null) => {
@@ -509,7 +577,7 @@ export function OptimizeWizard({
         {/* Right pane - active step content */}
         <div className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_2px_0_rgb(0_0_0_/_0.03)] overflow-hidden">
           <StepHeader item={activeStepOrOverig} locale={locale} />
-          {pickedAd && activeKey !== "pick_ad" && activeKey !== "lp_prompt" && (
+          {pickedAd && activeKey !== "pick_ad" && activeKey !== "lp_prompt" && activeKey !== "edit_copy" && (
             <SourceAdBanner
               picked={pickedAd}
               onReset={() => {
@@ -898,17 +966,9 @@ function SelectVariantsStep({
       </div>
     )
   }
-  const totalVariants = result.proposals.reduce(
-    (n, p) => n + p.variants.length,
-    0,
-  )
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
-        <div className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{totalVariants} varianten</span>{" "}
-          gegenereerd. Kies één om mee verder te gaan - we maken straks 3 ad creatives op die ene variant.
-        </div>
+      <div className="flex items-center justify-end">
         <button
           type="button"
           onClick={onContinue}
@@ -1211,33 +1271,20 @@ function EditCopyStep({
   const missingVariantId = !picked.variant.variantId
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-border/60 bg-muted/30 px-4 py-2.5 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            type="button"
-            onClick={onBackToSelection}
-            className="shrink-0 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← Terug
-          </button>
-          <div className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">{picked.variant.label}</span> klaar.
-            Edit de copy, dan ga je door naar Stap 4 om de creatives te genereren.
-          </div>
-        </div>
+      <div className="flex items-center justify-end">
         <button
           type="button"
           onClick={onGenerateCreatives}
           disabled={missingVariantId}
-          className="shrink-0 inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
           title={
             missingVariantId
               ? "Geen bruikbaar variant-ID - regenereer in Stap 1"
               : "Door naar Stap 4 om style mix te kiezen + creatives te genereren"
           }
         >
-          <ArrowRight className="h-3.5 w-3.5" />
           Naar creatives stap
+          <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
       {missingVariantId && (
@@ -1278,7 +1325,6 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
       ? variant.altPrimaryTexts
       : ["", ""],
   )
-  const [linkDescription, setLinkDescription] = useState(variant.linkDescription ?? "")
   const [copied, setCopied] = useState(false)
 
   const patchVariant = useCallback(
@@ -1323,22 +1369,24 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
     setTimeout(() => setCopied(false), 1500)
   }, [variant.adName, headline, primaryCopy])
 
+  // Roy 2026-06-16: shared section-card chrome. Every input lives in its
+  // own bordered box so the page reads as cleanly-separated vlakken
+  // rather than a wall of stacked sections. Field labels use one
+  // consistent typography across all sections so nothing draws attention
+  // by accident.
+  const sectionCard = "rounded-xl border border-border/60 bg-card/40 p-5"
+  const sectionLabel =
+    "text-[11px] uppercase tracking-[0.14em] text-muted-foreground font-semibold"
+  const groupLabel =
+    "text-[10px] uppercase tracking-[0.2em] text-muted-foreground/80 font-semibold"
+
   return (
     <article className="rounded-2xl border border-border/60 bg-card shadow-[0_1px_3px_0_rgb(0_0_0_/_0.04)] overflow-hidden">
       {/* Header */}
-      <header className="px-6 pt-6 pb-4 flex items-start justify-between gap-4 border-b border-border/40">
-        <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-violet-600 dark:text-violet-400 font-semibold mb-1">
-            Variant
-          </div>
-          <h3 className="font-heading text-xl font-semibold tracking-tight leading-tight">
-            {variant.label}
-          </h3>
-          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-mono rounded-md border border-border bg-muted/40 px-2 py-1 text-muted-foreground">
-            <Copy className="h-3 w-3" />
-            {variant.adName}
-          </div>
-        </div>
+      <header className="px-6 pt-6 pb-5 flex items-center justify-between gap-4 border-b border-border/40">
+        <h3 className="font-heading text-xl font-semibold tracking-tight leading-tight min-w-0">
+          {variant.label}
+        </h3>
         <button
           type="button"
           onClick={copyFullPackage}
@@ -1354,12 +1402,10 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
         </button>
       </header>
 
-      <div className="px-6 py-6 space-y-7">
-        {/* Tekst op afbeelding - de meest zichtbare claim */}
-        <section className="space-y-2">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
-            Tekst op afbeelding
-          </div>
+      <div className="px-6 py-6 space-y-6">
+        {/* Tekst op afbeelding */}
+        <section className={cn(sectionCard, "space-y-3")}>
+          <div className={sectionLabel}>Tekst op afbeelding</div>
           <InlineEditField
             value={headline}
             onSave={async (next) => {
@@ -1367,18 +1413,16 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
               setHeadline(next)
             }}
             variant="single"
-            placeholder="(leeg - klik om te bewerken)"
+            placeholder="(leeg — klik om te bewerken)"
             maxLength={80}
             disabled={!editable}
-            className="text-lg font-bold text-violet-600 dark:text-violet-400 leading-snug"
+            className="text-xl font-bold text-violet-600 dark:text-violet-400 leading-snug"
           />
         </section>
 
-        {/* Primary copy - whitespace-pre-wrap is afgehandeld in InlineEditField */}
-        <section className="space-y-2">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
-            Primary copy
-          </div>
+        {/* Primary copy */}
+        <section className={cn(sectionCard, "space-y-3")}>
+          <div className={sectionLabel}>Primary copy</div>
           <InlineEditField
             value={primaryCopy}
             onSave={async (next) => {
@@ -1386,97 +1430,88 @@ function EditCopyVariantCard({ variant }: { variant: CreativeVariant }) {
               setPrimaryCopy(next)
             }}
             variant="multi"
-            placeholder="(leeg - klik om te bewerken)"
+            placeholder="(leeg — klik om te bewerken)"
             maxLength={2000}
             minRows={8}
             disabled={!editable}
-            className="text-[15px] leading-[1.6] text-foreground"
+            className="text-[16px] leading-[1.65] text-foreground"
           />
         </section>
 
-        {/* Dynamic creative pool - alt headlines + alt primary texts */}
-        <section className="space-y-4 rounded-xl border border-border/40 bg-muted/20 p-5">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
-            <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-semibold">
-              Meta dynamic creative pool · 3 headlines × 3 primary texts
+        {/* Back-pocket varianten - geen group label meer */}
+        <div className="space-y-4 pt-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <div className={groupLabel}>Back-pocket varianten</div>
+            <div className="text-[11px] text-muted-foreground">
+              Niet gepushed · voor handmatige tests in Ads Manager
             </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-medium">
-              Alternatieve headlines
-            </div>
-            <div className="space-y-2">
+          {/* Alt headlines */}
+          <section className={cn(sectionCard, "space-y-3")}>
+            <div className={sectionLabel}>Alternatieve headlines</div>
+            <div className="space-y-2.5">
               {altHeadlineSlots.map((value, idx) => (
-                <InlineEditField
-                  key={idx}
-                  value={value}
-                  onSave={async (next) => {
-                    const updated = [...altHeadlines]
-                    while (updated.length <= idx) updated.push("")
-                    updated[idx] = next
-                    await patchVariant({ altHeadlines: updated })
-                    setAltHeadlines(updated)
-                  }}
-                  variant="single"
-                  placeholder={`Alt headline ${idx + 1}`}
-                  maxLength={80}
-                  allowEmpty
-                  disabled={!editable}
-                  className="text-sm"
-                />
+                <div key={idx} className="flex items-start gap-3">
+                  <span className="shrink-0 mt-2 inline-flex items-center justify-center h-5 w-5 rounded-md bg-muted/60 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                    {idx + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <InlineEditField
+                      value={value}
+                      onSave={async (next) => {
+                        const updated = [...altHeadlines]
+                        while (updated.length <= idx) updated.push("")
+                        updated[idx] = next
+                        await patchVariant({ altHeadlines: updated })
+                        setAltHeadlines(updated)
+                      }}
+                      variant="single"
+                      placeholder={`Alternatieve headline ${idx + 1}`}
+                      maxLength={80}
+                      allowEmpty
+                      disabled={!editable}
+                      className="text-[15px]"
+                    />
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className="space-y-2">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-medium">
-              Alternatieve primary texts
-            </div>
+          {/* Alt primary texts */}
+          <section className={cn(sectionCard, "space-y-3")}>
+            <div className={sectionLabel}>Alternatieve primary texts</div>
             <div className="space-y-3">
               {altPrimarySlots.map((value, idx) => (
-                <InlineEditField
-                  key={idx}
-                  value={value}
-                  onSave={async (next) => {
-                    const updated = [...altPrimaryTexts]
-                    while (updated.length <= idx) updated.push("")
-                    updated[idx] = next
-                    await patchVariant({ altPrimaryTexts: updated })
-                    setAltPrimaryTexts(updated)
-                  }}
-                  variant="multi"
-                  placeholder={`Alt primary text ${idx + 1}`}
-                  maxLength={2000}
-                  minRows={6}
-                  allowEmpty
-                  disabled={!editable}
-                  className="text-[14px] leading-[1.55]"
-                />
+                <div key={idx} className="flex items-start gap-3">
+                  <span className="shrink-0 mt-2 inline-flex items-center justify-center h-5 w-5 rounded-md bg-muted/60 text-[10px] font-semibold tabular-nums text-muted-foreground">
+                    {idx + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <InlineEditField
+                      value={value}
+                      onSave={async (next) => {
+                        const updated = [...altPrimaryTexts]
+                        while (updated.length <= idx) updated.push("")
+                        updated[idx] = next
+                        await patchVariant({ altPrimaryTexts: updated })
+                        setAltPrimaryTexts(updated)
+                      }}
+                      variant="multi"
+                      placeholder={`Alternatieve primary text ${idx + 1}`}
+                      maxLength={2000}
+                      minRows={6}
+                      allowEmpty
+                      disabled={!editable}
+                      className="text-[15px] leading-[1.6]"
+                    />
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70 font-medium">
-              Link description (optioneel)
-            </div>
-            <InlineEditField
-              value={linkDescription}
-              onSave={async (next) => {
-                await patchVariant({ linkDescription: next })
-                setLinkDescription(next)
-              }}
-              variant="single"
-              placeholder="Korte ondersteunende regel onder de headline"
-              maxLength={200}
-              allowEmpty
-              disabled={!editable}
-              className="text-sm"
-            />
-          </div>
-        </section>
+          </section>
+        </div>
 
         {/* Source-DNA evidence - blijft beschikbaar maar visueel rustig */}
         {(variant.sourceHookQuote || (variant.phrasesReused && variant.phrasesReused.length > 0)) && (

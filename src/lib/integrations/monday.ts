@@ -1095,6 +1095,97 @@ export async function setItemColumnValueRaw(
 }
 
 /**
+ * Fields accepted when creating a brand-new onboarding client from the Hub.
+ * Only `name` is required - everything else maps to an onboarding-board
+ * column when the AM fills it in. Person IDs are Monday user IDs (from
+ * `fetchMondayUsers`); dates are `YYYY-MM-DD`; `phaseLabel` is the Monday
+ * status label and defaults to "Kickoff scheduled".
+ */
+export type NewOnboardingClientInput = {
+  name: string
+  accountManagerId?: number
+  campaignManagerId?: number
+  firstName?: string
+  email?: string
+  phone?: string
+  adBudget?: string
+  serviceFee?: string
+  kickOffDate?: string
+  phaseLabel?: string
+}
+
+/**
+ * Create a new row on the Monday Onboarding board. Mirrors the column-
+ * resolution wiring of `setItemColumnValue*` (logical key → board-config
+ * column ID) but writes every field in a single `create_item` mutation via
+ * its `column_values` JSON. `create_labels_if_missing: true` keeps the
+ * phase status write from failing if the label isn't on the column yet.
+ *
+ * Returns the new Monday item ID. Higher-level cache/Supabase wiring lives
+ * in `lib/clients/create.ts` - same split as create vs `updateClientField`.
+ */
+export async function createOnboardingItem(input: NewOnboardingClientInput): Promise<string> {
+  const [token, config] = await Promise.all([getToken(), getBoardConfig()])
+  if (!config) throw new Error("Board config not found.")
+
+  const boardId = config.onboarding_board_id
+  if (!boardId) throw new Error("Onboarding board ID is not configured. Go to Settings → Board Config.")
+
+  const columns = config.onboarding_columns ?? {}
+  const columnValues: Record<string, unknown> = {}
+
+  const setText = (key: string, value?: string) => {
+    const trimmed = value?.trim()
+    if (!trimmed) return
+    const id = resolvedColumnId(columns, key)
+    if (id) columnValues[id] = trimmed
+  }
+  const setPerson = (key: string, personId?: number) => {
+    if (!personId) return
+    const id = resolvedColumnId(columns, key)
+    if (id) columnValues[id] = { personsAndTeams: [{ id: personId, kind: "person" }] }
+  }
+
+  setPerson("account_manager", input.accountManagerId)
+  setPerson("campaign_manager", input.campaignManagerId)
+  setText("first_name", input.firstName)
+  setText("email", input.email)
+  setText("phone", input.phone)
+  setText("ad_budget", input.adBudget)
+  setText("service_fee", input.serviceFee)
+
+  if (input.kickOffDate?.trim()) {
+    const id = resolvedColumnId(columns, "kick_off_date")
+    if (id) columnValues[id] = { date: input.kickOffDate.trim() }
+  }
+
+  // Default a fresh onboarding to the first phase so it lands in the
+  // "Kickoff scheduled" bucket on the overview (matches PHASE_LABELS).
+  const statusId = resolvedColumnId(columns, "campaign_status")
+  if (statusId) columnValues[statusId] = { label: input.phaseLabel?.trim() || "Kickoff scheduled" }
+
+  const mutation = `
+    mutation CreateItem($boardId: ID!, $itemName: String!, $columnValues: JSON!) {
+      create_item(
+        board_id: $boardId,
+        item_name: $itemName,
+        column_values: $columnValues,
+        create_labels_if_missing: true
+      ) { id }
+    }
+  `
+
+  const data = await gql(
+    mutation,
+    { boardId, itemName: input.name.trim(), columnValues: JSON.stringify(columnValues) },
+    token,
+  )
+  const id = data?.create_item?.id
+  if (!id) throw new Error("Monday create_item returned no item ID.")
+  return String(id)
+}
+
+/**
  * Post an update on a Monday item. Used by the Hub's inbox-mirror so updates
  * and tasks created in the Hub still surface on the client item's Monday
  * timeline. Returns the new update's ID, or null when the call fails - we

@@ -93,7 +93,7 @@ const SLOT_STYLE_OPTIONS: Array<{ value: SlotStyleKey; label: string }> = [
   { value: "client_content", label: "Client content" },
   { value: "client_content_ai", label: "Client content + AI" },
   { value: "ai_content", label: "AI Content" },
-  { value: "ai_animation", label: "AI Animation" },
+  { value: "ai_animation", label: "AI Content + Animation" },
   { value: "stock_content", label: "Stock content" },
 ]
 
@@ -101,7 +101,7 @@ const SUBFOLDER_LABELS: Record<keyof InspirationSubfolderFlags, string> = {
   client_content: "Client content",
   client_content_ai: "Client content + AI",
   ai_content: "AI Content",
-  ai_animation: "AI Animation",
+  ai_animation: "AI Content + Animation",
   stock_content: "Stock content",
 }
 
@@ -552,7 +552,7 @@ export function PedroSettingsPanel({ open, clientId, clientName, googleDriveId, 
                         Slot {["A", "B", "C"][slot]}
                       </div>
                       <select
-                        value={effective.slotStyleDefaults[slot] ?? "client_content_ai"}
+                        value={effective.slotStyleDefaults[slot] ?? "client_content"}
                         onChange={(e) => patchSlotStyle(slot, e.target.value as SlotStyleKey)}
                         className="w-full h-9 px-2 rounded-md border border-border bg-background text-sm"
                       >

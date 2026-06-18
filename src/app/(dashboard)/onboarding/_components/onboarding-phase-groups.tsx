@@ -110,16 +110,20 @@ function PhaseSection({
 
       {open && (
         <div className={`overflow-hidden border-l-4 ${cfg.stripeBorder}`}>
-          <table className="w-full text-sm">
+          {/* table-fixed + explicit AM/CM/DAYS widths so the columns line up
+              across every phase section. With table-auto each section sized
+              its columns to its own content (long client names pushed AM/CM
+              right), making the groups visually misaligned. */}
+          <table className="w-full text-sm table-fixed">
             <thead className="bg-muted/30 text-[11px] uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">
                   {t("onboarding.overview.col.client", locale)}
                 </th>
-                <th className="text-left px-3 py-2 font-medium">
+                <th className="text-left px-3 py-2 font-medium w-[200px]">
                   {t("onboarding.overview.col.am", locale)}
                 </th>
-                <th className="text-left px-3 py-2 font-medium">
+                <th className="text-left px-3 py-2 font-medium w-[200px]">
                   {t("onboarding.overview.col.cm", locale)}
                 </th>
                 <th className="text-right px-4 py-2 font-medium w-[80px]">
@@ -133,17 +137,18 @@ function PhaseSection({
                   <td className="px-4 py-2.5">
                     <Link
                       href={`/onboarding/${r.mondayItemId}`}
-                      className="font-medium hover:text-primary transition-colors"
+                      className="block truncate font-medium hover:text-primary transition-colors"
+                      title={r.displayName}
                     >
                       {r.displayName}
                     </Link>
                   </td>
-                  <td className="px-3 py-2.5 text-muted-foreground text-xs">
+                  <td className="px-3 py-2.5 text-muted-foreground text-xs truncate">
                     {r.accountManager || (
                       <span className="text-muted-foreground/40">-</span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5 text-muted-foreground text-xs">
+                  <td className="px-3 py-2.5 text-muted-foreground text-xs truncate">
                     {r.campaignManager || (
                       <span className="text-muted-foreground/40">-</span>
                     )}

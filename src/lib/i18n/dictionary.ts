@@ -1329,6 +1329,29 @@ export const DICTIONARY = {
   "onboarding.overview.col.critical": { nl: "Kritiek open", en: "Critical open" },
   "onboarding.overview.col.days": { nl: "Dagen", en: "Days" },
 
+  // New-onboarding dialog (manual client creation from the overview)
+  "onboarding.new.button": { nl: "Nieuwe onboarding", en: "New onboarding" },
+  "onboarding.new.title": { nl: "Nieuwe onboarding", en: "New onboarding" },
+  "onboarding.new.desc": {
+    nl: "Maak een nieuwe klant aan op het Onboarding-bord. Alleen de naam is verplicht - de rest vul je later in de wizard aan.",
+    en: "Create a new client on the Onboarding board. Only the name is required - fill in the rest later in the wizard.",
+  },
+  "onboarding.new.field.name": { nl: "Klantnaam", en: "Client name" },
+  "onboarding.new.field.name_ph": { nl: "Bedrijfsnaam", en: "Company name" },
+  "onboarding.new.field.am": { nl: "Account manager", en: "Account manager" },
+  "onboarding.new.field.cm": { nl: "Campagnemanager", en: "Campaign manager" },
+  "onboarding.new.field.first_name": { nl: "Voornaam contactpersoon", en: "Contact first name" },
+  "onboarding.new.field.email": { nl: "E-mail", en: "Email" },
+  "onboarding.new.field.phone": { nl: "Telefoon", en: "Phone" },
+  "onboarding.new.field.ad_budget": { nl: "Advertentiebudget (€)", en: "Ad budget (€)" },
+  "onboarding.new.field.service_fee": { nl: "Service fee (€)", en: "Service fee (€)" },
+  "onboarding.new.field.kick_off_date": { nl: "Kick-off datum", en: "Kick-off date" },
+  "onboarding.new.person_placeholder": { nl: "Niet toegewezen", en: "Unassigned" },
+  "onboarding.new.create": { nl: "Aanmaken", en: "Create" },
+  "onboarding.new.creating": { nl: "Bezig met aanmaken…", en: "Creating…" },
+  "onboarding.new.cancel": { nl: "Annuleren", en: "Cancel" },
+  "onboarding.new.error": { nl: "Aanmaken mislukt", en: "Failed to create" },
+
   // ─── Client detail page ───────────────────────────────────────────────
   // Legacy per-section labels - used by sub-toggles inside the 4 top
   // groups (Performance → Overview vs Campaigns, Admin → Billing vs

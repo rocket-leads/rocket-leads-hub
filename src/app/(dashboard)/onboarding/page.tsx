@@ -23,6 +23,7 @@ import {
   type PhaseGroup,
   type PhaseRow,
 } from "./_components/onboarding-phase-groups"
+import { NewOnboardingButton } from "./_components/new-onboarding-button"
 
 /**
  * Cross-client onboarding overview, phase-grouped. Roy 2026-06-11:
@@ -137,7 +138,10 @@ export default async function OnboardingOverviewPage() {
   const locale = await getUserLocale(session?.user?.id)
   return (
     <div className="space-y-4">
-      <PageHeader title={t("onboarding.overview.title", locale)} />
+      <PageHeader
+        title={t("onboarding.overview.title", locale)}
+        actions={<NewOnboardingButton />}
+      />
       <Suspense fallback={<OnboardingLoading />}>
         <OnboardingData session={session} locale={locale} />
       </Suspense>

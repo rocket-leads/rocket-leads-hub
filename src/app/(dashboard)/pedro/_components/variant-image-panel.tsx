@@ -12,6 +12,7 @@ import {
   Plus,
   MessageSquare,
   CheckCircle2,
+  Info,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { RegenFeedbackModal, type RegenFeedbackPayload } from "./regen-feedback-modal"
@@ -67,19 +68,33 @@ const SLOT_STYLE_LABELS: Record<SlotStyle, string> = {
   client_content: "Client content",
   client_content_ai: "Client content + AI",
   ai_content: "AI Content",
-  ai_animation: "AI Animation",
+  ai_animation: "AI Content + Animation",
   stock_content: "Stock content",
 }
 
+/** Korte regel die in de dropdown title-tooltip getoond wordt. */
 const SLOT_STYLE_DESCRIPTIONS: Record<SlotStyle, string> = {
-  client_content: "Klant-foto's as-is, alleen lichte color grade. Editorial documentary feel.",
-  client_content_ai: "Klant-foto's + atmospheric brand-color lighting + AI scene-enhancement.",
-  ai_content: "Volledig composite ad: brand-color panel, graphic overlay, CTA-button, mixed-weight headline. Marketing-agency deliverable.",
-  ai_animation: "Kinetic still met motion streaks, holografische elementen, brand-accent glow.",
-  stock_content: "Stock-photography aesthetic met brand-color treatment overlaid.",
+  client_content: "Echte klant-foto uit Drive. Headline + bullets / CTA mogen er overheen, foto zelf onveranderd.",
+  client_content_ai: "Echte klant of product, in een nieuwe AI-scène. Identity blijft 100% behouden, alleen omgeving / lighting / sfeer verandert.",
+  ai_content: "Volledig composite ad: brand-paneel + cutout subject + graphic chrome. Marketing-agency look (Nike / Shopify / Stripe campagne).",
+  ai_animation: "Twee modi: kinetic still (motion streaks, glow, blur — Tesla / Nvidia) OF graphic illustratie (isometric 3D, wireframes, neon outlines — Innova / Notion).",
+  stock_content: "Pexels stock + brand colour grade. Laatste redmiddel als Drive leeg / zwak.",
 }
 
-const DEFAULT_SLOT_STYLES: SlotStyle[] = ["client_content_ai", "ai_content", "ai_animation"]
+/** Wanneer-kiezen samenvatting in de ⓘ-tooltip. */
+const SLOT_STYLE_WHEN_TO_PICK: Record<SlotStyle, string> = {
+  client_content: "Drive-foto is sterk genoeg om zelf de hero te zijn. Authentieke uitstraling.",
+  client_content_ai: "Subject (persoon/product) uit Drive is goed, maar de context / achtergrond moet beter.",
+  ai_content: "Marketing-agency uitstraling. Composite paneel + cutout. Brand-chrome zichtbaar.",
+  ai_animation: "Kinetic energy nodig (kies kinetic) OF 3D illustratie / process showcase (kies graphic).",
+  stock_content: "Drive heeft niets bruikbaars. Stock met brand-grade als noodoplossing.",
+}
+
+// Roy 2026-06-16: default 3× client_content. Per-slot Drive-foto-
+// rotatie + content-mix block (minimal / copy-rich / editorial-CTA)
+// zorgen voor 3-up variatie zonder AI-styles als default. CM swapped
+// individuele slots wanneer hij een AI-execution wil.
+const DEFAULT_SLOT_STYLES: SlotStyle[] = ["client_content", "client_content", "client_content"]
 
 type GenerateReferences = {
   winnerThumbnail: boolean
@@ -647,34 +662,44 @@ export function VariantImagePanel({
           Style mix · per slot
         </div>
         <div className="grid grid-cols-3 gap-2">
-          {[0, 1, 2].map((idx) => (
-            <div key={idx} className="space-y-0.5">
-              <div className="text-[10px] text-muted-foreground tabular-nums">
-                Slot {SLOT_LABELS[idx]}
+          {[0, 1, 2].map((idx) => {
+            const current = slotStyles[idx] ?? DEFAULT_SLOT_STYLES[idx]
+            return (
+              <div key={idx} className="space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <div className="text-[10px] text-muted-foreground tabular-nums">
+                    Slot {SLOT_LABELS[idx]}
+                  </div>
+                  <span
+                    className="inline-flex items-center justify-center h-3.5 w-3.5 rounded-full text-muted-foreground/70 hover:text-foreground cursor-help"
+                    title={`${SLOT_STYLE_LABELS[current]}\n\n${SLOT_STYLE_DESCRIPTIONS[current]}\n\nWanneer kiezen: ${SLOT_STYLE_WHEN_TO_PICK[current]}`}
+                  >
+                    <Info className="h-3 w-3" />
+                  </span>
+                </div>
+                <select
+                  value={current}
+                  onChange={(e) => {
+                    const next = [...slotStyles]
+                    next[idx] = e.target.value as SlotStyle
+                    setSlotStyles(next)
+                  }}
+                  disabled={bulkBusy || (slotBusy[idx] ?? null) !== null}
+                  title={SLOT_STYLE_DESCRIPTIONS[current]}
+                  className="w-full h-8 text-xs rounded-md border border-border bg-background px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
+                >
+                  {(Object.keys(SLOT_STYLE_LABELS) as SlotStyle[]).map((s) => (
+                    <option key={s} value={s} title={SLOT_STYLE_DESCRIPTIONS[s]}>
+                      {SLOT_STYLE_LABELS[s]}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <select
-                value={slotStyles[idx] ?? DEFAULT_SLOT_STYLES[idx]}
-                onChange={(e) => {
-                  const next = [...slotStyles]
-                  next[idx] = e.target.value as SlotStyle
-                  setSlotStyles(next)
-                }}
-                disabled={bulkBusy || (slotBusy[idx] ?? null) !== null}
-                title={SLOT_STYLE_DESCRIPTIONS[slotStyles[idx] ?? DEFAULT_SLOT_STYLES[idx]]}
-                className="w-full h-8 text-xs rounded-md border border-border bg-background px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:opacity-50"
-              >
-                {(Object.keys(SLOT_STYLE_LABELS) as SlotStyle[]).map((s) => (
-                  <option key={s} value={s}>
-                    {SLOT_STYLE_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
+            )
+          })}
         </div>
         <div className="text-[10px] text-muted-foreground/70">
-          Wijzigingen gelden voor de volgende generatie. Branded composite =
-          marketing-agency look (brand-kleuren panel, graphic overlay).
+          Default: 3× Client content. Wijzig per slot voor een AI-execution. Hover de ⓘ voor uitleg per stijl.
         </div>
       </div>
 

@@ -61,13 +61,16 @@ type SlotStyleKey =
   | "ai_animation"        // → AI Animation/           (folder) - kinetic still
   | "stock_content"       // → Stock content/          (folder)
 
-/** Default mix wanneer de CM niets stuurt - 3 verschillende richtingen
- *  zodat hij in één blik kan vergelijken: enhanced klant-foto, fully
- *  composite branded, kinetic AI still. */
+/** Default: 3× client_content. Roy 2026-06-16. The 3-up still diverges
+ *  via slotContentMixBlock (minimal / copy-rich / editorial-CTA) +
+ *  per-slot Drive photo rotation, so the CM gets visual variation
+ *  without the styles defaulting to AI-heavy executions. CM can swap
+ *  individual slots to AI styles when they want a marketing-agency
+ *  composite or motion graphic. */
 const DEFAULT_SLOT_STYLES: Record<number, SlotStyleKey> = {
-  0: "client_content_ai",
-  1: "ai_content",
-  2: "ai_animation",
+  0: "client_content",
+  1: "client_content",
+  2: "client_content",
 }
 
 /**
@@ -206,6 +209,44 @@ FORBIDDEN: defaulting to circuit-board / data-stream / code-particles for EVERY 
 
 If the headline references something concrete (money, time, tool, place, action) and the slot style allows scene freedom, that concrete reference must be PRESENT in the scene somewhere as a visual cue — not literal copy, but unmistakable visual association.`
 
+/**
+ * Hard palette lock — appended at the END of the prompt so it overrides
+ * any creative latitude from earlier sections. Lists the exact hex
+ * codes for every brand role + forbids any colour outside the palette
+ * for graphic elements (text, panels, overlays, accent bars).
+ *
+ * Roy 2026-06-16: Diamondflame had palette {#ffffff, #ff6633 (secondary,
+ * headline accent), #000000} but Slot B rendered the headline in a
+ * gold/yellow tone — Gemini drifting toward warm-amber because the
+ * scene lighting was warm. Without an explicit lock, Gemini interprets
+ * "secondary" as "vibe-compatible warm tone" instead of "this exact
+ * hex". This block makes the lock literal.
+ */
+function paletteLock(palette: BrandPalette | null): string {
+  if (!palette) return ""
+  const lines: string[] = []
+  lines.push(`PRIMARY (panel / canvas background): ${palette.primary}`)
+  if (palette.secondary) {
+    lines.push(`SECONDARY (headline emphasis on 1-2 key words + typographic accent treatment): ${palette.secondary}`)
+  }
+  lines.push(`ACCENT (brand highlight for scene elements / overlays / vertical bar / optional CTA): ${palette.accent}`)
+  lines.push(`WHITE (#FFFFFF) and BLACK (#000000) are always allowed for base text and structural elements.`)
+
+  const all = Array.from(
+    new Set(
+      [
+        palette.primary,
+        palette.secondary,
+        palette.accent,
+        "#FFFFFF",
+        "#000000",
+      ].filter((x): x is string => !!x),
+    ),
+  )
+
+  return `\n\n---\nPALETTE LOCK — strictly enforced, NO deviation:\n\nEvery graphic element (headline text, accent words, panels, overlays, vertical bars, underlines, highlighter blocks, CTA backgrounds, any added shape or chrome) MUST use ONLY a colour from this list:\n${lines.map((l) => `  • ${l}`).join("\n")}\n\nALLOWED HEX CODES (exact values only): ${all.join(" · ")}\n\nFORBIDDEN drift (common Gemini mistakes — do NOT do these):\n  • Do NOT render orange brand colour as gold, yellow, or warm-amber. ${palette.secondary?.toLowerCase().startsWith("#ff") ? `If the secondary is ${palette.secondary} (a warm-red/orange), render it as a saturated red-orange — NOT as gold (#daa520), NOT as yellow (#ffcc00), NOT as warm-amber (#ffaa44).` : ""}\n  • Do NOT introduce a colour because it "matches the scene lighting". The palette is the source of truth, not the scene.\n  • Do NOT use a 4th brand colour outside the list above (no harmonic complement, no analogous shift, no shading variant). The list IS the palette.\n  • Do NOT add gradients between non-palette colours. Solid fills using ONLY the listed hex codes.\n\nIf you cannot achieve sufficient contrast using ONLY these colours, choose WHITE or BLACK as the contrast partner — never invent a new hue.\n\nThis lock OVERRIDES any earlier guidance about "brand-compatible warmth" or "vibe-matching tints". The hex codes are literal. Any colour you render that isn't on the allowed list above is a defect.`
+}
+
 function styleDirective(style: SlotStyleKey, palette: BrandPalette | null): string {
   // Semantic roles drive the directive:
   //   - primary   = panel/canvas BACKGROUND
@@ -300,6 +341,11 @@ HEADLINE LINE-BREAKING + ALIGNMENT (mandatory — bad line-breaks killed a TMM c
   (2) RE-FLOW the line breaks so the long word starts (or ends) a line whole.
   (3) WIDEN the text panel slightly (within the slot-style's allowed canvas-width range) to accommodate.
 - Line breaks land between WHOLE WORDS or at MORPHEME BOUNDARIES of Dutch compounds. Ideally at natural phrase boundaries. Never mid-morpheme, never after a single letter.
+- COMMA + LINE BREAK RULE (Roy 2026-06-16): when the headline contains a comma, the line break MUST land DIRECTLY AFTER the comma — never before it, never mid-clause. The comma is the natural reading pause; the visual pause (line break) MUST align with it. Examples:
+  • CORRECT: "Luxe cinewalls,\nzonder de luxe prijs"      ← comma at end of line 1, break, then second clause on line 2
+  • WRONG:   "Luxe cinewalls, zonder\nde luxe prijs"      ← clause split mid-flow after "zonder"
+  • WRONG:   "Luxe cinewalls\n, zonder de luxe prijs"     ← orphan comma at start of line 2
+  When two commas are present, prefer breaking at the MOST PROMINENT comma (the one separating the main pause), not every comma.
 - LITERAL HEADLINE RENDERING: render the supplied headline string word-for-word, character-for-character. NO duplicated tokens within the headline (e.g. do NOT render "software software ontwikkeling" when the string is "softwareontwikkeling"). NO inserted words. NO omitted words. NO reordering. If you can't fit the headline cleanly, simplify the SCENE — never edit the text.
 - Vertical line spacing is CONSISTENT — no wider gap between line 2 and line 3 than between line 1 and line 2. Each line baseline equally distant.
 - LEFT EDGE alignment is consistent across all lines (or centred consistently — but NOT a mix where one line is indented and others are flush).
@@ -315,8 +361,8 @@ SUBJECT IDENTITY LOCK (non-negotiable for this slot):
 
 - Use the client photo references AS-IS. Light color grade for cohesion only.
 - Authentic, professional, unposed photography. Magazine documentary feel.
-- NO composite overlays, NO graphic chrome, NO color panels.
-- Headline floats cleanly in upper-left negative space. Base text in white (or black if it improves legibility against the photo). Single sans-serif typeface.
+- AD-CHROME treatment (headline panel / overlay / accent-bar) is dictated by the PER-SLOT VARIATION DIRECTION further down — the 3-up MUST present 3 distinct layout archetypes so the CM has real choice, not 3 colour-grades of the same shot.
+- Single sans-serif typeface for ALL text. Base text colour follows the slot's archetype (white over photo, white inside coloured panels, black inside white panels).
 - ${headlineAccentBlock}
 - ${subjectScaleRule}
 - ${whiteBlackNote}
@@ -377,27 +423,59 @@ PHOTOGRAPHY QUALITY:
 QUALITY BAR: Nike / Apple / Shopify / Stripe brand campaign. Twenty-year veteran graphic designer. Layered composition with real depth, atmosphere, deliberate spacing. Every element earns its place.${DEPTH_LAYERING_FULL}`
 
     case "ai_animation":
-      return `\n\nSLOT STYLE: AI ANIMATION (still that captures motion + dynamic energy).
+      return `\n\nSLOT STYLE: AI CONTENT + ANIMATION (graphic + animated still).
+
+Roy 2026-06-16: this slot covers TWO valid execution modes — choose
+whichever best fits the headline, subject and brand. The two modes
+share the same brand-colour roles, palette lock, and composition
+principles; they differ only in the chrome that gives the ad its
+"animated" feeling.
+
+EXECUTION MODE A — KINETIC MOTION STILL (Nike / Tesla / Nvidia campaign):
+- Subject in foreground with motion blur cues. Background carries
+  light streaks, holographic glow, particle bursts, rim-light. The ad
+  reads as "frozen mid-motion".
+
+EXECUTION MODE B — GRAPHIC / ISOMETRIC ILLUSTRATION (Innova-style):
+- A 3D-rendered isometric or near-isometric illustration of the
+  product / scene / system in clean stylised geometry. Neon glowing
+  outlines / wireframes in the brand ACCENT colour highlight key
+  components or measurement lines. The "animation" feel comes from
+  the GRAPHIC STYLISATION itself, not from blur or streaks. Examples:
+  isometric room cutaway, exploded-view product, isometric process
+  diagram, holographic UI overlay floating above a device, glowing
+  blueprint of an object. Often a clean dark gradient background lets
+  the neon outlines glow.
+
+CHOOSING THE MODE:
+- Pick MODE A when the headline implies SPEED / ACTION / ENERGY (e.g.
+  "scale your business", "30 leads in a week", "fast results").
+- Pick MODE B when the headline implies PROCESS / SHOWCASE / SYSTEMS /
+  CONFIGURATION / COMPARISON (e.g. "see your design in 3D", "build
+  your perfect setup", "every option, one place"). MODE B usually
+  fits B2B SaaS, design tools, configurators, technical products.
+- Either way: the chrome is unmistakably "animated / graphic" — not a
+  flat photograph with text on top.
 
 COLOUR ROLES:
-- PRIMARY (${primary}) = background atmosphere the motion sits in.
+- PRIMARY (${primary}) = background atmosphere / dark gradient base where the graphic element glows against.
 - SECONDARY (${palette?.secondary ?? "—"}) = headline EMPHASIS colour for the 1-3 key words inside the headline + any typographic accent treatment. Base headline text stays WHITE.
-- ACCENT (${accent}) = BRAND HIGHLIGHT on scene elements — motion streaks, holographic glow, particle bursts, rim-light on the subject, glowing icons / props. CTA-button is OPTIONAL; only render when the headline naturally implies one.
+- ACCENT (${accent}) = BRAND HIGHLIGHT on graphic chrome — neon outlines, motion streaks, holographic glow, particle bursts, rim-light, wireframe edges, blueprint lines. THIS is what makes the ad feel "animated". CTA-button is OPTIONAL.
 - ${whiteBlackNote}
 
 COMPOSITION:
 - ${bgClause}
-- Subject (from references when available) CUT OUT with sharp focus, placed right-center, OVERLAPPING any text-shape or motion element so the subject sits in the FOREGROUND while motion + headline recede behind.
-- Headline in the upper-left in a soft text-shape (not a hard rectangle) in still negative space. Base text in WHITE. The subject's silhouette may cross the shape's edge for depth.
+- Mode A: subject (from references when available) CUT OUT with sharp focus, placed right-center, OVERLAPPING motion elements so it sits in the FOREGROUND while motion recedes behind.
+- Mode B: the isometric / wireframe illustration IS the hero element, anchored slightly right-of-center. Headline lives in the upper-left negative space. If the brand or product has a recognisable shape, the illustration leans into THAT shape rather than generic isometric cubes.
+- Headline in the upper-left in a soft text-shape (not a hard rectangle) in still negative space. Base text in WHITE. Any subject silhouette / wireframe edge may cross the shape's edge for depth.
 - ${headlineAccentBlock}
 - ${subjectScaleRule}
 
-MOTION ELEMENTS (mid-ground, behind subject):
-- Light streaks / motion blur trails in the ACCENT colour (${accent}) flowing across the canvas (4-6 streaks, layered at different depths for parallax — some sharp, some blurred).
-- Holographic / data-stream elements integrated into the scene (glowing lines, particle effects, geometric trails). For tech verticals: code-particles / circuit-lines. For others: geometric motion. All sit BEHIND the subject.
-- Subject has subtle directional blur or rim-light bloom (ACCENT colour) to suggest forward motion.
+CHROME ELEMENTS (mid-ground, behind subject):
+- Mode A: light streaks / motion blur trails in ACCENT colour (${accent}) flowing across canvas (4-6 streaks, parallax depth). Holographic / data-stream elements. Subject directional blur or rim-light bloom.
+- Mode B: neon outlines / wireframe edges in ACCENT colour (${accent}) tracing the geometry of the illustrated object. Measurement-line callouts. Soft glow halo around the illustration. Subtle particles around the edges suggesting digital presence.
 
-QUALITY BAR: tech-brand kinetic campaign (think Tesla / Nvidia ad), sports-brand action ad (Nike kinetic typography), or financial-tech brand stinger. Energy and clarity simultaneously.${DEPTH_LAYERING_FULL}`
+QUALITY BAR: Mode A → Tesla / Nvidia / Nike kinetic campaign. Mode B → Innova / Klaviyo / Notion product-launch graphic. Energy + clarity simultaneously, no template aesthetic.${DEPTH_LAYERING_FULL}`
 
     case "stock_content":
       return `\n\nSLOT STYLE: STOCK CONTENT (high-quality stock + brand color treatment).
@@ -518,16 +596,156 @@ const SLOT_VARIATION_DIRECTIONS_CLIENT_AI: string[] = [
   `Lean into ATMOSPHERE + MOOD variation on the locked subject: keep the SAME person / product, but change the lighting + colour temperature + ambient mood. Cinematic warm, high-key bright, moody low-key. The HUMAN stays identical; the lighting + atmosphere around them shifts.`,
 ]
 
-// Directions for pure "Client content" — minimal AI. Variation is about
-// post-processing + framing within the existing scene, not new scenes.
+// Directions for pure "Client content" — real photos, layout LATITUDE
+// per slot. Roy 2026-06-16: we no longer hard-lock each slot to a fixed
+// layout archetype. Instead, slotContentMixBlock dictates which content
+// elements appear (minimal / copy-rich / editorial-CTA) and the slot
+// VARIATION DIRECTION gives a high-level visual mood. Pedro / Gemini
+// chooses the specific composition that fits the content + photo at
+// hand. This produced more diverse 3-ups in testing — and matches Roy's
+// note that creative freedom inside guardrails beats prescriptive locks.
 const SLOT_VARIATION_DIRECTIONS_CLIENT_PURE: string[] = [
-  // Slot 0 — colour grade
-  `Lean into COLOUR GRADE variation: keep the EXACT reference photo and scene. Apply a different colour grade (cooler vs warmer tones, brighter vs moodier exposure, different vignette intensity). Same shot, different post-processing feel.`,
-  // Slot 1 — crop / framing within the same shot
-  `Lean into CROP variation: keep the EXACT reference photo, scene, subject, and identity. Choose a DIFFERENT crop — tighter portrait, wider environmental, different aspect-emphasis. Same source material, different framing.`,
-  // Slot 2 — light treatment on the same shot
-  `Lean into LIGHT TREATMENT variation: keep the EXACT reference photo, scene, subject, and identity. Apply a different lighting feel via post-processing (golden-hour warmth, cool-blue cinematic, high-contrast editorial). Subject and setting unchanged; only the light treatment shifts.`,
+  // Slot 0 — minimal mood, photo-led
+  `Lean into a CLEAN EDITORIAL mood: photo is the hero, type is restrained, negative space is intentional. Composition reads as ONE photograph with type integrated, not as ad-chrome layered on top. Cooler editorial colour grade (mid-contrast, magazine feel).`,
+  // Slot 1 — copy-rich, graphic-design mood
+  `Lean into a GRAPHIC-DESIGN mood: solid colour blocks, structured typographic hierarchy, dense information layout. The composition uses panels / blocks of solid brand colour to organise the on-canvas content. Treatment feels like an agency deliverable, not a stock photo with text dropped on.`,
+  // Slot 2 — editorial CTA, conversion-led
+  `Lean into a CONVERSION-LED EDITORIAL mood: clean photo-led composition with a clearly visible CTA pill anchored at the bottom. The CTA is the visual call-and-response counterpoint to the headline. Restrained palette, generous breathing room, premium feel.`,
 ]
+
+/**
+ * Roy 2026-06-16: extract on-canvas content elements from the variant's
+ * copy. Pedro now lets Gemini pull MORE than just the headline onto the
+ * image — sub-headlines, bullets, CTA pills — so each slot in the 3-up
+ * carries a different content mix and the ads diverge in INFORMATION
+ * DENSITY as well as layout.
+ *
+ * Heuristics:
+ * - HEADLINE: always required, comes from variant.headline (already
+ *   used as the primary on-image text by the headline lockdown).
+ * - SUB-HEADLINE: derived from the FIRST sentence of primary_copy if
+ *   it's short (≤80 chars) and not a bullet line. Otherwise null.
+ * - BULLETS: lines in primary_copy_snippet that start with ✅ / ✔ / •
+ *   or '- '. Stripped of leading symbols. Max 3 returned.
+ * - CTA: link_description if present, otherwise null (caller decides
+ *   whether to use a generic "Meer informatie" fallback).
+ */
+type OnCanvasElements = {
+  headline: string
+  subHeadline: string | null
+  bullets: string[]
+  cta: string | null
+}
+
+function extractContentElements(v: {
+  headline?: string | null
+  primary_copy_snippet?: string | null
+  link_description?: string | null
+}): OnCanvasElements {
+  const headline = (v.headline ?? "").trim()
+  const copy = (v.primary_copy_snippet ?? "").trim()
+  const cta = (v.link_description ?? "").trim() || null
+
+  // Bullets: pull lines starting with checkmark/bullet markers.
+  const bulletRe = /^\s*(?:[✅✔☑✓•◆▪►]+|[-*]\s)\s*(.+?)\s*$/u
+  const bullets: string[] = []
+  for (const line of copy.split(/\n+/)) {
+    const m = line.trim().match(bulletRe)
+    if (m && m[1]) {
+      // Strip trailing emojis / markers from the end too for clean
+      // rendering on the canvas.
+      const clean = m[1].replace(/[\s‍]+[✨🔥⤵️↪️➡️⏬]+\s*$/u, "").trim()
+      if (clean.length > 0 && clean.length <= 80) bullets.push(clean)
+      if (bullets.length >= 3) break
+    }
+  }
+
+  // Sub-headline: first non-bullet line of primary copy if short.
+  let subHeadline: string | null = null
+  for (const line of copy.split(/\n+/)) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    if (bulletRe.test(trimmed)) continue
+    // Strip leading symbols + emojis from candidate.
+    const stripped = trimmed.replace(/^[✨🔥⭐💎🎯⚡]+\s*/u, "").trim()
+    if (stripped.length > 0 && stripped.length <= 80 && stripped !== headline) {
+      // Take the first SENTENCE if multi-sentence.
+      const firstSentence = stripped.split(/[.!?]\s/)[0]?.trim() ?? stripped
+      subHeadline = firstSentence.length <= 80 ? firstSentence : stripped.slice(0, 80)
+    }
+    break
+  }
+
+  return { headline, subHeadline, bullets, cta }
+}
+
+/**
+ * Per-slot content mix — rotates WHICH on-canvas elements appear on
+ * each slot in the 3-up. With 3 slots and elements {headline, sub-
+ * headline, bullets, CTA} this produces information-density variation
+ * (minimal / copy-rich / editorial-CTA) as well as the existing layout
+ * variation. Roy 2026-06-16.
+ *
+ * Available presets:
+ *   - "minimal":    just the headline. Photo speaks, type is subtle.
+ *   - "copy-rich":  headline + sub-headline + up to 3 bullets. Dense
+ *                   informational ad — when bullets exist in the copy.
+ *   - "editorial":  headline + CTA pill button. Clean, conversion-led.
+ *
+ * If the variant has no extractable bullets, the "copy-rich" slot
+ * gracefully degrades to headline + sub-headline.
+ */
+type SlotContentPreset = "minimal" | "copy-rich" | "editorial"
+
+const SLOT_CONTENT_PRESETS: SlotContentPreset[] = ["minimal", "copy-rich", "editorial"]
+
+function slotContentMixBlock(
+  slotIndex: number,
+  elements: OnCanvasElements,
+): { block: string; preset: SlotContentPreset } {
+  // Stable rotation: slot 0 → minimal, slot 1 → copy-rich, slot 2 →
+  // editorial. Stays predictable so the CM can reason about which slot
+  // gets what.
+  const preset = SLOT_CONTENT_PRESETS[slotIndex % SLOT_CONTENT_PRESETS.length]
+
+  const headlineLine = `HEADLINE (always rendered, primary on-canvas text): "${elements.headline}"`
+  let mixLines: string[] = []
+  let layoutHint = ""
+
+  if (preset === "minimal") {
+    mixLines = [
+      headlineLine,
+      `NO sub-headline, NO bullets, NO CTA button on this slot — the photo speaks, the headline is the only typographic element.`,
+    ]
+    layoutHint = `Layout: photo full-bleed, headline floats in negative space (upper-left or upper-right). Clean editorial. Minimal chrome.`
+  } else if (preset === "copy-rich") {
+    const subLine = elements.subHeadline
+      ? `SUB-HEADLINE (smaller text below the headline, ~60% of headline weight, same colour family): "${elements.subHeadline}"`
+      : `(no extractable sub-headline; render just headline + bullets)`
+    const bulletsBlock =
+      elements.bullets.length > 0
+        ? `BULLETS (${elements.bullets.length}, render as a vertical stack with checkmark icons ✓ in the brand SECONDARY or ACCENT colour, bullet TEXT in white/black per contrast):\n${elements.bullets.map((b) => `   • ${b}`).join("\n")}`
+        : `(no extractable bullets; fall back to just headline + sub-headline if available)`
+    mixLines = [headlineLine, subLine, bulletsBlock]
+    layoutHint = `Layout: photo occupies upper ~50-60% of canvas; lower ~40-50% is a solid panel (brand PRIMARY or SECONDARY colour) carrying the headline → sub-headline → bullets stack. Information-rich, dense ad treatment.`
+  } else {
+    // editorial
+    const ctaLine = elements.cta
+      ? `CTA BUTTON (small pill or rounded rectangle in brand ACCENT colour, white text): "${elements.cta}"`
+      : `CTA BUTTON (small pill in brand ACCENT colour, white text, label: "Meer informatie")`
+    mixLines = [
+      headlineLine,
+      `NO sub-headline, NO bullets — keep the editorial cleanliness, type minimal.`,
+      ctaLine,
+    ]
+    layoutHint = `Layout: photo full-bleed, headline upper-left negative space, CTA button positioned bottom-right or bottom-center. Editorial / conversion-led treatment.`
+  }
+
+  return {
+    preset,
+    block: `\n\n---\nON-CANVAS CONTENT MIX (slot ${String.fromCharCode(65 + slotIndex)} → preset: ${preset}):\n\n${mixLines.join("\n\n")}\n\n${layoutHint}\n\nThis content mix is MANDATORY for THIS slot — the 3-up MUST vary in information density (minimal → copy-rich → editorial-with-CTA) so the CM gets real choice. Use ONLY the elements listed above for this slot; do NOT add elements from another preset. The brand-colour roles + palette lock + photo locks all still apply on top of this mix.`,
+  }
+}
 
 function slotVariationHint(slotIndex: number, style: SlotStyleKey): string {
   let directions: string[]
@@ -597,7 +815,7 @@ export async function POST(
     const { data: variantRow, error: readErr } = await supabase
       .from("pedro_variants")
       .select(
-        "id, client_id, refresh_id, image_prompt, ad_name, format_hint, topic_label, headline",
+        "id, client_id, refresh_id, image_prompt, ad_name, format_hint, topic_label, headline, primary_copy_snippet, alt_primary_texts, alt_headlines, link_description",
       )
       .eq("id", variantId)
       .maybeSingle()
@@ -821,7 +1039,11 @@ export async function POST(
         const topicHints = [variant.topic_label, variant.ad_name].filter(
           (s): s is string => typeof s === "string" && s.length > 0,
         )
-        return await getFolderImages(driveId, 2, {
+        // Roy 2026-06-16: bumped 2 → 6 so per-slot rotation has a real
+        // pool to pick from. With only 2 candidates all 3 slots got the
+        // same top photo → 3 visually identical ads. With 6 we can give
+        // each slot a different primary reference and Gemini diverges.
+        return await getFolderImages(driveId, 6, {
           campaignHint: winnerCampaignName ?? undefined,
           topicHints,
           deniedFolderIds,
@@ -1141,20 +1363,26 @@ export async function POST(
       }
     }
 
-    // Build the reference pool. Order: winner thumbnail first (DNA),
-    // then Drive (real client product), then Website (klant's eigen
-    // hero / team / product shots van hun site), then Stock (generic).
-    // Gemini Nano Banana Pro accepts up to 3 references - we cap at that.
-    // Roy 2026-06-11: website images zitten BOVEN stock omdat ze real
-    // klantmateriaal zijn en vrijwel altijd beter dan Pexels generieks.
+    // Build the SHARED reference pool — same across all slots. Holds
+    // winner thumbnail (DNA), website images, stock fallback. Drive
+    // photos live in a SEPARATE rotated pool below so each slot anchors
+    // to a different primary photo.
+    //
+    // Gemini accepts up to 3 references. We reserve 1 slot for the
+    // per-slot Drive photo, so shared refs cap at 2.
+    //
+    // Roy 2026-06-11: website images zitten BOVEN stock — real klant-
+    // materiaal beats generic Pexels.
+    // Roy 2026-06-16: Drive photos got moved out of the shared pool
+    // into the per-slot rotation. Without this, all 3 slots saw the
+    // same primary photo and Gemini produced 3 visually identical ads.
     const referenceImages: Ref[] = []
     const referenceNames: Array<{
       source: "winner" | "drive" | "website" | "stock"
       name: string
     }> = []
-    const REF_CAP = 3
+    const SHARED_REF_CAP = 2
     if (winnerThumbRef) {
-      // Strip the flag-only field - Gemini accepts just bytes + mimeType.
       referenceImages.push({ bytes: winnerThumbRef.bytes, mimeType: winnerThumbRef.mimeType })
       referenceNames.push({
         source: "winner",
@@ -1163,24 +1391,26 @@ export async function POST(
           : "winner thumbnail",
       })
     }
-    for (const p of drivePhotoRefs) {
-      if (referenceImages.length >= REF_CAP) break
-      referenceImages.push({ bytes: p.bytes, mimeType: p.mimeType })
-      referenceNames.push({ source: "drive", name: p.name })
-    }
     for (const p of websiteImageRefs) {
-      if (referenceImages.length >= REF_CAP) break
+      if (referenceImages.length >= SHARED_REF_CAP) break
       referenceImages.push({ bytes: p.bytes, mimeType: p.mimeType })
       referenceNames.push({ source: "website", name: p.name })
     }
     for (const p of stockRefs) {
-      if (referenceImages.length >= REF_CAP) break
+      if (referenceImages.length >= SHARED_REF_CAP) break
       referenceImages.push({ bytes: p.bytes, mimeType: p.mimeType })
       referenceNames.push({ source: "stock", name: p.name })
     }
+    // Per-slot rotated pool — each slot picks a DIFFERENT photo from
+    // here so the 3-up diverges.
+    const driveRotationPool: Array<{
+      bytes: Buffer
+      mimeType: "image/jpeg" | "image/png"
+      name: string
+    }> = drivePhotoRefs.map((p) => ({ bytes: p.bytes, mimeType: p.mimeType, name: p.name }))
 
     console.log(
-      `[pedro/generate-image] refs for ${variant.id}: campaign="${winnerCampaignName ?? "(unknown)"}", winner=${winnerThumbRef ? "yes" : "no"}, drive=${drivePhotoRefs.length}, website=${websiteImageRefs.length}, stock=${stockRefs.length}, brandAssets=${brandAssets.length}, used=${referenceImages.length}/${REF_CAP}, prefs={denied:${sourcePrefs.deniedFolderIds.size},stock:${sourcePrefs.useStock}}, policy={winner:${policy.referenceImagePolicy.useWinnerThumbnail},drive:${policy.referenceImagePolicy.useDrivePhotos},notice:${policy.notice ? "yes" : "no"}}`,
+      `[pedro/generate-image] refs for ${variant.id}: campaign="${winnerCampaignName ?? "(unknown)"}", winner=${winnerThumbRef ? "yes" : "no"}, drive=${drivePhotoRefs.length}, website=${websiteImageRefs.length}, stock=${stockRefs.length}, brandAssets=${brandAssets.length}, used=${referenceImages.length}/${SHARED_REF_CAP}+drivePool=${driveRotationPool.length}, prefs={denied:${sourcePrefs.deniedFolderIds.size},stock:${sourcePrefs.useStock}}, policy={winner:${policy.referenceImagePolicy.useWinnerThumbnail},drive:${policy.referenceImagePolicy.useDrivePhotos},notice:${policy.notice ? "yes" : "no"}}`,
     )
 
     // Resolve target slots. Default: generate ALL 3 slots in parallel
@@ -1562,6 +1792,19 @@ RL QUALITY RULES (composite-allowed):
     // brief.sector via de vertical-aware logic in de imagePrompt).
     const lookAndFeelText = lookAndFeelAddendum(effectiveSettings.visualStyles)
 
+    // Roy 2026-06-16: extract on-canvas content elements ONCE per
+    // variant so every slot pulls from the same source-of-truth (the
+    // variant's headline + primary copy + link description). The
+    // slotContentMixBlock then decides which subset each slot renders.
+    const onCanvasElements = extractContentElements({
+      headline: variant.headline,
+      primary_copy_snippet: variant.primary_copy_snippet,
+      link_description: variant.link_description,
+    })
+    console.log(
+      `[pedro/generate-image] on-canvas elements for ${variant.id}: headline=${onCanvasElements.headline.length}ch, subHeadline=${onCanvasElements.subHeadline ? `"${onCanvasElements.subHeadline.slice(0, 40)}…"` : "(none)"}, bullets=${onCanvasElements.bullets.length}, cta=${onCanvasElements.cta ? `"${onCanvasElements.cta.slice(0, 40)}…"` : "(none)"}`,
+    )
+
     const slotResults = await Promise.allSettled(
       targetSlots.map((slot, idx) => {
         const style: SlotStyleKey =
@@ -1585,7 +1828,22 @@ RL QUALITY RULES (composite-allowed):
         // playbook-overname (compositie-principes, depth/lighting-
         // logica, typography-hiërarchie) ZONDER de exacte scene over
         // te nemen.
+        // Per-slot ref pool. Start with shared (winner + website +
+        // stock), then prepend inspiration, then APPEND the per-slot
+        // Drive photo so each slot anchors to a DIFFERENT primary
+        // photo. Slot 0 → drivePool[0], slot 1 → drivePool[1], slot 2 →
+        // drivePool[2] (mod pool size).
         const slotRefImages: Ref[] = [...referenceImages]
+        const perSlotDrive =
+          driveRotationPool.length > 0
+            ? driveRotationPool[targetSlots[idx] % driveRotationPool.length]
+            : null
+        if (perSlotDrive) {
+          slotRefImages.push({
+            bytes: perSlotDrive.bytes,
+            mimeType: perSlotDrive.mimeType,
+          })
+        }
         let inspirationFraming = ""
         if (inspiration) {
           slotRefImages.unshift({
@@ -1594,6 +1852,15 @@ RL QUALITY RULES (composite-allowed):
           })
           inspirationFraming = `\n\nINSPIRATION REFERENCE (FIRST attached image):\nThe first reference image is a winning ad from the "${inspiration.subfolderName}" inspiration library. Treat it as INSPIRATION for the PLAYBOOK that makes it work — not as a scene to clone.\n\nLEARN from the reference:\n  - The depth + layering principles (foreground subject crossing a mid-ground panel, atmospheric background).\n  - Typographic hierarchy logic (relative size + weight contrast, alignment relationship).\n  - Lighting style + atmosphere intensity.\n  - The overall quality bar (composition discipline, breathing room, deliberate spacing).\n\nDO NOT reproduce:\n  - The exact subject, props, setting, or scene of the reference.\n  - The reference's specific colour values — apply the brand-colour ROLES defined elsewhere in this prompt instead.\n  - Identical headline placement or panel proportions — let the playbook guide composition, not lock it.\n\nThe goal: a viewer should feel "this is built with the same craftsmanship" as the reference, NOT "this is the same ad in a different colourway". Build a fresh execution that honours the principles without copying the picture.`
         }
+
+        // Per-slot on-canvas content mix (minimal / copy-rich /
+        // editorial). Rotates which elements (sub-headline, bullets,
+        // CTA) appear on each slot so the 3-up varies in information
+        // density, not just colour grading. Roy 2026-06-16.
+        const { block: contentMixBlock } = slotContentMixBlock(
+          targetSlots[idx],
+          onCanvasElements,
+        )
 
         const styledPrompt =
           prompt +
@@ -1605,8 +1872,14 @@ RL QUALITY RULES (composite-allowed):
           directive +
           inspirationFraming +
           slotVariationHint(targetSlots[idx], style) +
+          contentMixBlock +
           qualityRules +
-          HEADLINE_LOCKDOWN
+          HEADLINE_LOCKDOWN +
+          // Palette lock at the very end so Gemini doesn't drift to
+          // gold/yellow when the actual brand colour is orange. Hex
+          // codes are literal — no harmonic complements, no warmth-
+          // matching. Roy 2026-06-16.
+          paletteLock(paletteForDirective)
 
         // Gemini sweet spot is 3 refs total: inspiration template first,
         // then winner thumbnail, then up to 1 client photo. Past 3 the
