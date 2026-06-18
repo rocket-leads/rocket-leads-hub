@@ -10,9 +10,9 @@ import {
   type InvoiceDraftPreview,
   type PastInvoice,
 } from "@/lib/integrations/stripe"
-import { fetchBothBoards } from "@/lib/integrations/monday"
+import { fetchBothBoards, type MondayClient } from "@/lib/integrations/monday"
 import { updateClientField } from "@/lib/clients/edit"
-import { addMonthsIso } from "@/lib/clients/billing-cycle"
+import { addMonthsIso, deriveInvoiceDate } from "@/lib/clients/billing-cycle"
 import { setAdministration } from "@/lib/clients/administration-sync"
 import { ADMIN_LABELS } from "@/lib/clients/administration"
 import { readCache, writeCache } from "@/lib/cache"
@@ -51,6 +51,9 @@ type LegacyBody = {
   daysUntilDue?: number
 }
 type Body = PreviewBody | SendBody | LegacyBody
+
+/** `YYYY-MM-DD` guard - shared by the sibling-resolution + cache-patch logic. */
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 export async function POST(
   req: NextRequest,
@@ -150,58 +153,139 @@ export async function POST(
   // screen + finance can manually fix Monday before walking away.
   const postSendWarnings: string[] = []
 
-  // 0. Stamp the Monday "Administration" column to "Invoice sent (unpaid)".
-  // Per Roy's 2026-05-19 spec this is the one auto-target allowed to
-  // overwrite ANY existing value (incl. Discuss first / Debt collection
-  // agency) because "Stripe shipped the invoice" is an objective fact.
-  const adminResult = await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
-  if (!adminResult.ok) {
-    postSendWarnings.push(
-      `Monday admin status could not be set to '${ADMIN_LABELS.invoiceSend}' - update manually. (${adminResult.error})`,
-    )
+  // ── Resolve every Monday row this invoice covers (primary + siblings) ──
+  // Multi-campaign clients (e.g. "Nexa | B2B" + "Nexa | B2C") share one Stripe
+  // customer and one billing cycle, and the dialog consolidates ALL their line
+  // items into the single invoice we just sent. So every sibling row - not just
+  // the one whose id arrived on the URL - needs its admin label flipped and its
+  // cycle advanced. If we touched only the primary, the untouched siblings keep
+  // their old cycle date, split off into their own stale "Send invoice" group
+  // on the next render, and finance thinks a second invoice is owed.
+  //
+  // Siblings are read from the same monday_boards cache the Billing page groups
+  // from, matched on (stripe customer + next-invoice-date) - the exact bundling
+  // key `groupBillingRows` uses, so the Hub-side row set matches what was sent.
+  const boardsCache = await readCache<{ onboarding: MondayClient[]; current: MondayClient[] }>(
+    "monday_boards",
+  )
+  const allCachedRows = boardsCache
+    ? [...boardsCache.onboarding, ...boardsCache.current]
+    : []
+  const primaryRow = allCachedRows.find((c) => c.mondayItemId === mondayItemId)
+  const groupInvoiceDate =
+    primaryRow && DATE_RE.test(primaryRow.nextInvoiceDate) ? primaryRow.nextInvoiceDate : ""
+  const siblingIds =
+    groupInvoiceDate
+      ? allCachedRows
+          .filter(
+            (c) =>
+              c.stripeCustomerId === client.stripe_customer_id &&
+              c.nextInvoiceDate === groupInvoiceDate,
+          )
+          .map((c) => c.mondayItemId)
+      : []
+  // Always include the row we were called with, even if the cache missed it.
+  const targetItemIds = Array.from(new Set([mondayItemId, ...siblingIds]))
+
+  const nameById = new Map(allCachedRows.map((c) => [c.mondayItemId, c.name]))
+  const rowLabel = (id: string): string => nameById.get(id) ?? id
+
+  // Each row's own current cycle (Monday `date3`). Primary falls back to the
+  // Supabase mirror when the cache row is missing (cold cache). Advancing each
+  // row from its OWN date keeps siblings honest even if one drifted.
+  const cycleOf = (id: string): string | null => {
+    const row = allCachedRows.find((c) => c.mondayItemId === id)
+    if (row && DATE_RE.test(row.cycleStartDate)) return row.cycleStartDate
+    const supaCycle = (client.cycle_start_date as string | null) ?? ""
+    if (id === mondayItemId && DATE_RE.test(supaCycle)) return supaCycle
+    return null
   }
 
-  // 1. Advance cycle by one month. Skip when the row has no cycle yet -
-  // there's nothing to advance and the next-render bucket is unaffected.
-  const currentCycle = (client.cycle_start_date as string | null) ?? null
-  let newCycle: string | null = null
-  let cycleWritten = false
-  if (currentCycle) {
-    newCycle = addMonthsIso(currentCycle, 1)
-    if (newCycle) {
-      try {
-        await updateClientField(mondayItemId, {
-          fieldKey: "cycle_start_date",
-          value: newCycle,
-        })
-        cycleWritten = true
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
-        console.error(`[create-invoice] cycle advance failed for ${mondayItemId}:`, msg)
-        postSendWarnings.push(
-          `Monday invoice date could not advance to ${newCycle} - update manually. (${msg})`,
-        )
-      }
-    }
-  } else {
-    // No cycle yet means we won't advance one - surface it so finance can
-    // backfill the cycle date in Monday if they expected the auto-advance.
-    postSendWarnings.push(
-      "Client has no cycle date in Monday - invoice date won't auto-advance until one is set.",
-    )
-  }
-
-  // 1a. Refresh the Monday boards cache when we just wrote a new cycle.
-  if (cycleWritten) {
-    try {
-      const { onboarding, current } = await fetchBothBoards()
-      await writeCache("monday_boards", { onboarding, current })
-    } catch (e) {
-      console.error(
-        "[create-invoice] monday boards cache refresh failed:",
-        e instanceof Error ? e.message : e,
+  // 0 + 1. For every covered row: stamp the Monday "Administration" column to
+  // "Invoice sent (unpaid)" and advance its cycle one month. Per Roy's
+  // 2026-05-19 spec the admin stamp is the one auto-target allowed to overwrite
+  // ANY existing value (incl. Discuss first / Debt collection agency) because
+  // "Stripe shipped the invoice" is an objective fact. Track per-row success so
+  // a partial Monday failure is surfaced AND the cache patch stays honest.
+  const adminOkById = new Map<string, boolean>()
+  const newCycleById = new Map<string, string>()
+  for (const itemId of targetItemIds) {
+    const adminRes = await setAdministration(itemId, ADMIN_LABELS.invoiceSend)
+    adminOkById.set(itemId, adminRes.ok)
+    if (!adminRes.ok) {
+      postSendWarnings.push(
+        `Monday admin status could not be set to '${ADMIN_LABELS.invoiceSend}' for ${rowLabel(itemId)} - update manually. (${adminRes.error})`,
       )
     }
+
+    const cur = cycleOf(itemId)
+    if (cur) {
+      const nc = addMonthsIso(cur, 1)
+      if (nc) {
+        try {
+          await updateClientField(itemId, { fieldKey: "cycle_start_date", value: nc })
+          newCycleById.set(itemId, nc)
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          console.error(`[create-invoice] cycle advance failed for ${itemId}:`, msg)
+          postSendWarnings.push(
+            `Monday invoice date could not advance to ${nc} for ${rowLabel(itemId)} - update manually. (${msg})`,
+          )
+        }
+      }
+    } else if (itemId === mondayItemId) {
+      // No cycle on the primary means we won't advance one - surface it so
+      // finance can backfill the cycle date in Monday if they expected it.
+      postSendWarnings.push(
+        "Client has no cycle date in Monday - invoice date won't auto-advance until one is set.",
+      )
+    }
+  }
+  // Primary's new cycle drives the response payload (the dialog shows it).
+  const newCycle = newCycleById.get(mondayItemId) ?? null
+
+  // 1a. Patch the Monday boards cache in place so the Billing page reflects the
+  // new admin status + advanced cycle on the very next render.
+  //
+  // 2026-06-18: Roy reported Nexa / Inland Invest / GLS Finance got invoices
+  // sent from the Hub - Monday's label flipped to "Invoice sent (unpaid)" but
+  // the Hub's own "Send invoice" pill stayed stuck. Root cause: the Admin
+  // column is read PURELY from this cache (`c.administration`) with no Supabase
+  // mirror fallback like the dates have, and the old refresh both (a) only ran
+  // when a cycle was written and (b) re-fetched from Monday - a read-after-write
+  // race that could return the pre-flip value.
+  //
+  // We KNOW the per-row truth here, so patch each covered row directly instead
+  // of re-reading Monday. Deterministic, instant, honest per-row (only flip the
+  // fields whose Monday write actually succeeded), and covers the no-cycle case.
+  try {
+    if (boardsCache) {
+      const targetSet = new Set(targetItemIds)
+      const patchRow = (c: MondayClient): MondayClient => {
+        if (!targetSet.has(c.mondayItemId)) return c
+        const next: MondayClient = { ...c }
+        if (adminOkById.get(c.mondayItemId)) next.administration = ADMIN_LABELS.invoiceSend
+        const nc = newCycleById.get(c.mondayItemId)
+        if (nc) {
+          next.cycleStartDate = nc
+          next.nextInvoiceDate = deriveInvoiceDate(nc) ?? c.nextInvoiceDate
+        }
+        return next
+      }
+      await writeCache("monday_boards", {
+        onboarding: boardsCache.onboarding.map(patchRow),
+        current: boardsCache.current.map(patchRow),
+      })
+    } else if (newCycleById.size > 0) {
+      // Cold cache - fall back to a full fetch so the advanced cycle lands.
+      const { onboarding, current } = await fetchBothBoards()
+      await writeCache("monday_boards", { onboarding, current })
+    }
+  } catch (e) {
+    console.error(
+      "[create-invoice] monday boards cache patch failed:",
+      e instanceof Error ? e.message : e,
+    )
   }
 
   // 2. Refresh this customer's billing summary so payment-status pill flips.
