@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { CalendarClock, Check, ExternalLink, FileText, Loader2, Megaphone, X } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,6 +19,9 @@ import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
 import { deriveInvoiceDate } from "@/lib/clients/billing-cycle"
 import { AgreementSection } from "./agreement-section"
 import { BillingSectionShell } from "./billing-section-shell"
+import { StripeCustomerCard } from "./stripe-customer-card"
+import { BillingAuditLog } from "./billing-audit-log"
+import { InvoiceActionMenu } from "@/app/(dashboard)/billing/_components/invoice-action-menu"
 
 type Props = {
   mondayItemId: string
@@ -124,8 +127,13 @@ export function BillingTab({
           initialDate={initialNextAdBudgetInvoiceDate ?? null}
         />
       )}
-      <InvoicesSection mondayItemId={mondayItemId} stripeCustomerId={stripeCustomerId} />
+      {/* Order top→bottom: set the cadence → what we charge (agreement) → who
+          we bill (Stripe customer, editable) → invoice history + actions →
+          audit trail. Reads as "set up → charge → bill → track". */}
       <AgreementSection mondayItemId={mondayItemId} />
+      <StripeCustomerCard mondayItemId={mondayItemId} stripeCustomerId={stripeCustomerId} />
+      <InvoicesSection mondayItemId={mondayItemId} stripeCustomerId={stripeCustomerId} />
+      <BillingAuditLog mondayItemId={mondayItemId} />
     </div>
   )
 }
@@ -249,6 +257,7 @@ function InvoiceDateSection({
 
 function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
   const locale = useLocale()
+  const queryClient = useQueryClient()
   const query = useQuery<BillingData>({
     queryKey: ["billing", mondayItemId],
     queryFn: async () => {
@@ -336,12 +345,13 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
               <TableHead>{t("client.billing.col.amount", locale)}</TableHead>
               <TableHead>{t("client.billing.col.status", locale)}</TableHead>
               <TableHead className="w-[80px]">{t("client.billing.col.pdf", locale)}</TableHead>
+              <TableHead className="w-[48px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {invoices.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
                   {t("client.billing.empty.no_invoices", locale)}
                 </TableCell>
               </TableRow>
@@ -389,6 +399,19 @@ function InvoicesSection({ mondayItemId, stripeCustomerId }: Props) {
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <InvoiceActionMenu
+                        invoiceId={inv.id}
+                        invoiceNumber={inv.number}
+                        status={inv.status}
+                        amountDue={inv.amountDue}
+                        mondayItemId={mondayItemId}
+                        onDone={() => {
+                          queryClient.invalidateQueries({ queryKey: ["billing", mondayItemId] })
+                          queryClient.invalidateQueries({ queryKey: ["billing-events", mondayItemId] })
+                        }}
+                      />
                     </TableCell>
                   </TableRow>
                 )

@@ -16,6 +16,7 @@ import { addMonthsIso } from "@/lib/clients/billing-cycle"
 import { setAdministration } from "@/lib/clients/administration-sync"
 import { ADMIN_LABELS } from "@/lib/clients/administration"
 import { readCache, writeCache } from "@/lib/cache"
+import { recordBillingEvent } from "@/lib/billing/audit"
 
 /**
  * Two-step Finance approval flow for sending a Stripe invoice from the Hub.
@@ -151,6 +152,17 @@ export async function POST(
   }
 
   // ── action: send ─ create + finalize + email + post-send refreshes ──
+  // Hard pre-send guard: the net total must be positive. Discount lines can be
+  // negative, but a zero/negative invoice can't be sent (and would confuse the
+  // customer). Finance sees the subtotal in the preview before reaching here.
+  const netTotal = items.reduce((s, i) => s + (Number.isFinite(i.amountEuro) ? i.amountEuro : 0), 0)
+  if (netTotal <= 0) {
+    return NextResponse.json(
+      { error: "Invoice total must be greater than €0. Check the amounts and any discount lines." },
+      { status: 400 },
+    )
+  }
+
   let result: Awaited<ReturnType<typeof createAndSendInvoice>>
   try {
     result = await createAndSendInvoice({
@@ -165,6 +177,20 @@ export async function POST(
       { status: 500 },
     )
   }
+
+  // Audit trail - log the send with amount + invoice number + mode. Best-effort
+  // (helper swallows its own errors) so it never blocks the response.
+  await recordBillingEvent({
+    action: "invoice_sent",
+    mondayItemId,
+    stripeCustomerId: client.stripe_customer_id,
+    stripeInvoiceId: result.invoiceId,
+    invoiceNumber: result.number,
+    amountEur: result.amountDue,
+    detail: { mode, lineItems: items.length, daysUntilDue: body.daysUntilDue ?? 7 },
+    actorUserId: session.user.id,
+    actorEmail: session.user.email ?? null,
+  })
 
   // ---- Post-send actions (best effort, but surfaced) ----
   // 2026-06-03: Roy reported ProSteal got an invoice sent from Hub but the

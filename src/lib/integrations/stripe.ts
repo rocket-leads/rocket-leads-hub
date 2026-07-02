@@ -634,7 +634,10 @@ export type InvoiceDraftPreview = {
  * else 20% BG VAT - so Finance sees an accurate total before approving.
  */
 export async function fetchInvoicePreview(input: CreateInvoiceInput): Promise<InvoiceDraftPreview> {
-  const items = input.items.filter((i) => i.description.trim() && i.amountEuro > 0)
+  // Non-zero amounts only. Negative lines are allowed - they're discounts
+  // (e.g. "First month free -€450"), which Stripe supports as negative
+  // invoice items.
+  const items = input.items.filter((i) => i.description.trim() && i.amountEuro !== 0)
   if (items.length === 0) {
     throw new Error("At least one line item with a description and amount is required.")
   }
@@ -700,7 +703,9 @@ export async function fetchInvoicePreview(input: CreateInvoiceInput): Promise<In
  * the draft is voided so it doesn't sit in Stripe forever as half-built.
  */
 export async function createAndSendInvoice(input: CreateInvoiceInput): Promise<CreateInvoiceResult> {
-  const items = input.items.filter((i) => i.description.trim() && i.amountEuro > 0)
+  // Non-zero amounts only; negative lines are allowed as discounts (see
+  // fetchInvoicePreview). Stripe accepts negative invoice items.
+  const items = input.items.filter((i) => i.description.trim() && i.amountEuro !== 0)
   if (items.length === 0) {
     throw new Error("At least one line item with a description and amount is required.")
   }
@@ -816,4 +821,204 @@ function resolveBillingPeriod(
     : `${fmt(startDate, true)} – ${fmt(endDate, true)}`
 
   return { unixStart, unixEnd, label }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Finance corrections layer
+//
+// Everything below MUTATES Stripe so finance can fix mistakes without leaving
+// the Hub. The design rule: Stripe stays the single source of truth. We never
+// keep a shadow copy of customer data or payment state in the Hub - every edit
+// writes straight to Stripe and the read paths re-pull it. That's what keeps
+// the payment pill and the invoice always consistent with reality.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Editable Stripe customer snapshot for the Hub's "Stripe details" card. */
+export type StripeCustomerDetails = {
+  id: string
+  name: string | null
+  email: string | null
+  address: {
+    line1: string | null
+    line2: string | null
+    postalCode: string | null
+    city: string | null
+    country: string | null
+  }
+  /** The customer's registered VAT/BTW number, if any. First tax ID wins -
+   *  RL customers carry a single EU VAT number. Null when none on file. */
+  taxId: { id: string; type: string; value: string } | null
+}
+
+/** Fetch the editable customer fields (name, email, address, VAT) so the Hub
+ *  can render a correction form. Read-only; pairs with `updateStripeCustomer`
+ *  + `setStripeCustomerVatId` for the writes. */
+export async function fetchStripeCustomerDetails(customerId: string): Promise<StripeCustomerDetails> {
+  const stripe = await getStripe()
+  const [customer, taxIds] = await Promise.all([
+    stripe.customers.retrieve(customerId),
+    stripe.customers.listTaxIds(customerId, { limit: 10 }),
+  ])
+  if (customer.deleted) throw new Error("Stripe customer is deleted")
+  const firstTax = taxIds.data?.[0]
+  return {
+    id: customer.id,
+    name: customer.name ?? null,
+    email: customer.email ?? null,
+    address: {
+      line1: customer.address?.line1 ?? null,
+      line2: customer.address?.line2 ?? null,
+      postalCode: customer.address?.postal_code ?? null,
+      city: customer.address?.city ?? null,
+      country: customer.address?.country ?? null,
+    },
+    taxId: firstTax ? { id: firstTax.id, type: firstTax.type, value: firstTax.value ?? "" } : null,
+  }
+}
+
+export type StripeCustomerUpdate = {
+  name?: string
+  email?: string
+  address?: {
+    line1?: string
+    line2?: string
+    postalCode?: string
+    city?: string
+    country?: string
+  }
+}
+
+/** Update the customer's name / email / billing address in Stripe. Only the
+ *  provided fields are written. A correct billing address matters because
+ *  Stripe `automatic_tax` derives the VAT treatment partly from the country. */
+export async function updateStripeCustomer(
+  customerId: string,
+  update: StripeCustomerUpdate,
+): Promise<void> {
+  const stripe = await getStripe()
+  const params: Stripe.CustomerUpdateParams = {}
+  if (update.name !== undefined) params.name = update.name
+  if (update.email !== undefined) params.email = update.email
+  if (update.address) {
+    params.address = {
+      line1: update.address.line1 ?? undefined,
+      line2: update.address.line2 ?? undefined,
+      postal_code: update.address.postalCode ?? undefined,
+      city: update.address.city ?? undefined,
+      country: update.address.country ?? undefined,
+    }
+  }
+  await stripe.customers.update(customerId, params)
+}
+
+/**
+ * Replace the customer's VAT/BTW number. Stripe treats tax IDs as immutable
+ * append-only objects, so "editing" = delete every existing one + create the
+ * new value. Passing an empty value just clears them (customer becomes "no tax
+ * ID → 20% BG VAT"). Defaults to `eu_vat`, which covers NL/BE/DE customers.
+ */
+export async function setStripeCustomerVatId(
+  customerId: string,
+  value: string,
+  type: Stripe.TaxIdCreateParams.Type = "eu_vat",
+): Promise<void> {
+  const stripe = await getStripe()
+  const existing = await stripe.customers.listTaxIds(customerId, { limit: 20 })
+  for (const t of existing.data ?? []) {
+    await stripe.customers.deleteTaxId(customerId, t.id)
+  }
+  const trimmed = value.trim()
+  if (trimmed) {
+    await stripe.customers.createTaxId(customerId, { type, value: trimmed })
+  }
+}
+
+/** Result of an invoice-level action - the invoice id and its new Hub status,
+ *  so callers can refresh the UI / caches without a second round-trip. */
+export type InvoiceActionResult = {
+  invoiceId: string
+  status: InvoiceRow["status"]
+}
+
+/** Void an OPEN/overdue invoice (nulls it out - the customer owes nothing).
+ *  Stripe rejects voiding a paid invoice, so callers should gate on status. */
+export async function voidInvoice(invoiceId: string): Promise<InvoiceActionResult> {
+  const stripe = await getStripe()
+  const inv = await stripe.invoices.voidInvoice(invoiceId)
+  return { invoiceId, status: deriveStatus(inv) }
+}
+
+/** Mark an open invoice uncollectible (bad debt) - keeps it on the books as
+ *  written-off rather than voided. */
+export async function markInvoiceUncollectible(invoiceId: string): Promise<InvoiceActionResult> {
+  const stripe = await getStripe()
+  const inv = await stripe.invoices.markUncollectible(invoiceId)
+  return { invoiceId, status: deriveStatus(inv) }
+}
+
+/** Re-send the hosted invoice email (payment reminder) for an open invoice. */
+export async function resendInvoice(invoiceId: string): Promise<InvoiceActionResult> {
+  const stripe = await getStripe()
+  const inv = await stripe.invoices.sendInvoice(invoiceId)
+  return { invoiceId, status: deriveStatus(inv) }
+}
+
+/**
+ * Mark an open invoice paid OUTSIDE Stripe (bank transfer). Uses Stripe's
+ * `paid_out_of_band` so Stripe records the payment and becomes the source of
+ * truth - the Hub's payment pill then flips to "paid" via the same read path
+ * as a card payment. No Hub-only flag, so no drift.
+ */
+export async function markInvoicePaidOutOfBand(invoiceId: string): Promise<InvoiceActionResult> {
+  const stripe = await getStripe()
+  const inv = await stripe.invoices.pay(invoiceId, { paid_out_of_band: true })
+  return { invoiceId, status: deriveStatus(inv) }
+}
+
+export type CreditNoteInput = {
+  /** Credit amount in EUR. Required - finance types how much to credit. */
+  amountEuro: number
+  reason?: Stripe.CreditNoteCreateParams.Reason
+  /** When the invoice is already PAID: true → refund the money to the payment
+   *  method; false → add the amount to the customer's Stripe credit balance.
+   *  Ignored for open invoices (the credit just reduces what's owed). */
+  refund?: boolean
+}
+
+/**
+ * Issue a credit note against an invoice - the correct way to reverse or
+ * partially reverse a FINALIZED invoice (you can't edit those). Behaviour
+ * depends on whether the invoice is already paid:
+ *   - open/overdue → the credit reduces the amount owed.
+ *   - paid + refund → refunds the money to the original payment method.
+ *   - paid + no refund → credits the customer's Stripe balance for next time.
+ */
+export async function createInvoiceCreditNote(
+  invoiceId: string,
+  input: CreditNoteInput,
+): Promise<{ creditNoteId: string; pdf: string | null }> {
+  const stripe = await getStripe()
+  const inv = await stripe.invoices.retrieve(invoiceId)
+  const amountCents = Math.round(input.amountEuro * 100)
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    throw new Error("Credit amount must be greater than 0.")
+  }
+
+  // Pass exactly ONE amount field so Stripe derives the credit-note total from
+  // it (mixing `amount` + `refund_amount` can trip the tax-sum validation on
+  // VAT invoices):
+  //   - paid + refund    → refund_amount (money back to the card)
+  //   - paid + no refund → credit_amount (customer balance for next time)
+  //   - open/overdue     → amount (reduces what's owed on the invoice)
+  const params: Stripe.CreditNoteCreateParams = { invoice: invoiceId }
+  if (input.reason) params.reason = input.reason
+  if (inv.status === "paid") {
+    if (input.refund) params.refund_amount = amountCents
+    else params.credit_amount = amountCents
+  } else {
+    params.amount = amountCents
+  }
+
+  const note = await stripe.creditNotes.create(params)
+  return { creditNoteId: note.id, pdf: note.pdf ?? null }
 }

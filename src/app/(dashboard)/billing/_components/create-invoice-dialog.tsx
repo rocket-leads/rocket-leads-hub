@@ -23,6 +23,17 @@ type LineItemDraft = {
   id: string
   description: string
   amountEuro: string
+  /** Discount line: the amount is entered positive but SUBTRACTED from the
+   *  total (and sent to Stripe as a negative invoice item). Lets finance apply
+   *  "first month free" / promo credits without typing minus signs. */
+  discount?: boolean
+}
+
+/** Resolve a draft line to its signed EUR amount (discounts are negative). */
+function signedAmount(item: LineItemDraft): number {
+  const n = Number(item.amountEuro)
+  if (!Number.isFinite(n)) return NaN
+  return item.discount ? -Math.abs(n) : n
 }
 
 /** Per-campaign info used to seed line items when the parent client has
@@ -194,14 +205,21 @@ export function CreateInvoiceDialog({
   const total = useMemo(
     () =>
       items.reduce((sum, item) => {
-        const amount = Number(item.amountEuro)
-        return Number.isFinite(amount) && amount > 0 ? sum + amount : sum
+        const amount = signedAmount(item)
+        return Number.isFinite(amount) && amount !== 0 ? sum + amount : sum
       }, 0),
     [items],
   )
 
   function addItem() {
     setItems((prev) => [...prev, { id: crypto.randomUUID(), description: "", amountEuro: "" }])
+  }
+
+  function addDiscount() {
+    setItems((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), description: "Discount", amountEuro: "", discount: true },
+    ])
   }
 
   function removeItem(id: string) {
@@ -219,9 +237,9 @@ export function CreateInvoiceDialog({
     const cleaned = items
       .map((i) => ({
         description: i.description.trim(),
-        amountEuro: Number(i.amountEuro),
+        amountEuro: signedAmount(i),
       }))
-      .filter((i) => i.description && Number.isFinite(i.amountEuro) && i.amountEuro > 0)
+      .filter((i) => i.description && Number.isFinite(i.amountEuro) && i.amountEuro !== 0)
     if (cleaned.length === 0) {
       setError("Add at least one line item with a description and amount.")
       return
@@ -272,9 +290,9 @@ export function CreateInvoiceDialog({
     const cleaned = items
       .map((i) => ({
         description: i.description.trim(),
-        amountEuro: Number(i.amountEuro),
+        amountEuro: signedAmount(i),
       }))
-      .filter((i) => i.description && Number.isFinite(i.amountEuro) && i.amountEuro > 0)
+      .filter((i) => i.description && Number.isFinite(i.amountEuro) && i.amountEuro !== 0)
     if (cleaned.length === 0) {
       setError("Add at least one line item with a description and amount.")
       return
@@ -590,7 +608,14 @@ export function CreateInvoiceDialog({
                     className="h-8 text-sm"
                   />
                   <div className="relative">
-                    <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-xs text-muted-foreground">€</span>
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-xs",
+                        item.discount ? "text-red-500" : "text-muted-foreground",
+                      )}
+                    >
+                      {item.discount ? "−€" : "€"}
+                    </span>
                     <Input
                       type="number"
                       inputMode="decimal"
@@ -600,7 +625,7 @@ export function CreateInvoiceDialog({
                       onChange={(e) => patchItem(item.id, { amountEuro: e.target.value })}
                       placeholder="0.00"
                       disabled={inFlight}
-                      className="h-8 pl-5 text-sm tabular-nums"
+                      className={cn("h-8 text-sm tabular-nums", item.discount ? "pl-7" : "pl-5")}
                     />
                   </div>
                   <Button
@@ -616,10 +641,16 @@ export function CreateInvoiceDialog({
                   </Button>
                 </div>
               ))}
-              <Button size="sm" variant="ghost" onClick={addItem} disabled={inFlight}>
-                <Plus className="h-3.5 w-3.5" />
-                Add line
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="ghost" onClick={addItem} disabled={inFlight}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Add line
+                </Button>
+                <Button size="sm" variant="ghost" onClick={addDiscount} disabled={inFlight} className="text-muted-foreground">
+                  <Plus className="h-3.5 w-3.5" />
+                  Add discount
+                </Button>
+              </div>
             </div>
 
             {/* Next payment date - monthly only. On send, the cycle advances

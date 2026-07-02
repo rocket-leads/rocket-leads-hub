@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { ExternalLink, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
@@ -20,6 +21,7 @@ import type { TopTab } from "@/components/ui/top-tabs"
 import { DateRangePicker } from "@/app/(dashboard)/targets/_components/date-range-picker"
 import { useDateRange } from "@/app/(dashboard)/targets/_hooks/use-date-range"
 import type { PastInvoiceRow } from "./billing-tabs"
+import { InvoiceActionMenu } from "./invoice-action-menu"
 
 type StatusFilter = "all" | "paid" | "open" | "overdue" | "void"
 type SortKey = "date" | "client" | "amount" | "status" | "number"
@@ -63,6 +65,7 @@ function fmtDate(unix: number): string {
  *   - Per-row link to PDF + a Stripe-dashboard escape hatch
  */
 export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
+  const router = useRouter()
   const { range, setRange, presets, applyPreset } = useDateRange()
   const [status, setStatus] = useState<StatusFilter>("all")
   const [sortKey, setSortKey] = useState<SortKey>("date")
@@ -208,6 +211,7 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                 <SortableHead label="Amount" k="amount" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
                 <SortableHead label="Status" k="status" current={sortKey} dir={sortDir} onSort={toggleSort} className="w-[120px]" />
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Open</TableHead>
+                <TableHead className="w-[48px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -282,6 +286,16 @@ export function PastInvoicesView({ invoices }: { invoices: PastInvoiceRow[] }) {
                       ) : (
                         <span className="text-[11px] text-muted-foreground/50">-</span>
                       )}
+                    </TableCell>
+                    <TableCell className="py-2.5 text-right">
+                      <InvoiceActionMenu
+                        invoiceId={inv.id}
+                        invoiceNumber={inv.number}
+                        status={inv.status}
+                        amountDue={inv.amountDue}
+                        mondayItemId={inv.clientMondayItemId}
+                        onDone={() => router.refresh()}
+                      />
                     </TableCell>
                   </TableRow>
                 )

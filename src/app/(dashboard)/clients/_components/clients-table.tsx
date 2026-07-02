@@ -594,9 +594,10 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
           valB = agreementSummaries?.[b.mondayItemId]?.mrr ?? 0
           break
         case "nextInvoice":
-          // Empty dates sort to the end ascending - strings sort naturally for ISO YYYY-MM-DD.
-          valA = a.nextInvoiceDate || "9999-12-31"
-          valB = b.nextInvoiceDate || "9999-12-31"
+          // Sorts on the payment date (cycle start), matching the displayed
+          // column. Empty dates sort to the end - ISO YYYY-MM-DD sorts naturally.
+          valA = a.cycleStartDate || "9999-12-31"
+          valB = b.cycleStartDate || "9999-12-31"
           break
         case "health": {
           const order: Record<string, number> = { critical: 0, warning: 1, good: 2, "no-data": 3 }
@@ -1074,16 +1075,20 @@ export function ClientsTable({ clients, boardType, billingSummaries, kpiSummarie
                           })()}
                         </TableCell>
                         <TableCell className="border-r border-border/40">
-                          {client.nextInvoiceDate ? (
+                          {/* Payment date (cycle start) - the client-facing "next
+                              payment" date, consistent with the Billing surfaces.
+                              The invoice-out date (−7d) is a finance-ops detail
+                              that lives on the Billing page, not here. */}
+                          {client.cycleStartDate ? (
                             <span
                               className={`text-xs tabular-nums ${
-                                client.nextInvoiceDate <= todayIso()
+                                client.cycleStartDate <= todayIso()
                                   ? "text-amber-500 font-medium"
                                   : "text-muted-foreground"
                               }`}
                               title={t("clients.tooltip.next_invoice", locale)}
                             >
-                              {fmtDate(client.nextInvoiceDate)}
+                              {fmtDate(client.cycleStartDate)}
                             </span>
                           ) : null}
                         </TableCell>

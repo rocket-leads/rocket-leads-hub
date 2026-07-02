@@ -338,7 +338,7 @@ export const DICTIONARY = {
   "clients.col.outstanding": { nl: "Openstaand", en: "Outstanding" },
   "clients.overdue.of": { nl: "van {total} totaal", en: "of {total} total" },
   "clients.col.mrr": { nl: "MRR", en: "MRR" },
-  "clients.col.next": { nl: "Volgend", en: "Next" },
+  "clients.col.next": { nl: "Betaaldatum", en: "Payment" },
   "clients.col.am": { nl: "AM", en: "AM" },
   "clients.col.cm": { nl: "CM", en: "CM" },
   "clients.col.as": { nl: "AS", en: "AS" },
@@ -364,7 +364,7 @@ export const DICTIONARY = {
   "clients.budget_suffix": { nl: "budget", en: "budget" },
 
   // Tooltips + cell hints
-  "clients.tooltip.next_invoice": { nl: "Volgende factuurdatum", en: "Next invoice date" },
+  "clients.tooltip.next_invoice": { nl: "Volgende betaaldatum (factuur gaat 7 dagen ervoor uit)", en: "Next payment date (invoice goes out 7 days before)" },
   "clients.tooltip.no_prev_period": { nl: "Geen vergelijkbare voorgaande periode - deze klant was niet live in het grootste deel van het vorige venster.", en: "No comparable prior period - this client wasn't live for most of the previous window." },
   "clients.cell.click_to_assign": { nl: "Klik om toe te wijzen", en: "Click to assign" },
   "clients.cell.loading_users": { nl: "Gebruikers laden…", en: "Loading users..." },
