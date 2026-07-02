@@ -1607,15 +1607,18 @@ export const DICTIONARY = {
   "client.billing.status.void": { nl: "Vervallen", en: "Void" },
   "client.billing.status.draft": { nl: "Concept", en: "Draft" },
 
-  // Next invoice date section
-  "client.billing.next_invoice.title": { nl: "Volgende factuur", en: "Next invoice" },
-  "client.billing.next_invoice.subtitle": { nl: "Wanneer de volgende factuur de deur uit moet. Op deze datum verschijnt automatisch een taak in de inbox van finance.", en: "When the next invoice should go out. A task lands in finance's inbox automatically on this date." },
+  // Payment date section. This is the single editable source of truth - the
+  // date the next invoice must be PAID (= start of the new billing period).
+  // The invoice-out date (7 days earlier) derives from it and is shown muted.
+  "client.billing.next_invoice.title": { nl: "Betaaldatum", en: "Payment date" },
+  "client.billing.next_invoice.subtitle": { nl: "De datum waarop de volgende factuur betaald moet zijn. De factuur gaat 7 dagen ervoor automatisch de deur uit.", en: "The date the next invoice must be paid. The invoice goes out automatically 7 days before." },
+  "client.billing.invoice_out.hint": { nl: "Factuur gaat uit op {date} (7 dagen ervoor).", en: "Invoice goes out on {date} (7 days before)." },
   // Variants used when fee + ad budget invoices run on different cadences
   // (RL-ad-account clients who paid the fee upfront but still get monthly
   // ad-budget invoices). The plain "next_invoice" labels above are kept for
   // clients with a single cadence.
-  "client.billing.next_invoice.fee.title": { nl: "Volgende factuur - service fee", en: "Next invoice - service fee" },
-  "client.billing.next_invoice.fee.subtitle": { nl: "Wanneer de volgende fee-factuur de deur uit moet. Bij kwartaalbetaling zet je deze datum op het einde van het kwartaal.", en: "When the next service-fee invoice should go out. For quarterly-paid clients, set this to the end of the prepaid quarter." },
+  "client.billing.next_invoice.fee.title": { nl: "Betaaldatum - service fee", en: "Payment date - service fee" },
+  "client.billing.next_invoice.fee.subtitle": { nl: "De datum waarop de volgende fee-factuur betaald moet zijn. Bij kwartaalbetaling zet je deze op het einde van het vooruitbetaalde kwartaal.", en: "The date the next service-fee invoice must be paid. For quarterly-paid clients, set this to the end of the prepaid quarter." },
   "client.billing.next_invoice.ad_budget.title": { nl: "Volgende factuur - ad budget", en: "Next invoice - ad budget" },
   "client.billing.next_invoice.ad_budget.subtitle": { nl: "Wanneer de volgende ad-budget factuur de deur uit moet. Alleen relevant als wij het ad budget voorschieten en doorbelasten - meestal maandelijks, ongeacht of de fee voor een kwartaal vooruit is betaald.", en: "When the next ad-budget invoice should go out. Only relevant when RL fronts the ad budget - typically monthly, even when the fee is prepaid for a quarter." },
   "client.billing.action.save": { nl: "Opslaan", en: "Save" },

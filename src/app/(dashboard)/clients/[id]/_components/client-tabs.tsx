@@ -282,7 +282,7 @@ export function ClientTabs({ client, supabaseClientId, access, hubBilling, curre
                 mondayItemId={client.mondayItemId}
                 stripeCustomerId={client.stripeCustomerId || null}
                 metaAdAccountId={client.metaAdAccountId || null}
-                initialNextInvoiceDate={client.nextInvoiceDate || null}
+                initialCycleStartDate={client.cycleStartDate || null}
                 initialNextAdBudgetInvoiceDate={hubBilling?.nextAdBudgetInvoiceDate ?? null}
               />
             ) : <NoAccess />

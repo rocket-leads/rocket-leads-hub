@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { ChevronRight, ExternalLink, FilePlus } from "lucide-react"
+import { ChevronRight, ExternalLink, FilePlus, Link2, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -291,8 +292,8 @@ export function BillingOverview({
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Status</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Admin</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">AM</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Invoice date</TableHead>
-                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">New cycle</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Payment date</TableHead>
+                <TableHead className="text-[12px] text-foreground/80 font-semibold w-[140px]">Invoice out</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[100px]">Fee</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[110px]">Ad budget</TableHead>
                 <TableHead className="text-[12px] text-foreground/80 font-semibold w-[160px]">Payment (Stripe)</TableHead>
@@ -416,22 +417,31 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
             value={primary.accountManager}
           />
         </TableCell>
-        <TableCell className="py-2.5 text-xs tabular-nums">
-          {/* Invoice date is derived (cycle − 7d) - read-only here. Edit the
-              cycle column instead and we'll keep both Monday columns synced. */}
+        <TableCell className="py-2.5">
+          {/* Payment date (cycle start) - the single editable source of truth.
+              Everything else (invoice-out date, period) derives from this. */}
+          <NextInvoiceDateCell
+            mondayItemId={primary.mondayItemId}
+            value={primary.cycleStartDate}
+            fieldKey="cycle_start_date"
+            placeholder="Set payment date"
+          />
+          {isMulti && (
+            <ApplyDateToSiblingsButton
+              mondayItemId={primary.mondayItemId}
+              disabled={!primary.cycleStartDate}
+              count={group.siblings.length}
+            />
+          )}
+        </TableCell>
+        <TableCell className="py-2.5 text-xs tabular-nums text-muted-foreground/70">
+          {/* Invoice-out date is derived (payment date − 7d) - read-only. The
+              invoice goes out 7 days ahead so payment lands before the period. */}
           {primary.nextInvoiceDate ? (
             fmtDate(primary.nextInvoiceDate)
           ) : (
             <span className="text-muted-foreground/40">-</span>
           )}
-        </TableCell>
-        <TableCell className="py-2.5">
-          <NextInvoiceDateCell
-            mondayItemId={primary.mondayItemId}
-            value={primary.cycleStartDate}
-            fieldKey="cycle_start_date"
-            placeholder="Set cycle start"
-          />
         </TableCell>
         <TableCell className="py-2.5 text-xs tabular-nums font-medium">
           {/* Multi-sibling groups show the read-only sum here - editing happens
@@ -547,11 +557,18 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
                 value={sib.accountManager}
               />
             </TableCell>
-            <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground/80">
-              {sib.nextInvoiceDate ? fmtDate(sib.nextInvoiceDate) : "-"}
+            <TableCell className="py-2">
+              {/* Each campaign owns its own payment date - editable inline so a
+                  HeroLeads-style split (separate dates) can be maintained. */}
+              <NextInvoiceDateCell
+                mondayItemId={sib.mondayItemId}
+                value={sib.cycleStartDate}
+                fieldKey="cycle_start_date"
+                placeholder="Set payment date"
+              />
             </TableCell>
-            <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground/80">
-              {sib.cycleStartDate ? fmtDate(sib.cycleStartDate) : "-"}
+            <TableCell className="py-2 text-[11px] tabular-nums text-muted-foreground/70">
+              {sib.nextInvoiceDate ? fmtDate(sib.nextInvoiceDate) : "-"}
             </TableCell>
             <TableCell className="py-2 text-[11px] tabular-nums">
               <AgreementAmountCell
@@ -583,6 +600,7 @@ function BillingGroupRow({ group, adminOptions }: { group: BillingGroup; adminOp
           fee={primary.fee}
           adBudget={primary.adBudget}
           usesRocketLeadsAdAccount={primary.usesRocketLeadsAdAccount}
+          cycleStartDate={primary.cycleStartDate || null}
           siblingCampaigns={
             isMulti
               ? group.siblings.map((s) => ({
@@ -643,6 +661,55 @@ function PaymentStatusCell({
       <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
       Overdue · {fmtEuro(outstanding)}
     </span>
+  )
+}
+
+/**
+ * Opt-in "align all campaigns onto this payment date" action, shown on
+ * multi-campaign groups. Replaces the old automatic sibling force-sync:
+ * finance clicks it deliberately when a client's campaigns SHOULD share one
+ * invoice cadence, instead of every date edit silently dragging siblings
+ * along (which broke separately-invoiced clients like HeroLeads).
+ */
+function ApplyDateToSiblingsButton({
+  mondayItemId,
+  disabled,
+  count,
+}: {
+  mondayItemId: string
+  disabled: boolean
+  count: number
+}) {
+  const router = useRouter()
+  const [busy, setBusy] = useState(false)
+
+  async function apply() {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/clients/${mondayItemId}/apply-cycle-siblings`, {
+        method: "POST",
+      })
+      if (res.ok) router.refresh()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={apply}
+      disabled={disabled || busy}
+      title={
+        disabled
+          ? "Set a payment date first"
+          : `Apply this payment date to all ${count} campaigns of this client`
+      }
+      className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors disabled:opacity-40"
+    >
+      {busy ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Link2 className="h-2.5 w-2.5" />}
+      Align all campaigns
+    </button>
   )
 }
 

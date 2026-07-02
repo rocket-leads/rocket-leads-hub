@@ -2,12 +2,22 @@
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, Plus, Trash2, ExternalLink, Check, ChevronLeft, AlertCircle } from "lucide-react"
+import { Loader2, Plus, Trash2, ExternalLink, Check, ChevronLeft, AlertCircle, CalendarClock } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
+import { addMonthsIso } from "@/lib/clients/billing-cycle"
 import type { InvoiceDraftPreview } from "@/lib/integrations/stripe"
+
+type InvoiceMode = "monthly" | "oneoff"
+
+function fmtDateLong(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+}
 
 type LineItemDraft = {
   id: string
@@ -42,6 +52,10 @@ type Props = {
    *  unique part of the campaign name so the customer can tell which is
    *  which on the invoice. Overrides the single-campaign `fee`/`adBudget`. */
   siblingCampaigns?: SiblingCampaignSeed[]
+  /** Current payment date (cycle start, `YYYY-MM-DD`) or null. Seeds the
+   *  "next payment date" default (this + 1 month) shown on a monthly send so
+   *  finance can confirm/override where the cycle lands next. */
+  cycleStartDate?: string | null
   onClose: () => void
 }
 
@@ -151,6 +165,7 @@ export function CreateInvoiceDialog({
   adBudget,
   usesRocketLeadsAdAccount,
   siblingCampaigns,
+  cycleStartDate,
   onClose,
 }: Props) {
   const router = useRouter()
@@ -160,10 +175,21 @@ export function CreateInvoiceDialog({
   const [daysUntilDue, setDaysUntilDue] = useState<string>("7")
   const [error, setError] = useState<string | null>(null)
 
+  // Invoice mode. "monthly" = the recurring invoice, advances the payment date
+  // on send. "oneoff" = a standalone extra charge that leaves the cycle alone.
+  const [mode, setMode] = useState<InvoiceMode>("monthly")
+  // Next payment date the cycle advances to on a monthly send. Defaults to the
+  // current payment date + 1 month (standard cadence); finance overrides it for
+  // quarterly / 2-month clients. Empty when the client has no cycle yet - then
+  // finance can type one here to establish the first payment date.
+  const [nextPaymentDate, setNextPaymentDate] = useState<string>(
+    () => (cycleStartDate ? addMonthsIso(cycleStartDate, 1) ?? "" : ""),
+  )
+
   // State machine - exactly one of these is the active state.
   const [step, setStep] = useState<"edit" | "previewing" | "preview" | "sending" | "success">("edit")
   const [preview, setPreview] = useState<InvoiceDraftPreview | null>(null)
-  const [success, setSuccess] = useState<{ number: string | null; hostedUrl: string | null; warnings: string[] } | null>(null)
+  const [success, setSuccess] = useState<{ number: string | null; hostedUrl: string | null; newCycleStartDate: string | null; mode: InvoiceMode; warnings: string[] } | null>(null)
 
   const total = useMemo(
     () =>
@@ -211,7 +237,7 @@ export function CreateInvoiceDialog({
       const res = await fetch(`/api/clients/${mondayItemId}/create-invoice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "preview", items: cleaned, daysUntilDue: days }),
+        body: JSON.stringify({ action: "preview", items: cleaned, daysUntilDue: days, mode }),
       })
       const data = (await res.json().catch(() => ({}))) as
         | (InvoiceDraftPreview & { ok: true })
@@ -259,17 +285,31 @@ export function CreateInvoiceDialog({
       return
     }
 
+    // For a monthly send, a next payment date is required so the cycle can
+    // advance. One-off invoices never touch the cycle, so the field is skipped.
+    if (mode === "monthly" && nextPaymentDate && !/^\d{4}-\d{2}-\d{2}$/.test(nextPaymentDate)) {
+      setError("Enter a valid next payment date (or clear it to leave the cycle unchanged).")
+      return
+    }
+
     setStep("sending")
     try {
       const res = await fetch(`/api/clients/${mondayItemId}/create-invoice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send", items: cleaned, daysUntilDue: days }),
+        body: JSON.stringify({
+          action: "send",
+          items: cleaned,
+          daysUntilDue: days,
+          mode,
+          ...(mode === "monthly" && nextPaymentDate ? { nextCycleDate: nextPaymentDate } : {}),
+        }),
       })
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean
         number?: string | null
         hostedUrl?: string | null
+        newCycleStartDate?: string | null
         postSendWarnings?: string[]
         error?: string
       }
@@ -281,6 +321,8 @@ export function CreateInvoiceDialog({
       setSuccess({
         number: data.number ?? null,
         hostedUrl: data.hostedUrl ?? null,
+        newCycleStartDate: data.newCycleStartDate ?? null,
+        mode,
         warnings: data.postSendWarnings ?? [],
       })
       setStep("success")
@@ -312,6 +354,20 @@ export function CreateInvoiceDialog({
               <Check className="h-4 w-4" />
               Invoice {success.number ?? "draft"} sent to the customer.
             </div>
+
+            {/* Cycle outcome - so finance sees exactly where the payment date
+                landed (or that a one-off left it untouched). */}
+            {success.mode === "oneoff" ? (
+              <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                <CalendarClock className="h-3.5 w-3.5" />
+                One-off charge - the payment cycle was left unchanged.
+              </p>
+            ) : success.newCycleStartDate ? (
+              <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                <CalendarClock className="h-3.5 w-3.5" />
+                Next payment date set to <span className="font-medium text-foreground">{fmtDateLong(success.newCycleStartDate)}</span>. You can still adjust it on the Billing page.
+              </p>
+            ) : null}
 
             {/* Post-send Monday sync warnings - surfaced so finance knows when
                 the admin column / invoice date didn't auto-update and a manual
@@ -486,14 +542,39 @@ export function CreateInvoiceDialog({
           // Edit screen - same line-item form as before, but the primary
           // action now creates a Stripe draft and transitions to preview.
           <div className="space-y-4">
+            {/* Mode selector - pill toggle (raw buttons are the sanctioned
+                pattern for pill selectors per the Hub button rules). */}
+            <div className="inline-flex rounded-md border border-border/60 p-0.5 bg-muted/30">
+              {([
+                { key: "monthly" as const, label: "Monthly invoice" },
+                { key: "oneoff" as const, label: "One-off invoice" },
+              ]).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setMode(opt.key)}
+                  disabled={inFlight}
+                  className={cn(
+                    "h-8 px-3 rounded text-xs font-medium transition-colors",
+                    mode === opt.key
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
             <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground space-y-0.5">
               <p>
                 <span className="font-medium text-foreground">Stripe customer:</span>{" "}
                 <span className="font-mono">{stripeCustomerId}</span>
               </p>
               <p>
-                Add or edit line items, then click Preview to review the actual
-                invoice as the customer would see it before sending.
+                {mode === "monthly"
+                  ? "Recurring invoice - advances the client's payment date on send."
+                  : "One-off charge - won't change the payment cycle, MRR or admin status."}
               </p>
             </div>
 
@@ -540,6 +621,36 @@ export function CreateInvoiceDialog({
                 Add line
               </Button>
             </div>
+
+            {/* Next payment date - monthly only. On send, the cycle advances
+                to this date (default: current payment date + 1 month). Finance
+                overrides it for quarterly / 2-month clients. One-off invoices
+                never touch the cycle, so the field is hidden for them. */}
+            {mode === "monthly" && (
+              <div className="rounded-md border border-border/60 px-3 py-2.5 space-y-1.5">
+                <Label className="text-[12px] text-muted-foreground inline-flex items-center gap-1.5">
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  Next payment date
+                </Label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Input
+                    type="date"
+                    value={nextPaymentDate}
+                    onChange={(e) => setNextPaymentDate(e.target.value)}
+                    disabled={inFlight}
+                    className="h-8 w-auto tabular-nums"
+                  />
+                  {cycleStartDate && (
+                    <span className="text-[11px] text-muted-foreground/70">
+                      after this invoice · currently {fmtDateLong(cycleStartDate)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-muted-foreground/60">
+                  Defaults to +1 month. Set +2 or +3 months for quarterly clients. Invoice goes out 7 days before this date.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3 items-end">
               <div className="space-y-1.5">

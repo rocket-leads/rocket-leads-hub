@@ -11,7 +11,7 @@ import {
   type PastInvoice,
 } from "@/lib/integrations/stripe"
 import { fetchBothBoards } from "@/lib/integrations/monday"
-import { updateClientField } from "@/lib/clients/edit"
+import { updateClientField, advanceBundledSiblings } from "@/lib/clients/edit"
 import { addMonthsIso } from "@/lib/clients/billing-cycle"
 import { setAdministration } from "@/lib/clients/administration-sync"
 import { ADMIN_LABELS } from "@/lib/clients/administration"
@@ -36,15 +36,34 @@ import { readCache, writeCache } from "@/lib/cache"
  * re-resolve the Stripe customer id from the Monday item id on every
  * action so a stale client-side state can't redirect the invoice.
  */
+/**
+ * Invoice mode:
+ *   - "monthly" (default): the recurring service/ad invoice. Advances the
+ *     client's payment date one period forward on send and stamps the Monday
+ *     admin column. The period the invoice covers is tagged from the current
+ *     cycle date.
+ *   - "oneoff": a standalone extra invoice (e.g. an add-on package). Sends the
+ *     invoice but does NOT touch the payment cycle, MRR or admin status - it's
+ *     a one-time charge that leaves the recurring cadence exactly where it was.
+ */
+type InvoiceMode = "monthly" | "oneoff"
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
 type PreviewBody = {
   action: "preview"
   items: Array<{ description?: string; amountEuro?: number | string }>
   daysUntilDue?: number
+  mode?: InvoiceMode
 }
 type SendBody = {
   action: "send"
   items: Array<{ description?: string; amountEuro?: number | string }>
   daysUntilDue?: number
+  mode?: InvoiceMode
+  /** For monthly mode: the new payment date to advance the cycle to. Defaults
+   *  to current cycle + 1 month when omitted (the standard monthly cadence).
+   *  Finance overrides it for quarterly/2-month clients. Ignored for oneoff. */
+  nextCycleDate?: string
 }
 type LegacyBody = {
   items?: Array<{ description?: string; amountEuro?: number | string }>
@@ -105,6 +124,13 @@ export async function POST(
     return NextResponse.json({ error: "Invalid line item amount" }, { status: 400 })
   }
 
+  // A one-off invoice is a standalone charge, so it doesn't carry the monthly
+  // billing period (cycle → cycle+1mo-1d) that recurring invoices tag on each
+  // line. Passing null suppresses the "(3 Jun – 2 Jul)" suffix for one-offs.
+  const mode: InvoiceMode = "mode" in body && body.mode === "oneoff" ? "oneoff" : "monthly"
+  const currentCycle = (client.cycle_start_date as string | null) ?? null
+  const periodCycle = mode === "oneoff" ? null : currentCycle
+
   // ── action: preview ─ read-only fetch + local totals, no Stripe mutation ─
   if (action === "preview") {
     let preview: InvoiceDraftPreview
@@ -113,7 +139,7 @@ export async function POST(
         customerId: client.stripe_customer_id,
         items,
         daysUntilDue: body.daysUntilDue,
-        cycleStartDate: (client.cycle_start_date as string | null) ?? null,
+        cycleStartDate: periodCycle,
       })
     } catch (e) {
       return NextResponse.json(
@@ -131,7 +157,7 @@ export async function POST(
       customerId: client.stripe_customer_id,
       items,
       daysUntilDue: body.daysUntilDue,
-      cycleStartDate: (client.cycle_start_date as string | null) ?? null,
+      cycleStartDate: periodCycle,
     })
   } catch (e) {
     return NextResponse.json(
@@ -150,45 +176,77 @@ export async function POST(
   // screen + finance can manually fix Monday before walking away.
   const postSendWarnings: string[] = []
 
-  // 0. Stamp the Monday "Administration" column to "Invoice sent (unpaid)".
-  // Per Roy's 2026-05-19 spec this is the one auto-target allowed to
-  // overwrite ANY existing value (incl. Discuss first / Debt collection
-  // agency) because "Stripe shipped the invoice" is an objective fact.
-  const adminResult = await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
-  if (!adminResult.ok) {
-    postSendWarnings.push(
-      `Monday admin status could not be set to '${ADMIN_LABELS.invoiceSend}' - update manually. (${adminResult.error})`,
-    )
-  }
-
-  // 1. Advance cycle by one month. Skip when the row has no cycle yet -
-  // there's nothing to advance and the next-render bucket is unaffected.
-  const currentCycle = (client.cycle_start_date as string | null) ?? null
   let newCycle: string | null = null
   let cycleWritten = false
-  if (currentCycle) {
-    newCycle = addMonthsIso(currentCycle, 1)
+
+  // Cycle advance + admin stamp are MONTHLY-only. A one-off invoice is a
+  // standalone charge that must not disturb the recurring cadence: no date
+  // shift, no admin flip. Stripe payment status (billing_summaries, refreshed
+  // below) still picks up the new open balance either way.
+  if (mode === "monthly") {
+    // 0. Stamp the Monday "Administration" column to "Invoice sent (unpaid)".
+    // Per Roy's 2026-05-19 spec this is the one auto-target allowed to
+    // overwrite ANY existing value (incl. Discuss first / Debt collection
+    // agency) because "Stripe shipped the invoice" is an objective fact.
+    const adminResult = await setAdministration(mondayItemId, ADMIN_LABELS.invoiceSend)
+    if (!adminResult.ok) {
+      postSendWarnings.push(
+        `Monday admin status could not be set to '${ADMIN_LABELS.invoiceSend}' - update manually. (${adminResult.error})`,
+      )
+    }
+
+    // 1. Advance the payment date one period forward. Default is +1 month
+    // (standard monthly cadence); finance can override via `nextCycleDate`
+    // for quarterly / 2-month clients. Skip when the row has no cycle yet -
+    // there's nothing to advance and the next-render bucket is unaffected.
+    const override =
+      "nextCycleDate" in body && typeof body.nextCycleDate === "string" && DATE_RE.test(body.nextCycleDate)
+        ? body.nextCycleDate
+        : null
+    // With a prior cycle we advance +1 month (or to the override). With no
+    // prior cycle we can still ESTABLISH one if finance supplied an explicit
+    // date - useful for the first invoice after onboarding.
+    newCycle = currentCycle ? override ?? addMonthsIso(currentCycle, 1) : override
     if (newCycle) {
       try {
+        // Advance the primary row. updateClientField no longer force-syncs
+        // siblings, so this touches only this campaign.
         await updateClientField(mondayItemId, {
           fieldKey: "cycle_start_date",
           value: newCycle,
         })
         cycleWritten = true
+        // Advance the OTHER siblings that were bundled onto this same invoice
+        // (same Stripe customer AND same current payment date). Only when there
+        // was a prior cycle to match the bundle on; separately-invoiced
+        // campaigns on a different date are left alone.
+        if (currentCycle) {
+          try {
+            await advanceBundledSiblings(mondayItemId, currentCycle, newCycle)
+          } catch (e) {
+            console.error(
+              `[create-invoice] bundled sibling advance failed for ${mondayItemId}:`,
+              e instanceof Error ? e.message : e,
+            )
+            postSendWarnings.push(
+              `Some linked campaigns' payment dates could not advance - check the Billing page.`,
+            )
+          }
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         console.error(`[create-invoice] cycle advance failed for ${mondayItemId}:`, msg)
         postSendWarnings.push(
-          `Monday invoice date could not advance to ${newCycle} - update manually. (${msg})`,
+          `Payment date could not advance to ${newCycle} - update manually. (${msg})`,
         )
       }
+    } else {
+      // No prior cycle and no explicit date - nothing to advance. Surface it so
+      // finance can set a payment date manually if they expected an advance.
+      postSendWarnings.push(
+        "Client has no payment date set - it won't auto-advance until one is set.",
+      )
     }
-  } else {
-    // No cycle yet means we won't advance one - surface it so finance can
-    // backfill the cycle date in Monday if they expected the auto-advance.
-    postSendWarnings.push(
-      "Client has no cycle date in Monday - invoice date won't auto-advance until one is set.",
-    )
   }
 
   // 1a. Refresh the Monday boards cache when we just wrote a new cycle.
@@ -242,6 +300,7 @@ export async function POST(
   return NextResponse.json({
     ok: true,
     ...result,
+    mode,
     newCycleStartDate: newCycle,
     postSendWarnings,
   })

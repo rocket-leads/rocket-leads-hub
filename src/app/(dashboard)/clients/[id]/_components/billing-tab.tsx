@@ -16,6 +16,7 @@ import { t } from "@/lib/i18n/t"
 import type { DictionaryKey } from "@/lib/i18n/dictionary"
 import type { BillingData, InvoiceRow } from "@/lib/integrations/stripe"
 import { isRocketLeadsAdAccount } from "@/lib/clients/ad-account"
+import { deriveInvoiceDate } from "@/lib/clients/billing-cycle"
 import { AgreementSection } from "./agreement-section"
 import { BillingSectionShell } from "./billing-section-shell"
 
@@ -25,7 +26,10 @@ type Props = {
   /** Used to detect whether ads run on the Rocket Leads ad account - only
    *  then does RL invoice the ad budget separately and need its own date. */
   metaAdAccountId?: string | null
-  initialNextInvoiceDate?: string | null
+  /** The client's payment date (cycle start, `YYYY-MM-DD`). This is the single
+   *  editable source of truth - the invoice-out date (7 days earlier) derives
+   *  from it. */
+  initialCycleStartDate?: string | null
   /** Hub-only ad-budget invoice date. When the client pays a quarterly fee
    *  but RL fronts the monthly ad budget, this date drives the in-between
    *  invoices. Null until the network refetch lands (placeholder state). */
@@ -89,7 +93,7 @@ export function BillingTab({
   mondayItemId,
   stripeCustomerId,
   metaAdAccountId,
-  initialNextInvoiceDate,
+  initialCycleStartDate,
   initialNextAdBudgetInvoiceDate,
 }: Props) {
   // Only RL-ad-account clients have a separate ad-budget invoice - for
@@ -101,12 +105,15 @@ export function BillingTab({
     <div className="space-y-6">
       <InvoiceDateSection
         mondayItemId={mondayItemId}
-        fieldKey="next_invoice_date"
+        fieldKey="cycle_start_date"
         icon={CalendarClock}
         // Distinguish the title only when both dates are visible - otherwise
-        // the original "Next invoice" reads naturally for clients with one cadence.
+        // the plain "Payment date" reads naturally for clients with one cadence.
         titleKey={showAdBudgetDate ? "client.billing.next_invoice.fee.title" : "client.billing.next_invoice.title"}
-        initialDate={initialNextInvoiceDate ?? null}
+        initialDate={initialCycleStartDate ?? null}
+        // Payment date drives the invoice-out date (7 days earlier) - show it
+        // muted below so finance sees when the invoice actually goes out.
+        showInvoiceOut
       />
       {showAdBudgetDate && (
         <InvoiceDateSection
@@ -135,12 +142,16 @@ function InvoiceDateSection({
   icon,
   titleKey,
   initialDate,
+  showInvoiceOut = false,
 }: {
   mondayItemId: string
-  fieldKey: "next_invoice_date" | "next_ad_budget_invoice_date"
+  fieldKey: "cycle_start_date" | "next_ad_budget_invoice_date"
   icon: LucideIcon
   titleKey: DictionaryKey
   initialDate: string | null
+  /** When true (payment-date field), render the derived invoice-out date
+   *  (payment date − 7 days) muted below the input. */
+  showInvoiceOut?: boolean
 }) {
   const locale = useLocale()
   const [date, setDate] = useState<string>(initialDate ?? "")
@@ -150,6 +161,8 @@ function InvoiceDateSection({
 
   const isDirty = date !== savedDate
   const showSaved = !isDirty && !!savedDate
+  // Live preview of the invoice-out date (payment date − 7d) as the user picks.
+  const invoiceOut = showInvoiceOut && date ? deriveInvoiceDate(date) : null
 
   async function persist(value: string) {
     setSaving(true)
@@ -219,6 +232,16 @@ function InvoiceDateSection({
           </span>
         )}
       </div>
+      {invoiceOut && (
+        <p className="text-[11px] text-muted-foreground/70 mt-2">
+          {t("client.billing.invoice_out.hint", locale, {
+            date: new Date(`${invoiceOut}T00:00:00`).toLocaleDateString(
+              locale === "nl" ? "nl-NL" : "en-GB",
+              { day: "numeric", month: "short", year: "numeric" },
+            ),
+          })}
+        </p>
+      )}
       {error && <p className="text-xs text-destructive mt-2">{error}</p>}
     </BillingSectionShell>
   )

@@ -114,13 +114,14 @@ export async function updateClientField(
     if (update.fieldKey === "cycle_start_date") {
       const derivedInvoice = deriveInvoiceDate(update.value) ?? ""
       await setItemColumnValue(boardType, mondayItemId, "next_invoice_date", derivedInvoice)
-      // Sibling sync: if multiple Monday rows share a Stripe customer (e.g.
-      // "O2 Plus | B2B" and "O2 Plus | B2C"), they're consolidated into one
-      // invoice at send time - so their cycles HAVE to be in lockstep or
-      // we'd unintentionally produce two separate invoices a few days apart.
-      // Propagate the same cycle/invoice dates to every sibling. Errors on
-      // any one sibling don't block the others - finance can rerun later.
-      await syncCycleToSiblings(mondayItemId, update.value, derivedInvoice)
+      // NO automatic sibling propagation here. Sharing a Stripe customer does
+      // NOT mean campaigns share a payment date - e.g. HeroLeads runs 3
+      // campaigns on one Stripe customer, each invoiced separately on its own
+      // date. Force-syncing every edit collapsed them onto one date and made
+      // separate invoicing impossible. Grouping on the Billing page bundles
+      // siblings only when their dates ALREADY match, so alignment is a
+      // deliberate choice: finance sets the same date on both (or uses the
+      // "apply to all campaigns" action, `applyCycleToAllSiblings`).
     }
   } else if (STATUS_SET.has(update.fieldKey) && "label" in update) {
     // Critical-items gate (Onboarding → Live). Fires when an AM (or
@@ -362,47 +363,22 @@ async function writeSupabaseOnlyField(
     throw new Error(`Failed to update ${fieldKey}: ${updateErr.message}`)
   }
 
-  const stripeCustomerId = source.stripe_customer_id as string | null
-  if (!stripeCustomerId) return
-
-  // Sibling sync - same rationale as `syncCycleToSiblings` for the fee
-  // cycle. Per-sibling failures are logged but don't bubble up; the
-  // primary row is already saved.
-  const { error: sibErr } = await supabase
-    .from("clients")
-    .update({ [fieldKey]: normalized, updated_at: new Date().toISOString() })
-    .eq("stripe_customer_id", stripeCustomerId)
-    .neq("monday_item_id", mondayItemId)
-  if (sibErr) {
-    console.error(
-      `Sibling sync for ${fieldKey} failed (Stripe ${stripeCustomerId}):`,
-      sibErr.message,
-    )
-  }
+  // No automatic sibling propagation - sharing a Stripe customer does NOT mean
+  // campaigns share a billing cadence (e.g. HeroLeads invoices each separately).
+  // Consistent with the cycle-date change: alignment across campaigns is a
+  // deliberate action, not a silent side effect of editing one row.
 }
 
 /**
- * Find all OTHER Monday rows that share this client's Stripe customer ID and
- * write the same cycle/invoice dates to them. This is the auto-sync that
- * keeps multi-campaign clients (B2B + B2C, etc.) on a single invoice cadence.
- *
- * Called immediately after the target row's dates are written, so the target
- * is excluded by `monday_item_id`. Source-of-truth for "who shares a Stripe
- * customer" is Supabase's mirrored `stripe_customer_id` column on `clients`.
- *
- * Per-sibling failures are logged but don't throw - finance can hit Refresh
- * to re-attempt the sync via a follow-up edit. The target row is already
- * updated by the time we get here.
+ * Resolve the OTHER Monday rows that share a given row's Stripe customer.
+ * Returns each sibling's Monday item id, board type and current cycle-start
+ * date. The source row itself is excluded. Empty result when the row has no
+ * Stripe customer (not billable yet) or genuinely has no siblings.
  */
-async function syncCycleToSiblings(
+async function fetchStripeSiblings(
   sourceMondayItemId: string,
-  cycleStartDate: string,
-  derivedInvoiceDate: string,
-): Promise<void> {
+): Promise<Array<{ mondayItemId: string; boardType: "onboarding" | "current"; cycleStartDate: string | null }>> {
   const supabase = await createAdminClient()
-
-  // Resolve the source's Stripe customer. Empty/null = no siblings to sync -
-  // the row isn't billable yet, so cycle drift between siblings can't bite.
   const { data: source } = await supabase
     .from("clients")
     .select("stripe_customer_id")
@@ -410,30 +386,84 @@ async function syncCycleToSiblings(
     .maybeSingle()
 
   const stripeCustomerId = source?.stripe_customer_id as string | null | undefined
-  if (!stripeCustomerId) return
+  if (!stripeCustomerId) return []
 
   const { data: siblings } = await supabase
     .from("clients")
-    .select("monday_item_id, monday_board_type")
+    .select("monday_item_id, monday_board_type, cycle_start_date")
     .eq("stripe_customer_id", stripeCustomerId)
     .neq("monday_item_id", sourceMondayItemId)
 
-  if (!siblings || siblings.length === 0) return
+  return (siblings ?? []).map((s) => ({
+    mondayItemId: s.monday_item_id as string,
+    boardType: s.monday_board_type as "onboarding" | "current",
+    cycleStartDate: (s.cycle_start_date as string | null) ?? null,
+  }))
+}
 
-  for (const sib of siblings) {
-    const sibId = sib.monday_item_id as string
-    const sibBoardType = sib.monday_board_type as "onboarding" | "current"
-    try {
-      await setItemColumnValue(sibBoardType, sibId, "cycle_start_date", cycleStartDate)
-      await setItemColumnValue(sibBoardType, sibId, "next_invoice_date", derivedInvoiceDate)
-      const refreshed = await fetchClientById(sibId, { bypassCache: true })
-      if (refreshed) await syncClientToSupabase(refreshed)
-    } catch (e) {
-      console.error(
-        `Sibling cycle sync failed for ${sibId} (Stripe ${stripeCustomerId}):`,
-        e instanceof Error ? e.message : e,
-      )
-    }
+/** Write a cycle-start date (and its derived invoice date) to one Monday row,
+ *  then re-mirror it into Supabase. Shared by the two sibling helpers below.
+ *  Per-row failures are logged and swallowed so one bad sibling doesn't block
+ *  the rest - finance can re-run. */
+async function writeCycleToRow(
+  mondayItemId: string,
+  boardType: "onboarding" | "current",
+  cycleStartDate: string,
+): Promise<void> {
+  const derivedInvoiceDate = deriveInvoiceDate(cycleStartDate) ?? ""
+  try {
+    await setItemColumnValue(boardType, mondayItemId, "cycle_start_date", cycleStartDate)
+    await setItemColumnValue(boardType, mondayItemId, "next_invoice_date", derivedInvoiceDate)
+    const refreshed = await fetchClientById(mondayItemId, { bypassCache: true })
+    if (refreshed) await syncClientToSupabase(refreshed)
+  } catch (e) {
+    console.error(
+      `Cycle write failed for sibling ${mondayItemId}:`,
+      e instanceof Error ? e.message : e,
+    )
   }
+}
+
+/**
+ * Explicit "apply this payment date to every campaign of this client" action.
+ * Writes the same cycle-start (and derived invoice date) to ALL siblings
+ * sharing the source's Stripe customer, regardless of their current date.
+ *
+ * This is the opt-in replacement for the old automatic sync: finance triggers
+ * it deliberately from the Billing page when a client's campaigns SHOULD share
+ * one invoice cadence. Not called on ordinary date edits - see updateClientField.
+ */
+export async function applyCycleToAllSiblings(
+  sourceMondayItemId: string,
+  cycleStartDate: string,
+): Promise<{ applied: number }> {
+  const siblings = await fetchStripeSiblings(sourceMondayItemId)
+  for (const sib of siblings) {
+    await writeCycleToRow(sib.mondayItemId, sib.boardType, cycleStartDate)
+  }
+  return { applied: siblings.length }
+}
+
+/**
+ * Advance the payment date for the siblings that were BUNDLED onto a just-sent
+ * invoice. A bundle = siblings sharing the Stripe customer AND currently on the
+ * same `fromCycle` date (that's exactly the set the Billing page consolidates
+ * into one invoice). They all advance to `toCycle` together; siblings on a
+ * different date (separately-invoiced campaigns like HeroLeads) are untouched.
+ *
+ * The source/primary row is advanced by the caller via updateClientField -
+ * this only handles the OTHER bundled siblings.
+ */
+export async function advanceBundledSiblings(
+  sourceMondayItemId: string,
+  fromCycle: string,
+  toCycle: string,
+): Promise<{ advanced: number }> {
+  const siblings = await fetchStripeSiblings(sourceMondayItemId)
+  const bundled = siblings.filter((s) => s.cycleStartDate === fromCycle)
+  for (const sib of bundled) {
+    await writeCycleToRow(sib.mondayItemId, sib.boardType, toCycle)
+  }
+  return { advanced: bundled.length }
 }
 
