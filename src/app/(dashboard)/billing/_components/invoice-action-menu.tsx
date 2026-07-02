@@ -135,11 +135,9 @@ export function InvoiceActionMenu({
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground">
-            <MoreHorizontal className="h-4 w-4" />
-            <span className="sr-only">Invoice actions</span>
-          </Button>
+        <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none disabled:opacity-50">
+          <MoreHorizontal className="h-4 w-4" />
+          <span className="sr-only">Invoice actions</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
           {isOpen && (
